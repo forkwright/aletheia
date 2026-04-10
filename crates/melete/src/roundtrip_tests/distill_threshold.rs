@@ -2,8 +2,8 @@
 //! Tests for `DistillEngine` behavior.
 #![expect(clippy::expect_used, reason = "test assertions")]
 #[cfg(test)]
-use aletheia_hermeneus::test_utils::MockProvider;
-use aletheia_hermeneus::types::{Content, ContentBlock, Message, Role};
+use hermeneus::test_utils::MockProvider;
+use hermeneus::types::{Content, ContentBlock, Message, Role};
 
 use crate::distill::{DistillConfig, DistillEngine};
 use crate::flush::{FlushItem, FlushSource};

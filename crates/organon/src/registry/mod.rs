@@ -9,7 +9,7 @@ use indexmap::IndexMap;
 use snafu::ensure;
 use tracing::info_span;
 
-use aletheia_koina::id::ToolName;
+use koina::id::ToolName;
 
 use crate::error::{self, Result};
 use crate::types::{
@@ -157,11 +157,11 @@ impl ToolRegistry {
     ///
     /// O(n) where n is the number of registered tools.
     #[must_use]
-    pub fn to_hermeneus_tools(&self) -> Vec<aletheia_hermeneus::types::ToolDefinition> {
+    pub fn to_hermeneus_tools(&self) -> Vec<hermeneus::types::ToolDefinition> {
         // kanon:ignore RUST/pub-visibility
         self.tools
             .values()
-            .map(|t| aletheia_hermeneus::types::ToolDefinition {
+            .map(|t| hermeneus::types::ToolDefinition {
                 name: t.def.name.as_str().to_owned(),
                 description: t.def.description.clone(),
                 input_schema: t.def.input_schema.to_json_schema(),
@@ -185,7 +185,7 @@ impl ToolRegistry {
         // kanon:ignore RUST/pub-visibility
         &self,
         active: &HashSet<ToolName>,
-    ) -> Vec<aletheia_hermeneus::types::ToolDefinition> {
+    ) -> Vec<hermeneus::types::ToolDefinition> {
         self.tools
             .values()
             .filter(|t| {
@@ -193,7 +193,7 @@ impl ToolRegistry {
                     || active.contains(&t.def.name)
                     || t.def.name.as_str() == "enable_tool"
             })
-            .map(|t| aletheia_hermeneus::types::ToolDefinition {
+            .map(|t| hermeneus::types::ToolDefinition {
                 name: t.def.name.as_str().to_owned(),
                 description: t.def.description.clone(),
                 input_schema: t.def.input_schema.to_json_schema(),

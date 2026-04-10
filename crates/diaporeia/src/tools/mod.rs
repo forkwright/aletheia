@@ -11,9 +11,9 @@ use rmcp::service::RequestContext;
 use rmcp::{tool, tool_router};
 use snafu::{OptionExt as _, ResultExt as _};
 
-use aletheia_koina::http::BEARER_PREFIX;
-use aletheia_koina::id::SessionId;
-use aletheia_symbolon::types::Role;
+use koina::http::BEARER_PREFIX;
+use koina::id::SessionId;
+use symbolon::types::Role;
 
 use crate::error::{NousNotFoundSnafu, PipelineSnafu, SerializationSnafu, SessionStoreSnafu};
 use crate::rate_limit::Tier;
@@ -196,7 +196,7 @@ impl DiaporeiaServer {
         // send_turn_streaming keeps the connection alive via event flow while
         // still returning the final TurnResult.
         let (stream_tx, mut stream_rx) =
-            tokio::sync::mpsc::channel::<aletheia_nous::stream::TurnStreamEvent>(64);
+            tokio::sync::mpsc::channel::<nous::stream::TurnStreamEvent>(64);
 
         // Drain stream events in background so the channel doesn't back-pressure
         // the actor. MCP doesn't support server-push, so events are discarded.

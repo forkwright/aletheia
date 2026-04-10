@@ -38,21 +38,21 @@ use tokio::sync::{Mutex as TokioMutex, RwLock};
 use tokio_util::sync::CancellationToken;
 use tower::ServiceExt;
 
-use aletheia_diaporeia::auth::McpClaims;
-use aletheia_diaporeia::error::{Error, Result as DiaporeiaResult};
-use aletheia_diaporeia::server::DiaporeiaServer;
-use aletheia_diaporeia::state::DiaporeiaState;
-use aletheia_diaporeia::transport::streamable_http_router;
+use diaporeia::auth::McpClaims;
+use diaporeia::error::{Error, Result as DiaporeiaResult};
+use diaporeia::server::DiaporeiaServer;
+use diaporeia::state::DiaporeiaState;
+use diaporeia::transport::streamable_http_router;
 
-use aletheia_hermeneus::provider::ProviderRegistry;
-use aletheia_koina::secret::SecretString;
-use aletheia_mneme::store::SessionStore;
-use aletheia_nous::manager::NousManager;
-use aletheia_organon::registry::ToolRegistry;
-use aletheia_symbolon::jwt::{JwtConfig, JwtManager};
-use aletheia_symbolon::types::Role;
-use aletheia_taxis::config::AletheiaConfig;
-use aletheia_taxis::oikos::Oikos;
+use hermeneus::provider::ProviderRegistry;
+use koina::secret::SecretString;
+use mneme::store::SessionStore;
+use nous::manager::NousManager;
+use organon::registry::ToolRegistry;
+use symbolon::jwt::{JwtConfig, JwtManager};
+use symbolon::types::Role;
+use taxis::config::AletheiaConfig;
+use taxis::oikos::Oikos;
 
 // WHY: each test must construct an independent state with its own tempdir so
 // that tests can run in parallel and in any order. The builder below assembles

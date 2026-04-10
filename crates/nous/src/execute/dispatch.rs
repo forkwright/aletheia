@@ -7,10 +7,10 @@ use tracing::debug;
 
 use tokio::sync::mpsc;
 
-use aletheia_hermeneus::types::{ContentBlock, ToolResultBlock, ToolResultContent};
-use aletheia_koina::id::ToolName;
-use aletheia_organon::registry::ToolRegistry;
-use aletheia_organon::types::{ToolContext, ToolInput};
+use hermeneus::types::{ContentBlock, ToolResultBlock, ToolResultContent};
+use koina::id::ToolName;
+use organon::registry::ToolRegistry;
+use organon::types::{ToolContext, ToolInput};
 
 use crate::error;
 use crate::pipeline::{InteractionSignal, LoopDetector, LoopVerdict, ToolCall};
@@ -193,8 +193,8 @@ pub(super) fn classify_signals(
 /// Convert pipeline messages to hermeneus messages.
 pub(super) fn build_messages(
     pipeline_messages: &[crate::pipeline::PipelineMessage],
-) -> Vec<aletheia_hermeneus::types::Message> {
-    use aletheia_hermeneus::types::{Content, Message, Role};
+) -> Vec<hermeneus::types::Message> {
+    use hermeneus::types::{Content, Message, Role};
 
     pipeline_messages
         .iter()
@@ -519,7 +519,7 @@ mod tests {
     #[test]
     fn blocks_over_limit_truncates_text_and_accounts_for_non_text_size() {
         let image_block = ToolResultBlock::Image {
-            source: aletheia_hermeneus::types::ImageSource {
+            source: hermeneus::types::ImageSource {
                 source_type: "base64".to_owned(),
                 media_type: "image/png".to_owned(),
                 data: "base64data".to_owned(),
@@ -578,7 +578,7 @@ mod tests {
     #[test]
     fn blocks_over_limit_skips_non_text_blocks_exceeding_budget() {
         let image_block = ToolResultBlock::Image {
-            source: aletheia_hermeneus::types::ImageSource {
+            source: hermeneus::types::ImageSource {
                 source_type: "base64".to_owned(),
                 media_type: "image/png".to_owned(),
                 data: "base64data".to_owned(),

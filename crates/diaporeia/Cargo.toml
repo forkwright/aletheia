@@ -1,5 +1,5 @@
 [package]
-name = "aletheia-diaporeia"
+name = "diaporeia"
 version.workspace = true
 description = "MCP server interface — the passage through for external AI agents"
 edition.workspace = true
@@ -20,7 +20,7 @@ test-full = []
 # feature unification enables nous/knowledge-store via the `aletheia` binary's
 # `recall` feature — if diaporeia doesn't also enable it, the `#[cfg]` gate
 # in test code evaluates incorrectly and NousManager::new gets the wrong arity.
-knowledge-store = ["aletheia-nous/knowledge-store"]
+knowledge-store = ["nous/knowledge-store"]
 
 [dependencies]
 # MCP SDK — pin exact per TECHNOLOGY.md policy
@@ -56,15 +56,15 @@ base64 = { workspace = true }
 http = { workspace = true }
 
 # Internal crates (same layer as pylon — depends on mid+low crates)
-aletheia-koina = { path = "../koina" }
-aletheia-taxis = { path = "../taxis" }
-aletheia-nous = { path = "../nous" }
-aletheia-organon = { path = "../organon" }
-aletheia-mneme = { path = "../mneme", features = ["sqlite"] }
-aletheia-symbolon = { path = "../symbolon" }
+koina = { path = "../koina" }
+taxis = { path = "../taxis" }
+nous = { path = "../nous" }
+organon = { path = "../organon" }
+mneme = { path = "../mneme", features = ["sqlite"] }
+symbolon = { path = "../symbolon" }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
-aletheia-hermeneus = { path = "../hermeneus" }
+hermeneus = { path = "../hermeneus" }
 tempfile = { workspace = true }
 tower = { workspace = true }

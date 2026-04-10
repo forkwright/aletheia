@@ -5,7 +5,7 @@
     reason = "test: vec indices are valid after asserting len"
 )]
 
-use aletheia_mneme::portability::AgentFile;
+use mneme::portability::AgentFile;
 
 #[test]
 fn deserialize_ts_format_agent_file() {

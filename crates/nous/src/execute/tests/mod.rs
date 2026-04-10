@@ -5,12 +5,12 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::{Arc, RwLock};
 
-use aletheia_hermeneus::provider::ProviderRegistry;
-use aletheia_hermeneus::test_utils::MockProvider;
-use aletheia_hermeneus::types::{CompletionResponse, ContentBlock, StopReason, Usage};
-use aletheia_koina::id::{NousId, SessionId, ToolName};
-use aletheia_organon::registry::{ToolExecutor, ToolRegistry};
-use aletheia_organon::types::{
+use hermeneus::provider::ProviderRegistry;
+use hermeneus::test_utils::MockProvider;
+use hermeneus::types::{CompletionResponse, ContentBlock, StopReason, Usage};
+use koina::id::{NousId, SessionId, ToolName};
+use organon::registry::{ToolExecutor, ToolRegistry};
+use organon::types::{
     InputSchema, ToolCategory, ToolContext, ToolDef, ToolInput, ToolResult,
 };
 
@@ -27,7 +27,7 @@ impl ToolExecutor for EchoExecutor {
         &'a self,
         input: &'a ToolInput,
         _ctx: &'a ToolContext,
-    ) -> Pin<Box<dyn Future<Output = aletheia_organon::error::Result<ToolResult>> + Send + 'a>>
+    ) -> Pin<Box<dyn Future<Output = organon::error::Result<ToolResult>> + Send + 'a>>
     {
         Box::pin(async {
             Ok(ToolResult::text(format!(
@@ -45,7 +45,7 @@ impl ToolExecutor for ErrorExecutor {
         &'a self,
         _input: &'a ToolInput,
         _ctx: &'a ToolContext,
-    ) -> Pin<Box<dyn Future<Output = aletheia_organon::error::Result<ToolResult>> + Send + 'a>>
+    ) -> Pin<Box<dyn Future<Output = organon::error::Result<ToolResult>> + Send + 'a>>
     {
         Box::pin(async { Ok(ToolResult::error("tool failed")) })
     }
@@ -139,7 +139,7 @@ fn make_tool_def(name: &str) -> ToolDef {
             required: vec![],
         },
         category: ToolCategory::Workspace,
-        reversibility: aletheia_organon::types::Reversibility::Irreversible,
+        reversibility: organon::types::Reversibility::Irreversible,
         auto_activate: false,
     }
 }

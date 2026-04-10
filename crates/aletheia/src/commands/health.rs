@@ -4,7 +4,7 @@ use snafu::prelude::*;
 
 use clap::Args;
 
-use aletheia_koina::http::API_HEALTH;
+use koina::http::API_HEALTH;
 
 use crate::error::Result;
 

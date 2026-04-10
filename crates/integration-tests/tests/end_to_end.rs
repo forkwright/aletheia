@@ -16,19 +16,19 @@ use tokio::sync::Mutex as TokioMutex;
 use tokio_util::sync::CancellationToken;
 use tower::ServiceExt;
 
-use aletheia_hermeneus::provider::{LlmProvider, ProviderRegistry};
-use aletheia_hermeneus::test_utils::MockProvider;
-use aletheia_hermeneus::types::*;
-use aletheia_koina::secret::SecretString;
-use aletheia_mneme::store::SessionStore;
-use aletheia_nous::config::{NousConfig, PipelineConfig};
-use aletheia_nous::manager::NousManager;
-use aletheia_organon::registry::ToolRegistry;
-use aletheia_pylon::router::build_router;
-use aletheia_pylon::state::AppState;
-use aletheia_symbolon::jwt::{JwtConfig, JwtManager};
-use aletheia_symbolon::types::Role;
-use aletheia_taxis::oikos::Oikos;
+use hermeneus::provider::{LlmProvider, ProviderRegistry};
+use hermeneus::test_utils::MockProvider;
+use hermeneus::types::*;
+use koina::secret::SecretString;
+use mneme::store::SessionStore;
+use nous::config::{NousConfig, PipelineConfig};
+use nous::manager::NousManager;
+use organon::registry::ToolRegistry;
+use pylon::router::build_router;
+use pylon::state::AppState;
+use symbolon::jwt::{JwtConfig, JwtManager};
+use symbolon::types::Role;
+use taxis::oikos::Oikos;
 
 // --- Mock Providers ---
 
@@ -65,7 +65,7 @@ impl LlmProvider for CapturingMockProvider {
         request: &'a CompletionRequest,
     ) -> std::pin::Pin<
         Box<
-            dyn std::future::Future<Output = aletheia_hermeneus::error::Result<CompletionResponse>>
+            dyn std::future::Future<Output = hermeneus::error::Result<CompletionResponse>>
                 + Send
                 + 'a,
         >,
@@ -161,7 +161,7 @@ impl TestHarness {
 
         let nous_config = NousConfig {
             id: Arc::from("test-nous"),
-            generation: aletheia_nous::config::NousGenerationConfig {
+            generation: nous::config::NousGenerationConfig {
                 model: "mock-model".to_owned(),
                 ..Default::default()
             },
@@ -178,7 +178,7 @@ impl TestHarness {
             issuer: "aletheia-test".to_owned(),
         }));
 
-        let default_config = aletheia_taxis::config::AletheiaConfig::default();
+        let default_config = taxis::config::AletheiaConfig::default();
         let (config_tx, _config_rx) = tokio::sync::watch::channel(default_config.clone());
         let state = Arc::new(AppState {
             session_store,
@@ -192,7 +192,7 @@ impl TestHarness {
             none_role: "admin".to_owned(),
             config: Arc::new(tokio::sync::RwLock::new(default_config)),
             config_tx,
-            idempotency_cache: Arc::new(aletheia_pylon::idempotency::IdempotencyCache::new()),
+            idempotency_cache: Arc::new(pylon::idempotency::IdempotencyCache::new()),
             shutdown: CancellationToken::new(),
             #[cfg(feature = "knowledge-store")]
             knowledge_store: None,
@@ -214,12 +214,12 @@ impl TestHarness {
     fn router(&self) -> axum::Router {
         build_router(
             Arc::clone(&self.state),
-            &aletheia_pylon::security::SecurityConfig {
-                csrf: aletheia_pylon::security::CsrfConfig {
+            &pylon::security::SecurityConfig {
+                csrf: pylon::security::CsrfConfig {
                     enabled: false,
-                    ..aletheia_pylon::security::CsrfConfig::default()
+                    ..pylon::security::CsrfConfig::default()
                 },
-                ..aletheia_pylon::security::SecurityConfig::default()
+                ..pylon::security::SecurityConfig::default()
             },
         )
     }

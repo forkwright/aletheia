@@ -4,8 +4,8 @@
     reason = "integration tests: index-based assertions on known-length slices"
 )]
 
-use aletheia_mneme::knowledge::{EpistemicTier, FactType};
-use aletheia_mneme::recall::{FactorScores, RecallEngine, RecallWeights, ScoredResult};
+use mneme::knowledge::{EpistemicTier, FactType};
+use mneme::recall::{FactorScores, RecallEngine, RecallWeights, ScoredResult};
 
 fn make_result(content: &str, nous_id: &str, factors: FactorScores) -> ScoredResult {
     ScoredResult {

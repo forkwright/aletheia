@@ -8,15 +8,15 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use tracing::{Instrument, debug, info, warn};
 
-use aletheia_mneme::embedding::EmbeddingProvider;
+use mneme::embedding::EmbeddingProvider;
 #[cfg(feature = "knowledge-store")]
-use aletheia_mneme::knowledge_store::KnowledgeStore;
-use aletheia_mneme::store::SessionStore;
+use mneme::knowledge_store::KnowledgeStore;
+use mneme::store::SessionStore;
 
-use aletheia_hermeneus::provider::ProviderRegistry;
-use aletheia_organon::registry::ToolRegistry;
-use aletheia_taxis::cascade;
-use aletheia_taxis::oikos::Oikos;
+use hermeneus::provider::ProviderRegistry;
+use organon::registry::ToolRegistry;
+use taxis::cascade;
+use taxis::oikos::Oikos;
 
 use crate::bootstrap::BootstrapSection;
 use crate::config::{NousConfig, PipelineConfig};
@@ -47,7 +47,7 @@ pub(crate) fn spawn(
     vector_search: Option<Arc<dyn crate::recall::VectorSearch>>,
     session_store: Option<Arc<Mutex<SessionStore>>>,
     #[cfg(feature = "knowledge-store")] knowledge_store: Option<Arc<KnowledgeStore>>,
-    tool_services: Option<Arc<aletheia_organon::types::ToolServices>>,
+    tool_services: Option<Arc<organon::types::ToolServices>>,
     extra_bootstrap: Vec<BootstrapSection>,
     cross_rx: Option<mpsc::Receiver<CrossNousEnvelope>>,
     cancel: CancellationToken,
@@ -111,7 +111,7 @@ pub struct DaemonSpawnParams {
     #[cfg(feature = "knowledge-store")]
     pub knowledge_store: Option<Arc<KnowledgeStore>>,
     /// Optional tool services (shared with parent).
-    pub tool_services: Option<Arc<aletheia_organon::types::ToolServices>>,
+    pub tool_services: Option<Arc<organon::types::ToolServices>>,
     /// Additional bootstrap sections for the child agent.
     pub extra_bootstrap: Vec<BootstrapSection>,
 }

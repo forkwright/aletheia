@@ -3,7 +3,7 @@
 use axum::Json;
 use axum::extract::{Path, State};
 
-use aletheia_symbolon::types::Role;
+use symbolon::types::Role;
 
 use crate::error::ApiError;
 use crate::extract::{Claims, require_role};
@@ -41,20 +41,20 @@ pub async fn forget_fact(
     require_role(&claims, Role::Operator)?;
     #[cfg(feature = "knowledge-store")]
     if let Some(ref store) = state.knowledge_store {
-        let fact_id = aletheia_mneme::id::FactId::new(&id).map_err(|e| ApiError::BadRequest {
+        let fact_id = mneme::id::FactId::new(&id).map_err(|e| ApiError::BadRequest {
             message: format!("invalid fact id: {e}"),
             location: snafu::location!(),
         })?;
         let reason = body
             .reason
-            .parse::<aletheia_mneme::knowledge::ForgetReason>()
-            .unwrap_or(aletheia_mneme::knowledge::ForgetReason::UserRequested);
+            .parse::<mneme::knowledge::ForgetReason>()
+            .unwrap_or(mneme::knowledge::ForgetReason::UserRequested);
         return match store.forget_fact_async(fact_id, reason).await {
             Ok(_) => {
                 tracing::info!(fact_id = %id, "fact forgotten");
                 Ok(Json(serde_json::json!({ "status": "forgotten", "id": id })))
             }
-            Err(aletheia_mneme::error::Error::FactNotFound { .. }) => Err(ApiError::NotFound {
+            Err(mneme::error::Error::FactNotFound { .. }) => Err(ApiError::NotFound {
                 path: format!("fact/{id}"),
                 location: snafu::location!(),
             }),
@@ -97,7 +97,7 @@ pub async fn restore_fact(
     require_role(&claims, Role::Operator)?;
     #[cfg(feature = "knowledge-store")]
     if let Some(ref store) = state.knowledge_store {
-        let fact_id = aletheia_mneme::id::FactId::new(&id).map_err(|e| ApiError::BadRequest {
+        let fact_id = mneme::id::FactId::new(&id).map_err(|e| ApiError::BadRequest {
             message: format!("invalid fact id: {e}"),
             location: snafu::location!(),
         })?;
@@ -106,7 +106,7 @@ pub async fn restore_fact(
                 tracing::info!(fact_id = %id, "fact restored");
                 Ok(Json(serde_json::json!({ "status": "restored", "id": id })))
             }
-            Err(aletheia_mneme::error::Error::FactNotFound { .. }) => Err(ApiError::NotFound {
+            Err(mneme::error::Error::FactNotFound { .. }) => Err(ApiError::NotFound {
                 path: format!("fact/{id}"),
                 location: snafu::location!(),
             }),
@@ -162,7 +162,7 @@ pub async fn update_confidence(
     }
     #[cfg(feature = "knowledge-store")]
     if let Some(ref store) = state.knowledge_store {
-        let fact_id = aletheia_mneme::id::FactId::new(&id).map_err(|e| ApiError::BadRequest {
+        let fact_id = mneme::id::FactId::new(&id).map_err(|e| ApiError::BadRequest {
             message: format!("invalid fact id: {e}"),
             location: snafu::location!(),
         })?;
@@ -176,7 +176,7 @@ pub async fn update_confidence(
                     serde_json::json!({ "status": "updated", "id": id, "confidence": body.confidence }),
                 ))
             }
-            Err(aletheia_mneme::error::Error::FactNotFound { .. }) => Err(ApiError::NotFound {
+            Err(mneme::error::Error::FactNotFound { .. }) => Err(ApiError::NotFound {
                 path: format!("fact/{id}"),
                 location: snafu::location!(),
             }),

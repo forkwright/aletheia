@@ -19,7 +19,7 @@ use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use tracing::instrument;
 
-use aletheia_koina::id::ToolName;
+use koina::id::ToolName;
 
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};

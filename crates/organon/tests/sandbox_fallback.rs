@@ -6,7 +6,7 @@
 #[cfg(target_os = "linux")]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod linux {
-    use aletheia_organon::sandbox::{
+    use organon::sandbox::{
         SandboxConfig, SandboxEnforcement, apply_sandbox, probe_landlock_abi,
     };
 

@@ -1,5 +1,5 @@
 [package]
-name = "aletheia-integration-tests"
+name = "integration-tests"
 version.workspace = true
 publish = false
 edition.workspace = true
@@ -12,26 +12,26 @@ workspace = true
 
 [features]
 default = ["sqlite-tests", "knowledge-store"]
-sqlite-tests = ["aletheia-mneme/sqlite"]
-engine-tests = ["aletheia-mneme/mneme-engine"]
-knowledge-store = ["aletheia-nous/knowledge-store", "aletheia-pylon/knowledge-store"]
+sqlite-tests = ["mneme/sqlite"]
+engine-tests = ["mneme/mneme-engine"]
+knowledge-store = ["nous/knowledge-store", "pylon/knowledge-store"]
 # Test tiers (see docs/test-tiers.md)
 test-core = ["engine-tests"]
 test-full = ["test-core"]
 
 [dev-dependencies]
-aletheia-dokimion = { path = "../eval" }
-aletheia-koina = { path = "../koina", features = ["test-support"] }
-aletheia-taxis = { path = "../taxis" }
-aletheia-mneme = { path = "../mneme", default-features = false, features = [
+dokimion = { path = "../eval" }
+koina = { path = "../koina", features = ["test-support"] }
+taxis = { path = "../taxis" }
+mneme = { path = "../mneme", default-features = false, features = [
     "test-support",
 ] }
-aletheia-hermeneus = { path = "../hermeneus", features = ["test-utils"] }
-aletheia-nous = { path = "../nous" }
-aletheia-organon = { path = "../organon", features = ["test-support"] }
-aletheia-thesauros = { path = "../thesauros" }
-aletheia-pylon = { path = "../pylon" }
-aletheia-symbolon = { path = "../symbolon" }
+hermeneus = { path = "../hermeneus", features = ["test-utils"] }
+nous = { path = "../nous" }
+organon = { path = "../organon", features = ["test-support"] }
+thesauros = { path = "../thesauros" }
+pylon = { path = "../pylon" }
+symbolon = { path = "../symbolon" }
 jiff = { workspace = true }
 axum = { workspace = true }
 reqwest = { workspace = true }

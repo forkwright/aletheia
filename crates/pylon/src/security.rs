@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use aletheia_taxis::config::{GatewayConfig, PerUserRateLimitConfig};
+use taxis::config::{GatewayConfig, PerUserRateLimitConfig};
 
 /// The insecure default CSRF token value shipped in the default config.
 ///

@@ -19,41 +19,41 @@ path = "src/main.rs"
 default = ["tui", "recall", "storage-fjall", "embed-candle"]
 # MCP server (Model Context Protocol). Disabled by default: adds context-window
 # cost and auth friction for local deployments. Enable with `--features mcp`.
-mcp = ["dep:aletheia-diaporeia"]
+mcp = ["dep:diaporeia"]
 # Recall pipeline: enables KnowledgeStore for vector search + extraction persistence.
-recall = ["aletheia-nous/knowledge-store", "aletheia-mneme/mneme-engine", "aletheia-mneme/storage-fjall", "aletheia-pylon/knowledge-store"]
+recall = ["nous/knowledge-store", "mneme/mneme-engine", "mneme/storage-fjall", "pylon/knowledge-store"]
 # fjall storage backend for mneme (LSM-tree, pure Rust, LZ4 compression).
-storage-fjall = ["aletheia-mneme/storage-fjall"]
+storage-fjall = ["mneme/storage-fjall"]
 # Local ML embeddings via candle.
-embed-candle = ["aletheia-mneme/embed-candle"]
-migrate-qdrant = ["dep:qdrant-client", "aletheia-mneme/mneme-engine", "aletheia-mneme/storage-fjall"]
-tls = ["aletheia-pylon/tls"]
-keyring = ["aletheia-symbolon/keyring"]
+embed-candle = ["mneme/embed-candle"]
+migrate-qdrant = ["dep:qdrant-client", "mneme/mneme-engine", "mneme/storage-fjall"]
+tls = ["pylon/tls"]
+keyring = ["symbolon/keyring"]
 tui = ["dep:theatron-tui"]
 # Claude Code subprocess provider: delegates LLM calls to the `claude` CLI.
-cc-provider = ["aletheia-hermeneus/cc-provider"]
+cc-provider = ["hermeneus/cc-provider"]
 # Dispatch orchestration (kanon phronesis port). Default off for incremental development.
-energeia = ["dep:aletheia-energeia"]
+energeia = ["dep:energeia"]
 # Test tiers (see docs/test-tiers.md)
-test-core = ["aletheia-mneme/test-core", "aletheia-nous/test-core", "aletheia-pylon/test-core"]
-test-full = ["test-core", "aletheia-mneme/test-full"]
+test-core = ["mneme/test-core", "nous/test-core", "pylon/test-core"]
+test-full = ["test-core", "mneme/test-full"]
 
 [dependencies]
-aletheia-diaporeia = { path = "../diaporeia", optional = true }
-aletheia-dianoia = { path = "../dianoia" }
-aletheia-energeia = { path = "../energeia", optional = true }
-aletheia-oikonomos = { path = "../daemon" }
-aletheia-koina = { path = "../koina" }
-aletheia-taxis = { path = "../taxis" }
-aletheia-hermeneus = { path = "../hermeneus" }
-aletheia-organon = { path = "../organon" }
-aletheia-mneme = { path = "../mneme" }
-aletheia-nous = { path = "../nous" }
-aletheia-symbolon = { path = "../symbolon" }
-aletheia-pylon = { path = "../pylon" }
-aletheia-agora = { path = "../agora" }
-aletheia-dokimion = { path = "../eval" }
-aletheia-thesauros = { path = "../thesauros" }
+diaporeia = { path = "../diaporeia", optional = true }
+dianoia = { path = "../dianoia" }
+energeia = { path = "../energeia", optional = true }
+oikonomos = { path = "../daemon" }
+koina = { path = "../koina" }
+taxis = { path = "../taxis" }
+hermeneus = { path = "../hermeneus" }
+organon = { path = "../organon" }
+mneme = { path = "../mneme" }
+nous = { path = "../nous" }
+symbolon = { path = "../symbolon" }
+pylon = { path = "../pylon" }
+agora = { path = "../agora" }
+dokimion = { path = "../eval" }
+thesauros = { path = "../thesauros" }
 theatron-tui = { path = "../theatron/tui", optional = true }
 
 tokio = { workspace = true }

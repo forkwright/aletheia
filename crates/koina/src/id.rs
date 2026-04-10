@@ -24,7 +24,7 @@ use crate::uuid::Uuid;
 /// # Examples
 ///
 /// ```
-/// use aletheia_koina::newtype_id;
+/// use koina::newtype_id;
 ///
 /// newtype_id!(
 ///     /// A widget identifier.

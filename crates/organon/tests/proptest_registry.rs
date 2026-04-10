@@ -14,10 +14,10 @@
     reason = "proptest: ToolName::new() with controlled inputs; expect message documents constraint"
 )]
 
-use aletheia_koina::id::ToolName;
-use aletheia_organon::registry::ToolRegistry;
-use aletheia_organon::testing::{MockToolExecutor, make_test_context, make_tool_input};
-use aletheia_organon::types::{InputSchema, Reversibility, ToolCategory, ToolDef};
+use koina::id::ToolName;
+use organon::registry::ToolRegistry;
+use organon::testing::{MockToolExecutor, make_test_context, make_tool_input};
+use organon::types::{InputSchema, Reversibility, ToolCategory, ToolDef};
 use indexmap::IndexMap;
 use proptest::prelude::*;
 

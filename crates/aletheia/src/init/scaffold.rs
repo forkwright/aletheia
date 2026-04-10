@@ -22,7 +22,7 @@ pub(super) fn scaffold(answers: &Answers) -> Result<(), InitError> {
     }
 
     let config_toml = render_config(answers);
-    let config_path = root.join(aletheia_koina::defaults::DEFAULT_CONFIG_PATH);
+    let config_path = root.join(koina::defaults::DEFAULT_CONFIG_PATH);
     #[expect(
         clippy::disallowed_methods,
         reason = "aletheia CLI commands use synchronous filesystem operations for config and certificate generation"

@@ -249,8 +249,8 @@ async fn shell_executor_runs_script() {
         arguments: serde_json::json!({"message": "hello"}),
     };
     let ctx = ToolContext {
-        nous_id: aletheia_koina::id::NousId::new("test").expect("test is a valid nous id"),
-        session_id: aletheia_koina::id::SessionId::new(),
+        nous_id: koina::id::NousId::new("test").expect("test is a valid nous id"),
+        session_id: koina::id::SessionId::new(),
         workspace: dir.path().to_path_buf(),
         allowed_roots: vec![],
         services: None,
@@ -290,8 +290,8 @@ async fn shell_executor_nonzero_exit_is_error() {
         arguments: serde_json::json!({}),
     };
     let ctx = ToolContext {
-        nous_id: aletheia_koina::id::NousId::new("test").expect("test is a valid nous id"),
-        session_id: aletheia_koina::id::SessionId::new(),
+        nous_id: koina::id::NousId::new("test").expect("test is a valid nous id"),
+        session_id: koina::id::SessionId::new(),
         workspace: dir.path().to_path_buf(),
         allowed_roots: vec![],
         services: None,
@@ -379,8 +379,8 @@ async fn shell_metacharacters_in_arguments_passed_safely_via_stdin() {
         }),
     };
     let ctx = ToolContext {
-        nous_id: aletheia_koina::id::NousId::new("test").expect("test is a valid nous id"),
-        session_id: aletheia_koina::id::SessionId::new(),
+        nous_id: koina::id::NousId::new("test").expect("test is a valid nous id"),
+        session_id: koina::id::SessionId::new(),
         workspace: dir.path().to_path_buf(),
         allowed_roots: vec![],
         services: None,
@@ -471,8 +471,8 @@ async fn shell_executor_does_not_expand_env_vars_in_arguments() {
         }),
     };
     let ctx = ToolContext {
-        nous_id: aletheia_koina::id::NousId::new("test").expect("test is a valid nous id"),
-        session_id: aletheia_koina::id::SessionId::new(),
+        nous_id: koina::id::NousId::new("test").expect("test is a valid nous id"),
+        session_id: koina::id::SessionId::new(),
         workspace: dir.path().to_path_buf(),
         allowed_roots: vec![],
         services: None,
@@ -511,8 +511,8 @@ async fn shell_executor_timeout_returns_error() {
         arguments: serde_json::json!({}),
     };
     let ctx = ToolContext {
-        nous_id: aletheia_koina::id::NousId::new("test").expect("test is a valid nous id"),
-        session_id: aletheia_koina::id::SessionId::new(),
+        nous_id: koina::id::NousId::new("test").expect("test is a valid nous id"),
+        session_id: koina::id::SessionId::new(),
         workspace: dir.path().to_path_buf(),
         allowed_roots: vec![],
         services: None,
@@ -559,8 +559,8 @@ async fn shell_executor_truncates_at_char_boundary() {
         arguments: serde_json::json!({}),
     };
     let ctx = ToolContext {
-        nous_id: aletheia_koina::id::NousId::new("test").expect("test is a valid nous id"),
-        session_id: aletheia_koina::id::SessionId::new(),
+        nous_id: koina::id::NousId::new("test").expect("test is a valid nous id"),
+        session_id: koina::id::SessionId::new(),
         workspace: dir.path().to_path_buf(),
         allowed_roots: vec![],
         services: None,

@@ -6,10 +6,10 @@ use tokio::sync::{mpsc, watch};
 use tokio::task::{JoinHandle, JoinSet};
 use tracing::{Instrument, info, warn};
 
-use aletheia_agora::registry::ChannelRegistry;
-use aletheia_agora::router::{MessageRouter, reply_target};
-use aletheia_agora::types::{InboundMessage, SendParams};
-use aletheia_nous::manager::NousManager;
+use agora::registry::ChannelRegistry;
+use agora::router::{MessageRouter, reply_target};
+use agora::types::{InboundMessage, SendParams};
+use nous::manager::NousManager;
 
 /// Spawn a background task that dispatches inbound messages to nous actors.
 ///

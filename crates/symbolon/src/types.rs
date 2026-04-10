@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use aletheia_koina::secret::SecretString;
+use koina::secret::SecretString;
 
 /// Role in the RBAC model.
 ///

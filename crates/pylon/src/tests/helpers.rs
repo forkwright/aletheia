@@ -7,16 +7,16 @@ use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 use tower::ServiceExt;
 
-use aletheia_hermeneus::provider::ProviderRegistry;
-use aletheia_hermeneus::test_utils::MockProvider;
-use aletheia_koina::http::{BEARER_PREFIX, CONTENT_TYPE_JSON};
-use aletheia_koina::secret::SecretString;
-use aletheia_mneme::store::SessionStore;
-use aletheia_nous::config::{NousConfig, PipelineConfig};
-use aletheia_nous::manager::NousManager;
-use aletheia_organon::registry::ToolRegistry;
-use aletheia_symbolon::jwt::{JwtConfig, JwtManager};
-use aletheia_taxis::oikos::Oikos;
+use hermeneus::provider::ProviderRegistry;
+use hermeneus::test_utils::MockProvider;
+use koina::http::{BEARER_PREFIX, CONTENT_TYPE_JSON};
+use koina::secret::SecretString;
+use mneme::store::SessionStore;
+use nous::config::{NousConfig, PipelineConfig};
+use nous::manager::NousManager;
+use organon::registry::ToolRegistry;
+use symbolon::jwt::{JwtConfig, JwtManager};
+use taxis::oikos::Oikos;
 
 pub(super) use crate::router::build_router;
 pub(super) use crate::security::SecurityConfig;
@@ -45,7 +45,7 @@ pub(super) fn test_jwt_manager() -> Arc<JwtManager> {
 
 pub(super) fn default_token() -> String {
     test_jwt_manager()
-        .issue_access("test-user", aletheia_symbolon::types::Role::Operator, None)
+        .issue_access("test-user", symbolon::types::Role::Operator, None)
         .expect("test token")
 }
 
@@ -128,7 +128,7 @@ bind = "localhost"
 
     let nous_config = NousConfig {
         id: Arc::from("syn"),
-        generation: aletheia_nous::config::NousGenerationConfig {
+        generation: nous::config::NousGenerationConfig {
             model: "mock-model".to_owned(),
             ..Default::default()
         },
@@ -140,7 +140,7 @@ bind = "localhost"
 
     let jwt_manager = test_jwt_manager();
 
-    let default_config = aletheia_taxis::config::AletheiaConfig::default();
+    let default_config = taxis::config::AletheiaConfig::default();
     let (config_tx, _config_rx) = tokio::sync::watch::channel(default_config.clone());
 
     let state = Arc::new(AppState {

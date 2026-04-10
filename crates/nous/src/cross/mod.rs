@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
-use aletheia_koina::ulid::Ulid;
+use koina::ulid::Ulid;
 
 pub(super) const DEFAULT_REPLY_TIMEOUT: Duration = Duration::from_secs(30);
 pub(super) const DEFAULT_MAX_LOG_ENTRIES: usize = 1000;

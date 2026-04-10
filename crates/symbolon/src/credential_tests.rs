@@ -2,8 +2,8 @@
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-use aletheia_koina::credential::{Credential, CredentialProvider, CredentialSource};
-use aletheia_koina::secret::SecretString;
+use koina::credential::{Credential, CredentialProvider, CredentialSource};
+use koina::secret::SecretString;
 
 use super::*;
 use crate::util::decode_jwt_exp_secs;

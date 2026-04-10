@@ -2,7 +2,7 @@
 
 use std::collections::VecDeque;
 
-use aletheia_koina::ulid::Ulid;
+use koina::ulid::Ulid;
 
 use super::DeliveryState;
 

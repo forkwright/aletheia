@@ -11,20 +11,20 @@ use tokio::sync::Mutex as TokioMutex;
 use tokio_util::sync::CancellationToken;
 use tracing::Instrument;
 
-use aletheia_dokimion::runner::{RunConfig, ScenarioRunner};
-use aletheia_hermeneus::provider::ProviderRegistry;
-use aletheia_hermeneus::test_utils::MockProvider;
-use aletheia_koina::secret::SecretString;
-use aletheia_mneme::store::SessionStore;
-use aletheia_nous::config::{NousConfig, PipelineConfig};
-use aletheia_nous::manager::NousManager;
-use aletheia_organon::registry::ToolRegistry;
-use aletheia_organon::testing::install_crypto_provider;
-use aletheia_pylon::router::build_router;
-use aletheia_pylon::state::AppState;
-use aletheia_symbolon::jwt::{JwtConfig, JwtManager};
-use aletheia_symbolon::types::Role;
-use aletheia_taxis::oikos::Oikos;
+use dokimion::runner::{RunConfig, ScenarioRunner};
+use hermeneus::provider::ProviderRegistry;
+use hermeneus::test_utils::MockProvider;
+use koina::secret::SecretString;
+use mneme::store::SessionStore;
+use nous::config::{NousConfig, PipelineConfig};
+use nous::manager::NousManager;
+use organon::registry::ToolRegistry;
+use organon::testing::install_crypto_provider;
+use pylon::router::build_router;
+use pylon::state::AppState;
+use symbolon::jwt::{JwtConfig, JwtManager};
+use symbolon::types::Role;
+use taxis::oikos::Oikos;
 
 async fn start_test_server() -> (String, String, tempfile::TempDir) {
     install_crypto_provider();
@@ -73,7 +73,7 @@ async fn start_test_server() -> (String, String, tempfile::TempDir) {
 
     let nous_config = NousConfig {
         id: Arc::from("test-nous"),
-        generation: aletheia_nous::config::NousGenerationConfig {
+        generation: nous::config::NousGenerationConfig {
             model: "mock-model".to_owned(),
             ..Default::default()
         },
@@ -94,7 +94,7 @@ async fn start_test_server() -> (String, String, tempfile::TempDir) {
         .issue_access("test-user", Role::Operator, None)
         .expect("test token");
 
-    let default_config = aletheia_taxis::config::AletheiaConfig::default();
+    let default_config = taxis::config::AletheiaConfig::default();
     let (config_tx, _config_rx) = tokio::sync::watch::channel(default_config.clone());
     let state = Arc::new(AppState {
         session_store,
@@ -108,7 +108,7 @@ async fn start_test_server() -> (String, String, tempfile::TempDir) {
         none_role: "admin".to_owned(),
         config: Arc::new(tokio::sync::RwLock::new(default_config)),
         config_tx,
-        idempotency_cache: Arc::new(aletheia_pylon::idempotency::IdempotencyCache::new()),
+        idempotency_cache: Arc::new(pylon::idempotency::IdempotencyCache::new()),
         shutdown: CancellationToken::new(),
         #[cfg(feature = "knowledge-store")]
         knowledge_store: None,
@@ -116,12 +116,12 @@ async fn start_test_server() -> (String, String, tempfile::TempDir) {
 
     let router = build_router(
         Arc::clone(&state),
-        &aletheia_pylon::security::SecurityConfig {
-            csrf: aletheia_pylon::security::CsrfConfig {
+        &pylon::security::SecurityConfig {
+            csrf: pylon::security::CsrfConfig {
                 enabled: false,
-                ..aletheia_pylon::security::CsrfConfig::default()
+                ..pylon::security::CsrfConfig::default()
             },
-            ..aletheia_pylon::security::SecurityConfig::default()
+            ..pylon::security::SecurityConfig::default()
         },
     );
 
@@ -227,7 +227,7 @@ async fn eval_session_scenarios_pass() {
         .results
         .iter()
         .filter_map(|r| match &r.outcome {
-            aletheia_dokimion::scenario::ScenarioOutcome::Failed { error, .. } => {
+            dokimion::scenario::ScenarioOutcome::Failed { error, .. } => {
                 Some(format!("{}: {error}", r.meta.id))
             }
             _ => None,

@@ -42,26 +42,26 @@ use std::time::Duration;
 
 use tokio_util::sync::CancellationToken;
 
-use aletheia_oikonomos::bridge::{DaemonBridge, NoopBridge};
-use aletheia_oikonomos::coordination::Coordinator;
-use aletheia_oikonomos::cron::{
+use oikonomos::bridge::{DaemonBridge, NoopBridge};
+use oikonomos::coordination::Coordinator;
+use oikonomos::cron::{
     CronConfig, CronEvolutionConfig, CronGraphCleanupConfig, CronReflectionConfig,
 };
-use aletheia_oikonomos::error::Error as DaemonError;
-use aletheia_oikonomos::maintenance::{
+use oikonomos::error::Error as DaemonError;
+use oikonomos::maintenance::{
     AutoDreamConfig, DbMonitor, DbMonitoringConfig, DbStatus, DriftDetectionConfig, DriftDetector,
     KnowledgeMaintenanceConfig, MaintenanceConfig, MaintenanceReport, ProposeRulesConfig,
     RetentionConfig, RetentionExecutor, RetentionSummary, TraceRotationConfig, TraceRotator,
 };
-use aletheia_oikonomos::probe::{
+use oikonomos::probe::{
     Probe, ProbeAuditConfig, ProbeAuditSummary, ProbeCategory, ProbeResult, ProbeSet,
     build_probe_audit_prompt,
 };
-use aletheia_oikonomos::runner::{DaemonOutputMode, ExecutionResult, TaskRunner};
-use aletheia_oikonomos::schedule::{BuiltinTask, Schedule, TaskAction, TaskDef, TaskStatus};
-use aletheia_oikonomos::self_prompt::{SELF_PROMPT_SESSION_KEY, SelfPromptConfig};
-use aletheia_oikonomos::state::{AllowedTriggers, DaemonConfig, WorkspaceGuard};
-use aletheia_oikonomos::triggers::TriggerRouter;
+use oikonomos::runner::{DaemonOutputMode, ExecutionResult, TaskRunner};
+use oikonomos::schedule::{BuiltinTask, Schedule, TaskAction, TaskDef, TaskStatus};
+use oikonomos::self_prompt::{SELF_PROMPT_SESSION_KEY, SelfPromptConfig};
+use oikonomos::state::{AllowedTriggers, DaemonConfig, WorkspaceGuard};
+use oikonomos::triggers::TriggerRouter;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -1280,7 +1280,7 @@ struct InMemoryRetention {
 }
 
 impl RetentionExecutor for InMemoryRetention {
-    fn execute_retention(&self) -> aletheia_oikonomos::error::Result<RetentionSummary> {
+    fn execute_retention(&self) -> oikonomos::error::Result<RetentionSummary> {
         Ok(self.summary.clone())
     }
 }

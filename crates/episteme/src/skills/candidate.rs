@@ -171,7 +171,7 @@ impl CandidateTracker {
             return TrackResult::Tracked(new_count);
         }
 
-        let id = aletheia_koina::ulid::Ulid::new().to_string();
+        let id = koina::ulid::Ulid::new().to_string();
         candidates.push(SkillCandidate {
             id: id.clone(),
             nous_id: nous_id.to_owned(),

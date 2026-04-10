@@ -12,10 +12,10 @@
 
 mod common;
 
-use aletheia_taxis::config::AletheiaConfig;
-use aletheia_taxis::loader::{load_config, write_config};
-use aletheia_taxis::oikos::Oikos;
-use aletheia_taxis::reload::{prepare_reload, restart_prefixes};
+use taxis::config::AletheiaConfig;
+use taxis::loader::{load_config, write_config};
+use taxis::oikos::Oikos;
+use taxis::reload::{prepare_reload, restart_prefixes};
 
 use common::{make_valid_instance, write_toml};
 

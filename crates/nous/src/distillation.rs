@@ -21,13 +21,13 @@ const NEVER_DISTILLED_MESSAGE_TRIGGER: i64 = 30;
 /// Minimum message count required for the legacy ratio-based trigger to fire.
 const LEGACY_THRESHOLD_MIN_MESSAGES: i64 = 10;
 
-use aletheia_hermeneus::provider::LlmProvider;
-use aletheia_hermeneus::types::{Content, Message as HermeneusMessage, Role as HermeneusRole};
-use aletheia_melete::distill::{DistillConfig, DistillEngine, DistillResult};
-use aletheia_mneme::store::SessionStore;
-use aletheia_mneme::types::{Role as MnemeRole, Session, SessionType};
+use hermeneus::provider::LlmProvider;
+use hermeneus::types::{Content, Message as HermeneusMessage, Role as HermeneusRole};
+use melete::distill::{DistillConfig, DistillEngine, DistillResult};
+use mneme::store::SessionStore;
+use mneme::types::{Role as MnemeRole, Session, SessionType};
 #[cfg(test)]
-use aletheia_mneme::types::{SessionMetrics, SessionOrigin};
+use mneme::types::{SessionMetrics, SessionOrigin};
 
 use crate::error;
 
@@ -226,7 +226,7 @@ pub fn apply_distillation(
     store: &SessionStore,
     session_id: &str,
     result: &DistillResult,
-    history: &[aletheia_mneme::types::Message],
+    history: &[mneme::types::Message],
 ) -> error::Result<()> {
     let distill_count = result.messages_distilled.min(history.len());
     #[expect(
@@ -271,7 +271,7 @@ pub fn apply_distillation(
 /// Convert mneme messages to hermeneus messages for the distillation engine.
 #[must_use]
 pub fn convert_to_hermeneus_messages(
-    history: &[aletheia_mneme::types::Message],
+    history: &[mneme::types::Message],
 ) -> Vec<HermeneusMessage> {
     history
         .iter()
@@ -305,9 +305,9 @@ mod tests {
             id: "ses-1".to_owned(),
             nous_id: "test-nous".to_owned(),
             session_key: "main".to_owned(),
-            status: aletheia_mneme::types::SessionStatus::Active,
+            status: mneme::types::SessionStatus::Active,
             model: Some("test-model".to_owned()),
-            session_type: aletheia_mneme::types::SessionType::Primary,
+            session_type: mneme::types::SessionType::Primary,
             created_at: String::new(),
             updated_at: String::new(),
             metrics: SessionMetrics {
@@ -383,7 +383,7 @@ mod tests {
     #[test]
     fn no_trigger_ephemeral_session() {
         let session = make_session(|s| {
-            s.session_type = aletheia_mneme::types::SessionType::Ephemeral;
+            s.session_type = mneme::types::SessionType::Ephemeral;
             s.session_key = "ask:demiurge".to_owned();
             s.metrics.last_input_tokens = 130_000;
             s.metrics.message_count = 200;
@@ -399,7 +399,7 @@ mod tests {
     #[test]
     fn trigger_on_non_ephemeral_session_with_same_thresholds() {
         let session = make_session(|s| {
-            s.session_type = aletheia_mneme::types::SessionType::Primary;
+            s.session_type = mneme::types::SessionType::Primary;
             s.metrics.last_input_tokens = 130_000;
             s.metrics.message_count = 200;
         });
@@ -458,9 +458,9 @@ mod tests {
     /// Some: confirming that the store mutation side-effects actually occur.
     #[test]
     fn apply_distillation_updates_store() {
-        use aletheia_melete::distill::DistillResult;
-        use aletheia_mneme::store::SessionStore;
-        use aletheia_mneme::types::Role as MnemeRole;
+        use melete::distill::DistillResult;
+        use mneme::store::SessionStore;
+        use mneme::types::Role as MnemeRole;
 
         let store = SessionStore::open_in_memory().expect("in-memory store");
         store
@@ -493,14 +493,14 @@ mod tests {
             distillation_number: 1,
             timestamp: jiff::Timestamp::now().to_string(),
             verbatim_messages: vec![],
-            memory_flush: aletheia_melete::flush::MemoryFlush {
+            memory_flush: melete::flush::MemoryFlush {
                 decisions: vec![],
                 corrections: vec![],
                 facts: vec![],
                 task_state: None,
             },
             pruning_stats: None,
-            contradiction_log: aletheia_melete::contradiction::ContradictionLog::empty(),
+            contradiction_log: melete::contradiction::ContradictionLog::empty(),
         };
 
         apply_distillation(&store, "ses-1", &result, &history).expect("apply distillation");
@@ -524,7 +524,7 @@ mod tests {
     #[test]
     fn message_conversion_maps_roles() {
         let messages = vec![
-            aletheia_mneme::types::Message {
+            mneme::types::Message {
                 id: 1,
                 session_id: "s".to_owned(),
                 seq: 1,
@@ -536,7 +536,7 @@ mod tests {
                 is_distilled: false,
                 created_at: String::new(),
             },
-            aletheia_mneme::types::Message {
+            mneme::types::Message {
                 id: 2,
                 session_id: "s".to_owned(),
                 seq: 2,
@@ -548,7 +548,7 @@ mod tests {
                 is_distilled: false,
                 created_at: String::new(),
             },
-            aletheia_mneme::types::Message {
+            mneme::types::Message {
                 id: 3,
                 session_id: "s".to_owned(),
                 seq: 3,

@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use aletheia_koina::system::{Environment, RealSystem};
+use koina::system::{Environment, RealSystem};
 
 use super::types::{ComputerAction, DiffRegion};
 

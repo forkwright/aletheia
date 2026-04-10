@@ -9,8 +9,8 @@ use std::sync::Arc;
 
 use indexmap::IndexMap;
 
-use aletheia_energeia::orchestrator::Orchestrator;
-use aletheia_koina::id::ToolName;
+use energeia::orchestrator::Orchestrator;
+use koina::id::ToolName;
 
 use crate::error::Result;
 use crate::registry::ToolExecutor;
@@ -117,7 +117,7 @@ impl ToolExecutor for DromeusExecutor {
 
             // WHY: spec is a JSON array of PromptSpec objects. Callers build the
             // spec programmatically (e.g. from prographe output) and pass it inline.
-            let prompts: Vec<aletheia_energeia::prompt::PromptSpec> =
+            let prompts: Vec<energeia::prompt::PromptSpec> =
                 match serde_json::from_str(spec_str) {
                     Ok(p) => p,
                     Err(e) => {
@@ -136,7 +136,7 @@ impl ToolExecutor for DromeusExecutor {
 
             let prompt_numbers: Vec<u32> = prompts.iter().map(|p| p.number).collect();
             let mut dispatch_spec =
-                aletheia_energeia::types::DispatchSpec::new(project.to_owned(), prompt_numbers);
+                energeia::types::DispatchSpec::new(project.to_owned(), prompt_numbers);
             dispatch_spec.max_parallel =
                 opt_u64(args, "max_turns").and_then(|v| u32::try_from(v).ok());
 

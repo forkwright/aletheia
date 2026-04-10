@@ -12,10 +12,10 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
-use aletheia_koina::id::{NousId, SessionId, ToolName};
-use aletheia_organon::registry::ToolRegistry;
-use aletheia_organon::sandbox::{SandboxConfig, SandboxEnforcement};
-use aletheia_organon::types::{ToolContext, ToolInput};
+use koina::id::{NousId, SessionId, ToolName};
+use organon::registry::ToolRegistry;
+use organon::sandbox::{SandboxConfig, SandboxEnforcement};
+use organon::types::{ToolContext, ToolInput};
 
 #[expect(clippy::expect_used, reason = "test assertions")]
 fn test_ctx() -> ToolContext {
@@ -35,7 +35,7 @@ fn test_ctx() -> ToolContext {
 #[expect(clippy::expect_used, reason = "test assertions")]
 fn registers_computer_use_tool() {
     let mut registry = ToolRegistry::new();
-    aletheia_organon::builtins::computer_use::register(&mut registry, &SandboxConfig::default())
+    organon::builtins::computer_use::register(&mut registry, &SandboxConfig::default())
         .expect("registration should succeed");
 
     let name = ToolName::new("computer_use").expect("valid");
@@ -65,7 +65,7 @@ fn registers_computer_use_tool() {
 #[expect(clippy::expect_used, reason = "test assertions")]
 async fn unknown_action_returns_error() {
     let mut registry = ToolRegistry::new();
-    aletheia_organon::builtins::computer_use::register(&mut registry, &SandboxConfig::default())
+    organon::builtins::computer_use::register(&mut registry, &SandboxConfig::default())
         .expect("register");
 
     let input = ToolInput {
@@ -94,7 +94,7 @@ async fn unknown_action_returns_error() {
 #[expect(clippy::expect_used, reason = "test assertions")]
 async fn click_missing_coordinates_returns_error() {
     let mut registry = ToolRegistry::new();
-    aletheia_organon::builtins::computer_use::register(&mut registry, &SandboxConfig::default())
+    organon::builtins::computer_use::register(&mut registry, &SandboxConfig::default())
         .expect("register");
 
     let input = ToolInput {
@@ -115,7 +115,7 @@ async fn click_missing_coordinates_returns_error() {
 #[test]
 #[expect(clippy::expect_used, reason = "test assertions")]
 fn sandbox_enforcement_propagates() {
-    use aletheia_organon::sandbox::{apply_sandbox, probe_landlock_abi};
+    use organon::sandbox::{apply_sandbox, probe_landlock_abi};
 
     let config = SandboxConfig {
         enabled: true,
@@ -147,7 +147,7 @@ fn sandbox_enforcement_propagates() {
 #[test]
 #[expect(clippy::expect_used, reason = "test assertions")]
 fn sandbox_denies_writes_outside_allowlist() {
-    use aletheia_organon::sandbox::{apply_sandbox, probe_landlock_abi};
+    use organon::sandbox::{apply_sandbox, probe_landlock_abi};
 
     if probe_landlock_abi().is_none() {
         // Skip on kernels without Landlock.

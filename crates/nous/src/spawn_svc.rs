@@ -8,16 +8,16 @@ use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 use tracing::{Instrument, info, warn};
 
-use aletheia_hermeneus::provider::ProviderRegistry;
-use aletheia_organon::registry::ToolRegistry;
-use aletheia_organon::types::{SpawnRequest, SpawnResult, SpawnService};
-use aletheia_taxis::oikos::Oikos;
+use hermeneus::provider::ProviderRegistry;
+use organon::registry::ToolRegistry;
+use organon::types::{SpawnRequest, SpawnResult, SpawnService};
+use taxis::oikos::Oikos;
 
 use crate::actor;
 use crate::config::{NousConfig, PipelineConfig, StageBudget};
 use crate::roles::Role;
 
-use aletheia_koina::defaults::{
+use koina::defaults::{
     BOOTSTRAP_MAX_TOKENS, CONTEXT_TOKENS, DEFAULT_MODEL, MAX_OUTPUT_TOKENS, MAX_TOOL_ITERATIONS,
     MAX_TOOL_RESULT_BYTES,
 };
@@ -64,7 +64,7 @@ impl SpawnService for SpawnServiceImpl {
         let spawn_id = format!(
             "spawn-{}-{}",
             parent_nous_id,
-            aletheia_koina::ulid::Ulid::new().to_string().to_lowercase()
+            koina::ulid::Ulid::new().to_string().to_lowercase()
         );
         let role = resolve_role(&request.role);
         let template = role.map(Role::template);
@@ -82,7 +82,7 @@ impl SpawnService for SpawnServiceImpl {
 
         let timeout = Duration::from_secs(request.timeout_secs);
         let task = request.task.clone();
-        let session_key = format!("spawn:{}", aletheia_koina::ulid::Ulid::new().to_string().to_lowercase());
+        let session_key = format!("spawn:{}", koina::ulid::Ulid::new().to_string().to_lowercase());
 
         let config = NousConfig {
             id: Arc::from(spawn_id.as_str()),
@@ -120,7 +120,7 @@ impl SpawnService for SpawnServiceImpl {
             history_budget_ratio: 0.6,
             extraction: None,
             stage_budget: StageBudget::default(),
-            training: aletheia_mneme::training::TrainingConfig::default(),
+            training: mneme::training::TrainingConfig::default(),
         };
 
         let providers = Arc::clone(&self.providers);
@@ -213,12 +213,12 @@ impl SpawnService for SpawnServiceImpl {
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
-    use aletheia_hermeneus::provider::LlmProvider;
-    use aletheia_hermeneus::test_utils::MockProvider;
-    use aletheia_hermeneus::types::{
+    use hermeneus::provider::LlmProvider;
+    use hermeneus::test_utils::MockProvider;
+    use hermeneus::types::{
         CompletionRequest, CompletionResponse, ContentBlock, StopReason, Usage,
     };
-    use aletheia_taxis::oikos::Oikos;
+    use taxis::oikos::Oikos;
 
     use super::*;
 
@@ -332,7 +332,7 @@ mod tests {
         ) -> std::pin::Pin<
             Box<
                 dyn std::future::Future<
-                        Output = aletheia_hermeneus::error::Result<CompletionResponse>,
+                        Output = hermeneus::error::Result<CompletionResponse>,
                     > + Send
                     + 'a,
             >,

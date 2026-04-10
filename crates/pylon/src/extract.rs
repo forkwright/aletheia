@@ -5,9 +5,9 @@ use std::sync::Arc;
 use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
 
-use aletheia_symbolon::types::Role;
+use symbolon::types::Role;
 
-use aletheia_koina::http::BEARER_PREFIX;
+use koina::http::BEARER_PREFIX;
 
 use crate::error::ApiError;
 use crate::state::AppState;

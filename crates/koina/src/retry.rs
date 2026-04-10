@@ -200,7 +200,7 @@ impl RetryConfig {
 /// # Examples
 ///
 /// ```
-/// use aletheia_koina::retry::exponential_steps;
+/// use koina::retry::exponential_steps;
 ///
 /// assert_eq!(exponential_steps(0, 2, 8), 1); // 2^0 = 1
 /// assert_eq!(exponential_steps(1, 2, 8), 2); // 2^1 = 2

@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
-use aletheia_mneme::id::{EntityId, FactId};
-use aletheia_mneme::knowledge::{
+use mneme::id::{EntityId, FactId};
+use mneme::knowledge::{
     Entity, EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactTemporal,
     far_future,
 };
-use aletheia_mneme::knowledge_store::KnowledgeStore;
+use mneme::knowledge_store::KnowledgeStore;
 
 fn test_store() -> Arc<KnowledgeStore> {
     KnowledgeStore::open_mem().expect("failed to open in-memory store")
@@ -93,7 +93,7 @@ fn check_entity_with_relationship_not_orphaned() {
     store.insert_entity(&e1).expect("insert e1");
     store.insert_entity(&e2).expect("insert e2");
 
-    let rel = aletheia_mneme::knowledge::Relationship {
+    let rel = mneme::knowledge::Relationship {
         src: EntityId::new("ent-a").expect("valid id"),
         dst: EntityId::new("ent-b").expect("valid id"),
         relation: "knows".to_owned(),

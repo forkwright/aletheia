@@ -6,10 +6,10 @@ use std::sync::Arc;
 use snafu::prelude::*;
 use tracing::{info, warn};
 
-use aletheia_koina::system::{Environment, RealSystem};
-use aletheia_pylon::router::build_router;
-use aletheia_taxis::loader::load_config;
-use aletheia_taxis::oikos::Oikos;
+use koina::system::{Environment, RealSystem};
+use pylon::router::build_router;
+use taxis::loader::load_config;
+use taxis::oikos::Oikos;
 
 use crate::error::Result;
 use crate::runtime::RuntimeBuilder;
@@ -66,7 +66,7 @@ pub(crate) async fn run(args: Args) -> Result<()> {
         runtime.shutdown_token.child_token(),
     );
 
-    let security = aletheia_pylon::security::SecurityConfig::from_gateway(&config.gateway);
+    let security = pylon::security::SecurityConfig::from_gateway(&config.gateway);
 
     #[cfg(feature = "mcp")]
     let app = {
@@ -77,7 +77,7 @@ pub(crate) async fn run(args: Args) -> Result<()> {
         } else {
             Some(Arc::clone(&runtime.state.jwt_manager))
         };
-        let diaporeia_state = Arc::new(aletheia_diaporeia::state::DiaporeiaState {
+        let diaporeia_state = Arc::new(diaporeia::state::DiaporeiaState {
             session_store: Arc::clone(&runtime.state.session_store),
             nous_manager: Arc::clone(&runtime.state.nous_manager),
             tool_registry: Arc::clone(&runtime.state.tool_registry),
@@ -89,7 +89,7 @@ pub(crate) async fn run(args: Args) -> Result<()> {
             none_role: runtime.state.none_role.clone(),
             shutdown: runtime.shutdown_token.clone(),
         });
-        let mcp_router = aletheia_diaporeia::transport::streamable_http_router(diaporeia_state);
+        let mcp_router = diaporeia::transport::streamable_http_router(diaporeia_state);
         info!("diaporeia MCP server mounted at /mcp");
         build_router(runtime.state.clone(), &security).merge(mcp_router)
     };
@@ -141,7 +141,7 @@ pub(crate) async fn run(args: Args) -> Result<()> {
     // WHY: Without a SIGHUP handler, the signal hits the default Unix
     // disposition (terminate), crashing the server instead of reloading (#2350).
     #[cfg(unix)]
-    let sighup_handle = aletheia_pylon::server::spawn_sighup_handler(Arc::clone(&runtime.state));
+    let sighup_handle = pylon::server::spawn_sighup_handler(Arc::clone(&runtime.state));
 
     // WHY: Cancel root token on OS signal so all subsystems observe
     // shutdown simultaneously.

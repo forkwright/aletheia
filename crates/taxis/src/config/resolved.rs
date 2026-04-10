@@ -142,8 +142,8 @@ pub fn resolve_nous(config: &AletheiaConfig, nous_id: &str) -> ResolvedNousConfi
     // `model` is moved into `ResolvedModelConfig`.
     let context_tokens = {
         let configured = defaults.model_defaults.context_tokens;
-        if configured == aletheia_koina::defaults::CONTEXT_TOKENS && model.contains("opus") {
-            aletheia_koina::defaults::OPUS_CONTEXT_TOKENS
+        if configured == koina::defaults::CONTEXT_TOKENS && model.contains("opus") {
+            koina::defaults::OPUS_CONTEXT_TOKENS
         } else {
             configured
         }

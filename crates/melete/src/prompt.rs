@@ -2,7 +2,7 @@
 
 use std::fmt::Write;
 
-use aletheia_hermeneus::types::{Content, ContentBlock, Message, Role};
+use hermeneus::types::{Content, ContentBlock, Message, Role};
 
 use crate::distill::DistillSection;
 
@@ -215,7 +215,7 @@ mod tests {
             role: Role::User,
             content: Content::Blocks(vec![ContentBlock::ToolResult {
                 tool_use_id: "t1".to_owned(),
-                content: aletheia_hermeneus::types::ToolResultContent::text("file contents here"),
+                content: hermeneus::types::ToolResultContent::text("file contents here"),
                 is_error: Some(false),
             }]),
         }];

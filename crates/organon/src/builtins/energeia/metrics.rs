@@ -8,9 +8,9 @@ use std::sync::Arc;
 
 use indexmap::IndexMap;
 
-use aletheia_energeia::metrics::MetricsService;
-use aletheia_energeia::store::EnergeiaStore;
-use aletheia_koina::id::ToolName;
+use energeia::metrics::MetricsService;
+use energeia::store::EnergeiaStore;
+use koina::id::ToolName;
 
 use crate::error::Result;
 use crate::registry::ToolExecutor;

@@ -1,5 +1,5 @@
 [package]
-name = "aletheia-symbolon"
+name = "symbolon"
 version.workspace = true
 description = "Authentication and authorization for Aletheia"
 edition.workspace = true
@@ -17,7 +17,7 @@ test-core = []
 test-full = []
 
 [dependencies]
-aletheia-koina = { path = "../koina" }
+koina = { path = "../koina" }
 keyring = { version = "3", optional = true }
 argon2 = { version = "0.5", features = ["std"] }
 blake3 = "1"

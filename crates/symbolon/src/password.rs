@@ -4,7 +4,7 @@ use argon2::password_hash::SaltString;
 use argon2::password_hash::rand_core::OsRng;
 use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 
-use aletheia_koina::secret::SecretString;
+use koina::secret::SecretString;
 
 use crate::error::{self, Result};
 

@@ -6,9 +6,9 @@ use snafu::prelude::*;
 
 use clap::Subcommand;
 
-use aletheia_koina::system::{Environment, RealSystem};
-use aletheia_symbolon::credential::CredentialFile;
-use aletheia_taxis::oikos::Oikos;
+use koina::system::{Environment, RealSystem};
+use symbolon::credential::CredentialFile;
+use taxis::oikos::Oikos;
 
 use crate::error::Result;
 
@@ -93,8 +93,8 @@ pub(crate) async fn run(action: Action, instance_root: Option<&PathBuf>) -> Resu
 
             #[cfg(feature = "keyring")]
             {
-                use aletheia_koina::credential::CredentialProvider;
-                let keyring = aletheia_symbolon::credential::KeyringCredentialProvider::new();
+                use koina::credential::CredentialProvider;
+                let keyring = symbolon::credential::KeyringCredentialProvider::new();
                 if let Some(cred) = keyring.get_credential() {
                     if found_any {
                         println!();
@@ -141,7 +141,7 @@ pub(crate) async fn run(action: Action, instance_root: Option<&PathBuf>) -> Resu
         }
         Action::Refresh => {
             println!("Refreshing OAuth token...");
-            match aletheia_symbolon::credential::force_refresh(&cred_path).await {
+            match symbolon::credential::force_refresh(&cred_path).await {
                 Ok(updated) => {
                     if let Some(remaining) = updated.seconds_remaining() {
                         println!(
@@ -182,7 +182,7 @@ pub(crate) async fn run(action: Action, instance_root: Option<&PathBuf>) -> Resu
                 whatever!("token is empty, nothing to store");
             }
 
-            let keyring = aletheia_symbolon::credential::KeyringCredentialProvider::new();
+            let keyring = symbolon::credential::KeyringCredentialProvider::new();
             keyring.store(&token_value).map_err(|e| {
                 crate::error::Error::msg(format!("failed to store credential in OS keyring: {e}"))
             })?;
@@ -190,7 +190,7 @@ pub(crate) async fn run(action: Action, instance_root: Option<&PathBuf>) -> Resu
         }
         #[cfg(feature = "keyring")]
         Action::Delete => {
-            let keyring = aletheia_symbolon::credential::KeyringCredentialProvider::new();
+            let keyring = symbolon::credential::KeyringCredentialProvider::new();
             keyring.delete().map_err(|e| {
                 crate::error::Error::msg(format!(
                     "failed to delete credential from OS keyring: {e}"

@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use aletheia_koina::system::{Environment, RealSystem};
+use koina::system::{Environment, RealSystem};
 use snafu::ResultExt;
 
 use crate::bridge::DaemonBridge;
@@ -334,8 +334,8 @@ pub(crate) async fn execute_builtin(
                 // propose_rules operates on an empty slice, writing an empty
                 // (but valid) proposals file. Future work: wire a serialized
                 // observation snapshot from the knowledge store (#2296 follow-up).
-                let proposals = aletheia_episteme::rule_proposals::propose_rules(&[]);
-                aletheia_episteme::rule_proposals::write_proposals(
+                let proposals = episteme::rule_proposals::propose_rules(&[]);
+                episteme::rule_proposals::write_proposals(
                     &proposals,
                     0,
                     &data_dir,
@@ -590,13 +590,13 @@ async fn execute_lesson_extraction() -> Result<ExecutionResult> {
         };
 
         let extraction =
-            aletheia_episteme::extract::training::extract_from_training_data(training_dir)
+            episteme::extract::training::extract_from_training_data(training_dir)
                 .context(error::MaintenanceIoSnafu {
                     context: "lesson extraction",
                 })?;
 
         let lesson_count = extraction.lessons.len();
-        let facts = aletheia_episteme::extract::training::lessons_to_facts(&extraction.lessons);
+        let facts = episteme::extract::training::lessons_to_facts(&extraction.lessons);
 
         tracing::info!(
             violations_read = extraction.violations_read,
@@ -636,7 +636,7 @@ async fn execute_lesson_extraction() -> Result<ExecutionResult> {
     reason = "async signature required by execute_builtin dispatch which awaits all arms"
 )]
 async fn execute_ops_fact_extraction(nous_id: &str) -> Result<ExecutionResult> {
-    use aletheia_episteme::ops_facts::{OpsFactExtractor, OpsSnapshot};
+    use episteme::ops_facts::{OpsFactExtractor, OpsSnapshot};
 
     // WHY: Prometheus global registry is the source of truth for runtime
     // counters. We read the current values to build a point-in-time snapshot.

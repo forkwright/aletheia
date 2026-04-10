@@ -8,16 +8,16 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use aletheia_mneme::embedding::EmbeddingProvider;
-use aletheia_mneme::knowledge::{
+use mneme::embedding::EmbeddingProvider;
+use mneme::knowledge::{
     EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactTemporal,
 };
-use aletheia_mneme::knowledge_store::{HybridQuery, KnowledgeStore};
-use aletheia_organon::error::{
+use mneme::knowledge_store::{HybridQuery, KnowledgeStore};
+use organon::error::{
     DatalogQuerySnafu, EmbeddingSnafu, FactQuerySnafu, InvalidReasonSnafu, KnowledgeAdapterError,
     MutateStoreSnafu, SearchSnafu,
 };
-use aletheia_organon::types::{DatalogResult, FactSummary, KnowledgeSearchService, MemoryResult};
+use organon::types::{DatalogResult, FactSummary, KnowledgeSearchService, MemoryResult};
 
 use crate::recall_sources::RecallSourceRegistry;
 
@@ -154,7 +154,7 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
             let now = jiff::Zoned::now()
                 .strftime("%Y-%m-%dT%H:%M:%SZ")
                 .to_string();
-            let new_id = format!("fact-{}", aletheia_koina::ulid::Ulid::new());
+            let new_id = format!("fact-{}", koina::ulid::Ulid::new());
 
             let retract_script = r"
                 ?[id, valid_from, content, nous_id, confidence, tier, valid_to, superseded_by, source_session_id, recorded_at,
@@ -172,15 +172,15 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
             let mut params = std::collections::BTreeMap::new();
             params.insert(
                 "old_id".to_owned(),
-                aletheia_mneme::engine::DataValue::Str(fact_id.as_str().into()),
+                mneme::engine::DataValue::Str(fact_id.as_str().into()),
             );
             params.insert(
                 "now".to_owned(),
-                aletheia_mneme::engine::DataValue::Str(now.as_str().into()),
+                mneme::engine::DataValue::Str(now.as_str().into()),
             );
             params.insert(
                 "new_id".to_owned(),
-                aletheia_mneme::engine::DataValue::Str(new_id.as_str().into()),
+                mneme::engine::DataValue::Str(new_id.as_str().into()),
             );
             self.store
                 .run_mut_query(retract_script, params)
@@ -194,7 +194,7 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
             let ts_now = jiff::Timestamp::now();
             let new_fact = Fact {
                 scope: None,
-                id: aletheia_mneme::id::FactId::new(new_id.as_str()).map_err(|e| {
+                id: mneme::id::FactId::new(new_id.as_str()).map_err(|e| {
                     MutateStoreSnafu {
                         message: e.to_string(),
                     }
@@ -205,14 +205,14 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
                 content: new_content,
                 temporal: FactTemporal {
                     valid_from: ts_now,
-                    valid_to: aletheia_mneme::knowledge::far_future(),
+                    valid_to: mneme::knowledge::far_future(),
                     recorded_at: ts_now,
                 },
                 provenance: FactProvenance {
                     confidence: 1.0,
                     tier: EpistemicTier::Verified,
                     source_session_id: None,
-                    stability_hours: aletheia_mneme::knowledge::default_stability_hours(""),
+                    stability_hours: mneme::knowledge::default_stability_hours(""),
                 },
                 lifecycle: FactLifecycle {
                     superseded_by: None,
@@ -262,11 +262,11 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
             let mut params = std::collections::BTreeMap::new();
             params.insert(
                 "fact_id".to_owned(),
-                aletheia_mneme::engine::DataValue::Str(fact_id.as_str().into()),
+                mneme::engine::DataValue::Str(fact_id.as_str().into()),
             );
             params.insert(
                 "now".to_owned(),
-                aletheia_mneme::engine::DataValue::Str(now.as_str().into()),
+                mneme::engine::DataValue::Str(now.as_str().into()),
             );
             self.store.run_mut_query(script, params).map_err(|e| {
                 MutateStoreSnafu {
@@ -302,7 +302,7 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
 
             let since_ts = since
                 .as_deref()
-                .and_then(aletheia_mneme::knowledge::parse_timestamp)
+                .and_then(mneme::knowledge::parse_timestamp)
                 .unwrap_or(jiff::Timestamp::UNIX_EPOCH);
             let out = facts
                 .into_iter()
@@ -312,7 +312,7 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
                     content: f.content,
                     confidence: f.provenance.confidence,
                     tier: f.provenance.tier.to_string(),
-                    recorded_at: aletheia_mneme::knowledge::format_timestamp(
+                    recorded_at: mneme::knowledge::format_timestamp(
                         &f.temporal.recorded_at,
                     ),
                     is_forgotten: f.lifecycle.is_forgotten,
@@ -332,13 +332,13 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
         let fact_id_str = fact_id.to_owned();
         let reason = reason.to_owned();
         Box::pin(async move {
-            let fact_id = aletheia_mneme::id::FactId::new(fact_id_str).map_err(|e| {
+            let fact_id = mneme::id::FactId::new(fact_id_str).map_err(|e| {
                 MutateStoreSnafu {
                     message: e.to_string(),
                 }
                 .build()
             })?;
-            let reason: aletheia_mneme::knowledge::ForgetReason = reason
+            let reason: mneme::knowledge::ForgetReason = reason
                 .parse()
                 .map_err(|e: String| InvalidReasonSnafu { reason: e }.build())?;
             let fact = self
@@ -361,7 +361,7 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
     ) -> Pin<Box<dyn Future<Output = Result<FactSummary, KnowledgeAdapterError>> + Send + '_>> {
         let fact_id_str = fact_id.to_owned();
         Box::pin(async move {
-            let fact_id = aletheia_mneme::id::FactId::new(fact_id_str).map_err(|e| {
+            let fact_id = mneme::id::FactId::new(fact_id_str).map_err(|e| {
                 MutateStoreSnafu {
                     message: e.to_string(),
                 }
@@ -431,15 +431,15 @@ fn fact_to_summary(f: Fact) -> FactSummary {
         content: f.content,
         confidence: f.provenance.confidence,
         tier: f.provenance.tier.to_string(),
-        recorded_at: aletheia_mneme::knowledge::format_timestamp(&f.temporal.recorded_at),
+        recorded_at: mneme::knowledge::format_timestamp(&f.temporal.recorded_at),
         is_forgotten: f.lifecycle.is_forgotten,
         forgotten_at: f.lifecycle.forgotten_at.map(|t| t.to_string()),
         forget_reason: f.lifecycle.forget_reason.map(|r| r.to_string()),
     }
 }
 
-fn json_to_datavalue(v: &serde_json::Value) -> aletheia_mneme::engine::DataValue {
-    use aletheia_mneme::engine::DataValue;
+fn json_to_datavalue(v: &serde_json::Value) -> mneme::engine::DataValue {
+    use mneme::engine::DataValue;
     match v {
         serde_json::Value::Null => DataValue::Null,
         serde_json::Value::Bool(b) => DataValue::Bool(*b),
@@ -457,8 +457,8 @@ fn json_to_datavalue(v: &serde_json::Value) -> aletheia_mneme::engine::DataValue
     }
 }
 
-fn datavalue_to_json(v: &aletheia_mneme::engine::DataValue) -> serde_json::Value {
-    use aletheia_mneme::engine::DataValue;
+fn datavalue_to_json(v: &mneme::engine::DataValue) -> serde_json::Value {
+    use mneme::engine::DataValue;
     match v {
         DataValue::Null => serde_json::Value::Null,
         DataValue::Bool(b) => serde_json::Value::Bool(*b),

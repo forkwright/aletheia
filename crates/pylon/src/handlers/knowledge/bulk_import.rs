@@ -5,7 +5,7 @@ use axum::extract::State;
 use serde::{Deserialize, Serialize};
 use tracing::instrument;
 
-use aletheia_symbolon::types::Role;
+use symbolon::types::Role;
 
 use crate::error::ApiError;
 use crate::extract::{Claims, require_role};
@@ -17,7 +17,7 @@ const MAX_IMPORT_BATCH_SIZE: usize = 1000;
 /// Request body for bulk fact import.
 #[derive(Debug, Deserialize)]
 pub struct BulkImportRequest {
-    pub facts: Vec<aletheia_mneme::knowledge::Fact>,
+    pub facts: Vec<mneme::knowledge::Fact>,
 }
 
 /// Summary response for bulk fact import.

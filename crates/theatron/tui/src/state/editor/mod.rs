@@ -17,7 +17,7 @@ pub(crate) use tree::{FileTreeState, GitFileStatus};
 
 use std::path::PathBuf;
 
-use aletheia_koina::system::{Environment, RealSystem};
+use koina::system::{Environment, RealSystem};
 
 const DEFAULT_AUTOSAVE_SECS: u64 = 30;
 

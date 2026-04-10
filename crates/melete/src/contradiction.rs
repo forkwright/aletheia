@@ -4,8 +4,8 @@ use std::fmt::Write;
 
 use snafu::ResultExt;
 
-use aletheia_hermeneus::provider::LlmProvider;
-use aletheia_hermeneus::types::{CompletionRequest, Content, ContentBlock, Message, Role};
+use hermeneus::provider::LlmProvider;
+use hermeneus::types::{CompletionRequest, Content, ContentBlock, Message, Role};
 
 use crate::error::LlmCallSnafu;
 
@@ -342,7 +342,7 @@ mod tests {
 
     #[tokio::test]
     async fn detect_with_fewer_than_two_chunks_returns_empty() {
-        let provider = aletheia_hermeneus::test_utils::MockProvider::new("unused");
+        let provider = hermeneus::test_utils::MockProvider::new("unused");
         let result = detect_contradictions(&["single".to_owned()], &provider, "model")
             .await
             .expect("should succeed with single chunk");
@@ -355,7 +355,7 @@ mod tests {
     #[tokio::test]
     async fn detect_parses_llm_response() {
         let llm_output = r#"{"contradictions": [{"chunk_a": 1, "chunk_b": 2, "description": "port conflict: 8080 vs 3000"}]}"#;
-        let provider = aletheia_hermeneus::test_utils::MockProvider::new(llm_output)
+        let provider = hermeneus::test_utils::MockProvider::new(llm_output)
             .models(&["test-model"])
             .named("contradiction-test");
         let chunks = vec![
@@ -386,7 +386,7 @@ mod tests {
     #[tokio::test]
     async fn detect_no_contradictions_returns_prefer_newer() {
         let llm_output = r#"{"contradictions": []}"#;
-        let provider = aletheia_hermeneus::test_utils::MockProvider::new(llm_output)
+        let provider = hermeneus::test_utils::MockProvider::new(llm_output)
             .models(&["test-model"])
             .named("contradiction-test");
         let chunks = vec![

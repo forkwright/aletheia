@@ -1,5 +1,5 @@
 [package]
-name = "aletheia-melete"
+name = "melete"
 version.workspace = true
 description = "Context distillation engine — compresses conversation history"
 edition.workspace = true
@@ -15,8 +15,8 @@ test-core = []
 test-full = []
 
 [dependencies]
-aletheia-hermeneus = { path = "../hermeneus" }
-aletheia-koina = { path = "../koina" }
+hermeneus = { path = "../hermeneus" }
+koina = { path = "../koina" }
 fd-lock = { workspace = true }
 futures = { workspace = true }
 prometheus = { workspace = true }
@@ -28,6 +28,6 @@ tokio = { workspace = true }
 jiff = { workspace = true }
 
 [dev-dependencies]
-aletheia-hermeneus = { path = "../hermeneus", features = ["test-utils"] }
+hermeneus = { path = "../hermeneus", features = ["test-utils"] }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["full", "test-util"] }

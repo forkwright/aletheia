@@ -103,7 +103,7 @@ mod tests {
     }
 
     #[test]
-    fn resource_templates_uris_use_aletheia_nous_scheme() {
+    fn resource_templates_uris_use_nous_scheme() {
         let templates = resource_templates();
         for t in &templates {
             let uri = t.raw.uri_template.as_str();

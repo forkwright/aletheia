@@ -9,9 +9,9 @@
 
 #![expect(clippy::expect_used, reason = "test assertions may panic on failure")]
 
-use aletheia_koina::id::ToolName;
-use aletheia_organon::testing::{MockToolExecutor, ToolExecutorSpec, make_test_context};
-use aletheia_organon::types::{
+use koina::id::ToolName;
+use organon::testing::{MockToolExecutor, ToolExecutorSpec, make_test_context};
+use organon::types::{
     InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolDef,
 };
 use indexmap::IndexMap;
@@ -81,7 +81,7 @@ async fn spec_echo_executor_passes() {
 /// Uses a sequence mock to exercise the reusability check distinctly.
 #[tokio::test]
 async fn spec_note_executor_passes() {
-    use aletheia_organon::types::ToolResult;
+    use organon::types::ToolResult;
 
     let executor = MockToolExecutor::sequence(vec![
         ToolResult::text("note stored"),

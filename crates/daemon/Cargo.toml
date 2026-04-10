@@ -1,5 +1,5 @@
 [package]
-name = "aletheia-oikonomos"
+name = "oikonomos"
 version.workspace = true
 description = "Oikonomos (the steward) — per-nous background task runner, cron scheduling, prosoche attention"
 edition.workspace = true
@@ -13,13 +13,13 @@ workspace = true
 [features]
 # WHY: gates anomaly detection (prosoche memory consistency checks) on the
 # heavy CozoDB-backed KnowledgeStore from episteme. Not all daemon users need it.
-knowledge-store = ["aletheia-episteme/mneme-engine"]
+knowledge-store = ["episteme/mneme-engine"]
 test-core = []
 test-full = []
 
 [dependencies]
-aletheia-episteme = { path = "../episteme", default-features = false }
-aletheia-koina = { path = "../koina" }
+episteme = { path = "../episteme", default-features = false }
+koina = { path = "../koina" }
 # WHY: axum for webhook trigger listener
 axum = { workspace = true }
 # WHY: single-instance enforcement per workspace. Used directly via rustix::fs::flock

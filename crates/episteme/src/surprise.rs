@@ -50,7 +50,7 @@ pub struct EpisodeBoundary {
 /// # Example
 ///
 /// ```
-/// use aletheia_episteme::surprise::SurpriseCalculator;
+/// use episteme::surprise::SurpriseCalculator;
 ///
 /// let mut calc = SurpriseCalculator::new();
 /// let score = calc.compute_surprise("hello world");

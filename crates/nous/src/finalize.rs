@@ -8,10 +8,10 @@
 
 use snafu::ResultExt;
 use tracing::{debug, instrument, warn};
-use aletheia_koina::ulid::Ulid;
+use koina::ulid::Ulid;
 
-use aletheia_mneme::store::SessionStore;
-use aletheia_mneme::types::{Role, UsageRecord};
+use mneme::store::SessionStore;
+use mneme::types::{Role, UsageRecord};
 
 use crate::error;
 use crate::pipeline::TurnResult;

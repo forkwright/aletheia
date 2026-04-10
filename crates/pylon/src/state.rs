@@ -7,15 +7,15 @@ use axum::extract::FromRef;
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
-use aletheia_hermeneus::provider::ProviderRegistry;
+use hermeneus::provider::ProviderRegistry;
 #[cfg(feature = "knowledge-store")]
-use aletheia_mneme::knowledge_store::KnowledgeStore;
-use aletheia_mneme::store::SessionStore;
-use aletheia_nous::manager::NousManager;
-use aletheia_organon::registry::ToolRegistry;
-use aletheia_symbolon::jwt::JwtManager;
-use aletheia_taxis::config::AletheiaConfig;
-use aletheia_taxis::oikos::Oikos;
+use mneme::knowledge_store::KnowledgeStore;
+use mneme::store::SessionStore;
+use nous::manager::NousManager;
+use organon::registry::ToolRegistry;
+use symbolon::jwt::JwtManager;
+use taxis::config::AletheiaConfig;
+use taxis::oikos::Oikos;
 
 use crate::idempotency::IdempotencyCache;
 

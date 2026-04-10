@@ -159,7 +159,7 @@ mod tests {
     use super::*;
 
     fn llm_rate_limit_error() -> error::Error {
-        use aletheia_hermeneus::error::RateLimitedSnafu;
+        use hermeneus::error::RateLimitedSnafu;
         use snafu::IntoError as _;
 
         let hermeneus_err = RateLimitedSnafu {
@@ -170,7 +170,7 @@ mod tests {
     }
 
     fn llm_auth_error() -> error::Error {
-        use aletheia_hermeneus::error::AuthFailedSnafu;
+        use hermeneus::error::AuthFailedSnafu;
         use snafu::IntoError as _;
 
         let hermeneus_err = AuthFailedSnafu {

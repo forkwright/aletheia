@@ -1,8 +1,8 @@
 //! Tests for distillation threshold checks and prompt building.
 #![expect(clippy::expect_used, reason = "test assertions")]
 #[cfg(test)]
-use aletheia_hermeneus::test_utils::MockProvider;
-use aletheia_hermeneus::types::{CompletionResponse, ContentBlock, StopReason, Usage};
+use hermeneus::test_utils::MockProvider;
+use hermeneus::types::{CompletionResponse, ContentBlock, StopReason, Usage};
 
 use super::super::*;
 

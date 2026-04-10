@@ -90,7 +90,7 @@ pub enum Error {
     },
 
     /// LLM provider error during dispatch operations.
-    // NOTE: will wrap aletheia_hermeneus::error::Error as `source` once
+    // NOTE: will wrap hermeneus::error::Error as `source` once
     // hermeneus compiles on main. For now, carries the error as a string.
     #[snafu(display("LLM error: {detail}"))]
     Llm {

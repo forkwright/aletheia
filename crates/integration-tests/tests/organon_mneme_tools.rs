@@ -25,15 +25,15 @@ use std::sync::{Arc, RwLock};
 
 use tokio::sync::Mutex;
 
-use aletheia_koina::id::ToolName;
-use aletheia_koina::id::{NousId, SessionId};
-use aletheia_mneme::store::SessionStore;
-use aletheia_nous::adapters::{SessionBlackboardAdapter, SessionNoteAdapter};
-use aletheia_organon::builtins;
-use aletheia_organon::error::KnowledgeAdapterError;
-use aletheia_organon::registry::ToolRegistry;
-use aletheia_organon::testing::install_crypto_provider;
-use aletheia_organon::types::{
+use koina::id::ToolName;
+use koina::id::{NousId, SessionId};
+use mneme::store::SessionStore;
+use nous::adapters::{SessionBlackboardAdapter, SessionNoteAdapter};
+use organon::builtins;
+use organon::error::KnowledgeAdapterError;
+use organon::registry::ToolRegistry;
+use organon::testing::install_crypto_provider;
+use organon::types::{
     FactSummary, KnowledgeSearchService, MemoryResult, ServerToolConfig, ToolContext, ToolInput,
     ToolServices,
 };
@@ -330,12 +330,12 @@ impl KnowledgeSearchService for StubKnowledgeService {
         reason: &str,
     ) -> Pin<
         Box<
-            dyn Future<Output = Result<aletheia_organon::types::FactSummary, KnowledgeAdapterError>>
+            dyn Future<Output = Result<organon::types::FactSummary, KnowledgeAdapterError>>
                 + Send
                 + '_,
         >,
     > {
-        let summary = aletheia_organon::types::FactSummary {
+        let summary = organon::types::FactSummary {
             id: fact_id.to_owned(),
             content: "mock fact".to_owned(),
             confidence: 1.0,
@@ -353,12 +353,12 @@ impl KnowledgeSearchService for StubKnowledgeService {
         fact_id: &str,
     ) -> Pin<
         Box<
-            dyn Future<Output = Result<aletheia_organon::types::FactSummary, KnowledgeAdapterError>>
+            dyn Future<Output = Result<organon::types::FactSummary, KnowledgeAdapterError>>
                 + Send
                 + '_,
         >,
     > {
-        let summary = aletheia_organon::types::FactSummary {
+        let summary = organon::types::FactSummary {
             id: fact_id.to_owned(),
             content: "mock fact".to_owned(),
             confidence: 1.0,
@@ -380,13 +380,13 @@ impl KnowledgeSearchService for StubKnowledgeService {
     ) -> Pin<
         Box<
             dyn Future<
-                    Output = Result<aletheia_organon::types::DatalogResult, KnowledgeAdapterError>,
+                    Output = Result<organon::types::DatalogResult, KnowledgeAdapterError>,
                 > + Send
                 + '_,
         >,
     > {
         Box::pin(std::future::ready(Ok(
-            aletheia_organon::types::DatalogResult {
+            organon::types::DatalogResult {
                 columns: vec!["stub".to_owned()],
                 rows: vec![],
                 truncated: false,

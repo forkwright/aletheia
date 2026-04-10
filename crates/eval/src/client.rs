@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use snafu::ResultExt;
 use tracing::instrument;
 
-use aletheia_koina::secret::SecretString;
+use koina::secret::SecretString;
 
 use crate::error::{self, Result};
 use crate::sse::{self, ParsedSseEvent};
@@ -415,7 +415,7 @@ pub struct KnowledgeFact {
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
-    use aletheia_organon::testing::install_crypto_provider;
+    use organon::testing::install_crypto_provider;
 
     use super::*;
 

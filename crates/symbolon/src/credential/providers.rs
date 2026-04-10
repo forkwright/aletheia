@@ -6,9 +6,9 @@ use std::time::{Instant, SystemTime};
 
 use tracing::warn;
 
-use aletheia_koina::credential::{Credential, CredentialProvider, CredentialSource};
-use aletheia_koina::secret::SecretString;
-use aletheia_koina::system::{Environment, RealSystem};
+use koina::credential::{Credential, CredentialProvider, CredentialSource};
+use koina::secret::SecretString;
+use koina::system::{Environment, RealSystem};
 
 use super::file_ops::CredentialFile;
 use super::{CLOCK_SKEW_LEEWAY_SECS, FILE_MTIME_CHECK_INTERVAL, OAUTH_TOKEN_PREFIX, unix_epoch_ms};

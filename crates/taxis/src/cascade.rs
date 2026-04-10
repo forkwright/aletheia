@@ -13,7 +13,7 @@ use std::path::PathBuf;
 
 use tracing::debug;
 
-use aletheia_koina::system::{FileSystem, RealSystem};
+use koina::system::{FileSystem, RealSystem};
 
 use crate::oikos::Oikos;
 
@@ -56,7 +56,7 @@ pub struct CascadeEntry {
 /// is returned (nous > shared > theke).
 ///
 /// Call [`discover_with`] to supply a custom [`FileSystem`] implementation
-/// (e.g. `aletheia_koina::system::TestSystem` in tests).
+/// (e.g. `koina::system::TestSystem` in tests).
 ///
 /// # Arguments
 /// * `oikos`: The oikos instance for path resolution
@@ -592,7 +592,7 @@ mod tests {
 
     #[test]
     fn discover_with_finds_files_across_tiers() {
-        use aletheia_koina::system::TestSystem;
+        use koina::system::TestSystem;
 
         let mut fs = TestSystem::new();
         fs.add_file("/instance/nous/syn/tools/agent.md", b"a");
@@ -621,7 +621,7 @@ mod tests {
 
     #[test]
     fn discover_with_most_specific_wins() {
-        use aletheia_koina::system::TestSystem;
+        use koina::system::TestSystem;
 
         let mut fs = TestSystem::new();
         fs.add_file("/instance/nous/syn/tools/common.md", b"nous");
@@ -643,7 +643,7 @@ mod tests {
 
     #[test]
     fn discover_with_skips_hidden_files() {
-        use aletheia_koina::system::TestSystem;
+        use koina::system::TestSystem;
 
         let mut fs = TestSystem::new();
         fs.add_file("/instance/shared/tools/.hidden.md", b"hidden");
@@ -664,7 +664,7 @@ mod tests {
 
     #[test]
     fn discover_with_filters_by_extension() {
-        use aletheia_koina::system::TestSystem;
+        use koina::system::TestSystem;
 
         let mut fs = TestSystem::new();
         fs.add_file("/instance/shared/tools/tool.md", b"md");
@@ -684,7 +684,7 @@ mod tests {
 
     #[test]
     fn resolve_with_returns_most_specific() {
-        use aletheia_koina::system::TestSystem;
+        use koina::system::TestSystem;
 
         let mut fs = TestSystem::new();
         fs.add_file("/instance/nous/syn/USER.md", b"nous");
@@ -702,7 +702,7 @@ mod tests {
 
     #[test]
     fn resolve_with_falls_back_to_theke() {
-        use aletheia_koina::system::TestSystem;
+        use koina::system::TestSystem;
 
         let mut fs = TestSystem::new();
         fs.add_file("/instance/theke/SYSTEM.md", b"theke");
@@ -721,7 +721,7 @@ mod tests {
 
     #[test]
     fn resolve_with_returns_none_when_absent() {
-        use aletheia_koina::system::TestSystem;
+        use koina::system::TestSystem;
 
         let fs = TestSystem::new();
         let oikos = in_memory_oikos();
@@ -733,7 +733,7 @@ mod tests {
 
     #[test]
     fn resolve_all_with_returns_all_tiers() {
-        use aletheia_koina::system::TestSystem;
+        use koina::system::TestSystem;
 
         let mut fs = TestSystem::new();
         fs.add_file("/instance/nous/syn/config.toml", b"nous");
@@ -758,7 +758,7 @@ mod tests {
 
     #[test]
     fn resolve_all_with_empty_when_no_match() {
-        use aletheia_koina::system::TestSystem;
+        use koina::system::TestSystem;
 
         let fs = TestSystem::new();
         let oikos = in_memory_oikos();

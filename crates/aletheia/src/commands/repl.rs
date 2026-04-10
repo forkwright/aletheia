@@ -65,9 +65,9 @@ fn run_repl(instance_root: Option<&PathBuf>) -> Result<()> {
         );
     }
 
-    let config = aletheia_mneme::knowledge_store::KnowledgeConfig::default();
+    let config = mneme::knowledge_store::KnowledgeConfig::default();
     let store =
-        aletheia_mneme::knowledge_store::KnowledgeStore::open_fjall(&knowledge_path, config)
+        mneme::knowledge_store::KnowledgeStore::open_fjall(&knowledge_path, config)
             .whatever_context("failed to open knowledge store")?;
 
     let stdin = io::stdin();
@@ -167,7 +167,7 @@ fn run_repl(instance_root: Option<&PathBuf>) -> Result<()> {
 /// the REPL session.
 #[cfg(feature = "recall")]
 fn run_query_and_print(
-    store: &std::sync::Arc<aletheia_mneme::knowledge_store::KnowledgeStore>,
+    store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
     script: &str,
 ) {
     match store.run_query(script, BTreeMap::new()) {
@@ -184,13 +184,13 @@ fn run_query_and_print(
 ///
 /// WHY: No external pretty-print dependency. The table is functional for
 /// debugging; polish is secondary. Each cell is formatted via
-/// [`aletheia_mneme::engine::DataValue`]'s `Display` impl.
+/// [`mneme::engine::DataValue`]'s `Display` impl.
 #[cfg(feature = "recall")]
 #[expect(
     clippy::indexing_slicing,
     reason = "bounds are verified: i < widths.len() checked before index, and header enumeration is bounded"
 )]
-fn print_table(headers: &[String], rows: &[Vec<aletheia_mneme::engine::DataValue>]) {
+fn print_table(headers: &[String], rows: &[Vec<mneme::engine::DataValue>]) {
     if headers.is_empty() && rows.is_empty() {
         println!("(no results)");
         return;
@@ -269,8 +269,8 @@ fn print_table(headers: &[String], rows: &[Vec<aletheia_mneme::engine::DataValue
 /// quoting (the `Display` impl wraps strings in `"..."`) to improve readability
 /// in table cells.
 #[cfg(feature = "recall")]
-fn format_value(v: &aletheia_mneme::engine::DataValue) -> String {
-    use aletheia_mneme::engine::DataValue;
+fn format_value(v: &mneme::engine::DataValue) -> String {
+    use mneme::engine::DataValue;
     match v {
         // WHY: engine Display wraps Str in `"..."` quotes; strip them for
         // cleaner table output.

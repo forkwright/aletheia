@@ -16,7 +16,7 @@ pub mod error;
 pub mod loader;
 /// Pack manifest parsing: reads `pack.toml` into [`manifest::PackManifest`].
 pub mod manifest;
-/// Registration of pack-declared tools into the [`aletheia_organon::registry::ToolRegistry`].
+/// Registration of pack-declared tools into the [`organon::registry::ToolRegistry`].
 pub mod tools;
 
 #[cfg(test)]

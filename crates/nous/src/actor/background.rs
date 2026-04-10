@@ -7,10 +7,10 @@ use tokio::sync::Mutex;
 use tracing::{Instrument, debug, info, warn};
 
 #[cfg(feature = "knowledge-store")]
-use aletheia_mneme::knowledge_store::KnowledgeStore;
-use aletheia_mneme::store::SessionStore;
+use mneme::knowledge_store::KnowledgeStore;
+use mneme::store::SessionStore;
 
-use aletheia_hermeneus::provider::ProviderRegistry;
+use hermeneus::provider::ProviderRegistry;
 
 use super::{DEGRADED_WINDOW, MAX_SPAWNED_TASKS, NousActor};
 
@@ -120,7 +120,7 @@ impl NousActor {
         tool_calls: &[crate::pipeline::ToolCall],
         session_key: &str,
     ) {
-        use aletheia_mneme::skills::{ToolCallRecord, TrackResult};
+        use mneme::skills::{ToolCallRecord, TrackResult};
 
         if tool_calls.is_empty() {
             return;
@@ -167,7 +167,7 @@ impl NousActor {
     fn spawn_skill_extraction(
         &mut self,
         candidate_id: &str,
-        tool_calls: &[aletheia_mneme::skills::ToolCallRecord],
+        tool_calls: &[mneme::skills::ToolCallRecord],
     ) {
         let Some(ref extraction_config) = self.pipeline_config.extraction else {
             return;
@@ -298,14 +298,14 @@ impl NousActor {
 
 /// Run extraction as a background task. Logs results, never panics.
 async fn run_extraction(
-    config: &aletheia_mneme::extract::ExtractionConfig,
+    config: &mneme::extract::ExtractionConfig,
     providers: Arc<ProviderRegistry>,
     nous_id: &str,
     user_content: &str,
     assistant_content: &str,
     #[cfg(feature = "knowledge-store")] knowledge_store: Option<&Arc<KnowledgeStore>>,
 ) {
-    use aletheia_mneme::extract::{ConversationMessage, ExtractionEngine};
+    use mneme::extract::{ConversationMessage, ExtractionEngine};
 
     let engine = ExtractionEngine::new(config.clone());
     let provider = crate::extraction::HermeneusExtractionProvider::new(providers, &config.model);
@@ -374,11 +374,11 @@ async fn run_skill_extraction(
     providers: Arc<ProviderRegistry>,
     nous_id: &str,
     candidate_id: &str,
-    tool_calls: &[aletheia_mneme::skills::ToolCallRecord],
-    tracker: &aletheia_mneme::skills::CandidateTracker,
+    tool_calls: &[mneme::skills::ToolCallRecord],
+    tracker: &mneme::skills::CandidateTracker,
     #[cfg(feature = "knowledge-store")] knowledge_store: Option<&Arc<KnowledgeStore>>,
 ) {
-    use aletheia_mneme::skills::SkillExtractor;
+    use mneme::skills::SkillExtractor;
 
     let candidates = tracker.candidates_for(nous_id);
     let Some(candidate) = candidates.iter().find(|c| c.id == candidate_id) else {
@@ -422,14 +422,14 @@ async fn run_skill_extraction(
                     }
                 }
 
-                let pending = aletheia_mneme::skills::PendingSkill::new(&extracted, candidate_id);
+                let pending = mneme::skills::PendingSkill::new(&extracted, candidate_id);
                 match pending.to_json() {
                     Ok(content) => {
-                        use aletheia_mneme::knowledge::{
+                        use mneme::knowledge::{
                             FactAccess, FactLifecycle, FactProvenance, FactTemporal,
                         };
                         let fact_id =
-                            match aletheia_mneme::id::FactId::new(aletheia_koina::ulid::Ulid::new().to_string()) {
+                            match mneme::id::FactId::new(koina::ulid::Ulid::new().to_string()) {
                                 Ok(id) => id,
                                 Err(e) => {
                                     warn!(error = %e, "failed to create fact ID for skill");
@@ -437,7 +437,7 @@ async fn run_skill_extraction(
                                 }
                             };
                         let now = jiff::Timestamp::now();
-                        let fact = aletheia_mneme::knowledge::Fact {
+                        let fact = mneme::knowledge::Fact {
                             id: fact_id.clone(),
                             nous_id: nous_id.to_owned(),
                             content,
@@ -450,7 +450,7 @@ async fn run_skill_extraction(
                             },
                             provenance: FactProvenance {
                                 confidence: 0.6, // Pending review: moderate confidence
-                                tier: aletheia_mneme::knowledge::EpistemicTier::Inferred,
+                                tier: mneme::knowledge::EpistemicTier::Inferred,
                                 source_session_id: None,
                                 stability_hours: 720.0,
                             },
@@ -532,7 +532,7 @@ async fn run_background_distillation(
 
     let messages = crate::distillation::convert_to_hermeneus_messages(&history);
     let engine =
-        aletheia_melete::distill::DistillEngine::new(aletheia_melete::distill::DistillConfig {
+        melete::distill::DistillEngine::new(melete::distill::DistillConfig {
             model: config.model.clone(),
             verbatim_tail: config.verbatim_tail,
             ..Default::default()

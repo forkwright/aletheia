@@ -1,7 +1,7 @@
 #![expect(clippy::expect_used, reason = "test assertions may panic on failure")]
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use aletheia_mneme::embedding::MockEmbeddingProvider;
+use mneme::embedding::MockEmbeddingProvider;
 
 use super::*;
 
@@ -306,8 +306,8 @@ fn vector_search_trait_is_object_safe() {
 mod knowledge_bridge_tests {
     use std::sync::Arc;
 
-    use aletheia_mneme::knowledge::EmbeddedChunk;
-    use aletheia_mneme::knowledge_store::{KnowledgeConfig, KnowledgeStore};
+    use mneme::knowledge::EmbeddedChunk;
+    use mneme::knowledge_store::{KnowledgeConfig, KnowledgeStore};
 
     use super::super::*;
 
@@ -320,7 +320,7 @@ mod knowledge_bridge_tests {
 
     fn make_chunk(id: &str, content: &str, embedding: Vec<f32>) -> EmbeddedChunk {
         EmbeddedChunk {
-            id: aletheia_mneme::id::EmbeddingId::new(id).expect("valid test id"),
+            id: mneme::id::EmbeddingId::new(id).expect("valid test id"),
             content: content.to_owned(),
             source_type: "fact".to_owned(),
             source_id: format!("fact-{id}"),

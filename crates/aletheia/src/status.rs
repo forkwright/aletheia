@@ -5,7 +5,7 @@ use std::path::Path;
 use owo_colors::OwoColorize;
 use snafu::{ResultExt, Snafu};
 
-use aletheia_koina::http::{API_HEALTH, API_V1};
+use koina::http::{API_HEALTH, API_V1};
 
 #[derive(Debug, Snafu)]
 pub(crate) enum StatusError {
@@ -64,8 +64,8 @@ pub(crate) async fn run(
     }
 
     let oikos = match instance_root {
-        Some(root) => aletheia_taxis::oikos::Oikos::from_root(root),
-        None => aletheia_taxis::oikos::Oikos::discover(),
+        Some(root) => taxis::oikos::Oikos::from_root(root),
+        None => taxis::oikos::Oikos::discover(),
     };
     let server_data_dir = health.as_ref().ok().and_then(|h| h.data_dir.as_deref());
     print_storage(&oikos, server_data_dir, use_color);
@@ -234,7 +234,7 @@ fn print_nous(list: &[NousInfo], color: bool) {
     println!();
 }
 
-fn print_storage(oikos: &aletheia_taxis::oikos::Oikos, server_data_dir: Option<&str>, color: bool) {
+fn print_storage(oikos: &taxis::oikos::Oikos, server_data_dir: Option<&str>, color: bool) {
     if color {
         println!("  {}:", "Storage".bold());
     } else {
@@ -384,7 +384,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("create temp dir");
         std::fs::create_dir_all(dir.path().join("data")).expect("create data dir");
 
-        let oikos = aletheia_taxis::oikos::Oikos::from_root(dir.path());
+        let oikos = taxis::oikos::Oikos::from_root(dir.path());
 
         // Capture stdout to verify the output does not contain the error message.
         // We cannot easily capture println! output in unit tests, so we verify the

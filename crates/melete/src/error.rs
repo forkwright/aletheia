@@ -14,7 +14,7 @@ pub enum Error {
     /// LLM call failed during distillation.
     #[snafu(display("LLM call failed during distillation: {source}"))]
     LlmCall {
-        source: aletheia_hermeneus::error::Error,
+        source: hermeneus::error::Error,
         #[snafu(implicit)]
         location: snafu::Location,
     },

@@ -5,8 +5,8 @@ use std::path::PathBuf;
 use clap::Args;
 use snafu::prelude::*;
 
-use aletheia_koina::system::{Environment, RealSystem};
-use aletheia_taxis::oikos::Oikos;
+use koina::system::{Environment, RealSystem};
+use taxis::oikos::Oikos;
 
 use crate::error::Result;
 
@@ -20,7 +20,7 @@ pub(crate) struct AddNousArgs {
     pub provider: String,
 
     /// Model identifier.
-    #[arg(long, default_value = aletheia_koina::defaults::DEFAULT_MODEL)]
+    #[arg(long, default_value = koina::defaults::DEFAULT_MODEL)]
     pub model: String,
 }
 
@@ -242,7 +242,7 @@ fn update_config(oikos: &Oikos, args: &AddNousArgs) -> Result<()> {
 
     list.push(entry);
 
-    aletheia_koina::fs::write_restricted(&config_path, doc.to_string().as_bytes())
+    koina::fs::write_restricted(&config_path, doc.to_string().as_bytes())
         .with_whatever_context(|_| format!("failed to write {}", config_path.display()))?;
 
     Ok(())
@@ -253,7 +253,7 @@ fn update_config(oikos: &Oikos, args: &AddNousArgs) -> Result<()> {
 /// Reads `gateway.bind` and `gateway.port` from the instance config to
 /// construct the URL dynamically instead of assuming the default address.
 async fn try_register(oikos: &Oikos, name: &str) {
-    let config = aletheia_taxis::loader::load_config(oikos).ok(); // WHY: best-effort; fallback to defaults if instance config unavailable
+    let config = taxis::loader::load_config(oikos).ok(); // WHY: best-effort; fallback to defaults if instance config unavailable
     let (bind, port) = config.as_ref().map_or(("127.0.0.1", 18789), |c| {
         (c.gateway.bind.as_str(), c.gateway.port)
     });
@@ -295,7 +295,7 @@ fn print_summary(oikos: &Oikos, args: &AddNousArgs) {
 }
 
 fn write_file(path: &std::path::Path, content: &str) -> Result<()> {
-    aletheia_koina::fs::write_restricted(path, content.as_bytes())
+    koina::fs::write_restricted(path, content.as_bytes())
         .with_whatever_context(|_| format!("failed to write: {}", path.display()))
 }
 

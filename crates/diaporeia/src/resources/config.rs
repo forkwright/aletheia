@@ -5,7 +5,7 @@ use rmcp::model::{
 };
 use snafu::ResultExt as _;
 
-use aletheia_koina::http::CONTENT_TYPE_JSON;
+use koina::http::CONTENT_TYPE_JSON;
 
 use crate::error::SerializationSnafu;
 use crate::state::DiaporeiaState;

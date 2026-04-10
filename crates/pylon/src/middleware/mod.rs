@@ -7,7 +7,7 @@ use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use tracing::warn;
 
-use aletheia_koina::http::CONTENT_TYPE_JSON;
+use koina::http::CONTENT_TYPE_JSON;
 
 use crate::error::{ErrorBody, ErrorResponse};
 
@@ -102,7 +102,7 @@ impl From<RequestId> for String {
 /// Cancel-safe. Axum middleware; cancellation drops the future with no
 /// side effects beyond not returning a response.
 pub async fn inject_request_id(mut request: Request, next: Next) -> Response {
-    let id = aletheia_koina::ulid::Ulid::new().to_string();
+    let id = koina::ulid::Ulid::new().to_string();
     request.extensions_mut().insert(RequestId(id));
     next.run(request).await
 }
@@ -203,7 +203,7 @@ use user_rate_limiter::TokenBucket;
 mod tests {
     use std::time::{Duration, Instant};
 
-    use aletheia_taxis::config::PerUserRateLimitConfig;
+    use taxis::config::PerUserRateLimitConfig;
 
     use super::*;
 

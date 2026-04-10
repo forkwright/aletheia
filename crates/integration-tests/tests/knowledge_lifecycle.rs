@@ -11,16 +11,16 @@ use std::sync::Arc;
 
 use serde_json::Value as JsonValue;
 
-use aletheia_mneme::engine::DataValue;
-use aletheia_mneme::id::FactId;
-use aletheia_mneme::knowledge::{
+use mneme::engine::DataValue;
+use mneme::id::FactId;
+use mneme::knowledge::{
     EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactTemporal,
 };
-use aletheia_mneme::knowledge_store::{KnowledgeConfig, KnowledgeStore};
+use mneme::knowledge_store::{KnowledgeConfig, KnowledgeStore};
 
 const TS_2026: &str = "2026-01-01T00:00:00Z";
 fn far_future() -> jiff::Timestamp {
-    aletheia_mneme::knowledge::far_future()
+    mneme::knowledge::far_future()
 }
 const TS_RECORDED: &str = "2026-03-01T00:00:00Z";
 

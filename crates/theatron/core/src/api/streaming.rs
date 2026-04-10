@@ -9,7 +9,7 @@ use reqwest::Client;
 use tokio::sync::mpsc;
 use tracing::Instrument;
 
-use aletheia_koina::http::CONTENT_TYPE_EVENT_STREAM;
+use koina::http::CONTENT_TYPE_EVENT_STREAM;
 
 use crate::events::StreamEvent;
 use crate::id::{NousId, PlanId, SessionId, ToolId, TurnId};

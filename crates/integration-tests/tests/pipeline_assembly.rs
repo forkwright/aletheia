@@ -8,12 +8,12 @@
 
 use std::sync::Arc;
 
-use aletheia_nous::config::{NousConfig, PipelineConfig};
-use aletheia_nous::pipeline::{
+use nous::config::{NousConfig, PipelineConfig};
+use nous::pipeline::{
     GuardResult, InteractionSignal, LoopDetector, LoopVerdict, PipelineContext, PipelineInput,
     PipelineMessage, ToolCall, TurnResult, TurnUsage,
 };
-use aletheia_nous::session::{SessionManager, SessionState};
+use nous::session::{SessionManager, SessionState};
 
 #[test]
 fn pipeline_input_from_session_and_config() {

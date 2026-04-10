@@ -5,7 +5,7 @@
 //! # Usage
 //!
 //! ```ignore
-//! use aletheia_organon::testing::{MockToolExecutor, ToolExecutorSpec, make_test_context};
+//! use organon::testing::{MockToolExecutor, ToolExecutorSpec, make_test_context};
 //!
 //! let executor = MockToolExecutor::text("hello");
 //! let ctx = make_test_context();
@@ -20,7 +20,7 @@ use std::pin::Pin;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 
-use aletheia_koina::id::{NousId, SessionId, ToolName};
+use koina::id::{NousId, SessionId, ToolName};
 
 use crate::error::Result;
 use crate::registry::ToolExecutor;
@@ -36,7 +36,7 @@ use crate::types::{ToolContext, ToolInput, ToolResult};
 /// # Example
 ///
 /// ```ignore
-/// use aletheia_organon::testing::install_crypto_provider;
+/// use organon::testing::install_crypto_provider;
 ///
 /// #[test]
 /// fn test_with_tls() {

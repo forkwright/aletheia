@@ -9,8 +9,8 @@
 use std::fs;
 use std::path::Path;
 
-use aletheia_taxis::cascade::{self, Tier};
-use aletheia_taxis::oikos::Oikos;
+use taxis::cascade::{self, Tier};
+use taxis::oikos::Oikos;
 
 fn setup() -> (tempfile::TempDir, Oikos) {
     let dir = tempfile::tempdir().expect("create temp dir");

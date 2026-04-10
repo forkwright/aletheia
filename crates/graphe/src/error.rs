@@ -294,7 +294,7 @@ pub enum Error {
     /// Knowledge-domain identifier validation failed.
     #[snafu(display("invalid identifier: {source}"))]
     InvalidId {
-        source: aletheia_eidos::id::IdValidationError,
+        source: eidos::id::IdValidationError,
         #[snafu(implicit)]
         location: snafu::Location,
     },

@@ -176,7 +176,7 @@ pub fn generate_primary_key(path: &Path) -> Result<()> {
     rand::fill(&mut key);
 
     let hex = to_hex(&key);
-    aletheia_koina::fs::write_restricted(path, hex.as_bytes()).context(
+    koina::fs::write_restricted(path, hex.as_bytes()).context(
         error::WriteConfigSnafu {
             path: path.to_path_buf(),
         },
@@ -320,7 +320,7 @@ pub fn encrypt_config_file(toml_path: &Path, primary_key: &[u8; KEY_LEN]) -> Res
             .build()
         })?;
 
-        aletheia_koina::fs::write_restricted(toml_path, encrypted_toml.as_bytes()).context(
+        koina::fs::write_restricted(toml_path, encrypted_toml.as_bytes()).context(
             error::WriteConfigSnafu {
                 path: toml_path.to_path_buf(),
             },

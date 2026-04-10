@@ -11,14 +11,14 @@ use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, instrument, warn};
 
-use aletheia_hermeneus::provider::ProviderRegistry;
-use aletheia_mneme::embedding::EmbeddingProvider;
+use hermeneus::provider::ProviderRegistry;
+use mneme::embedding::EmbeddingProvider;
 #[cfg(feature = "knowledge-store")]
-use aletheia_mneme::knowledge_store::KnowledgeStore;
-use aletheia_mneme::store::SessionStore;
-use aletheia_organon::registry::ToolRegistry;
-use aletheia_organon::types::ToolServices;
-use aletheia_taxis::oikos::Oikos;
+use mneme::knowledge_store::KnowledgeStore;
+use mneme::store::SessionStore;
+use organon::registry::ToolRegistry;
+use organon::types::ToolServices;
+use taxis::oikos::Oikos;
 
 use crate::bootstrap::BootstrapSection;
 use crate::config::{NousConfig, PipelineConfig};
@@ -72,7 +72,7 @@ pub(crate) struct ActorServices {
     tool_services: Option<Arc<ToolServices>>,
     embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
     /// Candidate tracker for skill auto-capture pipeline.
-    candidate_tracker: Arc<aletheia_mneme::skills::CandidateTracker>,
+    candidate_tracker: Arc<mneme::skills::CandidateTracker>,
 }
 
 /// Data stores for sessions, knowledge, and search.
@@ -200,7 +200,7 @@ impl NousActor {
                 oikos,
                 tool_services,
                 embedding_provider,
-                candidate_tracker: Arc::new(aletheia_mneme::skills::CandidateTracker::new()),
+                candidate_tracker: Arc::new(mneme::skills::CandidateTracker::new()),
             },
             stores: ActorStores {
                 session_store,
@@ -571,7 +571,7 @@ impl NousActor {
     pub(crate) fn resolve_intent_sections(&self) -> Vec<BootstrapSection> {
         use crate::bootstrap::{BootstrapSection, SectionPriority};
         use crate::budget::{CharEstimator, TokenEstimator as _};
-        use aletheia_dianoia::intent::IntentStore;
+        use dianoia::intent::IntentStore;
         use tracing::warn;
 
         let agent_dir = self.services.oikos.nous_dir(&self.id);

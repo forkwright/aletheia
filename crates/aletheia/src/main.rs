@@ -21,7 +21,7 @@ mod recall_sources;
 mod runtime;
 mod status;
 
-use aletheia_koina::system::{Environment, RealSystem};
+use koina::system::{Environment, RealSystem};
 use anyhow::Result;
 use clap::Parser;
 

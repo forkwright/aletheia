@@ -6,8 +6,8 @@ use futures::FutureExt;
 use snafu::ResultExt;
 use tracing::instrument;
 
-use aletheia_hermeneus::provider::LlmProvider;
-use aletheia_hermeneus::types::{CompletionRequest, Content, ContentBlock, Message, Role};
+use hermeneus::provider::LlmProvider;
+use hermeneus::types::{CompletionRequest, Content, ContentBlock, Message, Role};
 
 use crate::contradiction::{self, ContradictionLog};
 use crate::error::{EmptySummarySnafu, LlmCallSnafu, LlmPanicSnafu, NoMessagesSnafu, Result};
@@ -34,7 +34,7 @@ impl RetryState {
     fn record_failure(&mut self) {
         self.consecutive_failures = self.consecutive_failures.saturating_add(1);
         // NOTE: exponential backoff: 1, 2, 4, 8 turns; capped at MAX_BACKOFF_TURNS
-        self.turns_to_skip = aletheia_koina::retry::exponential_steps(
+        self.turns_to_skip = koina::retry::exponential_steps(
             self.consecutive_failures.saturating_sub(1),
             2,
             MAX_BACKOFF_TURNS,
@@ -598,11 +598,11 @@ pub(crate) fn enforce_context_limit(messages: &mut Vec<Message>, context_window:
 }
 
 /// Extract plain text from response content blocks.
-fn extract_summary_text(content: &[aletheia_hermeneus::types::ContentBlock]) -> String {
+fn extract_summary_text(content: &[hermeneus::types::ContentBlock]) -> String {
     content
         .iter()
         .filter_map(|block| match block {
-            aletheia_hermeneus::types::ContentBlock::Text { text, .. } => Some(text.as_str()),
+            hermeneus::types::ContentBlock::Text { text, .. } => Some(text.as_str()),
             _ => None,
         })
         .fold(String::new(), |mut acc, s| {

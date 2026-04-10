@@ -6,14 +6,14 @@
 
 /// Datalog/graph engine (provided by `aletheia-krites`).
 #[cfg(feature = "mneme-engine")]
-pub use aletheia_krites as engine;
+pub use krites as engine;
 
 /// Newtype wrappers for knowledge-domain identifiers (re-exported from `eidos`).
-pub use aletheia_eidos::id;
+pub use eidos::id;
 /// Knowledge graph domain types (re-exported from `eidos`).
-pub use aletheia_eidos::knowledge;
+pub use eidos::knowledge;
 /// Error types (re-exported from `graphe`).
-pub use aletheia_graphe::error;
+pub use graphe::error;
 
 /// Memory admission control: structured decision gate for knowledge graph insertion.
 pub mod admission;

@@ -1,5 +1,5 @@
 [package]
-name = "aletheia-eidos"
+name = "eidos"
 version.workspace = true
 description = "Shared knowledge types for the Aletheia memory layer"
 edition.workspace = true

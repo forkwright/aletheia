@@ -12,13 +12,13 @@ use tokio_stream::StreamExt;
 use tokio_stream::wrappers::{IntervalStream, ReceiverStream};
 use tracing::{Instrument, instrument, warn};
 
-use aletheia_hermeneus::anthropic::StreamEvent as LlmStreamEvent;
-use aletheia_nous::pipeline::TurnResult;
-use aletheia_nous::stream::TurnStreamEvent;
+use hermeneus::anthropic::StreamEvent as LlmStreamEvent;
+use nous::pipeline::TurnResult;
+use nous::stream::TurnStreamEvent;
 
-use aletheia_mneme::types::SessionStatus;
+use mneme::types::SessionStatus;
 
-use aletheia_symbolon::types::Role;
+use symbolon::types::Role;
 
 use crate::error::{ApiError, BadRequestSnafu, ConflictSnafu, InternalSnafu, NousNotFoundSnafu};
 use crate::extract::{Claims, require_nous_access, require_role};
@@ -262,7 +262,7 @@ pub async fn send_message(
                 &session_key,
                 Some(sid.clone()),
                 &content,
-                aletheia_nous::handle::DEFAULT_SEND_TIMEOUT,
+                nous::handle::DEFAULT_SEND_TIMEOUT,
             );
             let result = tokio::select! {
                 r = turn_fut => r,
@@ -428,7 +428,7 @@ pub async fn stream_turn(
 
     let session_id = resolve_session(&state, &agent_id, &session_key, model.as_deref()).await?;
 
-    let turn_id = aletheia_koina::ulid::Ulid::new().to_string();
+    let turn_id = koina::ulid::Ulid::new().to_string();
     let (webchat_tx, webchat_rx) = mpsc::channel::<WebchatEvent>(32);
     let (nous_tx, mut nous_rx) = mpsc::channel::<TurnStreamEvent>(64);
 
@@ -507,7 +507,7 @@ pub async fn stream_turn(
                 Some(sid.clone()),
                 &message,
                 nous_tx,
-                aletheia_nous::handle::DEFAULT_SEND_TIMEOUT,
+                nous::handle::DEFAULT_SEND_TIMEOUT,
             );
             let result = tokio::select! {
                 r = turn_fut => r,
@@ -678,8 +678,8 @@ fn extract_idempotency_key(headers: &axum::http::HeaderMap) -> Result<Option<Str
 ///
 /// Codes and messages identify the failure class without leaking internal
 /// paths, SQL, or provider credentials. See #844 for the security rationale.
-fn turn_error_info(err: &aletheia_nous::error::Error) -> (&'static str, &'static str) {
-    use aletheia_nous::error::Error;
+fn turn_error_info(err: &nous::error::Error) -> (&'static str, &'static str) {
+    use nous::error::Error;
     match err {
         Error::PipelineTimeout { .. } | Error::AskTimeout { .. } => {
             ("turn_timeout", "turn timed out")
@@ -694,8 +694,8 @@ fn turn_error_info(err: &aletheia_nous::error::Error) -> (&'static str, &'static
 }
 
 /// Map an LLM provider error to a client-visible (code, message) pair.
-fn classify_llm_error(err: &aletheia_hermeneus::error::Error) -> (&'static str, &'static str) {
-    use aletheia_hermeneus::error::Error;
+fn classify_llm_error(err: &hermeneus::error::Error) -> (&'static str, &'static str) {
+    use hermeneus::error::Error;
     match err {
         Error::RateLimited { .. } => ("rate_limited", "rate limit exceeded"),
         Error::ApiError { status, .. } if *status == 429 => ("rate_limited", "rate limit exceeded"),

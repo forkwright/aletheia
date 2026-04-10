@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use aletheia_koina::system::{Environment, RealSystem};
+use koina::system::{Environment, RealSystem};
 
 use super::actions::dispatch_action;
 use super::capture::{

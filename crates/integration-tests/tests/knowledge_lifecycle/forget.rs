@@ -83,7 +83,7 @@ fn supersession_chain() {
 
 #[test]
 fn forget_excludes_from_recall() {
-    use aletheia_mneme::knowledge::ForgetReason;
+    use mneme::knowledge::ForgetReason;
 
     let store = open_store();
     let nous = "test-agent";
@@ -121,7 +121,7 @@ fn forget_excludes_from_recall() {
 
 #[test]
 fn forget_preserves_for_audit() {
-    use aletheia_mneme::knowledge::ForgetReason;
+    use mneme::knowledge::ForgetReason;
 
     let store = open_store();
     let nous = "test-agent";
@@ -158,7 +158,7 @@ fn forget_preserves_for_audit() {
 
 #[test]
 fn unforget_restores_to_search() {
-    use aletheia_mneme::knowledge::ForgetReason;
+    use mneme::knowledge::ForgetReason;
 
     let store = open_store();
     let nous = "test-agent";
@@ -207,7 +207,7 @@ fn unforget_restores_to_search() {
 
 #[test]
 fn forget_with_each_reason() {
-    use aletheia_mneme::knowledge::ForgetReason;
+    use mneme::knowledge::ForgetReason;
 
     let store = open_store();
     let nous = "test-agent";
@@ -251,7 +251,7 @@ fn forget_with_each_reason() {
 
 #[test]
 fn full_forget_lifecycle() {
-    use aletheia_mneme::knowledge::ForgetReason;
+    use mneme::knowledge::ForgetReason;
 
     let store = open_store();
     let nous = "test-agent";

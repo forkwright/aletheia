@@ -76,7 +76,7 @@ fn default_limit() -> usize {
     reason = "response struct fields are self-documenting by name"
 )]
 pub struct FactsResponse {
-    pub facts: Vec<aletheia_mneme::knowledge::Fact>,
+    pub facts: Vec<mneme::knowledge::Fact>,
     pub total: usize,
 }
 
@@ -87,7 +87,7 @@ pub struct FactsResponse {
     reason = "response struct fields are self-documenting by name"
 )]
 pub struct EntitiesResponse {
-    pub entities: Vec<aletheia_mneme::knowledge::Entity>,
+    pub entities: Vec<mneme::knowledge::Entity>,
 }
 
 /// Response wrapper for relationships.
@@ -97,7 +97,7 @@ pub struct EntitiesResponse {
     reason = "response struct fields are self-documenting by name"
 )]
 pub struct RelationshipsResponse {
-    pub relationships: Vec<aletheia_mneme::knowledge::Relationship>,
+    pub relationships: Vec<mneme::knowledge::Relationship>,
 }
 
 /// Body for forget/restore actions.
@@ -192,8 +192,8 @@ pub struct SimilarFact {
     reason = "response struct fields are self-documenting by name"
 )]
 pub struct FactDetailResponse {
-    pub fact: aletheia_mneme::knowledge::Fact,
-    pub relationships: Vec<aletheia_mneme::knowledge::Relationship>,
+    pub fact: mneme::knowledge::Fact,
+    pub relationships: Vec<mneme::knowledge::Relationship>,
     pub similar: Vec<SimilarFact>,
 }
 
@@ -278,7 +278,7 @@ pub async fn list_facts(
     State(state): State<KnowledgeState>,
     Query(mut query): Query<FactsQuery>,
 ) -> Result<Json<FactsResponse>, ApiError> {
-    use aletheia_mneme::knowledge::EpistemicTier;
+    use mneme::knowledge::EpistemicTier;
 
     query.limit = query.limit.min(MAX_FACTS_LIMIT);
     validate_sort_order(&query.sort, &query.order)?;
@@ -505,12 +505,12 @@ pub async fn check_graph_health(
 
 #[cfg(feature = "knowledge-store")]
 fn build_graph_check_report(
-    store: &std::sync::Arc<aletheia_mneme::knowledge_store::KnowledgeStore>,
+    store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
 ) -> Result<GraphCheckReport, String> {
     use std::collections::BTreeMap;
 
     fn count_relation(
-        store: &std::sync::Arc<aletheia_mneme::knowledge_store::KnowledgeStore>,
+        store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
         relation: &str,
     ) -> Result<usize, String> {
         let key_field = match relation {
@@ -527,13 +527,13 @@ fn build_graph_check_report(
             .rows
             .first()
             .and_then(|r| r.first())
-            .and_then(aletheia_mneme::engine::DataValue::get_int)
+            .and_then(mneme::engine::DataValue::get_int)
             .unwrap_or(0);
         Ok(usize::try_from(count).unwrap_or(0))
     }
 
     fn count_orphaned_entities(
-        store: &std::sync::Arc<aletheia_mneme::knowledge_store::KnowledgeStore>,
+        store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
     ) -> Result<usize, String> {
         let script = r"
             ?[id] :=
@@ -549,7 +549,7 @@ fn build_graph_check_report(
     }
 
     fn count_dangling_edges(
-        store: &std::sync::Arc<aletheia_mneme::knowledge_store::KnowledgeStore>,
+        store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
     ) -> Result<usize, String> {
         let script = r"
             ?[src, dst, relation] :=
@@ -593,12 +593,12 @@ fn build_graph_check_report(
 mod tests {
     use super::*;
 
-    fn make_fact(id: &str, content: &str, confidence: f64) -> aletheia_mneme::knowledge::Fact {
-        use aletheia_mneme::id::FactId;
-        use aletheia_mneme::knowledge::{
+    fn make_fact(id: &str, content: &str, confidence: f64) -> mneme::knowledge::Fact {
+        use mneme::id::FactId;
+        use mneme::knowledge::{
             EpistemicTier, FactAccess, FactLifecycle, FactProvenance, FactTemporal,
         };
-        aletheia_mneme::knowledge::Fact {
+        mneme::knowledge::Fact {
             id: FactId::new(id).unwrap(),
             nous_id: "test-nous".to_owned(),
             fact_type: "knowledge".to_owned(),

@@ -2,7 +2,7 @@
 
 use std::collections::HashSet;
 
-use aletheia_hermeneus::types::{Content, ContentBlock, Message};
+use hermeneus::types::{Content, ContentBlock, Message};
 
 /// Minimum token length to include in similarity comparison.
 const MIN_TOKEN_LEN: usize = 3;
@@ -185,7 +185,7 @@ pub(crate) fn prune_similar_messages(
 
 #[cfg(test)]
 mod tests {
-    use aletheia_hermeneus::types::{Content, Message, Role};
+    use hermeneus::types::{Content, Message, Role};
 
     use super::*;
 

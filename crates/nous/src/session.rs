@@ -3,7 +3,7 @@
 use std::time::Instant;
 
 use tracing::{info, instrument};
-use aletheia_koina::ulid::Ulid;
+use koina::ulid::Ulid;
 
 use crate::config::NousConfig;
 

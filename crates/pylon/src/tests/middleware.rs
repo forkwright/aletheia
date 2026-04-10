@@ -313,7 +313,7 @@ fn security_config_default_values() {
 
 #[test]
 fn security_config_from_gateway() {
-    use aletheia_taxis::config::GatewayConfig;
+    use taxis::config::GatewayConfig;
 
     let gw = GatewayConfig::default();
     let config = SecurityConfig::from_gateway(&gw);

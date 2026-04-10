@@ -17,13 +17,13 @@ use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 
-use aletheia_koina::id::ToolName;
-use aletheia_organon::registry::{ToolExecutor, ToolRegistry};
-use aletheia_organon::types::{
+use koina::id::ToolName;
+use organon::registry::{ToolExecutor, ToolRegistry};
+use organon::types::{
     InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
     ToolInput, ToolResult,
 };
-use aletheia_taxis::oikos::Oikos;
+use taxis::oikos::Oikos;
 
 // ── Config types ──────────���─────────────────────────────────────────────────
 
@@ -318,7 +318,7 @@ impl ToolExecutor for ExternalToolExecutor {
         &'a self,
         input: &'a ToolInput,
         _ctx: &'a ToolContext,
-    ) -> Pin<Box<dyn Future<Output = aletheia_organon::error::Result<ToolResult>> + Send + 'a>>
+    ) -> Pin<Box<dyn Future<Output = organon::error::Result<ToolResult>> + Send + 'a>>
     {
         Box::pin(async move {
             let payload = serde_json::json!({
@@ -531,7 +531,7 @@ no_endpoint = { type = "mcp" }
 
     #[test]
     fn load_from_nonexistent_path_returns_default() {
-        let oikos = aletheia_taxis::oikos::Oikos::from_root("/nonexistent/path");
+        let oikos = taxis::oikos::Oikos::from_root("/nonexistent/path");
         let config = load_tools_config(&oikos);
         assert!(config.required.is_empty());
         assert!(config.optional.is_empty());

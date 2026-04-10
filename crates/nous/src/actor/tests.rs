@@ -5,9 +5,9 @@
 #![expect(clippy::expect_used, reason = "test assertions")]
 use tokio_util::sync::CancellationToken;
 
-use aletheia_hermeneus::provider::LlmProvider;
-use aletheia_hermeneus::test_utils::MockProvider;
-use aletheia_hermeneus::types::{CompletionRequest, CompletionResponse};
+use hermeneus::provider::LlmProvider;
+use hermeneus::test_utils::MockProvider;
+use hermeneus::types::{CompletionRequest, CompletionResponse};
 
 use super::*;
 
@@ -325,7 +325,7 @@ impl LlmProvider for PanickingProvider {
         _request: &'a CompletionRequest,
     ) -> std::pin::Pin<
         Box<
-            dyn std::future::Future<Output = aletheia_hermeneus::error::Result<CompletionResponse>>
+            dyn std::future::Future<Output = hermeneus::error::Result<CompletionResponse>>
                 + Send
                 + 'a,
         >,
@@ -519,7 +519,7 @@ async fn status_includes_uptime() {
 }
 
 fn spawn_test_actor_with_store(
-    store: Arc<tokio::sync::Mutex<aletheia_mneme::store::SessionStore>>,
+    store: Arc<tokio::sync::Mutex<mneme::store::SessionStore>>,
 ) -> (NousHandle, tokio::task::JoinHandle<()>, tempfile::TempDir) {
     let (dir, oikos) = test_oikos();
     let providers = test_providers();
@@ -553,7 +553,7 @@ fn spawn_test_actor_with_store(
 /// (not a newly generated one).
 #[tokio::test]
 async fn session_id_adoption_prevents_fk_divergence() {
-    let store = aletheia_mneme::store::SessionStore::open_in_memory().expect("in-memory store");
+    let store = mneme::store::SessionStore::open_in_memory().expect("in-memory store");
     // WHY: SessionId requires UUID v4 format after security hardening (#1754)
     let db_session_id = "550e8400-e29b-41d4-a716-446655440000";
 

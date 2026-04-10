@@ -1,7 +1,7 @@
 //! Project types and lifecycle management.
 
 use serde::{Deserialize, Serialize};
-use aletheia_koina::ulid::Ulid;
+use koina::ulid::Ulid;
 
 use crate::error::Result;
 use crate::phase::Phase;

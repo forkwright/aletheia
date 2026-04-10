@@ -9,7 +9,7 @@
 //!
 //! ```
 //! use std::path::Path;
-//! use aletheia_taxis::workspace_schema::{WorkspaceSchema, WorkspaceRequirement, RequirementKind};
+//! use taxis::workspace_schema::{WorkspaceSchema, WorkspaceRequirement, RequirementKind};
 //!
 //! let schema = WorkspaceSchema::standard();
 //! if let Err(e) = schema.validate(Path::new("/srv/aletheia/instance/nous/main")) {

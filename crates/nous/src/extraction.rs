@@ -2,10 +2,10 @@
 
 use std::sync::Arc;
 
-use aletheia_hermeneus::provider::ProviderRegistry;
-use aletheia_hermeneus::types::{CompletionRequest, Content, ContentBlock, Message, Role};
-use aletheia_mneme::extract::{ExtractionError, ExtractionProvider, LlmCallSnafu};
-use aletheia_mneme::skills::extract::{
+use hermeneus::provider::ProviderRegistry;
+use hermeneus::types::{CompletionRequest, Content, ContentBlock, Message, Role};
+use mneme::extract::{ExtractionError, ExtractionProvider, LlmCallSnafu};
+use mneme::skills::extract::{
     LlmCallSnafu as SkillLlmCallSnafu, SkillExtractionError, SkillExtractionProvider,
 };
 use snafu::OptionExt;

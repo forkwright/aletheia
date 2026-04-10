@@ -6,14 +6,14 @@
 #![expect(clippy::expect_used, reason = "test assertions")]
 #![expect(clippy::indexing_slicing, reason = "test: index safety verified by assertions")]
 
-use aletheia_dianoia::gate::{
+use dianoia::gate::{
     evaluate_gate, default_gate, GateCondition, GateResult, PhaseGate,
 };
-use aletheia_dianoia::phase::{Phase, PhaseState};
-use aletheia_dianoia::plan::{Blocker, Plan, PlanState};
-use aletheia_dianoia::project::{Project, ProjectMode};
-use aletheia_dianoia::state::{ProjectState, Transition};
-use aletheia_dianoia::workspace::ProjectWorkspace;
+use dianoia::phase::{Phase, PhaseState};
+use dianoia::plan::{Blocker, Plan, PlanState};
+use dianoia::project::{Project, ProjectMode};
+use dianoia::state::{ProjectState, Transition};
+use dianoia::workspace::ProjectWorkspace;
 
 // =============================================================================
 // Project Constructors and Basic Properties
@@ -689,7 +689,7 @@ fn project_mode_serde_roundtrip() {
 
 #[test]
 fn blocker_creation_and_properties() {
-    let plan_id = aletheia_koina::ulid::Ulid::new();
+    let plan_id = koina::ulid::Ulid::new();
     let now = jiff::Timestamp::now();
 
     let blocker = Blocker {
@@ -707,7 +707,7 @@ fn blocker_creation_and_properties() {
 fn blocker_serde_roundtrip() {
     let blocker = Blocker {
         description: "Test blocker".into(),
-        plan_id: aletheia_koina::ulid::Ulid::new(),
+        plan_id: koina::ulid::Ulid::new(),
         detected_at: jiff::Timestamp::now(),
     };
 
@@ -759,7 +759,7 @@ fn error_project_not_found_on_open() {
 
 #[test]
 fn error_gate_blocked() {
-    use aletheia_dianoia::state::ProjectState;
+    use dianoia::state::ProjectState;
 
     let gate = PhaseGate::new(
         ProjectState::Planning,

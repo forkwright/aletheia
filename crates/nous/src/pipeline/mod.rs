@@ -8,13 +8,13 @@ use tokio::sync::Mutex;
 use tokio::sync::mpsc;
 use tracing::{Instrument, info_span, instrument};
 
-use aletheia_hermeneus::provider::ProviderRegistry;
-use aletheia_koina::event::EventEmitter;
-use aletheia_mneme::embedding::EmbeddingProvider;
-use aletheia_mneme::store::SessionStore;
-use aletheia_organon::registry::ToolRegistry;
-use aletheia_organon::types::ToolContext;
-use aletheia_taxis::oikos::Oikos;
+use hermeneus::provider::ProviderRegistry;
+use koina::event::EventEmitter;
+use mneme::embedding::EmbeddingProvider;
+use mneme::store::SessionStore;
+use organon::registry::ToolRegistry;
+use organon::types::ToolContext;
+use taxis::oikos::Oikos;
 
 use crate::bootstrap::{BootstrapAssembler, BootstrapSection, TaskHint, classify_task_hint};
 use crate::budget::{CompactionMetrics, TokenBudget};
@@ -809,12 +809,12 @@ pub(crate) async fn run_pipeline(
     // turns enter the training corpus. Errors are logged, never propagated:
     // training capture must never block the pipeline.
     if pipeline_config.training.enabled {
-        match aletheia_mneme::training::TrainingCapture::new(
+        match mneme::training::TrainingCapture::new(
             oikos.root(),
             &pipeline_config.training,
         ) {
             Ok(capture) => {
-                capture.maybe_capture(aletheia_mneme::training::CaptureInput {
+                capture.maybe_capture(mneme::training::CaptureInput {
                     session_id: &input.session.id,
                     nous_id: &config.id,
                     user_message: &input.content,

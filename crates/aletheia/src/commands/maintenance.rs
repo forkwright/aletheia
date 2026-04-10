@@ -5,13 +5,13 @@ use std::path::PathBuf;
 use clap::Subcommand;
 use snafu::prelude::*;
 
-use aletheia_oikonomos::maintenance::{
+use oikonomos::maintenance::{
     AutoDreamConfig, DbMonitor, DbMonitoringConfig, DriftDetectionConfig, DriftDetector,
     MaintenanceConfig, ProposeRulesConfig, TraceRotationConfig, TraceRotator,
 };
-use aletheia_oikonomos::runner::TaskRunner;
-use aletheia_taxis::loader::load_config;
-use aletheia_taxis::oikos::Oikos;
+use oikonomos::runner::TaskRunner;
+use taxis::loader::load_config;
+use taxis::oikos::Oikos;
 use tokio_util::sync::CancellationToken;
 
 use crate::error::Result;
@@ -127,7 +127,7 @@ fn run_task(name: &str, maint: &MaintenanceConfig, verbose: bool) -> Result<()> 
             }
         }
         "self-audit" => {
-            use aletheia_nous::self_audit::{AuditTrigger, CheckContext, SelfAuditor};
+            use nous::self_audit::{AuditTrigger, CheckContext, SelfAuditor};
             let mut auditor = SelfAuditor::new();
             auditor.register_defaults();
             let ctx = CheckContext {
@@ -140,7 +140,7 @@ fn run_task(name: &str, maint: &MaintenanceConfig, verbose: bool) -> Result<()> 
                     "  {}: {} (score: {:.2})",
                     r.check_name, r.result.status, r.result.score,
                 );
-                if r.result.status != aletheia_nous::self_audit::CheckStatus::Pass {
+                if r.result.status != nous::self_audit::CheckStatus::Pass {
                     println!("    evidence: {}", r.result.evidence);
                 }
             }
@@ -157,7 +157,7 @@ fn run_task(name: &str, maint: &MaintenanceConfig, verbose: bool) -> Result<()> 
 /// Called from both the maintenance subcommand and the server startup path.
 pub(crate) fn build_config(
     oikos: &Oikos,
-    settings: &aletheia_taxis::config::MaintenanceSettings,
+    settings: &taxis::config::MaintenanceSettings,
 ) -> MaintenanceConfig {
     MaintenanceConfig {
         trace_rotation: TraceRotationConfig {
@@ -183,28 +183,28 @@ pub(crate) fn build_config(
             warn_threshold_mb: settings.db_monitoring.warn_threshold_mb,
             alert_threshold_mb: settings.db_monitoring.alert_threshold_mb,
         },
-        retention: aletheia_oikonomos::maintenance::RetentionConfig {
+        retention: oikonomos::maintenance::RetentionConfig {
             enabled: settings.retention.enabled,
         },
-        knowledge_maintenance: aletheia_oikonomos::maintenance::KnowledgeMaintenanceConfig {
+        knowledge_maintenance: oikonomos::maintenance::KnowledgeMaintenanceConfig {
             enabled: settings.knowledge_maintenance_enabled,
             auto_dream: AutoDreamConfig::default(),
         },
         propose_rules: ProposeRulesConfig::default(),
-        cron: aletheia_oikonomos::cron::CronConfig {
-            evolution: aletheia_oikonomos::cron::CronEvolutionConfig {
+        cron: oikonomos::cron::CronConfig {
+            evolution: oikonomos::cron::CronEvolutionConfig {
                 enabled: settings.cron_tasks.evolution.enabled,
                 interval: std::time::Duration::from_secs(
                     settings.cron_tasks.evolution.interval_secs,
                 ),
             },
-            reflection: aletheia_oikonomos::cron::CronReflectionConfig {
+            reflection: oikonomos::cron::CronReflectionConfig {
                 enabled: settings.cron_tasks.reflection.enabled,
                 interval: std::time::Duration::from_secs(
                     settings.cron_tasks.reflection.interval_secs,
                 ),
             },
-            graph_cleanup: aletheia_oikonomos::cron::CronGraphCleanupConfig {
+            graph_cleanup: oikonomos::cron::CronGraphCleanupConfig {
                 enabled: settings.cron_tasks.graph_cleanup.enabled,
                 interval: std::time::Duration::from_secs(
                     settings.cron_tasks.graph_cleanup.interval_secs,

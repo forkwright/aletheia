@@ -1,5 +1,5 @@
 [package]
-name = "aletheia-organon"
+name = "organon"
 version.workspace = true
 description = "Tool registry, definitions, and built-in tool executors"
 edition.workspace = true
@@ -16,19 +16,19 @@ workspace = true
 computer-use = []
 # Energeia capability tools (dromeus, dokimasia, diorthosis, epitropos, parateresis,
 # mathesis, prographe, schedion, metron). Wires to real energeia subsystem.
-energeia = ["dep:aletheia-energeia"]
+energeia = ["dep:energeia"]
 # Gates MockToolExecutor, ToolExecutorSpec, and other test helpers. No test code in release binaries.
-test-support = ["aletheia-hermeneus/test-support", "dep:rustls"]
+test-support = ["hermeneus/test-support", "dep:rustls"]
 test-core = []
 test-full = []
 
 [dependencies]
-aletheia-energeia = { path = "../energeia", optional = true, features = [
+energeia = { path = "../energeia", optional = true, features = [
     "storage-fjall",
 ] }
-aletheia-hermeneus = { path = "../hermeneus" }
-aletheia-koina = { path = "../koina" }
-aletheia-taxis = { path = "../taxis" }
+hermeneus = { path = "../hermeneus" }
+koina = { path = "../koina" }
+taxis = { path = "../taxis" }
 base64 = { workspace = true }
 indexmap = { workspace = true }
 jiff = { workspace = true }
@@ -51,7 +51,7 @@ workspace = true
 optional = true
 
 [dev-dependencies]
-aletheia-energeia = { path = "../energeia", features = ["storage-fjall"] }
+energeia = { path = "../energeia", features = ["storage-fjall"] }
 fjall = { version = "3" }
 indexmap = { workspace = true }
 proptest = { workspace = true }

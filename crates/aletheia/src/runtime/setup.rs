@@ -6,41 +6,41 @@ use snafu::prelude::*;
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
-use aletheia_agora::listener::ChannelListener;
-use aletheia_agora::registry::ChannelRegistry;
-use aletheia_agora::router::MessageRouter;
-use aletheia_agora::semeion::SignalProvider;
-use aletheia_agora::semeion::client::SignalClient;
-use aletheia_agora::types::ChannelProvider;
-use aletheia_hermeneus::anthropic::AnthropicProvider;
-use aletheia_hermeneus::provider::{ProviderConfig, ProviderRegistry};
-use aletheia_koina::credential::{CredentialProvider, CredentialSource};
-use aletheia_mneme::embedding::{
+use agora::listener::ChannelListener;
+use agora::registry::ChannelRegistry;
+use agora::router::MessageRouter;
+use agora::semeion::SignalProvider;
+use agora::semeion::client::SignalClient;
+use agora::types::ChannelProvider;
+use hermeneus::anthropic::AnthropicProvider;
+use hermeneus::provider::{ProviderConfig, ProviderRegistry};
+use koina::credential::{CredentialProvider, CredentialSource};
+use mneme::embedding::{
     DegradedEmbeddingProvider, EmbeddingConfig, EmbeddingProvider, create_provider,
 };
-use aletheia_nous::manager::NousManager;
-use aletheia_organon::builtins;
-use aletheia_organon::registry::ToolRegistry;
-use aletheia_symbolon::credential::{
+use nous::manager::NousManager;
+use organon::builtins;
+use organon::registry::ToolRegistry;
+use symbolon::credential::{
     CredentialChain, CredentialFile, EnvCredentialProvider, FileCredentialProvider,
     RefreshingCredentialProvider, claude_code_default_path, claude_code_provider,
 };
-use aletheia_taxis::config::{AletheiaConfig, EmbeddingSettings};
-use aletheia_taxis::oikos::Oikos;
+use taxis::config::{AletheiaConfig, EmbeddingSettings};
+use taxis::oikos::Oikos;
 
 use crate::error::Result;
 
 pub(super) fn build_provider_registry(config: &AletheiaConfig, oikos: &Oikos) -> ProviderRegistry {
     let mut registry = ProviderRegistry::new();
 
-    let pricing: std::collections::HashMap<String, aletheia_hermeneus::provider::ModelPricing> =
+    let pricing: std::collections::HashMap<String, hermeneus::provider::ModelPricing> =
         config
             .pricing
             .iter()
             .map(|(model, p)| {
                 (
                     model.clone(),
-                    aletheia_hermeneus::provider::ModelPricing {
+                    hermeneus::provider::ModelPricing {
                         input_cost_per_mtok: p.input_cost_per_mtok,
                         output_cost_per_mtok: p.output_cost_per_mtok,
                     },
@@ -85,7 +85,7 @@ pub(super) fn build_provider_registry(config: &AletheiaConfig, oikos: &Oikos) ->
 
     #[cfg(feature = "keyring")]
     {
-        use aletheia_symbolon::credential::KeyringCredentialProvider;
+        use symbolon::credential::KeyringCredentialProvider;
         chain.push(Box::new(KeyringCredentialProvider::new()));
     }
 
@@ -125,7 +125,7 @@ pub(super) fn build_provider_registry(config: &AletheiaConfig, oikos: &Oikos) ->
     // as fallback (e.g., when using API keys, which don't need attestation).
     #[cfg(feature = "cc-provider")]
     {
-        use aletheia_hermeneus::cc::{CcProvider, CcProviderConfig};
+        use hermeneus::cc::{CcProvider, CcProviderConfig};
         let cc_config = CcProviderConfig::default();
         match CcProvider::new(&cc_config) {
             Ok(provider) => {
@@ -150,29 +150,29 @@ pub(super) fn build_provider_registry(config: &AletheiaConfig, oikos: &Oikos) ->
 }
 
 pub(super) fn build_tool_registry(
-    sandbox_settings: &aletheia_taxis::config::SandboxSettings,
+    sandbox_settings: &taxis::config::SandboxSettings,
 ) -> Result<ToolRegistry> {
     let mut registry = ToolRegistry::new();
-    let sandbox = aletheia_organon::sandbox::SandboxConfig {
+    let sandbox = organon::sandbox::SandboxConfig {
         enabled: sandbox_settings.enabled,
         enforcement: match sandbox_settings.enforcement {
-            aletheia_taxis::config::SandboxEnforcementMode::Enforcing => {
-                aletheia_organon::sandbox::SandboxEnforcement::Enforcing
+            taxis::config::SandboxEnforcementMode::Enforcing => {
+                organon::sandbox::SandboxEnforcement::Enforcing
             }
-            _ => aletheia_organon::sandbox::SandboxEnforcement::Permissive,
+            _ => organon::sandbox::SandboxEnforcement::Permissive,
         },
         allowed_root: sandbox_settings.allowed_root.clone(),
         extra_read_paths: sandbox_settings.extra_read_paths.clone(),
         extra_write_paths: sandbox_settings.extra_write_paths.clone(),
         extra_exec_paths: sandbox_settings.extra_exec_paths.clone(),
         egress: match sandbox_settings.egress {
-            aletheia_taxis::config::EgressPolicy::Deny => {
-                aletheia_organon::sandbox::EgressPolicy::Deny
+            taxis::config::EgressPolicy::Deny => {
+                organon::sandbox::EgressPolicy::Deny
             }
-            aletheia_taxis::config::EgressPolicy::Allowlist => {
-                aletheia_organon::sandbox::EgressPolicy::Allowlist
+            taxis::config::EgressPolicy::Allowlist => {
+                organon::sandbox::EgressPolicy::Allowlist
             }
-            _ => aletheia_organon::sandbox::EgressPolicy::Allow,
+            _ => organon::sandbox::EgressPolicy::Allow,
         },
         egress_allowlist: sandbox_settings.egress_allowlist.clone(),
         nproc_limit: sandbox_settings.nproc_limit,
@@ -216,15 +216,15 @@ pub(super) fn create_embedding_provider(
 #[cfg(feature = "recall")]
 pub(super) fn open_knowledge_store(
     oikos: &Oikos,
-) -> Result<Option<Arc<aletheia_mneme::knowledge_store::KnowledgeStore>>> {
+) -> Result<Option<Arc<mneme::knowledge_store::KnowledgeStore>>> {
     let kb_path = oikos.knowledge_db();
     if let Some(parent) = kb_path.parent() {
         std::fs::create_dir_all(parent)
             .whatever_context("failed to CREATE knowledge store directory")?;
     }
-    let store = aletheia_mneme::knowledge_store::KnowledgeStore::open_fjall(
+    let store = mneme::knowledge_store::KnowledgeStore::open_fjall(
         &kb_path,
-        aletheia_mneme::knowledge_store::KnowledgeConfig::default(),
+        mneme::knowledge_store::KnowledgeConfig::default(),
     )
     .whatever_context("failed to open knowledge store")?;
     info!(path = %kb_path.display(), dim = 384, "knowledge store opened (fjall)");
@@ -232,7 +232,7 @@ pub(super) fn open_knowledge_store(
 }
 
 pub(super) fn build_signal_provider(
-    signal_config: &aletheia_taxis::config::SignalConfig,
+    signal_config: &taxis::config::SignalConfig,
 ) -> Option<Arc<SignalProvider>> {
     if !signal_config.enabled {
         info!("signal channel disabled");

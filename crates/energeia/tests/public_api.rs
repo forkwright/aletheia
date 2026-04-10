@@ -10,11 +10,11 @@
 
 use std::time::Duration;
 
-use aletheia_energeia::cost_ledger::CostLedger;
-use aletheia_energeia::engine::{AgentOptions, SessionEvent};
-use aletheia_energeia::error::Error;
-use aletheia_energeia::orchestrator::OrchestratorConfig;
-use aletheia_energeia::types::{
+use energeia::cost_ledger::CostLedger;
+use energeia::engine::{AgentOptions, SessionEvent};
+use energeia::error::Error;
+use energeia::orchestrator::OrchestratorConfig;
+use energeia::types::{
     Budget, BudgetStatus, CriterionType, DispatchSpec, MechanicalIssueKind, QaVerdict,
     ResumePolicy, SessionStatus,
 };

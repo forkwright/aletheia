@@ -12,8 +12,8 @@ use axum::http::{Request, Response, StatusCode};
 use axum::middleware::Next;
 use tracing::warn;
 
-use aletheia_koina::http::BEARER_PREFIX;
-use aletheia_symbolon::types::Role;
+use koina::http::BEARER_PREFIX;
+use symbolon::types::Role;
 
 use crate::state::DiaporeiaState;
 

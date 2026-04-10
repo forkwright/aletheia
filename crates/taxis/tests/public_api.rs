@@ -16,13 +16,13 @@
     reason = "serde_json::Value indexing on known-present keys in redaction assertions"
 )]
 
-use aletheia_koina::secret::SecretString;
-use aletheia_taxis::config::{
+use koina::secret::SecretString;
+use taxis::config::{
     AgencyLevel, AletheiaConfig, ChannelBinding, EgressPolicy, ModelPricing, ModelSpec,
     NousDefinition, SandboxEnforcementMode, SignalAccountConfig, resolve_nous,
 };
-use aletheia_taxis::redact::redact;
-use aletheia_taxis::workspace_schema::{RequirementKind, WorkspaceRequirement, WorkspaceSchema};
+use taxis::redact::redact;
+use taxis::workspace_schema::{RequirementKind, WorkspaceRequirement, WorkspaceSchema};
 
 // ─── Default config values ──────────────────────────────────────────────
 

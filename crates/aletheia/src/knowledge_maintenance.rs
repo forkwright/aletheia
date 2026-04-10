@@ -6,10 +6,10 @@
 
 use std::sync::Arc;
 
-use aletheia_mneme::knowledge::FactType;
-use aletheia_mneme::knowledge_store::KnowledgeStore;
-use aletheia_mneme::recall::RecallEngine;
-use aletheia_oikonomos::maintenance::{KnowledgeMaintenanceExecutor, MaintenanceReport};
+use mneme::knowledge::FactType;
+use mneme::knowledge_store::KnowledgeStore;
+use mneme::recall::RecallEngine;
+use oikonomos::maintenance::{KnowledgeMaintenanceExecutor, MaintenanceReport};
 
 /// Bridges the daemon's `KnowledgeMaintenanceExecutor` trait to the concrete
 /// `KnowledgeStore`. All methods are blocking (`CozoDB` is sync).
@@ -31,15 +31,15 @@ impl KnowledgeMaintenanceExecutor for KnowledgeMaintenanceAdapter {
     fn refresh_decay_scores(
         &self,
         nous_id: &str,
-    ) -> aletheia_oikonomos::error::Result<MaintenanceReport> {
+    ) -> oikonomos::error::Result<MaintenanceReport> {
         let now = jiff::Timestamp::now();
-        let now_str = aletheia_mneme::knowledge::format_timestamp(&now);
+        let now_str = mneme::knowledge::format_timestamp(&now);
 
         let facts = self
             .store
             .query_facts(nous_id, &now_str, 10_000)
             .map_err(|e| {
-                aletheia_oikonomos::error::TaskFailedSnafu {
+                oikonomos::error::TaskFailedSnafu {
                     task_id: "decay-refresh".to_owned(),
                     reason: e.to_string(),
                 }
@@ -108,9 +108,9 @@ impl KnowledgeMaintenanceExecutor for KnowledgeMaintenanceAdapter {
     fn deduplicate_entities(
         &self,
         nous_id: &str,
-    ) -> aletheia_oikonomos::error::Result<MaintenanceReport> {
+    ) -> oikonomos::error::Result<MaintenanceReport> {
         let records = self.store.run_entity_dedup(nous_id).map_err(|e| {
-            aletheia_oikonomos::error::TaskFailedSnafu {
+            oikonomos::error::TaskFailedSnafu {
                 task_id: "entity-dedup".to_owned(),
                 reason: e.to_string(),
             }
@@ -133,7 +133,7 @@ impl KnowledgeMaintenanceExecutor for KnowledgeMaintenanceAdapter {
     fn recompute_graph_scores(
         &self,
         _nous_id: &str,
-    ) -> aletheia_oikonomos::error::Result<MaintenanceReport> {
+    ) -> oikonomos::error::Result<MaintenanceReport> {
         Ok(MaintenanceReport {
             detail: Some(
                 "NOT_IMPLEMENTED: graph score recomputation (PageRank/centrality) not yet wired"
@@ -150,14 +150,14 @@ impl KnowledgeMaintenanceExecutor for KnowledgeMaintenanceAdapter {
     fn refresh_embeddings(
         &self,
         nous_id: &str,
-    ) -> aletheia_oikonomos::error::Result<MaintenanceReport> {
+    ) -> oikonomos::error::Result<MaintenanceReport> {
         let now = jiff::Timestamp::now();
-        let now_str = aletheia_mneme::knowledge::format_timestamp(&now);
+        let now_str = mneme::knowledge::format_timestamp(&now);
         let facts = self
             .store
             .query_facts(nous_id, &now_str, 10_000)
             .map_err(|e| {
-                aletheia_oikonomos::error::TaskFailedSnafu {
+                oikonomos::error::TaskFailedSnafu {
                     task_id: "embedding-refresh".to_owned(),
                     reason: e.to_string(),
                 }
@@ -182,7 +182,7 @@ impl KnowledgeMaintenanceExecutor for KnowledgeMaintenanceAdapter {
     fn garbage_collect(
         &self,
         _nous_id: &str,
-    ) -> aletheia_oikonomos::error::Result<MaintenanceReport> {
+    ) -> oikonomos::error::Result<MaintenanceReport> {
         Ok(MaintenanceReport {
             detail: Some(
                 "NOT_IMPLEMENTED: garbage collection of orphaned nodes/expired edges not yet wired"
@@ -195,14 +195,14 @@ impl KnowledgeMaintenanceExecutor for KnowledgeMaintenanceAdapter {
     fn maintain_indexes(
         &self,
         _nous_id: &str,
-    ) -> aletheia_oikonomos::error::Result<MaintenanceReport> {
+    ) -> oikonomos::error::Result<MaintenanceReport> {
         Ok(MaintenanceReport {
             detail: Some("NOT_IMPLEMENTED: index rebuild/optimization not yet wired".to_owned()),
             ..Default::default()
         })
     }
 
-    fn health_check(&self, _nous_id: &str) -> aletheia_oikonomos::error::Result<MaintenanceReport> {
+    fn health_check(&self, _nous_id: &str) -> oikonomos::error::Result<MaintenanceReport> {
         Ok(MaintenanceReport {
             detail: Some("NOT_IMPLEMENTED: knowledge graph health check not yet wired".to_owned()),
             ..Default::default()
@@ -212,9 +212,9 @@ impl KnowledgeMaintenanceExecutor for KnowledgeMaintenanceAdapter {
     fn run_skill_decay(
         &self,
         nous_id: &str,
-    ) -> aletheia_oikonomos::error::Result<MaintenanceReport> {
+    ) -> oikonomos::error::Result<MaintenanceReport> {
         let (active, needs_review, retired) = self.store.run_skill_decay(nous_id).map_err(|e| {
-            aletheia_oikonomos::error::TaskFailedSnafu {
+            oikonomos::error::TaskFailedSnafu {
                 task_id: "skill-decay".to_owned(),
                 reason: e.to_string(),
             }

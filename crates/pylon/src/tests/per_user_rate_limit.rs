@@ -6,7 +6,7 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use tower::ServiceExt;
 
-use aletheia_taxis::config::PerUserRateLimitConfig;
+use taxis::config::PerUserRateLimitConfig;
 
 use super::helpers::*;
 
@@ -174,7 +174,7 @@ async fn rate_limited_body_contains_error_details() {
 
 #[tokio::test]
 async fn user_a_limit_does_not_affect_user_b() {
-    use aletheia_symbolon::types::Role;
+    use symbolon::types::Role;
 
     let (router, _dir) = app_with_per_user_limits(PerUserRateLimitConfig {
         enabled: true,

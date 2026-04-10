@@ -6,12 +6,12 @@ use std::fmt;
 use compact_str::CompactString;
 use serde::{Deserialize, Serialize};
 
-aletheia_koina::newtype_id!(
+koina::newtype_id!(
     /// Agent (nous) identifier.
     pub struct NousId(String) // kanon:ignore RUST/pub-visibility
 );
 
-aletheia_koina::newtype_id!(
+koina::newtype_id!(
     /// Session identifier.
     pub struct SessionId(String) // kanon:ignore RUST/pub-visibility
 );
@@ -25,7 +25,7 @@ aletheia_koina::newtype_id!(
 #[serde(transparent)]
 pub struct TurnId(CompactString);
 
-aletheia_koina::newtype_id!(
+koina::newtype_id!(
     /// Tool call identifier.
     pub struct ToolId(String) // kanon:ignore RUST/pub-visibility
 );

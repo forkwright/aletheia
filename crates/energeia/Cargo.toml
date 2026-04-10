@@ -1,5 +1,5 @@
 [package]
-name = "aletheia-energeia"
+name = "energeia"
 version.workspace = true
 description = "Dispatch orchestration — actualization of plans into execution"
 edition.workspace = true
@@ -16,15 +16,15 @@ test-full = []
 storage-fjall = ["dep:fjall"]
 
 [dependencies]
-aletheia-koina = { path = "../koina" }
+koina = { path = "../koina" }
 async-trait = "0.1"
-aletheia-eidos = { path = "../eidos" }
+eidos = { path = "../eidos" }
 prometheus = { workspace = true }
 regex = { workspace = true }
 # WHY: hermeneus has pre-existing compilation errors on main (kanon lint pass
 # introduced unwrap_or_default on non-Default types). Add dependency once
 # hermeneus compiles again; implementations will need it for LLM evaluation.
-# aletheia-hermeneus = { path = "../hermeneus" }
+# hermeneus = { path = "../hermeneus" }
 fjall = { version = "3", optional = true }
 jiff = { workspace = true, features = ["serde"] }
 parking_lot = { version = "0.12", default-features = false }

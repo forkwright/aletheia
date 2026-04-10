@@ -1,5 +1,5 @@
 [package]
-name = "aletheia-hermeneus"
+name = "hermeneus"
 version.workspace = true
 description = "LLM provider abstraction and Anthropic streaming client"
 edition.workspace = true
@@ -11,7 +11,7 @@ rust-version.workspace = true
 workspace = true
 
 [dependencies]
-aletheia-koina = { path = "../koina" }
+koina = { path = "../koina" }
 jiff = { workspace = true }
 prometheus = { workspace = true }
 rand = { workspace = true }

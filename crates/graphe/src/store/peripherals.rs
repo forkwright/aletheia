@@ -80,7 +80,7 @@ impl SessionStore {
         ttl_secs: i64,
     ) -> Result<()> {
         self.require_writable()?;
-        let id = aletheia_koina::ulid::Ulid::new().to_string();
+        let id = koina::ulid::Ulid::new().to_string();
         self.conn
             .execute(
                 "INSERT INTO blackboard (id, key, value, author_nous_id, ttl_seconds, expires_at)

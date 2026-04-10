@@ -1,4 +1,4 @@
-use aletheia_koina::system::{Environment, RealSystem};
+use koina::system::{Environment, RealSystem};
 
 use crate::app::App;
 use crate::state::{ImageAttachment, QueuedMessage, YankSpan};

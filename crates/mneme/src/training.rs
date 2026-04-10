@@ -18,7 +18,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 // Re-export types from eidos for convenience
-pub use aletheia_eidos::training::{TrainingConfig, TrainingRecord};
+pub use eidos::training::{TrainingConfig, TrainingRecord};
 use jiff::Timestamp;
 use snafu::{ResultExt, Snafu};
 use tracing::{debug, warn};

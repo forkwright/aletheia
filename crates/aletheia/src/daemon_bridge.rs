@@ -4,9 +4,9 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use aletheia_nous::manager::NousManager;
-use aletheia_oikonomos::bridge::DaemonBridge;
-use aletheia_oikonomos::runner::ExecutionResult;
+use nous::manager::NousManager;
+use oikonomos::bridge::DaemonBridge;
+use oikonomos::runner::ExecutionResult;
 
 pub(crate) struct NousDaemonBridge {
     nous_manager: Arc<NousManager>,
@@ -24,7 +24,7 @@ impl DaemonBridge for NousDaemonBridge {
         nous_id: &str,
         session_key: &str,
         prompt: &str,
-    ) -> Pin<Box<dyn Future<Output = aletheia_oikonomos::error::Result<ExecutionResult>> + Send + '_>>
+    ) -> Pin<Box<dyn Future<Output = oikonomos::error::Result<ExecutionResult>> + Send + '_>>
     {
         let nous_id = nous_id.to_owned();
         let session_key = session_key.to_owned();

@@ -1,7 +1,7 @@
 //! Tests for context limit enforcement, `nous_id` sanitization, token estimation, and summary parsing.
 #![expect(clippy::expect_used, reason = "test assertions")]
 #[cfg(test)]
-use aletheia_hermeneus::types::{ContentBlock, ToolResultContent};
+use hermeneus::types::{ContentBlock, ToolResultContent};
 
 use super::super::super::*;
 use super::{MOCK_SUMMARY, default_engine, sample_conversation, success_provider, text_msg};

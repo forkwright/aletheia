@@ -155,7 +155,7 @@ async fn gateway_config_signing_key_is_redacted() {
 
     {
         let mut config = state.config.write().await;
-        config.gateway.auth.signing_key = Some(aletheia_koina::secret::SecretString::from(
+        config.gateway.auth.signing_key = Some(koina::secret::SecretString::from(
             "super-secret-signing-key",
         ));
     }

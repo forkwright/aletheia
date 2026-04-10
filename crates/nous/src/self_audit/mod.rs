@@ -306,10 +306,10 @@ impl Default for SelfAuditor {
 /// Returns an error if inserting a fact into the knowledge store fails.
 #[cfg(feature = "knowledge-store")]
 pub fn store_audit_report(
-    knowledge_store: &aletheia_mneme::knowledge_store::KnowledgeStore,
+    knowledge_store: &mneme::knowledge_store::KnowledgeStore,
     report: &AuditReport,
 ) -> crate::error::Result<()> {
-    use aletheia_mneme::knowledge::{
+    use mneme::knowledge::{
         EpistemicTier, FactAccess, FactLifecycle, FactProvenance, FactTemporal, far_future,
     };
     use snafu::ResultExt;
@@ -334,7 +334,7 @@ pub fn store_audit_report(
             CheckStatus::Fail => EpistemicTier::Assumed,
         };
 
-        let fact_id = match aletheia_mneme::id::FactId::new(format!("audit-{}", aletheia_koina::ulid::Ulid::new()))
+        let fact_id = match mneme::id::FactId::new(format!("audit-{}", koina::ulid::Ulid::new()))
         {
             Ok(id) => id,
             Err(e) => {
@@ -343,7 +343,7 @@ pub fn store_audit_report(
             }
         };
 
-        let fact = aletheia_mneme::knowledge::Fact {
+        let fact = mneme::knowledge::Fact {
             id: fact_id,
             nous_id: report.nous_id.clone(),
             fact_type: String::from("audit"),
@@ -358,7 +358,7 @@ pub fn store_audit_report(
                 confidence,
                 tier,
                 source_session_id: None,
-                stability_hours: aletheia_mneme::knowledge::FactType::Audit.base_stability_hours(),
+                stability_hours: mneme::knowledge::FactType::Audit.base_stability_hours(),
             },
             lifecycle: FactLifecycle {
                 superseded_by: None,
@@ -397,10 +397,10 @@ pub fn store_audit_report(
 /// Returns an error if the knowledge store query fails.
 #[cfg(feature = "knowledge-store")]
 pub fn query_audit_history(
-    knowledge_store: &aletheia_mneme::knowledge_store::KnowledgeStore,
+    knowledge_store: &mneme::knowledge_store::KnowledgeStore,
     nous_id: &str,
     limit: usize,
-) -> crate::error::Result<Vec<aletheia_mneme::knowledge::Fact>> {
+) -> crate::error::Result<Vec<mneme::knowledge::Fact>> {
     use snafu::ResultExt;
 
     let limit_i64 = i64::try_from(limit).unwrap_or(i64::MAX);

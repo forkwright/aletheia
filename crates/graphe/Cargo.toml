@@ -1,5 +1,5 @@
 [package]
-name = "aletheia-graphe"
+name = "graphe"
 version.workspace = true
 description = "Session persistence layer for Aletheia"
 edition.workspace = true
@@ -19,8 +19,8 @@ test-core = []
 test-full = []
 
 [dependencies]
-aletheia-eidos = { path = "../eidos" }
-aletheia-koina = { path = "../koina" }
+eidos = { path = "../eidos" }
+koina = { path = "../koina" }
 jiff = { workspace = true, features = ["serde"] }
 prometheus = { workspace = true }
 rusqlite = { workspace = true, optional = true }

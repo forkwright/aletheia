@@ -1,5 +1,5 @@
 [package]
-name = "aletheia-mneme"
+name = "mneme"
 version.workspace = true
 description = "Session store and memory engine for Aletheia"
 edition.workspace = true
@@ -12,23 +12,23 @@ workspace = true
 
 [features]
 default = ["sqlite", "graph-algo"]
-graph-algo = ["aletheia-episteme/graph-algo"]
+graph-algo = ["episteme/graph-algo"]
 # Gates MockEmbeddingProvider and other test helpers. No test code in release binaries.
-test-support = ["aletheia-episteme/test-support"]
-sqlite = ["aletheia-graphe/sqlite"]
-embed-candle = ["aletheia-episteme/embed-candle"]
+test-support = ["episteme/test-support"]
+sqlite = ["graphe/sqlite"]
+embed-candle = ["episteme/embed-candle"]
 # mneme-engine coexists with sqlite (no link conflict verified).
-mneme-engine = ["dep:aletheia-krites", "aletheia-graphe/mneme-engine", "aletheia-episteme/mneme-engine"]
-storage-fjall = ["mneme-engine", "aletheia-episteme/storage-fjall"]
+mneme-engine = ["dep:krites", "graphe/mneme-engine", "episteme/mneme-engine"]
+storage-fjall = ["mneme-engine", "episteme/storage-fjall"]
 # Test tiers (see docs/test-tiers.md)
 test-core = ["mneme-engine", "storage-fjall"]
 test-full = ["test-core", "embed-candle"]
 
 [dependencies]
-aletheia-eidos = { path = "../eidos" }
-aletheia-graphe = { path = "../graphe", default-features = false }
-aletheia-episteme = { path = "../episteme", default-features = false }
-aletheia-krites = { path = "../krites", optional = true }
+eidos = { path = "../eidos" }
+graphe = { path = "../graphe", default-features = false }
+episteme = { path = "../episteme", default-features = false }
+krites = { path = "../krites", optional = true }
 jiff = { workspace = true, features = ["serde"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -36,7 +36,7 @@ snafu = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
-aletheia-episteme = { path = "../episteme", features = ["test-support"] }
+episteme = { path = "../episteme", features = ["test-support"] }
 proptest = { workspace = true }
 serde_json = { workspace = true }
 tempfile = { workspace = true }

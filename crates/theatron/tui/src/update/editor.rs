@@ -1,6 +1,6 @@
 //! Message handlers for the file editor view.
 
-use aletheia_koina::system::{Environment, RealSystem};
+use koina::system::{Environment, RealSystem};
 
 use crate::app::App;
 use crate::msg::ErrorToast;

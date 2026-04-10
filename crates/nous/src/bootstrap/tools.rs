@@ -4,8 +4,8 @@
 //! - **Summary**: name + one-liner, included in bootstrap for all tools
 //! - **Expanded**: full description + parameters, loaded on demand
 
-use aletheia_organon::registry::ToolRegistry;
-use aletheia_organon::types::ToolDef;
+use organon::registry::ToolRegistry;
+use organon::types::ToolDef;
 
 /// Compact tool summary for bootstrap inclusion.
 ///

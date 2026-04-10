@@ -1,4 +1,4 @@
-use aletheia_koina::secret::SecretString;
+use koina::secret::SecretString;
 
 use crate::api::types::*;
 use crate::id::{NousId, PlanId, SessionId, ToolId, TurnId};

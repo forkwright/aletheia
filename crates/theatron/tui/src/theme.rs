@@ -1,4 +1,4 @@
-use aletheia_koina::system::{Environment, RealSystem};
+use koina::system::{Environment, RealSystem};
 use ratatui::style::{Color, Modifier, Style};
 
 /// Terminal color depth, detected at startup.

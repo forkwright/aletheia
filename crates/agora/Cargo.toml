@@ -1,5 +1,5 @@
 [package]
-name = "aletheia-agora"
+name = "agora"
 version.workspace = true
 description = "Channel registry and provider implementations (Signal)"
 edition.workspace = true
@@ -15,8 +15,8 @@ test-core = []
 test-full = []
 
 [dependencies]
-aletheia-koina = { path = "../koina" }
-aletheia-taxis = { path = "../taxis" }
+koina = { path = "../koina" }
+taxis = { path = "../taxis" }
 indexmap = { workspace = true }
 prometheus = { workspace = true }
 reqwest = { workspace = true }
@@ -28,6 +28,6 @@ tokio-util = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
-aletheia-organon = { path = "../organon", features = ["test-support"] }
+organon = { path = "../organon", features = ["test-support"] }
 tokio = { workspace = true }
 wiremock = { workspace = true }

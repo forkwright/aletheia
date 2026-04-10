@@ -246,7 +246,7 @@ fn rows_to_causal_edges(
             crate::id::FactId::new(effect_str.as_str()).context(crate::error::InvalidIdSnafu)?;
         // WHY: Datalog rows don't carry id/relationship_type/evidence_session_id;
         // generate a fresh edge ID and default the optional fields.
-        let id = crate::id::CausalEdgeId::new(aletheia_koina::ulid::Ulid::new().to_string())
+        let id = crate::id::CausalEdgeId::new(koina::ulid::Ulid::new().to_string())
             .context(crate::error::InvalidIdSnafu)?;
         edges.push(crate::knowledge::CausalEdge {
             id,

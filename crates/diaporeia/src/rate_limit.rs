@@ -4,7 +4,7 @@
 use std::sync::Mutex;
 use std::time::Instant;
 
-use aletheia_taxis::config::McpRateLimitConfig;
+use taxis::config::McpRateLimitConfig;
 
 /// Operation cost tier for rate limiting.
 #[derive(Clone, Copy)]

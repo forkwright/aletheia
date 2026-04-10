@@ -11,12 +11,12 @@ use std::sync::LazyLock;
 
 use libfuzzer_sys::fuzz_target;
 
-use aletheia_mneme::id::FactId;
-use aletheia_mneme::knowledge::{
+use mneme::id::FactId;
+use mneme::knowledge::{
     EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactTemporal, FactType,
     ForgetReason, far_future, format_timestamp, parse_timestamp,
 };
-use aletheia_mneme::knowledge_store::KnowledgeStore;
+use mneme::knowledge_store::KnowledgeStore;
 
 /// Shared in-memory knowledge store, initialized once for the fuzzer process.
 static STORE: LazyLock<std::sync::Arc<KnowledgeStore>> =
@@ -78,7 +78,7 @@ fuzz_target!(|data: &[u8]| {
 
     // Clamp content to MAX_CONTENT_LENGTH to focus on store logic, not validation.
     // WHY: floor_char_boundary + .get() avoids panics on UTF-8 boundaries in fuzz input.
-    let max_len = aletheia_mneme::knowledge::MAX_CONTENT_LENGTH;
+    let max_len = mneme::knowledge::MAX_CONTENT_LENGTH;
     let content: &str = if content.len() > max_len {
         let end = content.floor_char_boundary(max_len);
         content.get(..end).unwrap_or(&content)

@@ -30,9 +30,9 @@ use std::sync::Arc;
 use tokio::runtime::Handle;
 use tokio::sync::Mutex;
 
-use aletheia_mneme::store::SessionStore;
-use aletheia_organon::error::{StoreError, StoreSnafu};
-use aletheia_organon::types::{BlackboardEntry, BlackboardStore, NoteEntry, NoteStore};
+use mneme::store::SessionStore;
+use organon::error::{StoreError, StoreSnafu};
+use organon::types::{BlackboardEntry, BlackboardStore, NoteEntry, NoteStore};
 
 /// Acquire the store lock from a synchronous trait method inside an async context.
 ///
@@ -171,7 +171,7 @@ impl BlackboardStore for SessionBlackboardAdapter {
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
-    use aletheia_organon::types::NoteStore;
+    use organon::types::NoteStore;
 
     use super::*;
 

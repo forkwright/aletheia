@@ -25,24 +25,24 @@ use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 use tower::ServiceExt;
 
-use aletheia_hermeneus::provider::ProviderRegistry;
-use aletheia_hermeneus::test_utils::MockProvider;
-use aletheia_koina::http::{API_HEALTH, API_V1, BEARER_PREFIX};
-use aletheia_koina::secret::SecretString;
-use aletheia_mneme::store::SessionStore;
-use aletheia_nous::config::{NousConfig, NousGenerationConfig, PipelineConfig};
-use aletheia_nous::manager::NousManager;
-use aletheia_organon::registry::ToolRegistry;
-use aletheia_pylon::idempotency::IdempotencyCache;
-use aletheia_pylon::router::build_router;
-use aletheia_pylon::security::{
+use hermeneus::provider::ProviderRegistry;
+use hermeneus::test_utils::MockProvider;
+use koina::http::{API_HEALTH, API_V1, BEARER_PREFIX};
+use koina::secret::SecretString;
+use mneme::store::SessionStore;
+use nous::config::{NousConfig, NousGenerationConfig, PipelineConfig};
+use nous::manager::NousManager;
+use organon::registry::ToolRegistry;
+use pylon::idempotency::IdempotencyCache;
+use pylon::router::build_router;
+use pylon::security::{
     CorsConfig, CsrfConfig, RateLimitConfig, SecurityConfig, TlsConfig,
 };
-use aletheia_pylon::state::AppState;
-use aletheia_symbolon::jwt::{JwtConfig, JwtManager};
-use aletheia_symbolon::types::{Claims, Role, TokenKind};
-use aletheia_taxis::config::AletheiaConfig;
-use aletheia_taxis::oikos::Oikos;
+use pylon::state::AppState;
+use symbolon::jwt::{JwtConfig, JwtManager};
+use symbolon::types::{Claims, Role, TokenKind};
+use taxis::config::AletheiaConfig;
+use taxis::oikos::Oikos;
 
 // ── Fixtures ────────────────────────────────────────────────────────────────
 

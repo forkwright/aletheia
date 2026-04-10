@@ -8,7 +8,7 @@ use clap::Args;
 use serde::Deserialize;
 use snafu::prelude::*;
 
-use aletheia_koina::http::{API_V1, BEARER_PREFIX};
+use koina::http::{API_V1, BEARER_PREFIX};
 
 use crate::error::Result;
 

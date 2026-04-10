@@ -9,18 +9,18 @@
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use aletheia_hermeneus::provider::{LlmProvider, ProviderRegistry};
-use aletheia_hermeneus::types::{
+use hermeneus::provider::{LlmProvider, ProviderRegistry};
+use hermeneus::types::{
     CompletionRequest, CompletionResponse, ContentBlock, StopReason, Usage,
 };
-use aletheia_koina::id::ToolName;
-use aletheia_nous::config::{NousConfig, PipelineConfig};
-use aletheia_nous::manager::NousManager;
-use aletheia_organon::registry::ToolRegistry;
-use aletheia_organon::types::ToolCategory;
-use aletheia_taxis::oikos::Oikos;
-use aletheia_thesauros::loader::load_packs;
-use aletheia_thesauros::tools::register_pack_tools;
+use koina::id::ToolName;
+use nous::config::{NousConfig, PipelineConfig};
+use nous::manager::NousManager;
+use organon::registry::ToolRegistry;
+use organon::types::ToolCategory;
+use taxis::oikos::Oikos;
+use thesauros::loader::load_packs;
+use thesauros::tools::register_pack_tools;
 
 // --- Test infrastructure ---
 
@@ -57,7 +57,7 @@ impl LlmProvider for CapturingMockProvider {
         request: &'a CompletionRequest,
     ) -> std::pin::Pin<
         Box<
-            dyn std::future::Future<Output = aletheia_hermeneus::error::Result<CompletionResponse>>
+            dyn std::future::Future<Output = hermeneus::error::Result<CompletionResponse>>
                 + Send
                 + 'a,
         >,
@@ -173,7 +173,7 @@ priority = "important"
 
     let config = NousConfig {
         id: Arc::from("test-agent"),
-        generation: aletheia_nous::config::NousGenerationConfig {
+        generation: nous::config::NousGenerationConfig {
             model: "mock-model".to_owned(),
             ..Default::default()
         },
@@ -325,7 +325,7 @@ domains = ["healthcare"]
 
     let analyst_config = NousConfig {
         id: Arc::from("analyst"),
-        generation: aletheia_nous::config::NousGenerationConfig {
+        generation: nous::config::NousGenerationConfig {
             model: "mock-model".to_owned(),
             ..Default::default()
         },
@@ -362,7 +362,7 @@ domains = ["healthcare"]
 
     let hermes_config = NousConfig {
         id: Arc::from("hermes"),
-        generation: aletheia_nous::config::NousGenerationConfig {
+        generation: nous::config::NousGenerationConfig {
             model: "mock-model".to_owned(),
             ..Default::default()
         },

@@ -83,9 +83,9 @@ pub(crate) async fn run(action: Action, url: &str, instance_root: Option<&PathBu
             );
         }
 
-        let config = aletheia_mneme::knowledge_store::KnowledgeConfig::default();
+        let config = mneme::knowledge_store::KnowledgeConfig::default();
         let store =
-            aletheia_mneme::knowledge_store::KnowledgeStore::open_fjall(&knowledge_path, config)
+            mneme::knowledge_store::KnowledgeStore::open_fjall(&knowledge_path, config)
                 .whatever_context("failed to open knowledge store")?;
 
         match action {
@@ -183,7 +183,7 @@ async fn run_check_via_api(url: &str, json: bool) -> Result<()> {
 
 #[cfg(feature = "recall")]
 fn run_check(
-    store: &std::sync::Arc<aletheia_mneme::knowledge_store::KnowledgeStore>,
+    store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
     json: bool,
 ) -> Result<()> {
     let report = build_check_report(store)?;
@@ -266,7 +266,7 @@ struct CheckReport {
 
 #[cfg(feature = "recall")]
 fn build_check_report(
-    store: &std::sync::Arc<aletheia_mneme::knowledge_store::KnowledgeStore>,
+    store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
 ) -> Result<CheckReport> {
     let fact_count = count_relation(store, "facts")?;
     let entity_count = count_relation(store, "entities")?;
@@ -293,7 +293,7 @@ fn build_check_report(
 
 #[cfg(feature = "recall")]
 fn count_relation(
-    store: &std::sync::Arc<aletheia_mneme::knowledge_store::KnowledgeStore>,
+    store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
     relation: &str,
 ) -> Result<usize> {
     use std::collections::BTreeMap;
@@ -311,14 +311,14 @@ fn count_relation(
         .rows
         .first()
         .and_then(|r| r.first())
-        .and_then(aletheia_mneme::engine::DataValue::get_int)
+        .and_then(mneme::engine::DataValue::get_int)
         .unwrap_or(0);
     Ok(usize::try_from(count).unwrap_or(0))
 }
 
 #[cfg(feature = "recall")]
 fn find_orphaned_entities(
-    store: &std::sync::Arc<aletheia_mneme::knowledge_store::KnowledgeStore>,
+    store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
 ) -> Result<Vec<String>> {
     use std::collections::BTreeMap;
     let script = r"
@@ -340,7 +340,7 @@ fn find_orphaned_entities(
 
 #[cfg(feature = "recall")]
 fn find_dangling_edges(
-    store: &std::sync::Arc<aletheia_mneme::knowledge_store::KnowledgeStore>,
+    store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
 ) -> Result<Vec<String>> {
     use std::collections::BTreeMap;
     let script = r"
@@ -369,7 +369,7 @@ fn find_dangling_edges(
 
 #[cfg(feature = "recall")]
 fn find_orphaned_embeddings(
-    store: &std::sync::Arc<aletheia_mneme::knowledge_store::KnowledgeStore>,
+    store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
 ) -> Result<Vec<String>> {
     use std::collections::BTreeMap;
     let script = r"
@@ -392,11 +392,11 @@ fn find_orphaned_embeddings(
 
 #[cfg(feature = "recall")]
 fn run_consolidate(
-    store: &std::sync::Arc<aletheia_mneme::knowledge_store::KnowledgeStore>,
+    store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
     nous_id: &str,
     dry_run: bool,
 ) -> Result<()> {
-    use aletheia_mneme::consolidation::ConsolidationConfig;
+    use mneme::consolidation::ConsolidationConfig;
 
     let config = ConsolidationConfig::default();
 
@@ -440,14 +440,14 @@ fn run_consolidate(
 
 #[cfg(feature = "recall")]
 fn run_sample(
-    store: &std::sync::Arc<aletheia_mneme::knowledge_store::KnowledgeStore>,
+    store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
     count: u16,
     nous_id: Option<&str>,
 ) -> Result<()> {
     let limit = i64::from(count).saturating_mul(5).max(100);
     let facts = match nous_id {
         Some(id) => {
-            let now = aletheia_mneme::knowledge::format_timestamp(&jiff::Timestamp::now());
+            let now = mneme::knowledge::format_timestamp(&jiff::Timestamp::now());
             store
                 .query_facts(id, &now, limit)
                 .whatever_context("query failed")?
@@ -509,7 +509,7 @@ fn sample_random<T: Clone>(items: &[T], count: usize) -> Vec<T> {
 
 #[cfg(feature = "recall")]
 fn run_dedup(
-    store: &std::sync::Arc<aletheia_mneme::knowledge_store::KnowledgeStore>,
+    store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
     nous_id: &str,
     dry_run: bool,
 ) -> Result<()> {
@@ -589,14 +589,14 @@ fn run_dedup(
 /// Find facts with identical content (by SHA-256 hash).
 #[cfg(feature = "recall")]
 fn find_content_hash_duplicates(
-    store: &std::sync::Arc<aletheia_mneme::knowledge_store::KnowledgeStore>,
+    store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
     nous_id: &str,
 ) -> Result<Vec<(String, Vec<String>)>> {
     use std::collections::HashMap;
 
     use sha2::{Digest, Sha256};
 
-    let now = aletheia_mneme::knowledge::format_timestamp(&jiff::Timestamp::now());
+    let now = mneme::knowledge::format_timestamp(&jiff::Timestamp::now());
     let facts = store
         .query_facts(nous_id, &now, 10_000)
         .whatever_context("fact query failed")?;
@@ -634,7 +634,7 @@ fn find_content_hash_duplicates(
 
 #[cfg(feature = "recall")]
 fn run_patterns(
-    store: &std::sync::Arc<aletheia_mneme::knowledge_store::KnowledgeStore>,
+    store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
     _nous_id: Option<&str>,
     limit: u16,
 ) -> Result<()> {
@@ -679,7 +679,7 @@ fn run_patterns(
 
 #[cfg(feature = "recall")]
 fn find_entity_cooccurrence(
-    store: &std::sync::Arc<aletheia_mneme::knowledge_store::KnowledgeStore>,
+    store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
     limit: i64,
 ) -> Result<Vec<(String, String, i64)>> {
     use std::collections::BTreeMap;
@@ -711,7 +711,7 @@ fn find_entity_cooccurrence(
             let b = r.get(1).and_then(|v| v.get_str())?.to_owned();
             let cnt = r
                 .get(2)
-                .and_then(aletheia_mneme::engine::DataValue::get_int)?;
+                .and_then(mneme::engine::DataValue::get_int)?;
             Some((a, b, cnt))
         })
         .collect())
@@ -719,7 +719,7 @@ fn find_entity_cooccurrence(
 
 #[cfg(feature = "recall")]
 fn find_relationship_chains(
-    store: &std::sync::Arc<aletheia_mneme::knowledge_store::KnowledgeStore>,
+    store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
     limit: i64,
 ) -> Result<Vec<(String, i64)>> {
     use std::collections::BTreeMap;
@@ -742,7 +742,7 @@ fn find_relationship_chains(
             let rel = r.first().and_then(|v| v.get_str())?.to_owned();
             let cnt = r
                 .get(1)
-                .and_then(aletheia_mneme::engine::DataValue::get_int)?;
+                .and_then(mneme::engine::DataValue::get_int)?;
             Some((rel, cnt))
         })
         .collect())
@@ -750,7 +750,7 @@ fn find_relationship_chains(
 
 #[cfg(feature = "recall")]
 fn find_hub_entities(
-    store: &std::sync::Arc<aletheia_mneme::knowledge_store::KnowledgeStore>,
+    store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
     limit: i64,
 ) -> Result<Vec<(String, i64)>> {
     use std::collections::BTreeMap;
@@ -780,7 +780,7 @@ fn find_hub_entities(
             let name = r.first().and_then(|v| v.get_str())?.to_owned();
             let total = r
                 .get(1)
-                .and_then(aletheia_mneme::engine::DataValue::get_int)?;
+                .and_then(mneme::engine::DataValue::get_int)?;
             Some((name, total))
         })
         .collect())

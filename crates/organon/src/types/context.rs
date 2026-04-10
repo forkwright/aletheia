@@ -6,7 +6,7 @@ use std::sync::{Arc, RwLock};
 
 use serde::{Deserialize, Serialize};
 
-use aletheia_koina::id::{NousId, SessionId, ToolName};
+use koina::id::{NousId, SessionId, ToolName};
 
 use super::services::{
     BlackboardStore, CrossNousService, KnowledgeSearchService, MessageService, NoteStore,
@@ -55,13 +55,13 @@ impl ServerToolConfig {
         // kanon:ignore RUST/pub-visibility
         &self,
         active: &HashSet<ToolName>,
-    ) -> Vec<aletheia_hermeneus::types::ServerToolDefinition> {
+    ) -> Vec<hermeneus::types::ServerToolDefinition> {
         let mut defs = Vec::new();
         let web_search_name = ToolName::from_static("web_search"); // kanon:ignore RUST/expect
         let code_exec_name = ToolName::from_static("code_execution"); // kanon:ignore RUST/expect
 
         if self.web_search && active.contains(&web_search_name) {
-            defs.push(aletheia_hermeneus::types::ServerToolDefinition {
+            defs.push(hermeneus::types::ServerToolDefinition {
                 tool_type: "web_search_20250305".to_owned(),
                 name: "web_search".to_owned(),
                 max_uses: self.web_search_max_uses,
@@ -71,7 +71,7 @@ impl ServerToolConfig {
             });
         }
         if self.code_execution && active.contains(&code_exec_name) {
-            defs.push(aletheia_hermeneus::types::ServerToolDefinition {
+            defs.push(hermeneus::types::ServerToolDefinition {
                 tool_type: "code_execution_20250522".to_owned(),
                 name: "code_execution".to_owned(),
                 max_uses: None,

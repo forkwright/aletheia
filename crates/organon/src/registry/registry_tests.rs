@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex, RwLock};
 
-use aletheia_koina::id::{NousId, SessionId};
+use koina::id::{NousId, SessionId};
 
 use super::*;
 use crate::types::{InputSchema, PropertyDef, PropertyType, Reversibility};

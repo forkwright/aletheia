@@ -1,8 +1,8 @@
 //! Validation helpers for `RuntimeBuilder::validate`.
 
-use aletheia_koina::system::{Environment, RealSystem};
-use aletheia_taxis::config::AletheiaConfig;
-use aletheia_taxis::oikos::Oikos;
+use koina::system::{Environment, RealSystem};
+use taxis::config::AletheiaConfig;
+use taxis::oikos::Oikos;
 
 /// Validate JWT key configuration. Returns `true` if valid.
 pub(super) fn validate_jwt(config: &AletheiaConfig) -> bool {

@@ -11,15 +11,15 @@ use snafu::ResultExt;
 use tokio::sync::mpsc;
 use tracing::{debug, info, instrument, warn};
 
-use aletheia_hermeneus::health::ProviderHealth;
-use aletheia_hermeneus::provider::{LlmProvider, ProviderRegistry};
-use aletheia_hermeneus::types::{
+use hermeneus::health::ProviderHealth;
+use hermeneus::provider::{LlmProvider, ProviderRegistry};
+use hermeneus::types::{
     CompletionRequest, Content, ContentBlock, Message, Role, ServerToolDefinition, StopReason,
     ThinkingConfig, ToolResultContent,
 };
-use aletheia_koina::id::ToolName;
-use aletheia_organon::registry::ToolRegistry;
-use aletheia_organon::types::ToolContext;
+use koina::id::ToolName;
+use organon::registry::ToolRegistry;
+use organon::types::ToolContext;
 
 use self::dispatch::{
     DispatchResult, build_messages, classify_signals, dispatch_tools, dispatch_tools_streaming,
@@ -233,7 +233,7 @@ pub async fn execute(
             }
         };
 
-        let aletheia_hermeneus::types::CompletionResponse {
+        let hermeneus::types::CompletionResponse {
             content: response_content,
             stop_reason,
             usage,
@@ -519,7 +519,7 @@ pub async fn execute_streaming(
             }
         };
 
-        let aletheia_hermeneus::types::CompletionResponse {
+        let hermeneus::types::CompletionResponse {
             content: response_content,
             stop_reason,
             usage,

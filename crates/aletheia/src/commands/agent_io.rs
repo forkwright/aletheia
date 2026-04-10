@@ -165,10 +165,10 @@ pub(crate) struct InitArgs {
     pub model: Option<String>,
 }
 
-use aletheia_mneme::store::SessionStore;
-use aletheia_taxis::config::resolve_nous;
-use aletheia_taxis::loader::load_config;
-use aletheia_taxis::oikos::Oikos;
+use mneme::store::SessionStore;
+use taxis::config::resolve_nous;
+use taxis::loader::load_config;
+use taxis::oikos::Oikos;
 
 pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -> Result<()> {
     let nous_id = &args.nous_id;
@@ -198,11 +198,11 @@ pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -
             })
         });
 
-    let opts = aletheia_mneme::export::ExportOptions {
+    let opts = mneme::export::ExportOptions {
         max_messages_per_session: args.max_messages,
         include_archived: args.archived,
     };
-    let agent_file = aletheia_mneme::export::export_agent(
+    let agent_file = mneme::export::export_agent(
         nous_id,
         resolved.name.as_deref(),
         Some(&resolved.model.primary),
@@ -261,7 +261,7 @@ pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -
 pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -> Result<()> {
     let json = std::fs::read_to_string(&args.file)
         .with_whatever_context(|_| format!("failed to read {}", args.file.display()))?;
-    let agent_file: aletheia_mneme::portability::AgentFile =
+    let agent_file: mneme::portability::AgentFile =
         serde_json::from_str(&json).whatever_context("failed to parse agent file")?;
 
     let nous_id = args.target_id.as_deref().unwrap_or(&agent_file.nous.id);
@@ -312,15 +312,15 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
         format!("failed to create workspace {}", workspace_path.display())
     })?;
 
-    let opts = aletheia_mneme::import::ImportOptions {
+    let opts = mneme::import::ImportOptions {
         skip_sessions: args.skip_sessions,
         skip_workspace: args.skip_workspace,
         target_nous_id: args.target_id.clone(),
         force: args.force,
     };
-    let id_gen = || aletheia_koina::ulid::Ulid::new().to_string();
+    let id_gen = || koina::ulid::Ulid::new().to_string();
     let result =
-        aletheia_mneme::import::import_agent(&agent_file, &store, &workspace_path, &id_gen, &opts)
+        mneme::import::import_agent(&agent_file, &store, &workspace_path, &id_gen, &opts)
             .whatever_context("import failed")?;
 
     println!("Imported agent: {}", result.nous_id);
@@ -337,7 +337,7 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
     reason = "CLI dispatch is inherently verbose — splitting would hurt readability"
 )]
 pub(crate) fn seed_skills(args: &SeedSkillsArgs) -> Result<()> {
-    use aletheia_mneme::skill::{SkillContent, parse_skill_md, scan_skill_dir};
+    use mneme::skill::{SkillContent, parse_skill_md, scan_skill_dir};
 
     let dir = &args.dir;
     let nous_id = &args.nous_id;
@@ -384,11 +384,11 @@ pub(crate) fn seed_skills(args: &SeedSkillsArgs) -> Result<()> {
 
     #[cfg(feature = "recall")]
     {
-        use aletheia_mneme::knowledge::{
+        use mneme::knowledge::{
             EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactTemporal,
             default_stability_hours,
         };
-        use aletheia_mneme::knowledge_store::KnowledgeStore;
+        use mneme::knowledge_store::KnowledgeStore;
 
         let store =
             KnowledgeStore::open_mem().whatever_context("failed to open knowledge store")?;
@@ -406,9 +406,9 @@ pub(crate) fn seed_skills(args: &SeedSkillsArgs) -> Result<()> {
             if let Some(existing_id) = existing {
                 if args.force {
                     if let Err(e) = store.forget_fact(
-                        &aletheia_mneme::id::FactId::new(existing_id)
+                        &mneme::id::FactId::new(existing_id)
                             .whatever_context("invalid fact id")?,
-                        aletheia_mneme::knowledge::ForgetReason::Outdated,
+                        mneme::knowledge::ForgetReason::Outdated,
                     ) {
                         eprintln!("  WARN: failed to supersede {slug}: {e}");
                     }
@@ -423,9 +423,9 @@ pub(crate) fn seed_skills(args: &SeedSkillsArgs) -> Result<()> {
             let content_json = serde_json::to_string(skill)
                 .with_whatever_context(|_| format!("failed to serialize skill: {slug}"))?;
 
-            let fact_id = aletheia_koina::ulid::Ulid::new().to_string();
+            let fact_id = koina::ulid::Ulid::new().to_string();
             let fact = Fact {
-                id: aletheia_mneme::id::FactId::new(fact_id.clone())
+                id: mneme::id::FactId::new(fact_id.clone())
                     .whatever_context("invalid fact id")?,
                 nous_id: nous_id.to_owned(),
                 content: content_json.clone(),
@@ -433,7 +433,7 @@ pub(crate) fn seed_skills(args: &SeedSkillsArgs) -> Result<()> {
                 scope: None,
                 temporal: FactTemporal {
                     valid_from: now,
-                    valid_to: aletheia_mneme::knowledge::far_future(),
+                    valid_to: mneme::knowledge::far_future(),
                     recorded_at: now,
                 },
                 provenance: FactProvenance {
@@ -459,9 +459,9 @@ pub(crate) fn seed_skills(args: &SeedSkillsArgs) -> Result<()> {
                 .with_whatever_context(|_| format!("failed to insert skill {slug}"))?;
 
             let embedding_text = format!("{}: {}", skill.name, skill.description);
-            let emb_id = aletheia_koina::ulid::Ulid::new().to_string();
-            let chunk = aletheia_mneme::knowledge::EmbeddedChunk {
-                id: aletheia_mneme::id::EmbeddingId::new(emb_id)
+            let emb_id = koina::ulid::Ulid::new().to_string();
+            let chunk = mneme::knowledge::EmbeddedChunk {
+                id: mneme::id::EmbeddingId::new(emb_id)
                     .whatever_context("invalid embedding id")?,
                 content: embedding_text,
                 source_type: "fact".to_owned(),
@@ -505,8 +505,8 @@ pub(crate) fn export_skills(
 ) -> Result<()> {
     #[cfg(feature = "recall")]
     {
-        use aletheia_mneme::knowledge_store::KnowledgeStore;
-        use aletheia_mneme::skill::{SkillContent, export_skills_to_cc};
+        use mneme::knowledge_store::KnowledgeStore;
+        use mneme::skill::{SkillContent, export_skills_to_cc};
 
         let oikos = match instance_root {
             Some(root) => Oikos::from_root(root),
@@ -514,7 +514,7 @@ pub(crate) fn export_skills(
         };
         let knowledge_path = oikos.knowledge_db();
 
-        let config = aletheia_mneme::knowledge_store::KnowledgeConfig::default();
+        let config = mneme::knowledge_store::KnowledgeConfig::default();
         let store =
             KnowledgeStore::open_fjall(&knowledge_path, config).with_whatever_context(|_| {
                 format!(
@@ -593,8 +593,8 @@ pub(crate) fn review_skills(
 ) -> Result<()> {
     #[cfg(feature = "recall")]
     {
-        use aletheia_mneme::knowledge_store::KnowledgeStore;
-        use aletheia_mneme::skills::extract::PendingSkill;
+        use mneme::knowledge_store::KnowledgeStore;
+        use mneme::skills::extract::PendingSkill;
 
         let oikos = match instance_root {
             Some(root) => Oikos::from_root(root),
@@ -602,7 +602,7 @@ pub(crate) fn review_skills(
         };
         let knowledge_path = oikos.knowledge_db();
 
-        let config = aletheia_mneme::knowledge_store::KnowledgeConfig::default();
+        let config = mneme::knowledge_store::KnowledgeConfig::default();
         let store =
             KnowledgeStore::open_fjall(&knowledge_path, config).with_whatever_context(|_| {
                 format!(
@@ -655,7 +655,7 @@ pub(crate) fn review_skills(
                     crate::error::Error::msg("--fact-id required for approve action")
                 })?;
                 let fact_id =
-                    aletheia_mneme::id::FactId::new(fid).whatever_context("invalid fact id")?;
+                    mneme::id::FactId::new(fid).whatever_context("invalid fact id")?;
                 let new_id = store
                     .approve_pending_skill(&fact_id, nous_id)
                     .whatever_context("failed to approve skill")?;
@@ -666,7 +666,7 @@ pub(crate) fn review_skills(
                     crate::error::Error::msg("--fact-id required for reject action")
                 })?;
                 let fact_id =
-                    aletheia_mneme::id::FactId::new(fid).whatever_context("invalid fact id")?;
+                    mneme::id::FactId::new(fid).whatever_context("invalid fact id")?;
                 store
                     .reject_pending_skill(&fact_id)
                     .whatever_context("failed to reject skill")?;

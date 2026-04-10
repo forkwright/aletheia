@@ -131,9 +131,9 @@ impl Error {
 /// Convenience alias for `Result<T, Error>`.
 pub type Result<T> = std::result::Result<T, Error>; // kanon:ignore RUST/pub-visibility
 
-impl aletheia_koina::error_class::Classifiable for Error {
-    fn class(&self) -> aletheia_koina::error_class::ErrorClass {
-        use aletheia_koina::error_class::ErrorClass;
+impl koina::error_class::Classifiable for Error {
+    fn class(&self) -> koina::error_class::ErrorClass {
+        use koina::error_class::ErrorClass;
         match self {
             // Transient: safe to retry — rate limits + server errors (5xx)
             Error::RateLimited { .. }
@@ -168,8 +168,8 @@ impl aletheia_koina::error_class::Classifiable for Error {
         }
     }
 
-    fn action(&self) -> aletheia_koina::error_class::ErrorAction {
-        use aletheia_koina::error_class::ErrorAction;
+    fn action(&self) -> koina::error_class::ErrorAction {
+        use koina::error_class::ErrorAction;
         match self {
             Error::RateLimited { retry_after_ms, .. } => ErrorAction::Retry {
                 max_attempts: 4,

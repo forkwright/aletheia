@@ -53,7 +53,7 @@ async fn auth_expired_token_returns_401() {
     let router = harness.router();
 
     // Craft a token with exp far in the past
-    let claims = aletheia_symbolon::types::Claims {
+    let claims = symbolon::types::Claims {
         sub: "test-user".to_owned(),
         role: Role::Operator,
         nous_id: None,
@@ -61,7 +61,7 @@ async fn auth_expired_token_returns_401() {
         iat: 1_000_000,
         exp: 1_000_001, // 1970-01-12: well past any leeway
         jti: "expired-test".to_owned(),
-        kind: aletheia_symbolon::types::TokenKind::Access,
+        kind: symbolon::types::TokenKind::Access,
     };
     let token = harness
         .jwt_manager

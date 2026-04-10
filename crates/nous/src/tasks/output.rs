@@ -87,7 +87,7 @@ impl OutputWriter {
         // WHY: Create parent dir if missing so callers don't need to pre-create.
         fs::create_dir_all(dir).await.context(CreateSnafu)?;
 
-        let path = dir.join(format!("task-output-{}.log", aletheia_koina::uuid::uuid_v4()));
+        let path = dir.join(format!("task-output-{}.log", koina::uuid::uuid_v4()));
         let file = fs::File::create(&path).await.context(CreateSnafu)?;
 
         Ok(Self { file, path })

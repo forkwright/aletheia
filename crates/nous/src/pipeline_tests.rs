@@ -194,7 +194,7 @@ async fn assemble_context_populates_pipeline() {
 
     use tempfile::TempDir;
 
-    use aletheia_taxis::oikos::Oikos;
+    use taxis::oikos::Oikos;
 
     use crate::config::{NousConfig, PipelineConfig};
 
@@ -242,11 +242,11 @@ async fn run_pipeline_simple() {
 
     use tempfile::TempDir;
 
-    use aletheia_hermeneus::provider::ProviderRegistry;
-    use aletheia_hermeneus::test_utils::MockProvider;
-    use aletheia_koina::id::{NousId, SessionId};
-    use aletheia_organon::registry::ToolRegistry;
-    use aletheia_organon::types::ToolContext;
+    use hermeneus::provider::ProviderRegistry;
+    use hermeneus::test_utils::MockProvider;
+    use koina::id::{NousId, SessionId};
+    use organon::registry::ToolRegistry;
+    use organon::types::ToolContext;
 
     let dir = TempDir::new().expect("create temp dir");
     let root = dir.path();
@@ -460,7 +460,7 @@ fn check_guard_always_allows() {
 async fn assemble_context_missing_soul_returns_error() {
     use tempfile::TempDir;
 
-    use aletheia_taxis::oikos::Oikos;
+    use taxis::oikos::Oikos;
 
     let dir = TempDir::new().expect("create temp dir");
     let root = dir.path();

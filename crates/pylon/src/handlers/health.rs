@@ -1,6 +1,6 @@
 //! Health check endpoint.
 
-use aletheia_koina::system::{Environment, RealSystem};
+use koina::system::{Environment, RealSystem};
 use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
@@ -126,7 +126,7 @@ fn check_provider_reachability(state: &HealthState) -> HealthCheck {
     // Check if any provider is healthy (Up status)
     let any_healthy = providers
         .iter()
-        .any(|p| state.provider_registry.provider_health(p.name()) == Some(aletheia_hermeneus::health::ProviderHealth::Up));
+        .any(|p| state.provider_registry.provider_health(p.name()) == Some(hermeneus::health::ProviderHealth::Up));
 
     if any_healthy {
         HealthCheck {
@@ -139,7 +139,7 @@ fn check_provider_reachability(state: &HealthState) -> HealthCheck {
         let any_degraded = providers.iter().any(|p| {
             matches!(
                 state.provider_registry.provider_health(p.name()),
-                Some(aletheia_hermeneus::health::ProviderHealth::Degraded { .. })
+                Some(hermeneus::health::ProviderHealth::Degraded { .. })
             )
         });
 
@@ -268,7 +268,7 @@ fn check_credential_validity(state: &HealthState) -> HealthCheck {
     let creds_dir = state.oikos.credentials();
     let cred_file = creds_dir.join("anthropic.json");
 
-    match aletheia_symbolon::credential::CredentialFile::load(&cred_file) {
+    match symbolon::credential::CredentialFile::load(&cred_file) {
         Some(cred_file) => {
             // Check if token is expired or expiring soon
             if let Some(remaining_secs) = cred_file.seconds_remaining() {
@@ -444,11 +444,11 @@ mod tests {
         )]
         fn assert_health_state_fields(state: &HealthState) {
             use std::sync::Arc;
-            use aletheia_mneme::store::SessionStore;
-            use aletheia_hermeneus::provider::ProviderRegistry;
-            use aletheia_nous::manager::NousManager;
-            use aletheia_taxis::oikos::Oikos;
-            use aletheia_taxis::config::AletheiaConfig;
+            use mneme::store::SessionStore;
+            use hermeneus::provider::ProviderRegistry;
+            use nous::manager::NousManager;
+            use taxis::oikos::Oikos;
+            use taxis::config::AletheiaConfig;
 
             let _: &Arc<tokio::sync::Mutex<SessionStore>> = &state.session_store;
             let _: &Arc<ProviderRegistry> = &state.provider_registry;

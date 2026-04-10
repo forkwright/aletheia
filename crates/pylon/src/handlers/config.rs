@@ -8,7 +8,7 @@ use serde_json::Value;
 use tracing::instrument;
 use utoipa::ToSchema;
 
-use aletheia_symbolon::types::Role;
+use symbolon::types::Role;
 
 use crate::error::ApiError;
 use crate::extract::{Claims, require_role};
@@ -66,7 +66,7 @@ pub async fn get_config(
     _claims: Claims,
 ) -> Result<Json<Value>, ApiError> {
     let config = state.config.read().await;
-    let redacted = aletheia_taxis::redact::redact(&config);
+    let redacted = taxis::redact::redact(&config);
     Ok(Json(redacted))
 }
 
@@ -100,7 +100,7 @@ pub async fn get_section(
     }
 
     let config = state.config.read().await;
-    let redacted = aletheia_taxis::redact::redact(&config);
+    let redacted = taxis::redact::redact(&config);
 
     match redacted.get(&section) {
         Some(val) => Ok(Json(val.clone())),
@@ -138,10 +138,10 @@ pub async fn reload_config(
 ) -> Result<impl IntoResponse, ApiError> {
     require_role(&claims, Role::Operator)?;
     let current = state.config.read().await.clone();
-    let outcome = aletheia_taxis::reload::prepare_reload(&state.oikos, &current).map_err(|e| {
+    let outcome = taxis::reload::prepare_reload(&state.oikos, &current).map_err(|e| {
         tracing::error!(error = %e, "config reload failed");
         match e {
-            aletheia_taxis::reload::ReloadError::Validation { source, .. } => {
+            taxis::reload::ReloadError::Validation { source, .. } => {
                 ApiError::ValidationFailed {
                     errors: source.errors,
                     location: snafu::location!(),
@@ -213,7 +213,7 @@ pub async fn update_section(
         });
     }
 
-    if let Err(err) = aletheia_taxis::validate::validate_section(&section, &body) {
+    if let Err(err) = taxis::validate::validate_section(&section, &body) {
         return Err(ApiError::ValidationFailed {
             errors: err.errors,
             location: snafu::location!(),
@@ -236,7 +236,7 @@ pub async fn update_section(
     // WHY: Deserialize back to verify structural validity.
     // Log serde details internally; the error message exposed to the client must not
     // include field paths or internal type names from the serde error. (#845)
-    let new_config: aletheia_taxis::config::AletheiaConfig =
+    let new_config: taxis::config::AletheiaConfig =
         serde_json::from_value(config_value).map_err(|e| {
             tracing::error!(error = %e, section = %section, "config deserialization failed after merge");
             ApiError::ValidationFailed {
@@ -245,21 +245,21 @@ pub async fn update_section(
             }
         })?;
 
-    aletheia_taxis::loader::write_config(&state.oikos, &new_config).map_err(|e| {
+    taxis::loader::write_config(&state.oikos, &new_config).map_err(|e| {
         ApiError::Internal {
             message: format!("failed to write config: {e}"),
             location: snafu::location!(),
         }
     })?;
 
-    let restart_required: Vec<String> = aletheia_taxis::reload::restart_prefixes()
+    let restart_required: Vec<String> = taxis::reload::restart_prefixes()
         .iter()
         .filter(|p| p.starts_with(&format!("{section}.")))
         .map(|p| (*p).to_owned())
         .collect();
 
     *config = new_config.clone();
-    let redacted = aletheia_taxis::redact::redact(&config);
+    let redacted = taxis::redact::redact(&config);
     drop(config);
 
     let _ = state.config_tx.send(new_config);

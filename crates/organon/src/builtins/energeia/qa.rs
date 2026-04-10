@@ -8,9 +8,9 @@ use std::pin::Pin;
 
 use indexmap::IndexMap;
 
-use aletheia_energeia::qa::corrective::generate_corrective;
-use aletheia_energeia::qa::run_qa;
-use aletheia_koina::id::ToolName;
+use energeia::qa::corrective::generate_corrective;
+use energeia::qa::run_qa;
+use koina::id::ToolName;
 
 use crate::error::Result;
 use crate::registry::ToolExecutor;
@@ -100,7 +100,7 @@ impl ToolExecutor for DokimasiaExecutor {
             // prompt spec loading (with real acceptance criteria) requires file
             // I/O outside the tool's scope. Callers can add criteria via a future
             // schema extension. Mechanical checks run against the empty diff.
-            let qa_prompt = aletheia_energeia::qa::PromptSpec::new(
+            let qa_prompt = energeia::qa::PromptSpec::new(
                 prompt_number,
                 format!("Prompt #{prompt_number}"),
             );
@@ -188,7 +188,7 @@ impl ToolExecutor for DiorthosisExecutor {
             // dokimasia) so callers can chain dokimasia -> diorthosis without a
             // persistent QA result store. A future store extension will support opaque
             // IDs for server-side lookup.
-            let qa_result: aletheia_energeia::types::QaResult =
+            let qa_result: energeia::types::QaResult =
                 match serde_json::from_str(qa_result_id) {
                     Ok(r) => r,
                     Err(_) => {
@@ -199,7 +199,7 @@ impl ToolExecutor for DiorthosisExecutor {
                     }
                 };
 
-            let original = aletheia_energeia::qa::PromptSpec::new(
+            let original = energeia::qa::PromptSpec::new(
                 original_prompt_number,
                 format!("Prompt #{original_prompt_number}"),
             );

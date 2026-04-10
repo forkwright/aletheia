@@ -11,8 +11,8 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{EnvFilter, fmt};
 
-use aletheia_koina::redacting_layer::RedactingLayer;
-use aletheia_taxis::oikos::Oikos;
+use koina::redacting_layer::RedactingLayer;
+use taxis::oikos::Oikos;
 
 use crate::error::Result;
 
@@ -26,7 +26,7 @@ use crate::error::Result;
 /// (`max_archives = 0`), which produces a net deletion of old log files without
 /// requiring a separate archive housekeeping step.
 pub(super) fn spawn_log_retention(log_dir: PathBuf, retention_days: u32, token: CancellationToken) {
-    use aletheia_oikonomos::maintenance::{TraceRotationConfig, TraceRotator};
+    use oikonomos::maintenance::{TraceRotationConfig, TraceRotator};
 
     let span = tracing::info_span!("log_retention", retention_days, dir = %log_dir.display());
     tokio::spawn(
@@ -92,7 +92,7 @@ pub(super) fn init_tracing(
     json: bool,
     log_dir: &Path,
     file_level: &str,
-    redaction: &aletheia_taxis::config::RedactionSettings,
+    redaction: &taxis::config::RedactionSettings,
 ) -> Result<WorkerGuard> {
     // NOTE: Respects RUST_LOG env var; falls back to the CLI level.
     let console_filter = EnvFilter::try_from_default_env()

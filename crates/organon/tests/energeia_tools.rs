@@ -8,18 +8,18 @@ use std::collections::HashSet;
 use std::pin::Pin;
 use std::sync::{Arc, RwLock};
 
-use aletheia_energeia::engine::{SessionEvent, SessionResult};
-use aletheia_energeia::http::mock::{MockEngine, MockOutcome};
-use aletheia_energeia::orchestrator::{Orchestrator, OrchestratorConfig};
-use aletheia_energeia::qa::{PromptSpec as QaPromptSpec, QaGate};
-use aletheia_energeia::store::EnergeiaStore;
-use aletheia_energeia::types::{MechanicalIssue, QaResult, QaVerdict};
-use aletheia_koina::id::{NousId, SessionId, ToolName};
+use energeia::engine::{SessionEvent, SessionResult};
+use energeia::http::mock::{MockEngine, MockOutcome};
+use energeia::orchestrator::{Orchestrator, OrchestratorConfig};
+use energeia::qa::{PromptSpec as QaPromptSpec, QaGate};
+use energeia::store::EnergeiaStore;
+use energeia::types::{MechanicalIssue, QaResult, QaVerdict};
+use koina::id::{NousId, SessionId, ToolName};
 use tempfile::TempDir;
 
-use aletheia_organon::builtins::energeia::{EnergeiaServices, register};
-use aletheia_organon::registry::ToolRegistry;
-use aletheia_organon::types::{ToolContext, ToolInput, ToolResult};
+use organon::builtins::energeia::{EnergeiaServices, register};
+use organon::registry::ToolRegistry;
+use organon::types::{ToolContext, ToolInput, ToolResult};
 
 // ── Mock QA gate ─────────────────────────────────────────────────────────────
 
@@ -33,7 +33,7 @@ impl QaGate for AlwaysPassQaGate {
         _diff: &'a str,
     ) -> Pin<
         Box<
-            dyn std::future::Future<Output = aletheia_energeia::error::Result<QaResult>>
+            dyn std::future::Future<Output = energeia::error::Result<QaResult>>
                 + Send
                 + 'a,
         >,
@@ -164,7 +164,7 @@ async fn all_nine_tools_return_non_error() {
 
     // Save the QA result JSON so diorthosis can consume it.
     let qa_result_json = match &result.content {
-        aletheia_organon::types::ToolResultContent::Text(t) => t.clone(),
+        organon::types::ToolResultContent::Text(t) => t.clone(),
         _ => panic!("dokimasia returned non-text content"),
     };
 

@@ -7,7 +7,7 @@ use snafu::ResultExt;
 use tracing::instrument;
 
 
-use aletheia_koina::http::CONTENT_TYPE_JSON;
+use koina::http::CONTENT_TYPE_JSON;
 
 use super::envelope::SignalEnvelope;
 use super::error::{self, Result};
@@ -78,7 +78,7 @@ impl SignalClient {
         method: &str,
         params: &serde_json::Value,
     ) -> Result<Option<serde_json::Value>> {
-        let id = aletheia_koina::uuid::uuid_v4();
+        let id = koina::uuid::uuid_v4();
         let request = RpcRequest {
             jsonrpc: "2.0",
             method,
@@ -121,7 +121,7 @@ impl SignalClient {
     /// Does NOT retry JSON-RPC application errors (only transport failures).
     #[instrument(skip(self, params))]
     pub async fn send_message(&self, params: &SendParams) -> Result<Option<serde_json::Value>> {
-        use aletheia_koina::retry::{BackoffStrategy, RetryConfig};
+        use koina::retry::{BackoffStrategy, RetryConfig};
 
         let rpc_params = params.to_rpc_value();
         let config = RetryConfig {
@@ -164,7 +164,7 @@ impl SignalClient {
             );
         }
 
-        let id = aletheia_koina::uuid::uuid_v4();
+        let id = koina::uuid::uuid_v4();
         let params_value = serde_json::Value::Object(params);
         let request = RpcRequest {
             jsonrpc: "2.0",
@@ -299,7 +299,7 @@ fn normalize_url(url: &str) -> String {
     reason = "test: JSON key indexing on known-present keys"
 )]
 mod tests {
-    use aletheia_organon::testing::install_crypto_provider;
+    use organon::testing::install_crypto_provider;
 
     use super::*;
 

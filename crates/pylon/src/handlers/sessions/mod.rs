@@ -17,9 +17,9 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use tracing::{info, instrument};
 
-use aletheia_mneme::types::SessionStatus;
+use mneme::types::SessionStatus;
 
-use aletheia_symbolon::types::Role;
+use symbolon::types::Role;
 
 use crate::error::{
     ApiError, BadRequestSnafu, ConflictSnafu, ErrorResponse, NousNotFoundSnafu,
@@ -92,7 +92,7 @@ pub async fn create(
 
     // WHY: SessionId (UUID v4) is the canonical format. ULID here caused
     // 'invalid SessionId' when nous parsed the stored ID back (#2349).
-    let id = aletheia_koina::id::SessionId::new().to_string();
+    let id = koina::id::SessionId::new().to_string();
     let model = config.generation.model.clone();
 
     let state_clone = state.clone();
@@ -519,7 +519,7 @@ pub(crate) async fn resolve_session(
 ) -> Result<String, ApiError> {
     // WHY: SessionId (UUID v4) is the canonical format. ULID here caused
     // 'invalid SessionId' when nous parsed the stored ID back (#2349).
-    let id = aletheia_koina::id::SessionId::new().to_string();
+    let id = koina::id::SessionId::new().to_string();
     let state_clone = state.clone();
     let id_clone = id.clone();
     let aid = agent_id.to_owned();
@@ -554,14 +554,14 @@ pub(crate) async fn resolve_session(
 /// `SQLite` always includes "UNIQUE constraint failed" in the error message for
 /// constraint violations. We match on the string because pylon does not take a
 /// direct rusqlite dependency: the type lives inside mneme's `Database` variant.
-fn is_unique_constraint_violation(err: &aletheia_mneme::error::Error) -> bool {
+fn is_unique_constraint_violation(err: &mneme::error::Error) -> bool {
     err.to_string().contains("UNIQUE constraint failed")
 }
 
 pub(crate) async fn find_session(
     state: &SessionsState,
     id: &str,
-) -> Result<aletheia_mneme::types::Session, ApiError> {
+) -> Result<mneme::types::Session, ApiError> {
     let state_clone = state.clone();
     let id_owned = id.to_owned();
     let id_for_error = id.to_owned();

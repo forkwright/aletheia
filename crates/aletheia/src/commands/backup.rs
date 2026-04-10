@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use clap::Args;
 use snafu::prelude::*;
 
-use aletheia_mneme::store::SessionStore;
+use mneme::store::SessionStore;
 
 use crate::error::Result;
 
@@ -52,7 +52,7 @@ pub(crate) fn run(instance_root: Option<&PathBuf>, args: &BackupArgs) -> Result<
     })?;
 
     let backup_dir = oikos.backups();
-    let manager = aletheia_mneme::backup::BackupManager::new(store.conn(), &backup_dir);
+    let manager = mneme::backup::BackupManager::new(store.conn(), &backup_dir);
 
     if list {
         return run_list(&manager, json);
@@ -93,7 +93,7 @@ pub(crate) fn run(instance_root: Option<&PathBuf>, args: &BackupArgs) -> Result<
     Ok(())
 }
 
-fn run_list(manager: &aletheia_mneme::backup::BackupManager<'_>, json: bool) -> Result<()> {
+fn run_list(manager: &mneme::backup::BackupManager<'_>, json: bool) -> Result<()> {
     let backups = manager
         .list_backups()
         .whatever_context("failed to list backups")?;
@@ -122,7 +122,7 @@ fn run_list(manager: &aletheia_mneme::backup::BackupManager<'_>, json: bool) -> 
 }
 
 fn run_prune(
-    manager: &aletheia_mneme::backup::BackupManager<'_>,
+    manager: &mneme::backup::BackupManager<'_>,
     keep: usize,
     yes: bool,
 ) -> Result<()> {

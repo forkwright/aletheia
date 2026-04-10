@@ -10,7 +10,7 @@ use serde::Deserialize;
 use snafu::{ResultExt, Snafu};
 use tracing::{debug, info, warn};
 
-use aletheia_koina::secret::SecretString;
+use koina::secret::SecretString;
 
 use super::OAuthProvider;
 use super::file_ops::CredentialFile;
@@ -349,7 +349,7 @@ async fn poll_token_endpoint(
 /// # Example
 ///
 /// ```no_run
-/// use aletheia_symbolon::credential::device_code::{DeviceOAuthProvider, device_code_login};
+/// use symbolon::credential::device_code::{DeviceOAuthProvider, device_code_login};
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// let provider = DeviceOAuthProvider::new(

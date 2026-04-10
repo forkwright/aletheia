@@ -12,9 +12,9 @@ use std::os::unix::process::CommandExt as _;
 
 use indexmap::IndexMap;
 
-use aletheia_koina::defaults::MAX_OUTPUT_BYTES;
-use aletheia_koina::id::ToolName;
-use aletheia_koina::system::{Environment, RealSystem};
+use koina::defaults::MAX_OUTPUT_BYTES;
+use koina::id::ToolName;
+use koina::system::{Environment, RealSystem};
 
 use crate::error::{self, Result};
 use crate::process_guard::ProcessGuard;

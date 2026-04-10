@@ -11,14 +11,14 @@ use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
-use aletheia_hermeneus::provider::ProviderRegistry;
-use aletheia_mneme::store::SessionStore;
-use aletheia_nous::config::{NousConfig, PipelineConfig};
-use aletheia_nous::manager::NousManager;
-use aletheia_organon::registry::ToolRegistry;
-use aletheia_symbolon::jwt::{JwtConfig, JwtManager};
-use aletheia_taxis::config::AletheiaConfig;
-use aletheia_taxis::oikos::Oikos;
+use hermeneus::provider::ProviderRegistry;
+use mneme::store::SessionStore;
+use nous::config::{NousConfig, PipelineConfig};
+use nous::manager::NousManager;
+use organon::registry::ToolRegistry;
+use symbolon::jwt::{JwtConfig, JwtManager};
+use taxis::config::AletheiaConfig;
+use taxis::oikos::Oikos;
 
 use crate::router::build_router;
 use crate::security::SecurityConfig;
@@ -46,7 +46,7 @@ pub enum ServerError {
     /// Failed to open or initialize the session store.
     #[snafu(display("failed to open session store: {source}"))]
     SessionStore {
-        source: aletheia_mneme::error::Error,
+        source: mneme::error::Error,
     },
 
     /// TCP listener failed to bind to the configured address.
@@ -71,7 +71,7 @@ pub enum ServerError {
     /// Instance directory layout validation failed.
     #[snafu(display("instance layout invalid: {source}"))]
     Validation {
-        source: aletheia_taxis::error::Error,
+        source: taxis::error::Error,
     },
 }
 
@@ -123,7 +123,7 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
         .spawn(nous_config, PipelineConfig::default())
         .await;
 
-    let aletheia_config = aletheia_taxis::loader::load_config(&oikos).unwrap_or_else(|e| {
+    let aletheia_config = taxis::loader::load_config(&oikos).unwrap_or_else(|e| {
         tracing::warn!("failed to load config, using defaults: {e}");
         AletheiaConfig::default()
     });
@@ -288,9 +288,9 @@ fn serve_tls(
 /// applied config — subscribers only see hot-reloadable values.
 pub(crate) async fn apply_reload(
     config_state: &ConfigState,
-    outcome: aletheia_taxis::reload::ReloadOutcome,
+    outcome: taxis::reload::ReloadOutcome,
 ) {
-    aletheia_taxis::reload::log_diff(&outcome.diff);
+    taxis::reload::log_diff(&outcome.diff);
 
     let cold = outcome.diff.cold_changes();
 
@@ -363,7 +363,7 @@ pub fn spawn_sighup_handler(state: Arc<AppState>) -> tokio::task::JoinHandle<()>
                         info!("received SIGHUP, reloading config");
 
                         let current = state.config.read().await.clone();
-                        match aletheia_taxis::reload::prepare_reload(&state.oikos, &current) {
+                        match taxis::reload::prepare_reload(&state.oikos, &current) {
                             Ok(outcome) => {
                                 if outcome.diff.is_empty() {
                                     info!("config reload: no changes detected");

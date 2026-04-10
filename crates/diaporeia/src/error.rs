@@ -38,7 +38,7 @@ pub enum Error {
     /// Session store error.
     #[snafu(display("session store error: {source}"))]
     SessionStore {
-        source: aletheia_mneme::error::Error,
+        source: mneme::error::Error,
         #[snafu(implicit)]
         location: snafu::Location,
     },

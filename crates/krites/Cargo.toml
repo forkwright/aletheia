@@ -1,5 +1,5 @@
 [package]
-name = "aletheia-krites"
+name = "krites"
 version.workspace = true
 description = "Embedded Datalog engine with HNSW and graph support for Aletheia"
 edition.workspace = true
@@ -18,7 +18,7 @@ test-core = ["storage-fjall"]
 test-full = []
 
 [dependencies]
-aletheia-eidos = { path = "../eidos" }
+eidos = { path = "../eidos" }
 
 jiff = { workspace = true, features = ["serde"] }
 ndarray = { version = "0.17", default-features = false, features = ["serde", "std"] }

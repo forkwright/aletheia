@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use tracing::instrument;
 
-use aletheia_koina::secret::SecretString;
+use koina::secret::SecretString;
 
 use crate::api_key;
 use crate::error::{self, Result};
@@ -62,7 +62,7 @@ impl AuthService {
         role: Role,
     ) -> Result<crate::types::User> {
         let hash = password::hash_password(password)?;
-        let id = aletheia_koina::ulid::Ulid::new().to_string();
+        let id = koina::ulid::Ulid::new().to_string();
         self.store.create_user(&id, username, &hash, role)
     }
 

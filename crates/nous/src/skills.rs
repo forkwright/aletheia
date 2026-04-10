@@ -71,7 +71,7 @@ fn sanitize_fts_query(input: &str) -> String {
 
 /// Format a [`SkillContent`] as a compact markdown section for the system prompt.
 #[cfg(any(feature = "knowledge-store", test))]
-pub(crate) fn format_skill_as_markdown(skill: &aletheia_mneme::skill::SkillContent) -> String {
+pub(crate) fn format_skill_as_markdown(skill: &mneme::skill::SkillContent) -> String {
     use std::fmt::Write as _;
 
     let mut md = format!("**{}**\n\n{}", skill.name, skill.description);
@@ -102,9 +102,9 @@ use std::sync::Arc;
 use tracing::{Instrument, warn};
 
 #[cfg(any(feature = "knowledge-store", test))]
-use aletheia_mneme::knowledge::Fact;
+use mneme::knowledge::Fact;
 #[cfg(feature = "knowledge-store")]
-use aletheia_mneme::knowledge_store::KnowledgeStore;
+use mneme::knowledge_store::KnowledgeStore;
 
 #[cfg(any(feature = "knowledge-store", test))]
 use crate::bootstrap::{BootstrapSection, SectionPriority};
@@ -248,7 +248,7 @@ impl SkillLoader {
 #[cfg(any(feature = "knowledge-store", test))]
 pub(crate) fn fact_to_section(fact: &Fact) -> BootstrapSection {
     let content = if let Ok(skill) =
-        serde_json::from_str::<aletheia_mneme::skill::SkillContent>(&fact.content)
+        serde_json::from_str::<mneme::skill::SkillContent>(&fact.content)
     {
         format_skill_as_markdown(&skill)
     } else {
@@ -411,8 +411,8 @@ mod tests {
         assert_eq!(ctx.len(), MAX_CONTEXT_CHARS);
     }
 
-    fn sample_skill() -> aletheia_mneme::skill::SkillContent {
-        aletheia_mneme::skill::SkillContent {
+    fn sample_skill() -> mneme::skill::SkillContent {
+        mneme::skill::SkillContent {
             name: "rust-error-handling".to_owned(),
             description: "How to handle errors in Rust using snafu.".to_owned(),
             steps: vec![
@@ -470,10 +470,10 @@ mod tests {
     }
 
     fn make_fact(id: &str, content: &str, confidence: f64, access_count: u32) -> Fact {
-        use aletheia_mneme::knowledge::{FactAccess, FactLifecycle, FactProvenance, FactTemporal};
+        use mneme::knowledge::{FactAccess, FactLifecycle, FactProvenance, FactTemporal};
         let now = jiff::Timestamp::now();
         Fact {
-            id: aletheia_mneme::id::FactId::new(id).expect("valid test id"),
+            id: mneme::id::FactId::new(id).expect("valid test id"),
             nous_id: "test-agent".to_owned(),
             content: content.to_owned(),
             fact_type: "skill".to_owned(),
@@ -484,7 +484,7 @@ mod tests {
             },
             provenance: FactProvenance {
                 confidence,
-                tier: aletheia_mneme::knowledge::EpistemicTier::Verified,
+                tier: mneme::knowledge::EpistemicTier::Verified,
                 source_session_id: None,
                 stability_hours: 2190.0,
             },

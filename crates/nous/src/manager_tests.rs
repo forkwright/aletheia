@@ -1,5 +1,5 @@
 #![expect(clippy::expect_used, reason = "test assertions")]
-use aletheia_hermeneus::test_utils::MockProvider;
+use hermeneus::test_utils::MockProvider;
 
 use super::*;
 use crate::message::NousLifecycle;

@@ -543,7 +543,7 @@ pub(crate) fn persist_lesson(
             fact_ids.get(causal.effect_index),
         ) {
             let edge = CausalEdge {
-                id: crate::id::CausalEdgeId::new(aletheia_koina::ulid::Ulid::new().to_string())
+                id: crate::id::CausalEdgeId::new(koina::ulid::Ulid::new().to_string())
                     .map_err(|e| PersistSnafu { message: e.to_string() }.build())?,
                 source_id: cause_id.clone(),
                 target_id: effect_id.clone(),

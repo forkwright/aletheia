@@ -9,9 +9,9 @@ use std::sync::Arc;
 
 use indexmap::IndexMap;
 
-use aletheia_energeia::store::EnergeiaStore;
-use aletheia_energeia::store::records::{NewLesson, NewObservation};
-use aletheia_koina::id::ToolName;
+use energeia::store::EnergeiaStore;
+use energeia::store::records::{NewLesson, NewObservation};
+use koina::id::ToolName;
 
 use crate::error::Result;
 use crate::registry::ToolExecutor;

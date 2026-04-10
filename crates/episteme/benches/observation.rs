@@ -10,7 +10,7 @@ use std::hint::black_box;
 
 use criterion::{Criterion, criterion_group, criterion_main};
 
-use aletheia_episteme::extract::observation::{
+use episteme::extract::observation::{
     ObservationType, extract_tags, parse_observations,
 };
 

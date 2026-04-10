@@ -32,7 +32,7 @@ async fn valid_token_passes() {
 
 #[tokio::test]
 async fn expired_token_rejected() {
-    use aletheia_symbolon::types::{Claims, Role, TokenKind};
+    use symbolon::types::{Claims, Role, TokenKind};
 
     let (app, _dir) = app().await;
 
@@ -127,7 +127,7 @@ async fn missing_auth_header_returns_401() {
 
 async fn app_auth_disabled() -> (axum::Router, tempfile::TempDir) {
     let (state, dir) = test_state().await;
-    let default_config = aletheia_taxis::config::AletheiaConfig::default();
+    let default_config = taxis::config::AletheiaConfig::default();
     let (config_tx, _config_rx) = tokio::sync::watch::channel(default_config);
     let state = Arc::new(AppState {
         auth_mode: "none".to_owned(),

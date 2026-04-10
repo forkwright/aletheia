@@ -1,5 +1,5 @@
 [package]
-name = "aletheia-episteme"
+name = "episteme"
 version.workspace = true
 description = "Knowledge pipeline for Aletheia"
 edition.workspace = true
@@ -16,18 +16,18 @@ graph-algo = []
 test-support = []
 # WHY: graphe/sqlite is required because knowledge_portability.rs (gated on
 # mneme-engine) references aletheia_graphe::portability which lives behind sqlite.
-mneme-engine = ["dep:aletheia-krites", "dep:tokio", "aletheia-graphe/mneme-engine", "aletheia-graphe/sqlite"]
-storage-fjall = ["mneme-engine", "aletheia-krites/storage-fjall"]
+mneme-engine = ["dep:krites", "dep:tokio", "graphe/mneme-engine", "graphe/sqlite"]
+storage-fjall = ["mneme-engine", "krites/storage-fjall"]
 embed-candle = ["dep:candle-core", "dep:candle-nn", "dep:candle-transformers", "dep:tokenizers", "dep:hf-hub"]
 # Test tiers (see docs/test-tiers.md)
 test-core = ["mneme-engine"]
 test-full = ["test-core", "embed-candle"]
 
 [dependencies]
-aletheia-eidos = { path = "../eidos" }
-aletheia-graphe = { path = "../graphe", default-features = false }
-aletheia-koina = { path = "../koina" }
-aletheia-krites = { path = "../krites", optional = true }
+eidos = { path = "../eidos" }
+graphe = { path = "../graphe", default-features = false }
+koina = { path = "../koina" }
+krites = { path = "../krites", optional = true }
 jiff = { workspace = true, features = ["serde"] }
 parking_lot = "0.12"
 prometheus = { workspace = true }

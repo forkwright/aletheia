@@ -6,13 +6,13 @@ use tokio::sync::Mutex;
 use tokio::sync::mpsc;
 use tracing::{Instrument, debug, error, info_span};
 
-use aletheia_hermeneus::provider::ProviderRegistry;
-use aletheia_koina::event::EventEmitter;
-use aletheia_mneme::embedding::EmbeddingProvider;
-use aletheia_mneme::store::SessionStore;
-use aletheia_organon::registry::ToolRegistry;
-use aletheia_organon::types::ToolContext;
-use aletheia_taxis::oikos::Oikos;
+use hermeneus::provider::ProviderRegistry;
+use koina::event::EventEmitter;
+use mneme::embedding::EmbeddingProvider;
+use mneme::store::SessionStore;
+use organon::registry::ToolRegistry;
+use organon::types::ToolContext;
+use taxis::oikos::Oikos;
 
 use crate::bootstrap::{BootstrapSection, TaskHint};
 use crate::compact::CompactConfig;

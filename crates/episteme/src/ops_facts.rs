@@ -133,7 +133,7 @@ fn build_ops_fact(
     confidence: f64,
     now: jiff::Timestamp,
 ) -> Result<OpsFact, ExtractError> {
-    let fact_id = crate::id::FactId::new(format!("{fact_type_tag}-{}", aletheia_koina::ulid::Ulid::new()))
+    let fact_id = crate::id::FactId::new(format!("{fact_type_tag}-{}", koina::ulid::Ulid::new()))
         .context(FactIdSnafu)?;
 
     Ok(OpsFact {

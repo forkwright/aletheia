@@ -44,7 +44,7 @@ pub(crate) async fn run(args: EvalArgs) -> Result<()> {
     } = args;
 
     if show_triggers {
-        let config = aletheia_dokimion::triggers::TriggerConfig::default_config();
+        let config = dokimion::triggers::TriggerConfig::default_config();
         let json = serde_json::to_string_pretty(&config)
             .whatever_context("failed to serialize trigger config")?;
         println!("{json}");
@@ -52,7 +52,7 @@ pub(crate) async fn run(args: EvalArgs) -> Result<()> {
     }
 
     if scenario.as_deref() == Some("list") {
-        let scenarios = aletheia_dokimion::scenarios::all_scenarios();
+        let scenarios = dokimion::scenarios::all_scenarios();
         let mut current_category = "";
         for s in &scenarios {
             let meta = s.meta();
@@ -66,27 +66,27 @@ pub(crate) async fn run(args: EvalArgs) -> Result<()> {
         return Ok(());
     }
 
-    let config = aletheia_dokimion::runner::RunConfig {
+    let config = dokimion::runner::RunConfig {
         base_url: url.clone(),
-        token: token.map(aletheia_koina::secret::SecretString::from),
+        token: token.map(koina::secret::SecretString::from),
         filter: scenario,
         category_filter: None,
         fail_fast: false,
         timeout_secs: timeout,
         json_output,
     };
-    let runner = aletheia_dokimion::runner::ScenarioRunner::new(config);
+    let runner = dokimion::runner::ScenarioRunner::new(config);
     let report = runner.run().await;
 
     if json_output {
-        aletheia_dokimion::report::print_report_json(&report);
+        dokimion::report::print_report_json(&report);
     } else {
-        aletheia_dokimion::report::print_report(&report, &url);
+        dokimion::report::print_report(&report, &url);
     }
 
     if let Some(ref path) = jsonl_output {
-        let records = aletheia_dokimion::persistence::records_from_report(&report);
-        aletheia_dokimion::persistence::append_jsonl(Path::new(path), &records)
+        let records = dokimion::persistence::records_from_report(&report);
+        dokimion::persistence::append_jsonl(Path::new(path), &records)
             .whatever_context("failed to write JSONL output")?;
         tracing::info!(
             path = path,

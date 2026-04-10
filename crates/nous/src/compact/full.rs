@@ -229,8 +229,8 @@ fn extract_file_path(content: &str) -> Option<String> {
     let tool_name = &metadata[..at_pos];
 
     // NOTE: only extract paths FROM file operations
-    let tool_type = aletheia_hermeneus::types::ToolResultType::classify(tool_name);
-    if tool_type != aletheia_hermeneus::types::ToolResultType::FileOperation {
+    let tool_type = hermeneus::types::ToolResultType::classify(tool_name);
+    if tool_type != hermeneus::types::ToolResultType::FileOperation {
         return None;
     }
 

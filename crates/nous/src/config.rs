@@ -52,7 +52,7 @@ pub struct NousGenerationConfig {
 
 impl Default for NousGenerationConfig {
     fn default() -> Self {
-        use aletheia_koina::defaults as d;
+        use koina::defaults as d;
         Self {
             model: "claude-opus-4-20250514".to_owned(),
             context_window: d::CONTEXT_TOKENS,
@@ -103,7 +103,7 @@ pub struct NousLimits {
 
 impl Default for NousLimits {
     fn default() -> Self {
-        use aletheia_koina::defaults as d;
+        use koina::defaults as d;
         Self {
             max_tool_iterations: d::MAX_TOOL_ITERATIONS,
             loop_detection_threshold: 3,
@@ -136,7 +136,7 @@ pub struct NousConfig {
     pub domains: Vec<String>,
     /// Server-side tools to include in API requests (e.g., web search).
     #[serde(default)]
-    pub server_tools: Vec<aletheia_hermeneus::types::ServerToolDefinition>,
+    pub server_tools: Vec<hermeneus::types::ServerToolDefinition>,
     /// Whether prompt caching is enabled for this agent.
     #[serde(default = "default_cache_enabled")]
     pub cache_enabled: bool,
@@ -216,7 +216,7 @@ fn default_prosoche_model() -> String {
 }
 
 fn default_max_tool_result_bytes() -> u32 {
-    aletheia_koina::defaults::MAX_TOOL_RESULT_BYTES
+    koina::defaults::MAX_TOOL_RESULT_BYTES
 }
 
 impl Default for NousConfig {
@@ -243,13 +243,13 @@ pub struct PipelineConfig {
     pub history_budget_ratio: f64,
     /// Knowledge extraction configuration (None = disabled).
     #[serde(default)]
-    pub extraction: Option<aletheia_mneme::extract::ExtractionConfig>,
+    pub extraction: Option<mneme::extract::ExtractionConfig>,
     /// Per-stage time budgets.
     #[serde(default)]
     pub stage_budget: StageBudget,
     /// Training data capture configuration.
     #[serde(default)]
-    pub training: aletheia_mneme::training::TrainingConfig,
+    pub training: mneme::training::TrainingConfig,
 }
 
 impl Default for PipelineConfig {
@@ -258,7 +258,7 @@ impl Default for PipelineConfig {
             history_budget_ratio: 0.6,
             extraction: None,
             stage_budget: StageBudget::default(),
-            training: aletheia_mneme::training::TrainingConfig::default(),
+            training: mneme::training::TrainingConfig::default(),
         }
     }
 }
@@ -312,7 +312,7 @@ mod tests {
         assert_eq!(config.generation.context_window, 200_000);
         assert_eq!(
             config.limits.max_tool_iterations,
-            aletheia_koina::defaults::MAX_TOOL_ITERATIONS,
+            koina::defaults::MAX_TOOL_ITERATIONS,
             "default should match koina::defaults"
         );
         assert!(!config.generation.thinking_enabled);

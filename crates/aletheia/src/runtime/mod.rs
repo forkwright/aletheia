@@ -9,23 +9,23 @@ use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 use tracing::{Instrument, info, warn};
 
-use aletheia_agora::types::ChannelProvider;
-use aletheia_hermeneus::provider::ProviderRegistry;
-use aletheia_koina::secret::SecretString;
-use aletheia_koina::system::{Environment, RealSystem};
-use aletheia_mneme::embedding::DegradedEmbeddingProvider;
-use aletheia_mneme::store::SessionStore;
-use aletheia_nous::config::{NousConfig, PipelineConfig};
-use aletheia_nous::cross::CrossNousRouter;
-use aletheia_nous::manager::NousManager;
-use aletheia_oikonomos::runner::TaskRunner;
-use aletheia_organon::registry::ToolRegistry;
-use aletheia_organon::types::ToolServices;
-use aletheia_pylon::state::AppState;
-use aletheia_symbolon::jwt::{JwtConfig, JwtManager};
-use aletheia_taxis::config::{AletheiaConfig, resolve_nous};
-use aletheia_taxis::oikos::Oikos;
-use aletheia_taxis::validate::{validate_section, validate_startup};
+use agora::types::ChannelProvider;
+use hermeneus::provider::ProviderRegistry;
+use koina::secret::SecretString;
+use koina::system::{Environment, RealSystem};
+use mneme::embedding::DegradedEmbeddingProvider;
+use mneme::store::SessionStore;
+use nous::config::{NousConfig, PipelineConfig};
+use nous::cross::CrossNousRouter;
+use nous::manager::NousManager;
+use oikonomos::runner::TaskRunner;
+use organon::registry::ToolRegistry;
+use organon::types::ToolServices;
+use pylon::state::AppState;
+use symbolon::jwt::{JwtConfig, JwtManager};
+use taxis::config::{AletheiaConfig, resolve_nous};
+use taxis::oikos::Oikos;
+use taxis::validate::{validate_section, validate_startup};
 
 use crate::commands::maintenance;
 use crate::daemon_bridge;
@@ -281,7 +281,7 @@ impl RuntimeBuilder {
         }
 
         // Initialize dianoia metrics (planning/project orchestration)
-        aletheia_dianoia::metrics::init();
+        dianoia::metrics::init();
 
         // JWT key resolution
         let jwt_key: Option<SecretString> =
@@ -301,7 +301,7 @@ impl RuntimeBuilder {
 
         // Domain packs
         let loaded_packs = if self.domain_packs {
-            aletheia_thesauros::loader::load_packs(&self.config.packs)
+            thesauros::loader::load_packs(&self.config.packs)
         } else {
             Vec::new()
         };
@@ -340,7 +340,7 @@ impl RuntimeBuilder {
         // Register domain pack tools
         if self.domain_packs {
             let tool_errors =
-                aletheia_thesauros::tools::register_pack_tools(&packs, &mut tool_registry);
+                thesauros::tools::register_pack_tools(&packs, &mut tool_registry);
             for err in &tool_errors {
                 warn!(error = %err, "failed to register pack tool");
             }
@@ -393,33 +393,33 @@ impl RuntimeBuilder {
         let (cross_nous, messenger, note_store, blackboard_store, spawn, planning) = if self
             .tool_services
         {
-            let cross_nous: Arc<dyn aletheia_organon::types::CrossNousService> =
+            let cross_nous: Arc<dyn organon::types::CrossNousService> =
                 Arc::new(tool_adapters::CrossNousAdapter(Arc::clone(&cross_router)));
             #[expect(
                 clippy::as_conversions,
                 reason = "coercion to dyn trait objects: required by Arc<dyn Trait> type annotations"
             )]
-            let messenger: Option<Arc<dyn aletheia_organon::types::MessageService>> =
+            let messenger: Option<Arc<dyn organon::types::MessageService>> =
                 signal_provider.as_ref().map(|p| {
                     Arc::new(tool_adapters::SignalAdapter(
                         Arc::clone(p) as Arc<dyn ChannelProvider>
-                    )) as Arc<dyn aletheia_organon::types::MessageService>
+                    )) as Arc<dyn organon::types::MessageService>
                 });
-            let note_store: Option<Arc<dyn aletheia_organon::types::NoteStore>> = Some(Arc::new(
-                aletheia_nous::adapters::SessionNoteAdapter(Arc::clone(&session_store)),
+            let note_store: Option<Arc<dyn organon::types::NoteStore>> = Some(Arc::new(
+                nous::adapters::SessionNoteAdapter(Arc::clone(&session_store)),
             ));
-            let blackboard_store: Option<Arc<dyn aletheia_organon::types::BlackboardStore>> =
-                Some(Arc::new(aletheia_nous::adapters::SessionBlackboardAdapter(
+            let blackboard_store: Option<Arc<dyn organon::types::BlackboardStore>> =
+                Some(Arc::new(nous::adapters::SessionBlackboardAdapter(
                     Arc::clone(&session_store),
                 )));
-            let spawn: Option<Arc<dyn aletheia_organon::types::SpawnService>> =
-                Some(Arc::new(aletheia_nous::spawn_svc::SpawnServiceImpl::new(
+            let spawn: Option<Arc<dyn organon::types::SpawnService>> =
+                Some(Arc::new(nous::spawn_svc::SpawnServiceImpl::new(
                     Arc::clone(&provider_registry),
                     Arc::clone(&tool_registry),
                     Arc::clone(&self.oikos),
                 )));
             let planning_root = self.oikos.data().join("planning");
-            let planning: Option<Arc<dyn aletheia_organon::types::PlanningService>> =
+            let planning: Option<Arc<dyn organon::types::PlanningService>> =
                 Some(Arc::new(planning_adapter::FilesystemPlanningService::new(
                     planning_root,
                 )));
@@ -449,14 +449,14 @@ impl RuntimeBuilder {
             clippy::as_conversions,
             reason = "coercion to dyn trait object: required to satisfy Arc<dyn Trait> type annotation"
         )]
-        let vector_search: Option<Arc<dyn aletheia_nous::recall::VectorSearch>> =
+        let vector_search: Option<Arc<dyn nous::recall::VectorSearch>> =
             knowledge_store.as_ref().map(|ks| {
-                Arc::new(aletheia_nous::recall::KnowledgeVectorSearch::new(
+                Arc::new(nous::recall::KnowledgeVectorSearch::new(
                     Arc::clone(ks),
-                )) as Arc<dyn aletheia_nous::recall::VectorSearch>
+                )) as Arc<dyn nous::recall::VectorSearch>
             });
         #[cfg(not(feature = "recall"))]
-        let vector_search: Option<Arc<dyn aletheia_nous::recall::VectorSearch>> = None;
+        let vector_search: Option<Arc<dyn nous::recall::VectorSearch>> = None;
 
         // External recall sources (issue #2338)
         #[cfg(feature = "recall")]
@@ -497,17 +497,17 @@ impl RuntimeBuilder {
             reason = "coercion to dyn trait object: required to satisfy Arc<dyn Trait> type annotation"
         )]
         let knowledge_search: Option<
-            Arc<dyn aletheia_organon::types::KnowledgeSearchService>,
+            Arc<dyn organon::types::KnowledgeSearchService>,
         > = knowledge_store.as_ref().map(|ks| {
             Arc::new(crate::knowledge_adapter::KnowledgeSearchAdapter::new(
                 Arc::clone(ks),
                 Arc::clone(&embedding_provider),
                 Arc::clone(&recall_source_registry),
-            )) as Arc<dyn aletheia_organon::types::KnowledgeSearchService>
+            )) as Arc<dyn organon::types::KnowledgeSearchService>
         });
         #[cfg(not(feature = "recall"))]
         let knowledge_search: Option<
-            Arc<dyn aletheia_organon::types::KnowledgeSearchService>,
+            Arc<dyn organon::types::KnowledgeSearchService>,
         > = None;
 
         let tool_services = Arc::new(ToolServices {
@@ -520,7 +520,7 @@ impl RuntimeBuilder {
             knowledge: knowledge_search,
             http_client: reqwest::Client::new(),
             lazy_tool_catalog: tool_registry.lazy_tool_catalog(),
-            server_tool_config: aletheia_organon::types::ServerToolConfig::default(),
+            server_tool_config: organon::types::ServerToolConfig::default(),
         });
 
         // Clone knowledge_store Arc before moving INTO NousManager
@@ -558,7 +558,7 @@ impl RuntimeBuilder {
                 let nous_config = NousConfig {
                     id: resolved.id,
                     name: resolved.name,
-                    generation: aletheia_nous::config::NousGenerationConfig {
+                    generation: nous::config::NousGenerationConfig {
                         model: resolved.model.primary.to_string(),
                         context_window: resolved.limits.context_tokens,
                         max_output_tokens: resolved.limits.max_output_tokens,
@@ -568,7 +568,7 @@ impl RuntimeBuilder {
                         chars_per_token: resolved.limits.chars_per_token,
                         prosoche_model: resolved.prosoche_model.to_string(),
                     },
-                    limits: aletheia_nous::config::NousLimits {
+                    limits: nous::config::NousLimits {
                         max_tool_iterations: resolved.capabilities.max_tool_iterations,
                         loop_detection_threshold: 3,
                         consecutive_error_threshold: 4,
@@ -582,13 +582,13 @@ impl RuntimeBuilder {
                     cache_enabled: resolved.capabilities.cache_enabled,
                     recall: resolved.recall.into(),
                     tool_allowlist: None,
-                    hooks: aletheia_nous::config::HookConfig::default(),
+                    hooks: nous::config::HookConfig::default(),
                 };
                 nous_manager
                     .spawn(
                         nous_config,
                         PipelineConfig {
-                            extraction: Some(aletheia_mneme::extract::ExtractionConfig::default()),
+                            extraction: Some(mneme::extract::ExtractionConfig::default()),
                             training: self.config.training.clone(),
                             ..PipelineConfig::default()
                         },
@@ -654,20 +654,20 @@ impl RuntimeBuilder {
                     agent_token,
                     daemon_bridge.clone(),
                 );
-                runner.register(aletheia_oikonomos::schedule::TaskDef {
+                runner.register(oikonomos::schedule::TaskDef {
                     id: format!("{}-prosoche", agent_def.id),
                     name: "Prosoche attention check".to_owned(),
                     nous_id: agent_def.id.clone(),
-                    schedule: aletheia_oikonomos::schedule::Schedule::Interval(
+                    schedule: oikonomos::schedule::Schedule::Interval(
                         std::time::Duration::from_secs(45 * 60),
                     ),
-                    action: aletheia_oikonomos::schedule::TaskAction::Builtin(
-                        aletheia_oikonomos::schedule::BuiltinTask::Prosoche,
+                    action: oikonomos::schedule::TaskAction::Builtin(
+                        oikonomos::schedule::BuiltinTask::Prosoche,
                     ),
                     enabled: true,
                     active_window: Some((8, 23)),
                     catch_up: false,
-                    ..aletheia_oikonomos::schedule::TaskDef::default()
+                    ..oikonomos::schedule::TaskDef::default()
                 });
                 let daemon_span = tracing::info_span!("daemon", nous.id = %agent_def.id);
                 tokio::spawn(
@@ -703,7 +703,7 @@ impl RuntimeBuilder {
             none_role: self.config.gateway.auth.none_role.clone(),
             config: Arc::new(tokio::sync::RwLock::new(aletheia_config)),
             config_tx,
-            idempotency_cache: Arc::new(aletheia_pylon::idempotency::IdempotencyCache::new()),
+            idempotency_cache: Arc::new(pylon::idempotency::IdempotencyCache::new()),
             shutdown: shutdown_token.clone(),
             #[cfg(feature = "recall")]
             knowledge_store,

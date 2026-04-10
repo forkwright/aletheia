@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
-use aletheia_hermeneus::types::{Message, ThinkingConfig, ToolDefinition};
+use hermeneus::types::{Message, ThinkingConfig, ToolDefinition};
 
 use crate::bootstrap::{BootstrapSection, SectionPriority};
 
@@ -657,8 +657,8 @@ mod tests {
 
     fn sample_message(text: &str) -> Message {
         Message {
-            role: aletheia_hermeneus::types::Role::User,
-            content: aletheia_hermeneus::types::Content::Text(text.to_owned()),
+            role: hermeneus::types::Role::User,
+            content: hermeneus::types::Content::Text(text.to_owned()),
         }
     }
 

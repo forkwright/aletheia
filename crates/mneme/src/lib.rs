@@ -8,9 +8,9 @@
 // ── Types (eidos) ──────────────────────────────────────────────────────────
 
 /// Newtype wrappers for knowledge-domain identifiers (re-exported from `eidos`).
-pub use aletheia_eidos::id;
+pub use eidos::id;
 /// Knowledge graph domain types: facts, entities, relationships, embeddings (re-exported from `eidos`).
-pub use aletheia_eidos::knowledge;
+pub use eidos::knowledge;
 
 // ── Path validation (eidos) ───────────────────────────────────────────────
 
@@ -25,7 +25,7 @@ pub use aletheia_eidos::knowledge;
 /// [`validate_memory_path()`]: knowledge::validate_memory_path
 /// [`ValidatedPath`]: knowledge::ValidatedPath
 pub mod path_validation {
-    pub use aletheia_eidos::knowledge::{
+    pub use eidos::knowledge::{
         PathValidationError, PathValidationLayer, ValidatedPath, validate_memory_path,
     };
 }
@@ -34,41 +34,41 @@ pub mod path_validation {
 
 /// Datalog/graph engine (enabled by `mneme-engine` feature, provided by `aletheia-krites`).
 #[cfg(feature = "mneme-engine")]
-pub use aletheia_krites as engine;
+pub use krites as engine;
 
 // ── Session persistence (graphe) ───────────────────────────────────────────
 
 /// Database backup and JSON export for session data.
 #[cfg(feature = "sqlite")]
-pub use aletheia_graphe::backup;
+pub use graphe::backup;
 /// Mneme-specific error types and result alias.
-pub use aletheia_graphe::error;
+pub use graphe::error;
 /// Agent export: build an `AgentFile` from session store and workspace.
 #[cfg(feature = "sqlite")]
-pub use aletheia_graphe::export;
+pub use graphe::export;
 /// Agent import: restore an agent from a portable `AgentFile`.
 #[cfg(feature = "sqlite")]
-pub use aletheia_graphe::import;
+pub use graphe::import;
 /// Versioned `SQLite` schema migration runner.
 #[cfg(feature = "sqlite")]
-pub use aletheia_graphe::migration;
+pub use graphe::migration;
 /// Agent portability schema: `AgentFile` format for cross-runtime export/import.
 #[cfg(feature = "sqlite")]
-pub use aletheia_graphe::portability;
+pub use graphe::portability;
 /// `SQLite` corruption detection, read-only fallback, and auto-repair.
 #[cfg(feature = "sqlite")]
-pub use aletheia_graphe::recovery;
+pub use graphe::recovery;
 /// Session retention policies and automated cleanup of old data.
 #[cfg(feature = "sqlite")]
-pub use aletheia_graphe::retention;
+pub use graphe::retention;
 /// `SQLite` schema DDL constants.
 #[cfg(feature = "sqlite")]
-pub use aletheia_graphe::schema;
+pub use graphe::schema;
 /// `SQLite` session store (WAL mode, prepared statements, transactional writes).
 #[cfg(feature = "sqlite")]
-pub use aletheia_graphe::store;
+pub use graphe::store;
 /// Core types for sessions, messages, usage records, and agent notes.
-pub use aletheia_graphe::types;
+pub use graphe::types;
 
 // ── Training data capture ─────────────────────────────────────────────
 
@@ -78,36 +78,36 @@ pub mod training;
 // ── Knowledge pipeline (episteme) ──────────────────────────────────────────
 
 /// Memory admission control: structured decision gate for knowledge graph insertion.
-pub use aletheia_episteme::admission;
+pub use episteme::admission;
 /// Conflict detection pipeline for fact insertion.
-pub use aletheia_episteme::conflict;
+pub use episteme::conflict;
 /// LLM-driven fact consolidation for knowledge maintenance.
-pub use aletheia_episteme::consolidation;
+pub use episteme::consolidation;
 /// Multi-factor temporal decay with lifecycle stages and graduated pruning.
-pub use aletheia_episteme::decay;
+pub use episteme::decay;
 /// Embedding provider trait and implementations (candle, mock).
-pub use aletheia_episteme::embedding;
+pub use episteme::embedding;
 /// Embedding evaluation gate: Recall@K and MRR for model upgrade checks.
-pub use aletheia_episteme::embedding_eval;
+pub use episteme::embedding_eval;
 /// LLM-driven knowledge extraction pipeline (entities, relationships, facts).
-pub use aletheia_episteme::extract;
+pub use episteme::extract;
 /// Instinct system: behavioral memory from tool usage patterns.
-pub use aletheia_episteme::instinct;
+pub use episteme::instinct;
 /// Knowledge graph export/import for agent portability.
-pub use aletheia_episteme::knowledge_portability;
+pub use episteme::knowledge_portability;
 /// `CozoDB`-backed knowledge store for graph traversal and vector search.
-pub use aletheia_episteme::knowledge_store;
+pub use episteme::knowledge_store;
 /// Typed Datalog query builder for compile-time schema validation.
 #[cfg(feature = "mneme-engine")]
-pub use aletheia_episteme::query;
+pub use episteme::query;
 /// 6-factor recall scoring engine for knowledge retrieval ranking.
-pub use aletheia_episteme::recall;
+pub use episteme::recall;
 /// Skill storage helpers and SKILL.md parser.
-pub use aletheia_episteme::skill;
+pub use episteme::skill;
 /// Skill auto-capture: heuristic filter, signature hashing, and candidate tracking.
-pub use aletheia_episteme::skills;
+pub use episteme::skills;
 /// Relationship type normalization and validation for knowledge graph extraction.
-pub use aletheia_episteme::vocab;
+pub use episteme::vocab;
 
 /// Verify that `mneme-engine` and `sqlite` features coexist without `SQLite`
 /// link conflicts.

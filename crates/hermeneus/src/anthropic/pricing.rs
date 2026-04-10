@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
-use aletheia_koina::retry::BackoffStrategy;
+use koina::retry::BackoffStrategy;
 
 use crate::error;
 use crate::models::{BACKOFF_BASE_MS, BACKOFF_MAX_MS};

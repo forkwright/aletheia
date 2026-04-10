@@ -21,10 +21,10 @@ pub mod tools;
 use snafu::IntoError as _;
 use tracing::{debug, info, warn};
 
-use aletheia_taxis::cascade;
-use aletheia_taxis::oikos::Oikos;
-use aletheia_thesauros::loader::PackSection;
-use aletheia_thesauros::manifest::Priority as PackPriority;
+use taxis::cascade;
+use taxis::oikos::Oikos;
+use thesauros::loader::PackSection;
+use thesauros::manifest::Priority as PackPriority;
 
 use crate::budget::{CharEstimator, TokenBudget, TokenEstimator};
 use crate::error::{self, Result};

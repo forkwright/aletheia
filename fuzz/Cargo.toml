@@ -16,11 +16,11 @@ toml = "1.0"
 jiff = "0.2"
 
 # Target crates
-aletheia-hermeneus = { path = "../crates/hermeneus" }
-aletheia-koina = { path = "../crates/koina" }
-aletheia-mneme = { path = "../crates/mneme", features = ["mneme-engine"] }
-aletheia-nous = { path = "../crates/nous", features = ["knowledge-store"] }
-aletheia-taxis = { path = "../crates/taxis" }
+hermeneus = { path = "../crates/hermeneus" }
+koina = { path = "../crates/koina" }
+mneme = { path = "../crates/mneme", features = ["mneme-engine"] }
+nous = { path = "../crates/nous", features = ["knowledge-store"] }
+taxis = { path = "../crates/taxis" }
 
 # Prevent this from interfering with the parent workspace
 [workspace]

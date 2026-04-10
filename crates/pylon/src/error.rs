@@ -234,7 +234,7 @@ macro_rules! impl_from_error {
     };
 }
 
-impl_from_error!(aletheia_mneme::error::Error, |err| {
+impl_from_error!(mneme::error::Error, |err| {
     SessionNotFound { id, .. } => SessionNotFoundSnafu { id }.build(),
     FactNotFound { id, .. } => NotFoundSnafu {
         path: format!("fact/{id}"),
@@ -254,7 +254,7 @@ impl_from_error!(aletheia_mneme::error::Error, |err| {
     .build(),
 });
 
-impl_from_error!(aletheia_hermeneus::error::Error, |err| {
+impl_from_error!(hermeneus::error::Error, |err| {
     RateLimited { retry_after_ms, .. } => RateLimitedSnafu {
         retry_after_secs: retry_after_ms.div_ceil(1000),
     }
@@ -274,7 +274,7 @@ impl_from_error!(aletheia_hermeneus::error::Error, |err| {
     } => ServiceUnavailableSnafu { message }.build(),
 });
 
-impl_from_error!(aletheia_nous::error::Error, |err| {
+impl_from_error!(nous::error::Error, |err| {
     NousNotFound { nous_id, .. } => NousNotFoundSnafu { id: nous_id }.build(),
     GuardRejected { reason, .. } => ForbiddenSnafu { message: reason }.build(),
     PipelineTimeout {
@@ -369,7 +369,7 @@ mod tests {
 
     #[test]
     fn pipeline_timeout_maps_to_service_unavailable() {
-        let err = aletheia_nous::error::Error::PipelineTimeout {
+        let err = nous::error::Error::PipelineTimeout {
             stage: "execute".to_owned(),
             timeout_secs: 300,
             location: snafu::location!(),
@@ -381,7 +381,7 @@ mod tests {
 
     #[test]
     fn guard_rejected_maps_to_forbidden() {
-        let err = aletheia_nous::error::Error::GuardRejected {
+        let err = nous::error::Error::GuardRejected {
             reason: "safety check".to_owned(),
             location: snafu::location!(),
         };
@@ -458,7 +458,7 @@ mod tests {
 
     #[test]
     fn auth_failed_does_not_leak_provider_details() {
-        let hermeneus_err = aletheia_hermeneus::error::Error::AuthFailed {
+        let hermeneus_err = hermeneus::error::Error::AuthFailed {
             message: "Anthropic returned 401: x-api-key header is invalid".to_owned(),
             location: snafu::location!(),
         };
@@ -485,7 +485,7 @@ mod tests {
 
     #[test]
     fn mneme_session_not_found_maps_to_404() {
-        let mneme_err = aletheia_mneme::error::Error::SessionNotFound {
+        let mneme_err = mneme::error::Error::SessionNotFound {
             id: "ses-01abc".to_owned(),
             location: snafu::location!(),
         };
@@ -496,7 +496,7 @@ mod tests {
 
     #[test]
     fn mneme_fact_not_found_maps_to_404() {
-        let mneme_err = aletheia_mneme::error::Error::FactNotFound {
+        let mneme_err = mneme::error::Error::FactNotFound {
             id: "fact-01abc".to_owned(),
             location: snafu::location!(),
         };
@@ -507,7 +507,7 @@ mod tests {
 
     #[test]
     fn mneme_empty_content_maps_to_400() {
-        let mneme_err = aletheia_mneme::error::Error::EmptyContent {
+        let mneme_err = mneme::error::Error::EmptyContent {
             location: snafu::location!(),
         };
         let api_err = ApiError::from(mneme_err);
@@ -517,7 +517,7 @@ mod tests {
 
     #[test]
     fn mneme_invalid_confidence_maps_to_400() {
-        let mneme_err = aletheia_mneme::error::Error::InvalidConfidence {
+        let mneme_err = mneme::error::Error::InvalidConfidence {
             value: 1.5,
             location: snafu::location!(),
         };

@@ -582,7 +582,7 @@ mod tests {
 
         fn make_session(dispatch_id: &str, status: SessionStatus) -> SessionRecord {
             SessionRecord {
-                id: SessionId::new(aletheia_koina::ulid::Ulid::new().to_string()),
+                id: SessionId::new(koina::ulid::Ulid::new().to_string()),
                 dispatch_id: DispatchId::new(dispatch_id),
                 prompt_number: 1,
                 status,

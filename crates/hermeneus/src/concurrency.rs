@@ -106,7 +106,7 @@ struct LimiterInner {
 /// # Example
 ///
 /// ```rust,no_run
-/// # use aletheia_hermeneus::concurrency::{AdaptiveConcurrencyLimiter, ConcurrencyConfig, RequestOutcome};
+/// # use hermeneus::concurrency::{AdaptiveConcurrencyLimiter, ConcurrencyConfig, RequestOutcome};
 /// # use std::sync::Arc;
 /// # use std::time::Duration;
 /// # async fn example() {

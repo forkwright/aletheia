@@ -4,7 +4,7 @@ use std::process::Command;
 
 use clap::Args;
 
-use aletheia_koina::system::{Environment, RealSystem};
+use koina::system::{Environment, RealSystem};
 
 const BINARY_NAME: &str = "theatron-desktop";
 

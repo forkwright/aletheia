@@ -1,5 +1,5 @@
 [package]
-name = "aletheia-koina"
+name = "koina"
 version.workspace = true
 description = "Core types, errors, and tracing for Aletheia"
 edition.workspace = true

@@ -13,15 +13,15 @@ use tokio::task::{JoinHandle, JoinSet};
 use tokio_util::sync::CancellationToken;
 use tracing::{Instrument, debug, error, info, warn};
 
-use aletheia_hermeneus::provider::ProviderRegistry;
-use aletheia_mneme::embedding::EmbeddingProvider;
+use hermeneus::provider::ProviderRegistry;
+use mneme::embedding::EmbeddingProvider;
 #[cfg(feature = "knowledge-store")]
-use aletheia_mneme::knowledge_store::KnowledgeStore;
-use aletheia_mneme::store::SessionStore;
-use aletheia_organon::registry::ToolRegistry;
-use aletheia_organon::types::ToolServices;
-use aletheia_taxis::oikos::Oikos;
-use aletheia_thesauros::loader::LoadedPack;
+use mneme::knowledge_store::KnowledgeStore;
+use mneme::store::SessionStore;
+use organon::registry::ToolRegistry;
+use organon::types::ToolServices;
+use taxis::oikos::Oikos;
+use thesauros::loader::LoadedPack;
 
 use crate::actor;
 use crate::bootstrap::pack_sections_to_bootstrap;

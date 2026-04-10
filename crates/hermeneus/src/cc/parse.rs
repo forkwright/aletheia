@@ -134,7 +134,7 @@ pub(crate) fn result_to_response(
     // a generated one when not present.
     let id = match session_id {
         Some(sid) => sid.to_owned(),
-        None => format!("cc_{}", aletheia_koina::uuid::uuid_v4()),
+        None => format!("cc_{}", koina::uuid::uuid_v4()),
     };
 
     Ok(CompletionResponse {

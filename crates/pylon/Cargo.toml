@@ -1,5 +1,5 @@
 [package]
-name = "aletheia-pylon"
+name = "pylon"
 version.workspace = true
 description = "Axum HTTP gateway for Aletheia"
 edition.workspace = true
@@ -13,7 +13,7 @@ workspace = true
 [features]
 default = []
 tls = ["dep:axum-server"]
-knowledge-store = ["aletheia-nous/knowledge-store"]
+knowledge-store = ["nous/knowledge-store"]
 test-core = ["knowledge-store"]
 test-full = []
 
@@ -52,21 +52,21 @@ prometheus = { workspace = true }
 rand = { workspace = true }
 
 # Internal crates
-aletheia-koina = { path = "../koina" }
-aletheia-taxis = { path = "../taxis" }
-aletheia-hermeneus = { path = "../hermeneus" }
-aletheia-organon = { path = "../organon" }
-aletheia-mneme = { path = "../mneme", features = ["sqlite"] }
-aletheia-nous = { path = "../nous" }
-aletheia-symbolon = { path = "../symbolon" }
+koina = { path = "../koina" }
+taxis = { path = "../taxis" }
+hermeneus = { path = "../hermeneus" }
+organon = { path = "../organon" }
+mneme = { path = "../mneme", features = ["sqlite"] }
+nous = { path = "../nous" }
+symbolon = { path = "../symbolon" }
 
 [dev-dependencies]
-aletheia-hermeneus = { path = "../hermeneus", features = ["test-utils"] }
-aletheia-symbolon = { path = "../symbolon", features = ["test-support"] }
+hermeneus = { path = "../hermeneus", features = ["test-utils"] }
+symbolon = { path = "../symbolon", features = ["test-support"] }
 http-body-util = "0.1"
 jiff = { workspace = true }
 reqwest = { workspace = true }
-aletheia-koina = { path = "../koina" }
+koina = { path = "../koina" }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }
 tracing-subscriber = { workspace = true }

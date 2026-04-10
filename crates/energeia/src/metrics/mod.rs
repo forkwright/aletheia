@@ -11,8 +11,8 @@
 //!
 //! ```rust,ignore
 //! use std::sync::Arc;
-//! use aletheia_energeia::metrics::MetricsService;
-//! use aletheia_energeia::store::EnergeiaStore;
+//! use energeia::metrics::MetricsService;
+//! use energeia::store::EnergeiaStore;
 //!
 //! let service = MetricsService::new(Arc::clone(&store));
 //!
@@ -21,7 +21,7 @@
 //! let status = service.status_dashboard()?;  // current snapshot
 //!
 //! // Initialize prometheus metrics at startup:
-//! aletheia_energeia::metrics::prometheus::init();
+//! energeia::metrics::prometheus::init();
 //! ```
 
 pub mod cost;

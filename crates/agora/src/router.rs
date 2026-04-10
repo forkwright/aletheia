@@ -2,7 +2,7 @@
 
 use tracing::debug;
 
-use aletheia_taxis::config::ChannelBinding;
+use taxis::config::ChannelBinding;
 
 use crate::types::InboundMessage;
 

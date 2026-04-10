@@ -20,7 +20,7 @@ pub(crate) mod tls;
 
 use std::path::PathBuf;
 
-use aletheia_taxis::oikos::Oikos;
+use taxis::oikos::Oikos;
 use anyhow::Result;
 use clap::CommandFactory;
 
@@ -60,7 +60,7 @@ pub(crate) async fn dispatch(cmd: Command, instance_root: Option<&PathBuf>) -> R
                 yes: a.yes,
                 non_interactive: a.non_interactive,
                 // codequality:ignore -- raw CLI string immediately wrapped in SecretString
-                api_key: a.api_key.map(aletheia_koina::secret::SecretString::from),
+                api_key: a.api_key.map(koina::secret::SecretString::from),
                 auth_mode: a.auth_mode,
                 api_provider: a.api_provider,
                 model: a.model,

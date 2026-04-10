@@ -13,9 +13,9 @@ use std::time::Duration;
 
 use criterion::{Criterion, criterion_group, criterion_main};
 
-use aletheia_koina::secret::SecretString;
-use aletheia_symbolon::jwt::{JwtConfig, JwtManager};
-use aletheia_symbolon::types::Role;
+use koina::secret::SecretString;
+use symbolon::jwt::{JwtConfig, JwtManager};
+use symbolon::types::Role;
 
 fn make_manager() -> JwtManager {
     JwtManager::new(JwtConfig {

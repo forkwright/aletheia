@@ -13,17 +13,17 @@ use qdrant_client::qdrant::{
     ScrollPointsBuilder, value, with_payload_selector, with_vectors_selector,
 };
 
-use aletheia_mneme::embedding::{
+use mneme::embedding::{
     DegradedEmbeddingProvider, EmbeddingConfig, EmbeddingProvider, create_provider,
 };
-use aletheia_mneme::id::{EmbeddingId, FactId};
-use aletheia_mneme::knowledge::{
+use mneme::id::{EmbeddingId, FactId};
+use mneme::knowledge::{
     EmbeddedChunk, EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactTemporal,
     far_future, parse_timestamp,
 };
-use aletheia_mneme::knowledge_store::{KnowledgeConfig, KnowledgeStore};
-use aletheia_taxis::loader::load_config;
-use aletheia_taxis::oikos::Oikos;
+use mneme::knowledge_store::{KnowledgeConfig, KnowledgeStore};
+use taxis::loader::load_config;
+use taxis::oikos::Oikos;
 
 use crate::error::Result;
 
@@ -300,7 +300,7 @@ fn import_fact(
             confidence: 0.7,
             tier: EpistemicTier::Inferred,
             source_session_id: None,
-            stability_hours: aletheia_mneme::knowledge::default_stability_hours(""),
+            stability_hours: mneme::knowledge::default_stability_hours(""),
         },
         lifecycle: FactLifecycle {
             superseded_by: None,

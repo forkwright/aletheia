@@ -116,7 +116,7 @@ pub struct SessionResponse {
 }
 
 impl SessionResponse {
-    pub(super) fn from_mneme(s: &aletheia_mneme::types::Session) -> Self {
+    pub(super) fn from_mneme(s: &mneme::types::Session) -> Self {
         Self {
             id: s.id.clone(),
             nous_id: s.nous_id.clone(),
