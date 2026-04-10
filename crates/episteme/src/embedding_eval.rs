@@ -16,15 +16,16 @@
 //! ```ignore
 //! // WHY: MockEmbeddingProvider is gated behind the `test-support` feature.
 //! // This example shows the API but cannot compile in doctest mode.
+//! use std::path::Path;
 //! use aletheia_episteme::embedding::MockEmbeddingProvider;
-//! use aletheia_episteme::embedding_eval::{EvalDataset, evaluate_model};
+//! use aletheia_episteme::embedding_eval::{EvalDataset, compare_models};
 //!
-//! let dataset = EvalDataset::from_jsonl_str(r#"{"query":"foo","relevant_ids":["a"]}"#)
+//! let dataset = EvalDataset::from_jsonl_file(Path::new("eval.jsonl"))
 //!     .expect("JSONL must parse for valid test data");
 //! let provider = MockEmbeddingProvider::new(384);
 //! let corpus: Vec<(String, String)> = vec![("a".into(), "foo bar".into())];
-//! let result = evaluate_model(&provider, &dataset, &corpus, 5).unwrap();
-//! println!("Recall@5: {}", result.recall_at_k);
+//! let run = compare_models(&provider, None, &dataset, &corpus, 5).unwrap();
+//! println!("Recall@5: {}", run.baseline.recall_at_k);
 //! ```
 
 use snafu::Snafu;
@@ -109,7 +110,7 @@ impl EvalDataset {
     ///
     /// Returns [`EvalError::ParseFailed`] if any non-blank line is invalid JSON
     /// or missing required fields.
-    pub fn from_jsonl_str(s: &str) -> EvalResult<Self> {
+    pub(crate) fn from_jsonl_str(s: &str) -> EvalResult<Self> {
         let mut queries = Vec::new();
         for (idx, raw) in s.lines().enumerate() {
             let line = raw.trim();
@@ -234,7 +235,7 @@ pub struct EvalRunResult {
 /// Returns [`EvalError::EmptyCorpus`] or [`EvalError::EmptyDataset`] for
 /// empty inputs, and [`EvalError::EmbedFailed`] if the provider errors.
 #[instrument(skip(provider, dataset, corpus), fields(k = k, queries = dataset.queries.len(), corpus = corpus.len()))]
-pub fn evaluate_model(
+pub(crate) fn evaluate_model(
     provider: &dyn EmbeddingProvider,
     dataset: &EvalDataset,
     corpus: &[(String, String)],
