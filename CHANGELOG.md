@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.14.1](https://github.com/forkwright/aletheia/compare/v0.14.0...v0.14.1) (2026-04-09)
+
+
+### Bug Fixes
+
+* **daemon:** cron_expr clippy expectations + indexing ([#2958](https://github.com/forkwright/aletheia/issues/2958)) ([#2993](https://github.com/forkwright/aletheia/issues/2993)) ([4d7ac70](https://github.com/forkwright/aletheia/commit/4d7ac7010bd5b63c9b2cfa1cc9e953686ceb591e))
+* **daemon:** more clippy cleanup ([#2958](https://github.com/forkwright/aletheia/issues/2958)) ([#2994](https://github.com/forkwright/aletheia/issues/2994)) ([0d12d66](https://github.com/forkwright/aletheia/commit/0d12d665cbf136f1fd1b6d50f1d683c417094350))
+* **daemon:** more low-hanging clippy ([#2958](https://github.com/forkwright/aletheia/issues/2958)) ([#2982](https://github.com/forkwright/aletheia/issues/2982)) ([22d8b7e](https://github.com/forkwright/aletheia/commit/22d8b7e983f881c595897d9bcc6e77f3c9238bee))
+* **deps:** restore std feature on futures crate ([#2974](https://github.com/forkwright/aletheia/issues/2974)) ([367eacb](https://github.com/forkwright/aletheia/commit/367eacbd7f72d39fa75261131565674722b653aa))
+* **deps:** restore std feature on serde crate ([#2977](https://github.com/forkwright/aletheia/issues/2977)) ([21a7302](https://github.com/forkwright/aletheia/commit/21a7302aa4342b453cf0685343fa9d8a843fd717))
+* **diaporeia:** gate NousManager knowledge_store arg in tests ([#3021](https://github.com/forkwright/aletheia/issues/3021)) ([75000af](https://github.com/forkwright/aletheia/commit/75000af70dec743f8130990711b0f6229d488066))
+* **diaporeia:** make knowledge-store a default feature ([#3042](https://github.com/forkwright/aletheia/issues/3042)) ([774343e](https://github.com/forkwright/aletheia/commit/774343e8610908401cacea4a0cac478332b90f40))
+* **dokimion:** correct test module import path ([#2986](https://github.com/forkwright/aletheia/issues/2986)) ([fba7b6b](https://github.com/forkwright/aletheia/commit/fba7b6b0fc2724dd6c66a38b2f1c2cc528438022))
+* **energeia:** clear low-hanging clippy warnings ([#2958](https://github.com/forkwright/aletheia/issues/2958)) ([#2981](https://github.com/forkwright/aletheia/issues/2981)) ([192e0e2](https://github.com/forkwright/aletheia/commit/192e0e27212a7a4b85fbde39ad9ee4d4e53f551f))
+* **energeia:** retry spawn() on ETXTBSY (closes [#2990](https://github.com/forkwright/aletheia/issues/2990)) ([#2991](https://github.com/forkwright/aletheia/issues/2991)) ([83339d8](https://github.com/forkwright/aletheia/commit/83339d8124546dabbc4b0ef61943d763f98074b1))
+* **episteme:** clear low-hanging clippy warnings ([#2958](https://github.com/forkwright/aletheia/issues/2958)) ([#2980](https://github.com/forkwright/aletheia/issues/2980)) ([f0efdb8](https://github.com/forkwright/aletheia/commit/f0efdb883f7fc506cd2b6ac542495555b7795d03))
+* **episteme:** force label set before asserting metric registration (closes [#2988](https://github.com/forkwright/aletheia/issues/2988)) ([#2989](https://github.com/forkwright/aletheia/issues/2989)) ([218fdca](https://github.com/forkwright/aletheia/commit/218fdcaaef34ce3312d5d4c9d3aa1fd6dd67b245))
+* **graphe:** use unique label in metric increment test to avoid flake ([#3045](https://github.com/forkwright/aletheia/issues/3045)) ([795dded](https://github.com/forkwright/aletheia/commit/795dded6df01a670508c8f81c4009e1caa1118c5))
+* **integration-tests:** add missing std::sync::Arc import ([#2987](https://github.com/forkwright/aletheia/issues/2987)) ([110886d](https://github.com/forkwright/aletheia/commit/110886d327314d20b81de2afaece39483649a9f7))
+* **integration-tests:** relax end_to_end health test to match expanded checks ([#2997](https://github.com/forkwright/aletheia/issues/2997)) ([35e559b](https://github.com/forkwright/aletheia/commit/35e559b15c0e177f279b5043a76b78f4c93586f8))
+* **integration-tests:** relax health endpoint test to match expanded checks ([#2992](https://github.com/forkwright/aletheia/issues/2992)) ([6f6037c](https://github.com/forkwright/aletheia/commit/6f6037cbb50e97fae021753fc31e3b1acc30201d))
+* **integration-tests:** unblock eval_harness compile + ignore failing canaries ([#3000](https://github.com/forkwright/aletheia/issues/3000)) ([7d7155e](https://github.com/forkwright/aletheia/commit/7d7155e18c2a6a3f5a2280e474b6b59959859b98))
+* **koina:** promote Clock trait to pub, fix doctest ([#3002](https://github.com/forkwright/aletheia/issues/3002)) ([86a6166](https://github.com/forkwright/aletheia/commit/86a6166f3f81efa523cd50b1ac942ea5bf3ec5ea))
+* **nous:** drop unused Arc/KnowledgeStore imports ([#3024](https://github.com/forkwright/aletheia/issues/3024)) ([3f99e7a](https://github.com/forkwright/aletheia/commit/3f99e7ae57c39c0614b1940a4ab6965a7baee86b))
+* **pylon:** mark per_user_rate_limit failing tests as ignored ([#2968](https://github.com/forkwright/aletheia/issues/2968)) ([#3001](https://github.com/forkwright/aletheia/issues/3001)) ([6b2f0c0](https://github.com/forkwright/aletheia/commit/6b2f0c04d4b929bfb05ad757eb887e30813bd7f2))
+* **symbolon:** more low-hanging clippy ([#2958](https://github.com/forkwright/aletheia/issues/2958)) ([#2983](https://github.com/forkwright/aletheia/issues/2983)) ([f933219](https://github.com/forkwright/aletheia/commit/f9332198dfa2e5342a509d422c9146be20fff498))
+* **workspace:** clear low-hanging clippy across small crates ([#2958](https://github.com/forkwright/aletheia/issues/2958)) ([#2976](https://github.com/forkwright/aletheia/issues/2976)) ([8320083](https://github.com/forkwright/aletheia/commit/8320083e770502ea589e2745609a85d4ef6f8919))
+* **workspace:** clippy cleanup for agora/melete/dokimion ([#2958](https://github.com/forkwright/aletheia/issues/2958)) ([#2979](https://github.com/forkwright/aletheia/issues/2979)) ([7493ae0](https://github.com/forkwright/aletheia/commit/7493ae037cf7a214ba9cf48bd341c0686b53a1b5))
+
 ## [0.14.0](https://github.com/forkwright/aletheia/compare/v0.13.67...v0.14.0) (2026-04-09)
 
 
