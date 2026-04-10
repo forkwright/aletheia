@@ -194,7 +194,9 @@ impl Aggregation {
                             message: format!("argument to 'collect' must be positive, got {arg}")
                         }
                     );
-                    AggrCollect::new(arg as usize)
+                    // INVARIANT: range-checked > 0 above; saturating to
+                    // usize::MAX covers the theoretical 32-bit case.
+                    AggrCollect::new(usize::try_from(arg).unwrap_or(usize::MAX))
                 }
             }),
             _ => unreachable!(),
