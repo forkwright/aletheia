@@ -234,23 +234,22 @@ pub(crate) fn compute_jitter(
     task_id.hash(&mut hasher);
     let hash = hasher.finish();
 
-    // NOTE: extract lower 32 bits → [0, 1) fraction
-    #[expect(
-        clippy::as_conversions,
-        clippy::cast_possible_truncation,
-        reason = "intentional u64→u32 mask: takes the lower 32 bits of the hash to seed the [0,1) fraction; full 64 bits would overflow f64 mantissa"
-    )]
-    let frac = f64::from(hash as u32) / f64::from(u32::MAX);
+    // WHY: take the lower 32 bits of the hash to seed a [0, 1) fraction.
+    // u32::try_from on the masked value is lossless since the mask already
+    // fits u32; the unwrap_or is unreachable defensive code.
+    let low32 = u32::try_from(hash & u64::from(u32::MAX)).unwrap_or(u32::MAX);
+    let frac = f64::from(low32) / f64::from(u32::MAX);
 
     let max_nanos = max_jitter.as_nanos();
-    // NOTE: f64 multiplication then truncate back to i128 → i64.
-    // Both casts are bounded: max_nanos comes from a SignedDuration with practical
-    // limits (at most a few hours), and frac is in [0, 1).
+    // NOTE: f64 multiplication then truncate back to i128.
+    // max_nanos is an i128 SignedDuration count with practical limits (at most
+    // a few hours of nanoseconds ≈ 1.3e13, well under f64 mantissa 2^53 ≈ 9e15)
+    // and frac is in [0, 1); the product stays inside both f64 and i128.
     #[expect(
         clippy::as_conversions,
         clippy::cast_precision_loss,
         clippy::cast_possible_truncation,
-        reason = "max_nanos is a small SignedDuration count fitting f64 exactly; frac is in [0,1); product fits i128"
+        reason = "i128→f64→i128: max_nanos ≤ few-hour SignedDuration count (~1.3e13) is well below f64 mantissa 2^53; product × frac ∈ [0,1) stays inside i128"
     )]
     let jitter_nanos = (max_nanos as f64 * frac) as i128;
 
