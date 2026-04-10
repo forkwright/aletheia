@@ -753,3 +753,225 @@ async fn emit_turn_result_events(tx: &mpsc::Sender<SseEvent>, result: &TurnResul
         })
         .await;
 }
+
+#[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
+mod tests {
+    use super::*;
+    use axum::http::HeaderMap;
+
+    // ─────────────────────────────────────────────────────────
+    // extract_idempotency_key
+    // ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn idempotency_key_absent_returns_none() {
+        let headers = HeaderMap::new();
+        let result = extract_idempotency_key(&headers).expect("should succeed");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn idempotency_key_present_returns_value() {
+        let mut headers = HeaderMap::new();
+        headers.insert("idempotency-key", "abc-123".parse().expect("valid header"));
+        let result = extract_idempotency_key(&headers).expect("should succeed");
+        assert_eq!(result.as_deref(), Some("abc-123"));
+    }
+
+    #[test]
+    fn idempotency_key_empty_value_rejected() {
+        let mut headers = HeaderMap::new();
+        headers.insert("idempotency-key", "".parse().expect("valid header"));
+        let result = extract_idempotency_key(&headers);
+        assert!(result.is_err(), "empty key should be rejected");
+    }
+
+    #[test]
+    fn idempotency_key_too_long_rejected() {
+        let mut headers = HeaderMap::new();
+        let long_key = "a".repeat(MAX_KEY_LENGTH + 1);
+        headers.insert(
+            "idempotency-key",
+            long_key.parse().expect("valid ascii header"),
+        );
+        let result = extract_idempotency_key(&headers);
+        assert!(result.is_err(), "over-long key should be rejected");
+    }
+
+    #[test]
+    fn idempotency_key_at_max_length_accepted() {
+        let mut headers = HeaderMap::new();
+        let key = "a".repeat(MAX_KEY_LENGTH);
+        headers.insert("idempotency-key", key.parse().expect("valid header"));
+        let result = extract_idempotency_key(&headers).expect("should succeed");
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn idempotency_key_case_insensitive_header() {
+        // HTTP headers are case-insensitive; axum normalizes them
+        let mut headers = HeaderMap::new();
+        headers.insert("Idempotency-Key", "mixed-case".parse().expect("valid header"));
+        let result = extract_idempotency_key(&headers).expect("should succeed");
+        assert_eq!(result.as_deref(), Some("mixed-case"));
+    }
+
+    // ─────────────────────────────────────────────────────────
+    // classify_llm_error
+    // ─────────────────────────────────────────────────────────
+
+    #[expect(
+        clippy::unnecessary_box_returns,
+        reason = "ApiSnafu requires Box<ApiErrorContext> in its context field"
+    )]
+    fn make_api_context() -> Box<hermeneus::error::ApiErrorContext> {
+        Box::new(hermeneus::error::ApiErrorContext {
+            model: "claude-opus".to_owned(),
+            credential_source: "environment".to_owned(),
+        })
+    }
+
+    #[test]
+    fn llm_error_rate_limited_classified() {
+        use snafu::IntoError;
+        let err = hermeneus::error::RateLimitedSnafu {
+            retry_after_ms: 60_000_u64,
+        }
+        .into_error(snafu::NoneError);
+        let (code, _) = classify_llm_error(&err);
+        assert_eq!(code, "rate_limited");
+    }
+
+    #[test]
+    fn llm_error_api_429_classified_as_rate_limited() {
+        use snafu::IntoError;
+        let err = hermeneus::error::ApiSnafu {
+            status: 429_u16,
+            message: "Too Many Requests".to_owned(),
+            context: make_api_context(),
+        }
+        .into_error(snafu::NoneError);
+        let (code, _) = classify_llm_error(&err);
+        assert_eq!(code, "rate_limited");
+    }
+
+    #[test]
+    fn llm_error_auth_failed_classified_as_provider_unavailable() {
+        use snafu::IntoError;
+        let err = hermeneus::error::AuthFailedSnafu {
+            message: "bad key".to_owned(),
+        }
+        .into_error(snafu::NoneError);
+        let (code, msg) = classify_llm_error(&err);
+        assert_eq!(code, "provider_unavailable");
+        assert!(msg.contains("authentication"));
+    }
+
+    #[test]
+    fn llm_error_api_503_classified_as_provider_unavailable() {
+        use snafu::IntoError;
+        let err = hermeneus::error::ApiSnafu {
+            status: 503_u16,
+            message: "Service Unavailable".to_owned(),
+            context: make_api_context(),
+        }
+        .into_error(snafu::NoneError);
+        let (code, _) = classify_llm_error(&err);
+        assert_eq!(code, "provider_unavailable");
+    }
+
+    #[test]
+    fn llm_error_api_500_falls_through_to_turn_failed() {
+        use snafu::IntoError;
+        let err = hermeneus::error::ApiSnafu {
+            status: 500_u16,
+            message: "Internal Server Error".to_owned(),
+            context: make_api_context(),
+        }
+        .into_error(snafu::NoneError);
+        let (code, msg) = classify_llm_error(&err);
+        assert_eq!(code, "turn_failed");
+        // WHY #844: internal error details must NOT leak in the client-visible message
+        assert!(!msg.contains("500"));
+        assert!(!msg.contains("Internal Server Error"));
+    }
+
+    // ─────────────────────────────────────────────────────────
+    // turn_error_info — nous error dispatch
+    // ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn nous_pipeline_timeout_classified() {
+        use snafu::IntoError;
+        let err = nous::error::PipelineTimeoutSnafu {
+            stage: "execute".to_owned(),
+            timeout_secs: 30_u32,
+        }
+        .into_error(snafu::NoneError);
+        let (code, _) = turn_error_info(&err);
+        assert_eq!(code, "turn_timeout");
+    }
+
+    #[test]
+    fn nous_ask_timeout_classified() {
+        use snafu::IntoError;
+        let err = nous::error::AskTimeoutSnafu {
+            nous_id: "target".to_owned(),
+            timeout_secs: 10_u64,
+        }
+        .into_error(snafu::NoneError);
+        let (code, _) = turn_error_info(&err);
+        assert_eq!(code, "turn_timeout");
+    }
+
+    #[test]
+    fn nous_inbox_full_classified_as_service_busy() {
+        use snafu::IntoError;
+        let err = nous::error::InboxFullSnafu {
+            nous_id: "syn".to_owned(),
+            timeout_secs: 30_u64,
+        }
+        .into_error(snafu::NoneError);
+        let (code, _) = turn_error_info(&err);
+        assert_eq!(code, "service_busy");
+    }
+
+    // ─────────────────────────────────────────────────────────
+    // sse_event_to_axum — serialization
+    // ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn sse_event_text_delta_serializes_correctly() {
+        let event = SseEvent::TextDelta {
+            text: "hello world".to_owned(),
+        };
+        let result = sse_event_to_axum(event).expect("infallible");
+        // We can't directly inspect axum::response::sse::Event fields, but we
+        // can verify the conversion doesn't panic and produces *something*.
+        drop(result);
+    }
+
+    #[test]
+    fn sse_event_error_serializes_correctly() {
+        let event = SseEvent::Error {
+            code: "turn_failed".to_owned(),
+            message: "something broke".to_owned(),
+        };
+        let result = sse_event_to_axum(event).expect("infallible");
+        drop(result);
+    }
+
+    #[test]
+    fn sse_event_message_complete_serializes_correctly() {
+        let event = SseEvent::MessageComplete {
+            stop_reason: "end_turn".to_owned(),
+            usage: UsageData {
+                input_tokens: 100,
+                output_tokens: 200,
+            },
+        };
+        let result = sse_event_to_axum(event).expect("infallible");
+        drop(result);
+    }
+}
