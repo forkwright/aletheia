@@ -13,6 +13,8 @@ pub mod error;
 pub mod flush;
 /// Prometheus metric definitions for distillation operations.
 pub mod metrics;
+/// Backward-path probe QA: verify distilled facts before committing to the knowledge graph.
+pub mod probe;
 /// System prompt construction and message formatting for the distillation LLM.
 pub mod prompt;
 /// Jaccard similarity pruning to remove near-duplicate content before distillation.
