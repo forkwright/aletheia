@@ -5,6 +5,10 @@ use super::{KnowledgeStore, queries};
 #[cfg(feature = "mneme-engine")]
 impl KnowledgeStore {
     /// Insert or update a fact.
+    ///
+    /// The fact is validated (non-empty content, length limit, confidence range)
+    /// and then passed through the configured [`AdmissionPolicy`](crate::admission::AdmissionPolicy).
+    /// If the policy rejects the fact, returns [`Error::AdmissionRejected`](crate::error::Error::AdmissionRejected).
     #[instrument(skip(self, fact), fields(fact_id = %fact.id))]
     pub fn insert_fact(&self, fact: &crate::knowledge::Fact) -> crate::error::Result<()> {
         use snafu::ensure;
@@ -22,6 +26,22 @@ impl KnowledgeStore {
                 value: fact.provenance.confidence
             }
         );
+
+        // Admission control gate: check policy before persisting.
+        let decision = self.admission_policy.should_admit(fact);
+        if let crate::admission::AdmissionDecision::Reject(rejection) = decision {
+            tracing::debug!(
+                fact_id = %fact.id,
+                factor = %rejection.factor,
+                reason = %rejection.reason,
+                "fact rejected by admission policy"
+            );
+            return Err(crate::error::AdmissionRejectedSnafu {
+                reason: rejection.reason,
+            }
+            .build());
+        }
+
         let params = fact_to_params(fact);
         let result = self.run_mut(&queries::upsert_fact(), params);
         if result.is_ok() {

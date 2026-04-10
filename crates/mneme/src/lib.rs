@@ -77,6 +77,8 @@ pub mod training;
 
 // ── Knowledge pipeline (episteme) ──────────────────────────────────────────
 
+/// Memory admission control: structured decision gate for knowledge graph insertion.
+pub use aletheia_episteme::admission;
 /// Conflict detection pipeline for fact insertion.
 pub use aletheia_episteme::conflict;
 /// LLM-driven fact consolidation for knowledge maintenance.

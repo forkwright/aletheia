@@ -27,7 +27,7 @@ fn ts(s: &str) -> jiff::Timestamp {
 }
 
 fn open_store(dim: usize) -> Arc<KnowledgeStore> {
-    KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim }).expect("open_mem")
+    KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim, ..Default::default() }).expect("open_mem")
 }
 
 fn make_fact(id: &str, nous_id: &str, content: &str) -> Fact {

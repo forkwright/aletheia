@@ -314,7 +314,7 @@ mod knowledge_bridge_tests {
     const DIM: usize = 4;
 
     fn make_store() -> Arc<KnowledgeStore> {
-        KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim: DIM })
+        KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim: DIM, ..Default::default() })
             .expect("open in-memory store")
     }
 

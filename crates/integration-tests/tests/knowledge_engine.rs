@@ -100,7 +100,7 @@ fn make_chunk(
 // TEST-02: Fact inserted via insert_fact is queryable and returns identical data.
 #[test]
 fn fact_round_trip() {
-    let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim: 4 }).expect("open_mem");
+    let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim: 4, ..Default::default() }).expect("open_mem");
 
     let fact = Fact {
         id: FactId::new("f-1").expect("valid test id"),
@@ -147,7 +147,7 @@ fn fact_round_trip() {
 #[test]
 fn hnsw_vector_search() {
     let dim = 16;
-    let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim }).expect("open_mem");
+    let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim, ..Default::default() }).expect("open_mem");
     let provider = MockEmbeddingProvider::new(dim);
 
     let texts = [
@@ -184,7 +184,7 @@ fn hnsw_vector_search() {
 // INTG-05: Schema version is queryable and matches SCHEMA_VERSION constant.
 #[test]
 fn schema_version_queryable() {
-    let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim: 4 }).expect("open_mem");
+    let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim: 4, ..Default::default() }).expect("open_mem");
     let version = store.schema_version().expect("version");
     assert_eq!(version, 6);
 }
@@ -215,7 +215,7 @@ fn multiple_facts_ordered_by_confidence() {
 // INTG-04: spawn_blocking async wrappers work from #[tokio::test] context.
 #[tokio::test]
 async fn async_spawn_blocking_wrapper() {
-    let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim: 4 }).expect("open_mem");
+    let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim: 4, ..Default::default() }).expect("open_mem");
 
     let fact = make_fact(
         "f-async",
@@ -238,7 +238,7 @@ async fn async_spawn_blocking_wrapper() {
 // Raw query escape hatch returns the expected relations.
 #[test]
 fn raw_query_escape_hatch() {
-    let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim: 4 }).expect("open_mem");
+    let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim: 4, ..Default::default() }).expect("open_mem");
 
     let rows = store
         .run_query("::relations", BTreeMap::new())
@@ -254,7 +254,7 @@ fn raw_query_escape_hatch() {
 #[test]
 fn hybrid_retrieval_end_to_end() {
     let dim = 8;
-    let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim }).expect("open_mem");
+    let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim, ..Default::default() }).expect("open_mem");
 
     let facts = [
         ("fact-1", "Rust is a systems programming language", 0.9f64),
@@ -348,7 +348,7 @@ fn hybrid_retrieval_end_to_end() {
 #[test]
 fn hnsw_connectivity_after_delete_reinsert_cycles() {
     let dim = 8;
-    let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim }).expect("open_mem");
+    let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim, ..Default::default() }).expect("open_mem");
 
     let primes: [u64; 8] = [7, 11, 13, 17, 19, 23, 29, 31];
     let make_vec = |i: u64| -> Vec<f32> {

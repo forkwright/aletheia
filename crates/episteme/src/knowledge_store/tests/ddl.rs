@@ -117,7 +117,7 @@ fn hybrid_search_empty_seeds_returns_results() {
     };
 
     let dim = 4;
-    let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim }).expect("open_mem");
+    let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim, ..Default::default() }).expect("open_mem");
 
     let fact = Fact {
         id: crate::id::FactId::new("f1").expect("valid test id"),
@@ -198,7 +198,7 @@ fn hybrid_search_graph_aggregation() {
     };
 
     let dim = 4;
-    let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim }).expect("open_mem");
+    let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim, ..Default::default() }).expect("open_mem");
 
     let f1 = Fact {
         id: crate::id::FactId::new("f1").expect("valid test id"),
@@ -372,7 +372,7 @@ fn hybrid_search_two_signal_no_graph() {
     };
 
     let dim = 4;
-    let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim }).expect("open_mem");
+    let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim, ..Default::default() }).expect("open_mem");
 
     let fact = Fact {
         id: crate::id::FactId::new("f-twosig").expect("valid test id"),
@@ -462,7 +462,7 @@ fn hybrid_search_absent_signal_rank_is_negative_one() {
     };
 
     let dim = 4;
-    let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim }).expect("open_mem");
+    let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim, ..Default::default() }).expect("open_mem");
 
     let fact = Fact {
         id: crate::id::FactId::new("f-bm25-only").expect("valid test id"),
