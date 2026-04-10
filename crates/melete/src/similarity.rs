@@ -22,7 +22,7 @@ pub struct PruningStats {
 impl PruningStats {
     /// Percentage of chunks pruned (0.0 to 100.0).
     #[must_use]
-    pub(crate) fn reduction_percent(&self) -> f64 {
+    pub fn reduction_percent(&self) -> f64 {
         if self.total_chunks == 0 {
             return 0.0;
         }
