@@ -152,12 +152,10 @@ fn clamp_scroll_offset(app: &mut App) {
         return;
     }
     let total = app.viewport.render.virtual_scroll.total_height();
-    let vh = chat_viewport_height(app) as u64;
-    #[expect(
-        clippy::cast_possible_truncation,
-        reason = "scroll offset bounded by content height which fits in usize on supported platforms"
-    )]
-    let max_offset = total.saturating_sub(vh) as usize;
+    let vh = u64::try_from(chat_viewport_height(app)).unwrap_or(u64::MAX);
+    // WHY: scroll offset is bounded by content height which always fits in
+    // usize on 64-bit; saturate at usize::MAX for the unreachable branch.
+    let max_offset = usize::try_from(total.saturating_sub(vh)).unwrap_or(usize::MAX);
     if app.viewport.render.scroll_offset > max_offset {
         app.viewport.render.scroll_offset = max_offset;
         if max_offset == 0 {
@@ -173,8 +171,8 @@ pub(crate) fn handle_resize(app: &mut App, w: u16, h: u16) {
     // NOTE: cap scroll_offset after reflow so the user cannot scroll past the top of content; auto-scroll is unaffected
     if !app.viewport.render.auto_scroll {
         let total = app.viewport.render.virtual_scroll.total_height();
-        let vh = chat_viewport_height(app) as u64;
-        let max_offset = total.saturating_sub(vh) as usize;
+        let vh = u64::try_from(chat_viewport_height(app)).unwrap_or(u64::MAX);
+        let max_offset = usize::try_from(total.saturating_sub(vh)).unwrap_or(usize::MAX);
         app.viewport.render.scroll_offset = app.viewport.render.scroll_offset.min(max_offset);
         if app.viewport.render.scroll_offset == 0 {
             app.viewport.render.auto_scroll = true;
@@ -375,17 +373,13 @@ mod tests {
         app.rebuild_virtual_scroll();
         app.viewport.render.auto_scroll = false;
         let total = app.viewport.render.virtual_scroll.total_height();
-        let vh = chat_viewport_height(&app) as u64;
+        let vh = u64::try_from(chat_viewport_height(&app)).unwrap_or(u64::MAX);
         // Offset within valid range: no clamping expected.
         if total > vh {
             app.viewport.render.scroll_offset = 3;
             handle_scroll_up(&mut app);
             // Offset should be 6 (3 + 3) as long as content allows.
-            #[expect(
-                clippy::cast_possible_truncation,
-                reason = "scroll offset bounded by content height which fits in usize on supported platforms"
-            )]
-            let max = total.saturating_sub(vh) as usize;
+            let max = usize::try_from(total.saturating_sub(vh)).unwrap_or(usize::MAX);
             assert!(app.viewport.render.scroll_offset <= max);
             assert!(!app.viewport.render.auto_scroll);
         }
