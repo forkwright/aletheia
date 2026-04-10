@@ -270,7 +270,7 @@ const CAUSAL_CUES: &[(&str, CausalRelationType, f64)] = &[
 /// the first match is used to gate edge creation. If multiple relations are
 /// needed, callers should segment text before calling.
 #[must_use]
-pub fn detect_causal_cue(text: &str) -> Option<(CausalRelationType, f64)> {
+pub(crate) fn detect_causal_cue(text: &str) -> Option<(CausalRelationType, f64)> {
     let lower = text.to_lowercase();
     CAUSAL_CUES
         .iter()
@@ -291,6 +291,9 @@ pub fn detect_causal_cue(text: &str) -> Option<(CausalRelationType, f64)> {
 /// # Errors
 /// Never fails — returns `Vec` rather than `Result` because extraction is
 /// best-effort; failure to detect causality is not an error condition.
+// PUBLIC: documented hook for RefinedExtraction.causal_signal consumers
+// (see extract/types.rs). Kept `pub` so external callers can drive the
+// pipeline until the first in-tree consumer lands.
 #[must_use]
 pub fn extract_causal_edges(
     session_text: &str,
