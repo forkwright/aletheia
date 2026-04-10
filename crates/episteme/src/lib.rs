@@ -64,6 +64,8 @@ pub mod side_query;
 pub mod skill;
 /// Skill auto-capture: heuristic filter, signature hashing, and candidate tracking.
 pub mod skills;
+/// Source-linked re-fetching for fact staleness validation.
+pub mod staleness;
 /// Ecological succession: domain volatility tracking and adaptive decay rates.
 pub(crate) mod succession;
 /// Structured tracing subscriber that captures operational events as Datalog facts.
