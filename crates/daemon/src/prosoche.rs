@@ -264,7 +264,7 @@ fn check_db_sizes(paths: &[PathBuf]) -> Vec<AttentionItem> {
                 #[expect(
                     clippy::cast_precision_loss,
                     clippy::as_conversions,
-                    reason = "u64→f64: file sizes don't need exact precision for display"
+                    reason = "u64→f64: file sizes on supported storage are well below f64 mantissa 2^53 ≈ 9 exabytes; display precision need is a single decimal place"
                 )]
                 let size_gb = meta.len() as f64 / ONE_GB as f64;
                 // NOTE: single threshold — any file over 1 GB is High urgency.
@@ -298,7 +298,7 @@ fn check_memory() -> Vec<AttentionItem> {
             #[expect(
                 clippy::cast_precision_loss,
                 clippy::as_conversions,
-                reason = "u64→f64: MB values are small enough for exact representation"
+                reason = "u64→f64: process RSS in MB is bounded by host RAM (under 2^53 MB); cast is exact at practical scale"
             )]
             let rss_f64 = rss_mb as f64;
             let label = if rss_mb >= 2048 {

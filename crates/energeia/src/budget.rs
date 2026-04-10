@@ -72,9 +72,12 @@ impl Budget {
     pub fn record(&self, cost_usd: f64, turns: u32) {
         // NOTE: Convert USD to hundredths of a cent for integer atomics.
         // 1 USD = 10_000 hundredths of a cent.
-        #[expect(clippy::cast_possible_truncation, reason = "cost * 10_000 fits in u64")]
-        #[expect(clippy::cast_sign_loss, reason = "cost is non-negative")]
-        #[expect(clippy::as_conversions, reason = "intentional cast with truncation/sign checks above")]
+        #[expect(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            clippy::as_conversions,
+            reason = "f64→u64: cost_usd is non-negative per API contract; cost * 10_000 bounded by realistic per-session spend (max a few $USD → max a few hundred thousand hundredths), fits u64 and under f64 mantissa 2^53"
+        )]
         let hundredths = (cost_usd * 10_000.0) as u64;
         self.current_cost_hundredths
             .fetch_add(hundredths, Ordering::Relaxed);
@@ -133,7 +136,7 @@ impl Budget {
         #[expect(
             clippy::cast_precision_loss,
             clippy::as_conversions,
-            reason = "cost value fits in f64 mantissa for any realistic dispatch"
+            reason = "u64→f64: aggregated cost in hundredths of a cent; realistic per-dispatch spend is well under 2^53 hundredths (~$9 trillion)"
         )]
         let cost = raw as f64 / 10_000.0;
         cost

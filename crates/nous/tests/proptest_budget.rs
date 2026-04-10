@@ -41,11 +41,7 @@ proptest! {
     ) {
         let est = CharEstimator::default();
         let tokens = est.estimate(&text);
-        #[expect(
-            clippy::as_conversions,
-            reason = "usize→u64: text.len() always fits in u64 for any realistic string"
-        )]
-        let len = text.len() as u64;
+        let len = u64::try_from(text.len()).unwrap_or(u64::MAX);
         prop_assert!(
             tokens <= len || text.is_empty(),
             "token estimate must not exceed byte length of text"

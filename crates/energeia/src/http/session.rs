@@ -82,15 +82,13 @@ impl SessionHandle for ProcessSessionHandle {
             }
 
             if let Some(result) = self.stream.wire_result.take() {
-                #[expect(
-                    clippy::as_conversions,
-                    clippy::cast_possible_truncation,
-                    reason = "elapsed ms fits u64 for any realistic session duration"
-                )]
+                // WHY: elapsed().as_millis() returns u128; saturate to u64 since
+                // any realistic session duration is far below u64::MAX milliseconds
+                // (~584 million years).
                 let duration_ms = if result.duration_ms > 0 {
                     result.duration_ms
                 } else {
-                    self.start_time.elapsed().as_millis() as u64
+                    u64::try_from(self.start_time.elapsed().as_millis()).unwrap_or(u64::MAX)
                 };
 
                 Ok(SessionResult {

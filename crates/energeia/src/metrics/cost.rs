@@ -138,23 +138,14 @@ pub fn compute_cost_report(store: &EnergeiaStore, window_days: u32) -> Result<Co
 
     let total_cost_usd: f64 = dispatches.iter().map(|d| d.total_cost_usd).sum();
 
-    #[expect(
-        clippy::as_conversions,
-        reason = "dispatch/session counts are bounded by scan limits, fit u64"
-    )]
-    let total_dispatches = dispatches.len() as u64;
-
-    #[expect(
-        clippy::as_conversions,
-        reason = "dispatch/session counts are bounded by scan limits, fit u64"
-    )]
-    let total_sessions = sessions.len() as u64;
+    let total_dispatches = u64::try_from(dispatches.len()).unwrap_or(u64::MAX);
+    let total_sessions = u64::try_from(sessions.len()).unwrap_or(u64::MAX);
 
     let avg_cost_per_dispatch = if total_dispatches > 0 {
         #[expect(
             clippy::cast_precision_loss,
             clippy::as_conversions,
-            reason = "total_dispatches is bounded; precision loss unreachable"
+            reason = "u64→f64: total_dispatches bounded by SCAN_LIMIT_DISPATCHES (10_000), well below f64 mantissa 2^53"
         )]
         {
             total_cost_usd / total_dispatches as f64
@@ -167,7 +158,7 @@ pub fn compute_cost_report(store: &EnergeiaStore, window_days: u32) -> Result<Co
         #[expect(
             clippy::cast_precision_loss,
             clippy::as_conversions,
-            reason = "total_sessions is bounded; precision loss unreachable"
+            reason = "u64→f64: total_sessions bounded by SCAN_LIMIT_SESSIONS (100_000), well below f64 mantissa 2^53"
         )]
         {
             total_cost_usd / total_sessions as f64
@@ -221,13 +212,7 @@ fn build_project_costs(
             .get(d.id.as_str())
             .map_or(0, Vec::len);
 
-        #[expect(
-            clippy::as_conversions,
-            reason = "session count bounded, fits u64"
-        )]
-        {
-            acc.sessions += session_count as u64;
-        }
+        acc.sessions += u64::try_from(session_count).unwrap_or(u64::MAX);
 
         if d.status == DispatchStatus::Completed {
             acc.completed += 1;
@@ -241,7 +226,7 @@ fn build_project_costs(
                 #[expect(
                     clippy::cast_precision_loss,
                     clippy::as_conversions,
-                    reason = "counts bounded; precision loss unreachable"
+                    reason = "u64→f64: per-project counts bounded by SCAN_LIMIT_DISPATCHES (10_000), well below f64 mantissa 2^53"
                 )]
                 {
                     acc.completed as f64 / acc.dispatches as f64
@@ -298,13 +283,7 @@ fn build_daily_velocity(
             .get(d.id.as_str())
             .map_or(0, Vec::len);
 
-        #[expect(
-            clippy::as_conversions,
-            reason = "session count bounded, fits u64"
-        )]
-        {
-            acc.sessions += session_count as u64;
-        }
+        acc.sessions += u64::try_from(session_count).unwrap_or(u64::MAX);
 
         acc.cost_usd += d.total_cost_usd;
 
@@ -320,7 +299,7 @@ fn build_daily_velocity(
                 #[expect(
                     clippy::cast_precision_loss,
                     clippy::as_conversions,
-                    reason = "counts bounded; precision loss unreachable"
+                    reason = "u64→f64: per-day counts bounded by SCAN_LIMIT_DISPATCHES (10_000), well below f64 mantissa 2^53"
                 )]
                 {
                     acc.completed as f64 / acc.dispatches as f64

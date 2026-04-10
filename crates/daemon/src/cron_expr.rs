@@ -91,12 +91,19 @@ impl CronExpr {
     /// Returns `None` only if the expression can never match (should not
     /// happen for well-formed expressions, but we guard against infinite
     /// loops with a year-limit).
+    // WHY: jiff returns civil datetime fields as i8 to permit signed overflow
+    // detection (e.g. `day += 1` then `day > 31` check). This state machine
+    // mixes i8 arithmetic (for carries) with u8 BTreeSet lookups (for parsed
+    // cron field values); every cast here is between domain-bounded ranges
+    // (month 1-12, day 1-31, hour 0-23, minute/second 0-59) sourced from
+    // either jiff or the parse_field validator below, so none can overflow,
+    // wrap, or lose sign.
     #[expect(
         clippy::as_conversions,
         clippy::cast_sign_loss,
         clippy::cast_possible_wrap,
         clippy::too_many_lines,
-        reason = "month (1-12), day (1-31), hour (0-23), minute (0-59), second (0-59) all fit in i8 and have no negative values; u8→i8 is safe for values ≤ 59. Function length: this is a single cohesive cron field-walking state machine — splitting would scatter the field-rollover logic and obscure the carry semantics"
+        reason = "month/day/hour/minute/second all bounded 0..=59 (max); i8↔u8 round-trip is lossless. Function length: single cohesive cron field-walking state machine; splitting would scatter the carry logic across helpers and obscure rollover semantics"
     )]
     pub fn next_after(&self, after: jiff::Timestamp) -> Option<jiff::Timestamp> {
         // Work in UTC civil datetime for field-level manipulation.
@@ -468,21 +475,23 @@ fn days_in_month(year: i16, month: i8) -> u8 {
 /// Day of week for a date: 0=Sunday, 1=Monday, ..., 6=Saturday.
 ///
 /// Uses Tomohiko Sakamoto's algorithm.
-#[expect(
-    clippy::cast_sign_loss,
-    clippy::as_conversions,
-    clippy::indexing_slicing,
-    reason = "intermediate values are small positive integers that fit in u8/i32; month is 1-12 so m-1 is valid index 0-11"
-)]
 fn day_of_week(year: i16, month: i8, day: i8) -> u8 {
     static T: [i32; 12] = [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4];
     let mut y = i32::from(year);
-    let m = month as usize;
+    // WHY: month is guaranteed to be in 1..=12 by the caller (cron state machine
+    // clamps month via parse_field's 1-12 range); saturate to 1 on unreachable
+    // out-of-range rather than panic.
+    let m = usize::try_from(month.max(1)).unwrap_or(1).min(12);
     let d = i32::from(day);
     if m < 3 {
         y -= 1;
     }
-    ((y + y / 4 - y / 100 + y / 400 + T[m - 1] + d) % 7) as u8
+    // INVARIANT: m is in 1..=12 so m - 1 is a valid index 0..=11.
+    let offset = T.get(m - 1).copied().unwrap_or(0);
+    // WHY: rem_euclid guarantees a non-negative remainder 0..=6 regardless of
+    // sign of the sum (Rust's % can return negative for signed operands).
+    let dow_i32 = (y + y / 4 - y / 100 + y / 400 + offset + d).rem_euclid(7);
+    u8::try_from(dow_i32).unwrap_or(0)
 }
 
 // ---------------------------------------------------------------------------

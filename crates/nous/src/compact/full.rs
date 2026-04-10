@@ -53,7 +53,7 @@ pub(crate) fn should_trigger(
     #[expect(
         clippy::cast_precision_loss,
         clippy::as_conversions,
-        reason = "u64->f64: token counts fit in f64 mantissa for practical values"
+        reason = "u64→f64: context windows and consumed tokens are bounded by model context limits (current max ~2M tokens), well below f64 mantissa 2^53"
     )]
     let ratio = consumed_tokens as f64 / context_window as f64;
     ratio >= config.full_compact_threshold

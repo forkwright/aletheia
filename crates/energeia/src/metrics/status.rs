@@ -113,11 +113,7 @@ pub fn compute_status_dashboard(store: &EnergeiaStore) -> Result<StatusDashboard
         .filter(|d| d.status == DispatchStatus::Running)
         .collect();
 
-    #[expect(
-        clippy::as_conversions,
-        reason = "active dispatch count bounded by SCAN_LIMIT_DISPATCHES, fits u64"
-    )]
-    let active_dispatches = active_dispatch_records.len() as u64;
+    let active_dispatches = u64::try_from(active_dispatch_records.len()).unwrap_or(u64::MAX);
     let queue_depth = active_dispatches;
 
     // -----------------------------------------------------------------------
@@ -192,13 +188,7 @@ fn build_project_summaries(
             .get(d.id.as_str())
             .map_or(0, Vec::len);
 
-        #[expect(
-            clippy::as_conversions,
-            reason = "session count bounded, fits u64"
-        )]
-        {
-            acc.sessions += session_count as u64;
-        }
+        acc.sessions += u64::try_from(session_count).unwrap_or(u64::MAX);
     }
 
     let mut result: Vec<ProjectSummary> = by_project
@@ -208,7 +198,7 @@ fn build_project_summaries(
                 #[expect(
                     clippy::cast_precision_loss,
                     clippy::as_conversions,
-                    reason = "counts bounded; precision loss unreachable"
+                    reason = "u64→f64: both counts bounded by SCAN_LIMIT_DISPATCHES (10_000), well below f64 mantissa 2^53"
                 )]
                 {
                     acc.completed as f64 / acc.total as f64
