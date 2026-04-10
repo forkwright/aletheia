@@ -342,7 +342,7 @@ static FILE_PATH_RE: LazyLock<Regex> = LazyLock::new(|| {
 /// Tags include crate names matching `crates/{name}` or backtick-wrapped
 /// crate references, and file paths matching common patterns.
 #[must_use]
-pub fn extract_tags(text: &str) -> Vec<String> {
+pub(crate) fn extract_tags(text: &str) -> Vec<String> {
     let mut tags = Vec::new();
 
     for cap in CRATE_PATH_RE.captures_iter(text) {
