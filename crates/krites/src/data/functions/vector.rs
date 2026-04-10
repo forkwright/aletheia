@@ -139,7 +139,7 @@ pub(crate) fn op_vec(args: &[DataValue]) -> Result<DataValue> {
                 VecElementType::F32 => {
                     let f32_count = bytes.len() / mem::size_of::<f32>();
                     debug_assert_eq!(
-                        bytes.as_ptr() as usize % mem::align_of::<f32>(),
+                        bytes.as_ptr().addr() % mem::align_of::<f32>(),
                         0,
                         "Vec<u8> buffer must be aligned for f32 reinterpretation"
                     );
@@ -169,7 +169,7 @@ pub(crate) fn op_vec(args: &[DataValue]) -> Result<DataValue> {
                 VecElementType::F64 => {
                     let f64_count = bytes.len() / mem::size_of::<f64>();
                     debug_assert_eq!(
-                        bytes.as_ptr() as usize % mem::align_of::<f64>(),
+                        bytes.as_ptr().addr() % mem::align_of::<f64>(),
                         0,
                         "Vec<u8> buffer must be aligned for f64 reinterpretation"
                     );
