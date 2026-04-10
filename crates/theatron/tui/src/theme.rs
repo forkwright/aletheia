@@ -578,12 +578,12 @@ pub const BRAILLE_SPINNER: &[char] = &['⠋', '⠙', '⠹', '⠸', '⠼', '⠴',
     clippy::indexing_slicing,
     reason = "index is computed as expr % BRAILLE_SPINNER.len(), which is always a valid index"
 )]
-#[expect(
-    clippy::cast_possible_truncation,
-    reason = "truncation on 32-bit is harmless — the modulus ensures a valid spinner index regardless"
-)]
 pub fn spinner_frame(tick: u64) -> char {
-    BRAILLE_SPINNER[(tick as usize / 3) % BRAILLE_SPINNER.len()]
+    // WHY: mod by BRAILLE_SPINNER.len() in u64 space first, then try_from;
+    // the result is < 10, so usize conversion cannot fail on any platform.
+    let len = u64::try_from(BRAILLE_SPINNER.len()).unwrap_or(1).max(1);
+    let idx = usize::try_from((tick / 3) % len).unwrap_or(0);
+    BRAILLE_SPINNER[idx]
 }
 
 #[cfg(test)]

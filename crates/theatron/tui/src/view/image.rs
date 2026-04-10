@@ -193,12 +193,10 @@ fn load_and_render_halfblocks(path: &Path, max_width: usize) -> Vec<Line<'static
         return render_error_line(path);
     }
 
-    // Reserve 2 columns for left margin
-    #[expect(
-        clippy::cast_possible_truncation,
-        reason = "terminal dimensions fit in u32"
-    )]
-    let avail_width = max_width.saturating_sub(2).max(1) as u32;
+    // Reserve 2 columns for left margin. Terminal width always fits in u32;
+    // saturate at u32::MAX for the unreachable branch.
+    let avail_width =
+        u32::try_from(max_width.saturating_sub(2).max(1)).unwrap_or(u32::MAX);
     let max_pixel_h = MAX_IMAGE_HEIGHT * 2;
 
     let scale_w = f64::from(avail_width) / f64::from(orig_w);
@@ -206,13 +204,17 @@ fn load_and_render_halfblocks(path: &Path, max_width: usize) -> Vec<Line<'static
     let scale = scale_w.min(scale_h).min(1.0);
 
     #[expect(
+        clippy::as_conversions,
         clippy::cast_possible_truncation,
-        reason = "scaled dimension bounded by original u32 dimension"
+        clippy::cast_sign_loss,
+        reason = "scale <= 1.0 so new_w <= orig_w (u32, non-negative)"
     )]
     let new_w = ((f64::from(orig_w) * scale) as u32).max(1);
     #[expect(
+        clippy::as_conversions,
         clippy::cast_possible_truncation,
-        reason = "scaled dimension bounded by original u32 dimension"
+        clippy::cast_sign_loss,
+        reason = "scale <= 1.0 so new_h <= orig_h (u32, non-negative)"
     )]
     let new_h = ((f64::from(orig_h) * scale) as u32).max(1);
 
@@ -312,6 +314,7 @@ fn format_file_info(path: &Path) -> String {
 
 /// Human-readable file size formatting.
 #[expect(
+    clippy::as_conversions,
     clippy::cast_precision_loss,
     reason = "file sizes displayed for human readability; sub-byte precision irrelevant"
 )]

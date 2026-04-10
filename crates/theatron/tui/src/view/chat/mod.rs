@@ -253,12 +253,11 @@ fn resolve_osc_links(
     let mut cumulative: u32 = 0;
     for &w in line_widths {
         visual_row_start.push(cumulative);
-        #[expect(
-            clippy::cast_possible_truncation,
-            reason = "terminal dimensions fit in u32"
-        )]
-        let rows = if w == 0 { 1 } else { w.div_ceil(wrap_width) } as u32;
-        cumulative += rows;
+        // WHY: visual row count is bounded by terminal dimensions (always
+        // fits in u32); saturate at u32::MAX for the unreachable branch.
+        let rows_usize = if w == 0 { 1 } else { w.div_ceil(wrap_width) };
+        let rows = u32::try_from(rows_usize).unwrap_or(u32::MAX);
+        cumulative = cumulative.saturating_add(rows);
     }
 
     let visible_height = i32::from(area.height);
@@ -274,11 +273,11 @@ fn resolve_osc_links(
         } else {
             0
         };
-        #[expect(
-            clippy::cast_possible_truncation,
-            reason = "visual row count fits in i32 for terminal"
-        )]
-        let vrow = vrow_start as i32 + col_row as i32;
+        // WHY: visual row count is bounded by terminal dimensions; unreachable
+        // overflow saturates to i32::MAX so the link falls off-screen below.
+        let vrow_start_i32 = i32::try_from(vrow_start).unwrap_or(i32::MAX);
+        let col_row_i32 = i32::try_from(col_row).unwrap_or(i32::MAX);
+        let vrow = vrow_start_i32.saturating_add(col_row_i32);
 
         // Apply scroll: positive scroll shifts content upward (scroll=0 means show from top).
         let screen_row = vrow - i32::from(scroll);

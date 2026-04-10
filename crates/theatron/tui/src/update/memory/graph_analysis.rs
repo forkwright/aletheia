@@ -49,7 +49,13 @@ pub(super) fn compute_graph_stats(app: &mut App) {
     let community_count = community_sizes.len();
     let avg_cluster_size = if community_count > 0 {
         let total: usize = community_sizes.values().sum();
-        total as f64 / community_count as f64
+        #[expect(
+            clippy::as_conversions,
+            clippy::cast_precision_loss,
+            reason = "entity counts are bounded by RAM and never approach f64 mantissa (2^53)"
+        )]
+        let avg = total as f64 / community_count as f64;
+        avg
     } else {
         0.0
     };
@@ -154,7 +160,13 @@ pub(super) fn compute_pagerank(
     }
 
     let n = entities.len();
-    let initial = 1.0 / n as f64;
+    #[expect(
+        clippy::as_conversions,
+        clippy::cast_precision_loss,
+        reason = "entity counts are bounded by RAM and never approach f64 mantissa (2^53)"
+    )]
+    let n_f64 = n as f64;
+    let initial = 1.0 / n_f64;
     let mut scores: HashMap<String, f64> =
         entities.iter().map(|e| (e.id.clone(), initial)).collect();
 
@@ -167,17 +179,22 @@ pub(super) fn compute_pagerank(
     }
 
     for _ in 0..PAGERANK_ITERATIONS {
-        let mut new_scores: HashMap<String, f64> = entities
-            .iter()
-            .map(|e| (e.id.clone(), (1.0 - PAGERANK_DAMPING) / n as f64))
-            .collect();
+        let base = (1.0 - PAGERANK_DAMPING) / n_f64;
+        let mut new_scores: HashMap<String, f64> =
+            entities.iter().map(|e| (e.id.clone(), base)).collect();
 
         for entity in entities {
             let score = scores.get(&entity.id).copied().unwrap_or(0.0);
             if let Some(targets) = outgoing.get(&entity.id)
                 && !targets.is_empty()
             {
-                let share = score / targets.len() as f64;
+                #[expect(
+                    clippy::as_conversions,
+                    clippy::cast_precision_loss,
+                    reason = "outgoing edge counts are bounded by RAM and never approach f64 mantissa (2^53)"
+                )]
+                let targets_f64 = targets.len() as f64;
+                let share = score / targets_f64;
                 for target in targets {
                     if let Some(s) = new_scores.get_mut(target) {
                         *s += PAGERANK_DAMPING * share;

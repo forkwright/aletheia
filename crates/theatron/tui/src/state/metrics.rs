@@ -108,8 +108,9 @@ impl MetricsState {
             return 0.0;
         }
         #[expect(
+            clippy::as_conversions,
             clippy::cast_precision_loss,
-            reason = "token counts fit comfortably in f64 mantissa at realistic usage levels"
+            reason = "token counts fit comfortably in f64 mantissa (2^53) at realistic usage levels"
         )]
         let rate = self.total_cache_read_tokens as f64 / total as f64;
         rate
@@ -119,15 +120,17 @@ impl MetricsState {
     pub(crate) fn format_tokens(tokens: u64) -> String {
         if tokens >= 1_000_000 {
             #[expect(
+                clippy::as_conversions,
                 clippy::cast_precision_loss,
-                reason = "display formatting; sub-unit precision is not meaningful"
+                reason = "display formatting; sub-unit precision is not meaningful for token counts"
             )]
             return format!("{:.1}M", tokens as f64 / 1_000_000.0);
         }
         if tokens >= 1_000 {
             #[expect(
+                clippy::as_conversions,
                 clippy::cast_precision_loss,
-                reason = "display formatting; sub-unit precision is not meaningful"
+                reason = "display formatting; sub-unit precision is not meaningful for token counts"
             )]
             return format!("{:.1}k", tokens as f64 / 1_000.0);
         }
@@ -184,11 +187,14 @@ pub(crate) fn sparkline(values: &[u32], width: usize) -> String {
         .iter()
         .map(|&v| {
             #[expect(
+                clippy::as_conversions,
                 clippy::cast_possible_truncation,
                 clippy::cast_sign_loss,
-                reason = "clamped to 0..=7 before cast"
+                reason = "result clamped to [0.0, 7.0] before cast to usize"
             )]
-            let idx = ((v as f64 / max as f64) * 7.0).round().clamp(0.0, 7.0) as usize;
+            let idx = ((f64::from(v) / f64::from(max)) * 7.0)
+                .round()
+                .clamp(0.0, 7.0) as usize;
             BLOCKS[idx]
         })
         .collect()

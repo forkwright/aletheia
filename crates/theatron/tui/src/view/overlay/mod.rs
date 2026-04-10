@@ -125,7 +125,7 @@ fn render_help(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let mut lines: Vec<Line> = Vec::new();
 
     // Calculate max available width for descriptions with margins
-    let max_width = area.width.saturating_sub(HELP_OVERLAY_MARGIN).max(1) as usize;
+    let max_width = usize::from(area.width.saturating_sub(HELP_OVERLAY_MARGIN).max(1));
     let desc_max_width = max_width.saturating_sub(HELP_KEY_COLUMN_WIDTH + 2); // +2 for padding
 
     for (section_label, bindings) in &groups {
