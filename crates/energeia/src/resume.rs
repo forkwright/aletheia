@@ -70,7 +70,7 @@ impl ResumePolicy {
     /// assert!(policy.next_stage(230).is_none(), "all stages should be exhausted at turn 230");  // exhausted
     /// ```
     #[must_use]
-    pub fn next_stage(&self, current_turns: u32) -> Option<&ResumeStage> {
+    pub(crate) fn next_stage(&self, current_turns: u32) -> Option<&ResumeStage> {
         let mut cumulative: u32 = 0;
         for stage in &self.stages {
             cumulative = cumulative.saturating_add(stage.max_turns);
