@@ -2,11 +2,11 @@
 
 /// Result of a fuzzy match, containing the score and match positions.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct MatchResult {
+pub(crate) struct MatchResult {
     /// Match score (higher is better).
-    pub score: i64,
+    pub(crate) score: i64,
     /// Indices of matched characters in the candidate string.
-    pub indices: Vec<usize>,
+    pub(crate) indices: Vec<usize>,
 }
 
 /// A simple subsequence fuzzy matcher.
@@ -17,12 +17,12 @@ pub struct MatchResult {
 /// - Start of string match (bonus)
 /// - Shorter candidates with same match quality score higher
 #[derive(Debug, Clone, Copy, Default)]
-pub struct FuzzyMatcher;
+pub(crate) struct FuzzyMatcher;
 
 impl FuzzyMatcher {
     /// Create a new fuzzy matcher.
     #[must_use]
-    pub const fn new() -> Self {
+    pub(crate) const fn new() -> Self {
         Self
     }
 
@@ -30,18 +30,7 @@ impl FuzzyMatcher {
     ///
     /// Returns `Some(MatchResult)` if the pattern is a subsequence of the candidate,
     /// `None` otherwise. The match is case-insensitive.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use theatron_tui::fuzzy::FuzzyMatcher;
-    ///
-    /// let matcher = FuzzyMatcher::new();
-    /// assert!(matcher.fuzzy_match("quit", "q").is_some());
-    /// assert!(matcher.fuzzy_match("quit", "qt").is_some());
-    /// assert!(matcher.fuzzy_match("quit", "xyz").is_none());
-    /// ```
-    pub fn fuzzy_match(&self, candidate: &str, pattern: &str) -> Option<MatchResult> {
+    pub(crate) fn fuzzy_match(&self, candidate: &str, pattern: &str) -> Option<MatchResult> {
         if pattern.is_empty() {
             return Some(MatchResult {
                 score: 0,
