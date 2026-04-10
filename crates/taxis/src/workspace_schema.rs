@@ -7,12 +7,11 @@
 //!
 //! # Example
 //!
-//! ```ignore
+//! ```
 //! use std::path::Path;
 //! use aletheia_taxis::workspace_schema::{WorkspaceSchema, WorkspaceRequirement, RequirementKind};
 //!
 //! let schema = WorkspaceSchema::standard();
-//! // WHY: validate is pub(crate) — this example shows intended usage within the crate.
 //! if let Err(e) = schema.validate(Path::new("/srv/aletheia/instance/nous/main")) {
 //!     eprintln!("{e}");
 //! }
@@ -69,7 +68,7 @@ pub struct WorkspaceRequirement {
     workspace.display(),
     failures.join("\n  - ")
 ))]
-pub(crate) struct WorkspaceSchemaError {
+pub struct WorkspaceSchemaError {
     /// Path to the workspace root that failed validation.
     pub workspace: PathBuf,
     /// Human-readable description of each missing entry.
@@ -126,7 +125,7 @@ impl WorkspaceSchema {
         clippy::double_must_use,
         reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
     )]
-    pub(crate) fn validate(&self, workspace: &Path) -> Result<(), WorkspaceSchemaError> {
+    pub fn validate(&self, workspace: &Path) -> Result<(), WorkspaceSchemaError> {
         let mut failures: Vec<String> = Vec::new();
 
         for req in &self.requirements {
