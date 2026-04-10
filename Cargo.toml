@@ -47,6 +47,9 @@ future_incompatible = { level = "warn", priority = -1 }
 nonstandard_style = { level = "warn", priority = -1 }
 rust_2018_idioms = { level = "warn", priority = -1 }
 unsafe_code = "deny"
+# WHY: krites loom model-check tests use `#[cfg(loom)]` gates. Register the
+# cfg name so rustc doesn't warn under normal builds.
+unexpected_cfgs = { level = "warn", priority = -1, check-cfg = ["cfg(loom)"] }
 
 [workspace.lints.clippy]
 pedantic = { level = "warn", priority = -1 }
@@ -219,6 +222,10 @@ wiremock = { version = "0.6", default-features = false }
 # Used in `benches/` per crate. `default-features = false` strips rayon/plotters
 # (HTML reports) — we don't need plotting for CI-only runs and it cuts ~150 deps.
 criterion = { version = "0.7", default-features = false, features = ["cargo_bench_support"] }
+# WHY: loom provides permutation-testing for concurrent code under `#[cfg(loom)]`.
+# Only used by the manual `unsafe impl Sync` sites in krites (#2864, #3066).
+# Invoked as `RUSTFLAGS="--cfg loom" cargo test -p krites --release loom_tests`.
+loom = { version = "0.7", default-features = false }
 
 [profile.dev]
 opt-level = 1
