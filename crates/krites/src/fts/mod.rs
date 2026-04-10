@@ -129,9 +129,10 @@ impl TokenizerConfig {
                     .build()
                     .into());
                 }
+                // INVARIANT: min_gram >= 1 and max_gram >= min_gram checked above.
                 Box::new(NgramTokenizer::new(
-                    min_gram as usize,
-                    max_gram as usize,
+                    usize::try_from(min_gram).unwrap_or(usize::MAX),
+                    usize::try_from(max_gram).unwrap_or(usize::MAX),
                     prefix_only,
                 ))
             }
@@ -149,8 +150,9 @@ impl TokenizerConfig {
             "AlphaNumOnly" => AlphaNumOnlyFilter.into(),
             "AsciiFolding" => AsciiFoldingFilter.into(),
             "LowerCase" | "Lowercase" => LowerCaser.into(),
-            "RemoveLong" => RemoveLongFilter::limit(
-                self.args
+            "RemoveLong" => {
+                let min_length_i64 = self
+                    .args
                     .first()
                     .ok_or_else(|| {
                         crate::error::InternalError::from(
@@ -169,9 +171,18 @@ impl TokenizerConfig {
                             }
                             .build(),
                         )
-                    })? as usize,
-            )
-            .into(),
+                    })?;
+                let min_length = usize::try_from(min_length_i64).map_err(|_e| {
+                    crate::error::InternalError::from(
+                        TokenizationFailedSnafu {
+                            message: "First argument `min_length` must be a non-negative integer"
+                                .to_string(),
+                        }
+                        .build(),
+                    )
+                })?;
+                RemoveLongFilter::limit(min_length).into()
+            }
             "SplitCompoundWords" => {
                 let mut list_values = Vec::new();
                 match self.args.first().ok_or_else(|| {
