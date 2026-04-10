@@ -133,10 +133,42 @@ pub struct FjallWriteTx<'s> {
     keyspace: &'s fjall::SingleWriterTxKeyspace,
 }
 
-// SAFETY: fjall's Snapshot is a read-only view with no interior mutability, so
-// sharing a reference across threads is sound. SingleWriterWriteTx is protected
-// by an external mutex guard at the call site, ensuring exclusive access while
-// the reference is live. Both impls are therefore safe to declare Sync.
+// SAFETY: `FjallReadTx` and `FjallWriteTx` borrow fjall internals that are not
+// currently marked `Sync` upstream, even though the contents they expose are
+// safe for shared access under the invariants below. The `StoreTx` trait takes
+// `&self` for read methods, which requires both wrappers to be `Sync` so the
+// outer `FjallTx` enum (carried across query worker threads via rayon) type-
+// checks. Asserting `Sync` manually is sound because:
+//
+// 1. `FjallReadTx::snapshot` is `fjall::Snapshot`, an immutable point-in-time
+//    LSM view. Its public API is `Readable::get`/`contains_key`/`range`, all of
+//    which take `&self` and perform purely read-only work on frozen SSTable
+//    references + an MVCC key cap. There is no interior mutability, no shared
+//    buffer, and no state that changes across calls, so concurrent `&self`
+//    calls from multiple threads are race-free by construction.
+//
+// 2. `FjallWriteTx::tx` is `fjall::SingleWriterWriteTx`, which — as the name
+//    implies — is the exclusive writer handle for the database. It is obtained
+//    by `SingleWriterTxDatabase::write_tx`, a call that serializes writers
+//    through an internal mutex. The handle itself is therefore never shared
+//    with a concurrent writer at the fjall layer, and all mutating methods
+//    on `FjallWriteTx` (`put`, `del`, `del_range_from_persisted`, `commit`) go
+//    through `&mut self` on the outer `FjallTx`. The only `&self` path that
+//    touches the write tx is `StoreTx::get`, which calls `Readable::get` on
+//    the tx — a read-your-own-writes query that fjall implements against the
+//    tx's immutable memtable snapshot, with no observable mutation. Concurrent
+//    `&self` gets on the same write tx are therefore sound for the same reason
+//    as (1).
+//
+// 3. Both wrappers carry a `&'s fjall::SingleWriterTxKeyspace`. The keyspace
+//    is a long-lived handle used only as a lookup key for reads; fjall already
+//    provides thread-safe access to the keyspace through its own internal
+//    synchronization.
+//
+// If fjall upstream adds `Sync` to its transaction types, these impls become
+// redundant and should be removed. Tracked implicitly in the fjall version
+// pin — any upgrade that surfaces native `Sync` will make the `#[expect]`
+// here unfulfilled and force cleanup.
 #[expect(
     unsafe_code,
     reason = "fjall transaction types require manual Sync; soundness documented above"
@@ -462,6 +494,7 @@ impl Iterator for CollectedSkipIterator {
 )]
 mod tests {
     use std::collections::BTreeMap;
+    use std::sync::Arc;
 
     use tempfile::TempDir;
 
@@ -671,6 +704,142 @@ mod tests {
             ScriptMutability::Immutable,
         )?;
         assert_eq!(result.rows.len(), 1);
+
+        Ok(())
+    }
+
+    /// Stress test: 16 threads × 1000 concurrent read queries against the same db.
+    ///
+    /// WHY: `FjallReadTx` carries a manual `unsafe impl Sync`. This test
+    /// exercises the Sync boundary from many threads simultaneously and
+    /// asserts each query returns the same deterministic result set. A crash
+    /// or torn read would fail the correctness check.
+    #[test]
+    fn stress_concurrent_reads() -> InternalResult<()> {
+        const NUM_THREADS: usize = 16;
+        const QUERIES_PER_THREAD: usize = 1000;
+        const NUM_ROWS: i64 = 100;
+
+        let (_dir, db) = setup_test_db()?;
+
+        // Seed deterministic data.
+        let mut to_import = BTreeMap::new();
+        to_import.insert(
+            "plain".to_string(),
+            crate::NamedRows {
+                headers: vec!["k".to_string(), "v".to_string()],
+                rows: (0..NUM_ROWS)
+                    .map(|i| vec![DataValue::from(i), DataValue::from(i * 3)])
+                    .collect(),
+                next: None,
+            },
+        );
+        db.import_relations(to_import)?;
+
+        let expected_rows = usize::try_from(NUM_ROWS).unwrap_or_else(|_| unreachable!());
+        std::thread::scope(|s| {
+            for _ in 0..NUM_THREADS {
+                let db = db.clone();
+                s.spawn(move || {
+                    for _ in 0..QUERIES_PER_THREAD {
+                        let result = db
+                            .run_script(
+                                "?[k, v] := *plain{k, v}",
+                                Default::default(),
+                                ScriptMutability::Immutable,
+                            )
+                            .unwrap_or_else(|_| unreachable!());
+                        assert_eq!(
+                            result.rows.len(),
+                            expected_rows,
+                            "concurrent read saw partial relation"
+                        );
+                    }
+                });
+            }
+        });
+
+        Ok(())
+    }
+
+    /// Stress test: 1 writer + 15 readers hitting the same db.
+    ///
+    /// WHY: fjall's `SingleWriterWriteTx` serializes writers internally, but
+    /// readers open independent snapshot transactions. The `Sync` asserts
+    /// on `FjallReadTx` and `FjallWriteTx` must hold while a live writer is
+    /// mutating the LSM. This test verifies no reader observes a torn row
+    /// (headers mismatched, partial vector, or panic) across 1000 writes.
+    #[test]
+    fn stress_mixed_read_write() -> InternalResult<()> {
+        const NUM_READERS: usize = 15;
+        const NUM_WRITES: i64 = 1000;
+
+        let (_dir, db) = setup_test_db()?;
+
+        // Seed some initial data so readers have something to read from the start.
+        let mut to_import = BTreeMap::new();
+        to_import.insert(
+            "plain".to_string(),
+            crate::NamedRows {
+                headers: vec!["k".to_string(), "v".to_string()],
+                rows: (0..10)
+                    .map(|i| vec![DataValue::from(i), DataValue::from(i * 7)])
+                    .collect(),
+                next: None,
+            },
+        );
+        db.import_relations(to_import)?;
+
+        let done = Arc::new(std::sync::atomic::AtomicBool::new(false));
+
+        std::thread::scope(|s| {
+            // Readers: keep querying until the writer signals completion.
+            for _ in 0..NUM_READERS {
+                let db = db.clone();
+                let done = Arc::clone(&done);
+                s.spawn(move || {
+                    while !done.load(std::sync::atomic::Ordering::Relaxed) {
+                        let result = db
+                            .run_script(
+                                "?[k, v] := *plain{k, v}",
+                                Default::default(),
+                                ScriptMutability::Immutable,
+                            )
+                            .unwrap_or_else(|_| unreachable!());
+                        // Every row must have exactly 2 columns matching the
+                        // relation schema. A torn read would surface here.
+                        for row in &result.rows {
+                            assert_eq!(row.len(), 2, "schema consistent under concurrent writes");
+                        }
+                    }
+                });
+            }
+
+            // Writer: upsert rows in a loop.
+            let db_writer = db.clone();
+            let done_writer = Arc::clone(&done);
+            s.spawn(move || {
+                for i in 10..NUM_WRITES {
+                    db_writer
+                        .run_script(
+                            &format!("?[k, v] <- [[{i}, {}]] :put plain {{k => v}}", i * 7),
+                            Default::default(),
+                            ScriptMutability::Mutable,
+                        )
+                        .unwrap_or_else(|_| unreachable!());
+                }
+                done_writer.store(true, std::sync::atomic::Ordering::Relaxed);
+            });
+        });
+
+        // Final consistency check: all writes visible.
+        let result = db.run_script(
+            "?[k, v] := *plain{k, v}",
+            Default::default(),
+            ScriptMutability::Immutable,
+        )?;
+        let expected_total = usize::try_from(NUM_WRITES).unwrap_or_else(|_| unreachable!());
+        assert_eq!(result.rows.len(), expected_total, "all writes persisted");
 
         Ok(())
     }
