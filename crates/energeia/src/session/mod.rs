@@ -17,5 +17,4 @@ pub mod manager;
 /// Session-level configuration options for the execution engine.
 pub mod options;
 
-pub use manager::SessionManager;
 pub use options::EngineConfig;

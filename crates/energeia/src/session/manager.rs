@@ -24,7 +24,7 @@ use super::options::EngineConfig;
 /// Owns a [`DispatchEngine`], shared [`Budget`], and [`ResumePolicy`] to
 /// manage a single prompt through initial execution and graduated resume
 /// stages when the session fails or exhausts its turn budget.
-pub struct SessionManager {
+pub(crate) struct SessionManager {
     engine: Arc<dyn DispatchEngine>,
     budget: Arc<Budget>,
     resume_policy: ResumePolicy,
@@ -33,7 +33,7 @@ pub struct SessionManager {
 impl SessionManager {
     /// Create a new session manager.
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         engine: Arc<dyn DispatchEngine>,
         budget: Arc<Budget>,
         resume_policy: ResumePolicy,
