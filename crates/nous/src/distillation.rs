@@ -82,12 +82,9 @@ pub fn should_trigger_distillation(
         session.metrics.token_count_estimate
     };
 
-    #[expect(
-        clippy::cast_sign_loss,
-        clippy::as_conversions,
-        reason = "i64→u64: token counts are non-negative in practice"
-    )]
-    let actual_context_u64 = actual_context as u64;
+    // WHY: token counts are non-negative by domain invariant; saturate to 0 on the
+    // unreachable negative case rather than panicking.
+    let actual_context_u64 = u64::try_from(actual_context).unwrap_or(0);
 
     if actual_context_u64 >= CONTEXT_TOKEN_TRIGGER {
         return Some(format!("context={actual_context} >= 120K"));
@@ -128,7 +125,7 @@ pub fn should_trigger_distillation(
         clippy::cast_possible_truncation,
         clippy::cast_sign_loss,
         clippy::as_conversions,
-        reason = "u64→f64→u64: context_window * ratio is a rough threshold; precision/truncation acceptable"
+        reason = "u64→f64→u64: context_window ≤ model max (~2M tokens), well below f64 mantissa 2^53; product is a rough threshold for comparison and small truncation on round-trip is acceptable"
     )]
     let threshold = (context_window as f64 * config.max_history_share) as u64;
     if actual_context_u64 >= threshold
@@ -203,13 +200,9 @@ pub async fn maybe_distill(
         ..Default::default()
     });
 
-    #[expect(
-        clippy::cast_sign_loss,
-        clippy::cast_possible_truncation,
-        clippy::as_conversions,
-        reason = "i64→u32: distillation_count is small non-negative"
-    )]
-    let distill_count = session.metrics.distillation_count as u32;
+    // WHY: distillation_count is non-negative and small (bounded by session lifetime);
+    // saturate to 0 on unreachable negative, u32::MAX on unreachable overflow.
+    let distill_count = u32::try_from(session.metrics.distillation_count).unwrap_or(u32::MAX);
     let result = engine
         .distill(&messages, nous_id, provider, distill_count + 1)
         .await
@@ -254,18 +247,20 @@ pub fn apply_distillation(
         .insert_distillation_summary(session_id, &summary_content)
         .context(error::StoreSnafu)?;
 
-    #[expect(
-        clippy::cast_possible_wrap,
-        clippy::as_conversions,
-        reason = "usize→i64: token/message counts fit in i64"
-    )]
+    // WHY: message and token counts are non-negative and bounded by practical
+    // session sizes; saturate to i64::MAX on unreachable overflow rather than wrap.
+    let distilled_i64 = i64::try_from(distill_count).unwrap_or(i64::MAX);
+    let remaining_i64 =
+        i64::try_from(history.len().saturating_sub(distill_count)).unwrap_or(i64::MAX);
+    let tokens_before_i64 = i64::try_from(result.tokens_before).unwrap_or(i64::MAX);
+    let tokens_after_i64 = i64::try_from(result.tokens_after).unwrap_or(i64::MAX);
     store
         .record_distillation(
             session_id,
-            distill_count as i64,
-            (history.len() - distill_count) as i64,
-            result.tokens_before as i64,
-            result.tokens_after as i64,
+            distilled_i64,
+            remaining_i64,
+            tokens_before_i64,
+            tokens_after_i64,
             None,
         )
         .context(error::StoreSnafu)?;
