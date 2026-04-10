@@ -53,7 +53,7 @@ impl std::fmt::Debug for Budget {
 impl Budget {
     /// Create a new budget with optional limits.
     #[must_use]
-    pub(crate) fn new(
+    pub fn new(
         max_cost_usd: Option<f64>,
         max_turns: Option<u32>,
         max_duration_ms: Option<u64>,
@@ -69,7 +69,7 @@ impl Budget {
     }
 
     /// Record cost and turns from a completed session or resume attempt.
-    pub(crate) fn record(&self, cost_usd: f64, turns: u32) {
+    pub fn record(&self, cost_usd: f64, turns: u32) {
         // NOTE: Convert USD to hundredths of a cent for integer atomics.
         // 1 USD = 10_000 hundredths of a cent.
         #[expect(
@@ -89,7 +89,7 @@ impl Budget {
     /// Returns [`BudgetStatus::Warning`] at 80% of a limit and
     /// [`BudgetStatus::Exceeded`] at 100%.
     #[must_use]
-    pub(crate) fn check(&self) -> BudgetStatus {
+    pub fn check(&self) -> BudgetStatus {
         if let Some(max_cost) = self.max_cost_usd {
             let current = self.current_cost_usd();
             if current >= max_cost {
@@ -131,7 +131,7 @@ impl Budget {
 
     /// Current accumulated cost in USD.
     #[must_use]
-    pub(crate) fn current_cost_usd(&self) -> f64 {
+    pub fn current_cost_usd(&self) -> f64 {
         let raw = self.current_cost_hundredths.load(Ordering::Relaxed);
         #[expect(
             clippy::cast_precision_loss,
@@ -144,13 +144,13 @@ impl Budget {
 
     /// Current accumulated turns.
     #[must_use]
-    pub(crate) fn current_turns(&self) -> u32 {
+    pub fn current_turns(&self) -> u32 {
         self.current_turns.load(Ordering::Relaxed)
     }
 
     /// Elapsed time since budget creation in milliseconds.
     #[must_use]
-    pub(crate) fn elapsed_ms(&self) -> u64 {
+    pub fn elapsed_ms(&self) -> u64 {
         u64::try_from(self.start_time.elapsed().as_millis()).unwrap_or(u64::MAX)
     }
 

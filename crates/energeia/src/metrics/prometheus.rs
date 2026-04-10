@@ -122,7 +122,7 @@ pub fn record_dispatch(project: &str, status: &str) {
 /// - `duration_ms` — wall-clock duration in milliseconds.
 /// - `model` — LLM model used (e.g., "claude-3-5-sonnet").
 /// - `blast_radius` — blast radius identifier for cost attribution.
-pub(crate) fn record_session(
+pub fn record_session(
     project: &str,
     status: &str,
     cost_usd: f64,
@@ -154,7 +154,7 @@ pub(crate) fn record_session(
 /// Record turns consumed by a session.
 ///
 /// Call this to update the `energeia_turns_total` metric.
-pub(crate) fn record_turns(project: &str, turns: u32, model: &str, blast_radius: &str) {
+pub fn record_turns(project: &str, turns: u32, model: &str, blast_radius: &str) {
     TURNS_TOTAL
         .with_label_values(&[project, model, blast_radius])
         .inc_by(u64::from(turns));

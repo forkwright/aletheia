@@ -33,7 +33,7 @@ pub(crate) struct SessionManager {
 impl SessionManager {
     /// Create a new session manager.
     #[must_use]
-    pub(crate) fn new(
+    pub fn new(
         engine: Arc<dyn DispatchEngine>,
         budget: Arc<Budget>,
         resume_policy: ResumePolicy,

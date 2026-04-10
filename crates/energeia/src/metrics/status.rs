@@ -89,7 +89,7 @@ const RECENT_LIMIT: usize = 50;
 /// # Errors
 ///
 /// Returns `Error::Store` if any underlying store read fails.
-pub(crate) fn compute_status_dashboard(store: &EnergeiaStore) -> Result<StatusDashboard> {
+pub fn compute_status_dashboard(store: &EnergeiaStore) -> Result<StatusDashboard> {
     let now = jiff::Timestamp::now();
 
     let all_dispatches = store.list_dispatches(SCAN_LIMIT_DISPATCHES)?;

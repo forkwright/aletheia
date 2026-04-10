@@ -23,7 +23,7 @@ pub(crate) struct EventAccumulator {
 }
 
 impl EventAccumulator {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             cost_usd: 0.0,
             num_turns: 0,
@@ -135,7 +135,7 @@ pub(crate) async fn process_events(
 ///
 /// Matches `https://github.com/{owner}/{repo}/pull/{number}` patterns.
 /// Returns the first match found.
-pub(crate) fn extract_pr_url(text: &str) -> Option<&str> {
+pub fn extract_pr_url(text: &str) -> Option<&str> {
     // WHY: Simple substring search avoids a regex dependency. PR URLs have a
     // predictable structure and we only need the first match.
     const PREFIX: &str = "https://github.com/";
