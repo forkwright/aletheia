@@ -10,6 +10,20 @@ use aletheia_taxis::config::PerUserRateLimitConfig;
 
 use super::helpers::*;
 
+/// Build an authed GET request with a SHARED token, so all requests in a
+/// test hash to the same per-user rate-limit bucket.
+///
+/// `default_token()` issues a fresh JWT every call (different `iat`/`exp`),
+/// which would make each request hash to a different bucket and silently
+/// bypass per-user limiting. Tests that exercise the rate limiter must
+/// reuse the same token across requests.
+fn authed_get_with_token(uri: &str, token: &str) -> Request<Body> {
+    Request::get(uri)
+        .header("authorization", format!("Bearer {token}"))
+        .body(Body::empty())
+        .unwrap()
+}
+
 /// Build a router with per-user rate limiting enabled with the given config.
 async fn app_with_per_user_limits(
     config: PerUserRateLimitConfig,
@@ -64,31 +78,31 @@ async fn requests_under_limit_succeed() {
 }
 
 #[tokio::test]
-#[ignore = "blocked on #2968 — rate limiter does not enforce burst across .clone().oneshot() calls"]
 async fn requests_over_limit_return_429() {
     let (router, _dir) = app_tight_limits().await;
+    let token = default_token();
 
+    // burst = 2, so first 2 succeed, 3rd should be rate-limited.
     router
         .clone()
-        .oneshot(authed_get("/api/v1/nous"))
+        .oneshot(authed_get_with_token("/api/v1/nous", &token))
         .await
         .unwrap();
     router
         .clone()
-        .oneshot(authed_get("/api/v1/nous"))
+        .oneshot(authed_get_with_token("/api/v1/nous", &token))
         .await
         .unwrap();
 
     let resp = router
         .clone()
-        .oneshot(authed_get("/api/v1/nous"))
+        .oneshot(authed_get_with_token("/api/v1/nous", &token))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::TOO_MANY_REQUESTS);
 }
 
 #[tokio::test]
-#[ignore = "blocked on #2968 — rate limiter does not enforce burst across .clone().oneshot() calls"]
 async fn rate_limited_response_includes_retry_after() {
     let (router, _dir) = app_with_per_user_limits(PerUserRateLimitConfig {
         enabled: true,
@@ -101,16 +115,17 @@ async fn rate_limited_response_includes_retry_after() {
         stale_after_secs: 600,
     })
     .await;
+    let token = default_token();
 
     router
         .clone()
-        .oneshot(authed_get("/api/v1/nous"))
+        .oneshot(authed_get_with_token("/api/v1/nous", &token))
         .await
         .unwrap();
 
     let resp = router
         .clone()
-        .oneshot(authed_get("/api/v1/nous"))
+        .oneshot(authed_get_with_token("/api/v1/nous", &token))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::TOO_MANY_REQUESTS);
@@ -124,7 +139,6 @@ async fn rate_limited_response_includes_retry_after() {
 }
 
 #[tokio::test]
-#[ignore = "blocked on #2968 — rate limiter does not enforce burst across .clone().oneshot() calls"]
 async fn rate_limited_body_contains_error_details() {
     let (router, _dir) = app_with_per_user_limits(PerUserRateLimitConfig {
         enabled: true,
@@ -137,16 +151,17 @@ async fn rate_limited_body_contains_error_details() {
         stale_after_secs: 600,
     })
     .await;
+    let token = default_token();
 
     router
         .clone()
-        .oneshot(authed_get("/api/v1/nous"))
+        .oneshot(authed_get_with_token("/api/v1/nous", &token))
         .await
         .unwrap();
 
     let resp = router
         .clone()
-        .oneshot(authed_get("/api/v1/nous"))
+        .oneshot(authed_get_with_token("/api/v1/nous", &token))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::TOO_MANY_REQUESTS);
