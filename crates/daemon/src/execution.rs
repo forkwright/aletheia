@@ -702,14 +702,16 @@ fn read_prometheus_counter(name: &str) -> u64 {
                 // protobuf's `.value()` on `Counter` gives the f64 count.
                 total += metric.get_counter().value();
             }
-            // SAFETY: Prometheus counter values are non-negative f64 totals from
+            // WHY: Prometheus counter values are non-negative f64 totals from
             // monotonically increasing counters; practical counts are well within
-            // u64 range and f64 mantissa (2^53). Truncation is intentional.
+            // u64 range and f64 mantissa (2^53). The cast cannot be replaced with
+            // a safer conversion since no f64→u64 From impl exists; the expect
+            // below documents the domain invariant.
             #[expect(
                 clippy::as_conversions,
                 clippy::cast_sign_loss,
                 clippy::cast_possible_truncation,
-                reason = "f64->u64: counter is non-negative and fits in u64 for practical values"
+                reason = "f64→u64: Prometheus counters are non-negative and accumulate over process lifetime; realistic counts (<1e9 events) stay under f64 mantissa 2^53 and u64 capacity"
             )]
             return total as u64;
         }
@@ -734,14 +736,11 @@ fn read_prometheus_counter_with_label(name: &str, label_name: &str, label_value:
                     total += metric.get_counter().value();
                 }
             }
-            // SAFETY: Prometheus counter values are non-negative f64 totals from
-            // monotonically increasing counters; practical counts are well within
-            // u64 range and f64 mantissa (2^53). Truncation is intentional.
             #[expect(
                 clippy::as_conversions,
                 clippy::cast_sign_loss,
                 clippy::cast_possible_truncation,
-                reason = "f64->u64: counter is non-negative and fits in u64 for practical values"
+                reason = "f64→u64: Prometheus counters are non-negative and accumulate over process lifetime; realistic counts (<1e9 events) stay under f64 mantissa 2^53 and u64 capacity"
             )]
             return total as u64;
         }
