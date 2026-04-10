@@ -89,9 +89,6 @@ pub use aletheia_episteme::embedding;
 pub use aletheia_episteme::embedding_eval;
 /// LLM-driven knowledge extraction pipeline (entities, relationships, facts).
 pub use aletheia_episteme::extract;
-/// In-memory HNSW vector index backed by `hnsw_rs`.
-#[cfg(feature = "hnsw_rs")]
-pub use aletheia_episteme::hnsw_index;
 /// Instinct system: behavioral memory from tool usage patterns.
 pub use aletheia_episteme::instinct;
 /// Knowledge graph export/import for agent portability.

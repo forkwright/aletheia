@@ -272,15 +272,6 @@ pub enum Error {
         location: snafu::Location,
     },
 
-    /// HNSW vector index operation failed.
-    #[cfg(feature = "hnsw_rs")]
-    #[snafu(display("HNSW index error: {message}"))]
-    HnswIndex {
-        message: String,
-        #[snafu(implicit)]
-        location: snafu::Location,
-    },
-
     /// Embedding vector dimension does not match the store's configured dimension.
     #[cfg(feature = "mneme-engine")]
     #[snafu(display("embedding dimension mismatch: expected {expected}, got {actual}"))]

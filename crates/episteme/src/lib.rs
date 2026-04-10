@@ -37,9 +37,6 @@ pub mod embedding_eval;
 pub mod extract;
 /// Graph-enhanced recall scoring: PageRank boost, community proximity, supersession chains.
 pub(crate) mod graph_intelligence;
-/// In-memory HNSW vector index backed by `hnsw_rs`.
-#[cfg(feature = "hnsw_rs")]
-pub mod hnsw_index;
 /// Instinct system: behavioral memory from tool usage patterns.
 pub mod instinct;
 /// Knowledge graph export/import for agent portability.
