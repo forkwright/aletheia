@@ -297,8 +297,12 @@ pub(crate) fn op_slice_string(args: &[DataValue]) -> Result<DataValue> {
             message: "third argument to 'slice_string' mut be a positive integer greater than the second argument"
         }
     );
+    // INVARIANT: `m >= 0` and `n >= m` were checked above; both fit usize
+    // unless they exceed usize::MAX, which on 64-bit is the same as i64::MAX.
+    let m_us = usize::try_from(m).unwrap_or(usize::MAX);
+    let span = usize::try_from(n - m).unwrap_or(usize::MAX);
     Ok(DataValue::Str(
-        s.chars().skip(m as usize).take((n - m) as usize).collect(),
+        s.chars().skip(m_us).take(span).collect(),
     ))
 }
 

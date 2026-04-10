@@ -95,7 +95,7 @@ impl<'a> SessionTx<'a> {
 
         let metadata = input_meta.metadata.clone();
         let last_id = if is_temp {
-            self.temp_store_id.fetch_add(1, Ordering::Relaxed) as u64
+            u64::from(self.temp_store_id.fetch_add(1, Ordering::Relaxed))
         } else {
             self.relation_store_id.fetch_add(1, Ordering::SeqCst)
         };

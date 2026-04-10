@@ -158,11 +158,8 @@ pub(crate) fn op_unpack_bits(args: &[DataValue]) -> Result<DataValue> {
 
 pub(crate) fn op_pack_bits(args: &[DataValue]) -> Result<DataValue> {
     if let DataValue::List(v) = arg(args, 0)? {
-        #[expect(
-            clippy::cast_precision_loss,
-            reason = "i64 to f64: precision loss acceptable"
-        )]
-        let l = (v.len() as f64 / 8.).ceil() as usize;
+        // INVARIANT: ceil(len / 8) computed via integer division.
+        let l = v.len().div_ceil(8);
         let mut res = vec![0u8; l];
         for (i, b) in v.iter().enumerate() {
             match b {

@@ -49,7 +49,13 @@ pub(crate) fn parse_sys(
                 }
                 .build()
             })?;
-            SysOp::KillRunning(i_val as u64)
+            let pid = u64::try_from(i_val).map_err(|_e| {
+                InvalidQuerySnafu {
+                    message: "Process ID must be a non-negative integer".to_string(),
+                }
+                .build()
+            })?;
+            SysOp::KillRunning(pid)
         }
         Rule::explain_op => {
             let prog = parse_query(
@@ -301,23 +307,37 @@ pub(crate) fn parse_sys(
                                 let mut expr = build_expr(opt_val, param_pool)?;
                                 expr.partial_eval()?;
                                 let v = expr.eval_to_const()?;
-                                n_gram = v.get_int().ok_or_else(|| {
+                                let v_int = v.get_int().ok_or_else(|| {
                                     InvalidQuerySnafu {
                                         message: "n_gram must be an integer".to_string(),
                                     }
                                     .build()
-                                })? as usize;
+                                })?;
+                                n_gram = usize::try_from(v_int).map_err(|_e| {
+                                    InvalidQuerySnafu {
+                                        message: "n_gram must be a non-negative integer"
+                                            .to_string(),
+                                    }
+                                    .build()
+                                })?;
                             }
                             "n_perm" => {
                                 let mut expr = build_expr(opt_val, param_pool)?;
                                 expr.partial_eval()?;
                                 let v = expr.eval_to_const()?;
-                                n_perm = v.get_int().ok_or_else(|| {
+                                let v_int = v.get_int().ok_or_else(|| {
                                     InvalidQuerySnafu {
                                         message: "n_perm must be an integer".to_string(),
                                     }
                                     .build()
-                                })? as usize;
+                                })?;
+                                n_perm = usize::try_from(v_int).map_err(|_e| {
+                                    InvalidQuerySnafu {
+                                        message: "n_perm must be a non-negative integer"
+                                            .to_string(),
+                                    }
+                                    .build()
+                                })?;
                             }
                             "target_threshold" => {
                                 let mut expr = build_expr(opt_val, param_pool)?;
@@ -745,7 +765,8 @@ pub(crate) fn parse_sys(
                                     .build()
                                     .into());
                                 }
-                                vec_dim = v as usize;
+                                // INVARIANT: range-checked > 0 above.
+                                vec_dim = usize::try_from(v).unwrap_or(usize::MAX);
                             }
                             "ef_construction" | "ef" => {
                                 let v = build_expr(opt_val, param_pool)?
@@ -766,7 +787,8 @@ pub(crate) fn parse_sys(
                                     .build()
                                     .into());
                                 }
-                                ef_construction = v as usize;
+                                // INVARIANT: range-checked > 0 above.
+                                ef_construction = usize::try_from(v).unwrap_or(usize::MAX);
                             }
                             "m_neighbours" | "m" => {
                                 let v = build_expr(opt_val, param_pool)?
@@ -785,7 +807,8 @@ pub(crate) fn parse_sys(
                                     .build()
                                     .into());
                                 }
-                                m_neighbours = v as usize;
+                                // INVARIANT: range-checked > 0 above.
+                                m_neighbours = usize::try_from(v).unwrap_or(usize::MAX);
                             }
                             "dtype" => {
                                 dtype = match opt_val.as_str() {

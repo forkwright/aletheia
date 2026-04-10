@@ -7,6 +7,7 @@ use priority_queue::PriorityQueue;
 use rustc_hash::FxHashSet;
 use tracing::warn;
 
+use super::idx_to_i64;
 use super::types::{CompoundKey, DEFAULT_VECTOR_CACHE_CAPACITY, HnswIndexManifest, VectorCache};
 use super::visited_pool::VisitedPool;
 use crate::DataValue;
@@ -43,7 +44,7 @@ impl<'a> SessionTx<'a> {
         let mut canary_tuple = vec![DataValue::from(0)];
         for _ in 0..2 {
             canary_tuple.extend_from_slice(tuple_key);
-            canary_tuple.push(DataValue::from(idx as i64));
+            canary_tuple.push(DataValue::from(idx_to_i64(idx)));
             canary_tuple.push(DataValue::from(i64::from(subidx)));
         }
         if let Some(v) = idx_table.get(self, &canary_tuple)? {
@@ -125,7 +126,7 @@ impl<'a> SessionTx<'a> {
             self_tuple_key.push(DataValue::from(0));
             for _ in 0..2 {
                 self_tuple_key.extend_from_slice(tuple_key);
-                self_tuple_key.push(DataValue::from(idx as i64));
+                self_tuple_key.push(DataValue::from(idx_to_i64(idx)));
                 self_tuple_key.push(DataValue::from(i64::from(subidx)));
             }
             let mut self_tuple_val = vec![
@@ -159,7 +160,13 @@ impl<'a> SessionTx<'a> {
                     vec_cache,
                 )?;
                 self_tuple_key[0] = DataValue::from(current_level);
-                self_tuple_val[0] = DataValue::from(neighbours.len() as f64);
+                // INVARIANT: HNSW degree is bounded by m_max (typically <= 128).
+                #[expect(
+                    clippy::cast_precision_loss,
+                    reason = "HNSW degree bounded by m_max (< 2^53)"
+                )]
+                let degree_f64 = neighbours.len() as f64;
+                self_tuple_val[0] = DataValue::from(degree_f64);
 
                 let self_tuple_key_bytes =
                     idx_table.encode_key_for_store(&self_tuple_key, Default::default())?;
@@ -177,10 +184,10 @@ impl<'a> SessionTx<'a> {
                     ];
                     out_key.push(DataValue::from(current_level));
                     out_key.extend_from_slice(tuple_key);
-                    out_key.push(DataValue::from(idx as i64));
+                    out_key.push(DataValue::from(idx_to_i64(idx)));
                     out_key.push(DataValue::from(i64::from(subidx)));
                     out_key.extend_from_slice(&neighbour.0);
-                    out_key.push(DataValue::from(neighbour.1 as i64));
+                    out_key.push(DataValue::from(idx_to_i64(neighbour.1)));
                     out_key.push(DataValue::from(i64::from(neighbour.2)));
                     let out_key_bytes =
                         idx_table.encode_key_for_store(&out_key, Default::default())?;
@@ -196,10 +203,10 @@ impl<'a> SessionTx<'a> {
                     ];
                     in_key.push(DataValue::from(current_level));
                     in_key.extend_from_slice(&neighbour.0);
-                    in_key.push(DataValue::from(neighbour.1 as i64));
+                    in_key.push(DataValue::from(idx_to_i64(neighbour.1)));
                     in_key.push(DataValue::from(i64::from(neighbour.2)));
                     in_key.extend_from_slice(tuple_key);
-                    in_key.push(DataValue::from(idx as i64));
+                    in_key.push(DataValue::from(idx_to_i64(idx)));
                     in_key.push(DataValue::from(i64::from(subidx)));
 
                     let in_key_bytes =
@@ -213,7 +220,7 @@ impl<'a> SessionTx<'a> {
                     target_self_key.push(DataValue::from(current_level));
                     for _ in 0..2 {
                         target_self_key.extend_from_slice(&neighbour.0);
-                        target_self_key.push(DataValue::from(neighbour.1 as i64));
+                        target_self_key.push(DataValue::from(idx_to_i64(neighbour.1)));
                         target_self_key.push(DataValue::from(i64::from(neighbour.2)));
                     }
                     let target_self_key_bytes =
@@ -259,7 +266,12 @@ impl<'a> SessionTx<'a> {
                             vec_cache,
                         )?;
                     }
-                    target_self_val[0] = DataValue::from(target_degree as f64);
+                    #[expect(
+                        clippy::cast_precision_loss,
+                        reason = "HNSW degree bounded by m_max (< 2^53)"
+                    )]
+                    let target_degree_f64 = target_degree as f64;
+                    target_self_val[0] = DataValue::from(target_degree_f64);
                     self.store_tx.put(
                         &target_self_key_bytes,
                         &idx_table
@@ -335,10 +347,10 @@ impl<'a> SessionTx<'a> {
                 ];
                 new_key.push(DataValue::from(level));
                 new_key.extend_from_slice(&target_key.0);
-                new_key.push(DataValue::from(target_key.1 as i64));
+                new_key.push(DataValue::from(idx_to_i64(target_key.1)));
                 new_key.push(DataValue::from(i64::from(target_key.2)));
                 new_key.extend_from_slice(&new.0);
-                new_key.push(DataValue::from(new.1 as i64));
+                new_key.push(DataValue::from(idx_to_i64(new.1)));
                 new_key.push(DataValue::from(i64::from(new.2)));
                 let new_key_bytes = idx_table.encode_key_for_store(&new_key, Default::default())?;
                 let new_val_bytes =
@@ -351,10 +363,10 @@ impl<'a> SessionTx<'a> {
                 let mut old_key = Vec::with_capacity(orig_table.metadata.keys.len() * 2 + 5);
                 old_key.push(DataValue::from(level));
                 old_key.extend_from_slice(&target_key.0);
-                old_key.push(DataValue::from(target_key.1 as i64));
+                old_key.push(DataValue::from(idx_to_i64(target_key.1)));
                 old_key.push(DataValue::from(i64::from(target_key.2)));
                 old_key.extend_from_slice(&old.0);
-                old_key.push(DataValue::from(old.1 as i64));
+                old_key.push(DataValue::from(idx_to_i64(old.1)));
                 old_key.push(DataValue::from(i64::from(old.2)));
                 let old_key_bytes = idx_table.encode_key_for_store(&old_key, Default::default())?;
                 let old_existing_val = match self.store_tx.get(&old_key_bytes, false)? {
@@ -564,7 +576,7 @@ impl<'a> SessionTx<'a> {
         let mut start_tuple = Vec::with_capacity(cand_key.0.len() + 3);
         start_tuple.push(DataValue::from(level));
         start_tuple.extend_from_slice(&cand_key.0);
-        start_tuple.push(DataValue::from(cand_key.1 as i64));
+        start_tuple.push(DataValue::from(idx_to_i64(cand_key.1)));
         start_tuple.push(DataValue::from(i64::from(cand_key.2)));
         let key_len = cand_key.0.len();
         Ok(idx_handle
@@ -634,7 +646,7 @@ impl<'a> SessionTx<'a> {
                 target_key.push(tuple.get(i).unwrap_or_else(|| unreachable!()).clone());
                 canary_key.push(DataValue::Null);
             }
-            target_key.push(DataValue::from(idx as i64));
+            target_key.push(DataValue::from(idx_to_i64(idx)));
             target_key.push(DataValue::from(i64::from(subidx)));
             canary_key.push(DataValue::Null);
             canary_key.push(DataValue::Null);

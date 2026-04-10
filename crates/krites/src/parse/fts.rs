@@ -102,7 +102,12 @@ fn build_term(pair: Pair<'_>) -> Result<FtsExpr> {
                             }
                             .build()
                         })?;
-                        distance = i as u32;
+                        distance = u32::try_from(i).map_err(|_e| {
+                            InvalidQuerySnafu {
+                                message: format!("FTS near distance must fit in u32, got {i}"),
+                            }
+                            .build()
+                        })?;
                     }
                     _ => literals.push(build_phrase(pair)?),
                 }
@@ -175,7 +180,14 @@ fn build_phrase(pair: Pair<'_>) -> Result<FtsLiteral> {
                                 }
                                 .build()
                             })?;
-                        booster = i as f64;
+                        // INVARIANT: FTS booster is a small relevance multiplier;
+                        // precision loss above 2^53 is irrelevant in practice.
+                        #[expect(
+                            clippy::cast_precision_loss,
+                            reason = "FTS booster is a small relevance multiplier"
+                        )]
+                        let f = i as f64;
+                        booster = f;
                     }
                     r => {
                         return Err(InvalidQuerySnafu {

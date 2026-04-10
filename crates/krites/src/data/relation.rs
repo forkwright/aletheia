@@ -298,7 +298,7 @@ impl NullableColType {
                                 return Err(make_err());
                             }
                             debug_assert_eq!(
-                                bytes.as_ptr() as usize % mem::align_of::<f32>(),
+                                bytes.as_ptr().addr() % mem::align_of::<f32>(),
                                 0,
                                 "Vec<u8> buffer must be aligned for f32 reinterpretation"
                             );
@@ -330,7 +330,7 @@ impl NullableColType {
                                 return Err(make_err());
                             }
                             debug_assert_eq!(
-                                bytes.as_ptr() as usize % mem::align_of::<f64>(),
+                                bytes.as_ptr().addr() % mem::align_of::<f64>(),
                                 0,
                                 "Vec<u8> buffer must be aligned for f64 reinterpretation"
                             );

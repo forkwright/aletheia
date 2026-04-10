@@ -459,6 +459,12 @@ impl<'a> SessionTx<'a> {
             m_neighbours: config.m_neighbours,
             m_max: config.m_neighbours,
             m_max0: config.m_neighbours * 2,
+            // INVARIANT: m_neighbours is HNSW max-connections, bounded by m_max
+            // (typically <= 128). Precision loss above 2^53 is unreachable.
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "HNSW m_neighbours bounded by m_max (< 2^53)"
+            )]
             level_multiplier: 1. / (config.m_neighbours as f64).ln(),
             index_filter: config.index_filter.clone(),
             extend_candidates: config.extend_candidates,

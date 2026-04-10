@@ -258,13 +258,16 @@ impl SearchInput {
             .into());
         }
 
+        // INVARIANT: `k` and `ef` were range-checked > 0 above; saturating to
+        // usize::MAX preserves intent on 32-bit targets where i64 > usize::MAX
+        // is theoretically possible.
         conj.push(NormalFormAtom::HnswSearch(HnswSearch {
             base_handle,
             idx_handle,
             manifest,
             bindings,
-            k: k as usize,
-            ef: ef as usize,
+            k: usize::try_from(k).unwrap_or(usize::MAX),
+            ef: usize::try_from(ef).unwrap_or(usize::MAX),
             query,
             bind_field,
             bind_field_idx,

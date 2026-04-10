@@ -297,7 +297,7 @@ impl<'de> Visitor<'de> for VectorVisitor {
                 Ok(Vector::F64(Array1::from(v)))
             }
             _ => Err(serde::de::Error::invalid_value(
-                serde::de::Unexpected::Unsigned(tag as u64),
+                serde::de::Unexpected::Unsigned(u64::from(tag)),
                 &self,
             )),
         }
@@ -495,7 +495,15 @@ impl Num {
             Num::Int(i) => Some(*i),
             Num::Float(f) => {
                 if f.round() == *f {
-                    Some(*f as i64)
+                    // WARNING: preserves historical saturating-cast behavior for
+                    // floats outside [i64::MIN, i64::MAX]; tightening this would
+                    // ripple across all get_int() callers. Tracked under #2760.
+                    #[expect(
+                        clippy::cast_possible_truncation,
+                        reason = "preserves pre-existing behavior; out-of-range floats saturate"
+                    )]
+                    let i = *f as i64;
+                    Some(i)
                 } else {
                     None
                 }
@@ -504,6 +512,10 @@ impl Num {
     }
     pub(crate) fn get_float(&self) -> f64 {
         match self {
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "i64 to f64: precision loss above 2^53 is acceptable for this path"
+            )]
             Num::Int(i) => *i as f64,
             Num::Float(f) => *f,
         }
@@ -669,9 +681,7 @@ impl DataValue {
     }
     pub(crate) fn get_non_neg_int(&self) -> Option<u64> {
         match self {
-            DataValue::Num(n) => n
-                .get_int()
-                .and_then(|i| if i < 0 { None } else { Some(i as u64) }),
+            DataValue::Num(n) => n.get_int().and_then(|i| u64::try_from(i).ok()),
             _ => None,
         }
     }

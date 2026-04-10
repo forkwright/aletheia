@@ -329,7 +329,10 @@ impl<'s, S: Storage<'s>> Db<S> {
             .iter()
             .map(|(k, v)| {
                 vec![
-                    DataValue::from(*k as i64),
+                    // INVARIANT: query IDs are monotonically issued from 1; they
+                    // exceed i64::MAX only after 2^63 queries on the same process,
+                    // which is not reachable in practice.
+                    DataValue::from(i64::try_from(*k).unwrap_or(i64::MAX)),
                     DataValue::from(format!("{:?}", v.started_at)),
                 ]
             })

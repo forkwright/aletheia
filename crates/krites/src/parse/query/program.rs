@@ -358,7 +358,8 @@ fn parse_query_option_usize(
             }
             .build()
         })?;
-    Ok(n as usize)
+    // INVARIANT: get_non_neg_int already filtered negatives.
+    Ok(usize::try_from(n).unwrap_or(usize::MAX))
 }
 
 fn parse_query_option_bool(
