@@ -1,7 +1,7 @@
 /// Slash-command autocomplete update handlers.
 use crate::app::App;
-use crate::fuzzy::FuzzyMatcher;
 use crate::command::COMMANDS;
+use crate::fuzzy::fuzzy_match;
 use crate::state::SlashSuggestion;
 
 pub(crate) fn handle_open(app: &mut App) {
@@ -69,7 +69,6 @@ const MAX_SLASH_SUGGESTIONS: usize = 8;
 
 fn refresh_suggestions(app: &mut App) {
     let query = app.interaction.slash_complete.query.clone();
-    let matcher = FuzzyMatcher::new();
 
     let mut scored: Vec<(i64, SlashSuggestion)> = COMMANDS
         .iter()
@@ -85,15 +84,15 @@ fn refresh_suggestions(app: &mut App) {
                 ));
             }
             let mut best: Option<i64> = None;
-            if let Some(result) = matcher.fuzzy_match(cmd.name, &query) {
+            if let Some(result) = fuzzy_match(cmd.name, &query) {
                 best = Some(result.score);
             }
             for alias in cmd.aliases {
-                if let Some(result) = matcher.fuzzy_match(alias, &query) {
+                if let Some(result) = fuzzy_match(alias, &query) {
                     best = best.map_or(Some(result.score), |p| Some(p.max(result.score)));
                 }
             }
-            if let Some(result) = matcher.fuzzy_match(cmd.description, &query) {
+            if let Some(result) = fuzzy_match(cmd.description, &query) {
                 best = best.map_or(Some(result.score), |p| Some(p.max(result.score)));
             }
             best.map(|score| {

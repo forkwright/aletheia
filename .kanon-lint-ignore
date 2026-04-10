@@ -535,6 +535,11 @@ RUST/pub-visibility:crates/taxis/src/workspace_schema.rs
 RUST/pub-visibility:crates/theatron/core/src/api/client.rs
 RUST/pub-visibility:crates/theatron/core/src/api/sse.rs
 RUST/pub-visibility:crates/theatron/core/src/api/streaming.rs
+# WHY: SseStream is re-exported from the theatron facade crate and consumed by
+# theatron-desktop's API layer. The generic stream struct cannot carry derive
+# attributes the lint uses for exemption, so the pub items here are genuine
+# public API rather than false positives.
+RUST/pub-visibility:crates/theatron/core/src/sse.rs
 RUST/pub-visibility:crates/theatron/tui/src/error.rs
 RUST/pub-visibility:crates/theatron/tui/src/state/command.rs
 

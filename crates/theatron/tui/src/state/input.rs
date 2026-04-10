@@ -17,7 +17,7 @@ pub struct InputState {
 
 impl InputState {
     /// Trigger cursor flash on input activity.
-    pub fn trigger_cursor_flash(&mut self) {
+    pub(crate) fn trigger_cursor_flash(&mut self) {
         self.cursor_flash_until = Some(
             std::time::Instant::now()
                 + std::time::Duration::from_millis(CURSOR_FLASH_DURATION_MS),
@@ -25,7 +25,7 @@ impl InputState {
     }
 
     /// Check if the cursor should be flashing (blinking) right now.
-    pub fn is_cursor_flashing(&self) -> bool {
+    pub(crate) fn is_cursor_flashing(&self) -> bool {
         self.cursor_flash_until
             .is_some_and(|t| t > std::time::Instant::now())
     }
