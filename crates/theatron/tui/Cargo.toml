@@ -113,6 +113,10 @@ rc_mutex = "warn"
 string_add = "warn"
 trait_duplication_in_bounds = "warn"
 unused_self = "warn"
+# Numeric cast auditing — replaced lossy `as` casts with try_from / checked
+# conversions in #2760; enable here to prevent regression.
+as_conversions = "warn"
+cast_possible_truncation = "warn"
 # Architectural boundary enforcement — must stay in sync with [workspace.lints.clippy]
 disallowed_methods = "deny"
 disallowed_types = "deny"
