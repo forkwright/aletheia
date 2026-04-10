@@ -19,9 +19,14 @@ pub(crate) fn current_validity() -> ValidityTs {
     #[cfg(not(target_arch = "wasm32"))]
     let ts_micros = {
         let now = SystemTime::now();
-        now.duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_micros() as i64
+        // INVARIANT: Unix microseconds fit in i64 until year ~294247 AD;
+        // saturating handles the theoretical overflow gracefully.
+        i64::try_from(
+            now.duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_micros(),
+        )
+        .unwrap_or(i64::MAX)
     };
     #[cfg(target_arch = "wasm32")]
     #[expect(clippy::cast_possible_wrap, reason = "value fits i64")]
@@ -73,7 +78,18 @@ pub(crate) fn op_format_timestamp(args: &[DataValue]) -> Result<DataValue> {
                 }
                 .build()
             })?;
-            (f * 1000.) as i64
+            // INVARIANT: out-of-range floats (NaN, infinities, > i64::MAX) saturate
+            // to i64::MAX / i64::MIN per Rust's `as` semantics. The downstream
+            // `Timestamp::from_millisecond` will then surface a `BadTime` error.
+            // The alternative (returning an error here) would change behavior for
+            // all callers of `format_timestamp`, so we preserve the cast and let
+            // the timestamp constructor do the validation.
+            #[expect(
+                clippy::cast_possible_truncation,
+                reason = "preserves saturating behavior; downstream validates"
+            )]
+            let m = (f * 1000.) as i64;
+            m
         }
     };
     let raw_arg = arg(args, 0)?;
@@ -123,8 +139,15 @@ pub(crate) fn op_parse_timestamp(args: &[DataValue]) -> Result<DataValue> {
         }
         .build()
     })?;
+    // INVARIANT: Unix seconds can exceed 2^53 only past year ~285 million AD.
+    // Sub-second nanoseconds are bounded to 0..=999_999_999 by jiff's type.
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "i64 seconds fit f64 until year ~285 million AD"
+    )]
+    let seconds_f = ts.as_second() as f64;
     Ok(DataValue::from(
-        ts.as_second() as f64 + ts.subsec_nanosecond() as f64 / 1e9,
+        seconds_f + f64::from(ts.subsec_nanosecond()) / 1e9,
     ))
 }
 
