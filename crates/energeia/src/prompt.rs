@@ -176,7 +176,7 @@ pub fn load_queue(dir: &Path) -> Result<Vec<PromptSpec>> {
 ///
 /// Returns [`crate::error::Error::DagCycle`] on cycle detection or
 /// [`crate::error::Error::DagMissingDeps`] for broken dependency references.
-pub fn build_dag(prompts: &[PromptSpec]) -> Result<PromptDag> {
+pub(crate) fn build_dag(prompts: &[PromptSpec]) -> Result<PromptDag> {
     let mut dag = PromptDag::new();
 
     for spec in prompts {
