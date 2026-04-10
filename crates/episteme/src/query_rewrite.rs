@@ -15,7 +15,7 @@ use tracing::instrument;
 ///
 /// Keeps mneme independent of hermeneus. The nous layer bridges this trait
 /// to the full `LlmProvider` + `CompletionRequest` API.
-pub trait RewriteProvider: Send + Sync {
+pub(crate) trait RewriteProvider: Send + Sync {
     /// Generate a completion from a system prompt and user message.
     fn complete(&self, system: &str, user_message: &str) -> Result<String, RewriteError>;
 }
@@ -69,20 +69,20 @@ pub struct RewriteResult {
 }
 
 /// LLM-powered query rewriter for the recall pipeline.
-pub struct QueryRewriter {
+pub(crate) struct QueryRewriter {
     config: RewriteConfig,
 }
 
 impl QueryRewriter {
     /// Create a new query rewriter with the given configuration.
     #[must_use]
-    pub fn new(config: RewriteConfig) -> Self {
+    pub(crate) fn new(config: RewriteConfig) -> Self {
         Self { config }
     }
 
     /// Create a query rewriter with default configuration.
     #[must_use]
-    pub fn with_defaults() -> Self {
+    pub(crate) fn with_defaults() -> Self {
         Self::new(RewriteConfig::default())
     }
 
@@ -91,7 +91,7 @@ impl QueryRewriter {
     /// Returns the original query plus generated variants. Never fails;
     /// falls back to the original query on any error.
     #[instrument(skip(self, provider, context))]
-    pub fn rewrite(
+    pub(crate) fn rewrite(
         &self,
         query: &str,
         context: Option<&str>,

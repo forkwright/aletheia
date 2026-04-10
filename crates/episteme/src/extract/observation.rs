@@ -184,7 +184,11 @@ pub struct RawObservation {
 /// individual observation. Handles continuation lines (indented text
 /// that is part of the same bullet).
 #[must_use]
-pub fn parse_observations(pr_body: &str) -> Vec<RawObservation> {
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "PR observation parser exercised from tests; steward wiring lands with the training extractor")
+)]
+pub(crate) fn parse_observations(pr_body: &str) -> Vec<RawObservation> {
     let Some(section) = extract_observations_section(pr_body) else {
         return Vec::new();
     };
@@ -342,7 +346,7 @@ static FILE_PATH_RE: LazyLock<Regex> = LazyLock::new(|| {
 /// Tags include crate names matching `crates/{name}` or backtick-wrapped
 /// crate references, and file paths matching common patterns.
 #[must_use]
-pub fn extract_tags(text: &str) -> Vec<String> {
+pub(crate) fn extract_tags(text: &str) -> Vec<String> {
     let mut tags = Vec::new();
 
     for cap in CRATE_PATH_RE.captures_iter(text) {

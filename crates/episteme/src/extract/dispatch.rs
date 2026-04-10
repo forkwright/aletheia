@@ -154,7 +154,7 @@ pub struct ProjectScores {
     pub grade_distribution: HashMap<Grade, usize>,
 }
 
-/// Inputs to [`compute_grade`].
+/// Inputs to the crate-private `compute_grade` scoring helper.
 ///
 /// Bundles the boolean and counter flags into a single named record so the
 /// call sites are self-documenting and so the function signature stays
@@ -189,7 +189,11 @@ pub struct GradeInputs {
 /// - C: multiple resumes or fixes
 /// - F: stuck or failed
 #[must_use]
-pub fn compute_grade(inputs: GradeInputs) -> Grade {
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "scoring helper exercised from tests; steward wiring lands with dispatch reporter")
+)]
+pub(crate) fn compute_grade(inputs: GradeInputs) -> Grade {
     if inputs.has_failure {
         return Grade::F;
     }

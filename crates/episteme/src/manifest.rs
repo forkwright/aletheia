@@ -55,10 +55,14 @@ impl From<MemoryHeaderRaw> for MemoryHeader {
     }
 }
 
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "test-only constructors; MemoryHeader is built via serde in lib builds")
+)]
 impl MemoryHeader {
     /// Create a new header with the required fields.
     #[must_use]
-    pub fn new(source_id: impl Into<String>, name: impl Into<String>, mtime_ms: i64) -> Self {
+    pub(crate) fn new(source_id: impl Into<String>, name: impl Into<String>, mtime_ms: i64) -> Self {
         Self {
             source_id: source_id.into(),
             name: name.into(),
@@ -69,7 +73,7 @@ impl MemoryHeader {
 
     /// Set the description (builder pattern).
     #[must_use]
-    pub fn with_description(mut self, description: impl Into<String>) -> Self {
+    pub(crate) fn with_description(mut self, description: impl Into<String>) -> Self {
         self.description = Some(description.into());
         self
     }
@@ -101,7 +105,7 @@ impl MemoryManifest {
     /// Sorts by modification time descending and enforces the
     /// [`MAX_MEMORY_ENTRIES`] cap.
     #[must_use]
-    pub fn from_headers(mut headers: Vec<MemoryHeader>) -> Self {
+    pub(crate) fn from_headers(mut headers: Vec<MemoryHeader>) -> Self {
         headers.sort_by(|a, b| b.mtime_ms.cmp(&a.mtime_ms));
         headers.truncate(MAX_MEMORY_ENTRIES);
         Self { headers }
@@ -113,7 +117,7 @@ impl MemoryManifest {
     /// `- <source_id> <name>: <description>` (with description)
     /// `- <source_id> <name>` (without description)
     #[must_use]
-    pub fn format(&self) -> String {
+    pub(crate) fn format(&self) -> String {
         use std::fmt::Write;
         let mut out = String::with_capacity(self.headers.len() * 80);
         for h in &self.headers {
@@ -128,19 +132,19 @@ impl MemoryManifest {
 
     /// The headers in this manifest, in mtime-descending order.
     #[must_use]
-    pub fn headers(&self) -> &[MemoryHeader] {
+    pub(crate) fn headers(&self) -> &[MemoryHeader] {
         &self.headers
     }
 
     /// Number of entries in this manifest.
     #[must_use]
-    pub fn len(&self) -> usize {
+    pub(crate) fn len(&self) -> usize {
         self.headers.len()
     }
 
     /// Whether this manifest contains no entries.
     #[must_use]
-    pub fn is_empty(&self) -> bool {
+    pub(crate) fn is_empty(&self) -> bool {
         self.headers.is_empty()
     }
 }
