@@ -179,7 +179,7 @@ impl ProbeSet {
             #[expect(
                 clippy::cast_precision_loss,
                 clippy::as_conversions,
-                reason = "small probe counts (< 20) are well within f32 precision"
+                reason = "usize→f32: probe violation/missing counts are under 20 per probe, far below f32 mantissa 2^24"
             )]
             let penalty = total_issues as f32 * 0.25_f32;
             (1.0_f32 - penalty).max(0.0_f32)
@@ -273,7 +273,7 @@ impl ProbeAuditSummary {
         #[expect(
             clippy::cast_precision_loss,
             clippy::as_conversions,
-            reason = "probe counts are small (< 100); precision loss is negligible"
+            reason = "usize→f32: probe count in an audit is under 100, far below f32 mantissa 2^24"
         )]
         let avg_confidence = if total == 0 {
             1.0_f32
