@@ -10,7 +10,7 @@ use tracing::{Instrument, debug, info, warn};
 use aletheia_mneme::knowledge_store::KnowledgeStore;
 use aletheia_mneme::store::SessionStore;
 
-use aletheia_hermeneus::provider::ProviderRegistry;
+use hermeneus::provider::ProviderRegistry;
 
 use super::{DEGRADED_WINDOW, MAX_SPAWNED_TASKS, NousActor};
 

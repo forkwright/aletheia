@@ -22,8 +22,8 @@ use aletheia_mneme::knowledge::{
     far_future, parse_timestamp,
 };
 use aletheia_mneme::knowledge_store::{KnowledgeConfig, KnowledgeStore};
-use aletheia_taxis::loader::load_config;
-use aletheia_taxis::oikos::Oikos;
+use taxis::loader::load_config;
+use taxis::oikos::Oikos;
 
 use crate::error::Result;
 

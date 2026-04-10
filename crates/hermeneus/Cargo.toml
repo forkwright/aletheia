@@ -1,5 +1,5 @@
 [package]
-name = "aletheia-hermeneus"
+name = "hermeneus"
 version.workspace = true
 description = "LLM provider abstraction and Anthropic streaming client"
 edition.workspace = true

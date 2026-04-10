@@ -57,7 +57,7 @@ http = { workspace = true }
 
 # Internal crates (same layer as pylon — depends on mid+low crates)
 koina = { path = "../koina" }
-aletheia-taxis = { path = "../taxis" }
+taxis = { path = "../taxis" }
 aletheia-nous = { path = "../nous" }
 aletheia-organon = { path = "../organon" }
 aletheia-mneme = { path = "../mneme", features = ["sqlite"] }
@@ -65,6 +65,6 @@ aletheia-symbolon = { path = "../symbolon" }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
-aletheia-hermeneus = { path = "../hermeneus" }
+hermeneus = { path = "../hermeneus" }
 tempfile = { workspace = true }
 tower = { workspace = true }

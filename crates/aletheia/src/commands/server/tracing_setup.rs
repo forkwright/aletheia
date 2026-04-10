@@ -12,7 +12,7 @@ use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{EnvFilter, fmt};
 
 use koina::redacting_layer::RedactingLayer;
-use aletheia_taxis::oikos::Oikos;
+use taxis::oikos::Oikos;
 
 use crate::error::Result;
 
@@ -92,7 +92,7 @@ pub(super) fn init_tracing(
     json: bool,
     log_dir: &Path,
     file_level: &str,
-    redaction: &aletheia_taxis::config::RedactionSettings,
+    redaction: &taxis::config::RedactionSettings,
 ) -> Result<WorkerGuard> {
     // NOTE: Respects RUST_LOG env var; falls back to the CLI level.
     let console_filter = EnvFilter::try_from_default_env()

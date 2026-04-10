@@ -5,8 +5,8 @@ use std::path::PathBuf;
 use clap::Subcommand;
 use snafu::prelude::*;
 
-use aletheia_taxis::encrypt;
-use aletheia_taxis::oikos::Oikos;
+use taxis::encrypt;
+use taxis::oikos::Oikos;
 
 use crate::error::Result;
 

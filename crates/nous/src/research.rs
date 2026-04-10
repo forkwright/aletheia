@@ -6,7 +6,7 @@ use std::time::Duration;
 use tokio::task::JoinSet;
 use tracing::{Instrument, info, warn};
 
-use aletheia_dianoia::research::{
+use dianoia::research::{
     FindingStatus, ResearchConfig, ResearchDomain, ResearchFinding, ResearchOutput, domain_prompt,
     merge_research,
 };
@@ -158,7 +158,7 @@ mod tests {
     use std::future::Future;
     use std::pin::Pin;
 
-    use aletheia_dianoia::research::ResearchLevel;
+    use dianoia::research::ResearchLevel;
     use aletheia_organon::types::{SpawnRequest, SpawnResult};
 
     use super::*;

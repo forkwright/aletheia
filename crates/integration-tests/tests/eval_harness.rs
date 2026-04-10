@@ -12,8 +12,8 @@ use tokio_util::sync::CancellationToken;
 use tracing::Instrument;
 
 use aletheia_dokimion::runner::{RunConfig, ScenarioRunner};
-use aletheia_hermeneus::provider::ProviderRegistry;
-use aletheia_hermeneus::test_utils::MockProvider;
+use hermeneus::provider::ProviderRegistry;
+use hermeneus::test_utils::MockProvider;
 use koina::secret::SecretString;
 use aletheia_mneme::store::SessionStore;
 use aletheia_nous::config::{NousConfig, PipelineConfig};
@@ -24,7 +24,7 @@ use aletheia_pylon::router::build_router;
 use aletheia_pylon::state::AppState;
 use aletheia_symbolon::jwt::{JwtConfig, JwtManager};
 use aletheia_symbolon::types::Role;
-use aletheia_taxis::oikos::Oikos;
+use taxis::oikos::Oikos;
 
 async fn start_test_server() -> (String, String, tempfile::TempDir) {
     install_crypto_provider();
@@ -94,7 +94,7 @@ async fn start_test_server() -> (String, String, tempfile::TempDir) {
         .issue_access("test-user", Role::Operator, None)
         .expect("test token");
 
-    let default_config = aletheia_taxis::config::AletheiaConfig::default();
+    let default_config = taxis::config::AletheiaConfig::default();
     let (config_tx, _config_rx) = tokio::sync::watch::channel(default_config.clone());
     let state = Arc::new(AppState {
         session_store,

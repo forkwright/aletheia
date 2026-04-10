@@ -44,15 +44,15 @@ use aletheia_diaporeia::server::DiaporeiaServer;
 use aletheia_diaporeia::state::DiaporeiaState;
 use aletheia_diaporeia::transport::streamable_http_router;
 
-use aletheia_hermeneus::provider::ProviderRegistry;
+use hermeneus::provider::ProviderRegistry;
 use koina::secret::SecretString;
 use aletheia_mneme::store::SessionStore;
 use aletheia_nous::manager::NousManager;
 use aletheia_organon::registry::ToolRegistry;
 use aletheia_symbolon::jwt::{JwtConfig, JwtManager};
 use aletheia_symbolon::types::Role;
-use aletheia_taxis::config::AletheiaConfig;
-use aletheia_taxis::oikos::Oikos;
+use taxis::config::AletheiaConfig;
+use taxis::oikos::Oikos;
 
 // WHY: each test must construct an independent state with its own tempdir so
 // that tests can run in parallel and in any order. The builder below assembles

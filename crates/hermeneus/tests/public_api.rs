@@ -12,11 +12,11 @@
 #![expect(clippy::expect_used, reason = "test assertions")]
 #![expect(clippy::unwrap_used, reason = "test assertions")]
 
-use aletheia_hermeneus::models::{
+use hermeneus::models::{
     BACKOFF_BASE_MS, BACKOFF_FACTOR, BACKOFF_MAX_MS, DEFAULT_API_VERSION, DEFAULT_BASE_URL,
     DEFAULT_MAX_RETRIES, SUPPORTED_MODELS, names,
 };
-use aletheia_hermeneus::types::{StopReason, Usage};
+use hermeneus::types::{StopReason, Usage};
 
 // --- Model constants ---
 

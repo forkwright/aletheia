@@ -53,15 +53,15 @@ rand = { workspace = true }
 
 # Internal crates
 koina = { path = "../koina" }
-aletheia-taxis = { path = "../taxis" }
-aletheia-hermeneus = { path = "../hermeneus" }
+taxis = { path = "../taxis" }
+hermeneus = { path = "../hermeneus" }
 aletheia-organon = { path = "../organon" }
 aletheia-mneme = { path = "../mneme", features = ["sqlite"] }
 aletheia-nous = { path = "../nous" }
 aletheia-symbolon = { path = "../symbolon" }
 
 [dev-dependencies]
-aletheia-hermeneus = { path = "../hermeneus", features = ["test-utils"] }
+hermeneus = { path = "../hermeneus", features = ["test-utils"] }
 aletheia-symbolon = { path = "../symbolon", features = ["test-support"] }
 http-body-util = "0.1"
 jiff = { workspace = true }

@@ -17,8 +17,8 @@ use std::sync::atomic::{AtomicI64, Ordering};
 use snafu::ResultExt;
 use tracing::instrument;
 
-use aletheia_hermeneus::provider::LlmProvider;
-use aletheia_hermeneus::types::Message;
+use hermeneus::provider::LlmProvider;
+use hermeneus::types::Message;
 
 use crate::contradiction::ContradictionLog;
 use crate::distill::{DistillConfig, DistillEngine};
@@ -471,7 +471,7 @@ impl DreamEngine {
 mod tests {
     use std::sync::atomic::AtomicUsize;
 
-    use aletheia_hermeneus::types::{Content, Role};
+    use hermeneus::types::{Content, Role};
 
     use super::*;
 
@@ -810,7 +810,7 @@ mod tests {
                         ## Key Decisions\n- Use references\n\
                         ## Task Context\nLearning Rust";
         let provider: Arc<dyn LlmProvider> =
-            Arc::new(aletheia_hermeneus::test_utils::MockProvider::new(summary));
+            Arc::new(hermeneus::test_utils::MockProvider::new(summary));
 
         let acquired = lock::try_acquire(&lock_path, super::DEFAULT_STALE_THRESHOLD_SECS)
             .unwrap()
@@ -846,7 +846,7 @@ mod tests {
         let target = MockConsolidationTarget::new();
 
         let provider: Arc<dyn LlmProvider> =
-            Arc::new(aletheia_hermeneus::test_utils::MockProvider::new("unused"));
+            Arc::new(hermeneus::test_utils::MockProvider::new("unused"));
 
         let acquired = lock::try_acquire(&lock_path, super::DEFAULT_STALE_THRESHOLD_SECS)
             .unwrap()
@@ -875,7 +875,7 @@ mod tests {
 
         let summary = "## Summary\nTest summary\n## Key Decisions\n- Decision A";
         let provider: Arc<dyn LlmProvider> =
-            Arc::new(aletheia_hermeneus::test_utils::MockProvider::new(summary));
+            Arc::new(hermeneus::test_utils::MockProvider::new(summary));
 
         // NOTE: on_turn_complete is fire-and-forget; it spawns a background task.
         engine.on_turn_complete(&source, &target, &provider);

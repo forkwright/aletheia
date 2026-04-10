@@ -22,11 +22,11 @@ test-full = ["test-core"]
 [dev-dependencies]
 aletheia-dokimion = { path = "../eval" }
 koina = { path = "../koina", features = ["test-support"] }
-aletheia-taxis = { path = "../taxis" }
+taxis = { path = "../taxis" }
 aletheia-mneme = { path = "../mneme", default-features = false, features = [
     "test-support",
 ] }
-aletheia-hermeneus = { path = "../hermeneus", features = ["test-utils"] }
+hermeneus = { path = "../hermeneus", features = ["test-utils"] }
 aletheia-nous = { path = "../nous" }
 aletheia-organon = { path = "../organon", features = ["test-support"] }
 thesauros = { path = "../thesauros" }

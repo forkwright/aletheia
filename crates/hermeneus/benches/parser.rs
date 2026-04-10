@@ -28,11 +28,11 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 
-use aletheia_hermeneus::complexity::{ComplexityInput, score_complexity};
-use aletheia_hermeneus::concurrency::{
+use hermeneus::complexity::{ComplexityInput, score_complexity};
+use hermeneus::concurrency::{
     AdaptiveConcurrencyLimiter, ConcurrencyConfig, RequestOutcome,
 };
-use aletheia_hermeneus::types::{StopReason, ToolResultType, Usage};
+use hermeneus::types::{StopReason, ToolResultType, Usage};
 
 /// Baseline: sum two `u64` fields inside a `Copy` struct. Establishes the
 /// noise floor for the benchmark harness on this host.

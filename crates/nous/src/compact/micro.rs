@@ -9,7 +9,7 @@ use std::collections::HashMap;
 
 use tracing::debug;
 
-use aletheia_hermeneus::types::ToolResultType;
+use hermeneus::types::ToolResultType;
 
 use crate::budget::CompactionMetrics;
 use crate::pipeline::PipelineMessage;

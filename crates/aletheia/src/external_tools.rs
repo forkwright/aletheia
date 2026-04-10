@@ -23,7 +23,7 @@ use aletheia_organon::types::{
     InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
     ToolInput, ToolResult,
 };
-use aletheia_taxis::oikos::Oikos;
+use taxis::oikos::Oikos;
 
 // ── Config types ──────────���─────────────────────────────────────────────────
 
@@ -531,7 +531,7 @@ no_endpoint = { type = "mcp" }
 
     #[test]
     fn load_from_nonexistent_path_returns_default() {
-        let oikos = aletheia_taxis::oikos::Oikos::from_root("/nonexistent/path");
+        let oikos = taxis::oikos::Oikos::from_root("/nonexistent/path");
         let config = load_tools_config(&oikos);
         assert!(config.required.is_empty());
         assert!(config.optional.is_empty());

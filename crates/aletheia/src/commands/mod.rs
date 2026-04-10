@@ -20,7 +20,7 @@ pub(crate) mod tls;
 
 use std::path::PathBuf;
 
-use aletheia_taxis::oikos::Oikos;
+use taxis::oikos::Oikos;
 use anyhow::Result;
 use clap::CommandFactory;
 

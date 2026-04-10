@@ -12,8 +12,8 @@ use aletheia_agora::router::MessageRouter;
 use aletheia_agora::semeion::SignalProvider;
 use aletheia_agora::semeion::client::SignalClient;
 use aletheia_agora::types::ChannelProvider;
-use aletheia_hermeneus::anthropic::AnthropicProvider;
-use aletheia_hermeneus::provider::{ProviderConfig, ProviderRegistry};
+use hermeneus::anthropic::AnthropicProvider;
+use hermeneus::provider::{ProviderConfig, ProviderRegistry};
 use koina::credential::{CredentialProvider, CredentialSource};
 use aletheia_mneme::embedding::{
     DegradedEmbeddingProvider, EmbeddingConfig, EmbeddingProvider, create_provider,
@@ -25,22 +25,22 @@ use aletheia_symbolon::credential::{
     CredentialChain, CredentialFile, EnvCredentialProvider, FileCredentialProvider,
     RefreshingCredentialProvider, claude_code_default_path, claude_code_provider,
 };
-use aletheia_taxis::config::{AletheiaConfig, EmbeddingSettings};
-use aletheia_taxis::oikos::Oikos;
+use taxis::config::{AletheiaConfig, EmbeddingSettings};
+use taxis::oikos::Oikos;
 
 use crate::error::Result;
 
 pub(super) fn build_provider_registry(config: &AletheiaConfig, oikos: &Oikos) -> ProviderRegistry {
     let mut registry = ProviderRegistry::new();
 
-    let pricing: std::collections::HashMap<String, aletheia_hermeneus::provider::ModelPricing> =
+    let pricing: std::collections::HashMap<String, hermeneus::provider::ModelPricing> =
         config
             .pricing
             .iter()
             .map(|(model, p)| {
                 (
                     model.clone(),
-                    aletheia_hermeneus::provider::ModelPricing {
+                    hermeneus::provider::ModelPricing {
                         input_cost_per_mtok: p.input_cost_per_mtok,
                         output_cost_per_mtok: p.output_cost_per_mtok,
                     },
@@ -125,7 +125,7 @@ pub(super) fn build_provider_registry(config: &AletheiaConfig, oikos: &Oikos) ->
     // as fallback (e.g., when using API keys, which don't need attestation).
     #[cfg(feature = "cc-provider")]
     {
-        use aletheia_hermeneus::cc::{CcProvider, CcProviderConfig};
+        use hermeneus::cc::{CcProvider, CcProviderConfig};
         let cc_config = CcProviderConfig::default();
         match CcProvider::new(&cc_config) {
             Ok(provider) => {
@@ -150,13 +150,13 @@ pub(super) fn build_provider_registry(config: &AletheiaConfig, oikos: &Oikos) ->
 }
 
 pub(super) fn build_tool_registry(
-    sandbox_settings: &aletheia_taxis::config::SandboxSettings,
+    sandbox_settings: &taxis::config::SandboxSettings,
 ) -> Result<ToolRegistry> {
     let mut registry = ToolRegistry::new();
     let sandbox = aletheia_organon::sandbox::SandboxConfig {
         enabled: sandbox_settings.enabled,
         enforcement: match sandbox_settings.enforcement {
-            aletheia_taxis::config::SandboxEnforcementMode::Enforcing => {
+            taxis::config::SandboxEnforcementMode::Enforcing => {
                 aletheia_organon::sandbox::SandboxEnforcement::Enforcing
             }
             _ => aletheia_organon::sandbox::SandboxEnforcement::Permissive,
@@ -166,10 +166,10 @@ pub(super) fn build_tool_registry(
         extra_write_paths: sandbox_settings.extra_write_paths.clone(),
         extra_exec_paths: sandbox_settings.extra_exec_paths.clone(),
         egress: match sandbox_settings.egress {
-            aletheia_taxis::config::EgressPolicy::Deny => {
+            taxis::config::EgressPolicy::Deny => {
                 aletheia_organon::sandbox::EgressPolicy::Deny
             }
-            aletheia_taxis::config::EgressPolicy::Allowlist => {
+            taxis::config::EgressPolicy::Allowlist => {
                 aletheia_organon::sandbox::EgressPolicy::Allowlist
             }
             _ => aletheia_organon::sandbox::EgressPolicy::Allow,
@@ -232,7 +232,7 @@ pub(super) fn open_knowledge_store(
 }
 
 pub(super) fn build_signal_provider(
-    signal_config: &aletheia_taxis::config::SignalConfig,
+    signal_config: &taxis::config::SignalConfig,
 ) -> Option<Arc<SignalProvider>> {
     if !signal_config.enabled {
         info!("signal channel disabled");

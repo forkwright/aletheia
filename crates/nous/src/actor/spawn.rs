@@ -13,10 +13,10 @@ use aletheia_mneme::embedding::EmbeddingProvider;
 use aletheia_mneme::knowledge_store::KnowledgeStore;
 use aletheia_mneme::store::SessionStore;
 
-use aletheia_hermeneus::provider::ProviderRegistry;
+use hermeneus::provider::ProviderRegistry;
 use aletheia_organon::registry::ToolRegistry;
-use aletheia_taxis::cascade;
-use aletheia_taxis::oikos::Oikos;
+use taxis::cascade;
+use taxis::oikos::Oikos;
 
 use crate::bootstrap::BootstrapSection;
 use crate::config::{NousConfig, PipelineConfig};

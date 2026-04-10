@@ -16,7 +16,7 @@ use std::collections::HashMap;
 
 use jiff::SignedDuration;
 
-use aletheia_hermeneus::types::ToolResultType;
+use hermeneus::types::ToolResultType;
 
 pub(crate) mod full;
 pub(crate) mod micro;

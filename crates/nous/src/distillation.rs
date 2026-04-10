@@ -21,8 +21,8 @@ const NEVER_DISTILLED_MESSAGE_TRIGGER: i64 = 30;
 /// Minimum message count required for the legacy ratio-based trigger to fire.
 const LEGACY_THRESHOLD_MIN_MESSAGES: i64 = 10;
 
-use aletheia_hermeneus::provider::LlmProvider;
-use aletheia_hermeneus::types::{Content, Message as HermeneusMessage, Role as HermeneusRole};
+use hermeneus::provider::LlmProvider;
+use hermeneus::types::{Content, Message as HermeneusMessage, Role as HermeneusRole};
 use aletheia_melete::distill::{DistillConfig, DistillEngine, DistillResult};
 use aletheia_mneme::store::SessionStore;
 use aletheia_mneme::types::{Role as MnemeRole, Session, SessionType};

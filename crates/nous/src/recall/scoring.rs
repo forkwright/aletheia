@@ -62,7 +62,7 @@ pub struct RecallConfig {
     /// `agents.defaults.recall.engine_weights` at startup; defaults match
     /// the mneme engine built-in values for zero behavioural change.
     #[serde(default)]
-    pub engine_weights: aletheia_taxis::config::RecallEngineWeights,
+    pub engine_weights: taxis::config::RecallEngineWeights,
     /// Characters per token for recall budget estimation.
     ///
     /// Wired from `agents.defaults.chars_per_token` at startup.
@@ -85,14 +85,14 @@ impl Default for RecallConfig {
             iterative: false,
             max_cycles: 2,
             weights: RecallWeights::default(),
-            engine_weights: aletheia_taxis::config::RecallEngineWeights::default(),
+            engine_weights: taxis::config::RecallEngineWeights::default(),
             chars_per_token: default_chars_per_token(),
         }
     }
 }
 
-impl From<aletheia_taxis::config::RecallSettings> for RecallConfig {
-    fn from(s: aletheia_taxis::config::RecallSettings) -> Self {
+impl From<taxis::config::RecallSettings> for RecallConfig {
+    fn from(s: taxis::config::RecallSettings) -> Self {
         Self {
             enabled: s.enabled,
             max_results: s.max_results,

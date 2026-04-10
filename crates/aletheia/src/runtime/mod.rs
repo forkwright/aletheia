@@ -10,7 +10,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::{Instrument, info, warn};
 
 use aletheia_agora::types::ChannelProvider;
-use aletheia_hermeneus::provider::ProviderRegistry;
+use hermeneus::provider::ProviderRegistry;
 use koina::secret::SecretString;
 use koina::system::{Environment, RealSystem};
 use aletheia_mneme::embedding::DegradedEmbeddingProvider;
@@ -23,9 +23,9 @@ use aletheia_organon::registry::ToolRegistry;
 use aletheia_organon::types::ToolServices;
 use aletheia_pylon::state::AppState;
 use aletheia_symbolon::jwt::{JwtConfig, JwtManager};
-use aletheia_taxis::config::{AletheiaConfig, resolve_nous};
-use aletheia_taxis::oikos::Oikos;
-use aletheia_taxis::validate::{validate_section, validate_startup};
+use taxis::config::{AletheiaConfig, resolve_nous};
+use taxis::oikos::Oikos;
+use taxis::validate::{validate_section, validate_startup};
 
 use crate::commands::maintenance;
 use crate::daemon_bridge;
@@ -281,7 +281,7 @@ impl RuntimeBuilder {
         }
 
         // Initialize dianoia metrics (planning/project orchestration)
-        aletheia_dianoia::metrics::init();
+        dianoia::metrics::init();
 
         // JWT key resolution
         let jwt_key: Option<SecretString> =

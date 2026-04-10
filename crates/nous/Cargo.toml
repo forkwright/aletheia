@@ -13,19 +13,19 @@ workspace = true
 [features]
 knowledge-store = ["aletheia-mneme/mneme-engine"]
 # Gates mock search implementations and other test helpers. No test code in release binaries.
-test-support = ["aletheia-hermeneus/test-utils", "aletheia-organon/test-support"]
+test-support = ["hermeneus/test-utils", "aletheia-organon/test-support"]
 # Test tiers (see docs/test-tiers.md)
 test-core = ["knowledge-store"]
 test-full = ["test-core"]
 
 [dependencies]
-aletheia-dianoia = { path = "../dianoia" }
-aletheia-hermeneus = { path = "../hermeneus" }
+dianoia = { path = "../dianoia" }
+hermeneus = { path = "../hermeneus" }
 koina = { path = "../koina" }
 aletheia-melete = { path = "../melete" }
 aletheia-mneme = { path = "../mneme" }
 aletheia-organon = { path = "../organon" }
-aletheia-taxis = { path = "../taxis" }
+taxis = { path = "../taxis" }
 thesauros = { path = "../thesauros" }
 jiff = { workspace = true }
 prometheus = { workspace = true }
@@ -40,7 +40,7 @@ toml = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
-aletheia-hermeneus = { path = "../hermeneus", features = ["test-support"] }
+hermeneus = { path = "../hermeneus", features = ["test-support"] }
 aletheia-mneme = { path = "../mneme", features = ["test-support"] }
 criterion = { workspace = true }
 indexmap = { workspace = true }

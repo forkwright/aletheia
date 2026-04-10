@@ -157,7 +157,7 @@ impl LlmContextSource {
     /// Build model cards FROM the known Anthropic model catalog and any
     /// pricing overrides FROM config.
     pub(crate) fn from_known_models(
-        pricing: &std::collections::HashMap<String, aletheia_taxis::config::ModelPricing>,
+        pricing: &std::collections::HashMap<String, taxis::config::ModelPricing>,
     ) -> Self {
         let mut models = anthropic_model_cards();
 
@@ -384,7 +384,7 @@ mod tests {
         let mut pricing = std::collections::HashMap::new();
         pricing.insert(
             "claude-sonnet-4-20250514".to_owned(),
-            aletheia_taxis::config::ModelPricing {
+            taxis::config::ModelPricing {
                 input_cost_per_mtok: 99.0,
                 output_cost_per_mtok: 199.0,
             },

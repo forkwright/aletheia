@@ -11,14 +11,14 @@ use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, instrument, warn};
 
-use aletheia_hermeneus::provider::ProviderRegistry;
+use hermeneus::provider::ProviderRegistry;
 use aletheia_mneme::embedding::EmbeddingProvider;
 #[cfg(feature = "knowledge-store")]
 use aletheia_mneme::knowledge_store::KnowledgeStore;
 use aletheia_mneme::store::SessionStore;
 use aletheia_organon::registry::ToolRegistry;
 use aletheia_organon::types::ToolServices;
-use aletheia_taxis::oikos::Oikos;
+use taxis::oikos::Oikos;
 
 use crate::bootstrap::BootstrapSection;
 use crate::config::{NousConfig, PipelineConfig};
@@ -571,7 +571,7 @@ impl NousActor {
     pub(crate) fn resolve_intent_sections(&self) -> Vec<BootstrapSection> {
         use crate::bootstrap::{BootstrapSection, SectionPriority};
         use crate::budget::{CharEstimator, TokenEstimator as _};
-        use aletheia_dianoia::intent::IntentStore;
+        use dianoia::intent::IntentStore;
         use tracing::warn;
 
         let agent_dir = self.services.oikos.nous_dir(&self.id);

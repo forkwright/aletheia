@@ -5,9 +5,9 @@
 #![expect(clippy::expect_used, reason = "test assertions")]
 use tokio_util::sync::CancellationToken;
 
-use aletheia_hermeneus::provider::LlmProvider;
-use aletheia_hermeneus::test_utils::MockProvider;
-use aletheia_hermeneus::types::{CompletionRequest, CompletionResponse};
+use hermeneus::provider::LlmProvider;
+use hermeneus::test_utils::MockProvider;
+use hermeneus::types::{CompletionRequest, CompletionResponse};
 
 use super::*;
 
@@ -325,7 +325,7 @@ impl LlmProvider for PanickingProvider {
         _request: &'a CompletionRequest,
     ) -> std::pin::Pin<
         Box<
-            dyn std::future::Future<Output = aletheia_hermeneus::error::Result<CompletionResponse>>
+            dyn std::future::Future<Output = hermeneus::error::Result<CompletionResponse>>
                 + Send
                 + 'a,
         >,

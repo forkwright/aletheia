@@ -203,7 +203,7 @@ use user_rate_limiter::TokenBucket;
 mod tests {
     use std::time::{Duration, Instant};
 
-    use aletheia_taxis::config::PerUserRateLimitConfig;
+    use taxis::config::PerUserRateLimitConfig;
 
     use super::*;
 

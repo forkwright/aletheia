@@ -7,7 +7,7 @@
     reason = "integration tests: index-based assertions on known-length slices"
 )]
 
-use aletheia_hermeneus::types as h;
+use hermeneus::types as h;
 use aletheia_mneme::store::SessionStore;
 use aletheia_mneme::types as m;
 

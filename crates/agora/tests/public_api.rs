@@ -28,7 +28,7 @@ use aletheia_agora::semeion::{SignalProvider, SignalTarget, parse_target};
 use aletheia_agora::types::{
     ChannelCapabilities, ChannelProvider, InboundMessage, ProbeResult, SendParams, SendResult,
 };
-use aletheia_taxis::config::ChannelBinding;
+use taxis::config::ChannelBinding;
 use tokio_util::sync::CancellationToken;
 
 // ---------------------------------------------------------------------------

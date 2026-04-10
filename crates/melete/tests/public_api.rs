@@ -161,8 +161,8 @@ mod distill_section {
 // ---------------------------------------------------------------------------
 
 mod distill_engine {
-    use aletheia_hermeneus::test_utils::MockProvider;
-    use aletheia_hermeneus::types::{Content, Message, Role};
+    use hermeneus::test_utils::MockProvider;
+    use hermeneus::types::{Content, Message, Role};
     use aletheia_melete::distill::{DistillConfig, DistillEngine, DistillSection};
     use aletheia_melete::error::Error;
 
@@ -534,9 +534,9 @@ mod dream {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    use aletheia_hermeneus::provider::LlmProvider;
-    use aletheia_hermeneus::test_utils::MockProvider;
-    use aletheia_hermeneus::types::{Content, Message, Role};
+    use hermeneus::provider::LlmProvider;
+    use hermeneus::test_utils::MockProvider;
+    use hermeneus::types::{Content, Message, Role};
     use aletheia_melete::contradiction::ContradictionLog;
     use aletheia_melete::distill::DistillConfig;
     use aletheia_melete::dream::{

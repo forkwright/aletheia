@@ -16,7 +16,7 @@ test-full = []
 
 [dependencies]
 koina = { path = "../koina" }
-aletheia-taxis = { path = "../taxis" }
+taxis = { path = "../taxis" }
 indexmap = { workspace = true }
 prometheus = { workspace = true }
 reqwest = { workspace = true }

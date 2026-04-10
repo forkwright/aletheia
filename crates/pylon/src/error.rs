@@ -254,7 +254,7 @@ impl_from_error!(aletheia_mneme::error::Error, |err| {
     .build(),
 });
 
-impl_from_error!(aletheia_hermeneus::error::Error, |err| {
+impl_from_error!(hermeneus::error::Error, |err| {
     RateLimited { retry_after_ms, .. } => RateLimitedSnafu {
         retry_after_secs: retry_after_ms.div_ceil(1000),
     }
@@ -458,7 +458,7 @@ mod tests {
 
     #[test]
     fn auth_failed_does_not_leak_provider_details() {
-        let hermeneus_err = aletheia_hermeneus::error::Error::AuthFailed {
+        let hermeneus_err = hermeneus::error::Error::AuthFailed {
             message: "Anthropic returned 401: x-api-key header is invalid".to_owned(),
             location: snafu::location!(),
         };

@@ -1,6 +1,6 @@
 //! Real-time streaming events for the turn pipeline.
 
-use aletheia_hermeneus::anthropic::StreamEvent as LlmStreamEvent;
+use hermeneus::anthropic::StreamEvent as LlmStreamEvent;
 
 /// Events emitted during a streaming turn, bridging LLM deltas and tool lifecycle.
 #[derive(Debug, Clone)]

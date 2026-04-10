@@ -20,12 +20,12 @@ use std::path::{Path, PathBuf};
 
 use serde_json::json;
 
-use aletheia_taxis::cascade::{self, Tier};
-use aletheia_taxis::config::{AletheiaConfig, NousDefinition};
-use aletheia_taxis::error::Error;
-use aletheia_taxis::oikos::Oikos;
-use aletheia_taxis::preflight::check_preconditions;
-use aletheia_taxis::validate::{validate_section, validate_startup};
+use taxis::cascade::{self, Tier};
+use taxis::config::{AletheiaConfig, NousDefinition};
+use taxis::error::Error;
+use taxis::oikos::Oikos;
+use taxis::preflight::check_preconditions;
+use taxis::validate::{validate_section, validate_startup};
 
 use common::make_valid_instance;
 

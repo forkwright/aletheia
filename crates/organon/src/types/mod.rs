@@ -9,7 +9,7 @@ pub use services::*;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
-pub use aletheia_hermeneus::types::{
+pub use hermeneus::types::{
     DocumentSource, ImageSource, ToolResultBlock, ToolResultContent,
 };
 use koina::id::ToolName;

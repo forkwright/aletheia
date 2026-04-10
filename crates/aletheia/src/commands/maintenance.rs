@@ -10,8 +10,8 @@ use aletheia_oikonomos::maintenance::{
     MaintenanceConfig, ProposeRulesConfig, TraceRotationConfig, TraceRotator,
 };
 use aletheia_oikonomos::runner::TaskRunner;
-use aletheia_taxis::loader::load_config;
-use aletheia_taxis::oikos::Oikos;
+use taxis::loader::load_config;
+use taxis::oikos::Oikos;
 use tokio_util::sync::CancellationToken;
 
 use crate::error::Result;
@@ -157,7 +157,7 @@ fn run_task(name: &str, maint: &MaintenanceConfig, verbose: bool) -> Result<()> 
 /// Called from both the maintenance subcommand and the server startup path.
 pub(crate) fn build_config(
     oikos: &Oikos,
-    settings: &aletheia_taxis::config::MaintenanceSettings,
+    settings: &taxis::config::MaintenanceSettings,
 ) -> MaintenanceConfig {
     MaintenanceConfig {
         trace_rotation: TraceRotationConfig {

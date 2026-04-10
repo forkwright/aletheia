@@ -8,7 +8,7 @@ use clap::Subcommand;
 
 use koina::system::{Environment, RealSystem};
 use aletheia_symbolon::credential::CredentialFile;
-use aletheia_taxis::oikos::Oikos;
+use taxis::oikos::Oikos;
 
 use crate::error::Result;
 

@@ -22,9 +22,9 @@ use tokio::sync::Mutex as TokioMutex;
 use tokio_util::sync::CancellationToken;
 use tower::ServiceExt;
 
-use aletheia_hermeneus::provider::{LlmProvider, ProviderRegistry};
-use aletheia_hermeneus::test_utils::MockProvider;
-use aletheia_hermeneus::types::*;
+use hermeneus::provider::{LlmProvider, ProviderRegistry};
+use hermeneus::test_utils::MockProvider;
+use hermeneus::types::*;
 use koina::secret::SecretString;
 use aletheia_mneme::store::SessionStore;
 use aletheia_nous::config::{NousConfig, PipelineConfig};
@@ -35,7 +35,7 @@ use aletheia_pylon::router::build_router;
 use aletheia_pylon::state::AppState;
 use aletheia_symbolon::jwt::{JwtConfig, JwtManager};
 use aletheia_symbolon::types::Role;
-use aletheia_taxis::oikos::Oikos;
+use taxis::oikos::Oikos;
 
 // ---------------------------------------------------------------------------
 // Mock providers
@@ -75,7 +75,7 @@ impl LlmProvider for CapturingMockProvider {
         request: &'a CompletionRequest,
     ) -> std::pin::Pin<
         Box<
-            dyn std::future::Future<Output = aletheia_hermeneus::error::Result<CompletionResponse>>
+            dyn std::future::Future<Output = hermeneus::error::Result<CompletionResponse>>
                 + Send
                 + 'a,
         >,
@@ -127,7 +127,7 @@ impl LlmProvider for SequentialMockProvider {
         request: &'a CompletionRequest,
     ) -> std::pin::Pin<
         Box<
-            dyn std::future::Future<Output = aletheia_hermeneus::error::Result<CompletionResponse>>
+            dyn std::future::Future<Output = hermeneus::error::Result<CompletionResponse>>
                 + Send
                 + 'a,
         >,
@@ -264,7 +264,7 @@ impl TestHarness {
             issuer: "aletheia-test".to_owned(),
         }));
 
-        let default_config = aletheia_taxis::config::AletheiaConfig::default();
+        let default_config = taxis::config::AletheiaConfig::default();
         let (config_tx, _config_rx) = tokio::sync::watch::channel(default_config.clone());
         let state = Arc::new(AppState {
             session_store,

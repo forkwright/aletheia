@@ -10,7 +10,7 @@ use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use tracing::{Instrument, debug};
 
-use aletheia_taxis::config::PerUserRateLimitConfig;
+use taxis::config::PerUserRateLimitConfig;
 
 use crate::error::{ErrorBody, ErrorResponse};
 

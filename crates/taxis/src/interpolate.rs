@@ -40,7 +40,7 @@ use crate::error::{EnvVarRequiredSnafu, EnvVarUnterminatedSnafu, Result};
 ///
 /// ```
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// let out = aletheia_taxis::interpolate::interpolate_env_vars(
+/// let out = taxis::interpolate::interpolate_env_vars(
 ///     "[gateway]\nport = ${_TAXIS_UNSET_EXAMPLE:-18789}"
 /// )?;
 /// assert_eq!(out, "[gateway]\nport = 18789");

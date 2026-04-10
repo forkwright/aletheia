@@ -126,7 +126,7 @@ fn check_provider_reachability(state: &HealthState) -> HealthCheck {
     // Check if any provider is healthy (Up status)
     let any_healthy = providers
         .iter()
-        .any(|p| state.provider_registry.provider_health(p.name()) == Some(aletheia_hermeneus::health::ProviderHealth::Up));
+        .any(|p| state.provider_registry.provider_health(p.name()) == Some(hermeneus::health::ProviderHealth::Up));
 
     if any_healthy {
         HealthCheck {
@@ -139,7 +139,7 @@ fn check_provider_reachability(state: &HealthState) -> HealthCheck {
         let any_degraded = providers.iter().any(|p| {
             matches!(
                 state.provider_registry.provider_health(p.name()),
-                Some(aletheia_hermeneus::health::ProviderHealth::Degraded { .. })
+                Some(hermeneus::health::ProviderHealth::Degraded { .. })
             )
         });
 
@@ -445,10 +445,10 @@ mod tests {
         fn assert_health_state_fields(state: &HealthState) {
             use std::sync::Arc;
             use aletheia_mneme::store::SessionStore;
-            use aletheia_hermeneus::provider::ProviderRegistry;
+            use hermeneus::provider::ProviderRegistry;
             use aletheia_nous::manager::NousManager;
-            use aletheia_taxis::oikos::Oikos;
-            use aletheia_taxis::config::AletheiaConfig;
+            use taxis::oikos::Oikos;
+            use taxis::config::AletheiaConfig;
 
             let _: &Arc<tokio::sync::Mutex<SessionStore>> = &state.session_store;
             let _: &Arc<ProviderRegistry> = &state.provider_registry;

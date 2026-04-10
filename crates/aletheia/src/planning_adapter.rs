@@ -6,11 +6,11 @@ use std::pin::Pin;
 
 use snafu::ResultExt;
 
-use aletheia_dianoia::phase::Phase;
-use aletheia_dianoia::plan::PlanState;
-use aletheia_dianoia::project::{Project, ProjectMode};
-use aletheia_dianoia::state::{ProjectState, Transition};
-use aletheia_dianoia::workspace::ProjectWorkspace;
+use dianoia::phase::Phase;
+use dianoia::plan::PlanState;
+use dianoia::project::{Project, ProjectMode};
+use dianoia::state::{ProjectState, Transition};
+use dianoia::workspace::ProjectWorkspace;
 use aletheia_organon::error::{
     InvalidIdSnafu, InvalidModeSnafu, InvalidTransitionSnafu, IoSnafu, LoadProjectSnafu,
     NotFoundSnafu, PlanningAdapterError, SaveProjectSnafu, SerializeSnafu, TaskJoinSnafu,
@@ -273,7 +273,7 @@ impl PlanningService for FilesystemPlanningService {
                 })?;
                 let plan = find_plan_mut(&mut project, &phase_id, &plan_id)?;
                 plan.state = PlanState::Failed;
-                plan.blockers.push(aletheia_dianoia::plan::Blocker {
+                plan.blockers.push(dianoia::plan::Blocker {
                     description: reason,
                     plan_id: plan.id,
                     detected_at: jiff::Timestamp::now(),
@@ -352,11 +352,11 @@ impl PlanningService for FilesystemPlanningService {
                         .build()
                     })?;
 
-                let inputs: Vec<aletheia_dianoia::verify::CriterionInput> =
+                let inputs: Vec<dianoia::verify::CriterionInput> =
                     serde_json::from_str(&criteria_json).context(SerializeSnafu)?;
 
-                let result = aletheia_dianoia::verify::verify_phase(phase, &inputs);
-                let traces = aletheia_dianoia::verify::trace_goals(phase, &result.criteria);
+                let result = dianoia::verify::verify_phase(phase, &inputs);
+                let traces = dianoia::verify::trace_goals(phase, &result.criteria);
 
                 let output = serde_json::json!({
                     "verification": result,
@@ -423,7 +423,7 @@ fn find_plan_mut<'a>(
     project: &'a mut Project,
     phase_id: &str,
     plan_id: &str,
-) -> Result<&'a mut aletheia_dianoia::plan::Plan, PlanningAdapterError> {
+) -> Result<&'a mut dianoia::plan::Plan, PlanningAdapterError> {
     let phase_ulid: koina::ulid::Ulid = phase_id.parse().map_err(|e: koina::ulid::DecodeError| {
         InvalidIdSnafu {
             kind: "phase_id".to_owned(),

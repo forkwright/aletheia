@@ -136,7 +136,7 @@ pub struct NousConfig {
     pub domains: Vec<String>,
     /// Server-side tools to include in API requests (e.g., web search).
     #[serde(default)]
-    pub server_tools: Vec<aletheia_hermeneus::types::ServerToolDefinition>,
+    pub server_tools: Vec<hermeneus::types::ServerToolDefinition>,
     /// Whether prompt caching is enabled for this agent.
     #[serde(default = "default_cache_enabled")]
     pub cache_enabled: bool,

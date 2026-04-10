@@ -127,7 +127,7 @@ async fn missing_auth_header_returns_401() {
 
 async fn app_auth_disabled() -> (axum::Router, tempfile::TempDir) {
     let (state, dir) = test_state().await;
-    let default_config = aletheia_taxis::config::AletheiaConfig::default();
+    let default_config = taxis::config::AletheiaConfig::default();
     let (config_tx, _config_rx) = tokio::sync::watch::channel(default_config);
     let state = Arc::new(AppState {
         auth_mode: "none".to_owned(),

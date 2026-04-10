@@ -21,8 +21,8 @@ pub mod tools;
 use snafu::IntoError as _;
 use tracing::{debug, info, warn};
 
-use aletheia_taxis::cascade;
-use aletheia_taxis::oikos::Oikos;
+use taxis::cascade;
+use taxis::oikos::Oikos;
 use thesauros::loader::PackSection;
 use thesauros::manifest::Priority as PackPriority;
 

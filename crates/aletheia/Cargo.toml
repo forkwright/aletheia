@@ -31,7 +31,7 @@ tls = ["aletheia-pylon/tls"]
 keyring = ["aletheia-symbolon/keyring"]
 tui = ["dep:theatron-tui"]
 # Claude Code subprocess provider: delegates LLM calls to the `claude` CLI.
-cc-provider = ["aletheia-hermeneus/cc-provider"]
+cc-provider = ["hermeneus/cc-provider"]
 # Dispatch orchestration (kanon phronesis port). Default off for incremental development.
 energeia = ["dep:aletheia-energeia"]
 # Test tiers (see docs/test-tiers.md)
@@ -40,12 +40,12 @@ test-full = ["test-core", "aletheia-mneme/test-full"]
 
 [dependencies]
 aletheia-diaporeia = { path = "../diaporeia", optional = true }
-aletheia-dianoia = { path = "../dianoia" }
+dianoia = { path = "../dianoia" }
 aletheia-energeia = { path = "../energeia", optional = true }
 aletheia-oikonomos = { path = "../daemon" }
 koina = { path = "../koina" }
-aletheia-taxis = { path = "../taxis" }
-aletheia-hermeneus = { path = "../hermeneus" }
+taxis = { path = "../taxis" }
+hermeneus = { path = "../hermeneus" }
 aletheia-organon = { path = "../organon" }
 aletheia-mneme = { path = "../mneme" }
 aletheia-nous = { path = "../nous" }

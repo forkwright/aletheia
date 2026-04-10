@@ -91,7 +91,7 @@ impl fmt::Display for UserFacingError {
 /// Returns `None` for internal errors that should not be shown to users.
 #[must_use]
 pub(crate) fn to_user_facing(error: &crate::error::Error) -> Option<UserFacingError> {
-    use aletheia_hermeneus::error::Error as HError;
+    use hermeneus::error::Error as HError;
 
     use crate::error::Error;
 
@@ -190,7 +190,7 @@ mod tests {
     #[test]
     fn convert_llm_auth_error() {
         let err = crate::error::Error::Llm {
-            source: aletheia_hermeneus::error::AuthFailedSnafu { message: "bad key" }.build(),
+            source: hermeneus::error::AuthFailedSnafu { message: "bad key" }.build(),
             location: snafu::Location::new("test", 1, 1),
         };
         let uf = to_user_facing(&err).expect("should convert");
@@ -200,7 +200,7 @@ mod tests {
     #[test]
     fn convert_llm_rate_limit() {
         let err = crate::error::Error::Llm {
-            source: aletheia_hermeneus::error::RateLimitedSnafu {
+            source: hermeneus::error::RateLimitedSnafu {
                 retry_after_ms: 5000_u64,
             }
             .build(),
@@ -219,10 +219,10 @@ mod tests {
     #[test]
     fn convert_llm_server_error() {
         let err = crate::error::Error::Llm {
-            source: aletheia_hermeneus::error::ApiSnafu {
+            source: hermeneus::error::ApiSnafu {
                 status: 502_u16,
                 message: "bad gateway",
-                context: aletheia_hermeneus::error::ApiErrorContext::empty(),
+                context: hermeneus::error::ApiErrorContext::empty(),
             }
             .build(),
             location: snafu::Location::new("test", 1, 1),
@@ -234,7 +234,7 @@ mod tests {
     #[test]
     fn convert_llm_network_error() {
         let err = crate::error::Error::Llm {
-            source: aletheia_hermeneus::error::ApiRequestSnafu {
+            source: hermeneus::error::ApiRequestSnafu {
                 message: "connection refused",
             }
             .build(),

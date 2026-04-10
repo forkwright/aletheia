@@ -6,7 +6,7 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use tower::ServiceExt;
 
-use aletheia_taxis::config::PerUserRateLimitConfig;
+use taxis::config::PerUserRateLimitConfig;
 
 use super::helpers::*;
 

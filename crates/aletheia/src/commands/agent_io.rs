@@ -166,9 +166,9 @@ pub(crate) struct InitArgs {
 }
 
 use aletheia_mneme::store::SessionStore;
-use aletheia_taxis::config::resolve_nous;
-use aletheia_taxis::loader::load_config;
-use aletheia_taxis::oikos::Oikos;
+use taxis::config::resolve_nous;
+use taxis::loader::load_config;
+use taxis::oikos::Oikos;
 
 pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -> Result<()> {
     let nous_id = &args.nous_id;

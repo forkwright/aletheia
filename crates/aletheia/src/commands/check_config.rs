@@ -3,8 +3,8 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use aletheia_taxis::loader::load_config;
-use aletheia_taxis::oikos::Oikos;
+use taxis::loader::load_config;
+use taxis::oikos::Oikos;
 
 use crate::error::Result;
 use crate::runtime::RuntimeBuilder;

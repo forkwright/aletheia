@@ -15,7 +15,7 @@ test-core = []
 test-full = []
 
 [dependencies]
-aletheia-hermeneus = { path = "../hermeneus" }
+hermeneus = { path = "../hermeneus" }
 koina = { path = "../koina" }
 fd-lock = { workspace = true }
 futures = { workspace = true }
@@ -28,6 +28,6 @@ tokio = { workspace = true }
 jiff = { workspace = true }
 
 [dev-dependencies]
-aletheia-hermeneus = { path = "../hermeneus", features = ["test-utils"] }
+hermeneus = { path = "../hermeneus", features = ["test-utils"] }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["full", "test-util"] }

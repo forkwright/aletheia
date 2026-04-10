@@ -25,8 +25,8 @@ use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 use tower::ServiceExt;
 
-use aletheia_hermeneus::provider::ProviderRegistry;
-use aletheia_hermeneus::test_utils::MockProvider;
+use hermeneus::provider::ProviderRegistry;
+use hermeneus::test_utils::MockProvider;
 use koina::http::{API_HEALTH, API_V1, BEARER_PREFIX};
 use koina::secret::SecretString;
 use aletheia_mneme::store::SessionStore;
@@ -41,8 +41,8 @@ use aletheia_pylon::security::{
 use aletheia_pylon::state::AppState;
 use aletheia_symbolon::jwt::{JwtConfig, JwtManager};
 use aletheia_symbolon::types::{Claims, Role, TokenKind};
-use aletheia_taxis::config::AletheiaConfig;
-use aletheia_taxis::oikos::Oikos;
+use taxis::config::AletheiaConfig;
+use taxis::oikos::Oikos;
 
 // ── Fixtures ────────────────────────────────────────────────────────────────
 

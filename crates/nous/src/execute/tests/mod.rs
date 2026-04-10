@@ -5,9 +5,9 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::{Arc, RwLock};
 
-use aletheia_hermeneus::provider::ProviderRegistry;
-use aletheia_hermeneus::test_utils::MockProvider;
-use aletheia_hermeneus::types::{CompletionResponse, ContentBlock, StopReason, Usage};
+use hermeneus::provider::ProviderRegistry;
+use hermeneus::test_utils::MockProvider;
+use hermeneus::types::{CompletionResponse, ContentBlock, StopReason, Usage};
 use koina::id::{NousId, SessionId, ToolName};
 use aletheia_organon::registry::{ToolExecutor, ToolRegistry};
 use aletheia_organon::types::{

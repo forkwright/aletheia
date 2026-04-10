@@ -8,10 +8,10 @@ use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 use tracing::{Instrument, info, warn};
 
-use aletheia_hermeneus::provider::ProviderRegistry;
+use hermeneus::provider::ProviderRegistry;
 use aletheia_organon::registry::ToolRegistry;
 use aletheia_organon::types::{SpawnRequest, SpawnResult, SpawnService};
-use aletheia_taxis::oikos::Oikos;
+use taxis::oikos::Oikos;
 
 use crate::actor;
 use crate::config::{NousConfig, PipelineConfig, StageBudget};
@@ -213,12 +213,12 @@ impl SpawnService for SpawnServiceImpl {
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
-    use aletheia_hermeneus::provider::LlmProvider;
-    use aletheia_hermeneus::test_utils::MockProvider;
-    use aletheia_hermeneus::types::{
+    use hermeneus::provider::LlmProvider;
+    use hermeneus::test_utils::MockProvider;
+    use hermeneus::types::{
         CompletionRequest, CompletionResponse, ContentBlock, StopReason, Usage,
     };
-    use aletheia_taxis::oikos::Oikos;
+    use taxis::oikos::Oikos;
 
     use super::*;
 
@@ -332,7 +332,7 @@ mod tests {
         ) -> std::pin::Pin<
             Box<
                 dyn std::future::Future<
-                        Output = aletheia_hermeneus::error::Result<CompletionResponse>,
+                        Output = hermeneus::error::Result<CompletionResponse>,
                     > + Send
                     + 'a,
             >,

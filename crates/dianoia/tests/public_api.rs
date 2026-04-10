@@ -6,14 +6,14 @@
 #![expect(clippy::expect_used, reason = "test assertions")]
 #![expect(clippy::indexing_slicing, reason = "test: index safety verified by assertions")]
 
-use aletheia_dianoia::gate::{
+use dianoia::gate::{
     evaluate_gate, default_gate, GateCondition, GateResult, PhaseGate,
 };
-use aletheia_dianoia::phase::{Phase, PhaseState};
-use aletheia_dianoia::plan::{Blocker, Plan, PlanState};
-use aletheia_dianoia::project::{Project, ProjectMode};
-use aletheia_dianoia::state::{ProjectState, Transition};
-use aletheia_dianoia::workspace::ProjectWorkspace;
+use dianoia::phase::{Phase, PhaseState};
+use dianoia::plan::{Blocker, Plan, PlanState};
+use dianoia::project::{Project, ProjectMode};
+use dianoia::state::{ProjectState, Transition};
+use dianoia::workspace::ProjectWorkspace;
 
 // =============================================================================
 // Project Constructors and Basic Properties
@@ -759,7 +759,7 @@ fn error_project_not_found_on_open() {
 
 #[test]
 fn error_gate_blocked() {
-    use aletheia_dianoia::state::ProjectState;
+    use dianoia::state::ProjectState;
 
     let gate = PhaseGate::new(
         ProjectState::Planning,

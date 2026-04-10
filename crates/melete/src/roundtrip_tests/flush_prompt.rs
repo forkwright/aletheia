@@ -1,8 +1,8 @@
 //! Tests for `MemoryFlush`, `FlushSource`, and prompt building.
 #![expect(clippy::expect_used, reason = "test assertions")]
 #[cfg(test)]
-use aletheia_hermeneus::test_utils::MockProvider;
-use aletheia_hermeneus::types::{Content, Message, Role};
+use hermeneus::test_utils::MockProvider;
+use hermeneus::types::{Content, Message, Role};
 
 use crate::distill::{DistillConfig, DistillEngine, DistillSection};
 use crate::flush::{FlushItem, FlushSource, MemoryFlush};

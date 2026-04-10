@@ -1,5 +1,5 @@
 [package]
-name = "aletheia-dianoia"
+name = "dianoia"
 version.workspace = true
 description = "Planning and project orchestration — multi-phase state machine with workspace persistence"
 edition.workspace = true

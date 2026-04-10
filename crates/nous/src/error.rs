@@ -22,7 +22,7 @@ pub enum Error {
     /// LLM provider error.
     #[snafu(display("LLM error: {source}"))]
     Llm {
-        source: aletheia_hermeneus::error::Error,
+        source: hermeneus::error::Error,
         #[snafu(implicit)]
         location: snafu::Location,
     },

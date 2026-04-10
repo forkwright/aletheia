@@ -6,7 +6,7 @@ use clap::Args;
 use snafu::prelude::*;
 
 use koina::system::{Environment, RealSystem};
-use aletheia_taxis::oikos::Oikos;
+use taxis::oikos::Oikos;
 
 use crate::error::Result;
 
@@ -253,7 +253,7 @@ fn update_config(oikos: &Oikos, args: &AddNousArgs) -> Result<()> {
 /// Reads `gateway.bind` and `gateway.port` from the instance config to
 /// construct the URL dynamically instead of assuming the default address.
 async fn try_register(oikos: &Oikos, name: &str) {
-    let config = aletheia_taxis::loader::load_config(oikos).ok(); // WHY: best-effort; fallback to defaults if instance config unavailable
+    let config = taxis::loader::load_config(oikos).ok(); // WHY: best-effort; fallback to defaults if instance config unavailable
     let (bind, port) = config.as_ref().map_or(("127.0.0.1", 18789), |c| {
         (c.gateway.bind.as_str(), c.gateway.port)
     });

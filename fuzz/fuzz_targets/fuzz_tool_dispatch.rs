@@ -11,7 +11,7 @@ use libfuzzer_sys::fuzz_target;
 fuzz_target!(|data: &[u8]| {
     // 1. ContentBlock tagged-enum deserialization (includes ToolUse variant).
     //    Malformed JSON, unexpected `type` tags, missing fields, extra fields.
-    let _ = serde_json::from_slice::<aletheia_hermeneus::types::ContentBlock>(data);
+    let _ = serde_json::from_slice::<hermeneus::types::ContentBlock>(data);
 
     // 2. ToolCall deserialization: the struct persisted per-turn.
     //    Unexpected types in `input` (Value), missing optional `result`, etc.

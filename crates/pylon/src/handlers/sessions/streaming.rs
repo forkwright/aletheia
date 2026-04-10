@@ -12,7 +12,7 @@ use tokio_stream::StreamExt;
 use tokio_stream::wrappers::{IntervalStream, ReceiverStream};
 use tracing::{Instrument, instrument, warn};
 
-use aletheia_hermeneus::anthropic::StreamEvent as LlmStreamEvent;
+use hermeneus::anthropic::StreamEvent as LlmStreamEvent;
 use aletheia_nous::pipeline::TurnResult;
 use aletheia_nous::stream::TurnStreamEvent;
 
@@ -694,8 +694,8 @@ fn turn_error_info(err: &aletheia_nous::error::Error) -> (&'static str, &'static
 }
 
 /// Map an LLM provider error to a client-visible (code, message) pair.
-fn classify_llm_error(err: &aletheia_hermeneus::error::Error) -> (&'static str, &'static str) {
-    use aletheia_hermeneus::error::Error;
+fn classify_llm_error(err: &hermeneus::error::Error) -> (&'static str, &'static str) {
+    use hermeneus::error::Error;
     match err {
         Error::RateLimited { .. } => ("rate_limited", "rate limit exceeded"),
         Error::ApiError { status, .. } if *status == 429 => ("rate_limited", "rate limit exceeded"),
