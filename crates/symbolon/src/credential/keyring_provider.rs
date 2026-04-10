@@ -13,7 +13,7 @@ const DEFAULT_USERNAME: &str = "api-token";
 ///
 /// Falls through silently when the keyring is unavailable (headless server,
 /// no D-Bus session, locked keychain) so downstream providers get a chance.
-pub(crate) struct KeyringCredentialProvider {
+pub struct KeyringCredentialProvider {
     service: String,
     username: String,
 }
@@ -22,7 +22,7 @@ impl KeyringCredentialProvider {
     /// Create a provider using the default service name (`aletheia`) and
     /// username (`api-token`).
     #[must_use]
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             service: DEFAULT_SERVICE.to_owned(),
             username: DEFAULT_USERNAME.to_owned(),
