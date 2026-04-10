@@ -189,11 +189,12 @@ pub(crate) fn sparkline(values: &[u32], width: usize) -> String {
             #[expect(
                 clippy::as_conversions,
                 clippy::cast_possible_truncation,
-                clippy::cast_precision_loss,
                 clippy::cast_sign_loss,
-                reason = "u32 in f64 mantissa; result clamped to [0.0, 7.0] before cast to usize"
+                reason = "result clamped to [0.0, 7.0] before cast to usize"
             )]
-            let idx = ((v as f64 / max as f64) * 7.0).round().clamp(0.0, 7.0) as usize;
+            let idx = ((f64::from(v) / f64::from(max)) * 7.0)
+                .round()
+                .clamp(0.0, 7.0) as usize;
             BLOCKS[idx]
         })
         .collect()
