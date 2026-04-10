@@ -91,12 +91,18 @@ pub(crate) fn get_json_path<'a>(
                 pointer = entry;
             }
             JsonValue::Array(arr) => {
-                let key = key.get_int().ok_or_else(|| {
+                let key_i64 = key.get_int().ok_or_else(|| {
                     JsonPathSnafu {
                         message: "json path must be a string or a number",
                     }
                     .build()
-                })? as usize;
+                })?;
+                let key = usize::try_from(key_i64).map_err(|_e| {
+                    JsonPathSnafu {
+                        message: "json path index must be a non-negative integer",
+                    }
+                    .build()
+                })?;
                 if arr.len() <= key + 1 {
                     arr.resize_with(key + 1, || JsonValue::Null);
                 }
@@ -250,8 +256,8 @@ pub(crate) fn op_to_bool(args: &[DataValue]) -> Result<DataValue> {
 pub(crate) fn op_to_unity(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::from(match arg(args, 0)? {
         DataValue::Null => 0,
-        DataValue::Bool(b) => *b as i64,
-        DataValue::Num(n) => (n.get_float() != 0.) as i64,
+        DataValue::Bool(b) => i64::from(*b),
+        DataValue::Num(n) => i64::from(n.get_float() != 0.),
         DataValue::Str(s) => i64::from(!s.is_empty()),
         DataValue::Bytes(b) => i64::from(!b.is_empty()),
         DataValue::Uuid(u) => i64::from(!u.0.is_nil()),
@@ -263,11 +269,11 @@ pub(crate) fn op_to_unity(args: &[DataValue]) -> Result<DataValue> {
         DataValue::Bot => 0,
         DataValue::Json(json) => match &json.0 {
             Value::Null => 0,
-            Value::Bool(b) => *b as i64,
-            Value::Number(n) => (n.as_i64() != Some(0)) as i64,
-            Value::String(s) => !s.is_empty() as i64,
-            Value::Array(a) => !a.is_empty() as i64,
-            Value::Object(o) => !o.is_empty() as i64,
+            Value::Bool(b) => i64::from(*b),
+            Value::Number(n) => i64::from(n.as_i64() != Some(0)),
+            Value::String(s) => i64::from(!s.is_empty()),
+            Value::Array(a) => i64::from(!a.is_empty()),
+            Value::Object(o) => i64::from(!o.is_empty()),
         },
     }))
 }
@@ -277,7 +283,15 @@ pub(crate) fn op_to_int(args: &[DataValue]) -> Result<DataValue> {
         DataValue::Num(n) => match n.get_int() {
             None => {
                 let f = n.get_float();
-                DataValue::Num(Num::Int(f as i64))
+                // `op_to_int` is the Datalog `to_int(f)` builtin; saturating is
+                // the documented semantic for floats outside i64 range. NaN
+                // casts to 0 per Rust's `as` rules.
+                #[expect(
+                    clippy::cast_possible_truncation,
+                    reason = "to_int builtin: saturating is the documented semantic"
+                )]
+                let i = f as i64;
+                DataValue::Num(Num::Int(i))
             }
             Some(i) => DataValue::Num(Num::Int(i)),
         },
@@ -448,12 +462,18 @@ pub(crate) fn op_remove_json_path(args: &[DataValue]) -> Result<DataValue> {
             obj.remove(&key);
         }
         JsonValue::Array(arr) => {
-            let key = last.get_int().ok_or_else(|| {
+            let key_i64 = last.get_int().ok_or_else(|| {
                 JsonPathSnafu {
                     message: "json path must be a string or a number",
                 }
                 .build()
-            })? as usize;
+            })?;
+            let key = usize::try_from(key_i64).map_err(|_e| {
+                JsonPathSnafu {
+                    message: "json path index must be a non-negative integer",
+                }
+                .build()
+            })?;
             arr.remove(key);
         }
         _ => {
