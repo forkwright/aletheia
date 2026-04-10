@@ -3,6 +3,7 @@
 use std::path::PathBuf;
 
 use aletheia_koina::secret::SecretString;
+use aletheia_koina::system::{Environment, RealSystem};
 
 /// Number of wizard steps.
 pub(crate) const TOTAL_STEPS: usize = 5;
@@ -291,7 +292,8 @@ pub(crate) static MODEL_OPTIONS: &[SelectOption] = &[
 
 fn detected_provider() -> &'static str {
     // WHY: prefer Anthropic unless only OpenAI key is present
-    if std::env::var("OPENAI_API_KEY").is_ok() && std::env::var("ANTHROPIC_API_KEY").is_err() {
+    let env = RealSystem;
+    if env.var("OPENAI_API_KEY").is_some() && env.var("ANTHROPIC_API_KEY").is_none() {
         "openai"
     } else {
         "anthropic"
@@ -299,8 +301,9 @@ fn detected_provider() -> &'static str {
 }
 
 fn credential_status() -> String {
-    let a = std::env::var("ANTHROPIC_API_KEY").is_ok();
-    let o = std::env::var("OPENAI_API_KEY").is_ok();
+    let env = RealSystem;
+    let a = env.var("ANTHROPIC_API_KEY").is_some();
+    let o = env.var("OPENAI_API_KEY").is_some();
     match (a, o) {
         (true, true) => "ANTHROPIC_API_KEY ✓  OPENAI_API_KEY ✓".to_owned(),
         (true, false) => "ANTHROPIC_API_KEY ✓".to_owned(),

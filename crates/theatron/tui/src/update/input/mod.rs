@@ -1,3 +1,5 @@
+use aletheia_koina::system::{Environment, RealSystem};
+
 use crate::app::App;
 use crate::state::{ImageAttachment, QueuedMessage, YankSpan};
 
@@ -454,8 +456,9 @@ pub(crate) fn handle_copy_last_response(app: &App) {
 
 // WHY: blocking is intentional: TUI is suspended so the event loop is paused
 pub(crate) fn handle_compose_in_editor(app: &mut App) {
-    let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
-    let tmpfile = std::env::temp_dir().join("aletheia-compose.md");
+    let env = RealSystem;
+    let editor = env.var("EDITOR").unwrap_or_else(|| "vi".to_string());
+    let tmpfile = env.temp_dir().join("aletheia-compose.md");
     #[expect(
         clippy::disallowed_methods,
         reason = "theatron TUI reads configuration and exports from disk in synchronous initialization paths"

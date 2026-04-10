@@ -17,6 +17,8 @@ pub(crate) use tree::{FileTreeState, GitFileStatus};
 
 use std::path::PathBuf;
 
+use aletheia_koina::system::{Environment, RealSystem};
+
 const DEFAULT_AUTOSAVE_SECS: u64 = 30;
 
 /// Full editor state: tabs, file tree, clipboard, and modal inputs.
@@ -130,7 +132,9 @@ impl EditorState {
 
 impl Default for EditorState {
     fn default() -> Self {
-        let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        let cwd = RealSystem
+            .current_dir()
+            .unwrap_or_else(|_| PathBuf::from("."));
         Self::new(cwd)
     }
 }

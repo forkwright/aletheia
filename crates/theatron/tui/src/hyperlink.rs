@@ -2,6 +2,7 @@
 
 use std::sync::LazyLock;
 
+use aletheia_koina::system::{Environment, RealSystem};
 use regex::Regex;
 
 /// A link found during markdown rendering, positioned within the markdown lines.
@@ -62,8 +63,10 @@ pub(crate) fn supports_hyperlinks() -> bool {
 }
 
 fn probe_hyperlink_support() -> bool {
+    let env = RealSystem;
+
     // NOTE: TERM_PROGRAM: most reliable signal on macOS and some Linux terminals
-    if let Ok(prog) = std::env::var("TERM_PROGRAM") {
+    if let Some(prog) = env.var("TERM_PROGRAM") {
         match prog.as_str() {
             "iTerm.app" | "WezTerm" | "ghostty" | "Ghostty" | "kitty" => return true,
             _ => {
@@ -73,34 +76,34 @@ fn probe_hyperlink_support() -> bool {
     }
 
     // NOTE: Ghostty
-    if std::env::var("GHOSTTY_BIN_DIR").is_ok() || std::env::var("GHOSTTY_RESOURCES_DIR").is_ok() {
+    if env.var("GHOSTTY_BIN_DIR").is_some() || env.var("GHOSTTY_RESOURCES_DIR").is_some() {
         return true;
     }
 
     // NOTE: WezTerm
-    if std::env::var("WEZTERM_EXECUTABLE").is_ok() || std::env::var("WEZTERM_PANE").is_ok() {
+    if env.var("WEZTERM_EXECUTABLE").is_some() || env.var("WEZTERM_PANE").is_some() {
         return true;
     }
 
     // NOTE: Kitty
-    if std::env::var("KITTY_PID").is_ok() || std::env::var("KITTY_WINDOW_ID").is_ok() {
+    if env.var("KITTY_PID").is_some() || env.var("KITTY_WINDOW_ID").is_some() {
         return true;
     }
 
     // NOTE: Windows Terminal
-    if std::env::var("WT_SESSION").is_ok() {
+    if env.var("WT_SESSION").is_some() {
         return true;
     }
 
     // NOTE: foot
-    if let Ok(term) = std::env::var("TERM")
+    if let Some(term) = env.var("TERM")
         && (term == "foot" || term == "foot-extra")
     {
         return true;
     }
 
     // NOTE: Alacritty
-    if std::env::var("ALACRITTY_SOCKET").is_ok() {
+    if env.var("ALACRITTY_SOCKET").is_some() {
         return true;
     }
 

@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use snafu::prelude::*;
 
 use aletheia_koina::secret::SecretString;
+use aletheia_koina::system::{Environment, RealSystem};
 
 use crate::error::{ConfigDirSnafu, IoSnafu, Result, TomlSnafu};
 use crate::theme::ThemeMode;
@@ -112,8 +113,8 @@ impl Config {
     ) -> Result<Self> {
         let file_config = Self::load_file().unwrap_or_default();
 
-        let workspace_root = std::env::var("ALETHEIA_ROOT")
-            .ok()
+        let workspace_root = RealSystem
+            .var("ALETHEIA_ROOT")
             .map(std::path::PathBuf::from)
             .or_else(|| {
                 file_config

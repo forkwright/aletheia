@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, Mutex};
 
+use aletheia_koina::system::{Environment, RealSystem};
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 
@@ -43,11 +44,13 @@ static IMAGE_CACHE: LazyLock<Mutex<ImageCache>> = LazyLock::new(|| Mutex::new(Ha
 /// Detect the terminal's graphics protocol support by inspecting environment
 /// variables. Checked once and cached via [`LazyLock`].
 fn detect_protocol() -> GraphicsProtocol {
+    let env = RealSystem;
+
     // Kitty: check KITTY_WINDOW_ID or TERM_PROGRAM
-    if std::env::var("KITTY_WINDOW_ID").is_ok() {
+    if env.var("KITTY_WINDOW_ID").is_some() {
         return GraphicsProtocol::Kitty;
     }
-    let term_program = std::env::var("TERM_PROGRAM").unwrap_or_default();
+    let term_program = env.var("TERM_PROGRAM").unwrap_or_default();
     if term_program.eq_ignore_ascii_case("kitty") {
         return GraphicsProtocol::Kitty;
     }
@@ -57,13 +60,13 @@ fn detect_protocol() -> GraphicsProtocol {
     if matches!(term_program_lower.as_str(), "foot" | "mlterm" | "wezterm") {
         return GraphicsProtocol::Sixel;
     }
-    let term = std::env::var("TERM").unwrap_or_default();
+    let term = env.var("TERM").unwrap_or_default();
     if term.contains("mlterm") {
         return GraphicsProtocol::Sixel;
     }
 
     // True color: COLORTERM is the standard signal
-    let colorterm = std::env::var("COLORTERM").unwrap_or_default();
+    let colorterm = env.var("COLORTERM").unwrap_or_default();
     if colorterm == "truecolor" || colorterm == "24bit" {
         return GraphicsProtocol::TrueColor;
     }
