@@ -6,7 +6,7 @@ use clap::Args;
 
 use koina::system::{Environment, RealSystem};
 
-const BINARY_NAME: &str = "theatron-desktop";
+const BINARY_NAME: &str = "proskenion";
 
 #[derive(Debug, Clone, Args)]
 pub(crate) struct DesktopArgs {
@@ -24,13 +24,13 @@ pub(crate) struct DesktopArgs {
     pub session: Option<String>,
 }
 
-/// Search PATH for `theatron-desktop` and exec it with forwarded flags.
+/// Search PATH for `proskenion` and exec it with forwarded flags.
 pub(crate) fn run(args: &DesktopArgs) -> anyhow::Result<()> {
     let binary = find_in_path().ok_or_else(|| {
         anyhow::anyhow!(
             "`{BINARY_NAME}` not found in PATH\n\n\
              Build and install it from the workspace:\n  \
-             cd crates/theatron/desktop && cargo build --release\n  \
+             cd crates/theatron/proskenion && cargo build --release\n  \
              cp target/release/{BINARY_NAME} ~/.cargo/bin/\n\n\
              Or add its build directory to PATH."
         )

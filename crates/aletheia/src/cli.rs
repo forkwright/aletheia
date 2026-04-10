@@ -100,7 +100,7 @@ pub(crate) enum Command {
     SessionExport(SessionExportArgs),
     /// Launch the terminal dashboard
     Tui(TuiArgs),
-    /// Launch the desktop app (discovers theatron-desktop in PATH)
+    /// Launch the desktop app (discovers proskenion in PATH)
     Desktop(DesktopArgs),
     /// Migrate memories from Qdrant into embedded `KnowledgeStore`
     MigrateMemory(MigrateMemoryArgs),

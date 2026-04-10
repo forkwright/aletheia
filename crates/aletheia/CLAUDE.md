@@ -40,5 +40,5 @@ Binary entrypoint: CLI, server startup, service wiring, and adapter glue. 8.9K l
 
 ## Dependencies
 
-Uses: agora, dianoia, oikonomos, koina, taxis, hermeneus, organon, mneme, nous, symbolon, pylon, dokimion, thesauros, diaporeia (optional), theatron-tui (optional)
+Uses: agora, dianoia, oikonomos, koina, taxis, hermeneus, organon, mneme, nous, symbolon, pylon, dokimion, thesauros, diaporeia (optional), koilon (optional)
 Used by: (binary crate, not depended on by other crates)

@@ -59,7 +59,7 @@ CREATE TABLE IF NOT EXISTS messages (
 
 The `Message` struct uses `content: String`. No binary storage, no content type column, no attachment table.
 
-#### Theatron (TUI, `crates/theatron/tui/src/view/image.rs`)
+#### Theatron (TUI, `crates/theatron/koilon/src/view/image.rs`)
 
 The TUI already has image rendering infrastructure:
 - Detects terminal graphics protocol (Kitty, Sixel, TrueColor, TextOnly)
@@ -372,7 +372,7 @@ Enable attaching and viewing images in the TUI. Scope:
 - Decode base64 image data from message content for rendering
 - Show image metadata (dimensions, size, token cost) in the status line
 
-Blast radius: `crates/theatron/tui/src/msg.rs`, `crates/theatron/tui/src/view/chat.rs`, `crates/theatron/tui/src/view/image.rs`, `crates/theatron/tui/src/mapping.rs`
+Blast radius: `crates/theatron/koilon/src/msg.rs`, `crates/theatron/koilon/src/view/chat.rs`, `crates/theatron/koilon/src/view/image.rs`, `crates/theatron/koilon/src/mapping.rs`
 
 #### Phase 5: API endpoint (Small)
 
@@ -419,7 +419,7 @@ Phases 1 and 3 can be done in parallel. Phase 4 and 5 can be done in parallel af
 - Anthropic Messages API: vision content blocks documentation
 - `crates/hermeneus/src/types.rs`: current `ContentBlock`, `ImageSource`, `ToolResultBlock` definitions
 - `crates/organon/src/builtins/view_file.rs`: existing image encoding for tool results
-- `crates/theatron/tui/src/view/image.rs`: TUI image rendering infrastructure
+- `crates/theatron/koilon/src/view/image.rs`: TUI image rendering infrastructure
 - `crates/mneme/src/schema.rs`: current database schema (v4)
 - `crates/nous/src/pipeline.rs`: pipeline message types
 - `image` crate: https://crates.io/crates/image (already in workspace)

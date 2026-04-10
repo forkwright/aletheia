@@ -82,7 +82,7 @@ impl SseEvent {
 
 /// SSE events for the TUI streaming protocol (`POST /api/v1/sessions/stream`).
 ///
-/// Used by `theatron-tui` and the Signal integration. Separate from `SseEvent`
+/// Used by `koilon` and the Signal integration. Separate from `SseEvent`
 /// to avoid changing the per-session message API shape.
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "camelCase")]

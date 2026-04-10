@@ -19,7 +19,7 @@ Baseline: 4m 33s (273.5s), 614 units, max concurrency 69.
 | 6 | `ring` (build script) | 28.9s | C/asm cryptographic library |
 | 7 | `aletheia-pylon` | 18.5s | API server; heavy axum + utoipa codegen |
 | 8 | `tokenizers` | 14.5s | HuggingFace tokenizer library |
-| 9 | `theatron-tui` (bin) | 14.4s | TUI binary |
+| 9 | `koilon` (bin) | 14.4s | TUI binary |
 | 10 | `aletheia-diaporeia` | 13.6s | MCP adapter |
 
 ---
@@ -40,7 +40,7 @@ in this codebase.
 
 Changes:
 - `crates/mneme/Cargo.toml`: `tokenizers` feature `onig` → `fancy-regex`
-- `crates/theatron/tui/Cargo.toml`: `syntect` explicit `default-fancy` instead of implicit `default-onig`
+- `crates/theatron/koilon/Cargo.toml`: `syntect` explicit `default-fancy` instead of implicit `default-onig`
 
 ### 2. Remove unused `reqwest` `blocking` feature from `aletheia` binary
 

@@ -84,7 +84,7 @@ pub(crate) async fn dispatch(cmd: Command, instance_root: Option<&PathBuf>) -> R
             .map_err(Into::into),
         #[cfg(feature = "tui")]
         Command::Tui(a) => {
-            theatron_tui::run_tui(a.url, a.token, a.agent, a.session, a.logout)
+            koilon::run_tui(a.url, a.token, a.agent, a.session, a.logout)
                 .await
                 .map_err(anyhow::Error::from)
         }

@@ -113,7 +113,7 @@ release-please generates changelog entries from conventional commits. The format
 - Desktop app: 7 views with real functionality
 
 ### Changed
-- theatron-core extracted from theatron-tui
+- skene extracted from koilon
 
 ### Fixed
 - SQLite busy_timeout race under concurrent access

@@ -29,7 +29,7 @@ embed-candle = ["mneme/embed-candle"]
 migrate-qdrant = ["dep:qdrant-client", "mneme/mneme-engine", "mneme/storage-fjall"]
 tls = ["pylon/tls"]
 keyring = ["symbolon/keyring"]
-tui = ["dep:theatron-tui"]
+tui = ["dep:koilon"]
 # Claude Code subprocess provider: delegates LLM calls to the `claude` CLI.
 cc-provider = ["hermeneus/cc-provider"]
 # Dispatch orchestration (kanon phronesis port). Default off for incremental development.
@@ -54,7 +54,7 @@ pylon = { path = "../pylon" }
 agora = { path = "../agora" }
 dokimion = { path = "../eval" }
 thesauros = { path = "../thesauros" }
-theatron-tui = { path = "../theatron/tui", optional = true }
+koilon = { path = "../theatron/koilon", optional = true }
 
 tokio = { workspace = true }
 tokio-util = { workspace = true }

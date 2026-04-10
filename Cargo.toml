@@ -24,15 +24,15 @@ members = [
     "crates/taxis",
     "crates/thesauros",
     "crates/theatron",
-    "crates/theatron/core",
-    "crates/theatron/tui",
+    "crates/theatron/skene",
+    "crates/theatron/koilon",
 ]
-# WHY: theatron-desktop requires GTK3/webkit2gtk system libraries (via Dioxus
+# WHY: proskenion requires GTK3/webkit2gtk system libraries (via Dioxus
 # desktop/webview) which are not available in CI. Excluded from workspace to
 # avoid cargo-deny advisory failures on GTK deps and build failures on CI.
-# Build standalone: `cargo build -p theatron-desktop --manifest-path crates/theatron/desktop/Cargo.toml`
+# Build standalone: `cargo build -p proskenion --manifest-path crates/theatron/proskenion/Cargo.toml`
 exclude = [
-    "crates/theatron/desktop",
+    "crates/theatron/proskenion",
 ]
 
 [workspace.package]

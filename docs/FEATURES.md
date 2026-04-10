@@ -7,7 +7,7 @@ This document documents all compile-time feature flags across the Aletheia works
 | Crate | Feature | Default | Gates |
 |-------|---------|---------|-------|
 | aletheia | default | yes | `tui`, `recall`, `storage-fjall`, `embed-candle` |
-| aletheia | tui | yes | Terminal dashboard (theatron-tui) |
+| aletheia | tui | yes | Terminal dashboard (koilon) |
 | aletheia | recall | yes | Knowledge pipeline: KnowledgeStore, vector search, extraction persistence |
 | aletheia | storage-fjall | yes | fjall LSM-tree storage backend for mneme (pure Rust, LZ4) |
 | aletheia | embed-candle | yes | Local ML embeddings via candle (BAAI/bge-small-en-v1.5) |
@@ -159,7 +159,7 @@ strip = "symbols"
 
 The workspace `Cargo.toml` defines:
 - **Workspace members**: 27 crate paths (including nested crates like `theatron`)
-- **Excluded crates**: `theatron-desktop` (requires GTK3/webkit2gtk, not available in CI)
+- **Excluded crates**: `proskenion` (requires GTK3/webkit2gtk, not available in CI)
 - **Shared dependencies**: Common crate versions via `[workspace.dependencies]`
 - **Lint configuration**: Rust and clippy lints applied workspace-wide
 

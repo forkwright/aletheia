@@ -103,6 +103,7 @@ dependencies = [
  "hermeneus",
  "indexmap 2.13.1",
  "jiff",
+ "koilon",
  "koina",
  "mneme",
  "nous",
@@ -124,7 +125,6 @@ dependencies = [
  "symbolon",
  "taxis",
  "tempfile",
- "theatron-tui",
  "thesauros",
  "time",
  "tokio",
@@ -3184,6 +3184,40 @@ dependencies = [
 ]
 
 [[package]]
+name = "koilon"
+version = "0.14.1"
+dependencies = [
+ "arboard",
+ "base64 0.22.1",
+ "clap",
+ "compact_str",
+ "crossterm",
+ "dirs",
+ "futures-util",
+ "image",
+ "jiff",
+ "koina",
+ "open",
+ "pulldown-cmark",
+ "ratatui",
+ "regex",
+ "reqwest 0.13.2",
+ "rustls",
+ "serde",
+ "serde_json",
+ "similar",
+ "skene",
+ "snafu",
+ "syntect",
+ "tokio",
+ "toml 1.1.2+spec-1.1.0",
+ "tracing",
+ "tracing-appender",
+ "tracing-subscriber",
+ "unicode-width",
+]
+
+[[package]]
 name = "koina"
 version = "0.14.1"
 dependencies = [
@@ -5762,6 +5796,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b2aa850e253778c88a04c3d7323b043aeda9d3e30d5971937c1855769763678e"
 
 [[package]]
+name = "skene"
+version = "0.14.1"
+dependencies = [
+ "bytes",
+ "compact_str",
+ "futures-core",
+ "futures-util",
+ "koina",
+ "pulldown-cmark",
+ "reqwest 0.13.2",
+ "rustls",
+ "serde",
+ "serde_json",
+ "snafu",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "slab"
 version = "0.4.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6155,60 +6208,7 @@ dependencies = [
 name = "theatron"
 version = "0.14.1"
 dependencies = [
- "theatron-core",
-]
-
-[[package]]
-name = "theatron-core"
-version = "0.14.1"
-dependencies = [
- "bytes",
- "compact_str",
- "futures-core",
- "futures-util",
- "koina",
- "pulldown-cmark",
- "reqwest 0.13.2",
- "rustls",
- "serde",
- "serde_json",
- "snafu",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "theatron-tui"
-version = "0.14.1"
-dependencies = [
- "arboard",
- "base64 0.22.1",
- "clap",
- "compact_str",
- "crossterm",
- "dirs",
- "futures-util",
- "image",
- "jiff",
- "koina",
- "open",
- "pulldown-cmark",
- "ratatui",
- "regex",
- "reqwest 0.13.2",
- "rustls",
- "serde",
- "serde_json",
- "similar",
- "snafu",
- "syntect",
- "theatron-core",
- "tokio",
- "toml 1.1.2+spec-1.1.0",
- "tracing",
- "tracing-appender",
- "tracing-subscriber",
- "unicode-width",
+ "skene",
 ]
 
 [[package]]
