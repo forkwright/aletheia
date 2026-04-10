@@ -97,7 +97,7 @@ impl Default for CostLedger {
 impl CostLedger {
     /// Create a new empty cost ledger.
     #[must_use]
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             inner: Arc::new(Mutex::new(HashMap::new())),
         }
@@ -109,7 +109,7 @@ impl CostLedger {
     /// - `cost_usd` — session cost in USD
     /// - `turns` — number of LLM turns consumed
     /// - `model` — LLM model identifier (e.g., "claude-3-5-sonnet")
-    pub fn record(&self, blast_radius: &str, cost_usd: f64, turns: u32, model: &str) {
+    pub(crate) fn record(&self, blast_radius: &str, cost_usd: f64, turns: u32, model: &str) {
         // WHY: Fast path — skip recording zero-cost sessions to reduce lock
         // contention and keep the ledger clean.
         if cost_usd <= 0.0 && turns == 0 {
@@ -128,7 +128,7 @@ impl CostLedger {
     ///
     /// The cost is attributed to each blast radius in full (not divided).
     /// This reflects that the session work benefits/applies to all radii.
-    pub fn record_multi(&self, blast_radii: &[String], cost_usd: f64, turns: u32, model: &str) {
+    pub(crate) fn record_multi(&self, blast_radii: &[String], cost_usd: f64, turns: u32, model: &str) {
         if cost_usd <= 0.0 && turns == 0 {
             return;
         }
