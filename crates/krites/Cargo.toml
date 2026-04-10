@@ -68,3 +68,9 @@ fjall = { version = "3", default-features = false, optional = true }
 proptest = { workspace = true }
 tempfile = { workspace = true }
 tracing-subscriber = { workspace = true }
+
+# WHY: loom model-checks the manual `unsafe impl Sync` sites in
+# runtime/hnsw/mmap_storage.rs and storage/fjall_backend.rs (#2864, #3066).
+# Only active under `#[cfg(loom)]`, not built in normal test runs.
+[target.'cfg(loom)'.dev-dependencies]
+loom = { workspace = true }
