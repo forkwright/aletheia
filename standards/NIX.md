@@ -1,56 +1,18 @@
----
-created: 2026-03-11
-updated: 2026-03-11
-tags:
-  - standards
-  - nix
-  - infrastructure
----
+# Nix
 
-# Nix language & NixOS standards
-
-> Companion to `standards/RUST.md`. This covers Nix the language, flake conventions, NixOS module patterns, and Aletheia-specific packaging decisions.
+> Additive to STANDARDS.md. Read that first. Everything here is Nix-specific.
+>
+> Covers: Nix language, flake conventions, NixOS module patterns, derivation packaging, environment selection, overlays, cross-compilation, musl static builds, lazy evaluation debugging, dependency auditing.
+>
+> **Key decisions:** nixfmt formatter, let-in over rec, explicit pkgs over with, Crane for Rust, .follows on transitive nixpkgs, no lookup paths, final/prev overlay convention, nativeBuildInputs/buildInputs split for cross, pkgsStatic for musl, --show-trace always, vulnix in CI.
 
 ---
 
-## Table of contents
-
-1. [Philosophy](#1-philosophy)
-2. [Language fundamentals](#2-language-fundamentals)
-3. [Style & formatting](#3-style--formatting)
-4. [Flake structure](#4-flake-structure)
-5. [Module patterns](#5-module-patterns)
-6. [Derivation & packaging](#6-derivation--packaging)
-7. [Anti-patterns](#7-anti-patterns)
-8. [Our conventions](#8-our-conventions)
-9. [Tooling](#9-tooling)
-10. [Reference](#10-reference)
-
----
-
-## 1. Philosophy
-
-Nix is a **purely functional, lazily-evaluated, dynamically typed** language purpose-built for declarative software packaging and system configuration. Think "JSON with functions" or "Haskell without types."
-
-Core mental model shift from imperative Linux:
-
-| Imperative (Fedora/Ubuntu) | Declarative (NixOS) |
-|---|---|
-| `sudo dnf install foo` | Add `foo` to `environment.systemPackages` |
-| Edit `/etc/foo.conf` | Set `services.foo.settings = { ... }` |
-| State accumulates over time | State is defined in code, rebuilt from scratch |
-| Rollback = hope + backups | Rollback = `nixos-rebuild switch --rollback` |
-| "Works on my machine" | Reproducible by definition (same inputs → same outputs) |
-
-**Why this matters for Aletheia:** One flake, multiple deployment targets: server (worker-node), desktop (Metis replacement), USB recovery stick. The system state IS a git commit.
-
----
-
-## 2. Language fundamentals
+## Language fundamentals
 
 ### Types
 
-Nix has very few types. This is intentional; simplicity enables reproducibility.
+Nix has very few types. Simplicity enables reproducibility.
 
 **Primitive types:**
 
@@ -67,10 +29,10 @@ Nix has very few types. This is intentional; simplicity enables reproducibility.
 
 | Type | Syntax | Notes |
 |------|--------|-------|
-| Attribute set (attrset) | `{ key = value; }` | Semicolons required. Key-value pairs. The fundamental data structure. |
+| Attribute set (attrset) | `{ key = value; }` | Semicolons required. The fundamental data structure. |
 | List | `[ 1 "two" 3 ]` | Space-separated. Heterogeneous. Concatenation with `++`. |
 
-**Functions:**
+### Functions
 
 ```nix
 # Single argument, single return value. ALWAYS.
@@ -81,7 +43,6 @@ x: x + 1
 
 # Multi-argument via currying
 x: y: x + y
-# (x: y: x + y) 1 2  => 3
 
 # Attrset destructuring (most common pattern)
 { foo, bar }: foo + bar
@@ -95,90 +56,42 @@ x: y: x + y
 
 ### Key expressions
 
-**`let ... in`**: Local bindings. The workhorse of factoring out code:
+**`let ... in`**: Local bindings. The workhorse of factoring out code.
 
-```nix
-let
-  pkgs = import nixpkgs { system = "x86_64-linux"; };
-  version = "1.0.0";
-in
-  pkgs.mkShell { name = "my-shell-${version}"; }
-```
+**`if ... then ... else`**: Everything is an expression. `if` returns a value.
 
-**`if ... then ... else`**: Everything is an expression. `if` returns a value:
+**`inherit`**: Shorthand for `x = x` in attrsets. NOT OOP inheritance.
 
-```nix
-{
-  editor = if useVim then "vim" else "nano";
-}
-```
+**`with`**: Brings attrset keys into scope. Use sparingly (see anti-patterns).
 
-**`inherit`**: Shorthand for `x = x` in attrsets. NOT OOP inheritance:
-
-```nix
-let
-  foo = "value";
-in {
-  inherit foo;          # equivalent to: foo = foo;
-  inherit (pkgs) git;   # equivalent to: git = pkgs.git;
-}
-```
-
-**`with`**: Brings attrset keys into scope. **Use sparingly** (see Anti-Patterns):
-
-```nix
-with pkgs; [ git curl jq ]
-# equivalent to: [ pkgs.git pkgs.curl pkgs.jq ]
-```
-
-**`//`**: Shallow merge of attrsets. Right takes precedence:
-
-```nix
-{ a = 1; b = { x = 1; }; } // { b = 2; c = 3; }
-# => { a = 1; b = 2; c = 3; }
-# WARNING: b's nested attrset is gone. Merge is SHALLOW.
-```
-
-### Laziness
-
-Nix is lazily evaluated. Values are only computed when needed. This enables:
-- Self-referencing structures (`lib.fix`, `rec`)
-- Infinite data structures (rare in practice)
-- Conditional evaluation without waste (`mkIf` only evaluates the branch that's needed)
-
-**But also causes:** Confusing error messages when evaluation is forced in unexpected order, and hard-to-debug infinite recursion.
+**`//`**: Shallow merge of attrsets. Right takes precedence. WARNING: nested attrsets are replaced entirely.
 
 ---
 
-## 3. Style & formatting
+## Style and formatting
 
 ### Formatter
 
-**nixfmt** (RFC 166): the official Nix formatter, adopted by the NixOS project in 2024.
+**nixfmt** (RFC 166): the official Nix formatter. Not alejandra.
 
 ```bash
-# Format a file
-nixfmt file.nix
-
-# Check without modifying
-nixfmt --check file.nix
+nixfmt file.nix          # Format
+nixfmt --check file.nix  # Check without modifying
 ```
-
-Not alejandra. nixfmt is the official standard now.
 
 ### Naming conventions
 
 | Context | Convention | Example |
 |---------|-----------|---------|
-| Files | `kebab-case.nix` | `desktop-gnome.nix`, `aletheia-service.nix` |
+| Files | `kebab-case.nix` | `desktop-gnome.nix`, `service-config.nix` |
 | Attribute names | `camelCase` | `buildInputs`, `shellHook`, `defaultPackage` |
-| NixOS options | `dot.separated.camelCase` | `services.aletheia.enable` |
+| NixOS options | `dot.separated.camelCase` | `services.myapp.enable` |
 | Variables | `camelCase` | `craneLib`, `rustToolchain` |
 | Flake outputs | Follow schema exactly | `packages`, `nixosConfigurations`, `devShells` |
 
 ### Indentation
 
-Two spaces. No tabs. Consistent with our Rust style.
+Two spaces. No tabs.
 
 ### Comments
 
@@ -189,134 +102,41 @@ Two spaces. No tabs. Consistent with our Rust style.
    spanning multiple lines */
 ```
 
-Use comments to explain **why**, not what. Same philosophy as Rust standards.
+Comments explain **why**, not what. Same philosophy as all other standards.
 
 ### String style
 
-```nix
-# Short strings: double quotes
-"hello world"
-
-# Multi-line strings: double single quotes (trims leading whitespace)
-''
-  export PATH=${lib.makeBinPath [ pkgs.git ]}:$PATH
-  echo "ready"
-''
-
-# Always quote URLs (RFC 45)
-"https://github.com/NixOS/nixpkgs"
-# NOT: https://github.com/NixOS/nixpkgs  (deprecated bare URL syntax)
-```
+- Short strings: double quotes `"hello world"`
+- Multi-line: double single quotes `''...''` (trims leading whitespace)
+- Always quote URLs (RFC 45). No bare URL syntax.
 
 ---
 
-## 4. Flake structure
+## Flake structure
 
-### Anatomy
-
-Every flake has three top-level attributes:
-
-```nix
-{
-  description = "Aletheia — distributed cognition system";
-
-  inputs = {
-    # Dependencies (other flakes or non-flake sources)
-  };
-
-  outputs = { self, nixpkgs, ... }: {
-    # What this flake produces
-  };
-}
-```
-
-- `description`: Simple string. No Nix evaluation allowed at top level.
-- `inputs`: Flake references (other flakes, git repos, paths). Locked by `flake.lock`.
-- `outputs`: A function from inputs to an attrset following the flake schema.
+Every flake has three top-level attributes: `description`, `inputs`, `outputs`.
 
 ### Input conventions
 
-```nix
-inputs = {
-  # Pin nixpkgs to a specific branch
-  nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-
-  # Crane for Rust builds
-  crane.url = "github:ipetkov/crane";
-
-  # Force transitive deps to use OUR nixpkgs (critical for consistency)
-  crane.inputs.nixpkgs.follows = "nixpkgs";
-
-  # Non-flake inputs (raw source)
-  some-source = {
-    url = "github:owner/repo";
-    flake = false;
-  };
-};
-```
-
-**Always use `.follows`** for transitive nixpkgs dependencies. Without it, different inputs can pull different nixpkgs versions, breaking the reproducibility guarantee.
+- Pin nixpkgs to a specific branch
+- **Always use `.follows`** for transitive nixpkgs dependencies
+- Without `.follows`, different inputs pull different nixpkgs versions, breaking reproducibility
 
 ### Output schema
 
-```nix
-outputs = { self, nixpkgs, crane, ... }: {
-  # System-specific outputs (per architecture)
-  packages.x86_64-linux.default = ...;
-  packages.x86_64-linux.aletheia = ...;
-  packages.aarch64-linux.default = ...;
-
-  devShells.x86_64-linux.default = ...;
-
-  checks.x86_64-linux = { ... };
-
-  # System-independent outputs
-  nixosConfigurations.worker-node = ...;
-  nixosConfigurations.desktop = ...;
-
-  nixosModules.default = ...;
-
-  overlays.default = ...;
-};
-```
+System-specific outputs go under `packages.<system>`, `devShells.<system>`, `checks.<system>`. System-independent outputs (`nixosConfigurations`, `nixosModules`, `overlays`) go at the top level.
 
 ### Multi-system pattern
 
-Don't repeat yourself per architecture. Use `lib.genAttrs` or a helper:
-
-```nix
-let
-  supportedSystems = [ "x86_64-linux" "aarch64-linux" ];
-  forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
-in {
-  packages = forAllSystems (system:
-    let
-      pkgs = nixpkgs.legacyPackages.${system};
-      craneLib = crane.mkLib pkgs;
-    in {
-      default = craneLib.buildPackage { src = craneLib.cleanCargoSource ./.; };
-    }
-  );
-}
-```
-
-Or use `flake-utils.lib.eachDefaultSystem`, but understand what it does. It's just a helper that generates the per-system attrsets. Don't put system-independent outputs (modules, overlays) inside it.
+Use `lib.genAttrs` or `flake-utils.lib.eachDefaultSystem` to avoid repetition per architecture. Never put system-independent outputs inside `eachDefaultSystem`.
 
 ### Lock file
 
-`flake.lock` is auto-generated and pinpoints exact versions of all inputs. **Commit it.** It IS your reproducibility. Update intentionally:
-
-```bash
-nix flake update              # Update all inputs
-nix flake update nixpkgs      # Update only nixpkgs (Nix ≥2.19)
-nix flake lock --update-input nixpkgs  # Older syntax
-```
+`flake.lock` is auto-generated and pins exact versions. **Commit it.** It IS reproducibility.
 
 ---
 
-## 5. Module patterns
-
-NixOS modules are the building blocks of system configuration. A module is a function that returns an attrset with `imports`, `options`, and `config`.
+## Module patterns
 
 ### Module structure
 
@@ -324,360 +144,465 @@ NixOS modules are the building blocks of system configuration. A module is a fun
 { config, lib, pkgs, ... }:
 
 let
-  cfg = config.services.aletheia;
+  cfg = config.services.myapp;
 in {
-  # What this module imports
-  imports = [];
-
-  # Declare options for consumers to set
-  options.services.aletheia = {
-    enable = lib.mkEnableOption "Aletheia distributed cognition system";
-
-    package = lib.mkPackageOption pkgs "aletheia" { };
-
+  options.services.myapp = {
+    enable = lib.mkEnableOption "My application";
+    package = lib.mkPackageOption pkgs "myapp" { };
     dataDir = lib.mkOption {
       type = lib.types.path;
-      default = "/var/lib/aletheia";
-      description = "Directory for Aletheia instance data";
-    };
-
-    agents = lib.mkOption {
-      type = lib.types.listOf lib.types.str;
-      default = [ "syn" ];
-      description = "Agent identities to activate";
+      default = "/var/lib/myapp";
+      description = "Directory for application data";
     };
   };
 
-  # Define values (only active when enabled)
   config = lib.mkIf cfg.enable {
-    systemd.services.aletheia = {
-      description = "Aletheia Runtime";
+    systemd.services.myapp = {
+      description = "My Application";
       wantedBy = [ "multi-user.target" ];
-      after = [ "network.target" ];
       serviceConfig = {
-        ExecStart = "${cfg.package}/bin/aletheia serve";
+        ExecStart = "${cfg.package}/bin/myapp serve";
         WorkingDirectory = cfg.dataDir;
-        StateDirectory = "aletheia";
         DynamicUser = true;
         Restart = "on-failure";
       };
     };
-
-    environment.systemPackages = [ cfg.package ];
   };
 }
 ```
+
+### Key patterns
+
+- **`cfg` alias**: Always alias `config.services.myapp` at the top of the module
+- **`mkIf` + `mkMerge`**: Conditional blocks for feature toggling
+- **Module composition**: Split config into logical files, use `imports` to compose
 
 ### Key module functions
 
 | Function | Priority | Purpose |
 |----------|----------|---------|
-| `lib.mkDefault` | 1000 | Set default value (overridable by normal assignment at priority 100) |
-| `lib.mkForce` | 50 | Force a value (overrides almost everything) |
-| `lib.mkOverride N` | N | Set with specific priority (lower number = higher priority) |
-| `lib.mkIf cond { ... }` | n/a | Conditional config. Only evaluates if `cond` is true. |
-| `lib.mkMerge [ ... ]` | n/a | Merge multiple config fragments. Use inside `config =`. |
-| `lib.mkEnableOption "desc"` | n/a | Shorthand for a boolean option with default `false`. |
-| `lib.mkPackageOption pkgs "name" {}` | n/a | Package option with default from pkgs. |
-| `lib.mkBefore content` | 500 | Place content before default in ordered merges (lists, strings). |
-| `lib.mkAfter content` | 1500 | Place content after default in ordered merges. |
-
-### Pattern: `cfg` alias
-
-Always alias the relevant config subtree at the top of the module:
-
-```nix
-let cfg = config.services.aletheia; in { ... }
-```
-
-This avoids repeating `config.services.aletheia.enable` everywhere.
-
-### Pattern: conditional blocks with mkIf + mkMerge
-
-```nix
-config = lib.mkMerge [
-  (lib.mkIf cfg.enable {
-    # Base configuration when enabled
-  })
-  (lib.mkIf (cfg.enable && cfg.gpu) {
-    # Additional configuration when GPU is enabled
-  })
-];
-```
-
-### Pattern: module composition
-
-Split config into logical files. Use `imports` to compose:
-
-```
-modules/
-├── core/
-│   ├── boot.nix
-│   ├── networking.nix
-│   └── users.nix
-├── services/
-│   ├── aletheia.nix
-│   └── monitoring.nix
-├── desktop/
-│   ├── gnome.nix
-│   └── fonts.nix
-└── profiles/
-    ├── server.nix      # imports core/ + services/
-    └── workstation.nix  # imports core/ + services/ + desktop/
-```
+| `lib.mkDefault` | 1000 | Set default value (overridable) |
+| `lib.mkForce` | 50 | Force a value |
+| `lib.mkIf cond { ... }` | | Conditional config |
+| `lib.mkMerge [ ... ]` | | Merge multiple config fragments |
+| `lib.mkEnableOption "desc"` | | Boolean option with default `false` |
+| `lib.mkPackageOption pkgs "name" {}` | | Package option with default from pkgs |
 
 ---
 
-## 6. Derivation & packaging
+## Derivation and packaging
 
-### Rust with Crane
+### Rust with crane
 
-Crane is our chosen Rust packaging framework for Nix. It splits builds into dependency and source phases for maximum caching.
+Crane is the preferred Rust packaging framework for Nix. It splits builds into dependency and source phases for maximum caching.
 
-```nix
-let
-  craneLib = crane.mkLib pkgs;
-
-  # Filter source to only Rust-relevant files
-  src = craneLib.cleanCargoSource ./.;
-
-  # Common args shared between dep and full builds
-  commonArgs = {
-    inherit src;
-    strictDeps = true;
-    buildInputs = [ pkgs.openssl ];
-    nativeBuildInputs = [ pkgs.pkg-config ];
-  };
-
-  # Build ONLY dependencies (cached aggressively)
-  cargoArtifacts = craneLib.buildDepsOnly commonArgs;
-
-  # Build the actual binary (reuses dep artifacts)
-  aletheia = craneLib.buildPackage (commonArgs // {
-    inherit cargoArtifacts;
-  });
-in {
-  packages.default = aletheia;
-
-  # Run clippy as a check
-  checks.clippy = craneLib.cargoClippy (commonArgs // {
-    inherit cargoArtifacts;
-    cargoClippyExtraArgs = "--all-targets -- --deny warnings";
-  });
-
-  # Run tests as a check
-  checks.tests = craneLib.cargoNextest (commonArgs // {
-    inherit cargoArtifacts;
-  });
-}
-```
-
-**Why Crane over alternatives:**
+- Two-phase build: `buildDepsOnly` (cached) then `buildPackage` (reuses artifacts)
+- `cleanCargoSource` filters source to only Rust-relevant files
+- `commonArgs` pattern: share args between dep and full builds
 
 | Option | Verdict | Reason |
 |--------|---------|--------|
-| `crane` | ✅ Use this | Two-phase build (deps → source), best caching, actively maintained, composable |
-| `buildRustPackage` (nixpkgs) | ❌ Avoid | Single-phase, rebuilds deps on every source change, requires `cargoHash` |
-| `naersk` | ❌ Avoid | Maintained but less composable than crane, smaller community |
-
-### NixOS configuration
-
-```nix
-nixosConfigurations.worker-node = nixpkgs.lib.nixosSystem {
-  system = "x86_64-linux";
-  specialArgs = { inherit inputs; };
-  modules = [
-    ./hosts/worker-node/configuration.nix
-    ./modules/services/aletheia.nix
-    {
-      services.aletheia = {
-        enable = true;
-        agents = [ "syn" "demiurge" "syl" "akron" ];
-      };
-    }
-  ];
-};
-```
+| `crane` | Use this | Two-phase build, best caching, actively maintained |
+| `buildRustPackage` (nixpkgs) | Avoid | Single-phase, rebuilds deps on every source change |
+| `naersk` | Avoid | Less composable, smaller community |
 
 ### Development shell
 
 ```nix
 devShells.default = pkgs.mkShell {
-  inputsFrom = [ aletheia ];  # Inherit build deps
+  inputsFrom = [ myPackage ];  # Inherit build deps
   packages = with pkgs; [
     rust-analyzer
     cargo-nextest
-    cargo-deny
     nixfmt
   ];
-  RUST_SRC_PATH = "${pkgs.rust.packages.stable.rustPlatform.rustLibSrc}";
 };
 ```
 
+### Environment decision tree
+
+Choose the right environment builder for the task.
+
+| Builder | Use when | Trade-offs |
+|---------|----------|------------|
+| `mkShell` | Development shells, CI environments | Lightweight. Does not produce a derivation output. Cannot be installed or deployed. |
+| `stdenv.mkDerivation` | Building packages for installation or deployment | Full derivation lifecycle (unpack, patch, configure, build, install). Heavier to iterate on. |
+| `buildFHSEnv` | Wrapping binaries that assume FHS paths (`/usr/lib`, `/usr/bin`) | Creates a lightweight FHS-compatible sandbox. Necessary for proprietary tools, pre-built binaries, and some language toolchains that hardcode paths. Adds runtime overhead from the namespace mount. |
+
+**`mkShell` is not a subset of `mkDerivation`.** `mkShell` skips build phases entirely and only sets up environment variables. It is purpose-built for `nix develop` / `nix-shell`. Do not try to build a `mkShell` derivation — it will produce an empty output.
+
+**Use `buildFHSEnv` only when the binary cannot be patched.** For open-source software, prefer patching with `autoPatchelfHook` or `patchelf` directly. WHY: `buildFHSEnv` hides the FHS assumption rather than fixing it, and the namespace mount adds startup latency and complicates debugging.
+
+```nix
+# FHS environment for a proprietary tool
+pkgs.buildFHSEnv {
+  name = "vendor-tool";
+  targetPkgs = pkgs: with pkgs; [ zlib openssl ];
+  runScript = "./vendor-tool";
+}
+```
+
 ---
 
-## 7. Anti-patterns
+## Overlays
 
-### ❌ `rec { ... }`: avoid recursive attrsets
+Overlays customize nixpkgs without forking it. An overlay is a function that takes two arguments (`final`, `prev`) and returns an attrset of additions or modifications merged into the package set.
+
+### Overlay structure
 
 ```nix
-# BAD: Easy to create infinite recursion by shadowing
-rec {
-  a = 1;
-  b = a + 2;
-}
+# final: the fully resolved package set (use for dependencies)
+# prev: the package set before this overlay (use for the base package being modified)
+final: prev: {
+  myapp = final.callPackage ./pkgs/myapp { };
 
-# GOOD: Use let...in
-let a = 1; in {
-  a = a;
-  b = a + 2;
+  ffmpeg = prev.ffmpeg.override {
+    withFdk = true;
+  };
 }
+```
 
-# GOOD: Or explicit self-reference
+**Use `final` for dependencies, `prev` for the package being modified.** WHY: Using `prev` for dependencies can reference stale versions. Using `final` for the base package causes infinite recursion since the package depends on itself.
+
+### Applying overlays
+
+```nix
+# In a flake — explicit import with overlays list
+pkgs = import nixpkgs {
+  inherit system;
+  config = {};
+  overlays = [ self.overlays.default ];
+};
+
+# In a NixOS configuration — via nixpkgs.overlays option
+nixpkgs.overlays = [ self.overlays.default ];
+```
+
+**Always apply overlays via the `overlays` parameter or `nixpkgs.overlays` option.** WHY: Ad-hoc `pkgs.extend` calls create package sets that diverge from the one NixOS modules see, causing subtle version mismatches.
+
+### Overlay patterns
+
+**One overlay per concern.** Split custom packages, version pins, and patches into separate overlays. WHY: Monolithic overlays are hard to toggle, hard to debug, and create unnecessary rebuilds when one part changes.
+
+**Export overlays from the flake.**
+
+```nix
+# flake.nix outputs
+overlays.default = final: prev: {
+  myapp = final.callPackage ./pkgs/myapp { };
+};
+```
+
+WHY: Consumers of your flake can compose your overlay with their own package set instead of depending on your specific nixpkgs pin.
+
+**Never use `rec` inside an overlay body.** Use `final` to reference sibling packages. WHY: `rec` binds at definition time and ignores later overlays, defeating the entire overlay composition model.
+
+**Pin `config = {}; overlays = [];` on any `import nixpkgs` call that itself receives overlays.** WHY: Without this, system-level nixpkgs config and overlays leak in, making the result non-reproducible and potentially applying overlays twice.
+
+### Overlay ordering
+
+Overlays apply left to right. Later overlays see modifications from earlier ones via `final`. If overlay B depends on packages added by overlay A, list A first.
+
+---
+
+## Cross-compilation
+
+Nix separates the concept of *where code runs* from *where code is built*. This makes cross-compilation a first-class operation rather than an afterthought.
+
+### Platform terminology
+
+| Term | Meaning | Example |
+|------|---------|---------|
+| `buildPlatform` | Machine running the compiler | `x86_64-linux` |
+| `hostPlatform` | Machine running the compiled binary | `aarch64-linux` |
+| `targetPlatform` | Machine the compiled binary generates code for (compilers only) | `riscv64-linux` |
+
+Most packages only care about `buildPlatform` and `hostPlatform`. `targetPlatform` matters only for toolchains (GCC, LLVM, binutils).
+
+### Cross-compiling with nixpkgs
+
+```nix
+# Import nixpkgs with crossSystem set
+pkgsCross = import nixpkgs {
+  localSystem = "x86_64-linux";
+  crossSystem = "aarch64-linux";
+  config = {};
+  overlays = [];
+};
+
+# Or use the pre-configured cross package sets
+pkgs.pkgsCross.aarch64-multiplatform.hello
+pkgs.pkgsCross.raspberryPi.hello
+pkgs.pkgsCross.riscv64.hello
+```
+
+**Use `pkgsCross` attribute sets for standard targets.** WHY: They are pre-configured with the correct toolchain, sysroot, and platform flags. Manual `crossSystem` is needed only for non-standard targets.
+
+### Spliced package sets
+
+In a cross-compilation context, nixpkgs provides spliced package sets that automatically select the right variant:
+
+| Reference | Resolves to | Use for |
+|-----------|-------------|---------|
+| `pkgs.pkg` | Host package | Runtime dependencies |
+| `pkgs.buildPackages.pkg` | Build package | Build-time tools (code generators, compilers) |
+| `pkgs.__targetPackages.pkg` | Target package | Rare — only for building toolchains |
+
+**Use `nativeBuildInputs` for build-time tools, `buildInputs` for runtime dependencies.** WHY: Nix uses this distinction to select the correct spliced package. Putting a build tool in `buildInputs` during cross-compilation pulls in the wrong architecture binary, and the build fails or silently produces a broken result.
+
+### Cross-compilation in a flake
+
+```nix
+# Expose a cross-compiled package alongside the native one
+packages.x86_64-linux = let
+  pkgs = import nixpkgs { system = "x86_64-linux"; config = {}; overlays = []; };
+  pkgsAarch64 = import nixpkgs {
+    localSystem = "x86_64-linux";
+    crossSystem = "aarch64-linux";
+    config = {};
+    overlays = [];
+  };
+in {
+  default = pkgs.callPackage ./. { };
+  aarch64 = pkgsAarch64.callPackage ./. { };
+};
+```
+
+### Musl static builds
+
+Static linking with musl produces fully self-contained binaries with no glibc dependency. This is the standard approach for container images and single-binary deployment.
+
+```nix
+# Static musl build for x86_64
+pkgs.pkgsStatic.callPackage ./. { }
+
+# Cross-compile a static aarch64 binary on x86_64
 let
-  attrset = {
-    a = 1;
-    b = attrset.a + 2;
+  pkgsCross = import nixpkgs {
+    localSystem = "x86_64-linux";
+    crossSystem = {
+      config = "aarch64-unknown-linux-musl";
+      isStatic = true;
+    };
+    config = {};
+    overlays = [];
   };
-in attrset
+in pkgsCross.callPackage ./. { }
 ```
 
-### ❌ `with` at file scope: pollutes namespace
+**Use `pkgsStatic` for same-architecture static builds.** WHY: `pkgsStatic` is a pre-configured package set where `stdenv` targets musl and sets static linking flags. Manual `RUSTFLAGS` or `LDFLAGS` overrides are fragile and miss transitive dependencies.
+
+**Static builds break packages that dlopen.** Libraries loaded at runtime via `dlopen` (NSS, locale data, some database drivers) do not work with static musl. If the binary needs dynamic loading, use glibc with `--static` selectively or accept dynamic linking for those dependencies.
+
+### Making a derivation cross-compatible
+
+**Split `buildInputs` and `nativeBuildInputs` correctly.** This is the single most common cross-compilation failure.
 
 ```nix
-# BAD: Where does `curl` come from? Static analysis can't tell.
-with pkgs;
 {
-  environment.systemPackages = [ curl jq git ];
+  nativeBuildInputs = [ pkg-config cmake ];  # Runs on build machine
+  buildInputs = [ openssl zlib ];            # Links into the final binary
 }
-
-# GOOD: Explicit prefixing
-{
-  environment.systemPackages = [ pkgs.curl pkgs.jq pkgs.git ];
-}
-
-# ALSO GOOD: Explicit with inherit
-{
-  environment.systemPackages = builtins.attrValues {
-    inherit (pkgs) curl jq git;
-  };
-}
-
-# ACCEPTABLE: Small scoped `with` in list context (pragmatic)
-{
-  environment.systemPackages = with pkgs; [ curl jq git ];
-}
-# We allow this in list context ONLY when the scope is obvious.
-# Prefer explicit pkgs.X for anything non-trivial.
 ```
 
-### ❌ Lookup paths (`<nixpkgs>`): non-reproducible
+**Do not hardcode architecture paths or compiler names.** Use variables from the stdenv toolchain (`$CC`, `$AR`, `$STRIP`). WHY: Hardcoded `gcc` or `/usr/lib` bypasses the cross toolchain and produces native binaries instead of cross-compiled ones.
+
+**Test cross-compilation in CI.** Add a `nix build .#aarch64` check even if your deploy target is the same architecture today. WHY: Cross-compilation correctness degrades silently. A build that works natively can fail when cross-compiled due to impure build scripts, and you will not find out until you need it.
+
+---
+
+## Lazy evaluation debugging
+
+Nix is lazily evaluated: no value is computed until it is needed. This is powerful (unused code costs nothing) but creates debugging challenges that are unlike any strict language.
+
+### Core mental model
+
+**Nix values are thunks until forced.** A thunk is an unevaluated expression. Errors inside a thunk do not surface until something demands the value. This means:
+
+- An attrset can contain a key whose value is an error, and accessing other keys works fine
+- A list can contain a `throw` element, and `builtins.length` still returns the correct count
+- An `assert` inside an unused `let` binding never fires
+
+### Debugging tools
+
+**`builtins.trace`**: Print a value during evaluation and return the second argument.
 
 ```nix
-# BAD: Depends on $NIX_PATH environment variable
-import <nixpkgs> {}
+builtins.trace "evaluating foo" foo
+# Prints "evaluating foo" to stderr, returns value of foo
 
-# GOOD: Pin via flake input
-import nixpkgs { system = "x86_64-linux"; config = {}; overlays = []; }
+# Trace an attrset (forces it for printing)
+builtins.trace (builtins.toJSON { inherit x y; }) result
 ```
 
-### ❌ Unpinned `import <nixpkgs> {}`: impure config
+WHY `builtins.trace` over `lib.debug.traceVal`: `builtins.trace` takes two arguments (message, return value), giving explicit control over what is printed vs. returned. `lib.debug.traceVal` is a convenience wrapper. Use `builtins.trace` when you need to trace one value and return a different one.
+
+**`builtins.deepSeq`**: Force full evaluation of a value (recursively).
 
 ```nix
-# BAD: System files can influence the result
-import nixpkgs {}
-
-# GOOD: Explicitly set config and overlays
-import nixpkgs { config = {}; overlays = []; }
+# Force evaluation of the entire attrset, surface any hidden errors
+builtins.deepSeq myAttrset myAttrset
 ```
 
-### ❌ Shallow merge surprise with `//`
+WHY: Normal evaluation only forces the values actually demanded by the build. `deepSeq` forces everything, which reveals errors hiding in unused branches. Use it as a diagnostic tool, not in production derivations.
+
+**`builtins.tryEval`**: Catch evaluation errors without crashing.
 
 ```nix
-# DANGEROUS: Nested attrset b is replaced entirely
-{ a = 1; b = { x = 1; y = 2; }; } // { b = { z = 3; }; }
-# => { a = 1; b = { z = 3; }; }  — x and y are GONE
+builtins.tryEval (throw "broken")
+# => { success = false; value = false; }
 
-# SAFE: Use recursiveUpdate for deep merges
-lib.recursiveUpdate
-  { a = 1; b = { x = 1; y = 2; }; }
-  { b = { z = 3; }; }
-# => { a = 1; b = { x = 1; y = 2; z = 3; }; }
+builtins.tryEval 42
+# => { success = true; value = 42; }
 ```
 
-### ❌ Bare URLs
+WHY: Useful for probing which values in a set are evaluable. Does NOT catch errors inside `builtins.deepSeq` or derivation builds.
+
+### Common lazy evaluation traps
+
+**Infinite recursion from self-reference.** Nix detects direct cycles (`x = x`) but not all indirect ones. The error message `infinite recursion encountered` gives no stack trace by default.
+
+```bash
+# Get a stack trace on infinite recursion
+nix eval --show-trace .#problematicValue
+```
+
+**Always pass `--show-trace` when debugging evaluation errors.** WHY: Without it, Nix shows only the final error. With it, you get the full chain of file locations and function calls that led to the failure.
+
+**Errors inside `builtins.map` or `builtins.filter` are deferred.** The list is constructed lazily. Errors surface only when the specific element is forced.
 
 ```nix
-# BAD (deprecated syntax)
+# This succeeds — the broken element is never accessed
+let
+  xs = builtins.map (x: if x == 2 then throw "boom" else x) [ 1 2 3 ];
+in builtins.head xs  # => 1
+
+# This fails — element at index 1 is forced
+let
+  xs = builtins.map (x: if x == 2 then throw "boom" else x) [ 1 2 3 ];
+in builtins.elemAt xs 1  # => error: boom
+```
+
+**`//` (merge) does not force values.** Merging two attrsets does not evaluate the values on either side. An error in a value from the left side persists silently if nothing accesses it, even after the merge.
+
+**Attribute selection is the primary forcing mechanism.** Accessing `x.foo` forces the thunk for `foo` (but not `x.bar`). Build systems force attributes by demanding derivation outputs. Understanding what forces what is the key to understanding when errors appear.
+
+### Debugging workflow
+
+1. **Reproduce with `--show-trace`.** `nix eval --show-trace .#attr` or `nix build --show-trace .#pkg`.
+2. **Isolate the thunk.** Use the REPL (`nix repl .`) to interactively access attributes and find which key triggers the error.
+3. **Insert `builtins.trace` at the boundary.** Trace function arguments at the point where the value enters the failing expression.
+4. **Force with `builtins.deepSeq` to smoke-test.** If you suspect hidden errors in an attrset, force it fully to surface them all at once.
+5. **Check for `//` masking.** If a value "should" be set but is not, verify it was not silently replaced by a shallow merge.
+
+---
+
+## Dependency auditing
+
+Nix closures can be large. Auditing what a derivation actually pulls in prevents bloated images, unexpected runtime dependencies, and known-vulnerable packages shipping in production.
+
+### Closure analysis
+
+```bash
+# Show the full closure (all runtime dependencies) of a package
+nix path-info -rsSh .#mypackage
+
+# Compare closures between two versions or configurations
+nix-diff /nix/store/<hash-a>-mypackage /nix/store/<hash-b>-mypackage
+
+# List closure as a dependency tree
+nix-store --query --tree $(nix build .#mypackage --print-out-paths)
+```
+
+**Use `nix path-info -rsSh` to check closure size before deploying.** WHY: A single misplaced runtime dependency (GCC toolchain, Python interpreter, X11 libraries) can inflate a container image from 50MB to 2GB. Closure size is invisible until you measure it.
+
+**Use `nix-diff` when a closure size changes unexpectedly.** `nix-diff` shows exactly which derivations changed and why — new dependencies, version bumps, or build flag differences. It operates on store paths, not source, so it catches transitive changes that diff-on-source misses.
+
+### Reducing closure size
+
+**Move build-only dependencies to `nativeBuildInputs`.** Packages in `buildInputs` propagate into the runtime closure. Build tools (compilers, code generators, `pkg-config`) in `buildInputs` bloat the closure for no benefit.
+
+**Use `removeReferencesTo` for stubborn references.** Some build systems embed store paths in binaries (rpath, embedded config). If a reference is not needed at runtime:
+
+```nix
+postInstall = ''
+  remove-references-to -t ${pkgs.stdenv.cc} $out/bin/myapp
+'';
+```
+
+WHY: The Nix garbage collector and closure computation follow store path references. A single stray reference to `gcc` pulls in the entire toolchain as a runtime dependency.
+
+### Vulnerability scanning
+
+```bash
+# Scan a closure for known CVEs using vulnix
+vulnix $(nix build .#mypackage --print-out-paths)
+
+# Check a specific store path
+vulnix /nix/store/<hash>-openssl-3.1.4
+```
+
+**Run `vulnix` in CI against production closures.** WHY: Nix pins exact package versions. Unlike rolling distributions, a pinned `flake.lock` does not receive security patches automatically. Scanning detects when a pinned version has known vulnerabilities, prompting a `nix flake update` for the affected input.
+
+**`vulnix` matches store paths against the NVD (National Vulnerability Database).** False positives are common when nixpkgs backports patches without bumping the version number. Check the nixpkgs commit log for the package before acting on a CVE report.
+
+---
+
+## Anti-patterns
+
+### `rec { ... }`: avoid recursive attrsets
+
+Use `let ... in` instead. `rec` creates easy infinite recursion by shadowing.
+
+### `with` at file scope: pollutes namespace
+
+Use explicit `pkgs.X` prefixing. `with` is acceptable only in small list contexts where scope is obvious.
+
+### Lookup paths (`<nixpkgs>`): non-reproducible
+
+Depends on `$NIX_PATH` environment variable. Pin via flake input instead.
+
+### Unpinned `import nixpkgs {}`
+
+Always set `config = {}; overlays = [];` explicitly. System files can influence the result otherwise.
+
+### Shallow merge surprise with `//`
+
+Nested attrsets are replaced entirely. Use `lib.recursiveUpdate` for deep merges.
+
+### Bare uRLs
+
+```nix
+# Bad (deprecated syntax)
 inputs.nixpkgs.url = https://github.com/NixOS/nixpkgs;
 
-# GOOD
+# Good
 inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 ```
 
-### ❌ FHS assumptions
+### FHS assumptions
 
-NixOS does NOT follow the Filesystem Hierarchy Standard. There is no `/usr/bin/`, no global `/lib/`. Every package lives in `/nix/store/<hash>-<name>/` with explicit references to its dependencies. Random binaries from GitHub will not work without wrapping.
+NixOS does not follow the Filesystem Hierarchy Standard. No `/usr/bin/`, no global `/lib/`. Use `buildFHSEnv` to wrap non-Nix binaries.
 
-```nix
-# To run a non-Nix binary, wrap it
-pkgs.buildFHSEnv {
-  name = "my-binary";
-  targetPkgs = pkgs: [ pkgs.glibc pkgs.openssl ];
-  runScript = ./my-binary;
-}
-```
-
-### ❌ System-independent outputs inside `eachDefaultSystem`
+### System-independent outputs inside `eachDefaultSystem`
 
 ```nix
-# BAD: nixosModules ends up under a system key
+# Bad: nixosModules ends up under a system key
 flake-utils.lib.eachDefaultSystem (system: {
-  packages.default = ...;
-  nixosModules.default = ...; # Wrong! This becomes nixosModules.x86_64-linux.default
+  nixosModules.default = ...;  # Wrong!
 });
 
-# GOOD: Merge system-specific and system-independent separately
+# Good: merge system-specific and system-independent separately
 flake-utils.lib.eachDefaultSystem (system: {
   packages.default = ...;
 }) // {
-  nixosModules.default = ...;  # Correctly at top level
+  nixosModules.default = ...;  # Top level
 }
 ```
 
 ---
 
-## 8. Our conventions
-
-### Aletheia flake structure
-
-```
-aletheia/
-├── flake.nix              # Single entry point
-├── flake.lock             # Committed, version-controlled
-├── nix/
-│   ├── package.nix        # Crane build definition
-│   ├── checks.nix         # Clippy, tests, formatting checks
-│   ├── shell.nix          # Dev shell definition
-│   └── modules/
-│       ├── aletheia.nix   # NixOS service module
-│       └── default.nix    # Module aggregator
-├── hosts/
-│   ├── worker-node/       # Server configuration
-│   │   ├── configuration.nix
-│   │   └── hardware-configuration.nix
-│   ├── desktop/           # Workstation (GNOME)
-│   │   ├── configuration.nix
-│   │   └── hardware-configuration.nix
-│   └── usb/               # Recovery/provisioning image
-│       └── configuration.nix
-└── profiles/
-    ├── server.nix         # Server profile (no GUI)
-    ├── workstation.nix    # Desktop profile (GNOME + dev tools)
-    └── recovery.nix       # Minimal USB profile
-```
-
-### Rules
+## Conventions
 
 1. **One flake.** Everything flows from `flake.nix`. No channel-based config, no `NIX_PATH`.
 2. **Commit `flake.lock`.** It IS reproducibility.
@@ -685,123 +610,35 @@ aletheia/
 4. **`config = {}; overlays = [];`** when importing nixpkgs. No impure system state.
 5. **Crane for Rust.** Two-phase build. Always split deps from source.
 6. **nixfmt for formatting.** No debate. Run in CI.
-7. **Explicit > implicit.** `pkgs.git` over `with pkgs; [ git ]`. `inherit (pkgs) git` when you need brevity.
+7. **Explicit > implicit.** `pkgs.git` over `with pkgs; [ git ]`.
 8. **`let ... in` over `rec`.** Always.
-9. **Module options under `services.aletheia.*`** for the service module.
-10. **`specialArgs`** to pass flake inputs to modules. Not `_module.args`.
-11. **Checks gate CI.** `nix flake check` must pass. Include clippy, tests, formatting.
-12. **No lookup paths.** No `<nixpkgs>`. No `$NIX_PATH` dependencies.
-
-### Aletheia-specific packaging notes
-
-Key packaging constraints:
-
-- **Single static binary.** No sidecars, no external databases.
-- **hf-hub model download is RUNTIME, not build-time.** Don't pre-fetch models in the derivation. The binary downloads them on first run via `hf-hub`.
-- **Datalog engine is embedded.** Feature-gated in mneme behind `mneme-engine`.
-- **TLS decision: rustls + ring.** Minimal C/asm (constant-time crypto only). Not aws-lc-rs (heavy C++ toolchain). Not RustCrypto (alpha, RSA timing vulnerability).
-- **No ONNX, no RocksDB.** Much simpler than a typical ML project.
-- **Instance data at `/var/lib/aletheia/`.** Standard FHS location for service state on NixOS.
+9. **`specialArgs`** to pass flake inputs to modules. Not `_module.args`.
+10. **Checks gate CI.** `nix flake check` must pass.
+11. **No lookup paths.** No `<nixpkgs>`. No `$NIX_PATH` dependencies.
+12. **`final` for deps, `prev` for the package being modified** in overlays. No `rec` in overlay bodies.
+13. **One overlay per concern.** Export from the flake for composability.
+14. **`nativeBuildInputs` for build tools, `buildInputs` for runtime deps.** Non-negotiable for cross-compilation correctness.
+15. **`pkgsStatic` for musl static builds.** Do not set linker flags manually.
+16. **`buildFHSEnv` only for unpatchable binaries.** Prefer `autoPatchelfHook` for open-source software.
+17. **`--show-trace` on all debugging.** Never debug evaluation errors without it.
+18. **Audit closure size before deploying.** `nix path-info -rsSh` catches accidental bloat.
+19. **`vulnix` in CI on production closures.** Pinned versions do not auto-update for security.
 
 ---
 
-## 9. Tooling
+## Tooling
 
-### Essential
-
-| Tool | Purpose | Install |
-|------|---------|---------|
-| `nix` | Package manager + language evaluator | System-level |
-| `nixfmt` | Official formatter | `nix run nixpkgs#nixfmt` |
-| `nix repl` | Interactive REPL for testing expressions | Built into `nix` |
-| `nix eval` | Evaluate a Nix expression from file | Built into `nix` |
-| `nix flake check` | Validate flake schema + run checks | Built into `nix` |
-| `nix flake show` | Display flake outputs | Built into `nix` |
-| `nixd` or `nil` | LSP for Nix (editor integration) | `nix profile install nixpkgs#nixd` |
-| `statix` | Nix linter (catches anti-patterns) | `nix run nixpkgs#statix` |
-| `deadnix` | Find unused code in Nix files | `nix run nixpkgs#deadnix` |
-| `nix-tree` | Visualize dependency tree | `nix run nixpkgs#nix-tree` |
-
-### Debugging
-
-```bash
-# REPL — test expressions interactively
-nix repl -f .                  # Load current flake
-nix-repl> :e lib.mkDefault     # View source of a function
-nix-repl> :t someExpr          # Show type
-
-# Trace — print-debug during evaluation
-lib.traceVal someValue         # Prints value, returns it
-lib.traceValSeq someValue      # Deep-evaluates before printing
-
-# Instantiate without building — check evaluation
-nix-instantiate -A nixosSystem.system
-
-# Why is this dependency pulled in?
-nix why-depends ./result /nix/store/<hash>-foo
-```
-
----
-
-## 10. Reference
-
-### Useful builtins
-
-| Function | Purpose |
-|----------|---------|
-| `builtins.map f list` | Apply f to each element |
-| `builtins.filter f list` | Keep elements where f returns true |
-| `builtins.attrNames set` | List of attribute names (sorted) |
-| `builtins.attrValues set` | List of attribute values (sorted by name) |
-| `builtins.hasAttr name set` | Check if attrset has key |
-| `builtins.readFile path` | Read file contents as string |
-| `builtins.fromJSON str` | Parse JSON string to Nix value |
-| `builtins.fromTOML str` | Parse TOML string to Nix value |
-| `builtins.toJSON value` | Serialize Nix value to JSON string |
-| `builtins.path { path; name; }` | Create store path with fixed name (reproducible) |
-| `builtins.fetchGit { url; rev; }` | Fetch git repo |
-| `builtins.foldl' f init list` | Left fold over list |
-| `builtins.toString x` | Convert to string (wider than interpolation) |
-| `builtins.typeOf x` | Returns type name as string |
-
-### Useful lib functions
-
-| Function | Purpose |
-|----------|---------|
-| `lib.mkIf cond value` | Conditional config block |
-| `lib.mkMerge [ ... ]` | Merge multiple config fragments |
-| `lib.mkDefault value` | Set default (priority 1000) |
-| `lib.mkForce value` | Force value (priority 50) |
-| `lib.mkEnableOption "desc"` | Boolean option defaulting to false |
-| `lib.mkPackageOption pkgs "name" {}` | Package option with default |
-| `lib.genAttrs names f` | Generate attrset from list of names |
-| `lib.filterAttrs f set` | Filter attrset by predicate |
-| `lib.mapAttrs f set` | Map over attrset values |
-| `lib.recursiveUpdate a b` | Deep merge of attrsets |
-| `lib.flatten list` | Flatten nested lists |
-| `lib.concatStringsSep sep list` | Join strings |
-| `lib.makeBinPath paths` | Create PATH-style string |
-| `lib.getExe pkg` | Get main executable path |
-| `lib.hasPrefix prefix str` | String prefix check |
-| `lib.optionals cond list` | Return list if cond, else [] |
-| `lib.optional cond value` | Return [value] if cond, else [] |
-| `lib.traceVal x` | Print value during eval (debug) |
-| `lib.traceValSeq x` | Deep-eval then print (debug) |
-| `lib.fix f` | Fixed-point combinator (self-referencing values) |
-
-### Learning path
-
-1. **Nix language:** [ayats.org/blog/nix-tuto-1](https://ayats.org/blog/nix-tuto-1) (best single tutorial)
-2. **Derivations:** [ayats.org/blog/nix-tuto-2](https://ayats.org/blog/nix-tuto-2)
-3. **Flakes:** [Practical Nix flake anatomy](https://vtimofeenko.com/posts/practical-nix-flake-anatomy-a-guided-tour-of-flake.nix/)
-4. **NixOS modules:** [NixOS Modules Explained](https://saylesss88.github.io/NixOS_Modules_Explained_3.html)
-5. **Full book:** [NixOS & Flakes Book](https://nixos-and-flakes.thiscute.world/)
-6. **Crane (Rust packaging):** [crane.dev](https://crane.dev/)
-7. **Official reference:** [nix.dev](https://nix.dev/)
-8. **Option search:** [search.nixos.org/options](https://search.nixos.org/options)
-9. **Function search:** [noogle.dev](https://noogle.dev/)
-10. **Anti-patterns:** [nix.dev/anti-patterns](https://nix.dev/anti-patterns/language)
-
----
-
-*Created: 2026-03-11. Peer to `standards/RUST.md`.*
+| Tool | Purpose |
+|------|---------|
+| `nix` | Package manager + language evaluator |
+| `nixfmt` | Official formatter (RFC 166) |
+| `nix repl` | Interactive REPL for testing expressions |
+| `nix flake check` | Validate flake schema + run checks |
+| `nix flake show` | Display flake outputs |
+| `nixd` or `nil` | LSP for editor integration |
+| `statix` | Nix linter (catches anti-patterns) |
+| `deadnix` | Find unused code in Nix files |
+| `nix-tree` | Visualize dependency tree |
+| `nix-diff` | Compare closures to find what changed between builds |
+| `vulnix` | Scan Nix closures for known CVEs |
+| `nix path-info` | Inspect closure size and dependencies |
