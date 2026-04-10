@@ -135,7 +135,7 @@ pub fn record_session(
     #[expect(
         clippy::cast_precision_loss,
         clippy::as_conversions,
-        reason = "duration_ms to f64: session durations are far below f64 precision threshold"
+        reason = "u64 ms → f64: realistic session durations (bounded by 1h timeout = 3_600_000 ms) are well below f64 mantissa 2^53"
     )]
     let duration_secs = duration_ms as f64 / 1_000.0;
     SESSION_DURATION_SECONDS
