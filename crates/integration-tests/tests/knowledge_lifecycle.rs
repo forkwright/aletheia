@@ -254,7 +254,7 @@ struct AuditRow {
 }
 
 fn open_store() -> Arc<KnowledgeStore> {
-    KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim: 4 }).expect("open_mem")
+    KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim: 4, ..Default::default() }).expect("open_mem")
 }
 
 #[path = "knowledge_lifecycle/forget.rs"]

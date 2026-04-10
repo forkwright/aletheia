@@ -16,7 +16,7 @@ use crate::knowledge::{
 const DIM: usize = 4;
 
 fn make_store() -> Arc<KnowledgeStore> {
-    KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim: DIM }).expect("open_mem")
+    KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim: DIM, ..Default::default() }).expect("open_mem")
 }
 
 fn test_ts(s: &str) -> jiff::Timestamp {
@@ -56,7 +56,7 @@ fn make_fact(id: &str, nous_id: &str, content: &str) -> Fact {
 
 #[test]
 fn query_timeout_returns_typed_error() {
-    let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim: 4 }).expect("open_mem");
+    let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim: 4, ..Default::default() }).expect("open_mem");
 
     // WHY: Recursive transitive closure on a linear chain of N nodes requires N-1 semi-naive
     // fixpoint epochs. Each epoch checks the Poison flag. With N=2000 and timeout=50ms
@@ -87,7 +87,7 @@ reach[a, c] := reach[a, b], edge[b, c]
 
 #[test]
 fn query_without_timeout_succeeds() {
-    let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim: 4 }).expect("open_mem");
+    let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim: 4, ..Default::default() }).expect("open_mem");
 
     let result = store.run_query_with_timeout("?[x] := x = 42", BTreeMap::new(), None);
 

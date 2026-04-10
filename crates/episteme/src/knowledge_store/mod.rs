@@ -204,16 +204,30 @@ impl From<crate::engine::NamedRows> for QueryResult {
 
 /// Configuration for `KnowledgeStore` initialization.
 #[cfg(feature = "mneme-engine")]
-#[derive(Clone, Copy, Debug)]
 pub struct KnowledgeConfig {
     /// Embedding dimension for the HNSW index.
     pub dim: usize,
+    /// Admission policy for fact insertion. Default: [`DefaultAdmissionPolicy`](crate::admission::DefaultAdmissionPolicy).
+    pub admission_policy: Box<dyn crate::admission::AdmissionPolicy>,
+}
+
+#[cfg(feature = "mneme-engine")]
+impl std::fmt::Debug for KnowledgeConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("KnowledgeConfig")
+            .field("dim", &self.dim)
+            .field("admission_policy", &"<dyn AdmissionPolicy>")
+            .finish()
+    }
 }
 
 #[cfg(feature = "mneme-engine")]
 impl Default for KnowledgeConfig {
     fn default() -> Self {
-        Self { dim: 384 }
+        Self {
+            dim: 384,
+            admission_policy: Box::new(crate::admission::DefaultAdmissionPolicy),
+        }
     }
 }
 
@@ -277,6 +291,8 @@ pub struct KnowledgeStore {
     dim: usize,
     /// Serializes read-modify-write access counter increments to prevent races.
     access_lock: std::sync::Mutex<()>,
+    /// Admission policy gate: checked before every fact insertion.
+    admission_policy: Box<dyn crate::admission::AdmissionPolicy>,
 }
 
 #[cfg(feature = "mneme-engine")]
@@ -312,6 +328,7 @@ impl KnowledgeStore {
             db: std::sync::Arc::new(db),
             dim: config.dim,
             access_lock: std::sync::Mutex::new(()),
+            admission_policy: config.admission_policy,
         };
         store.init_schema()?;
         Ok(std::sync::Arc::new(store))
@@ -342,6 +359,7 @@ impl KnowledgeStore {
             db: std::sync::Arc::new(db),
             dim: config.dim,
             access_lock: std::sync::Mutex::new(()),
+            admission_policy: config.admission_policy,
         };
         store.init_schema()?;
         Ok(std::sync::Arc::new(store))

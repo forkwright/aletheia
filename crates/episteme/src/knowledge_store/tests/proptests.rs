@@ -18,7 +18,7 @@ use crate::knowledge::{
 const DIM: usize = 4;
 
 fn make_store() -> Arc<KnowledgeStore> {
-    KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim: DIM }).expect("open_mem")
+    KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim: DIM, ..Default::default() }).expect("open_mem")
 }
 
 fn test_ts(s: &str) -> jiff::Timestamp {
@@ -243,7 +243,7 @@ mod merge {
     const RELATION_TYPES: &[&str] = &["KNOWS", "WORKS_AT", "DEPENDS_ON", "USES", "PART_OF"];
 
     fn make_store() -> Arc<KnowledgeStore> {
-        KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim: 4 })
+        KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim: 4, ..Default::default() })
             .expect("in-memory store should always open")
     }
 

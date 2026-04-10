@@ -15,7 +15,7 @@ use crate::knowledge::{
 const DIM: usize = 4;
 
 fn make_store() -> Arc<KnowledgeStore> {
-    KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim: DIM }).expect("open_mem")
+    KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim: DIM, ..Default::default() }).expect("open_mem")
 }
 
 fn test_ts(s: &str) -> jiff::Timestamp {
@@ -169,7 +169,7 @@ mod correctness {
     const DIM: usize = 4;
 
     fn make_store() -> std::sync::Arc<KnowledgeStore> {
-        KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim: DIM })
+        KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim: DIM, ..Default::default() })
             .expect("open in-memory store")
     }
 

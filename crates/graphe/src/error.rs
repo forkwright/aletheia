@@ -227,6 +227,15 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// Fact rejected by admission control policy.
+    #[snafu(display("admission rejected: {reason}"))]
+    AdmissionRejected {
+        /// Human-readable reason from the admission policy.
+        reason: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// A timestamp string could not be parsed.
     #[snafu(display("invalid timestamp: {source}"))]
     InvalidTimestamp {
