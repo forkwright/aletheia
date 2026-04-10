@@ -74,6 +74,8 @@ pub mod trace_ingest;
 pub mod vocab;
 /// Steward rule proposal generation from observed tool-usage patterns.
 pub mod rule_proposals;
+/// Bayesian surprise for episode boundary detection (EM-LLM, arXiv 2407.09450).
+pub mod surprise;
 
 #[cfg(test)]
 mod phase_f_integration_tests;
