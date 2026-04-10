@@ -42,6 +42,13 @@ tracing = { workspace = true }
 [dev-dependencies]
 aletheia-hermeneus = { path = "../hermeneus", features = ["test-support"] }
 aletheia-mneme = { path = "../mneme", features = ["test-support"] }
+criterion = { workspace = true }
 indexmap = { workspace = true }
 proptest = { workspace = true }
 tempfile = { workspace = true }
+
+# WHY: token estimation runs on every system prompt assembly and history
+# truncation; surface regressions early.
+[[bench]]
+name = "budget"
+harness = false
