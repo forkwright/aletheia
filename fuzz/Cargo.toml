@@ -18,7 +18,7 @@ jiff = "0.2"
 # Target crates
 hermeneus = { path = "../crates/hermeneus" }
 koina = { path = "../crates/koina" }
-aletheia-mneme = { path = "../crates/mneme", features = ["mneme-engine"] }
+mneme = { path = "../crates/mneme", features = ["mneme-engine"] }
 aletheia-nous = { path = "../crates/nous", features = ["knowledge-store"] }
 taxis = { path = "../crates/taxis" }
 

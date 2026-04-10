@@ -60,7 +60,7 @@ koina = { path = "../koina" }
 taxis = { path = "../taxis" }
 aletheia-nous = { path = "../nous" }
 organon = { path = "../organon" }
-aletheia-mneme = { path = "../mneme", features = ["sqlite"] }
+mneme = { path = "../mneme", features = ["sqlite"] }
 symbolon = { path = "../symbolon" }
 
 [dev-dependencies]

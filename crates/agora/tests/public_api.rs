@@ -18,14 +18,14 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use aletheia_agora::registry::ChannelRegistry;
-use aletheia_agora::router::{MatchReason, MessageRouter, RouteDecision, reply_target};
-use aletheia_agora::semeion::client::{SendParams as SignalSendParams, SignalClient};
-use aletheia_agora::semeion::connection::{ConnectionHealthReport, ConnectionState};
-use aletheia_agora::semeion::envelope::{Attachment, DataMessage, GroupInfo, SignalEnvelope};
-use aletheia_agora::semeion::error::Error as SignalError;
-use aletheia_agora::semeion::{SignalProvider, SignalTarget, parse_target};
-use aletheia_agora::types::{
+use agora::registry::ChannelRegistry;
+use agora::router::{MatchReason, MessageRouter, RouteDecision, reply_target};
+use agora::semeion::client::{SendParams as SignalSendParams, SignalClient};
+use agora::semeion::connection::{ConnectionHealthReport, ConnectionState};
+use agora::semeion::envelope::{Attachment, DataMessage, GroupInfo, SignalEnvelope};
+use agora::semeion::error::Error as SignalError;
+use agora::semeion::{SignalProvider, SignalTarget, parse_target};
+use agora::types::{
     ChannelCapabilities, ChannelProvider, InboundMessage, ProbeResult, SendParams, SendResult,
 };
 use taxis::config::ChannelBinding;

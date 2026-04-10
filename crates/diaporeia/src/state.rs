@@ -9,7 +9,7 @@ use std::time::Instant;
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
-use aletheia_mneme::store::SessionStore;
+use mneme::store::SessionStore;
 use aletheia_nous::manager::NousManager;
 use organon::registry::ToolRegistry;
 use symbolon::jwt::JwtManager;

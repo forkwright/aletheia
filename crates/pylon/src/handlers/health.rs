@@ -444,7 +444,7 @@ mod tests {
         )]
         fn assert_health_state_fields(state: &HealthState) {
             use std::sync::Arc;
-            use aletheia_mneme::store::SessionStore;
+            use mneme::store::SessionStore;
             use hermeneus::provider::ProviderRegistry;
             use aletheia_nous::manager::NousManager;
             use taxis::oikos::Oikos;

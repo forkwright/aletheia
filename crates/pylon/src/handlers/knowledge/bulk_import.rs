@@ -17,7 +17,7 @@ const MAX_IMPORT_BATCH_SIZE: usize = 1000;
 /// Request body for bulk fact import.
 #[derive(Debug, Deserialize)]
 pub struct BulkImportRequest {
-    pub facts: Vec<aletheia_mneme::knowledge::Fact>,
+    pub facts: Vec<mneme::knowledge::Fact>,
 }
 
 /// Summary response for bulk fact import.

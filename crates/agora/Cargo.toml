@@ -1,5 +1,5 @@
 [package]
-name = "aletheia-agora"
+name = "agora"
 version.workspace = true
 description = "Channel registry and provider implementations (Signal)"
 edition.workspace = true

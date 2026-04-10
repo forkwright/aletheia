@@ -11,7 +11,7 @@ rust-version.workspace = true
 workspace = true
 
 [features]
-knowledge-store = ["aletheia-mneme/mneme-engine"]
+knowledge-store = ["mneme/mneme-engine"]
 # Gates mock search implementations and other test helpers. No test code in release binaries.
 test-support = ["hermeneus/test-utils", "organon/test-support"]
 # Test tiers (see docs/test-tiers.md)
@@ -23,7 +23,7 @@ dianoia = { path = "../dianoia" }
 hermeneus = { path = "../hermeneus" }
 koina = { path = "../koina" }
 melete = { path = "../melete" }
-aletheia-mneme = { path = "../mneme" }
+mneme = { path = "../mneme" }
 organon = { path = "../organon" }
 taxis = { path = "../taxis" }
 thesauros = { path = "../thesauros" }
@@ -41,7 +41,7 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 hermeneus = { path = "../hermeneus", features = ["test-support"] }
-aletheia-mneme = { path = "../mneme", features = ["test-support"] }
+mneme = { path = "../mneme", features = ["test-support"] }
 criterion = { workspace = true }
 indexmap = { workspace = true }
 proptest = { workspace = true }

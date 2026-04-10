@@ -6,16 +6,16 @@ use snafu::prelude::*;
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
-use aletheia_agora::listener::ChannelListener;
-use aletheia_agora::registry::ChannelRegistry;
-use aletheia_agora::router::MessageRouter;
-use aletheia_agora::semeion::SignalProvider;
-use aletheia_agora::semeion::client::SignalClient;
-use aletheia_agora::types::ChannelProvider;
+use agora::listener::ChannelListener;
+use agora::registry::ChannelRegistry;
+use agora::router::MessageRouter;
+use agora::semeion::SignalProvider;
+use agora::semeion::client::SignalClient;
+use agora::types::ChannelProvider;
 use hermeneus::anthropic::AnthropicProvider;
 use hermeneus::provider::{ProviderConfig, ProviderRegistry};
 use koina::credential::{CredentialProvider, CredentialSource};
-use aletheia_mneme::embedding::{
+use mneme::embedding::{
     DegradedEmbeddingProvider, EmbeddingConfig, EmbeddingProvider, create_provider,
 };
 use aletheia_nous::manager::NousManager;
@@ -216,15 +216,15 @@ pub(super) fn create_embedding_provider(
 #[cfg(feature = "recall")]
 pub(super) fn open_knowledge_store(
     oikos: &Oikos,
-) -> Result<Option<Arc<aletheia_mneme::knowledge_store::KnowledgeStore>>> {
+) -> Result<Option<Arc<mneme::knowledge_store::KnowledgeStore>>> {
     let kb_path = oikos.knowledge_db();
     if let Some(parent) = kb_path.parent() {
         std::fs::create_dir_all(parent)
             .whatever_context("failed to CREATE knowledge store directory")?;
     }
-    let store = aletheia_mneme::knowledge_store::KnowledgeStore::open_fjall(
+    let store = mneme::knowledge_store::KnowledgeStore::open_fjall(
         &kb_path,
-        aletheia_mneme::knowledge_store::KnowledgeConfig::default(),
+        mneme::knowledge_store::KnowledgeConfig::default(),
     )
     .whatever_context("failed to open knowledge store")?;
     info!(path = %kb_path.display(), dim = 384, "knowledge store opened (fjall)");

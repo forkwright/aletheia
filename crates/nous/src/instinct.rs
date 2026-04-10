@@ -3,7 +3,7 @@
 
 use tracing::{debug, instrument, warn};
 
-use aletheia_mneme::instinct::{
+use mneme::instinct::{
     ToolObservation, ToolOutcome, sanitize_parameters, truncate_context_summary,
 };
 

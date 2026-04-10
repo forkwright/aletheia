@@ -2,12 +2,12 @@
 
 use serde::{Deserialize, Serialize};
 
-use aletheia_mneme::recall::ScoredResult;
+use mneme::recall::ScoredResult;
 
 /// Per-factor base scores for the recall pipeline.
 ///
 /// These values are placed directly into the non-vector
-/// [`aletheia_mneme::recall::FactorScores`] fields. Only vector similarity is computed
+/// [`mneme::recall::FactorScores`] fields. Only vector similarity is computed
 /// from the actual embedding distance; decay, relevance, tier, proximity, and frequency
 /// use these configured values as their scores. All values default to the previously
 /// hardcoded constants, preserving existing behaviour unless an operator overrides them

@@ -8,9 +8,9 @@ use std::collections::HashSet;
 
 use tracing::{debug, instrument};
 
-use aletheia_mneme::embedding::EmbeddingProvider;
-use aletheia_mneme::knowledge::RecallResult as KnowledgeRecallResult;
-use aletheia_mneme::recall::{FactorScores, RecallEngine, ScoredResult};
+use mneme::embedding::EmbeddingProvider;
+use mneme::knowledge::RecallResult as KnowledgeRecallResult;
+use mneme::recall::{FactorScores, RecallEngine, ScoredResult};
 
 use crate::error;
 
@@ -65,7 +65,7 @@ impl RecallStage {
     #[must_use]
     pub fn new(config: RecallConfig) -> Self {
         let ew = &config.engine_weights;
-        let engine_weights = aletheia_mneme::recall::RecallWeights {
+        let engine_weights = mneme::recall::RecallWeights {
             vector_similarity: ew.vector_similarity,
             decay: ew.decay,
             relevance: ew.relevance,

@@ -5,7 +5,7 @@ use std::sync::LazyLock;
 
 use tracing::debug;
 
-use aletheia_mneme::recall::ScoredResult;
+use mneme::recall::ScoredResult;
 
 static STOPWORDS: LazyLock<HashSet<&str>> = LazyLock::new(|| {
     HashSet::from([

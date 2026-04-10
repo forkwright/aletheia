@@ -9,8 +9,8 @@ use tokio_util::sync::CancellationToken;
 
 use hermeneus::provider::ProviderRegistry;
 #[cfg(feature = "knowledge-store")]
-use aletheia_mneme::knowledge_store::KnowledgeStore;
-use aletheia_mneme::store::SessionStore;
+use mneme::knowledge_store::KnowledgeStore;
+use mneme::store::SessionStore;
 use aletheia_nous::manager::NousManager;
 use organon::registry::ToolRegistry;
 use symbolon::jwt::JwtManager;

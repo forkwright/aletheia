@@ -8,8 +8,8 @@
 )]
 
 use hermeneus::types as h;
-use aletheia_mneme::store::SessionStore;
-use aletheia_mneme::types as m;
+use mneme::store::SessionStore;
+use mneme::types as m;
 
 fn convert_role(role: m::Role) -> h::Role {
     match role {

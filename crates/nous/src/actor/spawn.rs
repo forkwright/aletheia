@@ -8,10 +8,10 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use tracing::{Instrument, debug, info, warn};
 
-use aletheia_mneme::embedding::EmbeddingProvider;
+use mneme::embedding::EmbeddingProvider;
 #[cfg(feature = "knowledge-store")]
-use aletheia_mneme::knowledge_store::KnowledgeStore;
-use aletheia_mneme::store::SessionStore;
+use mneme::knowledge_store::KnowledgeStore;
+use mneme::store::SessionStore;
 
 use hermeneus::provider::ProviderRegistry;
 use organon::registry::ToolRegistry;

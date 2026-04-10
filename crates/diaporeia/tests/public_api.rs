@@ -46,7 +46,7 @@ use aletheia_diaporeia::transport::streamable_http_router;
 
 use hermeneus::provider::ProviderRegistry;
 use koina::secret::SecretString;
-use aletheia_mneme::store::SessionStore;
+use mneme::store::SessionStore;
 use aletheia_nous::manager::NousManager;
 use organon::registry::ToolRegistry;
 use symbolon::jwt::{JwtConfig, JwtManager};

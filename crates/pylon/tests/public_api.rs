@@ -29,16 +29,16 @@ use hermeneus::provider::ProviderRegistry;
 use hermeneus::test_utils::MockProvider;
 use koina::http::{API_HEALTH, API_V1, BEARER_PREFIX};
 use koina::secret::SecretString;
-use aletheia_mneme::store::SessionStore;
+use mneme::store::SessionStore;
 use aletheia_nous::config::{NousConfig, NousGenerationConfig, PipelineConfig};
 use aletheia_nous::manager::NousManager;
 use organon::registry::ToolRegistry;
-use aletheia_pylon::idempotency::IdempotencyCache;
-use aletheia_pylon::router::build_router;
-use aletheia_pylon::security::{
+use pylon::idempotency::IdempotencyCache;
+use pylon::router::build_router;
+use pylon::security::{
     CorsConfig, CsrfConfig, RateLimitConfig, SecurityConfig, TlsConfig,
 };
-use aletheia_pylon::state::AppState;
+use pylon::state::AppState;
 use symbolon::jwt::{JwtConfig, JwtManager};
 use symbolon::types::{Claims, Role, TokenKind};
 use taxis::config::AletheiaConfig;

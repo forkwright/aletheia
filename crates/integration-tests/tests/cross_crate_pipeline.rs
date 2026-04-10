@@ -26,13 +26,13 @@ use hermeneus::provider::{LlmProvider, ProviderRegistry};
 use hermeneus::test_utils::MockProvider;
 use hermeneus::types::*;
 use koina::secret::SecretString;
-use aletheia_mneme::store::SessionStore;
+use mneme::store::SessionStore;
 use aletheia_nous::config::{NousConfig, PipelineConfig};
 use aletheia_nous::manager::NousManager;
 use organon::builtins;
 use organon::registry::ToolRegistry;
-use aletheia_pylon::router::build_router;
-use aletheia_pylon::state::AppState;
+use pylon::router::build_router;
+use pylon::state::AppState;
 use symbolon::jwt::{JwtConfig, JwtManager};
 use symbolon::types::Role;
 use taxis::oikos::Oikos;
@@ -278,7 +278,7 @@ impl TestHarness {
             none_role: "admin".to_owned(),
             config: Arc::new(tokio::sync::RwLock::new(default_config)),
             config_tx,
-            idempotency_cache: Arc::new(aletheia_pylon::idempotency::IdempotencyCache::new()),
+            idempotency_cache: Arc::new(pylon::idempotency::IdempotencyCache::new()),
             shutdown: CancellationToken::new(),
             #[cfg(feature = "knowledge-store")]
             knowledge_store: None,
@@ -300,12 +300,12 @@ impl TestHarness {
     fn router(&self) -> axum::Router {
         build_router(
             Arc::clone(&self.state),
-            &aletheia_pylon::security::SecurityConfig {
-                csrf: aletheia_pylon::security::CsrfConfig {
+            &pylon::security::SecurityConfig {
+                csrf: pylon::security::CsrfConfig {
                     enabled: false,
-                    ..aletheia_pylon::security::CsrfConfig::default()
+                    ..pylon::security::CsrfConfig::default()
                 },
-                ..aletheia_pylon::security::SecurityConfig::default()
+                ..pylon::security::SecurityConfig::default()
             },
         )
     }

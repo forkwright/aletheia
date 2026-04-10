@@ -12,9 +12,9 @@ workspace = true
 
 [features]
 default = ["sqlite-tests", "knowledge-store"]
-sqlite-tests = ["aletheia-mneme/sqlite"]
-engine-tests = ["aletheia-mneme/mneme-engine"]
-knowledge-store = ["aletheia-nous/knowledge-store", "aletheia-pylon/knowledge-store"]
+sqlite-tests = ["mneme/sqlite"]
+engine-tests = ["mneme/mneme-engine"]
+knowledge-store = ["aletheia-nous/knowledge-store", "pylon/knowledge-store"]
 # Test tiers (see docs/test-tiers.md)
 test-core = ["engine-tests"]
 test-full = ["test-core"]
@@ -23,14 +23,14 @@ test-full = ["test-core"]
 aletheia-dokimion = { path = "../eval" }
 koina = { path = "../koina", features = ["test-support"] }
 taxis = { path = "../taxis" }
-aletheia-mneme = { path = "../mneme", default-features = false, features = [
+mneme = { path = "../mneme", default-features = false, features = [
     "test-support",
 ] }
 hermeneus = { path = "../hermeneus", features = ["test-utils"] }
 aletheia-nous = { path = "../nous" }
 organon = { path = "../organon", features = ["test-support"] }
 thesauros = { path = "../thesauros" }
-aletheia-pylon = { path = "../pylon" }
+pylon = { path = "../pylon" }
 symbolon = { path = "../symbolon" }
 jiff = { workspace = true }
 axum = { workspace = true }

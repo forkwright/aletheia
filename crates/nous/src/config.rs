@@ -243,13 +243,13 @@ pub struct PipelineConfig {
     pub history_budget_ratio: f64,
     /// Knowledge extraction configuration (None = disabled).
     #[serde(default)]
-    pub extraction: Option<aletheia_mneme::extract::ExtractionConfig>,
+    pub extraction: Option<mneme::extract::ExtractionConfig>,
     /// Per-stage time budgets.
     #[serde(default)]
     pub stage_budget: StageBudget,
     /// Training data capture configuration.
     #[serde(default)]
-    pub training: aletheia_mneme::training::TrainingConfig,
+    pub training: mneme::training::TrainingConfig,
 }
 
 impl Default for PipelineConfig {
@@ -258,7 +258,7 @@ impl Default for PipelineConfig {
             history_budget_ratio: 0.6,
             extraction: None,
             stage_budget: StageBudget::default(),
-            training: aletheia_mneme::training::TrainingConfig::default(),
+            training: mneme::training::TrainingConfig::default(),
         }
     }
 }

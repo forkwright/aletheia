@@ -1,5 +1,5 @@
 [package]
-name = "aletheia-pylon"
+name = "pylon"
 version.workspace = true
 description = "Axum HTTP gateway for Aletheia"
 edition.workspace = true
@@ -56,7 +56,7 @@ koina = { path = "../koina" }
 taxis = { path = "../taxis" }
 hermeneus = { path = "../hermeneus" }
 organon = { path = "../organon" }
-aletheia-mneme = { path = "../mneme", features = ["sqlite"] }
+mneme = { path = "../mneme", features = ["sqlite"] }
 aletheia-nous = { path = "../nous" }
 symbolon = { path = "../symbolon" }
 

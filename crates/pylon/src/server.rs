@@ -12,7 +12,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
 use hermeneus::provider::ProviderRegistry;
-use aletheia_mneme::store::SessionStore;
+use mneme::store::SessionStore;
 use aletheia_nous::config::{NousConfig, PipelineConfig};
 use aletheia_nous::manager::NousManager;
 use organon::registry::ToolRegistry;
@@ -46,7 +46,7 @@ pub enum ServerError {
     /// Failed to open or initialize the session store.
     #[snafu(display("failed to open session store: {source}"))]
     SessionStore {
-        source: aletheia_mneme::error::Error,
+        source: mneme::error::Error,
     },
 
     /// TCP listener failed to bind to the configured address.

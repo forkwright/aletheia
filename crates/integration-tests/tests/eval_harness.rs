@@ -15,13 +15,13 @@ use aletheia_dokimion::runner::{RunConfig, ScenarioRunner};
 use hermeneus::provider::ProviderRegistry;
 use hermeneus::test_utils::MockProvider;
 use koina::secret::SecretString;
-use aletheia_mneme::store::SessionStore;
+use mneme::store::SessionStore;
 use aletheia_nous::config::{NousConfig, PipelineConfig};
 use aletheia_nous::manager::NousManager;
 use organon::registry::ToolRegistry;
 use organon::testing::install_crypto_provider;
-use aletheia_pylon::router::build_router;
-use aletheia_pylon::state::AppState;
+use pylon::router::build_router;
+use pylon::state::AppState;
 use symbolon::jwt::{JwtConfig, JwtManager};
 use symbolon::types::Role;
 use taxis::oikos::Oikos;
@@ -108,7 +108,7 @@ async fn start_test_server() -> (String, String, tempfile::TempDir) {
         none_role: "admin".to_owned(),
         config: Arc::new(tokio::sync::RwLock::new(default_config)),
         config_tx,
-        idempotency_cache: Arc::new(aletheia_pylon::idempotency::IdempotencyCache::new()),
+        idempotency_cache: Arc::new(pylon::idempotency::IdempotencyCache::new()),
         shutdown: CancellationToken::new(),
         #[cfg(feature = "knowledge-store")]
         knowledge_store: None,
@@ -116,12 +116,12 @@ async fn start_test_server() -> (String, String, tempfile::TempDir) {
 
     let router = build_router(
         Arc::clone(&state),
-        &aletheia_pylon::security::SecurityConfig {
-            csrf: aletheia_pylon::security::CsrfConfig {
+        &pylon::security::SecurityConfig {
+            csrf: pylon::security::CsrfConfig {
                 enabled: false,
-                ..aletheia_pylon::security::CsrfConfig::default()
+                ..pylon::security::CsrfConfig::default()
             },
-            ..aletheia_pylon::security::SecurityConfig::default()
+            ..pylon::security::SecurityConfig::default()
         },
     );
 

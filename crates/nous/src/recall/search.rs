@@ -1,7 +1,7 @@
 //! Search traits and adapters for recall retrieval.
 
-use aletheia_mneme::embedding::EmbeddingProvider;
-use aletheia_mneme::knowledge::RecallResult as KnowledgeRecallResult;
+use mneme::embedding::EmbeddingProvider;
+use mneme::knowledge::RecallResult as KnowledgeRecallResult;
 
 use crate::error;
 

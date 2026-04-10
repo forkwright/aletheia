@@ -12,10 +12,10 @@ use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, instrument, warn};
 
 use hermeneus::provider::ProviderRegistry;
-use aletheia_mneme::embedding::EmbeddingProvider;
+use mneme::embedding::EmbeddingProvider;
 #[cfg(feature = "knowledge-store")]
-use aletheia_mneme::knowledge_store::KnowledgeStore;
-use aletheia_mneme::store::SessionStore;
+use mneme::knowledge_store::KnowledgeStore;
+use mneme::store::SessionStore;
 use organon::registry::ToolRegistry;
 use organon::types::ToolServices;
 use taxis::oikos::Oikos;
@@ -72,7 +72,7 @@ pub(crate) struct ActorServices {
     tool_services: Option<Arc<ToolServices>>,
     embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
     /// Candidate tracker for skill auto-capture pipeline.
-    candidate_tracker: Arc<aletheia_mneme::skills::CandidateTracker>,
+    candidate_tracker: Arc<mneme::skills::CandidateTracker>,
 }
 
 /// Data stores for sessions, knowledge, and search.
@@ -200,7 +200,7 @@ impl NousActor {
                 oikos,
                 tool_services,
                 embedding_provider,
-                candidate_tracker: Arc::new(aletheia_mneme::skills::CandidateTracker::new()),
+                candidate_tracker: Arc::new(mneme::skills::CandidateTracker::new()),
             },
             stores: ActorStores {
                 session_store,

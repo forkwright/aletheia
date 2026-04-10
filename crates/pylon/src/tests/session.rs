@@ -424,7 +424,7 @@ async fn history_with_limit() {
             store
                 .append_message(
                     id,
-                    aletheia_mneme::types::Role::User,
+                    mneme::types::Role::User,
                     &format!("message {i}"),
                     None,
                     None,
@@ -460,7 +460,7 @@ async fn history_before_filter() {
             store
                 .append_message(
                     id,
-                    aletheia_mneme::types::Role::User,
+                    mneme::types::Role::User,
                     &format!("message {i}"),
                     None,
                     None,
@@ -495,7 +495,7 @@ async fn history_messages_have_expected_fields() {
         store
             .append_message(
                 id,
-                aletheia_mneme::types::Role::User,
+                mneme::types::Role::User,
                 "test message",
                 None,
                 None,

@@ -9,19 +9,19 @@ use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 use tracing::{Instrument, info, warn};
 
-use aletheia_agora::types::ChannelProvider;
+use agora::types::ChannelProvider;
 use hermeneus::provider::ProviderRegistry;
 use koina::secret::SecretString;
 use koina::system::{Environment, RealSystem};
-use aletheia_mneme::embedding::DegradedEmbeddingProvider;
-use aletheia_mneme::store::SessionStore;
+use mneme::embedding::DegradedEmbeddingProvider;
+use mneme::store::SessionStore;
 use aletheia_nous::config::{NousConfig, PipelineConfig};
 use aletheia_nous::cross::CrossNousRouter;
 use aletheia_nous::manager::NousManager;
 use aletheia_oikonomos::runner::TaskRunner;
 use organon::registry::ToolRegistry;
 use organon::types::ToolServices;
-use aletheia_pylon::state::AppState;
+use pylon::state::AppState;
 use symbolon::jwt::{JwtConfig, JwtManager};
 use taxis::config::{AletheiaConfig, resolve_nous};
 use taxis::oikos::Oikos;
@@ -588,7 +588,7 @@ impl RuntimeBuilder {
                     .spawn(
                         nous_config,
                         PipelineConfig {
-                            extraction: Some(aletheia_mneme::extract::ExtractionConfig::default()),
+                            extraction: Some(mneme::extract::ExtractionConfig::default()),
                             training: self.config.training.clone(),
                             ..PipelineConfig::default()
                         },
@@ -703,7 +703,7 @@ impl RuntimeBuilder {
             none_role: self.config.gateway.auth.none_role.clone(),
             config: Arc::new(tokio::sync::RwLock::new(aletheia_config)),
             config_tx,
-            idempotency_cache: Arc::new(aletheia_pylon::idempotency::IdempotencyCache::new()),
+            idempotency_cache: Arc::new(pylon::idempotency::IdempotencyCache::new()),
             shutdown: shutdown_token.clone(),
             #[cfg(feature = "recall")]
             knowledge_store,

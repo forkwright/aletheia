@@ -17,7 +17,7 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use tracing::{info, instrument};
 
-use aletheia_mneme::types::SessionStatus;
+use mneme::types::SessionStatus;
 
 use symbolon::types::Role;
 
@@ -554,14 +554,14 @@ pub(crate) async fn resolve_session(
 /// `SQLite` always includes "UNIQUE constraint failed" in the error message for
 /// constraint violations. We match on the string because pylon does not take a
 /// direct rusqlite dependency: the type lives inside mneme's `Database` variant.
-fn is_unique_constraint_violation(err: &aletheia_mneme::error::Error) -> bool {
+fn is_unique_constraint_violation(err: &mneme::error::Error) -> bool {
     err.to_string().contains("UNIQUE constraint failed")
 }
 
 pub(crate) async fn find_session(
     state: &SessionsState,
     id: &str,
-) -> Result<aletheia_mneme::types::Session, ApiError> {
+) -> Result<mneme::types::Session, ApiError> {
     let state_clone = state.clone();
     let id_owned = id.to_owned();
     let id_for_error = id.to_owned();

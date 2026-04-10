@@ -30,7 +30,7 @@ use std::sync::Arc;
 use tokio::runtime::Handle;
 use tokio::sync::Mutex;
 
-use aletheia_mneme::store::SessionStore;
+use mneme::store::SessionStore;
 use organon::error::{StoreError, StoreSnafu};
 use organon::types::{BlackboardEntry, BlackboardStore, NoteEntry, NoteStore};
 

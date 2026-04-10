@@ -7,8 +7,8 @@
     reason = "integration tests: index-based assertions on known-length slices"
 )]
 
-use aletheia_mneme::store::SessionStore;
-use aletheia_mneme::types::Role;
+use mneme::store::SessionStore;
+use mneme::types::Role;
 
 fn test_store() -> SessionStore {
     SessionStore::open_in_memory().expect("open in-memory session store")

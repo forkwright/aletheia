@@ -14,10 +14,10 @@ use tokio_util::sync::CancellationToken;
 use tracing::{Instrument, debug, error, info, warn};
 
 use hermeneus::provider::ProviderRegistry;
-use aletheia_mneme::embedding::EmbeddingProvider;
+use mneme::embedding::EmbeddingProvider;
 #[cfg(feature = "knowledge-store")]
-use aletheia_mneme::knowledge_store::KnowledgeStore;
-use aletheia_mneme::store::SessionStore;
+use mneme::knowledge_store::KnowledgeStore;
+use mneme::store::SessionStore;
 use organon::registry::ToolRegistry;
 use organon::types::ToolServices;
 use taxis::oikos::Oikos;

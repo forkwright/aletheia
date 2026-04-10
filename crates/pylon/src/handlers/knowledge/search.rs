@@ -184,7 +184,7 @@ pub async fn timeline(
 pub(super) fn get_stored_facts(
     state: &KnowledgeState,
     query: &FactsQuery,
-) -> Vec<aletheia_mneme::knowledge::Fact> {
+) -> Vec<mneme::knowledge::Fact> {
     #[cfg(feature = "knowledge-store")]
     if let Some(ref store) = state.knowledge_store {
         let fetch_limit =
@@ -208,7 +208,7 @@ pub(super) fn get_stored_facts(
 
 pub(super) fn get_stored_entities(
     state: &KnowledgeState,
-) -> Vec<aletheia_mneme::knowledge::Entity> {
+) -> Vec<mneme::knowledge::Entity> {
     #[cfg(feature = "knowledge-store")]
     if let Some(ref store) = state.knowledge_store {
         match store.list_entities() {
@@ -226,27 +226,27 @@ pub(super) fn get_stored_entities(
 #[cfg(feature = "knowledge-store")]
 pub(super) fn get_fact_relationships(
     _state: &KnowledgeState,
-    _fact: &aletheia_mneme::knowledge::Fact,
-) -> Vec<aletheia_mneme::knowledge::Relationship> {
+    _fact: &mneme::knowledge::Fact,
+) -> Vec<mneme::knowledge::Relationship> {
     Vec::new()
 }
 
 pub(super) fn get_entity_relationships(
     _state: &KnowledgeState,
     _entity_id: &str,
-) -> Vec<aletheia_mneme::knowledge::Relationship> {
+) -> Vec<mneme::knowledge::Relationship> {
     Vec::new()
 }
 
 #[cfg(feature = "knowledge-store")]
 pub(super) fn get_similar_facts(
     _state: &KnowledgeState,
-    _fact: &aletheia_mneme::knowledge::Fact,
+    _fact: &mneme::knowledge::Fact,
 ) -> Vec<SimilarFact> {
     Vec::new()
 }
 
-pub(super) fn sort_facts(facts: &mut [aletheia_mneme::knowledge::Fact], sort: &str, order: &str) {
+pub(super) fn sort_facts(facts: &mut [mneme::knowledge::Fact], sort: &str, order: &str) {
     let desc = order == "desc";
     match sort {
         "confidence" => facts.sort_by(|a, b| {

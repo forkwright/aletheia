@@ -7,7 +7,7 @@ use snafu::prelude::*;
 use tracing::{info, warn};
 
 use koina::system::{Environment, RealSystem};
-use aletheia_pylon::router::build_router;
+use pylon::router::build_router;
 use taxis::loader::load_config;
 use taxis::oikos::Oikos;
 
@@ -66,7 +66,7 @@ pub(crate) async fn run(args: Args) -> Result<()> {
         runtime.shutdown_token.child_token(),
     );
 
-    let security = aletheia_pylon::security::SecurityConfig::from_gateway(&config.gateway);
+    let security = pylon::security::SecurityConfig::from_gateway(&config.gateway);
 
     #[cfg(feature = "mcp")]
     let app = {
@@ -141,7 +141,7 @@ pub(crate) async fn run(args: Args) -> Result<()> {
     // WHY: Without a SIGHUP handler, the signal hits the default Unix
     // disposition (terminate), crashing the server instead of reloading (#2350).
     #[cfg(unix)]
-    let sighup_handle = aletheia_pylon::server::spawn_sighup_handler(Arc::clone(&runtime.state));
+    let sighup_handle = pylon::server::spawn_sighup_handler(Arc::clone(&runtime.state));
 
     // WHY: Cancel root token on OS signal so all subsystems observe
     // shutdown simultaneously.

@@ -6,9 +6,9 @@
 
 use std::sync::Arc;
 
-use aletheia_mneme::knowledge::FactType;
-use aletheia_mneme::knowledge_store::KnowledgeStore;
-use aletheia_mneme::recall::RecallEngine;
+use mneme::knowledge::FactType;
+use mneme::knowledge_store::KnowledgeStore;
+use mneme::recall::RecallEngine;
 use aletheia_oikonomos::maintenance::{KnowledgeMaintenanceExecutor, MaintenanceReport};
 
 /// Bridges the daemon's `KnowledgeMaintenanceExecutor` trait to the concrete
@@ -33,7 +33,7 @@ impl KnowledgeMaintenanceExecutor for KnowledgeMaintenanceAdapter {
         nous_id: &str,
     ) -> aletheia_oikonomos::error::Result<MaintenanceReport> {
         let now = jiff::Timestamp::now();
-        let now_str = aletheia_mneme::knowledge::format_timestamp(&now);
+        let now_str = mneme::knowledge::format_timestamp(&now);
 
         let facts = self
             .store
@@ -152,7 +152,7 @@ impl KnowledgeMaintenanceExecutor for KnowledgeMaintenanceAdapter {
         nous_id: &str,
     ) -> aletheia_oikonomos::error::Result<MaintenanceReport> {
         let now = jiff::Timestamp::now();
-        let now_str = aletheia_mneme::knowledge::format_timestamp(&now);
+        let now_str = mneme::knowledge::format_timestamp(&now);
         let facts = self
             .store
             .query_facts(nous_id, &now_str, 10_000)

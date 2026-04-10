@@ -3,7 +3,7 @@
 
 use std::collections::BTreeMap;
 
-use aletheia_mneme::engine::{DataValue, Db, ScriptMutability};
+use mneme::engine::{DataValue, Db, ScriptMutability};
 
 #[test]
 fn run_read_only_returns_data() {

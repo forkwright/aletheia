@@ -7,16 +7,16 @@ use std::sync::Arc;
 use crate::error;
 
 #[cfg(feature = "knowledge-store")]
-use aletheia_mneme::knowledge::RecallResult as KnowledgeRecallResult;
+use mneme::knowledge::RecallResult as KnowledgeRecallResult;
 #[cfg(feature = "knowledge-store")]
-use aletheia_mneme::knowledge_store::KnowledgeStore;
+use mneme::knowledge_store::KnowledgeStore;
 
 #[cfg(feature = "knowledge-store")]
 use crate::recall::search::TextSearch;
 #[cfg(feature = "knowledge-store")]
 use crate::recall::search::VectorSearch;
 
-/// Bridges [`aletheia_mneme::knowledge_store::KnowledgeStore::search_text_for_recall`] to [`TextSearch`].
+/// Bridges [`mneme::knowledge_store::KnowledgeStore::search_text_for_recall`] to [`TextSearch`].
 #[cfg(feature = "knowledge-store")]
 pub struct KnowledgeTextSearch {
     store: Arc<KnowledgeStore>,

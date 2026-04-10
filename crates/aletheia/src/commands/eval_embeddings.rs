@@ -151,7 +151,7 @@ fn builtin_corpus() -> Vec<(String, String)> {
 }
 
 /// Print a human-readable comparison table to stdout.
-fn print_table(run: &aletheia_mneme::embedding_eval::EvalRunResult) {
+fn print_table(run: &mneme::embedding_eval::EvalRunResult) {
     use owo_colors::OwoColorize;
 
     println!();
@@ -201,8 +201,8 @@ fn print_table(run: &aletheia_mneme::embedding_eval::EvalRunResult) {
 
 /// Entry point for the `eval-embeddings` subcommand.
 pub(crate) fn run(args: &EvalEmbeddingsArgs) -> Result<()> {
-    use aletheia_mneme::embedding::{EmbeddingConfig, create_provider};
-    use aletheia_mneme::embedding_eval::{EvalDataset, compare_models};
+    use mneme::embedding::{EmbeddingConfig, create_provider};
+    use mneme::embedding_eval::{EvalDataset, compare_models};
 
     // Load dataset.
     let dataset = EvalDataset::from_jsonl_file(&args.dataset)
@@ -239,7 +239,7 @@ pub(crate) fn run(args: &EvalEmbeddingsArgs) -> Result<()> {
         ..EmbeddingConfig::default()
     });
     let candidate_box;
-    let candidate: Option<&dyn aletheia_mneme::embedding::EmbeddingProvider> =
+    let candidate: Option<&dyn mneme::embedding::EmbeddingProvider> =
         if let Some(cfg) = &candidate_config {
             candidate_box = create_provider(cfg).whatever_context(format!(
                 "failed to create candidate embedding provider '{}'",

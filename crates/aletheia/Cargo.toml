@@ -21,13 +21,13 @@ default = ["tui", "recall", "storage-fjall", "embed-candle"]
 # cost and auth friction for local deployments. Enable with `--features mcp`.
 mcp = ["dep:aletheia-diaporeia"]
 # Recall pipeline: enables KnowledgeStore for vector search + extraction persistence.
-recall = ["aletheia-nous/knowledge-store", "aletheia-mneme/mneme-engine", "aletheia-mneme/storage-fjall", "aletheia-pylon/knowledge-store"]
+recall = ["aletheia-nous/knowledge-store", "mneme/mneme-engine", "mneme/storage-fjall", "pylon/knowledge-store"]
 # fjall storage backend for mneme (LSM-tree, pure Rust, LZ4 compression).
-storage-fjall = ["aletheia-mneme/storage-fjall"]
+storage-fjall = ["mneme/storage-fjall"]
 # Local ML embeddings via candle.
-embed-candle = ["aletheia-mneme/embed-candle"]
-migrate-qdrant = ["dep:qdrant-client", "aletheia-mneme/mneme-engine", "aletheia-mneme/storage-fjall"]
-tls = ["aletheia-pylon/tls"]
+embed-candle = ["mneme/embed-candle"]
+migrate-qdrant = ["dep:qdrant-client", "mneme/mneme-engine", "mneme/storage-fjall"]
+tls = ["pylon/tls"]
 keyring = ["symbolon/keyring"]
 tui = ["dep:theatron-tui"]
 # Claude Code subprocess provider: delegates LLM calls to the `claude` CLI.
@@ -35,8 +35,8 @@ cc-provider = ["hermeneus/cc-provider"]
 # Dispatch orchestration (kanon phronesis port). Default off for incremental development.
 energeia = ["dep:energeia"]
 # Test tiers (see docs/test-tiers.md)
-test-core = ["aletheia-mneme/test-core", "aletheia-nous/test-core", "aletheia-pylon/test-core"]
-test-full = ["test-core", "aletheia-mneme/test-full"]
+test-core = ["mneme/test-core", "aletheia-nous/test-core", "pylon/test-core"]
+test-full = ["test-core", "mneme/test-full"]
 
 [dependencies]
 aletheia-diaporeia = { path = "../diaporeia", optional = true }
@@ -47,11 +47,11 @@ koina = { path = "../koina" }
 taxis = { path = "../taxis" }
 hermeneus = { path = "../hermeneus" }
 organon = { path = "../organon" }
-aletheia-mneme = { path = "../mneme" }
+mneme = { path = "../mneme" }
 aletheia-nous = { path = "../nous" }
 symbolon = { path = "../symbolon" }
-aletheia-pylon = { path = "../pylon" }
-aletheia-agora = { path = "../agora" }
+pylon = { path = "../pylon" }
+agora = { path = "../agora" }
 aletheia-dokimion = { path = "../eval" }
 thesauros = { path = "../thesauros" }
 theatron-tui = { path = "../theatron/tui", optional = true }

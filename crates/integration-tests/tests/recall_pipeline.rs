@@ -2,8 +2,8 @@
 
 #![expect(clippy::expect_used, reason = "test assertions")]
 
-use aletheia_mneme::embedding::MockEmbeddingProvider;
-use aletheia_mneme::knowledge::RecallResult as KnowledgeRecallResult;
+use mneme::embedding::MockEmbeddingProvider;
+use mneme::knowledge::RecallResult as KnowledgeRecallResult;
 use aletheia_nous::recall::{RecallConfig, RecallStage, VectorSearch};
 
 struct MockVectorSearch {

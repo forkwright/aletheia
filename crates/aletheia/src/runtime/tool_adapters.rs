@@ -5,7 +5,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 
-use aletheia_agora::types::{ChannelProvider, SendParams};
+use agora::types::{ChannelProvider, SendParams};
 use aletheia_nous::cross::{CrossNousMessage, CrossNousRouter};
 use organon::types::{CrossNousService, MessageService};
 

@@ -8,8 +8,8 @@ use tracing::{Instrument, debug, error, info_span};
 
 use hermeneus::provider::ProviderRegistry;
 use koina::event::EventEmitter;
-use aletheia_mneme::embedding::EmbeddingProvider;
-use aletheia_mneme::store::SessionStore;
+use mneme::embedding::EmbeddingProvider;
+use mneme::store::SessionStore;
 use organon::registry::ToolRegistry;
 use organon::types::ToolContext;
 use taxis::oikos::Oikos;

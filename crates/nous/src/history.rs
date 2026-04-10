@@ -7,8 +7,8 @@
 use snafu::ResultExt;
 use tracing::debug;
 
-use aletheia_mneme::store::SessionStore;
-use aletheia_mneme::types::Role;
+use mneme::store::SessionStore;
+use mneme::types::Role;
 
 use crate::error;
 use crate::pipeline::PipelineMessage;
@@ -176,7 +176,7 @@ pub(crate) fn load_history(
 #[expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]
 #[expect(clippy::expect_used, reason = "test assertions may panic on failure")]
 mod tests {
-    use aletheia_mneme::types::Role;
+    use mneme::types::Role;
 
     use super::*;
 

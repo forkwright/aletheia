@@ -16,7 +16,7 @@ use hermeneus::anthropic::StreamEvent as LlmStreamEvent;
 use aletheia_nous::pipeline::TurnResult;
 use aletheia_nous::stream::TurnStreamEvent;
 
-use aletheia_mneme::types::SessionStatus;
+use mneme::types::SessionStatus;
 
 use symbolon::types::Role;
 

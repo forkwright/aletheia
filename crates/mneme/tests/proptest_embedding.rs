@@ -10,7 +10,7 @@
     reason = "proptest test bodies may panic on failed assertions"
 )]
 
-use aletheia_mneme::embedding::{EmbeddingProvider, MockEmbeddingProvider};
+use mneme::embedding::{EmbeddingProvider, MockEmbeddingProvider};
 use proptest::prelude::*;
 
 proptest! {

@@ -8,17 +8,17 @@
 
 use std::sync::Arc;
 
-use aletheia_mneme::embedding::{EmbeddingProvider, MockEmbeddingProvider};
-use aletheia_mneme::id::{EmbeddingId, FactId};
-use aletheia_mneme::knowledge::{
+use mneme::embedding::{EmbeddingProvider, MockEmbeddingProvider};
+use mneme::id::{EmbeddingId, FactId};
+use mneme::knowledge::{
     EmbeddedChunk, EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactTemporal,
     default_stability_hours,
 };
-use aletheia_mneme::knowledge_store::{KnowledgeConfig, KnowledgeStore};
+use mneme::knowledge_store::{KnowledgeConfig, KnowledgeStore};
 
 const TS_2026: &str = "2026-01-01T00:00:00Z";
 fn far_future() -> jiff::Timestamp {
-    aletheia_mneme::knowledge::far_future()
+    mneme::knowledge::far_future()
 }
 const TS_RECORDED: &str = "2026-03-01T00:00:00Z";
 

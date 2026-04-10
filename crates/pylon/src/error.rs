@@ -234,7 +234,7 @@ macro_rules! impl_from_error {
     };
 }
 
-impl_from_error!(aletheia_mneme::error::Error, |err| {
+impl_from_error!(mneme::error::Error, |err| {
     SessionNotFound { id, .. } => SessionNotFoundSnafu { id }.build(),
     FactNotFound { id, .. } => NotFoundSnafu {
         path: format!("fact/{id}"),
@@ -485,7 +485,7 @@ mod tests {
 
     #[test]
     fn mneme_session_not_found_maps_to_404() {
-        let mneme_err = aletheia_mneme::error::Error::SessionNotFound {
+        let mneme_err = mneme::error::Error::SessionNotFound {
             id: "ses-01abc".to_owned(),
             location: snafu::location!(),
         };
@@ -496,7 +496,7 @@ mod tests {
 
     #[test]
     fn mneme_fact_not_found_maps_to_404() {
-        let mneme_err = aletheia_mneme::error::Error::FactNotFound {
+        let mneme_err = mneme::error::Error::FactNotFound {
             id: "fact-01abc".to_owned(),
             location: snafu::location!(),
         };
@@ -507,7 +507,7 @@ mod tests {
 
     #[test]
     fn mneme_empty_content_maps_to_400() {
-        let mneme_err = aletheia_mneme::error::Error::EmptyContent {
+        let mneme_err = mneme::error::Error::EmptyContent {
             location: snafu::location!(),
         };
         let api_err = ApiError::from(mneme_err);
@@ -517,7 +517,7 @@ mod tests {
 
     #[test]
     fn mneme_invalid_confidence_maps_to_400() {
-        let mneme_err = aletheia_mneme::error::Error::InvalidConfidence {
+        let mneme_err = mneme::error::Error::InvalidConfidence {
             value: 1.5,
             location: snafu::location!(),
         };

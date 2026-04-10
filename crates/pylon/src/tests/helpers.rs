@@ -11,7 +11,7 @@ use hermeneus::provider::ProviderRegistry;
 use hermeneus::test_utils::MockProvider;
 use koina::http::{BEARER_PREFIX, CONTENT_TYPE_JSON};
 use koina::secret::SecretString;
-use aletheia_mneme::store::SessionStore;
+use mneme::store::SessionStore;
 use aletheia_nous::config::{NousConfig, PipelineConfig};
 use aletheia_nous::manager::NousManager;
 use organon::registry::ToolRegistry;
