@@ -37,6 +37,16 @@ pub mod longmemeval;
 pub mod locomo;
 /// Benchmark scoring (exact match, F1, contains).
 pub mod metrics;
+/// Live benchmark runner: executes a benchmark against an aletheia instance.
+pub mod runner;
+
+pub use self::runner::{BenchmarkRunner, BenchmarkRunnerConfig};
+
+/// Re-export of [`EvalClient`](crate::client::EvalClient) for external use.
+///
+/// External consumers of the benchmark runner need this to construct a
+/// runner. The rest of the client API surface is not stable.
+pub type EvalClient = crate::client::EvalClient;
 
 use std::path::Path;
 

@@ -30,3 +30,6 @@ supports-color = "3"
 [dev-dependencies]
 organon = { path = "../organon", features = ["test-support"] }
 wiremock = { workspace = true }
+# WHY: benchmark runner tests need to install the rustls crypto provider
+# since the workspace uses `reqwest` with `rustls-no-provider`.
+rustls = { workspace = true }

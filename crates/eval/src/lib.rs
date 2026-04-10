@@ -8,7 +8,7 @@ pub(crate) mod client;
 /// Cognitive evaluations: recall@k, sycophancy detection, adversarial testing.
 pub(crate) mod cognitive;
 /// Eval-specific error types and result alias.
-pub(crate) mod error;
+pub mod error;
 /// JSONL persistence for evaluation results as training data.
 pub mod persistence;
 /// Evaluation provider trait: pluggable scenario sources for programmatic use.
