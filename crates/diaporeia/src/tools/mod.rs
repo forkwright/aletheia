@@ -196,7 +196,7 @@ impl DiaporeiaServer {
         // send_turn_streaming keeps the connection alive via event flow while
         // still returning the final TurnResult.
         let (stream_tx, mut stream_rx) =
-            tokio::sync::mpsc::channel::<aletheia_nous::stream::TurnStreamEvent>(64);
+            tokio::sync::mpsc::channel::<nous::stream::TurnStreamEvent>(64);
 
         // Drain stream events in background so the channel doesn't back-pressure
         // the actor. MCP doesn't support server-push, so events are discarded.

@@ -12,8 +12,8 @@ use hermeneus::test_utils::MockProvider;
 use koina::http::{BEARER_PREFIX, CONTENT_TYPE_JSON};
 use koina::secret::SecretString;
 use mneme::store::SessionStore;
-use aletheia_nous::config::{NousConfig, PipelineConfig};
-use aletheia_nous::manager::NousManager;
+use nous::config::{NousConfig, PipelineConfig};
+use nous::manager::NousManager;
 use organon::registry::ToolRegistry;
 use symbolon::jwt::{JwtConfig, JwtManager};
 use taxis::oikos::Oikos;
@@ -128,7 +128,7 @@ bind = "localhost"
 
     let nous_config = NousConfig {
         id: Arc::from("syn"),
-        generation: aletheia_nous::config::NousGenerationConfig {
+        generation: nous::config::NousGenerationConfig {
             model: "mock-model".to_owned(),
             ..Default::default()
         },

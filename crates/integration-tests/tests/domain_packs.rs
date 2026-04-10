@@ -14,8 +14,8 @@ use hermeneus::types::{
     CompletionRequest, CompletionResponse, ContentBlock, StopReason, Usage,
 };
 use koina::id::ToolName;
-use aletheia_nous::config::{NousConfig, PipelineConfig};
-use aletheia_nous::manager::NousManager;
+use nous::config::{NousConfig, PipelineConfig};
+use nous::manager::NousManager;
 use organon::registry::ToolRegistry;
 use organon::types::ToolCategory;
 use taxis::oikos::Oikos;
@@ -173,7 +173,7 @@ priority = "important"
 
     let config = NousConfig {
         id: Arc::from("test-agent"),
-        generation: aletheia_nous::config::NousGenerationConfig {
+        generation: nous::config::NousGenerationConfig {
             model: "mock-model".to_owned(),
             ..Default::default()
         },
@@ -325,7 +325,7 @@ domains = ["healthcare"]
 
     let analyst_config = NousConfig {
         id: Arc::from("analyst"),
-        generation: aletheia_nous::config::NousGenerationConfig {
+        generation: nous::config::NousGenerationConfig {
             model: "mock-model".to_owned(),
             ..Default::default()
         },
@@ -362,7 +362,7 @@ domains = ["healthcare"]
 
     let hermes_config = NousConfig {
         id: Arc::from("hermes"),
-        generation: aletheia_nous::config::NousGenerationConfig {
+        generation: nous::config::NousGenerationConfig {
             model: "mock-model".to_owned(),
             ..Default::default()
         },

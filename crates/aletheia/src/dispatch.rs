@@ -9,7 +9,7 @@ use tracing::{Instrument, info, warn};
 use agora::registry::ChannelRegistry;
 use agora::router::{MessageRouter, reply_target};
 use agora::types::{InboundMessage, SendParams};
-use aletheia_nous::manager::NousManager;
+use nous::manager::NousManager;
 
 /// Spawn a background task that dispatches inbound messages to nous actors.
 ///

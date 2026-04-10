@@ -4,7 +4,7 @@
 
 use mneme::embedding::MockEmbeddingProvider;
 use mneme::knowledge::RecallResult as KnowledgeRecallResult;
-use aletheia_nous::recall::{RecallConfig, RecallStage, VectorSearch};
+use nous::recall::{RecallConfig, RecallStage, VectorSearch};
 
 struct MockVectorSearch {
     results: Vec<KnowledgeRecallResult>,
@@ -16,7 +16,7 @@ impl VectorSearch for MockVectorSearch {
         _query_vec: Vec<f32>,
         _k: usize,
         _ef: usize,
-    ) -> aletheia_nous::error::Result<Vec<KnowledgeRecallResult>> {
+    ) -> nous::error::Result<Vec<KnowledgeRecallResult>> {
         Ok(self.results.clone())
     }
 }

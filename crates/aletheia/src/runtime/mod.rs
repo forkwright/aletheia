@@ -15,10 +15,10 @@ use koina::secret::SecretString;
 use koina::system::{Environment, RealSystem};
 use mneme::embedding::DegradedEmbeddingProvider;
 use mneme::store::SessionStore;
-use aletheia_nous::config::{NousConfig, PipelineConfig};
-use aletheia_nous::cross::CrossNousRouter;
-use aletheia_nous::manager::NousManager;
-use aletheia_oikonomos::runner::TaskRunner;
+use nous::config::{NousConfig, PipelineConfig};
+use nous::cross::CrossNousRouter;
+use nous::manager::NousManager;
+use oikonomos::runner::TaskRunner;
 use organon::registry::ToolRegistry;
 use organon::types::ToolServices;
 use pylon::state::AppState;
@@ -406,14 +406,14 @@ impl RuntimeBuilder {
                     )) as Arc<dyn organon::types::MessageService>
                 });
             let note_store: Option<Arc<dyn organon::types::NoteStore>> = Some(Arc::new(
-                aletheia_nous::adapters::SessionNoteAdapter(Arc::clone(&session_store)),
+                nous::adapters::SessionNoteAdapter(Arc::clone(&session_store)),
             ));
             let blackboard_store: Option<Arc<dyn organon::types::BlackboardStore>> =
-                Some(Arc::new(aletheia_nous::adapters::SessionBlackboardAdapter(
+                Some(Arc::new(nous::adapters::SessionBlackboardAdapter(
                     Arc::clone(&session_store),
                 )));
             let spawn: Option<Arc<dyn organon::types::SpawnService>> =
-                Some(Arc::new(aletheia_nous::spawn_svc::SpawnServiceImpl::new(
+                Some(Arc::new(nous::spawn_svc::SpawnServiceImpl::new(
                     Arc::clone(&provider_registry),
                     Arc::clone(&tool_registry),
                     Arc::clone(&self.oikos),
@@ -449,14 +449,14 @@ impl RuntimeBuilder {
             clippy::as_conversions,
             reason = "coercion to dyn trait object: required to satisfy Arc<dyn Trait> type annotation"
         )]
-        let vector_search: Option<Arc<dyn aletheia_nous::recall::VectorSearch>> =
+        let vector_search: Option<Arc<dyn nous::recall::VectorSearch>> =
             knowledge_store.as_ref().map(|ks| {
-                Arc::new(aletheia_nous::recall::KnowledgeVectorSearch::new(
+                Arc::new(nous::recall::KnowledgeVectorSearch::new(
                     Arc::clone(ks),
-                )) as Arc<dyn aletheia_nous::recall::VectorSearch>
+                )) as Arc<dyn nous::recall::VectorSearch>
             });
         #[cfg(not(feature = "recall"))]
-        let vector_search: Option<Arc<dyn aletheia_nous::recall::VectorSearch>> = None;
+        let vector_search: Option<Arc<dyn nous::recall::VectorSearch>> = None;
 
         // External recall sources (issue #2338)
         #[cfg(feature = "recall")]
@@ -558,7 +558,7 @@ impl RuntimeBuilder {
                 let nous_config = NousConfig {
                     id: resolved.id,
                     name: resolved.name,
-                    generation: aletheia_nous::config::NousGenerationConfig {
+                    generation: nous::config::NousGenerationConfig {
                         model: resolved.model.primary.to_string(),
                         context_window: resolved.limits.context_tokens,
                         max_output_tokens: resolved.limits.max_output_tokens,
@@ -568,7 +568,7 @@ impl RuntimeBuilder {
                         chars_per_token: resolved.limits.chars_per_token,
                         prosoche_model: resolved.prosoche_model.to_string(),
                     },
-                    limits: aletheia_nous::config::NousLimits {
+                    limits: nous::config::NousLimits {
                         max_tool_iterations: resolved.capabilities.max_tool_iterations,
                         loop_detection_threshold: 3,
                         consecutive_error_threshold: 4,
@@ -582,7 +582,7 @@ impl RuntimeBuilder {
                     cache_enabled: resolved.capabilities.cache_enabled,
                     recall: resolved.recall.into(),
                     tool_allowlist: None,
-                    hooks: aletheia_nous::config::HookConfig::default(),
+                    hooks: nous::config::HookConfig::default(),
                 };
                 nous_manager
                     .spawn(
@@ -654,20 +654,20 @@ impl RuntimeBuilder {
                     agent_token,
                     daemon_bridge.clone(),
                 );
-                runner.register(aletheia_oikonomos::schedule::TaskDef {
+                runner.register(oikonomos::schedule::TaskDef {
                     id: format!("{}-prosoche", agent_def.id),
                     name: "Prosoche attention check".to_owned(),
                     nous_id: agent_def.id.clone(),
-                    schedule: aletheia_oikonomos::schedule::Schedule::Interval(
+                    schedule: oikonomos::schedule::Schedule::Interval(
                         std::time::Duration::from_secs(45 * 60),
                     ),
-                    action: aletheia_oikonomos::schedule::TaskAction::Builtin(
-                        aletheia_oikonomos::schedule::BuiltinTask::Prosoche,
+                    action: oikonomos::schedule::TaskAction::Builtin(
+                        oikonomos::schedule::BuiltinTask::Prosoche,
                     ),
                     enabled: true,
                     active_window: Some((8, 23)),
                     catch_up: false,
-                    ..aletheia_oikonomos::schedule::TaskDef::default()
+                    ..oikonomos::schedule::TaskDef::default()
                 });
                 let daemon_span = tracing::info_span!("daemon", nous.id = %agent_def.id);
                 tokio::spawn(

@@ -446,7 +446,7 @@ mod tests {
             use std::sync::Arc;
             use mneme::store::SessionStore;
             use hermeneus::provider::ProviderRegistry;
-            use aletheia_nous::manager::NousManager;
+            use nous::manager::NousManager;
             use taxis::oikos::Oikos;
             use taxis::config::AletheiaConfig;
 

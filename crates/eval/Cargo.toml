@@ -1,5 +1,5 @@
 [package]
-name = "aletheia-dokimion"
+name = "dokimion"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

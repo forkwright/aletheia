@@ -6,8 +6,8 @@
 use mneme::store::SessionStore;
 use mneme::types::Role;
 
-use aletheia_nous::config::NousConfig;
-use aletheia_nous::session::{SessionManager, SessionState};
+use nous::config::NousConfig;
+use nous::session::{SessionManager, SessionState};
 
 fn test_config() -> NousConfig {
     NousConfig {

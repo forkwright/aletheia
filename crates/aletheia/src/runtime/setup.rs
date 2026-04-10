@@ -18,7 +18,7 @@ use koina::credential::{CredentialProvider, CredentialSource};
 use mneme::embedding::{
     DegradedEmbeddingProvider, EmbeddingConfig, EmbeddingProvider, create_provider,
 };
-use aletheia_nous::manager::NousManager;
+use nous::manager::NousManager;
 use organon::builtins;
 use organon::registry::ToolRegistry;
 use symbolon::credential::{

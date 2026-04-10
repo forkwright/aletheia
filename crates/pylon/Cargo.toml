@@ -13,7 +13,7 @@ workspace = true
 [features]
 default = []
 tls = ["dep:axum-server"]
-knowledge-store = ["aletheia-nous/knowledge-store"]
+knowledge-store = ["nous/knowledge-store"]
 test-core = ["knowledge-store"]
 test-full = []
 
@@ -57,7 +57,7 @@ taxis = { path = "../taxis" }
 hermeneus = { path = "../hermeneus" }
 organon = { path = "../organon" }
 mneme = { path = "../mneme", features = ["sqlite"] }
-aletheia-nous = { path = "../nous" }
+nous = { path = "../nous" }
 symbolon = { path = "../symbolon" }
 
 [dev-dependencies]

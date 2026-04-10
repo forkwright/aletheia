@@ -274,7 +274,7 @@ impl_from_error!(hermeneus::error::Error, |err| {
     } => ServiceUnavailableSnafu { message }.build(),
 });
 
-impl_from_error!(aletheia_nous::error::Error, |err| {
+impl_from_error!(nous::error::Error, |err| {
     NousNotFound { nous_id, .. } => NousNotFoundSnafu { id: nous_id }.build(),
     GuardRejected { reason, .. } => ForbiddenSnafu { message: reason }.build(),
     PipelineTimeout {
@@ -369,7 +369,7 @@ mod tests {
 
     #[test]
     fn pipeline_timeout_maps_to_service_unavailable() {
-        let err = aletheia_nous::error::Error::PipelineTimeout {
+        let err = nous::error::Error::PipelineTimeout {
             stage: "execute".to_owned(),
             timeout_secs: 300,
             location: snafu::location!(),
@@ -381,7 +381,7 @@ mod tests {
 
     #[test]
     fn guard_rejected_maps_to_forbidden() {
-        let err = aletheia_nous::error::Error::GuardRejected {
+        let err = nous::error::Error::GuardRejected {
             reason: "safety check".to_owned(),
             location: snafu::location!(),
         };

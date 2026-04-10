@@ -11,13 +11,13 @@ use tokio::sync::Mutex as TokioMutex;
 use tokio_util::sync::CancellationToken;
 use tracing::Instrument;
 
-use aletheia_dokimion::runner::{RunConfig, ScenarioRunner};
+use dokimion::runner::{RunConfig, ScenarioRunner};
 use hermeneus::provider::ProviderRegistry;
 use hermeneus::test_utils::MockProvider;
 use koina::secret::SecretString;
 use mneme::store::SessionStore;
-use aletheia_nous::config::{NousConfig, PipelineConfig};
-use aletheia_nous::manager::NousManager;
+use nous::config::{NousConfig, PipelineConfig};
+use nous::manager::NousManager;
 use organon::registry::ToolRegistry;
 use organon::testing::install_crypto_provider;
 use pylon::router::build_router;
@@ -73,7 +73,7 @@ async fn start_test_server() -> (String, String, tempfile::TempDir) {
 
     let nous_config = NousConfig {
         id: Arc::from("test-nous"),
-        generation: aletheia_nous::config::NousGenerationConfig {
+        generation: nous::config::NousGenerationConfig {
             model: "mock-model".to_owned(),
             ..Default::default()
         },
@@ -227,7 +227,7 @@ async fn eval_session_scenarios_pass() {
         .results
         .iter()
         .filter_map(|r| match &r.outcome {
-            aletheia_dokimion::scenario::ScenarioOutcome::Failed { error, .. } => {
+            dokimion::scenario::ScenarioOutcome::Failed { error, .. } => {
                 Some(format!("{}: {error}", r.meta.id))
             }
             _ => None,

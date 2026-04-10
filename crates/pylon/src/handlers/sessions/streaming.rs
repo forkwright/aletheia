@@ -13,8 +13,8 @@ use tokio_stream::wrappers::{IntervalStream, ReceiverStream};
 use tracing::{Instrument, instrument, warn};
 
 use hermeneus::anthropic::StreamEvent as LlmStreamEvent;
-use aletheia_nous::pipeline::TurnResult;
-use aletheia_nous::stream::TurnStreamEvent;
+use nous::pipeline::TurnResult;
+use nous::stream::TurnStreamEvent;
 
 use mneme::types::SessionStatus;
 
@@ -262,7 +262,7 @@ pub async fn send_message(
                 &session_key,
                 Some(sid.clone()),
                 &content,
-                aletheia_nous::handle::DEFAULT_SEND_TIMEOUT,
+                nous::handle::DEFAULT_SEND_TIMEOUT,
             );
             let result = tokio::select! {
                 r = turn_fut => r,
@@ -507,7 +507,7 @@ pub async fn stream_turn(
                 Some(sid.clone()),
                 &message,
                 nous_tx,
-                aletheia_nous::handle::DEFAULT_SEND_TIMEOUT,
+                nous::handle::DEFAULT_SEND_TIMEOUT,
             );
             let result = tokio::select! {
                 r = turn_fut => r,
@@ -678,8 +678,8 @@ fn extract_idempotency_key(headers: &axum::http::HeaderMap) -> Result<Option<Str
 ///
 /// Codes and messages identify the failure class without leaking internal
 /// paths, SQL, or provider credentials. See #844 for the security rationale.
-fn turn_error_info(err: &aletheia_nous::error::Error) -> (&'static str, &'static str) {
-    use aletheia_nous::error::Error;
+fn turn_error_info(err: &nous::error::Error) -> (&'static str, &'static str) {
+    use nous::error::Error;
     match err {
         Error::PipelineTimeout { .. } | Error::AskTimeout { .. } => {
             ("turn_timeout", "turn timed out")

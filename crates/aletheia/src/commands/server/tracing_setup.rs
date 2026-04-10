@@ -26,7 +26,7 @@ use crate::error::Result;
 /// (`max_archives = 0`), which produces a net deletion of old log files without
 /// requiring a separate archive housekeeping step.
 pub(super) fn spawn_log_retention(log_dir: PathBuf, retention_days: u32, token: CancellationToken) {
-    use aletheia_oikonomos::maintenance::{TraceRotationConfig, TraceRotator};
+    use oikonomos::maintenance::{TraceRotationConfig, TraceRotator};
 
     let span = tracing::info_span!("log_retention", retention_days, dir = %log_dir.display());
     tokio::spawn(

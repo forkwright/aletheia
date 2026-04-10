@@ -15,7 +15,7 @@ fuzz_target!(|data: &[u8]| {
 
     // 2. ToolCall deserialization: the struct persisted per-turn.
     //    Unexpected types in `input` (Value), missing optional `result`, etc.
-    let _ = serde_json::from_slice::<aletheia_nous::pipeline::ToolCall>(data);
+    let _ = serde_json::from_slice::<nous::pipeline::ToolCall>(data);
 
     // 3. ToolName validation: arbitrary strings against the allowlist regex.
     //    Empty, oversized (>128), unicode, special chars, null bytes.
@@ -41,7 +41,7 @@ fuzz_target!(|data: &[u8]| {
         let Some(rest) = data.get(1..) else { return };
         if let Ok(s) = std::str::from_utf8(rest) {
             let threshold = (b0 % 5).saturating_add(2); // 2..=6
-            let mut detector = aletheia_nous::pipeline::LoopDetector::new(u32::from(threshold));
+            let mut detector = nous::pipeline::LoopDetector::new(u32::from(threshold));
             for chunk in s.as_bytes().chunks(8) {
                 if let Ok(part) = std::str::from_utf8(chunk) {
                     // Ensure split lands on a char boundary to avoid panics
@@ -62,5 +62,5 @@ fuzz_target!(|data: &[u8]| {
     }
 
     // 6. InteractionSignal serde roundtrip: enum variant coverage.
-    let _ = serde_json::from_slice::<aletheia_nous::pipeline::InteractionSignal>(data);
+    let _ = serde_json::from_slice::<nous::pipeline::InteractionSignal>(data);
 });

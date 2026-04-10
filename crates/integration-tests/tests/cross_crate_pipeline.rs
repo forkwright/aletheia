@@ -27,8 +27,8 @@ use hermeneus::test_utils::MockProvider;
 use hermeneus::types::*;
 use koina::secret::SecretString;
 use mneme::store::SessionStore;
-use aletheia_nous::config::{NousConfig, PipelineConfig};
-use aletheia_nous::manager::NousManager;
+use nous::config::{NousConfig, PipelineConfig};
+use nous::manager::NousManager;
 use organon::builtins;
 use organon::registry::ToolRegistry;
 use pylon::router::build_router;
@@ -247,7 +247,7 @@ impl TestHarness {
 
         let nous_config = NousConfig {
             id: Arc::from("test-nous"),
-            generation: aletheia_nous::config::NousGenerationConfig {
+            generation: nous::config::NousGenerationConfig {
                 model: "mock-model".to_owned(),
                 ..Default::default()
             },

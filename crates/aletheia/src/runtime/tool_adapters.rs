@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use agora::types::{ChannelProvider, SendParams};
-use aletheia_nous::cross::{CrossNousMessage, CrossNousRouter};
+use nous::cross::{CrossNousMessage, CrossNousRouter};
 use organon::types::{CrossNousService, MessageService};
 
 pub(crate) struct CrossNousAdapter(pub Arc<CrossNousRouter>);

@@ -90,10 +90,6 @@ name = "aletheia"
 version = "0.14.1"
 dependencies = [
  "agora",
- "aletheia-diaporeia",
- "aletheia-dokimion",
- "aletheia-nous",
- "aletheia-oikonomos",
  "anyhow",
  "assert_cmd",
  "axum 0.8.8",
@@ -101,12 +97,16 @@ dependencies = [
  "clap_complete",
  "cliclack",
  "dianoia",
+ "diaporeia",
+ "dokimion",
  "energeia",
  "hermeneus",
  "indexmap 2.13.1",
  "jiff",
  "koina",
  "mneme",
+ "nous",
+ "oikonomos",
  "organon",
  "owo-colors",
  "predicates",
@@ -134,133 +134,6 @@ dependencies = [
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
-]
-
-[[package]]
-name = "aletheia-diaporeia"
-version = "0.14.1"
-dependencies = [
- "aletheia-nous",
- "axum 0.8.8",
- "base64 0.22.1",
- "hermeneus",
- "http",
- "koina",
- "mneme",
- "organon",
- "rmcp",
- "schemars",
- "serde",
- "serde_json",
- "snafu",
- "symbolon",
- "taxis",
- "tempfile",
- "tokio",
- "tokio-util",
- "tower 0.5.3",
- "tracing",
-]
-
-[[package]]
-name = "aletheia-dokimion"
-version = "0.14.1"
-dependencies = [
- "koina",
- "organon",
- "owo-colors",
- "regex",
- "reqwest 0.13.2",
- "serde",
- "serde_json",
- "snafu",
- "supports-color",
- "tokio",
- "tracing",
- "wiremock",
-]
-
-[[package]]
-name = "aletheia-integration-tests"
-version = "0.14.1"
-dependencies = [
- "aletheia-dokimion",
- "aletheia-nous",
- "axum 0.8.8",
- "hermeneus",
- "jiff",
- "koina",
- "mneme",
- "organon",
- "pylon",
- "reqwest 0.13.2",
- "serde_json",
- "symbolon",
- "taxis",
- "tempfile",
- "thesauros",
- "tokio",
- "tokio-util",
- "tower 0.5.3",
- "tracing",
-]
-
-[[package]]
-name = "aletheia-nous"
-version = "0.14.1"
-dependencies = [
- "criterion",
- "dianoia",
- "hermeneus",
- "indexmap 2.13.1",
- "jiff",
- "koina",
- "melete",
- "mneme",
- "organon",
- "prometheus",
- "proptest",
- "rusqlite",
- "serde",
- "serde_json",
- "snafu",
- "taxis",
- "tempfile",
- "thesauros",
- "tokio",
- "tokio-util",
- "toml 1.1.2+spec-1.1.0",
- "tracing",
-]
-
-[[package]]
-name = "aletheia-oikonomos"
-version = "0.14.1"
-dependencies = [
- "axum 0.8.8",
- "episteme",
- "flate2",
- "jiff",
- "koina",
- "notify",
- "prometheus",
- "rusqlite",
- "rustix 1.1.4",
- "serde",
- "serde_json",
- "snafu",
- "tempfile",
- "tokio",
- "tokio-util",
- "toml 1.1.2+spec-1.1.0",
- "tracing",
-]
-
-[[package]]
-name = "aletheia-theatron"
-version = "0.14.1"
-dependencies = [
- "theatron-core",
 ]
 
 [[package]]
@@ -1657,6 +1530,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "diaporeia"
+version = "0.14.1"
+dependencies = [
+ "axum 0.8.8",
+ "base64 0.22.1",
+ "hermeneus",
+ "http",
+ "koina",
+ "mneme",
+ "nous",
+ "organon",
+ "rmcp",
+ "schemars",
+ "serde",
+ "serde_json",
+ "snafu",
+ "symbolon",
+ "taxis",
+ "tempfile",
+ "tokio",
+ "tokio-util",
+ "tower 0.5.3",
+ "tracing",
+]
+
+[[package]]
 name = "difflib"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1733,6 +1632,24 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d4b8a88685455ed29a21542a33abd9cb6510b6b129abadabdcef0f4c55bc8f61"
 dependencies = [
  "litrs",
+]
+
+[[package]]
+name = "dokimion"
+version = "0.14.1"
+dependencies = [
+ "koina",
+ "organon",
+ "owo-colors",
+ "regex",
+ "reqwest 0.13.2",
+ "serde",
+ "serde_json",
+ "snafu",
+ "supports-color",
+ "tokio",
+ "tracing",
+ "wiremock",
 ]
 
 [[package]]
@@ -3034,6 +2951,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "integration-tests"
+version = "0.14.1"
+dependencies = [
+ "axum 0.8.8",
+ "dokimion",
+ "hermeneus",
+ "jiff",
+ "koina",
+ "mneme",
+ "nous",
+ "organon",
+ "pylon",
+ "reqwest 0.13.2",
+ "serde_json",
+ "symbolon",
+ "taxis",
+ "tempfile",
+ "thesauros",
+ "tokio",
+ "tokio-util",
+ "tower 0.5.3",
+ "tracing",
+]
+
+[[package]]
 name = "interval-heap"
 version = "0.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3758,6 +3700,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "nous"
+version = "0.14.1"
+dependencies = [
+ "criterion",
+ "dianoia",
+ "hermeneus",
+ "indexmap 2.13.1",
+ "jiff",
+ "koina",
+ "melete",
+ "mneme",
+ "organon",
+ "prometheus",
+ "proptest",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "snafu",
+ "taxis",
+ "tempfile",
+ "thesauros",
+ "tokio",
+ "tokio-util",
+ "toml 1.1.2+spec-1.1.0",
+ "tracing",
+]
+
+[[package]]
 name = "nu-ansi-term"
 version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3921,6 +3891,29 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "12f40cff3dde1b6087cc5d5f5d4d65712f34016a03ed60e9c08dcc392736b5b7"
 dependencies = [
  "asn1-rs",
+]
+
+[[package]]
+name = "oikonomos"
+version = "0.14.1"
+dependencies = [
+ "axum 0.8.8",
+ "episteme",
+ "flate2",
+ "jiff",
+ "koina",
+ "notify",
+ "prometheus",
+ "rusqlite",
+ "rustix 1.1.4",
+ "serde",
+ "serde_json",
+ "snafu",
+ "tempfile",
+ "tokio",
+ "tokio-util",
+ "toml 1.1.2+spec-1.1.0",
+ "tracing",
 ]
 
 [[package]]
@@ -4601,7 +4594,6 @@ checksum = "b5a041e753da8b807c9255f28de81879c78c876392ff2469cde94799b2896b9d"
 name = "pylon"
 version = "0.14.1"
 dependencies = [
- "aletheia-nous",
  "axum 0.8.8",
  "axum-server",
  "hermeneus",
@@ -4609,6 +4601,7 @@ dependencies = [
  "jiff",
  "koina",
  "mneme",
+ "nous",
  "organon",
  "prometheus",
  "rand 0.9.2",
@@ -6156,6 +6149,13 @@ dependencies = [
  "smawk",
  "unicode-linebreak",
  "unicode-width",
+]
+
+[[package]]
+name = "theatron"
+version = "0.14.1"
+dependencies = [
+ "theatron-core",
 ]
 
 [[package]]

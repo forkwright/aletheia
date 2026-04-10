@@ -252,7 +252,7 @@ mod tests {
         )]
         fn assert_nous_state_fields(state: &NousState) {
             use std::sync::Arc;
-            use aletheia_nous::manager::NousManager;
+            use nous::manager::NousManager;
             use organon::registry::ToolRegistry;
 
             let _: &Arc<NousManager> = &state.nous_manager;

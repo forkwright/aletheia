@@ -13,8 +13,8 @@ use tracing::{info, warn};
 
 use hermeneus::provider::ProviderRegistry;
 use mneme::store::SessionStore;
-use aletheia_nous::config::{NousConfig, PipelineConfig};
-use aletheia_nous::manager::NousManager;
+use nous::config::{NousConfig, PipelineConfig};
+use nous::manager::NousManager;
 use organon::registry::ToolRegistry;
 use symbolon::jwt::{JwtConfig, JwtManager};
 use taxis::config::AletheiaConfig;

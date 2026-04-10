@@ -28,7 +28,7 @@ use tokio::sync::Mutex;
 use koina::id::ToolName;
 use koina::id::{NousId, SessionId};
 use mneme::store::SessionStore;
-use aletheia_nous::adapters::{SessionBlackboardAdapter, SessionNoteAdapter};
+use nous::adapters::{SessionBlackboardAdapter, SessionNoteAdapter};
 use organon::builtins;
 use organon::error::KnowledgeAdapterError;
 use organon::registry::ToolRegistry;

@@ -1,5 +1,5 @@
 [package]
-name = "aletheia-nous"
+name = "nous"
 version.workspace = true
 description = "Agent session pipeline — bootstrap, routing, tool execution"
 edition.workspace = true

@@ -10,7 +10,7 @@ use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
 use mneme::store::SessionStore;
-use aletheia_nous::manager::NousManager;
+use nous::manager::NousManager;
 use organon::registry::ToolRegistry;
 use symbolon::jwt::JwtManager;
 use taxis::config::AletheiaConfig;

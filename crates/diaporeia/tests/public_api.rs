@@ -38,16 +38,16 @@ use tokio::sync::{Mutex as TokioMutex, RwLock};
 use tokio_util::sync::CancellationToken;
 use tower::ServiceExt;
 
-use aletheia_diaporeia::auth::McpClaims;
-use aletheia_diaporeia::error::{Error, Result as DiaporeiaResult};
-use aletheia_diaporeia::server::DiaporeiaServer;
-use aletheia_diaporeia::state::DiaporeiaState;
-use aletheia_diaporeia::transport::streamable_http_router;
+use diaporeia::auth::McpClaims;
+use diaporeia::error::{Error, Result as DiaporeiaResult};
+use diaporeia::server::DiaporeiaServer;
+use diaporeia::state::DiaporeiaState;
+use diaporeia::transport::streamable_http_router;
 
 use hermeneus::provider::ProviderRegistry;
 use koina::secret::SecretString;
 use mneme::store::SessionStore;
-use aletheia_nous::manager::NousManager;
+use nous::manager::NousManager;
 use organon::registry::ToolRegistry;
 use symbolon::jwt::{JwtConfig, JwtManager};
 use symbolon::types::Role;

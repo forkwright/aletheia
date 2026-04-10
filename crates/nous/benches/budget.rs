@@ -11,7 +11,7 @@ use std::hint::black_box;
 
 use criterion::{Criterion, criterion_group, criterion_main};
 
-use aletheia_nous::budget::{CharEstimator, TokenBudget, TokenEstimator};
+use nous::budget::{CharEstimator, TokenBudget, TokenEstimator};
 
 const SHORT_TEXT: &str = "Hello, world!";
 const MEDIUM_TEXT: &str = "The quick brown fox jumps over the lazy dog. \

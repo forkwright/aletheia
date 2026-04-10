@@ -11,7 +11,7 @@ use hermeneus::provider::ProviderRegistry;
 #[cfg(feature = "knowledge-store")]
 use mneme::knowledge_store::KnowledgeStore;
 use mneme::store::SessionStore;
-use aletheia_nous::manager::NousManager;
+use nous::manager::NousManager;
 use organon::registry::ToolRegistry;
 use symbolon::jwt::JwtManager;
 use taxis::config::AletheiaConfig;
