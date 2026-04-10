@@ -1,5 +1,6 @@
 //! Health check endpoint.
 
+use aletheia_koina::system::{Environment, RealSystem};
 use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
@@ -214,13 +215,10 @@ const EXPIRY_WARNING_THRESHOLD: u64 = 3600;
 /// Check credential validity (presence and expiry).
 fn check_credential_validity(state: &HealthState) -> HealthCheck {
     // Check for API key in environment
-    let env_key = match std::env::var("ANTHROPIC_API_KEY") {
-        Ok(key) => Some(key),
-        Err(e) => {
-            tracing::debug!(error = %e, "ANTHROPIC_API_KEY not set or unreadable");
-            None
-        }
-    };
+    let env_key = RealSystem.var("ANTHROPIC_API_KEY").or_else(|| {
+        tracing::debug!("ANTHROPIC_API_KEY not set");
+        None
+    });
 
     if let Some(key) = env_key {
         if key.is_empty() {
