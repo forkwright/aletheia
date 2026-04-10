@@ -77,7 +77,7 @@ pub enum DistillSection {
 impl DistillSection {
     /// Markdown heading for this section.
     #[must_use]
-    pub(crate) fn heading(&self) -> String {
+    pub fn heading(&self) -> String {
         match self {
             Self::Summary => "## Summary".to_owned(),
             Self::TaskContext => "## Task Context".to_owned(),
@@ -92,7 +92,7 @@ impl DistillSection {
 
     /// Description text for this section (used in the system prompt).
     #[must_use]
-    pub(crate) fn description(&self) -> &str {
+    pub fn description(&self) -> &str {
         match self {
             Self::Summary => "One sentence describing what this conversation is about.",
             Self::TaskContext => {
@@ -125,7 +125,7 @@ impl DistillSection {
 
     /// All standard sections in default order.
     #[must_use]
-    pub(crate) fn all_standard() -> Vec<Self> {
+    pub fn all_standard() -> Vec<Self> {
         vec![
             Self::Summary,
             Self::TaskContext,
@@ -248,7 +248,7 @@ impl DistillEngine {
     /// Call once at the start of each conversation turn, before calling
     /// [`should_distill`][Self::should_distill]. Returns `true` if the engine is
     /// still in a backoff period and distillation should be skipped this turn.
-    pub(crate) fn tick_turn(&self) -> bool {
+    pub fn tick_turn(&self) -> bool {
         let mut state = self.lock_retry_state();
         if state.turns_to_skip > 0 {
             state.turns_to_skip -= 1;
@@ -264,7 +264,7 @@ impl DistillEngine {
     /// Returns `true` if the engine is in an active backoff period.
     ///
     /// Does not advance state. Use `tick_turn` to advance.
-    pub(crate) fn in_backoff(&self) -> bool {
+    pub fn in_backoff(&self) -> bool {
         self.lock_retry_state().turns_to_skip > 0
     }
 
@@ -277,7 +277,7 @@ impl DistillEngine {
     /// Returns true when message count meets the minimum (accounting for
     /// verbatim tail) AND the token estimate exceeds the threshold ratio
     /// of the context window.
-    pub(crate) fn should_distill(
+    pub fn should_distill(
         &self,
         message_count: usize,
         token_estimate: u64,
@@ -499,7 +499,7 @@ impl DistillEngine {
         expect(dead_code, reason = "test-only query API for distillation engine")
     )]
     /// Access the engine configuration.
-    pub(crate) fn config(&self) -> &DistillConfig {
+    pub fn config(&self) -> &DistillConfig {
         &self.config
     }
 }

@@ -58,7 +58,7 @@ impl MemoryFlush {
             reason = "test-only constructor, production path not yet wired"
         )
     )]
-    pub(crate) fn empty() -> Self {
+    pub fn empty() -> Self {
         Self {
             decisions: vec![],
             corrections: vec![],
@@ -73,7 +73,7 @@ impl MemoryFlush {
         not(test),
         expect(dead_code, reason = "test-only query, production path not yet wired")
     )]
-    pub(crate) fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.decisions.is_empty()
             && self.corrections.is_empty()
             && self.facts.is_empty()
@@ -89,7 +89,7 @@ impl MemoryFlush {
             reason = "test-only renderer, production path not yet wired"
         )
     )]
-    pub(crate) fn to_markdown(&self) -> String {
+    pub fn to_markdown(&self) -> String {
         let mut out = String::new();
 
         write_section(&mut out, "Decisions", &self.decisions);
