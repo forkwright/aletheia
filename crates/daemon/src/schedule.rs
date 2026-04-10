@@ -143,7 +143,7 @@ impl Schedule {
     ///
     /// O(1) for interval and once schedules. O(c) for cron schedules where c
     /// is the complexity of parsing the cron expression.
-    pub fn next_run(&self) -> Result<Option<jiff::Timestamp>> {
+    pub(crate) fn next_run(&self) -> Result<Option<jiff::Timestamp>> {
         match self {
             Self::Cron(expr) => {
                 let parsed = crate::cron_expr::CronExpr::parse(expr)?;
@@ -177,7 +177,7 @@ impl Schedule {
     /// # Complexity
     ///
     /// O(c) where c is the complexity of parsing the cron expression.
-    pub fn missed_since(&self, last_run: jiff::Timestamp) -> Result<bool> {
+    pub(crate) fn missed_since(&self, last_run: jiff::Timestamp) -> Result<bool> {
         let Self::Cron(expr) = self else {
             return Ok(false);
         };
@@ -202,7 +202,7 @@ impl Schedule {
     /// Check if the current time is within the active window.
     ///
     /// `None` window means always active. Handles overnight windows (e.g., 22-06).
-    pub fn in_window(window: Option<(u8, u8)>) -> bool {
+    pub(crate) fn in_window(window: Option<(u8, u8)>) -> bool {
         let Some((start, end)) = window else {
             return true;
         };
