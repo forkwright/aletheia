@@ -189,7 +189,11 @@ pub struct GradeInputs {
 /// - C: multiple resumes or fixes
 /// - F: stuck or failed
 #[must_use]
-pub fn compute_grade(inputs: GradeInputs) -> Grade {
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "scoring helper exercised from tests; steward wiring lands with dispatch reporter")
+)]
+pub(crate) fn compute_grade(inputs: GradeInputs) -> Grade {
     if inputs.has_failure {
         return Grade::F;
     }

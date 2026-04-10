@@ -146,7 +146,11 @@ impl EvalDataset {
 
     /// Number of queries in this dataset.
     #[must_use]
-    pub fn len(&self) -> usize {
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "symmetry with is_empty; exercised from tests")
+    )]
+    pub(crate) fn len(&self) -> usize {
         self.queries.len()
     }
 
