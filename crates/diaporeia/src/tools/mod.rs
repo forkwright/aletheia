@@ -11,8 +11,8 @@ use rmcp::service::RequestContext;
 use rmcp::{tool, tool_router};
 use snafu::{OptionExt as _, ResultExt as _};
 
-use aletheia_koina::http::BEARER_PREFIX;
-use aletheia_koina::id::SessionId;
+use koina::http::BEARER_PREFIX;
+use koina::id::SessionId;
 use aletheia_symbolon::types::Role;
 
 use crate::error::{NousNotFoundSnafu, PipelineSnafu, SerializationSnafu, SessionStoreSnafu};

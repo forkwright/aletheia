@@ -17,7 +17,7 @@
 // --- SecretString ---
 
 mod secret_string {
-    use aletheia_koina::secret::SecretString;
+    use koina::secret::SecretString;
 
     #[test]
     fn from_string_round_trips_via_expose_secret() {
@@ -80,7 +80,7 @@ mod secret_string {
 // --- Ulid ---
 
 mod ulid {
-    use aletheia_koina::ulid::Ulid;
+    use koina::ulid::Ulid;
 
     #[test]
     fn new_produces_unique_ids() {
@@ -135,7 +135,7 @@ mod ulid {
 // --- Uuid ---
 
 mod uuid {
-    use aletheia_koina::uuid::{Uuid, uuid_v4};
+    use koina::uuid::{Uuid, uuid_v4};
 
     #[test]
     fn new_v4_produces_unique_ids() {
@@ -201,7 +201,7 @@ mod uuid {
 // --- HTTP constants ---
 
 mod http_constants {
-    use aletheia_koina::http::{API_HEALTH, API_V1, BEARER_PREFIX, CONTENT_TYPE_JSON};
+    use koina::http::{API_HEALTH, API_V1, BEARER_PREFIX, CONTENT_TYPE_JSON};
 
     #[test]
     fn api_v1_starts_with_slash() {

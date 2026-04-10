@@ -9,7 +9,7 @@
 //!
 //! ```ignore
 //! // NOTE: CleanupGuard is pub(crate); use it directly within aletheia-koina
-//! use aletheia_koina::cleanup::CleanupGuard;
+//! use koina::cleanup::CleanupGuard;
 //!
 //! let temp_file = "/tmp/example.lock";
 //! // Register cleanup immediately after acquiring the resource.
@@ -85,7 +85,7 @@ impl<F: FnOnce()> Drop for CleanupGuard<F> {
 /// # Example
 ///
 /// ```
-/// use aletheia_koina::cleanup::CleanupRegistry;
+/// use koina::cleanup::CleanupRegistry;
 /// use std::sync::Arc;
 /// use std::sync::atomic::{AtomicU32, Ordering};
 ///

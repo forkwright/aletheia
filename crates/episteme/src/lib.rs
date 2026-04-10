@@ -9,9 +9,9 @@
 pub use aletheia_krites as engine;
 
 /// Newtype wrappers for knowledge-domain identifiers (re-exported from `eidos`).
-pub use aletheia_eidos::id;
+pub use eidos::id;
 /// Knowledge graph domain types (re-exported from `eidos`).
-pub use aletheia_eidos::knowledge;
+pub use eidos::knowledge;
 /// Error types (re-exported from `graphe`).
 pub use aletheia_graphe::error;
 

@@ -21,7 +21,7 @@ test-full = ["test-core"]
 
 [dev-dependencies]
 aletheia-dokimion = { path = "../eval" }
-aletheia-koina = { path = "../koina", features = ["test-support"] }
+koina = { path = "../koina", features = ["test-support"] }
 aletheia-taxis = { path = "../taxis" }
 aletheia-mneme = { path = "../mneme", default-features = false, features = [
     "test-support",
@@ -29,7 +29,7 @@ aletheia-mneme = { path = "../mneme", default-features = false, features = [
 aletheia-hermeneus = { path = "../hermeneus", features = ["test-utils"] }
 aletheia-nous = { path = "../nous" }
 aletheia-organon = { path = "../organon", features = ["test-support"] }
-aletheia-thesauros = { path = "../thesauros" }
+thesauros = { path = "../thesauros" }
 aletheia-pylon = { path = "../pylon" }
 aletheia-symbolon = { path = "../symbolon" }
 jiff = { workspace = true }

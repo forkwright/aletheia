@@ -25,8 +25,8 @@ use std::sync::{Arc, RwLock};
 
 use tokio::sync::Mutex;
 
-use aletheia_koina::id::ToolName;
-use aletheia_koina::id::{NousId, SessionId};
+use koina::id::ToolName;
+use koina::id::{NousId, SessionId};
 use aletheia_mneme::store::SessionStore;
 use aletheia_nous::adapters::{SessionBlackboardAdapter, SessionNoteAdapter};
 use aletheia_organon::builtins;

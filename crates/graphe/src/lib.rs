@@ -5,9 +5,9 @@
 //! tracking, and agent portability via embedded `SQLite`.
 
 /// Newtype wrappers for knowledge-domain identifiers (re-exported from `eidos`).
-pub use aletheia_eidos::id;
+pub use eidos::id;
 /// Knowledge graph domain types (re-exported from `eidos`).
-pub use aletheia_eidos::knowledge;
+pub use eidos::knowledge;
 
 /// Database backup and JSON export for session data.
 #[cfg(feature = "sqlite")]

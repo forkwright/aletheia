@@ -3,7 +3,7 @@
 use std::collections::HashSet;
 use std::sync::{Arc, RwLock};
 
-use aletheia_koina::id::{NousId, SessionId};
+use koina::id::{NousId, SessionId};
 
 use super::super::*;
 

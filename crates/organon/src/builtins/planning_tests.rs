@@ -9,7 +9,7 @@ mod mock;
 
 use std::sync::Arc;
 
-use aletheia_koina::id::ToolName;
+use koina::id::ToolName;
 
 use mock::{MockPlanning, test_ctx, test_ctx_with_planning};
 

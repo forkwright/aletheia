@@ -73,7 +73,7 @@ impl ProjectWorkspace {
     pub fn save_project(&self, project: &Project) -> Result<()> {
         let layout = self.layout();
         let json = serde_json::to_string_pretty(project).context(error::WorkspaceSerializeSnafu)?;
-        aletheia_koina::fs::write_restricted(&layout.project_file, json.as_bytes()).context(
+        koina::fs::write_restricted(&layout.project_file, json.as_bytes()).context(
             error::WorkspaceIoSnafu {
                 path: &layout.project_file,
             },
@@ -117,7 +117,7 @@ impl ProjectWorkspace {
             "# Blocker: `{}`\n\nPlan: `{}`\nDetected: {}\n\n{}\n",
             blocker.plan_id, blocker.plan_id, blocker.detected_at, blocker.description
         );
-        aletheia_koina::fs::write_restricted(&path, content.as_bytes())
+        koina::fs::write_restricted(&path, content.as_bytes())
             .context(error::WorkspaceIoSnafu { path: &path })?;
         Ok(())
     }
@@ -153,8 +153,8 @@ impl ProjectWorkspace {
                 blockers.push(Blocker {
                     description: content,
                     plan_id: plan_id_str
-                        .parse::<aletheia_koina::ulid::Ulid>()
-                        .unwrap_or_else(|_| aletheia_koina::ulid::Ulid::new()),
+                        .parse::<koina::ulid::Ulid>()
+                        .unwrap_or_else(|_| koina::ulid::Ulid::new()),
                     detected_at: jiff::Timestamp::now(),
                 });
             }
@@ -215,7 +215,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let ws = ProjectWorkspace::create(dir.path().join("project")).unwrap();
 
-        let plan_id = aletheia_koina::ulid::Ulid::new();
+        let plan_id = koina::ulid::Ulid::new();
         let blocker = Blocker {
             description: "blocked on API design".into(),
             plan_id,
@@ -260,8 +260,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let ws = ProjectWorkspace::create(dir.path().join("project")).unwrap();
 
-        let plan_id_1 = aletheia_koina::ulid::Ulid::new();
-        let plan_id_2 = aletheia_koina::ulid::Ulid::new();
+        let plan_id_1 = koina::ulid::Ulid::new();
+        let plan_id_2 = koina::ulid::Ulid::new();
 
         let first_blocker = Blocker {
             description: "first blocker".into(),

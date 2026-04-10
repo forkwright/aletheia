@@ -8,8 +8,8 @@ use figment::providers::{Env, Format, Serialized, Toml};
 use snafu::ResultExt;
 use tracing::{error, warn};
 
-use aletheia_koina::disk_space::{DiskSpaceMonitor, DiskStatus};
-use aletheia_koina::system::{FileSystem, RealSystem};
+use koina::disk_space::{DiskSpaceMonitor, DiskStatus};
+use koina::system::{FileSystem, RealSystem};
 
 use crate::config::AletheiaConfig;
 use crate::encrypt;
@@ -30,7 +30,7 @@ use crate::oikos::Oikos;
 /// encrypted values pass through unchanged with a warning.
 ///
 /// Call [`load_config_with`] to supply a custom [`FileSystem`] implementation
-/// (e.g. `aletheia_koina::system::TestSystem` in tests).
+/// (e.g. `koina::system::TestSystem` in tests).
 ///
 /// # Errors
 ///
@@ -392,7 +392,7 @@ mod tests {
     #[test]
     fn load_config_with_uses_in_memory_toml() {
         figment::Jail::expect_with(|jail| {
-            use aletheia_koina::system::TestSystem;
+            use koina::system::TestSystem;
 
             let oikos = Oikos::from_root(jail.directory());
             let toml_path = oikos.config().join("aletheia.toml");
@@ -412,7 +412,7 @@ mod tests {
     #[test]
     fn load_config_with_uses_defaults_when_no_toml() {
         figment::Jail::expect_with(|_jail| {
-            use aletheia_koina::system::TestSystem;
+            use koina::system::TestSystem;
 
             let oikos = Oikos::from_root("/nonexistent");
             let fs = TestSystem::new(); // empty — no files
@@ -433,7 +433,7 @@ mod tests {
     #[test]
     fn load_config_with_merges_env_over_toml() {
         figment::Jail::expect_with(|jail| {
-            use aletheia_koina::system::TestSystem;
+            use koina::system::TestSystem;
 
             jail.set_env("ALETHEIA_GATEWAY__PORT", "5555");
 

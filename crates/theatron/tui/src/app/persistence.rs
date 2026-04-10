@@ -33,7 +33,7 @@ pub(crate) fn save_command_history(config: &Config, history: &[String]) {
         None => return,
     };
     let content: String = history.iter().map(|s| format!("{s}\n")).collect();
-    let _ = aletheia_koina::fs::write_restricted(&path, content.as_bytes());
+    let _ = koina::fs::write_restricted(&path, content.as_bytes());
 }
 
 fn session_state_file_path(config: &Config) -> Option<std::path::PathBuf> {
@@ -82,7 +82,7 @@ pub(crate) fn save_session_state(config: &Config, sessions: &HashMap<NousId, Ses
         .iter()
         .map(|(agent, session)| format!("{agent}:{session}\n"))
         .collect();
-    let _ = aletheia_koina::fs::write_restricted(&path, content.as_bytes());
+    let _ = koina::fs::write_restricted(&path, content.as_bytes());
 }
 
 /// Resolve the root directory for export files.

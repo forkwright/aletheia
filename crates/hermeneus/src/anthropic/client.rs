@@ -11,8 +11,8 @@ use reqwest::header::{HeaderMap, HeaderValue};
 use snafu::ResultExt;
 use tracing::{Instrument as _, info, info_span};
 
-use aletheia_koina::credential::{CredentialProvider, CredentialSource};
-use aletheia_koina::secret::SecretString;
+use koina::credential::{CredentialProvider, CredentialSource};
+use koina::secret::SecretString;
 
 use crate::error::{self, Result};
 use crate::health::{HealthConfig, ProviderHealthTracker};
@@ -46,8 +46,8 @@ struct StaticCredentialProvider {
 }
 
 impl CredentialProvider for StaticCredentialProvider {
-    fn get_credential(&self) -> Option<aletheia_koina::credential::Credential> {
-        Some(aletheia_koina::credential::Credential {
+    fn get_credential(&self) -> Option<koina::credential::Credential> {
+        Some(koina::credential::Credential {
             secret: self.key.clone(),
             source: CredentialSource::Environment,
         })
@@ -611,7 +611,7 @@ impl AnthropicProvider {
                 );
                 headers.insert(
                     "x-client-request-id",
-                    HeaderValue::from_str(&aletheia_koina::uuid::uuid_v4()).map_err(|_e| {
+                    HeaderValue::from_str(&koina::uuid::uuid_v4()).map_err(|_e| {
                         error::AuthFailedSnafu {
                             message: "request id contains invalid characters".to_owned(),
                         }
@@ -698,7 +698,7 @@ impl AnthropicProvider {
 
         // WHY: Reuse the same idempotency key across retries so the server
         // deduplicates if our first request actually succeeded but we timed out.
-        let idempotency_key = aletheia_koina::uuid::uuid_v4();
+        let idempotency_key = koina::uuid::uuid_v4();
 
         for attempt in 0..=self.max_retries {
             if attempt > 0 {

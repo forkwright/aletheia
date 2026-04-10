@@ -437,7 +437,7 @@ impl Watchdog {
 
 /// Compute exponential backoff delay for watchdog restarts.
 ///
-/// Delegates to [`aletheia_koina::retry::BackoffStrategy::Exponential`] with
+/// Delegates to [`koina::retry::BackoffStrategy::Exponential`] with
 /// base=2s, factor=2, cap=300s.
 ///
 /// - attempt 1: 2s
@@ -446,7 +446,7 @@ impl Watchdog {
 /// - attempt 4: 16s
 /// - attempt 5+: capped at 300s (5 min)
 pub(crate) fn watchdog_backoff(attempt: u32) -> Duration {
-    use aletheia_koina::retry::BackoffStrategy;
+    use koina::retry::BackoffStrategy;
     let strategy = BackoffStrategy::Exponential {
         base: BACKOFF_BASE,
         factor: 2,

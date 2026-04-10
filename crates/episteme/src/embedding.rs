@@ -436,7 +436,7 @@ pub struct EmbeddingConfig {
     /// Output dimension (auto-detected from model if not set).
     pub dimension: Option<usize>,
     /// API key (for cloud providers).
-    pub api_key: Option<aletheia_koina::secret::SecretString>,
+    pub api_key: Option<koina::secret::SecretString>,
 }
 
 impl Default for EmbeddingConfig {

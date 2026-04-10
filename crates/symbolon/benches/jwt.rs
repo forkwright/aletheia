@@ -13,7 +13,7 @@ use std::time::Duration;
 
 use criterion::{Criterion, criterion_group, criterion_main};
 
-use aletheia_koina::secret::SecretString;
+use koina::secret::SecretString;
 use aletheia_symbolon::jwt::{JwtConfig, JwtManager};
 use aletheia_symbolon::types::Role;
 

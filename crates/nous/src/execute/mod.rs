@@ -17,7 +17,7 @@ use aletheia_hermeneus::types::{
     CompletionRequest, Content, ContentBlock, Message, Role, ServerToolDefinition, StopReason,
     ThinkingConfig, ToolResultContent,
 };
-use aletheia_koina::id::ToolName;
+use koina::id::ToolName;
 use aletheia_organon::registry::ToolRegistry;
 use aletheia_organon::types::ToolContext;
 

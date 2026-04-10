@@ -13,14 +13,14 @@ use aletheia_hermeneus::provider::{LlmProvider, ProviderRegistry};
 use aletheia_hermeneus::types::{
     CompletionRequest, CompletionResponse, ContentBlock, StopReason, Usage,
 };
-use aletheia_koina::id::ToolName;
+use koina::id::ToolName;
 use aletheia_nous::config::{NousConfig, PipelineConfig};
 use aletheia_nous::manager::NousManager;
 use aletheia_organon::registry::ToolRegistry;
 use aletheia_organon::types::ToolCategory;
 use aletheia_taxis::oikos::Oikos;
-use aletheia_thesauros::loader::load_packs;
-use aletheia_thesauros::tools::register_pack_tools;
+use thesauros::loader::load_packs;
+use thesauros::tools::register_pack_tools;
 
 // --- Test infrastructure ---
 

@@ -1,4 +1,4 @@
-use aletheia_koina::system::{Environment, RealSystem};
+use koina::system::{Environment, RealSystem};
 
 /// Copy text to the system clipboard.
 /// Tries arboard (native) first, falls back to OSC52 escape sequence.

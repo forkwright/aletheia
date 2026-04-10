@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 
-use aletheia_koina::secret::SecretString;
+use koina::secret::SecretString;
 
 use crate::anthropic::StreamEvent;
 use crate::error::{self, Result};

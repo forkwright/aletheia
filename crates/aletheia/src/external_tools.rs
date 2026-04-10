@@ -17,7 +17,7 @@ use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 
-use aletheia_koina::id::ToolName;
+use koina::id::ToolName;
 use aletheia_organon::registry::{ToolExecutor, ToolRegistry};
 use aletheia_organon::types::{
     InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,

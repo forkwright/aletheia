@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 pub use aletheia_hermeneus::types::{
     DocumentSource, ImageSource, ToolResultBlock, ToolResultContent,
 };
-use aletheia_koina::id::ToolName;
+use koina::id::ToolName;
 
 /// Tool definition: the rich metadata that organon tracks internally.
 ///

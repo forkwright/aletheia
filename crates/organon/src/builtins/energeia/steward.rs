@@ -9,7 +9,7 @@ use std::pin::Pin;
 use indexmap::IndexMap;
 
 use aletheia_energeia::steward::service::{StewardConfig, run_once};
-use aletheia_koina::id::ToolName;
+use koina::id::ToolName;
 
 use crate::error::Result;
 use crate::registry::ToolExecutor;

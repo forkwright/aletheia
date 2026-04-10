@@ -47,7 +47,7 @@ pub(super) fn set_permissions(_path: &Path, _mode: u32) -> Result<(), InitError>
     reason = "test: indices are valid after asserting len"
 )]
 mod tests {
-    use aletheia_koina::secret::SecretString;
+    use koina::secret::SecretString;
 
     use super::super::scaffold::render_config;
     use super::super::scaffold::scaffold;
@@ -84,7 +84,7 @@ mod tests {
                 .and_then(|v| v.get("model"))
                 .and_then(|v| v.get("primary"))
                 .and_then(toml::Value::as_str),
-            Some(aletheia_koina::defaults::DEFAULT_MODEL_SHORT)
+            Some(koina::defaults::DEFAULT_MODEL_SHORT)
         );
         let list = agents
             .get("list")
@@ -208,7 +208,7 @@ mod tests {
         );
         assert_eq!(
             config["agents"]["defaults"]["model"]["primary"].as_str(),
-            Some(aletheia_koina::defaults::DEFAULT_MODEL_SHORT),
+            Some(koina::defaults::DEFAULT_MODEL_SHORT),
             "default model should be claude-sonnet-4-6"
         );
     }

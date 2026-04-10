@@ -14,8 +14,8 @@
 use criterion::{Criterion, criterion_group, criterion_main};
 use std::hint::black_box;
 
-use aletheia_koina::ulid::Ulid;
-use aletheia_koina::uuid::{Uuid, uuid_v4};
+use koina::ulid::Ulid;
+use koina::uuid::{Uuid, uuid_v4};
 
 fn ulid_new(c: &mut Criterion) {
     c.bench_function("ulid_new", |b| {

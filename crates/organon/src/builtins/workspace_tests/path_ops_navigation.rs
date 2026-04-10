@@ -4,7 +4,7 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 
-use aletheia_koina::id::{NousId, SessionId};
+use koina::id::{NousId, SessionId};
 
 use super::super::*;
 
@@ -205,7 +205,7 @@ async fn test_exec_output_format_includes_exit_then_stdout_then_stderr() {
 #[test]
 fn test_validate_path_empty_string_returns_error() {
     let dir = tempfile::tempdir().expect("create temp dir");
-    let name = aletheia_koina::id::ToolName::new("read").expect("valid");
+    let name = koina::id::ToolName::new("read").expect("valid");
     let ctx = test_ctx(dir.path());
     let err = validate_path("", &ctx, &name).expect_err("empty path should fail");
     assert!(
@@ -249,8 +249,8 @@ fn test_validate_path_tilde_expands_to_home_before_resolution() {
     if let Ok(home) = std::env::var("HOME") {
         let home_path = std::path::PathBuf::from(&home);
         let ctx = ToolContext {
-            nous_id: aletheia_koina::id::NousId::new("test-agent").expect("valid"),
-            session_id: aletheia_koina::id::SessionId::new(),
+            nous_id: koina::id::NousId::new("test-agent").expect("valid"),
+            session_id: koina::id::SessionId::new(),
             workspace: home_path.clone(),
             allowed_roots: vec![home_path.clone()],
             services: None,
@@ -258,7 +258,7 @@ fn test_validate_path_tilde_expands_to_home_before_resolution() {
                 std::collections::HashSet::new(),
             )),
         };
-        let name = aletheia_koina::id::ToolName::new("read").expect("valid");
+        let name = koina::id::ToolName::new("read").expect("valid");
 
         let resolved = validate_path("~/file.txt", &ctx, &name).expect("tilde path should resolve");
         assert!(
@@ -272,7 +272,7 @@ fn test_validate_path_tilde_expands_to_home_before_resolution() {
 #[test]
 fn test_validate_path_relative_resolves_inside_workspace() {
     let dir = tempfile::tempdir().expect("create temp dir");
-    let name = aletheia_koina::id::ToolName::new("read").expect("valid");
+    let name = koina::id::ToolName::new("read").expect("valid");
     let ctx = test_ctx(dir.path());
     let resolved = validate_path("sub/file.txt", &ctx, &name).expect("valid relative path");
     assert!(
@@ -288,7 +288,7 @@ fn test_validate_path_relative_resolves_inside_workspace() {
 #[test]
 fn test_validate_path_rejects_absolute_outside_allowed_roots() {
     let dir = tempfile::tempdir().expect("create temp dir");
-    let name = aletheia_koina::id::ToolName::new("read").expect("valid");
+    let name = koina::id::ToolName::new("read").expect("valid");
     let ctx = test_ctx(dir.path());
     let err = validate_path("/etc/shadow", &ctx, &name).expect_err("outside roots");
     assert!(
@@ -345,7 +345,7 @@ fn test_validate_path_accepts_canonical_root_with_symlinked_input() {
             services: None,
             active_tools: Arc::new(RwLock::new(HashSet::new())),
         };
-        let name = aletheia_koina::id::ToolName::new("ls").expect("valid");
+        let name = koina::id::ToolName::new("ls").expect("valid");
 
         // Validate a path using the SYMLINK form -- should pass
         let link_sub = link_dir.join("sub");
@@ -360,7 +360,7 @@ fn test_validate_path_accepts_canonical_root_with_symlinked_input() {
 #[test]
 fn test_validate_path_trailing_slash_in_root() {
     let dir = tempfile::tempdir().expect("create temp dir");
-    let name = aletheia_koina::id::ToolName::new("read").expect("valid");
+    let name = koina::id::ToolName::new("read").expect("valid");
 
     // WHY: Trailing slashes in allowed roots must not break the prefix check.
     let root_with_slash = PathBuf::from(format!("{}/", dir.path().display()));
@@ -390,7 +390,7 @@ fn test_validate_path_trailing_slash_in_root() {
 fn test_validate_path_root_exact_match() {
     // WHY: `ls` on the root itself should be allowed.
     let dir = tempfile::tempdir().expect("create temp dir");
-    let name = aletheia_koina::id::ToolName::new("ls").expect("valid");
+    let name = koina::id::ToolName::new("ls").expect("valid");
     let canonical = dir.path().canonicalize().expect("canonicalize");
     let ctx = ToolContext {
         nous_id: NousId::new("test-agent").expect("valid"),

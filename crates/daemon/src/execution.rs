@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use aletheia_koina::system::{Environment, RealSystem};
+use koina::system::{Environment, RealSystem};
 use snafu::ResultExt;
 
 use crate::bridge::DaemonBridge;

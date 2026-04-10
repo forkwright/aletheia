@@ -10,8 +10,8 @@ use std::time::{Duration, Instant, SystemTime};
 
 use indexmap::IndexMap;
 
-use aletheia_koina::defaults::MAX_OUTPUT_BYTES;
-use aletheia_koina::id::ToolName;
+use koina::defaults::MAX_OUTPUT_BYTES;
+use koina::id::ToolName;
 
 use crate::error::Result;
 use crate::process_guard::ProcessGuard;

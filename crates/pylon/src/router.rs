@@ -14,7 +14,7 @@ use tower_http::set_header::SetResponseHeaderLayer;
 use tower_http::trace::TraceLayer;
 use tracing::info_span;
 
-use aletheia_koina::http::{API_HEALTH, API_V1};
+use koina::http::{API_HEALTH, API_V1};
 
 use crate::error::ApiError;
 use crate::handlers::{config, health, knowledge, metrics, nous, planning, sessions};
@@ -148,7 +148,7 @@ pub fn build_router(state: Arc<AppState>, security: &SecurityConfig) -> Router {
         TraceLayer::new_for_http()
             .make_span_with(|request: &axum::http::Request<_>| {
                 let request_id = request.extensions().get::<RequestId>().map_or_else(
-                    || aletheia_koina::ulid::Ulid::new().to_string(),
+                    || koina::ulid::Ulid::new().to_string(),
                     std::string::ToString::to_string,
                 );
                 info_span!("http_request",

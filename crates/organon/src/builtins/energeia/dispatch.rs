@@ -10,7 +10,7 @@ use std::sync::Arc;
 use indexmap::IndexMap;
 
 use aletheia_energeia::orchestrator::Orchestrator;
-use aletheia_koina::id::ToolName;
+use koina::id::ToolName;
 
 use crate::error::Result;
 use crate::registry::ToolExecutor;

@@ -689,7 +689,7 @@ fn project_mode_serde_roundtrip() {
 
 #[test]
 fn blocker_creation_and_properties() {
-    let plan_id = aletheia_koina::ulid::Ulid::new();
+    let plan_id = koina::ulid::Ulid::new();
     let now = jiff::Timestamp::now();
 
     let blocker = Blocker {
@@ -707,7 +707,7 @@ fn blocker_creation_and_properties() {
 fn blocker_serde_roundtrip() {
     let blocker = Blocker {
         description: "Test blocker".into(),
-        plan_id: aletheia_koina::ulid::Ulid::new(),
+        plan_id: koina::ulid::Ulid::new(),
         detected_at: jiff::Timestamp::now(),
     };
 

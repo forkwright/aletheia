@@ -88,7 +88,7 @@ pub enum ErrorAction {
 /// # Example
 ///
 /// ```
-/// use aletheia_koina::error_class::{Classifiable, ErrorAction, ErrorClass};
+/// use koina::error_class::{Classifiable, ErrorAction, ErrorClass};
 ///
 /// struct MyError;
 ///

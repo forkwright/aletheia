@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use indexmap::IndexMap;
 
-use aletheia_koina::id::ToolName;
+use koina::id::ToolName;
 
 use super::workspace::{extract_opt_u64, extract_str};
 use crate::error::Result;
@@ -294,7 +294,7 @@ mod tests {
     use std::pin::Pin;
     use std::sync::{Arc, RwLock};
 
-    use aletheia_koina::id::{NousId, SessionId, ToolName};
+    use koina::id::{NousId, SessionId, ToolName};
 
     use crate::registry::ToolRegistry;
     use crate::testing::install_crypto_provider;

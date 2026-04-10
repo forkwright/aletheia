@@ -13,7 +13,7 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::time::Duration;
 
-use aletheia_koina::system::{Environment, RealSystem};
+use koina::system::{Environment, RealSystem};
 use tracing::{debug, info};
 
 use crate::anthropic::StreamEvent;

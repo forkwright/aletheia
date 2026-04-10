@@ -52,7 +52,7 @@ pub struct NousGenerationConfig {
 
 impl Default for NousGenerationConfig {
     fn default() -> Self {
-        use aletheia_koina::defaults as d;
+        use koina::defaults as d;
         Self {
             model: "claude-opus-4-20250514".to_owned(),
             context_window: d::CONTEXT_TOKENS,
@@ -103,7 +103,7 @@ pub struct NousLimits {
 
 impl Default for NousLimits {
     fn default() -> Self {
-        use aletheia_koina::defaults as d;
+        use koina::defaults as d;
         Self {
             max_tool_iterations: d::MAX_TOOL_ITERATIONS,
             loop_detection_threshold: 3,
@@ -216,7 +216,7 @@ fn default_prosoche_model() -> String {
 }
 
 fn default_max_tool_result_bytes() -> u32 {
-    aletheia_koina::defaults::MAX_TOOL_RESULT_BYTES
+    koina::defaults::MAX_TOOL_RESULT_BYTES
 }
 
 impl Default for NousConfig {
@@ -312,7 +312,7 @@ mod tests {
         assert_eq!(config.generation.context_window, 200_000);
         assert_eq!(
             config.limits.max_tool_iterations,
-            aletheia_koina::defaults::MAX_TOOL_ITERATIONS,
+            koina::defaults::MAX_TOOL_ITERATIONS,
             "default should match koina::defaults"
         );
         assert!(!config.generation.thinking_enabled);

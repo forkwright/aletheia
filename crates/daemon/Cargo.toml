@@ -19,7 +19,7 @@ test-full = []
 
 [dependencies]
 aletheia-episteme = { path = "../episteme", default-features = false }
-aletheia-koina = { path = "../koina" }
+koina = { path = "../koina" }
 # WHY: axum for webhook trigger listener
 axum = { workspace = true }
 # WHY: single-instance enforcement per workspace. Used directly via rustix::fs::flock

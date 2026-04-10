@@ -12,7 +12,7 @@ use tracing::instrument;
 
 use subtle::ConstantTimeEq;
 
-use aletheia_koina::secret::SecretString;
+use koina::secret::SecretString;
 
 use crate::error::{self, Result};
 use crate::types::{Claims, Role, TokenKind, TokenPair};
@@ -309,7 +309,7 @@ impl JwtManager {
             iat: now,
             // WHY: saturate to i64::MAX: a TTL exceeding ~292 billion years is effectively infinite
             exp: now + i64::try_from(ttl.as_secs()).unwrap_or(i64::MAX),
-            jti: aletheia_koina::ulid::Ulid::new().to_string(),
+            jti: koina::ulid::Ulid::new().to_string(),
             kind,
         };
 

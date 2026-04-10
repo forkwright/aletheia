@@ -18,7 +18,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use aletheia_koina::secret::SecretString;
+use koina::secret::SecretString;
 
 /// Root configuration for an Aletheia instance.
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
@@ -50,7 +50,7 @@ pub struct AletheiaConfig {
     /// MCP server configuration.
     pub mcp: McpConfig,
     /// Training data capture configuration.
-    pub training: aletheia_eidos::training::TrainingConfig,
+    pub training: eidos::training::TrainingConfig,
 }
 
 /// Sandbox enforcement level for tool execution.
@@ -279,7 +279,7 @@ pub struct AgentModelDefaults {
 
 impl Default for AgentModelDefaults {
     fn default() -> Self {
-        use aletheia_koina::defaults as d;
+        use koina::defaults as d;
         Self {
             model: ModelSpec::default(),
             context_tokens: d::CONTEXT_TOKENS,
@@ -319,7 +319,7 @@ pub struct AgentDefaults {
 
 impl Default for AgentDefaults {
     fn default() -> Self {
-        use aletheia_koina::defaults as d;
+        use koina::defaults as d;
         Self {
             model_defaults: AgentModelDefaults::default(),
             agency: AgencyLevel::Standard,
@@ -348,7 +348,7 @@ pub struct ModelSpec {
 impl Default for ModelSpec {
     fn default() -> Self {
         Self {
-            primary: aletheia_koina::defaults::DEFAULT_MODEL_SHORT.to_owned(),
+            primary: koina::defaults::DEFAULT_MODEL_SHORT.to_owned(),
             fallbacks: Vec::new(),
             retries_before_fallback: 2,
         }

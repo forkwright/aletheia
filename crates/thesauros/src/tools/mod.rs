@@ -7,8 +7,8 @@ use std::pin::Pin;
 use std::process::{Command, Stdio};
 use std::time::Duration;
 
-use aletheia_koina::defaults::MAX_OUTPUT_BYTES;
-use aletheia_koina::id::ToolName;
+use koina::defaults::MAX_OUTPUT_BYTES;
+use koina::id::ToolName;
 use aletheia_organon::process_guard::ProcessGuard;
 use aletheia_organon::registry::{ToolExecutor, ToolRegistry};
 use aletheia_organon::types::{

@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use tokio::sync::{RwLock, mpsc, oneshot};
 use tracing::{instrument, warn};
-use aletheia_koina::ulid::Ulid;
+use koina::ulid::Ulid;
 
 use crate::error::{
     self, AskCycleDetectedSnafu, AskTimeoutSnafu, DeliveryFailedSnafu, NousNotFoundSnafu,

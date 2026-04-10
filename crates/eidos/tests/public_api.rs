@@ -16,7 +16,7 @@
 // --- ID newtypes ---
 
 mod ids {
-    use aletheia_eidos::id::{CausalEdgeId, EmbeddingId, EntityId, FactId, IdValidationError};
+    use eidos::id::{CausalEdgeId, EmbeddingId, EntityId, FactId, IdValidationError};
 
     #[test]
     fn constructors_accept_valid_ids() {
@@ -147,7 +147,7 @@ mod ids {
 // --- EpistemicTier ---
 
 mod epistemic_tier {
-    use aletheia_eidos::knowledge::EpistemicTier;
+    use eidos::knowledge::EpistemicTier;
 
     #[test]
     fn as_str_matches_serde_lowercase() {
@@ -199,7 +199,7 @@ mod epistemic_tier {
 mod knowledge_stage {
     use std::str::FromStr;
 
-    use aletheia_eidos::knowledge::KnowledgeStage;
+    use eidos::knowledge::KnowledgeStage;
 
     #[test]
     fn from_decay_score_thresholds() {
@@ -277,7 +277,7 @@ mod knowledge_stage {
 // --- FactType ---
 
 mod fact_type {
-    use aletheia_eidos::knowledge::FactType;
+    use eidos::knowledge::FactType;
 
     #[test]
     fn base_stability_ordering_by_volatility() {
@@ -353,7 +353,7 @@ mod fact_type {
 mod memory_scope {
     use std::str::FromStr;
 
-    use aletheia_eidos::knowledge::MemoryScope;
+    use eidos::knowledge::MemoryScope;
 
     #[test]
     fn all_contains_every_variant() {
@@ -431,7 +431,7 @@ mod memory_scope {
 mod causal {
     use std::str::FromStr;
 
-    use aletheia_eidos::knowledge::{CausalRelationType, TemporalOrdering};
+    use eidos::knowledge::{CausalRelationType, TemporalOrdering};
 
     #[test]
     fn causal_relation_type_round_trips_via_from_str_and_display() {
@@ -472,7 +472,7 @@ mod causal {
 mod audit_classifiers {
     use std::str::FromStr;
 
-    use aletheia_eidos::knowledge::{ForgetReason, VerificationSource, VerificationStatus};
+    use eidos::knowledge::{ForgetReason, VerificationSource, VerificationStatus};
 
     #[test]
     fn forget_reason_round_trips_via_from_str() {
@@ -535,7 +535,7 @@ mod audit_classifiers {
 mod path_validation {
     use std::path::PathBuf;
 
-    use aletheia_eidos::knowledge::{
+    use eidos::knowledge::{
         MemoryScope, PATH_VALIDATION_FS_LAYERS, PathValidationError, PathValidationLayer,
         SYMLINK_HOP_LIMIT,
     };
@@ -651,7 +651,7 @@ mod path_validation {
 mod validate_memory_path {
     use std::path::PathBuf;
 
-    use aletheia_eidos::knowledge::{MemoryScope, PathValidationError, validate_memory_path};
+    use eidos::knowledge::{MemoryScope, PathValidationError, validate_memory_path};
     use tempfile::TempDir;
 
     fn setup_root() -> TempDir {
@@ -701,7 +701,7 @@ mod validate_memory_path {
 // --- TrainingConfig ---
 
 mod training_config {
-    use aletheia_eidos::training::TrainingConfig;
+    use eidos::training::TrainingConfig;
 
     #[test]
     fn default_is_disabled_with_standard_path() {

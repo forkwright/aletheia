@@ -222,7 +222,7 @@ async fn run_pipeline_simple() {
 
     use aletheia_hermeneus::provider::ProviderRegistry;
     use aletheia_hermeneus::test_utils::MockProvider;
-    use aletheia_koina::id::{NousId, SessionId};
+    use koina::id::{NousId, SessionId};
     use aletheia_organon::registry::ToolRegistry;
     use aletheia_organon::types::ToolContext;
 

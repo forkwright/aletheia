@@ -5,7 +5,7 @@
 use std::collections::HashSet;
 use std::sync::{Arc, RwLock};
 
-use aletheia_koina::id::{NousId, SessionId, ToolName};
+use koina::id::{NousId, SessionId, ToolName};
 
 use super::*;
 use crate::testing::install_crypto_provider;

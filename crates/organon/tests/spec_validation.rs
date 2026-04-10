@@ -9,7 +9,7 @@
 
 #![expect(clippy::expect_used, reason = "test assertions may panic on failure")]
 
-use aletheia_koina::id::ToolName;
+use koina::id::ToolName;
 use aletheia_organon::testing::{MockToolExecutor, ToolExecutorSpec, make_test_context};
 use aletheia_organon::types::{
     InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolDef,

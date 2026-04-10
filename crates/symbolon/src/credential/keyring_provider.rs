@@ -2,8 +2,8 @@
 
 use tracing::{debug, warn};
 
-use aletheia_koina::credential::{Credential, CredentialProvider, CredentialSource};
-use aletheia_koina::secret::SecretString;
+use koina::credential::{Credential, CredentialProvider, CredentialSource};
+use koina::secret::SecretString;
 
 const DEFAULT_SERVICE: &str = "aletheia";
 const DEFAULT_USERNAME: &str = "api-token";

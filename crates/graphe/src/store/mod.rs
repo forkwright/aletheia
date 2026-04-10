@@ -219,7 +219,7 @@ impl SessionStore {
     /// # Errors
     /// Returns an error if the checkpoint fails for a reason other than `SQLITE_BUSY`.
     pub fn checkpoint_wal(&self) -> Result<()> {
-        use aletheia_koina::retry::BackoffStrategy;
+        use koina::retry::BackoffStrategy;
 
         const MAX_RETRIES: u32 = 3;
         let backoff = BackoffStrategy::Constant {

@@ -1,6 +1,6 @@
 //! Validation helpers for `RuntimeBuilder::validate`.
 
-use aletheia_koina::system::{Environment, RealSystem};
+use koina::system::{Environment, RealSystem};
 use aletheia_taxis::config::AletheiaConfig;
 use aletheia_taxis::oikos::Oikos;
 

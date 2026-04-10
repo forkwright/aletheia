@@ -12,7 +12,7 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
-use aletheia_koina::id::{NousId, SessionId, ToolName};
+use koina::id::{NousId, SessionId, ToolName};
 use aletheia_organon::registry::ToolRegistry;
 use aletheia_organon::sandbox::{SandboxConfig, SandboxEnforcement};
 use aletheia_organon::types::{ToolContext, ToolInput};

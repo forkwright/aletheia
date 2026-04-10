@@ -1,6 +1,6 @@
 //! Instance maintenance services: trace rotation, drift detection, DB monitoring, retention.
 
-use aletheia_koina::system::{Environment, RealSystem};
+use koina::system::{Environment, RealSystem};
 
 /// Database size monitoring with configurable warning and alert thresholds.
 pub(crate) mod db_monitor;

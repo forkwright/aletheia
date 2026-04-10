@@ -7,7 +7,7 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, RwLock};
 
-use aletheia_koina::id::{NousId, SessionId, ToolName};
+use koina::id::{NousId, SessionId, ToolName};
 
 use crate::registry::ToolRegistry;
 use crate::types::{

@@ -16,9 +16,9 @@ test-full = []
 storage-fjall = ["dep:fjall"]
 
 [dependencies]
-aletheia-koina = { path = "../koina" }
+koina = { path = "../koina" }
 async-trait = "0.1"
-aletheia-eidos = { path = "../eidos" }
+eidos = { path = "../eidos" }
 prometheus = { workspace = true }
 regex = { workspace = true }
 # WHY: hermeneus has pre-existing compilation errors on main (kanon lint pass

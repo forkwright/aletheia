@@ -22,7 +22,7 @@ fn redact_phone(phone: &str) -> String {
 
 /// Listens on registered channels, merging inbound messages into a single stream.
 ///
-/// Cleanup is registered at construction time via [`CleanupRegistry`](aletheia_koina::cleanup::CleanupRegistry): dropping
+/// Cleanup is registered at construction time via [`CleanupRegistry`](koina::cleanup::CleanupRegistry): dropping
 /// the listener aborts all background polling tasks unless
 /// [`into_receiver`](Self::into_receiver) was called first (which disarms the
 /// registry).
@@ -30,7 +30,7 @@ pub struct ChannelListener {
     rx: Option<mpsc::Receiver<InboundMessage>>,
     handles: JoinSet<()>,
     /// Abort callbacks registered at task-spawn time; disarmed by `into_receiver`.
-    cleanup: aletheia_koina::cleanup::CleanupRegistry,
+    cleanup: koina::cleanup::CleanupRegistry,
 }
 
 impl ChannelListener {
@@ -65,7 +65,7 @@ impl ChannelListener {
         Self {
             rx: Some(rx),
             handles,
-            cleanup: aletheia_koina::cleanup::CleanupRegistry::new(),
+            cleanup: koina::cleanup::CleanupRegistry::new(),
         }
     }
 

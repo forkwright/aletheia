@@ -56,7 +56,7 @@ base64 = { workspace = true }
 http = { workspace = true }
 
 # Internal crates (same layer as pylon — depends on mid+low crates)
-aletheia-koina = { path = "../koina" }
+koina = { path = "../koina" }
 aletheia-taxis = { path = "../taxis" }
 aletheia-nous = { path = "../nous" }
 aletheia-organon = { path = "../organon" }

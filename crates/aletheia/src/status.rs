@@ -5,7 +5,7 @@ use std::path::Path;
 use owo_colors::OwoColorize;
 use snafu::{ResultExt, Snafu};
 
-use aletheia_koina::http::{API_HEALTH, API_V1};
+use koina::http::{API_HEALTH, API_V1};
 
 #[derive(Debug, Snafu)]
 pub(crate) enum StatusError {

@@ -1,5 +1,5 @@
 [package]
-name = "aletheia-thesauros"
+name = "thesauros"
 version.workspace = true
 description = "Domain pack loader — external knowledge, tools, and config overlays"
 edition.workspace = true
@@ -15,7 +15,7 @@ test-core = []
 test-full = []
 
 [dependencies]
-aletheia-koina = { path = "../koina" }
+koina = { path = "../koina" }
 aletheia-organon = { path = "../organon" }
 indexmap = { workspace = true }
 serde = { workspace = true }

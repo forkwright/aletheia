@@ -21,12 +21,12 @@ test-full = ["test-core"]
 [dependencies]
 aletheia-dianoia = { path = "../dianoia" }
 aletheia-hermeneus = { path = "../hermeneus" }
-aletheia-koina = { path = "../koina" }
+koina = { path = "../koina" }
 aletheia-melete = { path = "../melete" }
 aletheia-mneme = { path = "../mneme" }
 aletheia-organon = { path = "../organon" }
 aletheia-taxis = { path = "../taxis" }
-aletheia-thesauros = { path = "../thesauros" }
+thesauros = { path = "../thesauros" }
 jiff = { workspace = true }
 prometheus = { workspace = true }
 rusqlite = { workspace = true }

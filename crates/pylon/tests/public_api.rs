@@ -27,8 +27,8 @@ use tower::ServiceExt;
 
 use aletheia_hermeneus::provider::ProviderRegistry;
 use aletheia_hermeneus::test_utils::MockProvider;
-use aletheia_koina::http::{API_HEALTH, API_V1, BEARER_PREFIX};
-use aletheia_koina::secret::SecretString;
+use koina::http::{API_HEALTH, API_V1, BEARER_PREFIX};
+use koina::secret::SecretString;
 use aletheia_mneme::store::SessionStore;
 use aletheia_nous::config::{NousConfig, NousGenerationConfig, PipelineConfig};
 use aletheia_nous::manager::NousManager;

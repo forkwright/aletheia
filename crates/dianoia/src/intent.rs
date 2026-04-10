@@ -10,7 +10,7 @@
 use std::fmt::Write;
 use std::path::{Path, PathBuf};
 
-use aletheia_koina::ulid::Ulid;
+use koina::ulid::Ulid;
 use serde::{Deserialize, Serialize};
 use snafu::ResultExt;
 
@@ -361,7 +361,7 @@ impl IntentStore {
     /// Persist the full intent list to disk atomically with 0600 permissions.
     fn persist(&self, intents: &[Intent]) -> Result<()> {
         let json = serde_json::to_string_pretty(intents).context(error::WorkspaceSerializeSnafu)?;
-        aletheia_koina::fs::write_restricted(&self.path, json.as_bytes()).context(
+        koina::fs::write_restricted(&self.path, json.as_bytes()).context(
             error::WorkspaceIoSnafu {
                 path: self.path.clone(),
             },

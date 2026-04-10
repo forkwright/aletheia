@@ -7,7 +7,7 @@
 
 use std::path::{Path, PathBuf};
 
-use aletheia_koina::system::{Environment, RealSystem};
+use koina::system::{Environment, RealSystem};
 use serde::{Deserialize, Serialize};
 
 /// Sandbox enforcement level.

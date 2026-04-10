@@ -8,7 +8,7 @@ use std::pin::Pin;
 
 use indexmap::IndexMap;
 
-use aletheia_koina::id::ToolName;
+use koina::id::ToolName;
 
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
@@ -220,7 +220,7 @@ mod tests {
         use std::collections::HashSet;
         use std::sync::{Arc, RwLock};
 
-        use aletheia_koina::id::{NousId, SessionId};
+        use koina::id::{NousId, SessionId};
 
         let ctx = ToolContext {
             nous_id: NousId::new("test").expect("valid nous id"),

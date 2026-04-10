@@ -2,7 +2,7 @@
 
 use snafu::Snafu;
 
-use aletheia_koina::id::ToolName;
+use koina::id::ToolName;
 
 /// Errors from tool registry operations.
 #[derive(Debug, Snafu)]

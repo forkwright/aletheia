@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 
 use snafu::{ResultExt, ensure};
 
-use aletheia_koina::system::{Environment, RealSystem};
+use koina::system::{Environment, RealSystem};
 
 /// The oikos: resolved instance paths.
 ///
@@ -43,7 +43,7 @@ impl Oikos {
     /// 2. `./instance` relative to current directory
     ///
     /// Call [`Oikos::discover_with`] to supply a custom [`Environment`]
-    /// implementation (e.g. `aletheia_koina::system::TestSystem` in tests).
+    /// implementation (e.g. `koina::system::TestSystem` in tests).
     #[must_use]
     pub fn discover() -> Self {
         Self::discover_with(&RealSystem)
@@ -717,7 +717,7 @@ mod tests {
 
     #[test]
     fn discover_with_uses_env_var_when_set() {
-        use aletheia_koina::system::TestSystem;
+        use koina::system::TestSystem;
 
         let env = TestSystem::new().with_env("ALETHEIA_ROOT", "/custom/root");
         let oikos = Oikos::discover_with(&env);
@@ -730,7 +730,7 @@ mod tests {
 
     #[test]
     fn discover_with_falls_back_to_instance_when_unset() {
-        use aletheia_koina::system::TestSystem;
+        use koina::system::TestSystem;
 
         let env = TestSystem::new(); // no ALETHEIA_ROOT set
         let oikos = Oikos::discover_with(&env);

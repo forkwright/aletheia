@@ -2,7 +2,7 @@
 
 use std::sync::LazyLock;
 
-use aletheia_koina::system::{Environment, RealSystem};
+use koina::system::{Environment, RealSystem};
 use regex::Regex;
 
 /// A link found during markdown rendering, positioned within the markdown lines.

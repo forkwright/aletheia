@@ -6,7 +6,7 @@ use snafu::prelude::*;
 
 use clap::Subcommand;
 
-use aletheia_koina::system::{Environment, RealSystem};
+use koina::system::{Environment, RealSystem};
 use aletheia_symbolon::credential::CredentialFile;
 use aletheia_taxis::oikos::Oikos;
 
@@ -93,7 +93,7 @@ pub(crate) async fn run(action: Action, instance_root: Option<&PathBuf>) -> Resu
 
             #[cfg(feature = "keyring")]
             {
-                use aletheia_koina::credential::CredentialProvider;
+                use koina::credential::CredentialProvider;
                 let keyring = aletheia_symbolon::credential::KeyringCredentialProvider::new();
                 if let Some(cred) = keyring.get_credential() {
                     if found_any {

@@ -11,7 +11,7 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{EnvFilter, fmt};
 
-use aletheia_koina::redacting_layer::RedactingLayer;
+use koina::redacting_layer::RedactingLayer;
 use aletheia_taxis::oikos::Oikos;
 
 use crate::error::Result;

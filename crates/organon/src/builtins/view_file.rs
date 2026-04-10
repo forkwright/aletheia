@@ -236,7 +236,7 @@ pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
 }
 
 fn view_file_def() -> crate::types::ToolDef {
-    use aletheia_koina::id::ToolName;
+    use koina::id::ToolName;
     ToolDef {
         name: ToolName::from_static("view_file"), // kanon:ignore RUST/expect
         description: "View a file — images, PDFs, and text. For images and PDFs, the content is sent directly to the model for visual analysis.".to_owned(),
@@ -280,7 +280,7 @@ mod tests {
     use std::collections::HashSet;
     use std::sync::{Arc, RwLock};
 
-    use aletheia_koina::id::{NousId, SessionId, ToolName};
+    use koina::id::{NousId, SessionId, ToolName};
 
     use super::*;
     use crate::types::ToolResultContent;

@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 
 use tracing::{info, warn};
 
-use aletheia_koina::secret::SecretString;
+use koina::secret::SecretString;
 
 use crate::client::EvalClient;
 use crate::provider::{BuiltinProvider, EvalProvider};

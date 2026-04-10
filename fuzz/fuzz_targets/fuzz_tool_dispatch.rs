@@ -20,7 +20,7 @@ fuzz_target!(|data: &[u8]| {
     // 3. ToolName validation: arbitrary strings against the allowlist regex.
     //    Empty, oversized (>128), unicode, special chars, null bytes.
     if let Ok(s) = std::str::from_utf8(data) {
-        let _ = aletheia_koina::id::ToolName::new(s);
+        let _ = koina::id::ToolName::new(s);
     }
 
     // 4. JSON Value parsing and stringification (exercises the path simple_hash takes).

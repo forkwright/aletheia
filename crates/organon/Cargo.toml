@@ -27,7 +27,7 @@ aletheia-energeia = { path = "../energeia", optional = true, features = [
     "storage-fjall",
 ] }
 aletheia-hermeneus = { path = "../hermeneus" }
-aletheia-koina = { path = "../koina" }
+koina = { path = "../koina" }
 aletheia-taxis = { path = "../taxis" }
 base64 = { workspace = true }
 indexmap = { workspace = true }

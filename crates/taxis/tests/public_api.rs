@@ -16,7 +16,7 @@
     reason = "serde_json::Value indexing on known-present keys in redaction assertions"
 )]
 
-use aletheia_koina::secret::SecretString;
+use koina::secret::SecretString;
 use aletheia_taxis::config::{
     AgencyLevel, AletheiaConfig, ChannelBinding, EgressPolicy, ModelPricing, ModelSpec,
     NousDefinition, SandboxEnforcementMode, SignalAccountConfig, resolve_nous,

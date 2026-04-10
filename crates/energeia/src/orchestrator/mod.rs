@@ -112,7 +112,7 @@ impl Orchestrator {
         prompts: &[PromptSpec],
     ) -> Result<DispatchResult> {
         let start = Instant::now();
-        let dispatch_id = aletheia_koina::ulid::Ulid::new().to_string();
+        let dispatch_id = koina::ulid::Ulid::new().to_string();
 
         if prompts.is_empty() {
             return error::PreflightSnafu {

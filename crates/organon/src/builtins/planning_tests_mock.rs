@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex, RwLock};
 
-use aletheia_koina::id::{NousId, SessionId};
+use koina::id::{NousId, SessionId};
 
 use crate::error::PlanningAdapterError;
 use crate::testing::install_crypto_provider;

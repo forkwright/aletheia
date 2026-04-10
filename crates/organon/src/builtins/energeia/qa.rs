@@ -10,7 +10,7 @@ use indexmap::IndexMap;
 
 use aletheia_energeia::qa::corrective::generate_corrective;
 use aletheia_energeia::qa::run_qa;
-use aletheia_koina::id::ToolName;
+use koina::id::ToolName;
 
 use crate::error::Result;
 use crate::registry::ToolExecutor;

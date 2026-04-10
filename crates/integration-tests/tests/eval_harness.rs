@@ -14,7 +14,7 @@ use tracing::Instrument;
 use aletheia_dokimion::runner::{RunConfig, ScenarioRunner};
 use aletheia_hermeneus::provider::ProviderRegistry;
 use aletheia_hermeneus::test_utils::MockProvider;
-use aletheia_koina::secret::SecretString;
+use koina::secret::SecretString;
 use aletheia_mneme::store::SessionStore;
 use aletheia_nous::config::{NousConfig, PipelineConfig};
 use aletheia_nous::manager::NousManager;

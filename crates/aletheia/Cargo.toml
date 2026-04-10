@@ -43,7 +43,7 @@ aletheia-diaporeia = { path = "../diaporeia", optional = true }
 aletheia-dianoia = { path = "../dianoia" }
 aletheia-energeia = { path = "../energeia", optional = true }
 aletheia-oikonomos = { path = "../daemon" }
-aletheia-koina = { path = "../koina" }
+koina = { path = "../koina" }
 aletheia-taxis = { path = "../taxis" }
 aletheia-hermeneus = { path = "../hermeneus" }
 aletheia-organon = { path = "../organon" }
@@ -53,7 +53,7 @@ aletheia-symbolon = { path = "../symbolon" }
 aletheia-pylon = { path = "../pylon" }
 aletheia-agora = { path = "../agora" }
 aletheia-dokimion = { path = "../eval" }
-aletheia-thesauros = { path = "../thesauros" }
+thesauros = { path = "../thesauros" }
 theatron-tui = { path = "../theatron/tui", optional = true }
 
 tokio = { workspace = true }

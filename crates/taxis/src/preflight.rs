@@ -16,7 +16,7 @@ use std::path::Path;
 
 use snafu::Snafu;
 
-use aletheia_koina::disk_space;
+use koina::disk_space;
 
 use crate::config::AletheiaConfig;
 use crate::oikos::Oikos;

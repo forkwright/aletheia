@@ -25,7 +25,7 @@ test-core = ["mneme-engine", "storage-fjall"]
 test-full = ["test-core", "embed-candle"]
 
 [dependencies]
-aletheia-eidos = { path = "../eidos" }
+eidos = { path = "../eidos" }
 aletheia-graphe = { path = "../graphe", default-features = false }
 aletheia-episteme = { path = "../episteme", default-features = false }
 aletheia-krites = { path = "../krites", optional = true }

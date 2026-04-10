@@ -92,7 +92,7 @@ pub async fn create(
 
     // WHY: SessionId (UUID v4) is the canonical format. ULID here caused
     // 'invalid SessionId' when nous parsed the stored ID back (#2349).
-    let id = aletheia_koina::id::SessionId::new().to_string();
+    let id = koina::id::SessionId::new().to_string();
     let model = config.generation.model.clone();
 
     let state_clone = state.clone();
@@ -519,7 +519,7 @@ pub(crate) async fn resolve_session(
 ) -> Result<String, ApiError> {
     // WHY: SessionId (UUID v4) is the canonical format. ULID here caused
     // 'invalid SessionId' when nous parsed the stored ID back (#2349).
-    let id = aletheia_koina::id::SessionId::new().to_string();
+    let id = koina::id::SessionId::new().to_string();
     let state_clone = state.clone();
     let id_clone = id.clone();
     let aid = agent_id.to_owned();

@@ -2,7 +2,7 @@
 use reqwest::{Client, Response, StatusCode, header};
 use snafu::prelude::*;
 
-use aletheia_koina::secret::SecretString;
+use koina::secret::SecretString;
 
 use super::error::{ApiError, AuthSnafu, HttpSnafu, Result, ServerSnafu};
 use super::types::{

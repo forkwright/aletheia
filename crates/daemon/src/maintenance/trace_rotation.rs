@@ -7,7 +7,7 @@ use std::time::SystemTime;
 
 use snafu::ResultExt;
 
-use aletheia_koina::disk_space::DiskSpaceMonitor;
+use koina::disk_space::DiskSpaceMonitor;
 
 use crate::error;
 

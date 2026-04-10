@@ -2,8 +2,8 @@
 
 use std::path::PathBuf;
 
-use aletheia_koina::secret::SecretString;
-use aletheia_koina::system::{Environment, RealSystem};
+use koina::secret::SecretString;
+use koina::system::{Environment, RealSystem};
 
 /// Number of wizard steps.
 pub(crate) const TOTAL_STEPS: usize = 5;
@@ -275,7 +275,7 @@ pub(crate) static AUTH_OPTIONS: &[SelectOption] = &[
 
 pub(crate) static MODEL_OPTIONS: &[SelectOption] = &[
     SelectOption {
-        value: aletheia_koina::defaults::DEFAULT_MODEL_SHORT,
+        value: koina::defaults::DEFAULT_MODEL_SHORT,
         label: "claude-sonnet-4-6 (recommended)",
     },
     SelectOption {
@@ -375,7 +375,7 @@ fn make_agent_step() -> StepState {
             WizardField::select(
                 "Model",
                 MODEL_OPTIONS,
-                aletheia_koina::defaults::DEFAULT_MODEL_SHORT,
+                koina::defaults::DEFAULT_MODEL_SHORT,
                 "",
             ),
         ],
@@ -633,7 +633,7 @@ mod tests {
         assert_eq!(answers.auth_mode, "none");
         assert_eq!(answers.agent_name, "Pronoea");
         assert_eq!(answers.agent_id, "pronoea");
-        assert_eq!(answers.model, aletheia_koina::defaults::DEFAULT_MODEL_SHORT);
+        assert_eq!(answers.model, koina::defaults::DEFAULT_MODEL_SHORT);
         assert!(answers.api_key.is_none());
     }
 

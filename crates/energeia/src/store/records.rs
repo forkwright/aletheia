@@ -5,7 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use aletheia_koina::newtype_id;
+use koina::newtype_id;
 
 use crate::types::SessionStatus;
 

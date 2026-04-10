@@ -8,7 +8,7 @@
 //!
 //! ```ignore
 //! // NOTE: EventEmitter::event_count() is pub(crate); use within aletheia-koina only
-//! use aletheia_koina::event::{InternalEvent, EventEmitter, LogLevel};
+//! use koina::event::{InternalEvent, EventEmitter, LogLevel};
 //!
 //! struct StageCompleted {
 //!     stage: &'static str,

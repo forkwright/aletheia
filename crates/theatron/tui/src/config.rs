@@ -4,8 +4,8 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use snafu::prelude::*;
 
-use aletheia_koina::secret::SecretString;
-use aletheia_koina::system::{Environment, RealSystem};
+use koina::secret::SecretString;
+use koina::system::{Environment, RealSystem};
 
 use crate::error::{ConfigDirSnafu, IoSnafu, Result, TomlSnafu};
 use crate::theme::ThemeMode;
@@ -213,7 +213,7 @@ impl Config {
 }
 
 fn write_config(path: &Path, content: &str) -> Result<()> {
-    aletheia_koina::fs::write_restricted(path, content.as_bytes()).context(IoSnafu {
+    koina::fs::write_restricted(path, content.as_bytes()).context(IoSnafu {
         context: "write config file",
     })?;
     Ok(())

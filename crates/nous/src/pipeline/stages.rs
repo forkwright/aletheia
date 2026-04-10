@@ -7,7 +7,7 @@ use tokio::sync::mpsc;
 use tracing::{Instrument, debug, error, info_span};
 
 use aletheia_hermeneus::provider::ProviderRegistry;
-use aletheia_koina::event::EventEmitter;
+use koina::event::EventEmitter;
 use aletheia_mneme::embedding::EmbeddingProvider;
 use aletheia_mneme::store::SessionStore;
 use aletheia_organon::registry::ToolRegistry;

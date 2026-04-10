@@ -14,7 +14,7 @@ use aletheia_agora::semeion::client::SignalClient;
 use aletheia_agora::types::ChannelProvider;
 use aletheia_hermeneus::anthropic::AnthropicProvider;
 use aletheia_hermeneus::provider::{ProviderConfig, ProviderRegistry};
-use aletheia_koina::credential::{CredentialProvider, CredentialSource};
+use koina::credential::{CredentialProvider, CredentialSource};
 use aletheia_mneme::embedding::{
     DegradedEmbeddingProvider, EmbeddingConfig, EmbeddingProvider, create_provider,
 };

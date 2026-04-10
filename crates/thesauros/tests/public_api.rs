@@ -20,9 +20,9 @@
 use std::fs;
 use std::path::PathBuf;
 
-use aletheia_thesauros::error::Error;
-use aletheia_thesauros::loader::{LoadedPack, load_packs};
-use aletheia_thesauros::manifest::{PackManifest, PackPropertyDef, PackToolDef, Priority};
+use thesauros::error::Error;
+use thesauros::loader::{LoadedPack, load_packs};
+use thesauros::manifest::{PackManifest, PackPropertyDef, PackToolDef, Priority};
 use tempfile::TempDir;
 
 // --- Helpers ---

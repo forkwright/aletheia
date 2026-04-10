@@ -21,7 +21,7 @@ use aletheia_mneme::store::SessionStore;
 use aletheia_organon::registry::ToolRegistry;
 use aletheia_organon::types::ToolServices;
 use aletheia_taxis::oikos::Oikos;
-use aletheia_thesauros::loader::LoadedPack;
+use thesauros::loader::LoadedPack;
 
 use crate::actor;
 use crate::bootstrap::pack_sections_to_bootstrap;

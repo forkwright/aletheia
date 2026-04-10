@@ -18,7 +18,7 @@
 
 use aletheia_graphe::store::SessionStore;
 use aletheia_graphe::types::{Role, SessionStatus};
-use aletheia_koina::ulid::Ulid;
+use koina::ulid::Ulid;
 use tempfile::TempDir;
 
 /// Open a fresh `SessionStore` in a tempdir. The `TempDir` must be kept alive

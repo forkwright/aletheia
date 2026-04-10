@@ -17,7 +17,7 @@ use crate::actor;
 use crate::config::{NousConfig, PipelineConfig, StageBudget};
 use crate::roles::Role;
 
-use aletheia_koina::defaults::{
+use koina::defaults::{
     BOOTSTRAP_MAX_TOKENS, CONTEXT_TOKENS, DEFAULT_MODEL, MAX_OUTPUT_TOKENS, MAX_TOOL_ITERATIONS,
     MAX_TOOL_RESULT_BYTES,
 };
@@ -64,7 +64,7 @@ impl SpawnService for SpawnServiceImpl {
         let spawn_id = format!(
             "spawn-{}-{}",
             parent_nous_id,
-            aletheia_koina::ulid::Ulid::new().to_string().to_lowercase()
+            koina::ulid::Ulid::new().to_string().to_lowercase()
         );
         let role = resolve_role(&request.role);
         let template = role.map(Role::template);
@@ -82,7 +82,7 @@ impl SpawnService for SpawnServiceImpl {
 
         let timeout = Duration::from_secs(request.timeout_secs);
         let task = request.task.clone();
-        let session_key = format!("spawn:{}", aletheia_koina::ulid::Ulid::new().to_string().to_lowercase());
+        let session_key = format!("spawn:{}", koina::ulid::Ulid::new().to_string().to_lowercase());
 
         let config = NousConfig {
             id: Arc::from(spawn_id.as_str()),

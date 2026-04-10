@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use snafu::ResultExt;
 use tracing::instrument;
 
-use aletheia_koina::secret::SecretString;
+use koina::secret::SecretString;
 
 use crate::error::{self, Result};
 use crate::sse::{self, ParsedSseEvent};

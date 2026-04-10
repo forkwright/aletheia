@@ -9,9 +9,9 @@ use tokio_util::sync::CancellationToken;
 use tracing::{Instrument, debug, error, info, warn};
 use zeroize::Zeroize;
 
-use aletheia_koina::credential::{Credential, CredentialProvider, CredentialSource};
-use aletheia_koina::secret::SecretString;
-use aletheia_koina::system::{Environment, RealSystem};
+use koina::credential::{Credential, CredentialProvider, CredentialSource};
+use koina::secret::SecretString;
+use koina::system::{Environment, RealSystem};
 
 use super::file_ops::CredentialFile;
 use super::providers::FileCredentialProvider;
@@ -96,7 +96,7 @@ pub(super) struct RefreshState {
 
 /// Wraps a credential file with background OAuth token refresh.
 ///
-/// Cleanup is registered at construction time via [`CleanupRegistry`](aletheia_koina::cleanup::CleanupRegistry): the
+/// Cleanup is registered at construction time via [`CleanupRegistry`](koina::cleanup::CleanupRegistry): the
 /// background task is cancelled and aborted when the provider is dropped,
 /// regardless of whether the drop occurs during normal execution, early
 /// error return, or panic unwind.
@@ -112,7 +112,7 @@ pub struct RefreshingCredentialProvider {
     file_provider: FileCredentialProvider,
     shutdown: CancellationToken,
     /// Cleanup registered at task spawn time; fires on drop (LIFO order).
-    _cleanup: aletheia_koina::cleanup::CleanupRegistry,
+    _cleanup: koina::cleanup::CleanupRegistry,
 }
 
 impl RefreshingCredentialProvider {
@@ -168,7 +168,7 @@ impl RefreshingCredentialProvider {
 
         // WHY: Register cleanup at spawn time so the task is cancelled+aborted
         // on drop even if construction is only partially completed in the caller.
-        let mut cleanup = aletheia_koina::cleanup::CleanupRegistry::new();
+        let mut cleanup = koina::cleanup::CleanupRegistry::new();
         let shutdown_for_cleanup = shutdown.clone();
         let abort_handle = task.abort_handle();
         cleanup.register(move || {

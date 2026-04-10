@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use aletheia_koina::system::{Environment, RealSystem};
+use koina::system::{Environment, RealSystem};
 
 /// Send `READY=1` to systemd via the `$NOTIFY_SOCKET`.
 ///

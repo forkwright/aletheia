@@ -2,7 +2,7 @@
 
 use indexmap::IndexMap;
 
-use aletheia_koina::id::ToolName;
+use koina::id::ToolName;
 
 use crate::types::{InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolDef};
 

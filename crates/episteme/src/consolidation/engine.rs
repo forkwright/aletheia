@@ -258,7 +258,7 @@ impl KnowledgeStore {
         let mut new_fact_ids = Vec::new();
 
         for consolidated in &result.consolidated_facts {
-            let new_id = FactId::new(aletheia_koina::ulid::Ulid::new().to_string()).map_err(|e| {
+            let new_id = FactId::new(koina::ulid::Ulid::new().to_string()).map_err(|e| {
                 StoreSnafu {
                     message: e.to_string(),
                 }
@@ -332,7 +332,7 @@ impl KnowledgeStore {
         new_fact_ids: &[FactId],
     ) -> Result<(), ConsolidationError> {
         let now_str = crate::knowledge::format_timestamp(&jiff::Timestamp::now());
-        let audit_id = aletheia_koina::ulid::Ulid::new().to_string();
+        let audit_id = koina::ulid::Ulid::new().to_string();
         let original_ids_json = serde_json::to_string(
             &result
                 .superseded_fact_ids

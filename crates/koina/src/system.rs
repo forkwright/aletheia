@@ -24,7 +24,7 @@
 //! ```ignore
 //! // NOTE: TestSystem requires test or test-support feature; run via cargo test
 //! use std::path::Path;
-//! use aletheia_koina::system::{FileSystem, TestSystem};
+//! use koina::system::{FileSystem, TestSystem};
 //!
 //! fn has_config(fs: &impl FileSystem, path: &Path) -> bool {
 //!     fs.exists(path)
@@ -210,7 +210,7 @@ pub struct RealSystem;
 ///
 /// ```
 /// use std::path::Path;
-/// use aletheia_koina::system::{Clock, Environment, FileSystem, TestSystem};
+/// use koina::system::{Clock, Environment, FileSystem, TestSystem};
 /// use jiff::Timestamp;
 ///
 /// let sys = TestSystem::new()

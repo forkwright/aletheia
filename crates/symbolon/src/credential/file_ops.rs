@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use aletheia_koina::secret::SecretString;
+use koina::secret::SecretString;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, warn};
 

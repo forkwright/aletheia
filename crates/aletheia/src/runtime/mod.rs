@@ -11,8 +11,8 @@ use tracing::{Instrument, info, warn};
 
 use aletheia_agora::types::ChannelProvider;
 use aletheia_hermeneus::provider::ProviderRegistry;
-use aletheia_koina::secret::SecretString;
-use aletheia_koina::system::{Environment, RealSystem};
+use koina::secret::SecretString;
+use koina::system::{Environment, RealSystem};
 use aletheia_mneme::embedding::DegradedEmbeddingProvider;
 use aletheia_mneme::store::SessionStore;
 use aletheia_nous::config::{NousConfig, PipelineConfig};
@@ -301,7 +301,7 @@ impl RuntimeBuilder {
 
         // Domain packs
         let loaded_packs = if self.domain_packs {
-            aletheia_thesauros::loader::load_packs(&self.config.packs)
+            thesauros::loader::load_packs(&self.config.packs)
         } else {
             Vec::new()
         };
@@ -340,7 +340,7 @@ impl RuntimeBuilder {
         // Register domain pack tools
         if self.domain_packs {
             let tool_errors =
-                aletheia_thesauros::tools::register_pack_tools(&packs, &mut tool_registry);
+                thesauros::tools::register_pack_tools(&packs, &mut tool_registry);
             for err in &tool_errors {
                 warn!(error = %err, "failed to register pack tool");
             }

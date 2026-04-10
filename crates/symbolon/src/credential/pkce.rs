@@ -8,7 +8,7 @@ use std::io::{BufRead, BufReader, Write as _};
 use std::net::{TcpListener, TcpStream};
 use std::time::Duration;
 
-use aletheia_koina::secret::SecretString;
+use koina::secret::SecretString;
 use rand::TryRngCore as _;
 use sha2::{Digest, Sha256};
 use snafu::{ResultExt, Snafu};

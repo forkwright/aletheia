@@ -14,7 +14,7 @@ use aletheia_energeia::orchestrator::{Orchestrator, OrchestratorConfig};
 use aletheia_energeia::qa::{PromptSpec as QaPromptSpec, QaGate};
 use aletheia_energeia::store::EnergeiaStore;
 use aletheia_energeia::types::{MechanicalIssue, QaResult, QaVerdict};
-use aletheia_koina::id::{NousId, SessionId, ToolName};
+use koina::id::{NousId, SessionId, ToolName};
 use tempfile::TempDir;
 
 use aletheia_organon::builtins::energeia::{EnergeiaServices, register};

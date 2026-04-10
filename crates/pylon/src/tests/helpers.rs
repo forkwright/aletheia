@@ -9,8 +9,8 @@ use tower::ServiceExt;
 
 use aletheia_hermeneus::provider::ProviderRegistry;
 use aletheia_hermeneus::test_utils::MockProvider;
-use aletheia_koina::http::{BEARER_PREFIX, CONTENT_TYPE_JSON};
-use aletheia_koina::secret::SecretString;
+use koina::http::{BEARER_PREFIX, CONTENT_TYPE_JSON};
+use koina::secret::SecretString;
 use aletheia_mneme::store::SessionStore;
 use aletheia_nous::config::{NousConfig, PipelineConfig};
 use aletheia_nous::manager::NousManager;

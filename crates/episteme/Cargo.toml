@@ -24,9 +24,9 @@ test-core = ["mneme-engine"]
 test-full = ["test-core", "embed-candle"]
 
 [dependencies]
-aletheia-eidos = { path = "../eidos" }
+eidos = { path = "../eidos" }
 aletheia-graphe = { path = "../graphe", default-features = false }
-aletheia-koina = { path = "../koina" }
+koina = { path = "../koina" }
 aletheia-krites = { path = "../krites", optional = true }
 jiff = { workspace = true, features = ["serde"] }
 parking_lot = "0.12"

@@ -8,7 +8,7 @@ use std::time::Duration;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-use aletheia_koina::secret::SecretString;
+use koina::secret::SecretString;
 
 use super::*;
 use crate::anthropic::pricing::{backoff_delay, estimate_cost, model_family};

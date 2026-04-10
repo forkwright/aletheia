@@ -7,7 +7,7 @@
 use std::process::Command;
 
 use tracing::warn;
-use aletheia_koina::uuid::Uuid;
+use koina::uuid::Uuid;
 
 /// Fingerprint salt from CC source (constants/system.ts).
 /// Must match exactly for server-side validation.

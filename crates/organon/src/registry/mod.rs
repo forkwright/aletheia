@@ -9,7 +9,7 @@ use indexmap::IndexMap;
 use snafu::ensure;
 use tracing::info_span;
 
-use aletheia_koina::id::ToolName;
+use koina::id::ToolName;
 
 use crate::error::{self, Result};
 use crate::types::{

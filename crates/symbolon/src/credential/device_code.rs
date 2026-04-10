@@ -10,7 +10,7 @@ use serde::Deserialize;
 use snafu::{ResultExt, Snafu};
 use tracing::{debug, info, warn};
 
-use aletheia_koina::secret::SecretString;
+use koina::secret::SecretString;
 
 use super::OAuthProvider;
 use super::file_ops::CredentialFile;

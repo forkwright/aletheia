@@ -3,7 +3,7 @@
 //! Each event implements [`InternalEvent`] so a single `emit()` call at the
 //! stage level produces both a metric increment and a structured log line.
 
-use aletheia_koina::event::{InternalEvent, LogLevel};
+use koina::event::{InternalEvent, LogLevel};
 
 /// A pipeline stage completed successfully.
 pub(crate) struct StageCompleted {

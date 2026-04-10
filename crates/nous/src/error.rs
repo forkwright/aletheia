@@ -254,13 +254,13 @@ pub enum Error {
 /// Convenience alias for results with [`Error`].
 pub type Result<T> = std::result::Result<T, Error>; // kanon:ignore RUST/pub-visibility
 
-impl aletheia_koina::error_class::Classifiable for Error {
+impl koina::error_class::Classifiable for Error {
     #[expect(
         clippy::match_same_arms,
         reason = "per-variant arms document the intended classification for each error; merging them hides which variants belong to which class and makes adding new variants error-prone"
     )]
-    fn class(&self) -> aletheia_koina::error_class::ErrorClass {
-        use aletheia_koina::error_class::ErrorClass;
+    fn class(&self) -> koina::error_class::ErrorClass {
+        use koina::error_class::ErrorClass;
         match self {
             // Delegate to the inner error's own classification where possible.
             Error::Llm { source, .. } => source.class(),
@@ -300,8 +300,8 @@ impl aletheia_koina::error_class::Classifiable for Error {
         }
     }
 
-    fn action(&self) -> aletheia_koina::error_class::ErrorAction {
-        use aletheia_koina::error_class::{ErrorAction, ErrorClass};
+    fn action(&self) -> koina::error_class::ErrorAction {
+        use koina::error_class::{ErrorAction, ErrorClass};
         match self {
             // Delegate LLM errors to hermeneus — it carries retry-after hints.
             Error::Llm { source, .. } => source.action(),

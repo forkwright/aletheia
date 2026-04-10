@@ -3,7 +3,7 @@
 use std::collections::HashSet;
 use std::sync::{Arc, RwLock};
 
-use aletheia_koina::id::{NousId, SessionId};
+use koina::id::{NousId, SessionId};
 
 use super::super::*;
 
@@ -80,7 +80,7 @@ fn test_normalize_handles_multiple_parent_traversals() {
 
 #[test]
 fn test_extract_str_missing_field_returns_invalid_input_error() {
-    use aletheia_koina::id::ToolName;
+    use koina::id::ToolName;
     let name = ToolName::new("test").expect("valid");
     let args = serde_json::json!({ "other": "value" });
     let err = extract_str(&args, "path", &name).expect_err("missing should fail");
@@ -92,7 +92,7 @@ fn test_extract_str_missing_field_returns_invalid_input_error() {
 
 #[test]
 fn test_extract_str_non_string_value_returns_error() {
-    use aletheia_koina::id::ToolName;
+    use koina::id::ToolName;
     let name = ToolName::new("test").expect("valid");
     let args = serde_json::json!({ "path": 42 });
     let err = extract_str(&args, "path", &name).expect_err("wrong type should fail");
@@ -147,7 +147,7 @@ async fn test_all_workspace_tools_registered() {
     let mut reg = crate::registry::ToolRegistry::new();
     register(&mut reg, crate::sandbox::SandboxConfig::disabled()).expect("register");
     for name in ["read", "write", "edit", "exec"] {
-        let tn = aletheia_koina::id::ToolName::new(name).expect("valid");
+        let tn = koina::id::ToolName::new(name).expect("valid");
         assert!(reg.get_def(&tn).is_some(), "{name} should be registered");
     }
 }
@@ -156,7 +156,7 @@ async fn test_all_workspace_tools_registered() {
 fn test_read_tool_def_has_path_as_required() {
     let mut reg = crate::registry::ToolRegistry::new();
     register(&mut reg, crate::sandbox::SandboxConfig::disabled()).expect("register");
-    let tn = aletheia_koina::id::ToolName::new("read").expect("valid");
+    let tn = koina::id::ToolName::new("read").expect("valid");
     let def = reg.get_def(&tn).expect("read registered");
     assert!(
         def.input_schema.required.contains(&"path".to_owned()),
@@ -168,7 +168,7 @@ fn test_read_tool_def_has_path_as_required() {
 fn test_write_tool_def_has_path_and_content_as_required() {
     let mut reg = crate::registry::ToolRegistry::new();
     register(&mut reg, crate::sandbox::SandboxConfig::disabled()).expect("register");
-    let tn = aletheia_koina::id::ToolName::new("write").expect("valid");
+    let tn = koina::id::ToolName::new("write").expect("valid");
     let def = reg.get_def(&tn).expect("write registered");
     assert!(
         def.input_schema.required.contains(&"path".to_owned()),

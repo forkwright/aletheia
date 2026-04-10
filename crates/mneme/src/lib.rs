@@ -8,9 +8,9 @@
 // ── Types (eidos) ──────────────────────────────────────────────────────────
 
 /// Newtype wrappers for knowledge-domain identifiers (re-exported from `eidos`).
-pub use aletheia_eidos::id;
+pub use eidos::id;
 /// Knowledge graph domain types: facts, entities, relationships, embeddings (re-exported from `eidos`).
-pub use aletheia_eidos::knowledge;
+pub use eidos::knowledge;
 
 // ── Path validation (eidos) ───────────────────────────────────────────────
 
@@ -25,7 +25,7 @@ pub use aletheia_eidos::knowledge;
 /// [`validate_memory_path()`]: knowledge::validate_memory_path
 /// [`ValidatedPath`]: knowledge::ValidatedPath
 pub mod path_validation {
-    pub use aletheia_eidos::knowledge::{
+    pub use eidos::knowledge::{
         PathValidationError, PathValidationLayer, ValidatedPath, validate_memory_path,
     };
 }

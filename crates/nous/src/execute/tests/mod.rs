@@ -8,7 +8,7 @@ use std::sync::{Arc, RwLock};
 use aletheia_hermeneus::provider::ProviderRegistry;
 use aletheia_hermeneus::test_utils::MockProvider;
 use aletheia_hermeneus::types::{CompletionResponse, ContentBlock, StopReason, Usage};
-use aletheia_koina::id::{NousId, SessionId, ToolName};
+use koina::id::{NousId, SessionId, ToolName};
 use aletheia_organon::registry::{ToolExecutor, ToolRegistry};
 use aletheia_organon::types::{
     InputSchema, ToolCategory, ToolContext, ToolDef, ToolInput, ToolResult,

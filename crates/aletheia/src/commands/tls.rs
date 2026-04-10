@@ -75,9 +75,9 @@ fn generate_certs(output_dir: &Path, days: u32, sans: &[String], force: bool) ->
         .self_signed(&key_pair)
         .whatever_context("failed to generate self-signed certificate")?;
 
-    aletheia_koina::fs::write_restricted(&cert_path, cert.pem().as_bytes())
+    koina::fs::write_restricted(&cert_path, cert.pem().as_bytes())
         .with_whatever_context(|_| format!("failed to write {}", cert_path.display()))?;
-    aletheia_koina::fs::write_restricted(&key_path, key_pair.serialize_pem().as_bytes())
+    koina::fs::write_restricted(&key_path, key_pair.serialize_pem().as_bytes())
         .with_whatever_context(|_| format!("failed to write {}", key_path.display()))?;
 
     // WHY: print absolute paths so the user knows where files were written,
