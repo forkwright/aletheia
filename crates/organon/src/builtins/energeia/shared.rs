@@ -2,8 +2,8 @@
 
 use std::sync::Arc;
 
-use aletheia_energeia::orchestrator::Orchestrator;
-use aletheia_energeia::store::EnergeiaStore;
+use energeia::orchestrator::Orchestrator;
+use energeia::store::EnergeiaStore;
 
 use crate::types::ToolResult;
 

@@ -78,36 +78,36 @@ pub mod training;
 // ── Knowledge pipeline (episteme) ──────────────────────────────────────────
 
 /// Memory admission control: structured decision gate for knowledge graph insertion.
-pub use aletheia_episteme::admission;
+pub use episteme::admission;
 /// Conflict detection pipeline for fact insertion.
-pub use aletheia_episteme::conflict;
+pub use episteme::conflict;
 /// LLM-driven fact consolidation for knowledge maintenance.
-pub use aletheia_episteme::consolidation;
+pub use episteme::consolidation;
 /// Multi-factor temporal decay with lifecycle stages and graduated pruning.
-pub use aletheia_episteme::decay;
+pub use episteme::decay;
 /// Embedding provider trait and implementations (candle, mock).
-pub use aletheia_episteme::embedding;
+pub use episteme::embedding;
 /// Embedding evaluation gate: Recall@K and MRR for model upgrade checks.
-pub use aletheia_episteme::embedding_eval;
+pub use episteme::embedding_eval;
 /// LLM-driven knowledge extraction pipeline (entities, relationships, facts).
-pub use aletheia_episteme::extract;
+pub use episteme::extract;
 /// Instinct system: behavioral memory from tool usage patterns.
-pub use aletheia_episteme::instinct;
+pub use episteme::instinct;
 /// Knowledge graph export/import for agent portability.
-pub use aletheia_episteme::knowledge_portability;
+pub use episteme::knowledge_portability;
 /// `CozoDB`-backed knowledge store for graph traversal and vector search.
-pub use aletheia_episteme::knowledge_store;
+pub use episteme::knowledge_store;
 /// Typed Datalog query builder for compile-time schema validation.
 #[cfg(feature = "mneme-engine")]
-pub use aletheia_episteme::query;
+pub use episteme::query;
 /// 6-factor recall scoring engine for knowledge retrieval ranking.
-pub use aletheia_episteme::recall;
+pub use episteme::recall;
 /// Skill storage helpers and SKILL.md parser.
-pub use aletheia_episteme::skill;
+pub use episteme::skill;
 /// Skill auto-capture: heuristic filter, signature hashing, and candidate tracking.
-pub use aletheia_episteme::skills;
+pub use episteme::skills;
 /// Relationship type normalization and validation for knowledge graph extraction.
-pub use aletheia_episteme::vocab;
+pub use episteme::vocab;
 
 /// Verify that `mneme-engine` and `sqlite` features coexist without `SQLite`
 /// link conflicts.

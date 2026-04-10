@@ -73,7 +73,6 @@ dependencies = [
  "aletheia-agora",
  "aletheia-diaporeia",
  "aletheia-dokimion",
- "aletheia-energeia",
  "aletheia-mneme",
  "aletheia-nous",
  "aletheia-oikonomos",
@@ -85,6 +84,7 @@ dependencies = [
  "clap_complete",
  "cliclack",
  "dianoia",
+ "energeia",
  "hermeneus",
  "indexmap 2.13.1",
  "jiff",
@@ -181,60 +181,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "aletheia-energeia"
-version = "0.14.1"
-dependencies = [
- "async-trait",
- "eidos",
- "fjall",
- "jiff",
- "koina",
- "parking_lot",
- "prometheus",
- "regex",
- "rmp-serde",
- "serde",
- "serde_json",
- "serde_yaml",
- "snafu",
- "tempfile",
- "tokio",
- "tokio-util",
- "tracing",
-]
-
-[[package]]
-name = "aletheia-episteme"
-version = "0.14.1"
-dependencies = [
- "candle-core",
- "candle-nn",
- "candle-transformers",
- "criterion",
- "eidos",
- "graphe",
- "hf-hub",
- "jiff",
- "koina",
- "krites",
- "parking_lot",
- "prometheus",
- "proptest",
- "rand 0.9.2",
- "regex",
- "serde",
- "serde_json",
- "snafu",
- "tempfile",
- "tokenizers",
- "tokio",
- "toml 1.1.2+spec-1.1.0",
- "tracing",
- "tracing-subscriber",
- "unicode-normalization",
-]
-
-[[package]]
 name = "aletheia-integration-tests"
 version = "0.14.1"
 dependencies = [
@@ -263,8 +209,8 @@ dependencies = [
 name = "aletheia-mneme"
 version = "0.14.1"
 dependencies = [
- "aletheia-episteme",
  "eidos",
+ "episteme",
  "graphe",
  "jiff",
  "krites",
@@ -310,8 +256,8 @@ dependencies = [
 name = "aletheia-oikonomos"
 version = "0.14.1"
 dependencies = [
- "aletheia-episteme",
  "axum 0.8.8",
+ "episteme",
  "flate2",
  "jiff",
  "koina",
@@ -1891,6 +1837,29 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "34aa73646ffb006b8f5147f3dc182bd4bcb190227ce861fc4a4844bf8e3cb2c0"
 
 [[package]]
+name = "energeia"
+version = "0.14.1"
+dependencies = [
+ "async-trait",
+ "eidos",
+ "fjall",
+ "jiff",
+ "koina",
+ "parking_lot",
+ "prometheus",
+ "regex",
+ "rmp-serde",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "snafu",
+ "tempfile",
+ "tokio",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
 name = "enum-as-inner"
 version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1932,6 +1901,37 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.117",
+]
+
+[[package]]
+name = "episteme"
+version = "0.14.1"
+dependencies = [
+ "candle-core",
+ "candle-nn",
+ "candle-transformers",
+ "criterion",
+ "eidos",
+ "graphe",
+ "hf-hub",
+ "jiff",
+ "koina",
+ "krites",
+ "parking_lot",
+ "prometheus",
+ "proptest",
+ "rand 0.9.2",
+ "regex",
+ "serde",
+ "serde_json",
+ "snafu",
+ "tempfile",
+ "tokenizers",
+ "tokio",
+ "toml 1.1.2+spec-1.1.0",
+ "tracing",
+ "tracing-subscriber",
+ "unicode-normalization",
 ]
 
 [[package]]
@@ -4046,8 +4046,8 @@ dependencies = [
 name = "organon"
 version = "0.14.1"
 dependencies = [
- "aletheia-energeia",
  "base64 0.22.1",
+ "energeia",
  "fjall",
  "hermeneus",
  "indexmap 2.13.1",

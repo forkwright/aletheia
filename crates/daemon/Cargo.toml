@@ -18,7 +18,7 @@ test-core = []
 test-full = []
 
 [dependencies]
-aletheia-episteme = { path = "../episteme", default-features = false }
+episteme = { path = "../episteme", default-features = false }
 koina = { path = "../koina" }
 # WHY: axum for webhook trigger listener
 axum = { workspace = true }

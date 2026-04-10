@@ -17,8 +17,8 @@
 //! // WHY: MockEmbeddingProvider is gated behind the `test-support` feature.
 //! // This example shows the API but cannot compile in doctest mode.
 //! use std::path::Path;
-//! use aletheia_episteme::embedding::MockEmbeddingProvider;
-//! use aletheia_episteme::embedding_eval::{EvalDataset, compare_models};
+//! use episteme::embedding::MockEmbeddingProvider;
+//! use episteme::embedding_eval::{EvalDataset, compare_models};
 //!
 //! let dataset = EvalDataset::from_jsonl_file(Path::new("eval.jsonl"))
 //!     .expect("JSONL must parse for valid test data");

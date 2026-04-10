@@ -68,7 +68,7 @@ impl BlastRadiusCost {
 /// # Example
 ///
 /// ```rust,ignore
-/// use aletheia_energeia::cost_ledger::CostLedger;
+/// use energeia::cost_ledger::CostLedger;
 ///
 /// let ledger = CostLedger::new();
 ///

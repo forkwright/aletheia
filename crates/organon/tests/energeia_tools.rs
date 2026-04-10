@@ -8,12 +8,12 @@ use std::collections::HashSet;
 use std::pin::Pin;
 use std::sync::{Arc, RwLock};
 
-use aletheia_energeia::engine::{SessionEvent, SessionResult};
-use aletheia_energeia::http::mock::{MockEngine, MockOutcome};
-use aletheia_energeia::orchestrator::{Orchestrator, OrchestratorConfig};
-use aletheia_energeia::qa::{PromptSpec as QaPromptSpec, QaGate};
-use aletheia_energeia::store::EnergeiaStore;
-use aletheia_energeia::types::{MechanicalIssue, QaResult, QaVerdict};
+use energeia::engine::{SessionEvent, SessionResult};
+use energeia::http::mock::{MockEngine, MockOutcome};
+use energeia::orchestrator::{Orchestrator, OrchestratorConfig};
+use energeia::qa::{PromptSpec as QaPromptSpec, QaGate};
+use energeia::store::EnergeiaStore;
+use energeia::types::{MechanicalIssue, QaResult, QaVerdict};
 use koina::id::{NousId, SessionId, ToolName};
 use tempfile::TempDir;
 
@@ -33,7 +33,7 @@ impl QaGate for AlwaysPassQaGate {
         _diff: &'a str,
     ) -> Pin<
         Box<
-            dyn std::future::Future<Output = aletheia_energeia::error::Result<QaResult>>
+            dyn std::future::Future<Output = energeia::error::Result<QaResult>>
                 + Send
                 + 'a,
         >,

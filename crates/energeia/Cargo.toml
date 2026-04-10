@@ -1,5 +1,5 @@
 [package]
-name = "aletheia-energeia"
+name = "energeia"
 version.workspace = true
 description = "Dispatch orchestration — actualization of plans into execution"
 edition.workspace = true

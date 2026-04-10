@@ -8,7 +8,7 @@ use std::pin::Pin;
 
 use indexmap::IndexMap;
 
-use aletheia_energeia::steward::service::{StewardConfig, run_once};
+use energeia::steward::service::{StewardConfig, run_once};
 use koina::id::ToolName;
 
 use crate::error::Result;

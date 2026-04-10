@@ -1,5 +1,5 @@
 [package]
-name = "aletheia-episteme"
+name = "episteme"
 version.workspace = true
 description = "Knowledge pipeline for Aletheia"
 edition.workspace = true

@@ -9,8 +9,8 @@ use std::sync::Arc;
 
 use indexmap::IndexMap;
 
-use aletheia_energeia::store::EnergeiaStore;
-use aletheia_energeia::store::records::{NewLesson, NewObservation};
+use energeia::store::EnergeiaStore;
+use energeia::store::records::{NewLesson, NewObservation};
 use koina::id::ToolName;
 
 use crate::error::Result;

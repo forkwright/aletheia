@@ -20,8 +20,8 @@
 // ---------------------------------------------------------------------------
 
 mod ops_facts {
-    use aletheia_episteme::knowledge::{EpistemicTier, FactType, MemoryScope};
-    use aletheia_episteme::ops_facts::{OpsFactExtractor, OpsSnapshot};
+    use episteme::knowledge::{EpistemicTier, FactType, MemoryScope};
+    use episteme::ops_facts::{OpsFactExtractor, OpsSnapshot};
 
     /// A complete snapshot where every category of fact should be emitted.
     fn full_snapshot() -> OpsSnapshot {
@@ -190,7 +190,7 @@ mod ops_facts {
 // ---------------------------------------------------------------------------
 
 mod observation_type {
-    use aletheia_episteme::extract::observation::ObservationType;
+    use episteme::extract::observation::ObservationType;
 
     #[test]
     fn bug_keywords_take_priority_over_debt() {
@@ -289,9 +289,9 @@ mod observation_type {
 // ---------------------------------------------------------------------------
 
 mod causal_store {
-    use aletheia_episteme::causal::{CausalError, CausalStore};
-    use aletheia_episteme::id::{CausalEdgeId, FactId};
-    use aletheia_episteme::knowledge::{CausalEdge, CausalRelationType, TemporalOrdering};
+    use episteme::causal::{CausalError, CausalStore};
+    use episteme::id::{CausalEdgeId, FactId};
+    use episteme::knowledge::{CausalEdge, CausalRelationType, TemporalOrdering};
 
     fn fact_id(s: &str) -> FactId {
         FactId::new(s).expect("valid fact id")
@@ -497,7 +497,7 @@ mod causal_store {
 // ---------------------------------------------------------------------------
 
 mod parse_skill_md {
-    use aletheia_episteme::skill::{SkillContent, parse_skill_md};
+    use episteme::skill::{SkillContent, parse_skill_md};
 
     #[test]
     fn parses_minimal_skill_md() {

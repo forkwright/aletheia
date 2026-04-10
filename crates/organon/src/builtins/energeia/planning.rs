@@ -8,7 +8,7 @@ use std::pin::Pin;
 
 use indexmap::IndexMap;
 
-use aletheia_energeia::dag::{PromptDag, compute_frontier};
+use energeia::dag::{PromptDag, compute_frontier};
 use koina::id::ToolName;
 
 use crate::error::Result;
