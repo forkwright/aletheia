@@ -356,8 +356,10 @@ fn scroll_position_spans(app: &App, theme: &Theme) -> Vec<Span<'static>> {
     ) {
         Some((offset, _size)) => {
             #[expect(
+                clippy::as_conversions,
                 clippy::cast_possible_truncation,
-                reason = "percentage is always 0–100, fits in u16"
+                clippy::cast_sign_loss,
+                reason = "scrollbar_position returns offset in [0.0, 1.0]; offset*100 is in [0, 100] and fits non-negative in u16"
             )]
             let pct = (offset * 100.0).round() as u16;
             vec![
