@@ -1092,5 +1092,5 @@ fn sd_notify(_msg: &str) {
 }
 
 #[cfg(test)]
-#[path = "runner_tests.rs"]
+#[path = "../runner_tests.rs"]
 mod tests;
