@@ -28,6 +28,6 @@ tokio-util = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
-aletheia-organon = { path = "../organon", features = ["test-support"] }
+organon = { path = "../organon", features = ["test-support"] }
 tokio = { workspace = true }
 wiremock = { workspace = true }

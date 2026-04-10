@@ -12,8 +12,8 @@ use hermeneus::provider::ProviderRegistry;
 use koina::event::EventEmitter;
 use aletheia_mneme::embedding::EmbeddingProvider;
 use aletheia_mneme::store::SessionStore;
-use aletheia_organon::registry::ToolRegistry;
-use aletheia_organon::types::ToolContext;
+use organon::registry::ToolRegistry;
+use organon::types::ToolContext;
 use taxis::oikos::Oikos;
 
 use crate::bootstrap::{BootstrapAssembler, BootstrapSection, TaskHint, classify_task_hint};

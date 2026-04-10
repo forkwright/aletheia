@@ -3,7 +3,7 @@
 use axum::Json;
 use axum::extract::{Path, State};
 
-use aletheia_symbolon::types::Role;
+use symbolon::types::Role;
 
 use crate::error::ApiError;
 use crate::extract::{Claims, require_role};

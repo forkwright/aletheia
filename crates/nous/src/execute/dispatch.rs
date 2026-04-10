@@ -9,8 +9,8 @@ use tokio::sync::mpsc;
 
 use hermeneus::types::{ContentBlock, ToolResultBlock, ToolResultContent};
 use koina::id::ToolName;
-use aletheia_organon::registry::ToolRegistry;
-use aletheia_organon::types::{ToolContext, ToolInput};
+use organon::registry::ToolRegistry;
+use organon::types::{ToolContext, ToolInput};
 
 use crate::error;
 use crate::pipeline::{InteractionSignal, LoopDetector, LoopVerdict, ToolCall};

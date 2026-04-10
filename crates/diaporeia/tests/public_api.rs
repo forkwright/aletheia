@@ -48,9 +48,9 @@ use hermeneus::provider::ProviderRegistry;
 use koina::secret::SecretString;
 use aletheia_mneme::store::SessionStore;
 use aletheia_nous::manager::NousManager;
-use aletheia_organon::registry::ToolRegistry;
-use aletheia_symbolon::jwt::{JwtConfig, JwtManager};
-use aletheia_symbolon::types::Role;
+use organon::registry::ToolRegistry;
+use symbolon::jwt::{JwtConfig, JwtManager};
+use symbolon::types::Role;
 use taxis::config::AletheiaConfig;
 use taxis::oikos::Oikos;
 

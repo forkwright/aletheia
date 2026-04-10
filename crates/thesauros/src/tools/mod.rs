@@ -9,9 +9,9 @@ use std::time::Duration;
 
 use koina::defaults::MAX_OUTPUT_BYTES;
 use koina::id::ToolName;
-use aletheia_organon::process_guard::ProcessGuard;
-use aletheia_organon::registry::{ToolExecutor, ToolRegistry};
-use aletheia_organon::types::{
+use organon::process_guard::ProcessGuard;
+use organon::registry::{ToolExecutor, ToolRegistry};
+use organon::types::{
     InputSchema, PropertyDef, PropertyType, ToolCategory, ToolContext, ToolDef, ToolInput,
     ToolResult,
 };
@@ -38,7 +38,7 @@ impl ToolExecutor for ShellToolExecutor {
         &'a self,
         input: &'a ToolInput,
         _ctx: &'a ToolContext,
-    ) -> Pin<Box<dyn Future<Output = aletheia_organon::error::Result<ToolResult>> + Send + 'a>>
+    ) -> Pin<Box<dyn Future<Output = organon::error::Result<ToolResult>> + Send + 'a>>
     {
         Box::pin(async {
             let json_input = serde_json::to_string(&input.arguments).unwrap_or_else(|e| {
@@ -259,7 +259,7 @@ fn prepare_tool(
         extended_description: None,
         input_schema,
         category: ToolCategory::Domain,
-        reversibility: aletheia_organon::types::Reversibility::Irreversible,
+        reversibility: organon::types::Reversibility::Irreversible,
         auto_activate: false,
     };
 

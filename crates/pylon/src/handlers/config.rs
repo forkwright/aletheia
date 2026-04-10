@@ -8,7 +8,7 @@ use serde_json::Value;
 use tracing::instrument;
 use utoipa::ToSchema;
 
-use aletheia_symbolon::types::Role;
+use symbolon::types::Role;
 
 use crate::error::ApiError;
 use crate::extract::{Claims, require_role};

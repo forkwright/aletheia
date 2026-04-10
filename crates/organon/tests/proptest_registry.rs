@@ -15,9 +15,9 @@
 )]
 
 use koina::id::ToolName;
-use aletheia_organon::registry::ToolRegistry;
-use aletheia_organon::testing::{MockToolExecutor, make_test_context, make_tool_input};
-use aletheia_organon::types::{InputSchema, Reversibility, ToolCategory, ToolDef};
+use organon::registry::ToolRegistry;
+use organon::testing::{MockToolExecutor, make_test_context, make_tool_input};
+use organon::types::{InputSchema, Reversibility, ToolCategory, ToolDef};
 use indexmap::IndexMap;
 use proptest::prelude::*;
 

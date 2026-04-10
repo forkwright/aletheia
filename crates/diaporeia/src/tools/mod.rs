@@ -13,7 +13,7 @@ use snafu::{OptionExt as _, ResultExt as _};
 
 use koina::http::BEARER_PREFIX;
 use koina::id::SessionId;
-use aletheia_symbolon::types::Role;
+use symbolon::types::Role;
 
 use crate::error::{NousNotFoundSnafu, PipelineSnafu, SerializationSnafu, SessionStoreSnafu};
 use crate::rate_limit::Tier;

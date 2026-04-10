@@ -5,7 +5,7 @@ use std::sync::Arc;
 use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
 
-use aletheia_symbolon::types::Role;
+use symbolon::types::Role;
 
 use koina::http::BEARER_PREFIX;
 

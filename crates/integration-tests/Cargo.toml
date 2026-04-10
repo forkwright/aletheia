@@ -28,10 +28,10 @@ aletheia-mneme = { path = "../mneme", default-features = false, features = [
 ] }
 hermeneus = { path = "../hermeneus", features = ["test-utils"] }
 aletheia-nous = { path = "../nous" }
-aletheia-organon = { path = "../organon", features = ["test-support"] }
+organon = { path = "../organon", features = ["test-support"] }
 thesauros = { path = "../thesauros" }
 aletheia-pylon = { path = "../pylon" }
-aletheia-symbolon = { path = "../symbolon" }
+symbolon = { path = "../symbolon" }
 jiff = { workspace = true }
 axum = { workspace = true }
 reqwest = { workspace = true }

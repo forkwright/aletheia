@@ -5,7 +5,7 @@ use axum::extract::State;
 use serde::{Deserialize, Serialize};
 use tracing::instrument;
 
-use aletheia_symbolon::types::Role;
+use symbolon::types::Role;
 
 use crate::error::ApiError;
 use crate::extract::{Claims, require_role};

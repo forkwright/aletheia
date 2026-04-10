@@ -23,11 +23,11 @@ use koina::secret::SecretString;
 use aletheia_mneme::store::SessionStore;
 use aletheia_nous::config::{NousConfig, PipelineConfig};
 use aletheia_nous::manager::NousManager;
-use aletheia_organon::registry::ToolRegistry;
+use organon::registry::ToolRegistry;
 use aletheia_pylon::router::build_router;
 use aletheia_pylon::state::AppState;
-use aletheia_symbolon::jwt::{JwtConfig, JwtManager};
-use aletheia_symbolon::types::Role;
+use symbolon::jwt::{JwtConfig, JwtManager};
+use symbolon::types::Role;
 use taxis::oikos::Oikos;
 
 // --- Mock Providers ---

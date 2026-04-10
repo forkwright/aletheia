@@ -32,7 +32,7 @@ async fn valid_token_passes() {
 
 #[tokio::test]
 async fn expired_token_rejected() {
-    use aletheia_symbolon::types::{Claims, Role, TokenKind};
+    use symbolon::types::{Claims, Role, TokenKind};
 
     let (app, _dir) = app().await;
 

@@ -19,7 +19,7 @@ use tracing::{info, instrument};
 
 use aletheia_mneme::types::SessionStatus;
 
-use aletheia_symbolon::types::Role;
+use symbolon::types::Role;
 
 use crate::error::{
     ApiError, BadRequestSnafu, ConflictSnafu, ErrorResponse, NousNotFoundSnafu,

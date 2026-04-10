@@ -833,7 +833,7 @@ fn signal_provider_with_buffer_capacity() {
 // SignalClient
 // ---------------------------------------------------------------------------
 
-use aletheia_organon::testing::install_crypto_provider;
+use organon::testing::install_crypto_provider;
 
 #[test]
 fn signal_client_creation_fails_without_http_prefix() {

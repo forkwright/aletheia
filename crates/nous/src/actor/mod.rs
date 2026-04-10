@@ -16,8 +16,8 @@ use aletheia_mneme::embedding::EmbeddingProvider;
 #[cfg(feature = "knowledge-store")]
 use aletheia_mneme::knowledge_store::KnowledgeStore;
 use aletheia_mneme::store::SessionStore;
-use aletheia_organon::registry::ToolRegistry;
-use aletheia_organon::types::ToolServices;
+use organon::registry::ToolRegistry;
+use organon::types::ToolServices;
 use taxis::oikos::Oikos;
 
 use crate::bootstrap::BootstrapSection;

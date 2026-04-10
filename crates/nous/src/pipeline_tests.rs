@@ -245,8 +245,8 @@ async fn run_pipeline_simple() {
     use hermeneus::provider::ProviderRegistry;
     use hermeneus::test_utils::MockProvider;
     use koina::id::{NousId, SessionId};
-    use aletheia_organon::registry::ToolRegistry;
-    use aletheia_organon::types::ToolContext;
+    use organon::registry::ToolRegistry;
+    use organon::types::ToolContext;
 
     let dir = TempDir::new().expect("create temp dir");
     let root = dir.path();

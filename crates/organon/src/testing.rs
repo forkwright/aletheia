@@ -5,7 +5,7 @@
 //! # Usage
 //!
 //! ```ignore
-//! use aletheia_organon::testing::{MockToolExecutor, ToolExecutorSpec, make_test_context};
+//! use organon::testing::{MockToolExecutor, ToolExecutorSpec, make_test_context};
 //!
 //! let executor = MockToolExecutor::text("hello");
 //! let ctx = make_test_context();
@@ -36,7 +36,7 @@ use crate::types::{ToolContext, ToolInput, ToolResult};
 /// # Example
 ///
 /// ```ignore
-/// use aletheia_organon::testing::install_crypto_provider;
+/// use organon::testing::install_crypto_provider;
 ///
 /// #[test]
 /// fn test_with_tls() {

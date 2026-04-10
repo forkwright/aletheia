@@ -18,8 +18,8 @@ use hermeneus::types::{
     ThinkingConfig, ToolResultContent,
 };
 use koina::id::ToolName;
-use aletheia_organon::registry::ToolRegistry;
-use aletheia_organon::types::ToolContext;
+use organon::registry::ToolRegistry;
+use organon::types::ToolContext;
 
 use self::dispatch::{
     DispatchResult, build_messages, classify_signals, dispatch_tools, dispatch_tools_streaming,

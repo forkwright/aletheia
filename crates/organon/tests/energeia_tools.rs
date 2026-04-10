@@ -17,9 +17,9 @@ use aletheia_energeia::types::{MechanicalIssue, QaResult, QaVerdict};
 use koina::id::{NousId, SessionId, ToolName};
 use tempfile::TempDir;
 
-use aletheia_organon::builtins::energeia::{EnergeiaServices, register};
-use aletheia_organon::registry::ToolRegistry;
-use aletheia_organon::types::{ToolContext, ToolInput, ToolResult};
+use organon::builtins::energeia::{EnergeiaServices, register};
+use organon::registry::ToolRegistry;
+use organon::types::{ToolContext, ToolInput, ToolResult};
 
 // ── Mock QA gate ─────────────────────────────────────────────────────────────
 
@@ -164,7 +164,7 @@ async fn all_nine_tools_return_non_error() {
 
     // Save the QA result JSON so diorthosis can consume it.
     let qa_result_json = match &result.content {
-        aletheia_organon::types::ToolResultContent::Text(t) => t.clone(),
+        organon::types::ToolResultContent::Text(t) => t.clone(),
         _ => panic!("dokimasia returned non-text content"),
     };
 

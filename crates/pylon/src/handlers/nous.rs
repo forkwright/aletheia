@@ -5,7 +5,7 @@ use axum::extract::{Path, State};
 use serde::Serialize;
 use utoipa::ToSchema;
 
-use aletheia_symbolon::types::Role;
+use symbolon::types::Role;
 
 use crate::error::{ApiError, ErrorResponse, NousNotFoundSnafu};
 use crate::extract::{Claims, require_role};
@@ -253,7 +253,7 @@ mod tests {
         fn assert_nous_state_fields(state: &NousState) {
             use std::sync::Arc;
             use aletheia_nous::manager::NousManager;
-            use aletheia_organon::registry::ToolRegistry;
+            use organon::registry::ToolRegistry;
 
             let _: &Arc<NousManager> = &state.nous_manager;
             let _: &Arc<ToolRegistry> = &state.tool_registry;

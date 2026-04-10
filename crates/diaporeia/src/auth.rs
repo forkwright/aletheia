@@ -13,7 +13,7 @@ use axum::middleware::Next;
 use tracing::warn;
 
 use koina::http::BEARER_PREFIX;
-use aletheia_symbolon::types::Role;
+use symbolon::types::Role;
 
 use crate::state::DiaporeiaState;
 

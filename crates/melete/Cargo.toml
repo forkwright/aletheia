@@ -1,5 +1,5 @@
 [package]
-name = "aletheia-melete"
+name = "melete"
 version.workspace = true
 description = "Context distillation engine — compresses conversation history"
 edition.workspace = true

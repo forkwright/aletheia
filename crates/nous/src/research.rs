@@ -10,7 +10,7 @@ use dianoia::research::{
     FindingStatus, ResearchConfig, ResearchDomain, ResearchFinding, ResearchOutput, domain_prompt,
     merge_research,
 };
-use aletheia_organon::types::SpawnService;
+use organon::types::SpawnService;
 
 fn domain_sort_key(domain: ResearchDomain) -> u8 {
     match domain {
@@ -72,7 +72,7 @@ pub async fn run_research(
         set.spawn(
             async move {
                 info!("spawning researcher");
-                let request = aletheia_organon::types::SpawnRequest {
+                let request = organon::types::SpawnRequest {
                     role: "researcher".to_owned(),
                     task: prompt,
                     model: None,
@@ -159,7 +159,7 @@ mod tests {
     use std::pin::Pin;
 
     use dianoia::research::ResearchLevel;
-    use aletheia_organon::types::{SpawnRequest, SpawnResult};
+    use organon::types::{SpawnRequest, SpawnResult};
 
     use super::*;
 

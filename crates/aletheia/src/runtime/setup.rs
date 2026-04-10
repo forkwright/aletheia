@@ -19,9 +19,9 @@ use aletheia_mneme::embedding::{
     DegradedEmbeddingProvider, EmbeddingConfig, EmbeddingProvider, create_provider,
 };
 use aletheia_nous::manager::NousManager;
-use aletheia_organon::builtins;
-use aletheia_organon::registry::ToolRegistry;
-use aletheia_symbolon::credential::{
+use organon::builtins;
+use organon::registry::ToolRegistry;
+use symbolon::credential::{
     CredentialChain, CredentialFile, EnvCredentialProvider, FileCredentialProvider,
     RefreshingCredentialProvider, claude_code_default_path, claude_code_provider,
 };
@@ -85,7 +85,7 @@ pub(super) fn build_provider_registry(config: &AletheiaConfig, oikos: &Oikos) ->
 
     #[cfg(feature = "keyring")]
     {
-        use aletheia_symbolon::credential::KeyringCredentialProvider;
+        use symbolon::credential::KeyringCredentialProvider;
         chain.push(Box::new(KeyringCredentialProvider::new()));
     }
 
@@ -153,13 +153,13 @@ pub(super) fn build_tool_registry(
     sandbox_settings: &taxis::config::SandboxSettings,
 ) -> Result<ToolRegistry> {
     let mut registry = ToolRegistry::new();
-    let sandbox = aletheia_organon::sandbox::SandboxConfig {
+    let sandbox = organon::sandbox::SandboxConfig {
         enabled: sandbox_settings.enabled,
         enforcement: match sandbox_settings.enforcement {
             taxis::config::SandboxEnforcementMode::Enforcing => {
-                aletheia_organon::sandbox::SandboxEnforcement::Enforcing
+                organon::sandbox::SandboxEnforcement::Enforcing
             }
-            _ => aletheia_organon::sandbox::SandboxEnforcement::Permissive,
+            _ => organon::sandbox::SandboxEnforcement::Permissive,
         },
         allowed_root: sandbox_settings.allowed_root.clone(),
         extra_read_paths: sandbox_settings.extra_read_paths.clone(),
@@ -167,12 +167,12 @@ pub(super) fn build_tool_registry(
         extra_exec_paths: sandbox_settings.extra_exec_paths.clone(),
         egress: match sandbox_settings.egress {
             taxis::config::EgressPolicy::Deny => {
-                aletheia_organon::sandbox::EgressPolicy::Deny
+                organon::sandbox::EgressPolicy::Deny
             }
             taxis::config::EgressPolicy::Allowlist => {
-                aletheia_organon::sandbox::EgressPolicy::Allowlist
+                organon::sandbox::EgressPolicy::Allowlist
             }
-            _ => aletheia_organon::sandbox::EgressPolicy::Allow,
+            _ => organon::sandbox::EgressPolicy::Allow,
         },
         egress_allowlist: sandbox_settings.egress_allowlist.clone(),
         nproc_limit: sandbox_settings.nproc_limit,

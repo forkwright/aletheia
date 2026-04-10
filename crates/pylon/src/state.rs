@@ -12,8 +12,8 @@ use hermeneus::provider::ProviderRegistry;
 use aletheia_mneme::knowledge_store::KnowledgeStore;
 use aletheia_mneme::store::SessionStore;
 use aletheia_nous::manager::NousManager;
-use aletheia_organon::registry::ToolRegistry;
-use aletheia_symbolon::jwt::JwtManager;
+use organon::registry::ToolRegistry;
+use symbolon::jwt::JwtManager;
 use taxis::config::AletheiaConfig;
 use taxis::oikos::Oikos;
 

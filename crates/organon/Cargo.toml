@@ -1,5 +1,5 @@
 [package]
-name = "aletheia-organon"
+name = "organon"
 version.workspace = true
 description = "Tool registry, definitions, and built-in tool executors"
 edition.workspace = true

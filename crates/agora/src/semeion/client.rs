@@ -299,7 +299,7 @@ fn normalize_url(url: &str) -> String {
     reason = "test: JSON key indexing on known-present keys"
 )]
 mod tests {
-    use aletheia_organon::testing::install_crypto_provider;
+    use organon::testing::install_crypto_provider;
 
     use super::*;
 

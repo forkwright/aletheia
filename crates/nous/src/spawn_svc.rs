@@ -9,8 +9,8 @@ use tokio_util::sync::CancellationToken;
 use tracing::{Instrument, info, warn};
 
 use hermeneus::provider::ProviderRegistry;
-use aletheia_organon::registry::ToolRegistry;
-use aletheia_organon::types::{SpawnRequest, SpawnResult, SpawnService};
+use organon::registry::ToolRegistry;
+use organon::types::{SpawnRequest, SpawnResult, SpawnService};
 use taxis::oikos::Oikos;
 
 use crate::actor;

@@ -16,8 +16,8 @@ use hermeneus::types::{
 use koina::id::ToolName;
 use aletheia_nous::config::{NousConfig, PipelineConfig};
 use aletheia_nous::manager::NousManager;
-use aletheia_organon::registry::ToolRegistry;
-use aletheia_organon::types::ToolCategory;
+use organon::registry::ToolRegistry;
+use organon::types::ToolCategory;
 use taxis::oikos::Oikos;
 use thesauros::loader::load_packs;
 use thesauros::tools::register_pack_tools;

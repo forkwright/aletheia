@@ -15,8 +15,8 @@
 use std::time::Duration;
 
 use koina::secret::SecretString;
-use aletheia_symbolon::jwt::{JwtConfig, JwtManager};
-use aletheia_symbolon::types::{Role, TokenKind};
+use symbolon::jwt::{JwtConfig, JwtManager};
+use symbolon::types::{Role, TokenKind};
 
 /// Build a `JwtManager` with a test signing key and standard TTLs.
 fn test_manager() -> JwtManager {

@@ -532,7 +532,7 @@ async fn run_background_distillation(
 
     let messages = crate::distillation::convert_to_hermeneus_messages(&history);
     let engine =
-        aletheia_melete::distill::DistillEngine::new(aletheia_melete::distill::DistillConfig {
+        melete::distill::DistillEngine::new(melete::distill::DistillConfig {
             model: config.model.clone(),
             verbatim_tail: config.verbatim_tail,
             ..Default::default()

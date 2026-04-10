@@ -19,10 +19,10 @@ use aletheia_nous::config::{NousConfig, PipelineConfig};
 use aletheia_nous::cross::CrossNousRouter;
 use aletheia_nous::manager::NousManager;
 use aletheia_oikonomos::runner::TaskRunner;
-use aletheia_organon::registry::ToolRegistry;
-use aletheia_organon::types::ToolServices;
+use organon::registry::ToolRegistry;
+use organon::types::ToolServices;
 use aletheia_pylon::state::AppState;
-use aletheia_symbolon::jwt::{JwtConfig, JwtManager};
+use symbolon::jwt::{JwtConfig, JwtManager};
 use taxis::config::{AletheiaConfig, resolve_nous};
 use taxis::oikos::Oikos;
 use taxis::validate::{validate_section, validate_startup};
@@ -393,33 +393,33 @@ impl RuntimeBuilder {
         let (cross_nous, messenger, note_store, blackboard_store, spawn, planning) = if self
             .tool_services
         {
-            let cross_nous: Arc<dyn aletheia_organon::types::CrossNousService> =
+            let cross_nous: Arc<dyn organon::types::CrossNousService> =
                 Arc::new(tool_adapters::CrossNousAdapter(Arc::clone(&cross_router)));
             #[expect(
                 clippy::as_conversions,
                 reason = "coercion to dyn trait objects: required by Arc<dyn Trait> type annotations"
             )]
-            let messenger: Option<Arc<dyn aletheia_organon::types::MessageService>> =
+            let messenger: Option<Arc<dyn organon::types::MessageService>> =
                 signal_provider.as_ref().map(|p| {
                     Arc::new(tool_adapters::SignalAdapter(
                         Arc::clone(p) as Arc<dyn ChannelProvider>
-                    )) as Arc<dyn aletheia_organon::types::MessageService>
+                    )) as Arc<dyn organon::types::MessageService>
                 });
-            let note_store: Option<Arc<dyn aletheia_organon::types::NoteStore>> = Some(Arc::new(
+            let note_store: Option<Arc<dyn organon::types::NoteStore>> = Some(Arc::new(
                 aletheia_nous::adapters::SessionNoteAdapter(Arc::clone(&session_store)),
             ));
-            let blackboard_store: Option<Arc<dyn aletheia_organon::types::BlackboardStore>> =
+            let blackboard_store: Option<Arc<dyn organon::types::BlackboardStore>> =
                 Some(Arc::new(aletheia_nous::adapters::SessionBlackboardAdapter(
                     Arc::clone(&session_store),
                 )));
-            let spawn: Option<Arc<dyn aletheia_organon::types::SpawnService>> =
+            let spawn: Option<Arc<dyn organon::types::SpawnService>> =
                 Some(Arc::new(aletheia_nous::spawn_svc::SpawnServiceImpl::new(
                     Arc::clone(&provider_registry),
                     Arc::clone(&tool_registry),
                     Arc::clone(&self.oikos),
                 )));
             let planning_root = self.oikos.data().join("planning");
-            let planning: Option<Arc<dyn aletheia_organon::types::PlanningService>> =
+            let planning: Option<Arc<dyn organon::types::PlanningService>> =
                 Some(Arc::new(planning_adapter::FilesystemPlanningService::new(
                     planning_root,
                 )));
@@ -497,17 +497,17 @@ impl RuntimeBuilder {
             reason = "coercion to dyn trait object: required to satisfy Arc<dyn Trait> type annotation"
         )]
         let knowledge_search: Option<
-            Arc<dyn aletheia_organon::types::KnowledgeSearchService>,
+            Arc<dyn organon::types::KnowledgeSearchService>,
         > = knowledge_store.as_ref().map(|ks| {
             Arc::new(crate::knowledge_adapter::KnowledgeSearchAdapter::new(
                 Arc::clone(ks),
                 Arc::clone(&embedding_provider),
                 Arc::clone(&recall_source_registry),
-            )) as Arc<dyn aletheia_organon::types::KnowledgeSearchService>
+            )) as Arc<dyn organon::types::KnowledgeSearchService>
         });
         #[cfg(not(feature = "recall"))]
         let knowledge_search: Option<
-            Arc<dyn aletheia_organon::types::KnowledgeSearchService>,
+            Arc<dyn organon::types::KnowledgeSearchService>,
         > = None;
 
         let tool_services = Arc::new(ToolServices {
@@ -520,7 +520,7 @@ impl RuntimeBuilder {
             knowledge: knowledge_search,
             http_client: reqwest::Client::new(),
             lazy_tool_catalog: tool_registry.lazy_tool_catalog(),
-            server_tool_config: aletheia_organon::types::ServerToolConfig::default(),
+            server_tool_config: organon::types::ServerToolConfig::default(),
         });
 
         // Clone knowledge_store Arc before moving INTO NousManager

@@ -11,12 +11,12 @@ use dianoia::plan::PlanState;
 use dianoia::project::{Project, ProjectMode};
 use dianoia::state::{ProjectState, Transition};
 use dianoia::workspace::ProjectWorkspace;
-use aletheia_organon::error::{
+use organon::error::{
     InvalidIdSnafu, InvalidModeSnafu, InvalidTransitionSnafu, IoSnafu, LoadProjectSnafu,
     NotFoundSnafu, PlanningAdapterError, SaveProjectSnafu, SerializeSnafu, TaskJoinSnafu,
     TransitionSnafu, WorkspaceSnafu,
 };
-use aletheia_organon::types::PlanningService;
+use organon::types::PlanningService;
 
 pub(crate) struct FilesystemPlanningService {
     projects_root: PathBuf,

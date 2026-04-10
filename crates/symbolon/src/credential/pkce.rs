@@ -657,7 +657,7 @@ async fn exchange_code(
 /// # Example
 ///
 /// ```no_run
-/// use aletheia_symbolon::credential::pkce::{OAuthProvider, pkce_login};
+/// use symbolon::credential::pkce::{OAuthProvider, pkce_login};
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// let provider = OAuthProvider::new(

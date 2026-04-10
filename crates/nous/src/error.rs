@@ -167,7 +167,7 @@ pub enum Error {
     /// Distillation failed.
     #[snafu(display("distillation failed: {source}"))]
     Distillation {
-        source: aletheia_melete::error::Error,
+        source: melete::error::Error,
         #[snafu(implicit)]
         location: snafu::Location,
     },

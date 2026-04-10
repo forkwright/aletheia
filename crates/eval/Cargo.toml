@@ -28,5 +28,5 @@ owo-colors = "4"
 supports-color = "3"
 
 [dev-dependencies]
-aletheia-organon = { path = "../organon", features = ["test-support"] }
+organon = { path = "../organon", features = ["test-support"] }
 wiremock = { workspace = true }

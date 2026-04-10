@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use aletheia_agora::types::{ChannelProvider, SendParams};
 use aletheia_nous::cross::{CrossNousMessage, CrossNousRouter};
-use aletheia_organon::types::{CrossNousService, MessageService};
+use organon::types::{CrossNousService, MessageService};
 
 pub(crate) struct CrossNousAdapter(pub Arc<CrossNousRouter>);
 

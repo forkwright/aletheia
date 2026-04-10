@@ -18,8 +18,8 @@ use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 
 use koina::id::ToolName;
-use aletheia_organon::registry::{ToolExecutor, ToolRegistry};
-use aletheia_organon::types::{
+use organon::registry::{ToolExecutor, ToolRegistry};
+use organon::types::{
     InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
     ToolInput, ToolResult,
 };
@@ -318,7 +318,7 @@ impl ToolExecutor for ExternalToolExecutor {
         &'a self,
         input: &'a ToolInput,
         _ctx: &'a ToolContext,
-    ) -> Pin<Box<dyn Future<Output = aletheia_organon::error::Result<ToolResult>> + Send + 'a>>
+    ) -> Pin<Box<dyn Future<Output = organon::error::Result<ToolResult>> + Send + 'a>>
     {
         Box::pin(async move {
             let payload = serde_json::json!({

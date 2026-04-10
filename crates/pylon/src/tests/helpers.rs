@@ -14,8 +14,8 @@ use koina::secret::SecretString;
 use aletheia_mneme::store::SessionStore;
 use aletheia_nous::config::{NousConfig, PipelineConfig};
 use aletheia_nous::manager::NousManager;
-use aletheia_organon::registry::ToolRegistry;
-use aletheia_symbolon::jwt::{JwtConfig, JwtManager};
+use organon::registry::ToolRegistry;
+use symbolon::jwt::{JwtConfig, JwtManager};
 use taxis::oikos::Oikos;
 
 pub(super) use crate::router::build_router;
@@ -45,7 +45,7 @@ pub(super) fn test_jwt_manager() -> Arc<JwtManager> {
 
 pub(super) fn default_token() -> String {
     test_jwt_manager()
-        .issue_access("test-user", aletheia_symbolon::types::Role::Operator, None)
+        .issue_access("test-user", symbolon::types::Role::Operator, None)
         .expect("test token")
 }
 

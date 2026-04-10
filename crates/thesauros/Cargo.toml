@@ -16,7 +16,7 @@ test-full = []
 
 [dependencies]
 koina = { path = "../koina" }
-aletheia-organon = { path = "../organon" }
+organon = { path = "../organon" }
 indexmap = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

@@ -268,7 +268,7 @@ fn check_credential_validity(state: &HealthState) -> HealthCheck {
     let creds_dir = state.oikos.credentials();
     let cred_file = creds_dir.join("anthropic.json");
 
-    match aletheia_symbolon::credential::CredentialFile::load(&cred_file) {
+    match symbolon::credential::CredentialFile::load(&cred_file) {
         Some(cred_file) => {
             // Check if token is expired or expiring soon
             if let Some(remaining_secs) = cred_file.seconds_remaining() {

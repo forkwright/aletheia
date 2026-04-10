@@ -23,7 +23,7 @@ const LEGACY_THRESHOLD_MIN_MESSAGES: i64 = 10;
 
 use hermeneus::provider::LlmProvider;
 use hermeneus::types::{Content, Message as HermeneusMessage, Role as HermeneusRole};
-use aletheia_melete::distill::{DistillConfig, DistillEngine, DistillResult};
+use melete::distill::{DistillConfig, DistillEngine, DistillResult};
 use aletheia_mneme::store::SessionStore;
 use aletheia_mneme::types::{Role as MnemeRole, Session, SessionType};
 #[cfg(test)]
@@ -458,7 +458,7 @@ mod tests {
     /// Some: confirming that the store mutation side-effects actually occur.
     #[test]
     fn apply_distillation_updates_store() {
-        use aletheia_melete::distill::DistillResult;
+        use melete::distill::DistillResult;
         use aletheia_mneme::store::SessionStore;
         use aletheia_mneme::types::Role as MnemeRole;
 
@@ -493,14 +493,14 @@ mod tests {
             distillation_number: 1,
             timestamp: jiff::Timestamp::now().to_string(),
             verbatim_messages: vec![],
-            memory_flush: aletheia_melete::flush::MemoryFlush {
+            memory_flush: melete::flush::MemoryFlush {
                 decisions: vec![],
                 corrections: vec![],
                 facts: vec![],
                 task_state: None,
             },
             pruning_stats: None,
-            contradiction_log: aletheia_melete::contradiction::ContradictionLog::empty(),
+            contradiction_log: melete::contradiction::ContradictionLog::empty(),
         };
 
         apply_distillation(&store, "ses-1", &result, &history).expect("apply distillation");

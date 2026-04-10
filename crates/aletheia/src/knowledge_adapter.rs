@@ -13,11 +13,11 @@ use aletheia_mneme::knowledge::{
     EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactTemporal,
 };
 use aletheia_mneme::knowledge_store::{HybridQuery, KnowledgeStore};
-use aletheia_organon::error::{
+use organon::error::{
     DatalogQuerySnafu, EmbeddingSnafu, FactQuerySnafu, InvalidReasonSnafu, KnowledgeAdapterError,
     MutateStoreSnafu, SearchSnafu,
 };
-use aletheia_organon::types::{DatalogResult, FactSummary, KnowledgeSearchService, MemoryResult};
+use organon::types::{DatalogResult, FactSummary, KnowledgeSearchService, MemoryResult};
 
 use crate::recall_sources::RecallSourceRegistry;
 

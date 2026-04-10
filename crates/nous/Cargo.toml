@@ -13,7 +13,7 @@ workspace = true
 [features]
 knowledge-store = ["aletheia-mneme/mneme-engine"]
 # Gates mock search implementations and other test helpers. No test code in release binaries.
-test-support = ["hermeneus/test-utils", "aletheia-organon/test-support"]
+test-support = ["hermeneus/test-utils", "organon/test-support"]
 # Test tiers (see docs/test-tiers.md)
 test-core = ["knowledge-store"]
 test-full = ["test-core"]
@@ -22,9 +22,9 @@ test-full = ["test-core"]
 dianoia = { path = "../dianoia" }
 hermeneus = { path = "../hermeneus" }
 koina = { path = "../koina" }
-aletheia-melete = { path = "../melete" }
+melete = { path = "../melete" }
 aletheia-mneme = { path = "../mneme" }
-aletheia-organon = { path = "../organon" }
+organon = { path = "../organon" }
 taxis = { path = "../taxis" }
 thesauros = { path = "../thesauros" }
 jiff = { workspace = true }

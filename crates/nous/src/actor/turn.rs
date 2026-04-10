@@ -7,7 +7,7 @@ use tokio::sync::mpsc;
 use tracing::{Instrument, debug, error, warn};
 
 use koina::id::{NousId, SessionId};
-use aletheia_organon::types::ToolContext;
+use organon::types::ToolContext;
 
 use crate::drift::{DriftConfig, DriftDetector, TurnMetrics};
 use crate::pipeline::TurnResult;

@@ -59,9 +59,9 @@ http = { workspace = true }
 koina = { path = "../koina" }
 taxis = { path = "../taxis" }
 aletheia-nous = { path = "../nous" }
-aletheia-organon = { path = "../organon" }
+organon = { path = "../organon" }
 aletheia-mneme = { path = "../mneme", features = ["sqlite"] }
-aletheia-symbolon = { path = "../symbolon" }
+symbolon = { path = "../symbolon" }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }

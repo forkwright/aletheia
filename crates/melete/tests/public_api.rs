@@ -20,7 +20,7 @@
 // ---------------------------------------------------------------------------
 
 mod distill_config {
-    use aletheia_melete::distill::{DistillConfig, DistillSection};
+    use melete::distill::{DistillConfig, DistillSection};
 
     #[test]
     fn default_uses_claude_sonnet_primary_model() {
@@ -123,7 +123,7 @@ mod distill_config {
 // ---------------------------------------------------------------------------
 
 mod distill_section {
-    use aletheia_melete::distill::DistillSection;
+    use melete::distill::DistillSection;
 
     #[test]
     fn custom_round_trips_through_serde() {
@@ -163,8 +163,8 @@ mod distill_section {
 mod distill_engine {
     use hermeneus::test_utils::MockProvider;
     use hermeneus::types::{Content, Message, Role};
-    use aletheia_melete::distill::{DistillConfig, DistillEngine, DistillSection};
-    use aletheia_melete::error::Error;
+    use melete::distill::{DistillConfig, DistillEngine, DistillSection};
+    use melete::error::Error;
 
     fn text_msg(role: Role, text: &str) -> Message {
         Message {
@@ -431,7 +431,7 @@ mod distill_engine {
 // ---------------------------------------------------------------------------
 
 mod memory_flush {
-    use aletheia_melete::flush::{FlushItem, FlushSource, MemoryFlush};
+    use melete::flush::{FlushItem, FlushSource, MemoryFlush};
 
     fn sample_item() -> FlushItem {
         FlushItem {
@@ -485,7 +485,7 @@ mod memory_flush {
 // ---------------------------------------------------------------------------
 
 mod contradiction_log {
-    use aletheia_melete::contradiction::{Contradiction, ContradictionLog, ResolutionStrategy};
+    use melete::contradiction::{Contradiction, ContradictionLog, ResolutionStrategy};
 
     #[test]
     fn empty_constructor_is_empty_and_defaults_to_prefer_newer() {
@@ -537,13 +537,13 @@ mod dream {
     use hermeneus::provider::LlmProvider;
     use hermeneus::test_utils::MockProvider;
     use hermeneus::types::{Content, Message, Role};
-    use aletheia_melete::contradiction::ContradictionLog;
-    use aletheia_melete::distill::DistillConfig;
-    use aletheia_melete::dream::{
+    use melete::contradiction::ContradictionLog;
+    use melete::distill::DistillConfig;
+    use melete::dream::{
         ConsolidationTarget, DreamConfig, DreamEngine, MergeReport, SessionTranscript,
         TranscriptSource,
     };
-    use aletheia_melete::flush::MemoryFlush;
+    use melete::flush::MemoryFlush;
 
     struct NoopSource;
     impl TranscriptSource for NoopSource {
@@ -746,7 +746,7 @@ mod dream {
 // ---------------------------------------------------------------------------
 
 mod types_reexport {
-    use aletheia_melete::types::{Content, ContentBlock, Message, Role};
+    use melete::types::{Content, ContentBlock, Message, Role};
 
     #[test]
     fn reexports_match_hermeneus_originals() {
@@ -772,11 +772,11 @@ mod types_reexport {
 // ---------------------------------------------------------------------------
 
 mod send_sync_bounds {
-    use aletheia_melete::contradiction::{Contradiction, ContradictionLog};
-    use aletheia_melete::distill::{DistillConfig, DistillEngine, DistillResult};
-    use aletheia_melete::dream::{DreamConfig, DreamEngine, MergeReport, SessionTranscript};
-    use aletheia_melete::flush::{FlushItem, MemoryFlush};
-    use aletheia_melete::similarity::PruningStats;
+    use melete::contradiction::{Contradiction, ContradictionLog};
+    use melete::distill::{DistillConfig, DistillEngine, DistillResult};
+    use melete::dream::{DreamConfig, DreamEngine, MergeReport, SessionTranscript};
+    use melete::flush::{FlushItem, MemoryFlush};
+    use melete::similarity::PruningStats;
 
     fn assert_send_sync<T: Send + Sync>() {}
 
