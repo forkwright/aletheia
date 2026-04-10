@@ -1,5 +1,7 @@
 //! Instance maintenance services: trace rotation, drift detection, DB monitoring, retention.
 
+use aletheia_koina::system::{Environment, RealSystem};
+
 /// Database size monitoring with configurable warning and alert thresholds.
 pub(crate) mod db_monitor;
 /// Instance drift detection: compare a live instance against the example template.
@@ -32,8 +34,8 @@ pub struct ProposeRulesConfig {
 
 impl Default for ProposeRulesConfig {
     fn default() -> Self {
-        let root = std::env::var("ALETHEIA_ROOT").map_or_else(
-            |_e| std::path::PathBuf::from("instance"),
+        let root = RealSystem.var("ALETHEIA_ROOT").map_or_else(
+            || std::path::PathBuf::from("instance"),
             std::path::PathBuf::from,
         );
         Self {

@@ -2,6 +2,7 @@
 
 use std::sync::Arc;
 
+use aletheia_koina::system::{Environment, RealSystem};
 use snafu::ResultExt;
 
 use crate::bridge::DaemonBridge;
@@ -319,11 +320,10 @@ pub(crate) async fn execute_builtin(
         BuiltinTask::ProposeRules => {
             let data_dir = maintenance.map_or_else(
                 || {
-                    let root = std::env::var("ALETHEIA_ROOT")
-                        .map_or_else(
-                            |_e| std::path::PathBuf::from("instance"),
-                            std::path::PathBuf::from,
-                        );
+                    let root = RealSystem.var("ALETHEIA_ROOT").map_or_else(
+                        || std::path::PathBuf::from("instance"),
+                        std::path::PathBuf::from,
+                    );
                     root.join("data")
                 },
                 |m| m.propose_rules.data_dir.clone(),
