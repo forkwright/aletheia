@@ -45,7 +45,7 @@ impl CronExpr {
         clippy::similar_names,
         reason = "field names mirror cron section names — disambiguating them with longer/shorter names hurts readability"
     )]
-    pub fn parse(expr: &str) -> Result<Self, error::Error> {
+    pub(crate) fn parse(expr: &str) -> Result<Self, error::Error> {
         let fields: Vec<&str> = expr.split_whitespace().collect();
 
         let (sec_str, minute_str, hour_str, dom_str, month_str, dow_str) = match fields.len()
@@ -105,7 +105,7 @@ impl CronExpr {
         clippy::too_many_lines,
         reason = "month/day/hour/minute/second all bounded 0..=59 (max); i8↔u8 round-trip is lossless. Function length: single cohesive cron field-walking state machine; splitting would scatter the carry logic across helpers and obscure rollover semantics"
     )]
-    pub fn next_after(&self, after: jiff::Timestamp) -> Option<jiff::Timestamp> {
+    pub(crate) fn next_after(&self, after: jiff::Timestamp) -> Option<jiff::Timestamp> {
         // Work in UTC civil datetime for field-level manipulation.
         let dt = after.to_zoned(jiff::tz::TimeZone::UTC).datetime();
 

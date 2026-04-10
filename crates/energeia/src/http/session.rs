@@ -19,7 +19,7 @@ use crate::http::stream::EventStream;
 ///
 /// INVARIANT: The child process is killed on drop if `wait()` was not called.
 /// This prevents zombie processes when sessions are abandoned.
-pub struct ProcessSessionHandle {
+pub(crate) struct ProcessSessionHandle {
     session_id: String,
     pub(crate) stream: EventStream,
     child: Option<Child>,

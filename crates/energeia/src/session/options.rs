@@ -28,7 +28,7 @@ pub struct EngineConfig {
 impl EngineConfig {
     /// Start building an `EngineConfig` from base options.
     #[must_use]
-    pub fn new(options: AgentOptions) -> Self {
+    pub(crate) fn new(options: AgentOptions) -> Self {
         Self {
             options,
             additional_dirs: Vec::new(),
@@ -37,6 +37,8 @@ impl EngineConfig {
     }
 
     /// Set the LLM model identifier.
+    // PUBLIC: builder method retained pub for test fixtures that exercise
+    // model overrides; internal orchestrator uses defaults.
     #[must_use]
     pub fn model(mut self, model: impl Into<String>) -> Self {
         self.options.model = Some(model.into());
@@ -44,6 +46,7 @@ impl EngineConfig {
     }
 
     /// Set the system prompt.
+    // PUBLIC: builder method retained pub for external and test fixtures.
     #[must_use]
     pub fn system_prompt(mut self, prompt: impl Into<String>) -> Self {
         self.options.system_prompt = Some(prompt.into());
@@ -51,6 +54,7 @@ impl EngineConfig {
     }
 
     /// Set the working directory.
+    // PUBLIC: builder method retained pub for external and test fixtures.
     #[must_use]
     pub fn cwd(mut self, cwd: impl Into<PathBuf>) -> Self {
         let path: PathBuf = cwd.into();
@@ -59,6 +63,7 @@ impl EngineConfig {
     }
 
     /// Set the maximum turn count for a single session stage.
+    // PUBLIC: builder method retained pub for external and test fixtures.
     #[must_use]
     pub fn max_turns(mut self, turns: u32) -> Self {
         self.options.max_turns = Some(turns);
@@ -66,6 +71,7 @@ impl EngineConfig {
     }
 
     /// Set the permission mode (e.g., "plan", "auto", "bypass").
+    // PUBLIC: builder method retained pub for external and test fixtures.
     #[must_use]
     pub fn permission_mode(mut self, mode: impl Into<String>) -> Self {
         self.options.permission_mode = Some(mode.into());
@@ -73,6 +79,7 @@ impl EngineConfig {
     }
 
     /// Add an additional directory the agent should have access to.
+    // PUBLIC: builder method retained pub for external and test fixtures.
     #[must_use]
     pub fn add_dir(mut self, dir: impl Into<PathBuf>) -> Self {
         self.additional_dirs.push(dir.into());
@@ -80,6 +87,7 @@ impl EngineConfig {
     }
 
     /// Set the idle timeout for event stream monitoring.
+    // PUBLIC: builder method retained pub for external and test fixtures.
     #[must_use]
     pub fn idle_timeout(mut self, timeout: Duration) -> Self {
         self.idle_timeout = Some(timeout);
@@ -88,7 +96,7 @@ impl EngineConfig {
 
     /// Extract the inner [`AgentOptions`] for passing to the engine.
     #[must_use]
-    pub fn to_agent_options(&self) -> AgentOptions {
+    pub(crate) fn to_agent_options(&self) -> AgentOptions {
         self.options.clone()
     }
 

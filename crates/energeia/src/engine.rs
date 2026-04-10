@@ -125,7 +125,7 @@ impl From<AgentOptionsRaw> for AgentOptions {
 impl AgentOptions {
     /// Create empty options with all fields unset.
     #[must_use]
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             model: None,
             system_prompt: None,
