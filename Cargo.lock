@@ -1643,6 +1643,7 @@ dependencies = [
  "owo-colors",
  "regex",
  "reqwest 0.13.2",
+ "rustls",
  "serde",
  "serde_json",
  "snafu",
