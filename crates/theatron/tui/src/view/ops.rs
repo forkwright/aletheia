@@ -241,10 +241,6 @@ fn render_thinking_block(
     clippy::indexing_slicing,
     reason = "TOOL_OUTPUT_TRUNCATE_LINES < output_lines.len() is checked by the `truncated` boolean before slicing"
 )]
-#[expect(
-    clippy::cast_precision_loss,
-    reason = "millisecond durations never approach f64 precision limits"
-)]
 fn render_tool_call(
     tc: &crate::state::ops::OpsToolCall,
     lines: &mut Vec<Line<'static>>,
@@ -282,9 +278,13 @@ fn render_tool_call(
 
     let duration_str = if let Some(ms) = tc.duration_ms {
         if ms >= MS_PER_SECOND {
-            Some(format!(" ({:.1}s)", ms as f64 / MS_PER_SECOND as f64))
+            // WHY: integer math avoids u64->f64 lossy cast while preserving the
+            // one-decimal `{:.1}s` format used before refactor.
+            let secs = ms / MS_PER_SECOND;
+            let tenths = (ms % MS_PER_SECOND) / 100;
+            Some(format!(" ({secs}.{tenths}s)"))
         } else {
-            Some(format!(" ({}ms)", ms))
+            Some(format!(" ({ms}ms)"))
         }
     } else if tc.status == OpsToolStatus::Running {
         let secs = tc.started_at.elapsed().as_secs();
