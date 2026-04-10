@@ -36,6 +36,7 @@
 //! assert!(!has_config(&sys, Path::new("/etc/missing.toml")), "missing file must not exist");
 //! ```
 
+use std::ffi::OsString;
 use std::io;
 use std::path::{Path, PathBuf};
 
@@ -146,6 +147,13 @@ pub trait Environment: Send + Sync {
     /// Return the value of environment variable `name`, or `None` if unset.
     #[must_use]
     fn var(&self, name: &str) -> Option<String>;
+
+    /// Return the raw (possibly non-UTF-8) value of environment variable `name`.
+    ///
+    /// Mirrors [`std::env::var_os`] and preserves byte content on platforms
+    /// where paths (e.g. `PATH`) may contain non-UTF-8 data.
+    #[must_use]
+    fn var_os(&self, name: &str) -> Option<OsString>;
 
     /// Return all environment variables as `(name, value)` pairs.
     #[must_use]

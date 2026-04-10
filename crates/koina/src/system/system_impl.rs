@@ -65,6 +65,10 @@ impl Environment for RealSystem {
         std::env::var(name).ok()
     }
 
+    fn var_os(&self, name: &str) -> Option<std::ffi::OsString> {
+        std::env::var_os(name)
+    }
+
     fn vars(&self) -> Vec<(String, String)> {
         std::env::vars().collect()
     }
@@ -198,6 +202,10 @@ impl Clock for TestSystem {
 impl Environment for TestSystem {
     fn var(&self, name: &str) -> Option<String> {
         self.env.get(name).cloned()
+    }
+
+    fn var_os(&self, name: &str) -> Option<std::ffi::OsString> {
+        self.env.get(name).map(Into::into)
     }
 
     fn vars(&self) -> Vec<(String, String)> {
