@@ -19,11 +19,7 @@ const DISCOVERY_FILE: &str = ".discovery.json";
 /// Errors from writing the discovery file.
 #[derive(Debug, Snafu)]
 #[non_exhaustive]
-#[expect(
-    missing_docs,
-    reason = "snafu error variant fields are self-documenting via display format"
-)]
-pub enum DiscoveryError {
+pub(crate) enum DiscoveryError {
     /// Failed to serialize discovery info to JSON.
     #[snafu(display("failed to serialize discovery info: {source}"))]
     Serialize { source: serde_json::Error },
@@ -38,16 +34,16 @@ pub enum DiscoveryError {
 
 /// Contents of the discovery file written to `instance/data/.discovery.json`.
 #[derive(Debug, Serialize)]
-pub struct DiscoveryInfo {
+pub(crate) struct DiscoveryInfo {
     /// Server URL reachable from the local machine, e.g. `http://localhost:18789`.
-    pub url: String,
+    pub(crate) url: String,
     /// Crate version from `Cargo.toml`.
-    pub version: &'static str,
+    pub(crate) version: &'static str,
     /// ISO 8601 timestamp when the server started.
-    pub started_at: String,
+    pub(crate) started_at: String,
     /// Tailscale IP address, if the node is on a tailnet.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub tailscale_ip: Option<String>,
+    pub(crate) tailscale_ip: Option<String>,
 }
 
 /// Write the discovery file to `data_dir/.discovery.json`.
@@ -66,7 +62,7 @@ pub struct DiscoveryInfo {
 /// Not cancel-safe. If cancelled after writing the temp file but before
 /// the rename, the temp file is left behind. Subsequent calls will succeed
 /// but leave stale temp files.
-pub async fn write_discovery_file(
+pub(crate) async fn write_discovery_file(
     data_dir: &Path,
     bind_addr: &str,
 ) -> Result<(), DiscoveryError> {
@@ -112,7 +108,7 @@ pub async fn write_discovery_file(
 /// # Cancel safety
 ///
 /// Cancel-safe. File removal is atomic; no partial state on cancellation.
-pub async fn remove_discovery_file(data_dir: &Path) {
+pub(crate) async fn remove_discovery_file(data_dir: &Path) {
     let path = data_dir.join(DISCOVERY_FILE);
     if let Err(e) = tokio::fs::remove_file(&path).await
         && e.kind() != std::io::ErrorKind::NotFound
