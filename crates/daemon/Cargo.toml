@@ -19,8 +19,12 @@ aletheia-episteme = { path = "../episteme", default-features = false }
 aletheia-koina = { path = "../koina" }
 # WHY: axum for webhook trigger listener
 axum = { workspace = true }
-# WHY: single-instance enforcement per workspace
-fd-lock = { workspace = true }
+# WHY: single-instance enforcement per workspace. Used directly via rustix::fs::flock
+# rather than through fd-lock because fd-lock's RwLockWriteGuard releases the
+# advisory lock on drop, which is incompatible with storing the guard in
+# WorkspaceGuard for the lifetime of the daemon process. rustix's flock binds
+# the lock to the file descriptor, so the lock lives until the File is dropped.
+rustix = { version = "1", default-features = false, features = ["fs", "std"] }
 flate2 = { workspace = true }
 jiff = { workspace = true, features = ["serde"] }
 # WHY: file watcher triggers (inotify on Linux)
