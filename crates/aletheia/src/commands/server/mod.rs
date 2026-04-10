@@ -6,6 +6,7 @@ use std::sync::Arc;
 use snafu::prelude::*;
 use tracing::{info, warn};
 
+use aletheia_koina::system::{Environment, RealSystem};
 use aletheia_pylon::router::build_router;
 use aletheia_taxis::loader::load_config;
 use aletheia_taxis::oikos::Oikos;
@@ -165,8 +166,8 @@ pub(crate) async fn run(args: Args) -> Result<()> {
     info!("shutting down");
 
     let shutdown_timeout = std::time::Duration::from_secs(
-        std::env::var("ALETHEIA_SHUTDOWN_TIMEOUT_SECS")
-            .ok()
+        RealSystem
+            .var("ALETHEIA_SHUTDOWN_TIMEOUT_SECS")
             .and_then(|v| v.parse::<u64>().ok())
             .unwrap_or(10),
     );

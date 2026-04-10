@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use snafu::{ResultExt, Snafu};
 
 use aletheia_koina::secret::SecretString;
+use aletheia_koina::system::{Environment, RealSystem};
 
 #[derive(Debug, Snafu)]
 pub(crate) enum InitError {
@@ -23,7 +24,6 @@ pub(crate) enum InitError {
     },
     #[snafu(display("ANTHROPIC_API_KEY not set"))]
     MissingApiKey {
-        source: std::env::VarError,
         #[snafu(implicit)]
         location: snafu::Location,
     },
@@ -157,7 +157,7 @@ fn print_success_outro(root: &std::path::Path) -> Result<(), InitError> {
 pub(crate) fn run(args: RunArgs) -> Result<(), InitError> {
     // WHY: pass the env var through a parameter so tests can call run_inner
     // directly with None and bypass ALETHEIA_ROOT without touching env state
-    run_inner(args, std::env::var("ALETHEIA_ROOT").ok().map(PathBuf::from))
+    run_inner(args, RealSystem.var("ALETHEIA_ROOT").map(PathBuf::from))
 }
 
 fn run_inner(args: RunArgs, env_root: Option<PathBuf>) -> Result<(), InitError> {
@@ -361,7 +361,9 @@ fn collect_credential() -> Result<Option<SecretString>, InitError> {
             Ok(Some(SecretString::from(key)))
         }
         "env" => {
-            let key = std::env::var("ANTHROPIC_API_KEY").context(MissingApiKeySnafu)?;
+            let key = RealSystem
+                .var("ANTHROPIC_API_KEY")
+                .ok_or_else(|| MissingApiKeySnafu.build())?;
             Ok(Some(SecretString::from(key)))
         }
         _ => Ok(None),

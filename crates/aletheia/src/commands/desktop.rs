@@ -4,6 +4,8 @@ use std::process::Command;
 
 use clap::Args;
 
+use aletheia_koina::system::{Environment, RealSystem};
+
 const BINARY_NAME: &str = "theatron-desktop";
 
 #[derive(Debug, Clone, Args)]
@@ -65,7 +67,7 @@ pub(crate) fn run(args: &DesktopArgs) -> anyhow::Result<()> {
 
 /// Search `$PATH` for the desktop binary.
 fn find_in_path() -> Option<std::path::PathBuf> {
-    let path_var = std::env::var_os("PATH")?;
+    let path_var = RealSystem.var_os("PATH")?;
     std::env::split_paths(&path_var)
         .map(|dir| dir.join(BINARY_NAME))
         .find(|candidate| candidate.is_file())

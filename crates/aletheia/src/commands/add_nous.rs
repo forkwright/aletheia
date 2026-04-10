@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use clap::Args;
 use snafu::prelude::*;
 
+use aletheia_koina::system::{Environment, RealSystem};
 use aletheia_taxis::oikos::Oikos;
 
 use crate::error::Result;
@@ -77,14 +78,11 @@ fn check_credential(provider: &str) {
         _ => return,
     };
 
-    let has_env = std::env::var(env_var)
-        .ok()
-        .filter(|v| !v.is_empty())
-        .is_some();
+    let env = RealSystem;
+    let has_env = env.var(env_var).filter(|v| !v.is_empty()).is_some();
 
     let has_auth_token = if provider == "anthropic" {
-        std::env::var("ANTHROPIC_AUTH_TOKEN")
-            .ok()
+        env.var("ANTHROPIC_AUTH_TOKEN")
             .filter(|v| !v.is_empty())
             .is_some()
     } else {
