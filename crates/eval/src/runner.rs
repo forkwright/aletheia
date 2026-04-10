@@ -18,6 +18,11 @@ pub struct RunConfig {
     pub token: Option<SecretString>,
     /// Substring filter on scenario IDs.
     pub filter: Option<String>,
+    /// Exact-match filter on scenario category. When set, only scenarios with
+    /// `meta().category == this` are run. Useful for tests that want to run
+    /// "session" CRUD scenarios without also pulling in `canary-session`
+    /// scenarios that share a substring with the id-based filter.
+    pub category_filter: Option<String>,
     /// Stop on first failure.
     pub fail_fast: bool,
     /// Per-scenario timeout in seconds.
@@ -78,13 +83,21 @@ impl ScenarioRunner {
         let start = Instant::now();
         let all_scenarios = self.provider.provide();
 
-        let scenarios: Vec<Box<dyn Scenario>> = match &self.config.filter {
-            Some(filter) => all_scenarios
-                .into_iter()
-                .filter(|s| s.meta().id.contains(filter.as_str()))
-                .collect(),
-            None => all_scenarios,
-        };
+        let scenarios: Vec<Box<dyn Scenario>> = all_scenarios
+            .into_iter()
+            .filter(|s| {
+                let meta = s.meta();
+                self.config
+                    .filter
+                    .as_deref()
+                    .is_none_or(|f| meta.id.contains(f))
+                    && self
+                        .config
+                        .category_filter
+                        .as_deref()
+                        .is_none_or(|c| meta.category == c)
+            })
+            .collect();
 
         let health = self.client.health().await.ok(); // WHY: best-effort; scenarios self-skip when server is unreachable
         let has_token = self.client.has_token();
