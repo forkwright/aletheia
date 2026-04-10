@@ -137,12 +137,9 @@ impl EnergeiaStore {
 
         let sessions = self.list_sessions_for_dispatch(id)?;
         let total_cost: f64 = sessions.iter().map(|s| s.cost_usd).sum();
-        #[expect(
-            clippy::cast_possible_truncation,
-            clippy::as_conversions,
-            reason = "session count is bounded by prompt count, always fits u32"
-        )]
-        let total_sessions = sessions.len() as u32;
+        // WHY: session count is bounded by prompt count; saturate as belt-and-braces
+        // since u32::MAX sessions per dispatch is unreachable in practice.
+        let total_sessions = u32::try_from(sessions.len()).unwrap_or(u32::MAX);
 
         record.status = status;
         record.finished_at = Some(jiff::Timestamp::now());
