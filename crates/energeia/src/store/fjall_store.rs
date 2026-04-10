@@ -74,12 +74,15 @@ impl EnergeiaStore {
     /// Create a store from an already-opened keyspace.
     ///
     /// Use this when the caller manages partition lifecycle (e.g., in tests).
+    // PUBLIC: storage-layer constructor; kept `pub` for external callers that
+    // manage keyspace lifecycle themselves.
     #[must_use]
     pub fn from_keyspace(keyspace: Arc<fjall::Keyspace>) -> Self {
         Self { keyspace }
     }
 
     /// The underlying keyspace name.
+    // PUBLIC: exposes the storage partition identifier for external tooling.
     #[must_use]
     pub fn partition_name() -> &'static str {
         PARTITION_NAME
@@ -95,7 +98,7 @@ impl EnergeiaStore {
     ///
     /// Returns `Error::Store` on write failure, `Error::Serialization` on
     /// encoding failure.
-    pub fn create_dispatch(&self, project: &str, spec: &DispatchSpec) -> Result<DispatchId> {
+    pub(crate) fn create_dispatch(&self, project: &str, spec: &DispatchSpec) -> Result<DispatchId> {
         let id = DispatchId::new(aletheia_koina::ulid::Ulid::new().to_string());
         let spec_json =
             serde_json::to_string(spec).map_err(|e| ser_err("serialize dispatch spec", e))?;
@@ -127,7 +130,7 @@ impl EnergeiaStore {
     /// # Errors
     ///
     /// Returns `Error::NotFound` if the dispatch does not exist.
-    pub fn finish_dispatch(&self, id: &DispatchId, status: DispatchStatus) -> Result<()> {
+    pub(crate) fn finish_dispatch(&self, id: &DispatchId, status: DispatchStatus) -> Result<()> {
         let mut record = self.get_dispatch(id)?.ok_or_else(|| {
             error::NotFoundSnafu {
                 what: format!("dispatch {id}"),
@@ -161,7 +164,7 @@ impl EnergeiaStore {
     /// # Errors
     ///
     /// Returns `Error::Store` on read failure.
-    pub fn get_dispatch(&self, id: &DispatchId) -> Result<Option<DispatchRecord>> {
+    pub(crate) fn get_dispatch(&self, id: &DispatchId) -> Result<Option<DispatchRecord>> {
         let key = schema::dispatch_key(id);
         match self
             .keyspace
@@ -182,6 +185,8 @@ impl EnergeiaStore {
     /// # Errors
     ///
     /// Returns `Error::Store` on write failure.
+    // PUBLIC: session-level storage API; used by external dispatch callers and
+    // internal metrics test fixtures.
     pub fn create_session(
         &self,
         dispatch_id: &DispatchId,
@@ -220,6 +225,7 @@ impl EnergeiaStore {
     /// # Errors
     ///
     /// Returns `Error::NotFound` if the session does not exist.
+    // PUBLIC: session-update storage API; used externally and in metrics tests.
     pub fn update_session(&self, id: &SessionId, update: SessionUpdate) -> Result<()> {
         // WHY: session keys are indexed by (dispatch_id, prompt_number), so we
         // need to scan to find the record by SessionId. For the expected
@@ -263,7 +269,7 @@ impl EnergeiaStore {
     /// # Errors
     ///
     /// Returns `Error::Store` on read failure.
-    pub fn list_sessions_for_dispatch(
+    pub(crate) fn list_sessions_for_dispatch(
         &self,
         dispatch_id: &DispatchId,
     ) -> Result<Vec<SessionRecord>> {
@@ -373,6 +379,7 @@ impl EnergeiaStore {
     /// # Errors
     ///
     /// Returns `Error::Store` on write failure.
+    // PUBLIC: CI validation storage API; used by steward workflows and tests.
     pub fn add_ci_validation(
         &self,
         session_id: &SessionId,
@@ -414,6 +421,7 @@ impl EnergeiaStore {
     /// # Errors
     ///
     /// Returns `Error::Serialization` if the outcome cannot be encoded.
+    // PUBLIC: training-data export API consumed externally by mneme pipeline.
     pub fn record_training_data(
         &self,
         session: &SessionRecord,
@@ -485,7 +493,7 @@ impl EnergeiaStore {
     /// # Errors
     ///
     /// Returns `Error::Store` on read failure.
-    pub fn list_dispatches(&self, limit: usize) -> Result<Vec<DispatchRecord>> {
+    pub(crate) fn list_dispatches(&self, limit: usize) -> Result<Vec<DispatchRecord>> {
         queries::list_dispatches(&self.keyspace, limit)
     }
 
@@ -498,7 +506,7 @@ impl EnergeiaStore {
     /// # Errors
     ///
     /// Returns `Error::Store` on read failure.
-    pub fn list_all_sessions(&self, limit: usize) -> Result<Vec<SessionRecord>> {
+    pub(crate) fn list_all_sessions(&self, limit: usize) -> Result<Vec<SessionRecord>> {
         queries::list_all_sessions(&self.keyspace, limit)
     }
 
@@ -510,7 +518,7 @@ impl EnergeiaStore {
     /// # Errors
     ///
     /// Returns `Error::Store` on read failure.
-    pub fn list_all_ci_validations(&self, limit: usize) -> Result<Vec<CiValidationRecord>> {
+    pub(crate) fn list_all_ci_validations(&self, limit: usize) -> Result<Vec<CiValidationRecord>> {
         queries::list_all_ci_validations(&self.keyspace, limit)
     }
 
@@ -519,6 +527,7 @@ impl EnergeiaStore {
     /// # Errors
     ///
     /// Returns `Error::Store` on read failure.
+    // PUBLIC: per-session CI lookup API exposed for external steward tooling.
     pub fn list_ci_validations_for_session(
         &self,
         session_id: &SessionId,
