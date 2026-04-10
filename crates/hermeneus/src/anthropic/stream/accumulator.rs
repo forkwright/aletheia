@@ -363,3 +363,426 @@ impl StreamAccumulator {
         }
     }
 }
+
+#[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "tests assert against known-length content vecs"
+)]
+mod tests {
+    use super::super::super::wire::{
+        WireContentBlockStart, WireDelta, WireMessageDeltaBody, WireMessageDeltaUsage,
+        WireMessageStart, WireStreamEvent, WireUsage,
+    };
+    use super::*;
+
+    fn usage(input: u64, cache_write: u64, cache_read: u64) -> WireUsage {
+        WireUsage {
+            input_tokens: input,
+            output_tokens: 0,
+            cache_creation_input_tokens: cache_write,
+            cache_read_input_tokens: cache_read,
+        }
+    }
+
+    fn start_event(id: &str, model: &str) -> WireStreamEvent {
+        WireStreamEvent::MessageStart {
+            message: WireMessageStart {
+                id: id.to_owned(),
+                model: model.to_owned(),
+                usage: usage(10, 0, 0),
+            },
+        }
+    }
+
+    fn delta_event(delta: WireDelta, index: u32) -> WireStreamEvent {
+        WireStreamEvent::ContentBlockDelta { index, delta }
+    }
+
+    fn stop_event(reason: &str, output_tokens: u64) -> WireStreamEvent {
+        WireStreamEvent::MessageDelta {
+            delta: WireMessageDeltaBody {
+                stop_reason: reason.to_owned(),
+            },
+            usage: WireMessageDeltaUsage {
+                output_tokens,
+                cache_creation_input_tokens: 0,
+                cache_read_input_tokens: 0,
+            },
+        }
+    }
+
+    #[test]
+    fn accumulator_captures_message_metadata() {
+        let mut acc = StreamAccumulator::new();
+        let mut events = Vec::new();
+        acc.process_event(start_event("msg_01", "claude-opus"), &mut |e| {
+            events.push(e);
+        })
+        .expect("process should succeed");
+
+        let response = acc.finish();
+        assert_eq!(response.id, "msg_01");
+        assert_eq!(response.model, "claude-opus");
+        assert_eq!(response.usage.input_tokens, 10);
+    }
+
+    #[test]
+    fn accumulator_builds_text_block_from_deltas() {
+        let mut acc = StreamAccumulator::new();
+        let mut on_event = |_: StreamEvent| {};
+
+        acc.process_event(start_event("msg_02", "claude-opus"), &mut on_event)
+            .expect("start");
+        acc.process_event(
+            WireStreamEvent::ContentBlockStart {
+                index: 0,
+                content_block: WireContentBlockStart::Text {
+                    text: String::new(),
+                },
+            },
+            &mut on_event,
+        )
+        .expect("block start");
+        acc.process_event(
+            delta_event(
+                WireDelta::TextDelta {
+                    text: "Hello, ".to_owned(),
+                },
+                0,
+            ),
+            &mut on_event,
+        )
+        .expect("delta 1");
+        acc.process_event(
+            delta_event(
+                WireDelta::TextDelta {
+                    text: "world!".to_owned(),
+                },
+                0,
+            ),
+            &mut on_event,
+        )
+        .expect("delta 2");
+        acc.process_event(
+            WireStreamEvent::ContentBlockStop { index: 0 },
+            &mut on_event,
+        )
+        .expect("block stop");
+        acc.process_event(stop_event("end_turn", 42), &mut on_event)
+            .expect("message stop");
+
+        let response = acc.finish();
+        assert_eq!(response.content.len(), 1);
+        match &response.content[0] {
+            ContentBlock::Text { text, .. } => assert_eq!(text, "Hello, world!"),
+            other => panic!("expected Text, got {other:?}"),
+        }
+        assert_eq!(response.usage.output_tokens, 42);
+    }
+
+    #[test]
+    fn accumulator_builds_tool_use_from_json_deltas() {
+        let mut acc = StreamAccumulator::new();
+        let mut on_event = |_: StreamEvent| {};
+
+        acc.process_event(start_event("msg_03", "claude-opus"), &mut on_event)
+            .expect("start");
+        acc.process_event(
+            WireStreamEvent::ContentBlockStart {
+                index: 0,
+                content_block: WireContentBlockStart::ToolUse {
+                    id: "toolu_1".to_owned(),
+                    name: "Read".to_owned(),
+                },
+            },
+            &mut on_event,
+        )
+        .expect("tool start");
+        acc.process_event(
+            delta_event(
+                WireDelta::InputJsonDelta {
+                    partial_json: r#"{"path":"/tmp/"#.to_owned(),
+                },
+                0,
+            ),
+            &mut on_event,
+        )
+        .expect("delta 1");
+        acc.process_event(
+            delta_event(
+                WireDelta::InputJsonDelta {
+                    partial_json: r#"foo.txt"}"#.to_owned(),
+                },
+                0,
+            ),
+            &mut on_event,
+        )
+        .expect("delta 2");
+        acc.process_event(stop_event("tool_use", 5), &mut on_event)
+            .expect("stop");
+
+        let response = acc.finish();
+        match &response.content[0] {
+            ContentBlock::ToolUse { id, name, input } => {
+                assert_eq!(id, "toolu_1");
+                assert_eq!(name, "Read");
+                assert_eq!(input["path"].as_str(), Some("/tmp/foo.txt"));
+            }
+            other => panic!("expected ToolUse, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn accumulator_handles_empty_tool_input() {
+        // WHY: a tool with zero arguments sends no InputJsonDelta events;
+        // the builder's input_json stays empty and should materialize as {}.
+        let mut acc = StreamAccumulator::new();
+        let mut on_event = |_: StreamEvent| {};
+
+        acc.process_event(start_event("msg_04", "claude-opus"), &mut on_event)
+            .expect("start");
+        acc.process_event(
+            WireStreamEvent::ContentBlockStart {
+                index: 0,
+                content_block: WireContentBlockStart::ToolUse {
+                    id: "toolu_2".to_owned(),
+                    name: "NoArgTool".to_owned(),
+                },
+            },
+            &mut on_event,
+        )
+        .expect("tool start");
+        acc.process_event(stop_event("tool_use", 2), &mut on_event)
+            .expect("stop");
+
+        let response = acc.finish();
+        match &response.content[0] {
+            ContentBlock::ToolUse { input, .. } => {
+                assert!(input.is_object(), "empty input should be empty object");
+                assert_eq!(input.as_object().expect("object").len(), 0);
+            }
+            _ => panic!("expected ToolUse"),
+        }
+    }
+
+    #[test]
+    fn accumulator_handles_malformed_tool_json_gracefully() {
+        // WHY: a malformed JSON delta must not crash the accumulator; it
+        // returns an error object so the agent can retry.
+        let mut acc = StreamAccumulator::new();
+        let mut on_event = |_: StreamEvent| {};
+
+        acc.process_event(start_event("msg_05", "claude-opus"), &mut on_event)
+            .expect("start");
+        acc.process_event(
+            WireStreamEvent::ContentBlockStart {
+                index: 0,
+                content_block: WireContentBlockStart::ToolUse {
+                    id: "toolu_3".to_owned(),
+                    name: "BadTool".to_owned(),
+                },
+            },
+            &mut on_event,
+        )
+        .expect("tool start");
+        acc.process_event(
+            delta_event(
+                WireDelta::InputJsonDelta {
+                    partial_json: r#"{"broken":"#.to_owned(),
+                },
+                0,
+            ),
+            &mut on_event,
+        )
+        .expect("delta");
+        acc.process_event(stop_event("tool_use", 3), &mut on_event)
+            .expect("stop");
+
+        let response = acc.finish();
+        match &response.content[0] {
+            ContentBlock::ToolUse { input, .. } => {
+                assert!(
+                    input.get("_parse_error").is_some(),
+                    "malformed JSON should surface as _parse_error: {input:?}"
+                );
+            }
+            _ => panic!("expected ToolUse"),
+        }
+    }
+
+    #[test]
+    fn accumulator_builds_thinking_block() {
+        let mut acc = StreamAccumulator::new();
+        let mut on_event = |_: StreamEvent| {};
+
+        acc.process_event(start_event("msg_06", "claude-opus"), &mut on_event)
+            .expect("start");
+        acc.process_event(
+            WireStreamEvent::ContentBlockStart {
+                index: 0,
+                content_block: WireContentBlockStart::Thinking {
+                    thinking: String::new(),
+                },
+            },
+            &mut on_event,
+        )
+        .expect("block start");
+        acc.process_event(
+            delta_event(
+                WireDelta::ThinkingDelta {
+                    thinking: "Let me think... ".to_owned(),
+                },
+                0,
+            ),
+            &mut on_event,
+        )
+        .expect("thinking");
+        acc.process_event(
+            delta_event(
+                WireDelta::SignatureDelta {
+                    signature: "sig123".to_owned(),
+                },
+                0,
+            ),
+            &mut on_event,
+        )
+        .expect("signature");
+        acc.process_event(stop_event("end_turn", 10), &mut on_event)
+            .expect("stop");
+
+        let response = acc.finish();
+        match &response.content[0] {
+            ContentBlock::Thinking { thinking, signature } => {
+                assert_eq!(thinking, "Let me think... ");
+                assert_eq!(signature.as_deref(), Some("sig123"));
+            }
+            other => panic!("expected Thinking, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn accumulator_supports_sparse_block_indices() {
+        // WHY: the stream can send block index 2 before 1, and the accumulator
+        // should grow its blocks vec to accommodate. The gap should be filled
+        // with empty text blocks.
+        let mut acc = StreamAccumulator::new();
+        let mut on_event = |_: StreamEvent| {};
+
+        acc.process_event(start_event("msg_07", "claude-opus"), &mut on_event)
+            .expect("start");
+        acc.process_event(
+            WireStreamEvent::ContentBlockStart {
+                index: 2,
+                content_block: WireContentBlockStart::Text {
+                    text: "third".to_owned(),
+                },
+            },
+            &mut on_event,
+        )
+        .expect("block 2");
+        acc.process_event(stop_event("end_turn", 5), &mut on_event)
+            .expect("stop");
+
+        let response = acc.finish();
+        assert_eq!(response.content.len(), 3, "should have 3 blocks (gaps filled)");
+    }
+
+    #[test]
+    fn accumulator_accumulates_cache_tokens_from_message_delta() {
+        let mut acc = StreamAccumulator::new();
+        let mut on_event = |_: StreamEvent| {};
+
+        acc.process_event(start_event("msg_08", "claude-opus"), &mut on_event)
+            .expect("start");
+        // First message_delta sends some cache_creation tokens
+        acc.process_event(
+            WireStreamEvent::MessageDelta {
+                delta: WireMessageDeltaBody {
+                    stop_reason: "end_turn".to_owned(),
+                },
+                usage: WireMessageDeltaUsage {
+                    output_tokens: 50,
+                    cache_creation_input_tokens: 100,
+                    cache_read_input_tokens: 200,
+                },
+            },
+            &mut on_event,
+        )
+        .expect("delta");
+
+        let response = acc.finish();
+        assert_eq!(response.usage.output_tokens, 50);
+        assert_eq!(response.usage.cache_write_tokens, 100);
+        assert_eq!(response.usage.cache_read_tokens, 200);
+    }
+
+    #[test]
+    fn accumulator_rejects_error_event() {
+        use super::super::super::wire::WireErrorDetail;
+
+        let mut acc = StreamAccumulator::new();
+        let mut on_event = |_: StreamEvent| {};
+
+        let result = acc.process_event(
+            WireStreamEvent::Error {
+                error: WireErrorDetail {
+                    error_type: "overloaded_error".to_owned(),
+                    message: "server is at capacity".to_owned(),
+                },
+            },
+            &mut on_event,
+        );
+        assert!(result.is_err(), "error event should propagate as Err");
+    }
+
+    #[test]
+    fn accumulator_ignores_ping_and_message_stop() {
+        let mut acc = StreamAccumulator::new();
+        let mut on_event = |_: StreamEvent| {};
+
+        acc.process_event(start_event("msg_09", "claude-opus"), &mut on_event)
+            .expect("start");
+        acc.process_event(WireStreamEvent::Ping {}, &mut on_event)
+            .expect("ping");
+        acc.process_event(WireStreamEvent::MessageStop {}, &mut on_event)
+            .expect("message stop");
+
+        let response = acc.finish();
+        assert_eq!(response.id, "msg_09");
+        assert_eq!(response.stop_reason, StopReason::EndTurn);
+    }
+
+    #[test]
+    fn accumulator_finish_without_stop_defaults_to_end_turn() {
+        let mut acc = StreamAccumulator::new();
+        acc.process_event(start_event("msg_10", "claude-opus"), &mut |_| {})
+            .expect("start");
+        let response = acc.finish();
+        assert_eq!(response.stop_reason, StopReason::EndTurn);
+    }
+
+    #[test]
+    fn delta_for_nonexistent_block_index_ignored() {
+        let mut acc = StreamAccumulator::new();
+        let mut on_event = |_: StreamEvent| {};
+
+        acc.process_event(start_event("msg_11", "claude-opus"), &mut on_event)
+            .expect("start");
+        // No ContentBlockStart — delta references non-existent index
+        acc.process_event(
+            delta_event(
+                WireDelta::TextDelta {
+                    text: "orphan".to_owned(),
+                },
+                0,
+            ),
+            &mut on_event,
+        )
+        .expect("orphan delta should not error");
+
+        let response = acc.finish();
+        assert_eq!(response.content.len(), 0);
+    }
+}

@@ -792,3 +792,278 @@ pub(super) fn parse_epistemic_tier(s: &str) -> crate::knowledge::EpistemicTier {
         }
     }
 }
+
+#[cfg(all(test, feature = "mneme-engine"))]
+#[expect(clippy::expect_used, reason = "test assertions")]
+mod tests {
+    use super::*;
+    use crate::engine::DataValue;
+    use crate::knowledge::EpistemicTier;
+
+    // ─────────────────────────────────────────────────────────
+    // compute_tool_overlap — Jaccard similarity on string slices
+    // ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn tool_overlap_identical_sets() {
+        let a = vec!["read".to_owned(), "write".to_owned(), "bash".to_owned()];
+        let b = vec!["read".to_owned(), "write".to_owned(), "bash".to_owned()];
+        assert!((compute_tool_overlap(&a, &b) - 1.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn tool_overlap_disjoint_sets() {
+        let a = vec!["read".to_owned(), "write".to_owned()];
+        let b = vec!["bash".to_owned(), "grep".to_owned()];
+        assert!(compute_tool_overlap(&a, &b).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn tool_overlap_partial_intersection() {
+        // 2 shared of 4 total = 0.5
+        let a = vec!["read".to_owned(), "write".to_owned(), "bash".to_owned()];
+        let b = vec!["read".to_owned(), "write".to_owned(), "grep".to_owned()];
+        let result = compute_tool_overlap(&a, &b);
+        assert!((result - 0.5).abs() < f64::EPSILON, "expected 0.5, got {result}");
+    }
+
+    #[test]
+    fn tool_overlap_both_empty_returns_one() {
+        let a: Vec<String> = Vec::new();
+        let b: Vec<String> = Vec::new();
+        assert!((compute_tool_overlap(&a, &b) - 1.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn tool_overlap_one_empty_returns_zero() {
+        let a = vec!["read".to_owned()];
+        let b: Vec<String> = Vec::new();
+        assert!(compute_tool_overlap(&a, &b).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn tool_overlap_duplicates_deduplicated() {
+        // Duplicates in input should be collapsed by the HashSet
+        let a = vec!["read".to_owned(), "read".to_owned(), "write".to_owned()];
+        let b = vec!["read".to_owned(), "write".to_owned()];
+        assert!((compute_tool_overlap(&a, &b) - 1.0).abs() < f64::EPSILON);
+    }
+
+    // ─────────────────────────────────────────────────────────
+    // compute_name_similarity — LCS ratio
+    // ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn name_similarity_identical() {
+        assert!((compute_name_similarity("Alice", "Alice") - 1.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn name_similarity_case_insensitive() {
+        // LCS runs on lowercased strings
+        assert!((compute_name_similarity("Alice", "alice") - 1.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn name_similarity_completely_different() {
+        // "abc" vs "xyz" — LCS length 0, ratio 0.0
+        assert!(compute_name_similarity("abc", "xyz").abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn name_similarity_substring_match() {
+        // "kitten" vs "kit" — LCS = "kit" (3), max_len = 6, ratio = 0.5
+        let result = compute_name_similarity("kitten", "kit");
+        assert!((result - 0.5).abs() < f64::EPSILON, "expected 0.5, got {result}");
+    }
+
+    #[test]
+    fn name_similarity_both_empty() {
+        assert!((compute_name_similarity("", "") - 1.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn name_similarity_one_empty() {
+        assert!(compute_name_similarity("hello", "").abs() < f64::EPSILON);
+    }
+
+    // ─────────────────────────────────────────────────────────
+    // lcs_char_length — the DP kernel
+    // ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn lcs_exact_match() {
+        let a: Vec<char> = "abc".chars().collect();
+        let b: Vec<char> = "abc".chars().collect();
+        assert_eq!(lcs_char_length(&a, &b), 3);
+    }
+
+    #[test]
+    fn lcs_partial_match() {
+        // "abcde" vs "ace" → LCS = "ace" (3)
+        let a: Vec<char> = "abcde".chars().collect();
+        let b: Vec<char> = "ace".chars().collect();
+        assert_eq!(lcs_char_length(&a, &b), 3);
+    }
+
+    #[test]
+    fn lcs_no_match() {
+        let a: Vec<char> = "abc".chars().collect();
+        let b: Vec<char> = "xyz".chars().collect();
+        assert_eq!(lcs_char_length(&a, &b), 0);
+    }
+
+    #[test]
+    fn lcs_empty_inputs() {
+        let empty: Vec<char> = Vec::new();
+        let a: Vec<char> = "abc".chars().collect();
+        assert_eq!(lcs_char_length(&empty, &a), 0);
+        assert_eq!(lcs_char_length(&a, &empty), 0);
+        assert_eq!(lcs_char_length(&empty, &empty), 0);
+    }
+
+    // ─────────────────────────────────────────────────────────
+    // extract_str / extract_optional_str — DataValue extraction
+    // ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn extract_str_from_str_value() {
+        let val = DataValue::Str("hello".into());
+        let result = extract_str(&val).expect("should extract");
+        assert_eq!(result, "hello");
+    }
+
+    #[test]
+    fn extract_str_rejects_non_str() {
+        let val = DataValue::from(42i64);
+        let result = extract_str(&val);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn extract_optional_str_from_null() {
+        let val = DataValue::Null;
+        let result = extract_optional_str(&val).expect("should extract");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn extract_optional_str_from_str_value() {
+        let val = DataValue::Str("present".into());
+        let result = extract_optional_str(&val).expect("should extract");
+        assert_eq!(result.as_deref(), Some("present"));
+    }
+
+    #[test]
+    fn extract_optional_str_rejects_other_types() {
+        let val = DataValue::Bool(true);
+        let result = extract_optional_str(&val);
+        assert!(result.is_err());
+    }
+
+    // ─────────────────────────────────────────────────────────
+    // extract_float / extract_int / extract_bool
+    // ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn extract_float_from_float_value() {
+        let val = DataValue::from(1.5_f64);
+        let result = extract_float(&val).expect("should extract");
+        assert!((result - 1.5).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn extract_float_rejects_str() {
+        let val = DataValue::Str("not a number".into());
+        let result = extract_float(&val);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn extract_int_from_int_value() {
+        let val = DataValue::from(42i64);
+        let result = extract_int(&val).expect("should extract");
+        assert_eq!(result, 42);
+    }
+
+    #[test]
+    fn extract_int_rejects_str() {
+        let val = DataValue::Str("42".into());
+        let result = extract_int(&val);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn extract_bool_true() {
+        let val = DataValue::Bool(true);
+        let result = extract_bool(&val).expect("should extract");
+        assert!(result);
+    }
+
+    #[test]
+    fn extract_bool_false() {
+        let val = DataValue::Bool(false);
+        let result = extract_bool(&val).expect("should extract");
+        assert!(!result);
+    }
+
+    #[test]
+    fn extract_bool_rejects_int() {
+        let val = DataValue::from(1i64);
+        let result = extract_bool(&val);
+        assert!(result.is_err());
+    }
+
+    // ─────────────────────────────────────────────────────────
+    // parse_epistemic_tier — string → enum mapping
+    // ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn parse_verified_tier() {
+        assert_eq!(parse_epistemic_tier("verified"), EpistemicTier::Verified);
+    }
+
+    #[test]
+    fn parse_inferred_tier() {
+        assert_eq!(parse_epistemic_tier("inferred"), EpistemicTier::Inferred);
+    }
+
+    #[test]
+    fn parse_assumed_tier() {
+        assert_eq!(parse_epistemic_tier("assumed"), EpistemicTier::Assumed);
+    }
+
+    #[test]
+    fn parse_unknown_tier_defaults_to_assumed() {
+        // Unknown strings fall back to Assumed (with a warn log)
+        assert_eq!(parse_epistemic_tier("bogus"), EpistemicTier::Assumed);
+        assert_eq!(parse_epistemic_tier(""), EpistemicTier::Assumed);
+        assert_eq!(parse_epistemic_tier("VERIFIED"), EpistemicTier::Assumed);
+    }
+
+    // ─────────────────────────────────────────────────────────
+    // build_hybrid_query — script rendering
+    // ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn build_hybrid_query_contains_limits() {
+        use super::super::HybridQuery;
+        let query = HybridQuery {
+            text: "test query".to_owned(),
+            embedding: vec![0.1_f32; 384],
+            seed_entities: Vec::new(),
+            limit: 20,
+            ef: 50,
+        };
+        let script = build_hybrid_query(&query);
+        // The script should include the limit and ef parameters somewhere
+        assert!(
+            script.contains("20") || script.contains("$limit"),
+            "script should reference the limit"
+        );
+        assert!(
+            script.contains("50") || script.contains("$ef"),
+            "script should reference the ef parameter"
+        );
+    }
+}
