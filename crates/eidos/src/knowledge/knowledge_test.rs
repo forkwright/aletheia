@@ -3,7 +3,7 @@
 use std::path::{Path, PathBuf};
 
 use super::*;
-use crate::id::FactId;
+use crate::id::{EmbeddingId, EntityId, FactId};
 
 fn test_timestamp(s: &str) -> jiff::Timestamp {
     parse_timestamp(s).expect("valid test timestamp")
