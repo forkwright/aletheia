@@ -58,16 +58,16 @@ pub(crate) trait MemCmpEncoder: Write {
                 match arr {
                     Vector::F32(a) => {
                         let _ = self.write_all(&[VEC_F32]);
-                        let l = a.len();
-                        let _ = self.write_all(&(l as u64).to_be_bytes());
+                        let l = u64::try_from(a.len()).unwrap_or(u64::MAX);
+                        let _ = self.write_all(&l.to_be_bytes());
                         for el in a {
                             let _ = self.write_all(&el.to_be_bytes());
                         }
                     }
                     Vector::F64(a) => {
                         let _ = self.write_all(&[VEC_F64]);
-                        let l = a.len();
-                        let _ = self.write_all(&(l as u64).to_be_bytes());
+                        let l = u64::try_from(a.len()).unwrap_or(u64::MAX);
+                        let _ = self.write_all(&l.to_be_bytes());
                         for el in a {
                             let _ = self.write_all(&el.to_be_bytes());
                         }
@@ -124,7 +124,7 @@ pub(crate) trait MemCmpEncoder: Write {
                 let ts_flipped = !ts_u64;
                 let _ = self.write_all(&[VLD_TAG]);
                 let _ = self.write_all(&ts_flipped.to_be_bytes());
-                let _ = self.write_all(&[!vld.is_assert.0 as u8]);
+                let _ = self.write_all(&[u8::from(!vld.is_assert.0)]);
             }
             DataValue::Bot => {
                 let _ = self.write_all(&[BOT_TAG]);
@@ -203,11 +203,15 @@ pub fn decode_bytes(data: &[u8]) -> (Vec<u8>, &[u8]) {
 const SIGN_MARK: u64 = 0x8000000000000000;
 
 fn order_encode_i64(v: i64) -> u64 {
-    v as u64 ^ SIGN_MARK
+    // INVARIANT: intentional signed-to-unsigned bit reinterpretation for
+    // lexicographic key ordering; XOR with SIGN_MARK flips the sign bit so that
+    // i64::MIN sorts before i64::MAX in unsigned big-endian byte order.
+    v.cast_unsigned() ^ SIGN_MARK
 }
 
 fn order_decode_i64(u: u64) -> i64 {
-    (u ^ SIGN_MARK) as i64
+    // INVARIANT: inverse of `order_encode_i64`; bit-reinterprets u64 back to i64.
+    (u ^ SIGN_MARK).cast_signed()
 }
 
 fn order_encode_f64(v: f64) -> u64 {
@@ -242,7 +246,17 @@ impl Num {
         let (tag, remaining) = remaining.split_first().unwrap_or((&0, &[]));
         match *tag {
             IS_FLOAT => (Num::Float(f), remaining),
-            IS_EXACT_INT => (Num::Int(f as i64), remaining),
+            IS_EXACT_INT => {
+                // INVARIANT: IS_EXACT_INT is only written for integers in
+                // (-EXACT_INT_BOUND, EXACT_INT_BOUND) = (-2^53, 2^53), which f64
+                // represents exactly and which fit comfortably in i64.
+                #[expect(
+                    clippy::cast_possible_truncation,
+                    reason = "value was encoded as exact int in (-2^53, 2^53)"
+                )]
+                let i = f as i64;
+                (Num::Int(i), remaining)
+            }
             IS_APPROX_INT => {
                 let (int_part, remaining) = remaining.split_at(8);
                 // INVARIANT: split_at(8) yields exactly 8 bytes
@@ -350,7 +364,12 @@ impl DataValue {
                 let (t_tag, remaining) = remaining.split_first().unwrap_or((&0, &[]));
                 let (len_bytes, mut rest) = remaining.split_at(8);
                 // INVARIANT: split_at(8) yields exactly 8 bytes
-                let len = u64::from_be_bytes(as_array(len_bytes)) as usize;
+                let len_u64 = u64::from_be_bytes(as_array(len_bytes));
+                // INVARIANT: lengths are written via `u64::try_from(usize)` which saturates to
+                // u64::MAX on exotic targets; on all supported 64-bit targets usize == u64 width
+                // so any value round-trips. On 32-bit targets any len exceeding usize::MAX here
+                // would already be a corrupt key.
+                let len = usize::try_from(len_u64).unwrap_or(usize::MAX);
                 match *t_tag {
                     VEC_F32 => {
                         let mut res_arr = ndarray::Array1::zeros(len);
