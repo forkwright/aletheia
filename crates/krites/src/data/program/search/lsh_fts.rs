@@ -125,7 +125,9 @@ impl SearchInput {
                     .build()
                     .into());
                 }
-                Some(k as usize)
+                // INVARIANT: range-checked > 0 above; saturating to usize::MAX
+                // covers the theoretical i64 > usize::MAX case on 32-bit.
+                Some(usize::try_from(k).unwrap_or(usize::MAX))
             }
         };
 
@@ -331,12 +333,13 @@ impl SearchInput {
             .into());
         }
 
+        // INVARIANT: `k` was range-checked > 0 above.
         conj.push(NormalFormAtom::FtsSearch(FtsSearch {
             base_handle,
             idx_handle,
             manifest,
             bindings,
-            k: k as usize,
+            k: usize::try_from(k).unwrap_or(usize::MAX),
             query,
             score_kind,
             bind_score,
