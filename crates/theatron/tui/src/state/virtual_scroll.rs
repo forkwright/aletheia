@@ -197,13 +197,15 @@ impl VirtualScroll {
         };
 
         #[expect(
+            clippy::as_conversions,
             clippy::cast_precision_loss,
-            reason = "terminal line counts never approach f64 precision limits"
+            reason = "terminal line counts never approach f64 precision limits (2^53)"
         )]
         let size_ratio = vh as f64 / total as f64;
         #[expect(
+            clippy::as_conversions,
             clippy::cast_precision_loss,
-            reason = "terminal line counts never approach f64 precision limits"
+            reason = "terminal line counts never approach f64 precision limits (2^53)"
         )]
         let offset_ratio = top_line as f64 / total as f64;
 
@@ -479,11 +481,8 @@ mod tests {
             let _ = vs.visible_slice(offset % 1000, false, 40);
         }
         let elapsed = start.elapsed();
-        #[expect(
-            clippy::cast_possible_truncation,
-            reason = "iteration count fits in u32"
-        )]
-        let per_call = elapsed / iterations as u32;
+        let iterations_u32 = u32::try_from(iterations).unwrap_or(u32::MAX);
+        let per_call = elapsed / iterations_u32;
 
         // Must be sub-microsecond per call (binary search on 15K items)
         assert!(
