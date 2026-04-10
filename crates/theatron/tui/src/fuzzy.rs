@@ -107,12 +107,15 @@ impl FuzzyMatcher {
             }
         }
 
-        // Penalty for length (shorter is better)
-        let candidate_len = candidate.chars().count();
-        score -= candidate_len as i64 * 2;
+        // Penalty for length (shorter is better). Saturate at i64::MAX for
+        // the impossible >2^63 string case; the lint-clean path matters more
+        // than the unreachable branch.
+        let candidate_len = i64::try_from(candidate.chars().count()).unwrap_or(i64::MAX);
+        score -= candidate_len * 2;
 
-        // Bonus for matching more of the pattern
-        score += indices.len() as i64 * 10;
+        // Bonus for matching more of the pattern.
+        let match_count = i64::try_from(indices.len()).unwrap_or(i64::MAX);
+        score += match_count * 10;
 
         score
     }
