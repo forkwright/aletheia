@@ -6,7 +6,7 @@ Project conventions for AI coding agents working on this codebase.
 
 ## Standards
 
-Universal: [standards/README.md](standards/README.md)
+Universal: [standards/STANDARDS.md](standards/STANDARDS.md)
 Rust: [standards/RUST.md](standards/RUST.md)
 Writing: [standards/WRITING.md](standards/WRITING.md)
 Shell: [standards/SHELL.md](standards/SHELL.md)
@@ -42,7 +42,7 @@ Test tiers: [docs/test-tiers.md](docs/test-tiers.md)
 - **Config:** figment TOML cascade in `taxis`
 - **Lints:** `#[expect(lint, reason = "...")]` over `#[allow]`; every suppression justified
 - **Visibility:** `pub(crate)` by default; `pub` only for cross-crate API surface
-- **Naming:** Greek names per [docs/gnomon.md](docs/gnomon.md), registry at [docs/lexicon.md](docs/lexicon.md)
+- **Naming:** Greek names per [standards/GNOMON.md](standards/GNOMON.md), registry at [docs/lexicon.md](docs/lexicon.md)
 - **No barrel files**: import from the file that owns the symbol
 - **Module imports flow downward**: higher layers depend on lower, never reverse
 
