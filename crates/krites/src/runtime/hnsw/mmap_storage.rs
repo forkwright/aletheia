@@ -50,6 +50,15 @@ pub(crate) enum AccessHint {
     Random = 1,
 }
 
+impl From<AccessHint> for u8 {
+    fn from(hint: AccessHint) -> Self {
+        match hint {
+            AccessHint::Sequential => 0,
+            AccessHint::Random => 1,
+        }
+    }
+}
+
 /// Memory-mapped vector storage.
 ///
 /// Vectors are stored contiguously as `[f32; dim]` arrays. Each vector is
@@ -171,7 +180,7 @@ impl MmapVectorStorage {
 
         let count = file_len_usize / stride;
         let inner = Self::create_inner(&file, file_len_usize)?;
-        let hint = AtomicU8::new(AccessHint::Random as u8);
+        let hint = AtomicU8::new(u8::from(AccessHint::Random));
 
         debug!(path = %path.display(), dim, count, "opened mmap vector storage");
 
@@ -274,7 +283,7 @@ impl MmapVectorStorage {
     /// On Unix this calls `madvise` to inform the kernel. On other platforms
     /// this is a no-op (the hint is recorded but not applied).
     pub(crate) fn set_access_hint(&self, hint: AccessHint) {
-        self.hint.store(hint as u8, Ordering::Relaxed);
+        self.hint.store(u8::from(hint), Ordering::Relaxed);
         self.apply_madvise(hint);
     }
 
@@ -380,13 +389,17 @@ impl MmapVectorStorage {
         #[cfg(unix)]
         {
             use std::os::unix::fs::FileExt;
-            let offset = (self.count * stride) as u64;
+            // INVARIANT: self.count * stride fits in usize (already materialized); on 64-bit
+            // targets usize == u64 width, on 32-bit targets the conversion still saturates
+            // cleanly because usize::MAX <= u64::MAX.
+            let offset = u64::try_from(self.count * stride).unwrap_or(u64::MAX);
             self.file
                 .write_at(bytes, offset)
                 .map_err(|e| io_err("mmap_storage", format!("write failed: {e}")))?;
             let new_len = (self.count + 1) * stride;
+            let new_len_u64 = u64::try_from(new_len).unwrap_or(u64::MAX);
             self.file
-                .set_len(new_len as u64)
+                .set_len(new_len_u64)
                 .map_err(|e| io_err("mmap_storage", format!("set_len failed: {e}")))?;
             self.remap(new_len)?;
         }
