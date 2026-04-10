@@ -14,6 +14,7 @@ use indexmap::IndexMap;
 
 use aletheia_koina::defaults::MAX_OUTPUT_BYTES;
 use aletheia_koina::id::ToolName;
+use aletheia_koina::system::{Environment, RealSystem};
 
 use crate::error::{self, Result};
 use crate::process_guard::ProcessGuard;
@@ -47,7 +48,7 @@ const MAX_WRITE_BYTES: usize = 10 * 1024 * 1024;
 /// than a confusing "no such file" error.
 fn expand_tilde_str(raw: &str) -> std::borrow::Cow<'_, str> {
     if let Some(rest) = raw.strip_prefix('~')
-        && let Ok(home) = std::env::var("HOME")
+        && let Some(home) = RealSystem.var("HOME")
     {
         return std::borrow::Cow::Owned(format!("{home}{rest}"));
     }

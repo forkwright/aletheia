@@ -1,3 +1,4 @@
+use aletheia_koina::system::{Environment, RealSystem};
 use ratatui::style::{Color, Modifier, Style};
 
 /// Terminal color depth, detected at startup.
@@ -517,7 +518,7 @@ impl Theme {
 /// Format: `fg;bg` or `fg;X;bg` where values are ANSI color indices.
 /// Indices 0-6 are dark colors, 7+ are light. Defaults to dark when unset.
 fn detect_background() -> ThemeMode {
-    if let Ok(val) = std::env::var("COLORFGBG") {
+    if let Some(val) = RealSystem.var("COLORFGBG") {
         // WHY: Some terminals emit three values (e.g., "15;0;0"). The background
         // is always the last component.
         if let Some(bg_str) = val.rsplit(';').next()
@@ -535,8 +536,10 @@ fn detect_background() -> ThemeMode {
 
 /// Detect terminal color capability from environment variables.
 fn detect_color_depth() -> ColorDepth {
+    let env = RealSystem;
+
     // WHY: COLORTERM is the most reliable indicator: check it before TERM.
-    if let Ok(ct) = std::env::var("COLORTERM") {
+    if let Some(ct) = env.var("COLORTERM") {
         match ct.as_str() {
             "truecolor" | "24bit" => return ColorDepth::TrueColor,
             // NOTE: unrecognized COLORTERM value, check other env vars
@@ -544,7 +547,7 @@ fn detect_color_depth() -> ColorDepth {
         }
     }
 
-    if let Ok(tp) = std::env::var("TERM_PROGRAM") {
+    if let Some(tp) = env.var("TERM_PROGRAM") {
         match tp.as_str() {
             "iTerm.app" | "WezTerm" | "Alacritty" | "kitty" => return ColorDepth::TrueColor,
             // NOTE: unrecognized terminal program, continue probing
@@ -553,17 +556,17 @@ fn detect_color_depth() -> ColorDepth {
     }
 
     // NOTE: GNOME Terminal sets COLORTERM=truecolor, but VTE_VERSION is a reliable backup.
-    if std::env::var("VTE_VERSION").is_ok() {
+    if env.var("VTE_VERSION").is_some() {
         return ColorDepth::TrueColor;
     }
 
-    if let Ok(term) = std::env::var("TERM")
+    if let Some(term) = env.var("TERM")
         && term.contains("256color")
     {
         return ColorDepth::Color256;
     }
 
-    if std::env::var("TMUX").is_ok() {
+    if env.var("TMUX").is_some() {
         return ColorDepth::Color256;
     }
 

@@ -65,12 +65,28 @@ impl Environment for RealSystem {
         std::env::var(name).ok()
     }
 
+    fn var_os(&self, name: &str) -> Option<std::ffi::OsString> {
+        std::env::var_os(name)
+    }
+
     fn vars(&self) -> Vec<(String, String)> {
         std::env::vars().collect()
     }
 
     fn current_dir(&self) -> io::Result<PathBuf> {
         std::env::current_dir()
+    }
+
+    fn temp_dir(&self) -> PathBuf {
+        std::env::temp_dir()
+    }
+
+    fn current_exe(&self) -> io::Result<PathBuf> {
+        std::env::current_exe()
+    }
+
+    fn args(&self) -> Vec<String> {
+        std::env::args().collect()
     }
 }
 
@@ -188,6 +204,10 @@ impl Environment for TestSystem {
         self.env.get(name).cloned()
     }
 
+    fn var_os(&self, name: &str) -> Option<std::ffi::OsString> {
+        self.env.get(name).map(Into::into)
+    }
+
     fn vars(&self) -> Vec<(String, String)> {
         self.env
             .iter()
@@ -197,5 +217,17 @@ impl Environment for TestSystem {
 
     fn current_dir(&self) -> io::Result<PathBuf> {
         Ok(PathBuf::from("/test"))
+    }
+
+    fn temp_dir(&self) -> PathBuf {
+        self.temp_dir.clone()
+    }
+
+    fn current_exe(&self) -> io::Result<PathBuf> {
+        Ok(self.current_exe.clone())
+    }
+
+    fn args(&self) -> Vec<String> {
+        self.args.clone()
     }
 }

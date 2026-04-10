@@ -8,6 +8,7 @@ use tracing::warn;
 
 use aletheia_koina::credential::{Credential, CredentialProvider, CredentialSource};
 use aletheia_koina::secret::SecretString;
+use aletheia_koina::system::{Environment, RealSystem};
 
 use super::file_ops::CredentialFile;
 use super::{CLOCK_SKEW_LEEWAY_SECS, FILE_MTIME_CHECK_INTERVAL, OAUTH_TOKEN_PREFIX, unix_epoch_ms};
@@ -45,7 +46,7 @@ impl EnvCredentialProvider {
 
 impl CredentialProvider for EnvCredentialProvider {
     fn get_credential(&self) -> Option<Credential> {
-        std::env::var(&self.var_name).ok().and_then(|v| {
+        RealSystem.var(&self.var_name).and_then(|v| {
             if v.is_empty() {
                 return None;
             }

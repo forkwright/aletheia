@@ -13,6 +13,7 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::time::Duration;
 
+use aletheia_koina::system::{Environment, RealSystem};
 use tracing::{debug, info};
 
 use crate::anthropic::StreamEvent;
@@ -288,7 +289,7 @@ impl LlmProvider for CcProvider {
 fn find_cc_binary() -> Result<PathBuf> {
     // WHY: We don't use the `which` crate (not in workspace). Instead, try
     // spawning `claude --version` and capture the binary path from PATH resolution.
-    let paths = std::env::var_os("PATH").unwrap_or_default();
+    let paths = RealSystem.var_os("PATH").unwrap_or_default();
     for dir in std::env::split_paths(&paths) {
         let candidate = dir.join("claude");
         if candidate.is_file() {

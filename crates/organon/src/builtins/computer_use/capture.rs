@@ -2,6 +2,8 @@
 
 use std::path::Path;
 
+use aletheia_koina::system::{Environment, RealSystem};
+
 use super::types::{ComputerAction, DiffRegion};
 
 /// Detect display server and return the appropriate capture command.
@@ -10,7 +12,7 @@ pub(super) fn capture_command(output_path: &Path) -> std::process::Command {
 
     // WHY: Check WAYLAND_DISPLAY first; if set, the session is Wayland and
     // scrot (X11-only) will not work. grim is the standard Wayland capture tool.
-    if std::env::var("WAYLAND_DISPLAY").is_ok() {
+    if RealSystem.var("WAYLAND_DISPLAY").is_some() {
         let mut cmd = std::process::Command::new("grim");
         cmd.arg(output.as_ref());
         cmd

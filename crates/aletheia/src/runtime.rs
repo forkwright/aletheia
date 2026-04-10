@@ -19,6 +19,7 @@ use aletheia_hermeneus::anthropic::AnthropicProvider;
 use aletheia_hermeneus::provider::{ProviderConfig, ProviderRegistry};
 use aletheia_koina::credential::{CredentialProvider, CredentialSource};
 use aletheia_koina::secret::SecretString;
+use aletheia_koina::system::{Environment, RealSystem};
 use aletheia_mneme::embedding::{
     DegradedEmbeddingProvider, EmbeddingConfig, EmbeddingProvider, create_provider,
 };
@@ -300,9 +301,7 @@ impl RuntimeBuilder {
         // JWT key resolution
         let jwt_key: Option<SecretString> =
             self.config.gateway.auth.signing_key.clone().or_else(|| {
-                std::env::var("ALETHEIA_JWT_SECRET")
-                    .ok()
-                    .map(SecretString::from)
+                RealSystem.var("ALETHEIA_JWT_SECRET").map(SecretString::from)
             });
         let jwt_config = match jwt_key {
             Some(k) => JwtConfig {
@@ -481,13 +480,10 @@ impl RuntimeBuilder {
             let http_client = Arc::new(reqwest::Client::new());
 
             // Academic source (Semantic Scholar)
-            let api_key = match std::env::var("SEMANTIC_SCHOLAR_API_KEY") {
-                Ok(key) => Some(key),
-                Err(e) => {
-                    tracing::warn!(error = %e, "SEMANTIC_SCHOLAR_API_KEY not set or invalid");
-                    None
-                }
-            };
+            let api_key = RealSystem.var("SEMANTIC_SCHOLAR_API_KEY").or_else(|| {
+                tracing::warn!("SEMANTIC_SCHOLAR_API_KEY not set");
+                None
+            });
             registry.register(Arc::new(
                 crate::recall_sources::academic::AcademicSource::new(
                     Arc::clone(&http_client),
@@ -747,7 +743,7 @@ fn validate_jwt(config: &AletheiaConfig) -> bool {
         .signing_key
         .as_ref()
         .map(|s| s.expose_secret().to_owned())
-        .or_else(|| std::env::var("ALETHEIA_JWT_SECRET").ok());
+        .or_else(|| RealSystem.var("ALETHEIA_JWT_SECRET"));
     let auth_mode = config.gateway.auth.mode.as_str();
     let jwt_check_label = "gateway.auth JWT key";
     if matches!(auth_mode, "token" | "jwt") {

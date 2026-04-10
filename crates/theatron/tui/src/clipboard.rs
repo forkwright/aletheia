@@ -1,3 +1,5 @@
+use aletheia_koina::system::{Environment, RealSystem};
+
 /// Copy text to the system clipboard.
 /// Tries arboard (native) first, falls back to OSC52 escape sequence.
 pub(crate) fn copy_to_clipboard(text: &str) -> Result<(), String> {
@@ -105,7 +107,7 @@ fn copy_osc52(text: &str) -> Result<(), String> {
     let encoded = STANDARD.encode(text.as_bytes());
 
     // NOTE: tmux requires an OSC52 passthrough wrapper for the escape sequence to reach the terminal
-    let seq = if std::env::var("TMUX").is_ok() {
+    let seq = if RealSystem.var("TMUX").is_some() {
         format!("\x1bPtmux;\x1b\x1b]52;c;{}\x07\x1b\\", encoded)
     } else {
         format!("\x1b]52;c;{}\x07", encoded)

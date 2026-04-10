@@ -21,6 +21,7 @@ mod recall_sources;
 mod runtime;
 mod status;
 
+use aletheia_koina::system::{Environment, RealSystem};
 use anyhow::Result;
 use clap::Parser;
 
@@ -47,7 +48,7 @@ async fn main() -> Result<()> {
         Some(cmd) => return commands::dispatch(cmd, cli.instance_root.as_ref()).await,
     }
 
-    if cli.daemon && std::env::var("_ALETHEIA_DAEMON").is_err() {
+    if cli.daemon && RealSystem.var("_ALETHEIA_DAEMON").is_none() {
         return commands::daemon::do_daemon().await;
     }
 

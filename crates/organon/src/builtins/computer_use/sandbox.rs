@@ -2,6 +2,8 @@
 
 use std::path::PathBuf;
 
+use aletheia_koina::system::{Environment, RealSystem};
+
 use super::actions::dispatch_action;
 use super::capture::{
     capture_command, capture_screen, compute_diff_region, describe_change, read_frame,
@@ -40,7 +42,7 @@ impl Default for ComputerUseSessionConfig {
                 PathBuf::from("/proc"),
                 PathBuf::from("/dev"),
             ],
-            allowed_write_paths: vec![std::env::temp_dir()],
+            allowed_write_paths: vec![RealSystem.temp_dir()],
             enforcement: SandboxEnforcement::Enforcing,
         }
     }
@@ -96,7 +98,7 @@ pub(super) fn execute_sandboxed_action(
     action: &ComputerAction,
     session_config: &ComputerUseSessionConfig,
 ) -> std::io::Result<ActionResult> {
-    let temp_dir = std::env::temp_dir();
+    let temp_dir = RealSystem.temp_dir();
     let before_path = temp_dir.join("aletheia_cu_before.png");
     let after_path = temp_dir.join("aletheia_cu_after.png");
 

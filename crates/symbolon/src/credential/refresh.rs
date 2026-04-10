@@ -11,6 +11,7 @@ use zeroize::Zeroize;
 
 use aletheia_koina::credential::{Credential, CredentialProvider, CredentialSource};
 use aletheia_koina::secret::SecretString;
+use aletheia_koina::system::{Environment, RealSystem};
 
 use super::file_ops::CredentialFile;
 use super::providers::FileCredentialProvider;
@@ -575,7 +576,7 @@ pub async fn force_refresh(path: &Path) -> Result<CredentialFile, String> {
 /// Returns `None` if `$HOME` is not set.
 #[must_use]
 pub fn claude_code_default_path() -> Option<PathBuf> {
-    std::env::var_os("HOME").map(|home| {
+    RealSystem.var_os("HOME").map(|home| {
         PathBuf::from(home)
             .join(".claude")
             .join(".credentials.json")

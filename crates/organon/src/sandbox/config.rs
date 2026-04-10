@@ -7,6 +7,7 @@
 
 use std::path::{Path, PathBuf};
 
+use aletheia_koina::system::{Environment, RealSystem};
 use serde::{Deserialize, Serialize};
 
 /// Sandbox enforcement level.
@@ -42,7 +43,7 @@ pub enum EgressPolicy {
 pub(crate) fn expand_tilde(path: &Path) -> PathBuf {
     let s = path.to_string_lossy();
     if s.starts_with('~')
-        && let Ok(home) = std::env::var("HOME")
+        && let Some(home) = RealSystem.var("HOME")
     {
         let without_tilde = s.strip_prefix('~').unwrap_or(&s);
         return PathBuf::from(format!("{home}{without_tilde}"));
@@ -174,10 +175,10 @@ impl SandboxConfig {
             PathBuf::from("/dev"),
         ];
 
-        // WHY: Use std::env::temp_dir() instead of hardcoded /tmp to support
+        // WHY: Use RealSystem::temp_dir() instead of hardcoded /tmp to support
         // systems where the temp directory differs (e.g. /var/folders on macOS,
         // or a custom TMPDIR). Closes #1697.
-        let mut write_paths = vec![std::env::temp_dir()];
+        let mut write_paths = vec![RealSystem.temp_dir()];
 
         // WHY: System binary dirs are always executable. workspace and
         // allowed_roots are also added so agents can execute scripts they own

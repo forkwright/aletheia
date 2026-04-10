@@ -4,14 +4,19 @@ use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 
+use aletheia_koina::system::{Environment, RealSystem};
+
 /// Fork the server to background by re-executing the binary without `--daemon`.
 ///
 /// WHY: `fork()` is unsafe inside a running tokio multi-thread runtime. Re-executing
 /// the binary avoids that hazard while still detaching from the terminal.
 pub(crate) async fn do_daemon() -> Result<()> {
-    let exe = std::env::current_exe().context("failed to locate executable")?;
+    let env = RealSystem;
+    let exe = env.current_exe().context("failed to locate executable")?;
 
-    let child_args: Vec<String> = std::env::args()
+    let child_args: Vec<String> = env
+        .args()
+        .into_iter()
         .skip(1)
         .filter(|a| a != "--daemon")
         .collect();
@@ -19,7 +24,7 @@ pub(crate) async fn do_daemon() -> Result<()> {
     // WHY: Redirect stderr to a crash log so daemon startup failures are
     // visible. Previously stdout+stderr were both /dev/null, so if the child
     // crashed (e.g., schema version mismatch), the error was lost entirely.
-    let instance_root = daemon_instance_root();
+    let instance_root = daemon_instance_root(&env);
     tokio::fs::create_dir_all(&instance_root)
         .await
         .with_context(|| format!("failed to create {}", instance_root.display()))?;
@@ -55,8 +60,8 @@ pub(crate) async fn do_daemon() -> Result<()> {
 }
 
 /// Resolve the instance root from CLI args or environment for PID file placement.
-fn daemon_instance_root() -> PathBuf {
-    let args: Vec<String> = std::env::args().collect();
+fn daemon_instance_root(env: &impl Environment) -> PathBuf {
+    let args = env.args();
     for (i, arg) in args.iter().enumerate() {
         if arg == "-r" || arg == "--instance-root" {
             if let Some(path) = args.get(i + 1) {
@@ -66,5 +71,6 @@ fn daemon_instance_root() -> PathBuf {
             return PathBuf::from(path);
         }
     }
-    std::env::var("ALETHEIA_ROOT").map_or_else(|_| PathBuf::from("instance"), PathBuf::from)
+    env.var("ALETHEIA_ROOT")
+        .map_or_else(|| PathBuf::from("instance"), PathBuf::from)
 }

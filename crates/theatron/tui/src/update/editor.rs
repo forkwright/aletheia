@@ -1,11 +1,15 @@
 //! Message handlers for the file editor view.
 
+use aletheia_koina::system::{Environment, RealSystem};
+
 use crate::app::App;
 use crate::msg::ErrorToast;
 use crate::state::view_stack::View;
 
 pub(crate) fn handle_open(app: &mut App) {
-    let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let cwd = RealSystem
+        .current_dir()
+        .unwrap_or_else(|_| std::path::PathBuf::from("."));
     app.layout.editor = crate::state::editor::EditorState::new(cwd);
     app.layout.view_stack.push(View::FileEditor);
 }

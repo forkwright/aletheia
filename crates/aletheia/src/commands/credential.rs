@@ -6,6 +6,7 @@ use snafu::prelude::*;
 
 use clap::Subcommand;
 
+use aletheia_koina::system::{Environment, RealSystem};
 use aletheia_symbolon::credential::CredentialFile;
 use aletheia_taxis::oikos::Oikos;
 
@@ -115,7 +116,7 @@ pub(crate) async fn run(action: Action, instance_root: Option<&PathBuf>) -> Resu
                 ("OPENAI_API_KEY", "static API key"),
             ];
             for (var, key_type) in env_vars {
-                if let Ok(val) = std::env::var(var)
+                if let Some(val) = RealSystem.var(var)
                     && !val.is_empty()
                 {
                     if found_any {

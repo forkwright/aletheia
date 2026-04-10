@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use aletheia_koina::system::{Environment, RealSystem};
 use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 use tracing::Instrument;
@@ -1042,7 +1043,7 @@ fn sd_notify_stopping() {
 /// Returns `None` if the variable is not SET or unparseable. The recommended
 /// notification interval is half the watchdog timeout.
 fn sd_watchdog_interval() -> Option<Duration> {
-    let usec_str = std::env::var("WATCHDOG_USEC").ok()?;
+    let usec_str = RealSystem.var("WATCHDOG_USEC")?;
     let usec: u64 = usec_str.parse().ok()?;
     // WHY: notify at half the watchdog interval to avoid races.
     Some(Duration::from_micros(usec / 2))
@@ -1053,7 +1054,7 @@ fn sd_watchdog_interval() -> Option<Duration> {
 /// No-op on non-Unix platforms or when `$NOTIFY_SOCKET` is not SET.
 #[cfg(unix)]
 fn sd_notify(msg: &str) {
-    let Ok(socket_path) = std::env::var("NOTIFY_SOCKET") else {
+    let Some(socket_path) = RealSystem.var("NOTIFY_SOCKET") else {
         return;
     };
 
