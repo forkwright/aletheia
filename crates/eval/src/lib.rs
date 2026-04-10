@@ -1,6 +1,8 @@
 #![deny(missing_docs)]
 //! Behavioral and cognitive evaluation framework for Aletheia runtime instances.
 
+/// Memory benchmark harness: LongMemEval, LoCoMo scoring against aletheia.
+pub mod benchmarks;
 /// HTTP client for communicating with the Aletheia API during evaluation runs.
 pub(crate) mod client;
 /// Cognitive evaluations: recall@k, sycophancy detection, adversarial testing.
