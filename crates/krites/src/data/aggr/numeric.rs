@@ -126,7 +126,12 @@ impl NormalAggrObj for AggrMean {
     }
 
     fn get(&self) -> Result<DataValue> {
-        Ok(DataValue::from(self.sum / (self.count as f64)))
+        #[expect(
+            clippy::cast_precision_loss,
+            reason = "i64 count to f64: precision loss above 2^53 samples is acceptable"
+        )]
+        let ct = self.count as f64;
+        Ok(DataValue::from(self.sum / ct))
     }
 }
 
