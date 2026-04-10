@@ -33,7 +33,7 @@ use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
 use std::time::Duration;
 
-use aletheia_krites::{DataValue, Db, NamedRows, ScriptMutability};
+use krites::{DataValue, Db, NamedRows, ScriptMutability};
 use serde_json::json;
 
 // ============================================================================
@@ -311,13 +311,13 @@ fn hnsw_vector_search_lifecycle() {
     let vec3: Vec<f32> = (0..128).map(|i| (i + 100) as f32).collect();
 
     let mut params = BTreeMap::new();
-    params.insert("v1".to_string(), DataValue::Vec(aletheia_krites::Vector::F32(
+    params.insert("v1".to_string(), DataValue::Vec(krites::Vector::F32(
         ndarray::Array1::from(vec1.clone()),
     )));
-    params.insert("v2".to_string(), DataValue::Vec(aletheia_krites::Vector::F32(
+    params.insert("v2".to_string(), DataValue::Vec(krites::Vector::F32(
         ndarray::Array1::from(vec2),
     )));
-    params.insert("v3".to_string(), DataValue::Vec(aletheia_krites::Vector::F32(
+    params.insert("v3".to_string(), DataValue::Vec(krites::Vector::F32(
         ndarray::Array1::from(vec3.clone()),
     )));
 
@@ -345,7 +345,7 @@ fn hnsw_vector_search_lifecycle() {
     // Perform KNN search using the index
     let query_vec: Vec<f32> = (0..128).map(|i| i as f32 + 0.5).collect();
     let mut params = BTreeMap::new();
-    params.insert("q".to_string(), DataValue::Vec(aletheia_krites::Vector::F32(
+    params.insert("q".to_string(), DataValue::Vec(krites::Vector::F32(
         ndarray::Array1::from(query_vec),
     )));
 

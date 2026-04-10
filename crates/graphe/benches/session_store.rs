@@ -16,8 +16,8 @@
 use criterion::{Criterion, criterion_group, criterion_main};
 use std::hint::black_box;
 
-use aletheia_graphe::store::SessionStore;
-use aletheia_graphe::types::Role;
+use graphe::store::SessionStore;
+use graphe::types::Role;
 use koina::ulid::Ulid;
 
 /// Build an in-memory store for one iteration's worth of work.

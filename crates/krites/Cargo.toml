@@ -1,5 +1,5 @@
 [package]
-name = "aletheia-krites"
+name = "krites"
 version.workspace = true
 description = "Embedded Datalog engine with HNSW and graph support for Aletheia"
 edition.workspace = true

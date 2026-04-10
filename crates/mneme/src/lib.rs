@@ -34,41 +34,41 @@ pub mod path_validation {
 
 /// Datalog/graph engine (enabled by `mneme-engine` feature, provided by `aletheia-krites`).
 #[cfg(feature = "mneme-engine")]
-pub use aletheia_krites as engine;
+pub use krites as engine;
 
 // ── Session persistence (graphe) ───────────────────────────────────────────
 
 /// Database backup and JSON export for session data.
 #[cfg(feature = "sqlite")]
-pub use aletheia_graphe::backup;
+pub use graphe::backup;
 /// Mneme-specific error types and result alias.
-pub use aletheia_graphe::error;
+pub use graphe::error;
 /// Agent export: build an `AgentFile` from session store and workspace.
 #[cfg(feature = "sqlite")]
-pub use aletheia_graphe::export;
+pub use graphe::export;
 /// Agent import: restore an agent from a portable `AgentFile`.
 #[cfg(feature = "sqlite")]
-pub use aletheia_graphe::import;
+pub use graphe::import;
 /// Versioned `SQLite` schema migration runner.
 #[cfg(feature = "sqlite")]
-pub use aletheia_graphe::migration;
+pub use graphe::migration;
 /// Agent portability schema: `AgentFile` format for cross-runtime export/import.
 #[cfg(feature = "sqlite")]
-pub use aletheia_graphe::portability;
+pub use graphe::portability;
 /// `SQLite` corruption detection, read-only fallback, and auto-repair.
 #[cfg(feature = "sqlite")]
-pub use aletheia_graphe::recovery;
+pub use graphe::recovery;
 /// Session retention policies and automated cleanup of old data.
 #[cfg(feature = "sqlite")]
-pub use aletheia_graphe::retention;
+pub use graphe::retention;
 /// `SQLite` schema DDL constants.
 #[cfg(feature = "sqlite")]
-pub use aletheia_graphe::schema;
+pub use graphe::schema;
 /// `SQLite` session store (WAL mode, prepared statements, transactional writes).
 #[cfg(feature = "sqlite")]
-pub use aletheia_graphe::store;
+pub use graphe::store;
 /// Core types for sessions, messages, usage records, and agent notes.
-pub use aletheia_graphe::types;
+pub use graphe::types;
 
 // ── Training data capture ─────────────────────────────────────────────
 

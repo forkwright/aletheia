@@ -1,5 +1,5 @@
 [package]
-name = "aletheia-graphe"
+name = "graphe"
 version.workspace = true
 description = "Session persistence layer for Aletheia"
 edition.workspace = true

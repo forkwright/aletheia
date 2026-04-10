@@ -16,8 +16,8 @@
     reason = "history Vecs have known length from preceding append assertions"
 )]
 
-use aletheia_graphe::store::SessionStore;
-use aletheia_graphe::types::{Role, SessionStatus};
+use graphe::store::SessionStore;
+use graphe::types::{Role, SessionStatus};
 use koina::ulid::Ulid;
 use tempfile::TempDir;
 

@@ -25,7 +25,7 @@ use crate::error::Result;
 pub(crate) fn export_knowledge(
     nous_id: &str,
     store: &crate::knowledge_store::KnowledgeStore,
-) -> Option<aletheia_graphe::portability::KnowledgeExport> {
+) -> Option<graphe::portability::KnowledgeExport> {
     let facts = store
         .query_facts(nous_id, "9999-01-01T00:00:00Z", 100_000)
         .ok()
@@ -47,7 +47,7 @@ pub(crate) fn export_knowledge(
         "knowledge exported"
     );
 
-    Some(aletheia_graphe::portability::KnowledgeExport {
+    Some(graphe::portability::KnowledgeExport {
         facts,
         entities,
         relationships,
@@ -143,7 +143,7 @@ fn query_all_relationships(
 #[instrument(skip(knowledge, store))]
 #[expect(dead_code, reason = "knowledge import for agent portability")]
 pub(crate) fn import_knowledge(
-    knowledge: &aletheia_graphe::portability::KnowledgeExport,
+    knowledge: &graphe::portability::KnowledgeExport,
     store: &crate::knowledge_store::KnowledgeStore,
 ) -> Result<KnowledgeImportResult> {
     let mut result = KnowledgeImportResult::default();
