@@ -280,14 +280,34 @@ impl DaemonConfig {
 
 /// Single-instance lock guard for daemon process per workspace.
 ///
-/// WHY: only one daemon process should run per workspace. `fd-lock` provides
-/// cross-platform advisory file locking (flock on Unix, `LockFileEx` on Windows).
+/// WHY: only one daemon process should run per workspace. We use
+/// `rustix::fs::flock` directly on the lock file's file descriptor.
 ///
 /// The lock file is created at `.aletheia/daemon.lock` in the workspace root.
-/// The lock is held for the lifetime of this guard and released on drop.
+/// The advisory lock is bound to the file descriptor and held for as long as
+/// `WorkspaceGuard` (and therefore the inner `File`) lives. Drop closes the
+/// file descriptor, which releases the flock automatically.
+///
+/// # Bug history
+///
+/// Previously this used `fd_lock::RwLock<File>` and probed with `try_write()`,
+/// then immediately dropped the resulting `RwLockWriteGuard`. This was a bug:
+/// `RwLockWriteGuard::drop` calls `flock(fd, LOCK_UN)`, releasing the lock
+/// before the `WorkspaceGuard` was even returned to the caller. Two
+/// `acquire()` calls in the same process would both succeed. Tracked in #3026.
 pub struct WorkspaceGuard {
-    _lock: fd_lock::RwLock<std::fs::File>,
+    /// The lock file. Holding this open keeps the flock alive on the
+    /// associated file descriptor; closing it releases the flock.
+    _file: std::fs::File,
     path: PathBuf,
+}
+
+impl std::fmt::Debug for WorkspaceGuard {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("WorkspaceGuard")
+            .field("path", &self.path)
+            .finish_non_exhaustive()
+    }
 }
 
 impl WorkspaceGuard {
@@ -298,6 +318,8 @@ impl WorkspaceGuard {
     /// Returns `TaskFailed` if the lock file cannot be created or another
     /// daemon instance already holds the lock.
     pub fn acquire(workspace_root: &Path) -> Result<Self> {
+        use std::os::fd::AsFd;
+
         let lock_dir = workspace_root.join(".aletheia");
         if !lock_dir.exists() {
             std::fs::create_dir_all(&lock_dir).context(crate::error::MaintenanceIoSnafu {
@@ -316,29 +338,30 @@ impl WorkspaceGuard {
                 context: format!("opening lock file: {}", lock_path.display()),
             })?;
 
-        let mut lock = fd_lock::RwLock::new(file);
-
-        // NOTE: try_write() is non-blocking; returns Err if another process holds the lock.
-        // WHY: we probe with try_write() then immediately drop the guard. The RwLock
-        // itself keeps the file descriptor open and the advisory lock held for the
-        // lifetime of this struct.
-        if let Err(e) = lock.try_write() {
-            return Err(crate::error::TaskFailedSnafu {
-                task_id: "workspace-lock".to_owned(),
-                reason: format!(
-                    "another daemon instance holds the lock at {}: {e}",
-                    lock_path.display()
-                ),
-            }
-            .build());
-        }
+        // WHY: rustix::fs::flock binds the advisory lock to the file descriptor.
+        // The lock lives for as long as `file` is open, and is released
+        // automatically when `file` is dropped (which closes the fd).
+        // `NonBlockingLockExclusive` returns `EWOULDBLOCK` if another process
+        // (or another file descriptor in this process) already holds an
+        // exclusive flock on the same inode.
+        rustix::fs::flock(file.as_fd(), rustix::fs::FlockOperation::NonBlockingLockExclusive)
+            .map_err(|e| {
+                crate::error::TaskFailedSnafu {
+                    task_id: "workspace-lock".to_owned(),
+                    reason: format!(
+                        "another daemon instance holds the lock at {}: {e}",
+                        lock_path.display()
+                    ),
+                }
+                .build()
+            })?;
 
         tracing::info!(
             path = %lock_path.display(),
             "workspace daemon lock acquired"
         );
         Ok(Self {
-            _lock: lock,
+            _file: file,
             path: lock_path,
         })
     }
@@ -356,7 +379,7 @@ impl Drop for WorkspaceGuard {
             path = %self.path.display(),
             "releasing workspace daemon lock"
         );
-        // NOTE: fd-lock releases the advisory lock when the RwLock is dropped.
+        // NOTE: closing `_file` releases the flock automatically.
         // We also try to clean up the lock file, but failure is not critical.
         let _ = std::fs::remove_file(&self.path);
     }
@@ -364,6 +387,7 @@ impl Drop for WorkspaceGuard {
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(clippy::expect_used, reason = "test assertions")]
 #[expect(
     clippy::indexing_slicing,
     reason = "test: vec indices valid after asserting len"
@@ -371,10 +395,6 @@ impl Drop for WorkspaceGuard {
 #[expect(
     clippy::disallowed_methods,
     reason = "tests use std::fs to set up tempdir fixtures synchronously; tokio::fs would be unnecessary ceremony"
-)]
-#[expect(
-    clippy::used_underscore_binding,
-    reason = "_guard1 holds the lock for the duration of the test; the underscore prefix marks it as intentionally unused beyond Drop"
 )]
 mod tests {
     use super::*;
@@ -559,17 +579,37 @@ webhook = true
 
     #[test]
     fn workspace_guard_prevents_double_acquisition() {
+        // REGRESSION (#3026): the previous fd-lock implementation released the
+        // advisory lock before WorkspaceGuard returned to the caller, allowing
+        // a second acquire() in the same process to silently succeed. The
+        // rustix::fs::flock implementation binds the lock to the file
+        // descriptor, so a second acquire() opens a new fd and the kernel
+        // correctly reports the inode is already locked.
         let tmp = tempfile::tempdir().unwrap();
-        let _guard1 = WorkspaceGuard::acquire(tmp.path()).unwrap();
+        let guard1 = WorkspaceGuard::acquire(tmp.path()).expect("first acquire");
+        assert!(guard1.lock_path().exists(), "lock file exists after first acquire");
 
-        // NOTE: second acquisition in the same process may or may not fail
-        // depending on OS flock semantics (Linux flock is per-fd, not per-process
-        // for the same file). This test verifies the API works; true multi-process
-        // locking is validated by integration tests.
-        // The important thing is that the first guard holds the lock.
+        let guard2 = WorkspaceGuard::acquire(tmp.path());
         assert!(
-            _guard1.lock_path().exists(),
-            "lock file should exist while first guard is held"
+            guard2.is_err(),
+            "second acquire() in same process must fail while first guard is held"
+        );
+
+        // First guard still holds the lock — its fd is still open.
+        assert!(guard1.lock_path().exists(), "lock file still exists");
+    }
+
+    #[test]
+    fn workspace_guard_releases_after_first_drop_allows_reacquire() {
+        // Drop the first guard, then a second acquire should succeed.
+        let tmp = tempfile::tempdir().unwrap();
+        {
+            let _guard1 = WorkspaceGuard::acquire(tmp.path()).expect("first acquire");
+            // First guard holds the lock here.
+        }
+        // First guard dropped, file closed, flock released.
+        let _guard2 = WorkspaceGuard::acquire(tmp.path()).expect(
+            "second acquire after first guard dropped should succeed",
         );
     }
 

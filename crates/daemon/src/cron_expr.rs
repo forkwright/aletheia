@@ -19,7 +19,7 @@ use crate::error;
 
 /// A parsed cron expression.
 #[derive(Debug, Clone)]
-pub(crate) struct CronExpr {
+pub struct CronExpr {
     seconds: BTreeSet<u8>,
     minutes: BTreeSet<u8>,
     hours: BTreeSet<u8>,
@@ -45,7 +45,7 @@ impl CronExpr {
         clippy::similar_names,
         reason = "field names mirror cron section names — disambiguating them with longer/shorter names hurts readability"
     )]
-    pub(crate) fn parse(expr: &str) -> Result<Self, error::Error> {
+    pub fn parse(expr: &str) -> Result<Self, error::Error> {
         let fields: Vec<&str> = expr.split_whitespace().collect();
 
         let (sec_str, minute_str, hour_str, dom_str, month_str, dow_str) = match fields.len()
@@ -98,7 +98,7 @@ impl CronExpr {
         clippy::too_many_lines,
         reason = "month (1-12), day (1-31), hour (0-23), minute (0-59), second (0-59) all fit in i8 and have no negative values; u8→i8 is safe for values ≤ 59. Function length: this is a single cohesive cron field-walking state machine — splitting would scatter the field-rollover logic and obscure the carry semantics"
     )]
-    pub(crate) fn next_after(&self, after: jiff::Timestamp) -> Option<jiff::Timestamp> {
+    pub fn next_after(&self, after: jiff::Timestamp) -> Option<jiff::Timestamp> {
         // Work in UTC civil datetime for field-level manipulation.
         let dt = after.to_zoned(jiff::tz::TimeZone::UTC).datetime();
 
