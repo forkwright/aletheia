@@ -297,8 +297,10 @@ pub(crate) async fn handle_stream_turn_complete(app: &mut App, outcome: TurnOutc
         let ctx_total = model_context_window(&outcome.model);
         app.dashboard.context_tokens_used = Some(ctx_used);
         app.dashboard.context_tokens_total = Some(ctx_total);
-        // WHY: clamped to [0, 100] by .min(100); u64 → u8 is safe here.
-        let pct = ((u64::from(ctx_used) * 100) / u64::from(ctx_total)).min(100) as u8;
+        // WHY: clamped to [0, 100] before try_from; u8 cannot overflow.
+        // unwrap_or(100) handles the provably-impossible >100 branch safely.
+        let pct_u64 = ((u64::from(ctx_used) * 100) / u64::from(ctx_total)).min(100);
+        let pct = u8::try_from(pct_u64).unwrap_or(100);
         app.dashboard.context_usage_pct = Some(pct);
     }
     if let Ok(cents) = app.client.today_cost_cents().await {
