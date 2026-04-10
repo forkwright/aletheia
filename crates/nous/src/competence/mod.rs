@@ -367,11 +367,8 @@ impl CompetenceTracker {
         } else {
             #[expect(
                 clippy::cast_precision_loss,
-                reason = "domain count will never exceed 2^53; precision loss is not a concern here"
-            )]
-            #[expect(
                 clippy::as_conversions,
-                reason = "usize-to-f64 for averaging; domain count is bounded and safe"
+                reason = "usize→f64: competence domain count is under 100 (one per skill area); far below f64 mantissa 2^53"
             )]
             let len = domains.len() as f64;
             domains.iter().map(|d| d.score).sum::<f64>() / len
