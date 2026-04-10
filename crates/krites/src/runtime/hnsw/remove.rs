@@ -3,6 +3,7 @@
 use itertools::Itertools;
 use rustc_hash::FxHashSet;
 
+use super::idx_to_i64;
 use crate::DataValue;
 use crate::data::tuple::ENCODED_KEY_MIN_LEN;
 use crate::error::InternalResult as Result;
@@ -75,7 +76,7 @@ impl<'a> SessionTx<'a> {
             let mut self_key = vec![DataValue::from(layer)];
             for _ in 0..2 {
                 self_key.extend_from_slice(tuple_key);
-                self_key.push(DataValue::from(idx as i64));
+                self_key.push(DataValue::from(idx_to_i64(idx)));
                 self_key.push(DataValue::from(i64::from(subidx)));
             }
             let self_key_bytes = idx_table.encode_key_for_store(&self_key, Default::default())?;
@@ -92,26 +93,26 @@ impl<'a> SessionTx<'a> {
             for (neighbour_key, _) in neigbours {
                 let mut out_key = vec![DataValue::from(layer)];
                 out_key.extend_from_slice(tuple_key);
-                out_key.push(DataValue::from(idx as i64));
+                out_key.push(DataValue::from(idx_to_i64(idx)));
                 out_key.push(DataValue::from(i64::from(subidx)));
                 out_key.extend_from_slice(&neighbour_key.0);
-                out_key.push(DataValue::from(neighbour_key.1 as i64));
+                out_key.push(DataValue::from(idx_to_i64(neighbour_key.1)));
                 out_key.push(DataValue::from(i64::from(neighbour_key.2)));
                 let out_key_bytes = idx_table.encode_key_for_store(&out_key, Default::default())?;
                 self.store_tx.del(&out_key_bytes)?;
                 let mut in_key = vec![DataValue::from(layer)];
                 in_key.extend_from_slice(&neighbour_key.0);
-                in_key.push(DataValue::from(neighbour_key.1 as i64));
+                in_key.push(DataValue::from(idx_to_i64(neighbour_key.1)));
                 in_key.push(DataValue::from(i64::from(neighbour_key.2)));
                 in_key.extend_from_slice(tuple_key);
-                in_key.push(DataValue::from(idx as i64));
+                in_key.push(DataValue::from(idx_to_i64(idx)));
                 in_key.push(DataValue::from(i64::from(subidx)));
                 let in_key_bytes = idx_table.encode_key_for_store(&in_key, Default::default())?;
                 self.store_tx.del(&in_key_bytes)?;
                 let mut neighbour_self_key = vec![DataValue::from(layer)];
                 for _ in 0..2 {
                     neighbour_self_key.extend_from_slice(&neighbour_key.0);
-                    neighbour_self_key.push(DataValue::from(neighbour_key.1 as i64));
+                    neighbour_self_key.push(DataValue::from(idx_to_i64(neighbour_key.1)));
                     neighbour_self_key.push(DataValue::from(i64::from(neighbour_key.2)));
                 }
                 let neighbour_val_bytes = match self

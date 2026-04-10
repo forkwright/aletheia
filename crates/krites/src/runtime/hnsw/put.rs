@@ -7,18 +7,9 @@ use priority_queue::PriorityQueue;
 use rustc_hash::FxHashSet;
 use tracing::warn;
 
+use super::idx_to_i64;
 use super::types::{CompoundKey, DEFAULT_VECTOR_CACHE_CAPACITY, HnswIndexManifest, VectorCache};
 use super::visited_pool::VisitedPool;
-
-// INVARIANT: HNSW indices and sub-indices are non-negative and bounded by the
-// number of tuples in the underlying relation. They are stored as i64
-// DataValues in the index keys. `idx_to_i64` saturates to i64::MAX for the
-// theoretical usize::MAX > i64::MAX case, which cannot be reached on any
-// supported target because the relation's tuple count is bounded by the
-// available address space.
-fn idx_to_i64(idx: usize) -> i64 {
-    i64::try_from(idx).unwrap_or(i64::MAX)
-}
 use crate::DataValue;
 use crate::data::expr::{Bytecode, eval_bytecode_pred};
 use crate::data::tuple::ENCODED_KEY_MIN_LEN;
