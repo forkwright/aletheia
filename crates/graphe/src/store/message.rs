@@ -23,7 +23,6 @@ impl SessionStore {
         tool_name: Option<&str>,
         token_estimate: i64,
     ) -> Result<i64> {
-        self.check_disk("append_message");
         self.require_writable()?;
         let tx = self
             .conn

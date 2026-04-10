@@ -19,7 +19,6 @@ use rusqlite::Connection;
 use snafu::ResultExt;
 use tracing::{error, info, instrument, warn};
 
-use aletheia_koina::disk_space::{DiskSpaceMonitor, DiskStatus};
 
 use crate::error::{self, Result};
 use crate::migration;
@@ -55,7 +54,6 @@ pub trait ConnectionHook: Send + Sync {
 /// The session store: wraps a `SQLite` connection with optional degraded mode.
 pub struct SessionStore {
     conn: Connection,
-    disk_monitor: Option<DiskSpaceMonitor>,
     mode: StoreMode,
     path: Option<PathBuf>,
     hook: Option<Box<dyn ConnectionHook>>,
@@ -111,7 +109,6 @@ impl SessionStore {
 
                     return Ok(Self {
                         conn: recovered_conn,
-                        disk_monitor: None,
                         mode,
                         path: Some(path.to_path_buf()),
                         hook: None,
@@ -131,7 +128,6 @@ impl SessionStore {
 
         Ok(Self {
             conn,
-            disk_monitor: None,
             mode: StoreMode::Normal,
             path: Some(path.to_path_buf()),
             hook: None,
@@ -166,7 +162,6 @@ impl SessionStore {
         migration::run_migrations(&conn)?;
         Ok(Self {
             conn,
-            disk_monitor: None,
             mode: StoreMode::Normal,
             path: None,
             hook: None,
@@ -193,41 +188,6 @@ impl SessionStore {
         let mut store = Self::open_in_memory()?;
         store.hook = Some(hook);
         Ok(store)
-    }
-
-    /// Attach a disk space monitor for pre-write checks.
-    #[expect(
-        dead_code,
-        reason = "disk_monitor infrastructure has no current caller; tracked for follow-up cleanup"
-    )]
-    pub(crate) fn set_disk_monitor(&mut self, monitor: DiskSpaceMonitor) {
-        self.disk_monitor = Some(monitor);
-    }
-
-    /// Emit tracing diagnostics based on current disk status.
-    ///
-    /// Database writes are essential and always proceed, but warnings and
-    /// errors are emitted so operators can respond before the disk fills.
-    pub(crate) fn check_disk(&self, operation: &str) {
-        if let Some(ref monitor) = self.disk_monitor {
-            match monitor.status() {
-                DiskStatus::Warning { available_bytes } => {
-                    let mb = available_bytes / (1024 * 1024);
-                    warn!(
-                        available_mb = mb,
-                        operation, "disk space low, database write proceeding"
-                    );
-                }
-                DiskStatus::Critical { available_bytes } => {
-                    let mb = available_bytes / (1024 * 1024);
-                    error!(
-                        available_mb = mb,
-                        operation, "disk space critical, database write proceeding (essential)"
-                    );
-                }
-                _ => {}
-            }
-        }
     }
 
     /// Lightweight liveness check: executes `SELECT 1` against the connection.
