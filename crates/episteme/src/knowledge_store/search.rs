@@ -409,7 +409,11 @@ impl KnowledgeStore {
     ///
     /// Same as `search_tiered`: depends on tier reached.
     #[instrument(skip(self, rewriter, provider, context, config))]
-    pub async fn search_tiered_async(
+    #[expect(
+        dead_code,
+        reason = "async wrapper for search_tiered; kept crate-private until first caller wires it in"
+    )]
+    pub(crate) async fn search_tiered_async(
         self: &std::sync::Arc<Self>,
         base_query: HybridQuery,
         rewriter: std::sync::Arc<crate::query_rewrite::QueryRewriter>,
