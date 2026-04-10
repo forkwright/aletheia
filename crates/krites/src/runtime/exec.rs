@@ -106,7 +106,9 @@ impl<'s, S: Storage<'s>> Db<S> {
         cleanups.extend(q_cleanups);
         #[cfg(not(target_arch = "wasm32"))]
         if let Some(secs) = sleep_opt {
-            thread::sleep(Duration::from_micros((secs * 1000000.) as u64));
+            // INVARIANT: Duration::from_secs_f64 saturates non-finite/large
+            // values to Duration::MAX. Negative seconds clamp to 0.
+            thread::sleep(Duration::from_secs_f64(secs.max(0.0)));
         }
         Ok(q_res)
     }

@@ -93,12 +93,16 @@ fn magic_rewrite_ruleset(
     let rule_has_bound_args = rule_head.has_bound_adornment();
 
     for (rule_idx, rule) in ruleset.into_iter().enumerate() {
+        // INVARIANT: rule_idx fits u16 unless the user defines >65k rules in
+        // a single ruleset, which is wildly beyond practical Datalog programs.
+        // Saturating gracefully if exceeded.
+        let rule_idx_u16 = u16::try_from(rule_idx).unwrap_or(u16::MAX);
         let mut sup_idx = 0;
         let mut make_sup_kw = || {
             let ret = MagicSymbol::Sup {
                 inner: rule_name.clone(),
                 adornment: adornment.into(),
-                rule_idx: rule_idx as u16,
+                rule_idx: rule_idx_u16,
                 sup_idx,
             };
             sup_idx += 1;

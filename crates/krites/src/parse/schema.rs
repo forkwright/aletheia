@@ -162,7 +162,8 @@ fn parse_type_inner(pair: Pair<'_>) -> Result<ColType> {
                         .build()
                         .into());
                     }
-                    Some(n as usize)
+                    // INVARIANT: range-checked >= 0 above.
+                    Some(usize::try_from(n).unwrap_or(usize::MAX))
                 }
             };
             ColType::List {

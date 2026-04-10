@@ -559,7 +559,10 @@ impl Poison {
     pub(crate) fn set_timeout(&self, secs: f64) -> Result<()> {
         let pill = self.clone();
         thread::spawn(move || {
-            thread::sleep(Duration::from_micros((secs * 1000000.) as u64));
+            // INVARIANT: Duration::from_secs_f64 saturates non-finite and
+            // out-of-range f64 to Duration::MAX, matching the previous
+            // truncating-cast behavior without UB.
+            thread::sleep(Duration::from_secs_f64(secs.max(0.0)));
             pill.0.store(true, Ordering::Relaxed);
         });
         Ok(())
