@@ -33,6 +33,8 @@ pub mod decay;
 pub(crate) mod dedup;
 /// Embedding provider trait and implementations (candle, mock).
 pub mod embedding;
+/// Evidence-gap tracking for iterative retrieval (MemR3-inspired).
+pub mod evidence_gap;
 /// Embedding evaluation gate: Recall@K and MRR for model upgrade checks.
 pub mod embedding_eval;
 /// LLM-driven knowledge extraction pipeline (entities, relationships, facts).
