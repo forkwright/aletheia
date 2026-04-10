@@ -88,7 +88,11 @@ pub enum TraceEvent {
 /// Apply this before the first [`TraceIngestLayer::flush`] call.  In production
 /// the knowledge-store init path runs all DDL; this constant is exposed so
 /// tests and the init migration can reference the canonical schema.
-pub const OPS_DDL: &[&str] = &[
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "schema referenced from tests; production init path is in knowledge_store::init")
+)]
+pub(crate) const OPS_DDL: &[&str] = &[
     r":create ops_turns {
         session_id: String, nous_id: String =>
         model: String,
@@ -205,7 +209,7 @@ impl Visit for EventVisitor {
 ///     duration_ms = elapsed.as_millis() as i64,
 /// );
 /// ```
-pub struct TraceIngestLayer {
+pub(crate) struct TraceIngestLayer {
     buffer: std::sync::Arc<Mutex<Vec<TraceEvent>>>,
 }
 
@@ -217,10 +221,14 @@ impl Clone for TraceIngestLayer {
     }
 }
 
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "impl used from tests; production wiring lands with knowledge_store::init migration")
+)]
 impl TraceIngestLayer {
     /// Create a new ingest layer with an empty buffer.
     #[must_use]
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             buffer: std::sync::Arc::new(Mutex::new(Vec::new())),
         }
@@ -231,7 +239,7 @@ impl TraceIngestLayer {
     /// This is the infallible variant — it returns events regardless of whether
     /// a knowledge store is available.  Use [`TraceIngestLayer::flush`] to write
     /// them to Datalog.
-    pub fn drain(&self) -> Vec<TraceEvent> {
+    pub(crate) fn drain(&self) -> Vec<TraceEvent> {
         let mut buf = self
             .buffer
             .lock();
@@ -239,7 +247,7 @@ impl TraceIngestLayer {
     }
 
     /// How many events are waiting in the buffer.
-    pub fn pending(&self) -> usize {
+    pub(crate) fn pending(&self) -> usize {
         self.buffer
             .lock()
             .len()
@@ -254,7 +262,7 @@ impl TraceIngestLayer {
     /// Requires the `mneme-engine` feature.  Without it this is a no-op that
     /// still drains the buffer (preventing unbounded growth).
     #[cfg(feature = "mneme-engine")]
-    pub fn flush(&self, store: &crate::knowledge_store::KnowledgeStore) {
+    pub(crate) fn flush(&self, store: &crate::knowledge_store::KnowledgeStore) {
         use std::collections::BTreeMap;
 
         use crate::engine::DataValue;
@@ -343,7 +351,7 @@ impl TraceIngestLayer {
     ///
     /// Prevents unbounded buffer growth when no knowledge store is wired in.
     #[cfg(not(feature = "mneme-engine"))]
-    pub fn flush_noop(&self) {
+    pub(crate) fn flush_noop(&self) {
         self.drain();
     }
 }
