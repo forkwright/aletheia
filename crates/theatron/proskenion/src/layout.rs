@@ -3,8 +3,7 @@
 use dioxus::prelude::*;
 
 use crate::app::Route;
-use crate::components::agent_sidebar::AgentSidebarView;
-use crate::components::connection_indicator::ConnectionIndicatorView;
+use crate::components::topbar::TopBar;
 use crate::state::navigation::NavAction;
 use crate::state::pipeline::RoutingState;
 use crate::state::view_preservation::ViewPreservationStore;
@@ -144,20 +143,17 @@ pub(crate) fn Layout() -> Element {
                 NavItem { to: Route::Sessions {}, icon: "📑", label: "Sessions", shortcut: "Ctrl+7", collapsed: *sidebar_collapsed.read() }
                 NavItem { to: Route::Meta {}, icon: "💡", label: "Insights", shortcut: "", collapsed: *sidebar_collapsed.read() }
                 NavItem { to: Route::Settings {}, icon: "🔧", label: "Settings", shortcut: "", collapsed: *sidebar_collapsed.read() }
-                div { style: "{NAV_DIVIDER_STYLE}", role: "separator" }
-                AgentSidebarView { collapsed: *sidebar_collapsed.read() }
-                div { style: "flex: 1;" }
-                div {
-                    style: "padding: var(--space-2) var(--space-3);",
-                    crate::components::theme_toggle::ThemeToggle {}
-                }
-                ConnectionIndicatorView {}
             }
-            main {
-                style: "{CONTENT_STYLE}",
-                role: "main",
-                "aria-label": "Main content",
-                Outlet::<Route> {}
+            // Content area: topbar + main
+            div {
+                style: "flex: 1; display: flex; flex-direction: column; overflow: hidden;",
+                TopBar {}
+                main {
+                    style: "{CONTENT_STYLE}",
+                    role: "main",
+                    "aria-label": "Main content",
+                    Outlet::<Route> {}
+                }
             }
         }
     }

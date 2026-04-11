@@ -39,6 +39,8 @@ pub(crate) mod toast_container;
 pub(crate) mod tool_approval;
 pub(crate) mod tool_panel;
 pub(crate) mod tool_status;
+/// Top bar with brand, agent status pills, and connection/theme controls.
+pub(crate) mod topbar;
 /// Virtual scrolling utilities for large lists.
 pub(crate) mod virtual_list;
 pub(crate) mod wave_band;
