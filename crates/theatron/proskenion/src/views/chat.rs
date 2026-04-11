@@ -387,6 +387,7 @@ pub(crate) fn Chat() -> Element {
                     style: "
                         flex: 1;
                         overflow-y: auto;
+                        overflow-x: hidden;
                         position: relative;
                     ",
                     onscroll: move |_evt: Event<ScrollData>| {

@@ -66,7 +66,7 @@ pub(crate) fn ThinkingPanel(props: ThinkingPanelProps) -> Element {
                     "border-left: 3px solid var(--border); padding: 0px 12px; margin-top: 8px; overflow: hidden; transition: max-height 0.3s ease, opacity 0.3s ease; max-height: 0px; opacity: 0;"
                 },
                 div {
-                    style: "color: var(--text-secondary); font-style: italic; font-size: var(--text-sm); white-space: pre-wrap; word-wrap: break-word; line-height: 1.4;",
+                    style: "color: var(--text-secondary); font-style: italic; font-size: var(--text-sm); white-space: pre-line; word-wrap: break-word; overflow-wrap: break-word; line-height: var(--leading-normal);",
                     "{content}"
                 }
             }

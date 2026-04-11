@@ -221,6 +221,40 @@ textarea:focus-visible {
 }
 
 /* ===================================================================== */
+/* Markdown body — word-wrap safety for all rendered markdown content      */
+/* ===================================================================== */
+
+.markdown-body {
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  white-space: normal;
+  line-height: var(--leading-relaxed);
+}
+
+.markdown-body pre {
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.markdown-body p,
+.markdown-body li,
+.markdown-body blockquote {
+  max-width: 100%;
+}
+
+/* ===================================================================== */
+/* Reduced motion — respect user accessibility preferences                */
+/* ===================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ===================================================================== */
 /* Message appear animation — subtle fade+slide for new messages          */
 /* ===================================================================== */
 

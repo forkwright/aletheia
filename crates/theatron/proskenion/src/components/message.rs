@@ -107,7 +107,7 @@ pub(crate) fn MessageBubble(
                 if is_user || is_system {
                     // WHY: user/system messages render as plain text (no markdown)
                     div {
-                        style: "white-space: pre-wrap; word-wrap: break-word; line-height: var(--leading-relaxed);",
+                        style: "white-space: pre-wrap; word-wrap: break-word; word-break: break-word; overflow-wrap: break-word; line-height: var(--leading-relaxed);",
                         "{message.content}"
                     }
                 } else {

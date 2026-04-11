@@ -80,4 +80,13 @@
   --accent: #9A7B4F;
   --accent-hover: #B08E5C;
   --accent-dim: #7A6340;
+
+  /* Missing spacing tokens identified by audit */
+  --space-5: 1.25rem;   /* 20px */
+
+  /* Z-index scale */
+  --z-content: 10;
+  --z-modal: 100;
+  --z-tooltip: 1000;
+  --z-toast: 9999;
 }

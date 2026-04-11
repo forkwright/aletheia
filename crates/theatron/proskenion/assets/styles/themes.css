@@ -117,7 +117,7 @@
   /* Text — deep warm brown */
   --text-primary: #2C2418;
   --text-secondary: #5C5248;
-  --text-muted: #8A8078;
+  --text-muted: #6E665E; /* WHY: raised contrast from #8A8078 (2.82:1) to meet WCAG AA (4.5:1) */
   --text-inverse: #F5F0E8;
 
   /* Borders */

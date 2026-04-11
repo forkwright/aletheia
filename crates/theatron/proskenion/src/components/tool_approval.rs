@@ -56,12 +56,14 @@ const BUTTON_ROW_STYLE: &str = "\
 
 const APPROVE_BTN_STYLE: &str = "\
     background: var(--status-success); \
-    color: var(--code-bg); \
+    color: var(--text-inverse); \
     border: none; \
     border-radius: var(--radius-md); \
-    padding: 6px 16px; \
+    padding: var(--space-2) var(--space-4); \
     font-size: var(--text-sm); \
-    font-weight: 600; \
+    font-weight: var(--weight-semibold); \
+    cursor: pointer; \
+    transition: background-color var(--transition-quick); \
     cursor: pointer;\
 ";
 
