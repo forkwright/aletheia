@@ -129,6 +129,16 @@ pub(crate) async fn run(action: Action, instance_root: Option<&PathBuf>) -> Resu
                 }
             }
 
+            // Check CC provider availability
+            if let Some(cc_path) = symbolon::credential::claude_code_default_path() {
+                if cc_path.exists() {
+                    println!("CC provider: Claude Code credentials found at {}", cc_path.display());
+                    found_any = true;
+                } else {
+                    println!("CC provider: {} (not found)", cc_path.display());
+                }
+            }
+
             if !found_any {
                 println!("No credential found.");
                 println!("Checked: {} (not found)", cred_path.display());

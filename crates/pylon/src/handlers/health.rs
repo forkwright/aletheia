@@ -268,46 +268,48 @@ fn check_credential_validity(state: &HealthState) -> HealthCheck {
     let creds_dir = state.oikos.credentials();
     let cred_file = creds_dir.join("anthropic.json");
 
-    match symbolon::credential::CredentialFile::load(&cred_file) {
-        Some(cred_file) => {
-            // Check if token is expired or expiring soon
-            if let Some(remaining_secs) = cred_file.seconds_remaining() {
-                const CLOCK_SKEW_LEEWAY: i64 = 30;
-                const EXPIRY_WARNING_THRESHOLD: i64 = 3600;
+    if let Some(cred_file) = symbolon::credential::CredentialFile::load(&cred_file) {
+        // Check if token is expired or expiring soon
+        if let Some(remaining_secs) = cred_file.seconds_remaining() {
+            const CLOCK_SKEW_LEEWAY: i64 = 30;
+            const EXPIRY_WARNING_THRESHOLD: i64 = 3600;
 
-                if remaining_secs < CLOCK_SKEW_LEEWAY {
-                    HealthCheck {
-                        name: "credential_validity",
-                        status: "warn",
-                        message: Some("credential file token has expired".to_owned()),
-                    }
-                } else if remaining_secs < EXPIRY_WARNING_THRESHOLD {
-                    HealthCheck {
-                        name: "credential_validity",
-                        status: "warn",
-                        message: Some("credential file token expires soon".to_owned()),
-                    }
-                } else {
-                    HealthCheck {
-                        name: "credential_validity",
-                        status: "pass",
-                        message: None,
-                    }
-                }
-            } else {
-                // No expiry set - static API key
-                HealthCheck {
+            if remaining_secs < CLOCK_SKEW_LEEWAY {
+                return HealthCheck {
                     name: "credential_validity",
-                    status: "pass",
-                    message: None,
-                }
+                    status: "warn",
+                    message: Some("credential file token has expired".to_owned()),
+                };
+            } else if remaining_secs < EXPIRY_WARNING_THRESHOLD {
+                return HealthCheck {
+                    name: "credential_validity",
+                    status: "warn",
+                    message: Some("credential file token expires soon".to_owned()),
+                };
             }
         }
-        None => HealthCheck {
+        return HealthCheck {
+            name: "credential_validity",
+            status: "pass",
+            message: None,
+        };
+    }
+
+    // Check if CC provider handles auth (Claude Code credentials)
+    let cc_credentials = symbolon::credential::claude_code_default_path()
+        .is_some_and(|p| p.exists());
+    if cc_credentials {
+        HealthCheck {
+            name: "credential_validity",
+            status: "pass",
+            message: Some("Claude Code credentials available (CC provider handles auth)".to_owned()),
+        }
+    } else {
+        HealthCheck {
             name: "credential_validity",
             status: "warn",
-            message: Some("no credentials found (ANTHROPIC_API_KEY not set, no credential file)".to_owned()),
-        },
+            message: Some("no credentials found (ANTHROPIC_API_KEY not set, no credential file, no Claude Code credentials)".to_owned()),
+        }
     }
 }
 

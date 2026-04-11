@@ -48,6 +48,14 @@ pub(crate) enum CcEvent {
         #[serde(flatten)]
         _extra: serde_json::Value,
     },
+
+    /// Rate-limit status event emitted by newer CC CLI versions. Ignored —
+    /// the rate limit info is informational and doesn't affect the response.
+    #[serde(rename = "rate_limit_event")]
+    RateLimit {
+        #[serde(flatten)]
+        _extra: serde_json::Value,
+    },
 }
 
 /// Assistant message body.

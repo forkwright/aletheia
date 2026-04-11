@@ -265,8 +265,8 @@ where
                 session_id = s;
                 got_result = true;
             }
-            CcEvent::System { .. } => {
-                // Ignored.
+            CcEvent::System { .. } | CcEvent::RateLimit { .. } => {
+                // Ignored — informational events that don't affect the response.
             }
         }
     }
@@ -458,7 +458,7 @@ where
                 session_id = s;
                 got_result = true;
             }
-            CcEvent::System { .. } => {}
+            CcEvent::System { .. } | CcEvent::RateLimit { .. } => {}
         }
     }
 

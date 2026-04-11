@@ -222,11 +222,24 @@ pub(super) fn open_knowledge_store(
         std::fs::create_dir_all(parent)
             .whatever_context("failed to CREATE knowledge store directory")?;
     }
-    let store = mneme::knowledge_store::KnowledgeStore::open_fjall(
+    let store = match mneme::knowledge_store::KnowledgeStore::open_fjall(
         &kb_path,
         mneme::knowledge_store::KnowledgeConfig::default(),
-    )
-    .whatever_context("failed to open knowledge store")?;
+    ) {
+        Ok(s) => s,
+        Err(e) => {
+            let msg = e.to_string();
+            if msg.contains("InvalidTag") || msg.contains("CompressionType") {
+                tracing::error!(
+                    path = %kb_path.display(),
+                    "Knowledge store format incompatible (written by older fjall version). \
+                     Back up data/knowledge.fjall and delete it to start fresh. \
+                     Session data in sessions.db is NOT affected."
+                );
+            }
+            return Err(e).whatever_context("failed to open knowledge store");
+        }
+    };
     info!(path = %kb_path.display(), dim = 384, "knowledge store opened (fjall)");
     Ok(Some(store))
 }

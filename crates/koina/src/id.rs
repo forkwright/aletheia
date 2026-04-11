@@ -199,19 +199,30 @@ impl SessionId {
         Self(Uuid::new_v4())
     }
 
-    /// Parse from a UUID string (hyphenated format).
+    /// Parse from a UUID string (hyphenated) or ULID string (Crockford base32).
+    ///
+    /// Accepts both formats for backwards compatibility: newer sessions use UUID,
+    /// older sessions may have ULID-format IDs in the database (#3101).
     ///
     /// # Errors
-    /// Returns an error if the string is not a valid UUID.
+    /// Returns an error if the string is neither a valid UUID nor a valid ULID.
     #[must_use = "returns a parsed session identifier that should not be discarded"]
     pub fn parse(s: &str) -> Result<Self, IdError> {
-        Uuid::parse_str(s)
-            .map(Self)
-            .map_err(|_e| IdError::InvalidFormat {
-                kind: "SessionId",
-                value: s.to_owned(),
-                reason: "invalid UUID format".to_owned(),
-            })
+        // Try UUID first (most common in current code).
+        if let Ok(uuid) = Uuid::parse_str(s) {
+            return Ok(Self(uuid));
+        }
+        // Fall back to ULID for legacy compatibility.
+        if let Ok(ulid) = s.parse::<crate::ulid::Ulid>() {
+            // WHY: ULID and UUID are both 128-bit. Reinterpret the ULID's
+            // u128 as UUID bytes to produce a stable, round-trippable ID.
+            return Ok(Self(Uuid::from_u128(ulid.as_u128())));
+        }
+        Err(IdError::InvalidFormat {
+            kind: "SessionId",
+            value: s.to_owned(),
+            reason: "invalid session ID (expected UUID or ULID format)".to_owned(),
+        })
     }
 }
 

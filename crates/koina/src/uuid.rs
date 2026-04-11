@@ -33,6 +33,15 @@ impl Uuid {
         Self(bytes)
     }
 
+    /// Create a UUID from a raw 128-bit value (big-endian byte order).
+    ///
+    /// WHY: Used for ULID-to-UUID conversion where the 128-bit value needs to
+    /// be reinterpreted as a UUID for storage (#3101).
+    #[must_use]
+    pub fn from_u128(v: u128) -> Self {
+        Self(v.to_be_bytes())
+    }
+
     /// Parse a UUID from a hyphenated string (e.g., "550e8400-e29b-41d4-a716-446655440000").
     ///
     /// # Errors
