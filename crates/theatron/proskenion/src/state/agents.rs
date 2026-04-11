@@ -105,6 +105,28 @@ impl AgentStore {
     pub(crate) fn is_empty(&self) -> bool {
         self.agents.is_empty()
     }
+
+    /// Add agents from the API response. Sets the first agent as active if
+    /// no active agent is set yet.
+    pub(crate) fn load_from_api(&mut self, agents: Vec<Agent>) {
+        for a in agents {
+            let id = a.id.clone();
+            let record = AgentRecord {
+                agent: a,
+                status: AgentStatus::default(),
+            };
+            if !self.agents.contains_key(&id) {
+                self.order.push(id.clone());
+            }
+            self.agents.insert(id, record);
+        }
+        // Auto-select first agent if none is active
+        if self.active_id.is_none() {
+            if let Some(first) = self.order.first() {
+                self.active_id = Some(first.clone());
+            }
+        }
+    }
 }
 
 #[cfg(test)]

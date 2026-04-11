@@ -169,6 +169,25 @@ fn ConnectedApp() -> Element {
     // and has access to the finalized connection config.
     crate::services::sse_coroutine::start_sse_coroutine(&config.read());
 
+    // WHY: Fetch agents immediately on connection so the topbar agent pills
+    // are populated. Without this, agents only appear when the Ops view is
+    // visited — the topbar would be empty on first launch.
+    {
+        let cfg = config.read().clone();
+        let mut agents: Signal<AgentStore> = use_context();
+        use_future(move || {
+            let server_url = cfg.server_url.clone();
+            async move {
+                let Ok(client) = skene::api::client::ApiClient::new(&server_url, None) else {
+                    return;
+                };
+                if let Ok(list) = client.agents().await {
+                    agents.write().load_from_api(list);
+                }
+            }
+        });
+    }
+
     // NOTE: Start platform integration coroutines.
     start_tray_sync();
     start_window_state_writer();
