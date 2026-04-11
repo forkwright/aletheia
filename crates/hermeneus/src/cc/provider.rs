@@ -289,18 +289,36 @@ impl LlmProvider for CcProvider {
 
 /// Find the `claude` binary in `PATH`.
 fn find_cc_binary() -> Result<PathBuf> {
-    // WHY: We don't use the `which` crate (not in workspace). Instead, try
-    // spawning `claude --version` and capture the binary path from PATH resolution.
+    // 1. Search PATH (standard resolution).
     let paths = RealSystem.var_os("PATH").unwrap_or_default();
     for dir in std::env::split_paths(&paths) {
         let candidate = dir.join("claude");
         if candidate.is_file() {
-            debug!(path = %candidate.display(), "found claude binary");
+            debug!(path = %candidate.display(), "found claude binary in PATH");
             return Ok(candidate);
         }
     }
+
+    // 2. Check well-known installation paths (covers systemd user sessions
+    //    where ~/.local/bin may not be in PATH — see #3106).
+    if let Some(home) = RealSystem.var_os("HOME") {
+        let home = PathBuf::from(home);
+        for subdir in &[".local/bin/claude", ".claude/bin/claude"] {
+            let candidate = home.join(subdir);
+            if candidate.is_file() {
+                tracing::info!(
+                    path = %candidate.display(),
+                    "found claude binary outside PATH (consider adding its directory to PATH)"
+                );
+                return Ok(candidate);
+            }
+        }
+    }
+
     Err(error::ProviderInitSnafu {
-        message: "claude CLI binary not found in PATH. Install Claude Code: https://docs.anthropic.com/en/docs/claude-code".to_owned(),
+        message: "claude CLI binary not found in PATH or ~/.local/bin. \
+                  Install Claude Code: https://docs.anthropic.com/en/docs/claude-code"
+            .to_owned(),
     }
     .build())
 }

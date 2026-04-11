@@ -30,7 +30,10 @@ const DEFAULT_POLL_INTERVAL: Duration = Duration::from_secs(2);
 const DEFAULT_BUFFER_CAPACITY: usize = 100;
 
 /// Consecutive poll failures before the circuit breaker trips and polling halts.
-const CIRCUIT_BREAKER_THRESHOLD: u32 = 20;
+/// WHY: lowered from 20 to 5 because signal-cli being down is the common case
+/// (`auto_start=false`, user hasn't started it), and 20 retries at exponential
+/// backoff = several minutes of warn-level log spam before halting (#3104).
+const CIRCUIT_BREAKER_THRESHOLD: u32 = 5;
 
 /// Interval between health checks while the circuit breaker is open.
 const HALTED_HEALTH_CHECK_INTERVAL: Duration = Duration::from_secs(60);
