@@ -48,7 +48,7 @@ pub(crate) struct GroupedBarEntry {
 // -- Style constants ----------------------------------------------------------
 
 const CHART_LABEL_STYLE: &str = "\
-    font-size: 11px; \
+    font-size: var(--text-xs); \
     color: #706c66; \
     font-family: 'IBM Plex Mono', monospace;\
 ";
@@ -61,9 +61,9 @@ const TOOLTIP_STYLE: &str = "\
     transform: translateX(-50%); \
     background: #24211e; \
     border: 1px solid #3a3530; \
-    border-radius: 6px; \
+    border-radius: var(--radius-md); \
     padding: 6px 10px; \
-    font-size: 11px; \
+    font-size: var(--text-xs); \
     color: #e8e6e3; \
     white-space: nowrap; \
     pointer-events: none; \
@@ -83,7 +83,7 @@ pub(crate) fn TimeSeriesChart(
     if columns.is_empty() {
         return rsx! {
             div {
-                style: "display: flex; align-items: center; justify-content: center; height: {height_px}px; color: #706c66; font-size: 13px;",
+                style: "display: flex; align-items: center; justify-content: center; height: {height_px}px; color: #706c66; font-size: var(--text-sm);",
                 "No data for this range"
             }
         };
@@ -178,7 +178,7 @@ pub(crate) fn HorizBarChart(
     if entries.is_empty() {
         return rsx! {
             div {
-                style: "color: #706c66; font-size: 13px; padding: 16px 0;",
+                style: "color: #706c66; font-size: var(--text-sm); padding: 16px 0;",
                 "No data"
             }
         };
@@ -219,7 +219,7 @@ pub(crate) fn HorizBarChart(
                                 }
                             },
                             div {
-                                style: "width: 120px; font-size: 12px; color: #a8a49e; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 0;",
+                                style: "width: 120px; font-size: var(--text-xs); color: #a8a49e; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 0;",
                                 title: "{label}",
                                 "{label}"
                             }
@@ -231,7 +231,7 @@ pub(crate) fn HorizBarChart(
                             }
                             if show_value {
                                 div {
-                                    style: "width: 72px; text-align: right; font-size: 12px; color: #706c66; font-family: 'IBM Plex Mono', monospace; flex-shrink: 0;",
+                                    style: "width: 72px; text-align: right; font-size: var(--text-xs); color: #706c66; font-family: 'IBM Plex Mono', monospace; flex-shrink: 0;",
                                     "{value_str}"
                                 }
                             }
@@ -255,7 +255,7 @@ pub(crate) fn DonutChart(
     if segments.is_empty() {
         return rsx! {
             div {
-                style: "color: #706c66; font-size: 13px; padding: 16px 0;",
+                style: "color: #706c66; font-size: var(--text-sm); padding: 16px 0;",
                 "No data"
             }
         };
@@ -286,9 +286,9 @@ pub(crate) fn DonutChart(
             div {
                 style: "position: relative; width: {size_px}px; height: {size_px}px; border-radius: 50%; background: conic-gradient({gradient});",
                 div {
-                    style: "position: absolute; top: {hole_offset}px; left: {hole_offset}px; width: {hole_size}px; height: {hole_size}px; background: #12110f; border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center;",
+                    style: "position: absolute; top: {hole_offset}px; left: {hole_offset}px; width: {hole_size}px; height: {hole_size}px; background: var(--bg); border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center;",
                     div {
-                        style: "font-size: 11px; color: #706c66; text-align: center;",
+                        style: "font-size: var(--text-xs); color: #706c66; text-align: center;",
                         "{center_label}"
                     }
                 }
@@ -305,8 +305,8 @@ pub(crate) fn DonutChart(
                             div {
                                 style: "display: flex; align-items: center; gap: 4px;",
                                 div { style: "width: 10px; height: 10px; border-radius: 2px; background: {color}; flex-shrink: 0;" }
-                                span { style: "font-size: 12px; color: #a8a49e;", "{label}" }
-                                span { style: "font-size: 11px; color: #706c66;", "({pct:.1}%)" }
+                                span { style: "font-size: var(--text-xs); color: #a8a49e;", "{label}" }
+                                span { style: "font-size: var(--text-xs); color: #706c66;", "({pct:.1}%)" }
                             }
                         }
                     }
@@ -329,7 +329,7 @@ pub(crate) fn GroupedBarChart(
     if entries.is_empty() {
         return rsx! {
             div {
-                style: "display: flex; align-items: center; justify-content: center; height: {height_px}px; color: #706c66; font-size: 13px;",
+                style: "display: flex; align-items: center; justify-content: center; height: {height_px}px; color: #706c66; font-size: var(--text-sm);",
                 "No data for this range"
             }
         };
@@ -405,7 +405,7 @@ pub(crate) fn GroupedBarChart(
 
 /// Palette for multi-series charts (8 visually distinct hues).
 pub(crate) const SERIES_COLORS: &[&str] = &[
-    "#5b6af0", "#22c55e", "#eab308", "#ef4444", "#a855f7", "#06b6d4", "#f97316", "#ec4899",
+    "#5b6af0", "var(--status-success)", "var(--status-warning)", "var(--status-error)", "#a855f7", "#06b6d4", "#f97316", "#ec4899",
 ];
 
 // -- Line chart types ---------------------------------------------------------
@@ -435,7 +435,7 @@ pub(crate) fn LineChart(series: Vec<LineSeries>, height: u32) -> Element {
     if series.is_empty() || series.iter().all(|s| s.points.is_empty()) {
         return rsx! {
             div {
-                style: "display: flex; align-items: center; justify-content: center; height: {height}px; color: #706c66; font-size: 13px;",
+                style: "display: flex; align-items: center; justify-content: center; height: {height}px; color: #706c66; font-size: var(--text-sm);",
                 "No data"
             }
         };
@@ -542,7 +542,7 @@ pub(crate) fn PercentileBarChart(entries: Vec<PercentileEntry>) -> Element {
     if entries.is_empty() {
         return rsx! {
             div {
-                style: "color: #706c66; font-size: 13px; padding: 16px 0;",
+                style: "color: #706c66; font-size: var(--text-sm); padding: 16px 0;",
                 "No data"
             }
         };
@@ -561,12 +561,12 @@ pub(crate) fn PercentileBarChart(entries: Vec<PercentileEntry>) -> Element {
 
             // Legend
             div {
-                style: "display: flex; gap: 12px; font-size: 11px; color: #706c66;",
+                style: "display: flex; gap: 12px; font-size: var(--text-xs); color: #706c66;",
                 span { "min-p25" }
                 span { style: "color: #5b6af0;", "p25-p50" }
-                span { style: "color: #22c55e;", "p50-p75" }
-                span { style: "color: #eab308;", "p75-p95" }
-                span { style: "color: #ef4444;", "p95-max" }
+                span { style: "color: var(--status-success);", "p50-p75" }
+                span { style: "color: var(--status-warning);", "p75-p95" }
+                span { style: "color: var(--status-error);", "p95-max" }
             }
 
             for entry in &entries {
@@ -590,7 +590,7 @@ pub(crate) fn PercentileBarChart(entries: Vec<PercentileEntry>) -> Element {
                         div {
                             style: "display: flex; align-items: center; gap: 8px;",
                             div {
-                                style: "width: 120px; font-size: 12px; color: #a8a49e; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 0;",
+                                style: "width: 120px; font-size: var(--text-xs); color: #a8a49e; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 0;",
                                 title: "{label}",
                                 "{label}"
                             }
@@ -599,9 +599,9 @@ pub(crate) fn PercentileBarChart(entries: Vec<PercentileEntry>) -> Element {
                                 title: "{tip}",
                                 div { style: "width: {w_min_p25}%; background: #3a3530; min-width: 1px;" }
                                 div { style: "width: {w_p25_p50}%; background: #5b6af0; min-width: 1px;" }
-                                div { style: "width: {w_p50_p75}%; background: #22c55e; min-width: 1px;" }
-                                div { style: "width: {w_p75_p95}%; background: #eab308; min-width: 1px;" }
-                                div { style: "width: {w_p95_max}%; background: #ef4444; min-width: 1px;" }
+                                div { style: "width: {w_p50_p75}%; background: var(--status-success); min-width: 1px;" }
+                                div { style: "width: {w_p75_p95}%; background: var(--status-warning); min-width: 1px;" }
+                                div { style: "width: {w_p95_max}%; background: var(--status-error); min-width: 1px;" }
                             }
                         }
                     }
@@ -678,7 +678,7 @@ pub(crate) fn StackedBarChart(
     if entries.is_empty() {
         return rsx! {
             div {
-                style: "color: #706c66; font-size: 13px; padding: 16px 0;",
+                style: "color: #706c66; font-size: var(--text-sm); padding: 16px 0;",
                 "No data"
             }
         };
@@ -705,12 +705,12 @@ pub(crate) fn StackedBarChart(
                 style: "display: flex; gap: 12px; align-items: center;",
                 div {
                     style: "display: flex; align-items: center; gap: 4px;",
-                    div { style: "width: 10px; height: 10px; border-radius: 2px; background: #22c55e;" }
+                    div { style: "width: 10px; height: 10px; border-radius: 2px; background: var(--status-success);" }
                     span { style: "{CHART_LABEL_STYLE}", "Success" }
                 }
                 div {
                     style: "display: flex; align-items: center; gap: 4px;",
-                    div { style: "width: 10px; height: 10px; border-radius: 2px; background: #ef4444;" }
+                    div { style: "width: 10px; height: 10px; border-radius: 2px; background: var(--status-error);" }
                     span { style: "{CHART_LABEL_STYLE}", "Failure" }
                 }
             }
@@ -737,7 +737,7 @@ pub(crate) fn StackedBarChart(
                                 }
                             },
                             div {
-                                style: "width: 120px; font-size: 12px; color: #a8a49e; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 0;",
+                                style: "width: 120px; font-size: var(--text-xs); color: #a8a49e; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 0;",
                                 title: "{label}",
                                 "{label}"
                             }
@@ -745,14 +745,14 @@ pub(crate) fn StackedBarChart(
                                 style: "flex: 1; height: 20px; background: #1a1816; border-radius: 3px; overflow: hidden;",
                                 div {
                                     style: "height: 100%; width: {total_pct}%; display: flex; border-radius: 3px; overflow: hidden;",
-                                    div { style: "width: {success_pct}%; background: #22c55e; min-width: 1px;" }
+                                    div { style: "width: {success_pct}%; background: var(--status-success); min-width: 1px;" }
                                     if failure_pct > 0 {
-                                        div { style: "width: {failure_pct}%; background: #ef4444; min-width: 1px;" }
+                                        div { style: "width: {failure_pct}%; background: var(--status-error); min-width: 1px;" }
                                     }
                                 }
                             }
                             div {
-                                style: "width: 72px; text-align: right; font-size: 12px; color: #706c66; font-family: 'IBM Plex Mono', monospace; flex-shrink: 0;",
+                                style: "width: 72px; text-align: right; font-size: var(--text-xs); color: #706c66; font-family: 'IBM Plex Mono', monospace; flex-shrink: 0;",
                                 "{total}"
                             }
                         }

@@ -9,25 +9,25 @@ const ICON_SUCCESS: &str = "\u{2713}"; // ✓
 const ICON_ERROR: &str = "\u{2717}"; // ✗
 
 const PENDING_STYLE: &str = "\
-    color: #666; \
-    font-size: 14px;\
+    color: var(--text-muted); \
+    font-size: var(--text-base);\
 ";
 
 // WHY: CSS animation may not work in Blitz/Dioxus desktop webview;
 // the pulsing opacity is a signal-driven fallback defined in the component.
 const RUNNING_STYLE: &str = "\
-    color: #4a4aff; \
-    font-size: 14px;\
+    color: var(--accent); \
+    font-size: var(--text-base);\
 ";
 
 const SUCCESS_STYLE: &str = "\
-    color: #22c55e; \
-    font-size: 14px;\
+    color: var(--status-success); \
+    font-size: var(--text-base);\
 ";
 
 const ERROR_STYLE: &str = "\
-    color: #ef4444; \
-    font-size: 14px;\
+    color: var(--status-error); \
+    font-size: var(--text-base);\
 ";
 
 /// Render a tool status icon with color appropriate to the current state.

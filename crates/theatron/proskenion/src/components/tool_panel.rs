@@ -13,10 +13,10 @@ const PANEL_COLLAPSED_STYLE: &str = "\
     padding: 6px 10px; \
     background: var(--bg-surface); \
     border: 1px solid var(--border); \
-    border-radius: 6px; \
+    border-radius: var(--radius-md); \
     cursor: pointer; \
     margin-top: 4px; \
-    font-size: 13px; \
+    font-size: var(--text-sm); \
     color: var(--text-secondary);\
 ";
 
@@ -24,9 +24,9 @@ const PANEL_EXPANDED_STYLE: &str = "\
     padding: 8px 10px; \
     background: var(--bg-surface); \
     border: 1px solid var(--border); \
-    border-radius: 6px; \
+    border-radius: var(--radius-md); \
     margin-top: 4px; \
-    font-size: 13px;\
+    font-size: var(--text-sm);\
 ";
 
 const PANEL_HEADER_STYLE: &str = "\
@@ -44,7 +44,7 @@ const TOOL_NAME_STYLE: &str = "\
 ";
 
 const DURATION_BADGE_STYLE: &str = "\
-    font-size: 11px; \
+    font-size: var(--text-xs); \
     padding: 1px 6px; \
     background: var(--border); \
     border-radius: 10px; \
@@ -54,21 +54,21 @@ const DURATION_BADGE_STYLE: &str = "\
 const CODE_BLOCK_STYLE: &str = "\
     background: var(--code-bg); \
     border: 1px solid var(--border); \
-    border-radius: 4px; \
+    border-radius: var(--radius-sm); \
     padding: 8px; \
     margin-top: 6px; \
     overflow-x: auto; \
     white-space: pre-wrap; \
     word-wrap: break-word; \
     font-family: var(--font-mono); \
-    font-size: 12px; \
+    font-size: var(--text-xs); \
     color: var(--code-fg); \
     max-height: 300px; \
     overflow-y: auto;\
 ";
 
 const SECTION_LABEL_STYLE: &str = "\
-    font-size: 11px; \
+    font-size: var(--text-xs); \
     color: var(--text-muted); \
     text-transform: uppercase; \
     letter-spacing: 0.5px; \
@@ -79,10 +79,10 @@ const ERROR_DETAIL_STYLE: &str = "\
     color: var(--status-error); \
     background: var(--status-error-bg); \
     border: 1px solid var(--status-error); \
-    border-radius: 4px; \
+    border-radius: var(--radius-sm); \
     padding: 8px; \
     margin-top: 6px; \
-    font-size: 12px; \
+    font-size: var(--text-xs); \
     white-space: pre-wrap;\
 ";
 

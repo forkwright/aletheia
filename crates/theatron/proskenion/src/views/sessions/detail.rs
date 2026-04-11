@@ -25,24 +25,24 @@ const HEADER_STYLE: &str = "\
 ";
 
 const TITLE_STYLE: &str = "\
-    font-size: 18px; \
+    font-size: var(--text-lg); \
     font-weight: bold; \
-    color: #e0e0e0;\
+    color: var(--text-primary);\
 ";
 
 const STATUS_BADGE_STYLE: &str = "\
     display: inline-block; \
     padding: 2px 8px; \
-    border-radius: 4px; \
-    font-size: 11px;\
+    border-radius: var(--radius-sm); \
+    font-size: var(--text-xs);\
 ";
 
 const AGENT_BADGE_STYLE: &str = "\
     display: inline-block; \
     padding: 2px 8px; \
-    border-radius: 4px; \
-    font-size: 11px; \
-    background: #2a2a4a; \
+    border-radius: var(--radius-sm); \
+    font-size: var(--text-xs); \
+    background: var(--border); \
     color: #7a7aff;\
 ";
 
@@ -53,27 +53,27 @@ const STATS_GRID_STYLE: &str = "\
 ";
 
 const STAT_CARD_STYLE: &str = "\
-    background: #1a1a2e; \
-    border: 1px solid #333; \
-    border-radius: 8px; \
+    background: var(--bg-surface); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
     padding: 12px;\
 ";
 
 const STAT_LABEL_STYLE: &str = "\
-    font-size: 11px; \
-    color: #888; \
+    font-size: var(--text-xs); \
+    color: var(--text-secondary); \
     margin-bottom: 4px;\
 ";
 
 const STAT_VALUE_STYLE: &str = "\
-    font-size: 20px; \
+    font-size: var(--text-xl); \
     font-weight: bold; \
-    color: #e0e0e0;\
+    color: var(--text-primary);\
 ";
 
 const STAT_SUB_STYLE: &str = "\
-    font-size: 11px; \
-    color: #666; \
+    font-size: var(--text-xs); \
+    color: var(--text-muted); \
     margin-top: 2px;\
 ";
 
@@ -87,9 +87,9 @@ const TOKEN_BAR_BG_STYLE: &str = "\
 ";
 
 const SECTION_TITLE_STYLE: &str = "\
-    font-size: 14px; \
+    font-size: var(--text-base); \
     font-weight: bold; \
-    color: #e0e0e0; \
+    color: var(--text-primary); \
     margin: 0;\
 ";
 
@@ -98,10 +98,10 @@ const DISTILL_ROW_STYLE: &str = "\
     align-items: center; \
     gap: 12px; \
     padding: 8px 12px; \
-    background: #1a1a2e; \
-    border: 1px solid #333; \
-    border-radius: 6px; \
-    font-size: 12px;\
+    background: var(--bg-surface); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
+    font-size: var(--text-xs);\
 ";
 
 const DISTILL_TRIGGER_STYLE: &str = "\
@@ -109,22 +109,22 @@ const DISTILL_TRIGGER_STYLE: &str = "\
     padding: 1px 6px; \
     border-radius: 3px; \
     font-size: 10px; \
-    background: #2a2a3a; \
-    color: #aaa;\
+    background: var(--border); \
+    color: var(--text-secondary);\
 ";
 
 const MSG_PREVIEW_STYLE: &str = "\
     display: flex; \
     gap: 8px; \
     padding: 6px 0; \
-    border-bottom: 1px solid #1a1a2e; \
-    font-size: 13px;\
+    border-bottom: 1px solid var(--bg-surface); \
+    font-size: var(--text-sm);\
 ";
 
 const ROLE_BADGE_USER: &str = "\
     flex-shrink: 0; \
     width: 60px; \
-    font-size: 11px; \
+    font-size: var(--text-xs); \
     color: #4a9aff; \
     font-weight: bold;\
 ";
@@ -132,28 +132,28 @@ const ROLE_BADGE_USER: &str = "\
 const ROLE_BADGE_ASSISTANT: &str = "\
     flex-shrink: 0; \
     width: 60px; \
-    font-size: 11px; \
-    color: #22c55e; \
+    font-size: var(--text-xs); \
+    color: var(--status-success); \
     font-weight: bold;\
 ";
 
 const OPEN_CHAT_BTN: &str = "\
-    background: #4a4aff; \
+    background: var(--accent); \
     color: white; \
     border: none; \
-    border-radius: 6px; \
+    border-radius: var(--radius-md); \
     padding: 8px 16px; \
-    font-size: 13px; \
+    font-size: var(--text-sm); \
     cursor: pointer;\
 ";
 
 const ARCHIVE_BTN: &str = "\
-    background: #2a2a3a; \
-    color: #e0e0e0; \
-    border: 1px solid #444; \
-    border-radius: 6px; \
+    background: var(--border); \
+    color: var(--text-primary); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
     padding: 8px 16px; \
-    font-size: 13px; \
+    font-size: var(--text-sm); \
     cursor: pointer;\
 ";
 
@@ -164,7 +164,7 @@ const EMPTY_DETAIL_STYLE: &str = "\
     justify-content: center; \
     flex: 1; \
     gap: 12px; \
-    color: #555;\
+    color: var(--text-muted);\
 ";
 
 /// Empty state shown when no session is selected.
@@ -174,8 +174,8 @@ pub(crate) fn SessionDetailEmpty() -> Element {
         div {
             style: "{EMPTY_DETAIL_STYLE}",
             div { style: "font-size: 48px;", "[S]" }
-            div { style: "font-size: 16px;", "Select a session" }
-            div { style: "font-size: 13px;",
+            div { style: "font-size: var(--text-md);", "Select a session" }
+            div { style: "font-size: var(--text-sm);",
                 "Click a session in the list to view details."
             }
         }
@@ -200,7 +200,7 @@ pub(crate) fn SessionDetail(
             },
             FetchState::Error(err) => rsx! {
                 div {
-                    style: "{EMPTY_DETAIL_STYLE} color: #ef4444;",
+                    style: "{EMPTY_DETAIL_STYLE} color: var(--status-error);",
                     "Error: {err}"
                 }
             },
@@ -212,7 +212,7 @@ pub(crate) fn SessionDetail(
                         let status = session_display_status(session);
                         let status_bg = match status {
                             "active" => "background: #1a3a1a;",
-                            "archived" => "background: #2a2a3a;",
+                            "archived" => "background: var(--border);",
                             _ => "background: #2a2a1a;",
                         };
                         let s_color = status_color(status);
@@ -238,7 +238,7 @@ pub(crate) fn SessionDetail(
                                             }
                                             if let Some(ref updated) = session.updated_at {
                                                 span {
-                                                    style: "font-size: 11px; color: #666;",
+                                                    style: "font-size: var(--text-xs); color: var(--text-muted);",
                                                     "Last active: {format_relative_time(updated)}"
                                                 }
                                             }
@@ -322,7 +322,7 @@ pub(crate) fn SessionDetail(
                                             style: "{STAT_CARD_STYLE}",
                                             div { style: "{STAT_LABEL_STYLE}", "Model" }
                                             div {
-                                                style: "font-size: 13px; color: #e0e0e0; word-break: break-all;",
+                                                style: "font-size: var(--text-sm); color: var(--text-primary); word-break: break-all;",
                                                 "{model}"
                                             }
                                         }
@@ -337,14 +337,14 @@ pub(crate) fn SessionDetail(
                                             div {
                                                 key: "{i}",
                                                 style: "{DISTILL_ROW_STYLE}",
-                                                span { style: "color: #888;",
+                                                span { style: "color: var(--text-secondary);",
                                                     "{format_relative_time(&event.timestamp)}"
                                                 }
                                                 span { style: "{DISTILL_TRIGGER_STYLE}", "{event.trigger}" }
-                                                span { style: "color: #e0e0e0;",
+                                                span { style: "color: var(--text-primary);",
                                                     "{format_tokens(event.tokens_before)} -> {format_tokens(event.tokens_after)}"
                                                 }
-                                                span { style: "color: #22c55e;",
+                                                span { style: "color: var(--status-success);",
                                                     "-{format_tokens(event.tokens_saved())} ({format_pct(1.0 - event.compression_ratio())})"
                                                 }
                                             }
@@ -365,7 +365,7 @@ pub(crate) fn SessionDetail(
                                                     "{msg.role}"
                                                 }
                                                 span {
-                                                    style: "color: #ccc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;",
+                                                    style: "color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;",
                                                     "{msg.summary}"
                                                 }
                                             }

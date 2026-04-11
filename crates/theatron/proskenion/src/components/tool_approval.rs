@@ -6,31 +6,31 @@ use crate::state::tools::{RiskLevel, ToolApprovalState};
 
 const APPROVAL_BASE_STYLE: &str = "\
     padding: 12px; \
-    border-radius: 8px; \
+    border-radius: var(--radius-md); \
     margin-top: 4px; \
-    font-size: 13px;\
+    font-size: var(--text-sm);\
 ";
 
 const TOOL_NAME_STYLE: &str = "\
     font-weight: 600; \
     color: var(--text-primary); \
-    font-size: 14px;\
+    font-size: var(--text-base);\
 ";
 
 const REASON_STYLE: &str = "\
     color: var(--text-secondary); \
     margin-top: 4px; \
-    font-size: 13px;\
+    font-size: var(--text-sm);\
 ";
 
 const INPUT_PREVIEW_STYLE: &str = "\
     background: var(--code-bg); \
     border: 1px solid var(--border); \
-    border-radius: 4px; \
+    border-radius: var(--radius-sm); \
     padding: 6px 8px; \
     margin-top: 8px; \
     font-family: var(--font-mono); \
-    font-size: 12px; \
+    font-size: var(--text-xs); \
     color: var(--code-fg); \
     max-height: 120px; \
     overflow-y: auto; \
@@ -39,7 +39,7 @@ const INPUT_PREVIEW_STYLE: &str = "\
 
 const RISK_BADGE_BASE: &str = "\
     display: inline-block; \
-    font-size: 11px; \
+    font-size: var(--text-xs); \
     font-weight: 600; \
     padding: 2px 8px; \
     border-radius: 10px; \
@@ -58,9 +58,9 @@ const APPROVE_BTN_STYLE: &str = "\
     background: var(--status-success); \
     color: var(--code-bg); \
     border: none; \
-    border-radius: 6px; \
+    border-radius: var(--radius-md); \
     padding: 6px 16px; \
-    font-size: 13px; \
+    font-size: var(--text-sm); \
     font-weight: 600; \
     cursor: pointer;\
 ";
@@ -69,9 +69,9 @@ const DENY_BTN_STYLE: &str = "\
     background: var(--status-error); \
     color: var(--text-inverse); \
     border: none; \
-    border-radius: 6px; \
+    border-radius: var(--radius-md); \
     padding: 6px 16px; \
-    font-size: 13px; \
+    font-size: var(--text-sm); \
     font-weight: 600; \
     cursor: pointer;\
 ";
@@ -80,7 +80,7 @@ const RESOLVED_STYLE: &str = "\
     color: var(--text-muted); \
     font-style: italic; \
     padding: 8px; \
-    font-size: 13px;\
+    font-size: var(--text-sm);\
 ";
 
 /// Inline tool approval dialog.

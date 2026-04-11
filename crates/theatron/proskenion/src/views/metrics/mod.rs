@@ -25,7 +25,7 @@ const TAB_BAR_STYLE: &str = "\
 
 const TAB_ACTIVE_STYLE: &str = "\
     padding: 8px 16px; \
-    font-size: 13px; \
+    font-size: var(--text-sm); \
     color: #e8e6e3; \
     background: transparent; \
     border: none; \
@@ -36,7 +36,7 @@ const TAB_ACTIVE_STYLE: &str = "\
 
 const TAB_INACTIVE_STYLE: &str = "\
     padding: 8px 16px; \
-    font-size: 13px; \
+    font-size: var(--text-sm); \
     color: #706c66; \
     background: transparent; \
     border: none; \

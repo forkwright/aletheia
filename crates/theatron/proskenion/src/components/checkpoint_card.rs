@@ -9,7 +9,7 @@ use crate::state::checkpoints::{
 use crate::state::connection::ConnectionConfig;
 
 const CARD_BASE: &str = "\
-    border-radius: 8px; \
+    border-radius: var(--radius-md); \
     border: 1px solid; \
     padding: 16px 20px; \
     margin-bottom: 12px;\
@@ -23,14 +23,14 @@ const HEADER_ROW: &str = "\
 ";
 
 const TITLE_STYLE: &str = "\
-    font-size: 15px; \
+    font-size: var(--text-md); \
     font-weight: 600; \
-    color: #e0e0e0;\
+    color: var(--text-primary);\
 ";
 
 const BADGE_BASE: &str = "\
     display: inline-block; \
-    font-size: 11px; \
+    font-size: var(--text-xs); \
     font-weight: 600; \
     padding: 2px 8px; \
     border-radius: 10px; \
@@ -39,26 +39,26 @@ const BADGE_BASE: &str = "\
 ";
 
 const DESCRIPTION_STYLE: &str = "\
-    color: #aaa; \
-    font-size: 13px; \
+    color: var(--text-secondary); \
+    font-size: var(--text-sm); \
     margin-bottom: 10px;\
 ";
 
 const SECTION_LABEL: &str = "\
-    font-size: 11px; \
+    font-size: var(--text-xs); \
     font-weight: 600; \
-    color: #666; \
+    color: var(--text-muted); \
     text-transform: uppercase; \
     letter-spacing: 0.5px; \
     margin: 10px 0 4px;\
 ";
 
 const CONTEXT_STYLE: &str = "\
-    font-size: 13px; \
+    font-size: var(--text-sm); \
     color: #c0c0e0; \
-    background: #0f0f1a; \
-    border: 1px solid #2a2a3a; \
-    border-radius: 4px; \
+    background: var(--bg-surface-dim); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-sm); \
     padding: 8px 10px; \
     margin-bottom: 4px;\
 ";
@@ -68,7 +68,7 @@ const REQ_ROW: &str = "\
     align-items: center; \
     gap: 8px; \
     padding: 3px 0; \
-    font-size: 13px;\
+    font-size: var(--text-sm);\
 ";
 
 const ARTIFACT_ROW: &str = "\
@@ -76,15 +76,15 @@ const ARTIFACT_ROW: &str = "\
     align-items: center; \
     gap: 6px; \
     padding: 2px 0; \
-    font-size: 12px;\
+    font-size: var(--text-xs);\
 ";
 
 const DECISION_BOX: &str = "\
     margin-top: 10px; \
     padding: 8px 10px; \
-    background: #0f0f1a; \
-    border-radius: 4px; \
-    border: 1px solid #2a2a3a;\
+    background: var(--bg-surface-dim); \
+    border-radius: var(--radius-sm); \
+    border: 1px solid var(--border);\
 ";
 
 const BTN_ROW: &str = "\
@@ -96,10 +96,10 @@ const BTN_ROW: &str = "\
 const APPROVE_BTN: &str = "\
     background: #166534; \
     color: #dcfce7; \
-    border: 1px solid #22c55e; \
-    border-radius: 6px; \
+    border: 1px solid var(--status-success); \
+    border-radius: var(--radius-md); \
     padding: 6px 16px; \
-    font-size: 13px; \
+    font-size: var(--text-sm); \
     font-weight: 600; \
     cursor: pointer;\
 ";
@@ -107,10 +107,10 @@ const APPROVE_BTN: &str = "\
 const SKIP_BTN: &str = "\
     background: #78350f; \
     color: #fef3c7; \
-    border: 1px solid #f59e0b; \
-    border-radius: 6px; \
+    border: 1px solid var(--status-warning); \
+    border-radius: var(--radius-md); \
     padding: 6px 16px; \
-    font-size: 13px; \
+    font-size: var(--text-sm); \
     font-weight: 600; \
     cursor: pointer;\
 ";
@@ -118,61 +118,61 @@ const SKIP_BTN: &str = "\
 const OVERRIDE_BTN: &str = "\
     background: #7f1d1d; \
     color: #fee2e2; \
-    border: 1px solid #ef4444; \
-    border-radius: 6px; \
+    border: 1px solid var(--status-error); \
+    border-radius: var(--radius-md); \
     padding: 6px 16px; \
-    font-size: 13px; \
+    font-size: var(--text-sm); \
     font-weight: 600; \
     cursor: pointer;\
 ";
 
 const SUBMIT_BTN_ACTIVE: &str = "\
-    background: #4a4aff; \
+    background: var(--accent); \
     color: white; \
     border: none; \
-    border-radius: 6px; \
+    border-radius: var(--radius-md); \
     padding: 6px 16px; \
-    font-size: 13px; \
+    font-size: var(--text-sm); \
     font-weight: 600; \
     cursor: pointer;\
 ";
 
 const SUBMIT_BTN_DISABLED: &str = "\
-    background: #333; \
-    color: #666; \
+    background: var(--border); \
+    color: var(--text-muted); \
     border: none; \
-    border-radius: 6px; \
+    border-radius: var(--radius-md); \
     padding: 6px 16px; \
-    font-size: 13px; \
+    font-size: var(--text-sm); \
     font-weight: 600; \
     cursor: not-allowed;\
 ";
 
 const CANCEL_BTN: &str = "\
     background: transparent; \
-    color: #888; \
-    border: 1px solid #444; \
-    border-radius: 6px; \
+    color: var(--text-secondary); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
     padding: 6px 12px; \
-    font-size: 13px; \
+    font-size: var(--text-sm); \
     cursor: pointer;\
 ";
 
 const NOTES_TEXTAREA: &str = "\
     width: 100%; \
-    background: #0f0f1a; \
-    border: 1px solid #333; \
-    border-radius: 4px; \
+    background: var(--bg-surface-dim); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-sm); \
     padding: 8px 10px; \
-    color: #e0e0e0; \
-    font-size: 13px; \
+    color: var(--text-primary); \
+    font-size: var(--text-sm); \
     font-family: inherit; \
     resize: vertical; \
     min-height: 70px; \
     box-sizing: border-box;\
 ";
 
-const ERROR_STYLE: &str = "color: #ef4444; font-size: 12px; margin-top: 8px;";
+const ERROR_STYLE: &str = "color: var(--status-error); font-size: var(--text-xs); margin-top: 8px;";
 
 /// Checkpoint approval card with gate context, requirements, artifacts, and actions.
 ///
@@ -308,7 +308,7 @@ pub(crate) fn CheckpointCard(
                         key: "{req.id}",
                         style: "{REQ_ROW}",
                         span {
-                            style: if req.met { "color: #22c55e; width: 18px;" } else { "color: #ef4444; width: 18px;" },
+                            style: if req.met { "color: var(--status-success); width: 18px;" } else { "color: var(--status-error); width: 18px;" },
                             if req.met { "[v]" } else { "[x]" }
                         }
                         span { style: "color: #c0c0e0;", "{req.title}" }
@@ -323,8 +323,8 @@ pub(crate) fn CheckpointCard(
                     div {
                         key: "{i}",
                         style: "{ARTIFACT_ROW}",
-                        span { style: "color: #666;", "{artifact.label}:" }
-                        span { style: "color: #c0c0e0; font-family: monospace;", "{artifact.value}" }
+                        span { style: "color: var(--text-muted);", "{artifact.label}:" }
+                        span { style: "color: #c0c0e0; font-family: var(--font-mono);", "{artifact.value}" }
                     }
                 }
             }
@@ -333,11 +333,11 @@ pub(crate) fn CheckpointCard(
             if let Some(ref decision) = checkpoint.decision {
                 div {
                     style: "{DECISION_BOX}",
-                    div { style: "font-size: 12px; color: #888;",
+                    div { style: "font-size: var(--text-xs); color: var(--text-secondary);",
                         "{action_label(decision.action)} by {decision.actor} at {decision.timestamp}"
                     }
                     if !decision.notes.is_empty() {
-                        div { style: "font-size: 12px; color: #aaa; margin-top: 4px; font-style: italic;",
+                        div { style: "font-size: var(--text-xs); color: var(--text-secondary); margin-top: 4px; font-style: italic;",
                             "\"{decision.notes}\""
                         }
                     }
@@ -414,10 +414,10 @@ pub(crate) fn CheckpointCard(
 
 fn card_container_style(status: CheckpointStatus) -> String {
     let (bg, border) = match status {
-        CheckpointStatus::Pending => ("#1a1a2e", "#4a4aff"),
-        CheckpointStatus::Approved => ("#0f1f0f", "#22c55e"),
-        CheckpointStatus::Skipped => ("#1e1a10", "#f59e0b"),
-        CheckpointStatus::Overridden => ("#1e0f0f", "#ef4444"),
+        CheckpointStatus::Pending => ("var(--bg-surface)", "var(--accent)"),
+        CheckpointStatus::Approved => ("#0f1f0f", "var(--status-success)"),
+        CheckpointStatus::Skipped => ("#1e1a10", "var(--status-warning)"),
+        CheckpointStatus::Overridden => ("#1e0f0f", "var(--status-error)"),
     };
     format!("{CARD_BASE} background: {bg}; border-color: {border};")
 }
@@ -425,9 +425,9 @@ fn card_container_style(status: CheckpointStatus) -> String {
 fn status_badge_style(status: CheckpointStatus) -> String {
     let (bg, color) = match status {
         CheckpointStatus::Pending => ("#1e1e5a", "#8080ff"),
-        CheckpointStatus::Approved => ("#0f2a0f", "#22c55e"),
-        CheckpointStatus::Skipped => ("#2a1f05", "#f59e0b"),
-        CheckpointStatus::Overridden => ("#2a0f0f", "#ef4444"),
+        CheckpointStatus::Approved => ("#0f2a0f", "var(--status-success)"),
+        CheckpointStatus::Skipped => ("#2a1f05", "var(--status-warning)"),
+        CheckpointStatus::Overridden => ("#2a0f0f", "var(--status-error)"),
     };
     format!("{BADGE_BASE} background: {bg}; color: {color};")
 }

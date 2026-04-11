@@ -10,30 +10,30 @@ const BULK_BAR_STYLE: &str = "\
     align-items: center; \
     gap: 12px; \
     padding: 8px 12px; \
-    background: #1a1a2e; \
-    border-top: 1px solid #333;\
+    background: var(--bg-surface); \
+    border-top: 1px solid var(--border);\
 ";
 
 const BULK_BTN_STYLE: &str = "\
-    background: #2a2a4a; \
-    color: #e0e0e0; \
-    border: 1px solid #444; \
-    border-radius: 6px; \
+    background: var(--border); \
+    color: var(--text-primary); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
     padding: 6px 12px; \
-    font-size: 12px; \
+    font-size: var(--text-xs); \
     cursor: pointer;\
 ";
 
 const BULK_COUNT_STYLE: &str = "\
-    font-size: 12px; \
-    color: #888;\
+    font-size: var(--text-xs); \
+    color: var(--text-secondary);\
 ";
 
 const CLEAR_BTN_STYLE: &str = "\
     background: none; \
     border: none; \
-    color: #888; \
-    font-size: 12px; \
+    color: var(--text-secondary); \
+    font-size: var(--text-xs); \
     cursor: pointer; \
     text-decoration: underline;\
 ";
@@ -52,24 +52,24 @@ const DIALOG_OVERLAY_STYLE: &str = "\
 ";
 
 const DIALOG_STYLE: &str = "\
-    background: #1a1a2e; \
-    border: 1px solid #333; \
-    border-radius: 12px; \
+    background: var(--bg-surface); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-lg); \
     padding: 24px; \
     max-width: 400px; \
     width: 100%;\
 ";
 
 const DIALOG_TITLE_STYLE: &str = "\
-    font-size: 16px; \
+    font-size: var(--text-md); \
     font-weight: bold; \
-    color: #e0e0e0; \
+    color: var(--text-primary); \
     margin-bottom: 12px;\
 ";
 
 const DIALOG_TEXT_STYLE: &str = "\
-    font-size: 14px; \
-    color: #aaa; \
+    font-size: var(--text-base); \
+    color: var(--text-secondary); \
     margin-bottom: 20px; \
     line-height: 1.4;\
 ";
@@ -81,22 +81,22 @@ const DIALOG_ACTIONS_STYLE: &str = "\
 ";
 
 const DIALOG_CANCEL_BTN: &str = "\
-    background: #2a2a3a; \
-    color: #e0e0e0; \
-    border: 1px solid #444; \
-    border-radius: 6px; \
+    background: var(--border); \
+    color: var(--text-primary); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
     padding: 8px 16px; \
-    font-size: 13px; \
+    font-size: var(--text-sm); \
     cursor: pointer;\
 ";
 
 const DIALOG_CONFIRM_BTN: &str = "\
-    background: #4a4aff; \
+    background: var(--accent); \
     color: white; \
     border: none; \
-    border-radius: 6px; \
+    border-radius: var(--radius-md); \
     padding: 8px 16px; \
-    font-size: 13px; \
+    font-size: var(--text-sm); \
     cursor: pointer;\
 ";
 

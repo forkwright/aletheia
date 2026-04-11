@@ -80,7 +80,7 @@ const INDICATOR_STYLE: &str = "\
     align-items: center; \
     gap: 6px; \
     padding: 6px 12px; \
-    font-size: 12px; \
+    font-size: var(--text-xs); \
     opacity: 0.85;\
 ";
 

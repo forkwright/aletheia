@@ -18,18 +18,18 @@ const SORT_BAR_STYLE: &str = "\
     align-items: center; \
     gap: 8px; \
     padding: 8px 12px; \
-    border-bottom: 1px solid #2a2a3a; \
-    font-size: 12px; \
-    color: #888;\
+    border-bottom: 1px solid var(--border); \
+    font-size: var(--text-xs); \
+    color: var(--text-secondary);\
 ";
 
 const SORT_SELECT_STYLE: &str = "\
-    background: #1a1a2e; \
-    border: 1px solid #333; \
-    border-radius: 4px; \
+    background: var(--bg-surface); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-sm); \
     padding: 4px 8px; \
-    color: #e0e0e0; \
-    font-size: 12px; \
+    color: var(--text-primary); \
+    font-size: var(--text-xs); \
     cursor: pointer;\
 ";
 
@@ -44,12 +44,12 @@ const ROW_STYLE: &str = "\
     flex-direction: column; \
     gap: 4px; \
     padding: 10px 12px; \
-    border-radius: 6px; \
+    border-radius: var(--radius-md); \
     cursor: pointer; \
     transition: background 0.1s;\
 ";
 
-const ROW_SELECTED_BG: &str = "background: #2a2a4a;";
+const ROW_SELECTED_BG: &str = "background: var(--border);";
 
 const ROW_HEADER_STYLE: &str = "\
     display: flex; \
@@ -59,9 +59,9 @@ const ROW_HEADER_STYLE: &str = "\
 ";
 
 const ENTITY_NAME_STYLE: &str = "\
-    font-size: 14px; \
+    font-size: var(--text-base); \
     font-weight: 600; \
-    color: #e0e0e0; \
+    color: var(--text-primary); \
     overflow: hidden; \
     text-overflow: ellipsis; \
     white-space: nowrap; \
@@ -69,7 +69,7 @@ const ENTITY_NAME_STYLE: &str = "\
 ";
 
 const TYPE_BADGE_STYLE: &str = "\
-    font-size: 11px; \
+    font-size: var(--text-xs); \
     padding: 2px 8px; \
     border-radius: 10px; \
     font-weight: 500; \
@@ -80,13 +80,13 @@ const STATS_ROW_STYLE: &str = "\
     display: flex; \
     align-items: center; \
     gap: 12px; \
-    font-size: 11px; \
-    color: #888;\
+    font-size: var(--text-xs); \
+    color: var(--text-secondary);\
 ";
 
 const FLAG_ICON_STYLE: &str = "\
-    color: #ef4444; \
-    font-size: 12px; \
+    color: var(--status-error); \
+    font-size: var(--text-xs); \
     margin-left: 4px;\
 ";
 
@@ -95,7 +95,7 @@ const LOAD_MORE_STYLE: &str = "\
     text-align: center; \
     color: #7a7aff; \
     cursor: pointer; \
-    font-size: 13px;\
+    font-size: var(--text-sm);\
 ";
 
 const EMPTY_STYLE: &str = "\
@@ -103,14 +103,14 @@ const EMPTY_STYLE: &str = "\
     align-items: center; \
     justify-content: center; \
     flex: 1; \
-    color: #555; \
-    font-size: 14px;\
+    color: var(--text-muted); \
+    font-size: var(--text-base);\
 ";
 
 const COUNT_STYLE: &str = "\
     padding: 4px 12px; \
-    font-size: 11px; \
-    color: #666;\
+    font-size: var(--text-xs); \
+    color: var(--text-muted);\
 ";
 
 /// Entity list panel with sort dropdown, rows, and pagination.

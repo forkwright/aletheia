@@ -22,8 +22,8 @@ const TAB_STYLE: &str = "\
     align-items: center; \
     gap: 6px; \
     padding: 6px 14px 7px; \
-    border-radius: 6px 6px 0 0; \
-    font-size: 13px; \
+    border-radius: var(--radius-md) 6px 0 0; \
+    font-size: var(--text-sm); \
     color: var(--text-secondary); \
     cursor: pointer; \
     background: var(--bg-surface); \
@@ -37,8 +37,8 @@ const TAB_ACTIVE_STYLE: &str = "\
     align-items: center; \
     gap: 6px; \
     padding: 6px 14px 7px; \
-    border-radius: 6px 6px 0 0; \
-    font-size: 13px; \
+    border-radius: var(--radius-md) 6px 0 0; \
+    font-size: var(--text-sm); \
     color: var(--text-primary); \
     cursor: pointer; \
     background: var(--bg); \
@@ -49,7 +49,7 @@ const TAB_ACTIVE_STYLE: &str = "\
 
 const CLOSE_BTN_STYLE: &str = "\
     color: var(--text-muted); \
-    font-size: 11px; \
+    font-size: var(--text-xs); \
     padding: 0 2px; \
     cursor: pointer; \
     border-radius: 3px;\

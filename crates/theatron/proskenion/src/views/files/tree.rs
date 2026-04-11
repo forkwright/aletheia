@@ -26,8 +26,8 @@ const TREE_NODE_STYLE: &str = "\
     padding: 4px 8px; \
     border-radius: var(--radius-sm, 4px); \
     cursor: pointer; \
-    font-size: 13px; \
-    color: var(--text-primary, #e0e0e0); \
+    font-size: var(--text-sm); \
+    color: var(--text-primary, var(--text-primary)); \
     user-select: none;\
 ";
 
@@ -125,13 +125,13 @@ pub(crate) fn FileTree(
             match &*root_state.read() {
                 FetchState::Loading => rsx! {
                     div {
-                        style: "color: var(--text-muted); padding: 8px; font-size: 13px;",
+                        style: "color: var(--text-muted); padding: 8px; font-size: var(--text-sm);",
                         "Loading..."
                     }
                 },
                 FetchState::Error(err) => rsx! {
                     div {
-                        style: "color: var(--status-error); padding: 8px; font-size: 13px;",
+                        style: "color: var(--status-error); padding: 8px; font-size: var(--text-sm);",
                         "Error: {err}"
                     }
                 },
@@ -238,7 +238,7 @@ fn TreeNode(
                     style: "font-size: 10px; width: 12px; text-align: center; color: var(--text-muted);",
                     "{chevron}"
                 }
-                span { style: "font-size: 14px;", "{icon}" }
+                span { style: "font-size: var(--text-base);", "{icon}" }
                 span {
                     style: "flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;",
                     "{node.name}"

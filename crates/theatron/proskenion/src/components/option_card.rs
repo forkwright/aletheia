@@ -5,18 +5,18 @@ use dioxus::prelude::*;
 use crate::state::discussion::DiscussionOption;
 
 const CARD_STYLE: &str = "\
-    background: #1a1a2e; \
-    border: 1px solid #2a2a3a; \
-    border-radius: 8px; \
+    background: var(--bg-surface); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
     padding: 14px 16px; \
     cursor: pointer; \
     transition: border-color 0.15s;\
 ";
 
 const CARD_RECOMMENDED: &str = "\
-    background: #1a1a2e; \
+    background: var(--bg-surface); \
     border: 2px solid #4a9aff; \
-    border-radius: 8px; \
+    border-radius: var(--radius-md); \
     padding: 14px 16px; \
     cursor: pointer; \
     transition: border-color 0.15s;\
@@ -24,8 +24,8 @@ const CARD_RECOMMENDED: &str = "\
 
 const CARD_SELECTED: &str = "\
     background: #1a2a3a; \
-    border: 2px solid #22c55e; \
-    border-radius: 8px; \
+    border: 2px solid var(--status-success); \
+    border-radius: var(--radius-md); \
     padding: 14px 16px; \
     cursor: pointer; \
     transition: border-color 0.15s;\
@@ -39,9 +39,9 @@ const HEADER_ROW: &str = "\
 ";
 
 const TITLE_STYLE: &str = "\
-    font-size: 14px; \
+    font-size: var(--text-base); \
     font-weight: 600; \
-    color: #e0e0e0;\
+    color: var(--text-primary);\
 ";
 
 const BADGE_RECOMMENDED: &str = "\
@@ -49,7 +49,7 @@ const BADGE_RECOMMENDED: &str = "\
     font-size: 10px; \
     font-weight: 600; \
     padding: 2px 6px; \
-    border-radius: 8px; \
+    border-radius: var(--radius-md); \
     background: #1a2a4a; \
     color: #4a9aff; \
     text-transform: uppercase; \
@@ -61,22 +61,22 @@ const BADGE_SELECTED: &str = "\
     font-size: 10px; \
     font-weight: 600; \
     padding: 2px 6px; \
-    border-radius: 8px; \
+    border-radius: var(--radius-md); \
     background: #0f2a0f; \
-    color: #22c55e; \
+    color: var(--status-success); \
     text-transform: uppercase; \
     letter-spacing: 0.3px;\
 ";
 
 const DESCRIPTION_STYLE: &str = "\
-    font-size: 13px; \
-    color: #aaa; \
+    font-size: var(--text-sm); \
+    color: var(--text-secondary); \
     margin-bottom: 8px;\
 ";
 
 const RATIONALE_STYLE: &str = "\
-    font-size: 12px; \
-    color: #999; \
+    font-size: var(--text-xs); \
+    color: var(--text-secondary); \
     font-style: italic; \
     margin-bottom: 8px;\
 ";
@@ -84,12 +84,12 @@ const RATIONALE_STYLE: &str = "\
 const TRADE_OFF_SECTION: &str = "\
     display: flex; \
     gap: 16px; \
-    font-size: 12px;\
+    font-size: var(--text-xs);\
 ";
 
-const PRO_ITEM: &str = "color: #22c55e; padding: 2px 0;";
+const PRO_ITEM: &str = "color: var(--status-success); padding: 2px 0;";
 
-const CON_ITEM: &str = "color: #ef4444; padding: 2px 0;";
+const CON_ITEM: &str = "color: var(--status-error); padding: 2px 0;";
 
 /// Option card for a single discussion choice.
 ///
@@ -146,7 +146,7 @@ pub(crate) fn OptionCard(
                     if !option.pros.is_empty() {
                         div {
                             style: "flex: 1;",
-                            div { style: "color: #22c55e; font-weight: 600; margin-bottom: 4px;", "Pros" }
+                            div { style: "color: var(--status-success); font-weight: 600; margin-bottom: 4px;", "Pros" }
                             for (i, pro) in option.pros.iter().enumerate() {
                                 div { key: "{i}", style: "{PRO_ITEM}", "+ {pro}" }
                             }
@@ -156,7 +156,7 @@ pub(crate) fn OptionCard(
                     if !option.cons.is_empty() {
                         div {
                             style: "flex: 1;",
-                            div { style: "color: #ef4444; font-weight: 600; margin-bottom: 4px;", "Cons" }
+                            div { style: "color: var(--status-error); font-weight: 600; margin-bottom: 4px;", "Cons" }
                             for (i, con) in option.cons.iter().enumerate() {
                                 div { key: "{i}", style: "{CON_ITEM}", "- {con}" }
                             }

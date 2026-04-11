@@ -27,15 +27,15 @@ const HEADER_STYLE: &str = "\
 ";
 
 const ENTITY_NAME_STYLE: &str = "\
-    font-size: 20px; \
+    font-size: var(--text-xl); \
     font-weight: 700; \
-    color: #e0e0e0;\
+    color: var(--text-primary);\
 ";
 
 const TYPE_BADGE_STYLE: &str = "\
-    font-size: 12px; \
+    font-size: var(--text-xs); \
     padding: 3px 10px; \
-    border-radius: 12px; \
+    border-radius: var(--radius-lg); \
     font-weight: 500;\
 ";
 
@@ -43,8 +43,8 @@ const SCORE_BOX_STYLE: &str = "\
     display: flex; \
     align-items: center; \
     gap: 8px; \
-    font-size: 13px; \
-    color: #aaa;\
+    font-size: var(--text-sm); \
+    color: var(--text-secondary);\
 ";
 
 const SECTION_STYLE: &str = "\
@@ -52,9 +52,9 @@ const SECTION_STYLE: &str = "\
 ";
 
 const SECTION_HEADER_STYLE: &str = "\
-    font-size: 14px; \
+    font-size: var(--text-base); \
     font-weight: 600; \
-    color: #ccc; \
+    color: var(--text-primary); \
     margin-bottom: 8px; \
     display: flex; \
     align-items: center; \
@@ -62,9 +62,9 @@ const SECTION_HEADER_STYLE: &str = "\
 ";
 
 const CARD_STYLE: &str = "\
-    background: #1a1a2e; \
-    border: 1px solid #2a2a3a; \
-    border-radius: 8px; \
+    background: var(--bg-surface); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
     padding: 12px;\
 ";
 
@@ -72,30 +72,30 @@ const PROPERTY_ROW_STYLE: &str = "\
     display: flex; \
     justify-content: space-between; \
     padding: 6px 0; \
-    border-bottom: 1px solid #2a2a3a; \
-    font-size: 13px;\
+    border-bottom: 1px solid var(--border); \
+    font-size: var(--text-sm);\
 ";
 
-const PROPERTY_KEY_STYLE: &str = "color: #888; font-weight: 500;";
-const PROPERTY_VALUE_STYLE: &str = "color: #e0e0e0;";
+const PROPERTY_KEY_STYLE: &str = "color: var(--text-secondary); font-weight: 500;";
+const PROPERTY_VALUE_STYLE: &str = "color: var(--text-primary);";
 
 const REL_ROW_STYLE: &str = "\
     display: flex; \
     align-items: center; \
     gap: 8px; \
     padding: 8px; \
-    border-radius: 6px; \
+    border-radius: var(--radius-md); \
     cursor: pointer; \
     transition: background 0.1s; \
-    font-size: 13px;\
+    font-size: var(--text-sm);\
 ";
 
 const REL_TYPE_STYLE: &str = "\
-    color: #888; \
-    font-size: 11px; \
-    background: #2a2a3a; \
+    color: var(--text-secondary); \
+    font-size: var(--text-xs); \
+    background: var(--border); \
     padding: 2px 6px; \
-    border-radius: 4px;\
+    border-radius: var(--radius-sm);\
 ";
 
 const REL_ENTITY_STYLE: &str = "\
@@ -105,16 +105,16 @@ const REL_ENTITY_STYLE: &str = "\
 ";
 
 const MEMORY_CARD_STYLE: &str = "\
-    background: #1a1a2e; \
-    border: 1px solid #2a2a3a; \
-    border-radius: 8px; \
+    background: var(--bg-surface); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
     padding: 12px; \
     margin-bottom: 8px;\
 ";
 
 const MEMORY_CONTENT_STYLE: &str = "\
-    color: #e0e0e0; \
-    font-size: 13px; \
+    color: var(--text-primary); \
+    font-size: var(--text-sm); \
     line-height: 1.5; \
     white-space: pre-wrap; \
     overflow: hidden;\
@@ -123,14 +123,14 @@ const MEMORY_CONTENT_STYLE: &str = "\
 const MEMORY_META_STYLE: &str = "\
     display: flex; \
     gap: 12px; \
-    font-size: 11px; \
-    color: #666; \
+    font-size: var(--text-xs); \
+    color: var(--text-muted); \
     margin-top: 8px;\
 ";
 
 const EXPAND_BTN_STYLE: &str = "\
     color: #7a7aff; \
-    font-size: 12px; \
+    font-size: var(--text-xs); \
     cursor: pointer; \
     background: none; \
     border: none; \
@@ -144,11 +144,11 @@ const META_GRID_STYLE: &str = "\
 ";
 
 const META_ITEM_STYLE: &str = "\
-    font-size: 12px; \
-    color: #888;\
+    font-size: var(--text-xs); \
+    color: var(--text-secondary);\
 ";
 
-const META_VALUE_STYLE: &str = "color: #ccc; font-weight: 500;";
+const META_VALUE_STYLE: &str = "color: var(--text-primary); font-weight: 500;";
 
 const ACTION_BAR_STYLE: &str = "\
     display: flex; \
@@ -157,22 +157,22 @@ const ACTION_BAR_STYLE: &str = "\
 ";
 
 const ACTION_BTN_STYLE: &str = "\
-    background: #2a2a4a; \
-    color: #e0e0e0; \
-    border: 1px solid #444; \
-    border-radius: 6px; \
+    background: var(--border); \
+    color: var(--text-primary); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
     padding: 4px 12px; \
-    font-size: 12px; \
+    font-size: var(--text-xs); \
     cursor: pointer;\
 ";
 
 const ACTION_BTN_DANGER_STYLE: &str = "\
     background: #4a1a1a; \
-    color: #ef4444; \
-    border: 1px solid #ef444444; \
-    border-radius: 6px; \
+    color: var(--status-error); \
+    border: 1px solid var(--status-error)44; \
+    border-radius: var(--radius-md); \
     padding: 4px 12px; \
-    font-size: 12px; \
+    font-size: var(--text-xs); \
     cursor: pointer;\
 ";
 
@@ -181,8 +181,8 @@ const LOADING_STYLE: &str = "\
     align-items: center; \
     justify-content: center; \
     height: 100%; \
-    color: #888; \
-    font-size: 14px;\
+    color: var(--text-secondary); \
+    font-size: var(--text-base);\
 ";
 
 const ERROR_STYLE: &str = "\
@@ -190,8 +190,8 @@ const ERROR_STYLE: &str = "\
     align-items: center; \
     justify-content: center; \
     height: 100%; \
-    color: #ef4444; \
-    font-size: 14px;\
+    color: var(--status-error); \
+    font-size: var(--text-base);\
 ";
 
 const CONTENT_PREVIEW_MAX_LINES: usize = 4;
@@ -248,7 +248,7 @@ pub(crate) fn EntityDetail(
                         span { style: "{ENTITY_NAME_STYLE}",
                             "{entity_name}"
                             if flagged {
-                                span { style: "color: #ef4444; margin-left: 8px;", "⚑" }
+                                span { style: "color: var(--status-error); margin-left: 8px;", "⚑" }
                             }
                         }
                         span {
@@ -263,7 +263,7 @@ pub(crate) fn EntityDetail(
                         div {
                             style: "{SCORE_BOX_STYLE}",
                             span { "PageRank:" }
-                            span { style: "color: #e0e0e0; font-weight: 600;",
+                            span { style: "color: var(--text-primary); font-weight: 600;",
                                 "{format_page_rank(page_rank)}"
                             }
                         }
@@ -316,7 +316,7 @@ pub(crate) fn EntityDetail(
                         }
                         if relationships.is_empty() {
                             div {
-                                style: "{CARD_STYLE} color: #555; font-size: 13px;",
+                                style: "{CARD_STYLE} color: var(--text-muted); font-size: var(--text-sm);",
                                 "No relationships"
                             }
                         } else {
@@ -340,11 +340,11 @@ pub(crate) fn EntityDetail(
                                                     let id = entity_id.clone();
                                                     move |_| on_navigate_entity.call(id.clone())
                                                 },
-                                                span { style: "color: #666; font-size: 14px;", "{direction}" }
+                                                span { style: "color: var(--text-muted); font-size: var(--text-base);", "{direction}" }
                                                 span { style: "{REL_TYPE_STYLE}", "{rel_type}" }
                                                 span { style: "{REL_ENTITY_STYLE}", "{entity_name}" }
                                                 span {
-                                                    style: "font-size: 11px; color: {conf_color};",
+                                                    style: "font-size: var(--text-xs); color: {conf_color};",
                                                     "{format_confidence(conf)}"
                                                 }
                                             }
@@ -364,7 +364,7 @@ pub(crate) fn EntityDetail(
                         }
                         if memories.is_empty() {
                             div {
-                                style: "{CARD_STYLE} color: #555; font-size: 13px;",
+                                style: "{CARD_STYLE} color: var(--text-muted); font-size: var(--text-sm);",
                                 "No memories"
                             }
                         } else {

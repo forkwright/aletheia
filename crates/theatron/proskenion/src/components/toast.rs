@@ -11,7 +11,7 @@ const TOAST_STYLE: &str = "\
     flex-direction: column; \
     gap: 4px; \
     padding: 12px 16px; \
-    border-radius: 8px; \
+    border-radius: var(--radius-md); \
     border-left: 4px solid; \
     min-width: 300px; \
     max-width: 400px; \
@@ -20,12 +20,12 @@ const TOAST_STYLE: &str = "\
 ";
 
 const TITLE_STYLE: &str = "\
-    font-size: 14px; \
+    font-size: var(--text-base); \
     font-weight: 600;\
 ";
 
 const BODY_STYLE: &str = "\
-    font-size: 13px; \
+    font-size: var(--text-sm); \
     opacity: 0.85;\
 ";
 
@@ -38,17 +38,17 @@ const DISMISS_STYLE: &str = "\
     color: inherit; \
     opacity: 0.6; \
     cursor: pointer; \
-    font-size: 14px; \
+    font-size: var(--text-base); \
     padding: 2px 4px;\
 ";
 
 const ACTION_STYLE: &str = "\
     background: rgba(255, 255, 255, 0.15); \
     border: 1px solid rgba(255, 255, 255, 0.2); \
-    border-radius: 4px; \
+    border-radius: var(--radius-sm); \
     color: inherit; \
     cursor: pointer; \
-    font-size: 13px; \
+    font-size: var(--text-sm); \
     padding: 4px 12px; \
     align-self: flex-start; \
     margin-top: 4px;\
@@ -75,7 +75,7 @@ pub(crate) fn ToastItem(toast: Toast) -> Element {
 
     rsx! {
         div {
-            style: "{TOAST_STYLE} background: {bg}; border-color: {color}; color: #e0e0e0;",
+            style: "{TOAST_STYLE} background: {bg}; border-color: {color}; color: var(--text-primary);",
             button {
                 style: "{DISMISS_STYLE}",
                 onclick: move |_| toasts.dismiss(toast_id),

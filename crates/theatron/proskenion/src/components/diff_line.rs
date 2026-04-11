@@ -8,8 +8,8 @@ use crate::state::diff::{ChangeType, DiffLine, WordSpan};
 const LINE_STYLE: &str = "\
     display: flex; \
     min-height: 1.5em; \
-    font-family: monospace; \
-    font-size: 13px; \
+    font-family: var(--font-mono); \
+    font-size: var(--text-sm); \
     line-height: 1.5;\
 ";
 

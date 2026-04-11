@@ -35,7 +35,7 @@ pub(crate) fn ModelBreakdown(models: Vec<ModelTokenRow>, grand_total: u64) -> El
             div {
                 style: "overflow-x: auto;",
                 table {
-                    style: "width: 100%; border-collapse: collapse; font-size: 12px; font-family: 'IBM Plex Mono', monospace;",
+                    style: "width: 100%; border-collapse: collapse; font-size: var(--text-xs); font-family: 'IBM Plex Mono', monospace;",
                     thead {
                         tr {
                             style: "border-bottom: 1px solid #2a2724;",

@@ -5,7 +5,7 @@ use dioxus::prelude::*;
 use crate::state::execution::{Wave, WaveStatus};
 
 const BAND_BASE: &str = "\
-    border-radius: 8px; \
+    border-radius: var(--radius-md); \
     border: 1px solid; \
     padding: 12px 16px; \
     margin-bottom: 8px;\
@@ -19,9 +19,9 @@ const BAND_HEADER: &str = "\
 ";
 
 const WAVE_LABEL: &str = "\
-    font-size: 14px; \
+    font-size: var(--text-base); \
     font-weight: 600; \
-    color: #e0e0e0;\
+    color: var(--text-primary);\
 ";
 
 const BADGE_BASE: &str = "\
@@ -35,13 +35,13 @@ const BADGE_BASE: &str = "\
 ";
 
 const TIME_STYLE: &str = "\
-    font-size: 11px; \
-    color: #666;\
+    font-size: var(--text-xs); \
+    color: var(--text-muted);\
 ";
 
 const PROGRESS_TRACK: &str = "\
     height: 4px; \
-    background: #2a2a3a; \
+    background: var(--border); \
     border-radius: 2px; \
     margin-bottom: 10px; \
     overflow: hidden;\
@@ -82,7 +82,7 @@ pub(crate) fn WaveBand(wave: Wave, children: Element) -> Element {
                     if let Some(ref end) = wave.end_time {
                         span { style: "{TIME_STYLE}", "Ended: {end}" }
                     }
-                    span { style: "font-size: 12px; color: #aaa;", "{progress}%" }
+                    span { style: "font-size: var(--text-xs); color: var(--text-secondary);", "{progress}%" }
                 }
             }
 
@@ -105,17 +105,17 @@ pub(crate) fn WaveBand(wave: Wave, children: Element) -> Element {
 
 fn band_colors(status: WaveStatus) -> (&'static str, &'static str) {
     match status {
-        WaveStatus::Active => ("#1a1a2e", "#4a9aff"),
+        WaveStatus::Active => ("var(--bg-surface)", "#4a9aff"),
         WaveStatus::Complete => ("#0f1a0f", "#2a4a2a"),
-        WaveStatus::Pending => ("#151520", "#2a2a3a"),
+        WaveStatus::Pending => ("#151520", "var(--border)"),
     }
 }
 
 fn progress_color(status: WaveStatus) -> &'static str {
     match status {
         WaveStatus::Active => "#4a9aff",
-        WaveStatus::Complete => "#22c55e",
-        WaveStatus::Pending => "#444",
+        WaveStatus::Complete => "var(--status-success)",
+        WaveStatus::Pending => "var(--border)",
     }
 }
 
@@ -123,8 +123,8 @@ fn progress_color(status: WaveStatus) -> &'static str {
 pub(crate) fn status_badge_style(status: WaveStatus) -> String {
     let (bg, color) = match status {
         WaveStatus::Active => ("#1e1e5a", "#4a9aff"),
-        WaveStatus::Complete => ("#0f2a0f", "#22c55e"),
-        WaveStatus::Pending => ("#2a2a3a", "#666"),
+        WaveStatus::Complete => ("#0f2a0f", "var(--status-success)"),
+        WaveStatus::Pending => ("var(--border)", "var(--text-muted)"),
     };
     format!("{BADGE_BASE} background: {bg}; color: {color};")
 }

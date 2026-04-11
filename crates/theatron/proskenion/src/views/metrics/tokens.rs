@@ -16,12 +16,12 @@ use super::model_breakdown::ModelBreakdown;
 const SECTION_STYLE: &str = "\
     background: #1a1816; \
     border: 1px solid #2a2724; \
-    border-radius: 8px; \
+    border-radius: var(--radius-md); \
     padding: 16px;\
 ";
 
 const SECTION_TITLE_STYLE: &str = "\
-    font-size: 12px; \
+    font-size: var(--text-xs); \
     font-weight: 600; \
     color: #a8a49e; \
     text-transform: uppercase; \
@@ -33,20 +33,20 @@ const SECTION_TITLE_STYLE: &str = "\
 const CARD_STYLE: &str = "\
     background: #1a1816; \
     border: 1px solid #2a2724; \
-    border-radius: 8px; \
+    border-radius: var(--radius-md); \
     padding: 12px 16px; \
     flex: 1;\
 ";
 
 const CARD_LABEL_STYLE: &str = "\
-    font-size: 11px; \
+    font-size: var(--text-xs); \
     color: #706c66; \
     margin-bottom: 4px; \
     font-family: 'IBM Plex Mono', monospace;\
 ";
 
 const CARD_VALUE_STYLE: &str = "\
-    font-size: 20px; \
+    font-size: var(--text-xl); \
     font-weight: 600; \
     color: #e8e6e3; \
     font-family: 'IBM Plex Mono', monospace;\
@@ -54,22 +54,22 @@ const CARD_VALUE_STYLE: &str = "\
 
 const CONTROL_BTN_ACTIVE: &str = "\
     padding: 4px 10px; \
-    font-size: 12px; \
+    font-size: var(--text-xs); \
     background: #2a2724; \
     color: #e8e6e3; \
     border: 1px solid #3a3530; \
-    border-radius: 4px; \
+    border-radius: var(--radius-sm); \
     cursor: pointer; \
     font-family: 'IBM Plex Mono', monospace;\
 ";
 
 const CONTROL_BTN_INACTIVE: &str = "\
     padding: 4px 10px; \
-    font-size: 12px; \
+    font-size: var(--text-xs); \
     background: transparent; \
     color: #706c66; \
     border: 1px solid transparent; \
-    border-radius: 4px; \
+    border-radius: var(--radius-sm); \
     cursor: pointer; \
     font-family: 'IBM Plex Mono', monospace;\
 ";
@@ -181,7 +181,7 @@ pub(crate) fn Tokens() -> Element {
                 // Custom date inputs
                 if matches!(*date_range.read(), DateRange::Custom { .. }) {
                     input {
-                        style: "padding: 4px 8px; font-size: 12px; background: #1a1816; border: 1px solid #3a3530; border-radius: 4px; color: #e8e6e3; width: 100px; font-family: 'IBM Plex Mono', monospace;",
+                        style: "padding: 4px 8px; font-size: var(--text-xs); background: #1a1816; border: 1px solid #3a3530; border-radius: var(--radius-sm); color: #e8e6e3; width: 100px; font-family: 'IBM Plex Mono', monospace;",
                         placeholder: "YYYY-MM-DD",
                         value: "{custom_from}",
                         oninput: move |e| {
@@ -191,9 +191,9 @@ pub(crate) fn Tokens() -> Element {
                             date_range.set(DateRange::Custom { from: f, to: t });
                         }
                     }
-                    span { style: "color: #706c66; font-size: 12px;", "→" }
+                    span { style: "color: #706c66; font-size: var(--text-xs);", "→" }
                     input {
-                        style: "padding: 4px 8px; font-size: 12px; background: #1a1816; border: 1px solid #3a3530; border-radius: 4px; color: #e8e6e3; width: 100px; font-family: 'IBM Plex Mono', monospace;",
+                        style: "padding: 4px 8px; font-size: var(--text-xs); background: #1a1816; border: 1px solid #3a3530; border-radius: var(--radius-sm); color: #e8e6e3; width: 100px; font-family: 'IBM Plex Mono', monospace;",
                         placeholder: "YYYY-MM-DD",
                         value: "{custom_to}",
                         oninput: move |e| {
@@ -210,13 +210,13 @@ pub(crate) fn Tokens() -> Element {
             match fetch_state.read().clone() {
                 FetchState::Loading => rsx! {
                     div {
-                        style: "display: flex; align-items: center; justify-content: center; height: 200px; color: #706c66; font-size: 13px;",
+                        style: "display: flex; align-items: center; justify-content: center; height: 200px; color: #706c66; font-size: var(--text-sm);",
                         "Loading…"
                     }
                 },
                 FetchState::Error(msg) => rsx! {
                     div {
-                        style: "padding: 16px; background: #2a1818; border: 1px solid #7f1d1d; border-radius: 8px; color: #fca5a5; font-size: 13px;",
+                        style: "padding: 16px; background: #2a1818; border: 1px solid #7f1d1d; border-radius: var(--radius-md); color: #fca5a5; font-size: var(--text-sm);",
                         "Error: {msg}"
                     }
                 },
@@ -338,7 +338,7 @@ fn loaded_tokens_view(
 )]
 fn delta_card(label: &str, value: &str, delta_pct: f64, is_up: bool) -> Element {
     let arrow = if is_up { "↑" } else { "↓" };
-    let delta_color = if is_up { "#22c55e" } else { "#ef4444" };
+    let delta_color = if is_up { "var(--status-success)" } else { "var(--status-error)" };
     let delta_str = format!("{arrow} {delta_pct:.1}%");
     let value = value.to_string();
     let label = label.to_string();
@@ -348,7 +348,7 @@ fn delta_card(label: &str, value: &str, delta_pct: f64, is_up: bool) -> Element 
             div { style: "{CARD_LABEL_STYLE}", "{label}" }
             div { style: "{CARD_VALUE_STYLE}", "{value}" }
             if delta_pct > 0.0 {
-                div { style: "font-size: 11px; color: {delta_color}; margin-top: 2px; font-family: 'IBM Plex Mono', monospace;", "{delta_str} vs prev" }
+                div { style: "font-size: var(--text-xs); color: {delta_color}; margin-top: 2px; font-family: 'IBM Plex Mono', monospace;", "{delta_str} vs prev" }
             }
         }
     }

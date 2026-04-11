@@ -34,20 +34,20 @@ const HEADER_ROW: &str = "\
 ";
 
 const DETAIL_PANEL: &str = "\
-    background: #1a1a2e; \
-    border: 1px solid #2a2a3a; \
-    border-radius: 8px; \
+    background: var(--bg-surface); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
     padding: 14px 16px; \
     margin-top: 16px;\
 ";
 
 const REFRESH_BTN: &str = "\
-    background: #2a2a4a; \
-    color: #e0e0e0; \
-    border: 1px solid #444; \
-    border-radius: 6px; \
+    background: var(--border); \
+    color: var(--text-primary); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
     padding: 4px 12px; \
-    font-size: 12px; \
+    font-size: var(--text-xs); \
     cursor: pointer;\
 ";
 
@@ -58,7 +58,7 @@ const PLACEHOLDER_STYLE: &str = "\
     justify-content: center; \
     flex: 1; \
     gap: 10px; \
-    color: #555;\
+    color: var(--text-muted);\
 ";
 
 const PIXELS_PER_DAY: f64 = 4.0;
@@ -121,7 +121,7 @@ pub(crate) fn RoadmapView(project_id: String) -> Element {
 
             div {
                 style: "{HEADER_ROW}",
-                h3 { style: "margin: 0; font-size: 16px; color: #e0e0e0;", "Roadmap" }
+                h3 { style: "margin: 0; font-size: var(--text-md); color: var(--text-primary);", "Roadmap" }
                 button {
                     style: "{REFRESH_BTN}",
                     onclick: move |_| {
@@ -135,21 +135,21 @@ pub(crate) fn RoadmapView(project_id: String) -> Element {
             match &*fetch_state.read() {
                 FetchState::Loading => rsx! {
                     div {
-                        style: "display: flex; align-items: center; justify-content: center; flex: 1; color: #888;",
+                        style: "display: flex; align-items: center; justify-content: center; flex: 1; color: var(--text-secondary);",
                         "Loading roadmap..."
                     }
                 },
                 FetchState::Error(err) => rsx! {
                     div {
-                        style: "display: flex; align-items: center; justify-content: center; flex: 1; color: #ef4444;",
+                        style: "display: flex; align-items: center; justify-content: center; flex: 1; color: var(--status-error);",
                         "Error: {err}"
                     }
                 },
                 FetchState::NotAvailable => rsx! {
                     div {
                         style: "{PLACEHOLDER_STYLE}",
-                        div { style: "font-size: 16px;", "Roadmap not available" }
-                        div { style: "font-size: 13px; max-width: 360px; text-align: center;",
+                        div { style: "font-size: var(--text-md);", "Roadmap not available" }
+                        div { style: "font-size: var(--text-sm); max-width: 360px; text-align: center;",
                             "The roadmap API is not available on this pylon instance."
                         }
                     }
@@ -164,8 +164,8 @@ pub(crate) fn RoadmapView(project_id: String) -> Element {
                         rsx! {
                             div {
                                 style: "{PLACEHOLDER_STYLE}",
-                                div { style: "font-size: 16px;", "No phases defined" }
-                                div { style: "font-size: 13px;",
+                                div { style: "font-size: var(--text-md);", "No phases defined" }
+                                div { style: "font-size: var(--text-sm);",
                                     "Roadmap phases will appear here when configured."
                                 }
                             }
@@ -204,22 +204,22 @@ pub(crate) fn RoadmapView(project_id: String) -> Element {
                                         div {
                                             style: "display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;",
                                             span {
-                                                style: "font-size: 14px; font-weight: 600; color: #e0e0e0;",
+                                                style: "font-size: var(--text-base); font-weight: 600; color: var(--text-primary);",
                                                 "{phase.name}"
                                             }
                                             span {
-                                                style: "font-size: 11px; color: #888;",
+                                                style: "font-size: var(--text-xs); color: var(--text-secondary);",
                                                 "{phase.start_date} — {phase.end_date}"
                                             }
                                         }
                                         div {
-                                            style: "display: flex; align-items: center; gap: 12px; font-size: 12px; color: #aaa; margin-bottom: 8px;",
+                                            style: "display: flex; align-items: center; gap: 12px; font-size: var(--text-xs); color: var(--text-secondary); margin-bottom: 8px;",
                                             span { "Progress: {phase.progress}%" }
                                             span { "Status: {phase_status_label(phase.status)}" }
                                         }
                                         if !phase.requirements.is_empty() {
                                             div {
-                                                style: "font-size: 11px; color: #666; margin-top: 8px;",
+                                                style: "font-size: var(--text-xs); color: var(--text-muted); margin-top: 8px;",
                                                 "Requirements: {phase.requirements.join(\", \")}"
                                             }
                                         }

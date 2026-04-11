@@ -13,7 +13,7 @@ pub(crate) fn ToolResultsView(tools: Vec<ToolStat>, time_series: Vec<TimeSeriesB
     let _ = time_series;
     if tools.is_empty() {
         return rsx! {
-            div { style: "color: #555; font-size: 13px; padding: 8px;", "No tool data available." }
+            div { style: "color: var(--text-muted); font-size: var(--text-sm); padding: 8px;", "No tool data available." }
         };
     }
 

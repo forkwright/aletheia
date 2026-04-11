@@ -8,7 +8,7 @@ const TOOLBAR_STYLE: &str = "\
     gap: 8px; \
     padding: 6px 12px; \
     border-bottom: 1px solid var(--border-separator, #221f1c); \
-    font-size: 12px; \
+    font-size: var(--text-xs); \
     color: var(--text-secondary, #a8a49e); \
     flex-shrink: 0;\
 ";
@@ -38,13 +38,13 @@ const TOGGLE_BTN_STYLE: &str = "\
     border-radius: var(--radius-sm, 4px); \
     color: var(--text-secondary, #a8a49e); \
     padding: 2px 8px; \
-    font-size: 11px; \
+    font-size: var(--text-xs); \
     cursor: pointer;\
 ";
 
 const STAT_STYLE: &str = "\
     color: var(--text-muted, #706c66); \
-    font-size: 11px; \
+    font-size: var(--text-xs); \
     white-space: nowrap;\
 ";
 

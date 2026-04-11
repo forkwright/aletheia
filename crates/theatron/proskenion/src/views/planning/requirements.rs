@@ -44,50 +44,50 @@ const FILTER_BAR: &str = "\
 ";
 
 const SEARCH_INPUT: &str = "\
-    background: #1a1a2e; \
-    border: 1px solid #333; \
-    border-radius: 6px; \
+    background: var(--bg-surface); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
     padding: 6px 10px; \
-    color: #e0e0e0; \
-    font-size: 13px; \
+    color: var(--text-primary); \
+    font-size: var(--text-sm); \
     min-width: 200px;\
 ";
 
 const FILTER_SELECT: &str = "\
-    background: #1a1a2e; \
-    border: 1px solid #333; \
-    border-radius: 6px; \
+    background: var(--bg-surface); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
     padding: 6px 8px; \
-    color: #e0e0e0; \
-    font-size: 12px;\
+    color: var(--text-primary); \
+    font-size: var(--text-xs);\
 ";
 
 const TAB_BAR: &str = "\
     display: flex; \
     gap: 4px; \
     margin-bottom: 12px; \
-    border-bottom: 1px solid #2a2a3a; \
+    border-bottom: 1px solid var(--border); \
     padding-bottom: 0;\
 ";
 
 const TAB_ACTIVE: &str = "\
     padding: 6px 16px; \
-    border: 1px solid #2a2a3a; \
-    border-bottom: 1px solid #0f0f1a; \
-    border-radius: 6px 6px 0 0; \
-    font-size: 13px; \
+    border: 1px solid var(--border); \
+    border-bottom: 1px solid var(--bg-surface-dim); \
+    border-radius: var(--radius-md) 6px 0 0; \
+    font-size: var(--text-sm); \
     font-weight: 600; \
-    color: #e0e0e0; \
-    background: #0f0f1a; \
+    color: var(--text-primary); \
+    background: var(--bg-surface-dim); \
     cursor: pointer;\
 ";
 
 const TAB_INACTIVE: &str = "\
     padding: 6px 16px; \
     border: 1px solid transparent; \
-    border-radius: 6px 6px 0 0; \
-    font-size: 13px; \
-    color: #666; \
+    border-radius: var(--radius-md) 6px 0 0; \
+    font-size: var(--text-sm); \
+    color: var(--text-muted); \
     background: transparent; \
     cursor: pointer;\
 ";
@@ -95,18 +95,18 @@ const TAB_INACTIVE: &str = "\
 const TABLE_STYLE: &str = "\
     width: 100%; \
     border-collapse: collapse; \
-    font-size: 13px;\
+    font-size: var(--text-sm);\
 ";
 
 const TH_STYLE: &str = "\
     text-align: left; \
     padding: 6px 10px; \
-    font-size: 11px; \
+    font-size: var(--text-xs); \
     font-weight: 600; \
-    color: #666; \
+    color: var(--text-muted); \
     text-transform: uppercase; \
     letter-spacing: 0.4px; \
-    border-bottom: 1px solid #2a2a3a;\
+    border-bottom: 1px solid var(--border);\
 ";
 
 const TD_STYLE: &str = "\
@@ -116,31 +116,31 @@ const TD_STYLE: &str = "\
 ";
 
 const EDIT_INPUT: &str = "\
-    background: #0f0f1a; \
+    background: var(--bg-surface-dim); \
     border: 1px solid #4a9aff; \
-    border-radius: 4px; \
+    border-radius: var(--radius-sm); \
     padding: 4px 6px; \
-    color: #e0e0e0; \
-    font-size: 13px; \
+    color: var(--text-primary); \
+    font-size: var(--text-sm); \
     width: 100%;\
 ";
 
 const CATEGORY_SELECT: &str = "\
-    background: #1a1a2e; \
-    border: 1px solid #333; \
-    border-radius: 4px; \
+    background: var(--bg-surface); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-sm); \
     padding: 2px 6px; \
-    color: #e0e0e0; \
-    font-size: 12px;\
+    color: var(--text-primary); \
+    font-size: var(--text-xs);\
 ";
 
 const REFRESH_BTN: &str = "\
-    background: #2a2a4a; \
-    color: #e0e0e0; \
-    border: 1px solid #444; \
-    border-radius: 6px; \
+    background: var(--border); \
+    color: var(--text-primary); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
     padding: 4px 12px; \
-    font-size: 12px; \
+    font-size: var(--text-xs); \
     cursor: pointer;\
 ";
 
@@ -151,7 +151,7 @@ const PLACEHOLDER_STYLE: &str = "\
     justify-content: center; \
     flex: 1; \
     gap: 10px; \
-    color: #555;\
+    color: var(--text-muted);\
 ";
 
 /// Requirements table view for a planning project.
@@ -238,7 +238,7 @@ pub(crate) fn RequirementsView(project_id: String) -> Element {
 
             div {
                 style: "{HEADER_ROW}",
-                h3 { style: "margin: 0; font-size: 16px; color: #e0e0e0;", "Requirements" }
+                h3 { style: "margin: 0; font-size: var(--text-md); color: var(--text-primary);", "Requirements" }
                 button {
                     style: "{REFRESH_BTN}",
                     onclick: move |_| {
@@ -252,21 +252,21 @@ pub(crate) fn RequirementsView(project_id: String) -> Element {
             match &*fetch_state.read() {
                 FetchState::Loading => rsx! {
                     div {
-                        style: "display: flex; align-items: center; justify-content: center; flex: 1; color: #888;",
+                        style: "display: flex; align-items: center; justify-content: center; flex: 1; color: var(--text-secondary);",
                         "Loading requirements..."
                     }
                 },
                 FetchState::Error(err) => rsx! {
                     div {
-                        style: "display: flex; align-items: center; justify-content: center; flex: 1; color: #ef4444;",
+                        style: "display: flex; align-items: center; justify-content: center; flex: 1; color: var(--status-error);",
                         "Error: {err}"
                     }
                 },
                 FetchState::NotAvailable => rsx! {
                     div {
                         style: "{PLACEHOLDER_STYLE}",
-                        div { style: "font-size: 16px;", "Requirements not available" }
-                        div { style: "font-size: 13px; max-width: 360px; text-align: center;",
+                        div { style: "font-size: var(--text-md);", "Requirements not available" }
+                        div { style: "font-size: var(--text-sm); max-width: 360px; text-align: center;",
                             "The requirements API is not available on this pylon instance."
                         }
                     }
@@ -388,7 +388,7 @@ pub(crate) fn RequirementsView(project_id: String) -> Element {
                             if filtered.is_empty() {
                                 div {
                                     style: "{PLACEHOLDER_STYLE}",
-                                    div { style: "font-size: 14px;", "No matching requirements" }
+                                    div { style: "font-size: var(--text-base);", "No matching requirements" }
                                 }
                             } else {
                                 table {
@@ -446,7 +446,7 @@ pub(crate) fn RequirementsView(project_id: String) -> Element {
 
                                                         // Title (click to edit)
                                                         td {
-                                                            style: "{TD_STYLE} color: #e0e0e0;",
+                                                            style: "{TD_STYLE} color: var(--text-primary);",
                                                             if is_editing_title {
                                                                 input {
                                                                     style: "{EDIT_INPUT}",
@@ -478,7 +478,7 @@ pub(crate) fn RequirementsView(project_id: String) -> Element {
 
                                                         // Description (click to edit)
                                                         td {
-                                                            style: "{TD_STYLE} color: #aaa;",
+                                                            style: "{TD_STYLE} color: var(--text-secondary);",
                                                             if is_editing_desc {
                                                                 input {
                                                                     style: "{EDIT_INPUT}",
@@ -528,7 +528,7 @@ pub(crate) fn RequirementsView(project_id: String) -> Element {
                                                                 "{priority_label}"
                                                             }
                                                         }
-                                                        td { style: "{TD_STYLE} color: #888;", "{agent}" }
+                                                        td { style: "{TD_STYLE} color: var(--text-secondary);", "{agent}" }
 
                                                         // Category dropdown
                                                         td {

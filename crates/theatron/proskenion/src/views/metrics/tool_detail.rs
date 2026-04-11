@@ -16,74 +16,74 @@ const INVOCATIONS_PER_PAGE: usize = 20;
 
 const BACK_BTN: &str = "\
     background: transparent; \
-    color: #4a4aff; \
-    border: 1px solid #333; \
-    border-radius: 6px; \
+    color: var(--accent); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
     padding: 4px 12px; \
-    font-size: 12px; \
+    font-size: var(--text-xs); \
     cursor: pointer;\
 ";
 
 const TABLE_STYLE: &str = "\
     width: 100%; \
     border-collapse: collapse; \
-    font-size: 12px;\
+    font-size: var(--text-xs);\
 ";
 
 const TH_STYLE: &str = "\
     text-align: left; \
-    color: #888; \
+    color: var(--text-secondary); \
     font-weight: normal; \
     padding: 4px 8px; \
-    border-bottom: 1px solid #333;\
+    border-bottom: 1px solid var(--border);\
 ";
 
 const TD_STYLE: &str = "\
     padding: 4px 8px; \
     border-bottom: 1px solid #1e1e38; \
-    color: #ccc;\
+    color: var(--text-primary);\
 ";
 
 const CARD_STYLE: &str = "\
-    background: #1a1a2e; \
-    border: 1px solid #333; \
-    border-radius: 8px; \
+    background: var(--bg-surface); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
     padding: 14px 18px; \
     min-width: 130px; \
     flex: 1;\
 ";
 
 const CARD_VALUE: &str = "\
-    font-size: 24px; \
+    font-size: var(--text-2xl); \
     font-weight: bold; \
-    color: #e0e0e0; \
+    color: var(--text-primary); \
     margin-bottom: 2px;\
 ";
 
 const CARD_LABEL: &str = "\
-    font-size: 11px; \
-    color: #888; \
+    font-size: var(--text-xs); \
+    color: var(--text-secondary); \
     text-transform: uppercase; \
     letter-spacing: 0.5px;\
 ";
 
 const PAGE_BTN: &str = "\
-    background: #2a2a4a; \
-    color: #e0e0e0; \
-    border: 1px solid #444; \
-    border-radius: 4px; \
+    background: var(--border); \
+    color: var(--text-primary); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-sm); \
     padding: 2px 8px; \
-    font-size: 12px; \
+    font-size: var(--text-xs); \
     cursor: pointer;\
 ";
 
 const PAGE_BTN_DISABLED: &str = "\
-    background: #1a1a2e; \
-    color: #444; \
+    background: var(--bg-surface); \
+    color: var(--border); \
     border: 1px solid #2a2a2a; \
-    border-radius: 4px; \
+    border-radius: var(--radius-sm); \
     padding: 2px 8px; \
-    font-size: 12px; \
+    font-size: var(--text-xs); \
     cursor: default;\
 ";
 
@@ -147,17 +147,17 @@ pub(crate) fn ToolDetailView(
                     "← Back"
                 }
                 h3 {
-                    style: "font-size: 16px; margin: 0; font-family: monospace; color: #e0e0e0;",
+                    style: "font-size: var(--text-md); margin: 0; font-family: var(--font-mono); color: var(--text-primary);",
                     "{tool_name}"
                 }
             }
 
             match &*detail_fetch.read() {
                 FetchState::Loading => rsx! {
-                    div { style: "color: #888; padding: 8px;", "Loading tool detail..." }
+                    div { style: "color: var(--text-secondary); padding: 8px;", "Loading tool detail..." }
                 },
                 FetchState::Error(err) => rsx! {
-                    div { style: "color: #ef4444; padding: 8px;", "Error: {err}" }
+                    div { style: "color: var(--status-error); padding: 8px;", "Error: {err}" }
                 },
                 FetchState::Loaded(data) => {
                     let stat = data.tools.iter().find(|t| t.name == tool_name);
@@ -166,7 +166,7 @@ pub(crate) fn ToolDetailView(
                     rsx! {
                         {render_summary_cards(stat)}
                         div {
-                            style: "font-size: 13px; color: #aaa; margin-bottom: 4px;",
+                            style: "font-size: var(--text-sm); color: var(--text-secondary); margin-bottom: 4px;",
                             "Recent Invocations"
                         }
                         {render_invocations_table(&data.invocations, page)}
@@ -180,7 +180,7 @@ pub(crate) fn ToolDetailView(
 
 fn render_summary_cards(stat: Option<&ToolStat>) -> Element {
     let Some(stat) = stat else {
-        return rsx! { div { style: "color: #555; font-size: 12px;", "No stats for this tool." } };
+        return rsx! { div { style: "color: var(--text-muted); font-size: var(--text-xs);", "No stats for this tool." } };
     };
 
     let rate = if stat.total > 0 {
@@ -189,11 +189,11 @@ fn render_summary_cards(stat: Option<&ToolStat>) -> Element {
         0
     };
     let rate_color = if rate > 90 {
-        "#22c55e"
+        "var(--status-success)"
     } else if rate > 70 {
-        "#eab308"
+        "var(--status-warning)"
     } else {
-        "#ef4444"
+        "var(--status-error)"
     };
 
     rsx! {
@@ -226,7 +226,7 @@ fn render_summary_cards(stat: Option<&ToolStat>) -> Element {
 fn render_invocations_table(invocations: &[ToolInvocation], page: usize) -> Element {
     if invocations.is_empty() {
         return rsx! {
-            div { style: "color: #555; font-size: 12px; padding: 8px;", "No invocations recorded." }
+            div { style: "color: var(--text-muted); font-size: var(--text-xs); padding: 8px;", "No invocations recorded." }
         };
     }
 
@@ -248,9 +248,9 @@ fn render_invocations_table(invocations: &[ToolInvocation], page: usize) -> Elem
                 for (idx, inv) in page_items.iter().enumerate() {
                     {
                         let (result_text, result_color) = if inv.success {
-                            ("✓", "#22c55e")
+                            ("✓", "var(--status-success)")
                         } else {
-                            ("✗", "#ef4444")
+                            ("✗", "var(--status-error)")
                         };
                         let error = inv.error.as_deref().unwrap_or("—");
                         let dur = format_duration_ms(inv.duration_ms);
@@ -261,12 +261,12 @@ fn render_invocations_table(invocations: &[ToolInvocation], page: usize) -> Elem
                         rsx! {
                             tr {
                                 key: "{key}",
-                                td { style: "{TD_STYLE} font-size: 11px; color: #666;", "{ts}" }
-                                td { style: "{TD_STYLE} font-family: monospace; font-size: 11px;", "{agent}" }
+                                td { style: "{TD_STYLE} font-size: var(--text-xs); color: var(--text-muted);", "{ts}" }
+                                td { style: "{TD_STYLE} font-family: var(--font-mono); font-size: var(--text-xs);", "{agent}" }
                                 td { style: "{TD_STYLE}", "{dur}" }
                                 td { style: "{TD_STYLE} color: {result_color}; font-weight: bold;", "{result_text}" }
                                 td {
-                                    style: "{TD_STYLE} font-size: 11px; color: #888; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;",
+                                    style: "{TD_STYLE} font-size: var(--text-xs); color: var(--text-secondary); max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;",
                                     "{error}"
                                 }
                             }
@@ -286,7 +286,7 @@ fn render_pagination(page: usize, total_items: usize, mut detail_page: Signal<us
 
     rsx! {
         div {
-            style: "display: flex; align-items: center; gap: 8px; font-size: 12px; color: #888;",
+            style: "display: flex; align-items: center; gap: 8px; font-size: var(--text-xs); color: var(--text-secondary);",
             button {
                 style: if page > 0 { PAGE_BTN } else { PAGE_BTN_DISABLED },
                 disabled: page == 0,

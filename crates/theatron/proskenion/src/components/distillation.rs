@@ -19,7 +19,7 @@ const CONTAINER_STYLE: &str = "\
 ";
 
 const LABEL_STYLE: &str = "\
-    font-size: 12px; \
+    font-size: var(--text-xs); \
     color: var(--text-secondary); \
     min-width: 90px;\
 ";

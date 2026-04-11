@@ -6,26 +6,26 @@ use crate::state::tools::{PlanCardState, PlanStatus, StepStatus};
 
 const CARD_STYLE: &str = "\
     background: #1a1a30; \
-    border: 1px solid #2a2a4a; \
-    border-radius: 8px; \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
     padding: 12px; \
     margin-top: 4px; \
-    font-size: 13px;\
+    font-size: var(--text-sm);\
 ";
 
 const CARD_COMPLETE_STYLE: &str = "\
     background: #1a2a1a; \
     border: 1px solid #2a4a2a; \
-    border-radius: 8px; \
+    border-radius: var(--radius-md); \
     padding: 12px; \
     margin-top: 4px; \
-    font-size: 13px;\
+    font-size: var(--text-sm);\
 ";
 
 const TITLE_STYLE: &str = "\
     font-weight: 600; \
     color: #c0c0e0; \
-    font-size: 14px; \
+    font-size: var(--text-base); \
     margin-bottom: 8px;\
 ";
 
@@ -40,13 +40,13 @@ const STEP_ITEM_STYLE: &str = "\
     align-items: center; \
     gap: 8px; \
     padding: 3px 0; \
-    color: #aaa; \
-    font-size: 13px;\
+    color: var(--text-secondary); \
+    font-size: var(--text-sm);\
 ";
 
 const PROGRESS_BAR_OUTER: &str = "\
     height: 6px; \
-    background: #2a2a4a; \
+    background: var(--border); \
     border-radius: 3px; \
     margin-top: 10px; \
     overflow: hidden;\
@@ -54,20 +54,20 @@ const PROGRESS_BAR_OUTER: &str = "\
 
 const PROGRESS_BAR_INNER: &str = "\
     height: 100%; \
-    background: #4a4aff; \
+    background: var(--accent); \
     border-radius: 3px; \
     transition: width 0.3s;\
 ";
 
 const PROGRESS_BAR_COMPLETE: &str = "\
     height: 100%; \
-    background: #22c55e; \
+    background: var(--status-success); \
     border-radius: 3px;\
 ";
 
 const STATUS_LABEL_STYLE: &str = "\
-    font-size: 11px; \
-    color: #666; \
+    font-size: var(--text-xs); \
+    color: var(--text-muted); \
     margin-top: 6px; \
     text-align: right;\
 ";
@@ -145,21 +145,21 @@ pub(crate) fn PlanningCard(plan: PlanCardState) -> Element {
 /// Render the icon for a step status.
 fn render_step_icon(status: StepStatus) -> Element {
     let (icon, color) = match status {
-        StepStatus::Pending => (STEP_ICON_PENDING, "#666"),
-        StepStatus::InProgress => (STEP_ICON_IN_PROGRESS, "#4a4aff"),
-        StepStatus::Complete => (STEP_ICON_COMPLETE, "#22c55e"),
-        StepStatus::Failed => (STEP_ICON_FAILED, "#ef4444"),
+        StepStatus::Pending => (STEP_ICON_PENDING, "var(--text-muted)"),
+        StepStatus::InProgress => (STEP_ICON_IN_PROGRESS, "var(--accent)"),
+        StepStatus::Complete => (STEP_ICON_COMPLETE, "var(--status-success)"),
+        StepStatus::Failed => (STEP_ICON_FAILED, "var(--status-error)"),
     };
-    let style = format!("color: {color}; font-size: 14px;");
+    let style = format!("color: {color}; font-size: var(--text-base);");
     rsx! { span { style: "{style}", "{icon}" } }
 }
 
 /// Inline style for a step label based on its status.
 fn step_label_style(status: StepStatus) -> String {
     match status {
-        StepStatus::Pending => "color: #666;".to_string(),
+        StepStatus::Pending => "color: var(--text-muted);".to_string(),
         StepStatus::InProgress => "color: #c0c0e0; font-weight: 500;".to_string(),
-        StepStatus::Complete => "color: #aaa; text-decoration: line-through;".to_string(),
+        StepStatus::Complete => "color: var(--text-secondary); text-decoration: line-through;".to_string(),
         StepStatus::Failed => "color: #f87171;".to_string(),
     }
 }

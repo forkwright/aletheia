@@ -20,7 +20,7 @@ const SECTION_LABEL_STYLE: &str = "\
     font-size: 10px; \
     text-transform: uppercase; \
     letter-spacing: 0.08em; \
-    color: #555; \
+    color: var(--text-muted); \
     padding: 4px 12px 2px;\
 ";
 
@@ -29,10 +29,10 @@ const AGENT_ROW_STYLE: &str = "\
     align-items: center; \
     gap: 8px; \
     padding: 7px 12px; \
-    border-radius: 6px; \
+    border-radius: var(--radius-md); \
     cursor: pointer; \
-    color: #e0e0e0; \
-    font-size: 13px;\
+    color: var(--text-primary); \
+    font-size: var(--text-sm);\
 ";
 
 const AGENT_ROW_ACTIVE_STYLE: &str = "\
@@ -40,17 +40,17 @@ const AGENT_ROW_ACTIVE_STYLE: &str = "\
     align-items: center; \
     gap: 8px; \
     padding: 7px 12px; \
-    border-radius: 6px; \
+    border-radius: var(--radius-md); \
     cursor: pointer; \
-    color: #ffffff; \
-    font-size: 13px; \
-    background: #2a2a4a;\
+    color: var(--text-primary); \
+    font-size: var(--text-sm); \
+    background: var(--border);\
 ";
 
 const EMPTY_AGENTS_STYLE: &str = "\
     padding: 8px 12px; \
-    font-size: 12px; \
-    color: #555;\
+    font-size: var(--text-xs); \
+    color: var(--text-muted);\
 ";
 
 /// Derives the display status for an agent from the current `EventState`.
@@ -86,12 +86,12 @@ pub(crate) fn AgentSidebarView(collapsed: bool) -> Element {
             div {
                 style: "display: flex; flex-direction: column; align-items: center; padding: 8px 0;",
                 span {
-                    style: "font-size: 10px; color: #555; writing-mode: vertical-rl; text-orientation: mixed;",
+                    style: "font-size: 10px; color: var(--text-muted); writing-mode: vertical-rl; text-orientation: mixed;",
                     "NOUS"
                 }
                 if agent_count > 0 {
                     span {
-                        style: "font-size: 10px; color: #22c55e; margin-top: 4px;",
+                        style: "font-size: 10px; color: var(--status-success); margin-top: 4px;",
                         "● {agent_count}"
                     }
                 }
@@ -148,7 +148,7 @@ pub(crate) fn AgentSidebarView(collapsed: bool) -> Element {
                                     "●"
                                 }
                                 if !emoji.is_empty() {
-                                    span { style: "font-size: 14px;", "{emoji}" }
+                                    span { style: "font-size: var(--text-base);", "{emoji}" }
                                 }
                                 span { "{name}" }
                             }

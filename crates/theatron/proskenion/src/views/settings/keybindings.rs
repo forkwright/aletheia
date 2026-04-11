@@ -30,8 +30,8 @@ pub(crate) fn KeybindingsPanel() -> Element {
             div {
                 style: "display: flex; justify-content: flex-end;",
                 button {
-                    style: "padding: 5px 14px; background: none; border: 1px solid #444; \
-                            border-radius: 5px; color: #888; font-size: 12px; cursor: pointer;",
+                    style: "padding: 5px 14px; background: none; border: 1px solid var(--border); \
+                            border-radius: 5px; color: var(--text-secondary); font-size: var(--text-xs); cursor: pointer;",
                     onclick: move |_| {
                         keybindings.write().overrides.clear();
                         let store = server_store.read();
@@ -85,14 +85,14 @@ pub(crate) fn KeybindingsPanel() -> Element {
                         }
                     },
                     div {
-                        style: "background: #1a1a2e; border: 1px solid #5b6af0; border-radius: 12px; \
-                                padding: 32px 48px; text-align: center; color: #e0e0e0;",
+                        style: "background: var(--bg-surface); border: 1px solid #5b6af0; border-radius: var(--radius-lg); \
+                                padding: 32px 48px; text-align: center; color: var(--text-primary);",
                         div {
-                            style: "font-size: 16px; margin-bottom: 8px;",
+                            style: "font-size: var(--text-md); margin-bottom: 8px;",
                             "Press a key combination"
                         }
                         div {
-                            style: "font-size: 12px; color: #666;",
+                            style: "font-size: var(--text-xs); color: var(--text-muted);",
                             "Esc to cancel"
                         }
                     }
@@ -117,27 +117,27 @@ pub(crate) fn KeybindingsPanel() -> Element {
                             style: "position: fixed; inset: 0; background: rgba(0,0,0,0.6); \
                                     display: flex; align-items: center; justify-content: center; z-index: 110;",
                             div {
-                                style: "background: #1a1a2e; border: 1px solid #f59e0b; border-radius: 10px; \
+                                style: "background: var(--bg-surface); border: 1px solid var(--status-warning); border-radius: 10px; \
                                         padding: 24px 32px; max-width: 380px; width: 90%;",
                                 div {
-                                    style: "font-size: 14px; color: #e0e0e0; margin-bottom: 12px;",
+                                    style: "font-size: var(--text-base); color: var(--text-primary); margin-bottom: 12px;",
                                     "{combo_display} is already used by \"{conflict_label}\"."
                                 }
                                 div {
-                                    style: "font-size: 12px; color: #888; margin-bottom: 20px;",
+                                    style: "font-size: var(--text-xs); color: var(--text-secondary); margin-bottom: 20px;",
                                     "Reassign will remove it from that action."
                                 }
                                 div {
                                     style: "display: flex; gap: 8px; justify-content: flex-end;",
                                     button {
-                                        style: "padding: 6px 14px; background: none; border: 1px solid #444; \
-                                                border-radius: 5px; color: #888; font-size: 12px; cursor: pointer;",
+                                        style: "padding: 6px 14px; background: none; border: 1px solid var(--border); \
+                                                border-radius: 5px; color: var(--text-secondary); font-size: var(--text-xs); cursor: pointer;",
                                         onclick: move |_| { conflict_state.set(None); },
                                         "Cancel"
                                     }
                                     button {
-                                        style: "padding: 6px 14px; background: #f59e0b; border: none; \
-                                                border-radius: 5px; color: #000; font-size: 12px; cursor: pointer;",
+                                        style: "padding: 6px 14px; background: var(--status-warning); border: none; \
+                                                border-radius: 5px; color: #000; font-size: var(--text-xs); cursor: pointer;",
                                         onclick: move |_| {
                                             keybindings.write().reset(&conflict_clone);
                                             keybindings.write().set(&target_clone, combo_clone.clone());
@@ -169,20 +169,20 @@ pub(crate) fn KeybindingsPanel() -> Element {
                     rsx! {
                         div {
                             key: "{cat:?}",
-                            style: "background: #1a1a2e; border: 1px solid #333; border-radius: 8px; overflow: hidden;",
+                            style: "background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-md); overflow: hidden;",
 
                             // Category header
                             div {
                                 style: "display: flex; justify-content: space-between; align-items: center; \
-                                        padding: 10px 16px; background: #161626; border-bottom: 1px solid #333;",
+                                        padding: 10px 16px; background: #161626; border-bottom: 1px solid var(--border);",
                                 span {
-                                    style: "font-size: 11px; font-weight: bold; color: #666; \
+                                    style: "font-size: var(--text-xs); font-weight: bold; color: var(--text-muted); \
                                             text-transform: uppercase; letter-spacing: 0.6px;",
                                     "{cat.label()}"
                                 }
                                 button {
-                                    style: "padding: 3px 10px; background: none; border: 1px solid #333; \
-                                            border-radius: 4px; color: #666; font-size: 11px; cursor: pointer;",
+                                    style: "padding: 3px 10px; background: none; border: 1px solid var(--border); \
+                                            border-radius: var(--radius-sm); color: var(--text-muted); font-size: var(--text-xs); cursor: pointer;",
                                     onclick: move |_| {
                                         let all_actions = default_actions();
                                         keybindings.write().reset_category(cat, &all_actions);
@@ -204,11 +204,11 @@ pub(crate) fn KeybindingsPanel() -> Element {
                                     let row_bg = if is_recording { "#1e1e3a" } else { "transparent" };
                                     let combo_style = if is_recording {
                                         "padding: 4px 10px; background: #5b6af0; border: none; \
-                                         border-radius: 4px; color: #fff; font-size: 12px; cursor: pointer; min-width: 90px;"
+                                         border-radius: var(--radius-sm); color: var(--text-primary); font-size: var(--text-xs); cursor: pointer; min-width: 90px;"
                                     } else {
-                                        "padding: 4px 10px; background: #0d0d1a; border: 1px solid #333; \
-                                         border-radius: 4px; color: #ccc; font-size: 12px; cursor: pointer; min-width: 90px; \
-                                         font-family: monospace;"
+                                        "padding: 4px 10px; background: #0d0d1a; border: 1px solid var(--border); \
+                                         border-radius: var(--radius-sm); color: var(--text-primary); font-size: var(--text-xs); cursor: pointer; min-width: 90px; \
+                                         font-family: var(--font-mono);"
                                     };
                                     let aid_str = action_id.to_string();
 
@@ -218,7 +218,7 @@ pub(crate) fn KeybindingsPanel() -> Element {
                                             style: "display: flex; justify-content: space-between; align-items: center; \
                                                     padding: 8px 16px; background: {row_bg}; border-bottom: 1px solid #222;",
                                             span {
-                                                style: "font-size: 13px; color: #ccc;",
+                                                style: "font-size: var(--text-sm); color: var(--text-primary);",
                                                 "{action.label}"
                                             }
                                             div {
@@ -235,8 +235,8 @@ pub(crate) fn KeybindingsPanel() -> Element {
                                                     if is_recording { "Recording…" } else { "{combo_str}" }
                                                 }
                                                 button {
-                                                    style: "padding: 3px 8px; background: none; border: 1px solid #333; \
-                                                            border-radius: 4px; color: #555; font-size: 11px; cursor: pointer;",
+                                                    style: "padding: 3px 8px; background: none; border: 1px solid var(--border); \
+                                                            border-radius: var(--radius-sm); color: var(--text-muted); font-size: var(--text-xs); cursor: pointer;",
                                                     title: "Reset to default",
                                                     onclick: move |_| {
                                                         keybindings.write().reset(action_id);

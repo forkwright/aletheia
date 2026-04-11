@@ -15,11 +15,11 @@ use crate::theme::ThemeMode;
 const SECTION_STYLE: &str = "\
     background: var(--bg-surface); \
     border: 1px solid var(--border); \
-    border-radius: 8px; \
+    border-radius: var(--radius-md); \
     padding: 16px 20px;";
 
 const SECTION_LABEL_STYLE: &str = "\
-    font-size: 11px; \
+    font-size: var(--text-xs); \
     font-weight: bold; \
     color: var(--text-muted); \
     text-transform: uppercase; \
@@ -54,7 +54,7 @@ pub(crate) fn AppearancePanel() -> Element {
                             let color = if is_active { "var(--text-inverse)" } else { "var(--text-secondary)" };
                             let style = format!(
                                 "padding: 8px 18px; background: {bg}; border: {border}; \
-                                 border-radius: 6px; color: {color}; font-size: 13px; cursor: pointer; \
+                                 border-radius: var(--radius-md); color: {color}; font-size: var(--text-sm); cursor: pointer; \
                                  transition: background var(--transition-quick), \
                                  color var(--transition-quick), border-color var(--transition-quick);"
                             );
@@ -85,7 +85,7 @@ pub(crate) fn AppearancePanel() -> Element {
                 div {
                     style: "display: flex; align-items: center; gap: 14px;",
                     span {
-                        style: "font-size: 11px; color: var(--text-muted); width: 22px;",
+                        style: "font-size: var(--text-xs); color: var(--text-muted); width: 22px;",
                         "12"
                     }
                     input {
@@ -106,11 +106,11 @@ pub(crate) fn AppearancePanel() -> Element {
                         },
                     }
                     span {
-                        style: "font-size: 11px; color: var(--text-muted); width: 22px;",
+                        style: "font-size: var(--text-xs); color: var(--text-muted); width: 22px;",
                         "20"
                     }
                     span {
-                        style: "font-size: 13px; color: var(--text-primary); width: 36px; text-align: right;",
+                        style: "font-size: var(--text-sm); color: var(--text-primary); width: 36px; text-align: right;",
                         "{current.font_size}px"
                     }
                 }
@@ -130,7 +130,7 @@ pub(crate) fn AppearancePanel() -> Element {
                             let color = if is_active { "var(--text-inverse)" } else { "var(--text-secondary)" };
                             let style = format!(
                                 "flex: 1; padding: 8px; background: {bg}; border: {border}; \
-                                 border-radius: 6px; color: {color}; font-size: 13px; cursor: pointer; \
+                                 border-radius: var(--radius-md); color: {color}; font-size: var(--text-sm); cursor: pointer; \
                                  text-align: center; transition: background var(--transition-quick), \
                                  color var(--transition-quick), border-color var(--transition-quick);"
                             );

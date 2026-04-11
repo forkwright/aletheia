@@ -34,14 +34,14 @@ pub(crate) fn SetupWizard() -> Element {
                     background: var(--bg-surface-dim); padding: 24px;",
 
             div {
-                style: "background: var(--bg-surface); border: 1px solid var(--border); border-radius: 12px; \
+                style: "background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-lg); \
                         width: 100%; max-width: 520px; padding: 32px;",
 
                 // Title
                 div {
                     style: "margin-bottom: 24px;",
                     h1 { style: "font-size: 22px; margin: 0 0 6px; color: var(--text-primary);", "Welcome to Aletheia" }
-                    p { style: "font-size: 14px; color: var(--text-muted); margin: 0;", "Let's get you set up in a few steps." }
+                    p { style: "font-size: var(--text-base); color: var(--text-muted); margin: 0;", "Let's get you set up in a few steps." }
                 }
 
                 // Progress bar
@@ -193,20 +193,20 @@ fn StepServer(wizard_data: Signal<WizardData>, on_next: EventHandler<()>) -> Ele
     rsx! {
         div {
             style: "display: flex; flex-direction: column; gap: 16px;",
-            h2 { style: "font-size: 16px; color: var(--text-primary); margin: 0;", "Server Connection" }
-            p { style: "font-size: 13px; color: var(--text-secondary); margin: 0;",
+            h2 { style: "font-size: var(--text-md); color: var(--text-primary); margin: 0;", "Server Connection" }
+            p { style: "font-size: var(--text-sm); color: var(--text-secondary); margin: 0;",
                 "Enter the URL of your Aletheia server instance, or leave blank for auto-discovery."
             }
 
             div {
                 style: "display: flex; flex-direction: column; gap: 4px;",
                 label {
-                    style: "font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;",
+                    style: "font-size: var(--text-xs); color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;",
                     "Server URL"
                 }
                 input {
-                    style: "background: var(--input-bg); border: 1px solid var(--input-border); border-radius: 6px; \
-                            padding: 8px 12px; color: var(--text-primary); font-size: 13px; width: 100%; box-sizing: border-box;",
+                    style: "background: var(--input-bg); border: 1px solid var(--input-border); border-radius: var(--radius-md); \
+                            padding: 8px 12px; color: var(--text-primary); font-size: var(--text-sm); width: 100%; box-sizing: border-box;",
                     placeholder: "http://localhost:3000",
                     value: "{wizard_data.read().server_url}",
                     oninput: move |e| { wizard_data.write().server_url = e.value(); },
@@ -239,8 +239,8 @@ fn StepAppearance(
     rsx! {
         div {
             style: "display: flex; flex-direction: column; gap: 20px;",
-            h2 { style: "font-size: 16px; color: var(--text-primary); margin: 0;", "Appearance" }
-            p { style: "font-size: 13px; color: var(--text-secondary); margin: 0;",
+            h2 { style: "font-size: var(--text-md); color: var(--text-primary); margin: 0;", "Appearance" }
+            p { style: "font-size: var(--text-sm); color: var(--text-secondary); margin: 0;",
                 "Choose your preferred theme and layout density."
             }
 
@@ -248,7 +248,7 @@ fn StepAppearance(
             div {
                 style: "display: flex; flex-direction: column; gap: 8px;",
                 div {
-                    style: "font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;",
+                    style: "font-size: var(--text-xs); color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;",
                     "Theme"
                 }
                 div {
@@ -261,7 +261,7 @@ fn StepAppearance(
                             let color = if is_active { "var(--text-inverse)" } else { "var(--text-secondary)" };
                             let style = format!(
                                 "flex: 1; padding: 8px; background: {bg}; border: {border}; \
-                                 border-radius: 6px; color: {color}; font-size: 13px; cursor: pointer;"
+                                 border-radius: var(--radius-md); color: {color}; font-size: var(--text-sm); cursor: pointer;"
                             );
                             rsx! {
                                 button {
@@ -280,7 +280,7 @@ fn StepAppearance(
             div {
                 style: "display: flex; flex-direction: column; gap: 8px;",
                 div {
-                    style: "font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;",
+                    style: "font-size: var(--text-xs); color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;",
                     "Density"
                 }
                 div {
@@ -293,7 +293,7 @@ fn StepAppearance(
                             let color = if is_active { "var(--text-inverse)" } else { "var(--text-secondary)" };
                             let style = format!(
                                 "flex: 1; padding: 8px; background: {bg}; border: {border}; \
-                                 border-radius: 6px; color: {color}; font-size: 13px; cursor: pointer; text-align: center;"
+                                 border-radius: var(--radius-md); color: {color}; font-size: var(--text-sm); cursor: pointer; text-align: center;"
                             );
                             rsx! {
                                 button {
@@ -312,7 +312,7 @@ fn StepAppearance(
             div {
                 style: "display: flex; flex-direction: column; gap: 8px;",
                 div {
-                    style: "font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;",
+                    style: "font-size: var(--text-xs); color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;",
                     "Accent Color"
                 }
                 div {
@@ -321,7 +321,7 @@ fn StepAppearance(
                         {
                             let hex_owned = hex.to_string();
                             let is_active = wizard_data.read().selected_accent == *hex;
-                            let border = if is_active { "3px solid #fff" } else { "2px solid var(--border)" };
+                            let border = if is_active { "3px solid var(--text-primary)" } else { "2px solid var(--border)" };
                             let style = format!(
                                 "width: 28px; height: 28px; border-radius: 50%; background: {hex_owned}; \
                                  border: {border}; cursor: pointer; outline: none;"
@@ -363,13 +363,13 @@ fn StepReady(wizard_data: Signal<WizardData>, on_finish: EventHandler<()>) -> El
                 style: "font-size: 48px;",
                 "\u{2713}"
             }
-            h2 { style: "font-size: 18px; color: var(--text-primary); margin: 0;", "You're all set!" }
-            p { style: "font-size: 13px; color: var(--text-secondary); margin: 0;",
+            h2 { style: "font-size: var(--text-lg); color: var(--text-primary); margin: 0;", "You're all set!" }
+            p { style: "font-size: var(--text-sm); color: var(--text-secondary); margin: 0;",
                 "Aletheia will connect to {data.server_url}"
             }
 
             div {
-                style: "background: var(--bg-surface-dim); border: 1px solid var(--border); border-radius: 8px; \
+                style: "background: var(--bg-surface-dim); border: 1px solid var(--border); border-radius: var(--radius-md); \
                         padding: 14px 20px; width: 100%; text-align: left;",
                 SummaryRow { label: "Server", value: data.server_url.clone() }
                 SummaryRow { label: "Theme", value: data.selected_theme.clone() }
@@ -377,8 +377,8 @@ fn StepReady(wizard_data: Signal<WizardData>, on_finish: EventHandler<()>) -> El
             }
 
             button {
-                style: "padding: 10px 32px; background: var(--accent); border: none; border-radius: 8px; \
-                        color: var(--text-inverse); font-size: 15px; cursor: pointer; width: 100%;",
+                style: "padding: 10px 32px; background: var(--accent); border: none; border-radius: var(--radius-md); \
+                        color: var(--text-inverse); font-size: var(--text-md); cursor: pointer; width: 100%;",
                 onclick: move |_| on_finish.call(()),
                 "Launch Aletheia"
             }
@@ -402,7 +402,7 @@ fn WizardNav(
             if can_back {
                 button {
                     style: "padding: 7px 18px; background: none; border: 1px solid var(--border); \
-                            border-radius: 6px; color: var(--text-secondary); font-size: 13px; cursor: pointer;",
+                            border-radius: var(--radius-md); color: var(--text-secondary); font-size: var(--text-sm); cursor: pointer;",
                     onclick: move |_| on_back.call(()),
                     "\u{2190} Back"
                 }
@@ -411,7 +411,7 @@ fn WizardNav(
             }
             button {
                 style: "padding: 7px 22px; background: var(--accent); border: none; \
-                        border-radius: 6px; color: var(--text-inverse); font-size: 13px; cursor: pointer;",
+                        border-radius: var(--radius-md); color: var(--text-inverse); font-size: var(--text-sm); cursor: pointer;",
                 onclick: move |_| on_next.call(()),
                 "{next_label} \u{2192}"
             }
@@ -424,7 +424,7 @@ fn SummaryRow(label: &'static str, value: String) -> Element {
     rsx! {
         div {
             style: "display: flex; justify-content: space-between; padding: 5px 0; \
-                    border-bottom: 1px solid var(--border-separator); font-size: 13px;",
+                    border-bottom: 1px solid var(--border-separator); font-size: var(--text-sm);",
             span { style: "color: var(--text-muted);", "{label}" }
             span { style: "color: var(--text-primary);", "{value}" }
         }

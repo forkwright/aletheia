@@ -39,8 +39,8 @@ const CONTAINER_STYLE: &str = "\
 ";
 
 const BREADCRUMB_STYLE: &str = "\
-    font-size: 12px; \
-    color: #555; \
+    font-size: var(--text-xs); \
+    color: var(--text-muted); \
     padding: 8px 16px 0;\
 ";
 
@@ -52,7 +52,7 @@ const BREADCRUMB_LINK: &str = "\
 
 const HEADER_STYLE: &str = "\
     padding: 8px 16px 12px; \
-    border-bottom: 1px solid #2a2a3a;\
+    border-bottom: 1px solid var(--border);\
 ";
 
 const TAB_BAR_STYLE: &str = "\
@@ -60,28 +60,28 @@ const TAB_BAR_STYLE: &str = "\
     align-items: center; \
     gap: 4px; \
     padding: 8px 16px 0; \
-    border-bottom: 1px solid #2a2a3a; \
-    background: #0f0f1a;\
+    border-bottom: 1px solid var(--border); \
+    background: var(--bg-surface-dim);\
 ";
 
 const TAB_ACTIVE: &str = "\
     padding: 6px 16px; \
-    border: 1px solid #2a2a3a; \
-    border-bottom: 1px solid #0f0f1a; \
-    border-radius: 6px 6px 0 0; \
-    font-size: 13px; \
+    border: 1px solid var(--border); \
+    border-bottom: 1px solid var(--bg-surface-dim); \
+    border-radius: var(--radius-md) 6px 0 0; \
+    font-size: var(--text-sm); \
     font-weight: 600; \
-    color: #e0e0e0; \
-    background: #0f0f1a; \
+    color: var(--text-primary); \
+    background: var(--bg-surface-dim); \
     cursor: pointer;\
 ";
 
 const TAB_INACTIVE: &str = "\
     padding: 6px 16px; \
     border: 1px solid transparent; \
-    border-radius: 6px 6px 0 0; \
-    font-size: 13px; \
-    color: #666; \
+    border-radius: var(--radius-md) 6px 0 0; \
+    font-size: var(--text-sm); \
+    color: var(--text-muted); \
     background: transparent; \
     cursor: pointer;\
 ";
@@ -94,8 +94,8 @@ const TAB_CONTENT_STYLE: &str = "\
 const BADGE_STYLE: &str = "\
     display: inline-block; \
     padding: 2px 8px; \
-    border-radius: 4px; \
-    font-size: 11px; \
+    border-radius: var(--radius-sm); \
+    font-size: var(--text-xs); \
     font-weight: 600;\
 ";
 
@@ -169,10 +169,10 @@ pub(crate) fn PlanningProject(project_id: String) -> Element {
                 span { " / " }
                 match &*project_state.read() {
                     FetchState::Loaded(p) => rsx! {
-                        span { style: "color: #aaa;", "{p.name}" }
+                        span { style: "color: var(--text-secondary);", "{p.name}" }
                     },
                     _ => rsx! {
-                        span { style: "color: #aaa;", "{project_id}" }
+                        span { style: "color: var(--text-secondary);", "{project_id}" }
                     },
                 }
                 span { " / {tab_label}" }
@@ -189,7 +189,7 @@ pub(crate) fn PlanningProject(project_id: String) -> Element {
                             style: "{HEADER_STYLE}",
                             div {
                                 style: "display: flex; align-items: center; gap: 12px;",
-                                h2 { style: "margin: 0; font-size: 20px; color: #e0e0e0;", "{project.name}" }
+                                h2 { style: "margin: 0; font-size: var(--text-xl); color: var(--text-primary);", "{project.name}" }
                                 span {
                                     style: "{BADGE_STYLE} background: {badge_bg}; color: {badge_fg};",
                                     "{label}"
@@ -197,7 +197,7 @@ pub(crate) fn PlanningProject(project_id: String) -> Element {
                             }
                             if !project.description.is_empty() {
                                 div {
-                                    style: "font-size: 13px; color: #888; margin-top: 4px;",
+                                    style: "font-size: var(--text-sm); color: var(--text-secondary); margin-top: 4px;",
                                     "{project.description}"
                                 }
                             }
@@ -207,19 +207,19 @@ pub(crate) fn PlanningProject(project_id: String) -> Element {
                 FetchState::Loading => rsx! {
                     div {
                         style: "{HEADER_STYLE}",
-                        div { style: "color: #888; font-size: 14px;", "Loading project..." }
+                        div { style: "color: var(--text-secondary); font-size: var(--text-base);", "Loading project..." }
                     }
                 },
                 FetchState::Error(err) => rsx! {
                     div {
                         style: "{HEADER_STYLE}",
-                        div { style: "color: #ef4444; font-size: 14px;", "Error: {err}" }
+                        div { style: "color: var(--status-error); font-size: var(--text-base);", "Error: {err}" }
                     }
                 },
                 FetchState::NotAvailable => rsx! {
                     div {
                         style: "{HEADER_STYLE}",
-                        div { style: "color: #888; font-size: 14px;", "Project not found" }
+                        div { style: "color: var(--text-secondary); font-size: var(--text-base);", "Project not found" }
                     }
                 },
             }

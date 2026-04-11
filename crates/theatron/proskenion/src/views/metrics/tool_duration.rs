@@ -15,7 +15,7 @@ use crate::state::tool_metrics::{
 pub(crate) fn ToolDurationView(tools: Vec<ToolStat>) -> Element {
     if tools.is_empty() {
         return rsx! {
-            div { style: "color: #555; font-size: 13px; padding: 8px;", "No tool data available." }
+            div { style: "color: var(--text-muted); font-size: var(--text-sm); padding: 8px;", "No tool data available." }
         };
     }
 
@@ -54,7 +54,7 @@ pub(crate) fn DurationTrendView(
 ) -> Element {
     if time_series.is_empty() {
         return rsx! {
-            div { style: "color: #555; font-size: 12px;", "No time series data." }
+            div { style: "color: var(--text-muted); font-size: var(--text-xs);", "No time series data." }
         };
     }
 
@@ -63,7 +63,7 @@ pub(crate) fn DurationTrendView(
 
     if top5.is_empty() {
         return rsx! {
-            div { style: "color: #555; font-size: 12px;", "No duration data." }
+            div { style: "color: var(--text-muted); font-size: var(--text-xs);", "No duration data." }
         };
     }
 

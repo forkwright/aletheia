@@ -7,20 +7,20 @@ use crate::state::diff::{ChangeType, DiffHunk, DiffLine, DiffViewMode, align_sid
 
 const HUNK_HEADER_STYLE: &str = "\
     padding: 4px 12px; \
-    font-family: monospace; \
-    font-size: 12px; \
-    color: #888; \
+    font-family: var(--font-mono); \
+    font-size: var(--text-xs); \
+    color: var(--text-secondary); \
     background: rgba(74, 74, 255, 0.08); \
-    border-top: 1px solid #333; \
-    border-bottom: 1px solid #333; \
+    border-top: 1px solid var(--border); \
+    border-bottom: 1px solid var(--border); \
     user-select: none;\
 ";
 
 const SBS_ROW_STYLE: &str = "\
     display: flex; \
     min-height: 1.5em; \
-    font-family: monospace; \
-    font-size: 13px; \
+    font-family: var(--font-mono); \
+    font-size: var(--text-sm); \
     line-height: 1.5;\
 ";
 
@@ -29,7 +29,7 @@ const SBS_GUTTER_STYLE: &str = "\
     width: 4ch; \
     text-align: right; \
     padding: 0 4px; \
-    color: #555; \
+    color: var(--text-muted); \
     user-select: none; \
     flex-shrink: 0;\
 ";
@@ -43,7 +43,7 @@ const SBS_CONTENT_STYLE: &str = "\
 
 const SBS_DIVIDER_STYLE: &str = "\
     width: 1px; \
-    background: #333; \
+    background: var(--border); \
     flex-shrink: 0;\
 ";
 

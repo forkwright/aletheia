@@ -10,16 +10,16 @@ use crate::services::config;
 use crate::state::notifications::{DndDuration, DndState, NotificationPreferences};
 
 const SECTION_STYLE: &str = "\
-    background: #1a1a2e; \
-    border: 1px solid #333; \
-    border-radius: 8px; \
+    background: var(--bg-surface); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
     padding: 16px 20px;\
 ";
 
 const SECTION_TITLE: &str = "\
-    font-size: 14px; \
+    font-size: var(--text-base); \
     font-weight: bold; \
-    color: #aaa; \
+    color: var(--text-secondary); \
     text-transform: uppercase; \
     letter-spacing: 0.5px; \
     margin-bottom: 12px;\
@@ -34,44 +34,44 @@ const ROW_STYLE: &str = "\
 ";
 
 const LABEL_STYLE: &str = "\
-    color: #888; \
-    font-size: 13px;\
+    color: var(--text-secondary); \
+    font-size: var(--text-sm);\
 ";
 
 const TOGGLE_ON: &str = "\
     background: #4f46e5; \
-    color: #fff; \
+    color: var(--text-primary); \
     border: 1px solid #6366f1; \
-    border-radius: 6px; \
+    border-radius: var(--radius-md); \
     padding: 6px 14px; \
-    font-size: 13px; \
+    font-size: var(--text-sm); \
     cursor: pointer;\
 ";
 
 const TOGGLE_OFF: &str = "\
-    background: #2a2a4a; \
-    color: #888; \
-    border: 1px solid #444; \
-    border-radius: 6px; \
+    background: var(--border); \
+    color: var(--text-secondary); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
     padding: 6px 14px; \
-    font-size: 13px; \
+    font-size: var(--text-sm); \
     cursor: pointer;\
 ";
 
 const DND_BTN: &str = "\
-    background: #2a2a4a; \
-    color: #e0e0e0; \
-    border: 1px solid #444; \
-    border-radius: 6px; \
+    background: var(--border); \
+    color: var(--text-primary); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
     padding: 5px 10px; \
-    font-size: 12px; \
+    font-size: var(--text-xs); \
     cursor: pointer; \
     margin-left: 6px;\
 ";
 
 const WARNING_STYLE: &str = "\
-    color: #eab308; \
-    font-size: 12px; \
+    color: var(--status-warning); \
+    font-size: var(--text-xs); \
     margin-top: 4px;\
 ";
 
@@ -223,7 +223,7 @@ pub(crate) fn NotificationSettings() -> Element {
                     style: "{LABEL_STYLE}",
                     "Do Not Disturb"
                     if dnd_active {
-                        div { style: "color: #4f46e5; font-size: 12px; margin-top: 2px;", "Active" }
+                        div { style: "color: #4f46e5; font-size: var(--text-xs); margin-top: 2px;", "Active" }
                     }
                 }
                 div {

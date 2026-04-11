@@ -17,24 +17,24 @@ const JOURNAL_ROW_STYLE: &str = "\
     align-items: center; \
     gap: 12px; \
     padding: 8px 12px; \
-    border-bottom: 1px solid #2a2a3a;\
+    border-bottom: 1px solid var(--border);\
 ";
 
 const BADGE_STYLE: &str = "\
     padding: 2px 6px; \
-    border-radius: 4px; \
+    border-radius: var(--radius-sm); \
     font-size: 10px; \
     font-weight: 600; \
     text-transform: uppercase;\
 ";
 
 const FILTER_BTN_STYLE: &str = "\
-    background: #2a2a4a; \
-    color: #aaa; \
-    border: 1px solid #444; \
-    border-radius: 4px; \
+    background: var(--border); \
+    color: var(--text-secondary); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-sm); \
     padding: 3px 8px; \
-    font-size: 11px; \
+    font-size: var(--text-xs); \
     cursor: pointer;\
 ";
 
@@ -42,7 +42,7 @@ const FILTER_BTN_STYLE: &str = "\
 pub(super) fn SystemReflectionSection(store: SystemReflectionStore) -> Element {
     rsx! {
         // NOTE: System overview.
-        h3 { style: "font-size: 14px; color: #aaa; margin: 0 0 12px 0;", "System Overview" }
+        h3 { style: "font-size: var(--text-base); color: var(--text-secondary); margin: 0 0 12px 0;", "System Overview" }
         div {
             style: "{GRID_STYLE}",
             OverviewCard {
@@ -69,14 +69,14 @@ pub(super) fn SystemReflectionSection(store: SystemReflectionStore) -> Element {
 
         // NOTE: Activity heatmap.
         h3 {
-            style: "font-size: 14px; color: #aaa; margin: 16px 0 12px 0;",
+            style: "font-size: var(--text-base); color: var(--text-secondary); margin: 16px 0 12px 0;",
             "Activity Heatmap"
         }
         ActivityHeatmap { cells: store.heatmap.clone() }
 
         // NOTE: Resource efficiency.
         h3 {
-            style: "font-size: 14px; color: #aaa; margin: 16px 0 12px 0;",
+            style: "font-size: var(--text-base); color: var(--text-secondary); margin: 16px 0 12px 0;",
             "Resource Efficiency"
         }
         EfficiencyPanel {
@@ -88,7 +88,7 @@ pub(super) fn SystemReflectionSection(store: SystemReflectionStore) -> Element {
 
         // NOTE: System journal.
         h3 {
-            style: "font-size: 14px; color: #aaa; margin: 16px 0 12px 0;",
+            style: "font-size: var(--text-base); color: var(--text-secondary); margin: 16px 0 12px 0;",
             "System Journal"
         }
         SystemJournal { events: store.journal.clone() }
@@ -140,7 +140,7 @@ fn ActivityHeatmap(cells: Vec<crate::state::meta::HeatmapCell>) -> Element {
                             text {
                                 x: "{x:.1}",
                                 y: "10",
-                                fill: "#666",
+                                fill: "var(--text-muted)",
                                 font_size: "9",
                                 text_anchor: "middle",
                                 "{h}:00"
@@ -158,7 +158,7 @@ fn ActivityHeatmap(cells: Vec<crate::state::meta::HeatmapCell>) -> Element {
                             text {
                                 x: "0",
                                 y: "{y:.1}",
-                                fill: "#666",
+                                fill: "var(--text-muted)",
                                 font_size: "9",
                                 dominant_baseline: "middle",
                                 "{label}"
@@ -190,9 +190,9 @@ fn ActivityHeatmap(cells: Vec<crate::state::meta::HeatmapCell>) -> Element {
             // NOTE: Legend.
             div {
                 style: "display: flex; align-items: center; gap: 4px; margin-top: 8px; \
-                        font-size: 10px; color: #666;",
+                        font-size: 10px; color: var(--text-muted);",
                 span { "Less" }
-                for color in &["#1a1a2e", "#1a2a3e", "#2a4a6a", "#4a9aff", "#22c55e"] {
+                for color in &["var(--bg-surface)", "#1a2a3e", "#2a4a6a", "#4a9aff", "var(--status-success)"] {
                     div {
                         style: "width: 12px; height: 12px; background: {color}; \
                                 border-radius: 2px;",
@@ -306,7 +306,7 @@ fn SystemJournal(events: Vec<JournalEvent>) -> Element {
                                 div {
                                     style: "{JOURNAL_ROW_STYLE}",
                                     span {
-                                        style: "font-size: 11px; color: #666; width: 140px; flex-shrink: 0;",
+                                        style: "font-size: var(--text-xs); color: var(--text-muted); width: 140px; flex-shrink: 0;",
                                         "{event.timestamp}"
                                     }
                                     span {
@@ -314,7 +314,7 @@ fn SystemJournal(events: Vec<JournalEvent>) -> Element {
                                         "{label}"
                                     }
                                     span {
-                                        style: "font-size: 13px; color: #e0e0e0;",
+                                        style: "font-size: var(--text-sm); color: var(--text-primary);",
                                         "{event.message}"
                                     }
                                 }

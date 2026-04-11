@@ -12,30 +12,30 @@ const HISTOGRAM_BAR_STYLE: &str = "\
     margin-bottom: 6px;\
 ";
 
-const BAR_LABEL_STYLE: &str = "font-size: 12px; color: #aaa; width: 80px; text-align: right;";
+const BAR_LABEL_STYLE: &str = "font-size: var(--text-xs); color: var(--text-secondary); width: 80px; text-align: right;";
 
 const BAR_BG_STYLE: &str = "\
     flex: 1; \
     height: 20px; \
-    background: #2a2a3a; \
-    border-radius: 4px; \
+    background: var(--border); \
+    border-radius: var(--radius-sm); \
     overflow: hidden;\
 ";
 
-const BAR_COUNT_STYLE: &str = "font-size: 11px; color: #888; width: 40px;";
+const BAR_COUNT_STYLE: &str = "font-size: var(--text-xs); color: var(--text-secondary); width: 40px;";
 
 const TOPIC_ROW_STYLE: &str = "\
     display: flex; \
     justify-content: space-between; \
     padding: 6px 0; \
-    border-bottom: 1px solid #2a2a3a;\
+    border-bottom: 1px solid var(--border);\
 ";
 
 #[component]
 pub(super) fn ConversationQualitySection(store: QualityStore) -> Element {
     rsx! {
         // NOTE: Quality indicator charts.
-        h3 { style: "font-size: 14px; color: #aaa; margin: 0 0 12px 0;", "Quality Indicators" }
+        h3 { style: "font-size: var(--text-base); color: var(--text-secondary); margin: 0 0 12px 0;", "Quality Indicators" }
         div {
             style: "{GRID_STYLE}",
             div {
@@ -56,7 +56,7 @@ pub(super) fn ConversationQualitySection(store: QualityStore) -> Element {
                     data: store.response_to_question_ratio.clone(),
                     width: 300.0,
                     height: 150.0,
-                    color: "#22c55e",
+                    color: "var(--status-success)",
                     show_labels: true,
                 }
             }
@@ -70,7 +70,7 @@ pub(super) fn ConversationQualitySection(store: QualityStore) -> Element {
                     data: store.tool_call_density.clone(),
                     width: 300.0,
                     height: 150.0,
-                    color: "#f59e0b",
+                    color: "var(--status-warning)",
                     show_labels: true,
                 }
             }
@@ -89,7 +89,7 @@ pub(super) fn ConversationQualitySection(store: QualityStore) -> Element {
 
         // NOTE: Session depth distribution.
         h3 {
-            style: "font-size: 14px; color: #aaa; margin: 16px 0 12px 0;",
+            style: "font-size: var(--text-base); color: var(--text-secondary); margin: 16px 0 12px 0;",
             "Session Depth Distribution"
         }
         DepthHistogram {
@@ -101,7 +101,7 @@ pub(super) fn ConversationQualitySection(store: QualityStore) -> Element {
         // NOTE: Topics.
         if !store.top_topics.is_empty() {
             h3 {
-                style: "font-size: 14px; color: #aaa; margin: 16px 0 12px 0;",
+                style: "font-size: var(--text-base); color: var(--text-secondary); margin: 16px 0 12px 0;",
                 "Top Topics"
             }
             div {
@@ -109,8 +109,8 @@ pub(super) fn ConversationQualitySection(store: QualityStore) -> Element {
                 for topic in &store.top_topics {
                     div {
                         style: "{TOPIC_ROW_STYLE}",
-                        span { style: "font-size: 13px; color: #e0e0e0;", "{topic.name}" }
-                        span { style: "font-size: 12px; color: #888;", "{topic.count} sessions" }
+                        span { style: "font-size: var(--text-sm); color: var(--text-primary);", "{topic.name}" }
+                        span { style: "font-size: var(--text-xs); color: var(--text-secondary);", "{topic.count} sessions" }
                     }
                 }
             }
@@ -125,8 +125,8 @@ fn DepthHistogram(short: u32, medium: u32, long: u32) -> Element {
 
     let buckets: Vec<(&str, u32, &str)> = vec![
         ("Short (<10)", short, "#4a9aff"),
-        ("Medium (10-50)", medium, "#22c55e"),
-        ("Long (50+)", long, "#f59e0b"),
+        ("Medium (10-50)", medium, "var(--status-success)"),
+        ("Long (50+)", long, "var(--status-warning)"),
     ];
 
     rsx! {
@@ -155,7 +155,7 @@ fn DepthHistogram(short: u32, medium: u32, long: u32) -> Element {
                                     style: "{BAR_BG_STYLE}",
                                     div {
                                         style: "height: 100%; width: {pct:.0}%; background: {color}; \
-                                                border-radius: 4px; transition: width 0.3s ease;",
+                                                border-radius: var(--radius-sm); transition: width 0.3s ease;",
                                     }
                                 }
                                 span { style: "{BAR_COUNT_STYLE}", "{count} ({session_pct:.0}%)" }
@@ -164,7 +164,7 @@ fn DepthHistogram(short: u32, medium: u32, long: u32) -> Element {
                     }
                 }
                 div {
-                    style: "margin-top: 8px; font-size: 11px; color: #555;",
+                    style: "margin-top: 8px; font-size: var(--text-xs); color: var(--text-muted);",
                     "Total: {total} sessions"
                 }
             }

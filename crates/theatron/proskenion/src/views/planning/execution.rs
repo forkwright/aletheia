@@ -33,18 +33,18 @@ const HEADER_ROW: &str = "\
 ";
 
 const REFRESH_BTN: &str = "\
-    background: #2a2a4a; \
-    color: #e0e0e0; \
-    border: 1px solid #444; \
-    border-radius: 6px; \
+    background: var(--border); \
+    color: var(--text-primary); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
     padding: 4px 12px; \
-    font-size: 12px; \
+    font-size: var(--text-xs); \
     cursor: pointer;\
 ";
 
 const PROGRESS_BAR_TRACK: &str = "\
     height: 6px; \
-    background: #2a2a3a; \
+    background: var(--border); \
     border-radius: 3px; \
     overflow: hidden;\
 ";
@@ -53,8 +53,8 @@ const PROGRESS_SUMMARY: &str = "\
     display: flex; \
     align-items: center; \
     justify-content: space-between; \
-    font-size: 13px; \
-    color: #aaa; \
+    font-size: var(--text-sm); \
+    color: var(--text-secondary); \
     margin-bottom: 4px;\
 ";
 
@@ -65,7 +65,7 @@ const PLACEHOLDER_STYLE: &str = "\
     justify-content: center; \
     flex: 1; \
     gap: 12px; \
-    color: #555;\
+    color: var(--text-muted);\
 ";
 
 /// Polling interval for execution state updates (10 seconds).
@@ -135,7 +135,7 @@ pub(crate) fn ExecutionView(project_id: String) -> Element {
             style: "{CONTAINER_STYLE}",
             div {
                 style: "{HEADER_ROW}",
-                h3 { style: "font-size: 16px; margin: 0; color: #e0e0e0;", "Execution" }
+                h3 { style: "font-size: var(--text-md); margin: 0; color: var(--text-primary);", "Execution" }
                 button {
                     style: "{REFRESH_BTN}",
                     onclick: move |_| fetch_trigger.set(fetch_trigger() + 1),
@@ -146,13 +146,13 @@ pub(crate) fn ExecutionView(project_id: String) -> Element {
             match &*fetch_state.read() {
                 ExecutionFetchState::Loading => rsx! {
                     div {
-                        style: "display: flex; align-items: center; justify-content: center; flex: 1; color: #888;",
+                        style: "display: flex; align-items: center; justify-content: center; flex: 1; color: var(--text-secondary);",
                         "Loading execution state..."
                     }
                 },
                 ExecutionFetchState::Error(err) => rsx! {
                     div {
-                        style: "display: flex; align-items: center; justify-content: center; flex: 1; color: #ef4444;",
+                        style: "display: flex; align-items: center; justify-content: center; flex: 1; color: var(--status-error);",
                         "Error: {err}"
                     }
                 },
@@ -160,8 +160,8 @@ pub(crate) fn ExecutionView(project_id: String) -> Element {
                     div {
                         style: "{PLACEHOLDER_STYLE}",
                         div { style: "font-size: 48px;", "[E]" }
-                        div { style: "font-size: 16px;", "Execution view not available" }
-                        div { style: "font-size: 13px; max-width: 400px; text-align: center;",
+                        div { style: "font-size: var(--text-md);", "Execution view not available" }
+                        div { style: "font-size: var(--text-sm); max-width: 400px; text-align: center;",
                             "The execution API is not available on this pylon instance."
                         }
                     }
@@ -171,8 +171,8 @@ pub(crate) fn ExecutionView(project_id: String) -> Element {
                         rsx! {
                             div {
                                 style: "{PLACEHOLDER_STYLE}",
-                                div { style: "font-size: 16px;", "No execution in progress" }
-                                div { style: "font-size: 13px;",
+                                div { style: "font-size: var(--text-md);", "No execution in progress" }
+                                div { style: "font-size: var(--text-sm);",
                                     "Waves will appear here when plan execution begins."
                                 }
                             }

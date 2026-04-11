@@ -18,16 +18,16 @@ const TOOLBAR_STYLE: &str = "\
 const STATS_STYLE: &str = "\
     display: flex; \
     gap: 12px; \
-    font-size: 13px;\
+    font-size: var(--text-sm);\
 ";
 
 const TOGGLE_BTN: &str = "\
-    background: #2a2a4a; \
-    color: #e0e0e0; \
-    border: 1px solid #444; \
-    border-radius: 6px; \
+    background: var(--border); \
+    color: var(--text-primary); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
     padding: 4px 12px; \
-    font-size: 12px; \
+    font-size: var(--text-xs); \
     cursor: pointer;\
 ";
 
@@ -35,32 +35,32 @@ const BACK_BTN: &str = "\
     background: none; \
     color: #7a7aff; \
     border: none; \
-    font-size: 13px; \
+    font-size: var(--text-sm); \
     cursor: pointer; \
     padding: 0;\
 ";
 
 const PATH_STYLE: &str = "\
-    font-size: 16px; \
+    font-size: var(--text-md); \
     font-weight: 600; \
-    color: #e0e0e0;\
+    color: var(--text-primary);\
 ";
 
 const STATUS_STYLE: &str = "\
     display: flex; \
     align-items: center; \
     justify-content: center; \
-    color: #888; \
-    font-size: 14px; \
+    color: var(--text-secondary); \
+    font-size: var(--text-base); \
     padding: 32px;\
 ";
 
 const DIFF_CONTAINER_STYLE: &str = "\
     flex: 1; \
     overflow: auto; \
-    border: 1px solid #333; \
-    border-radius: 8px; \
-    background: #1a1a2e;\
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
+    background: var(--bg-surface);\
 ";
 
 /// Diff viewer component.
@@ -126,8 +126,8 @@ pub(crate) fn DiffViewer(path: String, on_back: EventHandler<()>) -> Element {
                     FetchState::Loaded(diff) => rsx! {
                         div {
                             style: "{STATS_STYLE}",
-                            span { style: "color: #22c55e;", "+{diff.additions}" }
-                            span { style: "color: #ef4444;", "-{diff.deletions}" }
+                            span { style: "color: var(--status-success);", "+{diff.additions}" }
+                            span { style: "color: var(--status-error);", "-{diff.deletions}" }
                         }
                     },
                     _ => rsx! { div {} },
@@ -153,7 +153,7 @@ pub(crate) fn DiffViewer(path: String, on_back: EventHandler<()>) -> Element {
                     div { style: "{STATUS_STYLE}", "Loading diff..." }
                 },
                 FetchState::Error(err) => rsx! {
-                    div { style: "{STATUS_STYLE} color: #ef4444;", "Error: {err}" }
+                    div { style: "{STATUS_STYLE} color: var(--status-error);", "Error: {err}" }
                 },
                 FetchState::Loaded(diff) => {
                     if diff.hunks.is_empty() {

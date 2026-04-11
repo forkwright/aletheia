@@ -40,15 +40,15 @@ pub(crate) fn Settings() -> Element {
             style: "display: flex; flex-direction: column; height: 100%; overflow: hidden;",
 
             div {
-                style: "display: flex; gap: 0; padding: 0 20px; border-bottom: 1px solid #333; background: #111;",
+                style: "display: flex; gap: 0; padding: 0 20px; border-bottom: 1px solid var(--border); background: #111;",
                 for tab in [SettingsTab::Servers, SettingsTab::Appearance, SettingsTab::Keybindings, SettingsTab::Notifications] {
                     {
                         let is_active = active_tab() == tab;
                         let border = if is_active { "2px solid #5b6af0" } else { "2px solid transparent" };
-                        let color = if is_active { "#e0e0e0" } else { "#888" };
+                        let color = if is_active { "var(--text-primary)" } else { "var(--text-secondary)" };
                         let style = format!(
                             "padding: 12px 18px; background: none; border: none; border-bottom: {border}; \
-                             color: {color}; font-size: 13px; cursor: pointer; transition: color 0.15s;"
+                             color: {color}; font-size: var(--text-sm); cursor: pointer; transition: color 0.15s;"
                         );
                         rsx! {
                             button {

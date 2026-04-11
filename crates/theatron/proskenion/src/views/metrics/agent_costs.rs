@@ -63,7 +63,7 @@ pub(crate) fn AgentCosts(agents: Vec<AgentCostRow>) -> Element {
             div {
                 style: "overflow-x: auto;",
                 table {
-                    style: "width: 100%; border-collapse: collapse; font-size: 12px; font-family: 'IBM Plex Mono', monospace;",
+                    style: "width: 100%; border-collapse: collapse; font-size: var(--text-xs); font-family: 'IBM Plex Mono', monospace;",
                     thead {
                         tr {
                             style: "border-bottom: 1px solid #2a2724;",
@@ -95,7 +95,7 @@ pub(crate) fn AgentCosts(agents: Vec<AgentCostRow>) -> Element {
                                                 span { style: "margin-left: 6px; font-size: 10px; background: #14532d; color: #86efac; padding: 1px 4px; border-radius: 3px;", "efficient" }
                                             }
                                         }
-                                        td { style: "padding: 6px 8px; color: #eab308; text-align: right; font-weight: 600;", "{format_cost(agent.total_cost)}" }
+                                        td { style: "padding: 6px 8px; color: var(--status-warning); text-align: right; font-weight: 600;", "{format_cost(agent.total_cost)}" }
                                         td { style: "padding: 6px 8px; color: #a8a49e; text-align: right;", "{format_cost(agent.cost_per_session())}" }
                                         td { style: "padding: 6px 8px; color: #a8a49e; text-align: right;", "{format_cost(agent.cost_per_message())}" }
                                         td { style: "padding: 6px 8px; color: #706c66; text-align: right;", "${per_1k}" }

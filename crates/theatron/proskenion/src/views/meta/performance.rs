@@ -17,12 +17,12 @@ const RADAR_AXIS_LABELS: [&str; 5] = [
     "Reliability",
 ];
 
-const RADAR_COLORS: &[&str] = &["#4a9aff", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6"];
+const RADAR_COLORS: &[&str] = &["#4a9aff", "var(--status-success)", "var(--status-warning)", "var(--status-error)", "#8b5cf6"];
 
 const SCORECARD_STYLE: &str = "\
-    background: #1a1a2e; \
-    border: 1px solid #333; \
-    border-radius: 8px; \
+    background: var(--bg-surface); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
     padding: 16px; \
     min-width: 220px; \
     flex: 1;\
@@ -31,9 +31,9 @@ const SCORECARD_STYLE: &str = "\
 const ALERT_STYLE: &str = "\
     background: #2a1a1a; \
     border: 1px solid #4a2a2a; \
-    border-radius: 8px; \
+    border-radius: var(--radius-md); \
     padding: 12px 16px; \
-    font-size: 13px; \
+    font-size: var(--text-sm); \
     color: #f87171;\
 ";
 
@@ -56,12 +56,12 @@ pub(super) fn AgentPerformanceSection(store: AgentPerformanceStore) -> Element {
             // NOTE: Radar chart (comparative).
             div {
                 style: "margin-bottom: 16px;",
-                h3 { style: "font-size: 14px; color: #aaa; margin: 0 0 12px 0;", "Comparative Radar" }
+                h3 { style: "font-size: var(--text-base); color: var(--text-secondary); margin: 0 0 12px 0;", "Comparative Radar" }
                 RadarChart { scorecards: store.scorecards.clone() }
             }
 
             // NOTE: Individual scorecards.
-            h3 { style: "font-size: 14px; color: #aaa; margin: 0 0 12px 0;", "Agent Scorecards" }
+            h3 { style: "font-size: var(--text-base); color: var(--text-secondary); margin: 0 0 12px 0;", "Agent Scorecards" }
             div {
                 style: "{GRID_STYLE}",
                 for card in &store.scorecards {
@@ -78,7 +78,7 @@ fn ScorecardCard(scorecard: AgentScorecard) -> Element {
         div {
             style: "{SCORECARD_STYLE}",
             div {
-                style: "font-size: 15px; font-weight: 600; color: #e0e0e0; margin-bottom: 12px;",
+                style: "font-size: var(--text-md); font-weight: 600; color: var(--text-primary); margin-bottom: 12px;",
                 "{scorecard.agent_name}"
             }
             MetricRow {
@@ -110,9 +110,9 @@ fn MetricRow(label: &'static str, value: String) -> Element {
     rsx! {
         div {
             style: "display: flex; justify-content: space-between; padding: 4px 0; \
-                    border-bottom: 1px solid #2a2a3a;",
-            span { style: "font-size: 12px; color: #888;", "{label}" }
-            span { style: "font-size: 12px; color: #e0e0e0; font-weight: 500;", "{value}" }
+                    border-bottom: 1px solid var(--border);",
+            span { style: "font-size: var(--text-xs); color: var(--text-secondary);", "{label}" }
+            span { style: "font-size: var(--text-xs); color: var(--text-primary); font-weight: 500;", "{value}" }
         }
     }
 }
@@ -172,7 +172,7 @@ fn RadarChart(scorecards: Vec<AgentScorecard>) -> Element {
                             polygon {
                                 points: "{ring_points}",
                                 fill: "none",
-                                stroke: "#2a2a3a",
+                                stroke: "var(--border)",
                                 stroke_width: "1",
                             }
                         }
@@ -192,7 +192,7 @@ fn RadarChart(scorecards: Vec<AgentScorecard>) -> Element {
                                 y1: "{RADAR_CENTER:.1}",
                                 x2: "{x:.1}",
                                 y2: "{y:.1}",
-                                stroke: "#333",
+                                stroke: "var(--border)",
                                 stroke_width: "1",
                             }
                         }
@@ -211,7 +211,7 @@ fn RadarChart(scorecards: Vec<AgentScorecard>) -> Element {
                             text {
                                 x: "{x:.1}",
                                 y: "{y:.1}",
-                                fill: "#888",
+                                fill: "var(--text-secondary)",
                                 font_size: "10",
                                 text_anchor: "middle",
                                 dominant_baseline: "middle",
@@ -262,7 +262,7 @@ fn RadarChart(scorecards: Vec<AgentScorecard>) -> Element {
                                 div {
                                     style: "width: 12px; height: 12px; border-radius: 2px; background: {color};",
                                 }
-                                span { style: "font-size: 12px; color: #aaa;", "{card.agent_name}" }
+                                span { style: "font-size: var(--text-xs); color: var(--text-secondary);", "{card.agent_name}" }
                             }
                         }
                     }

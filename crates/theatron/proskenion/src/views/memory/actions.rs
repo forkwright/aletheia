@@ -17,27 +17,27 @@ const OVERLAY_STYLE: &str = "\
 ";
 
 const DIALOG_STYLE: &str = "\
-    background: #1a1a2e; \
-    border: 1px solid #333; \
-    border-radius: 12px; \
+    background: var(--bg-surface); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-lg); \
     padding: 24px; \
     min-width: 400px; \
     max-width: 600px; \
     max-height: 80vh; \
     overflow-y: auto; \
-    color: #e0e0e0;\
+    color: var(--text-primary);\
 ";
 
 const DIALOG_TITLE_STYLE: &str = "\
-    font-size: 18px; \
+    font-size: var(--text-lg); \
     font-weight: 700; \
     margin-bottom: 16px;\
 ";
 
 const DIALOG_BODY_STYLE: &str = "\
-    font-size: 14px; \
+    font-size: var(--text-base); \
     line-height: 1.5; \
-    color: #aaa; \
+    color: var(--text-secondary); \
     margin-bottom: 16px;\
 ";
 
@@ -49,62 +49,62 @@ const DIALOG_ACTIONS_STYLE: &str = "\
 ";
 
 const BTN_CANCEL_STYLE: &str = "\
-    background: #2a2a4a; \
-    color: #e0e0e0; \
-    border: 1px solid #444; \
-    border-radius: 6px; \
+    background: var(--border); \
+    color: var(--text-primary); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
     padding: 8px 16px; \
-    font-size: 13px; \
+    font-size: var(--text-sm); \
     cursor: pointer;\
 ";
 
 const BTN_PRIMARY_STYLE: &str = "\
     background: #3b3bbb; \
-    color: #ffffff; \
+    color: var(--text-primary); \
     border: none; \
-    border-radius: 6px; \
+    border-radius: var(--radius-md); \
     padding: 8px 16px; \
-    font-size: 13px; \
+    font-size: var(--text-sm); \
     cursor: pointer;\
 ";
 
 const BTN_DANGER_STYLE: &str = "\
     background: #b91c1c; \
-    color: #ffffff; \
+    color: var(--text-primary); \
     border: none; \
-    border-radius: 6px; \
+    border-radius: var(--radius-md); \
     padding: 8px 16px; \
-    font-size: 13px; \
+    font-size: var(--text-sm); \
     cursor: pointer;\
 ";
 
 const INPUT_STYLE: &str = "\
     width: 100%; \
-    background: #0f0f1a; \
-    border: 1px solid #333; \
-    border-radius: 6px; \
+    background: var(--bg-surface-dim); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
     padding: 8px 12px; \
-    color: #e0e0e0; \
-    font-size: 14px; \
+    color: var(--text-primary); \
+    font-size: var(--text-base); \
     margin-bottom: 12px;\
 ";
 
 const SELECT_STYLE: &str = "\
     width: 100%; \
-    background: #0f0f1a; \
-    border: 1px solid #333; \
-    border-radius: 6px; \
+    background: var(--bg-surface-dim); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
     padding: 8px 12px; \
-    color: #e0e0e0; \
-    font-size: 14px; \
+    color: var(--text-primary); \
+    font-size: var(--text-base); \
     margin-bottom: 12px; \
     cursor: pointer;\
 ";
 
 const MERGE_ENTITY_CARD: &str = "\
-    background: #0f0f1a; \
-    border: 1px solid #333; \
-    border-radius: 8px; \
+    background: var(--bg-surface-dim); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
     padding: 12px; \
     flex: 1;\
 ";
@@ -116,35 +116,35 @@ const MERGE_SIDE_STYLE: &str = "\
 ";
 
 const MERGE_LABEL_STYLE: &str = "\
-    font-size: 11px; \
-    color: #888; \
+    font-size: var(--text-xs); \
+    color: var(--text-secondary); \
     text-transform: uppercase; \
     margin-bottom: 4px;\
 ";
 
 const MERGE_NAME_STYLE: &str = "\
-    font-size: 16px; \
+    font-size: var(--text-md); \
     font-weight: 600; \
-    color: #e0e0e0;\
+    color: var(--text-primary);\
 ";
 
 const WARNING_STYLE: &str = "\
     background: #4a2a1a; \
-    border: 1px solid #f59e0b44; \
-    border-radius: 6px; \
+    border: 1px solid var(--status-warning)44; \
+    border-radius: var(--radius-md); \
     padding: 12px; \
-    color: #f59e0b; \
-    font-size: 13px; \
+    color: var(--status-warning); \
+    font-size: var(--text-sm); \
     margin-bottom: 12px;\
 ";
 
 const IMPACT_STYLE: &str = "\
     background: #4a1a1a; \
-    border: 1px solid #ef444444; \
-    border-radius: 6px; \
+    border: 1px solid var(--status-error)44; \
+    border-radius: var(--radius-md); \
     padding: 12px; \
-    color: #ef4444; \
-    font-size: 13px; \
+    color: var(--status-error); \
+    font-size: var(--text-sm); \
     margin-bottom: 12px;\
 ";
 
@@ -210,7 +210,7 @@ pub(crate) fn MergeDialog(
                         if has_selection {
                             div { style: "{MERGE_NAME_STYLE}", "{selected_name}" }
                         } else {
-                            div { style: "color: #555; font-size: 14px;", "Select entity below" }
+                            div { style: "color: var(--text-muted); font-size: var(--text-base);", "Select entity below" }
                         }
                     }
                 }
@@ -326,7 +326,7 @@ pub(crate) fn FlagDialog(
 
                 // Severity
                 label {
-                    style: "font-size: 13px; color: #aaa; display: block; margin-bottom: 4px;",
+                    style: "font-size: var(--text-sm); color: var(--text-secondary); display: block; margin-bottom: 4px;",
                     "Severity"
                 }
                 select {
@@ -352,7 +352,7 @@ pub(crate) fn FlagDialog(
 
                 // Reason
                 label {
-                    style: "font-size: 13px; color: #aaa; display: block; margin-bottom: 4px;",
+                    style: "font-size: var(--text-sm); color: var(--text-secondary); display: block; margin-bottom: 4px;",
                     "Reason"
                 }
                 textarea {

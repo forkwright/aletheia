@@ -37,17 +37,17 @@ const CONTROLS_BAR: &str = "\
     align-items: center; \
     gap: 8px; \
     padding: 8px 12px; \
-    border-bottom: 1px solid #2a2a3a; \
-    background: #1a1a2e;\
+    border-bottom: 1px solid var(--border); \
+    background: var(--bg-surface);\
 ";
 
 const ZOOM_BTN: &str = "\
-    background: #2a2a4a; \
-    color: #e0e0e0; \
-    border: 1px solid #444; \
-    border-radius: 4px; \
+    background: var(--border); \
+    color: var(--text-primary); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-sm); \
     padding: 2px 10px; \
-    font-size: 14px; \
+    font-size: var(--text-base); \
     cursor: pointer;\
 ";
 
@@ -86,7 +86,7 @@ pub(crate) fn Timeline(
                     "-"
                 }
                 span {
-                    style: "font-size: 12px; color: #888; min-width: 48px; text-align: center;",
+                    style: "font-size: var(--text-xs); color: var(--text-secondary); min-width: 48px; text-align: center;",
                     "{format_zoom(zoom)}"
                 }
                 button {
@@ -102,7 +102,7 @@ pub(crate) fn Timeline(
             }
 
             div {
-                style: "overflow-x: auto; overflow-y: hidden; border: 1px solid #2a2a3a; border-radius: 0 0 8px 8px; background: #0f0f1a; cursor: grab;",
+                style: "overflow-x: auto; overflow-y: hidden; border: 1px solid var(--border); border-radius: 0 0 8px 8px; background: var(--bg-surface-dim); cursor: grab;",
 
                 div {
                     style: "position: relative; min-width: {total_width}px; height: {ROW_HEIGHT}px; padding: 0 20px;",
@@ -111,7 +111,7 @@ pub(crate) fn Timeline(
                     for (i, x, _w, block) in &zoomed {
                         div {
                             key: "label-{i}",
-                            style: "position: absolute; left: {x_offset(*x)}px; top: 4px; font-size: 10px; color: #555;",
+                            style: "position: absolute; left: {x_offset(*x)}px; top: 4px; font-size: 10px; color: var(--text-muted);",
                             "{block.detail}"
                         }
                     }
@@ -130,19 +130,19 @@ pub(crate) fn Timeline(
                             rsx! {
                                 div {
                                     key: "block-{i}",
-                                    style: "position: absolute; left: {bx}px; top: {BLOCK_Y}px; width: {w}px; height: {BLOCK_HEIGHT}px; background: {block.color}; border: {border}; border-radius: 6px; padding: 6px 8px; box-sizing: border-box; cursor: pointer; overflow: hidden;",
+                                    style: "position: absolute; left: {bx}px; top: {BLOCK_Y}px; width: {w}px; height: {BLOCK_HEIGHT}px; background: {block.color}; border: {border}; border-radius: var(--radius-md); padding: 6px 8px; box-sizing: border-box; cursor: pointer; overflow: hidden;",
                                     onclick: move |_| on_block_click.call(idx),
 
                                     div {
-                                        style: "position: absolute; left: 0; top: 0; width: {progress_w}px; height: 100%; background: rgba(255,255,255,0.06); border-radius: 6px 0 0 6px;",
+                                        style: "position: absolute; left: 0; top: 0; width: {progress_w}px; height: 100%; background: rgba(255,255,255,0.06); border-radius: var(--radius-md) 0 0 6px;",
                                     }
 
                                     div {
-                                        style: "font-size: 12px; font-weight: 600; color: #e0e0e0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; position: relative;",
+                                        style: "font-size: var(--text-xs); font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; position: relative;",
                                         "{block.label}"
                                     }
                                     div {
-                                        style: "font-size: 10px; color: #888; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; position: relative;",
+                                        style: "font-size: 10px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; position: relative;",
                                         "{block.progress}% complete"
                                     }
                                 }

@@ -26,7 +26,7 @@ const CONTAINER_STYLE: &str = "\
 
 const CARD_STYLE: &str = "\
     background: var(--bg-surface); \
-    border-radius: 12px; \
+    border-radius: var(--radius-lg); \
     padding: 40px; \
     width: 400px; \
     display: flex; \
@@ -35,14 +35,14 @@ const CARD_STYLE: &str = "\
 ";
 
 const TITLE_STYLE: &str = "\
-    font-size: 24px; \
+    font-size: var(--text-2xl); \
     font-weight: bold; \
     text-align: center; \
     margin-bottom: 8px;\
 ";
 
 const LABEL_STYLE: &str = "\
-    font-size: 14px; \
+    font-size: var(--text-base); \
     color: var(--text-secondary); \
     margin-bottom: 4px;\
 ";
@@ -50,10 +50,10 @@ const LABEL_STYLE: &str = "\
 const INPUT_STYLE: &str = "\
     background: var(--input-bg); \
     border: 1px solid var(--input-border); \
-    border-radius: 6px; \
+    border-radius: var(--radius-md); \
     padding: 10px 12px; \
     color: var(--text-primary); \
-    font-size: 14px; \
+    font-size: var(--text-base); \
     width: 100%; \
     box-sizing: border-box;\
 ";
@@ -62,9 +62,9 @@ const BUTTON_STYLE: &str = "\
     background: var(--accent); \
     color: var(--text-inverse); \
     border: none; \
-    border-radius: 6px; \
+    border-radius: var(--radius-md); \
     padding: 12px; \
-    font-size: 16px; \
+    font-size: var(--text-md); \
     cursor: pointer; \
     margin-top: 8px;\
 ";
@@ -73,16 +73,16 @@ const BUTTON_DISABLED_STYLE: &str = "\
     background: var(--bg-surface-bright); \
     color: var(--text-muted); \
     border: none; \
-    border-radius: 6px; \
+    border-radius: var(--radius-md); \
     padding: 12px; \
-    font-size: 16px; \
+    font-size: var(--text-md); \
     cursor: not-allowed; \
     margin-top: 8px;\
 ";
 
 const STATUS_STYLE: &str = "\
     text-align: center; \
-    font-size: 14px; \
+    font-size: var(--text-base); \
     min-height: 20px;\
 ";
 

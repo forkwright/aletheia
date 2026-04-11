@@ -8,9 +8,9 @@ const CARD_STYLE: &str = "\
     flex: 1; \
     min-width: 260px; \
     max-width: 420px; \
-    background: #0f0f1a; \
-    border: 1px solid #2a2a3a; \
-    border-radius: 6px; \
+    background: var(--bg-surface-dim); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
     padding: 12px 14px;\
 ";
 
@@ -22,22 +22,22 @@ const CARD_HEADER: &str = "\
 ";
 
 const PLAN_TITLE: &str = "\
-    font-size: 13px; \
+    font-size: var(--text-sm); \
     font-weight: 600; \
-    color: #e0e0e0;\
+    color: var(--text-primary);\
 ";
 
 const AGENT_BADGE: &str = "\
-    font-size: 11px; \
-    color: #888; \
+    font-size: var(--text-xs); \
+    color: var(--text-secondary); \
     display: flex; \
     align-items: center; \
     gap: 4px;\
 ";
 
 const PROGRESS_TEXT: &str = "\
-    font-size: 11px; \
-    color: #888; \
+    font-size: var(--text-xs); \
+    color: var(--text-secondary); \
     margin-bottom: 6px;\
 ";
 
@@ -46,14 +46,14 @@ const STEP_ROW: &str = "\
     align-items: flex-start; \
     gap: 6px; \
     padding: 3px 0; \
-    font-size: 12px;\
+    font-size: var(--text-xs);\
 ";
 
 const STEP_ICON_STYLE: &str = "\
     flex-shrink: 0; \
     width: 16px; \
     text-align: center; \
-    font-size: 11px;\
+    font-size: var(--text-xs);\
 ";
 
 const STEP_DESC: &str = "color: #c0c0e0;";
@@ -62,9 +62,9 @@ const DETAIL_BOX: &str = "\
     margin-top: 4px; \
     padding: 6px 8px; \
     background: #151525; \
-    border: 1px solid #2a2a3a; \
-    border-radius: 4px; \
-    font-size: 11px;\
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-sm); \
+    font-size: var(--text-xs);\
 ";
 
 const TIME_ROW: &str = "\
@@ -72,15 +72,15 @@ const TIME_ROW: &str = "\
     align-items: center; \
     gap: 12px; \
     margin-top: 8px; \
-    font-size: 11px; \
-    color: #666;\
+    font-size: var(--text-xs); \
+    color: var(--text-muted);\
 ";
 
 const EXPAND_BTN: &str = "\
     background: transparent; \
     border: none; \
     color: #4a9aff; \
-    font-size: 11px; \
+    font-size: var(--text-xs); \
     cursor: pointer; \
     padding: 0;\
 ";
@@ -144,19 +144,19 @@ pub(crate) fn PlanCard(plan: ExecutionPlan) -> Element {
                         if *expanded.read() {
                             if let Some(ref output) = step.output {
                                 div {
-                                    style: "{DETAIL_BOX} color: #aaa;",
+                                    style: "{DETAIL_BOX} color: var(--text-secondary);",
                                     "{output}"
                                 }
                             }
                             if let Some(ref error) = step.error {
                                 div {
-                                    style: "{DETAIL_BOX} color: #ef4444;",
+                                    style: "{DETAIL_BOX} color: var(--status-error);",
                                     "{error}"
                                 }
                             }
                             if let Some(dur) = step.duration_secs {
                                 span {
-                                    style: "font-size: 10px; color: #555; margin-left: 4px;",
+                                    style: "font-size: 10px; color: var(--text-muted); margin-left: 4px;",
                                     "({dur:.1}s)"
                                 }
                             }
@@ -207,20 +207,20 @@ pub(crate) fn step_icon(status: StepStatus) -> &'static str {
 #[must_use]
 pub(crate) fn step_color(status: StepStatus) -> &'static str {
     match status {
-        StepStatus::Pending => "#666",
+        StepStatus::Pending => "var(--text-muted)",
         StepStatus::Running => "#4a9aff",
-        StepStatus::Complete => "#22c55e",
-        StepStatus::Failed => "#ef4444",
-        StepStatus::Skipped => "#888",
+        StepStatus::Complete => "var(--status-success)",
+        StepStatus::Failed => "var(--status-error)",
+        StepStatus::Skipped => "var(--text-secondary)",
     }
 }
 
 fn agent_status_color(status: &str) -> &'static str {
     match status {
-        "active" | "running" => "#22c55e",
-        "idle" | "waiting" => "#f59e0b",
-        "error" | "failed" => "#ef4444",
-        _ => "#666",
+        "active" | "running" => "var(--status-success)",
+        "idle" | "waiting" => "var(--status-warning)",
+        "error" | "failed" => "var(--status-error)",
+        _ => "var(--text-muted)",
     }
 }
 

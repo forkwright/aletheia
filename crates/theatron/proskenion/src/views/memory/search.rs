@@ -21,21 +21,21 @@ const SEARCH_ROW_STYLE: &str = "\
 const SEARCH_INPUT_STYLE: &str = "\
     flex: 1; \
     min-width: 200px; \
-    background: #1a1a2e; \
-    border: 1px solid #333; \
-    border-radius: 6px; \
+    background: var(--bg-surface); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
     padding: 8px 12px; \
-    color: #e0e0e0; \
-    font-size: 14px;\
+    color: var(--text-primary); \
+    font-size: var(--text-base);\
 ";
 
 const FILTER_SELECT_STYLE: &str = "\
-    background: #1a1a2e; \
-    border: 1px solid #333; \
-    border-radius: 6px; \
+    background: var(--bg-surface); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
     padding: 8px 12px; \
-    color: #e0e0e0; \
-    font-size: 13px; \
+    color: var(--text-primary); \
+    font-size: var(--text-sm); \
     cursor: pointer;\
 ";
 
@@ -49,23 +49,23 @@ const CHIP_STYLE: &str = "\
     display: flex; \
     align-items: center; \
     gap: 4px; \
-    background: #2a2a4a; \
-    color: #e0e0e0; \
-    border-radius: 12px; \
+    background: var(--border); \
+    color: var(--text-primary); \
+    border-radius: var(--radius-lg); \
     padding: 4px 10px; \
-    font-size: 12px;\
+    font-size: var(--text-xs);\
 ";
 
 const CHIP_DISMISS_STYLE: &str = "\
     cursor: pointer; \
-    color: #888; \
-    font-size: 14px; \
+    color: var(--text-secondary); \
+    font-size: var(--text-base); \
     line-height: 1;\
 ";
 
 const CLEAR_ALL_STYLE: &str = "\
     color: #7a7aff; \
-    font-size: 12px; \
+    font-size: var(--text-xs); \
     cursor: pointer; \
     background: none; \
     border: none; \

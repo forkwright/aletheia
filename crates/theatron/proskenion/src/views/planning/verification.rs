@@ -31,18 +31,18 @@ const HEADER_ROW: &str = "\
 ";
 
 const SECTION_LABEL: &str = "\
-    font-size: 11px; \
+    font-size: var(--text-xs); \
     font-weight: 600; \
-    color: #666; \
+    color: var(--text-muted); \
     text-transform: uppercase; \
     letter-spacing: 0.5px; \
     margin: 16px 0 8px;\
 ";
 
 const COVERAGE_SECTION: &str = "\
-    background: #1a1a2e; \
-    border: 1px solid #2a2a3a; \
-    border-radius: 8px; \
+    background: var(--bg-surface); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
     padding: 14px 16px; \
     margin-bottom: 16px;\
 ";
@@ -50,18 +50,18 @@ const COVERAGE_SECTION: &str = "\
 const TABLE_STYLE: &str = "\
     width: 100%; \
     border-collapse: collapse; \
-    font-size: 13px;\
+    font-size: var(--text-sm);\
 ";
 
 const TH_STYLE: &str = "\
     text-align: left; \
     padding: 6px 10px; \
-    font-size: 11px; \
+    font-size: var(--text-xs); \
     font-weight: 600; \
-    color: #666; \
+    color: var(--text-muted); \
     text-transform: uppercase; \
     letter-spacing: 0.4px; \
-    border-bottom: 1px solid #2a2a3a;\
+    border-bottom: 1px solid var(--border);\
 ";
 
 const TD_STYLE: &str = "\
@@ -72,19 +72,19 @@ const TD_STYLE: &str = "\
 
 const GAP_SECTION: &str = "\
     margin-top: 16px; \
-    background: #1a1a2e; \
-    border: 1px solid #2a2a3a; \
-    border-radius: 8px; \
+    background: var(--bg-surface); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
     padding: 14px 16px;\
 ";
 
 const REFRESH_BTN: &str = "\
-    background: #2a2a4a; \
-    color: #e0e0e0; \
-    border: 1px solid #444; \
-    border-radius: 6px; \
+    background: var(--border); \
+    color: var(--text-primary); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
     padding: 4px 12px; \
-    font-size: 12px; \
+    font-size: var(--text-xs); \
     cursor: pointer;\
 ";
 
@@ -92,9 +92,9 @@ const VERIFY_BTN: &str = "\
     background: #1a2a4a; \
     color: #4a9aff; \
     border: 1px solid #4a9aff; \
-    border-radius: 6px; \
+    border-radius: var(--radius-md); \
     padding: 4px 12px; \
-    font-size: 12px; \
+    font-size: var(--text-xs); \
     cursor: pointer;\
 ";
 
@@ -105,7 +105,7 @@ const PLACEHOLDER_STYLE: &str = "\
     justify-content: center; \
     flex: 1; \
     gap: 10px; \
-    color: #555;\
+    color: var(--text-muted);\
 ";
 
 /// Goal-backward verification results view.
@@ -206,7 +206,7 @@ pub(crate) fn VerificationView(project_id: String) -> Element {
             style: "{CONTAINER_STYLE}",
             div {
                 style: "{HEADER_ROW}",
-                h3 { style: "margin: 0; font-size: 16px; color: #e0e0e0;", "Verification" }
+                h3 { style: "margin: 0; font-size: var(--text-md); color: var(--text-primary);", "Verification" }
                 div {
                     style: "display: flex; gap: 8px; align-items: center;",
                     button {
@@ -229,21 +229,21 @@ pub(crate) fn VerificationView(project_id: String) -> Element {
             match &*fetch_state.read() {
                 FetchState::Loading => rsx! {
                     div {
-                        style: "display: flex; align-items: center; justify-content: center; flex: 1; color: #888;",
+                        style: "display: flex; align-items: center; justify-content: center; flex: 1; color: var(--text-secondary);",
                         "Loading verification..."
                     }
                 },
                 FetchState::Error(err) => rsx! {
                     div {
-                        style: "display: flex; align-items: center; justify-content: center; flex: 1; color: #ef4444;",
+                        style: "display: flex; align-items: center; justify-content: center; flex: 1; color: var(--status-error);",
                         "Error: {err}"
                     }
                 },
                 FetchState::NotAvailable => rsx! {
                     div {
                         style: "{PLACEHOLDER_STYLE}",
-                        div { style: "font-size: 16px;", "Verification not available" }
-                        div { style: "font-size: 13px; max-width: 360px; text-align: center;",
+                        div { style: "font-size: var(--text-md);", "Verification not available" }
+                        div { style: "font-size: var(--text-sm); max-width: 360px; text-align: center;",
                             "The verification API is not available on this pylon instance."
                         }
                     }
@@ -267,7 +267,7 @@ pub(crate) fn VerificationView(project_id: String) -> Element {
                         div {
                             style: "flex: 1; overflow-y: auto;",
                             // Timestamp
-                            div { style: "font-size: 11px; color: #555; margin-bottom: 12px;",
+                            div { style: "font-size: var(--text-xs); color: var(--text-muted); margin-bottom: 12px;",
                                 "Last verified: {last_verified}"
                             }
 
@@ -283,7 +283,7 @@ pub(crate) fn VerificationView(project_id: String) -> Element {
                             // Requirement table
                             div { style: "{SECTION_LABEL}", "Requirements" }
                             if reqs.is_empty() {
-                                div { style: "color: #555; font-size: 13px; padding: 8px 0;",
+                                div { style: "color: var(--text-muted); font-size: var(--text-sm); padding: 8px 0;",
                                     "No requirements defined."
                                 }
                             } else {
@@ -316,7 +316,7 @@ pub(crate) fn VerificationView(project_id: String) -> Element {
                                                 rsx! {
                                                     tr {
                                                         key: "{req.id}",
-                                                        td { style: "{TD_STYLE} color: #e0e0e0;", "{req.title}" }
+                                                        td { style: "{TD_STYLE} color: var(--text-primary);", "{req.title}" }
                                                         td {
                                                             style: "{TD_STYLE} color: {status_color};",
                                                             "{status_label}"
@@ -325,8 +325,8 @@ pub(crate) fn VerificationView(project_id: String) -> Element {
                                                             style: "{TD_STYLE} color: {cov_color}; font-weight: 600;",
                                                             "{req.coverage_pct}%"
                                                         }
-                                                        td { style: "{TD_STYLE} color: #888;", "{req.tier}" }
-                                                        td { style: "{TD_STYLE} color: #aaa;", "{evidence_summary}" }
+                                                        td { style: "{TD_STYLE} color: var(--text-secondary);", "{req.tier}" }
+                                                        td { style: "{TD_STYLE} color: var(--text-secondary);", "{evidence_summary}" }
                                                     }
                                                 }
                                             }
@@ -352,10 +352,10 @@ pub(crate) fn VerificationView(project_id: String) -> Element {
 fn req_status_color(status: crate::state::verification::VerificationStatus) -> &'static str {
     use crate::state::verification::VerificationStatus;
     match status {
-        VerificationStatus::Verified => "#22c55e",
-        VerificationStatus::PartiallyVerified => "#f59e0b",
-        VerificationStatus::Unverified => "#888",
-        VerificationStatus::Failed => "#ef4444",
+        VerificationStatus::Verified => "var(--status-success)",
+        VerificationStatus::PartiallyVerified => "var(--status-warning)",
+        VerificationStatus::Unverified => "var(--text-secondary)",
+        VerificationStatus::Failed => "var(--status-error)",
     }
 }
 

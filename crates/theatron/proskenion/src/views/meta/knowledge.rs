@@ -14,7 +14,7 @@ pub(super) fn KnowledgeGrowthSection(store: KnowledgeGrowthStore) -> Element {
 
     rsx! {
         // NOTE: Growth rate summary cards.
-        h3 { style: "font-size: 14px; color: #aaa; margin: 0 0 12px 0;", "Growth Rate" }
+        h3 { style: "font-size: var(--text-base); color: var(--text-secondary); margin: 0 0 12px 0;", "Growth Rate" }
         div {
             style: "{GRID_STYLE}",
             div {
@@ -46,7 +46,7 @@ pub(super) fn KnowledgeGrowthSection(store: KnowledgeGrowthStore) -> Element {
 
         // NOTE: Cumulative entity growth.
         h3 {
-            style: "font-size: 14px; color: #aaa; margin: 16px 0 12px 0;",
+            style: "font-size: var(--text-base); color: var(--text-secondary); margin: 16px 0 12px 0;",
             "Total Entities Over Time"
         }
         div {
@@ -62,7 +62,7 @@ pub(super) fn KnowledgeGrowthSection(store: KnowledgeGrowthStore) -> Element {
 
         // NOTE: New entities per period.
         h3 {
-            style: "font-size: 14px; color: #aaa; margin: 16px 0 12px 0;",
+            style: "font-size: var(--text-base); color: var(--text-secondary); margin: 16px 0 12px 0;",
             "New Entities Per Period"
         }
         div {
@@ -71,14 +71,14 @@ pub(super) fn KnowledgeGrowthSection(store: KnowledgeGrowthStore) -> Element {
                 data: store.new_entities_per_period.clone(),
                 width: 600.0,
                 height: 180.0,
-                color: "#22c55e",
+                color: "var(--status-success)",
             }
         }
 
         // NOTE: Knowledge density.
         if !store.density_over_time.is_empty() {
             h3 {
-                style: "font-size: 14px; color: #aaa; margin: 16px 0 12px 0;",
+                style: "font-size: var(--text-base); color: var(--text-secondary); margin: 16px 0 12px 0;",
                 "Knowledge Density (Relationships / Entity)"
             }
             div {
@@ -87,7 +87,7 @@ pub(super) fn KnowledgeGrowthSection(store: KnowledgeGrowthStore) -> Element {
                     data: store.density_over_time.clone(),
                     width: 600.0,
                     height: 150.0,
-                    color: "#f59e0b",
+                    color: "var(--status-warning)",
                     show_labels: true,
                 }
             }
@@ -96,7 +96,7 @@ pub(super) fn KnowledgeGrowthSection(store: KnowledgeGrowthStore) -> Element {
         // NOTE: Entity type distribution.
         if !store.entity_type_distribution.is_empty() {
             h3 {
-                style: "font-size: 14px; color: #aaa; margin: 16px 0 12px 0;",
+                style: "font-size: var(--text-base); color: var(--text-secondary); margin: 16px 0 12px 0;",
                 "Entity Type Distribution"
             }
             EntityTypeBreakdown { slices: store.entity_type_distribution.clone() }
@@ -129,19 +129,19 @@ fn EntityTypeBreakdown(slices: Vec<crate::state::meta::EntityTypeSlice>) -> Elem
                                         background: {color}; flex-shrink: 0;",
                             }
                             span {
-                                style: "font-size: 12px; color: #aaa; width: 100px;",
+                                style: "font-size: var(--text-xs); color: var(--text-secondary); width: 100px;",
                                 "{slice.entity_type}"
                             }
                             div {
-                                style: "flex: 1; height: 16px; background: #2a2a3a; \
-                                        border-radius: 4px; overflow: hidden;",
+                                style: "flex: 1; height: 16px; background: var(--border); \
+                                        border-radius: var(--radius-sm); overflow: hidden;",
                                 div {
                                     style: "height: 100%; width: {bar_pct:.0}%; background: {color}; \
-                                            border-radius: 4px;",
+                                            border-radius: var(--radius-sm);",
                                 }
                             }
                             span {
-                                style: "font-size: 11px; color: #888; width: 70px; text-align: right;",
+                                style: "font-size: var(--text-xs); color: var(--text-secondary); width: 70px; text-align: right;",
                                 "{slice.count} ({pct:.0}%)"
                             }
                         }

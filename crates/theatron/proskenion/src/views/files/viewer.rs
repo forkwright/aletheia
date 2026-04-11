@@ -26,7 +26,7 @@ const CODE_AREA_STYLE: &str = "\
     flex: 1; \
     overflow: auto; \
     font-family: var(--font-mono, monospace); \
-    font-size: 13px; \
+    font-size: var(--text-sm); \
     line-height: 1.5;\
 ";
 
@@ -62,7 +62,7 @@ const EMPTY_STATE_STYLE: &str = "\
     justify-content: center; \
     flex: 1; \
     color: var(--text-muted, #706c66); \
-    font-size: 14px;\
+    font-size: var(--text-base);\
 ";
 
 /// Highlighted line: a sequence of (html_color, bold, italic, text) spans.

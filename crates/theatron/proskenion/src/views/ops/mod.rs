@@ -186,9 +186,9 @@ const CARDS_STYLE: &str = "\
 ";
 
 const CARD_STYLE: &str = "\
-    background: #1a1a2e; \
-    border: 1px solid #333; \
-    border-radius: 8px; \
+    background: var(--bg-surface); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
     padding: 16px 20px; \
     min-width: 120px; \
     text-align: center;\
@@ -197,28 +197,28 @@ const CARD_STYLE: &str = "\
 const CARD_VALUE: &str = "\
     font-size: 28px; \
     font-weight: bold; \
-    color: #e0e0e0;\
+    color: var(--text-primary);\
 ";
 
 const CARD_LABEL: &str = "\
-    font-size: 12px; \
-    color: #888; \
+    font-size: var(--text-xs); \
+    color: var(--text-secondary); \
     margin-top: 4px;\
 ";
 
 const SECTION_STYLE: &str = "\
-    background: #1a1a2e; \
-    border: 1px solid #333; \
-    border-radius: 8px; \
+    background: var(--bg-surface); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
     padding: 16px; \
     flex: 1; \
     overflow-y: auto;\
 ";
 
 const SECTION_TITLE: &str = "\
-    font-size: 14px; \
+    font-size: var(--text-base); \
     font-weight: bold; \
-    color: #aaa; \
+    color: var(--text-secondary); \
     margin-bottom: 12px;\
 ";
 
@@ -228,43 +228,43 @@ const ENTRY_STYLE: &str = "\
     gap: 8px; \
     padding: 6px 0; \
     border-bottom: 1px solid #222; \
-    font-size: 13px;\
+    font-size: var(--text-sm);\
 ";
 
 const ACTIVE_DOT: &str = "\
     width: 8px; \
     height: 8px; \
     border-radius: 50%; \
-    background: #4a4aff;\
+    background: var(--accent);\
 ";
 
 const REFRESH_BTN: &str = "\
-    background: #2a2a4a; \
-    color: #e0e0e0; \
-    border: 1px solid #444; \
-    border-radius: 6px; \
+    background: var(--border); \
+    color: var(--text-primary); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
     padding: 4px 12px; \
-    font-size: 12px; \
+    font-size: var(--text-xs); \
     cursor: pointer;\
 ";
 
 const TAB_ACTIVE: &str = "\
-    background: #2a2a4a; \
-    color: #e0e0e0; \
-    border: 1px solid #4a4aff; \
-    border-radius: 6px; \
+    background: var(--border); \
+    color: var(--text-primary); \
+    border: 1px solid var(--accent); \
+    border-radius: var(--radius-md); \
     padding: 4px 14px; \
-    font-size: 13px; \
+    font-size: var(--text-sm); \
     cursor: pointer;\
 ";
 
 const TAB_INACTIVE: &str = "\
     background: transparent; \
-    color: #888; \
-    border: 1px solid #333; \
-    border-radius: 6px; \
+    color: var(--text-secondary); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
     padding: 4px 14px; \
-    font-size: 13px; \
+    font-size: var(--text-sm); \
     cursor: pointer;\
 ";
 
@@ -541,7 +541,7 @@ pub(crate) fn Ops() -> Element {
             // -- Header with tabs ---------------------------------------------
             div {
                 style: "display: flex; align-items: center; justify-content: space-between;",
-                h2 { style: "font-size: 20px; margin: 0;", "Operations" }
+                h2 { style: "font-size: var(--text-xl); margin: 0;", "Operations" }
                 div {
                     style: "display: flex; align-items: center; gap: 8px;",
                     button {
@@ -577,7 +577,7 @@ pub(crate) fn Ops() -> Element {
             match tab {
                 OpsTab::Dashboard => rsx! {
                     if let FetchState::Error(err) = &*dash_fetch.read() {
-                        div { style: "color: #ef4444; font-size: 13px;", "Error: {err}" }
+                        div { style: "color: var(--status-error); font-size: var(--text-sm);", "Error: {err}" }
                     }
 
                     AgentCards { store: agent_store }
@@ -591,7 +591,7 @@ pub(crate) fn Ops() -> Element {
 
                 OpsTab::Tools => rsx! {
                     if let FetchState::Error(err) = &*tools_fetch.read() {
-                        div { style: "color: #ef4444; font-size: 13px;", "Error: {err}" }
+                        div { style: "color: var(--status-error); font-size: var(--text-sm);", "Error: {err}" }
                     }
 
                     div {
@@ -603,17 +603,17 @@ pub(crate) fn Ops() -> Element {
                         }
                         div {
                             style: "{CARD_STYLE}",
-                            div { style: "{CARD_VALUE} color: #22c55e;", "{current_stats.succeeded}" }
+                            div { style: "{CARD_VALUE} color: var(--status-success);", "{current_stats.succeeded}" }
                             div { style: "{CARD_LABEL}", "Succeeded" }
                         }
                         div {
                             style: "{CARD_STYLE}",
-                            div { style: "{CARD_VALUE} color: #ef4444;", "{current_stats.failed}" }
+                            div { style: "{CARD_VALUE} color: var(--status-error);", "{current_stats.failed}" }
                             div { style: "{CARD_LABEL}", "Failed" }
                         }
                         div {
                             style: "{CARD_STYLE}",
-                            div { style: "{CARD_VALUE} color: #4a4aff;",
+                            div { style: "{CARD_VALUE} color: var(--accent);",
                                 "{current_stats.active.len()}"
                             }
                             div { style: "{CARD_LABEL}", "Active" }
@@ -628,8 +628,8 @@ pub(crate) fn Ops() -> Element {
                                 div {
                                     style: "{ENTRY_STYLE}",
                                     span { style: "{ACTIVE_DOT}" }
-                                    span { style: "color: #e0e0e0;", "{tool.name}" }
-                                    span { style: "color: #555; font-size: 11px;", "{tool.id}" }
+                                    span { style: "color: var(--text-primary);", "{tool.name}" }
+                                    span { style: "color: var(--text-muted); font-size: var(--text-xs);", "{tool.id}" }
                                 }
                             }
                         }
@@ -639,7 +639,7 @@ pub(crate) fn Ops() -> Element {
                         style: "{SECTION_STYLE}",
                         div { style: "{SECTION_TITLE}", "Tool History" }
                         if current_stats.history.is_empty() {
-                            div { style: "color: #555; font-size: 13px;", "No tool calls recorded" }
+                            div { style: "color: var(--text-muted); font-size: var(--text-sm);", "No tool calls recorded" }
                         }
                         for (i , entry) in current_stats.history.iter().enumerate() {
                             {render_tool_history_row(i, entry)}
@@ -656,7 +656,7 @@ pub(crate) fn Ops() -> Element {
 }
 
 fn render_tool_history_row(i: usize, entry: &ToolHistoryEntry) -> Element {
-    let color = if entry.is_error { "#ef4444" } else { "#22c55e" };
+    let color = if entry.is_error { "var(--status-error)" } else { "var(--status-success)" };
     let icon = if entry.is_error { "[x]" } else { "[v]" };
     let icon_style = format!("color: {color};");
 
@@ -665,8 +665,8 @@ fn render_tool_history_row(i: usize, entry: &ToolHistoryEntry) -> Element {
             key: "{i}",
             style: "{ENTRY_STYLE}",
             span { style: "{icon_style}", "{icon}" }
-            span { style: "color: #e0e0e0; flex: 1;", "{entry.name}" }
-            span { style: "color: #666; font-size: 11px;", "{entry.duration_ms}ms" }
+            span { style: "color: var(--text-primary); flex: 1;", "{entry.name}" }
+            span { style: "color: var(--text-muted); font-size: var(--text-xs);", "{entry.duration_ms}ms" }
         }
     }
 }

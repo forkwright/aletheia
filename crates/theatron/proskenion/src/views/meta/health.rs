@@ -10,10 +10,10 @@ use crate::views::meta::{
 const TABLE_HEADER_STYLE: &str = "\
     display: flex; \
     padding: 8px 12px; \
-    background: #1a1a2e; \
-    border-bottom: 1px solid #333; \
-    font-size: 11px; \
-    color: #888; \
+    background: var(--bg-surface); \
+    border-bottom: 1px solid var(--border); \
+    font-size: var(--text-xs); \
+    color: var(--text-secondary); \
     text-transform: uppercase; \
     letter-spacing: 0.5px;\
 ";
@@ -21,17 +21,17 @@ const TABLE_HEADER_STYLE: &str = "\
 const TABLE_ROW_STYLE: &str = "\
     display: flex; \
     padding: 8px 12px; \
-    border-bottom: 1px solid #2a2a3a; \
-    font-size: 13px; \
-    color: #e0e0e0;\
+    border-bottom: 1px solid var(--border); \
+    font-size: var(--text-sm); \
+    color: var(--text-primary);\
 ";
 
 const REC_STYLE: &str = "\
-    background: #1a1a2e; \
-    border-left: 3px solid #f59e0b; \
+    background: var(--bg-surface); \
+    border-left: 3px solid var(--status-warning); \
     padding: 10px 14px; \
-    font-size: 13px; \
-    color: #e0e0e0; \
+    font-size: var(--text-sm); \
+    color: var(--text-primary); \
     margin-bottom: 6px; \
     border-radius: 0 6px 6px 0;\
 ";
@@ -78,7 +78,7 @@ pub(super) fn MemoryHealthSection(store: MemoryHealthStore) -> Element {
 
         // NOTE: Confidence distribution histogram.
         h3 {
-            style: "font-size: 14px; color: #aaa; margin: 16px 0 12px 0;",
+            style: "font-size: var(--text-base); color: var(--text-secondary); margin: 16px 0 12px 0;",
             "Confidence Distribution"
         }
         ConfidenceHistogram { buckets: store.confidence_distribution.clone() }
@@ -86,7 +86,7 @@ pub(super) fn MemoryHealthSection(store: MemoryHealthStore) -> Element {
         // NOTE: Health trend over time.
         if !store.health_over_time.is_empty() {
             h3 {
-                style: "font-size: 14px; color: #aaa; margin: 16px 0 12px 0;",
+                style: "font-size: var(--text-base); color: var(--text-secondary); margin: 16px 0 12px 0;",
                 "Health Trend"
             }
             div {
@@ -95,7 +95,7 @@ pub(super) fn MemoryHealthSection(store: MemoryHealthStore) -> Element {
                     data: store.health_over_time.clone(),
                     width: 600.0,
                     height: 150.0,
-                    color: "#22c55e",
+                    color: "var(--status-success)",
                     show_labels: true,
                 }
             }
@@ -104,11 +104,11 @@ pub(super) fn MemoryHealthSection(store: MemoryHealthStore) -> Element {
         // NOTE: Staleness table.
         if !store.stale_entities.is_empty() {
             h3 {
-                style: "font-size: 14px; color: #aaa; margin: 16px 0 12px 0;",
+                style: "font-size: var(--text-base); color: var(--text-secondary); margin: 16px 0 12px 0;",
                 "Stale Entities"
             }
             div {
-                style: "border: 1px solid #333; border-radius: 8px; overflow: hidden;",
+                style: "border: 1px solid var(--border); border-radius: var(--radius-md); overflow: hidden;",
                 div {
                     style: "{TABLE_HEADER_STYLE}",
                     span { style: "flex: 2;", "Entity" }
@@ -118,17 +118,17 @@ pub(super) fn MemoryHealthSection(store: MemoryHealthStore) -> Element {
                 for entity in &store.stale_entities {
                     {
                         let staleness_color = if entity.days_stale > 90 {
-                            "#ef4444"
+                            "var(--status-error)"
                         } else if entity.days_stale > 60 {
-                            "#f59e0b"
+                            "var(--status-warning)"
                         } else {
-                            "#888"
+                            "var(--text-secondary)"
                         };
                         rsx! {
                             div {
                                 style: "{TABLE_ROW_STYLE}",
                                 span { style: "flex: 2;", "{entity.name}" }
-                                span { style: "flex: 1; color: #888;", "{entity.last_updated}" }
+                                span { style: "flex: 1; color: var(--text-secondary);", "{entity.last_updated}" }
                                 span {
                                     style: "flex: 1; text-align: right; color: {staleness_color};",
                                     "{entity.days_stale}d"
@@ -143,7 +143,7 @@ pub(super) fn MemoryHealthSection(store: MemoryHealthStore) -> Element {
         // NOTE: Recommendations.
         if !store.recommendations.is_empty() {
             h3 {
-                style: "font-size: 14px; color: #aaa; margin: 16px 0 12px 0;",
+                style: "font-size: var(--text-base); color: var(--text-secondary); margin: 16px 0 12px 0;",
                 "Recommendations"
             }
             for rec in &store.recommendations {
@@ -185,7 +185,7 @@ fn ConfidenceHistogram(
                                         flex: 1; justify-content: flex-end;",
                                 if bucket.count > 0 {
                                     span {
-                                        style: "font-size: 10px; color: #888; margin-bottom: 2px;",
+                                        style: "font-size: 10px; color: var(--text-secondary); margin-bottom: 2px;",
                                         "{bucket.count}"
                                     }
                                 }
@@ -202,7 +202,7 @@ fn ConfidenceHistogram(
                 style: "display: flex; margin-top: 4px;",
                 for bucket in &buckets {
                     span {
-                        style: "flex: 1; text-align: center; font-size: 9px; color: #666;",
+                        style: "flex: 1; text-align: center; font-size: 9px; color: var(--text-muted);",
                         "{bucket.range_label}"
                     }
                 }
@@ -215,9 +215,9 @@ fn ConfidenceHistogram(
 fn confidence_bucket_color(range_label: &str) -> &'static str {
     // WHY: Higher confidence = greener, lower = redder.
     match range_label {
-        s if s.starts_with("0.8") || s.starts_with("0.9") => "#22c55e",
+        s if s.starts_with("0.8") || s.starts_with("0.9") => "var(--status-success)",
         s if s.starts_with("0.6") || s.starts_with("0.7") => "#4a9aff",
-        s if s.starts_with("0.4") || s.starts_with("0.5") => "#f59e0b",
-        _ => "#ef4444",
+        s if s.starts_with("0.4") || s.starts_with("0.5") => "var(--status-warning)",
+        _ => "var(--status-error)",
     }
 }

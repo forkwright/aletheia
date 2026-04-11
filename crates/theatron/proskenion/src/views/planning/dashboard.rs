@@ -157,7 +157,7 @@ pub(crate) fn Planning() -> Element {
 
             div {
                 style: "display: flex; align-items: center; justify-content: space-between;",
-                h2 { style: "font-size: 20px; margin: 0;", "Planning" }
+                h2 { style: "font-size: var(--text-xl); margin: 0;", "Planning" }
                 button {
                     style: "{REFRESH_BTN}",
                     onclick: move |_| do_refresh(),
@@ -182,8 +182,8 @@ pub(crate) fn Planning() -> Element {
                     div {
                         style: "{PLACEHOLDER_STYLE}",
                         div { style: "font-size: 48px;", "[P]" }
-                        div { style: "font-size: 16px;", "Project planning not available" }
-                        div { style: "font-size: 13px; max-width: 400px; text-align: center;",
+                        div { style: "font-size: var(--text-md);", "Project planning not available" }
+                        div { style: "font-size: var(--text-sm); max-width: 400px; text-align: center;",
                             "The planning API is not available on this pylon instance. "
                             "Projects will appear here when connected to a pylon with dianoia integration."
                         }
@@ -194,8 +194,8 @@ pub(crate) fn Planning() -> Element {
                         rsx! {
                             div {
                                 style: "{PLACEHOLDER_STYLE}",
-                                div { style: "font-size: 16px;", "No projects" }
-                                div { style: "font-size: 13px;",
+                                div { style: "font-size: var(--text-md);", "No projects" }
+                                div { style: "font-size: var(--text-sm);",
                                     "Projects will appear here when created."
                                 }
                             }

@@ -202,7 +202,7 @@ pre {
 
 .resize-handle:hover,
 .resize-handle:focus-visible {
-  background: var(--accent-muted, rgba(122, 122, 255, 0.25)) !important;
+  background: var(--accent-muted, rgba(154, 123, 79, 0.25)) !important;
   outline: none;
 }
 

@@ -50,7 +50,7 @@ pub(crate) fn ThinkingPanel(props: ThinkingPanelProps) -> Element {
         div {
             // Header: clickable toggle
             div {
-                style: "display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; color: #888; font-size: 12px; font-style: italic; margin-top: 8px;",
+                style: "display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; color: var(--text-secondary); font-size: var(--text-xs); font-style: italic; margin-top: 8px;",
                 onclick: move |_| {
                     let current = *expanded.read();
                     expanded.set(!current);
@@ -61,12 +61,12 @@ pub(crate) fn ThinkingPanel(props: ThinkingPanelProps) -> Element {
             // Content: animated expand/collapse via max-height transition
             div {
                 style: if is_expanded {
-                    "border-left: 3px solid #333; padding: 8px 12px; margin-top: 8px; overflow: hidden; transition: max-height 0.3s ease, opacity 0.3s ease; max-height: 2000px; opacity: 1;"
+                    "border-left: 3px solid var(--border); padding: 8px 12px; margin-top: 8px; overflow: hidden; transition: max-height 0.3s ease, opacity 0.3s ease; max-height: 2000px; opacity: 1;"
                 } else {
-                    "border-left: 3px solid #333; padding: 0px 12px; margin-top: 8px; overflow: hidden; transition: max-height 0.3s ease, opacity 0.3s ease; max-height: 0px; opacity: 0;"
+                    "border-left: 3px solid var(--border); padding: 0px 12px; margin-top: 8px; overflow: hidden; transition: max-height 0.3s ease, opacity 0.3s ease; max-height: 0px; opacity: 0;"
                 },
                 div {
-                    style: "color: #888; font-style: italic; font-size: 13px; white-space: pre-wrap; word-wrap: break-word; line-height: 1.4;",
+                    style: "color: var(--text-secondary); font-style: italic; font-size: var(--text-sm); white-space: pre-wrap; word-wrap: break-word; line-height: 1.4;",
                     "{content}"
                 }
             }

@@ -53,7 +53,7 @@ const COLLAPSE_BTN_STYLE: &str = "\
     border-radius: var(--radius-sm, 4px); \
     color: var(--text-muted, #706c66); \
     padding: 2px 6px; \
-    font-size: 11px; \
+    font-size: var(--text-xs); \
     cursor: pointer;\
 ";
 
@@ -148,7 +148,7 @@ pub(crate) fn Files() -> Element {
                     div {
                         style: "{HEADER_STYLE}",
                         h2 {
-                            style: "font-size: 18px; margin: 0; color: var(--text-primary, #e0e0e0);",
+                            style: "font-size: var(--text-lg); margin: 0; color: var(--text-primary, var(--text-primary));",
                             "Files"
                         }
                         button {
