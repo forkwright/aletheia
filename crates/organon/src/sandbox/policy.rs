@@ -429,14 +429,19 @@ pub fn apply_sandbox(
                  Set enforcement=permissive to run without sandboxing.",
             ));
         }
-        // WHY: Log when Landlock is available but enforcement is permissive so operators
-        // know syscall violations are only logged, not blocked. Closes #1718.
+        // WHY: Log ONCE when Landlock is available but enforcement is permissive so
+        // operators know syscall violations are only logged, not blocked. Closes #1718.
+        // Changed from per-call warn to once-per-process to avoid log spam (#3102).
         (Some(_), SandboxEnforcement::Permissive) => {
-            tracing::warn!(
-                enforcement = "permissive",
-                "sandbox enforcement=permissive: policy violations are logged but not \
-                 blocked. Set enforcement=enforcing for production deployments."
-            );
+            use std::sync::atomic::{AtomicBool, Ordering};
+            static WARNED: AtomicBool = AtomicBool::new(false);
+            if !WARNED.swap(true, Ordering::Relaxed) {
+                tracing::warn!(
+                    enforcement = "permissive",
+                    "sandbox enforcement=permissive: policy violations are logged but not \
+                     blocked. Set enforcement=enforcing for production deployments."
+                );
+            }
         }
         // NOTE: Landlock ABI available and enforcement=enforcing, proceed with sandbox setup
         (Some(_), SandboxEnforcement::Enforcing) => {}

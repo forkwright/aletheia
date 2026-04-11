@@ -16,7 +16,7 @@ path = "src/main.rs"
 # WARNING: embed-candle must remain in defaults. It has been accidentally
 # removed three times: #1263, #1326, #1378. A compile-time test in
 # tests/default_features.rs guards against recurrence.
-default = ["tui", "recall", "storage-fjall", "embed-candle"]
+default = ["tui", "recall", "storage-fjall", "embed-candle", "cc-provider"]
 # MCP server (Model Context Protocol). Disabled by default: adds context-window
 # cost and auth friction for local deployments. Enable with `--features mcp`.
 mcp = ["dep:diaporeia"]

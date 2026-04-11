@@ -18,26 +18,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "aletheia-koina"
-version = "0.13.65"
-dependencies = [
- "compact_str",
- "jiff",
- "rand 0.9.2",
- "regex",
- "rustix",
- "serde",
- "serde_json",
- "snafu",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "ulid",
- "uuid",
- "zeroize",
-]
-
-[[package]]
 name = "anyhow"
 version = "1.0.102"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2411,6 +2391,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "koina"
+version = "0.14.1"
+dependencies = [
+ "compact_str",
+ "jiff",
+ "rand 0.9.2",
+ "regex",
+ "rustix",
+ "serde",
+ "serde_json",
+ "snafu",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "zeroize",
+]
+
+[[package]]
 name = "kuchikiki"
 version = "0.8.8-speedreader"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3471,6 +3469,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "proskenion"
+version = "0.13.1"
+dependencies = [
+ "dioxus",
+ "dirs",
+ "form_urlencoded",
+ "futures-util",
+ "notify-rust",
+ "pulldown-cmark",
+ "reqwest",
+ "rustls",
+ "serde",
+ "serde_json",
+ "skene",
+ "snafu",
+ "syntect",
+ "tempfile",
+ "tokio",
+ "tokio-util",
+ "toml 1.1.0+spec-1.1.0",
+ "tracing",
+]
+
+[[package]]
 name = "psl-types"
 version = "2.0.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4184,6 +4206,24 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b2aa850e253778c88a04c3d7323b043aeda9d3e30d5971937c1855769763678e"
 
 [[package]]
+name = "skene"
+version = "0.14.1"
+dependencies = [
+ "bytes",
+ "compact_str",
+ "futures-core",
+ "futures-util",
+ "koina",
+ "reqwest",
+ "rustls",
+ "serde",
+ "serde_json",
+ "snafu",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "slab"
 version = "0.4.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4525,48 +4565,6 @@ dependencies = [
  "futf",
  "mac",
  "utf-8",
-]
-
-[[package]]
-name = "theatron-core"
-version = "0.13.65"
-dependencies = [
- "aletheia-koina",
- "bytes",
- "compact_str",
- "futures-core",
- "futures-util",
- "reqwest",
- "rustls",
- "serde",
- "serde_json",
- "snafu",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "theatron-desktop"
-version = "0.13.1"
-dependencies = [
- "dioxus",
- "dirs",
- "form_urlencoded",
- "futures-util",
- "notify-rust",
- "pulldown-cmark",
- "reqwest",
- "rustls",
- "serde",
- "serde_json",
- "snafu",
- "syntect",
- "tempfile",
- "theatron-core",
- "tokio",
- "tokio-util",
- "toml 1.1.0+spec-1.1.0",
- "tracing",
 ]
 
 [[package]]
@@ -5000,17 +4998,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ulid"
-version = "1.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "470dbf6591da1b39d43c14523b2b469c86879a53e8b758c8e090a470fe7b1fbe"
-dependencies = [
- "rand 0.9.2",
- "serde",
- "web-time",
-]
-
-[[package]]
 name = "unicase"
 version = "2.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5076,7 +5063,6 @@ version = "1.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a68d3c8f01c0cfa54a75291d83601161799e4a89a39e0929f4b0354d88757a37"
 dependencies = [
- "getrandom 0.4.2",
  "js-sys",
  "serde_core",
  "wasm-bindgen",
@@ -5301,16 +5287,6 @@ name = "web-sys"
 version = "0.3.91"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "854ba17bb104abfb26ba36da9729addc7ce7f06f5c0f90f3c391f8461cca21f9"
-dependencies = [
- "js-sys",
- "wasm-bindgen",
-]
-
-[[package]]
-name = "web-time"
-version = "1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5a6580f308b1fad9207618087a65c04e7a10bc77e02c8e84e9b00dd4b12fa0bb"
 dependencies = [
  "js-sys",
  "wasm-bindgen",

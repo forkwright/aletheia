@@ -614,7 +614,11 @@ pub async fn events(
     // WHY: emit periodic comment-only events so the connection stays alive and
     // proxies do not close it. Real domain events require a broadcast channel
     // wired into AppState: deferred to issue #1248.
-    let stream = IntervalStream::new(tokio::time::interval(Duration::from_secs(30)))
+    // WHY: keepalive interval (15s) must be well below the client read timeout
+    // (45s in skene) to prevent false disconnects. The IntervalStream and
+    // axum KeepAlive are belt-and-suspenders: either alone would work but
+    // both together ensure at least one event arrives per client timeout window.
+    let stream = IntervalStream::new(tokio::time::interval(Duration::from_secs(15)))
         .map(|_| Ok::<Event, Infallible>(Event::default().comment("keepalive")));
 
     Sse::new(stream).keep_alive(

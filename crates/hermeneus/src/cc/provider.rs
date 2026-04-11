@@ -52,7 +52,7 @@ impl Default for CcProviderConfig {
     fn default() -> Self {
         Self {
             cc_binary: None,
-            default_model: "claude-sonnet-4-20250514".to_owned(),
+            default_model: "claude-opus-4-6".to_owned(),
             timeout: Duration::from_secs(300),
         }
     }
@@ -261,11 +261,13 @@ impl LlmProvider for CcProvider {
     }
 
     fn supports_model(&self, model: &str) -> bool {
-        // Accept either `cc/`-prefixed models or known model names.
-        if model.starts_with(CC_MODEL_PREFIX) {
-            return true;
-        }
-        SUPPORTED_MODELS.contains(&model)
+        // WHY: CC delegates model routing to the `claude` CLI, which handles
+        // all claude-* models internally. Accepting any claude-* prefix
+        // ensures new model IDs (e.g. claude-opus-4-7) work without updating
+        // the SUPPORTED_MODELS list. The `cc/` prefix is for explicit routing.
+        model.starts_with(CC_MODEL_PREFIX)
+            || model.starts_with("claude-")
+            || SUPPORTED_MODELS.contains(&model)
     }
 
     fn name(&self) -> &'static str {
@@ -304,7 +306,6 @@ fn find_cc_binary() -> Result<PathBuf> {
 }
 
 #[cfg(test)]
-#[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
     use super::*;
     use crate::types::{CompletionRequest, Content, Message, Role};
