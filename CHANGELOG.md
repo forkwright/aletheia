@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.15.0](https://github.com/forkwright/aletheia/compare/v0.14.1...v0.15.0) (2026-04-10)
+
+
+### Features
+
+* **bench:** scaffold benches for episteme, nous, symbolon hot paths ([#2802](https://github.com/forkwright/aletheia/issues/2802)) ([#3063](https://github.com/forkwright/aletheia/issues/3063)) ([d9cb10e](https://github.com/forkwright/aletheia/commit/d9cb10e44940bd4edab618950313abcba3409d24))
+* **daemon:** consensus-based anomaly detection for prosoche ([#2847](https://github.com/forkwright/aletheia/issues/2847)) ([#3082](https://github.com/forkwright/aletheia/issues/3082)) ([c727236](https://github.com/forkwright/aletheia/commit/c7272367ff95b96de9494bf4dc0425cf5fff362d))
+* **dokimion:** live benchmark runner for LongMemEval/LoCoMo ([#2854](https://github.com/forkwright/aletheia/issues/2854)) ([#3091](https://github.com/forkwright/aletheia/issues/3091)) ([26a9b9b](https://github.com/forkwright/aletheia/commit/26a9b9b4ddb29e098b9d5879adf3a61372b4ebb4))
+* **dokimion:** memory benchmark harness — LongMemEval + LoCoMo scaffolding ([#2854](https://github.com/forkwright/aletheia/issues/2854)) ([#3090](https://github.com/forkwright/aletheia/issues/3090)) ([f38b064](https://github.com/forkwright/aletheia/commit/f38b064c562eafef8ddede56c7001a839094621d))
+* **episteme:** Bayesian surprise for episode boundary detection ([#2852](https://github.com/forkwright/aletheia/issues/2852)) ([#3078](https://github.com/forkwright/aletheia/issues/3078)) ([4698716](https://github.com/forkwright/aletheia/commit/4698716dd7dcebe64a4750af3fe2170cdba5dc17))
+* **episteme:** evidence-gap tracking during retrieval ([#2851](https://github.com/forkwright/aletheia/issues/2851)) ([#3079](https://github.com/forkwright/aletheia/issues/3079)) ([0a95260](https://github.com/forkwright/aletheia/commit/0a95260b6fc487f0fa8363fcf04c4c4321f898db))
+* **episteme:** memory admission control gate for fact insertion ([#2853](https://github.com/forkwright/aletheia/issues/2853)) ([#3070](https://github.com/forkwright/aletheia/issues/3070)) ([bdfeace](https://github.com/forkwright/aletheia/commit/bdfeace68039bb9d40189e26ea7c69b97a6900ba))
+* **episteme:** source-linked re-fetching for fact staleness validation ([#2848](https://github.com/forkwright/aletheia/issues/2848)) ([#3077](https://github.com/forkwright/aletheia/issues/3077)) ([bcce80f](https://github.com/forkwright/aletheia/commit/bcce80f669a2c94259b76c39cb8383d4d880a8e3))
+* **melete:** backward-path probe QA for distilled facts ([#2846](https://github.com/forkwright/aletheia/issues/2846)) ([#3076](https://github.com/forkwright/aletheia/issues/3076)) ([6e9e8e6](https://github.com/forkwright/aletheia/commit/6e9e8e618591b44b61cc88cc90c7c7c2e580cec5))
+
+
+### Bug Fixes
+
+* **daemon:** WorkspaceGuard flock released prematurely ([#3026](https://github.com/forkwright/aletheia/issues/3026)) ([#3047](https://github.com/forkwright/aletheia/issues/3047)) ([ac5eff7](https://github.com/forkwright/aletheia/commit/ac5eff78f68c7325f684e200c948c2b37a8e75c9))
+* **energeia:** remove unfulfilled dead_code expects ([#3081](https://github.com/forkwright/aletheia/issues/3081)) ([26f9bf5](https://github.com/forkwright/aletheia/commit/26f9bf5c83d4f84cdf227e16885ffd6ba1420650))
+* **energeia:** restore pub visibility for integration test compat ([#3080](https://github.com/forkwright/aletheia/issues/3080)) ([0b73aee](https://github.com/forkwright/aletheia/commit/0b73aeec8eed06235d790135192d2944db7cfff8))
+* **eval:** add category_filter; un-ignore session + full-run scenarios ([#2999](https://github.com/forkwright/aletheia/issues/2999)) ([#3058](https://github.com/forkwright/aletheia/issues/3058)) ([484b9e7](https://github.com/forkwright/aletheia/commit/484b9e76fe92137b333160b0745cc6332e4b7e88))
+* **pylon:** rate limit tests reuse token ([#2968](https://github.com/forkwright/aletheia/issues/2968)) + melete unfulfilled-expect cleanup ([#3053](https://github.com/forkwright/aletheia/issues/3053)) ([25ace0d](https://github.com/forkwright/aletheia/commit/25ace0d46fd5590be37dd62f111614bf7dd5757f))
+* **symbolon:** promote KeyringCredentialProvider to pub ([#3046](https://github.com/forkwright/aletheia/issues/3046)) ([#3075](https://github.com/forkwright/aletheia/issues/3075)) ([bd22a40](https://github.com/forkwright/aletheia/commit/bd22a407db6cf3792d0648f243baf9692ca95eca))
+
 ## [0.14.1](https://github.com/forkwright/aletheia/compare/v0.14.0...v0.14.1) (2026-04-09)
 
 
