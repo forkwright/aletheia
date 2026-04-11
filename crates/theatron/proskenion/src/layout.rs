@@ -11,24 +11,26 @@ use crate::state::view_preservation::ViewPreservationStore;
 
 const SIDEBAR_COLLAPSED_STYLE: &str = "\
     width: 48px; \
-    background: var(--bg-sidebar, #1a1a2e); \
-    color: var(--text-primary, #e0e0e0); \
-    padding: 16px 0; \
-    display: flex; \
-    flex-direction: column; \
-    gap: 4px; \
-    flex-shrink: 0;\
-";
-
-const SIDEBAR_EXPANDED_STYLE: &str = "\
-    width: 220px; \
-    background: var(--bg-sidebar, var(--bg-surface)); \
+    background: var(--bg-surface); \
     color: var(--text-primary); \
     padding: var(--space-4) 0; \
     display: flex; \
     flex-direction: column; \
     gap: var(--space-1); \
-    flex-shrink: 0;\
+    flex-shrink: 0; \
+    border-right: 1px solid var(--border-separator);\
+";
+
+const SIDEBAR_EXPANDED_STYLE: &str = "\
+    width: 220px; \
+    background: var(--bg-surface); \
+    color: var(--text-primary); \
+    padding: var(--space-4) 0; \
+    display: flex; \
+    flex-direction: column; \
+    gap: var(--space-1); \
+    flex-shrink: 0; \
+    border-right: 1px solid var(--border-separator);\
 ";
 
 const CONTENT_STYLE: &str = "\
@@ -64,11 +66,13 @@ const NAV_LINK_ICON_ONLY_STYLE: &str = "\
     display: flex; \
     align-items: center; \
     justify-content: center; \
-    padding: 8px 12px; \
+    padding: var(--space-2) var(--space-3); \
     border-radius: var(--radius-md); \
-    color: var(--text-primary, #e0e0e0); \
+    color: var(--text-secondary); \
     text-decoration: none; \
-    font-size: var(--text-sm);\
+    font-size: var(--text-md); \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick);\
 ";
 
 const NAV_DIVIDER_STYLE: &str = "\
@@ -99,8 +103,8 @@ pub(crate) fn Layout() -> Element {
 
     // Command palette open state -- shared with the keyboard handler.
     let palette_open = use_signal(|| false);
-    // Sidebar collapsed state -- default to collapsed.
-    let sidebar_collapsed = use_signal(|| true);
+    // Sidebar collapsed state -- default to expanded for better first impression.
+    let sidebar_collapsed = use_signal(|| false);
 
     let keyboard_handler =
         crate::services::keybindings::use_global_keyboard(palette_open, sidebar_collapsed);
@@ -127,22 +131,26 @@ pub(crate) fn Layout() -> Element {
                     div { style: "{BRAND_STYLE}", "Aletheia" }
                 } else {
                     div {
-                        style: "font-size: 18px; font-weight: bold; padding: 8px 0; margin-bottom: 8px; text-align: center; color: var(--text-heading, #ffffff);",
+                        style: "font-size: var(--text-lg); font-weight: var(--weight-bold); padding: var(--space-2) 0; margin-bottom: var(--space-2); text-align: center; color: var(--accent);",
                         "A"
                     }
                 }
-                NavItem { to: Route::Chat {}, icon: "[C]", label: "Chat", shortcut: "Ctrl+1", collapsed: *sidebar_collapsed.read() }
-                NavItem { to: Route::Files {}, icon: "[F]", label: "Files", shortcut: "Ctrl+2", collapsed: *sidebar_collapsed.read() }
-                NavItem { to: Route::Planning {}, icon: "[P]", label: "Planning", shortcut: "Ctrl+3", collapsed: *sidebar_collapsed.read() }
-                NavItem { to: Route::Memory {}, icon: "[M]", label: "Memory", shortcut: "Ctrl+4", collapsed: *sidebar_collapsed.read() }
-                NavItem { to: Route::Metrics {}, icon: "[X]", label: "Metrics", shortcut: "Ctrl+5", collapsed: *sidebar_collapsed.read() }
-                NavItem { to: Route::Ops {}, icon: "[O]", label: "Ops", shortcut: "Ctrl+6", collapsed: *sidebar_collapsed.read() }
-                NavItem { to: Route::Sessions {}, icon: "[T]", label: "Sessions", shortcut: "Ctrl+7", collapsed: *sidebar_collapsed.read() }
-                NavItem { to: Route::Meta {}, icon: "[I]", label: "Insights", shortcut: "", collapsed: *sidebar_collapsed.read() }
-                NavItem { to: Route::Settings {}, icon: "[S]", label: "Settings", shortcut: "", collapsed: *sidebar_collapsed.read() }
+                NavItem { to: Route::Chat {}, icon: "💬", label: "Chat", shortcut: "Ctrl+1", collapsed: *sidebar_collapsed.read() }
+                NavItem { to: Route::Files {}, icon: "📁", label: "Files", shortcut: "Ctrl+2", collapsed: *sidebar_collapsed.read() }
+                NavItem { to: Route::Planning {}, icon: "📋", label: "Planning", shortcut: "Ctrl+3", collapsed: *sidebar_collapsed.read() }
+                NavItem { to: Route::Memory {}, icon: "🧠", label: "Memory", shortcut: "Ctrl+4", collapsed: *sidebar_collapsed.read() }
+                NavItem { to: Route::Metrics {}, icon: "📊", label: "Metrics", shortcut: "Ctrl+5", collapsed: *sidebar_collapsed.read() }
+                NavItem { to: Route::Ops {}, icon: "⚙\u{fe0f}", label: "Ops", shortcut: "Ctrl+6", collapsed: *sidebar_collapsed.read() }
+                NavItem { to: Route::Sessions {}, icon: "📑", label: "Sessions", shortcut: "Ctrl+7", collapsed: *sidebar_collapsed.read() }
+                NavItem { to: Route::Meta {}, icon: "💡", label: "Insights", shortcut: "", collapsed: *sidebar_collapsed.read() }
+                NavItem { to: Route::Settings {}, icon: "🔧", label: "Settings", shortcut: "", collapsed: *sidebar_collapsed.read() }
                 div { style: "{NAV_DIVIDER_STYLE}", role: "separator" }
                 AgentSidebarView { collapsed: *sidebar_collapsed.read() }
                 div { style: "flex: 1;" }
+                div {
+                    style: "padding: var(--space-2) var(--space-3);",
+                    crate::components::theme_toggle::ThemeToggle {}
+                }
                 ConnectionIndicatorView {}
             }
             main {

@@ -11,69 +11,70 @@ use crate::state::commands::CommandStore;
 const PALETTE_OVERLAY_STYLE: &str = "\
     position: absolute; \
     bottom: 64px; \
-    left: 16px; \
-    right: 16px; \
-    background: #1a1a2e; \
-    border: 1px solid #4a4aff; \
-    border-radius: 8px; \
+    left: var(--space-4); \
+    right: var(--space-4); \
+    background: var(--bg-surface); \
+    border: 1px solid var(--accent); \
+    border-radius: var(--radius-md); \
     max-height: 260px; \
     overflow-y: auto; \
     z-index: 100; \
-    box-shadow: 0 -4px 20px rgba(0,0,0,0.6);\
+    box-shadow: var(--shadow-lg);\
 ";
 
 const PALETTE_HEADER_STYLE: &str = "\
-    padding: 8px 12px 4px; \
-    font-size: 11px; \
-    color: #555; \
-    border-bottom: 1px solid #2a2a3a;\
+    padding: var(--space-2) var(--space-3) var(--space-1); \
+    font-size: var(--text-xs); \
+    color: var(--text-muted); \
+    border-bottom: 1px solid var(--border);\
 ";
 
 const ROW_STYLE: &str = "\
     display: flex; \
     align-items: baseline; \
-    gap: 12px; \
-    padding: 8px 12px; \
+    gap: var(--space-3); \
+    padding: var(--space-2) var(--space-3); \
     cursor: pointer; \
-    font-size: 13px; \
-    color: #e0e0e0;\
+    font-size: var(--text-sm); \
+    color: var(--text-primary); \
+    transition: background-color var(--transition-quick);\
 ";
 
 const ROW_ACTIVE_STYLE: &str = "\
     display: flex; \
     align-items: baseline; \
-    gap: 12px; \
-    padding: 8px 12px; \
+    gap: var(--space-3); \
+    padding: var(--space-2) var(--space-3); \
     cursor: pointer; \
-    font-size: 13px; \
-    color: #ffffff; \
-    background: #2a2a4a;\
+    font-size: var(--text-sm); \
+    color: var(--text-primary); \
+    background: var(--bg-surface-bright);\
 ";
 
 const CMD_NAME_STYLE: &str = "\
-    font-family: monospace; \
-    color: #4a4aff; \
+    font-family: var(--font-mono); \
+    color: var(--accent); \
     min-width: 120px; \
     flex-shrink: 0;\
 ";
 
 const CMD_DESC_STYLE: &str = "\
-    color: #888; \
-    font-size: 12px;\
+    color: var(--text-secondary); \
+    font-size: var(--text-xs);\
 ";
 
 const PREVIEW_STYLE: &str = "\
-    padding: 6px 12px; \
-    font-size: 11px; \
-    color: #555; \
-    border-top: 1px solid #2a2a3a; \
-    font-family: monospace;\
+    padding: var(--space-1) var(--space-3); \
+    font-size: var(--text-xs); \
+    color: var(--text-muted); \
+    border-top: 1px solid var(--border); \
+    font-family: var(--font-mono);\
 ";
 
 const EMPTY_STYLE: &str = "\
-    padding: 12px; \
-    color: #555; \
-    font-size: 13px; \
+    padding: var(--space-3); \
+    color: var(--text-muted); \
+    font-size: var(--text-sm); \
     text-align: center;\
 ";
 

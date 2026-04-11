@@ -98,8 +98,12 @@ pub(crate) fn App() -> Element {
     let keybindings = use_signal(|| loaded_settings.keybinding_store());
     let is_first_run = use_signal(|| first_run);
 
-    // NOTE: Force dark mode for theme consistency across all platforms.
-    let initial_theme = crate::theme::ThemeMode::Dark;
+    // NOTE: Read saved theme preference; default to Dark if unset.
+    let initial_theme = match appearance.read().theme.as_str() {
+        "light" => crate::theme::ThemeMode::Light,
+        "system" => crate::theme::ThemeMode::System,
+        _ => crate::theme::ThemeMode::Dark,
+    };
 
     // NOTE: Provide signals as context so all views can access them.
     use_context_provider(|| connection_state);
