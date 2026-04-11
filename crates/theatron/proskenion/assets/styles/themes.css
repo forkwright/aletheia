@@ -21,7 +21,7 @@
   /* Text */
   --text-primary: #e8e6e3;
   --text-secondary: #a8a49e;
-  --text-muted: #706c66;
+  --text-muted: #8a8680; /* WHY: raised from #706c66 for WCAG AA (4.5:1) on bg-surface */
   --text-inverse: #12110f;
 
   /* Borders */
