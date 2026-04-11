@@ -34,10 +34,10 @@ impl Severity {
     #[must_use]
     pub(crate) fn css_color(self) -> &'static str {
         match self {
-            Self::Info => "#94a3b8",
-            Self::Success => "#22c55e",
-            Self::Warning => "#eab308",
-            Self::Error => "#ef4444",
+            Self::Info => "var(--status-info)",
+            Self::Success => "var(--status-success)",
+            Self::Warning => "var(--status-warning)",
+            Self::Error => "var(--status-error)",
         }
     }
 
@@ -45,10 +45,10 @@ impl Severity {
     #[must_use]
     pub(crate) fn css_bg(self) -> &'static str {
         match self {
-            Self::Info => "#1e293b",
-            Self::Success => "#14532d",
-            Self::Warning => "#422006",
-            Self::Error => "#450a0a",
+            Self::Info => "var(--status-info-bg)",
+            Self::Success => "var(--status-success-bg)",
+            Self::Warning => "var(--status-warning-bg)",
+            Self::Error => "var(--status-error-bg)",
         }
     }
 
@@ -246,8 +246,8 @@ mod tests {
             Severity::Warning,
             Severity::Error,
         ] {
-            assert!(severity.css_color().starts_with('#'));
-            assert!(severity.css_bg().starts_with('#'));
+            assert!(severity.css_color().starts_with("var(--"));
+            assert!(severity.css_bg().starts_with("var(--"));
         }
     }
 

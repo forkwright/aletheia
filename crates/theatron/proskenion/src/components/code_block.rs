@@ -185,7 +185,10 @@ pub(crate) fn CodeBlock(code: String, language: String) -> Element {
                         font-family: var(--font-mono);
                         font-size: var(--text-xs);
                         padding: 2px var(--space-2);
-                        cursor: pointer;
+                        cursor: pointer; \
+                        transition: background-color var(--transition-quick), \
+                                    color var(--transition-quick), \
+                                    border-color var(--transition-quick);\
                     ",
                     "copy"
                 }
@@ -235,7 +238,7 @@ pub(crate) fn CodeBlock(code: String, language: String) -> Element {
 }
 
 fn bold_style(bold: bool) -> &'static str {
-    if bold { " font-weight: bold;" } else { "" }
+    if bold { " font-weight: var(--weight-bold);" } else { "" }
 }
 
 fn italic_style(italic: bool) -> &'static str {

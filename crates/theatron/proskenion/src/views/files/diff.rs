@@ -12,12 +12,12 @@ const TOOLBAR_STYLE: &str = "\
     display: flex; \
     align-items: center; \
     justify-content: space-between; \
-    padding: 8px 0;\
+    padding: var(--space-2) 0;\
 ";
 
 const STATS_STYLE: &str = "\
     display: flex; \
-    gap: 12px; \
+    gap: var(--space-3); \
     font-size: var(--text-sm);\
 ";
 
@@ -26,9 +26,12 @@ const TOGGLE_BTN: &str = "\
     color: var(--text-primary); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 4px 12px; \
+    padding: var(--space-1) var(--space-3); \
     font-size: var(--text-xs); \
     cursor: pointer;\
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const BACK_BTN: &str = "\
@@ -36,13 +39,13 @@ const BACK_BTN: &str = "\
     color: #7a7aff; \
     border: none; \
     font-size: var(--text-sm); \
-    cursor: pointer; \
+    cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick); \
     padding: 0;\
 ";
 
 const PATH_STYLE: &str = "\
     font-size: var(--text-md); \
-    font-weight: 600; \
+    font-weight: var(--weight-semibold); \
     color: var(--text-primary);\
 ";
 
@@ -52,7 +55,7 @@ const STATUS_STYLE: &str = "\
     justify-content: center; \
     color: var(--text-secondary); \
     font-size: var(--text-base); \
-    padding: 32px;\
+    padding: var(--space-8);\
 ";
 
 const DIFF_CONTAINER_STYLE: &str = "\
@@ -110,7 +113,7 @@ pub(crate) fn DiffViewer(path: String, on_back: EventHandler<()>) -> Element {
 
     rsx! {
         div {
-            style: "display: flex; flex-direction: column; height: 100%; gap: 8px;",
+            style: "display: flex; flex-direction: column; height: 100%; gap: var(--space-2);",
             // Navigation
             button {
                 style: "{BACK_BTN}",

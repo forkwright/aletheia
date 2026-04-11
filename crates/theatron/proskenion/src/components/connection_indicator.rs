@@ -79,7 +79,7 @@ const INDICATOR_STYLE: &str = "\
     display: flex; \
     align-items: center; \
     gap: 6px; \
-    padding: 6px 12px; \
+    padding: 6px var(--space-3); \
     font-size: var(--text-xs); \
     opacity: 0.85;\
 ";
@@ -98,7 +98,7 @@ pub(crate) fn ConnectionIndicatorView() -> Element {
             style: "{INDICATOR_STYLE}",
             title: "{indicator.tooltip}",
             span {
-                style: "color: {color}; font-size: 10px;",
+                style: "color: {color}; font-size: var(--text-xs);",
                 "●"
             }
             span { "{indicator.label}" }

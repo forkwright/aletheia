@@ -15,7 +15,7 @@ const BAR_OUTER_STYLE: &str = "\
 const WRAPPER_STYLE: &str = "\
     display: flex; \
     align-items: center; \
-    gap: 8px;\
+    gap: var(--space-2);\
 ";
 
 /// Horizontal confidence bar filled proportionally to a 0.0--1.0 value.
@@ -45,7 +45,7 @@ pub(crate) fn ConfidenceBar(
 
     let bar_inner = format!(
         "height: 100%; width: {pct}%; background: {color}; border-radius: var(--radius-sm); \
-         transition: width 0.3s ease;"
+         transition: width var(--transition-measured);"
     );
 
     let outer = match width {
@@ -61,7 +61,7 @@ pub(crate) fn ConfidenceBar(
                 div { style: "{bar_inner}" }
             }
             span {
-                style: "font-size: var(--text-xs); color: {color}; font-weight: 600; min-width: 36px; text-align: right;",
+                style: "font-size: var(--text-xs); color: {color}; font-weight: var(--weight-semibold); min-width: 36px; text-align: right;",
                 "{pct}%"
             }
         }

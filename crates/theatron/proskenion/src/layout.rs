@@ -17,7 +17,9 @@ const SIDEBAR_COLLAPSED_STYLE: &str = "\
     flex-direction: column; \
     gap: var(--space-1); \
     flex-shrink: 0; \
-    border-right: 1px solid var(--border-separator);\
+    border-right: 1px solid var(--border-separator); \
+    overflow-y: auto; \
+    overflow-x: hidden;\
 ";
 
 const SIDEBAR_EXPANDED_STYLE: &str = "\
@@ -29,7 +31,9 @@ const SIDEBAR_EXPANDED_STYLE: &str = "\
     flex-direction: column; \
     gap: var(--space-1); \
     flex-shrink: 0; \
-    border-right: 1px solid var(--border-separator);\
+    border-right: 1px solid var(--border-separator); \
+    overflow-y: auto; \
+    overflow-x: hidden;\
 ";
 
 const CONTENT_STYLE: &str = "\
@@ -74,11 +78,6 @@ const NAV_LINK_ICON_ONLY_STYLE: &str = "\
                 color var(--transition-quick);\
 ";
 
-const NAV_DIVIDER_STYLE: &str = "\
-    height: 1px; \
-    background: var(--border-separator); \
-    margin: var(--space-2) var(--space-4);\
-";
 
 /// Layout shell rendered around all routes.
 ///

@@ -176,12 +176,12 @@ const CONTAINER_STYLE: &str = "\
     display: flex; \
     flex-direction: column; \
     height: 100%; \
-    gap: 16px;\
+    gap: var(--space-4);\
 ";
 
 const CARDS_STYLE: &str = "\
     display: flex; \
-    gap: 12px; \
+    gap: var(--space-3); \
     flex-wrap: wrap;\
 ";
 
@@ -189,43 +189,43 @@ const CARD_STYLE: &str = "\
     background: var(--bg-surface); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 16px 20px; \
+    padding: var(--space-4) var(--space-5); \
     min-width: 120px; \
     text-align: center;\
 ";
 
 const CARD_VALUE: &str = "\
-    font-size: 28px; \
-    font-weight: bold; \
+    font-size: var(--text-2xl); \
+    font-weight: var(--weight-bold); \
     color: var(--text-primary);\
 ";
 
 const CARD_LABEL: &str = "\
     font-size: var(--text-xs); \
     color: var(--text-secondary); \
-    margin-top: 4px;\
+    margin-top: var(--space-1);\
 ";
 
 const SECTION_STYLE: &str = "\
     background: var(--bg-surface); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 16px; \
+    padding: var(--space-4); \
     flex: 1; \
     overflow-y: auto;\
 ";
 
 const SECTION_TITLE: &str = "\
     font-size: var(--text-base); \
-    font-weight: bold; \
+    font-weight: var(--weight-bold); \
     color: var(--text-secondary); \
-    margin-bottom: 12px;\
+    margin-bottom: var(--space-3);\
 ";
 
 const ENTRY_STYLE: &str = "\
     display: flex; \
     align-items: center; \
-    gap: 8px; \
+    gap: var(--space-2); \
     padding: 6px 0; \
     border-bottom: 1px solid #222; \
     font-size: var(--text-sm);\
@@ -243,9 +243,12 @@ const REFRESH_BTN: &str = "\
     color: var(--text-primary); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 4px 12px; \
+    padding: var(--space-1) var(--space-3); \
     font-size: var(--text-xs); \
     cursor: pointer;\
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const TAB_ACTIVE: &str = "\
@@ -253,9 +256,12 @@ const TAB_ACTIVE: &str = "\
     color: var(--text-primary); \
     border: 1px solid var(--accent); \
     border-radius: var(--radius-md); \
-    padding: 4px 14px; \
+    padding: var(--space-1) 14px; \
     font-size: var(--text-sm); \
     cursor: pointer;\
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const TAB_INACTIVE: &str = "\
@@ -263,14 +269,17 @@ const TAB_INACTIVE: &str = "\
     color: var(--text-secondary); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 4px 14px; \
+    padding: var(--space-1) 14px; \
     font-size: var(--text-sm); \
     cursor: pointer;\
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const BOTTOM_ROW: &str = "\
     display: flex; \
-    gap: 16px; \
+    gap: var(--space-4); \
     flex: 1; \
     min-height: 0;\
 ";
@@ -543,7 +552,7 @@ pub(crate) fn Ops() -> Element {
                 style: "display: flex; align-items: center; justify-content: space-between;",
                 h2 { style: "font-size: var(--text-xl); margin: 0;", "Operations" }
                 div {
-                    style: "display: flex; align-items: center; gap: 8px;",
+                    style: "display: flex; align-items: center; gap: var(--space-2);",
                     button {
                         style: if tab == OpsTab::Dashboard { TAB_ACTIVE } else { TAB_INACTIVE },
                         onclick: move |_| active_tab.set(OpsTab::Dashboard),

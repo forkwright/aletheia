@@ -7,28 +7,28 @@ use crate::state::execution::{Wave, WaveStatus};
 const BAND_BASE: &str = "\
     border-radius: var(--radius-md); \
     border: 1px solid; \
-    padding: 12px 16px; \
-    margin-bottom: 8px;\
+    padding: var(--space-3) var(--space-4); \
+    margin-bottom: var(--space-2);\
 ";
 
 const BAND_HEADER: &str = "\
     display: flex; \
     align-items: center; \
     justify-content: space-between; \
-    margin-bottom: 8px;\
+    margin-bottom: var(--space-2);\
 ";
 
 const WAVE_LABEL: &str = "\
     font-size: var(--text-base); \
-    font-weight: 600; \
+    font-weight: var(--weight-semibold); \
     color: var(--text-primary);\
 ";
 
 const BADGE_BASE: &str = "\
     display: inline-block; \
-    font-size: 10px; \
-    font-weight: 600; \
-    padding: 2px 8px; \
+    font-size: var(--text-xs); \
+    font-weight: var(--weight-semibold); \
+    padding: 2px var(--space-2); \
     border-radius: 10px; \
     text-transform: uppercase; \
     letter-spacing: 0.3px;\
@@ -49,7 +49,7 @@ const PROGRESS_TRACK: &str = "\
 
 const PLANS_ROW: &str = "\
     display: flex; \
-    gap: 12px; \
+    gap: var(--space-3); \
     flex-wrap: wrap;\
 ";
 
@@ -70,12 +70,12 @@ pub(crate) fn WaveBand(wave: Wave, children: Element) -> Element {
             div {
                 style: "{BAND_HEADER}",
                 div {
-                    style: "display: flex; align-items: center; gap: 8px;",
+                    style: "display: flex; align-items: center; gap: var(--space-2);",
                     span { style: "{WAVE_LABEL}", "Wave {wave.wave_number}" }
                     span { style: "{badge_style}", "{label}" }
                 }
                 div {
-                    style: "display: flex; align-items: center; gap: 12px;",
+                    style: "display: flex; align-items: center; gap: var(--space-3);",
                     if let Some(ref start) = wave.start_time {
                         span { style: "{TIME_STYLE}", "Started: {start}" }
                     }
@@ -90,7 +90,7 @@ pub(crate) fn WaveBand(wave: Wave, children: Element) -> Element {
             div {
                 style: "{PROGRESS_TRACK}",
                 div {
-                    style: "height: 100%; background: {progress_color(wave.status)}; width: {progress}%; border-radius: 2px; transition: width 0.3s;",
+                    style: "height: 100%; background: {progress_color(wave.status)}; width: {progress}%; border-radius: 2px; transition: width var(--transition-measured);",
                 }
             }
 

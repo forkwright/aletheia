@@ -19,9 +19,12 @@ const BACK_BTN: &str = "\
     color: var(--accent); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 4px 12px; \
+    padding: var(--space-1) var(--space-3); \
     font-size: var(--text-xs); \
     cursor: pointer;\
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const TABLE_STYLE: &str = "\
@@ -34,12 +37,12 @@ const TH_STYLE: &str = "\
     text-align: left; \
     color: var(--text-secondary); \
     font-weight: normal; \
-    padding: 4px 8px; \
+    padding: var(--space-1) var(--space-2); \
     border-bottom: 1px solid var(--border);\
 ";
 
 const TD_STYLE: &str = "\
-    padding: 4px 8px; \
+    padding: var(--space-1) var(--space-2); \
     border-bottom: 1px solid #1e1e38; \
     color: var(--text-primary);\
 ";
@@ -55,7 +58,7 @@ const CARD_STYLE: &str = "\
 
 const CARD_VALUE: &str = "\
     font-size: var(--text-2xl); \
-    font-weight: bold; \
+    font-weight: var(--weight-bold); \
     color: var(--text-primary); \
     margin-bottom: 2px;\
 ";
@@ -72,9 +75,12 @@ const PAGE_BTN: &str = "\
     color: var(--text-primary); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-sm); \
-    padding: 2px 8px; \
+    padding: 2px var(--space-2); \
     font-size: var(--text-xs); \
     cursor: pointer;\
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const PAGE_BTN_DISABLED: &str = "\
@@ -82,7 +88,7 @@ const PAGE_BTN_DISABLED: &str = "\
     color: var(--border); \
     border: 1px solid #2a2a2a; \
     border-radius: var(--radius-sm); \
-    padding: 2px 8px; \
+    padding: 2px var(--space-2); \
     font-size: var(--text-xs); \
     cursor: default;\
 ";
@@ -136,11 +142,11 @@ pub(crate) fn ToolDetailView(
     });
 
     rsx! {
-        div { style: "display: flex; flex-direction: column; gap: 16px;",
+        div { style: "display: flex; flex-direction: column; gap: var(--space-4);",
 
             // Header: back button + tool name
             div {
-                style: "display: flex; align-items: center; gap: 12px;",
+                style: "display: flex; align-items: center; gap: var(--space-3);",
                 button {
                     style: "{BACK_BTN}",
                     onclick: move |_| on_back.call(()),
@@ -154,10 +160,10 @@ pub(crate) fn ToolDetailView(
 
             match &*detail_fetch.read() {
                 FetchState::Loading => rsx! {
-                    div { style: "color: var(--text-secondary); padding: 8px;", "Loading tool detail..." }
+                    div { style: "color: var(--text-secondary); padding: var(--space-2);", "Loading tool detail..." }
                 },
                 FetchState::Error(err) => rsx! {
-                    div { style: "color: var(--status-error); padding: 8px;", "Error: {err}" }
+                    div { style: "color: var(--status-error); padding: var(--space-2);", "Error: {err}" }
                 },
                 FetchState::Loaded(data) => {
                     let stat = data.tools.iter().find(|t| t.name == tool_name);
@@ -166,7 +172,7 @@ pub(crate) fn ToolDetailView(
                     rsx! {
                         {render_summary_cards(stat)}
                         div {
-                            style: "font-size: var(--text-sm); color: var(--text-secondary); margin-bottom: 4px;",
+                            style: "font-size: var(--text-sm); color: var(--text-secondary); margin-bottom: var(--space-1);",
                             "Recent Invocations"
                         }
                         {render_invocations_table(&data.invocations, page)}
@@ -226,7 +232,7 @@ fn render_summary_cards(stat: Option<&ToolStat>) -> Element {
 fn render_invocations_table(invocations: &[ToolInvocation], page: usize) -> Element {
     if invocations.is_empty() {
         return rsx! {
-            div { style: "color: var(--text-muted); font-size: var(--text-xs); padding: 8px;", "No invocations recorded." }
+            div { style: "color: var(--text-muted); font-size: var(--text-xs); padding: var(--space-2);", "No invocations recorded." }
         };
     }
 
@@ -264,7 +270,7 @@ fn render_invocations_table(invocations: &[ToolInvocation], page: usize) -> Elem
                                 td { style: "{TD_STYLE} font-size: var(--text-xs); color: var(--text-muted);", "{ts}" }
                                 td { style: "{TD_STYLE} font-family: var(--font-mono); font-size: var(--text-xs);", "{agent}" }
                                 td { style: "{TD_STYLE}", "{dur}" }
-                                td { style: "{TD_STYLE} color: {result_color}; font-weight: bold;", "{result_text}" }
+                                td { style: "{TD_STYLE} color: {result_color}; font-weight: var(--weight-bold);", "{result_text}" }
                                 td {
                                     style: "{TD_STYLE} font-size: var(--text-xs); color: var(--text-secondary); max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;",
                                     "{error}"
@@ -286,7 +292,7 @@ fn render_pagination(page: usize, total_items: usize, mut detail_page: Signal<us
 
     rsx! {
         div {
-            style: "display: flex; align-items: center; gap: 8px; font-size: var(--text-xs); color: var(--text-secondary);",
+            style: "display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-xs); color: var(--text-secondary);",
             button {
                 style: if page > 0 { PAGE_BTN } else { PAGE_BTN_DISABLED },
                 disabled: page == 0,

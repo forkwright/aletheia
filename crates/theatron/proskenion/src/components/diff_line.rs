@@ -10,7 +10,7 @@ const LINE_STYLE: &str = "\
     min-height: 1.5em; \
     font-family: var(--font-mono); \
     font-size: var(--text-sm); \
-    line-height: 1.5;\
+    line-height: var(--leading-normal);\
 ";
 
 const GUTTER_STYLE: &str = "\
@@ -24,7 +24,7 @@ const GUTTER_NUM_STYLE: &str = "\
     display: inline-block; \
     width: 4ch; \
     text-align: right; \
-    padding: 0 4px; \
+    padding: 0 var(--space-1); \
     color: var(--text-muted);\
 ";
 
@@ -39,7 +39,7 @@ const INDICATOR_STYLE: &str = "\
 const CONTENT_STYLE: &str = "\
     white-space: pre; \
     flex: 1; \
-    padding: 0 8px;\
+    padding: 0 var(--space-2);\
 ";
 
 /// Background color for the entire line based on change type.
@@ -156,7 +156,7 @@ fn render_word_spans(spans: &[WordSpan], change_type: ChangeType) -> Element {
 }
 
 fn bold_css(bold: bool) -> &'static str {
-    if bold { " font-weight: bold;" } else { "" }
+    if bold { " font-weight: var(--weight-bold);" } else { "" }
 }
 
 fn italic_css(italic: bool) -> &'static str {

@@ -9,24 +9,27 @@ use crate::state::verification::{
 const PANEL_STYLE: &str = "\
     display: flex; \
     flex-direction: column; \
-    gap: 8px;\
+    gap: var(--space-2);\
 ";
 
 const FILTER_ROW: &str = "\
     display: flex; \
     align-items: center; \
-    gap: 8px; \
-    margin-bottom: 8px;\
+    gap: var(--space-2); \
+    margin-bottom: var(--space-2);\
 ";
 
 const FILTER_BTN_ACTIVE: &str = "\
-    background: #1e1e5a; \
-    color: #8080ff; \
+    background: var(--bg-surface-dim); \
+    color: var(--accent); \
     border: 1px solid var(--accent); \
     border-radius: var(--radius-md); \
     padding: 3px 10px; \
     font-size: var(--text-xs); \
-    cursor: pointer;\
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const FILTER_BTN_INACTIVE: &str = "\
@@ -36,32 +39,35 @@ const FILTER_BTN_INACTIVE: &str = "\
     border-radius: var(--radius-md); \
     padding: 3px 10px; \
     font-size: var(--text-xs); \
-    cursor: pointer;\
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const GAP_CARD: &str = "\
     background: var(--bg-surface); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 12px 14px;\
+    padding: var(--space-3) 14px;\
 ";
 
 const GAP_TITLE_ROW: &str = "\
     display: flex; \
     align-items: center; \
-    gap: 8px; \
+    gap: var(--space-2); \
     margin-bottom: 6px;\
 ";
 
 const GAP_TITLE: &str = "\
     font-size: var(--text-base); \
-    font-weight: 600; \
+    font-weight: var(--weight-semibold); \
     color: var(--text-primary);\
 ";
 
 const GAP_LABEL: &str = "\
     font-size: var(--text-xs); \
-    font-weight: 600; \
+    font-weight: var(--weight-semibold); \
     padding: 1px 6px; \
     border-radius: var(--radius-sm); \
     text-transform: uppercase;\
@@ -70,22 +76,22 @@ const GAP_LABEL: &str = "\
 const CRITERIA_STYLE: &str = "\
     font-size: var(--text-sm); \
     color: var(--text-secondary); \
-    margin-bottom: 4px;\
+    margin-bottom: var(--space-1);\
 ";
 
 const ACTION_STYLE: &str = "\
     font-size: var(--text-xs); \
-    color: #4a9aff; \
-    background: #0f1a2a; \
+    color: var(--accent); \
+    background: var(--bg-surface-dim); \
     border-radius: 3px; \
     padding: 3px 6px; \
-    margin-top: 4px;\
+    margin-top: var(--space-1);\
 ";
 
 const EMPTY_STYLE: &str = "\
     color: var(--text-muted); \
     font-size: var(--text-sm); \
-    padding: 16px 0;\
+    padding: var(--space-4) 0;\
 ";
 
 /// Gap analysis panel listing requirements that are not yet fully verified.
@@ -191,7 +197,7 @@ fn priority_badge_style(priority: RequirementPriority) -> &'static str {
     match priority {
         RequirementPriority::P0 => "background: #3a0f0f; color: var(--status-error);",
         RequirementPriority::P1 => "background: #2a1f05; color: var(--status-warning);",
-        RequirementPriority::P2 => "background: #0f1f2a; color: #4a9aff;",
+        RequirementPriority::P2 => "background: var(--bg-surface-dim); color: var(--accent);",
         RequirementPriority::P3 => "background: var(--bg-surface); color: var(--text-muted);",
     }
 }

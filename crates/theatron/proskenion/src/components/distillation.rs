@@ -13,7 +13,7 @@ const CONTAINER_STYLE: &str = "\
     display: flex; \
     align-items: center; \
     gap: 10px; \
-    padding: 6px 16px; \
+    padding: 6px var(--space-4); \
     background: var(--bg-surface); \
     border-top: 1px solid var(--border);\
 ";

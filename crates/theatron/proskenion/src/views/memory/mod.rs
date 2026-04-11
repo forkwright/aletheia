@@ -66,7 +66,10 @@ const REFRESH_BTN: &str = "\
     border-radius: var(--radius-md); \
     padding: var(--space-1) var(--space-3); \
     font-size: var(--text-sm); \
-    cursor: pointer;\
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const BREADCRUMB_STYLE: &str = "\
@@ -82,7 +85,10 @@ const BREADCRUMB_STYLE: &str = "\
 const BREADCRUMB_LINK_STYLE: &str = "\
     color: var(--accent); \
     cursor: pointer; \
-    text-decoration: none;\
+    text-decoration: none; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const NAV_BTN_STYLE: &str = "\
@@ -92,7 +98,10 @@ const NAV_BTN_STYLE: &str = "\
     border-radius: var(--radius-sm); \
     padding: var(--space-1) var(--space-2); \
     font-size: var(--text-sm); \
-    cursor: pointer;\
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const NAV_BTN_DISABLED_STYLE: &str = "\
@@ -352,7 +361,7 @@ pub(crate) fn Memory() -> Element {
                     "Memory Explorer"
                 }
                 div {
-                    style: "display: flex; gap: 8px; align-items: center;",
+                    style: "display: flex; gap: var(--space-2); align-items: center;",
                     // Back/forward navigation
                     button {
                         style: if can_back { "{NAV_BTN_STYLE}" } else { "{NAV_BTN_DISABLED_STYLE}" },

@@ -13,23 +13,23 @@ const SECTION_STYLE: &str = "\
     background: var(--bg-surface); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 16px 20px;\
+    padding: var(--space-4) var(--space-5);\
 ";
 
 const SECTION_TITLE: &str = "\
     font-size: var(--text-base); \
-    font-weight: bold; \
+    font-weight: var(--weight-bold); \
     color: var(--text-secondary); \
     text-transform: uppercase; \
     letter-spacing: 0.5px; \
-    margin-bottom: 12px;\
+    margin-bottom: var(--space-3);\
 ";
 
 const ROW_STYLE: &str = "\
     display: flex; \
     justify-content: space-between; \
     align-items: center; \
-    padding: 8px 0; \
+    padding: var(--space-2) 0; \
     border-bottom: 1px solid #222;\
 ";
 
@@ -45,7 +45,10 @@ const TOGGLE_ON: &str = "\
     border-radius: var(--radius-md); \
     padding: 6px 14px; \
     font-size: var(--text-sm); \
-    cursor: pointer;\
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const TOGGLE_OFF: &str = "\
@@ -55,7 +58,10 @@ const TOGGLE_OFF: &str = "\
     border-radius: var(--radius-md); \
     padding: 6px 14px; \
     font-size: var(--text-sm); \
-    cursor: pointer;\
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const DND_BTN: &str = "\
@@ -66,13 +72,16 @@ const DND_BTN: &str = "\
     padding: 5px 10px; \
     font-size: var(--text-xs); \
     cursor: pointer; \
-    margin-left: 6px;\
+    margin-left: 6px; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const WARNING_STYLE: &str = "\
     color: var(--status-warning); \
     font-size: var(--text-xs); \
-    margin-top: 4px;\
+    margin-top: var(--space-1);\
 ";
 
 /// Notification settings panel component.

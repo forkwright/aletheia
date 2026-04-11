@@ -9,8 +9,8 @@ use crate::state::toasts::{Toast, ToastId};
 const TOAST_STYLE: &str = "\
     display: flex; \
     flex-direction: column; \
-    gap: 4px; \
-    padding: 12px 16px; \
+    gap: var(--space-1); \
+    padding: var(--space-3) var(--space-4); \
     border-radius: var(--radius-md); \
     border-left: 4px solid; \
     min-width: 300px; \
@@ -21,7 +21,7 @@ const TOAST_STYLE: &str = "\
 
 const TITLE_STYLE: &str = "\
     font-size: var(--text-base); \
-    font-weight: 600;\
+    font-weight: var(--weight-semibold);\
 ";
 
 const BODY_STYLE: &str = "\
@@ -37,9 +37,9 @@ const DISMISS_STYLE: &str = "\
     border: none; \
     color: inherit; \
     opacity: 0.6; \
-    cursor: pointer; \
+    cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick); \
     font-size: var(--text-base); \
-    padding: 2px 4px;\
+    padding: 2px var(--space-1);\
 ";
 
 const ACTION_STYLE: &str = "\
@@ -47,11 +47,11 @@ const ACTION_STYLE: &str = "\
     border: 1px solid rgba(255, 255, 255, 0.2); \
     border-radius: var(--radius-sm); \
     color: inherit; \
-    cursor: pointer; \
+    cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick); \
     font-size: var(--text-sm); \
-    padding: 4px 12px; \
+    padding: var(--space-1) var(--space-3); \
     align-self: flex-start; \
-    margin-top: 4px;\
+    margin-top: var(--space-1);\
 ";
 
 /// Render a single toast notification.

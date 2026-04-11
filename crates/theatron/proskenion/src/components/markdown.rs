@@ -506,6 +506,7 @@ fn render_inline(inline: MdInline, key: usize) -> Element {
                     text-decoration: underline;
                     text-decoration-color: var(--accent-dim);
                     cursor: pointer;
+                    transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);
                 ",
                 {render_inlines(text)}
             }

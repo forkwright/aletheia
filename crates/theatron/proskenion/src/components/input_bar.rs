@@ -50,11 +50,13 @@ const SEND_BTN_STYLE: &str = "\
     color: var(--text-inverse); \
     border: none; \
     border-radius: var(--radius-md); \
-    padding: 10px 20px; \
+    padding: 10px var(--space-5); \
     font-size: var(--text-base); \
     cursor: pointer; \
     white-space: nowrap; \
-    transition: background-color var(--transition-quick);\
+    transition: background-color var(--transition-quick); \
+    flex-shrink: 0; \
+    min-width: 70px;\
 ";
 
 const SEND_BTN_DISABLED: &str = "\
@@ -62,7 +64,7 @@ const SEND_BTN_DISABLED: &str = "\
     color: var(--text-muted); \
     border: none; \
     border-radius: var(--radius-md); \
-    padding: 10px 20px; \
+    padding: 10px var(--space-5); \
     font-size: var(--text-base); \
     cursor: not-allowed; \
     white-space: nowrap;\
@@ -73,11 +75,13 @@ const ABORT_BTN_STYLE: &str = "\
     color: var(--text-inverse); \
     border: none; \
     border-radius: var(--radius-md); \
-    padding: 10px 20px; \
+    padding: 10px var(--space-5); \
     font-size: var(--text-base); \
     cursor: pointer; \
     white-space: nowrap; \
-    transition: background-color var(--transition-quick);\
+    transition: background-color var(--transition-quick); \
+    flex-shrink: 0; \
+    min-width: 70px;\
 ";
 
 /// Props for the [`InputBar`] component.

@@ -7,14 +7,14 @@ use crate::state::ops::{AgentCardData, AgentStatusStore};
 const GRID_STYLE: &str = "\
     display: flex; \
     flex-wrap: wrap; \
-    gap: 12px;\
+    gap: var(--space-3);\
 ";
 
 const CARD_STYLE: &str = "\
     background: var(--bg-surface); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 16px 20px; \
+    padding: var(--space-4) var(--space-5); \
     min-width: 200px; \
     flex: 1; \
     max-width: 320px;\
@@ -23,13 +23,13 @@ const CARD_STYLE: &str = "\
 const CARD_HEADER: &str = "\
     display: flex; \
     align-items: center; \
-    gap: 8px; \
-    margin-bottom: 12px;\
+    gap: var(--space-2); \
+    margin-bottom: var(--space-3);\
 ";
 
 const CARD_NAME: &str = "\
     font-size: var(--text-md); \
-    font-weight: bold; \
+    font-weight: var(--weight-bold); \
     color: var(--text-primary);\
 ";
 
@@ -37,7 +37,7 @@ const CARD_ROW: &str = "\
     display: flex; \
     justify-content: space-between; \
     align-items: center; \
-    padding: 4px 0; \
+    padding: var(--space-1) 0; \
     font-size: var(--text-xs);\
 ";
 
@@ -60,7 +60,7 @@ const DOT_BASE: &str = "\
 const EMPTY_STATE: &str = "\
     color: var(--text-muted); \
     font-size: var(--text-sm); \
-    padding: 12px 0;\
+    padding: var(--space-3) 0;\
 ";
 
 #[component]
@@ -101,7 +101,7 @@ fn render_card(card: &AgentCardData) -> Element {
     let last_activity = card.last_activity.as_deref().unwrap_or("\u{2014}");
     let dot_style = format!("{DOT_BASE} background: {dot_color};");
     let health_style = format!("color: {dot_color};");
-    let turn_style = format!("color: {turn_color}; font-weight: bold;");
+    let turn_style = format!("color: {turn_color}; font-weight: var(--weight-bold);");
     let conn_style = format!("color: {conn_color};");
 
     rsx! {

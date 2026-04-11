@@ -133,14 +133,14 @@ const CONTAINER_STYLE: &str = "\
     flex-direction: column; \
     height: 100%; \
     overflow-y: auto; \
-    padding: 0 4px;\
+    padding: 0 var(--space-1);\
 ";
 
 const HEADER_STYLE: &str = "\
     display: flex; \
     align-items: center; \
     justify-content: space-between; \
-    padding: 0 0 12px 0; \
+    padding: 0 0 var(--space-3) 0; \
     position: sticky; \
     top: 0; \
     background: var(--bg-surface-dim); \
@@ -152,9 +152,12 @@ const REFRESH_BTN: &str = "\
     color: var(--text-primary); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 4px 12px; \
+    padding: var(--space-1) var(--space-3); \
     font-size: var(--text-xs); \
-    cursor: pointer;\
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const STATUS_STYLE: &str = "\
@@ -170,46 +173,49 @@ pub(crate) const SECTION_HEADER_STYLE: &str = "\
     display: flex; \
     align-items: center; \
     justify-content: space-between; \
-    padding: 12px 16px; \
+    padding: var(--space-3) var(--space-4); \
     background: var(--bg-surface); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
     cursor: pointer; \
     user-select: none; \
-    margin-bottom: 2px;\
+    margin-bottom: 2px; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 pub(crate) const SECTION_TITLE_STYLE: &str = "\
     font-size: var(--text-md); \
-    font-weight: 600; \
+    font-weight: var(--weight-semibold); \
     color: var(--text-primary);\
 ";
 
 pub(crate) const SECTION_BODY_STYLE: &str = "\
-    padding: 16px; \
+    padding: var(--space-4); \
     background: #12121e; \
     border: 1px solid var(--border); \
     border-top: none; \
     border-radius: 0 0 8px 8px; \
-    margin-bottom: 12px;\
+    margin-bottom: var(--space-3);\
 ";
 
 pub(crate) const CARD_STYLE: &str = "\
     background: var(--bg-surface); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 16px;\
+    padding: var(--space-4);\
 ";
 
 pub(crate) const GRID_STYLE: &str = "\
     display: flex; \
     flex-wrap: wrap; \
-    gap: 12px;\
+    gap: var(--space-3);\
 ";
 
 pub(crate) const CARD_VALUE: &str = "\
-    font-size: 28px; \
-    font-weight: bold; \
+    font-size: var(--text-2xl); \
+    font-weight: var(--weight-bold); \
     color: var(--text-primary);\
 ";
 
@@ -218,7 +224,7 @@ pub(crate) const CARD_LABEL: &str = "\
     color: var(--text-secondary); \
     text-transform: uppercase; \
     letter-spacing: 0.5px; \
-    margin-top: 4px;\
+    margin-top: var(--space-1);\
 ";
 
 pub(crate) const CARD_SUB: &str = "\

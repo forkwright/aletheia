@@ -14,7 +14,7 @@ const LABEL_ROW_STYLE: &str = "\
     display: flex; \
     justify-content: space-between; \
     align-items: center; \
-    margin-bottom: 4px; \
+    margin-bottom: var(--space-1); \
     font-size: var(--text-xs); \
     color: var(--text-secondary);\
 ";
@@ -35,7 +35,7 @@ pub(crate) fn CoverageBar(
     let Some(pct) = coverage else {
         return rsx! {
             div {
-                style: "margin-bottom: 12px;",
+                style: "margin-bottom: var(--space-3);",
                 div {
                     style: "{LABEL_ROW_STYLE}",
                     span { "{label}" }
@@ -48,17 +48,17 @@ pub(crate) fn CoverageBar(
     let color = coverage_color(pct);
     let bar_inner_style = format!(
         "height: 100%; width: {pct}%; background: {color}; border-radius: var(--radius-sm); \
-         transition: width 0.3s ease;"
+         transition: width var(--transition-measured);"
     );
 
     rsx! {
         div {
-            style: "margin-bottom: 12px;",
+            style: "margin-bottom: var(--space-3);",
             div {
                 style: "{LABEL_ROW_STYLE}",
                 span { "{label}" }
                 span {
-                    style: "color: {color}; font-weight: 600;",
+                    style: "color: {color}; font-weight: var(--weight-semibold);",
                     "{pct}%"
                 }
             }

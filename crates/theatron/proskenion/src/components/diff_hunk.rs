@@ -6,7 +6,7 @@ use crate::components::diff_line::DiffLineView;
 use crate::state::diff::{ChangeType, DiffHunk, DiffLine, DiffViewMode, align_side_by_side};
 
 const HUNK_HEADER_STYLE: &str = "\
-    padding: 4px 12px; \
+    padding: var(--space-1) var(--space-3); \
     font-family: var(--font-mono); \
     font-size: var(--text-xs); \
     color: var(--text-secondary); \
@@ -21,14 +21,14 @@ const SBS_ROW_STYLE: &str = "\
     min-height: 1.5em; \
     font-family: var(--font-mono); \
     font-size: var(--text-sm); \
-    line-height: 1.5;\
+    line-height: var(--leading-normal);\
 ";
 
 const SBS_GUTTER_STYLE: &str = "\
     display: inline-block; \
     width: 4ch; \
     text-align: right; \
-    padding: 0 4px; \
+    padding: 0 var(--space-1); \
     color: var(--text-muted); \
     user-select: none; \
     flex-shrink: 0;\
@@ -37,7 +37,7 @@ const SBS_GUTTER_STYLE: &str = "\
 const SBS_CONTENT_STYLE: &str = "\
     white-space: pre; \
     flex: 1; \
-    padding: 0 8px; \
+    padding: 0 var(--space-2); \
     overflow: hidden;\
 ";
 

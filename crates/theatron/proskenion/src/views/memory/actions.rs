@@ -20,7 +20,7 @@ const DIALOG_STYLE: &str = "\
     background: var(--bg-surface); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-lg); \
-    padding: 24px; \
+    padding: var(--space-6); \
     min-width: 400px; \
     max-width: 600px; \
     max-height: 80vh; \
@@ -30,22 +30,22 @@ const DIALOG_STYLE: &str = "\
 
 const DIALOG_TITLE_STYLE: &str = "\
     font-size: var(--text-lg); \
-    font-weight: 700; \
-    margin-bottom: 16px;\
+    font-weight: var(--weight-bold); \
+    margin-bottom: var(--space-4);\
 ";
 
 const DIALOG_BODY_STYLE: &str = "\
     font-size: var(--text-base); \
-    line-height: 1.5; \
+    line-height: var(--leading-normal); \
     color: var(--text-secondary); \
-    margin-bottom: 16px;\
+    margin-bottom: var(--space-4);\
 ";
 
 const DIALOG_ACTIONS_STYLE: &str = "\
     display: flex; \
     justify-content: flex-end; \
-    gap: 8px; \
-    margin-top: 16px;\
+    gap: var(--space-2); \
+    margin-top: var(--space-4);\
 ";
 
 const BTN_CANCEL_STYLE: &str = "\
@@ -53,29 +53,38 @@ const BTN_CANCEL_STYLE: &str = "\
     color: var(--text-primary); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 8px 16px; \
+    padding: var(--space-2) var(--space-4); \
     font-size: var(--text-sm); \
-    cursor: pointer;\
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const BTN_PRIMARY_STYLE: &str = "\
-    background: #3b3bbb; \
+    background: var(--accent); \
     color: var(--text-primary); \
     border: none; \
     border-radius: var(--radius-md); \
-    padding: 8px 16px; \
+    padding: var(--space-2) var(--space-4); \
     font-size: var(--text-sm); \
-    cursor: pointer;\
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const BTN_DANGER_STYLE: &str = "\
-    background: #b91c1c; \
+    background: var(--status-error); \
     color: var(--text-primary); \
     border: none; \
     border-radius: var(--radius-md); \
-    padding: 8px 16px; \
+    padding: var(--space-2) var(--space-4); \
     font-size: var(--text-sm); \
-    cursor: pointer;\
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const INPUT_STYLE: &str = "\
@@ -83,10 +92,10 @@ const INPUT_STYLE: &str = "\
     background: var(--bg-surface-dim); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 8px 12px; \
+    padding: var(--space-2) var(--space-3); \
     color: var(--text-primary); \
     font-size: var(--text-base); \
-    margin-bottom: 12px;\
+    margin-bottom: var(--space-3);\
 ";
 
 const SELECT_STYLE: &str = "\
@@ -94,37 +103,40 @@ const SELECT_STYLE: &str = "\
     background: var(--bg-surface-dim); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 8px 12px; \
+    padding: var(--space-2) var(--space-3); \
     color: var(--text-primary); \
     font-size: var(--text-base); \
-    margin-bottom: 12px; \
-    cursor: pointer;\
+    margin-bottom: var(--space-3); \
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const MERGE_ENTITY_CARD: &str = "\
     background: var(--bg-surface-dim); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 12px; \
+    padding: var(--space-3); \
     flex: 1;\
 ";
 
 const MERGE_SIDE_STYLE: &str = "\
     display: flex; \
-    gap: 12px; \
-    margin-bottom: 16px;\
+    gap: var(--space-3); \
+    margin-bottom: var(--space-4);\
 ";
 
 const MERGE_LABEL_STYLE: &str = "\
     font-size: var(--text-xs); \
     color: var(--text-secondary); \
     text-transform: uppercase; \
-    margin-bottom: 4px;\
+    margin-bottom: var(--space-1);\
 ";
 
 const MERGE_NAME_STYLE: &str = "\
     font-size: var(--text-md); \
-    font-weight: 600; \
+    font-weight: var(--weight-semibold); \
     color: var(--text-primary);\
 ";
 
@@ -132,20 +144,20 @@ const WARNING_STYLE: &str = "\
     background: #4a2a1a; \
     border: 1px solid var(--status-warning)44; \
     border-radius: var(--radius-md); \
-    padding: 12px; \
+    padding: var(--space-3); \
     color: var(--status-warning); \
     font-size: var(--text-sm); \
-    margin-bottom: 12px;\
+    margin-bottom: var(--space-3);\
 ";
 
 const IMPACT_STYLE: &str = "\
     background: #4a1a1a; \
     border: 1px solid var(--status-error)44; \
     border-radius: var(--radius-md); \
-    padding: 12px; \
+    padding: var(--space-3); \
     color: var(--status-error); \
     font-size: var(--text-sm); \
-    margin-bottom: 12px;\
+    margin-bottom: var(--space-3);\
 ";
 
 /// Merge dialog: select a secondary entity to merge into the primary.
@@ -326,7 +338,7 @@ pub(crate) fn FlagDialog(
 
                 // Severity
                 label {
-                    style: "font-size: var(--text-sm); color: var(--text-secondary); display: block; margin-bottom: 4px;",
+                    style: "font-size: var(--text-sm); color: var(--text-secondary); display: block; margin-bottom: var(--space-1);",
                     "Severity"
                 }
                 select {
@@ -352,7 +364,7 @@ pub(crate) fn FlagDialog(
 
                 // Reason
                 label {
-                    style: "font-size: var(--text-sm); color: var(--text-secondary); display: block; margin-bottom: 4px;",
+                    style: "font-size: var(--text-sm); color: var(--text-secondary); display: block; margin-bottom: var(--space-1);",
                     "Reason"
                 }
                 textarea {
@@ -446,9 +458,9 @@ pub(crate) fn DeleteDialog(
 
                 div {
                     style: "{IMPACT_STYLE}",
-                    div { style: "font-weight: 600; margin-bottom: 8px;", "Impact" }
+                    div { style: "font-weight: var(--weight-semibold); margin-bottom: var(--space-2);", "Impact" }
                     div { "This will permanently delete " strong { "{entity_name}" } " and:" }
-                    ul { style: "margin: 8px 0 0 16px; padding: 0;",
+                    ul { style: "margin: var(--space-2) 0 0 var(--space-4); padding: 0;",
                         li { "Remove {relationship_count} relationship(s)" }
                         li { "Affect {memory_count} associated memory/memories" }
                     }

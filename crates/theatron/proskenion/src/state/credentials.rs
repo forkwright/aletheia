@@ -42,9 +42,9 @@ impl ValidationStatus {
 
     pub(crate) fn color(self) -> &'static str {
         match self {
-            Self::Valid => "#22c55e",
-            Self::Expired => "#ef4444",
-            Self::Untested => "#888888",
+            Self::Valid => "var(--status-success)",
+            Self::Expired => "var(--status-error)",
+            Self::Untested => "var(--text-secondary)",
         }
     }
 }

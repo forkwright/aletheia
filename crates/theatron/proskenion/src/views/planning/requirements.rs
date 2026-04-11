@@ -25,21 +25,21 @@ const CONTAINER_STYLE: &str = "\
     display: flex; \
     flex-direction: column; \
     height: 100%; \
-    padding: 16px;\
+    padding: var(--space-4);\
 ";
 
 const HEADER_ROW: &str = "\
     display: flex; \
     align-items: center; \
     justify-content: space-between; \
-    margin-bottom: 12px;\
+    margin-bottom: var(--space-3);\
 ";
 
 const FILTER_BAR: &str = "\
     display: flex; \
     align-items: center; \
-    gap: 8px; \
-    margin-bottom: 12px; \
+    gap: var(--space-2); \
+    margin-bottom: var(--space-3); \
     flex-wrap: wrap;\
 ";
 
@@ -57,39 +57,45 @@ const FILTER_SELECT: &str = "\
     background: var(--bg-surface); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 6px 8px; \
+    padding: 6px var(--space-2); \
     color: var(--text-primary); \
     font-size: var(--text-xs);\
 ";
 
 const TAB_BAR: &str = "\
     display: flex; \
-    gap: 4px; \
-    margin-bottom: 12px; \
+    gap: var(--space-1); \
+    margin-bottom: var(--space-3); \
     border-bottom: 1px solid var(--border); \
     padding-bottom: 0;\
 ";
 
 const TAB_ACTIVE: &str = "\
-    padding: 6px 16px; \
+    padding: 6px var(--space-4); \
     border: 1px solid var(--border); \
     border-bottom: 1px solid var(--bg-surface-dim); \
     border-radius: var(--radius-md) 6px 0 0; \
     font-size: var(--text-sm); \
-    font-weight: 600; \
+    font-weight: var(--weight-semibold); \
     color: var(--text-primary); \
     background: var(--bg-surface-dim); \
-    cursor: pointer;\
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const TAB_INACTIVE: &str = "\
-    padding: 6px 16px; \
+    padding: 6px var(--space-4); \
     border: 1px solid transparent; \
     border-radius: var(--radius-md) 6px 0 0; \
     font-size: var(--text-sm); \
     color: var(--text-muted); \
     background: transparent; \
-    cursor: pointer;\
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const TABLE_STYLE: &str = "\
@@ -102,7 +108,7 @@ const TH_STYLE: &str = "\
     text-align: left; \
     padding: 6px 10px; \
     font-size: var(--text-xs); \
-    font-weight: 600; \
+    font-weight: var(--weight-semibold); \
     color: var(--text-muted); \
     text-transform: uppercase; \
     letter-spacing: 0.4px; \
@@ -110,16 +116,16 @@ const TH_STYLE: &str = "\
 ";
 
 const TD_STYLE: &str = "\
-    padding: 8px 10px; \
+    padding: var(--space-2) 10px; \
     border-bottom: 1px solid #1a1a2a; \
     vertical-align: top;\
 ";
 
 const EDIT_INPUT: &str = "\
     background: var(--bg-surface-dim); \
-    border: 1px solid #4a9aff; \
+    border: 1px solid var(--accent); \
     border-radius: var(--radius-sm); \
-    padding: 4px 6px; \
+    padding: var(--space-1) 6px; \
     color: var(--text-primary); \
     font-size: var(--text-sm); \
     width: 100%;\
@@ -139,9 +145,12 @@ const REFRESH_BTN: &str = "\
     color: var(--text-primary); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 4px 12px; \
+    padding: var(--space-1) var(--space-3); \
     font-size: var(--text-xs); \
-    cursor: pointer;\
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const PLACEHOLDER_STYLE: &str = "\
@@ -301,7 +310,7 @@ pub(crate) fn RequirementsView(project_id: String) -> Element {
                         // Pending proposals
                         if !pending_proposals.is_empty() {
                             div {
-                                style: "margin-bottom: 12px;",
+                                style: "margin-bottom: var(--space-3);",
                                 for proposal in &pending_proposals {
                                     CategoryProposalCard {
                                         key: "{proposal.id}",
@@ -518,13 +527,13 @@ pub(crate) fn RequirementsView(project_id: String) -> Element {
                                                         }
 
                                                         td {
-                                                            style: "{TD_STYLE} color: {status_color}; font-weight: 600;",
+                                                            style: "{TD_STYLE} color: {status_color}; font-weight: var(--weight-semibold);",
                                                             "{status_label}"
                                                         }
                                                         td {
                                                             style: "{TD_STYLE}",
                                                             span {
-                                                                style: "color: {priority_color}; font-weight: 600;",
+                                                                style: "color: {priority_color}; font-weight: var(--weight-semibold);",
                                                                 "{priority_label}"
                                                             }
                                                         }

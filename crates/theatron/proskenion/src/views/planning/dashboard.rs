@@ -37,7 +37,10 @@ const CARD_STYLE: &str = "\
     border: 1px solid var(--border); \
     border-radius: var(--radius-lg); \
     padding: var(--space-4); \
-    cursor: pointer;\
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const CARD_TITLE: &str = "\
@@ -89,7 +92,10 @@ const REFRESH_BTN: &str = "\
     border-radius: var(--radius-md); \
     padding: var(--space-1) var(--space-3); \
     font-size: var(--text-sm); \
-    cursor: pointer;\
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const PLACEHOLDER_STYLE: &str = "\
@@ -181,7 +187,7 @@ pub(crate) fn Planning() -> Element {
                 FetchState::NotAvailable => rsx! {
                     div {
                         style: "{PLACEHOLDER_STYLE}",
-                        div { style: "font-size: 48px;", "[P]" }
+                        div { style: "font-size: var(--text-3xl);", "[P]" }
                         div { style: "font-size: var(--text-md);", "Project planning not available" }
                         div { style: "font-size: var(--text-sm); max-width: 400px; text-align: center;",
                             "The planning API is not available on this pylon instance. "

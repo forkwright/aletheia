@@ -11,28 +11,28 @@ use crate::state::connection::ConnectionConfig;
 const CARD_BASE: &str = "\
     border-radius: var(--radius-md); \
     border: 1px solid; \
-    padding: 16px 20px; \
-    margin-bottom: 12px;\
+    padding: var(--space-4) var(--space-5); \
+    margin-bottom: var(--space-3);\
 ";
 
 const HEADER_ROW: &str = "\
     display: flex; \
     align-items: center; \
     justify-content: space-between; \
-    margin-bottom: 8px;\
+    margin-bottom: var(--space-2);\
 ";
 
 const TITLE_STYLE: &str = "\
     font-size: var(--text-md); \
-    font-weight: 600; \
+    font-weight: var(--weight-semibold); \
     color: var(--text-primary);\
 ";
 
 const BADGE_BASE: &str = "\
     display: inline-block; \
     font-size: var(--text-xs); \
-    font-weight: 600; \
-    padding: 2px 8px; \
+    font-weight: var(--weight-semibold); \
+    padding: 2px var(--space-2); \
     border-radius: 10px; \
     text-transform: uppercase; \
     letter-spacing: 0.4px;\
@@ -46,11 +46,11 @@ const DESCRIPTION_STYLE: &str = "\
 
 const SECTION_LABEL: &str = "\
     font-size: var(--text-xs); \
-    font-weight: 600; \
+    font-weight: var(--weight-semibold); \
     color: var(--text-muted); \
     text-transform: uppercase; \
     letter-spacing: 0.5px; \
-    margin: 10px 0 4px;\
+    margin: 10px 0 var(--space-1);\
 ";
 
 const CONTEXT_STYLE: &str = "\
@@ -59,14 +59,14 @@ const CONTEXT_STYLE: &str = "\
     background: var(--bg-surface-dim); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-sm); \
-    padding: 8px 10px; \
-    margin-bottom: 4px;\
+    padding: var(--space-2) 10px; \
+    margin-bottom: var(--space-1);\
 ";
 
 const REQ_ROW: &str = "\
     display: flex; \
     align-items: center; \
-    gap: 8px; \
+    gap: var(--space-2); \
     padding: 3px 0; \
     font-size: var(--text-sm);\
 ";
@@ -81,7 +81,7 @@ const ARTIFACT_ROW: &str = "\
 
 const DECISION_BOX: &str = "\
     margin-top: 10px; \
-    padding: 8px 10px; \
+    padding: var(--space-2) 10px; \
     background: var(--bg-surface-dim); \
     border-radius: var(--radius-sm); \
     border: 1px solid var(--border);\
@@ -89,41 +89,50 @@ const DECISION_BOX: &str = "\
 
 const BTN_ROW: &str = "\
     display: flex; \
-    gap: 8px; \
+    gap: var(--space-2); \
     margin-top: 14px;\
 ";
 
 const APPROVE_BTN: &str = "\
-    background: #166534; \
-    color: #dcfce7; \
+    background: var(--status-success-bg); \
+    color: var(--status-success); \
     border: 1px solid var(--status-success); \
     border-radius: var(--radius-md); \
-    padding: 6px 16px; \
+    padding: 6px var(--space-4); \
     font-size: var(--text-sm); \
-    font-weight: 600; \
+    font-weight: var(--weight-semibold); \
     cursor: pointer;\
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const SKIP_BTN: &str = "\
-    background: #78350f; \
-    color: #fef3c7; \
+    background: var(--status-warning-bg); \
+    color: var(--status-warning); \
     border: 1px solid var(--status-warning); \
     border-radius: var(--radius-md); \
-    padding: 6px 16px; \
+    padding: 6px var(--space-4); \
     font-size: var(--text-sm); \
-    font-weight: 600; \
+    font-weight: var(--weight-semibold); \
     cursor: pointer;\
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const OVERRIDE_BTN: &str = "\
-    background: #7f1d1d; \
-    color: #fee2e2; \
+    background: var(--status-error-bg); \
+    color: var(--status-error); \
     border: 1px solid var(--status-error); \
     border-radius: var(--radius-md); \
-    padding: 6px 16px; \
+    padding: 6px var(--space-4); \
     font-size: var(--text-sm); \
-    font-weight: 600; \
+    font-weight: var(--weight-semibold); \
     cursor: pointer;\
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const SUBMIT_BTN_ACTIVE: &str = "\
@@ -131,10 +140,13 @@ const SUBMIT_BTN_ACTIVE: &str = "\
     color: white; \
     border: none; \
     border-radius: var(--radius-md); \
-    padding: 6px 16px; \
+    padding: 6px var(--space-4); \
     font-size: var(--text-sm); \
-    font-weight: 600; \
+    font-weight: var(--weight-semibold); \
     cursor: pointer;\
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const SUBMIT_BTN_DISABLED: &str = "\
@@ -142,9 +154,9 @@ const SUBMIT_BTN_DISABLED: &str = "\
     color: var(--text-muted); \
     border: none; \
     border-radius: var(--radius-md); \
-    padding: 6px 16px; \
+    padding: 6px var(--space-4); \
     font-size: var(--text-sm); \
-    font-weight: 600; \
+    font-weight: var(--weight-semibold); \
     cursor: not-allowed;\
 ";
 
@@ -153,9 +165,12 @@ const CANCEL_BTN: &str = "\
     color: var(--text-secondary); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 6px 12px; \
+    padding: 6px var(--space-3); \
     font-size: var(--text-sm); \
     cursor: pointer;\
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const NOTES_TEXTAREA: &str = "\
@@ -163,7 +178,7 @@ const NOTES_TEXTAREA: &str = "\
     background: var(--bg-surface-dim); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-sm); \
-    padding: 8px 10px; \
+    padding: var(--space-2) 10px; \
     color: var(--text-primary); \
     font-size: var(--text-sm); \
     font-family: inherit; \
@@ -172,7 +187,7 @@ const NOTES_TEXTAREA: &str = "\
     box-sizing: border-box;\
 ";
 
-const ERROR_STYLE: &str = "color: var(--status-error); font-size: var(--text-xs); margin-top: 8px;";
+const ERROR_STYLE: &str = "color: var(--status-error); font-size: var(--text-xs); margin-top: var(--space-2);";
 
 /// Checkpoint approval card with gate context, requirements, artifacts, and actions.
 ///
@@ -337,7 +352,7 @@ pub(crate) fn CheckpointCard(
                         "{action_label(decision.action)} by {decision.actor} at {decision.timestamp}"
                     }
                     if !decision.notes.is_empty() {
-                        div { style: "font-size: var(--text-xs); color: var(--text-secondary); margin-top: 4px; font-style: italic;",
+                        div { style: "font-size: var(--text-xs); color: var(--text-secondary); margin-top: var(--space-1); font-style: italic;",
                             "\"{decision.notes}\""
                         }
                     }
@@ -377,7 +392,7 @@ pub(crate) fn CheckpointCard(
                     },
                     Some(action) => rsx! {
                         div {
-                            style: "margin-top: 12px;",
+                            style: "margin-top: var(--space-3);",
                             div { style: "{SECTION_LABEL}", "{notes_action_label(action)} — reason required (min 10 chars):" }
                             textarea {
                                 style: "{NOTES_TEXTAREA}",

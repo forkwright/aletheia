@@ -23,22 +23,22 @@ const CONTAINER_STYLE: &str = "\
     display: flex; \
     flex-direction: column; \
     height: 100%; \
-    padding: 16px;\
+    padding: var(--space-4);\
 ";
 
 const HEADER_ROW: &str = "\
     display: flex; \
     align-items: center; \
     justify-content: space-between; \
-    margin-bottom: 16px;\
+    margin-bottom: var(--space-4);\
 ";
 
 const DETAIL_PANEL: &str = "\
     background: var(--bg-surface); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 14px 16px; \
-    margin-top: 16px;\
+    padding: 14px var(--space-4); \
+    margin-top: var(--space-4);\
 ";
 
 const REFRESH_BTN: &str = "\
@@ -46,9 +46,12 @@ const REFRESH_BTN: &str = "\
     color: var(--text-primary); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 4px 12px; \
+    padding: var(--space-1) var(--space-3); \
     font-size: var(--text-xs); \
-    cursor: pointer;\
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const PLACEHOLDER_STYLE: &str = "\
@@ -202,9 +205,9 @@ pub(crate) fn RoadmapView(project_id: String) -> Element {
                                     div {
                                         style: "{DETAIL_PANEL}",
                                         div {
-                                            style: "display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;",
+                                            style: "display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-2);",
                                             span {
-                                                style: "font-size: var(--text-base); font-weight: 600; color: var(--text-primary);",
+                                                style: "font-size: var(--text-base); font-weight: var(--weight-semibold); color: var(--text-primary);",
                                                 "{phase.name}"
                                             }
                                             span {
@@ -213,13 +216,13 @@ pub(crate) fn RoadmapView(project_id: String) -> Element {
                                             }
                                         }
                                         div {
-                                            style: "display: flex; align-items: center; gap: 12px; font-size: var(--text-xs); color: var(--text-secondary); margin-bottom: 8px;",
+                                            style: "display: flex; align-items: center; gap: var(--space-3); font-size: var(--text-xs); color: var(--text-secondary); margin-bottom: var(--space-2);",
                                             span { "Progress: {phase.progress}%" }
                                             span { "Status: {phase_status_label(phase.status)}" }
                                         }
                                         if !phase.requirements.is_empty() {
                                             div {
-                                                style: "font-size: var(--text-xs); color: var(--text-muted); margin-top: 8px;",
+                                                style: "font-size: var(--text-xs); color: var(--text-muted); margin-top: var(--space-2);",
                                                 "Requirements: {phase.requirements.join(\", \")}"
                                             }
                                         }

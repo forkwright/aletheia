@@ -15,7 +15,7 @@ use crate::state::tool_metrics::{
 pub(crate) fn ToolDurationView(tools: Vec<ToolStat>) -> Element {
     if tools.is_empty() {
         return rsx! {
-            div { style: "color: var(--text-muted); font-size: var(--text-sm); padding: 8px;", "No tool data available." }
+            div { style: "color: var(--text-muted); font-size: var(--text-sm); padding: var(--space-2);", "No tool data available." }
         };
     }
 
@@ -35,7 +35,7 @@ pub(crate) fn ToolDurationView(tools: Vec<ToolStat>) -> Element {
         .collect();
 
     rsx! {
-        div { style: "display: flex; flex-direction: column; gap: 20px;",
+        div { style: "display: flex; flex-direction: column; gap: var(--space-5);",
 
             // Percentile bar chart
             PercentileBarChart { entries: perc_entries }

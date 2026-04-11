@@ -10,11 +10,12 @@ use crate::state::app::TabBar;
 const TABS_BAR_STYLE: &str = "\
     display: flex; \
     align-items: center; \
-    gap: 4px; \
-    padding: 8px 16px 0; \
+    gap: var(--space-1); \
+    padding: var(--space-2) var(--space-4) 0; \
     background: var(--bg); \
     border-bottom: 1px solid var(--border-separator); \
-    overflow-x: auto;\
+    overflow-x: auto; \
+    overflow-y: hidden;\
 ";
 
 const TAB_STYLE: &str = "\
@@ -29,7 +30,10 @@ const TAB_STYLE: &str = "\
     background: var(--bg-surface); \
     border: 1px solid var(--border); \
     border-bottom: none; \
-    white-space: nowrap;\
+    white-space: nowrap; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const TAB_ACTIVE_STYLE: &str = "\
@@ -44,7 +48,10 @@ const TAB_ACTIVE_STYLE: &str = "\
     background: var(--bg); \
     border: 1px solid var(--accent); \
     border-bottom: 1px solid var(--bg); \
-    white-space: nowrap;\
+    white-space: nowrap; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const CLOSE_BTN_STYLE: &str = "\
@@ -52,7 +59,10 @@ const CLOSE_BTN_STYLE: &str = "\
     font-size: var(--text-xs); \
     padding: 0 2px; \
     cursor: pointer; \
-    border-radius: 3px;\
+    border-radius: 3px; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const UNREAD_BADGE_STYLE: &str = "\

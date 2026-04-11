@@ -11,21 +11,26 @@ use crate::state::sessions::{
 const ROW_STYLE: &str = "\
     display: flex; \
     align-items: center; \
-    gap: 12px; \
-    padding: 10px 12px; \
+    gap: var(--space-3); \
+    padding: 10px var(--space-3); \
     border-bottom: 1px solid #222; \
     cursor: pointer; \
-    transition: background 0.1s;\
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const ROW_HOVER_STYLE: &str = "\
     display: flex; \
     align-items: center; \
-    gap: 12px; \
-    padding: 10px 12px; \
+    gap: var(--space-3); \
+    padding: 10px var(--space-3); \
     border-bottom: 1px solid #222; \
     cursor: pointer; \
-    background: var(--bg-surface);\
+    background: var(--bg-surface); \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const TITLE_STYLE: &str = "\
@@ -39,7 +44,7 @@ const TITLE_STYLE: &str = "\
 
 const AGENT_BADGE_STYLE: &str = "\
     display: inline-block; \
-    padding: 2px 8px; \
+    padding: 2px var(--space-2); \
     border-radius: var(--radius-sm); \
     font-size: var(--text-xs); \
     background: var(--border); \
@@ -63,8 +68,8 @@ const STATUS_DOT_STYLE: &str = "\
 const SORT_BAR_STYLE: &str = "\
     display: flex; \
     align-items: center; \
-    gap: 8px; \
-    padding: 8px 12px; \
+    gap: var(--space-2); \
+    padding: var(--space-2) var(--space-3); \
     border-bottom: 1px solid var(--border); \
     font-size: var(--text-xs); \
     color: var(--text-secondary);\
@@ -74,20 +79,26 @@ const SORT_BTN_STYLE: &str = "\
     background: none; \
     border: 1px solid var(--border); \
     border-radius: var(--radius-sm); \
-    padding: 2px 8px; \
+    padding: 2px var(--space-2); \
     font-size: var(--text-xs); \
     color: var(--text-secondary); \
-    cursor: pointer;\
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const SORT_BTN_ACTIVE_STYLE: &str = "\
     background: var(--border); \
     border: 1px solid var(--accent); \
     border-radius: var(--radius-sm); \
-    padding: 2px 8px; \
+    padding: 2px var(--space-2); \
     font-size: var(--text-xs); \
     color: #7a7aff; \
-    cursor: pointer;\
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const CHECKBOX_STYLE: &str = "\
@@ -95,7 +106,10 @@ const CHECKBOX_STYLE: &str = "\
     height: 16px; \
     accent-color: var(--accent); \
     cursor: pointer; \
-    flex-shrink: 0;\
+    flex-shrink: 0; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const LIST_CONTAINER_STYLE: &str = "\
@@ -109,14 +123,14 @@ const EMPTY_STYLE: &str = "\
     align-items: center; \
     justify-content: center; \
     flex: 1; \
-    gap: 12px; \
+    gap: var(--space-3); \
     color: var(--text-muted);\
 ";
 
 const LOAD_MORE_STYLE: &str = "\
     display: flex; \
     justify-content: center; \
-    padding: 12px; \
+    padding: var(--space-3); \
     border-top: 1px solid #222;\
 ";
 
@@ -125,9 +139,12 @@ const LOAD_MORE_BTN: &str = "\
     color: var(--text-primary); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 6px 16px; \
+    padding: 6px var(--space-4); \
     font-size: var(--text-xs); \
-    cursor: pointer;\
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 /// Sort bar above the session list.
@@ -243,7 +260,7 @@ pub(crate) fn SessionList(
             // Select all bar
             if !sessions.is_empty() {
                 div {
-                    style: "display: flex; align-items: center; gap: 8px; padding: 4px 12px; border-bottom: 1px solid var(--bg-surface); font-size: var(--text-xs); color: var(--text-secondary);",
+                    style: "display: flex; align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-3); border-bottom: 1px solid var(--bg-surface); font-size: var(--text-xs); color: var(--text-secondary);",
                     input {
                         r#type: "checkbox",
                         style: "{CHECKBOX_STYLE}",
@@ -266,7 +283,7 @@ pub(crate) fn SessionList(
             if sessions.is_empty() {
                 div {
                     style: "{EMPTY_STYLE}",
-                    div { style: "font-size: 48px;", "[S]" }
+                    div { style: "font-size: var(--text-3xl);", "[S]" }
                     div { style: "font-size: var(--text-md);", "No sessions found" }
                     if list_store.read().has_active_filters() {
                         div { style: "font-size: var(--text-sm);",

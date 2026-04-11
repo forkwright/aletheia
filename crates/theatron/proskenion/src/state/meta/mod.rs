@@ -34,9 +34,9 @@ impl TrendDirection {
     #[must_use]
     pub(crate) fn color(&self) -> &'static str {
         match self {
-            Self::Up => "#22c55e",
-            Self::Down => "#ef4444",
-            Self::Flat => "#888",
+            Self::Up => "var(--status-success)",
+            Self::Down => "var(--status-error)",
+            Self::Flat => "var(--text-secondary)",
         }
     }
 }
@@ -391,11 +391,11 @@ pub(crate) fn compute_health_score(
 #[must_use]
 pub(crate) fn health_score_color(score: f64) -> &'static str {
     if score >= 0.7 {
-        "#22c55e"
+        "var(--status-success)"
     } else if score >= 0.4 {
-        "#f59e0b"
+        "var(--status-warning)"
     } else {
-        "#ef4444"
+        "var(--status-error)"
     }
 }
 
@@ -495,10 +495,10 @@ impl JournalEventType {
     #[must_use]
     pub(crate) fn color(&self) -> &'static str {
         match self {
-            Self::Error => "#ef4444",
-            Self::Distillation => "#4a9aff",
-            Self::ConfigChange => "#f59e0b",
-            Self::MemoryMerge => "#22c55e",
+            Self::Error => "var(--status-error)",
+            Self::Distillation => "var(--status-info)",
+            Self::ConfigChange => "var(--status-warning)",
+            Self::MemoryMerge => "var(--status-success)",
         }
     }
 }
@@ -550,17 +550,17 @@ pub(crate) fn build_heatmap(timestamps: &[(u8, u8)]) -> Vec<HeatmapCell> {
 #[must_use]
 pub(crate) fn heatmap_color(count: u32, max_count: u32) -> &'static str {
     if max_count == 0 || count == 0 {
-        return "#1a1a2e";
+        return "var(--bg-surface-dim)";
     }
     let ratio = f64::from(count) / f64::from(max_count);
     if ratio > 0.75 {
-        "#22c55e"
+        "var(--status-success)"
     } else if ratio > 0.5 {
-        "#4a9aff"
+        "var(--status-info)"
     } else if ratio > 0.25 {
-        "#2a4a6a"
+        "var(--accent-muted)"
     } else {
-        "#1a2a3e"
+        "var(--bg-surface)"
     }
 }
 

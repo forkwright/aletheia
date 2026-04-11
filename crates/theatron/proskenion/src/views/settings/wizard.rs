@@ -31,15 +31,15 @@ pub(crate) fn SetupWizard() -> Element {
     rsx! {
         div {
             style: "min-height: 100vh; display: flex; align-items: center; justify-content: center; \
-                    background: var(--bg-surface-dim); padding: 24px;",
+                    background: var(--bg-surface-dim); padding: var(--space-6);",
 
             div {
                 style: "background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-lg); \
-                        width: 100%; max-width: 520px; padding: 32px;",
+                        width: 100%; max-width: 520px; padding: var(--space-8);",
 
                 // Title
                 div {
-                    style: "margin-bottom: 24px;",
+                    style: "margin-bottom: var(--space-6);",
                     h1 { style: "font-size: 22px; margin: 0 0 6px; color: var(--text-primary);", "Welcome to Aletheia" }
                     p { style: "font-size: var(--text-base); color: var(--text-muted); margin: 0;", "Let's get you set up in a few steps." }
                 }
@@ -156,7 +156,7 @@ fn WizardProgress(current: usize, total: usize) -> Element {
                     let filled = i <= current;
                     let bg = if filled { "var(--accent)" } else { "var(--bg-surface-bright)" };
                     let style = format!(
-                        "flex: 1; height: 3px; background: {bg}; border-radius: 2px; transition: background 0.2s;"
+                        "flex: 1; height: 3px; background: {bg}; border-radius: 2px; transition: background var(--transition-quick);"
                     );
                     rsx! {
                         div {
@@ -192,21 +192,21 @@ fn StepServer(wizard_data: Signal<WizardData>, on_next: EventHandler<()>) -> Ele
 
     rsx! {
         div {
-            style: "display: flex; flex-direction: column; gap: 16px;",
+            style: "display: flex; flex-direction: column; gap: var(--space-4);",
             h2 { style: "font-size: var(--text-md); color: var(--text-primary); margin: 0;", "Server Connection" }
             p { style: "font-size: var(--text-sm); color: var(--text-secondary); margin: 0;",
                 "Enter the URL of your Aletheia server instance, or leave blank for auto-discovery."
             }
 
             div {
-                style: "display: flex; flex-direction: column; gap: 4px;",
+                style: "display: flex; flex-direction: column; gap: var(--space-1);",
                 label {
                     style: "font-size: var(--text-xs); color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;",
                     "Server URL"
                 }
                 input {
                     style: "background: var(--input-bg); border: 1px solid var(--input-border); border-radius: var(--radius-md); \
-                            padding: 8px 12px; color: var(--text-primary); font-size: var(--text-sm); width: 100%; box-sizing: border-box;",
+                            padding: var(--space-2) var(--space-3); color: var(--text-primary); font-size: var(--text-sm); width: 100%; box-sizing: border-box;",
                     placeholder: "http://localhost:3000",
                     value: "{wizard_data.read().server_url}",
                     oninput: move |e| { wizard_data.write().server_url = e.value(); },
@@ -238,7 +238,7 @@ fn StepAppearance(
 ) -> Element {
     rsx! {
         div {
-            style: "display: flex; flex-direction: column; gap: 20px;",
+            style: "display: flex; flex-direction: column; gap: var(--space-5);",
             h2 { style: "font-size: var(--text-md); color: var(--text-primary); margin: 0;", "Appearance" }
             p { style: "font-size: var(--text-sm); color: var(--text-secondary); margin: 0;",
                 "Choose your preferred theme and layout density."
@@ -246,13 +246,13 @@ fn StepAppearance(
 
             // Theme
             div {
-                style: "display: flex; flex-direction: column; gap: 8px;",
+                style: "display: flex; flex-direction: column; gap: var(--space-2);",
                 div {
                     style: "font-size: var(--text-xs); color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;",
                     "Theme"
                 }
                 div {
-                    style: "display: flex; gap: 8px;",
+                    style: "display: flex; gap: var(--space-2);",
                     for (mode, slug) in [("Dark", "dark"), ("Light", "light"), ("System", "system")] {
                         {
                             let is_active = wizard_data.read().selected_theme == slug;
@@ -260,8 +260,9 @@ fn StepAppearance(
                             let border = if is_active { "1px solid var(--accent)" } else { "1px solid var(--border)" };
                             let color = if is_active { "var(--text-inverse)" } else { "var(--text-secondary)" };
                             let style = format!(
-                                "flex: 1; padding: 8px; background: {bg}; border: {border}; \
-                                 border-radius: var(--radius-md); color: {color}; font-size: var(--text-sm); cursor: pointer;"
+                                "flex: 1; padding: var(--space-2); background: {bg}; border: {border}; \
+                                 border-radius: var(--radius-md); color: {color}; font-size: var(--text-sm); cursor: pointer; \
+                                 transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);"
                             );
                             rsx! {
                                 button {
@@ -278,13 +279,13 @@ fn StepAppearance(
 
             // Density
             div {
-                style: "display: flex; flex-direction: column; gap: 8px;",
+                style: "display: flex; flex-direction: column; gap: var(--space-2);",
                 div {
                     style: "font-size: var(--text-xs); color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;",
                     "Density"
                 }
                 div {
-                    style: "display: flex; gap: 8px;",
+                    style: "display: flex; gap: var(--space-2);",
                     for density in [UiDensity::Compact, UiDensity::Comfortable, UiDensity::Spacious] {
                         {
                             let is_active = wizard_data.read().selected_density == density;
@@ -292,8 +293,9 @@ fn StepAppearance(
                             let border = if is_active { "1px solid var(--accent)" } else { "1px solid var(--border)" };
                             let color = if is_active { "var(--text-inverse)" } else { "var(--text-secondary)" };
                             let style = format!(
-                                "flex: 1; padding: 8px; background: {bg}; border: {border}; \
-                                 border-radius: var(--radius-md); color: {color}; font-size: var(--text-sm); cursor: pointer; text-align: center;"
+                                "flex: 1; padding: var(--space-2); background: {bg}; border: {border}; \
+                                 border-radius: var(--radius-md); color: {color}; font-size: var(--text-sm); cursor: pointer; text-align: center; \
+                                 transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);"
                             );
                             rsx! {
                                 button {
@@ -310,7 +312,7 @@ fn StepAppearance(
 
             // Accent color
             div {
-                style: "display: flex; flex-direction: column; gap: 8px;",
+                style: "display: flex; flex-direction: column; gap: var(--space-2);",
                 div {
                     style: "font-size: var(--text-xs); color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;",
                     "Accent Color"
@@ -324,7 +326,8 @@ fn StepAppearance(
                             let border = if is_active { "3px solid var(--text-primary)" } else { "2px solid var(--border)" };
                             let style = format!(
                                 "width: 28px; height: 28px; border-radius: 50%; background: {hex_owned}; \
-                                 border: {border}; cursor: pointer; outline: none;"
+                                 border: {border}; cursor: pointer; outline: none; \
+                                 transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);"
                             );
                             rsx! {
                                 button {
@@ -358,9 +361,9 @@ fn StepReady(wizard_data: Signal<WizardData>, on_finish: EventHandler<()>) -> El
     let data = wizard_data.read();
     rsx! {
         div {
-            style: "display: flex; flex-direction: column; gap: 20px; align-items: center; text-align: center;",
+            style: "display: flex; flex-direction: column; gap: var(--space-5); align-items: center; text-align: center;",
             div {
-                style: "font-size: 48px;",
+                style: "font-size: var(--text-3xl);",
                 "\u{2713}"
             }
             h2 { style: "font-size: var(--text-lg); color: var(--text-primary); margin: 0;", "You're all set!" }
@@ -370,15 +373,16 @@ fn StepReady(wizard_data: Signal<WizardData>, on_finish: EventHandler<()>) -> El
 
             div {
                 style: "background: var(--bg-surface-dim); border: 1px solid var(--border); border-radius: var(--radius-md); \
-                        padding: 14px 20px; width: 100%; text-align: left;",
+                        padding: 14px var(--space-5); width: 100%; text-align: left;",
                 SummaryRow { label: "Server", value: data.server_url.clone() }
                 SummaryRow { label: "Theme", value: data.selected_theme.clone() }
                 SummaryRow { label: "Density", value: data.selected_density.label().to_string() }
             }
 
             button {
-                style: "padding: 10px 32px; background: var(--accent); border: none; border-radius: var(--radius-md); \
-                        color: var(--text-inverse); font-size: var(--text-md); cursor: pointer; width: 100%;",
+                style: "padding: 10px var(--space-8); background: var(--accent); border: none; border-radius: var(--radius-md); \
+                        color: var(--text-inverse); font-size: var(--text-md); cursor: pointer; width: 100%; \
+                        transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
                 onclick: move |_| on_finish.call(()),
                 "Launch Aletheia"
             }
@@ -398,11 +402,12 @@ fn WizardNav(
     rsx! {
         div {
             style: "display: flex; justify-content: space-between; align-items: center; \
-                    padding-top: 16px; border-top: 1px solid var(--border-separator); margin-top: 8px;",
+                    padding-top: var(--space-4); border-top: 1px solid var(--border-separator); margin-top: var(--space-2);",
             if can_back {
                 button {
                     style: "padding: 7px 18px; background: none; border: 1px solid var(--border); \
-                            border-radius: var(--radius-md); color: var(--text-secondary); font-size: var(--text-sm); cursor: pointer;",
+                            border-radius: var(--radius-md); color: var(--text-secondary); font-size: var(--text-sm); cursor: pointer; \
+                            transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
                     onclick: move |_| on_back.call(()),
                     "\u{2190} Back"
                 }
@@ -411,7 +416,8 @@ fn WizardNav(
             }
             button {
                 style: "padding: 7px 22px; background: var(--accent); border: none; \
-                        border-radius: var(--radius-md); color: var(--text-inverse); font-size: var(--text-sm); cursor: pointer;",
+                        border-radius: var(--radius-md); color: var(--text-inverse); font-size: var(--text-sm); cursor: pointer; \
+                        transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
                 onclick: move |_| on_next.call(()),
                 "{next_label} \u{2192}"
             }

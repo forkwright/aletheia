@@ -8,8 +8,8 @@ use crate::state::sessions::SessionSelectionStore;
 const BULK_BAR_STYLE: &str = "\
     display: flex; \
     align-items: center; \
-    gap: 12px; \
-    padding: 8px 12px; \
+    gap: var(--space-3); \
+    padding: var(--space-2) var(--space-3); \
     background: var(--bg-surface); \
     border-top: 1px solid var(--border);\
 ";
@@ -19,9 +19,12 @@ const BULK_BTN_STYLE: &str = "\
     color: var(--text-primary); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 6px 12px; \
+    padding: 6px var(--space-3); \
     font-size: var(--text-xs); \
-    cursor: pointer;\
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const BULK_COUNT_STYLE: &str = "\
@@ -35,7 +38,10 @@ const CLEAR_BTN_STYLE: &str = "\
     color: var(--text-secondary); \
     font-size: var(--text-xs); \
     cursor: pointer; \
-    text-decoration: underline;\
+    text-decoration: underline; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const DIALOG_OVERLAY_STYLE: &str = "\
@@ -55,28 +61,28 @@ const DIALOG_STYLE: &str = "\
     background: var(--bg-surface); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-lg); \
-    padding: 24px; \
+    padding: var(--space-6); \
     max-width: 400px; \
     width: 100%;\
 ";
 
 const DIALOG_TITLE_STYLE: &str = "\
     font-size: var(--text-md); \
-    font-weight: bold; \
+    font-weight: var(--weight-bold); \
     color: var(--text-primary); \
-    margin-bottom: 12px;\
+    margin-bottom: var(--space-3);\
 ";
 
 const DIALOG_TEXT_STYLE: &str = "\
     font-size: var(--text-base); \
     color: var(--text-secondary); \
-    margin-bottom: 20px; \
-    line-height: 1.4;\
+    margin-bottom: var(--space-5); \
+    line-height: var(--leading-normal);\
 ";
 
 const DIALOG_ACTIONS_STYLE: &str = "\
     display: flex; \
-    gap: 8px; \
+    gap: var(--space-2); \
     justify-content: flex-end;\
 ";
 
@@ -85,9 +91,12 @@ const DIALOG_CANCEL_BTN: &str = "\
     color: var(--text-primary); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 8px 16px; \
+    padding: var(--space-2) var(--space-4); \
     font-size: var(--text-sm); \
-    cursor: pointer;\
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const DIALOG_CONFIRM_BTN: &str = "\
@@ -95,9 +104,12 @@ const DIALOG_CONFIRM_BTN: &str = "\
     color: white; \
     border: none; \
     border-radius: var(--radius-md); \
-    padding: 8px 16px; \
+    padding: var(--space-2) var(--space-4); \
     font-size: var(--text-sm); \
-    cursor: pointer;\
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 /// Bulk action bar shown when sessions are selected.

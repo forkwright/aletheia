@@ -15,64 +15,64 @@ use crate::state::metrics::{
 use super::agent_costs::AgentCosts;
 
 const SECTION_STYLE: &str = "\
-    background: #1a1816; \
-    border: 1px solid #2a2724; \
+    background: var(--bg-surface); \
+    border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 16px;\
+    padding: var(--space-4);\
 ";
 
 const SECTION_TITLE_STYLE: &str = "\
     font-size: var(--text-xs); \
-    font-weight: 600; \
-    color: #a8a49e; \
+    font-weight: var(--weight-semibold); \
+    color: var(--text-secondary); \
     text-transform: uppercase; \
     letter-spacing: 0.05em; \
-    margin-bottom: 12px; \
-    font-family: 'IBM Plex Mono', monospace;\
+    margin-bottom: var(--space-3); \
+    font-family: var(--font-mono);\
 ";
 
 const CARD_STYLE: &str = "\
-    background: #1a1816; \
-    border: 1px solid #2a2724; \
+    background: var(--bg-surface); \
+    border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 12px 16px; \
+    padding: var(--space-3) var(--space-4); \
     flex: 1;\
 ";
 
 const CARD_LABEL_STYLE: &str = "\
     font-size: var(--text-xs); \
-    color: #706c66; \
-    margin-bottom: 4px; \
-    font-family: 'IBM Plex Mono', monospace;\
+    color: var(--text-muted); \
+    margin-bottom: var(--space-1); \
+    font-family: var(--font-mono);\
 ";
 
 const CARD_VALUE_STYLE: &str = "\
     font-size: var(--text-xl); \
-    font-weight: 600; \
+    font-weight: var(--weight-semibold); \
     color: var(--status-warning); \
-    font-family: 'IBM Plex Mono', monospace;\
+    font-family: var(--font-mono);\
 ";
 
 const CONTROL_BTN_ACTIVE: &str = "\
-    padding: 4px 10px; \
+    padding: var(--space-1) 10px; \
     font-size: var(--text-xs); \
-    background: #2a2724; \
-    color: #e8e6e3; \
-    border: 1px solid #3a3530; \
+    background: var(--border); \
+    color: var(--text-primary); \
+    border: 1px solid var(--input-border); \
     border-radius: var(--radius-sm); \
-    cursor: pointer; \
-    font-family: 'IBM Plex Mono', monospace;\
+    cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick); \
+    font-family: var(--font-mono);\
 ";
 
 const CONTROL_BTN_INACTIVE: &str = "\
-    padding: 4px 10px; \
+    padding: var(--space-1) 10px; \
     font-size: var(--text-xs); \
     background: transparent; \
-    color: #706c66; \
+    color: var(--text-muted); \
     border: 1px solid transparent; \
     border-radius: var(--radius-sm); \
-    cursor: pointer; \
-    font-family: 'IBM Plex Mono', monospace;\
+    cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick); \
+    font-family: var(--font-mono);\
 ";
 
 const MAX_CHART_COLS: usize = 120;
@@ -122,13 +122,13 @@ pub(crate) fn Costs() -> Element {
 
     rsx! {
         div {
-            style: "display: flex; flex-direction: column; gap: 16px;",
+            style: "display: flex; flex-direction: column; gap: var(--space-4);",
 
             // Controls row
             div {
-                style: "display: flex; gap: 8px; align-items: center; flex-wrap: wrap;",
+                style: "display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap;",
                 div {
-                    style: "display: flex; gap: 4px;",
+                    style: "display: flex; gap: var(--space-1);",
                     for g in [Granularity::Daily, Granularity::Weekly, Granularity::Monthly] {
                         {
                             let active = *granularity.read() == g;
@@ -142,9 +142,9 @@ pub(crate) fn Costs() -> Element {
                         }
                     }
                 }
-                div { style: "width: 1px; height: 20px; background: #2a2724;" }
+                div { style: "width: 1px; height: 20px; background: var(--border);" }
                 div {
-                    style: "display: flex; gap: 4px;",
+                    style: "display: flex; gap: var(--space-1);",
                     for r in [DateRange::Last7Days, DateRange::Last30Days, DateRange::Last90Days] {
                         {
                             let is_active = matches!(
@@ -167,13 +167,13 @@ pub(crate) fn Costs() -> Element {
             match fetch_state.read().clone() {
                 FetchState::Loading => rsx! {
                     div {
-                        style: "display: flex; align-items: center; justify-content: center; height: 200px; color: #706c66; font-size: var(--text-sm);",
+                        style: "display: flex; align-items: center; justify-content: center; height: 200px; color: var(--text-muted); font-size: var(--text-sm);",
                         "Loading…"
                     }
                 },
                 FetchState::Error(msg) => rsx! {
                     div {
-                        style: "padding: 16px; background: #2a1818; border: 1px solid #7f1d1d; border-radius: var(--radius-md); color: #fca5a5; font-size: var(--text-sm);",
+                        style: "padding: var(--space-4); background: var(--status-error-bg); border: 1px solid var(--status-error); border-radius: var(--radius-md); color: var(--status-error); font-size: var(--text-sm);",
                         "Error: {msg}"
                     }
                 },
@@ -224,11 +224,11 @@ fn loaded_costs_view(
 
     rsx! {
         div {
-            style: "display: flex; flex-direction: column; gap: 16px;",
+            style: "display: flex; flex-direction: column; gap: var(--space-4);",
 
             // Summary cards
             div {
-                style: "display: flex; gap: 12px; flex-wrap: wrap;",
+                style: "display: flex; gap: var(--space-3); flex-wrap: wrap;",
                 { cost_card("Today", &format_cost(today_d.value), today_d.delta_pct, today_d.is_up) }
                 { cost_card("This Week", &format_cost(week_d.value), week_d.delta_pct, week_d.is_up) }
                 { cost_card("This Month", &format_cost(month_d.value), month_d.delta_pct, month_d.is_up) }
@@ -238,7 +238,7 @@ fn loaded_costs_view(
                     style: "{CARD_STYLE}",
                     div { style: "{CARD_LABEL_STYLE}", "Projected Month-End" }
                     div { style: "{CARD_VALUE_STYLE}", "{format_cost(projected)}" }
-                    div { style: "font-size: var(--text-xs); color: #706c66; margin-top: 2px; font-family: 'IBM Plex Mono', monospace;", "linear projection" }
+                    div { style: "font-size: var(--text-xs); color: var(--text-muted); margin-top: 2px; font-family: var(--font-mono);", "linear projection" }
                 }
             }
 
@@ -296,28 +296,28 @@ fn budget_panel(
     if budget_limit > 0.0 {
         rsx! {
             div {
-                style: "display: flex; flex-direction: column; gap: 8px;",
+                style: "display: flex; flex-direction: column; gap: var(--space-2);",
                 div {
-                    style: "display: flex; justify-content: space-between; font-size: var(--text-xs); font-family: 'IBM Plex Mono', monospace;",
-                    span { style: "color: #a8a49e;", "{format_cost(month_cost)} spent" }
-                    span { style: "color: #706c66;", "of {format_cost(budget_limit)}" }
+                    style: "display: flex; justify-content: space-between; font-size: var(--text-xs); font-family: var(--font-mono);",
+                    span { style: "color: var(--text-secondary);", "{format_cost(month_cost)} spent" }
+                    span { style: "color: var(--text-muted);", "of {format_cost(budget_limit)}" }
                 }
                 div {
-                    style: "height: 8px; background: #1a1816; border-radius: var(--radius-sm); overflow: hidden; border: 1px solid #2a2724;",
+                    style: "height: 8px; background: var(--bg-surface); border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--border);",
                     div {
-                        style: "height: 100%; width: {budget_pct:.0}%; background: {bar_color}; border-radius: var(--radius-sm); transition: width 0.3s ease;",
+                        style: "height: 100%; width: {budget_pct:.0}%; background: {bar_color}; border-radius: var(--radius-sm); transition: width var(--transition-measured);",
                     }
                 }
                 div {
-                    style: "display: flex; align-items: center; gap: 8px; margin-top: 4px;",
+                    style: "display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-1);",
                     input {
-                        style: "padding: 4px 8px; font-size: var(--text-xs); background: var(--bg); border: 1px solid #3a3530; border-radius: var(--radius-sm); color: #e8e6e3; width: 100px; font-family: 'IBM Plex Mono', monospace;",
+                        style: "padding: var(--space-1) var(--space-2); font-size: var(--text-xs); background: var(--bg); border: 1px solid var(--input-border); border-radius: var(--radius-sm); color: var(--text-primary); width: 100px; font-family: var(--font-mono);",
                         placeholder: "New limit $",
                         value: "{input_value}",
                         oninput: move |e| on_input(e.value()),
                     }
                     button {
-                        style: "padding: 4px 10px; font-size: var(--text-xs); background: #2a2724; color: #e8e6e3; border: 1px solid #3a3530; border-radius: var(--radius-sm); cursor: pointer; font-family: 'IBM Plex Mono', monospace;",
+                        style: "padding: var(--space-1) 10px; font-size: var(--text-xs); background: var(--border); color: var(--text-primary); border: 1px solid var(--input-border); border-radius: var(--radius-sm); cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick); font-family: var(--font-mono);",
                         onclick: move |_| {
                             if let Ok(v) = input_for_set.trim().parse::<f64>() {
                                 on_set(v);
@@ -331,16 +331,16 @@ fn budget_panel(
     } else {
         rsx! {
             div {
-                style: "display: flex; align-items: center; gap: 8px;",
-                span { style: "font-size: var(--text-xs); color: #706c66; font-family: 'IBM Plex Mono', monospace;", "No budget set." }
+                style: "display: flex; align-items: center; gap: var(--space-2);",
+                span { style: "font-size: var(--text-xs); color: var(--text-muted); font-family: var(--font-mono);", "No budget set." }
                 input {
-                    style: "padding: 4px 8px; font-size: var(--text-xs); background: var(--bg); border: 1px solid #3a3530; border-radius: var(--radius-sm); color: #e8e6e3; width: 100px; font-family: 'IBM Plex Mono', monospace;",
+                    style: "padding: var(--space-1) var(--space-2); font-size: var(--text-xs); background: var(--bg); border: 1px solid var(--input-border); border-radius: var(--radius-sm); color: var(--text-primary); width: 100px; font-family: var(--font-mono);",
                     placeholder: "Monthly limit $",
                     value: "{input_value}",
                     oninput: move |e| on_input(e.value()),
                 }
                 button {
-                    style: "padding: 4px 10px; font-size: var(--text-xs); background: #2a2724; color: #e8e6e3; border: 1px solid #3a3530; border-radius: var(--radius-sm); cursor: pointer; font-family: 'IBM Plex Mono', monospace;",
+                    style: "padding: var(--space-1) 10px; font-size: var(--text-xs); background: var(--border); color: var(--text-primary); border: 1px solid var(--input-border); border-radius: var(--radius-sm); cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick); font-family: var(--font-mono);",
                     onclick: move |_| {
                         if let Ok(v) = input_for_set.trim().parse::<f64>() {
                             on_set(v);
@@ -365,7 +365,7 @@ fn cost_card(label: &str, value: &str, delta_pct: f64, is_up: bool) -> Element {
             div { style: "{CARD_LABEL_STYLE}", "{label}" }
             div { style: "{CARD_VALUE_STYLE}", "{value}" }
             if delta_pct > 0.0 {
-                div { style: "font-size: var(--text-xs); color: {delta_color}; margin-top: 2px; font-family: 'IBM Plex Mono', monospace;", "{delta_str} vs prev" }
+                div { style: "font-size: var(--text-xs); color: {delta_color}; margin-top: 2px; font-family: var(--font-mono);", "{delta_str} vs prev" }
             }
         }
     }

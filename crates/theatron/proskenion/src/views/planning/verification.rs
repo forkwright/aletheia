@@ -20,31 +20,31 @@ const CONTAINER_STYLE: &str = "\
     display: flex; \
     flex-direction: column; \
     height: 100%; \
-    padding: 16px;\
+    padding: var(--space-4);\
 ";
 
 const HEADER_ROW: &str = "\
     display: flex; \
     align-items: center; \
     justify-content: space-between; \
-    margin-bottom: 16px;\
+    margin-bottom: var(--space-4);\
 ";
 
 const SECTION_LABEL: &str = "\
     font-size: var(--text-xs); \
-    font-weight: 600; \
+    font-weight: var(--weight-semibold); \
     color: var(--text-muted); \
     text-transform: uppercase; \
     letter-spacing: 0.5px; \
-    margin: 16px 0 8px;\
+    margin: var(--space-4) 0 var(--space-2);\
 ";
 
 const COVERAGE_SECTION: &str = "\
     background: var(--bg-surface); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 14px 16px; \
-    margin-bottom: 16px;\
+    padding: 14px var(--space-4); \
+    margin-bottom: var(--space-4);\
 ";
 
 const TABLE_STYLE: &str = "\
@@ -57,7 +57,7 @@ const TH_STYLE: &str = "\
     text-align: left; \
     padding: 6px 10px; \
     font-size: var(--text-xs); \
-    font-weight: 600; \
+    font-weight: var(--weight-semibold); \
     color: var(--text-muted); \
     text-transform: uppercase; \
     letter-spacing: 0.4px; \
@@ -65,17 +65,17 @@ const TH_STYLE: &str = "\
 ";
 
 const TD_STYLE: &str = "\
-    padding: 8px 10px; \
+    padding: var(--space-2) 10px; \
     border-bottom: 1px solid #1a1a2a; \
     vertical-align: top;\
 ";
 
 const GAP_SECTION: &str = "\
-    margin-top: 16px; \
+    margin-top: var(--space-4); \
     background: var(--bg-surface); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 14px 16px;\
+    padding: 14px var(--space-4);\
 ";
 
 const REFRESH_BTN: &str = "\
@@ -83,19 +83,25 @@ const REFRESH_BTN: &str = "\
     color: var(--text-primary); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 4px 12px; \
+    padding: var(--space-1) var(--space-3); \
     font-size: var(--text-xs); \
-    cursor: pointer;\
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const VERIFY_BTN: &str = "\
     background: #1a2a4a; \
-    color: #4a9aff; \
-    border: 1px solid #4a9aff; \
+    color: var(--accent); \
+    border: 1px solid var(--accent); \
     border-radius: var(--radius-md); \
-    padding: 4px 12px; \
+    padding: var(--space-1) var(--space-3); \
     font-size: var(--text-xs); \
-    cursor: pointer;\
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const PLACEHOLDER_STYLE: &str = "\
@@ -208,7 +214,7 @@ pub(crate) fn VerificationView(project_id: String) -> Element {
                 style: "{HEADER_ROW}",
                 h3 { style: "margin: 0; font-size: var(--text-md); color: var(--text-primary);", "Verification" }
                 div {
-                    style: "display: flex; gap: 8px; align-items: center;",
+                    style: "display: flex; gap: var(--space-2); align-items: center;",
                     button {
                         style: "{VERIFY_BTN}",
                         disabled: *reverifying.read(),
@@ -267,7 +273,7 @@ pub(crate) fn VerificationView(project_id: String) -> Element {
                         div {
                             style: "flex: 1; overflow-y: auto;",
                             // Timestamp
-                            div { style: "font-size: var(--text-xs); color: var(--text-muted); margin-bottom: 12px;",
+                            div { style: "font-size: var(--text-xs); color: var(--text-muted); margin-bottom: var(--space-3);",
                                 "Last verified: {last_verified}"
                             }
 
@@ -283,7 +289,7 @@ pub(crate) fn VerificationView(project_id: String) -> Element {
                             // Requirement table
                             div { style: "{SECTION_LABEL}", "Requirements" }
                             if reqs.is_empty() {
-                                div { style: "color: var(--text-muted); font-size: var(--text-sm); padding: 8px 0;",
+                                div { style: "color: var(--text-muted); font-size: var(--text-sm); padding: var(--space-2) 0;",
                                     "No requirements defined."
                                 }
                             } else {
@@ -322,7 +328,7 @@ pub(crate) fn VerificationView(project_id: String) -> Element {
                                                             "{status_label}"
                                                         }
                                                         td {
-                                                            style: "{TD_STYLE} color: {cov_color}; font-weight: 600;",
+                                                            style: "{TD_STYLE} color: {cov_color}; font-weight: var(--weight-semibold);",
                                                             "{req.coverage_pct}%"
                                                         }
                                                         td { style: "{TD_STYLE} color: var(--text-secondary);", "{req.tier}" }

@@ -32,7 +32,7 @@ fn top_tools(tools: &[ToolStat], limit: usize) -> (Vec<&ToolStat>, Option<ToolSt
 pub(crate) fn ToolFrequencyView(tools: Vec<ToolStat>, on_click: EventHandler<String>) -> Element {
     if tools.is_empty() {
         return rsx! {
-            div { style: "color: var(--text-muted); font-size: var(--text-sm); padding: 8px;", "No tool data available." }
+            div { style: "color: var(--text-muted); font-size: var(--text-sm); padding: var(--space-2);", "No tool data available." }
         };
     }
 
@@ -57,7 +57,7 @@ pub(crate) fn ToolFrequencyView(tools: Vec<ToolStat>, on_click: EventHandler<Str
     }
 
     rsx! {
-        div { style: "display: flex; flex-direction: column; gap: 16px;",
+        div { style: "display: flex; flex-direction: column; gap: var(--space-4);",
 
             // Horizontal bar chart
             HorizontalBarChart {
@@ -91,7 +91,7 @@ pub(crate) fn ToolTimeSeriesView(
 ) -> Element {
     if time_series.is_empty() {
         return rsx! {
-            div { style: "color: var(--text-muted); font-size: var(--text-sm); padding: 8px;", "No time series data." }
+            div { style: "color: var(--text-muted); font-size: var(--text-sm); padding: var(--space-2);", "No time series data." }
         };
     }
 

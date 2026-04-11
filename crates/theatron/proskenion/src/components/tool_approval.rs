@@ -5,21 +5,21 @@ use dioxus::prelude::*;
 use crate::state::tools::{RiskLevel, ToolApprovalState};
 
 const APPROVAL_BASE_STYLE: &str = "\
-    padding: 12px; \
+    padding: var(--space-3); \
     border-radius: var(--radius-md); \
-    margin-top: 4px; \
+    margin-top: var(--space-1); \
     font-size: var(--text-sm);\
 ";
 
 const TOOL_NAME_STYLE: &str = "\
-    font-weight: 600; \
+    font-weight: var(--weight-semibold); \
     color: var(--text-primary); \
     font-size: var(--text-base);\
 ";
 
 const REASON_STYLE: &str = "\
     color: var(--text-secondary); \
-    margin-top: 4px; \
+    margin-top: var(--space-1); \
     font-size: var(--text-sm);\
 ";
 
@@ -27,8 +27,8 @@ const INPUT_PREVIEW_STYLE: &str = "\
     background: var(--code-bg); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-sm); \
-    padding: 6px 8px; \
-    margin-top: 8px; \
+    padding: 6px var(--space-2); \
+    margin-top: var(--space-2); \
     font-family: var(--font-mono); \
     font-size: var(--text-xs); \
     color: var(--code-fg); \
@@ -40,17 +40,17 @@ const INPUT_PREVIEW_STYLE: &str = "\
 const RISK_BADGE_BASE: &str = "\
     display: inline-block; \
     font-size: var(--text-xs); \
-    font-weight: 600; \
-    padding: 2px 8px; \
+    font-weight: var(--weight-semibold); \
+    padding: 2px var(--space-2); \
     border-radius: 10px; \
-    margin-left: 8px; \
+    margin-left: var(--space-2); \
     text-transform: uppercase; \
     letter-spacing: 0.5px;\
 ";
 
 const BUTTON_ROW_STYLE: &str = "\
     display: flex; \
-    gap: 8px; \
+    gap: var(--space-2); \
     margin-top: 10px;\
 ";
 
@@ -63,8 +63,9 @@ const APPROVE_BTN_STYLE: &str = "\
     font-size: var(--text-sm); \
     font-weight: var(--weight-semibold); \
     cursor: pointer; \
-    transition: background-color var(--transition-quick); \
-    cursor: pointer;\
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const DENY_BTN_STYLE: &str = "\
@@ -72,16 +73,19 @@ const DENY_BTN_STYLE: &str = "\
     color: var(--text-inverse); \
     border: none; \
     border-radius: var(--radius-md); \
-    padding: 6px 16px; \
+    padding: 6px var(--space-4); \
     font-size: var(--text-sm); \
-    font-weight: 600; \
-    cursor: pointer;\
+    font-weight: var(--weight-semibold); \
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const RESOLVED_STYLE: &str = "\
     color: var(--text-muted); \
     font-style: italic; \
-    padding: 8px; \
+    padding: var(--space-2); \
     font-size: var(--text-sm);\
 ";
 

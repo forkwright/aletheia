@@ -186,9 +186,9 @@ mod tests {
 
     #[test]
     fn agent_status_dot_colors() {
-        assert_eq!(AgentStatus::Active.dot_color(), "#22c55e");
-        assert_eq!(AgentStatus::Idle.dot_color(), "#555");
-        assert_eq!(AgentStatus::Error.dot_color(), "#ef4444");
+        assert_eq!(AgentStatus::Active.dot_color(), "var(--status-success)");
+        assert_eq!(AgentStatus::Idle.dot_color(), "var(--text-muted)");
+        assert_eq!(AgentStatus::Error.dot_color(), "var(--status-error)");
     }
 
     #[test]

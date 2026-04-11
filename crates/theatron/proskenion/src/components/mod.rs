@@ -1,6 +1,5 @@
 //! Dioxus components for the streaming chat interface.
 
-pub mod agent_sidebar;
 /// SVG chart primitives: horizontal bars, stacked bars, line charts, percentile bars.
 pub(crate) mod chart;
 pub mod chat;

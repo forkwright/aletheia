@@ -15,16 +15,16 @@ const CELL_GAP: f64 = 2.0;
 const JOURNAL_ROW_STYLE: &str = "\
     display: flex; \
     align-items: center; \
-    gap: 12px; \
-    padding: 8px 12px; \
+    gap: var(--space-3); \
+    padding: var(--space-2) var(--space-3); \
     border-bottom: 1px solid var(--border);\
 ";
 
 const BADGE_STYLE: &str = "\
     padding: 2px 6px; \
     border-radius: var(--radius-sm); \
-    font-size: 10px; \
-    font-weight: 600; \
+    font-size: var(--text-xs); \
+    font-weight: var(--weight-semibold); \
     text-transform: uppercase;\
 ";
 
@@ -33,16 +33,19 @@ const FILTER_BTN_STYLE: &str = "\
     color: var(--text-secondary); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-sm); \
-    padding: 3px 8px; \
+    padding: 3px var(--space-2); \
     font-size: var(--text-xs); \
-    cursor: pointer;\
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 #[component]
 pub(super) fn SystemReflectionSection(store: SystemReflectionStore) -> Element {
     rsx! {
         // NOTE: System overview.
-        h3 { style: "font-size: var(--text-base); color: var(--text-secondary); margin: 0 0 12px 0;", "System Overview" }
+        h3 { style: "font-size: var(--text-base); color: var(--text-secondary); margin: 0 0 var(--space-3) 0;", "System Overview" }
         div {
             style: "{GRID_STYLE}",
             OverviewCard {
@@ -69,14 +72,14 @@ pub(super) fn SystemReflectionSection(store: SystemReflectionStore) -> Element {
 
         // NOTE: Activity heatmap.
         h3 {
-            style: "font-size: var(--text-base); color: var(--text-secondary); margin: 16px 0 12px 0;",
+            style: "font-size: var(--text-base); color: var(--text-secondary); margin: var(--space-4) 0 var(--space-3) 0;",
             "Activity Heatmap"
         }
         ActivityHeatmap { cells: store.heatmap.clone() }
 
         // NOTE: Resource efficiency.
         h3 {
-            style: "font-size: var(--text-base); color: var(--text-secondary); margin: 16px 0 12px 0;",
+            style: "font-size: var(--text-base); color: var(--text-secondary); margin: var(--space-4) 0 var(--space-3) 0;",
             "Resource Efficiency"
         }
         EfficiencyPanel {
@@ -88,7 +91,7 @@ pub(super) fn SystemReflectionSection(store: SystemReflectionStore) -> Element {
 
         // NOTE: System journal.
         h3 {
-            style: "font-size: var(--text-base); color: var(--text-secondary); margin: 16px 0 12px 0;",
+            style: "font-size: var(--text-base); color: var(--text-secondary); margin: var(--space-4) 0 var(--space-3) 0;",
             "System Journal"
         }
         SystemJournal { events: store.journal.clone() }
@@ -189,8 +192,8 @@ fn ActivityHeatmap(cells: Vec<crate::state::meta::HeatmapCell>) -> Element {
 
             // NOTE: Legend.
             div {
-                style: "display: flex; align-items: center; gap: 4px; margin-top: 8px; \
-                        font-size: 10px; color: var(--text-muted);",
+                style: "display: flex; align-items: center; gap: var(--space-1); margin-top: var(--space-2); \
+                        font-size: var(--text-xs); color: var(--text-muted);",
                 span { "Less" }
                 for color in &["var(--bg-surface)", "#1a2a3e", "#2a4a6a", "#4a9aff", "var(--status-success)"] {
                     div {
@@ -262,7 +265,7 @@ fn SystemJournal(events: Vec<JournalEvent>) -> Element {
         div {
             style: "{CARD_STYLE}",
             div {
-                style: "display: flex; gap: 6px; margin-bottom: 12px;",
+                style: "display: flex; gap: 6px; margin-bottom: var(--space-3);",
                 button {
                     style: "{FILTER_BTN_STYLE}",
                     onclick: move |_| filter.set(None),
@@ -292,7 +295,7 @@ fn SystemJournal(events: Vec<JournalEvent>) -> Element {
 
             if filtered.is_empty() {
                 div {
-                    style: "{MUTED_TEXT} padding: 16px; text-align: center;",
+                    style: "{MUTED_TEXT} padding: var(--space-4); text-align: center;",
                     "No journal events recorded yet"
                 }
             } else {

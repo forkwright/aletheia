@@ -62,6 +62,9 @@ const SELECT_STYLE: &str = "\
     color: var(--text-primary); \
     font-size: var(--text-sm); \
     cursor: pointer;\
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const HINT_STYLE: &str = "\

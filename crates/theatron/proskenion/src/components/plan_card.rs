@@ -11,19 +11,19 @@ const CARD_STYLE: &str = "\
     background: var(--bg-surface-dim); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 12px 14px;\
+    padding: var(--space-3) 14px;\
 ";
 
 const CARD_HEADER: &str = "\
     display: flex; \
     align-items: center; \
     justify-content: space-between; \
-    margin-bottom: 8px;\
+    margin-bottom: var(--space-2);\
 ";
 
 const PLAN_TITLE: &str = "\
     font-size: var(--text-sm); \
-    font-weight: 600; \
+    font-weight: var(--weight-semibold); \
     color: var(--text-primary);\
 ";
 
@@ -32,7 +32,7 @@ const AGENT_BADGE: &str = "\
     color: var(--text-secondary); \
     display: flex; \
     align-items: center; \
-    gap: 4px;\
+    gap: var(--space-1);\
 ";
 
 const PROGRESS_TEXT: &str = "\
@@ -59,8 +59,8 @@ const STEP_ICON_STYLE: &str = "\
 const STEP_DESC: &str = "color: #c0c0e0;";
 
 const DETAIL_BOX: &str = "\
-    margin-top: 4px; \
-    padding: 6px 8px; \
+    margin-top: var(--space-1); \
+    padding: 6px var(--space-2); \
     background: #151525; \
     border: 1px solid var(--border); \
     border-radius: var(--radius-sm); \
@@ -70,8 +70,8 @@ const DETAIL_BOX: &str = "\
 const TIME_ROW: &str = "\
     display: flex; \
     align-items: center; \
-    gap: 12px; \
-    margin-top: 8px; \
+    gap: var(--space-3); \
+    margin-top: var(--space-2); \
     font-size: var(--text-xs); \
     color: var(--text-muted);\
 ";
@@ -82,7 +82,10 @@ const EXPAND_BTN: &str = "\
     color: #4a9aff; \
     font-size: var(--text-xs); \
     cursor: pointer; \
-    padding: 0;\
+    padding: 0; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 /// Plan card for an execution plan within a wave.
@@ -156,7 +159,7 @@ pub(crate) fn PlanCard(plan: ExecutionPlan) -> Element {
                             }
                             if let Some(dur) = step.duration_secs {
                                 span {
-                                    style: "font-size: 10px; color: var(--text-muted); margin-left: 4px;",
+                                    style: "font-size: var(--text-xs); color: var(--text-muted); margin-left: var(--space-1);",
                                     "({dur:.1}s)"
                                 }
                             }

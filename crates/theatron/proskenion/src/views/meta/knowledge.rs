@@ -14,7 +14,7 @@ pub(super) fn KnowledgeGrowthSection(store: KnowledgeGrowthStore) -> Element {
 
     rsx! {
         // NOTE: Growth rate summary cards.
-        h3 { style: "font-size: var(--text-base); color: var(--text-secondary); margin: 0 0 12px 0;", "Growth Rate" }
+        h3 { style: "font-size: var(--text-base); color: var(--text-secondary); margin: 0 0 var(--space-3) 0;", "Growth Rate" }
         div {
             style: "{GRID_STYLE}",
             div {
@@ -46,7 +46,7 @@ pub(super) fn KnowledgeGrowthSection(store: KnowledgeGrowthStore) -> Element {
 
         // NOTE: Cumulative entity growth.
         h3 {
-            style: "font-size: var(--text-base); color: var(--text-secondary); margin: 16px 0 12px 0;",
+            style: "font-size: var(--text-base); color: var(--text-secondary); margin: var(--space-4) 0 var(--space-3) 0;",
             "Total Entities Over Time"
         }
         div {
@@ -62,7 +62,7 @@ pub(super) fn KnowledgeGrowthSection(store: KnowledgeGrowthStore) -> Element {
 
         // NOTE: New entities per period.
         h3 {
-            style: "font-size: var(--text-base); color: var(--text-secondary); margin: 16px 0 12px 0;",
+            style: "font-size: var(--text-base); color: var(--text-secondary); margin: var(--space-4) 0 var(--space-3) 0;",
             "New Entities Per Period"
         }
         div {
@@ -78,7 +78,7 @@ pub(super) fn KnowledgeGrowthSection(store: KnowledgeGrowthStore) -> Element {
         // NOTE: Knowledge density.
         if !store.density_over_time.is_empty() {
             h3 {
-                style: "font-size: var(--text-base); color: var(--text-secondary); margin: 16px 0 12px 0;",
+                style: "font-size: var(--text-base); color: var(--text-secondary); margin: var(--space-4) 0 var(--space-3) 0;",
                 "Knowledge Density (Relationships / Entity)"
             }
             div {
@@ -96,7 +96,7 @@ pub(super) fn KnowledgeGrowthSection(store: KnowledgeGrowthStore) -> Element {
         // NOTE: Entity type distribution.
         if !store.entity_type_distribution.is_empty() {
             h3 {
-                style: "font-size: var(--text-base); color: var(--text-secondary); margin: 16px 0 12px 0;",
+                style: "font-size: var(--text-base); color: var(--text-secondary); margin: var(--space-4) 0 var(--space-3) 0;",
                 "Entity Type Distribution"
             }
             EntityTypeBreakdown { slices: store.entity_type_distribution.clone() }
@@ -123,7 +123,7 @@ fn EntityTypeBreakdown(slices: Vec<crate::state::meta::EntityTypeSlice>) -> Elem
                     let color = slice.color;
                     rsx! {
                         div {
-                            style: "display: flex; align-items: center; gap: 8px; margin-bottom: 6px;",
+                            style: "display: flex; align-items: center; gap: var(--space-2); margin-bottom: 6px;",
                             div {
                                 style: "width: 10px; height: 10px; border-radius: 2px; \
                                         background: {color}; flex-shrink: 0;",

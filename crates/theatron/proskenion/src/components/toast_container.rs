@@ -16,7 +16,7 @@ const CONTAINER_STYLE: &str = "\
     z-index: 9999; \
     display: flex; \
     flex-direction: column; \
-    gap: 8px; \
+    gap: var(--space-2); \
     pointer-events: none;\
 ";
 

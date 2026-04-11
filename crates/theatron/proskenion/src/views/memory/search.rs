@@ -7,14 +7,14 @@ use crate::state::memory::{EntityListStore, EntityType};
 const SEARCH_BAR_STYLE: &str = "\
     display: flex; \
     flex-direction: column; \
-    gap: 8px; \
-    padding-bottom: 8px;\
+    gap: var(--space-2); \
+    padding-bottom: var(--space-2);\
 ";
 
 const SEARCH_ROW_STYLE: &str = "\
     display: flex; \
     align-items: center; \
-    gap: 8px; \
+    gap: var(--space-2); \
     flex-wrap: wrap;\
 ";
 
@@ -24,7 +24,7 @@ const SEARCH_INPUT_STYLE: &str = "\
     background: var(--bg-surface); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 8px 12px; \
+    padding: var(--space-2) var(--space-3); \
     color: var(--text-primary); \
     font-size: var(--text-base);\
 ";
@@ -33,10 +33,13 @@ const FILTER_SELECT_STYLE: &str = "\
     background: var(--bg-surface); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 8px 12px; \
+    padding: var(--space-2) var(--space-3); \
     color: var(--text-primary); \
     font-size: var(--text-sm); \
-    cursor: pointer;\
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const CHIPS_ROW_STYLE: &str = "\
@@ -48,11 +51,11 @@ const CHIPS_ROW_STYLE: &str = "\
 const CHIP_STYLE: &str = "\
     display: flex; \
     align-items: center; \
-    gap: 4px; \
+    gap: var(--space-1); \
     background: var(--border); \
     color: var(--text-primary); \
     border-radius: var(--radius-lg); \
-    padding: 4px 10px; \
+    padding: var(--space-1) 10px; \
     font-size: var(--text-xs);\
 ";
 
@@ -60,7 +63,10 @@ const CHIP_DISMISS_STYLE: &str = "\
     cursor: pointer; \
     color: var(--text-secondary); \
     font-size: var(--text-base); \
-    line-height: 1;\
+    line-height: 1; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const CLEAR_ALL_STYLE: &str = "\
@@ -69,7 +75,10 @@ const CLEAR_ALL_STYLE: &str = "\
     cursor: pointer; \
     background: none; \
     border: none; \
-    padding: 4px 8px;\
+    padding: var(--space-1) var(--space-2); \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 /// Search and filter bar for entity list.

@@ -23,7 +23,7 @@ const TOPBAR_STYLE: &str = "\
 const BRAND_STYLE: &str = "\
     font-family: var(--font-display); \
     font-size: var(--text-lg); \
-    font-weight: 600; \
+    font-weight: var(--weight-semibold); \
     color: var(--accent); \
     flex-shrink: 0; \
     letter-spacing: 0.02em;\
@@ -64,7 +64,7 @@ const PILL_ACTIVE_STYLE: &str = "\
     background: var(--bg-surface-bright); \
     color: var(--text-primary); \
     font-size: var(--text-sm); \
-    cursor: pointer; \
+    cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick); \
     white-space: nowrap;\
 ";
 

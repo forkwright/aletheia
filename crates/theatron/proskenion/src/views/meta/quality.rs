@@ -8,7 +8,7 @@ use crate::views::meta::{LineChart, CARD_LABEL, CARD_STYLE, GRID_STYLE, MUTED_TE
 const HISTOGRAM_BAR_STYLE: &str = "\
     display: flex; \
     align-items: center; \
-    gap: 8px; \
+    gap: var(--space-2); \
     margin-bottom: 6px;\
 ";
 
@@ -35,12 +35,12 @@ const TOPIC_ROW_STYLE: &str = "\
 pub(super) fn ConversationQualitySection(store: QualityStore) -> Element {
     rsx! {
         // NOTE: Quality indicator charts.
-        h3 { style: "font-size: var(--text-base); color: var(--text-secondary); margin: 0 0 12px 0;", "Quality Indicators" }
+        h3 { style: "font-size: var(--text-base); color: var(--text-secondary); margin: 0 0 var(--space-3) 0;", "Quality Indicators" }
         div {
             style: "{GRID_STYLE}",
             div {
                 style: "{CARD_STYLE} flex: 1; min-width: 280px;",
-                div { style: "{CARD_LABEL} margin-bottom: 8px;", "Avg Turn Length" }
+                div { style: "{CARD_LABEL} margin-bottom: var(--space-2);", "Avg Turn Length" }
                 LineChart {
                     data: store.avg_turn_length.clone(),
                     width: 300.0,
@@ -51,7 +51,7 @@ pub(super) fn ConversationQualitySection(store: QualityStore) -> Element {
             }
             div {
                 style: "{CARD_STYLE} flex: 1; min-width: 280px;",
-                div { style: "{CARD_LABEL} margin-bottom: 8px;", "Response-to-Question Ratio" }
+                div { style: "{CARD_LABEL} margin-bottom: var(--space-2);", "Response-to-Question Ratio" }
                 LineChart {
                     data: store.response_to_question_ratio.clone(),
                     width: 300.0,
@@ -62,10 +62,10 @@ pub(super) fn ConversationQualitySection(store: QualityStore) -> Element {
             }
         }
         div {
-            style: "{GRID_STYLE} margin-top: 12px;",
+            style: "{GRID_STYLE} margin-top: var(--space-3);",
             div {
                 style: "{CARD_STYLE} flex: 1; min-width: 280px;",
-                div { style: "{CARD_LABEL} margin-bottom: 8px;", "Tool Call Density" }
+                div { style: "{CARD_LABEL} margin-bottom: var(--space-2);", "Tool Call Density" }
                 LineChart {
                     data: store.tool_call_density.clone(),
                     width: 300.0,
@@ -76,7 +76,7 @@ pub(super) fn ConversationQualitySection(store: QualityStore) -> Element {
             }
             div {
                 style: "{CARD_STYLE} flex: 1; min-width: 280px;",
-                div { style: "{CARD_LABEL} margin-bottom: 8px;", "Thinking Time Ratio" }
+                div { style: "{CARD_LABEL} margin-bottom: var(--space-2);", "Thinking Time Ratio" }
                 LineChart {
                     data: store.thinking_time_ratio.clone(),
                     width: 300.0,
@@ -89,7 +89,7 @@ pub(super) fn ConversationQualitySection(store: QualityStore) -> Element {
 
         // NOTE: Session depth distribution.
         h3 {
-            style: "font-size: var(--text-base); color: var(--text-secondary); margin: 16px 0 12px 0;",
+            style: "font-size: var(--text-base); color: var(--text-secondary); margin: var(--space-4) 0 var(--space-3) 0;",
             "Session Depth Distribution"
         }
         DepthHistogram {
@@ -101,7 +101,7 @@ pub(super) fn ConversationQualitySection(store: QualityStore) -> Element {
         // NOTE: Topics.
         if !store.top_topics.is_empty() {
             h3 {
-                style: "font-size: var(--text-base); color: var(--text-secondary); margin: 16px 0 12px 0;",
+                style: "font-size: var(--text-base); color: var(--text-secondary); margin: var(--space-4) 0 var(--space-3) 0;",
                 "Top Topics"
             }
             div {
@@ -155,7 +155,7 @@ fn DepthHistogram(short: u32, medium: u32, long: u32) -> Element {
                                     style: "{BAR_BG_STYLE}",
                                     div {
                                         style: "height: 100%; width: {pct:.0}%; background: {color}; \
-                                                border-radius: var(--radius-sm); transition: width 0.3s ease;",
+                                                border-radius: var(--radius-sm); transition: width var(--transition-measured);",
                                     }
                                 }
                                 span { style: "{BAR_COUNT_STYLE}", "{count} ({session_pct:.0}%)" }
@@ -164,7 +164,7 @@ fn DepthHistogram(short: u32, medium: u32, long: u32) -> Element {
                     }
                 }
                 div {
-                    style: "margin-top: 8px; font-size: var(--text-xs); color: var(--text-muted);",
+                    style: "margin-top: var(--space-2); font-size: var(--text-xs); color: var(--text-muted);",
                     "Total: {total} sessions"
                 }
             }

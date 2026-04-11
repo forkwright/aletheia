@@ -27,11 +27,11 @@ const CODE_AREA_STYLE: &str = "\
     overflow: auto; \
     font-family: var(--font-mono, monospace); \
     font-size: var(--text-sm); \
-    line-height: 1.5;\
+    line-height: var(--leading-normal);\
 ";
 
 const GUTTER_STYLE: &str = "\
-    padding: 12px 8px 12px 12px; \
+    padding: var(--space-3) var(--space-2) var(--space-3) var(--space-3); \
     text-align: right; \
     color: var(--text-muted, #706c66); \
     user-select: none; \
@@ -41,7 +41,7 @@ const GUTTER_STYLE: &str = "\
 ";
 
 const CODE_STYLE_WRAP: &str = "\
-    padding: 12px; \
+    padding: var(--space-3); \
     flex: 1; \
     white-space: pre-wrap; \
     word-wrap: break-word; \
@@ -49,7 +49,7 @@ const CODE_STYLE_WRAP: &str = "\
 ";
 
 const CODE_STYLE_NOWRAP: &str = "\
-    padding: 12px; \
+    padding: var(--space-3); \
     flex: 1; \
     white-space: pre; \
     overflow-x: auto; \
@@ -320,7 +320,7 @@ fn render_highlighted_line(line: &HighlightedLine) -> Element {
 }
 
 fn bold_style(bold: bool) -> &'static str {
-    if bold { " font-weight: bold;" } else { "" }
+    if bold { " font-weight: var(--weight-bold);" } else { "" }
 }
 
 fn italic_style(italic: bool) -> &'static str {

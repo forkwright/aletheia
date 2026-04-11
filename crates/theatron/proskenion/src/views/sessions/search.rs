@@ -7,8 +7,8 @@ use crate::state::sessions::{SessionListStore, StatusFilter};
 const SEARCH_BAR_STYLE: &str = "\
     display: flex; \
     flex-direction: column; \
-    gap: 8px; \
-    padding: 12px;\
+    gap: var(--space-2); \
+    padding: var(--space-3);\
 ";
 
 const SEARCH_INPUT_STYLE: &str = "\
@@ -17,7 +17,7 @@ const SEARCH_INPUT_STYLE: &str = "\
     background: var(--bg-surface); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 8px 12px; \
+    padding: var(--space-2) var(--space-3); \
     color: var(--text-primary); \
     font-size: var(--text-base);\
 ";
@@ -25,7 +25,7 @@ const SEARCH_INPUT_STYLE: &str = "\
 const FILTER_ROW_STYLE: &str = "\
     display: flex; \
     align-items: center; \
-    gap: 8px; \
+    gap: var(--space-2); \
     flex-wrap: wrap;\
 ";
 
@@ -36,13 +36,16 @@ const SELECT_STYLE: &str = "\
     padding: 6px 10px; \
     color: var(--text-primary); \
     font-size: var(--text-sm); \
-    cursor: pointer;\
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const CHIP_STYLE: &str = "\
     display: inline-flex; \
     align-items: center; \
-    gap: 4px; \
+    gap: var(--space-1); \
     background: var(--border); \
     border: 1px solid var(--accent); \
     border-radius: 16px; \
@@ -58,17 +61,23 @@ const CHIP_CLOSE_STYLE: &str = "\
     cursor: pointer; \
     font-size: var(--text-base); \
     padding: 0; \
-    line-height: 1;\
+    line-height: 1; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const CLEAR_BTN_STYLE: &str = "\
     background: none; \
     border: 1px solid var(--border); \
     border-radius: var(--radius-sm); \
-    padding: 2px 8px; \
+    padding: 2px var(--space-2); \
     font-size: var(--text-xs); \
     color: var(--text-secondary); \
-    cursor: pointer;\
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const CHIPS_ROW_STYLE: &str = "\

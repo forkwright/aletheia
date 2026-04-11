@@ -8,8 +8,8 @@ const CARD_STYLE: &str = "\
     background: #1a1a30; \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 12px; \
-    margin-top: 4px; \
+    padding: var(--space-3); \
+    margin-top: var(--space-1); \
     font-size: var(--text-sm);\
 ";
 
@@ -17,16 +17,16 @@ const CARD_COMPLETE_STYLE: &str = "\
     background: #1a2a1a; \
     border: 1px solid #2a4a2a; \
     border-radius: var(--radius-md); \
-    padding: 12px; \
-    margin-top: 4px; \
+    padding: var(--space-3); \
+    margin-top: var(--space-1); \
     font-size: var(--text-sm);\
 ";
 
 const TITLE_STYLE: &str = "\
-    font-weight: 600; \
+    font-weight: var(--weight-semibold); \
     color: #c0c0e0; \
     font-size: var(--text-base); \
-    margin-bottom: 8px;\
+    margin-bottom: var(--space-2);\
 ";
 
 const STEP_LIST_STYLE: &str = "\
@@ -38,7 +38,7 @@ const STEP_LIST_STYLE: &str = "\
 const STEP_ITEM_STYLE: &str = "\
     display: flex; \
     align-items: center; \
-    gap: 8px; \
+    gap: var(--space-2); \
     padding: 3px 0; \
     color: var(--text-secondary); \
     font-size: var(--text-sm);\
@@ -56,7 +56,7 @@ const PROGRESS_BAR_INNER: &str = "\
     height: 100%; \
     background: var(--accent); \
     border-radius: 3px; \
-    transition: width 0.3s;\
+    transition: width var(--transition-measured);\
 ";
 
 const PROGRESS_BAR_COMPLETE: &str = "\
@@ -158,7 +158,7 @@ fn render_step_icon(status: StepStatus) -> Element {
 fn step_label_style(status: StepStatus) -> String {
     match status {
         StepStatus::Pending => "color: var(--text-muted);".to_string(),
-        StepStatus::InProgress => "color: #c0c0e0; font-weight: 500;".to_string(),
+        StepStatus::InProgress => "color: #c0c0e0; font-weight: var(--weight-medium);".to_string(),
         StepStatus::Complete => "color: var(--text-secondary); text-decoration: line-through;".to_string(),
         StepStatus::Failed => "color: #f87171;".to_string(),
     }

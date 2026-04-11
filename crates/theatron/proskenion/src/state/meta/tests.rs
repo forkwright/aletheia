@@ -187,13 +187,13 @@ fn generate_recommendations_unhealthy() {
 
 #[test]
 fn heatmap_color_zero() {
-    assert_eq!(heatmap_color(0, 10), "#1a1a2e");
-    assert_eq!(heatmap_color(0, 0), "#1a1a2e");
+    assert_eq!(heatmap_color(0, 10), "var(--bg-surface-dim)");
+    assert_eq!(heatmap_color(0, 0), "var(--bg-surface-dim)");
 }
 
 #[test]
 fn heatmap_color_high() {
-    assert_eq!(heatmap_color(10, 10), "#22c55e");
+    assert_eq!(heatmap_color(10, 10), "var(--status-success)");
 }
 
 #[test]

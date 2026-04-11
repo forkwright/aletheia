@@ -20,24 +20,24 @@ const CONTAINER_STYLE: &str = "\
     display: flex; \
     flex-direction: column; \
     height: 100%; \
-    padding: 16px;\
+    padding: var(--space-4);\
 ";
 
 const HEADER_ROW: &str = "\
     display: flex; \
     align-items: center; \
     justify-content: space-between; \
-    margin-bottom: 16px;\
+    margin-bottom: var(--space-4);\
 ";
 
 const PENDING_BANNER: &str = "\
-    background: #1e1e5a; \
+    background: var(--bg-surface-dim); \
     border: 1px solid var(--accent); \
     border-radius: var(--radius-md); \
-    padding: 8px 12px; \
+    padding: var(--space-2) var(--space-3); \
     font-size: var(--text-sm); \
-    color: #8080ff; \
-    margin-bottom: 12px;\
+    color: var(--accent); \
+    margin-bottom: var(--space-3);\
 ";
 
 const REFRESH_BTN: &str = "\
@@ -45,9 +45,12 @@ const REFRESH_BTN: &str = "\
     color: var(--text-primary); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 4px 12px; \
+    padding: var(--space-1) var(--space-3); \
     font-size: var(--text-xs); \
-    cursor: pointer;\
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const PLACEHOLDER_STYLE: &str = "\

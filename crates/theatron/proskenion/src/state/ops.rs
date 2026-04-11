@@ -20,13 +20,13 @@ pub enum HealthTier {
 }
 
 impl HealthTier {
-    /// CSS hex color for the status dot.
+    /// CSS color for the status dot.
     #[must_use]
     pub(crate) fn dot_color(&self) -> &'static str {
         match self {
-            Self::Healthy => "#22c55e",
-            Self::Degraded => "#eab308",
-            Self::Error => "#ef4444",
+            Self::Healthy => "var(--status-success)",
+            Self::Degraded => "var(--status-warning)",
+            Self::Error => "var(--status-error)",
         }
     }
 
@@ -126,9 +126,9 @@ impl JobResult {
     #[must_use]
     pub(crate) fn dot_color(&self) -> &'static str {
         match self {
-            Self::Unknown => "#555",
-            Self::Success => "#22c55e",
-            Self::Failure => "#ef4444",
+            Self::Unknown => "var(--text-muted)",
+            Self::Success => "var(--status-success)",
+            Self::Failure => "var(--status-error)",
         }
     }
 }
@@ -147,9 +147,9 @@ impl TaskStatus {
     #[must_use]
     pub(crate) fn dot_color(&self) -> &'static str {
         match self {
-            Self::Running => "#22c55e",
-            Self::Stopped => "#555",
-            Self::Failed => "#ef4444",
+            Self::Running => "var(--status-success)",
+            Self::Stopped => "var(--text-muted)",
+            Self::Failed => "var(--status-error)",
         }
     }
 
@@ -206,9 +206,9 @@ impl Trend {
     #[must_use]
     pub(crate) fn color(&self) -> &'static str {
         match self {
-            Self::Up => "#ef4444",
-            Self::Down => "#22c55e",
-            Self::Stable => "#888",
+            Self::Up => "var(--status-error)",
+            Self::Down => "var(--status-success)",
+            Self::Stable => "var(--text-secondary)",
         }
     }
 }

@@ -16,8 +16,8 @@ const LIST_CONTAINER_STYLE: &str = "\
 const SORT_BAR_STYLE: &str = "\
     display: flex; \
     align-items: center; \
-    gap: 8px; \
-    padding: 8px 12px; \
+    gap: var(--space-2); \
+    padding: var(--space-2) var(--space-3); \
     border-bottom: 1px solid var(--border); \
     font-size: var(--text-xs); \
     color: var(--text-secondary);\
@@ -27,26 +27,31 @@ const SORT_SELECT_STYLE: &str = "\
     background: var(--bg-surface); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-sm); \
-    padding: 4px 8px; \
+    padding: var(--space-1) var(--space-2); \
     color: var(--text-primary); \
     font-size: var(--text-xs); \
-    cursor: pointer;\
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const SCROLL_AREA_STYLE: &str = "\
     flex: 1; \
     overflow-y: auto; \
-    padding: 4px;\
+    padding: var(--space-1);\
 ";
 
 const ROW_STYLE: &str = "\
     display: flex; \
     flex-direction: column; \
-    gap: 4px; \
-    padding: 10px 12px; \
+    gap: var(--space-1); \
+    padding: 10px var(--space-3); \
     border-radius: var(--radius-md); \
     cursor: pointer; \
-    transition: background 0.1s;\
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const ROW_SELECTED_BG: &str = "background: var(--border);";
@@ -55,12 +60,12 @@ const ROW_HEADER_STYLE: &str = "\
     display: flex; \
     align-items: center; \
     justify-content: space-between; \
-    gap: 8px;\
+    gap: var(--space-2);\
 ";
 
 const ENTITY_NAME_STYLE: &str = "\
     font-size: var(--text-base); \
-    font-weight: 600; \
+    font-weight: var(--weight-semibold); \
     color: var(--text-primary); \
     overflow: hidden; \
     text-overflow: ellipsis; \
@@ -70,16 +75,16 @@ const ENTITY_NAME_STYLE: &str = "\
 
 const TYPE_BADGE_STYLE: &str = "\
     font-size: var(--text-xs); \
-    padding: 2px 8px; \
+    padding: 2px var(--space-2); \
     border-radius: 10px; \
-    font-weight: 500; \
+    font-weight: var(--weight-medium); \
     white-space: nowrap;\
 ";
 
 const STATS_ROW_STYLE: &str = "\
     display: flex; \
     align-items: center; \
-    gap: 12px; \
+    gap: var(--space-3); \
     font-size: var(--text-xs); \
     color: var(--text-secondary);\
 ";
@@ -87,15 +92,18 @@ const STATS_ROW_STYLE: &str = "\
 const FLAG_ICON_STYLE: &str = "\
     color: var(--status-error); \
     font-size: var(--text-xs); \
-    margin-left: 4px;\
+    margin-left: var(--space-1);\
 ";
 
 const LOAD_MORE_STYLE: &str = "\
-    padding: 12px; \
+    padding: var(--space-3); \
     text-align: center; \
     color: #7a7aff; \
     cursor: pointer; \
-    font-size: var(--text-sm);\
+    font-size: var(--text-sm); \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const EMPTY_STYLE: &str = "\
@@ -108,7 +116,7 @@ const EMPTY_STYLE: &str = "\
 ";
 
 const COUNT_STYLE: &str = "\
-    padding: 4px 12px; \
+    padding: var(--space-1) var(--space-3); \
     font-size: var(--text-xs); \
     color: var(--text-muted);\
 ";

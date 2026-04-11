@@ -21,8 +21,8 @@ const CONTAINER_STYLE: &str = "\
     display: flex; \
     flex-direction: column; \
     height: 100%; \
-    padding: 16px; \
-    gap: 12px; \
+    padding: var(--space-4); \
+    gap: var(--space-3); \
     overflow-y: auto;\
 ";
 
@@ -37,9 +37,12 @@ const REFRESH_BTN: &str = "\
     color: var(--text-primary); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 4px 12px; \
+    padding: var(--space-1) var(--space-3); \
     font-size: var(--text-xs); \
-    cursor: pointer;\
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const PROGRESS_BAR_TRACK: &str = "\
@@ -55,7 +58,7 @@ const PROGRESS_SUMMARY: &str = "\
     justify-content: space-between; \
     font-size: var(--text-sm); \
     color: var(--text-secondary); \
-    margin-bottom: 4px;\
+    margin-bottom: var(--space-1);\
 ";
 
 const PLACEHOLDER_STYLE: &str = "\
@@ -64,7 +67,7 @@ const PLACEHOLDER_STYLE: &str = "\
     align-items: center; \
     justify-content: center; \
     flex: 1; \
-    gap: 12px; \
+    gap: var(--space-3); \
     color: var(--text-muted);\
 ";
 
@@ -159,7 +162,7 @@ pub(crate) fn ExecutionView(project_id: String) -> Element {
                 ExecutionFetchState::NotAvailable => rsx! {
                     div {
                         style: "{PLACEHOLDER_STYLE}",
-                        div { style: "font-size: 48px;", "[E]" }
+                        div { style: "font-size: var(--text-3xl);", "[E]" }
                         div { style: "font-size: var(--text-md);", "Execution view not available" }
                         div { style: "font-size: var(--text-sm); max-width: 400px; text-align: center;",
                             "The execution API is not available on this pylon instance."
@@ -197,7 +200,7 @@ pub(crate) fn ExecutionView(project_id: String) -> Element {
                             div {
                                 style: "{PROGRESS_BAR_TRACK}",
                                 div {
-                                    style: "height: 100%; background: #4a9aff; width: {overall_pct}%; border-radius: 3px; transition: width 0.3s;",
+                                    style: "height: 100%; background: var(--accent); width: {overall_pct}%; border-radius: 3px; transition: width var(--transition-measured);",
                                 }
                             }
 

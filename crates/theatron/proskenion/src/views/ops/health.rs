@@ -8,7 +8,7 @@ const PANEL_STYLE: &str = "\
     background: var(--bg-surface); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 16px; \
+    padding: var(--space-4); \
     flex: 1; \
     overflow-y: auto; \
     min-width: 280px;\
@@ -16,16 +16,16 @@ const PANEL_STYLE: &str = "\
 
 const SECTION_TITLE: &str = "\
     font-size: var(--text-base); \
-    font-weight: bold; \
+    font-weight: var(--weight-bold); \
     color: var(--text-secondary); \
     margin-bottom: 10px;\
 ";
 
 const SUBSECTION_TITLE: &str = "\
     font-size: var(--text-xs); \
-    font-weight: bold; \
+    font-weight: var(--weight-bold); \
     color: var(--text-secondary); \
-    margin: 12px 0 6px 0; \
+    margin: var(--space-3) 0 6px 0; \
     text-transform: uppercase; \
     letter-spacing: 0.5px;\
 ";
@@ -33,7 +33,7 @@ const SUBSECTION_TITLE: &str = "\
 const ROW_STYLE: &str = "\
     display: flex; \
     align-items: center; \
-    gap: 8px; \
+    gap: var(--space-2); \
     padding: 5px 0; \
     border-bottom: 1px solid #222; \
     font-size: var(--text-xs);\
@@ -63,24 +63,24 @@ const DETAIL_STYLE: &str = "\
 const FAILURE_BOX: &str = "\
     display: flex; \
     align-items: center; \
-    gap: 8px; \
-    padding: 8px 12px; \
+    gap: var(--space-2); \
+    padding: var(--space-2) var(--space-3); \
     background: var(--bg-surface); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    margin-bottom: 12px;\
+    margin-bottom: var(--space-3);\
 ";
 
 const FAILURE_COUNT: &str = "\
     font-size: var(--text-2xl); \
-    font-weight: bold; \
+    font-weight: var(--weight-bold); \
     color: var(--text-primary);\
 ";
 
 const EMPTY_STATE: &str = "\
     color: var(--text-muted); \
     font-size: var(--text-xs); \
-    padding: 4px 0;\
+    padding: var(--space-1) 0;\
 ";
 
 #[component]

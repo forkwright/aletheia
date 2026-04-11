@@ -8,46 +8,52 @@ const CARD_STYLE: &str = "\
     background: var(--bg-surface); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 14px 16px; \
+    padding: 14px var(--space-4); \
     cursor: pointer; \
-    transition: border-color 0.15s;\
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const CARD_RECOMMENDED: &str = "\
     background: var(--bg-surface); \
     border: 2px solid #4a9aff; \
     border-radius: var(--radius-md); \
-    padding: 14px 16px; \
+    padding: 14px var(--space-4); \
     cursor: pointer; \
-    transition: border-color 0.15s;\
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const CARD_SELECTED: &str = "\
     background: #1a2a3a; \
     border: 2px solid var(--status-success); \
     border-radius: var(--radius-md); \
-    padding: 14px 16px; \
+    padding: 14px var(--space-4); \
     cursor: pointer; \
-    transition: border-color 0.15s;\
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const HEADER_ROW: &str = "\
     display: flex; \
     align-items: center; \
-    gap: 8px; \
+    gap: var(--space-2); \
     margin-bottom: 6px;\
 ";
 
 const TITLE_STYLE: &str = "\
     font-size: var(--text-base); \
-    font-weight: 600; \
+    font-weight: var(--weight-semibold); \
     color: var(--text-primary);\
 ";
 
 const BADGE_RECOMMENDED: &str = "\
     display: inline-block; \
-    font-size: 10px; \
-    font-weight: 600; \
+    font-size: var(--text-xs); \
+    font-weight: var(--weight-semibold); \
     padding: 2px 6px; \
     border-radius: var(--radius-md); \
     background: #1a2a4a; \
@@ -58,8 +64,8 @@ const BADGE_RECOMMENDED: &str = "\
 
 const BADGE_SELECTED: &str = "\
     display: inline-block; \
-    font-size: 10px; \
-    font-weight: 600; \
+    font-size: var(--text-xs); \
+    font-weight: var(--weight-semibold); \
     padding: 2px 6px; \
     border-radius: var(--radius-md); \
     background: #0f2a0f; \
@@ -71,19 +77,19 @@ const BADGE_SELECTED: &str = "\
 const DESCRIPTION_STYLE: &str = "\
     font-size: var(--text-sm); \
     color: var(--text-secondary); \
-    margin-bottom: 8px;\
+    margin-bottom: var(--space-2);\
 ";
 
 const RATIONALE_STYLE: &str = "\
     font-size: var(--text-xs); \
     color: var(--text-secondary); \
     font-style: italic; \
-    margin-bottom: 8px;\
+    margin-bottom: var(--space-2);\
 ";
 
 const TRADE_OFF_SECTION: &str = "\
     display: flex; \
-    gap: 16px; \
+    gap: var(--space-4); \
     font-size: var(--text-xs);\
 ";
 
@@ -146,7 +152,7 @@ pub(crate) fn OptionCard(
                     if !option.pros.is_empty() {
                         div {
                             style: "flex: 1;",
-                            div { style: "color: var(--status-success); font-weight: 600; margin-bottom: 4px;", "Pros" }
+                            div { style: "color: var(--status-success); font-weight: var(--weight-semibold); margin-bottom: var(--space-1);", "Pros" }
                             for (i, pro) in option.pros.iter().enumerate() {
                                 div { key: "{i}", style: "{PRO_ITEM}", "+ {pro}" }
                             }
@@ -156,7 +162,7 @@ pub(crate) fn OptionCard(
                     if !option.cons.is_empty() {
                         div {
                             style: "flex: 1;",
-                            div { style: "color: var(--status-error); font-weight: 600; margin-bottom: 4px;", "Cons" }
+                            div { style: "color: var(--status-error); font-weight: var(--weight-semibold); margin-bottom: var(--space-1);", "Cons" }
                             for (i, con) in option.cons.iter().enumerate() {
                                 div { key: "{i}", style: "{CON_ITEM}", "- {con}" }
                             }

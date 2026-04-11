@@ -23,7 +23,7 @@ const SCORECARD_STYLE: &str = "\
     background: var(--bg-surface); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 16px; \
+    padding: var(--space-4); \
     min-width: 220px; \
     flex: 1;\
 ";
@@ -32,7 +32,7 @@ const ALERT_STYLE: &str = "\
     background: #2a1a1a; \
     border: 1px solid #4a2a2a; \
     border-radius: var(--radius-md); \
-    padding: 12px 16px; \
+    padding: var(--space-3) var(--space-4); \
     font-size: var(--text-sm); \
     color: #f87171;\
 ";
@@ -43,7 +43,7 @@ pub(super) fn AgentPerformanceSection(store: AgentPerformanceStore) -> Element {
         // NOTE: Anomaly alerts at the top.
         if !store.anomalies.is_empty() {
             div {
-                style: "display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px;",
+                style: "display: flex; flex-direction: column; gap: var(--space-2); margin-bottom: var(--space-4);",
                 for anomaly in &store.anomalies {
                     AnomalyCard { anomaly: anomaly.clone() }
                 }
@@ -55,13 +55,13 @@ pub(super) fn AgentPerformanceSection(store: AgentPerformanceStore) -> Element {
         } else {
             // NOTE: Radar chart (comparative).
             div {
-                style: "margin-bottom: 16px;",
-                h3 { style: "font-size: var(--text-base); color: var(--text-secondary); margin: 0 0 12px 0;", "Comparative Radar" }
+                style: "margin-bottom: var(--space-4);",
+                h3 { style: "font-size: var(--text-base); color: var(--text-secondary); margin: 0 0 var(--space-3) 0;", "Comparative Radar" }
                 RadarChart { scorecards: store.scorecards.clone() }
             }
 
             // NOTE: Individual scorecards.
-            h3 { style: "font-size: var(--text-base); color: var(--text-secondary); margin: 0 0 12px 0;", "Agent Scorecards" }
+            h3 { style: "font-size: var(--text-base); color: var(--text-secondary); margin: 0 0 var(--space-3) 0;", "Agent Scorecards" }
             div {
                 style: "{GRID_STYLE}",
                 for card in &store.scorecards {
@@ -78,7 +78,7 @@ fn ScorecardCard(scorecard: AgentScorecard) -> Element {
         div {
             style: "{SCORECARD_STYLE}",
             div {
-                style: "font-size: var(--text-md); font-weight: 600; color: var(--text-primary); margin-bottom: 12px;",
+                style: "font-size: var(--text-md); font-weight: var(--weight-semibold); color: var(--text-primary); margin-bottom: var(--space-3);",
                 "{scorecard.agent_name}"
             }
             MetricRow {
@@ -109,10 +109,10 @@ fn ScorecardCard(scorecard: AgentScorecard) -> Element {
 fn MetricRow(label: &'static str, value: String) -> Element {
     rsx! {
         div {
-            style: "display: flex; justify-content: space-between; padding: 4px 0; \
+            style: "display: flex; justify-content: space-between; padding: var(--space-1) 0; \
                     border-bottom: 1px solid var(--border);",
             span { style: "font-size: var(--text-xs); color: var(--text-secondary);", "{label}" }
-            span { style: "font-size: var(--text-xs); color: var(--text-primary); font-weight: 500;", "{value}" }
+            span { style: "font-size: var(--text-xs); color: var(--text-primary); font-weight: var(--weight-medium);", "{value}" }
         }
     }
 }
@@ -126,7 +126,7 @@ fn AnomalyCard(anomaly: Anomaly) -> Element {
     rsx! {
         div {
             style: "{ALERT_STYLE}",
-            span { style: "color: {color}; margin-right: 8px;", "{arrow}" }
+            span { style: "color: {color}; margin-right: var(--space-2);", "{arrow}" }
             "{msg}"
         }
     }
@@ -147,7 +147,7 @@ fn RadarChart(scorecards: Vec<AgentScorecard>) -> Element {
 
     rsx! {
         div {
-            style: "display: flex; align-items: flex-start; gap: 16px; flex-wrap: wrap;",
+            style: "display: flex; align-items: flex-start; gap: var(--space-4); flex-wrap: wrap;",
             svg {
                 width: "{RADAR_SIZE}",
                 height: "{RADAR_SIZE}",
@@ -258,7 +258,7 @@ fn RadarChart(scorecards: Vec<AgentScorecard>) -> Element {
                         let color = RADAR_COLORS[idx % RADAR_COLORS.len()];
                         rsx! {
                             div {
-                                style: "display: flex; align-items: center; gap: 8px;",
+                                style: "display: flex; align-items: center; gap: var(--space-2);",
                                 div {
                                     style: "width: 12px; height: 12px; border-radius: 2px; background: {color};",
                                 }

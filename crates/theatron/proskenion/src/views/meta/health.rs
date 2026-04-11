@@ -9,7 +9,7 @@ use crate::views::meta::{
 
 const TABLE_HEADER_STYLE: &str = "\
     display: flex; \
-    padding: 8px 12px; \
+    padding: var(--space-2) var(--space-3); \
     background: var(--bg-surface); \
     border-bottom: 1px solid var(--border); \
     font-size: var(--text-xs); \
@@ -20,7 +20,7 @@ const TABLE_HEADER_STYLE: &str = "\
 
 const TABLE_ROW_STYLE: &str = "\
     display: flex; \
-    padding: 8px 12px; \
+    padding: var(--space-2) var(--space-3); \
     border-bottom: 1px solid var(--border); \
     font-size: var(--text-sm); \
     color: var(--text-primary);\
@@ -78,7 +78,7 @@ pub(super) fn MemoryHealthSection(store: MemoryHealthStore) -> Element {
 
         // NOTE: Confidence distribution histogram.
         h3 {
-            style: "font-size: var(--text-base); color: var(--text-secondary); margin: 16px 0 12px 0;",
+            style: "font-size: var(--text-base); color: var(--text-secondary); margin: var(--space-4) 0 var(--space-3) 0;",
             "Confidence Distribution"
         }
         ConfidenceHistogram { buckets: store.confidence_distribution.clone() }
@@ -86,7 +86,7 @@ pub(super) fn MemoryHealthSection(store: MemoryHealthStore) -> Element {
         // NOTE: Health trend over time.
         if !store.health_over_time.is_empty() {
             h3 {
-                style: "font-size: var(--text-base); color: var(--text-secondary); margin: 16px 0 12px 0;",
+                style: "font-size: var(--text-base); color: var(--text-secondary); margin: var(--space-4) 0 var(--space-3) 0;",
                 "Health Trend"
             }
             div {
@@ -104,7 +104,7 @@ pub(super) fn MemoryHealthSection(store: MemoryHealthStore) -> Element {
         // NOTE: Staleness table.
         if !store.stale_entities.is_empty() {
             h3 {
-                style: "font-size: var(--text-base); color: var(--text-secondary); margin: 16px 0 12px 0;",
+                style: "font-size: var(--text-base); color: var(--text-secondary); margin: var(--space-4) 0 var(--space-3) 0;",
                 "Stale Entities"
             }
             div {
@@ -143,7 +143,7 @@ pub(super) fn MemoryHealthSection(store: MemoryHealthStore) -> Element {
         // NOTE: Recommendations.
         if !store.recommendations.is_empty() {
             h3 {
-                style: "font-size: var(--text-base); color: var(--text-secondary); margin: 16px 0 12px 0;",
+                style: "font-size: var(--text-base); color: var(--text-secondary); margin: var(--space-4) 0 var(--space-3) 0;",
                 "Recommendations"
             }
             for rec in &store.recommendations {
@@ -185,7 +185,7 @@ fn ConfidenceHistogram(
                                         flex: 1; justify-content: flex-end;",
                                 if bucket.count > 0 {
                                     span {
-                                        style: "font-size: 10px; color: var(--text-secondary); margin-bottom: 2px;",
+                                        style: "font-size: var(--text-xs); color: var(--text-secondary); margin-bottom: 2px;",
                                         "{bucket.count}"
                                     }
                                 }
@@ -199,10 +199,10 @@ fn ConfidenceHistogram(
                 }
             }
             div {
-                style: "display: flex; margin-top: 4px;",
+                style: "display: flex; margin-top: var(--space-1);",
                 for bucket in &buckets {
                     span {
-                        style: "flex: 1; text-align: center; font-size: 9px; color: var(--text-muted);",
+                        style: "flex: 1; text-align: center; font-size: var(--text-xs); color: var(--text-muted);",
                         "{bucket.range_label}"
                     }
                 }

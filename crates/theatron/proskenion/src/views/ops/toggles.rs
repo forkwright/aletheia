@@ -10,7 +10,7 @@ const PANEL_STYLE: &str = "\
     background: var(--bg-surface); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 16px; \
+    padding: var(--space-4); \
     flex: 1; \
     overflow-y: auto; \
     min-width: 280px;\
@@ -18,16 +18,16 @@ const PANEL_STYLE: &str = "\
 
 const SECTION_TITLE: &str = "\
     font-size: var(--text-base); \
-    font-weight: bold; \
+    font-weight: var(--weight-bold); \
     color: var(--text-secondary); \
     margin-bottom: 10px;\
 ";
 
 const SUBSECTION_TITLE: &str = "\
     font-size: var(--text-xs); \
-    font-weight: bold; \
+    font-weight: var(--weight-bold); \
     color: var(--text-secondary); \
-    margin: 12px 0 6px 0; \
+    margin: var(--space-3) 0 6px 0; \
     text-transform: uppercase; \
     letter-spacing: 0.5px;\
 ";
@@ -49,7 +49,7 @@ const TOOL_ROW_STYLE: &str = "\
     display: flex; \
     align-items: center; \
     justify-content: space-between; \
-    padding: 4px 0 4px 16px; \
+    padding: var(--space-1) 0 var(--space-1) var(--space-4); \
     border-bottom: 1px solid var(--bg-surface); \
     font-size: var(--text-xs);\
 ";
@@ -62,7 +62,7 @@ const EXPAND_BTN: &str = "\
     background: none; \
     border: none; \
     color: var(--text-secondary); \
-    cursor: pointer; \
+    cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick); \
     font-size: var(--text-xs); \
     padding: 2px 6px;\
 ";
@@ -76,7 +76,7 @@ const FLAG_DESC: &str = "\
 const EMPTY_STATE: &str = "\
     color: var(--text-muted); \
     font-size: var(--text-xs); \
-    padding: 4px 0;\
+    padding: var(--space-1) 0;\
 ";
 
 const CONFIRM_OVERLAY: &str = "\
@@ -93,18 +93,18 @@ const CONFIRM_BOX: &str = "\
     background: var(--bg-surface); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 24px; \
+    padding: var(--space-6); \
     max-width: 400px; \
     text-align: center;\
 ";
 
 const CONFIRM_BTN: &str = "\
-    padding: 6px 16px; \
+    padding: 6px var(--space-4); \
     border-radius: var(--radius-md); \
     border: 1px solid var(--border); \
-    cursor: pointer; \
+    cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick); \
     font-size: var(--text-sm); \
-    margin: 0 4px;\
+    margin: 0 var(--space-1);\
 ";
 
 #[component]
@@ -234,7 +234,7 @@ fn AgentToggleRow(
         div {
             style: "{ROW_STYLE}",
             div {
-                style: "display: flex; align-items: center; gap: 8px;",
+                style: "display: flex; align-items: center; gap: var(--space-2);",
                 span { style: "{TOGGLE_LABEL}", "{name}" }
                 button {
                     style: "{EXPAND_BTN}",
@@ -367,11 +367,11 @@ fn ConfirmDisableDialog(
                 style: "{CONFIRM_BOX}",
                 onclick: move |e| e.stop_propagation(),
                 p {
-                    style: "color: var(--text-primary); margin: 0 0 16px 0;",
+                    style: "color: var(--text-primary); margin: 0 0 var(--space-4) 0;",
                     "Disable agent \"{name}\"?"
                 }
                 p {
-                    style: "color: var(--text-secondary); font-size: var(--text-xs); margin: 0 0 20px 0;",
+                    style: "color: var(--text-secondary); font-size: var(--text-xs); margin: 0 0 var(--space-5) 0;",
                     "Active sessions will be interrupted."
                 }
                 div {
@@ -405,9 +405,9 @@ fn toggle_switch(
     let track_style = if pending {
         "width: 36px; height: 20px; border-radius: 10px; background: var(--text-secondary); position: relative; cursor: wait; opacity: 0.6; flex-shrink: 0;"
     } else if enabled {
-        "width: 36px; height: 20px; border-radius: 10px; background: var(--status-success); position: relative; cursor: pointer; flex-shrink: 0;"
+        "width: 36px; height: 20px; border-radius: 10px; background: var(--status-success); position: relative; cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick); flex-shrink: 0;"
     } else {
-        "width: 36px; height: 20px; border-radius: 10px; background: var(--text-muted); position: relative; cursor: pointer; flex-shrink: 0;"
+        "width: 36px; height: 20px; border-radius: 10px; background: var(--text-muted); position: relative; cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick); flex-shrink: 0;"
     };
 
     let knob_style = if enabled {

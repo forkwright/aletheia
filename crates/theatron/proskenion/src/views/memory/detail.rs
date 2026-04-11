@@ -15,20 +15,20 @@ const DETAIL_CONTAINER_STYLE: &str = "\
     flex-direction: column; \
     height: 100%; \
     overflow-y: auto; \
-    padding: 16px;\
+    padding: var(--space-4);\
 ";
 
 const HEADER_STYLE: &str = "\
     display: flex; \
     align-items: center; \
-    gap: 12px; \
-    margin-bottom: 16px; \
+    gap: var(--space-3); \
+    margin-bottom: var(--space-4); \
     flex-wrap: wrap;\
 ";
 
 const ENTITY_NAME_STYLE: &str = "\
     font-size: var(--text-xl); \
-    font-weight: 700; \
+    font-weight: var(--weight-bold); \
     color: var(--text-primary);\
 ";
 
@@ -36,26 +36,26 @@ const TYPE_BADGE_STYLE: &str = "\
     font-size: var(--text-xs); \
     padding: 3px 10px; \
     border-radius: var(--radius-lg); \
-    font-weight: 500;\
+    font-weight: var(--weight-medium);\
 ";
 
 const SCORE_BOX_STYLE: &str = "\
     display: flex; \
     align-items: center; \
-    gap: 8px; \
+    gap: var(--space-2); \
     font-size: var(--text-sm); \
     color: var(--text-secondary);\
 ";
 
 const SECTION_STYLE: &str = "\
-    margin-bottom: 20px;\
+    margin-bottom: var(--space-5);\
 ";
 
 const SECTION_HEADER_STYLE: &str = "\
     font-size: var(--text-base); \
-    font-weight: 600; \
+    font-weight: var(--weight-semibold); \
     color: var(--text-primary); \
-    margin-bottom: 8px; \
+    margin-bottom: var(--space-2); \
     display: flex; \
     align-items: center; \
     justify-content: space-between;\
@@ -65,7 +65,7 @@ const CARD_STYLE: &str = "\
     background: var(--bg-surface); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 12px;\
+    padding: var(--space-3);\
 ";
 
 const PROPERTY_ROW_STYLE: &str = "\
@@ -76,17 +76,19 @@ const PROPERTY_ROW_STYLE: &str = "\
     font-size: var(--text-sm);\
 ";
 
-const PROPERTY_KEY_STYLE: &str = "color: var(--text-secondary); font-weight: 500;";
+const PROPERTY_KEY_STYLE: &str = "color: var(--text-secondary); font-weight: var(--weight-medium);";
 const PROPERTY_VALUE_STYLE: &str = "color: var(--text-primary);";
 
 const REL_ROW_STYLE: &str = "\
     display: flex; \
     align-items: center; \
-    gap: 8px; \
-    padding: 8px; \
+    gap: var(--space-2); \
+    padding: var(--space-2); \
     border-radius: var(--radius-md); \
     cursor: pointer; \
-    transition: background 0.1s; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick); \
     font-size: var(--text-sm);\
 ";
 
@@ -100,7 +102,7 @@ const REL_TYPE_STYLE: &str = "\
 
 const REL_ENTITY_STYLE: &str = "\
     color: #7a7aff; \
-    font-weight: 500; \
+    font-weight: var(--weight-medium); \
     flex: 1;\
 ";
 
@@ -108,24 +110,24 @@ const MEMORY_CARD_STYLE: &str = "\
     background: var(--bg-surface); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 12px; \
-    margin-bottom: 8px;\
+    padding: var(--space-3); \
+    margin-bottom: var(--space-2);\
 ";
 
 const MEMORY_CONTENT_STYLE: &str = "\
     color: var(--text-primary); \
     font-size: var(--text-sm); \
-    line-height: 1.5; \
+    line-height: var(--leading-normal); \
     white-space: pre-wrap; \
     overflow: hidden;\
 ";
 
 const MEMORY_META_STYLE: &str = "\
     display: flex; \
-    gap: 12px; \
+    gap: var(--space-3); \
     font-size: var(--text-xs); \
     color: var(--text-muted); \
-    margin-top: 8px;\
+    margin-top: var(--space-2);\
 ";
 
 const EXPAND_BTN_STYLE: &str = "\
@@ -134,13 +136,16 @@ const EXPAND_BTN_STYLE: &str = "\
     cursor: pointer; \
     background: none; \
     border: none; \
-    padding: 4px 0;\
+    padding: var(--space-1) 0; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const META_GRID_STYLE: &str = "\
     display: grid; \
     grid-template-columns: 1fr 1fr; \
-    gap: 8px;\
+    gap: var(--space-2);\
 ";
 
 const META_ITEM_STYLE: &str = "\
@@ -148,11 +153,11 @@ const META_ITEM_STYLE: &str = "\
     color: var(--text-secondary);\
 ";
 
-const META_VALUE_STYLE: &str = "color: var(--text-primary); font-weight: 500;";
+const META_VALUE_STYLE: &str = "color: var(--text-primary); font-weight: var(--weight-medium);";
 
 const ACTION_BAR_STYLE: &str = "\
     display: flex; \
-    gap: 8px; \
+    gap: var(--space-2); \
     margin-left: auto;\
 ";
 
@@ -161,9 +166,12 @@ const ACTION_BTN_STYLE: &str = "\
     color: var(--text-primary); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 4px 12px; \
+    padding: var(--space-1) var(--space-3); \
     font-size: var(--text-xs); \
-    cursor: pointer;\
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const ACTION_BTN_DANGER_STYLE: &str = "\
@@ -171,9 +179,12 @@ const ACTION_BTN_DANGER_STYLE: &str = "\
     color: var(--status-error); \
     border: 1px solid var(--status-error)44; \
     border-radius: var(--radius-md); \
-    padding: 4px 12px; \
+    padding: var(--space-1) var(--space-3); \
     font-size: var(--text-xs); \
-    cursor: pointer;\
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const LOADING_STYLE: &str = "\
@@ -248,7 +259,7 @@ pub(crate) fn EntityDetail(
                         span { style: "{ENTITY_NAME_STYLE}",
                             "{entity_name}"
                             if flagged {
-                                span { style: "color: var(--status-error); margin-left: 8px;", "⚑" }
+                                span { style: "color: var(--status-error); margin-left: var(--space-2);", "⚑" }
                             }
                         }
                         span {
@@ -263,7 +274,7 @@ pub(crate) fn EntityDetail(
                         div {
                             style: "{SCORE_BOX_STYLE}",
                             span { "PageRank:" }
-                            span { style: "color: var(--text-primary); font-weight: 600;",
+                            span { style: "color: var(--text-primary); font-weight: var(--weight-semibold);",
                                 "{format_page_rank(page_rank)}"
                             }
                         }

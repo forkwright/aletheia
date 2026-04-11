@@ -13,33 +13,33 @@ const DETAIL_CONTAINER_STYLE: &str = "\
     flex-direction: column; \
     height: 100%; \
     overflow-y: auto; \
-    padding: 16px; \
-    gap: 16px;\
+    padding: var(--space-4); \
+    gap: var(--space-4);\
 ";
 
 const HEADER_STYLE: &str = "\
     display: flex; \
     align-items: center; \
     justify-content: space-between; \
-    gap: 12px;\
+    gap: var(--space-3);\
 ";
 
 const TITLE_STYLE: &str = "\
     font-size: var(--text-lg); \
-    font-weight: bold; \
+    font-weight: var(--weight-bold); \
     color: var(--text-primary);\
 ";
 
 const STATUS_BADGE_STYLE: &str = "\
     display: inline-block; \
-    padding: 2px 8px; \
+    padding: 2px var(--space-2); \
     border-radius: var(--radius-sm); \
     font-size: var(--text-xs);\
 ";
 
 const AGENT_BADGE_STYLE: &str = "\
     display: inline-block; \
-    padding: 2px 8px; \
+    padding: 2px var(--space-2); \
     border-radius: var(--radius-sm); \
     font-size: var(--text-xs); \
     background: var(--border); \
@@ -49,25 +49,25 @@ const AGENT_BADGE_STYLE: &str = "\
 const STATS_GRID_STYLE: &str = "\
     display: grid; \
     grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); \
-    gap: 12px;\
+    gap: var(--space-3);\
 ";
 
 const STAT_CARD_STYLE: &str = "\
     background: var(--bg-surface); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 12px;\
+    padding: var(--space-3);\
 ";
 
 const STAT_LABEL_STYLE: &str = "\
     font-size: var(--text-xs); \
     color: var(--text-secondary); \
-    margin-bottom: 4px;\
+    margin-bottom: var(--space-1);\
 ";
 
 const STAT_VALUE_STYLE: &str = "\
     font-size: var(--text-xl); \
-    font-weight: bold; \
+    font-weight: var(--weight-bold); \
     color: var(--text-primary);\
 ";
 
@@ -82,13 +82,13 @@ const TOKEN_BAR_BG_STYLE: &str = "\
     height: 6px; \
     background: #222; \
     border-radius: 3px; \
-    margin-top: 8px; \
+    margin-top: var(--space-2); \
     overflow: hidden;\
 ";
 
 const SECTION_TITLE_STYLE: &str = "\
     font-size: var(--text-base); \
-    font-weight: bold; \
+    font-weight: var(--weight-bold); \
     color: var(--text-primary); \
     margin: 0;\
 ";
@@ -96,8 +96,8 @@ const SECTION_TITLE_STYLE: &str = "\
 const DISTILL_ROW_STYLE: &str = "\
     display: flex; \
     align-items: center; \
-    gap: 12px; \
-    padding: 8px 12px; \
+    gap: var(--space-3); \
+    padding: var(--space-2) var(--space-3); \
     background: var(--bg-surface); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
@@ -108,14 +108,14 @@ const DISTILL_TRIGGER_STYLE: &str = "\
     display: inline-block; \
     padding: 1px 6px; \
     border-radius: 3px; \
-    font-size: 10px; \
+    font-size: var(--text-xs); \
     background: var(--border); \
     color: var(--text-secondary);\
 ";
 
 const MSG_PREVIEW_STYLE: &str = "\
     display: flex; \
-    gap: 8px; \
+    gap: var(--space-2); \
     padding: 6px 0; \
     border-bottom: 1px solid var(--bg-surface); \
     font-size: var(--text-sm);\
@@ -126,7 +126,7 @@ const ROLE_BADGE_USER: &str = "\
     width: 60px; \
     font-size: var(--text-xs); \
     color: #4a9aff; \
-    font-weight: bold;\
+    font-weight: var(--weight-bold);\
 ";
 
 const ROLE_BADGE_ASSISTANT: &str = "\
@@ -134,7 +134,7 @@ const ROLE_BADGE_ASSISTANT: &str = "\
     width: 60px; \
     font-size: var(--text-xs); \
     color: var(--status-success); \
-    font-weight: bold;\
+    font-weight: var(--weight-bold);\
 ";
 
 const OPEN_CHAT_BTN: &str = "\
@@ -142,9 +142,12 @@ const OPEN_CHAT_BTN: &str = "\
     color: white; \
     border: none; \
     border-radius: var(--radius-md); \
-    padding: 8px 16px; \
+    padding: var(--space-2) var(--space-4); \
     font-size: var(--text-sm); \
-    cursor: pointer;\
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const ARCHIVE_BTN: &str = "\
@@ -152,9 +155,12 @@ const ARCHIVE_BTN: &str = "\
     color: var(--text-primary); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 8px 16px; \
+    padding: var(--space-2) var(--space-4); \
     font-size: var(--text-sm); \
-    cursor: pointer;\
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const EMPTY_DETAIL_STYLE: &str = "\
@@ -163,7 +169,7 @@ const EMPTY_DETAIL_STYLE: &str = "\
     align-items: center; \
     justify-content: center; \
     flex: 1; \
-    gap: 12px; \
+    gap: var(--space-3); \
     color: var(--text-muted);\
 ";
 
@@ -173,7 +179,7 @@ pub(crate) fn SessionDetailEmpty() -> Element {
     rsx! {
         div {
             style: "{EMPTY_DETAIL_STYLE}",
-            div { style: "font-size: 48px;", "[S]" }
+            div { style: "font-size: var(--text-3xl);", "[S]" }
             div { style: "font-size: var(--text-md);", "Select a session" }
             div { style: "font-size: var(--text-sm);",
                 "Click a session in the list to view details."
@@ -230,7 +236,7 @@ pub(crate) fn SessionDetail(
                                     div {
                                         h2 { style: "{TITLE_STYLE}", "{session.label()}" }
                                         div {
-                                            style: "display: flex; gap: 8px; align-items: center; margin-top: 4px;",
+                                            style: "display: flex; gap: var(--space-2); align-items: center; margin-top: var(--space-1);",
                                             span { style: "{AGENT_BADGE_STYLE}", "{session.nous_id}" }
                                             span {
                                                 style: "{STATUS_BADGE_STYLE} {status_bg} color: {s_color};",
@@ -245,7 +251,7 @@ pub(crate) fn SessionDetail(
                                         }
                                     }
                                     div {
-                                        style: "display: flex; gap: 8px;",
+                                        style: "display: flex; gap: var(--space-2);",
                                         button {
                                             style: "{OPEN_CHAT_BTN}",
                                             onclick: move |_| on_open_chat.call(id_for_chat.clone()),
@@ -331,7 +337,7 @@ pub(crate) fn SessionDetail(
                                 // Distillation history
                                 if !detail.distillation_events.is_empty() {
                                     div {
-                                        style: "display: flex; flex-direction: column; gap: 8px;",
+                                        style: "display: flex; flex-direction: column; gap: var(--space-2);",
                                         h3 { style: "{SECTION_TITLE_STYLE}", "Distillation History" }
                                         for (i , event) in detail.distillation_events.iter().enumerate() {
                                             div {
@@ -354,7 +360,7 @@ pub(crate) fn SessionDetail(
                                 // Message preview
                                 if !detail.message_previews.is_empty() {
                                     div {
-                                        style: "display: flex; flex-direction: column; gap: 4px;",
+                                        style: "display: flex; flex-direction: column; gap: var(--space-1);",
                                         h3 { style: "{SECTION_TITLE_STYLE}", "Messages" }
                                         for (i , msg) in detail.message_previews.iter().enumerate() {
                                             div {

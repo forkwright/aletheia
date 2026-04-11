@@ -10,23 +10,23 @@ const CARD_STYLE: &str = "\
     background: #1e1e3a; \
     border: 1px solid var(--accent); \
     border-radius: var(--radius-md); \
-    padding: 12px 16px; \
-    margin-bottom: 8px;\
+    padding: var(--space-3) var(--space-4); \
+    margin-bottom: var(--space-2);\
 ";
 
 const CARD_HEADER: &str = "\
     display: flex; \
     align-items: center; \
     justify-content: space-between; \
-    margin-bottom: 8px;\
+    margin-bottom: var(--space-2);\
 ";
 
 const BADGE: &str = "\
     display: inline-block; \
-    padding: 2px 8px; \
+    padding: 2px var(--space-2); \
     border-radius: var(--radius-sm); \
     font-size: var(--text-xs); \
-    font-weight: 600;\
+    font-weight: var(--weight-semibold);\
 ";
 
 const ACCEPT_BTN: &str = "\
@@ -34,9 +34,12 @@ const ACCEPT_BTN: &str = "\
     color: var(--status-success); \
     border: 1px solid var(--status-success); \
     border-radius: var(--radius-md); \
-    padding: 4px 12px; \
+    padding: var(--space-1) var(--space-3); \
     font-size: var(--text-xs); \
-    cursor: pointer;\
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const REJECT_BTN: &str = "\
@@ -44,9 +47,12 @@ const REJECT_BTN: &str = "\
     color: var(--status-error); \
     border: 1px solid var(--status-error); \
     border-radius: var(--radius-md); \
-    padding: 4px 12px; \
+    padding: var(--space-1) var(--space-3); \
     font-size: var(--text-xs); \
-    cursor: pointer;\
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 /// Inline proposal card displayed when an agent proposes a category change.
@@ -77,29 +83,29 @@ pub(crate) fn CategoryProposalCard(
             div {
                 style: "{CARD_HEADER}",
                 div {
-                    style: "font-size: var(--text-sm); color: var(--text-primary); font-weight: 600;",
+                    style: "font-size: var(--text-sm); color: var(--text-primary); font-weight: var(--weight-semibold);",
                     "Category Change Proposal"
                 }
                 div {
-                    style: "font-size: var(--text-xs); color: #8080ff;",
+                    style: "font-size: var(--text-xs); color: var(--accent);",
                     "by {proposal.agent_name}"
                 }
             }
 
             div {
-                style: "font-size: var(--text-sm); color: var(--text-primary); margin-bottom: 8px;",
+                style: "font-size: var(--text-sm); color: var(--text-primary); margin-bottom: var(--space-2);",
                 "{proposal.requirement_title}"
             }
 
             div {
-                style: "display: flex; align-items: center; gap: 8px; margin-bottom: 8px;",
+                style: "display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-2);",
                 span {
                     style: "{BADGE} background: var(--border); color: var(--text-secondary);",
                     "{current_label}"
                 }
                 span { style: "color: var(--text-muted);", "->" }
                 span {
-                    style: "{BADGE} background: #1a2a3a; color: #4a9aff;",
+                    style: "{BADGE} background: var(--bg-surface-dim); color: var(--accent);",
                     "{proposed_label}"
                 }
             }
@@ -110,7 +116,7 @@ pub(crate) fn CategoryProposalCard(
             }
 
             div {
-                style: "display: flex; gap: 8px;",
+                style: "display: flex; gap: var(--space-2);",
                 button {
                     style: "{ACCEPT_BTN}",
                     disabled: is_submitting,

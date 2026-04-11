@@ -29,7 +29,7 @@ const FILES_LAYOUT_STYLE: &str = "\
     display: flex; \
     flex-direction: column; \
     height: 100%; \
-    padding: 12px;\
+    padding: var(--space-3);\
 ";
 
 const PANELS_STYLE: &str = "\
@@ -42,7 +42,7 @@ const PANELS_STYLE: &str = "\
 const TREE_PANEL_STYLE: &str = "\
     display: flex; \
     flex-direction: column; \
-    gap: 8px; \
+    gap: var(--space-2); \
     overflow: hidden; \
     flex-shrink: 0;\
 ";
@@ -55,13 +55,16 @@ const COLLAPSE_BTN_STYLE: &str = "\
     padding: 2px 6px; \
     font-size: var(--text-xs); \
     cursor: pointer;\
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const HEADER_STYLE: &str = "\
     display: flex; \
     align-items: center; \
     justify-content: space-between; \
-    padding-bottom: 8px;\
+    padding-bottom: var(--space-2);\
 ";
 
 const DEFAULT_TREE_WIDTH: f64 = 280.0;
@@ -124,7 +127,7 @@ pub(crate) fn Files() -> Element {
             let p = path.clone();
             rsx! {
                 div {
-                    style: "display: flex; flex-direction: column; height: 100%; padding: 16px;",
+                    style: "display: flex; flex-direction: column; height: 100%; padding: var(--space-4);",
                     DiffViewer {
                         path: p,
                         on_back: move |_| view.set(FilesView::Browser),

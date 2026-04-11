@@ -69,7 +69,7 @@ fn MetricsToolDetail(tool_name: String) -> Element {
         div {
             style: "\
                 display: flex; flex-direction: column; \
-                height: 100%; padding: 24px; gap: 16px; \
+                height: 100%; padding: var(--space-6); gap: var(--space-4); \
                 overflow-y: auto;",
             ToolDetailView {
                 tool_name,

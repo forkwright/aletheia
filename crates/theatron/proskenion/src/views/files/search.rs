@@ -19,7 +19,7 @@ const SEARCH_INPUT_STYLE: &str = "\
 
 const RESULT_ITEM_STYLE: &str = "\
     padding: 6px 10px; \
-    cursor: pointer; \
+    cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick); \
     border-radius: var(--radius-sm, 4px); \
     font-size: var(--text-sm); \
     color: var(--text-primary, var(--text-primary)); \
@@ -96,7 +96,7 @@ pub(crate) fn FileSearch(
 
     rsx! {
         div {
-            style: "display: flex; flex-direction: column; gap: 4px;",
+            style: "display: flex; flex-direction: column; gap: var(--space-1);",
             input {
                 style: "{SEARCH_INPUT_STYLE}",
                 r#type: "text",
@@ -170,7 +170,7 @@ fn SearchResultItem(
                 is_searching.set(false);
             },
             div {
-                style: "font-weight: 500;",
+                style: "font-weight: var(--weight-medium);",
                 "{display_name}"
             }
             div {

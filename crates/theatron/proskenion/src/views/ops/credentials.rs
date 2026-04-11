@@ -85,7 +85,7 @@ struct AddCredentialRequest {
 const PANEL_STYLE: &str = "\
     display: flex; \
     flex-direction: column; \
-    gap: 12px; \
+    gap: var(--space-3); \
     flex: 1; \
     overflow-y: auto;\
 ";
@@ -94,7 +94,7 @@ const CRED_CARD_STYLE: &str = "\
     background: var(--bg-surface); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 16px 20px;\
+    padding: var(--space-4) var(--space-5);\
 ";
 
 const CARD_HEADER: &str = "\
@@ -106,7 +106,7 @@ const CARD_HEADER: &str = "\
 
 const PROVIDER_NAME: &str = "\
     font-size: var(--text-md); \
-    font-weight: bold; \
+    font-weight: var(--weight-bold); \
     color: var(--text-primary);\
 ";
 
@@ -120,15 +120,15 @@ const META_ROW: &str = "\
 
 const STATS_ROW: &str = "\
     display: flex; \
-    gap: 16px; \
+    gap: var(--space-4); \
     font-size: var(--text-xs); \
     color: var(--text-muted); \
-    margin-bottom: 12px;\
+    margin-bottom: var(--space-3);\
 ";
 
 const ACTIONS_ROW: &str = "\
     display: flex; \
-    gap: 8px; \
+    gap: var(--space-2); \
     align-items: center; \
     flex-wrap: wrap;\
 ";
@@ -138,19 +138,25 @@ const BTN_STD: &str = "\
     color: var(--text-primary); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 4px 12px; \
+    padding: var(--space-1) var(--space-3); \
     font-size: var(--text-xs); \
     cursor: pointer;\
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const BTN_DANGER: &str = "\
-    background: #3a1a1a; \
+    background: var(--status-error-bg); \
     color: var(--status-error); \
-    border: 1px solid #5a2a2a; \
+    border: 1px solid var(--status-error); \
     border-radius: var(--radius-md); \
-    padding: 4px 12px; \
+    padding: var(--space-1) var(--space-3); \
     font-size: var(--text-xs); \
     cursor: pointer;\
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const BTN_CONFIRM: &str = "\
@@ -158,19 +164,25 @@ const BTN_CONFIRM: &str = "\
     color: var(--text-primary); \
     border: none; \
     border-radius: var(--radius-md); \
-    padding: 4px 12px; \
+    padding: var(--space-1) var(--space-3); \
     font-size: var(--text-xs); \
     cursor: pointer;\
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const BTN_CANCEL: &str = "\
-    background: #2a2a2a; \
+    background: var(--bg-surface-bright); \
     color: var(--text-secondary); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 4px 12px; \
+    padding: var(--space-1) var(--space-3); \
     font-size: var(--text-xs); \
     cursor: pointer;\
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const BTN_DISABLED: &str = "\
@@ -178,16 +190,16 @@ const BTN_DISABLED: &str = "\
     color: var(--text-muted); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 4px 12px; \
+    padding: var(--space-1) var(--space-3); \
     font-size: var(--text-xs); \
     cursor: not-allowed;\
 ";
 
 const CONFIRM_BANNER: &str = "\
     display: flex; \
-    gap: 8px; \
+    gap: var(--space-2); \
     align-items: center; \
-    padding: 8px 0; \
+    padding: var(--space-2) 0; \
     border-top: 1px solid var(--border); \
     margin-top: 10px;\
 ";
@@ -202,14 +214,14 @@ const ADD_CARD_STYLE: &str = "\
     background: var(--bg-surface); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 16px 20px;\
+    padding: var(--space-4) var(--space-5);\
 ";
 
 const FORM_TITLE: &str = "\
     font-size: var(--text-base); \
-    font-weight: bold; \
+    font-weight: var(--weight-bold); \
     color: var(--text-secondary); \
-    margin-bottom: 12px;\
+    margin-bottom: var(--space-3);\
 ";
 
 const FORM_ROW: &str = "\
@@ -223,7 +235,7 @@ const FORM_ROW: &str = "\
 const FORM_GROUP: &str = "\
     display: flex; \
     flex-direction: column; \
-    gap: 4px;\
+    gap: var(--space-1);\
 ";
 
 const FORM_LABEL: &str = "\
@@ -255,7 +267,7 @@ const FORM_SELECT: &str = "\
 const ERROR_TEXT: &str = "\
     font-size: var(--text-xs); \
     color: var(--status-error); \
-    margin-top: 4px;\
+    margin-top: var(--space-1);\
 ";
 
 // --- Components ---
@@ -469,7 +481,7 @@ pub(crate) fn CredentialsView() -> Element {
                         div { style: "{ERROR_TEXT}", "{err}" }
                     }
                     div {
-                        style: "display: flex; gap: 8px; margin-top: 4px;",
+                        style: "display: flex; gap: var(--space-2); margin-top: var(--space-1);",
                         button {
                             style: "{BTN_STD}",
                             onclick: move |_| do_add(),
@@ -632,8 +644,8 @@ fn CredentialCard(
                 style: "{CARD_HEADER}",
                 span { style: "{PROVIDER_NAME}", "{entry.provider}" }
                 span {
-                    style: "font-size: var(--text-xs); padding: 2px 8px; border-radius: var(--radius-sm); \
-                            font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; \
+                    style: "font-size: var(--text-xs); padding: 2px var(--space-2); border-radius: var(--radius-sm); \
+                            font-weight: var(--weight-bold); text-transform: uppercase; letter-spacing: 0.5px; \
                             {role_bg}",
                     "{entry.role.label()}"
                 }
@@ -754,7 +766,7 @@ fn CredentialCard(
 
             // Per-card error
             if let Some(err) = &*card_error.read() {
-                div { style: "color: var(--status-error); font-size: var(--text-xs); margin-top: 8px;", "{err}" }
+                div { style: "color: var(--status-error); font-size: var(--text-xs); margin-top: var(--space-2);", "{err}" }
             }
         }
     }

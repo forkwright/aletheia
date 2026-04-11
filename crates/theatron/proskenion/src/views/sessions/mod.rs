@@ -64,7 +64,10 @@ const REFRESH_BTN: &str = "\
     border-radius: var(--radius-md); \
     padding: var(--space-1) var(--space-3); \
     font-size: var(--text-sm); \
-    cursor: pointer;\
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const DEFAULT_LIST_WIDTH: f64 = 480.0;

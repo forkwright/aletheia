@@ -35,8 +35,8 @@ pub(crate) struct TimelineDependencyLine {
 const CONTROLS_BAR: &str = "\
     display: flex; \
     align-items: center; \
-    gap: 8px; \
-    padding: 8px 12px; \
+    gap: var(--space-2); \
+    padding: var(--space-2) var(--space-3); \
     border-bottom: 1px solid var(--border); \
     background: var(--bg-surface);\
 ";
@@ -48,7 +48,10 @@ const ZOOM_BTN: &str = "\
     border-radius: var(--radius-sm); \
     padding: 2px 10px; \
     font-size: var(--text-base); \
-    cursor: pointer;\
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const BLOCK_HEIGHT: f64 = 56.0;
@@ -105,13 +108,13 @@ pub(crate) fn Timeline(
                 style: "overflow-x: auto; overflow-y: hidden; border: 1px solid var(--border); border-radius: 0 0 8px 8px; background: var(--bg-surface-dim); cursor: grab;",
 
                 div {
-                    style: "position: relative; min-width: {total_width}px; height: {ROW_HEIGHT}px; padding: 0 20px;",
+                    style: "position: relative; min-width: {total_width}px; height: {ROW_HEIGHT}px; padding: 0 var(--space-5);",
 
                     // Time axis labels
                     for (i, x, _w, block) in &zoomed {
                         div {
                             key: "label-{i}",
-                            style: "position: absolute; left: {x_offset(*x)}px; top: 4px; font-size: 10px; color: var(--text-muted);",
+                            style: "position: absolute; left: {x_offset(*x)}px; top: 4px; font-size: var(--text-xs); color: var(--text-muted);",
                             "{block.detail}"
                         }
                     }
@@ -130,7 +133,7 @@ pub(crate) fn Timeline(
                             rsx! {
                                 div {
                                     key: "block-{i}",
-                                    style: "position: absolute; left: {bx}px; top: {BLOCK_Y}px; width: {w}px; height: {BLOCK_HEIGHT}px; background: {block.color}; border: {border}; border-radius: var(--radius-md); padding: 6px 8px; box-sizing: border-box; cursor: pointer; overflow: hidden;",
+                                    style: "position: absolute; left: {bx}px; top: {BLOCK_Y}px; width: {w}px; height: {BLOCK_HEIGHT}px; background: {block.color}; border: {border}; border-radius: var(--radius-md); padding: 6px var(--space-2); box-sizing: border-box; cursor: pointer; overflow: hidden; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
                                     onclick: move |_| on_block_click.call(idx),
 
                                     div {
@@ -138,11 +141,11 @@ pub(crate) fn Timeline(
                                     }
 
                                     div {
-                                        style: "font-size: var(--text-xs); font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; position: relative;",
+                                        style: "font-size: var(--text-xs); font-weight: var(--weight-semibold); color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; position: relative;",
                                         "{block.label}"
                                     }
                                     div {
-                                        style: "font-size: 10px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; position: relative;",
+                                        style: "font-size: var(--text-xs); color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; position: relative;",
                                         "{block.progress}% complete"
                                     }
                                 }

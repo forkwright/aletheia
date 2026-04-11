@@ -22,8 +22,8 @@ const CONTAINER_STYLE: &str = "\
     display: flex; \
     flex-direction: column; \
     height: 100%; \
-    padding: 16px; \
-    gap: 12px; \
+    padding: var(--space-4); \
+    gap: var(--space-3); \
     overflow-y: auto;\
 ";
 
@@ -38,9 +38,12 @@ const REFRESH_BTN: &str = "\
     color: var(--text-primary); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 4px 12px; \
+    padding: var(--space-1) var(--space-3); \
     font-size: var(--text-xs); \
-    cursor: pointer;\
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const CARD_BASE: &str = "\
@@ -51,7 +54,7 @@ const CARD_BASE: &str = "\
 
 const QUESTION_STYLE: &str = "\
     font-size: var(--text-md); \
-    font-weight: 600; \
+    font-weight: var(--weight-semibold); \
     color: var(--text-primary); \
     margin-bottom: 6px;\
 ";
@@ -64,20 +67,20 @@ const CONTEXT_STYLE: &str = "\
 
 const BADGE_BASE: &str = "\
     display: inline-block; \
-    font-size: 10px; \
-    font-weight: 600; \
-    padding: 2px 8px; \
+    font-size: var(--text-xs); \
+    font-weight: var(--weight-semibold); \
+    padding: 2px var(--space-2); \
     border-radius: 10px; \
     text-transform: uppercase; \
     letter-spacing: 0.3px; \
-    margin-left: 8px;\
+    margin-left: var(--space-2);\
 ";
 
 const OPTIONS_GRID: &str = "\
     display: flex; \
     flex-direction: column; \
-    gap: 8px; \
-    margin-top: 8px;\
+    gap: var(--space-2); \
+    margin-top: var(--space-2);\
 ";
 
 const FREE_TEXT_INPUT: &str = "\
@@ -85,7 +88,7 @@ const FREE_TEXT_INPUT: &str = "\
     background: var(--bg-surface-dim); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-sm); \
-    padding: 8px 10px; \
+    padding: var(--space-2) 10px; \
     color: var(--text-primary); \
     font-size: var(--text-sm); \
     font-family: inherit; \
@@ -99,10 +102,13 @@ const SUBMIT_BTN: &str = "\
     color: white; \
     border: none; \
     border-radius: var(--radius-md); \
-    padding: 6px 16px; \
+    padding: 6px var(--space-4); \
     font-size: var(--text-sm); \
-    font-weight: 600; \
-    cursor: pointer;\
+    font-weight: var(--weight-semibold); \
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const SUBMIT_BTN_DISABLED: &str = "\
@@ -110,20 +116,23 @@ const SUBMIT_BTN_DISABLED: &str = "\
     color: var(--text-muted); \
     border: none; \
     border-radius: var(--radius-md); \
-    padding: 6px 16px; \
+    padding: 6px var(--space-4); \
     font-size: var(--text-sm); \
-    font-weight: 600; \
+    font-weight: var(--weight-semibold); \
     cursor: not-allowed;\
 ";
 
 const UNDO_BTN: &str = "\
     background: transparent; \
-    color: #4a9aff; \
-    border: 1px solid #4a9aff; \
+    color: var(--accent); \
+    border: 1px solid var(--accent); \
     border-radius: var(--radius-md); \
-    padding: 4px 12px; \
+    padding: var(--space-1) var(--space-3); \
     font-size: var(--text-xs); \
-    cursor: pointer;\
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const ANSWER_SUMMARY: &str = "\
@@ -133,7 +142,7 @@ const ANSWER_SUMMARY: &str = "\
     background: #0f1a0f; \
     border: 1px solid #1a3a1a; \
     border-radius: var(--radius-sm); \
-    margin-top: 8px;\
+    margin-top: var(--space-2);\
 ";
 
 const PLACEHOLDER_STYLE: &str = "\
@@ -142,7 +151,7 @@ const PLACEHOLDER_STYLE: &str = "\
     align-items: center; \
     justify-content: center; \
     flex: 1; \
-    gap: 12px; \
+    gap: var(--space-3); \
     color: var(--text-muted);\
 ";
 
@@ -229,7 +238,7 @@ pub(crate) fn DiscussionView(project_id: String) -> Element {
                 DiscussionFetchState::NotAvailable => rsx! {
                     div {
                         style: "{PLACEHOLDER_STYLE}",
-                        div { style: "font-size: 48px;", "[?]" }
+                        div { style: "font-size: var(--text-3xl);", "[?]" }
                         div { style: "font-size: var(--text-md);", "Discussions not available" }
                         div { style: "font-size: var(--text-sm); max-width: 400px; text-align: center;",
                             "The discussions API is not available on this pylon instance."
@@ -427,7 +436,7 @@ fn DiscussionCard(
                 div {
                     style: "margin-top: 10px;",
                     button {
-                        style: "background: transparent; border: none; color: #4a9aff; font-size: var(--text-xs); cursor: pointer; padding: 0;",
+                        style: "background: transparent; border: none; color: var(--accent); font-size: var(--text-xs); cursor: pointer; padding: 0; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
                         onclick: move |_| {
                             let current = *show_free_text.read();
                             show_free_text.set(!current);
@@ -453,7 +462,7 @@ fn DiscussionCard(
 
                 // Submit
                 div {
-                    style: "display: flex; gap: 8px; margin-top: 10px;",
+                    style: "display: flex; gap: var(--space-2); margin-top: 10px;",
                     button {
                         style: if can_submit { "{SUBMIT_BTN}" } else { "{SUBMIT_BTN_DISABLED}" },
                         disabled: !can_submit || *submitting.read(),
@@ -487,8 +496,8 @@ fn discussion_card_colors(
 
 fn status_badge_style(status: DiscussionStatus) -> String {
     let (bg, color) = match status {
-        DiscussionStatus::Open => ("#1e1e5a", "#4a9aff"),
-        DiscussionStatus::Answered => ("#0f2a0f", "var(--status-success)"),
+        DiscussionStatus::Open => ("var(--bg-surface-dim)", "var(--accent)"),
+        DiscussionStatus::Answered => ("var(--status-success-bg)", "var(--status-success)"),
         DiscussionStatus::Deferred => ("var(--border)", "var(--text-secondary)"),
     };
     format!("{BADGE_BASE} background: {bg}; color: {color};")

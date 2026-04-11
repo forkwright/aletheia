@@ -45,7 +45,7 @@ const ROW_ACTIVE_STYLE: &str = "\
     align-items: baseline; \
     gap: var(--space-3); \
     padding: var(--space-2) var(--space-3); \
-    cursor: pointer; \
+    cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick); \
     font-size: var(--text-sm); \
     color: var(--text-primary); \
     background: var(--bg-surface-bright);\

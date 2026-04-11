@@ -31,27 +31,27 @@ const CARD_STYLE: &str = "\
     width: 400px; \
     display: flex; \
     flex-direction: column; \
-    gap: 16px;\
+    gap: var(--space-4);\
 ";
 
 const TITLE_STYLE: &str = "\
     font-size: var(--text-2xl); \
-    font-weight: bold; \
+    font-weight: var(--weight-bold); \
     text-align: center; \
-    margin-bottom: 8px;\
+    margin-bottom: var(--space-2);\
 ";
 
 const LABEL_STYLE: &str = "\
     font-size: var(--text-base); \
     color: var(--text-secondary); \
-    margin-bottom: 4px;\
+    margin-bottom: var(--space-1);\
 ";
 
 const INPUT_STYLE: &str = "\
     background: var(--input-bg); \
     border: 1px solid var(--input-border); \
     border-radius: var(--radius-md); \
-    padding: 10px 12px; \
+    padding: 10px var(--space-3); \
     color: var(--text-primary); \
     font-size: var(--text-base); \
     width: 100%; \
@@ -63,10 +63,10 @@ const BUTTON_STYLE: &str = "\
     color: var(--text-inverse); \
     border: none; \
     border-radius: var(--radius-md); \
-    padding: 12px; \
+    padding: var(--space-3); \
     font-size: var(--text-md); \
-    cursor: pointer; \
-    margin-top: 8px;\
+    cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick); \
+    margin-top: var(--space-2);\
 ";
 
 const BUTTON_DISABLED_STYLE: &str = "\
@@ -74,10 +74,10 @@ const BUTTON_DISABLED_STYLE: &str = "\
     color: var(--text-muted); \
     border: none; \
     border-radius: var(--radius-md); \
-    padding: 12px; \
+    padding: var(--space-3); \
     font-size: var(--text-md); \
     cursor: not-allowed; \
-    margin-top: 8px;\
+    margin-top: var(--space-2);\
 ";
 
 const STATUS_STYLE: &str = "\
