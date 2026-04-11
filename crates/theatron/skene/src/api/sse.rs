@@ -15,9 +15,10 @@ use crate::sse::SseStream;
 use super::types::SseEvent;
 
 /// If no SSE event is received within this window, the connection is treated as
-/// stale and a reconnect is triggered. Default covers quiet periods between pings
-/// while still detecting hung connections promptly.
-const READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+/// stale and a reconnect is triggered. Must be > 2× the server's keepalive
+/// interval (15s) to tolerate jitter. The 45s value matches proskenion's
+/// `HEARTBEAT_TIMEOUT` and provides 3× margin over the server ping interval.
+const READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(45);
 
 /// Manages the global SSE connection to /api/v1/events.
 /// Runs in a background task, sends parsed events through a channel.

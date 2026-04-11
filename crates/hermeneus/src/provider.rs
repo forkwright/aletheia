@@ -214,10 +214,19 @@ impl ProviderRegistry {
     #[must_use]
     pub fn find_provider(&self, model: &str) -> Option<&dyn LlmProvider> {
         // kanon:ignore RUST/pub-visibility
-        self.providers
-            .iter()
-            .find(|e| e.provider.supports_model(model))
-            .map(|e| e.provider.as_ref())
+        for entry in &self.providers {
+            let matches = entry.provider.supports_model(model);
+            tracing::debug!(
+                provider = entry.provider.name(),
+                model,
+                matches,
+                "provider selection check"
+            );
+            if matches {
+                return Some(entry.provider.as_ref());
+            }
+        }
+        None
     }
 
     /// List all registered providers.

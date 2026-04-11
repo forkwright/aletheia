@@ -108,7 +108,10 @@ pub(crate) async fn run(args: Args) -> Result<()> {
     };
 
     if config.gateway.auth.mode == "none" {
-        warn!("auth mode is 'none' -- all requests granted Readonly role");
+        warn!(
+            none_role = %config.gateway.auth.none_role,
+            "auth mode is 'none' -- all requests granted configured role"
+        );
     }
     if config.gateway.auth.mode == "none"
         && bind_addr_str != "127.0.0.1"
