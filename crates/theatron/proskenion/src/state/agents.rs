@@ -19,13 +19,13 @@ pub enum AgentStatus {
 }
 
 impl AgentStatus {
-    /// CSS hex color for the status indicator dot.
+    /// CSS color for the status indicator dot, using design tokens.
     #[must_use]
     pub(crate) fn dot_color(&self) -> &'static str {
         match self {
-            Self::Active => "#22c55e",
-            Self::Idle => "#555",
-            Self::Error => "#ef4444",
+            Self::Active => "var(--status-success)",
+            Self::Idle => "var(--text-muted)",
+            Self::Error => "var(--status-error)",
         }
     }
 
