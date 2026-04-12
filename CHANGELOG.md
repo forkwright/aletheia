@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.15.1](https://github.com/forkwright/aletheia/compare/v0.15.0...v0.15.1) (2026-04-11)
+
+
+### Bug Fixes
+
+* deployment blockers — CC provider default, SSE keepalive, log noise ([#3107](https://github.com/forkwright/aletheia/issues/3107)) ([d0fdbe1](https://github.com/forkwright/aletheia/commit/d0fdbe15a3266c7e7b6e007e0fd05ded8b42b6e5))
+* remaining deployment issues — CC binary, SSE parse, health, signal, fjall, session IDs ([#3109](https://github.com/forkwright/aletheia/issues/3109)) ([7393448](https://github.com/forkwright/aletheia/commit/73934484ed60fe663e2c7b8ee975cc7b353e1523))
+
 ## [0.15.0](https://github.com/forkwright/aletheia/compare/v0.14.1...v0.15.0) (2026-04-10)
 
 
