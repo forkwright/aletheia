@@ -267,9 +267,12 @@ pub(crate) fn Chat() -> Element {
         spawn(async move {
             let client = authenticated_client(&cfg);
 
-            let nous_id = legacy_state
+            // WHY: Use agent_store.active_id (set by topbar pill clicks) instead
+            // of legacy_state.agent_id (which is always None). Without this,
+            // the server returns 404 because there's no agent named "default".
+            let nous_id = agent_store
                 .read()
-                .agent_id
+                .active_id
                 .as_ref()
                 .map(|id| id.to_string())
                 .unwrap_or_else(|| "default".to_string());
