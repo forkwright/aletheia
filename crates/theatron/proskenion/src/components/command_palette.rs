@@ -89,7 +89,6 @@ fn dispatch_command(
     name: &str,
     category: CommandCategory,
     nav: &dioxus_router::Navigator,
-    legacy_state: &Signal<ChatState>,
     on_execute: &EventHandler<String>,
 ) {
     match category {
@@ -110,8 +109,18 @@ fn dispatch_command(
             nav.push(route);
         }
         CommandCategory::Action if name == "export" => {
-            // WHY: Build ChatMessage vec from legacy state so the export
-            // service doesn't depend on the legacy bridge in chat.rs.
+            // WHY: ChatState is a local signal in chat.rs, not a global context.
+            // Use try_consume_context so export gracefully handles being called
+            // from a non-chat view.
+            let Some(legacy_state) = try_consume_context::<Signal<ChatState>>() else {
+                if let Some(mut toast_store) = try_consume_context::<Signal<ToastStore>>() {
+                    toast_store
+                        .write()
+                        .push(Severity::Warning, "Navigate to Chat first to export a conversation");
+                }
+                return;
+            };
+
             let messages: Vec<ChatMessage> = {
                 use crate::components::chat::MessageRole;
                 let state = legacy_state.read();
@@ -149,8 +158,6 @@ fn dispatch_command(
             }
 
             let md = messages_to_markdown(&messages);
-            // WHY: Use navigator.clipboard.writeText via eval — this is the
-            // standard pattern for clipboard access in Dioxus desktop.
             if let Ok(escaped) = serde_json::to_string(&md) {
                 let js = format!("navigator.clipboard.writeText({escaped})");
                 spawn(async move {
@@ -179,7 +186,6 @@ fn dispatch_command(
 pub(crate) fn CommandPaletteView(is_open: bool, on_execute: EventHandler<String>) -> Element {
     let mut store = use_context::<Signal<CommandStore>>();
     let nav = use_navigator();
-    let legacy_state = use_context::<Signal<ChatState>>();
 
     if !is_open {
         return rsx! { div {} };
@@ -230,7 +236,7 @@ pub(crate) fn CommandPaletteView(is_open: bool, on_execute: EventHandler<String>
                                 aria_label: "{cmd_name}: {desc}",
                                 onclick: move |_| {
                                     store.write().cursor = idx;
-                                    dispatch_command(&name, category, &nav, &legacy_state, &on_execute);
+                                    dispatch_command(&name, category, &nav, &on_execute);
                                 },
                                 span { style: "{CMD_NAME_STYLE}", "{cmd_name}" }
                                 span { style: "{CMD_DESC_STYLE}", "{desc}" }
