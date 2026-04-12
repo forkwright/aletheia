@@ -40,6 +40,9 @@ pub(crate) fn ToastContainer() -> Element {
     rsx! {
         div {
             style: "{CONTAINER_STYLE}",
+            role: "status",
+            aria_live: "polite",
+            aria_label: "Notifications",
             for toast in toasts.toasts().iter().cloned() {
                 div {
                     key: "{toast.id}",

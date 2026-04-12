@@ -10,7 +10,8 @@ const INPUT_BAR_STYLE: &str = "\
     padding: var(--space-3) var(--space-4); \
     background: var(--bg-surface); \
     border-top: 1px solid var(--border); \
-    align-items: flex-end;\
+    align-items: flex-end; \
+    box-shadow: 0 -1px 3px rgb(18 17 15 / 0.08);\
 ";
 
 const TEXTAREA_STYLE: &str = "\
@@ -50,11 +51,12 @@ const SEND_BTN_STYLE: &str = "\
     color: var(--text-inverse); \
     border: none; \
     border-radius: var(--radius-md); \
-    padding: var(--space-3) var(--space-5); \
-    font-size: var(--text-base); \
+    padding: var(--space-2) var(--space-4); \
+    font-size: var(--text-sm); \
+    font-weight: var(--weight-semibold); \
     cursor: pointer; \
     white-space: nowrap; \
-    transition: background-color var(--transition-quick); \
+    transition: background-color 150ms ease, transform 120ms ease; \
     flex-shrink: 0; \
     min-width: 70px;\
 ";
@@ -75,11 +77,12 @@ const ABORT_BTN_STYLE: &str = "\
     color: var(--text-inverse); \
     border: none; \
     border-radius: var(--radius-md); \
-    padding: var(--space-3) var(--space-5); \
-    font-size: var(--text-base); \
+    padding: var(--space-2) var(--space-4); \
+    font-size: var(--text-sm); \
+    font-weight: var(--weight-semibold); \
     cursor: pointer; \
     white-space: nowrap; \
-    transition: background-color var(--transition-quick); \
+    transition: background-color 150ms ease, transform 120ms ease; \
     flex-shrink: 0; \
     min-width: 70px;\
 ";

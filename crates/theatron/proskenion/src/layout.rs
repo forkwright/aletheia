@@ -20,7 +20,8 @@ const SIDEBAR_COLLAPSED_STYLE: &str = "\
     flex-shrink: 0; \
     border-right: 1px solid var(--border-separator); \
     overflow-y: auto; \
-    overflow-x: hidden;\
+    overflow-x: hidden; \
+    transition: width var(--duration-slow, 350ms) cubic-bezier(0.16, 1, 0.3, 1);\
 ";
 
 const SIDEBAR_EXPANDED_STYLE: &str = "\
@@ -34,7 +35,8 @@ const SIDEBAR_EXPANDED_STYLE: &str = "\
     flex-shrink: 0; \
     border-right: 1px solid var(--border-separator); \
     overflow-y: auto; \
-    overflow-x: hidden;\
+    overflow-x: hidden; \
+    transition: width var(--duration-slow, 350ms) cubic-bezier(0.16, 1, 0.3, 1);\
 ";
 
 const CONTENT_STYLE: &str = "\
@@ -63,7 +65,9 @@ const NAV_LINK_STYLE: &str = "\
     color: var(--text-primary); \
     text-decoration: none; \
     font-size: var(--text-sm); \
-    white-space: nowrap;\
+    white-space: nowrap; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick);\
 ";
 
 const NAV_LINK_ICON_ONLY_STYLE: &str = "\
@@ -139,13 +143,42 @@ pub(crate) fn Layout() -> Element {
                         "A"
                     }
                 }
+                // -- WORKSPACE section --
+                if !*sidebar_collapsed.read() {
+                    div {
+                        style: "font-size: var(--text-xs); font-weight: var(--weight-semibold); text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); padding: var(--space-3) var(--space-4) var(--space-1);",
+                        "Workspace"
+                    }
+                }
                 NavItem { to: Route::Chat {}, icon: "💬", label: "Chat", shortcut: "Ctrl+1", collapsed: *sidebar_collapsed.read() }
                 NavItem { to: Route::Files {}, icon: "📁", label: "Files", shortcut: "Ctrl+2", collapsed: *sidebar_collapsed.read() }
                 NavItem { to: Route::Planning {}, icon: "📋", label: "Planning", shortcut: "Ctrl+3", collapsed: *sidebar_collapsed.read() }
+
+                // -- Divider --
+                div { style: "height: 1px; background: var(--border-separator); margin: var(--space-2) var(--space-3);" }
+
+                // -- KNOWLEDGE section --
+                if !*sidebar_collapsed.read() {
+                    div {
+                        style: "font-size: var(--text-xs); font-weight: var(--weight-semibold); text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); padding: var(--space-3) var(--space-4) var(--space-1);",
+                        "Knowledge"
+                    }
+                }
                 NavItem { to: Route::Memory {}, icon: "🧠", label: "Memory", shortcut: "Ctrl+4", collapsed: *sidebar_collapsed.read() }
                 NavItem { to: Route::Metrics {}, icon: "📊", label: "Metrics", shortcut: "Ctrl+5", collapsed: *sidebar_collapsed.read() }
-                NavItem { to: Route::Ops {}, icon: "⚙\u{fe0f}", label: "Ops", shortcut: "Ctrl+6", collapsed: *sidebar_collapsed.read() }
                 NavItem { to: Route::Sessions {}, icon: "📑", label: "Sessions", shortcut: "Ctrl+7", collapsed: *sidebar_collapsed.read() }
+
+                // -- Divider --
+                div { style: "height: 1px; background: var(--border-separator); margin: var(--space-2) var(--space-3);" }
+
+                // -- SYSTEM section --
+                if !*sidebar_collapsed.read() {
+                    div {
+                        style: "font-size: var(--text-xs); font-weight: var(--weight-semibold); text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); padding: var(--space-3) var(--space-4) var(--space-1);",
+                        "System"
+                    }
+                }
+                NavItem { to: Route::Ops {}, icon: "⚙\u{fe0f}", label: "Ops", shortcut: "Ctrl+6", collapsed: *sidebar_collapsed.read() }
                 NavItem { to: Route::Meta {}, icon: "💡", label: "Insights", shortcut: "", collapsed: *sidebar_collapsed.read() }
                 NavItem { to: Route::Settings {}, icon: "🔧", label: "Settings", shortcut: "", collapsed: *sidebar_collapsed.read() }
             }

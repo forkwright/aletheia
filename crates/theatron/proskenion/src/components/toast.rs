@@ -11,11 +11,12 @@ const TOAST_STYLE: &str = "\
     flex-direction: column; \
     gap: var(--space-1); \
     padding: var(--space-3) var(--space-4); \
-    border-radius: var(--radius-md); \
+    border-radius: var(--radius-lg); \
     border-left: 4px solid; \
     min-width: 300px; \
     max-width: 400px; \
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3); \
+    box-shadow: var(--shadow-float, 0 4px 16px rgb(18 17 15 / 0.16)); \
+    animation: toast-enter 350ms cubic-bezier(0.16, 1, 0.3, 1); \
     position: relative;\
 ";
 
@@ -39,12 +40,17 @@ const DISMISS_STYLE: &str = "\
     opacity: 0.6; \
     cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick); \
     font-size: var(--text-base); \
-    padding: var(--space-1) var(--space-1);\
+    padding: var(--space-1) var(--space-2); \
+    min-width: 24px; \
+    min-height: 24px; \
+    display: flex; \
+    align-items: center; \
+    justify-content: center;\
 ";
 
 const ACTION_STYLE: &str = "\
-    background: rgba(255, 255, 255, 0.15); \
-    border: 1px solid rgba(255, 255, 255, 0.2); \
+    background: var(--bg-surface-bright); \
+    border: 1px solid var(--border); \
     border-radius: var(--radius-sm); \
     color: inherit; \
     cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick); \
@@ -79,7 +85,7 @@ pub(crate) fn ToastItem(toast: Toast) -> Element {
             button {
                 style: "{DISMISS_STYLE}",
                 onclick: move |_| toasts.dismiss(toast_id),
-                "x"
+                "\u{2715}"
             }
             div { style: "{TITLE_STYLE}", "{toast.title}" }
             if let Some(ref body) = toast.body {

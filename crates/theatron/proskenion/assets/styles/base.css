@@ -123,12 +123,12 @@ pre {
 }
 
 /* ===================================================================== */
-/* Focus ring                                                            */
+/* Focus ring — double-ring technique for visibility on any surface      */
 /* ===================================================================== */
 
 :focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 2px;
+  outline: none;
+  box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
 }
 
 /* ===================================================================== */
@@ -216,8 +216,8 @@ a:focus-visible,
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 2px;
+  outline: none;
+  box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
 }
 
 /* ===================================================================== */
@@ -316,4 +316,44 @@ nav a.active {
   background: var(--bg-surface-bright);
   color: var(--accent);
   border-left: 3px solid var(--accent);
+}
+
+/* ===================================================================== */
+/* Toast entrance animation                                              */
+/* ===================================================================== */
+
+@keyframes toast-enter {
+  from { transform: translateX(100%); opacity: 0; }
+  to   { transform: translateX(0); opacity: 1; }
+}
+
+/* ===================================================================== */
+/* Fade-in for content transitions                                       */
+/* ===================================================================== */
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* ===================================================================== */
+/* Button micro-interactions — lift on hover, snap on press              */
+/* ===================================================================== */
+
+button:not([disabled]):not([role="tab"]):not([role="option"]):hover {
+  transform: translateY(-1px);
+}
+
+button:not([disabled]):active {
+  transform: translateY(0);
+  transition-duration: var(--duration-fast);
+}
+
+/* ===================================================================== */
+/* Disabled state                                                        */
+/* ===================================================================== */
+
+[disabled], [aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: not-allowed;
 }

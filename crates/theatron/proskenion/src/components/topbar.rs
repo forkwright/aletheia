@@ -12,7 +12,7 @@ use crate::state::events::EventState;
 const TOPBAR_STYLE: &str = "\
     display: flex; \
     align-items: center; \
-    height: 48px; \
+    height: 52px; \
     padding: 0 var(--space-4); \
     background: var(--bg-surface); \
     border-bottom: 1px solid var(--border-separator); \
@@ -42,7 +42,7 @@ const PILL_STYLE: &str = "\
     display: inline-flex; \
     align-items: center; \
     gap: var(--space-1); \
-    padding: var(--space-1) var(--space-3); \
+    padding: 6px var(--space-3); \
     border-radius: var(--radius-full); \
     border: 1px solid var(--border); \
     background: var(--bg); \
@@ -58,14 +58,18 @@ const PILL_ACTIVE_STYLE: &str = "\
     display: inline-flex; \
     align-items: center; \
     gap: var(--space-1); \
-    padding: var(--space-1) var(--space-3); \
+    padding: 6px var(--space-3); \
     border-radius: var(--radius-full); \
     border: 1px solid var(--accent); \
     background: var(--bg-surface-bright); \
     color: var(--text-primary); \
     font-size: var(--text-sm); \
-    cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick); \
-    white-space: nowrap;\
+    cursor: pointer; \
+    white-space: nowrap; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick); \
+    box-shadow: 0 0 0 3px rgb(154 123 79 / 0.2);\
 ";
 
 const CONTROLS_STYLE: &str = "\
@@ -138,6 +142,11 @@ pub(crate) fn TopBar() -> Element {
                             PILL_STYLE
                         };
                         let status_label = status.label();
+                        let dot_style = if matches!(status, AgentStatus::Active) {
+                            format!("width: 10px; height: 10px; border-radius: 50%; background: {color}; flex-shrink: 0; animation: status-pulse 2s ease-in-out infinite;")
+                        } else {
+                            format!("width: 10px; height: 10px; border-radius: 50%; background: {color}; flex-shrink: 0;")
+                        };
                         rsx! {
                             button {
                                 key: "{id}",
@@ -149,8 +158,8 @@ pub(crate) fn TopBar() -> Element {
                                     store.write().set_active(&id_clone);
                                 },
                                 span {
-                                    style: "color: {color}; font-size: 8px;",
-                                    "●"
+                                    style: "{dot_style}",
+                                    aria_hidden: "true",
                                 }
                                 if !emoji.is_empty() {
                                     span { style: "font-size: var(--text-base);", "{emoji}" }

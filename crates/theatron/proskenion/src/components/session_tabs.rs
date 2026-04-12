@@ -23,7 +23,7 @@ const TAB_STYLE: &str = "\
     align-items: center; \
     gap: var(--space-2); \
     padding: var(--space-2) var(--space-4) var(--space-2); \
-    border-radius: var(--radius-md) var(--radius-md) 0 0; \
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0; \
     font-size: var(--text-sm); \
     color: var(--text-secondary); \
     cursor: pointer; \
@@ -41,7 +41,7 @@ const TAB_ACTIVE_STYLE: &str = "\
     align-items: center; \
     gap: var(--space-2); \
     padding: var(--space-2) var(--space-4) var(--space-2); \
-    border-radius: var(--radius-md) var(--radius-md) 0 0; \
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0; \
     font-size: var(--text-sm); \
     color: var(--text-primary); \
     cursor: pointer; \
@@ -66,8 +66,8 @@ const CLOSE_BTN_STYLE: &str = "\
 ";
 
 const UNREAD_BADGE_STYLE: &str = "\
-    width: 7px; \
-    height: 7px; \
+    width: 8px; \
+    height: 8px; \
     border-radius: 50%; \
     background: var(--accent); \
     flex-shrink: 0;\
@@ -127,7 +127,7 @@ pub(crate) fn SessionTabsView() -> Element {
                                         bar.close(idx);
                                     }
                                 },
-                                "×"
+                                "\u{2715}"
                             }
                         }
                     }
