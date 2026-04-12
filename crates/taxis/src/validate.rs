@@ -119,6 +119,9 @@ pub fn validate_section(section: &str, value: &Value) -> Result<(), ValidationEr
         "channels" => validate_channels(value, &mut errors),
         "bindings" => validate_bindings(value, &mut errors),
         "credential" => validate_credential(value, &mut errors),
+        "timeouts" => validate_timeouts(value, &mut errors),
+        "capacity" => validate_capacity(value, &mut errors),
+        "retry" => validate_retry(value, &mut errors),
         // NOTE: these sections are pass-through with no validation rules
         "packs" | "pricing" | "sandbox" | "logging" | "mcp" | "localProvider" | "training" => {}
         _ => errors.push(format!("unknown config section: {section}")),
@@ -319,6 +322,85 @@ fn validate_credential(value: &Value, errors: &mut Vec<String>) {
         errors.push(format!(
             "credential.source must be \"auto\", \"api-key\", or \"claude-code\", got \"{source}\""
         ));
+    }
+}
+
+fn validate_timeouts(value: &Value, errors: &mut Vec<String>) {
+    // WHY: 30s minimum prevents misconfiguration that would time out before
+    // any model response arrives. 3600s cap prevents runaway session budgets.
+    if let Some(val) = value.get("llmCallSecs").and_then(Value::as_u64) {
+        if val < 30 {
+            errors.push("timeouts.llmCallSecs must be at least 30 seconds".to_owned());
+        }
+        if val > 3600 {
+            errors.push("timeouts.llmCallSecs must not exceed 3600 seconds".to_owned());
+        }
+    }
+}
+
+fn validate_capacity(value: &Value, errors: &mut Vec<String>) {
+    // WHY: zero disables truncation (valid), but values above 10 MiB are
+    // likely misconfiguration that would OOM tool result buffers.
+    const MAX_TOOL_OUTPUT_BYTES: u64 = 10 * 1024 * 1024;
+    if let Some(val) = value.get("maxToolOutputBytes").and_then(Value::as_u64)
+        && val > MAX_TOOL_OUTPUT_BYTES
+    {
+        errors.push(format!(
+            "capacity.maxToolOutputBytes must not exceed {MAX_TOOL_OUTPUT_BYTES} bytes (10 MiB)"
+        ));
+    }
+
+    // WHY: opus_context_tokens must be at least 200k (the standard default) and
+    // no more than 2M to prevent nonsensical configurations.
+    if let Some(val) = value.get("opusContextTokens").and_then(Value::as_u64) {
+        if val < 200_000 {
+            errors.push(
+                "capacity.opusContextTokens must be at least 200 000 tokens".to_owned(),
+            );
+        }
+        if val > 2_000_000 {
+            errors.push(
+                "capacity.opusContextTokens must not exceed 2 000 000 tokens".to_owned(),
+            );
+        }
+    }
+}
+
+fn validate_retry(value: &Value, errors: &mut Vec<String>) {
+    // WHY: cap ensures callers never stall for more than 5 minutes.
+    const MAX_BACKOFF_MS: u64 = 300_000;
+
+    // WHY: cap at 10 retries to prevent runaway loops on persistent failures.
+    if let Some(val) = value.get("maxAttempts").and_then(Value::as_u64)
+        && val > 10
+    {
+        errors.push("retry.maxAttempts must not exceed 10".to_owned());
+    }
+
+    // WHY: 100ms minimum prevents busy-looping under rapid failures.
+    if let Some(val) = value.get("backoffBaseMs").and_then(Value::as_u64)
+        && val < 100
+    {
+        errors.push("retry.backoffBaseMs must be at least 100 ms".to_owned());
+    }
+
+    if let Some(val) = value.get("backoffMaxMs").and_then(Value::as_u64)
+        && val > MAX_BACKOFF_MS
+    {
+        errors.push(format!(
+            "retry.backoffMaxMs must not exceed {MAX_BACKOFF_MS} ms (5 minutes)"
+        ));
+    }
+
+    // INVARIANT: max must be >= base so the cap is reachable.
+    let base = value.get("backoffBaseMs").and_then(Value::as_u64);
+    let max = value.get("backoffMaxMs").and_then(Value::as_u64);
+    if let (Some(b), Some(m)) = (base, max)
+        && m < b
+    {
+        errors.push(
+            "retry.backoffMaxMs must be greater than or equal to backoffBaseMs".to_owned(),
+        );
     }
 }
 
