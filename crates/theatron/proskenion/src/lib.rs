@@ -10,6 +10,8 @@
 pub mod api;
 /// Dioxus UI components for the desktop app.
 pub mod components;
+/// Log-to-file initialisation (daily-rolling, non-blocking).
+pub(crate) mod logging;
 /// Platform integration: system tray, global hotkeys, native menus, window state, notifications.
 pub(crate) mod platform;
 /// Background services: SSE connection, stream management, and state sync.
@@ -24,17 +26,26 @@ pub(crate) mod views;
 
 /// Launch the desktop application.
 ///
-/// Loads persisted window state and configures the desktop window before
-/// showing it. Platform features (tray, hotkeys, menus) are initialized
-/// once the connection is established.
-pub fn run() {
+/// Initialises log-to-file, loads persisted window state, and configures the
+/// desktop window before showing it. Closing the window exits the process
+/// cleanly — no minimize-to-tray, no hidden background process.
+///
+/// Pass `verbose = true` (e.g. from a `--verbose` CLI flag) to also emit logs
+/// to stderr. When `RUST_LOG` is set in the environment stderr output is added
+/// automatically regardless.
+pub fn run(verbose: bool) {
+    // WHY: Keep the guard alive for the process lifetime so the non-blocking
+    // writer thread flushes pending log records before the file is closed.
+    let _log_guard = logging::init(verbose);
+
+    tracing::info!("starting proskenion");
+
     // WHY: reqwest with rustls-no-provider requires an explicit crypto provider
-    // install before any Client is constructed, otherwise it panics (#2363).
     // install before any Client is constructed, otherwise it panics with
     // "No provider set" (#2363).
     let _ = rustls::crypto::ring::default_provider().install_default();
 
-    use dioxus::desktop::Config;
+    use dioxus::desktop::{Config, WindowCloseBehaviour};
 
     let window_state = platform::window_state::load_or_default();
 
@@ -55,9 +66,16 @@ pub fn run() {
     // WHY: Passing `None` removes the default OS menu bar (Window/Edit/Help)
     // that Dioxus injects via `MenuBuilderState::Unset`. The app's intentional
     // menu structure lives in `platform::menus` and will be wired in separately.
+    //
+    // WHY: `WindowCloseBehaviour::WindowCloses` ensures that clicking the close
+    // button exits the process cleanly. The app must not linger as a background
+    // process with no window — no tray icon is shown, so there would be no way
+    // to recover it. SSE disconnect and window-state persistence happen during
+    // the normal Dioxus shutdown sequence before the process exits.
     let config = Config::new()
         .with_window(window_builder)
-        .with_menu(None::<dioxus::desktop::muda::Menu>);
+        .with_menu(None::<dioxus::desktop::muda::Menu>)
+        .with_close_behaviour(WindowCloseBehaviour::WindowCloses);
 
     dioxus::LaunchBuilder::desktop()
         .with_cfg(config)

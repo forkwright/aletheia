@@ -189,14 +189,19 @@ impl QuickInputState {
 }
 
 /// Close behavior when the user clicks the window close button.
+///
+/// The Dioxus-level `WindowCloseBehaviour::WindowCloses` config enforces clean
+/// exit at the framework layer. `CloseBehavior` is the application-level
+/// mirror used by state/signal code. Both are set to `Quit`/`WindowCloses` so
+/// they stay in sync and the app never lingers as an invisible background process.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum CloseBehavior {
     /// Minimize to system tray instead of quitting.
-    #[default]
     MinimizeToTray,
-    /// Quit the application.
+    /// Quit the application cleanly (disconnect SSE, persist state, exit).
+    #[default]
     Quit,
 }
 
@@ -297,8 +302,8 @@ mod tests {
     // -- CloseBehavior --
 
     #[test]
-    fn close_behavior_default_is_minimize_to_tray() {
-        assert_eq!(CloseBehavior::default(), CloseBehavior::MinimizeToTray);
+    fn close_behavior_default_is_quit() {
+        assert_eq!(CloseBehavior::default(), CloseBehavior::Quit);
     }
 
     #[test]
@@ -317,10 +322,10 @@ mod tests {
         let deserialized: Wrapper = toml::from_str(&serialized).unwrap();
         assert_eq!(deserialized.close, CloseBehavior::Quit);
 
-        let wrapper_default = Wrapper {
+        let wrapper_minimize = Wrapper {
             close: CloseBehavior::MinimizeToTray,
         };
-        let serialized = toml::to_string(&wrapper_default).unwrap();
+        let serialized = toml::to_string(&wrapper_minimize).unwrap();
         assert!(serialized.contains("minimize_to_tray"));
     }
 }
