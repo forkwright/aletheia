@@ -267,18 +267,37 @@ impl NousActor {
         // Persist session to store BEFORE spawning the pipeline task.
         if let Some(ref store) = self.stores.session_store {
             let guard = store.lock().await;
-            if let Err(e) = guard.find_or_create_session(
+            match guard.find_or_create_session(
                 &session.id,
                 &session.nous_id,
                 &session.session_key,
                 Some(&session.model),
                 None,
             ) {
-                warn!(
-                    session_id = %session.id,
-                    error = %e,
-                    "failed to pre-persist session — pipeline will retry in finalize"
-                );
+                Ok(db_session) if db_session.id != session.id => {
+                    // WHY(#3103): The DB already had a session for (nous_id, session_key)
+                    // with a different ID (e.g., from a previous cycle or a restart).
+                    // find_or_create_session returns the canonical DB ID via
+                    // ON CONFLICT DO NOTHING + SELECT. If we kept the actor's generated
+                    // ID, finalize would call append_message with an ID that has no
+                    // DB row → FOREIGN KEY constraint failure and silent data loss.
+                    // Adopt the DB session ID so the actor and DB stay in sync.
+                    debug!(
+                        actor_id = %session.id,
+                        db_id = %db_session.id,
+                        session_key = %session.session_key,
+                        "adopting DB session ID — actor ID diverged from DB"
+                    );
+                    session.id.clone_from(&db_session.id);
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    warn!(
+                        session_id = %session.id,
+                        error = %e,
+                        "failed to pre-persist session — pipeline will retry in finalize"
+                    );
+                }
             }
         }
 
