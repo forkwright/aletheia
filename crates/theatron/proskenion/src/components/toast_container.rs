@@ -11,8 +11,8 @@ use super::toast::ToastItem;
 
 const CONTAINER_STYLE: &str = "\
     position: fixed; \
-    top: 16px; \
-    right: 16px; \
+    top: var(--space-4); \
+    right: var(--space-4); \
     z-index: 9999; \
     display: flex; \
     flex-direction: column; \

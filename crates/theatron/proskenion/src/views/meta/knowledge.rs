@@ -123,9 +123,9 @@ fn EntityTypeBreakdown(slices: Vec<crate::state::meta::EntityTypeSlice>) -> Elem
                     let color = slice.color;
                     rsx! {
                         div {
-                            style: "display: flex; align-items: center; gap: var(--space-2); margin-bottom: 6px;",
+                            style: "display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-2);",
                             div {
-                                style: "width: 10px; height: 10px; border-radius: 2px; \
+                                style: "width: 10px; height: 10px; border-radius: var(--radius-sm); \
                                         background: {color}; flex-shrink: 0;",
                             }
                             span {

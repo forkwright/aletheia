@@ -106,6 +106,20 @@ impl AgentStore {
         self.agents.is_empty()
     }
 
+    /// Alias for [`load_from_api`](Self::load_from_api).
+    #[cfg_attr(not(test), expect(dead_code, reason = "used in tests"))]
+    pub(crate) fn load_agents(&mut self, agents: Vec<Agent>) {
+        self.load_from_api(agents);
+    }
+
+    /// Set the status of an agent by ID. No-op if the ID is unknown.
+    #[cfg_attr(not(test), expect(dead_code, reason = "used in tests"))]
+    pub(crate) fn update_status(&mut self, id: &NousId, status: AgentStatus) {
+        if let Some(record) = self.agents.get_mut(id) {
+            record.status = status;
+        }
+    }
+
     /// Add agents from the API response. Sets the first agent as active if
     /// no active agent is set yet.
     pub(crate) fn load_from_api(&mut self, agents: Vec<Agent>) {

@@ -32,8 +32,8 @@ const BADGE_BASE: &str = "\
     display: inline-block; \
     font-size: var(--text-xs); \
     font-weight: var(--weight-semibold); \
-    padding: 2px var(--space-2); \
-    border-radius: 10px; \
+    padding: var(--space-1) var(--space-2); \
+    border-radius: var(--radius-lg); \
     text-transform: uppercase; \
     letter-spacing: 0.4px;\
 ";
@@ -41,7 +41,7 @@ const BADGE_BASE: &str = "\
 const DESCRIPTION_STYLE: &str = "\
     color: var(--text-secondary); \
     font-size: var(--text-sm); \
-    margin-bottom: 10px;\
+    margin-bottom: var(--space-3);\
 ";
 
 const SECTION_LABEL: &str = "\
@@ -50,7 +50,7 @@ const SECTION_LABEL: &str = "\
     color: var(--text-muted); \
     text-transform: uppercase; \
     letter-spacing: 0.5px; \
-    margin: 10px 0 var(--space-1);\
+    margin: var(--space-3) 0 var(--space-1);\
 ";
 
 const CONTEXT_STYLE: &str = "\
@@ -59,7 +59,7 @@ const CONTEXT_STYLE: &str = "\
     background: var(--bg-surface-dim); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-sm); \
-    padding: var(--space-2) 10px; \
+    padding: var(--space-2) var(--space-3); \
     margin-bottom: var(--space-1);\
 ";
 
@@ -67,21 +67,21 @@ const REQ_ROW: &str = "\
     display: flex; \
     align-items: center; \
     gap: var(--space-2); \
-    padding: 3px 0; \
+    padding: var(--space-1) 0; \
     font-size: var(--text-sm);\
 ";
 
 const ARTIFACT_ROW: &str = "\
     display: flex; \
     align-items: center; \
-    gap: 6px; \
-    padding: 2px 0; \
+    gap: var(--space-2); \
+    padding: var(--space-1) 0; \
     font-size: var(--text-xs);\
 ";
 
 const DECISION_BOX: &str = "\
-    margin-top: 10px; \
-    padding: var(--space-2) 10px; \
+    margin-top: var(--space-3); \
+    padding: var(--space-2) var(--space-3); \
     background: var(--bg-surface-dim); \
     border-radius: var(--radius-sm); \
     border: 1px solid var(--border);\
@@ -90,7 +90,7 @@ const DECISION_BOX: &str = "\
 const BTN_ROW: &str = "\
     display: flex; \
     gap: var(--space-2); \
-    margin-top: 14px;\
+    margin-top: var(--space-4);\
 ";
 
 const APPROVE_BTN: &str = "\
@@ -98,7 +98,7 @@ const APPROVE_BTN: &str = "\
     color: var(--status-success); \
     border: 1px solid var(--status-success); \
     border-radius: var(--radius-md); \
-    padding: 6px var(--space-4); \
+    padding: var(--space-2) var(--space-4); \
     font-size: var(--text-sm); \
     font-weight: var(--weight-semibold); \
     cursor: pointer;\
@@ -112,7 +112,7 @@ const SKIP_BTN: &str = "\
     color: var(--status-warning); \
     border: 1px solid var(--status-warning); \
     border-radius: var(--radius-md); \
-    padding: 6px var(--space-4); \
+    padding: var(--space-2) var(--space-4); \
     font-size: var(--text-sm); \
     font-weight: var(--weight-semibold); \
     cursor: pointer;\
@@ -126,7 +126,7 @@ const OVERRIDE_BTN: &str = "\
     color: var(--status-error); \
     border: 1px solid var(--status-error); \
     border-radius: var(--radius-md); \
-    padding: 6px var(--space-4); \
+    padding: var(--space-2) var(--space-4); \
     font-size: var(--text-sm); \
     font-weight: var(--weight-semibold); \
     cursor: pointer;\
@@ -140,7 +140,7 @@ const SUBMIT_BTN_ACTIVE: &str = "\
     color: white; \
     border: none; \
     border-radius: var(--radius-md); \
-    padding: 6px var(--space-4); \
+    padding: var(--space-2) var(--space-4); \
     font-size: var(--text-sm); \
     font-weight: var(--weight-semibold); \
     cursor: pointer;\
@@ -154,7 +154,7 @@ const SUBMIT_BTN_DISABLED: &str = "\
     color: var(--text-muted); \
     border: none; \
     border-radius: var(--radius-md); \
-    padding: 6px var(--space-4); \
+    padding: var(--space-2) var(--space-4); \
     font-size: var(--text-sm); \
     font-weight: var(--weight-semibold); \
     cursor: not-allowed;\
@@ -165,7 +165,7 @@ const CANCEL_BTN: &str = "\
     color: var(--text-secondary); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 6px var(--space-3); \
+    padding: var(--space-2) var(--space-3); \
     font-size: var(--text-sm); \
     cursor: pointer;\
     transition: background-color var(--transition-quick), \
@@ -178,7 +178,7 @@ const NOTES_TEXTAREA: &str = "\
     background: var(--bg-surface-dim); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-sm); \
-    padding: var(--space-2) 10px; \
+    padding: var(--space-2) var(--space-3); \
     color: var(--text-primary); \
     font-size: var(--text-sm); \
     font-family: inherit; \

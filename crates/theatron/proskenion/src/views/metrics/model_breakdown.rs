@@ -39,12 +39,12 @@ pub(crate) fn ModelBreakdown(models: Vec<ModelTokenRow>, grand_total: u64) -> El
                     thead {
                         tr {
                             style: "border-bottom: 1px solid var(--border);",
-                            th { style: "padding: 6px var(--space-2); text-align: left; color: var(--text-muted);", "Model" }
-                            th { style: "padding: 6px var(--space-2); text-align: right; color: var(--text-muted);", "Input" }
-                            th { style: "padding: 6px var(--space-2); text-align: right; color: var(--text-muted);", "Output" }
-                            th { style: "padding: 6px var(--space-2); text-align: right; color: var(--text-muted);", "Total" }
-                            th { style: "padding: 6px var(--space-2); text-align: right; color: var(--text-muted);", "%" }
-                            th { style: "padding: 6px var(--space-2); text-align: right; color: var(--text-muted);", "$/1K out" }
+                            th { style: "padding: var(--space-2) var(--space-2); text-align: left; color: var(--text-muted);", "Model" }
+                            th { style: "padding: var(--space-2) var(--space-2); text-align: right; color: var(--text-muted);", "Input" }
+                            th { style: "padding: var(--space-2) var(--space-2); text-align: right; color: var(--text-muted);", "Output" }
+                            th { style: "padding: var(--space-2) var(--space-2); text-align: right; color: var(--text-muted);", "Total" }
+                            th { style: "padding: var(--space-2) var(--space-2); text-align: right; color: var(--text-muted);", "%" }
+                            th { style: "padding: var(--space-2) var(--space-2); text-align: right; color: var(--text-muted);", "$/1K out" }
                         }
                     }
                     tbody {
@@ -59,15 +59,15 @@ pub(crate) fn ModelBreakdown(models: Vec<ModelTokenRow>, grand_total: u64) -> El
                                         key: "{model.model}",
                                         style: "border-bottom: 1px solid var(--border);",
                                         td {
-                                            style: "padding: 6px var(--space-2); color: {color}; white-space: nowrap;",
+                                            style: "padding: var(--space-2) var(--space-2); color: {color}; white-space: nowrap;",
                                             title: "{model.model}",
                                             "{short}"
                                         }
-                                        td { style: "padding: 6px var(--space-2); color: var(--text-secondary); text-align: right;", "{format_tokens(model.input_tokens)}" }
-                                        td { style: "padding: 6px var(--space-2); color: var(--text-secondary); text-align: right;", "{format_tokens(model.output_tokens)}" }
-                                        td { style: "padding: 6px var(--space-2); color: var(--text-primary); text-align: right; font-weight: var(--weight-semibold);", "{format_tokens(model.total())}" }
-                                        td { style: "padding: 6px var(--space-2); color: var(--text-muted); text-align: right;", "{pct:.1}%" }
-                                        td { style: "padding: 6px var(--space-2); color: var(--text-muted); text-align: right;", "${price:.4}" }
+                                        td { style: "padding: var(--space-2) var(--space-2); color: var(--text-secondary); text-align: right;", "{format_tokens(model.input_tokens)}" }
+                                        td { style: "padding: var(--space-2) var(--space-2); color: var(--text-secondary); text-align: right;", "{format_tokens(model.output_tokens)}" }
+                                        td { style: "padding: var(--space-2) var(--space-2); color: var(--text-primary); text-align: right; font-weight: var(--weight-semibold);", "{format_tokens(model.total())}" }
+                                        td { style: "padding: var(--space-2) var(--space-2); color: var(--text-muted); text-align: right;", "{pct:.1}%" }
+                                        td { style: "padding: var(--space-2) var(--space-2); color: var(--text-muted); text-align: right;", "${price:.4}" }
                                     }
                                 }
                             }

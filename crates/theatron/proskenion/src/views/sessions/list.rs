@@ -12,7 +12,7 @@ const ROW_STYLE: &str = "\
     display: flex; \
     align-items: center; \
     gap: var(--space-3); \
-    padding: 10px var(--space-3); \
+    padding: var(--space-3) var(--space-3); \
     border-bottom: 1px solid #222; \
     cursor: pointer; \
     transition: background-color var(--transition-quick), \
@@ -24,7 +24,7 @@ const ROW_HOVER_STYLE: &str = "\
     display: flex; \
     align-items: center; \
     gap: var(--space-3); \
-    padding: 10px var(--space-3); \
+    padding: var(--space-3) var(--space-3); \
     border-bottom: 1px solid #222; \
     cursor: pointer; \
     background: var(--bg-surface); \
@@ -44,7 +44,7 @@ const TITLE_STYLE: &str = "\
 
 const AGENT_BADGE_STYLE: &str = "\
     display: inline-block; \
-    padding: 2px var(--space-2); \
+    padding: var(--space-1) var(--space-2); \
     border-radius: var(--radius-sm); \
     font-size: var(--text-xs); \
     background: var(--border); \
@@ -79,7 +79,7 @@ const SORT_BTN_STYLE: &str = "\
     background: none; \
     border: 1px solid var(--border); \
     border-radius: var(--radius-sm); \
-    padding: 2px var(--space-2); \
+    padding: var(--space-1) var(--space-2); \
     font-size: var(--text-xs); \
     color: var(--text-secondary); \
     cursor: pointer; \
@@ -92,7 +92,7 @@ const SORT_BTN_ACTIVE_STYLE: &str = "\
     background: var(--border); \
     border: 1px solid var(--accent); \
     border-radius: var(--radius-sm); \
-    padding: 2px var(--space-2); \
+    padding: var(--space-1) var(--space-2); \
     font-size: var(--text-xs); \
     color: #7a7aff; \
     cursor: pointer; \
@@ -139,7 +139,7 @@ const LOAD_MORE_BTN: &str = "\
     color: var(--text-primary); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 6px var(--space-4); \
+    padding: var(--space-2) var(--space-4); \
     font-size: var(--text-xs); \
     cursor: pointer; \
     transition: background-color var(--transition-quick), \

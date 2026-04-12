@@ -37,7 +37,7 @@ const DETAIL_PANEL: &str = "\
     background: var(--bg-surface); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 14px var(--space-4); \
+    padding: var(--space-4) var(--space-4); \
     margin-top: var(--space-4);\
 ";
 
@@ -60,7 +60,7 @@ const PLACEHOLDER_STYLE: &str = "\
     align-items: center; \
     justify-content: center; \
     flex: 1; \
-    gap: 10px; \
+    gap: var(--space-3); \
     color: var(--text-muted);\
 ";
 

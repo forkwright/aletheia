@@ -24,7 +24,7 @@ const SECTION_LABEL_STYLE: &str = "\
     color: var(--text-muted); \
     text-transform: uppercase; \
     letter-spacing: 0.6px; \
-    margin-bottom: 14px;";
+    margin-bottom: var(--space-4);";
 
 /// Appearance settings panel.
 #[component]
@@ -83,7 +83,7 @@ pub(crate) fn AppearancePanel() -> Element {
                 style: SECTION_STYLE,
                 div { style: SECTION_LABEL_STYLE, "Font Size" }
                 div {
-                    style: "display: flex; align-items: center; gap: 14px;",
+                    style: "display: flex; align-items: center; gap: var(--space-4);",
                     span {
                         style: "font-size: var(--text-xs); color: var(--text-muted); width: 22px;",
                         "12"
@@ -158,7 +158,7 @@ pub(crate) fn AppearancePanel() -> Element {
                 style: SECTION_STYLE,
                 div { style: SECTION_LABEL_STYLE, "Accent Color" }
                 div {
-                    style: "display: flex; gap: 10px; flex-wrap: wrap;",
+                    style: "display: flex; gap: var(--space-3); flex-wrap: wrap;",
                     for (label, hex) in ACCENT_PRESETS.iter() {
                         {
                             let is_active = current.accent_color == *hex;

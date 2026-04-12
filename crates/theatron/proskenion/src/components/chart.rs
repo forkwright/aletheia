@@ -62,7 +62,7 @@ const TOOLTIP_STYLE: &str = "\
     background: var(--bg-surface); \
     border: 1px solid var(--input-border); \
     border-radius: var(--radius-md); \
-    padding: 6px 10px; \
+    padding: var(--space-2) var(--space-3); \
     font-size: var(--text-xs); \
     color: var(--text-primary); \
     white-space: nowrap; \
@@ -97,20 +97,20 @@ pub(crate) fn TimeSeriesChart(
 
     rsx! {
         div {
-            style: "display: flex; flex-direction: column; gap: 6px;",
+            style: "display: flex; flex-direction: column; gap: var(--space-2);",
 
             // Legend
             div {
                 style: "display: flex; gap: var(--space-3); align-items: center;",
                 div {
                     style: "display: flex; align-items: center; gap: var(--space-1);",
-                    div { style: "width: 10px; height: 10px; border-radius: 2px; background: {columns[0].primary_color};" }
+                    div { style: "width: 10px; height: 10px; border-radius: var(--radius-sm); background: {columns[0].primary_color};" }
                     span { style: "{CHART_LABEL_STYLE}", "{primary_label}" }
                 }
                 if !secondary_label.is_empty() {
                     div {
                         style: "display: flex; align-items: center; gap: var(--space-1);",
-                        div { style: "width: 10px; height: 10px; border-radius: 2px; background: {columns[0].secondary_color};" }
+                        div { style: "width: 10px; height: 10px; border-radius: var(--radius-sm); background: {columns[0].secondary_color};" }
                         span { style: "{CHART_LABEL_STYLE}", "{secondary_label}" }
                     }
                 }
@@ -139,7 +139,7 @@ pub(crate) fn TimeSeriesChart(
                                 style: "flex: 1; display: flex; flex-direction: column; align-items: stretch; cursor: pointer; position: relative; min-width: 4px; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
                                 title: "{lbl}\n{primary_label}: {pv}\n{secondary_label}: {sv}",
                                 div {
-                                    style: "height: {total_pct}%; display: flex; flex-direction: column; overflow: hidden; border-radius: 2px 2px 0 0;",
+                                    style: "height: {total_pct}%; display: flex; flex-direction: column; overflow: hidden; border-radius: var(--radius-sm) var(--radius-sm) 0 0;",
                                     div {
                                         style: "height: {primary_pct}%; background: {pcol}; min-height: 1px;",
                                     }
@@ -224,9 +224,9 @@ pub(crate) fn HorizBarChart(
                                 "{label}"
                             }
                             div {
-                                style: "flex: 1; height: 20px; background: var(--bg-surface); border-radius: 3px; overflow: hidden;",
+                                style: "flex: 1; height: 20px; background: var(--bg-surface); border-radius: var(--radius-sm); overflow: hidden;",
                                 div {
-                                    style: "height: 100%; width: {pct}%; background: {color}; border-radius: 3px; transition: width var(--transition-measured);",
+                                    style: "height: 100%; width: {pct}%; background: {color}; border-radius: var(--radius-sm); transition: width var(--transition-measured);",
                                 }
                             }
                             if show_value {
@@ -304,7 +304,7 @@ pub(crate) fn DonutChart(
                         rsx! {
                             div {
                                 style: "display: flex; align-items: center; gap: var(--space-1);",
-                                div { style: "width: 10px; height: 10px; border-radius: 2px; background: {color}; flex-shrink: 0;" }
+                                div { style: "width: 10px; height: 10px; border-radius: var(--radius-sm); background: {color}; flex-shrink: 0;" }
                                 span { style: "font-size: var(--text-xs); color: var(--text-secondary);", "{label}" }
                                 span { style: "font-size: var(--text-xs); color: var(--text-muted);", "({pct:.1}%)" }
                             }
@@ -350,12 +350,12 @@ pub(crate) fn GroupedBarChart(
                 if let Some(first) = entries.first() {
                     div {
                         style: "display: flex; align-items: center; gap: var(--space-1);",
-                        div { style: "width: 10px; height: 10px; border-radius: 2px; background: {first.current_color};" }
+                        div { style: "width: 10px; height: 10px; border-radius: var(--radius-sm); background: {first.current_color};" }
                         span { style: "{CHART_LABEL_STYLE}", "{current_label}" }
                     }
                     div {
                         style: "display: flex; align-items: center; gap: var(--space-1);",
-                        div { style: "width: 10px; height: 10px; border-radius: 2px; background: {first.previous_color};" }
+                        div { style: "width: 10px; height: 10px; border-radius: var(--radius-sm); background: {first.previous_color};" }
                         span { style: "{CHART_LABEL_STYLE}", "{previous_label}" }
                     }
                 }
@@ -380,11 +380,11 @@ pub(crate) fn GroupedBarChart(
                                 div {
                                     style: "display: flex; align-items: flex-end; gap: 2px; height: {height_px}px;",
                                     div {
-                                        style: "width: 24px; height: {curr_pct}%; background: {ccol}; border-radius: 2px 2px 0 0; min-height: 2px;",
+                                        style: "width: 24px; height: {curr_pct}%; background: {ccol}; border-radius: var(--radius-sm) var(--radius-sm) 0 0; min-height: 2px;",
                                         title: "{current_label}: {cv}",
                                     }
                                     div {
-                                        style: "width: 24px; height: {prev_pct}%; background: {pcol}; border-radius: 2px 2px 0 0; min-height: 2px;",
+                                        style: "width: 24px; height: {prev_pct}%; background: {pcol}; border-radius: var(--radius-sm) var(--radius-sm) 0 0; min-height: 2px;",
                                         title: "{previous_label}: {pv}",
                                     }
                                 }
@@ -455,7 +455,7 @@ pub(crate) fn LineChart(series: Vec<LineSeries>, height: u32) -> Element {
 
     rsx! {
         div {
-            style: "display: flex; flex-direction: column; gap: 6px;",
+            style: "display: flex; flex-direction: column; gap: var(--space-2);",
 
             // Legend
             div {
@@ -467,7 +467,7 @@ pub(crate) fn LineChart(series: Vec<LineSeries>, height: u32) -> Element {
                         rsx! {
                             div {
                                 style: "display: flex; align-items: center; gap: var(--space-1);",
-                                div { style: "width: 10px; height: 10px; border-radius: 2px; background: {color};" }
+                                div { style: "width: 10px; height: 10px; border-radius: var(--radius-sm); background: {color};" }
                                 span { style: "{CHART_LABEL_STYLE}", "{name}" }
                             }
                         }
@@ -557,7 +557,7 @@ pub(crate) fn PercentileBarChart(entries: Vec<PercentileEntry>) -> Element {
 
     rsx! {
         div {
-            style: "display: flex; flex-direction: column; gap: 6px;",
+            style: "display: flex; flex-direction: column; gap: var(--space-2);",
 
             // Legend
             div {
@@ -595,7 +595,7 @@ pub(crate) fn PercentileBarChart(entries: Vec<PercentileEntry>) -> Element {
                                 "{label}"
                             }
                             div {
-                                style: "flex: 1; height: 16px; display: flex; border-radius: 3px; overflow: hidden;",
+                                style: "flex: 1; height: 16px; display: flex; border-radius: var(--radius-sm); overflow: hidden;",
                                 title: "{tip}",
                                 div { style: "width: {w_min_p25}%; background: var(--input-border); min-width: 1px;" }
                                 div { style: "width: {w_p25_p50}%; background: #5b6af0; min-width: 1px;" }
@@ -698,19 +698,19 @@ pub(crate) fn StackedBarChart(
 
     rsx! {
         div {
-            style: "display: flex; flex-direction: column; gap: 6px;",
+            style: "display: flex; flex-direction: column; gap: var(--space-2);",
 
             // Legend
             div {
                 style: "display: flex; gap: var(--space-3); align-items: center;",
                 div {
                     style: "display: flex; align-items: center; gap: var(--space-1);",
-                    div { style: "width: 10px; height: 10px; border-radius: 2px; background: var(--status-success);" }
+                    div { style: "width: 10px; height: 10px; border-radius: var(--radius-sm); background: var(--status-success);" }
                     span { style: "{CHART_LABEL_STYLE}", "Success" }
                 }
                 div {
                     style: "display: flex; align-items: center; gap: var(--space-1);",
-                    div { style: "width: 10px; height: 10px; border-radius: 2px; background: var(--status-error);" }
+                    div { style: "width: 10px; height: 10px; border-radius: var(--radius-sm); background: var(--status-error);" }
                     span { style: "{CHART_LABEL_STYLE}", "Failure" }
                 }
             }
@@ -742,9 +742,9 @@ pub(crate) fn StackedBarChart(
                                 "{label}"
                             }
                             div {
-                                style: "flex: 1; height: 20px; background: var(--bg-surface); border-radius: 3px; overflow: hidden;",
+                                style: "flex: 1; height: 20px; background: var(--bg-surface); border-radius: var(--radius-sm); overflow: hidden;",
                                 div {
-                                    style: "height: 100%; width: {total_pct}%; display: flex; border-radius: 3px; overflow: hidden;",
+                                    style: "height: 100%; width: {total_pct}%; display: flex; border-radius: var(--radius-sm); overflow: hidden;",
                                     div { style: "width: {success_pct}%; background: var(--status-success); min-width: 1px;" }
                                     if failure_pct > 0 {
                                         div { style: "width: {failure_pct}%; background: var(--status-error); min-width: 1px;" }

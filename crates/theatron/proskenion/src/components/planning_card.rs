@@ -39,7 +39,7 @@ const STEP_ITEM_STYLE: &str = "\
     display: flex; \
     align-items: center; \
     gap: var(--space-2); \
-    padding: 3px 0; \
+    padding: var(--space-1) 0; \
     color: var(--text-secondary); \
     font-size: var(--text-sm);\
 ";
@@ -47,28 +47,28 @@ const STEP_ITEM_STYLE: &str = "\
 const PROGRESS_BAR_OUTER: &str = "\
     height: 6px; \
     background: var(--border); \
-    border-radius: 3px; \
-    margin-top: 10px; \
+    border-radius: var(--radius-sm); \
+    margin-top: var(--space-3); \
     overflow: hidden;\
 ";
 
 const PROGRESS_BAR_INNER: &str = "\
     height: 100%; \
     background: var(--accent); \
-    border-radius: 3px; \
+    border-radius: var(--radius-sm); \
     transition: width var(--transition-measured);\
 ";
 
 const PROGRESS_BAR_COMPLETE: &str = "\
     height: 100%; \
     background: var(--status-success); \
-    border-radius: 3px;\
+    border-radius: var(--radius-sm);\
 ";
 
 const STATUS_LABEL_STYLE: &str = "\
     font-size: var(--text-xs); \
     color: var(--text-muted); \
-    margin-top: 6px; \
+    margin-top: var(--space-2); \
     text-align: right;\
 ";
 

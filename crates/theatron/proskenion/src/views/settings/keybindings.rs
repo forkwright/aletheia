@@ -30,8 +30,8 @@ pub(crate) fn KeybindingsPanel() -> Element {
             div {
                 style: "display: flex; justify-content: flex-end;",
                 button {
-                    style: "padding: 5px 14px; background: none; border: 1px solid var(--border); \
-                            border-radius: 5px; color: var(--text-secondary); font-size: var(--text-xs); cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
+                    style: "padding: var(--space-1) var(--space-4); background: none; border: 1px solid var(--border); \
+                            border-radius: var(--radius-sm); color: var(--text-secondary); font-size: var(--text-xs); cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
                     onclick: move |_| {
                         keybindings.write().overrides.clear();
                         let store = server_store.read();
@@ -117,7 +117,7 @@ pub(crate) fn KeybindingsPanel() -> Element {
                             style: "position: fixed; inset: 0; background: rgba(0,0,0,0.6); \
                                     display: flex; align-items: center; justify-content: center; z-index: 110;",
                             div {
-                                style: "background: var(--bg-surface); border: 1px solid var(--status-warning); border-radius: 10px; \
+                                style: "background: var(--bg-surface); border: 1px solid var(--status-warning); border-radius: var(--radius-lg); \
                                         padding: var(--space-6) var(--space-8); max-width: 380px; width: 90%;",
                                 div {
                                     style: "font-size: var(--text-base); color: var(--text-primary); margin-bottom: var(--space-3);",
@@ -130,14 +130,14 @@ pub(crate) fn KeybindingsPanel() -> Element {
                                 div {
                                     style: "display: flex; gap: var(--space-2); justify-content: flex-end;",
                                     button {
-                                        style: "padding: 6px 14px; background: none; border: 1px solid var(--border); \
-                                                border-radius: 5px; color: var(--text-secondary); font-size: var(--text-xs); cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
+                                        style: "padding: var(--space-2) var(--space-4); background: none; border: 1px solid var(--border); \
+                                                border-radius: var(--radius-sm); color: var(--text-secondary); font-size: var(--text-xs); cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
                                         onclick: move |_| { conflict_state.set(None); },
                                         "Cancel"
                                     }
                                     button {
-                                        style: "padding: 6px 14px; background: var(--status-warning); border: none; \
-                                                border-radius: 5px; color: #000; font-size: var(--text-xs); cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
+                                        style: "padding: var(--space-2) var(--space-4); background: var(--status-warning); border: none; \
+                                                border-radius: var(--radius-sm); color: #000; font-size: var(--text-xs); cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
                                         onclick: move |_| {
                                             keybindings.write().reset(&conflict_clone);
                                             keybindings.write().set(&target_clone, combo_clone.clone());
@@ -174,14 +174,14 @@ pub(crate) fn KeybindingsPanel() -> Element {
                             // Category header
                             div {
                                 style: "display: flex; justify-content: space-between; align-items: center; \
-                                        padding: 10px var(--space-4); background: #161626; border-bottom: 1px solid var(--border);",
+                                        padding: var(--space-3) var(--space-4); background: #161626; border-bottom: 1px solid var(--border);",
                                 span {
                                     style: "font-size: var(--text-xs); font-weight: var(--weight-bold); color: var(--text-muted); \
                                             text-transform: uppercase; letter-spacing: 0.6px;",
                                     "{cat.label()}"
                                 }
                                 button {
-                                    style: "padding: 3px 10px; background: none; border: 1px solid var(--border); \
+                                    style: "padding: var(--space-1) var(--space-3); background: none; border: 1px solid var(--border); \
                                             border-radius: var(--radius-sm); color: var(--text-muted); font-size: var(--text-xs); cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
                                     onclick: move |_| {
                                         let all_actions = default_actions();
@@ -203,10 +203,10 @@ pub(crate) fn KeybindingsPanel() -> Element {
                                     let is_recording = recording_id.read().as_deref() == Some(action_id);
                                     let row_bg = if is_recording { "#1e1e3a" } else { "transparent" };
                                     let combo_style = if is_recording {
-                                        "padding: var(--space-1) 10px; background: #5b6af0; border: none; \
+                                        "padding: var(--space-1) var(--space-3); background: #5b6af0; border: none; \
                                          border-radius: var(--radius-sm); color: var(--text-primary); font-size: var(--text-xs); cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick); min-width: 90px;"
                                     } else {
-                                        "padding: var(--space-1) 10px; background: #0d0d1a; border: 1px solid var(--border); \
+                                        "padding: var(--space-1) var(--space-3); background: #0d0d1a; border: 1px solid var(--border); \
                                          border-radius: var(--radius-sm); color: var(--text-primary); font-size: var(--text-xs); cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick); min-width: 90px; \
                                          font-family: var(--font-mono);"
                                     };
@@ -222,7 +222,7 @@ pub(crate) fn KeybindingsPanel() -> Element {
                                                 "{action.label}"
                                             }
                                             div {
-                                                style: "display: flex; gap: 6px; align-items: center;",
+                                                style: "display: flex; gap: var(--space-2); align-items: center;",
                                                 button {
                                                     style: "{combo_style}",
                                                     onclick: move |_| {
@@ -235,7 +235,7 @@ pub(crate) fn KeybindingsPanel() -> Element {
                                                     if is_recording { "Recording…" } else { "{combo_str}" }
                                                 }
                                                 button {
-                                                    style: "padding: 3px var(--space-2); background: none; border: 1px solid var(--border); \
+                                                    style: "padding: var(--space-1) var(--space-2); background: none; border: 1px solid var(--border); \
                                                             border-radius: var(--radius-sm); color: var(--text-muted); font-size: var(--text-xs); cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
                                                     title: "Reset to default",
                                                     onclick: move |_| {

@@ -10,7 +10,7 @@ const PANEL_COLLAPSED_STYLE: &str = "\
     display: flex; \
     align-items: center; \
     gap: var(--space-2); \
-    padding: 6px 10px; \
+    padding: var(--space-2) var(--space-3); \
     background: var(--bg-surface); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
@@ -21,7 +21,7 @@ const PANEL_COLLAPSED_STYLE: &str = "\
 ";
 
 const PANEL_EXPANDED_STYLE: &str = "\
-    padding: var(--space-2) 10px; \
+    padding: var(--space-2) var(--space-3); \
     background: var(--bg-surface); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
@@ -45,9 +45,9 @@ const TOOL_NAME_STYLE: &str = "\
 
 const DURATION_BADGE_STYLE: &str = "\
     font-size: var(--text-xs); \
-    padding: 1px 6px; \
+    padding: 1px var(--space-2); \
     background: var(--border); \
-    border-radius: 10px; \
+    border-radius: var(--radius-lg); \
     color: var(--text-secondary);\
 ";
 
@@ -56,7 +56,7 @@ const CODE_BLOCK_STYLE: &str = "\
     border: 1px solid var(--border); \
     border-radius: var(--radius-sm); \
     padding: var(--space-2); \
-    margin-top: 6px; \
+    margin-top: var(--space-2); \
     overflow-x: auto; \
     white-space: pre-wrap; \
     word-wrap: break-word; \
@@ -81,7 +81,7 @@ const ERROR_DETAIL_STYLE: &str = "\
     border: 1px solid var(--status-error); \
     border-radius: var(--radius-sm); \
     padding: var(--space-2); \
-    margin-top: 6px; \
+    margin-top: var(--space-2); \
     font-size: var(--text-xs); \
     white-space: pre-wrap;\
 ";

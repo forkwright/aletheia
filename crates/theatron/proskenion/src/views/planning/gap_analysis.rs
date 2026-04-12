@@ -24,7 +24,7 @@ const FILTER_BTN_ACTIVE: &str = "\
     color: var(--accent); \
     border: 1px solid var(--accent); \
     border-radius: var(--radius-md); \
-    padding: 3px 10px; \
+    padding: var(--space-1) var(--space-3); \
     font-size: var(--text-xs); \
     cursor: pointer; \
     transition: background-color var(--transition-quick), \
@@ -37,7 +37,7 @@ const FILTER_BTN_INACTIVE: &str = "\
     color: var(--text-secondary); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 3px 10px; \
+    padding: var(--space-1) var(--space-3); \
     font-size: var(--text-xs); \
     cursor: pointer; \
     transition: background-color var(--transition-quick), \
@@ -56,7 +56,7 @@ const GAP_TITLE_ROW: &str = "\
     display: flex; \
     align-items: center; \
     gap: var(--space-2); \
-    margin-bottom: 6px;\
+    margin-bottom: var(--space-2);\
 ";
 
 const GAP_TITLE: &str = "\
@@ -83,8 +83,8 @@ const ACTION_STYLE: &str = "\
     font-size: var(--text-xs); \
     color: var(--accent); \
     background: var(--bg-surface-dim); \
-    border-radius: 3px; \
-    padding: 3px 6px; \
+    border-radius: var(--radius-sm); \
+    padding: var(--space-1) var(--space-2); \
     margin-top: var(--space-1);\
 ";
 

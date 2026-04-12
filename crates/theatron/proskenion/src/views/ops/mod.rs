@@ -226,7 +226,7 @@ const ENTRY_STYLE: &str = "\
     display: flex; \
     align-items: center; \
     gap: var(--space-2); \
-    padding: 6px 0; \
+    padding: var(--space-2) 0; \
     border-bottom: 1px solid #222; \
     font-size: var(--text-sm);\
 ";
@@ -256,7 +256,7 @@ const TAB_ACTIVE: &str = "\
     color: var(--text-primary); \
     border: 1px solid var(--accent); \
     border-radius: var(--radius-md); \
-    padding: var(--space-1) 14px; \
+    padding: var(--space-1) var(--space-4); \
     font-size: var(--text-sm); \
     cursor: pointer;\
     transition: background-color var(--transition-quick), \
@@ -269,7 +269,7 @@ const TAB_INACTIVE: &str = "\
     color: var(--text-secondary); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: var(--space-1) 14px; \
+    padding: var(--space-1) var(--space-4); \
     font-size: var(--text-sm); \
     cursor: pointer;\
     transition: background-color var(--transition-quick), \

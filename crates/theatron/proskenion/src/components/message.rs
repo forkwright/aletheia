@@ -120,7 +120,7 @@ pub(crate) fn MessageBubble(
                     display: flex;
                     gap: var(--space-2);
                     align-items: center;
-                    margin-top: 2px;
+                    margin-top: var(--space-1);
                     font-size: var(--text-xs);
                     color: var(--text-muted);
                     font-family: var(--font-body);

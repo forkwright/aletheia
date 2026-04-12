@@ -79,7 +79,7 @@ pub(crate) fn ServersPanel() -> Element {
                 style: "display: flex; justify-content: space-between; align-items: center;",
                 h3 { style: "margin: 0; font-size: var(--text-md); color: var(--text-primary);", "Server Connections" }
                 button {
-                    style: "padding: 6px 14px; background: var(--border); border: 1px solid var(--border); \
+                    style: "padding: var(--space-2) var(--space-4); background: var(--border); border: 1px solid var(--border); \
                             border-radius: var(--radius-md); color: var(--text-primary); font-size: var(--text-sm); cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
                     onclick: move |_| show_add.toggle(),
                     if show_add() { "Cancel" } else { "+ Add server" }
@@ -201,18 +201,18 @@ fn ServerCard(
 
     rsx! {
         div {
-            style: "background: var(--bg-surface); border: {card_border}; border-radius: var(--radius-md); padding: 14px var(--space-4);",
+            style: "background: var(--bg-surface); border: {card_border}; border-radius: var(--radius-md); padding: var(--space-4) var(--space-4);",
 
             if editing() {
                 // Edit mode
                 div {
-                    style: "display: flex; flex-direction: column; gap: 10px;",
+                    style: "display: flex; flex-direction: column; gap: var(--space-3);",
                     div {
                         style: "display: flex; flex-direction: column; gap: var(--space-1);",
                         label { style: "font-size: var(--text-xs); color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;", "Name" }
                         input {
                             style: "background: var(--input-bg); border: 1px solid var(--border); border-radius: var(--radius-sm); \
-                                    padding: 6px 10px; color: var(--text-primary); font-size: var(--text-sm); width: 100%; box-sizing: border-box;",
+                                    padding: var(--space-2) var(--space-3); color: var(--text-primary); font-size: var(--text-sm); width: 100%; box-sizing: border-box;",
                             value: "{edit_name}",
                             oninput: move |e| edit_name.set(e.value()),
                         }
@@ -222,7 +222,7 @@ fn ServerCard(
                         label { style: "font-size: var(--text-xs); color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;", "URL" }
                         input {
                             style: "background: var(--input-bg); border: 1px solid var(--border); border-radius: var(--radius-sm); \
-                                    padding: 6px 10px; color: var(--text-primary); font-size: var(--text-sm); width: 100%; box-sizing: border-box;",
+                                    padding: var(--space-2) var(--space-3); color: var(--text-primary); font-size: var(--text-sm); width: 100%; box-sizing: border-box;",
                             value: "{edit_url}",
                             oninput: move |e| edit_url.set(e.value()),
                         }
@@ -233,7 +233,7 @@ fn ServerCard(
                         input {
                             r#type: "password",
                             style: "background: var(--input-bg); border: 1px solid var(--border); border-radius: var(--radius-sm); \
-                                    padding: 6px 10px; color: var(--text-primary); font-size: var(--text-sm); width: 100%; box-sizing: border-box;",
+                                    padding: var(--space-2) var(--space-3); color: var(--text-primary); font-size: var(--text-sm); width: 100%; box-sizing: border-box;",
                             value: "{edit_token}",
                             oninput: move |e| edit_token.set(e.value()),
                         }
@@ -241,13 +241,13 @@ fn ServerCard(
                     div {
                         style: "display: flex; gap: var(--space-2); justify-content: flex-end;",
                         button {
-                            style: "padding: 6px 14px; background: none; border: 1px solid var(--border); \
+                            style: "padding: var(--space-2) var(--space-4); background: none; border: 1px solid var(--border); \
                                     border-radius: var(--radius-sm); color: var(--text-secondary); font-size: var(--text-xs); cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
                             onclick: move |_| editing.set(false),
                             "Cancel"
                         }
                         button {
-                            style: "padding: 6px 14px; background: var(--accent); border: none; \
+                            style: "padding: var(--space-2) var(--space-4); background: var(--accent); border: none; \
                                     border-radius: var(--radius-sm); color: var(--text-primary); font-size: var(--text-xs); cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
                             onclick: move |_| {
                                 let new_name = edit_name();
@@ -282,8 +282,8 @@ fn ServerCard(
                             }
                             if is_active {
                                 span {
-                                    style: "font-size: var(--text-xs); padding: 1px 6px; background: var(--bg-surface-dim); \
-                                            border: 1px solid var(--accent); border-radius: 10px; color: var(--accent-hover);",
+                                    style: "font-size: var(--text-xs); padding: 1px var(--space-2); background: var(--bg-surface-dim); \
+                                            border: 1px solid var(--accent); border-radius: var(--radius-lg); color: var(--accent-hover);",
                                     "active"
                                 }
                             }
@@ -293,7 +293,7 @@ fn ServerCard(
                             "{url}"
                         }
                         div {
-                            style: "display: flex; align-items: center; gap: 6px; margin-top: var(--space-1);",
+                            style: "display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-1);",
                             div {
                                 style: "width: 7px; height: 7px; border-radius: 50%; background: {health_color};",
                             }
@@ -305,29 +305,29 @@ fn ServerCard(
                     }
 
                     div {
-                        style: "display: flex; gap: 6px; flex-shrink: 0; margin-left: var(--space-3);",
+                        style: "display: flex; gap: var(--space-2); flex-shrink: 0; margin-left: var(--space-3);",
                         button {
-                            style: "padding: var(--space-1) 10px; background: none; border: 1px solid var(--border); \
+                            style: "padding: var(--space-1) var(--space-3); background: none; border: 1px solid var(--border); \
                                     border-radius: var(--radius-sm); color: var(--text-secondary); font-size: var(--text-xs); cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
                             disabled: is_testing,
                             onclick: move |_| on_test.call(()),
                             "Test"
                         }
                         button {
-                            style: "padding: var(--space-1) 10px; background: none; border: 1px solid var(--border); \
+                            style: "padding: var(--space-1) var(--space-3); background: none; border: 1px solid var(--border); \
                                     border-radius: var(--radius-sm); color: var(--text-secondary); font-size: var(--text-xs); cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
                             onclick: move |_| editing.set(true),
                             "Edit"
                         }
                         if !is_active {
                             button {
-                                style: "padding: var(--space-1) 10px; background: var(--border); border: 1px solid var(--accent); \
+                                style: "padding: var(--space-1) var(--space-3); background: var(--border); border: 1px solid var(--accent); \
                                         border-radius: var(--radius-sm); color: var(--accent-hover); font-size: var(--text-xs); cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
                                 onclick: move |_| on_switch.call(()),
                                 "Switch"
                             }
                             button {
-                                style: "padding: var(--space-1) 10px; background: none; border: 1px solid var(--status-error-bg); \
+                                style: "padding: var(--space-1) var(--space-3); background: none; border: 1px solid var(--status-error-bg); \
                                         border-radius: var(--radius-sm); color: var(--status-error); font-size: var(--text-xs); cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
                                 onclick: move |_| on_remove.call(()),
                                 "Remove"
@@ -353,16 +353,16 @@ fn AddServerForm(server_store: Signal<ServerConfigStore>, on_saved: EventHandler
     rsx! {
         div {
             style: "background: var(--bg-surface); border: 1px solid var(--accent); border-radius: var(--radius-md); padding: var(--space-4);",
-            h4 { style: "margin: 0 0 14px; font-size: var(--text-base); color: var(--text-primary);", "Add Server" }
+            h4 { style: "margin: 0 0 var(--space-4); font-size: var(--text-base); color: var(--text-primary);", "Add Server" }
 
             div {
-                style: "display: flex; flex-direction: column; gap: 10px;",
+                style: "display: flex; flex-direction: column; gap: var(--space-3);",
                 div {
                     style: "display: flex; flex-direction: column; gap: var(--space-1);",
                     label { style: "font-size: var(--text-xs); color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;", "Name" }
                     input {
                         style: "background: var(--input-bg); border: 1px solid var(--border); border-radius: var(--radius-sm); \
-                                padding: 6px 10px; color: var(--text-primary); font-size: var(--text-sm); width: 100%; box-sizing: border-box;",
+                                padding: var(--space-2) var(--space-3); color: var(--text-primary); font-size: var(--text-sm); width: 100%; box-sizing: border-box;",
                         value: "{name}",
                         oninput: move |e| name.set(e.value()),
                     }
@@ -372,7 +372,7 @@ fn AddServerForm(server_store: Signal<ServerConfigStore>, on_saved: EventHandler
                     label { style: "font-size: var(--text-xs); color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;", "Server URL" }
                     input {
                         style: "background: var(--input-bg); border: 1px solid var(--border); border-radius: var(--radius-sm); \
-                                padding: 6px 10px; color: var(--text-primary); font-size: var(--text-sm); width: 100%; box-sizing: border-box;",
+                                padding: var(--space-2) var(--space-3); color: var(--text-primary); font-size: var(--text-sm); width: 100%; box-sizing: border-box;",
                         value: "{url}",
                         oninput: move |e| url.set(e.value()),
                     }
@@ -383,7 +383,7 @@ fn AddServerForm(server_store: Signal<ServerConfigStore>, on_saved: EventHandler
                     input {
                         r#type: "password",
                         style: "background: var(--input-bg); border: 1px solid var(--border); border-radius: var(--radius-sm); \
-                                padding: 6px 10px; color: var(--text-primary); font-size: var(--text-sm); width: 100%; box-sizing: border-box;",
+                                padding: var(--space-2) var(--space-3); color: var(--text-primary); font-size: var(--text-sm); width: 100%; box-sizing: border-box;",
                         value: "{token}",
                         oninput: move |e| token.set(e.value()),
                     }
@@ -391,7 +391,7 @@ fn AddServerForm(server_store: Signal<ServerConfigStore>, on_saved: EventHandler
                 div {
                     style: "display: flex; justify-content: flex-end;",
                     button {
-                        style: "padding: 7px 18px; background: var(--accent); border: none; \
+                        style: "padding: var(--space-2) var(--space-4); background: var(--accent); border: none; \
                                 border-radius: var(--radius-md); color: var(--text-primary); font-size: var(--text-sm); cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
                         onclick: move |_| {
                             let n = name();

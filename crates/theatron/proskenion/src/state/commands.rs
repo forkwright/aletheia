@@ -10,6 +10,16 @@ pub enum CommandSource {
     Server,
 }
 
+/// Functional category for palette grouping and dispatch.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum CommandCategory {
+    /// Performs an action (export, clear, etc.).
+    Action,
+    /// Navigates to a different view.
+    Navigation,
+}
+
 /// A slash command available in the command palette.
 #[derive(Debug, Clone)]
 pub struct Command {
@@ -23,16 +33,20 @@ pub struct Command {
     pub source: CommandSource,
     /// Whether this command is specific to the active agent.
     pub agent_specific: bool,
+    /// Functional category for dispatch.
+    pub category: CommandCategory,
 }
 
 fn client_commands() -> Vec<Command> {
     vec![
+        // --- Action commands ---
         Command {
             name: "help".to_string(),
             description: "Show available commands and keyboard shortcuts".to_string(),
             usage: "/help".to_string(),
             source: CommandSource::Client,
             agent_specific: false,
+            category: CommandCategory::Action,
         },
         Command {
             name: "clear".to_string(),
@@ -40,6 +54,7 @@ fn client_commands() -> Vec<Command> {
             usage: "/clear".to_string(),
             source: CommandSource::Client,
             agent_specific: false,
+            category: CommandCategory::Action,
         },
         Command {
             name: "theme".to_string(),
@@ -47,6 +62,7 @@ fn client_commands() -> Vec<Command> {
             usage: "/theme".to_string(),
             source: CommandSource::Client,
             agent_specific: false,
+            category: CommandCategory::Action,
         },
         Command {
             name: "disconnect".to_string(),
@@ -54,6 +70,72 @@ fn client_commands() -> Vec<Command> {
             usage: "/disconnect".to_string(),
             source: CommandSource::Client,
             agent_specific: false,
+            category: CommandCategory::Action,
+        },
+        Command {
+            name: "export".to_string(),
+            description: "Export conversation to clipboard as markdown".to_string(),
+            usage: "/export".to_string(),
+            source: CommandSource::Client,
+            agent_specific: false,
+            category: CommandCategory::Action,
+        },
+        // --- Navigation commands ---
+        Command {
+            name: "sessions".to_string(),
+            description: "Switch to Sessions view".to_string(),
+            usage: "/sessions".to_string(),
+            source: CommandSource::Client,
+            agent_specific: false,
+            category: CommandCategory::Navigation,
+        },
+        Command {
+            name: "memory".to_string(),
+            description: "Switch to Memory view".to_string(),
+            usage: "/memory".to_string(),
+            source: CommandSource::Client,
+            agent_specific: false,
+            category: CommandCategory::Navigation,
+        },
+        Command {
+            name: "metrics".to_string(),
+            description: "Switch to Metrics view".to_string(),
+            usage: "/metrics".to_string(),
+            source: CommandSource::Client,
+            agent_specific: false,
+            category: CommandCategory::Navigation,
+        },
+        Command {
+            name: "ops".to_string(),
+            description: "Switch to Ops view".to_string(),
+            usage: "/ops".to_string(),
+            source: CommandSource::Client,
+            agent_specific: false,
+            category: CommandCategory::Navigation,
+        },
+        Command {
+            name: "files".to_string(),
+            description: "Switch to Files view".to_string(),
+            usage: "/files".to_string(),
+            source: CommandSource::Client,
+            agent_specific: false,
+            category: CommandCategory::Navigation,
+        },
+        Command {
+            name: "planning".to_string(),
+            description: "Switch to Planning view".to_string(),
+            usage: "/planning".to_string(),
+            source: CommandSource::Client,
+            agent_specific: false,
+            category: CommandCategory::Navigation,
+        },
+        Command {
+            name: "settings".to_string(),
+            description: "Switch to Settings view".to_string(),
+            usage: "/settings".to_string(),
+            source: CommandSource::Client,
+            agent_specific: false,
+            category: CommandCategory::Navigation,
         },
     ]
 }
@@ -112,6 +194,7 @@ mod tests {
             usage: format!("/{name}"),
             source: CommandSource::Server,
             agent_specific: true,
+            category: CommandCategory::Action,
         }
     }
 

@@ -34,7 +34,7 @@ const ENTITY_NAME_STYLE: &str = "\
 
 const TYPE_BADGE_STYLE: &str = "\
     font-size: var(--text-xs); \
-    padding: 3px 10px; \
+    padding: var(--space-1) var(--space-3); \
     border-radius: var(--radius-lg); \
     font-weight: var(--weight-medium);\
 ";
@@ -71,7 +71,7 @@ const CARD_STYLE: &str = "\
 const PROPERTY_ROW_STYLE: &str = "\
     display: flex; \
     justify-content: space-between; \
-    padding: 6px 0; \
+    padding: var(--space-2) 0; \
     border-bottom: 1px solid var(--border); \
     font-size: var(--text-sm);\
 ";
@@ -96,7 +96,7 @@ const REL_TYPE_STYLE: &str = "\
     color: var(--text-secondary); \
     font-size: var(--text-xs); \
     background: var(--border); \
-    padding: 2px 6px; \
+    padding: var(--space-1) var(--space-2); \
     border-radius: var(--radius-sm);\
 ";
 

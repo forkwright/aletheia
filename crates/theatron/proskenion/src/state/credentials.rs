@@ -91,6 +91,19 @@ impl CredentialStore {
             == 1
     }
 
+    /// Distinct provider names in insertion order.
+    #[cfg_attr(not(test), expect(dead_code, reason = "used in tests"))]
+    #[must_use]
+    pub(crate) fn providers(&self) -> Vec<&str> {
+        let mut seen = Vec::new();
+        for entry in &self.entries {
+            if !seen.contains(&entry.provider.as_str()) {
+                seen.push(entry.provider.as_str());
+            }
+        }
+        seen
+    }
+
     /// Returns true if the provider has both a primary and a backup credential.
     #[must_use]
     pub(crate) fn can_rotate(&self, provider: &str) -> bool {

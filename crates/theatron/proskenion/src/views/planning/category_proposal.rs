@@ -23,7 +23,7 @@ const CARD_HEADER: &str = "\
 
 const BADGE: &str = "\
     display: inline-block; \
-    padding: 2px var(--space-2); \
+    padding: var(--space-1) var(--space-2); \
     border-radius: var(--radius-sm); \
     font-size: var(--text-xs); \
     font-weight: var(--weight-semibold);\
@@ -111,7 +111,7 @@ pub(crate) fn CategoryProposalCard(
             }
 
             div {
-                style: "font-size: var(--text-xs); color: var(--text-secondary); margin-bottom: 10px; font-style: italic;",
+                style: "font-size: var(--text-xs); color: var(--text-secondary); margin-bottom: var(--space-3); font-style: italic;",
                 "\"{proposal.rationale}\""
             }
 

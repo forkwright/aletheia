@@ -20,14 +20,14 @@ const SECTION_TITLE: &str = "\
     font-size: var(--text-base); \
     font-weight: var(--weight-bold); \
     color: var(--text-secondary); \
-    margin-bottom: 10px;\
+    margin-bottom: var(--space-3);\
 ";
 
 const SUBSECTION_TITLE: &str = "\
     font-size: var(--text-xs); \
     font-weight: var(--weight-bold); \
     color: var(--text-secondary); \
-    margin: var(--space-3) 0 6px 0; \
+    margin: var(--space-3) 0 var(--space-2) 0; \
     text-transform: uppercase; \
     letter-spacing: 0.5px;\
 ";
@@ -36,7 +36,7 @@ const ROW_STYLE: &str = "\
     display: flex; \
     align-items: center; \
     justify-content: space-between; \
-    padding: 6px 0; \
+    padding: var(--space-2) 0; \
     border-bottom: 1px solid #222;\
 ";
 
@@ -64,13 +64,13 @@ const EXPAND_BTN: &str = "\
     color: var(--text-secondary); \
     cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick); \
     font-size: var(--text-xs); \
-    padding: 2px 6px;\
+    padding: var(--space-1) var(--space-2);\
 ";
 
 const FLAG_DESC: &str = "\
     color: var(--text-muted); \
     font-size: var(--text-xs); \
-    padding: 0 0 6px 0;\
+    padding: 0 0 var(--space-2) 0;\
 ";
 
 const EMPTY_STATE: &str = "\
@@ -99,7 +99,7 @@ const CONFIRM_BOX: &str = "\
 ";
 
 const CONFIRM_BTN: &str = "\
-    padding: 6px var(--space-4); \
+    padding: var(--space-2) var(--space-4); \
     border-radius: var(--radius-md); \
     border: 1px solid var(--border); \
     cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick); \
@@ -403,11 +403,11 @@ fn toggle_switch(
     on_click: impl Fn(Event<MouseData>) + 'static,
 ) -> Element {
     let track_style = if pending {
-        "width: 36px; height: 20px; border-radius: 10px; background: var(--text-secondary); position: relative; cursor: wait; opacity: 0.6; flex-shrink: 0;"
+        "width: 36px; height: 20px; border-radius: var(--radius-lg); background: var(--text-secondary); position: relative; cursor: wait; opacity: 0.6; flex-shrink: 0;"
     } else if enabled {
-        "width: 36px; height: 20px; border-radius: 10px; background: var(--status-success); position: relative; cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick); flex-shrink: 0;"
+        "width: 36px; height: 20px; border-radius: var(--radius-lg); background: var(--status-success); position: relative; cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick); flex-shrink: 0;"
     } else {
-        "width: 36px; height: 20px; border-radius: 10px; background: var(--text-muted); position: relative; cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick); flex-shrink: 0;"
+        "width: 36px; height: 20px; border-radius: var(--radius-lg); background: var(--text-muted); position: relative; cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick); flex-shrink: 0;"
     };
 
     let knob_style = if enabled {

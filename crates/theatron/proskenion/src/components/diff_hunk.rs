@@ -158,7 +158,7 @@ fn render_sbs_word_spans(
             if span.changed {
                 span {
                     key: "{i}",
-                    style: "background: {changed_bg}; border-radius: 2px;",
+                    style: "background: {changed_bg}; border-radius: var(--radius-sm);",
                     "{span.text}"
                 }
             } else {

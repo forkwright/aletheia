@@ -142,7 +142,7 @@ fn render_word_spans(spans: &[WordSpan], change_type: ChangeType) -> Element {
             if span.changed {
                 span {
                     key: "{i}",
-                    style: "background: {changed_bg}; border-radius: 2px;",
+                    style: "background: {changed_bg}; border-radius: var(--radius-sm);",
                     "{span.text}"
                 }
             } else {

@@ -181,6 +181,24 @@ pub struct QuickInputState {
 }
 
 impl QuickInputState {
+    /// Open the overlay, optionally pre-selecting an agent.
+    #[cfg_attr(not(test), expect(dead_code, reason = "used in tests"))]
+    pub(crate) fn open(&mut self, agent: Option<NousId>) {
+        self.visible = true;
+        self.selected_agent = agent;
+    }
+
+    /// Take the current input text, leaving it empty. Returns `None` if the
+    /// input was already empty.
+    #[cfg_attr(not(test), expect(dead_code, reason = "used in tests"))]
+    pub(crate) fn take_input(&mut self) -> Option<String> {
+        if self.input_text.is_empty() {
+            None
+        } else {
+            Some(std::mem::take(&mut self.input_text))
+        }
+    }
+
     /// Close the overlay and clear input.
     pub(crate) fn close(&mut self) {
         self.visible = false;

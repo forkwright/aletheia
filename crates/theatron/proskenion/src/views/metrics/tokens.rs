@@ -354,7 +354,7 @@ fn delta_card(label: &str, value: &str, delta_pct: f64, is_up: bool) -> Element 
             div { style: "{CARD_LABEL_STYLE}", "{label}" }
             div { style: "{CARD_VALUE_STYLE}", "{value}" }
             if delta_pct > 0.0 {
-                div { style: "font-size: var(--text-xs); color: {delta_color}; margin-top: 2px; font-family: var(--font-mono);", "{delta_str} vs prev" }
+                div { style: "font-size: var(--text-xs); color: {delta_color}; margin-top: var(--space-1); font-family: var(--font-mono);", "{delta_str} vs prev" }
             }
         }
     }

@@ -48,7 +48,7 @@ const REFRESH_BTN: &str = "\
 const PROGRESS_BAR_TRACK: &str = "\
     height: 6px; \
     background: var(--border); \
-    border-radius: 3px; \
+    border-radius: var(--radius-sm); \
     overflow: hidden;\
 ";
 
@@ -200,7 +200,7 @@ pub(crate) fn ExecutionView(project_id: String) -> Element {
                             div {
                                 style: "{PROGRESS_BAR_TRACK}",
                                 div {
-                                    style: "height: 100%; background: var(--accent); width: {overall_pct}%; border-radius: 3px; transition: width var(--transition-measured);",
+                                    style: "height: 100%; background: var(--accent); width: {overall_pct}%; border-radius: var(--radius-sm); transition: width var(--transition-measured);",
                                 }
                             }
 

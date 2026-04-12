@@ -52,7 +52,7 @@ const COLLAPSE_BTN_STYLE: &str = "\
     border: 1px solid var(--border, #2e2b27); \
     border-radius: var(--radius-sm, 4px); \
     color: var(--text-muted, #706c66); \
-    padding: 2px 6px; \
+    padding: var(--space-1) var(--space-2); \
     font-size: var(--text-xs); \
     cursor: pointer;\
     transition: background-color var(--transition-quick), \

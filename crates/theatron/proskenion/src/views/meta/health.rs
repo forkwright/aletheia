@@ -29,17 +29,17 @@ const TABLE_ROW_STYLE: &str = "\
 const REC_STYLE: &str = "\
     background: var(--bg-surface); \
     border-left: 3px solid var(--status-warning); \
-    padding: 10px 14px; \
+    padding: var(--space-3) var(--space-4); \
     font-size: var(--text-sm); \
     color: var(--text-primary); \
-    margin-bottom: 6px; \
-    border-radius: 0 6px 6px 0;\
+    margin-bottom: var(--space-2); \
+    border-radius: 0 var(--radius-md) var(--radius-md) 0;\
 ";
 
 const HISTOGRAM_BAR_STYLE: &str = "\
     display: flex; \
     align-items: flex-end; \
-    gap: 2px;\
+    gap: var(--space-1);\
 ";
 
 #[component]
@@ -185,13 +185,13 @@ fn ConfidenceHistogram(
                                         flex: 1; justify-content: flex-end;",
                                 if bucket.count > 0 {
                                     span {
-                                        style: "font-size: var(--text-xs); color: var(--text-secondary); margin-bottom: 2px;",
+                                        style: "font-size: var(--text-xs); color: var(--text-secondary); margin-bottom: var(--space-1);",
                                         "{bucket.count}"
                                     }
                                 }
                                 div {
                                     style: "width: 80%; height: {h:.0}px; background: {color}; \
-                                            border-radius: 2px 2px 0 0; min-height: 1px;",
+                                            border-radius: var(--radius-sm) var(--radius-sm) 0 0; min-height: 1px;",
                                 }
                             }
                         }

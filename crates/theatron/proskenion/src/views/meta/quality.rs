@@ -9,7 +9,7 @@ const HISTOGRAM_BAR_STYLE: &str = "\
     display: flex; \
     align-items: center; \
     gap: var(--space-2); \
-    margin-bottom: 6px;\
+    margin-bottom: var(--space-2);\
 ";
 
 const BAR_LABEL_STYLE: &str = "font-size: var(--text-xs); color: var(--text-secondary); width: 80px; text-align: right;";
@@ -27,7 +27,7 @@ const BAR_COUNT_STYLE: &str = "font-size: var(--text-xs); color: var(--text-seco
 const TOPIC_ROW_STYLE: &str = "\
     display: flex; \
     justify-content: space-between; \
-    padding: 6px 0; \
+    padding: var(--space-2) 0; \
     border-bottom: 1px solid var(--border);\
 ";
 

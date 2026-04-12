@@ -32,14 +32,14 @@ const TITLE_STYLE: &str = "\
 
 const STATUS_BADGE_STYLE: &str = "\
     display: inline-block; \
-    padding: 2px var(--space-2); \
+    padding: var(--space-1) var(--space-2); \
     border-radius: var(--radius-sm); \
     font-size: var(--text-xs);\
 ";
 
 const AGENT_BADGE_STYLE: &str = "\
     display: inline-block; \
-    padding: 2px var(--space-2); \
+    padding: var(--space-1) var(--space-2); \
     border-radius: var(--radius-sm); \
     font-size: var(--text-xs); \
     background: var(--border); \
@@ -74,14 +74,14 @@ const STAT_VALUE_STYLE: &str = "\
 const STAT_SUB_STYLE: &str = "\
     font-size: var(--text-xs); \
     color: var(--text-muted); \
-    margin-top: 2px;\
+    margin-top: var(--space-1);\
 ";
 
 const TOKEN_BAR_BG_STYLE: &str = "\
     width: 100%; \
     height: 6px; \
     background: #222; \
-    border-radius: 3px; \
+    border-radius: var(--radius-sm); \
     margin-top: var(--space-2); \
     overflow: hidden;\
 ";
@@ -107,7 +107,7 @@ const DISTILL_ROW_STYLE: &str = "\
 const DISTILL_TRIGGER_STYLE: &str = "\
     display: inline-block; \
     padding: 1px 6px; \
-    border-radius: 3px; \
+    border-radius: var(--radius-sm); \
     font-size: var(--text-xs); \
     background: var(--border); \
     color: var(--text-secondary);\
@@ -116,7 +116,7 @@ const DISTILL_TRIGGER_STYLE: &str = "\
 const MSG_PREVIEW_STYLE: &str = "\
     display: flex; \
     gap: var(--space-2); \
-    padding: 6px 0; \
+    padding: var(--space-2) 0; \
     border-bottom: 1px solid var(--bg-surface); \
     font-size: var(--text-sm);\
 ";
@@ -307,7 +307,7 @@ pub(crate) fn SessionDetail(
                                             div {
                                                 style: "{TOKEN_BAR_BG_STYLE}",
                                                 div {
-                                                    style: "height: 100%; background: #4a9aff; border-radius: 3px; width: {token_input_pct(detail)}%;",
+                                                    style: "height: 100%; background: #4a9aff; border-radius: var(--radius-sm); width: {token_input_pct(detail)}%;",
                                                 }
                                             }
                                         }

@@ -18,7 +18,7 @@ const TEXTAREA_STYLE: &str = "\
     background: var(--input-bg); \
     border: 1px solid var(--input-border); \
     border-radius: var(--radius-md); \
-    padding: 10px 14px; \
+    padding: var(--space-3) var(--space-4); \
     color: var(--text-primary); \
     font-size: var(--text-base); \
     font-family: var(--font-body); \
@@ -34,7 +34,7 @@ const TEXTAREA_DISABLED_STYLE: &str = "\
     background: var(--bg-surface-dim); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 10px 14px; \
+    padding: var(--space-3) var(--space-4); \
     color: var(--text-muted); \
     font-size: var(--text-base); \
     font-family: var(--font-body); \
@@ -50,7 +50,7 @@ const SEND_BTN_STYLE: &str = "\
     color: var(--text-inverse); \
     border: none; \
     border-radius: var(--radius-md); \
-    padding: 10px var(--space-5); \
+    padding: var(--space-3) var(--space-5); \
     font-size: var(--text-base); \
     cursor: pointer; \
     white-space: nowrap; \
@@ -64,7 +64,7 @@ const SEND_BTN_DISABLED: &str = "\
     color: var(--text-muted); \
     border: none; \
     border-radius: var(--radius-md); \
-    padding: 10px var(--space-5); \
+    padding: var(--space-3) var(--space-5); \
     font-size: var(--text-base); \
     cursor: not-allowed; \
     white-space: nowrap;\
@@ -75,7 +75,7 @@ const ABORT_BTN_STYLE: &str = "\
     color: var(--text-inverse); \
     border: none; \
     border-radius: var(--radius-md); \
-    padding: 10px var(--space-5); \
+    padding: var(--space-3) var(--space-5); \
     font-size: var(--text-base); \
     cursor: pointer; \
     white-space: nowrap; \
@@ -187,6 +187,13 @@ pub(crate) fn InputBar(props: InputBarProps) -> Element {
             }
         }
     }
+}
+
+/// Compute the number of visible rows for the textarea, clamped to [1, 10].
+#[cfg_attr(not(test), expect(dead_code, reason = "used in tests"))]
+fn compute_rows(text: &str) -> usize {
+    let count = text.split('\n').count();
+    count.max(1).min(10)
 }
 
 #[cfg(test)]

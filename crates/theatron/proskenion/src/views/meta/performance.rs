@@ -252,7 +252,7 @@ fn RadarChart(scorecards: Vec<AgentScorecard>) -> Element {
 
             // NOTE: Legend.
             div {
-                style: "display: flex; flex-direction: column; gap: 6px;",
+                style: "display: flex; flex-direction: column; gap: var(--space-2);",
                 for (idx , card) in scorecards.iter().enumerate() {
                     {
                         let color = RADAR_COLORS[idx % RADAR_COLORS.len()];
@@ -260,7 +260,7 @@ fn RadarChart(scorecards: Vec<AgentScorecard>) -> Element {
                             div {
                                 style: "display: flex; align-items: center; gap: var(--space-2);",
                                 div {
-                                    style: "width: 12px; height: 12px; border-radius: 2px; background: {color};",
+                                    style: "width: 12px; height: 12px; border-radius: var(--radius-sm); background: {color};",
                                 }
                                 span { style: "font-size: var(--text-xs); color: var(--text-secondary);", "{card.agent_name}" }
                             }

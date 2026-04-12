@@ -43,7 +43,7 @@ const TOGGLE_ON: &str = "\
     color: var(--text-primary); \
     border: 1px solid #6366f1; \
     border-radius: var(--radius-md); \
-    padding: 6px 14px; \
+    padding: var(--space-2) var(--space-4); \
     font-size: var(--text-sm); \
     cursor: pointer; \
     transition: background-color var(--transition-quick), \
@@ -56,7 +56,7 @@ const TOGGLE_OFF: &str = "\
     color: var(--text-secondary); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 6px 14px; \
+    padding: var(--space-2) var(--space-4); \
     font-size: var(--text-sm); \
     cursor: pointer; \
     transition: background-color var(--transition-quick), \
@@ -69,10 +69,10 @@ const DND_BTN: &str = "\
     color: var(--text-primary); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 5px 10px; \
+    padding: var(--space-1) var(--space-3); \
     font-size: var(--text-xs); \
     cursor: pointer; \
-    margin-left: 6px; \
+    margin-left: var(--space-2); \
     transition: background-color var(--transition-quick), \
                 color var(--transition-quick), \
                 border-color var(--transition-quick);\
@@ -232,7 +232,7 @@ pub(crate) fn NotificationSettings() -> Element {
                     style: "{LABEL_STYLE}",
                     "Do Not Disturb"
                     if dnd_active {
-                        div { style: "color: #4f46e5; font-size: var(--text-xs); margin-top: 2px;", "Active" }
+                        div { style: "color: #4f46e5; font-size: var(--text-xs); margin-top: var(--space-1);", "Active" }
                     }
                 }
                 div {

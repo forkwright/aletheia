@@ -11,7 +11,7 @@ const CARD_STYLE: &str = "\
     background: var(--bg-surface-dim); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: var(--space-3) 14px;\
+    padding: var(--space-3) var(--space-4);\
 ";
 
 const CARD_HEADER: &str = "\
@@ -38,14 +38,14 @@ const AGENT_BADGE: &str = "\
 const PROGRESS_TEXT: &str = "\
     font-size: var(--text-xs); \
     color: var(--text-secondary); \
-    margin-bottom: 6px;\
+    margin-bottom: var(--space-2);\
 ";
 
 const STEP_ROW: &str = "\
     display: flex; \
     align-items: flex-start; \
-    gap: 6px; \
-    padding: 3px 0; \
+    gap: var(--space-2); \
+    padding: var(--space-1) 0; \
     font-size: var(--text-xs);\
 ";
 
@@ -60,7 +60,7 @@ const STEP_DESC: &str = "color: #c0c0e0;";
 
 const DETAIL_BOX: &str = "\
     margin-top: var(--space-1); \
-    padding: 6px var(--space-2); \
+    padding: var(--space-2) var(--space-2); \
     background: #151525; \
     border: 1px solid var(--border); \
     border-radius: var(--radius-sm); \

@@ -78,14 +78,14 @@ pub(crate) fn DiscussionDetailView(
 
                 // Context
                 if !disc.context.is_empty() {
-                    div { style: "font-size: var(--text-base); color: var(--text-secondary); padding: 10px 14px; background: var(--bg-surface-dim); border: 1px solid var(--border); border-radius: var(--radius-md); margin-bottom: var(--space-3);", "{disc.context}" }
+                    div { style: "font-size: var(--text-base); color: var(--text-secondary); padding: var(--space-3) var(--space-4); background: var(--bg-surface-dim); border: 1px solid var(--border); border-radius: var(--radius-md); margin-bottom: var(--space-3);", "{disc.context}" }
                 }
 
                 // Current answer (if answered)
                 if disc.status == DiscussionStatus::Answered {
                     if let Some(summary) = DiscussionStore::answer_summary(disc) {
                         div {
-                            style: "font-size: var(--text-xs); font-weight: var(--weight-semibold); color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin: var(--space-3) 0 6px;",
+                            style: "font-size: var(--text-xs); font-weight: var(--weight-semibold); color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin: var(--space-3) 0 var(--space-2);",
                             "Current Answer"
                         }
                         div { style: "font-size: var(--text-base); color: var(--status-success); padding: var(--space-2) var(--space-3); background: #0f1a0f; border: 1px solid #1a3a1a; border-radius: var(--radius-md);", "{summary}" }
@@ -93,7 +93,7 @@ pub(crate) fn DiscussionDetailView(
                 }
 
                 // All options
-                div { style: "font-size: var(--text-xs); font-weight: var(--weight-semibold); color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin: var(--space-3) 0 6px;", "Options" }
+                div { style: "font-size: var(--text-xs); font-weight: var(--weight-semibold); color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin: var(--space-3) 0 var(--space-2);", "Options" }
                 div {
                     style: "display: flex; flex-direction: column; gap: var(--space-2);",
                     for opt in &disc.options {
@@ -110,11 +110,11 @@ pub(crate) fn DiscussionDetailView(
 
                 // Discussion history
                 if !disc.history.is_empty() {
-                    div { style: "font-size: var(--text-xs); font-weight: var(--weight-semibold); color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin: var(--space-3) 0 6px;", "History" }
+                    div { style: "font-size: var(--text-xs); font-weight: var(--weight-semibold); color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin: var(--space-3) 0 var(--space-2);", "History" }
                     for (i, entry) in disc.history.iter().enumerate() {
                         div {
                             key: "{i}",
-                            style: "display: flex; align-items: flex-start; gap: var(--space-2); padding: 6px 10px; border-left: 2px solid var(--border); margin-bottom: var(--space-1);",
+                            style: "display: flex; align-items: flex-start; gap: var(--space-2); padding: var(--space-2) var(--space-3); border-left: 2px solid var(--border); margin-bottom: var(--space-1);",
                             div {
                                 span { style: "font-size: var(--text-xs); font-weight: var(--weight-semibold); color: #c0c0e0;", "{entry.action}" }
                                 span { style: "font-size: var(--text-xs); color: var(--text-muted);", " by {entry.actor} at {entry.timestamp}" }

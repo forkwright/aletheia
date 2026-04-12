@@ -31,15 +31,15 @@ const BODY_STYLE: &str = "\
 
 const DISMISS_STYLE: &str = "\
     position: absolute; \
-    top: 8px; \
-    right: 8px; \
+    top: var(--space-2); \
+    right: var(--space-2); \
     background: none; \
     border: none; \
     color: inherit; \
     opacity: 0.6; \
     cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick); \
     font-size: var(--text-base); \
-    padding: 2px var(--space-1);\
+    padding: var(--space-1) var(--space-1);\
 ";
 
 const ACTION_STYLE: &str = "\

@@ -68,7 +68,7 @@ const TAB_BAR_STYLE: &str = "\
 ";
 
 const TAB_ACTIVE: &str = "\
-    padding: 6px var(--space-4); \
+    padding: var(--space-2) var(--space-4); \
     border: 1px solid var(--border); \
     border-bottom: 1px solid var(--bg-surface-dim); \
     border-radius: var(--radius-md) 6px 0 0; \
@@ -83,7 +83,7 @@ const TAB_ACTIVE: &str = "\
 ";
 
 const TAB_INACTIVE: &str = "\
-    padding: 6px var(--space-4); \
+    padding: var(--space-2) var(--space-4); \
     border: 1px solid transparent; \
     border-radius: var(--radius-md) 6px 0 0; \
     font-size: var(--text-sm); \
@@ -102,7 +102,7 @@ const TAB_CONTENT_STYLE: &str = "\
 
 const BADGE_STYLE: &str = "\
     display: inline-block; \
-    padding: 2px var(--space-2); \
+    padding: var(--space-1) var(--space-2); \
     border-radius: var(--radius-sm); \
     font-size: var(--text-xs); \
     font-weight: var(--weight-semibold);\

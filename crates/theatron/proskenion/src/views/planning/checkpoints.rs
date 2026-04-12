@@ -59,7 +59,7 @@ const PLACEHOLDER_STYLE: &str = "\
     align-items: center; \
     justify-content: center; \
     flex: 1; \
-    gap: 10px; \
+    gap: var(--space-3); \
     color: var(--text-muted);\
 ";
 

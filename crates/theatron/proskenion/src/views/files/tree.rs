@@ -22,7 +22,7 @@ const TREE_CONTAINER_STYLE: &str = "\
 const TREE_NODE_STYLE: &str = "\
     display: flex; \
     align-items: center; \
-    gap: 6px; \
+    gap: var(--space-2); \
     padding: var(--space-1) var(--space-2); \
     border-radius: var(--radius-sm, 4px); \
     cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick); \

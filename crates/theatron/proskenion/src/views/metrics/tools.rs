@@ -82,9 +82,9 @@ pub(crate) fn ToolsOverview(date_range: DateRange) -> Element {
                     {
                         let is_active = store.read().date_range == range;
                         let btn_style = if is_active {
-                            "background: var(--border); color: var(--text-primary); border: 1px solid var(--accent); border-radius: var(--radius-sm); padding: 2px 10px; font-size: var(--text-xs); cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);"
+                            "background: var(--border); color: var(--text-primary); border: 1px solid var(--accent); border-radius: var(--radius-sm); padding: var(--space-1) var(--space-3); font-size: var(--text-xs); cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);"
                         } else {
-                            "background: transparent; color: var(--text-muted); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 2px 10px; font-size: var(--text-xs); cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);"
+                            "background: transparent; color: var(--text-muted); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: var(--space-1) var(--space-3); font-size: var(--text-xs); cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);"
                         };
                         rsx! {
                             button {
@@ -152,10 +152,10 @@ fn render_overview_content(
                     // Total invocations (weekly)
                     div {
                         style: "background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-4) var(--space-5); min-width: 150px; flex: 1;",
-                        div { style: "font-size: var(--text-2xl); font-weight: var(--weight-bold); color: var(--text-primary); margin-bottom: 2px;", "{data.summary.total_invocations_week}" }
+                        div { style: "font-size: var(--text-2xl); font-weight: var(--weight-bold); color: var(--text-primary); margin-bottom: var(--space-1);", "{data.summary.total_invocations_week}" }
                         div { style: "font-size: var(--text-xs); color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;", "Invocations (7d)" }
                         div {
-                            style: "font-size: var(--text-xs); margin-top: 6px; color: var(--text-secondary);",
+                            style: "font-size: var(--text-xs); margin-top: var(--space-2); color: var(--text-secondary);",
                             "{format_delta(data.summary.delta_week)} vs prior"
                         }
                     }
@@ -170,7 +170,7 @@ fn render_overview_content(
                         rsx! {
                             div {
                                 style: "background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-4) var(--space-5); min-width: 150px; flex: 1;",
-                                div { style: "font-size: var(--text-2xl); font-weight: var(--weight-bold); color: {rate_color}; margin-bottom: 2px;", "{rate_pct}%" }
+                                div { style: "font-size: var(--text-2xl); font-weight: var(--weight-bold); color: {rate_color}; margin-bottom: var(--space-1);", "{rate_pct}%" }
                                 div { style: "font-size: var(--text-xs); color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;", "Success Rate" }
                             }
                         }
@@ -182,7 +182,7 @@ fn render_overview_content(
                         rsx! {
                             div {
                                 style: "background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-4) var(--space-5); min-width: 150px; flex: 1;",
-                                div { style: "font-size: var(--text-2xl); font-weight: var(--weight-bold); color: var(--text-primary); margin-bottom: 2px;", "{dur}" }
+                                div { style: "font-size: var(--text-2xl); font-weight: var(--weight-bold); color: var(--text-primary); margin-bottom: var(--space-1);", "{dur}" }
                                 div { style: "font-size: var(--text-xs); color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;", "Avg Duration" }
                             }
                         }
@@ -193,12 +193,12 @@ fn render_overview_content(
                         div {
                             style: "background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-4) var(--space-5); min-width: 150px; flex: 1;",
                             div {
-                                style: "font-size: var(--text-lg); font-weight: var(--weight-bold); color: var(--text-primary); margin-bottom: 2px; font-family: var(--font-mono);",
+                                style: "font-size: var(--text-lg); font-weight: var(--weight-bold); color: var(--text-primary); margin-bottom: var(--space-1); font-family: var(--font-mono);",
                                 "{data.summary.most_used_tool}"
                             }
                             div { style: "font-size: var(--text-xs); color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;", "Most Used Tool" }
                             div {
-                                style: "font-size: var(--text-xs); margin-top: 6px; color: var(--text-secondary);",
+                                style: "font-size: var(--text-xs); margin-top: var(--space-2); color: var(--text-secondary);",
                                 "{data.summary.most_used_count} calls"
                             }
                         }

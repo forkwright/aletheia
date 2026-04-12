@@ -109,6 +109,27 @@ impl TabBar {
         self.tabs.len() - 1
     }
 
+    /// Whether the tab bar has no open tabs.
+    #[cfg_attr(not(test), expect(dead_code, reason = "used in tests"))]
+    #[must_use]
+    pub(crate) fn is_empty(&self) -> bool {
+        self.tabs.is_empty()
+    }
+
+    /// Number of open tabs.
+    #[cfg_attr(not(test), expect(dead_code, reason = "used in tests"))]
+    #[must_use]
+    pub(crate) fn len(&self) -> usize {
+        self.tabs.len()
+    }
+
+    /// The currently active tab entry, or `None` if the tab bar is empty.
+    #[cfg_attr(not(test), expect(dead_code, reason = "used in tests"))]
+    #[must_use]
+    pub(crate) fn active_tab(&self) -> Option<&TabEntry> {
+        self.tabs.get(self.active)
+    }
+
     /// Close a tab by index. Returns the removed entry.
     pub(crate) fn close(&mut self, index: usize) -> Option<TabEntry> {
         if index >= self.tabs.len() {

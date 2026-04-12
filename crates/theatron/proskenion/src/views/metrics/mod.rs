@@ -17,7 +17,7 @@ use crate::state::metrics::MetricsTab;
 
 const TAB_BAR_STYLE: &str = "\
     display: flex; \
-    gap: 2px; \
+    gap: var(--space-1); \
     border-bottom: 1px solid #2a2724; \
     padding: 0 var(--space-4); \
     margin-bottom: var(--space-4);\

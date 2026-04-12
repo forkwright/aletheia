@@ -28,8 +28,8 @@ const BADGE_BASE: &str = "\
     display: inline-block; \
     font-size: var(--text-xs); \
     font-weight: var(--weight-semibold); \
-    padding: 2px var(--space-2); \
-    border-radius: 10px; \
+    padding: var(--space-1) var(--space-2); \
+    border-radius: var(--radius-lg); \
     text-transform: uppercase; \
     letter-spacing: 0.3px;\
 ";
@@ -42,8 +42,8 @@ const TIME_STYLE: &str = "\
 const PROGRESS_TRACK: &str = "\
     height: 4px; \
     background: var(--border); \
-    border-radius: 2px; \
-    margin-bottom: 10px; \
+    border-radius: var(--radius-sm); \
+    margin-bottom: var(--space-3); \
     overflow: hidden;\
 ";
 
@@ -90,7 +90,7 @@ pub(crate) fn WaveBand(wave: Wave, children: Element) -> Element {
             div {
                 style: "{PROGRESS_TRACK}",
                 div {
-                    style: "height: 100%; background: {progress_color(wave.status)}; width: {progress}%; border-radius: 2px; transition: width var(--transition-measured);",
+                    style: "height: 100%; background: {progress_color(wave.status)}; width: {progress}%; border-radius: var(--radius-sm); transition: width var(--transition-measured);",
                 }
             }
 

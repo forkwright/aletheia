@@ -21,7 +21,7 @@ const JOURNAL_ROW_STYLE: &str = "\
 ";
 
 const BADGE_STYLE: &str = "\
-    padding: 2px 6px; \
+    padding: var(--space-1) var(--space-2); \
     border-radius: var(--radius-sm); \
     font-size: var(--text-xs); \
     font-weight: var(--weight-semibold); \
@@ -33,7 +33,7 @@ const FILTER_BTN_STYLE: &str = "\
     color: var(--text-secondary); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-sm); \
-    padding: 3px var(--space-2); \
+    padding: var(--space-1) var(--space-2); \
     font-size: var(--text-xs); \
     cursor: pointer; \
     transition: background-color var(--transition-quick), \
@@ -198,7 +198,7 @@ fn ActivityHeatmap(cells: Vec<crate::state::meta::HeatmapCell>) -> Element {
                 for color in &["var(--bg-surface)", "#1a2a3e", "#2a4a6a", "#4a9aff", "var(--status-success)"] {
                     div {
                         style: "width: 12px; height: 12px; background: {color}; \
-                                border-radius: 2px;",
+                                border-radius: var(--radius-sm);",
                     }
                 }
                 span { "More" }
@@ -265,7 +265,7 @@ fn SystemJournal(events: Vec<JournalEvent>) -> Element {
         div {
             style: "{CARD_STYLE}",
             div {
-                style: "display: flex; gap: 6px; margin-bottom: var(--space-3);",
+                style: "display: flex; gap: var(--space-2); margin-bottom: var(--space-3);",
                 button {
                     style: "{FILTER_BTN_STYLE}",
                     onclick: move |_| filter.set(None),

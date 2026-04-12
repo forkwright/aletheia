@@ -6,7 +6,7 @@ const TOOLBAR_STYLE: &str = "\
     display: flex; \
     align-items: center; \
     gap: var(--space-2); \
-    padding: 6px var(--space-3); \
+    padding: var(--space-2) var(--space-3); \
     border-bottom: 1px solid var(--border-separator, #221f1c); \
     font-size: var(--text-xs); \
     color: var(--text-secondary, #a8a49e); \
@@ -16,7 +16,7 @@ const TOOLBAR_STYLE: &str = "\
 const BREADCRUMB_STYLE: &str = "\
     display: flex; \
     align-items: center; \
-    gap: 2px; \
+    gap: var(--space-1); \
     flex: 1; \
     overflow: hidden;\
 ";
@@ -29,7 +29,7 @@ const CRUMB_STYLE: &str = "\
 
 const CRUMB_SEPARATOR: &str = "\
     color: var(--text-muted, #706c66); \
-    margin: 0 2px;\
+    margin: 0 var(--space-1);\
 ";
 
 const TOGGLE_BTN_STYLE: &str = "\
@@ -37,7 +37,7 @@ const TOGGLE_BTN_STYLE: &str = "\
     border: 1px solid var(--border, #2e2b27); \
     border-radius: var(--radius-sm, 4px); \
     color: var(--text-secondary, #a8a49e); \
-    padding: 2px var(--space-2); \
+    padding: var(--space-1) var(--space-2); \
     font-size: var(--text-xs); \
     cursor: pointer;\
     transition: background-color var(--transition-quick), \

@@ -238,7 +238,7 @@ fn loaded_costs_view(
                     style: "{CARD_STYLE}",
                     div { style: "{CARD_LABEL_STYLE}", "Projected Month-End" }
                     div { style: "{CARD_VALUE_STYLE}", "{format_cost(projected)}" }
-                    div { style: "font-size: var(--text-xs); color: var(--text-muted); margin-top: 2px; font-family: var(--font-mono);", "linear projection" }
+                    div { style: "font-size: var(--text-xs); color: var(--text-muted); margin-top: var(--space-1); font-family: var(--font-mono);", "linear projection" }
                 }
             }
 
@@ -365,7 +365,7 @@ fn cost_card(label: &str, value: &str, delta_pct: f64, is_up: bool) -> Element {
             div { style: "{CARD_LABEL_STYLE}", "{label}" }
             div { style: "{CARD_VALUE_STYLE}", "{value}" }
             if delta_pct > 0.0 {
-                div { style: "font-size: var(--text-xs); color: {delta_color}; margin-top: 2px; font-family: var(--font-mono);", "{delta_str} vs prev" }
+                div { style: "font-size: var(--text-xs); color: {delta_color}; margin-top: var(--space-1); font-family: var(--font-mono);", "{delta_str} vs prev" }
             }
         }
     }

@@ -83,14 +83,14 @@ pub(crate) fn AgentBreakdown(
                                             "border-bottom: 1px solid var(--border);"
                                         },
                                         td {
-                                            style: "padding: 6px var(--space-2); color: {color}; white-space: nowrap;",
+                                            style: "padding: var(--space-2) var(--space-2); color: {color}; white-space: nowrap;",
                                             "{agent.name}"
                                         }
-                                        td { style: "padding: 6px var(--space-2); color: var(--text-secondary); text-align: right;", "{format_tokens(agent.input_tokens)}" }
-                                        td { style: "padding: 6px var(--space-2); color: var(--text-secondary); text-align: right;", "{format_tokens(agent.output_tokens)}" }
-                                        td { style: "padding: 6px var(--space-2); color: var(--text-primary); text-align: right; font-weight: var(--weight-semibold);", "{format_tokens(agent.total())}" }
-                                        td { style: "padding: 6px var(--space-2); color: var(--text-muted); text-align: right;", "{pct:.1}%" }
-                                        td { style: "padding: 6px var(--space-2); color: var(--text-muted); text-align: right;", "{format_tokens(agent.avg_per_session())}" }
+                                        td { style: "padding: var(--space-2) var(--space-2); color: var(--text-secondary); text-align: right;", "{format_tokens(agent.input_tokens)}" }
+                                        td { style: "padding: var(--space-2) var(--space-2); color: var(--text-secondary); text-align: right;", "{format_tokens(agent.output_tokens)}" }
+                                        td { style: "padding: var(--space-2) var(--space-2); color: var(--text-primary); text-align: right; font-weight: var(--weight-semibold);", "{format_tokens(agent.total())}" }
+                                        td { style: "padding: var(--space-2) var(--space-2); color: var(--text-muted); text-align: right;", "{pct:.1}%" }
+                                        td { style: "padding: var(--space-2) var(--space-2); color: var(--text-muted); text-align: right;", "{format_tokens(agent.avg_per_session())}" }
                                     }
                                 }
                             }
@@ -118,7 +118,7 @@ fn sort_th(
     let label = label.to_string();
     rsx! {
         th {
-            style: "padding: 6px var(--space-2); text-align: right; color: var(--text-muted); cursor: pointer; user-select: none; white-space: nowrap; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
+            style: "padding: var(--space-2) var(--space-2); text-align: right; color: var(--text-muted); cursor: pointer; user-select: none; white-space: nowrap; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
             onclick: move |_| {
                 if *sort_col.read() == col {
                     let new_dir = sort_dir.read().flip();

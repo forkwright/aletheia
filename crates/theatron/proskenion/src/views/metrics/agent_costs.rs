@@ -86,19 +86,19 @@ pub(crate) fn AgentCosts(agents: Vec<AgentCostRow>) -> Element {
                                         key: "{agent.id}",
                                         style: "border-bottom: 1px solid var(--border);",
                                         td {
-                                            style: "padding: 6px var(--space-2); color: {color}; white-space: nowrap;",
+                                            style: "padding: var(--space-2) var(--space-2); color: {color}; white-space: nowrap;",
                                             "{agent.name}"
                                             if is_expensive {
-                                                span { style: "margin-left: 6px; font-size: var(--text-xs); background: var(--status-error-bg); color: var(--status-error); padding: 1px var(--space-1); border-radius: 3px;", "highest" }
+                                                span { style: "margin-left: var(--space-2); font-size: var(--text-xs); background: var(--status-error-bg); color: var(--status-error); padding: 1px var(--space-1); border-radius: var(--radius-sm);", "highest" }
                                             }
                                             if is_efficient && !is_expensive {
-                                                span { style: "margin-left: 6px; font-size: var(--text-xs); background: var(--status-success-bg); color: var(--status-success); padding: 1px var(--space-1); border-radius: 3px;", "efficient" }
+                                                span { style: "margin-left: var(--space-2); font-size: var(--text-xs); background: var(--status-success-bg); color: var(--status-success); padding: 1px var(--space-1); border-radius: var(--radius-sm);", "efficient" }
                                             }
                                         }
-                                        td { style: "padding: 6px var(--space-2); color: var(--status-warning); text-align: right; font-weight: var(--weight-semibold);", "{format_cost(agent.total_cost)}" }
-                                        td { style: "padding: 6px var(--space-2); color: var(--text-secondary); text-align: right;", "{format_cost(agent.cost_per_session())}" }
-                                        td { style: "padding: 6px var(--space-2); color: var(--text-secondary); text-align: right;", "{format_cost(agent.cost_per_message())}" }
-                                        td { style: "padding: 6px var(--space-2); color: var(--text-muted); text-align: right;", "${per_1k}" }
+                                        td { style: "padding: var(--space-2) var(--space-2); color: var(--status-warning); text-align: right; font-weight: var(--weight-semibold);", "{format_cost(agent.total_cost)}" }
+                                        td { style: "padding: var(--space-2) var(--space-2); color: var(--text-secondary); text-align: right;", "{format_cost(agent.cost_per_session())}" }
+                                        td { style: "padding: var(--space-2) var(--space-2); color: var(--text-secondary); text-align: right;", "{format_cost(agent.cost_per_message())}" }
+                                        td { style: "padding: var(--space-2) var(--space-2); color: var(--text-muted); text-align: right;", "${per_1k}" }
                                     }
                                 }
                             }
@@ -125,7 +125,7 @@ fn cost_th(
     let label = label.to_string();
     rsx! {
         th {
-            style: "padding: 6px var(--space-2); text-align: right; color: var(--text-muted); cursor: pointer; user-select: none; white-space: nowrap; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
+            style: "padding: var(--space-2) var(--space-2); text-align: right; color: var(--text-muted); cursor: pointer; user-select: none; white-space: nowrap; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
             onclick: move |_| {
                 if *sort_col.read() == col {
                     let new_dir = sort_dir.read().flip();

@@ -33,7 +33,7 @@ const SELECT_STYLE: &str = "\
     background: var(--bg-surface); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 6px 10px; \
+    padding: var(--space-2) var(--space-3); \
     color: var(--text-primary); \
     font-size: var(--text-sm); \
     cursor: pointer; \
@@ -48,8 +48,8 @@ const CHIP_STYLE: &str = "\
     gap: var(--space-1); \
     background: var(--border); \
     border: 1px solid var(--accent); \
-    border-radius: 16px; \
-    padding: 2px 10px; \
+    border-radius: var(--radius-xl); \
+    padding: var(--space-1) var(--space-3); \
     font-size: var(--text-xs); \
     color: #7a7aff;\
 ";
@@ -71,7 +71,7 @@ const CLEAR_BTN_STYLE: &str = "\
     background: none; \
     border: 1px solid var(--border); \
     border-radius: var(--radius-sm); \
-    padding: 2px var(--space-2); \
+    padding: var(--space-1) var(--space-2); \
     font-size: var(--text-xs); \
     color: var(--text-secondary); \
     cursor: pointer; \
@@ -83,7 +83,7 @@ const CLEAR_BTN_STYLE: &str = "\
 const CHIPS_ROW_STYLE: &str = "\
     display: flex; \
     align-items: center; \
-    gap: 6px; \
+    gap: var(--space-2); \
     flex-wrap: wrap;\
 ";
 

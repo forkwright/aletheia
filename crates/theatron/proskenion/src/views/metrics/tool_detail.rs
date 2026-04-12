@@ -51,7 +51,7 @@ const CARD_STYLE: &str = "\
     background: var(--bg-surface); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 14px 18px; \
+    padding: var(--space-4) var(--space-4); \
     min-width: 130px; \
     flex: 1;\
 ";
@@ -60,7 +60,7 @@ const CARD_VALUE: &str = "\
     font-size: var(--text-2xl); \
     font-weight: var(--weight-bold); \
     color: var(--text-primary); \
-    margin-bottom: 2px;\
+    margin-bottom: var(--space-1);\
 ";
 
 const CARD_LABEL: &str = "\
@@ -75,7 +75,7 @@ const PAGE_BTN: &str = "\
     color: var(--text-primary); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-sm); \
-    padding: 2px var(--space-2); \
+    padding: var(--space-1) var(--space-2); \
     font-size: var(--text-xs); \
     cursor: pointer;\
     transition: background-color var(--transition-quick), \
@@ -88,7 +88,7 @@ const PAGE_BTN_DISABLED: &str = "\
     color: var(--border); \
     border: 1px solid #2a2a2a; \
     border-radius: var(--radius-sm); \
-    padding: 2px var(--space-2); \
+    padding: var(--space-1) var(--space-2); \
     font-size: var(--text-xs); \
     cursor: default;\
 ";
@@ -204,7 +204,7 @@ fn render_summary_cards(stat: Option<&ToolStat>) -> Element {
 
     rsx! {
         div {
-            style: "display: flex; flex-wrap: wrap; gap: 10px;",
+            style: "display: flex; flex-wrap: wrap; gap: var(--space-3);",
             div {
                 style: "{CARD_STYLE}",
                 div { style: "{CARD_VALUE}", "{stat.total}" }

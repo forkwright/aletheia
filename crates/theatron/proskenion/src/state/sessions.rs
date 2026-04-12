@@ -306,6 +306,13 @@ impl SessionSelectionStore {
         self.select_all = false;
     }
 
+    /// Whether any sessions are currently selected.
+    #[cfg_attr(not(test), expect(dead_code, reason = "used in tests"))]
+    #[must_use]
+    pub(crate) fn has_selection(&self) -> bool {
+        !self.selected.is_empty()
+    }
+
     /// Number of selected sessions.
     #[must_use]
     pub(crate) fn count(&self) -> usize {

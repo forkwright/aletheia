@@ -40,7 +40,7 @@ pub(crate) fn SetupWizard() -> Element {
                 // Title
                 div {
                     style: "margin-bottom: var(--space-6);",
-                    h1 { style: "font-size: 22px; margin: 0 0 6px; color: var(--text-primary);", "Welcome to Aletheia" }
+                    h1 { style: "font-size: 22px; margin: 0 0 var(--space-2); color: var(--text-primary);", "Welcome to Aletheia" }
                     p { style: "font-size: var(--text-base); color: var(--text-muted); margin: 0;", "Let's get you set up in a few steps." }
                 }
 
@@ -150,13 +150,13 @@ pub(crate) fn SetupWizard() -> Element {
 fn WizardProgress(current: usize, total: usize) -> Element {
     rsx! {
         div {
-            style: "display: flex; gap: 6px; align-items: center;",
+            style: "display: flex; gap: var(--space-2); align-items: center;",
             for i in 0..total {
                 {
                     let filled = i <= current;
                     let bg = if filled { "var(--accent)" } else { "var(--bg-surface-bright)" };
                     let style = format!(
-                        "flex: 1; height: 3px; background: {bg}; border-radius: 2px; transition: background var(--transition-quick);"
+                        "flex: 1; height: 3px; background: {bg}; border-radius: var(--radius-sm); transition: background var(--transition-quick);"
                     );
                     rsx! {
                         div {
@@ -318,7 +318,7 @@ fn StepAppearance(
                     "Accent Color"
                 }
                 div {
-                    style: "display: flex; gap: 10px; flex-wrap: wrap;",
+                    style: "display: flex; gap: var(--space-3); flex-wrap: wrap;",
                     for (label, hex) in ACCENT_PRESETS.iter() {
                         {
                             let hex_owned = hex.to_string();
@@ -373,14 +373,14 @@ fn StepReady(wizard_data: Signal<WizardData>, on_finish: EventHandler<()>) -> El
 
             div {
                 style: "background: var(--bg-surface-dim); border: 1px solid var(--border); border-radius: var(--radius-md); \
-                        padding: 14px var(--space-5); width: 100%; text-align: left;",
+                        padding: var(--space-4) var(--space-5); width: 100%; text-align: left;",
                 SummaryRow { label: "Server", value: data.server_url.clone() }
                 SummaryRow { label: "Theme", value: data.selected_theme.clone() }
                 SummaryRow { label: "Density", value: data.selected_density.label().to_string() }
             }
 
             button {
-                style: "padding: 10px var(--space-8); background: var(--accent); border: none; border-radius: var(--radius-md); \
+                style: "padding: var(--space-3) var(--space-8); background: var(--accent); border: none; border-radius: var(--radius-md); \
                         color: var(--text-inverse); font-size: var(--text-md); cursor: pointer; width: 100%; \
                         transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
                 onclick: move |_| on_finish.call(()),
@@ -405,7 +405,7 @@ fn WizardNav(
                     padding-top: var(--space-4); border-top: 1px solid var(--border-separator); margin-top: var(--space-2);",
             if can_back {
                 button {
-                    style: "padding: 7px 18px; background: none; border: 1px solid var(--border); \
+                    style: "padding: var(--space-2) var(--space-4); background: none; border: 1px solid var(--border); \
                             border-radius: var(--radius-md); color: var(--text-secondary); font-size: var(--text-sm); cursor: pointer; \
                             transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
                     onclick: move |_| on_back.call(()),
@@ -415,7 +415,7 @@ fn WizardNav(
                 div {}
             }
             button {
-                style: "padding: 7px 22px; background: var(--accent); border: none; \
+                style: "padding: var(--space-2) var(--space-5); background: var(--accent); border: none; \
                         border-radius: var(--radius-md); color: var(--text-inverse); font-size: var(--text-sm); cursor: pointer; \
                         transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
                 onclick: move |_| on_next.call(()),
@@ -429,7 +429,7 @@ fn WizardNav(
 fn SummaryRow(label: &'static str, value: String) -> Element {
     rsx! {
         div {
-            style: "display: flex; justify-content: space-between; padding: 5px 0; \
+            style: "display: flex; justify-content: space-between; padding: var(--space-1) 0; \
                     border-bottom: 1px solid var(--border-separator); font-size: var(--text-sm);",
             span { style: "color: var(--text-muted);", "{label}" }
             span { style: "color: var(--text-primary);", "{value}" }

@@ -45,7 +45,7 @@ const FILTER_SELECT_STYLE: &str = "\
 const CHIPS_ROW_STYLE: &str = "\
     display: flex; \
     flex-wrap: wrap; \
-    gap: 6px;\
+    gap: var(--space-2);\
 ";
 
 const CHIP_STYLE: &str = "\

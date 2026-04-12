@@ -51,7 +51,7 @@ const INPUT_STYLE: &str = "\
     background: var(--input-bg); \
     border: 1px solid var(--input-border); \
     border-radius: var(--radius-md); \
-    padding: 10px var(--space-3); \
+    padding: var(--space-3) var(--space-3); \
     color: var(--text-primary); \
     font-size: var(--text-base); \
     width: 100%; \

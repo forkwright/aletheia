@@ -73,7 +73,7 @@ pub(crate) fn ToolFrequencyView(tools: Vec<ToolStat>, on_click: EventHandler<Str
 
             if let Some(ref o) = other {
                 div {
-                    style: "font-size: var(--text-xs); color: var(--text-muted); padding: 2px 0;",
+                    style: "font-size: var(--text-xs); color: var(--text-muted); padding: var(--space-1) 0;",
                     "\"Other\" groups {tools.len() - 10} additional tools (total {o.total} calls). Click any named tool to drill down."
                 }
             }

@@ -3,6 +3,7 @@
 use dioxus::prelude::*;
 
 use crate::app::Route;
+use crate::components::help_overlay::HelpOverlay;
 use crate::components::topbar::TopBar;
 use crate::state::navigation::NavAction;
 use crate::state::pipeline::RoutingState;
@@ -103,9 +104,14 @@ pub(crate) fn Layout() -> Element {
     let palette_open = use_signal(|| false);
     // Sidebar collapsed state -- default to expanded for better first impression.
     let sidebar_collapsed = use_signal(|| false);
+    // Help overlay visibility -- toggled by F1.
+    let help_visible = use_signal(|| false);
 
-    let keyboard_handler =
-        crate::services::keybindings::use_global_keyboard(palette_open, sidebar_collapsed);
+    let keyboard_handler = crate::services::keybindings::use_global_keyboard(
+        palette_open,
+        sidebar_collapsed,
+        help_visible,
+    );
 
     let sidebar_style = if *sidebar_collapsed.read() {
         SIDEBAR_COLLAPSED_STYLE
@@ -154,6 +160,9 @@ pub(crate) fn Layout() -> Element {
                     Outlet::<Route> {}
                 }
             }
+
+            // Help overlay (F1)
+            HelpOverlay { visible: help_visible }
         }
     }
 }

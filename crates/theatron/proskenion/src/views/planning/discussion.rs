@@ -49,28 +49,28 @@ const REFRESH_BTN: &str = "\
 const CARD_BASE: &str = "\
     border-radius: var(--radius-md); \
     border: 1px solid; \
-    padding: 14px 18px;\
+    padding: var(--space-4) var(--space-4);\
 ";
 
 const QUESTION_STYLE: &str = "\
     font-size: var(--text-md); \
     font-weight: var(--weight-semibold); \
     color: var(--text-primary); \
-    margin-bottom: 6px;\
+    margin-bottom: var(--space-2);\
 ";
 
 const CONTEXT_STYLE: &str = "\
     font-size: var(--text-sm); \
     color: var(--text-secondary); \
-    margin-bottom: 10px;\
+    margin-bottom: var(--space-3);\
 ";
 
 const BADGE_BASE: &str = "\
     display: inline-block; \
     font-size: var(--text-xs); \
     font-weight: var(--weight-semibold); \
-    padding: 2px var(--space-2); \
-    border-radius: 10px; \
+    padding: var(--space-1) var(--space-2); \
+    border-radius: var(--radius-lg); \
     text-transform: uppercase; \
     letter-spacing: 0.3px; \
     margin-left: var(--space-2);\
@@ -102,7 +102,7 @@ const SUBMIT_BTN: &str = "\
     color: white; \
     border: none; \
     border-radius: var(--radius-md); \
-    padding: 6px var(--space-4); \
+    padding: var(--space-2) var(--space-4); \
     font-size: var(--text-sm); \
     font-weight: var(--weight-semibold); \
     cursor: pointer; \
@@ -116,7 +116,7 @@ const SUBMIT_BTN_DISABLED: &str = "\
     color: var(--text-muted); \
     border: none; \
     border-radius: var(--radius-md); \
-    padding: 6px var(--space-4); \
+    padding: var(--space-2) var(--space-4); \
     font-size: var(--text-sm); \
     font-weight: var(--weight-semibold); \
     cursor: not-allowed;\
@@ -138,7 +138,7 @@ const UNDO_BTN: &str = "\
 const ANSWER_SUMMARY: &str = "\
     font-size: var(--text-sm); \
     color: var(--status-success); \
-    padding: 6px 10px; \
+    padding: var(--space-2) var(--space-3); \
     background: #0f1a0f; \
     border: 1px solid #1a3a1a; \
     border-radius: var(--radius-sm); \
@@ -155,7 +155,7 @@ const PLACEHOLDER_STYLE: &str = "\
     color: var(--text-muted);\
 ";
 
-const ERROR_STYLE: &str = "color: var(--status-error); font-size: var(--text-xs); margin-top: 6px;";
+const ERROR_STYLE: &str = "color: var(--status-error); font-size: var(--text-xs); margin-top: var(--space-2);";
 
 /// Discussion panel listing all discussions for a project.
 #[component]
@@ -387,7 +387,7 @@ fn DiscussionCard(
 
             // Header: question + status + priority
             div {
-                style: "display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 6px;",
+                style: "display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: var(--space-2);",
                 span { style: "{QUESTION_STYLE}", "{discussion.question}" }
                 div {
                     style: "display: flex; align-items: center; flex-shrink: 0;",
@@ -434,7 +434,7 @@ fn DiscussionCard(
 
                 // Free-text override
                 div {
-                    style: "margin-top: 10px;",
+                    style: "margin-top: var(--space-3);",
                     button {
                         style: "background: transparent; border: none; color: var(--accent); font-size: var(--text-xs); cursor: pointer; padding: 0; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
                         onclick: move |_| {
@@ -462,7 +462,7 @@ fn DiscussionCard(
 
                 // Submit
                 div {
-                    style: "display: flex; gap: var(--space-2); margin-top: 10px;",
+                    style: "display: flex; gap: var(--space-2); margin-top: var(--space-3);",
                     button {
                         style: if can_submit { "{SUBMIT_BTN}" } else { "{SUBMIT_BTN_DISABLED}" },
                         disabled: !can_submit || *submitting.read(),

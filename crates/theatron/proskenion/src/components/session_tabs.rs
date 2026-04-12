@@ -21,9 +21,9 @@ const TABS_BAR_STYLE: &str = "\
 const TAB_STYLE: &str = "\
     display: flex; \
     align-items: center; \
-    gap: 6px; \
-    padding: 6px 14px 7px; \
-    border-radius: var(--radius-md) 6px 0 0; \
+    gap: var(--space-2); \
+    padding: var(--space-2) var(--space-4) var(--space-2); \
+    border-radius: var(--radius-md) var(--radius-md) 0 0; \
     font-size: var(--text-sm); \
     color: var(--text-secondary); \
     cursor: pointer; \
@@ -39,9 +39,9 @@ const TAB_STYLE: &str = "\
 const TAB_ACTIVE_STYLE: &str = "\
     display: flex; \
     align-items: center; \
-    gap: 6px; \
-    padding: 6px 14px 7px; \
-    border-radius: var(--radius-md) 6px 0 0; \
+    gap: var(--space-2); \
+    padding: var(--space-2) var(--space-4) var(--space-2); \
+    border-radius: var(--radius-md) var(--radius-md) 0 0; \
     font-size: var(--text-sm); \
     color: var(--text-primary); \
     cursor: pointer; \
@@ -57,9 +57,9 @@ const TAB_ACTIVE_STYLE: &str = "\
 const CLOSE_BTN_STYLE: &str = "\
     color: var(--text-muted); \
     font-size: var(--text-xs); \
-    padding: 0 2px; \
+    padding: 0 var(--space-1); \
     cursor: pointer; \
-    border-radius: 3px; \
+    border-radius: var(--radius-sm); \
     transition: background-color var(--transition-quick), \
                 color var(--transition-quick), \
                 border-color var(--transition-quick);\

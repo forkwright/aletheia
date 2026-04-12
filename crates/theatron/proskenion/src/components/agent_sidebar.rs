@@ -28,7 +28,7 @@ const AGENT_ROW_STYLE: &str = "\
     display: flex; \
     align-items: center; \
     gap: var(--space-2); \
-    padding: 7px var(--space-3); \
+    padding: var(--space-2) var(--space-3); \
     border-radius: var(--radius-md); \
     cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick); \
     color: var(--text-primary); \
@@ -39,7 +39,7 @@ const AGENT_ROW_ACTIVE_STYLE: &str = "\
     display: flex; \
     align-items: center; \
     gap: var(--space-2); \
-    padding: 7px var(--space-3); \
+    padding: var(--space-2) var(--space-3); \
     border-radius: var(--radius-md); \
     cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick); \
     color: var(--text-primary); \

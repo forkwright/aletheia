@@ -12,8 +12,8 @@ use crate::state::events::{DistillationProgress, EventState};
 const CONTAINER_STYLE: &str = "\
     display: flex; \
     align-items: center; \
-    gap: 10px; \
-    padding: 6px var(--space-4); \
+    gap: var(--space-3); \
+    padding: var(--space-2) var(--space-4); \
     background: var(--bg-surface); \
     border-top: 1px solid var(--border);\
 ";
@@ -28,19 +28,19 @@ const TRACK_STYLE: &str = "\
     flex: 1; \
     height: 3px; \
     background: var(--bg-surface-bright); \
-    border-radius: 2px; \
+    border-radius: var(--radius-sm); \
     overflow: hidden;\
 ";
 
 const BAR_STYLE: &str = "\
     height: 3px; \
-    border-radius: 2px; \
+    border-radius: var(--radius-sm); \
     background: var(--accent);\
 ";
 
 const BAR_COMPLETE_STYLE: &str = "\
     height: 3px; \
-    border-radius: 2px; \
+    border-radius: var(--radius-sm); \
     background: var(--status-success);\
 ";
 

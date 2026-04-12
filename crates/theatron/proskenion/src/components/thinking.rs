@@ -50,7 +50,7 @@ pub(crate) fn ThinkingPanel(props: ThinkingPanelProps) -> Element {
         div {
             // Header: clickable toggle
             div {
-                style: "display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; color: var(--text-secondary); font-size: var(--text-xs); font-style: italic; margin-top: var(--space-2); transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
+                style: "display: flex; align-items: center; gap: var(--space-2); cursor: pointer; user-select: none; color: var(--text-secondary); font-size: var(--text-xs); font-style: italic; margin-top: var(--space-2); transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
                 onclick: move |_| {
                     let current = *expanded.read();
                     expanded.set(!current);
@@ -70,6 +70,62 @@ pub(crate) fn ThinkingPanel(props: ThinkingPanelProps) -> Element {
                     "{content}"
                 }
             }
+        }
+    }
+}
+
+/// Testable state for the thinking panel, separate from Dioxus signals.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct ThinkingPanelState {
+    /// Whether the panel is expanded.
+    pub expanded: bool,
+    /// Whether the panel is actively streaming.
+    pub is_streaming: bool,
+}
+
+impl ThinkingPanelState {
+    /// Create a state that represents active streaming (expanded).
+    #[cfg_attr(not(test), expect(dead_code, reason = "used in tests"))]
+    #[must_use]
+    pub(crate) fn streaming() -> Self {
+        Self {
+            expanded: true,
+            is_streaming: true,
+        }
+    }
+
+    /// Finalize the panel: stop streaming and collapse.
+    #[cfg_attr(not(test), expect(dead_code, reason = "used in tests"))]
+    pub(crate) fn finalize(&mut self) {
+        self.is_streaming = false;
+        self.expanded = false;
+    }
+
+    /// Toggle the expanded/collapsed state.
+    #[cfg_attr(not(test), expect(dead_code, reason = "used in tests"))]
+    pub(crate) fn toggle(&mut self) {
+        self.expanded = !self.expanded;
+    }
+
+    /// Header label reflecting streaming state.
+    #[cfg_attr(not(test), expect(dead_code, reason = "used in tests"))]
+    #[must_use]
+    pub(crate) fn header_label(&self) -> &'static str {
+        if self.is_streaming {
+            "Thinking..."
+        } else {
+            "Thinking"
+        }
+    }
+
+    /// Chevron character reflecting expanded state.
+    #[cfg_attr(not(test), expect(dead_code, reason = "used in tests"))]
+    #[must_use]
+    pub(crate) fn chevron(&self) -> &'static str {
+        if self.expanded {
+            "\u{25BC}"
+        } else {
+            "\u{25B6}"
         }
     }
 }

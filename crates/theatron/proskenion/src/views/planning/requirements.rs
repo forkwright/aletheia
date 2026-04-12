@@ -47,7 +47,7 @@ const SEARCH_INPUT: &str = "\
     background: var(--bg-surface); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 6px 10px; \
+    padding: var(--space-2) var(--space-3); \
     color: var(--text-primary); \
     font-size: var(--text-sm); \
     min-width: 200px;\
@@ -57,7 +57,7 @@ const FILTER_SELECT: &str = "\
     background: var(--bg-surface); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 6px var(--space-2); \
+    padding: var(--space-2) var(--space-2); \
     color: var(--text-primary); \
     font-size: var(--text-xs);\
 ";
@@ -71,7 +71,7 @@ const TAB_BAR: &str = "\
 ";
 
 const TAB_ACTIVE: &str = "\
-    padding: 6px var(--space-4); \
+    padding: var(--space-2) var(--space-4); \
     border: 1px solid var(--border); \
     border-bottom: 1px solid var(--bg-surface-dim); \
     border-radius: var(--radius-md) 6px 0 0; \
@@ -86,7 +86,7 @@ const TAB_ACTIVE: &str = "\
 ";
 
 const TAB_INACTIVE: &str = "\
-    padding: 6px var(--space-4); \
+    padding: var(--space-2) var(--space-4); \
     border: 1px solid transparent; \
     border-radius: var(--radius-md) 6px 0 0; \
     font-size: var(--text-sm); \
@@ -106,7 +106,7 @@ const TABLE_STYLE: &str = "\
 
 const TH_STYLE: &str = "\
     text-align: left; \
-    padding: 6px 10px; \
+    padding: var(--space-2) var(--space-3); \
     font-size: var(--text-xs); \
     font-weight: var(--weight-semibold); \
     color: var(--text-muted); \
@@ -135,7 +135,7 @@ const CATEGORY_SELECT: &str = "\
     background: var(--bg-surface); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-sm); \
-    padding: 2px 6px; \
+    padding: var(--space-1) var(--space-2); \
     color: var(--text-primary); \
     font-size: var(--text-xs);\
 ";
@@ -159,7 +159,7 @@ const PLACEHOLDER_STYLE: &str = "\
     align-items: center; \
     justify-content: center; \
     flex: 1; \
-    gap: 10px; \
+    gap: var(--space-3); \
     color: var(--text-muted);\
 ";
 

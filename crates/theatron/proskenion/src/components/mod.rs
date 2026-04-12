@@ -11,6 +11,8 @@ pub(crate) mod confidence_bar;
 pub mod connection_indicator;
 pub(crate) mod coverage_bar;
 pub(crate) mod diff_hunk;
+/// Help overlay listing all keyboard shortcuts (F1).
+pub(crate) mod help_overlay;
 pub(crate) mod diff_line;
 pub mod distillation;
 pub(crate) mod input_bar;

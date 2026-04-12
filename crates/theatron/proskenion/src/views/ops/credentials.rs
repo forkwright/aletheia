@@ -101,7 +101,7 @@ const CARD_HEADER: &str = "\
     display: flex; \
     align-items: center; \
     justify-content: space-between; \
-    margin-bottom: 10px;\
+    margin-bottom: var(--space-3);\
 ";
 
 const PROVIDER_NAME: &str = "\
@@ -113,8 +113,8 @@ const PROVIDER_NAME: &str = "\
 const META_ROW: &str = "\
     display: flex; \
     align-items: center; \
-    gap: 14px; \
-    margin-bottom: 6px; \
+    gap: var(--space-4); \
+    margin-bottom: var(--space-2); \
     font-size: var(--text-sm);\
 ";
 
@@ -201,7 +201,7 @@ const CONFIRM_BANNER: &str = "\
     align-items: center; \
     padding: var(--space-2) 0; \
     border-top: 1px solid var(--border); \
-    margin-top: 10px;\
+    margin-top: var(--space-3);\
 ";
 
 const WARN_TEXT: &str = "\
@@ -226,10 +226,10 @@ const FORM_TITLE: &str = "\
 
 const FORM_ROW: &str = "\
     display: flex; \
-    gap: 10px; \
+    gap: var(--space-3); \
     align-items: flex-end; \
     flex-wrap: wrap; \
-    margin-bottom: 10px;\
+    margin-bottom: var(--space-3);\
 ";
 
 const FORM_GROUP: &str = "\
@@ -250,7 +250,7 @@ const FORM_INPUT: &str = "\
     color: var(--text-primary); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 6px 10px; \
+    padding: var(--space-2) var(--space-3); \
     font-size: var(--text-sm); \
     width: 160px;\
 ";
@@ -260,7 +260,7 @@ const FORM_SELECT: &str = "\
     color: var(--text-primary); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 6px 10px; \
+    padding: var(--space-2) var(--space-3); \
     font-size: var(--text-sm);\
 ";
 
@@ -644,7 +644,7 @@ fn CredentialCard(
                 style: "{CARD_HEADER}",
                 span { style: "{PROVIDER_NAME}", "{entry.provider}" }
                 span {
-                    style: "font-size: var(--text-xs); padding: 2px var(--space-2); border-radius: var(--radius-sm); \
+                    style: "font-size: var(--text-xs); padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm); \
                             font-weight: var(--weight-bold); text-transform: uppercase; letter-spacing: 0.5px; \
                             {role_bg}",
                     "{entry.role.label()}"
@@ -659,7 +659,7 @@ fn CredentialCard(
                     "{entry.masked_key}"
                 }
                 span {
-                    style: "display: inline-flex; align-items: center; gap: 5px; font-size: var(--text-sm); \
+                    style: "display: inline-flex; align-items: center; gap: var(--space-1); font-size: var(--text-sm); \
                             color: {entry.status.color()};",
                     span {
                         style: "width: 8px; height: 8px; border-radius: 50%; \

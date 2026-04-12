@@ -46,7 +46,7 @@ const ROW_STYLE: &str = "\
     display: flex; \
     flex-direction: column; \
     gap: var(--space-1); \
-    padding: 10px var(--space-3); \
+    padding: var(--space-3) var(--space-3); \
     border-radius: var(--radius-md); \
     cursor: pointer; \
     transition: background-color var(--transition-quick), \
@@ -75,8 +75,8 @@ const ENTITY_NAME_STYLE: &str = "\
 
 const TYPE_BADGE_STYLE: &str = "\
     font-size: var(--text-xs); \
-    padding: 2px var(--space-2); \
-    border-radius: 10px; \
+    padding: var(--space-1) var(--space-2); \
+    border-radius: var(--radius-lg); \
     font-weight: var(--weight-medium); \
     white-space: nowrap;\
 ";

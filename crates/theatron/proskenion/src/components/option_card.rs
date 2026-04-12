@@ -8,7 +8,7 @@ const CARD_STYLE: &str = "\
     background: var(--bg-surface); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
-    padding: 14px var(--space-4); \
+    padding: var(--space-4) var(--space-4); \
     cursor: pointer; \
     transition: background-color var(--transition-quick), \
                 color var(--transition-quick), \
@@ -19,7 +19,7 @@ const CARD_RECOMMENDED: &str = "\
     background: var(--bg-surface); \
     border: 2px solid #4a9aff; \
     border-radius: var(--radius-md); \
-    padding: 14px var(--space-4); \
+    padding: var(--space-4) var(--space-4); \
     cursor: pointer; \
     transition: background-color var(--transition-quick), \
                 color var(--transition-quick), \
@@ -30,7 +30,7 @@ const CARD_SELECTED: &str = "\
     background: #1a2a3a; \
     border: 2px solid var(--status-success); \
     border-radius: var(--radius-md); \
-    padding: 14px var(--space-4); \
+    padding: var(--space-4) var(--space-4); \
     cursor: pointer; \
     transition: background-color var(--transition-quick), \
                 color var(--transition-quick), \
@@ -41,7 +41,7 @@ const HEADER_ROW: &str = "\
     display: flex; \
     align-items: center; \
     gap: var(--space-2); \
-    margin-bottom: 6px;\
+    margin-bottom: var(--space-2);\
 ";
 
 const TITLE_STYLE: &str = "\
@@ -54,7 +54,7 @@ const BADGE_RECOMMENDED: &str = "\
     display: inline-block; \
     font-size: var(--text-xs); \
     font-weight: var(--weight-semibold); \
-    padding: 2px 6px; \
+    padding: var(--space-1) var(--space-2); \
     border-radius: var(--radius-md); \
     background: #1a2a4a; \
     color: #4a9aff; \
@@ -66,7 +66,7 @@ const BADGE_SELECTED: &str = "\
     display: inline-block; \
     font-size: var(--text-xs); \
     font-weight: var(--weight-semibold); \
-    padding: 2px 6px; \
+    padding: var(--space-1) var(--space-2); \
     border-radius: var(--radius-md); \
     background: #0f2a0f; \
     color: var(--status-success); \
@@ -93,9 +93,9 @@ const TRADE_OFF_SECTION: &str = "\
     font-size: var(--text-xs);\
 ";
 
-const PRO_ITEM: &str = "color: var(--status-success); padding: 2px 0;";
+const PRO_ITEM: &str = "color: var(--status-success); padding: var(--space-1) 0;";
 
-const CON_ITEM: &str = "color: var(--status-error); padding: 2px 0;";
+const CON_ITEM: &str = "color: var(--status-error); padding: var(--space-1) 0;";
 
 /// Option card for a single discussion choice.
 ///
@@ -171,6 +171,20 @@ pub(crate) fn OptionCard(
                 }
             }
         }
+    }
+}
+
+/// Select the appropriate card CSS style based on recommended and selected flags.
+///
+/// Priority: selected > recommended > default.
+#[cfg_attr(not(test), expect(dead_code, reason = "used in tests"))]
+fn card_style_for(recommended: bool, selected: bool) -> &'static str {
+    if selected {
+        CARD_SELECTED
+    } else if recommended {
+        CARD_RECOMMENDED
+    } else {
+        CARD_STYLE
     }
 }
 

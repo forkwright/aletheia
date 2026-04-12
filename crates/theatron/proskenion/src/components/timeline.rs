@@ -46,7 +46,7 @@ const ZOOM_BTN: &str = "\
     color: var(--text-primary); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-sm); \
-    padding: 2px 10px; \
+    padding: var(--space-1) var(--space-3); \
     font-size: var(--text-base); \
     cursor: pointer; \
     transition: background-color var(--transition-quick), \
@@ -105,7 +105,7 @@ pub(crate) fn Timeline(
             }
 
             div {
-                style: "overflow-x: auto; overflow-y: hidden; border: 1px solid var(--border); border-radius: 0 0 8px 8px; background: var(--bg-surface-dim); cursor: grab;",
+                style: "overflow-x: auto; overflow-y: hidden; border: 1px solid var(--border); border-radius: 0 0 var(--radius-lg) var(--radius-lg); background: var(--bg-surface-dim); cursor: grab;",
 
                 div {
                     style: "position: relative; min-width: {total_width}px; height: {ROW_HEIGHT}px; padding: 0 var(--space-5);",
@@ -114,7 +114,7 @@ pub(crate) fn Timeline(
                     for (i, x, _w, block) in &zoomed {
                         div {
                             key: "label-{i}",
-                            style: "position: absolute; left: {x_offset(*x)}px; top: 4px; font-size: var(--text-xs); color: var(--text-muted);",
+                            style: "position: absolute; left: {x_offset(*x)}px; top: var(--space-1); font-size: var(--text-xs); color: var(--text-muted);",
                             "{block.detail}"
                         }
                     }
@@ -133,11 +133,11 @@ pub(crate) fn Timeline(
                             rsx! {
                                 div {
                                     key: "block-{i}",
-                                    style: "position: absolute; left: {bx}px; top: {BLOCK_Y}px; width: {w}px; height: {BLOCK_HEIGHT}px; background: {block.color}; border: {border}; border-radius: var(--radius-md); padding: 6px var(--space-2); box-sizing: border-box; cursor: pointer; overflow: hidden; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
+                                    style: "position: absolute; left: {bx}px; top: {BLOCK_Y}px; width: {w}px; height: {BLOCK_HEIGHT}px; background: {block.color}; border: {border}; border-radius: var(--radius-md); padding: var(--space-2) var(--space-2); box-sizing: border-box; cursor: pointer; overflow: hidden; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
                                     onclick: move |_| on_block_click.call(idx),
 
                                     div {
-                                        style: "position: absolute; left: 0; top: 0; width: {progress_w}px; height: 100%; background: rgba(255,255,255,0.06); border-radius: var(--radius-md) 0 0 6px;",
+                                        style: "position: absolute; left: 0; top: 0; width: {progress_w}px; height: 100%; background: rgba(255,255,255,0.06); border-radius: var(--radius-md) 0 0 var(--radius-md);",
                                     }
 
                                     div {

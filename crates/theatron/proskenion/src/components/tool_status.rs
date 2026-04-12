@@ -68,6 +68,17 @@ pub(crate) fn ToolStatusIcon(status: ToolStatus) -> Element {
     }
 }
 
+/// CSS color string for a tool status, using design tokens.
+#[cfg_attr(not(test), expect(dead_code, reason = "used in tests"))]
+fn status_color(status: ToolStatus) -> &'static str {
+    match status {
+        ToolStatus::Pending => "var(--text-muted)",
+        ToolStatus::Running => "var(--accent)",
+        ToolStatus::Success => "var(--status-success)",
+        ToolStatus::Error => "var(--status-error)",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

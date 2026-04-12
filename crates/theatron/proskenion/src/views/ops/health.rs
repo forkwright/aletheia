@@ -18,14 +18,14 @@ const SECTION_TITLE: &str = "\
     font-size: var(--text-base); \
     font-weight: var(--weight-bold); \
     color: var(--text-secondary); \
-    margin-bottom: 10px;\
+    margin-bottom: var(--space-3);\
 ";
 
 const SUBSECTION_TITLE: &str = "\
     font-size: var(--text-xs); \
     font-weight: var(--weight-bold); \
     color: var(--text-secondary); \
-    margin: var(--space-3) 0 6px 0; \
+    margin: var(--space-3) 0 var(--space-2) 0; \
     text-transform: uppercase; \
     letter-spacing: 0.5px;\
 ";
@@ -34,7 +34,7 @@ const ROW_STYLE: &str = "\
     display: flex; \
     align-items: center; \
     gap: var(--space-2); \
-    padding: 5px 0; \
+    padding: var(--space-1) 0; \
     border-bottom: 1px solid #222; \
     font-size: var(--text-xs);\
 ";

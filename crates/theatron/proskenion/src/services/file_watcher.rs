@@ -52,6 +52,14 @@ impl FileChangeTracker {
         }
     }
 
+    /// Remove stale entries from the deduplication map (older than [`DEDUP_WINDOW`]).
+    #[cfg_attr(not(test), expect(dead_code, reason = "used in tests"))]
+    pub(crate) fn gc(&mut self) {
+        let now = Instant::now();
+        self.last_notified
+            .retain(|_, ts| now.duration_since(*ts) < DEDUP_WINDOW);
+    }
+
     /// Process a stream event, returning a file change event if one should
     /// be notified (after deduplication).
     pub(crate) fn process(&mut self, event: &StreamEvent) -> Option<FileChangeEvent> {

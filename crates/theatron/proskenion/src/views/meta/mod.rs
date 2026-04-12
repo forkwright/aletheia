@@ -179,7 +179,7 @@ pub(crate) const SECTION_HEADER_STYLE: &str = "\
     border-radius: var(--radius-md); \
     cursor: pointer; \
     user-select: none; \
-    margin-bottom: 2px; \
+    margin-bottom: var(--space-1); \
     transition: background-color var(--transition-quick), \
                 color var(--transition-quick), \
                 border-color var(--transition-quick);\
@@ -196,7 +196,7 @@ pub(crate) const SECTION_BODY_STYLE: &str = "\
     background: #12121e; \
     border: 1px solid var(--border); \
     border-top: none; \
-    border-radius: 0 0 8px 8px; \
+    border-radius: 0 0 var(--radius-lg) var(--radius-lg); \
     margin-bottom: var(--space-3);\
 ";
 
@@ -230,7 +230,7 @@ pub(crate) const CARD_LABEL: &str = "\
 pub(crate) const CARD_SUB: &str = "\
     font-size: var(--text-xs); \
     color: var(--text-muted); \
-    margin-top: 6px;\
+    margin-top: var(--space-2);\
 ";
 
 pub(crate) const MUTED_TEXT: &str = "font-size: var(--text-xs); color: var(--text-muted);";
