@@ -26,6 +26,10 @@ members = [
     "crates/theatron",
     "crates/theatron/skene",
     "crates/theatron/koilon",
+    "crates/poiesis/core",
+    "crates/poiesis/text",
+    "crates/poiesis/sheet",
+    "crates/poiesis/slides",
 ]
 # WHY: proskenion requires GTK3/webkit2gtk system libraries (via Dioxus
 # desktop/webview) which are not available in CI. Excluded from workspace to

@@ -1,0 +1,23 @@
+[package]
+name = "poiesis-slides"
+version.workspace = true
+description = "PPTX presentation rendering backend for poiesis"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+poiesis-core = { path = "../core" }
+snafu = { workspace = true }
+
+# PPTX backend
+ppt-rs = { version = "0.2", optional = true }
+
+[features]
+default = ["pptx"]
+pptx = ["dep:ppt-rs"]
