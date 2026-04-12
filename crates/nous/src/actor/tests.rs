@@ -546,6 +546,496 @@ fn spawn_test_actor_with_store(
     (handle, join, dir)
 }
 
+// ── Direct actor construction helper ─────────────────────────────────────────
+
+/// Build a bare `NousActor` for unit tests that exercise internal state
+/// without running the actor loop. Returns the actor and the inbox sender
+/// (kept alive so the receiver does not close).
+fn make_test_actor(
+    pipeline_config: PipelineConfig,
+) -> (
+    NousActor,
+    mpsc::Sender<NousMessage>,
+    tempfile::TempDir, // kept alive: drops would delete tempdir
+) {
+    let (dir, oikos) = test_oikos();
+    let providers = test_providers();
+    let tools = Arc::new(ToolRegistry::new());
+    let config = test_config();
+    let (tx, rx) = mpsc::channel(DEFAULT_INBOX_CAPACITY);
+    let active_turn = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let actor = NousActor::new(
+        "test-agent".to_owned(),
+        config,
+        pipeline_config,
+        rx,
+        None,
+        CancellationToken::new(),
+        providers,
+        tools,
+        oikos,
+        None,
+        None,
+        None,
+        #[cfg(feature = "knowledge-store")]
+        None,
+        None,
+        Vec::new(),
+        active_turn,
+    );
+    (actor, tx, dir)
+}
+
+// ── turn.rs: mark_turn_active ─────────────────────────────────────────────────
+
+#[test]
+fn mark_turn_active_sets_active_lifecycle_and_session() {
+    let (mut actor, _tx, _dir) = make_test_actor(PipelineConfig::default());
+    assert_eq!(actor.channel.status, NousLifecycle::Idle);
+    assert!(actor.active_session.is_none());
+    assert!(!actor.runtime.active_turn.load(std::sync::atomic::Ordering::Acquire));
+
+    actor.mark_turn_active("my-session");
+
+    assert_eq!(actor.channel.status, NousLifecycle::Active);
+    assert_eq!(actor.active_session.as_deref(), Some("my-session"));
+    assert!(actor.runtime.active_turn.load(std::sync::atomic::Ordering::Acquire));
+}
+
+#[test]
+fn mark_turn_active_auto_wakes_from_dormant() {
+    let (mut actor, _tx, _dir) = make_test_actor(PipelineConfig::default());
+    actor.channel.status = NousLifecycle::Dormant;
+
+    actor.mark_turn_active("s");
+
+    // After auto-wake + active set, lifecycle must be Active.
+    assert_eq!(actor.channel.status, NousLifecycle::Active);
+}
+
+// ── turn.rs: record_pipeline_panic ───────────────────────────────────────────
+
+#[test]
+fn record_pipeline_panic_increments_count_and_records_timestamp() {
+    let (mut actor, _tx, _dir) = make_test_actor(PipelineConfig::default());
+    assert_eq!(actor.runtime.pipeline_panic_count, 0);
+    assert!(actor.runtime.last_panic_at.is_none());
+    assert!(actor.runtime.pipeline_panic_timestamps.is_empty());
+
+    actor.record_pipeline_panic();
+
+    assert_eq!(actor.runtime.pipeline_panic_count, 1);
+    assert!(actor.runtime.last_panic_at.is_some());
+    assert_eq!(actor.runtime.pipeline_panic_timestamps.len(), 1);
+}
+
+#[test]
+fn record_pipeline_panic_multiple_increments_count() {
+    let (mut actor, _tx, _dir) = make_test_actor(PipelineConfig::default());
+
+    for _ in 0..3 {
+        actor.record_pipeline_panic();
+    }
+
+    assert_eq!(actor.runtime.pipeline_panic_count, 3);
+    assert_eq!(actor.runtime.pipeline_panic_timestamps.len(), 3);
+}
+
+#[test]
+fn record_pipeline_panic_enters_degraded_at_threshold() {
+    let (mut actor, _tx, _dir) = make_test_actor(PipelineConfig::default());
+    assert_eq!(actor.channel.status, NousLifecycle::Idle);
+
+    // DEGRADED_PANIC_THRESHOLD is 5 — trigger exactly 5 panics.
+    for _ in 0..5 {
+        actor.record_pipeline_panic();
+    }
+
+    assert_eq!(
+        actor.channel.status,
+        NousLifecycle::Degraded,
+        "should enter degraded after 5 panics in window"
+    );
+}
+
+#[test]
+fn record_pipeline_panic_below_threshold_stays_idle() {
+    let (mut actor, _tx, _dir) = make_test_actor(PipelineConfig::default());
+
+    for _ in 0..4 {
+        actor.record_pipeline_panic();
+    }
+
+    assert_eq!(actor.channel.status, NousLifecycle::Idle);
+}
+
+// ── turn.rs: record_drift_metrics ────────────────────────────────────────────
+
+fn make_turn_result(
+    output_tokens: u64,
+    tool_calls: Vec<crate::pipeline::ToolCall>,
+) -> crate::pipeline::TurnResult {
+    crate::pipeline::TurnResult {
+        content: "ok".to_owned(),
+        tool_calls,
+        usage: crate::pipeline::TurnUsage {
+            input_tokens: 10,
+            output_tokens,
+            cache_read_tokens: 0,
+            cache_write_tokens: 0,
+            llm_calls: 1,
+        },
+        signals: vec![],
+        stop_reason: "end_turn".to_owned(),
+        degraded: None,
+    }
+}
+
+fn make_tool_call(name: &str, is_error: bool) -> crate::pipeline::ToolCall {
+    crate::pipeline::ToolCall {
+        id: "tc-1".to_owned(),
+        name: name.to_owned(),
+        input: serde_json::Value::Null,
+        result: None,
+        is_error,
+        duration_ms: 10,
+    }
+}
+
+#[test]
+fn record_drift_metrics_creates_detector_for_new_session() {
+    let (mut actor, _tx, _dir) = make_test_actor(PipelineConfig::default());
+    assert!(actor.drift_detectors.is_empty());
+
+    let result = make_turn_result(100, vec![]);
+    actor.record_drift_metrics("my-session", &result);
+
+    assert!(
+        actor.drift_detectors.contains_key("my-session"),
+        "detector should be created for new session"
+    );
+}
+
+#[test]
+fn record_drift_metrics_zero_tool_calls_produces_zero_error_rate() {
+    let (mut actor, _tx, _dir) = make_test_actor(PipelineConfig::default());
+    let result = make_turn_result(50, vec![]);
+    // Should not panic; zero-division guard must hold.
+    actor.record_drift_metrics("s", &result);
+}
+
+#[test]
+fn record_drift_metrics_all_errored_calls_produces_rate_one() {
+    let (mut actor, _tx, _dir) = make_test_actor(PipelineConfig::default());
+    let calls = vec![
+        make_tool_call("bash", true),
+        make_tool_call("read", true),
+    ];
+    let result = make_turn_result(80, calls);
+    // Should not panic; rate = 1.0.
+    actor.record_drift_metrics("s", &result);
+    // Detector created.
+    assert!(actor.drift_detectors.contains_key("s"));
+}
+
+#[test]
+fn record_drift_metrics_mixed_calls_partial_error_rate() {
+    let (mut actor, _tx, _dir) = make_test_actor(PipelineConfig::default());
+    let calls = vec![
+        make_tool_call("bash", false),
+        make_tool_call("read", true),  // 1 of 2 errors → rate = 0.5
+    ];
+    let result = make_turn_result(60, calls);
+    actor.record_drift_metrics("s", &result);
+    assert!(actor.drift_detectors.contains_key("s"));
+}
+
+#[test]
+fn record_drift_metrics_accumulates_across_turns() {
+    let (mut actor, _tx, _dir) = make_test_actor(PipelineConfig::default());
+    for _ in 0..3 {
+        let result = make_turn_result(50, vec![]);
+        actor.record_drift_metrics("s", &result);
+    }
+    // Still only one detector for the session.
+    assert_eq!(actor.drift_detectors.len(), 1);
+}
+
+// ── background.rs: record_background_panic ───────────────────────────────────
+
+#[test]
+fn record_background_panic_increments_count() {
+    let (mut actor, _tx, _dir) = make_test_actor(PipelineConfig::default());
+    assert_eq!(actor.runtime.background_panic_count, 0);
+
+    actor.record_background_panic();
+
+    assert_eq!(actor.runtime.background_panic_count, 1);
+    assert_eq!(actor.runtime.background_panic_timestamps.len(), 1);
+}
+
+#[test]
+fn record_background_panic_does_not_enter_degraded() {
+    let (mut actor, _tx, _dir) = make_test_actor(PipelineConfig::default());
+
+    for _ in 0..10 {
+        actor.record_background_panic();
+    }
+
+    // Background panics never trigger degraded mode — only pipeline panics do.
+    assert_eq!(
+        actor.channel.status,
+        NousLifecycle::Idle,
+        "background panics must not enter degraded mode"
+    );
+    assert_eq!(actor.runtime.background_panic_count, 10);
+}
+
+// ── background.rs: reap_background_tasks ─────────────────────────────────────
+
+#[tokio::test]
+async fn reap_background_tasks_joins_completed_tasks() {
+    let (mut actor, _tx, _dir) = make_test_actor(PipelineConfig::default());
+
+    // Spawn a task that finishes immediately.
+    actor.runtime.background_tasks.spawn(async { /* no-op */ });
+
+    // Let it finish.
+    tokio::task::yield_now().await;
+
+    actor.reap_background_tasks();
+
+    assert_eq!(
+        actor.runtime.background_tasks.len(),
+        0,
+        "completed tasks should be reaped"
+    );
+}
+
+#[tokio::test]
+async fn reap_background_tasks_records_background_panic() {
+    let (mut actor, _tx, _dir) = make_test_actor(PipelineConfig::default());
+
+    actor
+        .runtime
+        .background_tasks
+        .spawn(async { panic!("background test panic") });
+
+    // Yield until the spawned task panics and is collected.
+    for _ in 0..10 {
+        tokio::task::yield_now().await;
+    }
+
+    actor.reap_background_tasks();
+
+    assert_eq!(
+        actor.runtime.background_panic_count,
+        1,
+        "panic in background task should increment background_panic_count"
+    );
+}
+
+#[tokio::test]
+async fn reap_background_tasks_noop_when_empty() {
+    let (mut actor, _tx, _dir) = make_test_actor(PipelineConfig::default());
+    assert_eq!(actor.runtime.background_tasks.len(), 0);
+
+    actor.reap_background_tasks(); // must not panic
+
+    assert_eq!(actor.runtime.background_panic_count, 0);
+}
+
+// ── background.rs: maybe_spawn_extraction ────────────────────────────────────
+
+#[test]
+fn maybe_spawn_extraction_skips_when_no_config() {
+    let config = PipelineConfig {
+        extraction: None,
+        ..PipelineConfig::default()
+    };
+    let (mut actor, _tx, _dir) = make_test_actor(config);
+
+    actor.maybe_spawn_extraction("hello world", "response text");
+
+    assert_eq!(
+        actor.runtime.background_tasks.len(),
+        0,
+        "no task should be spawned when extraction config is absent"
+    );
+}
+
+#[test]
+fn maybe_spawn_extraction_skips_when_disabled() {
+    let config = PipelineConfig {
+        extraction: Some(mneme::extract::ExtractionConfig {
+            enabled: false,
+            ..mneme::extract::ExtractionConfig::default()
+        }),
+        ..PipelineConfig::default()
+    };
+    let (mut actor, _tx, _dir) = make_test_actor(config);
+
+    actor.maybe_spawn_extraction("hello world", "response");
+
+    assert_eq!(
+        actor.runtime.background_tasks.len(),
+        0,
+        "no task should be spawned when extraction is disabled"
+    );
+}
+
+#[test]
+fn maybe_spawn_extraction_skips_when_content_too_short() {
+    let config = PipelineConfig {
+        extraction: Some(mneme::extract::ExtractionConfig {
+            enabled: true,
+            min_message_length: 1000, // very high threshold
+            ..mneme::extract::ExtractionConfig::default()
+        }),
+        ..PipelineConfig::default()
+    };
+    let (mut actor, _tx, _dir) = make_test_actor(config);
+
+    actor.maybe_spawn_extraction("short", "response");
+
+    assert_eq!(
+        actor.runtime.background_tasks.len(),
+        0,
+        "no task should be spawned when content is below min_message_length"
+    );
+}
+
+#[tokio::test]
+async fn maybe_spawn_extraction_skips_when_task_limit_reached() {
+    let config = PipelineConfig {
+        extraction: Some(mneme::extract::ExtractionConfig {
+            enabled: true,
+            min_message_length: 1, // accept any content
+            ..mneme::extract::ExtractionConfig::default()
+        }),
+        ..PipelineConfig::default()
+    };
+    let (mut actor, _tx, _dir) = make_test_actor(config);
+
+    // Fill up the task set to the limit with tasks that block indefinitely.
+    for _ in 0..MAX_SPAWNED_TASKS {
+        actor
+            .runtime
+            .background_tasks
+            .spawn(std::future::pending::<()>());
+    }
+    assert_eq!(actor.runtime.background_tasks.len(), MAX_SPAWNED_TASKS);
+
+    actor.maybe_spawn_extraction("long enough content here", "response text here");
+
+    // Limit was already reached; no additional task spawned.
+    assert_eq!(
+        actor.runtime.background_tasks.len(),
+        MAX_SPAWNED_TASKS,
+        "task should not be spawned when limit is reached"
+    );
+}
+
+// ── background.rs: maybe_spawn_skill_analysis ────────────────────────────────
+
+#[test]
+fn maybe_spawn_skill_analysis_noop_on_empty_tool_calls() {
+    let (mut actor, _tx, _dir) = make_test_actor(PipelineConfig::default());
+
+    actor.maybe_spawn_skill_analysis(&[], "my-session");
+
+    // No tasks spawned, no panics.
+    assert_eq!(actor.runtime.background_tasks.len(), 0);
+}
+
+#[test]
+fn maybe_spawn_skill_analysis_processes_successful_tool_calls() {
+    let (mut actor, _tx, _dir) = make_test_actor(PipelineConfig::default());
+
+    let calls = vec![make_tool_call("bash", false)];
+    // Should not panic; candidate tracker absorbs the call.
+    actor.maybe_spawn_skill_analysis(&calls, "my-session");
+    // No task spawned unless the candidate is promoted (first occurrence never promotes).
+    assert_eq!(actor.runtime.background_tasks.len(), 0);
+}
+
+#[test]
+fn maybe_spawn_skill_analysis_processes_errored_tool_calls() {
+    let (mut actor, _tx, _dir) = make_test_actor(PipelineConfig::default());
+
+    let calls = vec![make_tool_call("bash", true)];
+    // Error calls are recorded as ToolCallRecord::errored; must not panic.
+    actor.maybe_spawn_skill_analysis(&calls, "s");
+    assert_eq!(actor.runtime.background_tasks.len(), 0);
+}
+
+// ── background.rs: maybe_spawn_distillation ──────────────────────────────────
+
+#[tokio::test]
+async fn maybe_spawn_distillation_skips_when_flag_already_set() {
+    let (mut actor, _tx, _dir) = make_test_actor(PipelineConfig::default());
+
+    // Pre-set the flag so the guard fires immediately.
+    actor
+        .runtime
+        .distillation_in_progress
+        .store(true, std::sync::atomic::Ordering::Release);
+
+    actor.maybe_spawn_distillation("s").await;
+
+    // Flag should still be true (we didn't touch it) and no task spawned.
+    assert!(
+        actor
+            .runtime
+            .distillation_in_progress
+            .load(std::sync::atomic::Ordering::Acquire),
+        "flag should remain set"
+    );
+    assert_eq!(
+        actor.runtime.background_tasks.len(),
+        0,
+        "no task should be spawned when distillation is already in progress"
+    );
+}
+
+#[tokio::test]
+async fn maybe_spawn_distillation_clears_flag_when_no_session_store() {
+    let (mut actor, _tx, _dir) = make_test_actor(PipelineConfig::default());
+    // No session store configured: try_spawn_distillation returns false.
+
+    actor.maybe_spawn_distillation("s").await;
+
+    // Flag must be cleared (not stuck) when no task was spawned.
+    assert!(
+        !actor
+            .runtime
+            .distillation_in_progress
+            .load(std::sync::atomic::Ordering::Acquire),
+        "flag should be cleared when no task was spawned"
+    );
+    assert_eq!(actor.runtime.background_tasks.len(), 0);
+}
+
+#[tokio::test]
+async fn maybe_spawn_distillation_clears_flag_when_session_not_found() {
+    let (mut actor, _tx, _dir) = make_test_actor(PipelineConfig::default());
+
+    // Attach a session store but no matching session.
+    let store = mneme::store::SessionStore::open_in_memory().expect("in-memory store");
+    actor.stores.session_store = Some(Arc::new(tokio::sync::Mutex::new(store)));
+
+    actor.maybe_spawn_distillation("nonexistent-session").await;
+
+    assert!(
+        !actor
+            .runtime
+            .distillation_in_progress
+            .load(std::sync::atomic::Ordering::Acquire),
+        "flag must be cleared when session is not found"
+    );
+    assert_eq!(actor.runtime.background_tasks.len(), 0);
+}
+
 /// Regression test for #758/#916/#923: session ID divergence.
 ///
 /// Verifies that when pylon creates a DB session and passes its ID to the
