@@ -45,6 +45,16 @@ pub fn run(verbose: bool) {
     // "No provider set" (#2363).
     let _ = rustls::crypto::ring::default_provider().install_default();
 
+    // WHY: Dioxus 0.7 does not expose GTK CSD styling. The native title bar
+    // inherits the system GTK theme, which is light by default on most distros.
+    // Setting GTK_THEME to the dark variant before window creation makes the
+    // CSD header bar match the app's dark content area. Respects user override
+    // if GTK_THEME is already set. On non-GTK platforms this is a no-op.
+    #[expect(unsafe_code, reason = "set_var is safe here: single-threaded, before async runtime")]
+    if std::env::var_os("GTK_THEME").is_none() {
+        unsafe { std::env::set_var("GTK_THEME", "Adwaita:dark") };
+    }
+
     use dioxus::desktop::{Config, WindowCloseBehaviour};
 
     let window_state = platform::window_state::load_or_default();
