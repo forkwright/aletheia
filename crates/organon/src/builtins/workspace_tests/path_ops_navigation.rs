@@ -16,6 +16,7 @@ fn test_ctx(dir: &Path) -> ToolContext {
         allowed_roots: vec![dir.to_path_buf()],
         services: None,
         active_tools: Arc::new(RwLock::new(HashSet::new())),
+        tool_config: Arc::new(taxis::config::ToolLimitsConfig::default()),
     }
 }
 
@@ -257,6 +258,7 @@ fn test_validate_path_tilde_expands_to_home_before_resolution() {
             active_tools: std::sync::Arc::new(std::sync::RwLock::new(
                 std::collections::HashSet::new(),
             )),
+            tool_config: std::sync::Arc::new(taxis::config::ToolLimitsConfig::default()),
         };
         let name = koina::id::ToolName::new("read").expect("valid");
 
@@ -344,6 +346,7 @@ fn test_validate_path_accepts_canonical_root_with_symlinked_input() {
             allowed_roots: vec![canonical_root],
             services: None,
             active_tools: Arc::new(RwLock::new(HashSet::new())),
+            tool_config: Arc::new(taxis::config::ToolLimitsConfig::default()),
         };
         let name = koina::id::ToolName::new("ls").expect("valid");
 
@@ -371,6 +374,7 @@ fn test_validate_path_trailing_slash_in_root() {
         allowed_roots: vec![root_with_slash],
         services: None,
         active_tools: Arc::new(RwLock::new(HashSet::new())),
+        tool_config: Arc::new(taxis::config::ToolLimitsConfig::default()),
     };
 
     #[expect(
@@ -399,6 +403,7 @@ fn test_validate_path_root_exact_match() {
         allowed_roots: vec![canonical.clone()],
         services: None,
         active_tools: Arc::new(RwLock::new(HashSet::new())),
+        tool_config: Arc::new(taxis::config::ToolLimitsConfig::default()),
     };
 
     let result = validate_path(canonical.to_str().expect("utf8"), &ctx, &name);

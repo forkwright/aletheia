@@ -19,6 +19,7 @@ pub(super) fn test_ctx() -> ToolContext {
         allowed_roots: vec![PathBuf::from("/tmp")],
         services: None,
         active_tools: Arc::new(RwLock::new(HashSet::new())),
+        tool_config: Arc::new(taxis::config::ToolLimitsConfig::default()),
     }
 }
 
@@ -42,6 +43,7 @@ pub(super) fn test_ctx_with_planning(planning: Arc<dyn PlanningService>) -> Tool
             server_tool_config: ServerToolConfig::default(),
         })),
         active_tools: Arc::new(RwLock::new(HashSet::new())),
+        tool_config: Arc::new(taxis::config::ToolLimitsConfig::default()),
     }
 }
 

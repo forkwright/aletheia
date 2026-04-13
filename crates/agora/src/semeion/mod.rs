@@ -26,21 +26,20 @@ use crate::types::{
 };
 use connection::{AccountState, ConnectionHealthReport, ConnectionState, reconnect_delay};
 
-/// Default poll interval. Matches `taxis::config::MessagingConfig::poll_interval_ms`.
+/// Fallback default; runtime reads `MessagingConfig::poll_interval_ms`.
 pub(crate) const DEFAULT_POLL_INTERVAL: Duration = Duration::from_secs(2);
-/// Default buffer capacity. Matches `taxis::config::MessagingConfig::buffer_capacity`.
+/// Fallback default; runtime reads `MessagingConfig::buffer_capacity`.
 pub(crate) const DEFAULT_BUFFER_CAPACITY: usize = 100;
 
 /// Consecutive poll failures before the circuit breaker trips and polling halts.
 /// WHY: lowered from 20 to 5 because signal-cli being down is the common case
 /// (`auto_start=false`, user hasn't started it), and 20 retries at exponential
 /// backoff = several minutes of warn-level log spam before halting (#3104).
-/// Circuit breaker threshold. Matches \.
+/// Fallback default; runtime reads `MessagingConfig::circuit_breaker_threshold`.
 pub(crate) const CIRCUIT_BREAKER_THRESHOLD: u32 = 5;
 
 /// Interval between health checks while the circuit breaker is open.
-/// Interval between health checks while halted. Matches
-/// \.
+/// Fallback default; runtime reads `MessagingConfig::halted_health_check_interval_secs`.
 pub(crate) const HALTED_HEALTH_CHECK_INTERVAL: Duration = Duration::from_mins(1);
 
 /// Parsed Signal message target.
@@ -92,10 +91,12 @@ pub struct SignalProvider {
     /// spawning the receive poll task for that account.
     auto_start: HashMap<String, bool>,
     buffer_capacity: usize,
+    circuit_breaker_threshold: u32,
+    halted_health_check_interval: Duration,
 }
 
 impl SignalProvider {
-    /// Create an empty provider. Add accounts with [`add_account`](Self::add_account).
+    /// Create an empty provider with default config. Add accounts with [`add_account`](Self::add_account).
     #[must_use]
     pub fn new() -> Self {
         Self::with_buffer_capacity(DEFAULT_BUFFER_CAPACITY)
@@ -110,6 +111,24 @@ impl SignalProvider {
             account_states: HashMap::new(),
             auto_start: HashMap::new(),
             buffer_capacity: capacity,
+            circuit_breaker_threshold: CIRCUIT_BREAKER_THRESHOLD,
+            halted_health_check_interval: HALTED_HEALTH_CHECK_INTERVAL,
+        }
+    }
+
+    /// Create a provider from a `MessagingConfig`.
+    #[must_use]
+    pub fn from_config(config: &taxis::config::MessagingConfig) -> Self {
+        Self {
+            clients: HashMap::new(),
+            default_account: None,
+            account_states: HashMap::new(),
+            auto_start: HashMap::new(),
+            buffer_capacity: config.buffer_capacity,
+            circuit_breaker_threshold: config.circuit_breaker_threshold,
+            halted_health_check_interval: Duration::from_secs(
+                config.halted_health_check_interval_secs,
+            ),
         }
     }
 
@@ -182,7 +201,18 @@ impl SignalProvider {
                 account = %account_id
             );
 
-            handles.spawn(poll_loop(signal_client, tx, interval, state, token).instrument(span));
+            handles.spawn(
+                poll_loop(
+                    signal_client,
+                    tx,
+                    interval,
+                    state,
+                    token,
+                    self.circuit_breaker_threshold,
+                    self.halted_health_check_interval,
+                )
+                .instrument(span),
+            );
         }
 
         (rx, handles)
@@ -361,6 +391,11 @@ impl std::fmt::Debug for SignalProvider {
             .field("account_states_count", &self.account_states.len())
             .field("auto_start", &self.auto_start)
             .field("buffer_capacity", &self.buffer_capacity)
+            .field("circuit_breaker_threshold", &self.circuit_breaker_threshold)
+            .field(
+                "halted_health_check_interval",
+                &self.halted_health_check_interval,
+            )
             .finish()
     }
 }
@@ -375,6 +410,8 @@ async fn poll_loop(
     interval: Duration,
     state: Arc<Mutex<AccountState>>,
     cancel: CancellationToken,
+    circuit_breaker_threshold: u32,
+    halted_health_check_interval: Duration,
 ) {
     tracing::info!("polling started");
     loop {
@@ -390,7 +427,7 @@ async fn poll_loop(
                         tracing::info!("cancellation received, stopping poll");
                         return;
                     }
-                    () = tokio::time::sleep(HALTED_HEALTH_CHECK_INTERVAL) => {}
+                    () = tokio::time::sleep(halted_health_check_interval) => {}
                 }
 
                 if signal_client.health().await {
@@ -468,13 +505,13 @@ async fn poll_loop(
                                 }
                                 ConnectionState::Reconnecting { attempt } => {
                                     let next = attempt.saturating_add(1);
-                                    if next >= CIRCUIT_BREAKER_THRESHOLD {
+                                    if next >= circuit_breaker_threshold {
                                         tracing::error!(
                                             consecutive_failures = next,
-                                            threshold = CIRCUIT_BREAKER_THRESHOLD,
+                                            threshold = circuit_breaker_threshold,
                                             "circuit breaker tripped, halting Signal polling \
                                              (will health-check every {}s)",
-                                            HALTED_HEALTH_CHECK_INTERVAL.as_secs()
+                                            halted_health_check_interval.as_secs()
                                         );
                                         s.state = ConnectionState::Halted {
                                             total_failures: next,
@@ -682,6 +719,8 @@ mod tests {
                 Duration::from_millis(50),
                 account_state,
                 token,
+                CIRCUIT_BREAKER_THRESHOLD,
+                HALTED_HEALTH_CHECK_INTERVAL,
             )
             .instrument(tracing::info_span!("test_poll_loop")),
         );

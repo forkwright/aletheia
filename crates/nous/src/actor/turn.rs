@@ -340,6 +340,7 @@ impl NousActor {
             active_tools: std::sync::Arc::new(std::sync::RwLock::new(
                 std::collections::HashSet::new(),
             )),
+            tool_config: self.services.tool_config.clone(),
         };
 
         let mut extra_bootstrap = self.extra_bootstrap.clone();
@@ -559,6 +560,7 @@ impl NousActor {
             active_tools: std::sync::Arc::new(std::sync::RwLock::new(
                 std::collections::HashSet::new(),
             )),
+            tool_config: self.services.tool_config.clone(),
         };
 
         let mut extra_bootstrap = self.extra_bootstrap.clone();

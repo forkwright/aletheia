@@ -76,6 +76,7 @@ fn ctx_with_notes_bb(store: &Arc<Mutex<SessionStore>>) -> ToolContext {
             server_tool_config: ServerToolConfig::default(),
         })),
         active_tools: Arc::new(RwLock::new(HashSet::new())),
+        tool_config: Arc::new(taxis::config::ToolLimitsConfig::default()),
     }
 }
 
@@ -415,6 +416,7 @@ fn ctx_with_knowledge(svc: Arc<StubKnowledgeService>) -> ToolContext {
             server_tool_config: ServerToolConfig::default(),
         })),
         active_tools: Arc::new(RwLock::new(HashSet::new())),
+        tool_config: Arc::new(taxis::config::ToolLimitsConfig::default()),
     }
 }
 

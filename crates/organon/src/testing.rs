@@ -21,6 +21,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 
 use koina::id::{NousId, SessionId, ToolName};
+use taxis::config::ToolLimitsConfig;
 
 use crate::error::Result;
 use crate::registry::ToolExecutor;
@@ -310,6 +311,7 @@ pub fn make_test_context() -> ToolContext {
         allowed_roots: vec![PathBuf::from("/tmp")],
         services: None,
         active_tools: Arc::new(RwLock::new(std::collections::HashSet::new())),
+        tool_config: Arc::new(ToolLimitsConfig::default()),
     }
 }
 

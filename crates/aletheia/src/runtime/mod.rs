@@ -384,7 +384,7 @@ impl RuntimeBuilder {
 
         // Signal provider
         let signal_provider = if self.tool_services {
-            build_signal_provider(&self.config.channels.signal)
+            build_signal_provider(&self.config.channels.signal, &self.config.messaging)
         } else {
             None
         };

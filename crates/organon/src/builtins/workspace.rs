@@ -39,8 +39,8 @@ fn sanitize_path_in_msg(path: &std::path::Path) -> String {
 ///
 /// WHY: Prevents disk exhaustion or fork-bomb-like abuse via oversized writes.
 /// Closes #1714.
-/// Maximum content size for the write tool. Matches
-/// `taxis::config::ToolLimitsConfig::max_write_bytes`.
+/// Fallback default; runtime reads `ctx.tool_config.max_write_bytes`.
+#[expect(dead_code, reason = "retained as documentation of the default value; runtime reads from ToolLimitsConfig")]
 pub(crate) const MAX_WRITE_BYTES: usize = 10 * 1024 * 1024;
 
 /// Expand a leading `~` in a path string to the HOME environment variable.
@@ -201,13 +201,13 @@ pub(crate) fn extract_opt_f64(args: &serde_json::Value, field: &str) -> Option<f
 }
 
 /// Maximum file size the read tool will process.
-/// Maximum file size the read tool will process. Matches
-/// `taxis::config::ToolLimitsConfig::max_read_bytes`.
+/// Fallback default; runtime reads `ctx.tool_config.max_read_bytes`.
+#[expect(dead_code, reason = "retained as documentation of the default value; runtime reads from ToolLimitsConfig")]
 pub(crate) const MAX_READ_BYTES: u64 = 50 * 1024 * 1024;
 
 /// Maximum command string length for exec.
-/// Maximum command string length for exec. Matches
-/// `taxis::config::ToolLimitsConfig::max_command_length`.
+/// Fallback default; runtime reads `ctx.tool_config.max_command_length`.
+#[expect(dead_code, reason = "retained as documentation of the default value; runtime reads from ToolLimitsConfig")]
 pub(crate) const MAX_COMMAND_LENGTH: usize = 10_000;
 
 /// Files that the LLM must not overwrite.
@@ -298,12 +298,12 @@ impl ToolExecutor for ReadExecutor {
             // symlink. This eliminates the TOCTOU window from #2162.
             let path = validate_path(path_str, ctx, &input.name)?;
 
+            let max_read = ctx.tool_config.max_read_bytes;
             match std::fs::metadata(&path) {
-                Ok(meta) if meta.len() > MAX_READ_BYTES => {
+                Ok(meta) if meta.len() > max_read => {
                     return Ok(err_result(format!(
-                        "file too large: {} bytes (max {} bytes)",
+                        "file too large: {} bytes (max {max_read} bytes)",
                         meta.len(),
-                        MAX_READ_BYTES
                     )));
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -368,11 +368,11 @@ impl ToolExecutor for WriteExecutor {
             let path = validate_path(path_str, ctx, &input.name)?;
 
             // WHY: Enforce content size limit to prevent disk exhaustion. Closes #1714.
-            if content.len() > MAX_WRITE_BYTES {
+            let max_write = ctx.tool_config.max_write_bytes;
+            if content.len() > max_write {
                 return Ok(err_result(format!(
-                    "content too large: {} bytes (max {} bytes)",
+                    "content too large: {} bytes (max {max_write} bytes)",
                     content.len(),
-                    MAX_WRITE_BYTES
                 )));
             }
 
@@ -550,9 +550,10 @@ impl ToolExecutor for ExecExecutor {
             let command = extract_str(&input.arguments, "command", &input.name)?;
             let timeout_ms = extract_opt_u64(&input.arguments, "timeout").unwrap_or(120_000);
 
-            if command.len() > MAX_COMMAND_LENGTH {
+            let max_cmd = ctx.tool_config.max_command_length;
+            if command.len() > max_cmd {
                 return Ok(err_result(format!(
-                    "command too long: {} bytes (max {MAX_COMMAND_LENGTH} bytes)",
+                    "command too long: {} bytes (max {max_cmd} bytes)",
                     command.len()
                 )));
             }

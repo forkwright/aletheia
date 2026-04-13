@@ -142,6 +142,7 @@ mod tests {
                 server_tool_config: ServerToolConfig::default(),
             })),
             active_tools: Arc::new(RwLock::new(HashSet::new())),
+            tool_config: Arc::new(taxis::config::ToolLimitsConfig::default()),
         }
     }
 
@@ -258,6 +259,7 @@ mod tests {
                 server_tool_config: config,
             })),
             active_tools: Arc::new(RwLock::new(HashSet::new())),
+            tool_config: Arc::new(taxis::config::ToolLimitsConfig::default()),
         }
     }
 

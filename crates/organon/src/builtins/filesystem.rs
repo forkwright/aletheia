@@ -47,8 +47,8 @@ fn canonicalize_and_revalidate(
 /// WHY: Unbounded patterns can trigger catastrophic backtracking in the regex
 /// engine (`ReDoS`). Cap at 1000 chars which covers all legitimate search
 /// patterns. Closes #2167.
-/// Maximum character length for search/find patterns. Matches
-/// `taxis::config::ToolLimitsConfig::max_pattern_length`.
+/// Fallback default; runtime reads `ctx.tool_config.max_pattern_length`.
+#[expect(dead_code, reason = "retained as documentation of the default value; runtime reads from ToolLimitsConfig")]
 pub(crate) const MAX_PATTERN_LENGTH: usize = 1000;
 
 fn truncate_output(mut output: String) -> String {
@@ -124,9 +124,10 @@ impl ToolExecutor for GrepExecutor {
         Box::pin(async {
             let pattern = extract_str(&input.arguments, "pattern", &input.name)?;
 
-            if pattern.len() > MAX_PATTERN_LENGTH {
+            let max_pat = ctx.tool_config.max_pattern_length;
+            if pattern.len() > max_pat {
                 return Ok(ToolResult::error(format!(
-                    "pattern too long: {} chars (max {MAX_PATTERN_LENGTH})",
+                    "pattern too long: {} chars (max {max_pat})",
                     pattern.len()
                 )));
             }
@@ -233,9 +234,10 @@ impl ToolExecutor for FindExecutor {
         Box::pin(async {
             let pattern = extract_str(&input.arguments, "pattern", &input.name)?;
 
-            if pattern.len() > MAX_PATTERN_LENGTH {
+            let max_pat = ctx.tool_config.max_pattern_length;
+            if pattern.len() > max_pat {
                 return Ok(ToolResult::error(format!(
-                    "pattern too long: {} chars (max {MAX_PATTERN_LENGTH})",
+                    "pattern too long: {} chars (max {max_pat})",
                     pattern.len()
                 )));
             }

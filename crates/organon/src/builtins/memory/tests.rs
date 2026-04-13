@@ -150,6 +150,7 @@ fn test_ctx() -> ToolContext {
         allowed_roots: vec![PathBuf::from("/tmp")],
         services: None,
         active_tools: Arc::new(RwLock::new(HashSet::new())),
+        tool_config: Arc::new(taxis::config::ToolLimitsConfig::default()),
     }
 }
 
@@ -176,6 +177,7 @@ fn ctx_with_services(
             server_tool_config: ServerToolConfig::default(),
         })),
         active_tools: Arc::new(RwLock::new(HashSet::new())),
+        tool_config: Arc::new(taxis::config::ToolLimitsConfig::default()),
     }
 }
 
@@ -454,6 +456,7 @@ async fn blackboard_delete_only_author() {
         allowed_roots: vec![PathBuf::from("/tmp")],
         services: ctx.services.clone(),
         active_tools: Arc::new(RwLock::new(HashSet::new())),
+        tool_config: Arc::new(taxis::config::ToolLimitsConfig::default()),
     };
     let del = ToolInput {
         name: ToolName::new("blackboard").expect("valid"),

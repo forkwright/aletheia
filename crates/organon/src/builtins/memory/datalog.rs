@@ -19,11 +19,11 @@ use crate::builtins::workspace::extract_str;
 use super::require_services;
 
 const MUTATION_KEYWORDS: &[&str] = &[":put", ":rm", ":replace", ":create", ":ensure"];
-/// Default row limit for query results. Matches
-/// `taxis::config::AgentBehaviorDefaults::tool_datalog_default_row_limit`.
+/// Fallback default; runtime reads `ctx.tool_config.datalog_default_row_limit`.
+#[expect(dead_code, reason = "retained as documentation of the default value; runtime reads from ToolLimitsConfig")]
 pub(crate) const DEFAULT_ROW_LIMIT: usize = 100;
-/// Default query timeout in seconds. Matches
-/// `taxis::config::AgentBehaviorDefaults::tool_datalog_default_timeout_secs`.
+/// Fallback default; runtime reads `ctx.tool_config.datalog_default_timeout_secs`.
+#[expect(dead_code, reason = "retained as documentation of the default value; runtime reads from ToolLimitsConfig")]
 pub(crate) const DEFAULT_TIMEOUT_SECS: f64 = 5.0;
 
 struct DatalogQueryExecutor;
@@ -42,6 +42,9 @@ impl ToolExecutor for DatalogQueryExecutor {
 
             let query = extract_str(&input.arguments, "query", &input.name)?;
 
+            let cfg_row_limit = ctx.tool_config.datalog_default_row_limit;
+            let cfg_timeout = ctx.tool_config.datalog_default_timeout_secs;
+
             let params = input.arguments.get("params").cloned();
             let timeout = input
                 .arguments
@@ -51,7 +54,7 @@ impl ToolExecutor for DatalogQueryExecutor {
                 .arguments
                 .get("row_limit")
                 .and_then(serde_json::Value::as_u64)
-                .map(|v| usize::try_from(v).unwrap_or(DEFAULT_ROW_LIMIT));
+                .map(|v| usize::try_from(v).unwrap_or(cfg_row_limit));
 
             // WHY: Defense in depth: reject mutation keywords before sending to engine
             let query_lower = query.to_lowercase();
@@ -71,8 +74,8 @@ impl ToolExecutor for DatalogQueryExecutor {
                 .datalog_query(
                     query,
                     params,
-                    Some(timeout.unwrap_or(DEFAULT_TIMEOUT_SECS)),
-                    Some(row_limit.unwrap_or(DEFAULT_ROW_LIMIT)),
+                    Some(timeout.unwrap_or(cfg_timeout)),
+                    Some(row_limit.unwrap_or(cfg_row_limit)),
                 )
                 .await
             {
@@ -84,7 +87,7 @@ impl ToolExecutor for DatalogQueryExecutor {
                         let _ = write!(
                             output,
                             "\n\n_Results truncated to {} rows._",
-                            row_limit.unwrap_or(DEFAULT_ROW_LIMIT)
+                            row_limit.unwrap_or(cfg_row_limit)
                         );
                     }
                     Ok(ToolResult::text(output))

@@ -7,6 +7,7 @@ use std::sync::{Arc, RwLock};
 use serde::{Deserialize, Serialize};
 
 use koina::id::{NousId, SessionId, ToolName};
+use taxis::config::ToolLimitsConfig;
 
 use super::services::{
     BlackboardStore, CrossNousService, KnowledgeSearchService, MessageService, NoteStore,
@@ -135,4 +136,6 @@ pub struct ToolContext {
     pub services: Option<Arc<ToolServices>>,
     /// Per-session set of dynamically activated tools (via `enable_tool`).
     pub active_tools: Arc<RwLock<HashSet<ToolName>>>,
+    /// Deployment-tunable tool size and timeout limits from taxis config.
+    pub tool_config: Arc<ToolLimitsConfig>,
 }

@@ -15,14 +15,14 @@ use crate::types::{
     ToolInput, ToolResult,
 };
 
-/// Maximum characters per intra-session message. Matches
-/// `taxis::config::ToolLimitsConfig::message_max_len`.
+/// Fallback default; runtime reads `ctx.tool_config.message_max_len`.
+#[expect(dead_code, reason = "retained as documentation of the default value; runtime reads from ToolLimitsConfig")]
 pub(crate) const MESSAGE_MAX_LEN: usize = 4000;
-/// Maximum characters per inter-session message. Matches
-/// `taxis::config::ToolLimitsConfig::inter_session_max_message_len`.
+/// Fallback default; runtime reads `ctx.tool_config.inter_session_max_message_len`.
+#[expect(dead_code, reason = "retained as documentation of the default value; runtime reads from ToolLimitsConfig")]
 pub(crate) const INTER_SESSION_MAX_MESSAGE_LEN: usize = 100_000;
-/// Maximum wait timeout for inter-session messages. Matches
-/// `taxis::config::ToolLimitsConfig::inter_session_max_timeout_secs`.
+/// Fallback default; runtime reads `ctx.tool_config.inter_session_max_timeout_secs`.
+#[expect(dead_code, reason = "retained as documentation of the default value; runtime reads from ToolLimitsConfig")]
 pub(crate) const INTER_SESSION_MAX_TIMEOUT_SECS: u64 = 300;
 
 struct MessageExecutor;
@@ -44,9 +44,10 @@ impl ToolExecutor for MessageExecutor {
             let to = extract_str(&input.arguments, "to", &input.name)?;
             let text = extract_str(&input.arguments, "text", &input.name)?;
 
-            if text.len() > MESSAGE_MAX_LEN {
+            let max_len = ctx.tool_config.message_max_len;
+            if text.len() > max_len {
                 return Ok(ToolResult::error(format!(
-                    "Message exceeds {MESSAGE_MAX_LEN} character limit ({} chars)",
+                    "Message exceeds {max_len} character limit ({} chars)",
                     text.len()
                 )));
             }
@@ -78,9 +79,10 @@ impl ToolExecutor for SessionsAskExecutor {
             let agent_id = extract_str(&input.arguments, "agentId", &input.name)?;
             let message = extract_str(&input.arguments, "message", &input.name)?;
 
-            if message.len() > INTER_SESSION_MAX_MESSAGE_LEN {
+            let max_msg = ctx.tool_config.inter_session_max_message_len;
+            if message.len() > max_msg {
                 return Ok(ToolResult::error(format!(
-                    "Message exceeds {INTER_SESSION_MAX_MESSAGE_LEN} byte limit ({} bytes)",
+                    "Message exceeds {max_msg} byte limit ({} bytes)",
                     message.len()
                 )));
             }
@@ -93,7 +95,7 @@ impl ToolExecutor for SessionsAskExecutor {
                 .unwrap_or(&default_session);
             let timeout = extract_opt_u64(&input.arguments, "timeoutSeconds")
                 .unwrap_or(120)
-                .min(INTER_SESSION_MAX_TIMEOUT_SECS);
+                .min(ctx.tool_config.inter_session_max_timeout_secs);
 
             match cross
                 .ask(
@@ -131,9 +133,10 @@ impl ToolExecutor for SessionsSendExecutor {
             let agent_id = extract_str(&input.arguments, "agentId", &input.name)?;
             let message = extract_str(&input.arguments, "message", &input.name)?;
 
-            if message.len() > INTER_SESSION_MAX_MESSAGE_LEN {
+            let max_msg = ctx.tool_config.inter_session_max_message_len;
+            if message.len() > max_msg {
                 return Ok(ToolResult::error(format!(
-                    "Message exceeds {INTER_SESSION_MAX_MESSAGE_LEN} byte limit ({} bytes)",
+                    "Message exceeds {max_msg} byte limit ({} bytes)",
                     message.len()
                 )));
             }
@@ -314,6 +317,8 @@ mod tests {
 
     use koina::id::{NousId, SessionId, ToolName};
 
+    use taxis::config::ToolLimitsConfig;
+
     use crate::registry::ToolRegistry;
     use crate::testing::install_crypto_provider;
     use crate::types::{
@@ -328,6 +333,7 @@ mod tests {
             allowed_roots: vec![PathBuf::from("/tmp")],
             services: None,
             active_tools: Arc::new(RwLock::new(HashSet::new())),
+            tool_config: Arc::new(ToolLimitsConfig::default()),
         }
     }
 
@@ -340,6 +346,7 @@ mod tests {
             allowed_roots: vec![PathBuf::from("/tmp")],
             services: Some(Arc::new(services)),
             active_tools: Arc::new(RwLock::new(HashSet::new())),
+            tool_config: Arc::new(ToolLimitsConfig::default()),
         }
     }
 
