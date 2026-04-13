@@ -110,11 +110,12 @@ pub(crate) fn handle_overlay_up(app: &mut App) {
         Some(Overlay::Settings(_)) => {
             super::settings::handle_up(app);
         }
-        Some(Overlay::DecisionCard(card)) => {
-            if card.focused_field == crate::state::DecisionField::Options {
-                card.cursor = card.cursor.saturating_sub(1);
-            }
+        Some(Overlay::DecisionCard(card))
+            if card.focused_field == crate::state::DecisionField::Options =>
+        {
+            card.cursor = card.cursor.saturating_sub(1);
         }
+        Some(Overlay::DecisionCard(_)) => {}
         Some(Overlay::NotificationHistory { scroll }) => {
             *scroll = scroll.saturating_sub(1);
         }
@@ -150,12 +151,13 @@ pub(crate) fn handle_overlay_down(app: &mut App) {
         Some(Overlay::Settings(_)) => {
             super::settings::handle_down(app);
         }
-        Some(Overlay::DecisionCard(card)) => {
-            if card.focused_field == crate::state::DecisionField::Options {
-                let max = card.options.len().saturating_sub(1);
-                card.cursor = (card.cursor + 1).min(max);
-            }
+        Some(Overlay::DecisionCard(card))
+            if card.focused_field == crate::state::DecisionField::Options =>
+        {
+            let max = card.options.len().saturating_sub(1);
+            card.cursor = (card.cursor + 1).min(max);
         }
+        Some(Overlay::DecisionCard(_)) => {}
         Some(Overlay::NotificationHistory { scroll }) => {
             *scroll += 1;
         }

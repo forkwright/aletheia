@@ -39,7 +39,7 @@ impl Default for ProbeAuditConfig {
     fn default() -> Self {
         Self {
             enabled: true,
-            interval: Duration::from_secs(6 * 3600),
+            interval: Duration::from_hours(6),
             categories: vec![
                 ProbeCategory::Consistency,
                 ProbeCategory::Boundary,

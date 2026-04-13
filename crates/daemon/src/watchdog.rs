@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 
 /// Default heartbeat timeout before a process is considered hung.
-const DEFAULT_HEARTBEAT_TIMEOUT: Duration = Duration::from_secs(60);
+const DEFAULT_HEARTBEAT_TIMEOUT: Duration = Duration::from_mins(1);
 
 /// Default interval between watchdog health check sweeps.
 const DEFAULT_CHECK_INTERVAL: Duration = Duration::from_secs(10);
@@ -21,7 +21,7 @@ const DEFAULT_MAX_RESTARTS: u32 = 5;
 const BACKOFF_BASE: Duration = Duration::from_secs(2);
 
 /// Maximum backoff delay cap (5 minutes).
-const BACKOFF_CAP: Duration = Duration::from_secs(300);
+const BACKOFF_CAP: Duration = Duration::from_mins(5);
 
 /// Watchdog configuration.
 #[derive(Debug, Clone)]

@@ -373,7 +373,9 @@ fn collect_credential() -> Result<Option<SecretString>, InitError> {
 mod helpers;
 mod scaffold;
 
-use helpers::{capitalize, detect_timezone, set_permissions};
+use helpers::{capitalize, detect_timezone};
+#[cfg(feature = "tui")]
+use helpers::set_permissions;
 use scaffold::scaffold;
 
 #[cfg(feature = "tui")]

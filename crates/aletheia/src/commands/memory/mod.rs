@@ -625,7 +625,7 @@ fn find_content_hash_duplicates(
             dupes.push((prefix, ids));
         }
     }
-    dupes.sort_by(|a, b| b.1.len().cmp(&a.1.len()));
+    dupes.sort_by_key(|x| std::cmp::Reverse(x.1.len()));
 
     Ok(dupes)
 }

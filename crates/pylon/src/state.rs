@@ -170,6 +170,8 @@ pub struct SessionsState {
     pub shutdown: CancellationToken,
     /// Idempotency-key cache for deduplicating `POST /sessions/{id}/messages`.
     pub idempotency_cache: Arc<IdempotencyCache>,
+    /// Runtime configuration for API limit reads.
+    pub config: Arc<tokio::sync::RwLock<AletheiaConfig>>,
 }
 
 impl FromRef<Arc<AppState>> for SessionsState {
@@ -180,6 +182,7 @@ impl FromRef<Arc<AppState>> for SessionsState {
             provider_registry: Arc::clone(&state.provider_registry),
             shutdown: state.shutdown.clone(),
             idempotency_cache: Arc::clone(&state.idempotency_cache),
+            config: Arc::clone(&state.config),
         }
     }
 }
@@ -190,20 +193,16 @@ pub struct KnowledgeState {
     /// Shared knowledge store for fact/entity/relationship queries.
     #[cfg(feature = "knowledge-store")]
     pub knowledge_store: Option<Arc<KnowledgeStore>>,
+    /// Runtime configuration for API limit reads.
+    pub config: Arc<tokio::sync::RwLock<AletheiaConfig>>,
 }
 
 impl FromRef<Arc<AppState>> for KnowledgeState {
-    #[cfg_attr(
-        not(feature = "knowledge-store"),
-        expect(
-            unused_variables,
-            reason = "state only used when knowledge-store feature is enabled"
-        )
-    )]
     fn from_ref(state: &Arc<AppState>) -> Self {
         Self {
             #[cfg(feature = "knowledge-store")]
             knowledge_store: state.knowledge_store.clone(),
+            config: Arc::clone(&state.config),
         }
     }
 }

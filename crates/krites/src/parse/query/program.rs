@@ -555,21 +555,18 @@ fn validate_sort_keys(prog: &InputProgram) -> Result<()> {
 fn resolve_empty_mutation_head(prog: &mut InputProgram) -> Result<()> {
     let empty_mutation_head = match &prog.out_opts.store_relation {
         None => false,
-        Some((handle, _, _)) => {
-            if handle.key_bindings.is_empty() {
-                if handle.dep_bindings.is_empty() {
-                    true
-                } else {
-                    return Err(InvalidQuerySnafu {
-                        message: "Input relation has no keys".to_string(),
-                    }
-                    .build()
-                    .into());
-                }
+        Some((handle, _, _)) if handle.key_bindings.is_empty() => {
+            if handle.dep_bindings.is_empty() {
+                true
             } else {
-                false
+                return Err(InvalidQuerySnafu {
+                    message: "Input relation has no keys".to_string(),
+                }
+                .build()
+                .into());
             }
         }
+        Some(_) => false,
     };
 
     if empty_mutation_head {

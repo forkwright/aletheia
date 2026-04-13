@@ -62,8 +62,7 @@ const VALID_SORT_FIELDS: &[&str] = &[
 /// Valid sort directions (checked case-insensitively).
 const VALID_ORDER_VALUES: &[&str] = &["asc", "desc"];
 
-/// Hard upper bound on the `limit` query parameter for all knowledge endpoints.
-const MAX_FACTS_LIMIT: usize = 1000;
+// MAX_FACTS_LIMIT is now read from `config.api_limits.max_facts_limit` at runtime.
 
 fn default_limit() -> usize {
     100
@@ -143,8 +142,7 @@ fn default_search_limit() -> usize {
     20
 }
 
-/// Hard upper bound on the `limit` query parameter for search.
-const MAX_SEARCH_LIMIT: usize = 1000;
+// MAX_SEARCH_LIMIT is now read from `config.api_limits.max_search_limit` at runtime.
 
 /// Search result item.
 #[derive(Debug, Serialize)]
@@ -235,7 +233,7 @@ fn validate_sort_order(sort: &str, order: &str) -> Result<(), ApiError> {
     }
     if !VALID_ORDER_VALUES.contains(&order.to_ascii_lowercase().as_str()) {
         return Err(BadRequestSnafu {
-            message: format!("invalid order '{order}': valid values are asc, desc",),
+            message: format!("invalid order '{order}': valid values are asc, desc"),
         }
         .build());
     }
@@ -280,7 +278,8 @@ pub async fn list_facts(
 ) -> Result<Json<FactsResponse>, ApiError> {
     use mneme::knowledge::EpistemicTier;
 
-    query.limit = query.limit.min(MAX_FACTS_LIMIT);
+    let max_facts_limit = state.config.read().await.api_limits.max_facts_limit;
+    query.limit = query.limit.min(max_facts_limit);
     validate_sort_order(&query.sort, &query.order)?;
     query.order = query.order.to_ascii_lowercase();
 
@@ -716,10 +715,10 @@ mod tests {
     }
 
     #[test]
-    fn limit_is_capped_at_max() {
-        // NOTE: list_facts clamps query.limit to MAX_FACTS_LIMIT (1000) before use.
-        const { assert!(MAX_FACTS_LIMIT <= 1000) };
-        assert_eq!(MAX_FACTS_LIMIT, 1000);
+    fn default_limit_is_capped_at_max() {
+        let config = taxis::config::ApiLimitsConfig::default();
+        assert!(config.max_facts_limit <= 1000);
+        assert_eq!(config.max_facts_limit, 1000);
     }
 
     #[test]

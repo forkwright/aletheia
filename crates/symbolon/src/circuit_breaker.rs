@@ -46,9 +46,9 @@ impl Default for CircuitBreakerConfig {
     fn default() -> Self {
         Self {
             failure_threshold: 5,
-            failure_window: Duration::from_secs(60),
+            failure_window: Duration::from_mins(1),
             cooldown: Duration::from_secs(30),
-            max_cooldown: Duration::from_secs(300),
+            max_cooldown: Duration::from_mins(5),
         }
     }
 }

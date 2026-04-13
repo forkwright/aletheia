@@ -70,7 +70,7 @@ pub(super) fn spawn_log_retention(log_dir: PathBuf, retention_days: u32, token: 
                     biased;
                     () = token.cancelled() => break,
                     // NOTE: 24h interval elapsed, run next retention cycle
-                    () = tokio::time::sleep(std::time::Duration::from_secs(24 * 3600)) => {}
+                    () = tokio::time::sleep(std::time::Duration::from_hours(24)) => {}
                 }
             }
         }

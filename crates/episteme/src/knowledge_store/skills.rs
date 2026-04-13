@@ -372,7 +372,7 @@ impl KnowledgeStore {
                 .unwrap_or(0.0)
         };
 
-        named_usage.sort_by(|a, b| b.1.cmp(&a.1));
+        named_usage.sort_by_key(|x| std::cmp::Reverse(x.1));
         let top_skills: Vec<(String, u32)> = named_usage.iter().take(10).cloned().collect();
         let bottom_skills: Vec<(String, u32)> =
             named_usage.iter().rev().take(10).cloned().collect();

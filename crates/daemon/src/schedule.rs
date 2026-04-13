@@ -62,7 +62,7 @@ impl Default for TaskDef {
             action: TaskAction::Command(String::new()),
             enabled: true,
             active_window: None,
-            timeout: Duration::from_secs(300),
+            timeout: Duration::from_mins(5),
             catch_up: true,
             jitter: None,
         }
@@ -283,9 +283,9 @@ pub(crate) fn apply_jitter(
 pub(crate) fn backoff_delay(consecutive_failures: u32) -> Duration {
     match consecutive_failures {
         0 => Duration::ZERO,
-        1 => Duration::from_secs(60),
-        2 => Duration::from_secs(300),
-        _ => Duration::from_secs(900),
+        1 => Duration::from_mins(1),
+        2 => Duration::from_mins(5),
+        _ => Duration::from_mins(15),
     }
 }
 

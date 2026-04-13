@@ -157,6 +157,7 @@ impl TestHarness {
             Arc::new(vec![]),
             None,
             None,
+            taxis::config::NousBehaviorConfig::default(),
         );
 
         let nous_config = NousConfig {

@@ -269,7 +269,7 @@ pub fn build_suggestions(input: &str, agents: &[AgentState]) -> Vec<Suggestion> 
         }
     }
 
-    suggestions.sort_by(|a, b| b.score.cmp(&a.score));
+    suggestions.sort_by_key(|s| std::cmp::Reverse(s.score));
     // NOTE: Show more results on empty input (initial open) than for active queries.
     let limit = if query.is_empty() {
         MAX_SUGGESTIONS_INITIAL

@@ -70,13 +70,14 @@ pub async fn create(
         .build());
     }
     // WHY: bound identifier fields to prevent memory exhaustion from oversized IDs (#2787).
-    if nous_id.len() > MAX_IDENTIFIER_BYTES {
+    let max_id_bytes = state.config.read().await.api_limits.max_identifier_bytes;
+    if nous_id.len() > max_id_bytes {
         return Err(BadRequestSnafu {
             message: "nous_id exceeds maximum length",
         }
         .build());
     }
-    if session_key.len() > MAX_IDENTIFIER_BYTES {
+    if session_key.len() > max_id_bytes {
         return Err(BadRequestSnafu {
             message: "session_key exceeds maximum length",
         }
@@ -414,9 +415,10 @@ pub async fn rename(
     }
 
     // SAFETY: enforce max session name length to prevent oversized input.
-    if body.name.len() > MAX_SESSION_NAME_LEN {
+    let max_name_len = state.config.read().await.api_limits.max_session_name_len;
+    if body.name.len() > max_name_len {
         return Err(BadRequestSnafu {
-            message: format!("name exceeds maximum length of {MAX_SESSION_NAME_LEN} bytes"),
+            message: format!("name exceeds maximum length of {max_name_len} bytes"),
         }
         .build());
     }
@@ -436,15 +438,8 @@ pub async fn rename(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// Maximum session name length in bytes.
-const MAX_SESSION_NAME_LEN: usize = 255;
-/// Maximum identifier field size (`nous_id`, `session_key`).
-const MAX_IDENTIFIER_BYTES: usize = 256;
-
-/// Maximum number of messages returnable per history request.
-const MAX_HISTORY_LIMIT: u32 = 1000;
-/// Default number of messages when no limit is supplied.
-const DEFAULT_HISTORY_LIMIT: u32 = 50;
+// Session/history limits are now read from `config.api_limits` at runtime.
+// See `taxis::config::ApiLimitsConfig` for defaults and documentation.
 
 /// GET /api/v1/sessions/{id}/history: get conversation history.
 ///
@@ -476,12 +471,13 @@ pub async fn history(
 ) -> Result<Json<HistoryResponse>, ApiError> {
     let _ = find_session(&state, &id).await?;
 
-    // WHY: Cap limit at MAX_HISTORY_LIMIT and apply a sensible default so a single
+    // WHY: Cap limit at max_history_limit and apply a sensible default so a single
     // request cannot fetch an unbounded number of messages.
+    let api_limits = &state.config.read().await.api_limits;
     let limit = params
         .limit
-        .unwrap_or(DEFAULT_HISTORY_LIMIT)
-        .min(MAX_HISTORY_LIMIT);
+        .unwrap_or(api_limits.default_history_limit)
+        .min(api_limits.max_history_limit);
     let before_seq = params.before;
 
     let state_clone = state.clone();

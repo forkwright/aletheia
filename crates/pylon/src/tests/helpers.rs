@@ -124,6 +124,7 @@ bind = "localhost"
         Arc::new(vec![]),
         None,
         None,
+        taxis::config::NousBehaviorConfig::default(),
     );
 
     let nous_config = NousConfig {

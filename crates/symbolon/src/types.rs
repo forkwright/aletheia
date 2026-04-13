@@ -144,10 +144,6 @@ pub(crate) struct User {
 
 /// Stored API key metadata (never includes the secret).
 #[derive(Debug, Clone)]
-#[expect(
-    dead_code,
-    reason = "auth facade internal; some fields unused even in crate tests"
-)]
 pub(crate) struct ApiKeyRecord {
     pub id: String,
     pub prefix: String,

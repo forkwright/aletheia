@@ -144,6 +144,7 @@ impl TestEnvBuilder {
             Arc::new(vec![]),
             None,
             None,
+            taxis::config::NousBehaviorConfig::default(),
         );
 
         if self.with_actor {

@@ -339,16 +339,14 @@ pub(crate) fn render(
                     );
                 }
             }
-            Event::SoftBreak => {
-                if !in_table {
-                    push_span(&mut current_spans, &mut current_col, Span::raw(" "));
-                }
+            Event::SoftBreak if !in_table => {
+                push_span(&mut current_spans, &mut current_col, Span::raw(" "));
             }
-            Event::HardBreak => {
-                if !in_table {
-                    flush_line(&mut lines, &mut current_spans, &mut current_col);
-                }
+            Event::SoftBreak => {}
+            Event::HardBreak if !in_table => {
+                flush_line(&mut lines, &mut current_spans, &mut current_col);
             }
+            Event::HardBreak => {}
             Event::Rule => {
                 flush_line(&mut lines, &mut current_spans, &mut current_col);
                 lines.push(Line::from(Span::styled("─".repeat(40), theme.style_dim())));

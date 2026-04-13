@@ -11,8 +11,7 @@ use crate::error::ApiError;
 use crate::extract::{Claims, require_role};
 use crate::state::KnowledgeState;
 
-/// Hard cap on facts per import request.
-const MAX_IMPORT_BATCH_SIZE: usize = 1000;
+// MAX_IMPORT_BATCH_SIZE is now read from `config.api_limits.max_import_batch_size` at runtime.
 
 /// Request body for bulk fact import.
 #[derive(Debug, Deserialize)]
@@ -69,10 +68,11 @@ pub async fn import_facts(
     Json(body): Json<BulkImportRequest>,
 ) -> Result<Json<BulkImportResponse>, ApiError> {
     require_role(&claims, Role::Operator)?;
-    if body.facts.len() > MAX_IMPORT_BATCH_SIZE {
+    let max_batch = state.config.read().await.api_limits.max_import_batch_size;
+    if body.facts.len() > max_batch {
         return Err(ApiError::BadRequest {
             message: format!(
-                "batch size {} exceeds maximum of {MAX_IMPORT_BATCH_SIZE}",
+                "batch size {} exceeds maximum of {max_batch}",
                 body.facts.len()
             ),
             location: snafu::location!(),
@@ -168,7 +168,8 @@ mod tests {
     }
 
     #[test]
-    fn max_batch_size_is_1000() {
-        assert_eq!(MAX_IMPORT_BATCH_SIZE, 1000);
+    fn default_max_batch_size_is_1000() {
+        let config = taxis::config::ApiLimitsConfig::default();
+        assert_eq!(config.max_import_batch_size, 1000);
     }
 }

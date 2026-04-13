@@ -677,7 +677,7 @@ fn maintenance_status_ids_accepted_by_run() {
 fn truncate_output_short_passes_through() {
     let short = "line 1\nline 2\nline 3";
     assert_eq!(
-        truncate_output(short),
+        truncate_output(short, None, None),
         short,
         "short output should pass through unchanged"
     );
@@ -687,7 +687,7 @@ fn truncate_output_short_passes_through() {
 fn truncate_output_long_shows_head_and_tail() {
     let lines: Vec<String> = (1..=20).map(|i| format!("line {i}")).collect();
     let long = lines.join("\n");
-    let truncated = truncate_output(&long);
+    let truncated = truncate_output(&long, None, None);
 
     assert!(
         truncated.contains("line 1"),

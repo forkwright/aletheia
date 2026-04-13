@@ -36,7 +36,7 @@ const DEFAULT_BUFFER_CAPACITY: usize = 100;
 const CIRCUIT_BREAKER_THRESHOLD: u32 = 5;
 
 /// Interval between health checks while the circuit breaker is open.
-const HALTED_HEALTH_CHECK_INTERVAL: Duration = Duration::from_secs(60);
+const HALTED_HEALTH_CHECK_INTERVAL: Duration = Duration::from_mins(1);
 
 /// Parsed Signal message target.
 #[derive(Debug, Clone, PartialEq, Eq)]

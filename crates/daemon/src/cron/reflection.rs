@@ -15,7 +15,7 @@ impl Default for CronReflectionConfig {
     fn default() -> Self {
         Self {
             enabled: false,
-            interval: Duration::from_secs(24 * 3600),
+            interval: Duration::from_hours(24),
         }
     }
 }

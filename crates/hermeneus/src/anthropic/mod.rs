@@ -12,5 +12,5 @@ pub(crate) mod pricing;
 pub(crate) mod stream;
 pub(crate) mod wire;
 
-pub use client::AnthropicProvider;
+pub use client::{AnthropicProvider, ProviderBehavior};
 pub use stream::StreamEvent;

@@ -26,6 +26,18 @@ use crate::models::{DEFAULT_API_VERSION, DEFAULT_BASE_URL, DEFAULT_MAX_RETRIES, 
 
 use super::pricing::{backoff_delay, estimate_cost_with_cache};
 
+/// Runtime-configurable provider behavior overrides.
+///
+/// Passed to [`AnthropicProvider::with_credential_provider_and_behavior`] to
+/// parameterize constants that were previously hardcoded. Values come from
+/// [`taxis::config::ProviderBehaviorConfig`].
+pub struct ProviderBehavior {
+    /// Per-request timeout for non-streaming completions.
+    pub non_streaming_timeout: Duration,
+    /// Default retry delay in milliseconds for SSE stream errors.
+    pub sse_retry_ms: u64,
+}
+
 /// Anthropic Messages API provider.
 pub struct AnthropicProvider {
     // kanon:ignore RUST/pub-visibility
@@ -38,6 +50,8 @@ pub struct AnthropicProvider {
     health: Arc<ProviderHealthTracker>,
     /// CC profile for request mimicry. `Some` when using OAuth credentials.
     cc_profile: Option<super::cc_profile::CcProfile>,
+    /// Per-request timeout for non-streaming completions.
+    non_streaming_timeout: Duration,
 }
 
 /// Static credential provider for backward-compatible `from_config()`.
@@ -63,7 +77,7 @@ impl CredentialProvider for StaticCredentialProvider {
 }
 
 /// Per-request timeout for non-streaming completions.
-const NON_STREAMING_TIMEOUT: Duration = Duration::from_secs(120);
+const NON_STREAMING_TIMEOUT: Duration = Duration::from_mins(2);
 
 /// Returns true when the URL is safe to use without TLS.
 ///
@@ -138,6 +152,7 @@ impl AnthropicProvider {
             pricing: Self::merge_pricing(config),
             health: Arc::new(ProviderHealthTracker::new(HealthConfig::default())),
             cc_profile: None, // API key mode — no mimicry needed
+            non_streaming_timeout: NON_STREAMING_TIMEOUT,
         };
         // TODO(#2178): add allow_insecure config field
         if !provider.base_url.starts_with("https://") && !is_loopback_url(&provider.base_url) {
@@ -189,6 +204,7 @@ impl AnthropicProvider {
             pricing: Self::merge_pricing(config),
             health: Arc::new(ProviderHealthTracker::new(HealthConfig::default())),
             cc_profile,
+            non_streaming_timeout: NON_STREAMING_TIMEOUT,
         };
         // TODO(#2178): add allow_insecure config field
         if !provider.base_url.starts_with("https://") && !is_loopback_url(&provider.base_url) {
@@ -201,6 +217,21 @@ impl AnthropicProvider {
             .build());
         }
         Ok(provider)
+    }
+
+    /// Create a provider with a dynamic credential provider and explicit
+    /// behavioral overrides from [`taxis::config::ProviderBehaviorConfig`].
+    pub fn with_credential_provider_and_behavior(
+        // kanon:ignore RUST/pub-visibility
+        provider: Arc<dyn CredentialProvider>,
+        config: &ProviderConfig,
+        behavior: &ProviderBehavior,
+    ) -> Result<Self> {
+        let mut this = Self::with_credential_provider(provider, config)?;
+        this.non_streaming_timeout = behavior.non_streaming_timeout;
+        // TODO(#2183): thread sse_retry_ms through the SSE error mapper
+        // once it supports per-instance configuration.
+        Ok(this)
     }
 
     /// Streaming completion: accumulates into a final `CompletionResponse`
@@ -717,7 +748,7 @@ impl AnthropicProvider {
                 .post(format!("{}/v1/messages", self.base_url))
                 .headers(headers)
                 .body(body.clone())
-                .timeout(NON_STREAMING_TIMEOUT)
+                .timeout(self.non_streaming_timeout)
                 .send()
                 .await
             {
