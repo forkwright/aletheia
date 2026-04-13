@@ -129,6 +129,7 @@ pub fn validate_section(section: &str, value: &Value) -> Result<(), ValidationEr
         "daemonBehavior" => validate_daemon_behavior(value, &mut errors),
         "toolLimits" => validate_tool_limits(value, &mut errors),
         "messaging" => validate_messaging(value, &mut errors),
+        "tuning" => validate_tuning(value, &mut errors),
         // NOTE: pass-through sections with no validation rules.
         "packs" | "pricing" | "sandbox" | "logging" | "mcp" | "localProvider" | "training" => {}
         _ => errors.push(format!("unknown config section: {section}")),
@@ -621,6 +622,18 @@ fn validate_messaging(value: &Value, errors: &mut Vec<String>) {
     check_range_u64(value, "receiveTimeoutSecs", 1, 300, errors);
     check_range_u64(value, "agentDispatchTimeoutSecs", 10, 3600, errors);
     check_range_u64(value, "maxConcurrentHandlers", 1, 10_000, errors);
+}
+
+fn validate_tuning(value: &Value, errors: &mut Vec<String>) {
+    check_range_u64(value, "maxChangesPerCycle", 1, 20, errors);
+    check_range_u64(value, "evidenceMinSamples", 2, 1000, errors);
+    if let Some(threshold) = value.get("significanceThreshold").and_then(Value::as_f64)
+        && !(0.1..=10.0).contains(&threshold)
+    {
+        errors.push(format!(
+            "tuning.significanceThreshold must be between 0.1 and 10.0, got {threshold}"
+        ));
+    }
 }
 
 #[cfg(test)]
