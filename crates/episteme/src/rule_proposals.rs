@@ -35,11 +35,15 @@ use crate::instinct::ToolObservation;
 // Thresholds
 // ---------------------------------------------------------------------------
 
-/// Minimum observations before a pattern can generate a proposal.
-const MIN_OBSERVATIONS: u32 = 5;
+/// Default minimum observations before a pattern can generate a proposal.
+///
+/// Callers should prefer the value from `taxis::config::AgentBehaviorDefaults::knowledge_rule_min_observations`.
+pub const DEFAULT_MIN_OBSERVATIONS: u32 = 5;
 
-/// Minimum confidence score (0.0--1.0) for a proposal to be emitted.
-const MIN_CONFIDENCE: f64 = 0.60;
+/// Default minimum confidence score (0.0--1.0) for a proposal to be emitted.
+///
+/// Callers should prefer the value from `taxis::config::AgentBehaviorDefaults::knowledge_rule_min_confidence`.
+pub const DEFAULT_MIN_CONFIDENCE: f64 = 0.60;
 
 // ---------------------------------------------------------------------------
 // Error type
@@ -147,10 +151,17 @@ struct Accum {
 /// Groups observations by `(tool_name, context_category)`, computes failure
 /// rates, and generates a proposal for each group that meets the thresholds.
 ///
+/// `min_observations` and `min_confidence` are sourced from taxis config
+/// (`knowledge_rule_min_observations`, `knowledge_rule_min_confidence`).
+///
 /// This function is pure: it does not write to disk. Use [`write_proposals`]
 /// to persist the results.
 #[must_use]
-pub fn propose_rules(observations: &[ToolObservation]) -> Vec<RuleProposal> {
+pub fn propose_rules(
+    observations: &[ToolObservation],
+    min_observations: u32,
+    min_confidence: f64,
+) -> Vec<RuleProposal> {
     let now = jiff::Timestamp::now().to_string();
 
     // Aggregate by (tool_name, context_category derived from ContextCategory::classify)
@@ -176,20 +187,20 @@ pub fn propose_rules(observations: &[ToolObservation]) -> Vec<RuleProposal> {
     let mut proposals: Vec<RuleProposal> = groups
         .into_values()
         .filter_map(|accum| {
-            if accum.total_count < MIN_OBSERVATIONS {
+            if accum.total_count < min_observations {
                 return None;
             }
 
             let failure_rate =
                 f64::from(accum.failure_count) / f64::from(accum.total_count);
             let count_f = f64::from(accum.total_count);
-            let min_obs_f = f64::from(MIN_OBSERVATIONS);
+            let min_obs_f = f64::from(min_observations);
 
             // WHY: sqrt of (count / min_obs) weights confidence toward the minimum
             // threshold, preventing low-count patterns from inflating confidence.
             let confidence = (failure_rate * (count_f / min_obs_f).sqrt()).clamp(0.0, 1.0);
 
-            if confidence < MIN_CONFIDENCE {
+            if confidence < min_confidence {
                 return None;
             }
 
@@ -338,7 +349,7 @@ mod tests {
     #[test]
     fn below_min_observations_no_proposal() {
         let obs = make_obs("grep", &ToolOutcome::Failure { error: "not found".to_owned() }, 3);
-        let proposals = propose_rules(&obs);
+        let proposals = propose_rules(&obs, DEFAULT_MIN_OBSERVATIONS, DEFAULT_MIN_CONFIDENCE);
         assert!(proposals.is_empty(), "3 observations < MIN_OBSERVATIONS=5");
     }
 
@@ -347,15 +358,15 @@ mod tests {
         // 8 failures, 2 successes → 80% failure rate → confidence well above 0.60
         let mut obs = make_obs("grep", &ToolOutcome::Failure { error: "x".to_owned() }, 8);
         obs.extend(make_obs("grep", &ToolOutcome::Success, 2));
-        let proposals = propose_rules(&obs);
+        let proposals = propose_rules(&obs, DEFAULT_MIN_OBSERVATIONS, DEFAULT_MIN_CONFIDENCE);
         assert!(!proposals.is_empty(), "80% failure rate should generate a proposal");
-        assert!(proposals[0].confidence >= MIN_CONFIDENCE);
+        assert!(proposals[0].confidence >= DEFAULT_MIN_CONFIDENCE);
     }
 
     #[test]
     fn all_successes_no_proposal() {
         let obs = make_obs("grep", &ToolOutcome::Success, 20);
-        let proposals = propose_rules(&obs);
+        let proposals = propose_rules(&obs, DEFAULT_MIN_OBSERVATIONS, DEFAULT_MIN_CONFIDENCE);
         assert!(proposals.is_empty(), "0% failure rate should not generate proposals");
     }
 
@@ -367,7 +378,7 @@ mod tests {
         obs.extend(make_obs("grep", &ToolOutcome::Failure { error: "x".to_owned() }, 7));
         obs.extend(make_obs("grep", &ToolOutcome::Success, 3)); // 70% failure
 
-        let proposals = propose_rules(&obs);
+        let proposals = propose_rules(&obs, DEFAULT_MIN_OBSERVATIONS, DEFAULT_MIN_CONFIDENCE);
         if proposals.len() >= 2 {
             assert!(
                 proposals[0].confidence >= proposals[1].confidence,
@@ -394,7 +405,7 @@ mod tests {
             v.extend(make_obs("exec", &ToolOutcome::Success, 2));
             v
         };
-        let proposals = propose_rules(&obs);
+        let proposals = propose_rules(&obs, DEFAULT_MIN_OBSERVATIONS, DEFAULT_MIN_CONFIDENCE);
         write_proposals(&proposals, obs.len(), &data_dir).expect("write should succeed");
 
         let out = data_dir.join("rule_proposals.toml");

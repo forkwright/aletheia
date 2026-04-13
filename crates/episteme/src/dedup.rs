@@ -93,23 +93,29 @@ pub struct MergeRecord {
     pub merged_at: jiff::Timestamp,
 }
 
-/// Score weights for the merge formula.
+/// Default score weights for the merge formula.
+///
+/// Callers should prefer values from `taxis::config::AgentBehaviorDefaults::knowledge_dedup_weight_*`.
 #[cfg(any(feature = "mneme-engine", test))]
-const WEIGHT_NAME: f64 = 0.4;
+pub const DEFAULT_WEIGHT_NAME: f64 = 0.4;
 #[cfg(any(feature = "mneme-engine", test))]
-const WEIGHT_EMBED: f64 = 0.3;
+pub const DEFAULT_WEIGHT_EMBED: f64 = 0.3;
 #[cfg(any(feature = "mneme-engine", test))]
-const WEIGHT_TYPE: f64 = 0.2;
+pub const DEFAULT_WEIGHT_TYPE: f64 = 0.2;
 #[cfg(any(feature = "mneme-engine", test))]
-const WEIGHT_ALIAS: f64 = 0.1;
+pub const DEFAULT_WEIGHT_ALIAS: f64 = 0.1;
 
-/// Jaro-Winkler threshold for candidate generation.
+/// Default Jaro-Winkler threshold for candidate generation.
+///
+/// Callers should prefer the value from `taxis::config::AgentBehaviorDefaults::knowledge_dedup_jw_threshold`.
 #[cfg(any(feature = "mneme-engine", test))]
-const JW_THRESHOLD: f64 = 0.85;
+pub const DEFAULT_JW_THRESHOLD: f64 = 0.85;
 
-/// Embedding cosine threshold for candidate generation.
+/// Default embedding cosine threshold for candidate generation.
+///
+/// Callers should prefer the value from `taxis::config::AgentBehaviorDefaults::knowledge_dedup_embed_threshold`.
 #[cfg(any(feature = "mneme-engine", test))]
-const EMBED_THRESHOLD: f64 = 0.80;
+pub const DEFAULT_EMBED_THRESHOLD: f64 = 0.80;
 
 /// Compute the weighted merge score.
 #[cfg(any(feature = "mneme-engine", test))]
@@ -122,10 +128,10 @@ pub(crate) fn compute_merge_score(
 ) -> f64 {
     let type_val = if type_match { 1.0 } else { 0.0 };
     let alias_val = if alias_overlap { 1.0 } else { 0.0 };
-    WEIGHT_NAME * name_similarity
-        + WEIGHT_EMBED * embed_similarity
-        + WEIGHT_TYPE * type_val
-        + WEIGHT_ALIAS * alias_val
+    DEFAULT_WEIGHT_NAME * name_similarity
+        + DEFAULT_WEIGHT_EMBED * embed_similarity
+        + DEFAULT_WEIGHT_TYPE * type_val
+        + DEFAULT_WEIGHT_ALIAS * alias_val
 }
 
 /// Compute Jaro-Winkler similarity between two strings (case-insensitive).
@@ -310,9 +316,9 @@ pub(crate) fn generate_candidates(
             let alias_overlap = aliases_overlap(&a.aliases, &b.aliases)
                 || name_in_aliases(&a.name, &b.aliases, &b.name, &a.aliases);
             let is_exact_match = a.name.to_lowercase() == b.name.to_lowercase();
-            let is_jw_match = name_sim >= JW_THRESHOLD;
+            let is_jw_match = name_sim >= DEFAULT_JW_THRESHOLD;
             let embed_sim = embed_similarities(&a.id, &b.id);
-            let is_embed_match = embed_sim >= EMBED_THRESHOLD;
+            let is_embed_match = embed_sim >= DEFAULT_EMBED_THRESHOLD;
 
             if !is_exact_match && !is_jw_match && !is_embed_match && !alias_overlap {
                 continue;

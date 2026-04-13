@@ -334,7 +334,11 @@ pub(crate) async fn execute_builtin(
                 // propose_rules operates on an empty slice, writing an empty
                 // (but valid) proposals file. Future work: wire a serialized
                 // observation snapshot from the knowledge store (#2296 follow-up).
-                let proposals = episteme::rule_proposals::propose_rules(&[]);
+                let proposals = episteme::rule_proposals::propose_rules(
+                    &[],
+                    episteme::rule_proposals::DEFAULT_MIN_OBSERVATIONS,
+                    episteme::rule_proposals::DEFAULT_MIN_CONFIDENCE,
+                );
                 episteme::rule_proposals::write_proposals(
                     &proposals,
                     0,
@@ -658,7 +662,7 @@ async fn execute_ops_fact_extraction(nous_id: &str) -> Result<ExecutionResult> {
         task_sample_count: 0,
     };
 
-    let facts = OpsFactExtractor::extract(&snapshot).map_err(|e| {
+    let facts = OpsFactExtractor::extract(&snapshot, episteme::ops_facts::DEFAULT_MIN_TOOL_CALLS).map_err(|e| {
         error::TaskFailedSnafu {
             task_id: String::from("ops-fact-extraction"),
             reason: e.to_string(),

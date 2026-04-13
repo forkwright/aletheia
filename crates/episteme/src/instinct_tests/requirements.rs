@@ -30,7 +30,7 @@ fn make_observation(
 #[test]
 fn empty_parameters_does_not_panic() {
     let params = serde_json::json!({});
-    let sanitized = sanitize_parameters(&params);
+    let sanitized = sanitize_parameters(&params, DEFAULT_MAX_PARAM_VALUE_LEN);
     assert!(
         sanitized.as_object().expect("should be object").is_empty(),
         "sanitizing empty params returns empty object"
@@ -49,7 +49,7 @@ fn aggregation_with_empty_parameters_does_not_panic() {
             observed_at: ts(&format!("2026-03-{:02}T10:00:00Z", i + 1)),
         })
         .collect();
-    let patterns = aggregate_observations(&observations);
+    let patterns = aggregate_observations(&observations, DEFAULT_MIN_OBSERVATIONS, DEFAULT_MIN_SUCCESS_RATE);
     assert_eq!(
         patterns.len(),
         1,
@@ -69,10 +69,10 @@ fn four_successful_calls_does_not_trigger_pattern() {
             )
         })
         .collect();
-    let patterns = aggregate_observations(&observations);
+    let patterns = aggregate_observations(&observations, DEFAULT_MIN_OBSERVATIONS, DEFAULT_MIN_SUCCESS_RATE);
     assert!(
         patterns.is_empty(),
-        "4 observations is below the minimum threshold of {MIN_OBSERVATIONS}"
+        "4 observations is below the minimum threshold of {DEFAULT_MIN_OBSERVATIONS}"
     );
 }
 
@@ -88,14 +88,14 @@ fn five_successful_calls_at_threshold_triggers_pattern() {
             )
         })
         .collect();
-    let patterns = aggregate_observations(&observations);
+    let patterns = aggregate_observations(&observations, DEFAULT_MIN_OBSERVATIONS, DEFAULT_MIN_SUCCESS_RATE);
     assert_eq!(
         patterns.len(),
         1,
-        "exactly {MIN_OBSERVATIONS} successful calls should meet the minimum threshold"
+        "exactly {DEFAULT_MIN_OBSERVATIONS} successful calls should meet the minimum threshold"
     );
     assert_eq!(
-        patterns[0].success_count, MIN_OBSERVATIONS,
+        patterns[0].success_count, DEFAULT_MIN_OBSERVATIONS,
         "success count should equal minimum observations"
     );
 }
@@ -122,11 +122,11 @@ fn ten_calls_below_80_percent_success_rate_does_not_trigger() {
             &format!("2026-03-{:02}T11:00:00Z", i + 1),
         ));
     }
-    let patterns = aggregate_observations(&observations);
+    let patterns = aggregate_observations(&observations, DEFAULT_MIN_OBSERVATIONS, DEFAULT_MIN_SUCCESS_RATE);
     assert!(
         patterns.is_empty(),
         "70% success rate should not trigger a pattern (minimum is {:.0}%)",
-        MIN_SUCCESS_RATE * 100.0
+        DEFAULT_MIN_SUCCESS_RATE * 100.0
     );
 }
 
@@ -152,7 +152,7 @@ fn ten_calls_at_80_percent_success_rate_boundary_triggers_pattern() {
             &format!("2026-03-{:02}T11:00:00Z", i + 1),
         ));
     }
-    let patterns = aggregate_observations(&observations);
+    let patterns = aggregate_observations(&observations, DEFAULT_MIN_OBSERVATIONS, DEFAULT_MIN_SUCCESS_RATE);
     assert_eq!(
         patterns.len(),
         1,
@@ -173,7 +173,7 @@ fn sanitize_strips_token_field_name() {
         "auth_token": "header-value-not-real",
         "query": "normal parameter"
     });
-    let sanitized = sanitize_parameters(&params);
+    let sanitized = sanitize_parameters(&params, DEFAULT_MAX_PARAM_VALUE_LEN);
     let obj = sanitized.as_object().expect("should be object");
     assert_eq!(obj["token"], "[REDACTED]", "token field should be redacted");
     assert_eq!(
@@ -188,13 +188,13 @@ fn sanitize_strips_token_field_name() {
 
 #[test]
 fn sanitize_200_char_value_not_truncated() {
-    let exactly_limit = "x".repeat(MAX_PARAM_VALUE_LEN);
+    let exactly_limit = "x".repeat(DEFAULT_MAX_PARAM_VALUE_LEN);
     let params = serde_json::json!({"content": exactly_limit.clone()});
-    let sanitized = sanitize_parameters(&params);
+    let sanitized = sanitize_parameters(&params, DEFAULT_MAX_PARAM_VALUE_LEN);
     let content = sanitized["content"].as_str().expect("should be string");
     assert_eq!(
         content, exactly_limit,
-        "value of exactly {MAX_PARAM_VALUE_LEN} chars should not be truncated"
+        "value of exactly {DEFAULT_MAX_PARAM_VALUE_LEN} chars should not be truncated"
     );
     assert!(
         !content.ends_with("..."),
@@ -204,28 +204,28 @@ fn sanitize_200_char_value_not_truncated() {
 
 #[test]
 fn sanitize_201_char_value_is_truncated() {
-    let over_limit = "y".repeat(MAX_PARAM_VALUE_LEN + 1);
+    let over_limit = "y".repeat(DEFAULT_MAX_PARAM_VALUE_LEN + 1);
     let params = serde_json::json!({"content": over_limit});
-    let sanitized = sanitize_parameters(&params);
+    let sanitized = sanitize_parameters(&params, DEFAULT_MAX_PARAM_VALUE_LEN);
     let content = sanitized["content"].as_str().expect("should be string");
     assert!(
         content.ends_with("..."),
-        "value exceeding {MAX_PARAM_VALUE_LEN} chars should end with '...'"
+        "value exceeding {DEFAULT_MAX_PARAM_VALUE_LEN} chars should end with '...'"
     );
     assert_eq!(
         content.len(),
-        MAX_PARAM_VALUE_LEN + 3,
-        "truncated value should be {MAX_PARAM_VALUE_LEN} chars + '...'"
+        DEFAULT_MAX_PARAM_VALUE_LEN + 3,
+        "truncated value should be {DEFAULT_MAX_PARAM_VALUE_LEN} chars + '...'"
     );
 }
 
 #[test]
 fn sanitize_array_parameter_values_element_by_element() {
-    let long_item = "z".repeat(MAX_PARAM_VALUE_LEN + 50);
+    let long_item = "z".repeat(DEFAULT_MAX_PARAM_VALUE_LEN + 50);
     let params = serde_json::json!({
         "items": [long_item, "short item", "another normal value"]
     });
-    let sanitized = sanitize_parameters(&params);
+    let sanitized = sanitize_parameters(&params, DEFAULT_MAX_PARAM_VALUE_LEN);
     let items = sanitized["items"].as_array().expect("should be array");
     assert_eq!(items.len(), 3, "array length should be preserved");
     let first = items[0].as_str().expect("should be string");
@@ -234,7 +234,7 @@ fn sanitize_array_parameter_values_element_by_element() {
         "long array element should be truncated"
     );
     assert!(
-        first.len() <= MAX_PARAM_VALUE_LEN + 3,
+        first.len() <= DEFAULT_MAX_PARAM_VALUE_LEN + 3,
         "truncated element length should be within limit"
     );
     assert_eq!(
@@ -271,7 +271,7 @@ fn different_nous_observations_aggregate_together_without_filter() {
         nous_id: "nous-bob".to_owned(),
         observed_at: ts(&format!("2026-03-{:02}T11:00:00Z", i + 1)),
     }));
-    let all = aggregate_observations(&observations);
+    let all = aggregate_observations(&observations, DEFAULT_MIN_OBSERVATIONS, DEFAULT_MIN_SUCCESS_RATE);
     assert_eq!(
         all.len(),
         1,
@@ -283,7 +283,7 @@ fn different_nous_observations_aggregate_together_without_filter() {
         .filter(|o| o.nous_id == "nous-alice")
         .cloned()
         .collect();
-    let alice_patterns = aggregate_observations(&alice);
+    let alice_patterns = aggregate_observations(&alice, DEFAULT_MIN_OBSERVATIONS, DEFAULT_MIN_SUCCESS_RATE);
     assert!(
         alice_patterns.is_empty(),
         "3 observations below threshold when filtered per-nous"
@@ -311,7 +311,7 @@ fn two_tools_identical_parameters_produce_separate_patterns() {
             observed_at: ts(&format!("2026-03-{:02}T11:00:00Z", i + 1)),
         });
     }
-    let patterns = aggregate_observations(&observations);
+    let patterns = aggregate_observations(&observations, DEFAULT_MIN_OBSERVATIONS, DEFAULT_MIN_SUCCESS_RATE);
     assert_eq!(
         patterns.len(),
         2,
@@ -348,7 +348,7 @@ fn tool_name_matching_is_case_sensitive() {
             &format!("2026-03-{:02}T11:00:00Z", i + 1),
         ));
     }
-    let patterns = aggregate_observations(&observations);
+    let patterns = aggregate_observations(&observations, DEFAULT_MIN_OBSERVATIONS, DEFAULT_MIN_SUCCESS_RATE);
     assert_eq!(
         patterns.len(),
         2,
@@ -375,11 +375,11 @@ fn context_category_json_serde_roundtrip() {
 
 #[test]
 fn context_summary_exactly_at_limit_not_truncated() {
-    let exactly_limit = "a".repeat(MAX_CONTEXT_SUMMARY_LEN);
-    let result = truncate_context_summary(&exactly_limit);
+    let exactly_limit = "a".repeat(DEFAULT_MAX_CONTEXT_SUMMARY_LEN);
+    let result = truncate_context_summary(&exactly_limit, DEFAULT_MAX_CONTEXT_SUMMARY_LEN);
     assert_eq!(
         result, exactly_limit,
-        "context summary of exactly {MAX_CONTEXT_SUMMARY_LEN} chars should not be truncated"
+        "context summary of exactly {DEFAULT_MAX_CONTEXT_SUMMARY_LEN} chars should not be truncated"
     );
     assert!(
         !result.ends_with("..."),
@@ -408,8 +408,8 @@ fn context_category_unknown_string_parses_to_other() {
 
 mod proptests {
     use crate::instinct::{
-        MAX_PARAM_VALUE_LEN, ToolObservation, ToolOutcome, aggregate_observations,
-        sanitize_parameters,
+        DEFAULT_MAX_PARAM_VALUE_LEN, DEFAULT_MIN_OBSERVATIONS, DEFAULT_MIN_SUCCESS_RATE,
+        ToolObservation, ToolOutcome, aggregate_observations, sanitize_parameters,
     };
     use proptest::prelude::*;
 
@@ -435,19 +435,19 @@ mod proptests {
             }
         }
 
-        /// Sanitized non-secret string values are bounded: length ≤ MAX_PARAM_VALUE_LEN + 3.
+        /// Sanitized non-secret string values are bounded: length ≤ DEFAULT_MAX_PARAM_VALUE_LEN + 3.
         ///
         /// The bound accounts for the "..." truncation suffix appended to long values.
         #[test]
         fn sanitize_output_string_length_bounded(s in "[a-zA-Z0-9 ]{0,300}") {
             let params = serde_json::json!({"content": s});
-            let sanitized = sanitize_parameters(&params);
+            let sanitized = sanitize_parameters(&params, DEFAULT_MAX_PARAM_VALUE_LEN);
             let content = sanitized["content"].as_str().expect("string");
             prop_assert!(
-                content.len() <= MAX_PARAM_VALUE_LEN + 3,
-                "sanitized length {} exceeds MAX_PARAM_VALUE_LEN + 3 = {}",
+                content.len() <= DEFAULT_MAX_PARAM_VALUE_LEN + 3,
+                "sanitized length {} exceeds DEFAULT_MAX_PARAM_VALUE_LEN + 3 = {}",
                 content.len(),
-                MAX_PARAM_VALUE_LEN + 3
+                DEFAULT_MAX_PARAM_VALUE_LEN + 3
             );
         }
 
@@ -465,7 +465,7 @@ mod proptests {
                     observed_at: jiff::Timestamp::UNIX_EPOCH,
                 })
                 .collect();
-            let patterns = aggregate_observations(&observations);
+            let patterns = aggregate_observations(&observations, DEFAULT_MIN_OBSERVATIONS, DEFAULT_MIN_SUCCESS_RATE);
             prop_assert_eq!(patterns.len(), 1, "should produce exactly one pattern");
             prop_assert_eq!(
                 patterns[0].total_count,

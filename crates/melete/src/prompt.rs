@@ -94,13 +94,17 @@ pub(crate) fn format_messages(messages: &[Message], include_tool_calls: bool) ->
     output
 }
 
+/// Default maximum character length for truncated tool results in distillation prompts.
+///
+/// Callers should prefer the value from `taxis::config::AgentBehaviorDefaults::distillation_max_tool_result_len`.
+pub const DEFAULT_MAX_TOOL_RESULT_LEN: usize = 500;
+
 /// Truncate long tool results to keep the distillation input manageable.
 fn truncate_tool_result(content: &str) -> &str {
-    const MAX_TOOL_RESULT_LEN: usize = 500;
-    if content.len() <= MAX_TOOL_RESULT_LEN {
+    if content.len() <= DEFAULT_MAX_TOOL_RESULT_LEN {
         content
     } else {
-        let mut end = MAX_TOOL_RESULT_LEN;
+        let mut end = DEFAULT_MAX_TOOL_RESULT_LEN;
         while end > 0 && !content.is_char_boundary(end) {
             end -= 1;
         }

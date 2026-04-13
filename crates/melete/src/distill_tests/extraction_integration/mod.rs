@@ -365,7 +365,7 @@ fn backoff_activates_after_failure_and_expires_after_one_turn() {
         .retry_state
         .lock()
         .expect("retry_state mutex should not be poisoned") // WHY: test assertion
-        .record_failure();
+        .record_failure(super::super::DEFAULT_MAX_BACKOFF_TURNS);
     assert!(
         engine.in_backoff(),
         "engine should be in backoff after recording a failure"
@@ -393,8 +393,8 @@ fn backoff_resets_on_success() {
             .retry_state
             .lock()
             .expect("retry_state mutex should not be poisoned"); // WHY: test assertion
-        state.record_failure();
-        state.record_failure();
+        state.record_failure(super::super::DEFAULT_MAX_BACKOFF_TURNS);
+        state.record_failure(super::super::DEFAULT_MAX_BACKOFF_TURNS);
     }
     assert!(
         engine.in_backoff(),
@@ -427,7 +427,7 @@ fn backoff_schedule_is_exponential() {
                 .lock()
                 .expect("retry_state mutex should not be poisoned"); // WHY: test assertion
             for _ in 0..failures {
-                state.record_failure();
+                state.record_failure(super::super::DEFAULT_MAX_BACKOFF_TURNS);
             }
         }
         let actual = engine
@@ -463,7 +463,7 @@ async fn distill_records_success_and_clears_backoff() {
         .retry_state
         .lock()
         .expect("retry_state mutex should not be poisoned") // WHY: test assertion
-        .record_failure();
+        .record_failure(super::super::DEFAULT_MAX_BACKOFF_TURNS);
     assert!(
         engine.in_backoff(),
         "engine should be in backoff after recording a failure"

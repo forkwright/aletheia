@@ -4,11 +4,15 @@ use std::collections::HashSet;
 
 use hermeneus::types::{Content, ContentBlock, Message};
 
-/// Minimum token length to include in similarity comparison.
-const MIN_TOKEN_LEN: usize = 3;
+/// Default minimum token length to include in similarity comparison.
+///
+/// Callers should prefer the value from `taxis::config::AgentBehaviorDefaults::similarity_min_token_len`.
+pub const DEFAULT_MIN_TOKEN_LEN: usize = 3;
 
 /// Default Jaccard similarity threshold for near-duplicate detection.
-pub(crate) const DEFAULT_SIMILARITY_THRESHOLD: f64 = 0.85;
+///
+/// Callers should prefer the value from `taxis::config::AgentBehaviorDefaults::similarity_threshold`.
+pub const DEFAULT_SIMILARITY_THRESHOLD: f64 = 0.85;
 
 /// Statistics from a similarity pruning pass.
 #[derive(Debug, Clone)]
@@ -69,14 +73,14 @@ pub(crate) fn extract_text(message: &Message) -> String {
 /// Tokenize text into a set of lowercase words for Jaccard comparison.
 ///
 /// Splits on whitespace and ASCII punctuation, discards tokens shorter than
-/// [`MIN_TOKEN_LEN`] to reduce noise from articles and prepositions.
+/// [`DEFAULT_MIN_TOKEN_LEN`] to reduce noise from articles and prepositions.
 ///
 /// # Complexity
 ///
 /// O(n) where n is the length of the input text.
 pub(crate) fn tokenize(text: &str) -> HashSet<String> {
     text.split(|c: char| c.is_whitespace() || c.is_ascii_punctuation())
-        .filter(|w| w.len() >= MIN_TOKEN_LEN)
+        .filter(|w| w.len() >= DEFAULT_MIN_TOKEN_LEN)
         .map(str::to_lowercase)
         .collect()
 }

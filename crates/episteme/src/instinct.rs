@@ -9,17 +9,25 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Maximum length for parameter values before truncation.
-const MAX_PARAM_VALUE_LEN: usize = 200;
+/// Default maximum length for parameter values before truncation.
+///
+/// Callers should prefer the value from `taxis::config::KnowledgeConfig::instinct_max_param_value_len`.
+pub const DEFAULT_MAX_PARAM_VALUE_LEN: usize = 200;
 
-/// Maximum length for context summaries.
-const MAX_CONTEXT_SUMMARY_LEN: usize = 100;
+/// Default maximum length for context summaries.
+///
+/// Callers should prefer the value from `taxis::config::KnowledgeConfig::instinct_max_context_summary_len`.
+pub const DEFAULT_MAX_CONTEXT_SUMMARY_LEN: usize = 100;
 
-/// Minimum observations before a behavioral pattern is created.
-const MIN_OBSERVATIONS: u32 = 5;
+/// Default minimum observations before a behavioral pattern is created.
+///
+/// Callers should prefer the value from `taxis::config::AgentBehaviorDefaults::knowledge_instinct_min_observations`.
+pub const DEFAULT_MIN_OBSERVATIONS: u32 = 5;
 
-/// Minimum success rate (0.0--1.0) before a behavioral pattern is created.
-const MIN_SUCCESS_RATE: f64 = 0.80;
+/// Default minimum success rate (0.0--1.0) before a behavioral pattern is created.
+///
+/// Callers should prefer the value from `taxis::config::AgentBehaviorDefaults::knowledge_instinct_min_success_rate`.
+pub const DEFAULT_MIN_SUCCESS_RATE: f64 = 0.80;
 
 /// Patterns matching potential secret values in tool parameters.
 const SECRET_PATTERNS: &[&str] = &[
@@ -142,8 +150,8 @@ pub(crate) struct BehavioralPattern {
 impl BehavioralPattern {
     /// Whether this pattern meets the thresholds for instinct fact creation.
     #[must_use]
-    pub(crate) fn meets_thresholds(&self) -> bool {
-        self.success_count >= MIN_OBSERVATIONS && self.success_rate >= MIN_SUCCESS_RATE
+    pub(crate) fn meets_thresholds(&self, min_observations: u32, min_success_rate: f64) -> bool {
+        self.success_count >= min_observations && self.success_rate >= min_success_rate
     }
 
     /// Generate the fact content string for this pattern.
@@ -367,10 +375,15 @@ fn is_communication_context(ctx: &str) -> bool {
 /// Sanitize tool parameters by stripping secrets and truncating values.
 ///
 /// - Keys matching secret patterns have their values replaced with `"[REDACTED]"`.
-/// - String values are truncated to 200 characters.
+/// - String values are truncated to `max_param_value_len` characters.
 /// - Nested objects and arrays are processed recursively.
+///
+/// `max_param_value_len` is sourced from `taxis::config::KnowledgeConfig::instinct_max_param_value_len`.
 #[must_use]
-pub fn sanitize_parameters(params: &serde_json::Value) -> serde_json::Value {
+pub fn sanitize_parameters(
+    params: &serde_json::Value,
+    max_param_value_len: usize,
+) -> serde_json::Value {
     match params {
         serde_json::Value::Object(map) => {
             let mut sanitized = serde_json::Map::new();
@@ -382,43 +395,45 @@ pub fn sanitize_parameters(params: &serde_json::Value) -> serde_json::Value {
                         serde_json::Value::String("[REDACTED]".to_owned()),
                     );
                 } else {
-                    sanitized.insert(key.clone(), sanitize_value(value));
+                    sanitized.insert(key.clone(), sanitize_value(value, max_param_value_len));
                 }
             }
             serde_json::Value::Object(sanitized)
         }
-        other => sanitize_value(other),
+        other => sanitize_value(other, max_param_value_len),
     }
 }
 
 /// Sanitize a single JSON value (truncate strings, recurse into containers).
-fn sanitize_value(value: &serde_json::Value) -> serde_json::Value {
+fn sanitize_value(value: &serde_json::Value, max_param_value_len: usize) -> serde_json::Value {
     match value {
         serde_json::Value::String(s) => {
-            if s.len() > MAX_PARAM_VALUE_LEN {
-                let truncated: String = s.chars().take(MAX_PARAM_VALUE_LEN).collect();
+            if s.len() > max_param_value_len {
+                let truncated: String = s.chars().take(max_param_value_len).collect();
                 serde_json::Value::String(format!("{truncated}..."))
             } else {
                 serde_json::Value::String(s.clone())
             }
         }
         serde_json::Value::Array(arr) => {
-            serde_json::Value::Array(arr.iter().map(sanitize_value).collect())
+            serde_json::Value::Array(arr.iter().map(|v| sanitize_value(v, max_param_value_len)).collect())
         }
         serde_json::Value::Object(map) => {
-            sanitize_parameters(&serde_json::Value::Object(map.clone()))
+            sanitize_parameters(&serde_json::Value::Object(map.clone()), max_param_value_len)
         }
         other => other.clone(),
     }
 }
 
 /// Truncate a context summary to the maximum allowed length.
+///
+/// `max_context_summary_len` is sourced from `taxis::config::KnowledgeConfig::instinct_max_context_summary_len`.
 #[must_use]
-pub fn truncate_context_summary(summary: &str) -> String {
-    if summary.len() <= MAX_CONTEXT_SUMMARY_LEN {
+pub fn truncate_context_summary(summary: &str, max_context_summary_len: usize) -> String {
+    if summary.len() <= max_context_summary_len {
         summary.to_owned()
     } else {
-        let truncated: String = summary.chars().take(MAX_CONTEXT_SUMMARY_LEN).collect();
+        let truncated: String = summary.chars().take(max_context_summary_len).collect();
         format!("{truncated}...")
     }
 }
@@ -427,6 +442,9 @@ pub fn truncate_context_summary(summary: &str) -> String {
 ///
 /// Groups by (`tool_name`, `context_category`), computes success rates, and
 /// returns patterns that meet the minimum thresholds.
+///
+/// `min_observations` and `min_success_rate` are sourced from taxis config
+/// (`knowledge_instinct_min_observations`, `knowledge_instinct_min_success_rate`).
 #[cfg_attr(
     not(test),
     expect(
@@ -435,7 +453,11 @@ pub fn truncate_context_summary(summary: &str) -> String {
     )
 )]
 #[must_use]
-pub(crate) fn aggregate_observations(observations: &[ToolObservation]) -> Vec<BehavioralPattern> {
+pub(crate) fn aggregate_observations(
+    observations: &[ToolObservation],
+    min_observations: u32,
+    min_success_rate: f64,
+) -> Vec<BehavioralPattern> {
     use std::collections::HashMap;
 
     #[derive(Default)]
@@ -503,7 +525,7 @@ pub(crate) fn aggregate_observations(observations: &[ToolObservation]) -> Vec<Be
                 last_observed: accum.last_observed.unwrap_or_else(jiff::Timestamp::now),
             };
 
-            if pattern.meets_thresholds() {
+            if pattern.meets_thresholds(min_observations, min_success_rate) {
                 let content = pattern.to_fact_content();
                 Some(BehavioralPattern {
                     pattern: content,

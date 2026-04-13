@@ -15,8 +15,10 @@ use crate::flush::{FlushItem, FlushSource, MemoryFlush};
 use crate::prompt;
 use crate::similarity::{self, DEFAULT_SIMILARITY_THRESHOLD, PruningStats};
 
-/// Maximum conversation turns to skip between distillation retry attempts.
-const MAX_BACKOFF_TURNS: u32 = 8;
+/// Default maximum conversation turns to skip between distillation retry attempts.
+///
+/// Callers should prefer the value from `taxis::config::AgentBehaviorDefaults::distillation_max_backoff_turns`.
+pub const DEFAULT_MAX_BACKOFF_TURNS: u32 = 8;
 
 /// Bounded retry state to prevent distillation storms on repeated failures.
 ///
@@ -31,13 +33,13 @@ struct RetryState {
 }
 
 impl RetryState {
-    fn record_failure(&mut self) {
+    fn record_failure(&mut self, max_backoff_turns: u32) {
         self.consecutive_failures = self.consecutive_failures.saturating_add(1);
-        // NOTE: exponential backoff: 1, 2, 4, 8 turns; capped at MAX_BACKOFF_TURNS
+        // NOTE: exponential backoff: 1, 2, 4, 8 turns; capped at max_backoff_turns
         self.turns_to_skip = koina::retry::exponential_steps(
             self.consecutive_failures.saturating_sub(1),
             2,
-            MAX_BACKOFF_TURNS,
+            max_backoff_turns,
         );
     }
 
@@ -163,6 +165,13 @@ pub struct DistillConfig {
     /// Whether to run LLM-based contradiction detection during distillation.
     #[serde(default)]
     pub detect_contradictions: bool,
+    /// Maximum backoff turns between retry attempts. Default: 8.
+    #[serde(default = "default_max_backoff_turns")]
+    pub max_backoff_turns: u32,
+}
+
+fn default_max_backoff_turns() -> u32 {
+    DEFAULT_MAX_BACKOFF_TURNS
 }
 
 fn default_similarity_threshold() -> f64 {
@@ -181,6 +190,7 @@ impl Default for DistillConfig {
             sections: DistillSection::all_standard(),
             similarity_threshold: DEFAULT_SIMILARITY_THRESHOLD,
             detect_contradictions: false,
+            max_backoff_turns: DEFAULT_MAX_BACKOFF_TURNS,
         }
     }
 }
@@ -436,7 +446,7 @@ impl DistillEngine {
                 r
             }
             Ok(Err(e)) => {
-                self.lock_retry_state().record_failure();
+                self.lock_retry_state().record_failure(self.config.max_backoff_turns);
                 record_outcome(nous_id, &distill_start, false, 0, 0);
                 return Err(e).context(LlmCallSnafu);
             }
@@ -449,7 +459,7 @@ impl DistillEngine {
                     "unknown panic".to_owned()
                 };
                 tracing::error!(nous_id, panic_message = %msg, "LLM provider panicked during distillation");
-                self.lock_retry_state().record_failure();
+                self.lock_retry_state().record_failure(self.config.max_backoff_turns);
                 record_outcome(nous_id, &distill_start, false, 0, 0);
                 return LlmPanicSnafu { message: msg }.fail();
             }
@@ -457,7 +467,7 @@ impl DistillEngine {
 
         let summary = extract_summary_text(&response.content);
         if summary.is_empty() {
-            self.lock_retry_state().record_failure();
+            self.lock_retry_state().record_failure(self.config.max_backoff_turns);
             record_outcome(nous_id, &distill_start, false, 0, 0);
             return EmptySummarySnafu.fail();
         }

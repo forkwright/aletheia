@@ -42,7 +42,7 @@ mod ops_facts {
         // task_sample_count > 0 must emit every category — sessions,
         // tool success rate, error count, task latency — so the knowledge
         // graph gets the full picture of system health at this tick.
-        let facts = OpsFactExtractor::extract(&full_snapshot()).expect("extraction");
+        let facts = OpsFactExtractor::extract(&full_snapshot(), episteme::ops_facts::DEFAULT_MIN_TOOL_CALLS).expect("extraction");
         assert_eq!(facts.len(), 4, "full snapshot should yield 4 facts");
 
         let contents: Vec<&str> = facts.iter().map(|f| f.fact.content.as_str()).collect();
@@ -57,7 +57,7 @@ mod ops_facts {
         // WHY: downstream consumers rely on ops facts having a stable
         // shape — operational fact type, project scope, inferred tier,
         // non-empty nous_id. Drift here would silently break dashboards.
-        let facts = OpsFactExtractor::extract(&full_snapshot()).expect("extraction");
+        let facts = OpsFactExtractor::extract(&full_snapshot(), episteme::ops_facts::DEFAULT_MIN_TOOL_CALLS).expect("extraction");
         for ops_fact in &facts {
             let f = &ops_fact.fact;
             assert_eq!(f.fact_type, "operational");
@@ -91,7 +91,7 @@ mod ops_facts {
             avg_task_latency_ms: 0,
             task_sample_count: 0,
         };
-        let facts = OpsFactExtractor::extract(&snapshot).expect("extraction");
+        let facts = OpsFactExtractor::extract(&snapshot, episteme::ops_facts::DEFAULT_MIN_TOOL_CALLS).expect("extraction");
         let contents: Vec<&str> = facts.iter().map(|f| f.fact.content.as_str()).collect();
         assert_eq!(facts.len(), 2, "should have only sessions + errors");
         assert!(
@@ -114,7 +114,7 @@ mod ops_facts {
             avg_task_latency_ms: 0,
             task_sample_count: 0,
         };
-        let facts = OpsFactExtractor::extract(&snapshot).expect("extraction");
+        let facts = OpsFactExtractor::extract(&snapshot, episteme::ops_facts::DEFAULT_MIN_TOOL_CALLS).expect("extraction");
         let contents: Vec<&str> = facts.iter().map(|f| f.fact.content.as_str()).collect();
         assert!(
             !contents.iter().any(|c| c.contains("avg task latency")),
@@ -131,7 +131,7 @@ mod ops_facts {
             nous_id: String::from("int-test-nous"),
             ..Default::default()
         };
-        let facts = OpsFactExtractor::extract(&snapshot).expect("extraction");
+        let facts = OpsFactExtractor::extract(&snapshot, episteme::ops_facts::DEFAULT_MIN_TOOL_CALLS).expect("extraction");
         assert_eq!(facts.len(), 2, "baseline = sessions + errors");
     }
 
@@ -140,7 +140,7 @@ mod ops_facts {
         // WHY: fact IDs collide across categories would cause upserts to
         // overwrite each other in the knowledge store. Each category must
         // mint its own ULID-suffixed id.
-        let facts = OpsFactExtractor::extract(&full_snapshot()).expect("extraction");
+        let facts = OpsFactExtractor::extract(&full_snapshot(), episteme::ops_facts::DEFAULT_MIN_TOOL_CALLS).expect("extraction");
         let ids: std::collections::HashSet<_> =
             facts.iter().map(|f| f.fact.id.as_str().to_owned()).collect();
         assert_eq!(ids.len(), facts.len(), "fact ids must be unique per snapshot");
@@ -162,8 +162,8 @@ mod ops_facts {
             error_count: 100,
             ..Default::default()
         };
-        let low_facts = OpsFactExtractor::extract(&low_err).expect("low");
-        let high_facts = OpsFactExtractor::extract(&high_err).expect("high");
+        let low_facts = OpsFactExtractor::extract(&low_err, episteme::ops_facts::DEFAULT_MIN_TOOL_CALLS).expect("low");
+        let high_facts = OpsFactExtractor::extract(&high_err, episteme::ops_facts::DEFAULT_MIN_TOOL_CALLS).expect("high");
         let low_conf = low_facts
             .iter()
             .find(|f| f.fact.content.starts_with("error count"))
