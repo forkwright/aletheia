@@ -357,6 +357,7 @@ mod tests {
     }
 
     #[test]
+    #[expect(clippy::expect_used, reason = "test assertion")]
     fn odt_produces_nonempty_bytes() {
         let r = OdtRenderer::new();
         let bytes = r.render(&sample_doc()).expect("ODT render failed");
@@ -364,6 +365,7 @@ mod tests {
     }
 
     #[test]
+    #[expect(clippy::expect_used, clippy::indexing_slicing, reason = "test assertions on known-good data")]
     fn odt_starts_with_pk_magic() {
         // WHY: ZIP files start with PK (0x50 0x4B).
         let r = OdtRenderer::new();

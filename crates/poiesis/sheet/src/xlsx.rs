@@ -196,6 +196,7 @@ mod tests {
     }
 
     #[test]
+    #[expect(clippy::expect_used, reason = "test assertion")]
     fn xlsx_produces_nonempty_bytes() {
         let r = XlsxRenderer::new();
         let bytes = r.render(&sample_doc()).expect("XLSX render failed");
@@ -203,6 +204,8 @@ mod tests {
     }
 
     #[test]
+    #[expect(clippy::expect_used, reason = "test assertion")]
+    #[expect(clippy::indexing_slicing, reason = "test assertions on known-good data")]
     fn xlsx_starts_with_pk_magic() {
         // WHY: XLSX is a ZIP archive; valid files start with PK (0x50 0x4B).
         let r = XlsxRenderer::new();

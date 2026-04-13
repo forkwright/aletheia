@@ -1108,7 +1108,7 @@ mod tests {
     #[test]
     fn accepts_valid_api_limits() {
         let section = json!({
-            "maxMessageBytes": 262144,
+            "maxMessageBytes": 262_144,
             "maxHistoryLimit": 1000,
             "defaultHistoryLimit": 50
         });
@@ -1158,7 +1158,7 @@ mod tests {
         let section = json!({
             "maxPatternLength": 1000,
             "subprocessTimeoutSecs": 60,
-            "maxWriteBytes": 10485760
+            "maxWriteBytes": 10_485_760
         });
         assert!(
             validate_section("toolLimits", &section).is_ok(),

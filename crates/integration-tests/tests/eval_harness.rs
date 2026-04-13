@@ -26,6 +26,7 @@ use symbolon::jwt::{JwtConfig, JwtManager};
 use symbolon::types::Role;
 use taxis::oikos::Oikos;
 
+#[expect(clippy::too_many_lines, reason = "test server setup is inherently verbose")]
 async fn start_test_server() -> (String, String, tempfile::TempDir) {
     install_crypto_provider();
     let dir = tempfile::TempDir::new().expect("tmpdir");

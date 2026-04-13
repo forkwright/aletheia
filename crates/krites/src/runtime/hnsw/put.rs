@@ -845,7 +845,6 @@ impl<'a> SessionTx<'a> {
 #[expect(
     clippy::unwrap_used,
     clippy::cast_precision_loss,
-    clippy::cast_possible_truncation,
     reason = "test assertions and test-only numeric casts"
 )]
 mod tests {

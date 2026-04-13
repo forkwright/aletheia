@@ -52,13 +52,13 @@ async fn main() -> Result<()> {
         return commands::daemon::do_daemon().await;
     }
 
-    commands::server::run(commands::server::Args {
+    Box::pin(commands::server::run(commands::server::Args {
         instance_root: cli.instance_root,
         bind: cli.bind,
         port: cli.port,
         log_level: cli.log_level,
         json_logs: cli.json_logs,
-    })
+    }))
     .await
     .map_err(Into::into)
 }

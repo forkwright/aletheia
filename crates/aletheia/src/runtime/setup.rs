@@ -105,8 +105,9 @@ pub(super) fn build_provider_registry(config: &AletheiaConfig, oikos: &Oikos) ->
 
     let credential_chain: Arc<dyn CredentialProvider> = Arc::new(CredentialChain::new(chain));
 
-    if let Some(cred) = credential_chain.get_credential() {
-        info!(source = %cred.source, "credential resolved");
+    let resolved_source = credential_chain.get_credential().map(|c| c.source);
+    if let Some(ref source) = resolved_source {
+        info!(source = %source, "credential resolved");
     } else {
         warn!(
             "no credential found -- server will start in degraded mode (no LLM)\n  \
@@ -120,18 +121,20 @@ pub(super) fn build_provider_registry(config: &AletheiaConfig, oikos: &Oikos) ->
         ..ProviderConfig::default()
     };
 
-    // WHY: Register CC subprocess provider first when available. CC handles
-    // OAuth attestation correctly, so it takes priority over the direct
-    // Anthropic client for matching models. The Anthropic provider serves
-    // as fallback (e.g., when using API keys, which don't need attestation).
+    // WHY: Only register CC subprocess provider when the credential source
+    // is not "api-key" AND the resolved credential is OAuth. The CC provider
+    // accepts all claude-* models and wins first-match routing, so registering
+    // it unconditionally causes API key users to be routed through the CC CLI
+    // unnecessarily, and OAuth tokens to be forwarded raw to the API (which
+    // rejects them with 401).
     #[cfg(feature = "cc-provider")]
-    {
+    if cred_source != "api-key" && resolved_source == Some(CredentialSource::OAuth) {
         use hermeneus::cc::{CcProvider, CcProviderConfig};
         let cc_config = CcProviderConfig::default();
         match CcProvider::new(&cc_config) {
             Ok(provider) => {
                 registry.register(Box::new(provider));
-                info!("CC subprocess provider registered (preferred for OAuth)");
+                info!("CC subprocess provider registered (OAuth credential detected)");
             }
             Err(e) => {
                 tracing::debug!(error = %e, "CC provider unavailable, falling back to direct API");

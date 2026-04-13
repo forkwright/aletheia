@@ -506,6 +506,7 @@ mod tests {
     fn write_script(name: &str, body: &str) -> PathBuf {
         let path = std::env::temp_dir().join(format!("hermeneus_test_{name}_{}.sh", std::process::id()));
         let script = format!("#!/bin/sh\n{body}\n");
+        #[expect(clippy::disallowed_methods, reason = "test helper writes temp scripts, async not needed")]
         fs::write(&path, script.as_bytes()).unwrap();
         fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
         path

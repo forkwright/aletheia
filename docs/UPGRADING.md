@@ -60,6 +60,32 @@ The embedded Datalog engine (knowledge store) manages its own schema versioning 
 
 **Always back up before upgrading.** While migrations are tested, restoring from backup is the safest recovery path if something goes wrong.
 
+### Upgrading from <0.16 to >=0.16 (fjall session store)
+
+Version 0.16.0 changed the default session store backend from SQLite to fjall.
+Both backends use the same path (`data/sessions.db`), but SQLite creates a file
+while fjall creates a directory. Upgrading without preparation causes a startup
+crash.
+
+Additionally, `data/knowledge.fjall` may be incompatible if it was created by an
+older fjall version (the error message will mention `InvalidTag(CompressionType)`).
+
+**Before deploying the new binary:**
+
+```bash
+# Stop the service
+systemctl --user stop aletheia
+
+# Back up and move conflicting files
+mkdir -p instance/data/pre-0.16-archive
+mv instance/data/sessions.db* instance/data/pre-0.16-archive/
+mv instance/data/knowledge.fjall instance/data/pre-0.16-archive/
+```
+
+The new binary will create fresh fjall stores on startup. Existing session
+history from SQLite is not automatically migrated; it is preserved in the
+archive directory for manual export if needed.
+
 ---
 
 

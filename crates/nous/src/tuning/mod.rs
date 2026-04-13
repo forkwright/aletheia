@@ -368,7 +368,11 @@ pub fn build_override_fact_content(
 }
 
 #[cfg(test)]
-#[expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]
+#[expect(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "test assertions may panic on failure"
+)]
 mod tests {
     use super::*;
 
@@ -517,7 +521,7 @@ mod tests {
     #[test]
     fn parameter_value_to_f64_roundtrips() {
         assert!((parameter_value_to_f64(&ParameterValue::Int(42)) - 42.0).abs() < f64::EPSILON);
-        assert!((parameter_value_to_f64(&ParameterValue::Float(3.14)) - 3.14).abs() < f64::EPSILON);
+        assert!((parameter_value_to_f64(&ParameterValue::Float(2.78)) - 2.78).abs() < f64::EPSILON);
         assert!((parameter_value_to_f64(&ParameterValue::Bool(true)) - 1.0).abs() < f64::EPSILON);
         assert!((parameter_value_to_f64(&ParameterValue::Bool(false)) - 0.0).abs() < f64::EPSILON);
         assert!((parameter_value_to_f64(&ParameterValue::Duration(100)) - 100.0).abs() < f64::EPSILON);

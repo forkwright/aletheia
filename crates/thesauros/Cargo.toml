@@ -27,4 +27,5 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 futures = { workspace = true }
+taxis = { path = "../taxis" }
 tempfile = { workspace = true }

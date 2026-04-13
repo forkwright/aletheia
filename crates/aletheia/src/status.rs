@@ -194,7 +194,7 @@ fn print_checks(checks: &[HealthCheck], color: bool) {
             .as_deref()
             .map(|m| format!(" ({m})"))
             .unwrap_or_default();
-        println!("    {:<18}{}{}", check.name, status, msg);
+        println!("    {:<24}{}{}", check.name, status, msg);
     }
     println!();
 }

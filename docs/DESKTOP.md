@@ -15,7 +15,7 @@ sudo apt install libgtk-3-dev libwebkit2gtk-4.1-dev
 **Fedora:**
 
 ```bash
-sudo dnf install gtk3-devel webkit2gtk4.1-devel
+sudo dnf install gtk3-devel webkit2gtk4.1-devel libxdo-devel
 ```
 
 **macOS:** No additional dependencies. WebKit is bundled with the OS.

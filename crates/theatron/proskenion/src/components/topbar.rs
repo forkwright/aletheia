@@ -164,7 +164,7 @@ pub(crate) fn TopBar() -> Element {
                                 if !emoji.is_empty() {
                                     span { style: "font-size: var(--text-base);", "{emoji}" }
                                 }
-                                span { "{name}" }
+                                span { "{name} " }
                                 span {
                                     style: "font-size: var(--text-xs); color: var(--text-muted);",
                                     "{status_label}"

@@ -148,6 +148,7 @@ mod tests {
     }
 
     #[test]
+    #[expect(clippy::expect_used, reason = "test assertion")]
     fn ods_produces_nonempty_bytes() {
         let r = OdsRenderer::new();
         let bytes = r.render(&sample_doc()).expect("ODS render failed");
@@ -155,6 +156,8 @@ mod tests {
     }
 
     #[test]
+    #[expect(clippy::expect_used, reason = "test assertion")]
+    #[expect(clippy::indexing_slicing, reason = "test assertions on known-good data")]
     fn ods_starts_with_pk_magic() {
         // WHY: ODS is a ZIP archive; valid files start with PK (0x50 0x4B).
         let r = OdsRenderer::new();

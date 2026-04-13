@@ -138,7 +138,7 @@ Register in `crates/organon/src/builtins/mod.rs` via `register_all()`.
 | Method | Path | Purpose |
 |--------|------|---------|
 | GET | `/api/v1/sessions` | List sessions (query: `nous_id`) |
-| POST | `/api/v1/sessions` | Create session |
+| POST | `/api/v1/sessions` | Create session (body: `nous_id`, `session_key`) |
 | POST | `/api/v1/sessions/stream` | Stream a turn (TUI webchat protocol) |
 | GET | `/api/v1/sessions/{id}` | Get session |
 | DELETE | `/api/v1/sessions/{id}` | Close (archive) session |

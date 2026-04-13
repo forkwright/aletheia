@@ -405,6 +405,7 @@ mod tests {
     }
 
     #[test]
+    #[expect(clippy::indexing_slicing, reason = "test assertion on known-good data")]
     fn wrap_words_empty() {
         let lines = wrap_words("", 80);
         assert_eq!(lines.len(), 1);
@@ -412,6 +413,7 @@ mod tests {
     }
 
     #[test]
+    #[expect(clippy::expect_used, reason = "test assertion")]
     fn pdf_renderer_produces_nonempty_bytes() {
         // WHY: skips if no system font is installed (CI may not have one).
         let renderer = match PdfRenderer::new() {

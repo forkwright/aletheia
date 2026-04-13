@@ -673,7 +673,13 @@ mod tests {
     fn pruning_keeps_most_recent_points() {
         let t = tracker();
         let max = taxis::config::AgentBehaviorDefaults::default().uncertainty_max_calibration_points;
-        for i in 0..(max + 10) as u32 {
+        #[expect(
+            clippy::cast_possible_truncation,
+            clippy::as_conversions,
+            reason = "test value fits in u32"
+        )]
+        let limit = (max + 10) as u32;
+        for i in 0..limit {
             t.record("syn", "coding", 0.5, i % 2 == 0).unwrap();
         }
 

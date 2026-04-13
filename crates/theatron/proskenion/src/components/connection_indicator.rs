@@ -78,9 +78,9 @@ impl ConnectionIndicator {
 const INDICATOR_STYLE: &str = "\
     display: flex; \
     align-items: center; \
-    gap: var(--space-2); \
-    padding: var(--space-2) var(--space-3); \
-    font-size: var(--text-xs); \
+    gap: 6px; \
+    padding: 4px 8px; \
+    font-size: var(--text-xs, 0.75rem); \
     opacity: 0.85;\
 ";
 

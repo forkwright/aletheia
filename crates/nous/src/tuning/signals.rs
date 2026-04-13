@@ -121,6 +121,11 @@ fn compute_competence_trajectory(samples: &[MetricSample]) -> Option<f64> {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "test assertions may panic on failure"
+)]
 mod tests {
     use super::*;
 

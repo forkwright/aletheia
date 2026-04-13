@@ -825,7 +825,6 @@ fn new_sections_survive_serde_roundtrip() {
 // ─── Wave 0 (#2306): config schema for 190 behavioral constants ──────────────
 
 #[test]
-#[expect(clippy::too_many_lines, reason = "every field must be verified")]
 fn deployment_defaults_match_original_constants() {
     let nb = NousBehaviorConfig::default();
     // nous::actor::DEGRADED_PANIC_THRESHOLD = 5
@@ -974,7 +973,6 @@ fn deployment_defaults_match_original_constants() {
 }
 
 #[test]
-#[expect(clippy::too_many_lines, reason = "every field must be verified")]
 fn per_agent_defaults_match_original_constants() {
     let ab = AgentBehaviorDefaults::default();
 
@@ -1207,7 +1205,8 @@ fn agent_behavior_defaults_survive_serde_roundtrip() {
 fn new_deployment_sections_are_absent_in_default_toml() {
     // WHY: operators must be able to omit all new sections from aletheia.toml
     // and still get identical behaviour. This confirms `#[serde(default)]` works.
-    let json = r#"{}"#;
+    let json = r"{}";
+
     let config: AletheiaConfig = serde_json::from_str(json).expect("parse empty json");
     assert_eq!(
         config.nous_behavior.degraded_panic_threshold, 5,

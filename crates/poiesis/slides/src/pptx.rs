@@ -157,6 +157,7 @@ mod tests {
     }
 
     #[test]
+    #[expect(clippy::expect_used, reason = "test assertions")]
     fn pptx_produces_nonempty_bytes() {
         let r = PptxRenderer::new();
         let bytes = r.render(&sample_doc()).expect("PPTX render failed");
@@ -164,6 +165,7 @@ mod tests {
     }
 
     #[test]
+    #[expect(clippy::expect_used, clippy::indexing_slicing, reason = "test assertions on known-good data")]
     fn pptx_starts_with_pk_magic() {
         // WHY: PPTX is a ZIP/OOXML archive; valid files start with PK (0x50 0x4B).
         let r = PptxRenderer::new();
