@@ -19,6 +19,18 @@ const RESTART_PREFIXES: &[&str] = &[
     "gateway.csrf",
     "gateway.bodyLimit",
     "channels",
+    // WHY: inbox capacity and session cap are set at actor spawn time; changing
+    // them requires a restart to take effect on new actors.
+    "nousBehavior.inboxCapacity",
+    "nousBehavior.maxSessions",
+    // WHY: provider timeout is wired into the HTTP client at startup.
+    "providerBehavior.nonStreamingTimeoutSecs",
+    // WHY: poll interval and buffer capacity are set when the Semeion loop
+    // is created; they cannot be changed without restarting the loop.
+    "messaging.pollIntervalMs",
+    "messaging.bufferCapacity",
+    // WHY: idempotency capacity sets the LRU cache size at server startup.
+    "apiLimits.idempotencyCapacity",
 ];
 
 /// Returns true if changing the given dotted field path requires a restart.
