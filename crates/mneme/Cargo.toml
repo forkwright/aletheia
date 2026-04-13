@@ -11,13 +11,16 @@ rust-version.workspace = true
 workspace = true
 
 [features]
-default = ["sqlite", "graph-algo"]
+# WHY: fjall is the new default session backend — pure Rust, zero C dependency.
+# sqlite is preserved for migration parity and operator opt-in.
+default = ["fjall", "graph-algo"]
+fjall = ["graphe/fjall"]
 graph-algo = ["episteme/graph-algo"]
 # Gates MockEmbeddingProvider and other test helpers. No test code in release binaries.
 test-support = ["episteme/test-support"]
 sqlite = ["graphe/sqlite"]
 embed-candle = ["episteme/embed-candle"]
-# mneme-engine coexists with sqlite (no link conflict verified).
+# mneme-engine coexists with sqlite/fjall (no link conflict verified).
 mneme-engine = ["dep:krites", "graphe/mneme-engine", "episteme/mneme-engine"]
 storage-fjall = ["mneme-engine", "episteme/storage-fjall"]
 # Test tiers (see docs/test-tiers.md)
@@ -47,3 +50,10 @@ tracing-subscriber = { workspace = true }
 name = "proptest_embedding"
 path = "tests/proptest_embedding.rs"
 required-features = ["test-support"]
+
+# WHY: ts_compat tests AgentFile portability which is SQLite-only (backup, import, export
+# are not yet ported to fjall). Gate so the test is skipped when only fjall is active.
+[[test]]
+name = "ts_compat"
+path = "tests/ts_compat.rs"
+required-features = ["sqlite"]
