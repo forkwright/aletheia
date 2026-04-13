@@ -56,7 +56,7 @@ impl SessionType {
     /// Only compiled when the `sqlite` feature is enabled — the only call
     /// sites (`store::session::create_session` and friends) live behind
     /// that feature gate.
-    #[cfg(any(feature = "sqlite", test))]
+    #[cfg(any(feature = "sqlite", feature = "fjall", test))]
     #[must_use]
     pub(crate) fn from_key(key: &str) -> Self {
         if key.contains("prosoche") {

@@ -1,28 +1,57 @@
-//! `SQLite` session store.
+//! Session store.
 //!
-//! WAL mode, prepared statement caching, transactional message appends.
+//! Selects a backend at compile time via feature flags:
 //!
-//! Split into sub-modules by responsibility:
+//! - `fjall` (default): pure-Rust LSM-tree store via the `fjall` crate.
+//! - `sqlite`: WAL-mode SQLite via `rusqlite`, with prepared-statement caching
+//!   and transactional message appends.
+//!
+//! Both backends expose the same [`SessionStore`] type with an identical method
+//! set.  Code that depends on `graphe` should import from this module and never
+//! reach into backend-specific sub-modules.
+//!
+//! ## SQLite sub-modules (sqlite feature only)
+//!
 //! - `session`: session CRUD operations
 //! - `message`: message history, distillation pipeline, usage recording
 //! - `peripherals`: agent notes and blackboard
 
+// ── Fjall backend ──────────────────────────────────────────────────────────
+// WHY: when both fjall and sqlite are active (workspace feature unification),
+// prefer sqlite so SessionStore is unambiguous and fjall helpers aren't dead code.
+// Fjall module only compiles when sqlite is absent.
+#[cfg(all(feature = "fjall", not(feature = "sqlite")))]
+mod fjall_store;
+#[cfg(all(feature = "fjall", not(feature = "sqlite")))]
+pub use fjall_store::SessionStore;
+
+// ── SQLite backend ─────────────────────────────────────────────────────────
+#[cfg(feature = "sqlite")]
 mod message;
+#[cfg(feature = "sqlite")]
 mod peripherals;
+#[cfg(feature = "sqlite")]
 mod session;
-#[cfg(test)]
+#[cfg(all(test, feature = "sqlite"))]
 mod tests;
 
+#[cfg(feature = "sqlite")]
 use std::path::{Path, PathBuf};
 
+#[cfg(feature = "sqlite")]
 use rusqlite::Connection;
+#[cfg(feature = "sqlite")]
 use snafu::ResultExt;
+#[cfg(feature = "sqlite")]
 use tracing::{error, info, instrument, warn};
 
-
+#[cfg(feature = "sqlite")]
 use crate::error::{self, Result};
+#[cfg(feature = "sqlite")]
 use crate::migration;
+#[cfg(feature = "sqlite")]
 use crate::recovery::{self, RecoveryConfig, StoreMode};
+#[cfg(feature = "sqlite")]
 use crate::types::{
     Message, Role, Session, SessionMetrics, SessionOrigin, SessionStatus, SessionType,
 };
@@ -37,6 +66,7 @@ use crate::types::{
 ///
 /// Implementations must be `Send + Sync` because `SessionStore` is `Send` and
 /// the hook is held for the store's lifetime, which may span thread boundaries.
+#[cfg(feature = "sqlite")]
 pub trait ConnectionHook: Send + Sync {
     /// Called immediately before the connection is made available for use.
     ///
@@ -52,6 +82,7 @@ pub trait ConnectionHook: Send + Sync {
 }
 
 /// The session store: wraps a `SQLite` connection with optional degraded mode.
+#[cfg(feature = "sqlite")]
 pub struct SessionStore {
     conn: Connection,
     mode: StoreMode,
@@ -59,6 +90,7 @@ pub struct SessionStore {
     hook: Option<Box<dyn ConnectionHook>>,
 }
 
+#[cfg(feature = "sqlite")]
 impl SessionStore {
     /// Open (or create) a session store at the given path.
     ///
@@ -272,6 +304,7 @@ impl SessionStore {
     }
 }
 
+#[cfg(feature = "sqlite")]
 impl Drop for SessionStore {
     fn drop(&mut self) {
         if let Some(ref hook) = self.hook {
@@ -283,6 +316,7 @@ impl Drop for SessionStore {
 // NOTE: Row mappers are `pub(super)` so sub-modules (session, message, peripherals) can reuse them.
 
 /// Map a `SQLite` row to a [`Session`].
+#[cfg(feature = "sqlite")]
 pub(super) fn map_session(row: &rusqlite::Row<'_>) -> rusqlite::Result<Session> {
     let status_str: String = row.get("status")?;
     let type_str: String = row.get("session_type")?;
@@ -323,6 +357,7 @@ pub(super) fn map_session(row: &rusqlite::Row<'_>) -> rusqlite::Result<Session> 
 }
 
 /// Map a `SQLite` row to a [`Message`].
+#[cfg(feature = "sqlite")]
 pub(super) fn map_message(row: &rusqlite::Row<'_>) -> rusqlite::Result<Message> {
     let role_str: String = row.get("role")?;
     let distilled: i64 = row.get("is_distilled")?;
@@ -347,6 +382,7 @@ pub(super) fn map_message(row: &rusqlite::Row<'_>) -> rusqlite::Result<Message> 
 }
 
 /// Check whether a `rusqlite::Error` indicates `SQLITE_BUSY`.
+#[cfg(feature = "sqlite")]
 fn is_busy_error(err: &rusqlite::Error) -> bool {
     matches!(
         err,
@@ -361,10 +397,12 @@ fn is_busy_error(err: &rusqlite::Error) -> bool {
 }
 
 /// Extension trait for optional query results.
+#[cfg(feature = "sqlite")]
 pub(super) trait OptionalExt<T> {
     fn optional(self) -> std::result::Result<Option<T>, rusqlite::Error>;
 }
 
+#[cfg(feature = "sqlite")]
 impl<T> OptionalExt<T> for std::result::Result<T, rusqlite::Error> {
     fn optional(self) -> std::result::Result<Option<T>, rusqlite::Error> {
         match self {
