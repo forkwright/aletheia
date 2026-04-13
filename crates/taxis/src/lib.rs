@@ -24,6 +24,8 @@ pub mod oikos;
 pub mod preflight;
 /// Config redaction: strips secrets before API exposure.
 pub mod redact;
+/// Static parameter registry: metadata for every tunable constant.
+pub mod registry;
 /// Hot-reload classification: restart vs live update.
 pub mod reload;
 /// Config section validation.
