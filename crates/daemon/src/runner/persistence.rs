@@ -1,4 +1,4 @@
-//! Task state persistence: SQLite-backed save/restore and cron catch-up.
+//! Task state persistence: save/restore and cron catch-up.
 
 use super::TaskRunner;
 
@@ -49,7 +49,7 @@ impl TaskRunner {
         }
     }
 
-    /// Restore persisted task state FROM the `SQLite` store (if attached).
+    /// Restore persisted task state from the task-state store (if attached).
     ///
     /// Called once at startup, before catch-up checking. Skips silently when
     /// no store is configured or when a task ID in the store no longer exists.
@@ -74,7 +74,7 @@ impl TaskRunner {
                     task.run_count = saved.run_count;
                     task.consecutive_failures = saved.consecutive_failures;
                 }
-                tracing::info!(nous_id = %self.nous_id, "task state restored FROM SQLite");
+                tracing::info!(nous_id = %self.nous_id, "task state restored from store");
             }
             Err(e) => {
                 tracing::warn!(
@@ -86,7 +86,7 @@ impl TaskRunner {
         }
     }
 
-    /// Persist a single task's state to the `SQLite` store, if one is attached.
+    /// Persist a single task's state to the store, if one is attached.
     pub(super) fn persist_task_state(&self, state: &crate::state::TaskState) {
         let Some(ref store) = self.state_store else {
             return;
