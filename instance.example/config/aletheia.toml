@@ -72,6 +72,24 @@ workspace = "nous/main"
 # provider = "candle"       # mock | candle
 # dimension = 384
 
+# --- Timeouts (Wave 1 — deployment-tunable) ---
+# Wall-clock timeout for a single LLM API call. Hot-reloadable.
+# [timeouts]
+# llmCallSecs = 300           # range: 30–3600
+
+# --- Capacity (Wave 1 — deployment-tunable) ---
+# Tool output and context window limits. Hot-reloadable.
+# [capacity]
+# maxToolOutputBytes = 51200  # 50 KiB; 0 = disable truncation; max 10 MiB
+# opusContextTokens = 1000000 # auto-applied when model contains "opus"; range: 200000–2000000
+
+# --- Retry (Wave 1 — deployment-tunable) ---
+# Exponential backoff for transient LLM API failures. Hot-reloadable.
+# [retry]
+# maxAttempts = 3             # range: 0–10
+# backoffBaseMs = 1000        # initial delay in ms; range: 100–30000
+# backoffMaxMs = 30000        # delay cap in ms; range: backoffBaseMs–300000
+
 # --- Maintenance ---
 # [maintenance.traceRotation]
 # maxAgeDays = 14

@@ -670,6 +670,152 @@ fn agency_from_json() {
     );
 }
 
+// ── Wave 1: parameterized defaults ───────────────────────────────────────────
+
+#[test]
+fn timeouts_default_matches_koina_const() {
+    let config = AletheiaConfig::default();
+    assert_eq!(
+        config.timeouts.llm_call_secs,
+        koina::defaults::TIMEOUT_SECONDS,
+        "default llm_call_secs must equal koina::defaults::TIMEOUT_SECONDS"
+    );
+    assert_eq!(
+        config.timeouts.llm_call_secs, 300,
+        "default llm_call_secs must be 300 seconds"
+    );
+}
+
+#[test]
+fn capacity_defaults_match_koina_consts() {
+    let config = AletheiaConfig::default();
+    assert_eq!(
+        config.capacity.max_tool_output_bytes,
+        koina::defaults::MAX_OUTPUT_BYTES,
+        "default max_tool_output_bytes must equal koina::defaults::MAX_OUTPUT_BYTES"
+    );
+    assert_eq!(
+        config.capacity.max_tool_output_bytes,
+        51_200,
+        "default max_tool_output_bytes must be 51200 (50 KiB)"
+    );
+    assert_eq!(
+        config.capacity.opus_context_tokens,
+        koina::defaults::OPUS_CONTEXT_TOKENS,
+        "default opus_context_tokens must equal koina::defaults::OPUS_CONTEXT_TOKENS"
+    );
+    assert_eq!(
+        config.capacity.opus_context_tokens, 1_000_000,
+        "default opus_context_tokens must be 1 000 000"
+    );
+}
+
+#[test]
+fn retry_defaults_are_sensible() {
+    let config = AletheiaConfig::default();
+    assert_eq!(
+        config.retry.max_attempts, 3,
+        "default max_attempts must be 3"
+    );
+    assert_eq!(
+        config.retry.backoff_base_ms, 1_000,
+        "default backoff_base_ms must be 1000"
+    );
+    assert_eq!(
+        config.retry.backoff_max_ms, 30_000,
+        "default backoff_max_ms must be 30 000"
+    );
+    assert!(
+        config.retry.backoff_max_ms >= config.retry.backoff_base_ms,
+        "backoff_max_ms must be >= backoff_base_ms"
+    );
+}
+
+#[test]
+fn timeouts_override_from_json() {
+    let json = r#"{"timeouts": {"llmCallSecs": 600}}"#;
+    let config: AletheiaConfig = serde_json::from_str(json).expect("parse timeouts override");
+    assert_eq!(
+        config.timeouts.llm_call_secs, 600,
+        "llm_call_secs override from json should take effect"
+    );
+    assert_eq!(
+        config.gateway.port, 18789,
+        "unrelated gateway port should remain at default"
+    );
+}
+
+#[test]
+fn capacity_override_from_json() {
+    let json = r#"{"capacity": {"maxToolOutputBytes": 102400, "opusContextTokens": 500000}}"#;
+    let config: AletheiaConfig = serde_json::from_str(json).expect("parse capacity override");
+    assert_eq!(
+        config.capacity.max_tool_output_bytes, 102_400,
+        "max_tool_output_bytes override from json should take effect"
+    );
+    assert_eq!(
+        config.capacity.opus_context_tokens, 500_000,
+        "opus_context_tokens override from json should take effect"
+    );
+}
+
+#[test]
+fn retry_override_from_json() {
+    let json = r#"{"retry": {"maxAttempts": 5, "backoffBaseMs": 2000, "backoffMaxMs": 60000}}"#;
+    let config: AletheiaConfig = serde_json::from_str(json).expect("parse retry override");
+    assert_eq!(
+        config.retry.max_attempts, 5,
+        "max_attempts override from json should take effect"
+    );
+    assert_eq!(
+        config.retry.backoff_base_ms, 2_000,
+        "backoff_base_ms override from json should take effect"
+    );
+    assert_eq!(
+        config.retry.backoff_max_ms, 60_000,
+        "backoff_max_ms override from json should take effect"
+    );
+}
+
+#[test]
+fn new_sections_survive_serde_roundtrip() {
+    let mut config = AletheiaConfig::default();
+    config.timeouts.llm_call_secs = 120;
+    config.capacity.max_tool_output_bytes = 8192;
+    config.capacity.opus_context_tokens = 500_000;
+    config.retry.max_attempts = 1;
+    config.retry.backoff_base_ms = 500;
+    config.retry.backoff_max_ms = 5_000;
+
+    let json = serde_json::to_string(&config).expect("serialize");
+    let back: AletheiaConfig = serde_json::from_str(&json).expect("deserialize");
+
+    assert_eq!(
+        back.timeouts.llm_call_secs, 120,
+        "llm_call_secs should survive serde roundtrip"
+    );
+    assert_eq!(
+        back.capacity.max_tool_output_bytes, 8192,
+        "max_tool_output_bytes should survive serde roundtrip"
+    );
+    assert_eq!(
+        back.capacity.opus_context_tokens, 500_000,
+        "opus_context_tokens should survive serde roundtrip"
+    );
+    assert_eq!(
+        back.retry.max_attempts, 1,
+        "max_attempts should survive serde roundtrip"
+    );
+    assert_eq!(
+        back.retry.backoff_base_ms, 500,
+        "backoff_base_ms should survive serde roundtrip"
+    );
+    assert_eq!(
+        back.retry.backoff_max_ms, 5_000,
+        "backoff_max_ms should survive serde roundtrip"
+    );
+}
+
 mod proptests {
     use proptest::prelude::*;
 
