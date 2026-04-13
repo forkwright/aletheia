@@ -5,27 +5,27 @@ use dioxus::prelude::*;
 use crate::state::ops::{CronJobInfo, DaemonTaskInfo, ServiceHealthStore};
 
 const PANEL_STYLE: &str = "\
-    background: #1a1a2e; \
-    border: 1px solid #333; \
-    border-radius: 8px; \
-    padding: 16px; \
+    background: var(--bg-surface); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
+    padding: var(--space-4); \
     flex: 1; \
     overflow-y: auto; \
     min-width: 280px;\
 ";
 
 const SECTION_TITLE: &str = "\
-    font-size: 14px; \
-    font-weight: bold; \
-    color: #aaa; \
-    margin-bottom: 10px;\
+    font-size: var(--text-base); \
+    font-weight: var(--weight-bold); \
+    color: var(--text-secondary); \
+    margin-bottom: var(--space-3);\
 ";
 
 const SUBSECTION_TITLE: &str = "\
-    font-size: 12px; \
-    font-weight: bold; \
-    color: #888; \
-    margin: 12px 0 6px 0; \
+    font-size: var(--text-xs); \
+    font-weight: var(--weight-bold); \
+    color: var(--text-secondary); \
+    margin: var(--space-3) 0 var(--space-2) 0; \
     text-transform: uppercase; \
     letter-spacing: 0.5px;\
 ";
@@ -33,10 +33,10 @@ const SUBSECTION_TITLE: &str = "\
 const ROW_STYLE: &str = "\
     display: flex; \
     align-items: center; \
-    gap: 8px; \
-    padding: 5px 0; \
+    gap: var(--space-2); \
+    padding: var(--space-1) 0; \
     border-bottom: 1px solid #222; \
-    font-size: 12px;\
+    font-size: var(--text-xs);\
 ";
 
 const DOT_BASE: &str = "\
@@ -47,7 +47,7 @@ const DOT_BASE: &str = "\
 ";
 
 const NAME_STYLE: &str = "\
-    color: #e0e0e0; \
+    color: var(--text-primary); \
     flex: 1; \
     white-space: nowrap; \
     overflow: hidden; \
@@ -55,32 +55,32 @@ const NAME_STYLE: &str = "\
 ";
 
 const DETAIL_STYLE: &str = "\
-    color: #666; \
-    font-size: 11px; \
+    color: var(--text-muted); \
+    font-size: var(--text-xs); \
     white-space: nowrap;\
 ";
 
 const FAILURE_BOX: &str = "\
     display: flex; \
     align-items: center; \
-    gap: 8px; \
-    padding: 8px 12px; \
-    background: #1a1a2e; \
-    border: 1px solid #333; \
-    border-radius: 6px; \
-    margin-bottom: 12px;\
+    gap: var(--space-2); \
+    padding: var(--space-2) var(--space-3); \
+    background: var(--bg-surface); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
+    margin-bottom: var(--space-3);\
 ";
 
 const FAILURE_COUNT: &str = "\
-    font-size: 24px; \
-    font-weight: bold; \
-    color: #e0e0e0;\
+    font-size: var(--text-2xl); \
+    font-weight: var(--weight-bold); \
+    color: var(--text-primary);\
 ";
 
 const EMPTY_STATE: &str = "\
-    color: #555; \
-    font-size: 12px; \
-    padding: 4px 0;\
+    color: var(--text-muted); \
+    font-size: var(--text-xs); \
+    padding: var(--space-1) 0;\
 ";
 
 #[component]
@@ -89,7 +89,7 @@ pub(crate) fn ServiceHealthPanel(store: Signal<ServiceHealthStore>) -> Element {
 
     let trend_color = data.failure_trend.color();
     let trend_indicator = data.failure_trend.indicator();
-    let trend_style = format!("color: {trend_color}; font-size: 16px; margin-left: auto;");
+    let trend_style = format!("color: {trend_color}; font-size: var(--text-md); margin-left: auto;");
 
     rsx! {
         div {
@@ -100,7 +100,7 @@ pub(crate) fn ServiceHealthPanel(store: Signal<ServiceHealthStore>) -> Element {
             div {
                 style: "{FAILURE_BOX}",
                 span { style: "{FAILURE_COUNT}", "{data.failure_count}" }
-                span { style: "color: #888; font-size: 12px;", "failures" }
+                span { style: "color: var(--text-secondary); font-size: var(--text-xs);", "failures" }
                 span {
                     style: "{trend_style}",
                     title: "trend",
@@ -150,7 +150,7 @@ fn render_cron_row(i: usize, job: &CronJobInfo) -> Element {
 
 fn render_daemon_row(i: usize, task: &DaemonTaskInfo) -> Element {
     let dot_style = format!("{DOT_BASE} background: {};", task.status.dot_color());
-    let status_style = format!("color: {}; font-size: 11px;", task.status.dot_color());
+    let status_style = format!("color: {}; font-size: var(--text-xs);", task.status.dot_color());
     let status_label = task.status.label();
 
     rsx! {
@@ -165,7 +165,7 @@ fn render_daemon_row(i: usize, task: &DaemonTaskInfo) -> Element {
             }
             if task.restart_count > 0 {
                 span {
-                    style: "color: #eab308; font-size: 11px;",
+                    style: "color: var(--status-warning); font-size: var(--text-xs);",
                     "{task.restart_count} restarts"
                 }
             }

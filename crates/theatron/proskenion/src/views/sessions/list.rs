@@ -11,27 +11,32 @@ use crate::state::sessions::{
 const ROW_STYLE: &str = "\
     display: flex; \
     align-items: center; \
-    gap: 12px; \
-    padding: 10px 12px; \
+    gap: var(--space-3); \
+    padding: var(--space-3) var(--space-3); \
     border-bottom: 1px solid #222; \
     cursor: pointer; \
-    transition: background 0.1s;\
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const ROW_HOVER_STYLE: &str = "\
     display: flex; \
     align-items: center; \
-    gap: 12px; \
-    padding: 10px 12px; \
+    gap: var(--space-3); \
+    padding: var(--space-3) var(--space-3); \
     border-bottom: 1px solid #222; \
     cursor: pointer; \
-    background: #1a1a2e;\
+    background: var(--bg-surface); \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const TITLE_STYLE: &str = "\
     flex: 1; \
-    font-size: 14px; \
-    color: #e0e0e0; \
+    font-size: var(--text-base); \
+    color: var(--text-primary); \
     overflow: hidden; \
     text-overflow: ellipsis; \
     white-space: nowrap;\
@@ -39,17 +44,17 @@ const TITLE_STYLE: &str = "\
 
 const AGENT_BADGE_STYLE: &str = "\
     display: inline-block; \
-    padding: 2px 8px; \
-    border-radius: 4px; \
-    font-size: 11px; \
-    background: #2a2a4a; \
+    padding: var(--space-1) var(--space-2); \
+    border-radius: var(--radius-sm); \
+    font-size: var(--text-xs); \
+    background: var(--border); \
     color: #7a7aff; \
     white-space: nowrap;\
 ";
 
 const META_STYLE: &str = "\
-    font-size: 11px; \
-    color: #888; \
+    font-size: var(--text-xs); \
+    color: var(--text-secondary); \
     white-space: nowrap;\
 ";
 
@@ -63,39 +68,48 @@ const STATUS_DOT_STYLE: &str = "\
 const SORT_BAR_STYLE: &str = "\
     display: flex; \
     align-items: center; \
-    gap: 8px; \
-    padding: 8px 12px; \
-    border-bottom: 1px solid #2a2a3a; \
-    font-size: 12px; \
-    color: #888;\
+    gap: var(--space-2); \
+    padding: var(--space-2) var(--space-3); \
+    border-bottom: 1px solid var(--border); \
+    font-size: var(--text-xs); \
+    color: var(--text-secondary);\
 ";
 
 const SORT_BTN_STYLE: &str = "\
     background: none; \
-    border: 1px solid #333; \
-    border-radius: 4px; \
-    padding: 2px 8px; \
-    font-size: 11px; \
-    color: #aaa; \
-    cursor: pointer;\
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-sm); \
+    padding: var(--space-1) var(--space-2); \
+    font-size: var(--text-xs); \
+    color: var(--text-secondary); \
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const SORT_BTN_ACTIVE_STYLE: &str = "\
-    background: #2a2a4a; \
-    border: 1px solid #4a4aff; \
-    border-radius: 4px; \
-    padding: 2px 8px; \
-    font-size: 11px; \
+    background: var(--border); \
+    border: 1px solid var(--accent); \
+    border-radius: var(--radius-sm); \
+    padding: var(--space-1) var(--space-2); \
+    font-size: var(--text-xs); \
     color: #7a7aff; \
-    cursor: pointer;\
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const CHECKBOX_STYLE: &str = "\
     width: 16px; \
     height: 16px; \
-    accent-color: #4a4aff; \
+    accent-color: var(--accent); \
     cursor: pointer; \
-    flex-shrink: 0;\
+    flex-shrink: 0; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const LIST_CONTAINER_STYLE: &str = "\
@@ -109,25 +123,28 @@ const EMPTY_STYLE: &str = "\
     align-items: center; \
     justify-content: center; \
     flex: 1; \
-    gap: 12px; \
-    color: #555;\
+    gap: var(--space-3); \
+    color: var(--text-muted);\
 ";
 
 const LOAD_MORE_STYLE: &str = "\
     display: flex; \
     justify-content: center; \
-    padding: 12px; \
+    padding: var(--space-3); \
     border-top: 1px solid #222;\
 ";
 
 const LOAD_MORE_BTN: &str = "\
-    background: #2a2a4a; \
-    color: #e0e0e0; \
-    border: 1px solid #444; \
-    border-radius: 6px; \
-    padding: 6px 16px; \
-    font-size: 12px; \
-    cursor: pointer;\
+    background: var(--border); \
+    color: var(--text-primary); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
+    padding: var(--space-2) var(--space-4); \
+    font-size: var(--text-xs); \
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 /// Sort bar above the session list.
@@ -243,7 +260,7 @@ pub(crate) fn SessionList(
             // Select all bar
             if !sessions.is_empty() {
                 div {
-                    style: "display: flex; align-items: center; gap: 8px; padding: 4px 12px; border-bottom: 1px solid #1a1a2e; font-size: 12px; color: #888;",
+                    style: "display: flex; align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-3); border-bottom: 1px solid var(--bg-surface); font-size: var(--text-xs); color: var(--text-secondary);",
                     input {
                         r#type: "checkbox",
                         style: "{CHECKBOX_STYLE}",
@@ -266,10 +283,10 @@ pub(crate) fn SessionList(
             if sessions.is_empty() {
                 div {
                     style: "{EMPTY_STYLE}",
-                    div { style: "font-size: 48px;", "[S]" }
-                    div { style: "font-size: 16px;", "No sessions found" }
+                    div { style: "font-size: var(--text-3xl);", "[S]" }
+                    div { style: "font-size: var(--text-md);", "No sessions found" }
                     if list_store.read().has_active_filters() {
-                        div { style: "font-size: 13px;",
+                        div { style: "font-size: var(--text-sm);",
                             "Try adjusting your filters or search query."
                         }
                     }

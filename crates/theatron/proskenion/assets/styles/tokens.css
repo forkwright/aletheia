@@ -80,4 +80,46 @@
   --accent: #9A7B4F;
   --accent-hover: #B08E5C;
   --accent-dim: #7A6340;
+
+  /* ------------------------------------------------------------------ */
+  /* Surface elevation — semantic aliases for bg tokens                  */
+  /* ------------------------------------------------------------------ */
+  --elevation-base: var(--bg);
+  --elevation-sunken: var(--bg-surface-dim);
+  --elevation-raised: var(--bg-surface);
+  --elevation-float: var(--bg-surface-bright);
+
+  /* ------------------------------------------------------------------ */
+  /* Shadows — warm-tinted, purpose-specific                            */
+  /* ------------------------------------------------------------------ */
+  --shadow-card: 0 1px 3px rgb(18 17 15 / 0.12), 0 1px 2px rgb(18 17 15 / 0.08);
+  --shadow-float: 0 4px 16px rgb(18 17 15 / 0.16), 0 2px 4px rgb(18 17 15 / 0.08);
+  --shadow-modal: 0 8px 32px rgb(18 17 15 / 0.24), 0 4px 8px rgb(18 17 15 / 0.12);
+  --shadow-glow: 0 0 0 3px rgb(154 123 79 / 0.2);
+  --shadow-inner-highlight: inset 0 1px 0 rgb(255 255 255 / 0.04);
+
+  /* ------------------------------------------------------------------ */
+  /* Animation — timing and easing                                      */
+  /* ------------------------------------------------------------------ */
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --duration-fast: 120ms;
+  --duration-normal: 200ms;
+  --duration-slow: 350ms;
+
+  /* ------------------------------------------------------------------ */
+  /* Letter spacing                                                     */
+  /* ------------------------------------------------------------------ */
+  --tracking-tight: -0.01em;
+  --tracking-normal: 0;
+  --tracking-wide: 0.04em;
+
+  /* Missing spacing tokens identified by audit */
+  --space-5: 1.25rem;   /* 20px */
+
+  /* Z-index scale */
+  --z-content: 10;
+  --z-modal: 100;
+  --z-tooltip: 1000;
+  --z-toast: 9999;
 }

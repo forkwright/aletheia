@@ -5,10 +5,10 @@ use dioxus::prelude::*;
 const TOOLBAR_STYLE: &str = "\
     display: flex; \
     align-items: center; \
-    gap: 8px; \
-    padding: 6px 12px; \
+    gap: var(--space-2); \
+    padding: var(--space-2) var(--space-3); \
     border-bottom: 1px solid var(--border-separator, #221f1c); \
-    font-size: 12px; \
+    font-size: var(--text-xs); \
     color: var(--text-secondary, #a8a49e); \
     flex-shrink: 0;\
 ";
@@ -16,20 +16,20 @@ const TOOLBAR_STYLE: &str = "\
 const BREADCRUMB_STYLE: &str = "\
     display: flex; \
     align-items: center; \
-    gap: 2px; \
+    gap: var(--space-1); \
     flex: 1; \
     overflow: hidden;\
 ";
 
 const CRUMB_STYLE: &str = "\
     color: var(--text-secondary, #a8a49e); \
-    cursor: pointer; \
+    cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick); \
     white-space: nowrap;\
 ";
 
 const CRUMB_SEPARATOR: &str = "\
     color: var(--text-muted, #706c66); \
-    margin: 0 2px;\
+    margin: 0 var(--space-1);\
 ";
 
 const TOGGLE_BTN_STYLE: &str = "\
@@ -37,14 +37,17 @@ const TOGGLE_BTN_STYLE: &str = "\
     border: 1px solid var(--border, #2e2b27); \
     border-radius: var(--radius-sm, 4px); \
     color: var(--text-secondary, #a8a49e); \
-    padding: 2px 8px; \
-    font-size: 11px; \
+    padding: var(--space-1) var(--space-2); \
+    font-size: var(--text-xs); \
     cursor: pointer;\
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const STAT_STYLE: &str = "\
     color: var(--text-muted, #706c66); \
-    font-size: 11px; \
+    font-size: var(--text-xs); \
     white-space: nowrap;\
 ";
 

@@ -306,6 +306,13 @@ impl SessionSelectionStore {
         self.select_all = false;
     }
 
+    /// Whether any sessions are currently selected.
+    #[cfg_attr(not(test), expect(dead_code, reason = "used in tests"))]
+    #[must_use]
+    pub(crate) fn has_selection(&self) -> bool {
+        !self.selected.is_empty()
+    }
+
     /// Number of selected sessions.
     #[must_use]
     pub(crate) fn count(&self) -> usize {
@@ -411,10 +418,10 @@ pub(crate) fn session_display_status(session: &Session) -> &'static str {
 /// CSS color for a session status.
 pub(crate) fn status_color(status: &str) -> &'static str {
     match status {
-        "active" => "#22c55e",
-        "idle" => "#d4a017",
-        "archived" => "#666",
-        _ => "#888",
+        "active" => "var(--status-success)",
+        "idle" => "var(--status-warning)",
+        "archived" => "var(--text-muted)",
+        _ => "var(--text-secondary)",
     }
 }
 
@@ -625,10 +632,10 @@ mod tests {
 
     #[test]
     fn status_color_values() {
-        assert_eq!(status_color("active"), "#22c55e");
-        assert_eq!(status_color("idle"), "#d4a017");
-        assert_eq!(status_color("archived"), "#666");
-        assert_eq!(status_color("unknown"), "#888");
+        assert_eq!(status_color("active"), "var(--status-success)");
+        assert_eq!(status_color("idle"), "var(--status-warning)");
+        assert_eq!(status_color("archived"), "var(--text-muted)");
+        assert_eq!(status_color("unknown"), "var(--text-secondary)");
     }
 
     #[test]

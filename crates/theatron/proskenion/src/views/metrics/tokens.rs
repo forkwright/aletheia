@@ -14,64 +14,70 @@ use super::agent_breakdown::AgentBreakdown;
 use super::model_breakdown::ModelBreakdown;
 
 const SECTION_STYLE: &str = "\
-    background: #1a1816; \
-    border: 1px solid #2a2724; \
-    border-radius: 8px; \
-    padding: 16px;\
+    background: var(--bg-surface); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
+    padding: var(--space-4);\
 ";
 
 const SECTION_TITLE_STYLE: &str = "\
-    font-size: 12px; \
-    font-weight: 600; \
-    color: #a8a49e; \
+    font-size: var(--text-xs); \
+    font-weight: var(--weight-semibold); \
+    color: var(--text-secondary); \
     text-transform: uppercase; \
     letter-spacing: 0.05em; \
-    margin-bottom: 12px; \
-    font-family: 'IBM Plex Mono', monospace;\
+    margin-bottom: var(--space-3); \
+    font-family: var(--font-mono);\
 ";
 
 const CARD_STYLE: &str = "\
-    background: #1a1816; \
-    border: 1px solid #2a2724; \
-    border-radius: 8px; \
-    padding: 12px 16px; \
+    background: var(--bg-surface); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
+    padding: var(--space-3) var(--space-4); \
     flex: 1;\
 ";
 
 const CARD_LABEL_STYLE: &str = "\
-    font-size: 11px; \
-    color: #706c66; \
-    margin-bottom: 4px; \
-    font-family: 'IBM Plex Mono', monospace;\
+    font-size: var(--text-xs); \
+    color: var(--text-muted); \
+    margin-bottom: var(--space-1); \
+    font-family: var(--font-mono);\
 ";
 
 const CARD_VALUE_STYLE: &str = "\
-    font-size: 20px; \
-    font-weight: 600; \
-    color: #e8e6e3; \
-    font-family: 'IBM Plex Mono', monospace;\
+    font-size: var(--text-xl); \
+    font-weight: var(--weight-semibold); \
+    color: var(--text-primary); \
+    font-family: var(--font-mono);\
 ";
 
 const CONTROL_BTN_ACTIVE: &str = "\
-    padding: 4px 10px; \
-    font-size: 12px; \
-    background: #2a2724; \
-    color: #e8e6e3; \
-    border: 1px solid #3a3530; \
-    border-radius: 4px; \
+    padding: var(--space-1) 10px; \
+    font-size: var(--text-xs); \
+    background: var(--border); \
+    color: var(--text-primary); \
+    border: 1px solid var(--input-border); \
+    border-radius: var(--radius-sm); \
     cursor: pointer; \
-    font-family: 'IBM Plex Mono', monospace;\
+    font-family: var(--font-mono); \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const CONTROL_BTN_INACTIVE: &str = "\
-    padding: 4px 10px; \
-    font-size: 12px; \
+    padding: var(--space-1) 10px; \
+    font-size: var(--text-xs); \
     background: transparent; \
-    color: #706c66; \
+    color: var(--text-muted); \
     border: 1px solid transparent; \
-    border-radius: 4px; \
+    border-radius: var(--radius-sm); \
     cursor: pointer; \
-    font-family: 'IBM Plex Mono', monospace;\
+    font-family: var(--font-mono); \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 /// Max columns to render in the time series chart.
@@ -123,15 +129,15 @@ pub(crate) fn Tokens() -> Element {
 
     rsx! {
         div {
-            style: "display: flex; flex-direction: column; gap: 16px;",
+            style: "display: flex; flex-direction: column; gap: var(--space-4);",
 
             // Controls row
             div {
-                style: "display: flex; gap: 8px; align-items: center; flex-wrap: wrap;",
+                style: "display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap;",
 
                 // Granularity
                 div {
-                    style: "display: flex; gap: 4px;",
+                    style: "display: flex; gap: var(--space-1);",
                     for g in [Granularity::Daily, Granularity::Weekly, Granularity::Monthly] {
                         {
                             let active = *granularity.read() == g;
@@ -146,11 +152,11 @@ pub(crate) fn Tokens() -> Element {
                     }
                 }
 
-                div { style: "width: 1px; height: 20px; background: #2a2724;" }
+                div { style: "width: 1px; height: 20px; background: var(--border);" }
 
                 // Date range presets
                 div {
-                    style: "display: flex; gap: 4px;",
+                    style: "display: flex; gap: var(--space-1);",
                     for r in [DateRange::Last7Days, DateRange::Last30Days, DateRange::Last90Days] {
                         {
                             let is_active = matches!(
@@ -181,7 +187,7 @@ pub(crate) fn Tokens() -> Element {
                 // Custom date inputs
                 if matches!(*date_range.read(), DateRange::Custom { .. }) {
                     input {
-                        style: "padding: 4px 8px; font-size: 12px; background: #1a1816; border: 1px solid #3a3530; border-radius: 4px; color: #e8e6e3; width: 100px; font-family: 'IBM Plex Mono', monospace;",
+                        style: "padding: var(--space-1) var(--space-2); font-size: var(--text-xs); background: var(--bg-surface); border: 1px solid var(--input-border); border-radius: var(--radius-sm); color: var(--text-primary); width: 100px; font-family: var(--font-mono);",
                         placeholder: "YYYY-MM-DD",
                         value: "{custom_from}",
                         oninput: move |e| {
@@ -191,9 +197,9 @@ pub(crate) fn Tokens() -> Element {
                             date_range.set(DateRange::Custom { from: f, to: t });
                         }
                     }
-                    span { style: "color: #706c66; font-size: 12px;", "→" }
+                    span { style: "color: var(--text-muted); font-size: var(--text-xs);", "→" }
                     input {
-                        style: "padding: 4px 8px; font-size: 12px; background: #1a1816; border: 1px solid #3a3530; border-radius: 4px; color: #e8e6e3; width: 100px; font-family: 'IBM Plex Mono', monospace;",
+                        style: "padding: var(--space-1) var(--space-2); font-size: var(--text-xs); background: var(--bg-surface); border: 1px solid var(--input-border); border-radius: var(--radius-sm); color: var(--text-primary); width: 100px; font-family: var(--font-mono);",
                         placeholder: "YYYY-MM-DD",
                         value: "{custom_to}",
                         oninput: move |e| {
@@ -210,13 +216,13 @@ pub(crate) fn Tokens() -> Element {
             match fetch_state.read().clone() {
                 FetchState::Loading => rsx! {
                     div {
-                        style: "display: flex; align-items: center; justify-content: center; height: 200px; color: #706c66; font-size: 13px;",
+                        style: "display: flex; align-items: center; justify-content: center; height: 200px; color: var(--text-muted); font-size: var(--text-sm);",
                         "Loading…"
                     }
                 },
                 FetchState::Error(msg) => rsx! {
                     div {
-                        style: "padding: 16px; background: #2a1818; border: 1px solid #7f1d1d; border-radius: 8px; color: #fca5a5; font-size: 13px;",
+                        style: "padding: var(--space-4); background: var(--status-error-bg); border: 1px solid var(--status-error); border-radius: var(--radius-md); color: var(--status-error); font-size: var(--text-sm);",
                         "Error: {msg}"
                     }
                 },
@@ -262,11 +268,11 @@ fn loaded_tokens_view(
 
     rsx! {
         div {
-            style: "display: flex; flex-direction: column; gap: 16px;",
+            style: "display: flex; flex-direction: column; gap: var(--space-4);",
 
             // Summary cards
             div {
-                style: "display: flex; gap: 12px; flex-wrap: wrap;",
+                style: "display: flex; gap: var(--space-3); flex-wrap: wrap;",
                 {
                     #[expect(clippy::as_conversions, reason = "f64 to u64 for token display formatting")]
                     let v = today_d.value as u64;
@@ -338,7 +344,7 @@ fn loaded_tokens_view(
 )]
 fn delta_card(label: &str, value: &str, delta_pct: f64, is_up: bool) -> Element {
     let arrow = if is_up { "↑" } else { "↓" };
-    let delta_color = if is_up { "#22c55e" } else { "#ef4444" };
+    let delta_color = if is_up { "var(--status-success)" } else { "var(--status-error)" };
     let delta_str = format!("{arrow} {delta_pct:.1}%");
     let value = value.to_string();
     let label = label.to_string();
@@ -348,7 +354,7 @@ fn delta_card(label: &str, value: &str, delta_pct: f64, is_up: bool) -> Element 
             div { style: "{CARD_LABEL_STYLE}", "{label}" }
             div { style: "{CARD_VALUE_STYLE}", "{value}" }
             if delta_pct > 0.0 {
-                div { style: "font-size: 11px; color: {delta_color}; margin-top: 2px; font-family: 'IBM Plex Mono', monospace;", "{delta_str} vs prev" }
+                div { style: "font-size: var(--text-xs); color: {delta_color}; margin-top: var(--space-1); font-family: var(--font-mono);", "{delta_str} vs prev" }
             }
         }
     }

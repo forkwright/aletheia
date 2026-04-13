@@ -11,12 +11,12 @@ use super::toast::ToastItem;
 
 const CONTAINER_STYLE: &str = "\
     position: fixed; \
-    top: 16px; \
-    right: 16px; \
+    top: var(--space-4); \
+    right: var(--space-4); \
     z-index: 9999; \
     display: flex; \
     flex-direction: column; \
-    gap: 8px; \
+    gap: var(--space-2); \
     pointer-events: none;\
 ";
 
@@ -40,6 +40,9 @@ pub(crate) fn ToastContainer() -> Element {
     rsx! {
         div {
             style: "{CONTAINER_STYLE}",
+            role: "status",
+            aria_live: "polite",
+            aria_label: "Notifications",
             for toast in toasts.toasts().iter().cloned() {
                 div {
                     key: "{toast.id}",

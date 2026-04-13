@@ -7,6 +7,8 @@
 pub(crate) mod cache;
 pub mod config;
 pub mod connection;
+/// Conversation export to markdown for clipboard.
+pub(crate) mod export;
 pub(crate) mod file_watcher;
 /// Global keyboard navigation handler.
 pub(crate) mod keybindings;

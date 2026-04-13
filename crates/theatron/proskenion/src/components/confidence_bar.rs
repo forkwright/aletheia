@@ -6,8 +6,8 @@ use crate::state::memory::confidence_color;
 
 const BAR_OUTER_STYLE: &str = "\
     height: 8px; \
-    background: #2a2a3a; \
-    border-radius: 4px; \
+    background: var(--border); \
+    border-radius: var(--radius-sm); \
     overflow: hidden; \
     flex: 1;\
 ";
@@ -15,7 +15,7 @@ const BAR_OUTER_STYLE: &str = "\
 const WRAPPER_STYLE: &str = "\
     display: flex; \
     align-items: center; \
-    gap: 8px;\
+    gap: var(--space-2);\
 ";
 
 /// Horizontal confidence bar filled proportionally to a 0.0--1.0 value.
@@ -44,8 +44,8 @@ pub(crate) fn ConfidenceBar(
     let color = confidence_color(clamped);
 
     let bar_inner = format!(
-        "height: 100%; width: {pct}%; background: {color}; border-radius: 4px; \
-         transition: width 0.3s ease;"
+        "height: 100%; width: {pct}%; background: {color}; border-radius: var(--radius-sm); \
+         transition: width var(--transition-measured);"
     );
 
     let outer = match width {
@@ -61,7 +61,7 @@ pub(crate) fn ConfidenceBar(
                 div { style: "{bar_inner}" }
             }
             span {
-                style: "font-size: 12px; color: {color}; font-weight: 600; min-width: 36px; text-align: right;",
+                style: "font-size: var(--text-xs); color: {color}; font-weight: var(--weight-semibold); min-width: 36px; text-align: right;",
                 "{pct}%"
             }
         }
@@ -74,19 +74,19 @@ mod tests {
 
     #[test]
     fn confidence_bar_color_green() {
-        assert_eq!(confidence_color(0.8), "#22c55e");
-        assert_eq!(confidence_color(1.0), "#22c55e");
+        assert_eq!(confidence_color(0.8), "var(--status-success)");
+        assert_eq!(confidence_color(1.0), "var(--status-success)");
     }
 
     #[test]
     fn confidence_bar_color_amber() {
-        assert_eq!(confidence_color(0.5), "#f59e0b");
-        assert_eq!(confidence_color(0.7), "#f59e0b");
+        assert_eq!(confidence_color(0.5), "var(--status-warning)");
+        assert_eq!(confidence_color(0.7), "var(--status-warning)");
     }
 
     #[test]
     fn confidence_bar_color_red() {
-        assert_eq!(confidence_color(0.0), "#ef4444");
-        assert_eq!(confidence_color(0.39), "#ef4444");
+        assert_eq!(confidence_color(0.0), "var(--status-error)");
+        assert_eq!(confidence_color(0.39), "var(--status-error)");
     }
 }

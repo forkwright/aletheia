@@ -5,8 +5,8 @@ use dioxus::prelude::*;
 const BAR_OUTER_STYLE: &str = "\
     width: 100%; \
     height: 8px; \
-    background: #2a2a3a; \
-    border-radius: 4px; \
+    background: var(--border); \
+    border-radius: var(--radius-sm); \
     overflow: hidden;\
 ";
 
@@ -14,12 +14,12 @@ const LABEL_ROW_STYLE: &str = "\
     display: flex; \
     justify-content: space-between; \
     align-items: center; \
-    margin-bottom: 4px; \
-    font-size: 12px; \
-    color: #aaa;\
+    margin-bottom: var(--space-1); \
+    font-size: var(--text-xs); \
+    color: var(--text-secondary);\
 ";
 
-const NO_REQS_STYLE: &str = "font-size: 12px; color: #555; font-style: italic;";
+const NO_REQS_STYLE: &str = "font-size: var(--text-xs); color: var(--text-muted); font-style: italic;";
 
 /// Progress bar showing requirement coverage for a category.
 ///
@@ -35,7 +35,7 @@ pub(crate) fn CoverageBar(
     let Some(pct) = coverage else {
         return rsx! {
             div {
-                style: "margin-bottom: 12px;",
+                style: "margin-bottom: var(--space-3);",
                 div {
                     style: "{LABEL_ROW_STYLE}",
                     span { "{label}" }
@@ -47,18 +47,18 @@ pub(crate) fn CoverageBar(
 
     let color = coverage_color(pct);
     let bar_inner_style = format!(
-        "height: 100%; width: {pct}%; background: {color}; border-radius: 4px; \
-         transition: width 0.3s ease;"
+        "height: 100%; width: {pct}%; background: {color}; border-radius: var(--radius-sm); \
+         transition: width var(--transition-measured);"
     );
 
     rsx! {
         div {
-            style: "margin-bottom: 12px;",
+            style: "margin-bottom: var(--space-3);",
             div {
                 style: "{LABEL_ROW_STYLE}",
                 span { "{label}" }
                 span {
-                    style: "color: {color}; font-weight: 600;",
+                    style: "color: {color}; font-weight: var(--weight-semibold);",
                     "{pct}%"
                 }
             }
@@ -78,11 +78,11 @@ pub(crate) fn CoverageBar(
 #[must_use]
 pub(crate) fn coverage_color(pct: u8) -> &'static str {
     if pct > 80 {
-        "#22c55e"
+        "var(--status-success)"
     } else if pct >= 50 {
-        "#f59e0b"
+        "var(--status-warning)"
     } else {
-        "#ef4444"
+        "var(--status-error)"
     }
 }
 
@@ -92,20 +92,20 @@ mod tests {
 
     #[test]
     fn coverage_color_green_above_80() {
-        assert_eq!(coverage_color(81), "#22c55e");
-        assert_eq!(coverage_color(100), "#22c55e");
+        assert_eq!(coverage_color(81), "var(--status-success)");
+        assert_eq!(coverage_color(100), "var(--status-success)");
     }
 
     #[test]
     fn coverage_color_amber_at_boundary() {
-        assert_eq!(coverage_color(80), "#f59e0b");
-        assert_eq!(coverage_color(50), "#f59e0b");
-        assert_eq!(coverage_color(65), "#f59e0b");
+        assert_eq!(coverage_color(80), "var(--status-warning)");
+        assert_eq!(coverage_color(50), "var(--status-warning)");
+        assert_eq!(coverage_color(65), "var(--status-warning)");
     }
 
     #[test]
     fn coverage_color_red_below_50() {
-        assert_eq!(coverage_color(49), "#ef4444");
-        assert_eq!(coverage_color(0), "#ef4444");
+        assert_eq!(coverage_color(49), "var(--status-error)");
+        assert_eq!(coverage_color(0), "var(--status-error)");
     }
 }

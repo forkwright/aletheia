@@ -10,69 +10,78 @@ use crate::services::config;
 use crate::state::notifications::{DndDuration, DndState, NotificationPreferences};
 
 const SECTION_STYLE: &str = "\
-    background: #1a1a2e; \
-    border: 1px solid #333; \
-    border-radius: 8px; \
-    padding: 16px 20px;\
+    background: var(--bg-surface); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
+    padding: var(--space-4) var(--space-5);\
 ";
 
 const SECTION_TITLE: &str = "\
-    font-size: 14px; \
-    font-weight: bold; \
-    color: #aaa; \
+    font-size: var(--text-base); \
+    font-weight: var(--weight-bold); \
+    color: var(--text-secondary); \
     text-transform: uppercase; \
     letter-spacing: 0.5px; \
-    margin-bottom: 12px;\
+    margin-bottom: var(--space-3);\
 ";
 
 const ROW_STYLE: &str = "\
     display: flex; \
     justify-content: space-between; \
     align-items: center; \
-    padding: 8px 0; \
+    padding: var(--space-2) 0; \
     border-bottom: 1px solid #222;\
 ";
 
 const LABEL_STYLE: &str = "\
-    color: #888; \
-    font-size: 13px;\
+    color: var(--text-secondary); \
+    font-size: var(--text-sm);\
 ";
 
 const TOGGLE_ON: &str = "\
     background: #4f46e5; \
-    color: #fff; \
+    color: var(--text-primary); \
     border: 1px solid #6366f1; \
-    border-radius: 6px; \
-    padding: 6px 14px; \
-    font-size: 13px; \
-    cursor: pointer;\
+    border-radius: var(--radius-md); \
+    padding: var(--space-2) var(--space-4); \
+    font-size: var(--text-sm); \
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const TOGGLE_OFF: &str = "\
-    background: #2a2a4a; \
-    color: #888; \
-    border: 1px solid #444; \
-    border-radius: 6px; \
-    padding: 6px 14px; \
-    font-size: 13px; \
-    cursor: pointer;\
+    background: var(--border); \
+    color: var(--text-secondary); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
+    padding: var(--space-2) var(--space-4); \
+    font-size: var(--text-sm); \
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const DND_BTN: &str = "\
-    background: #2a2a4a; \
-    color: #e0e0e0; \
-    border: 1px solid #444; \
-    border-radius: 6px; \
-    padding: 5px 10px; \
-    font-size: 12px; \
+    background: var(--border); \
+    color: var(--text-primary); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
+    padding: var(--space-1) var(--space-3); \
+    font-size: var(--text-xs); \
     cursor: pointer; \
-    margin-left: 6px;\
+    margin-left: var(--space-2); \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const WARNING_STYLE: &str = "\
-    color: #eab308; \
-    font-size: 12px; \
-    margin-top: 4px;\
+    color: var(--status-warning); \
+    font-size: var(--text-xs); \
+    margin-top: var(--space-1);\
 ";
 
 /// Notification settings panel component.
@@ -223,7 +232,7 @@ pub(crate) fn NotificationSettings() -> Element {
                     style: "{LABEL_STYLE}",
                     "Do Not Disturb"
                     if dnd_active {
-                        div { style: "color: #4f46e5; font-size: 12px; margin-top: 2px;", "Active" }
+                        div { style: "color: #4f46e5; font-size: var(--text-xs); margin-top: var(--space-1);", "Active" }
                     }
                 }
                 div {

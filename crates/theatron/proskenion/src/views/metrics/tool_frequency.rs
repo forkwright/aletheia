@@ -32,7 +32,7 @@ fn top_tools(tools: &[ToolStat], limit: usize) -> (Vec<&ToolStat>, Option<ToolSt
 pub(crate) fn ToolFrequencyView(tools: Vec<ToolStat>, on_click: EventHandler<String>) -> Element {
     if tools.is_empty() {
         return rsx! {
-            div { style: "color: #555; font-size: 13px; padding: 8px;", "No tool data available." }
+            div { style: "color: var(--text-muted); font-size: var(--text-sm); padding: var(--space-2);", "No tool data available." }
         };
     }
 
@@ -52,12 +52,12 @@ pub(crate) fn ToolFrequencyView(tools: Vec<ToolStat>, on_click: EventHandler<Str
         bar_entries.push(BarEntry {
             label: o.name.clone(),
             value: o.total,
-            color: Some("#555".to_string()),
+            color: Some("var(--text-muted)".to_string()),
         });
     }
 
     rsx! {
-        div { style: "display: flex; flex-direction: column; gap: 16px;",
+        div { style: "display: flex; flex-direction: column; gap: var(--space-4);",
 
             // Horizontal bar chart
             HorizontalBarChart {
@@ -73,7 +73,7 @@ pub(crate) fn ToolFrequencyView(tools: Vec<ToolStat>, on_click: EventHandler<Str
 
             if let Some(ref o) = other {
                 div {
-                    style: "font-size: 11px; color: #555; padding: 2px 0;",
+                    style: "font-size: var(--text-xs); color: var(--text-muted); padding: var(--space-1) 0;",
                     "\"Other\" groups {tools.len() - 10} additional tools (total {o.total} calls). Click any named tool to drill down."
                 }
             }
@@ -91,7 +91,7 @@ pub(crate) fn ToolTimeSeriesView(
 ) -> Element {
     if time_series.is_empty() {
         return rsx! {
-            div { style: "color: #555; font-size: 13px; padding: 8px;", "No time series data." }
+            div { style: "color: var(--text-muted); font-size: var(--text-sm); padding: var(--space-2);", "No time series data." }
         };
     }
 
@@ -138,7 +138,7 @@ pub(crate) fn ToolTimeSeriesView(
             .collect();
         LineSeries {
             name: "Other".to_string(),
-            color: "#555".to_string(),
+            color: "var(--text-muted)".to_string(),
             points: other_points,
         }
     };

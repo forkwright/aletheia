@@ -5,32 +5,32 @@ use dioxus::prelude::*;
 use crate::state::tools::{RiskLevel, ToolApprovalState};
 
 const APPROVAL_BASE_STYLE: &str = "\
-    padding: 12px; \
-    border-radius: 8px; \
-    margin-top: 4px; \
-    font-size: 13px;\
+    padding: var(--space-3); \
+    border-radius: var(--radius-md); \
+    margin-top: var(--space-1); \
+    font-size: var(--text-sm);\
 ";
 
 const TOOL_NAME_STYLE: &str = "\
-    font-weight: 600; \
+    font-weight: var(--weight-semibold); \
     color: var(--text-primary); \
-    font-size: 14px;\
+    font-size: var(--text-base);\
 ";
 
 const REASON_STYLE: &str = "\
     color: var(--text-secondary); \
-    margin-top: 4px; \
-    font-size: 13px;\
+    margin-top: var(--space-1); \
+    font-size: var(--text-sm);\
 ";
 
 const INPUT_PREVIEW_STYLE: &str = "\
     background: var(--code-bg); \
     border: 1px solid var(--border); \
-    border-radius: 4px; \
-    padding: 6px 8px; \
-    margin-top: 8px; \
+    border-radius: var(--radius-sm); \
+    padding: var(--space-2) var(--space-2); \
+    margin-top: var(--space-2); \
     font-family: var(--font-mono); \
-    font-size: 12px; \
+    font-size: var(--text-xs); \
     color: var(--code-fg); \
     max-height: 120px; \
     overflow-y: auto; \
@@ -39,48 +39,54 @@ const INPUT_PREVIEW_STYLE: &str = "\
 
 const RISK_BADGE_BASE: &str = "\
     display: inline-block; \
-    font-size: 11px; \
-    font-weight: 600; \
-    padding: 2px 8px; \
-    border-radius: 10px; \
-    margin-left: 8px; \
+    font-size: var(--text-xs); \
+    font-weight: var(--weight-semibold); \
+    padding: var(--space-1) var(--space-2); \
+    border-radius: var(--radius-lg); \
+    margin-left: var(--space-2); \
     text-transform: uppercase; \
     letter-spacing: 0.5px;\
 ";
 
 const BUTTON_ROW_STYLE: &str = "\
     display: flex; \
-    gap: 8px; \
-    margin-top: 10px;\
+    gap: var(--space-2); \
+    margin-top: var(--space-3);\
 ";
 
 const APPROVE_BTN_STYLE: &str = "\
     background: var(--status-success); \
-    color: var(--code-bg); \
+    color: var(--text-inverse); \
     border: none; \
-    border-radius: 6px; \
-    padding: 6px 16px; \
-    font-size: 13px; \
-    font-weight: 600; \
-    cursor: pointer;\
+    border-radius: var(--radius-md); \
+    padding: var(--space-2) var(--space-4); \
+    font-size: var(--text-sm); \
+    font-weight: var(--weight-semibold); \
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const DENY_BTN_STYLE: &str = "\
     background: var(--status-error); \
     color: var(--text-inverse); \
     border: none; \
-    border-radius: 6px; \
-    padding: 6px 16px; \
-    font-size: 13px; \
-    font-weight: 600; \
-    cursor: pointer;\
+    border-radius: var(--radius-md); \
+    padding: var(--space-2) var(--space-4); \
+    font-size: var(--text-sm); \
+    font-weight: var(--weight-semibold); \
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const RESOLVED_STYLE: &str = "\
     color: var(--text-muted); \
     font-style: italic; \
-    padding: 8px; \
-    font-size: 13px;\
+    padding: var(--space-2); \
+    font-size: var(--text-sm);\
 ";
 
 /// Inline tool approval dialog.

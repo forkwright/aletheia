@@ -64,7 +64,10 @@ const REFRESH_BTN: &str = "\
     border-radius: var(--radius-md); \
     padding: var(--space-1) var(--space-3); \
     font-size: var(--text-sm); \
-    cursor: pointer;\
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const DEFAULT_LIST_WIDTH: f64 = 480.0;
@@ -385,7 +388,7 @@ pub(crate) fn Sessions() -> Element {
             div {
                 style: "{HEADER_STYLE}",
                 h2 {
-                    style: "font-size: 18px; margin: 0; color: var(--text-primary, #e0e0e0);",
+                    style: "font-size: var(--text-lg); margin: 0; color: var(--text-primary, var(--text-primary));",
                     "Sessions"
                 }
                 button {

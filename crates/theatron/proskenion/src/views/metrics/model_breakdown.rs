@@ -23,7 +23,7 @@ pub(crate) fn ModelBreakdown(models: Vec<ModelTokenRow>, grand_total: u64) -> El
 
     rsx! {
         div {
-            style: "display: flex; flex-direction: column; gap: 16px;",
+            style: "display: flex; flex-direction: column; gap: var(--space-4);",
 
             DonutChart {
                 segments,
@@ -35,16 +35,16 @@ pub(crate) fn ModelBreakdown(models: Vec<ModelTokenRow>, grand_total: u64) -> El
             div {
                 style: "overflow-x: auto;",
                 table {
-                    style: "width: 100%; border-collapse: collapse; font-size: 12px; font-family: 'IBM Plex Mono', monospace;",
+                    style: "width: 100%; border-collapse: collapse; font-size: var(--text-xs); font-family: var(--font-mono);",
                     thead {
                         tr {
-                            style: "border-bottom: 1px solid #2a2724;",
-                            th { style: "padding: 6px 8px; text-align: left; color: #706c66;", "Model" }
-                            th { style: "padding: 6px 8px; text-align: right; color: #706c66;", "Input" }
-                            th { style: "padding: 6px 8px; text-align: right; color: #706c66;", "Output" }
-                            th { style: "padding: 6px 8px; text-align: right; color: #706c66;", "Total" }
-                            th { style: "padding: 6px 8px; text-align: right; color: #706c66;", "%" }
-                            th { style: "padding: 6px 8px; text-align: right; color: #706c66;", "$/1K out" }
+                            style: "border-bottom: 1px solid var(--border);",
+                            th { style: "padding: var(--space-2) var(--space-2); text-align: left; color: var(--text-muted);", "Model" }
+                            th { style: "padding: var(--space-2) var(--space-2); text-align: right; color: var(--text-muted);", "Input" }
+                            th { style: "padding: var(--space-2) var(--space-2); text-align: right; color: var(--text-muted);", "Output" }
+                            th { style: "padding: var(--space-2) var(--space-2); text-align: right; color: var(--text-muted);", "Total" }
+                            th { style: "padding: var(--space-2) var(--space-2); text-align: right; color: var(--text-muted);", "%" }
+                            th { style: "padding: var(--space-2) var(--space-2); text-align: right; color: var(--text-muted);", "$/1K out" }
                         }
                     }
                     tbody {
@@ -57,17 +57,17 @@ pub(crate) fn ModelBreakdown(models: Vec<ModelTokenRow>, grand_total: u64) -> El
                                 rsx! {
                                     tr {
                                         key: "{model.model}",
-                                        style: "border-bottom: 1px solid #2a2724;",
+                                        style: "border-bottom: 1px solid var(--border);",
                                         td {
-                                            style: "padding: 6px 8px; color: {color}; white-space: nowrap;",
+                                            style: "padding: var(--space-2) var(--space-2); color: {color}; white-space: nowrap;",
                                             title: "{model.model}",
                                             "{short}"
                                         }
-                                        td { style: "padding: 6px 8px; color: #a8a49e; text-align: right;", "{format_tokens(model.input_tokens)}" }
-                                        td { style: "padding: 6px 8px; color: #a8a49e; text-align: right;", "{format_tokens(model.output_tokens)}" }
-                                        td { style: "padding: 6px 8px; color: #e8e6e3; text-align: right; font-weight: 600;", "{format_tokens(model.total())}" }
-                                        td { style: "padding: 6px 8px; color: #706c66; text-align: right;", "{pct:.1}%" }
-                                        td { style: "padding: 6px 8px; color: #706c66; text-align: right;", "${price:.4}" }
+                                        td { style: "padding: var(--space-2) var(--space-2); color: var(--text-secondary); text-align: right;", "{format_tokens(model.input_tokens)}" }
+                                        td { style: "padding: var(--space-2) var(--space-2); color: var(--text-secondary); text-align: right;", "{format_tokens(model.output_tokens)}" }
+                                        td { style: "padding: var(--space-2) var(--space-2); color: var(--text-primary); text-align: right; font-weight: var(--weight-semibold);", "{format_tokens(model.total())}" }
+                                        td { style: "padding: var(--space-2) var(--space-2); color: var(--text-muted); text-align: right;", "{pct:.1}%" }
+                                        td { style: "padding: var(--space-2) var(--space-2); color: var(--text-muted); text-align: right;", "${price:.4}" }
                                     }
                                 }
                             }

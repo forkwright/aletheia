@@ -85,12 +85,12 @@ impl EntityType {
         match self {
             Self::Person => "#7a7aff",
             Self::Concept => "#a855f7",
-            Self::Project => "#22c55e",
-            Self::Tool => "#f59e0b",
+            Self::Project => "var(--status-success)",
+            Self::Tool => "var(--status-warning)",
             Self::Location => "#06b6d4",
             Self::Organization => "#ec4899",
-            Self::Event => "#ef4444",
-            Self::Other(_) => "#888",
+            Self::Event => "var(--status-error)",
+            Self::Other(_) => "var(--text-secondary)",
         }
     }
 }
@@ -131,9 +131,9 @@ impl FlagSeverity {
     )]
     pub(crate) fn color(self) -> &'static str {
         match self {
-            Self::Low => "#06b6d4",
-            Self::Medium => "#f59e0b",
-            Self::High => "#ef4444",
+            Self::Low => "var(--status-info)",
+            Self::Medium => "var(--status-warning)",
+            Self::High => "var(--status-error)",
         }
     }
 }
@@ -523,11 +523,11 @@ impl EntityNavigationHistory {
 #[must_use]
 pub(crate) fn confidence_color(value: f64) -> &'static str {
     if value > 0.7 {
-        "#22c55e"
+        "var(--status-success)"
     } else if value >= 0.4 {
-        "#f59e0b"
+        "var(--status-warning)"
     } else {
-        "#ef4444"
+        "var(--status-error)"
     }
 }
 
@@ -717,13 +717,13 @@ mod tests {
 
     #[test]
     fn confidence_color_thresholds() {
-        assert_eq!(confidence_color(0.8), "#22c55e");
-        assert_eq!(confidence_color(0.71), "#22c55e");
-        assert_eq!(confidence_color(0.7), "#f59e0b");
-        assert_eq!(confidence_color(0.5), "#f59e0b");
-        assert_eq!(confidence_color(0.4), "#f59e0b");
-        assert_eq!(confidence_color(0.39), "#ef4444");
-        assert_eq!(confidence_color(0.0), "#ef4444");
+        assert_eq!(confidence_color(0.8), "var(--status-success)");
+        assert_eq!(confidence_color(0.71), "var(--status-success)");
+        assert_eq!(confidence_color(0.7), "var(--status-warning)");
+        assert_eq!(confidence_color(0.5), "var(--status-warning)");
+        assert_eq!(confidence_color(0.4), "var(--status-warning)");
+        assert_eq!(confidence_color(0.39), "var(--status-error)");
+        assert_eq!(confidence_color(0.0), "var(--status-error)");
     }
 
     #[test]
@@ -738,7 +738,7 @@ mod tests {
     fn entity_type_labels_and_colors() {
         for et in EntityType::FIXED {
             assert!(!et.label().is_empty());
-            assert!(et.color().starts_with('#'));
+            assert!(!et.color().is_empty());
         }
         let other = EntityType::Other("Custom".to_string());
         assert_eq!(other.label(), "Custom");
@@ -755,7 +755,7 @@ mod tests {
     fn flag_severity_labels_and_colors() {
         for sev in FlagSeverity::ALL {
             assert!(!sev.label().is_empty());
-            assert!(sev.color().starts_with('#'));
+            assert!(!sev.color().is_empty());
         }
     }
 

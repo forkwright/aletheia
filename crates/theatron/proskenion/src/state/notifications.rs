@@ -194,6 +194,26 @@ impl NotificationHistory {
         self.entries.push_back(entry);
     }
 
+    /// Whether the history is empty.
+    #[cfg_attr(not(test), expect(dead_code, reason = "used in tests"))]
+    #[must_use]
+    pub(crate) fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
+    /// Number of entries in the history.
+    #[cfg_attr(not(test), expect(dead_code, reason = "used in tests"))]
+    #[must_use]
+    pub(crate) fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    /// Slice of all entries in chronological order.
+    #[cfg_attr(not(test), expect(dead_code, reason = "used in tests"))]
+    #[must_use]
+    pub(crate) fn entries(&self) -> &VecDeque<NotificationEntry> {
+        &self.entries
+    }
 }
 
 #[cfg(test)]

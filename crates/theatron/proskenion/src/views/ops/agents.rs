@@ -7,14 +7,14 @@ use crate::state::ops::{AgentCardData, AgentStatusStore};
 const GRID_STYLE: &str = "\
     display: flex; \
     flex-wrap: wrap; \
-    gap: 12px;\
+    gap: var(--space-3);\
 ";
 
 const CARD_STYLE: &str = "\
-    background: #1a1a2e; \
-    border: 1px solid #333; \
-    border-radius: 8px; \
-    padding: 16px 20px; \
+    background: var(--bg-surface); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
+    padding: var(--space-4) var(--space-5); \
     min-width: 200px; \
     flex: 1; \
     max-width: 320px;\
@@ -23,30 +23,30 @@ const CARD_STYLE: &str = "\
 const CARD_HEADER: &str = "\
     display: flex; \
     align-items: center; \
-    gap: 8px; \
-    margin-bottom: 12px;\
+    gap: var(--space-2); \
+    margin-bottom: var(--space-3);\
 ";
 
 const CARD_NAME: &str = "\
-    font-size: 15px; \
-    font-weight: bold; \
-    color: #e0e0e0;\
+    font-size: var(--text-md); \
+    font-weight: var(--weight-bold); \
+    color: var(--text-primary);\
 ";
 
 const CARD_ROW: &str = "\
     display: flex; \
     justify-content: space-between; \
     align-items: center; \
-    padding: 4px 0; \
-    font-size: 12px;\
+    padding: var(--space-1) 0; \
+    font-size: var(--text-xs);\
 ";
 
 const CARD_LABEL: &str = "\
-    color: #888;\
+    color: var(--text-secondary);\
 ";
 
 const CARD_VALUE: &str = "\
-    color: #e0e0e0;\
+    color: var(--text-primary);\
 ";
 
 const DOT_BASE: &str = "\
@@ -58,9 +58,9 @@ const DOT_BASE: &str = "\
 ";
 
 const EMPTY_STATE: &str = "\
-    color: #555; \
-    font-size: 13px; \
-    padding: 12px 0;\
+    color: var(--text-muted); \
+    font-size: var(--text-sm); \
+    padding: var(--space-3) 0;\
 ";
 
 #[component]
@@ -88,11 +88,11 @@ fn render_card(card: &AgentCardData) -> Element {
     let dot_color = card.health.dot_color();
     let health_label = card.health.label();
     let turn_color = if card.active_turns > 0 {
-        "#4a4aff"
+        "var(--accent)"
     } else {
-        "#555"
+        "var(--text-muted)"
     };
-    let conn_color = if card.connected { "#22c55e" } else { "#ef4444" };
+    let conn_color = if card.connected { "var(--status-success)" } else { "var(--status-error)" };
     let conn_label = if card.connected {
         "connected"
     } else {
@@ -101,7 +101,7 @@ fn render_card(card: &AgentCardData) -> Element {
     let last_activity = card.last_activity.as_deref().unwrap_or("\u{2014}");
     let dot_style = format!("{DOT_BASE} background: {dot_color};");
     let health_style = format!("color: {dot_color};");
-    let turn_style = format!("color: {turn_color}; font-weight: bold;");
+    let turn_style = format!("color: {turn_color}; font-weight: var(--weight-bold);");
     let conn_style = format!("color: {conn_color};");
 
     rsx! {
@@ -112,7 +112,7 @@ fn render_card(card: &AgentCardData) -> Element {
             div {
                 style: "{CARD_HEADER}",
                 if let Some(ref emoji) = card.emoji {
-                    span { style: "font-size: 18px;", "{emoji}" }
+                    span { style: "font-size: var(--text-lg);", "{emoji}" }
                 }
                 span { style: "{CARD_NAME}", "{card.name}" }
                 span {
@@ -142,7 +142,7 @@ fn render_card(card: &AgentCardData) -> Element {
             div {
                 style: "{CARD_ROW}",
                 span { style: "{CARD_LABEL}", "Last activity" }
-                span { style: "color: #666;", "{last_activity}" }
+                span { style: "color: var(--text-muted);", "{last_activity}" }
             }
 
             div {

@@ -37,7 +37,7 @@ pub(crate) fn AgentBreakdown(
 
     rsx! {
         div {
-            style: "display: flex; flex-direction: column; gap: 16px;",
+            style: "display: flex; flex-direction: column; gap: var(--space-4);",
 
             HorizBarChart {
                 entries: bar_entries,
@@ -56,10 +56,10 @@ pub(crate) fn AgentBreakdown(
             div {
                 style: "overflow-x: auto;",
                 table {
-                    style: "width: 100%; border-collapse: collapse; font-size: 12px; font-family: 'IBM Plex Mono', monospace;",
+                    style: "width: 100%; border-collapse: collapse; font-size: var(--text-xs); font-family: var(--font-mono);",
                     thead {
                         tr {
-                            style: "border-bottom: 1px solid #2a2724;",
+                            style: "border-bottom: 1px solid var(--border);",
                             { sort_th("Agent", AgentTokenSort::Name, sort_col, sort_dir, grand_total) }
                             { sort_th("Input", AgentTokenSort::Input, sort_col, sort_dir, grand_total) }
                             { sort_th("Output", AgentTokenSort::Output, sort_col, sort_dir, grand_total) }
@@ -78,19 +78,19 @@ pub(crate) fn AgentBreakdown(
                                     tr {
                                         key: "{agent.id}",
                                         style: if is_active {
-                                            "border-bottom: 1px solid #2a2724; background: #1e1c1a;"
+                                            "border-bottom: 1px solid var(--border); background: var(--bg-surface-dim);"
                                         } else {
-                                            "border-bottom: 1px solid #2a2724;"
+                                            "border-bottom: 1px solid var(--border);"
                                         },
                                         td {
-                                            style: "padding: 6px 8px; color: {color}; white-space: nowrap;",
+                                            style: "padding: var(--space-2) var(--space-2); color: {color}; white-space: nowrap;",
                                             "{agent.name}"
                                         }
-                                        td { style: "padding: 6px 8px; color: #a8a49e; text-align: right;", "{format_tokens(agent.input_tokens)}" }
-                                        td { style: "padding: 6px 8px; color: #a8a49e; text-align: right;", "{format_tokens(agent.output_tokens)}" }
-                                        td { style: "padding: 6px 8px; color: #e8e6e3; text-align: right; font-weight: 600;", "{format_tokens(agent.total())}" }
-                                        td { style: "padding: 6px 8px; color: #706c66; text-align: right;", "{pct:.1}%" }
-                                        td { style: "padding: 6px 8px; color: #706c66; text-align: right;", "{format_tokens(agent.avg_per_session())}" }
+                                        td { style: "padding: var(--space-2) var(--space-2); color: var(--text-secondary); text-align: right;", "{format_tokens(agent.input_tokens)}" }
+                                        td { style: "padding: var(--space-2) var(--space-2); color: var(--text-secondary); text-align: right;", "{format_tokens(agent.output_tokens)}" }
+                                        td { style: "padding: var(--space-2) var(--space-2); color: var(--text-primary); text-align: right; font-weight: var(--weight-semibold);", "{format_tokens(agent.total())}" }
+                                        td { style: "padding: var(--space-2) var(--space-2); color: var(--text-muted); text-align: right;", "{pct:.1}%" }
+                                        td { style: "padding: var(--space-2) var(--space-2); color: var(--text-muted); text-align: right;", "{format_tokens(agent.avg_per_session())}" }
                                     }
                                 }
                             }
@@ -118,7 +118,7 @@ fn sort_th(
     let label = label.to_string();
     rsx! {
         th {
-            style: "padding: 6px 8px; text-align: right; color: #706c66; cursor: pointer; user-select: none; white-space: nowrap;",
+            style: "padding: var(--space-2) var(--space-2); text-align: right; color: var(--text-muted); cursor: pointer; user-select: none; white-space: nowrap; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
             onclick: move |_| {
                 if *sort_col.read() == col {
                     let new_dir = sort_dir.read().flip();

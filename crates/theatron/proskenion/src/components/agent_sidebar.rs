@@ -13,44 +13,44 @@ const SIDEBAR_SECTION_STYLE: &str = "\
     display: flex; \
     flex-direction: column; \
     gap: 2px; \
-    margin-bottom: 8px;\
+    margin-bottom: var(--space-2);\
 ";
 
 const SECTION_LABEL_STYLE: &str = "\
-    font-size: 10px; \
+    font-size: var(--text-xs); \
     text-transform: uppercase; \
     letter-spacing: 0.08em; \
-    color: #555; \
-    padding: 4px 12px 2px;\
+    color: var(--text-muted); \
+    padding: var(--space-1) var(--space-3) 2px;\
 ";
 
 const AGENT_ROW_STYLE: &str = "\
     display: flex; \
     align-items: center; \
-    gap: 8px; \
-    padding: 7px 12px; \
-    border-radius: 6px; \
-    cursor: pointer; \
-    color: #e0e0e0; \
-    font-size: 13px;\
+    gap: var(--space-2); \
+    padding: var(--space-2) var(--space-3); \
+    border-radius: var(--radius-md); \
+    cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick); \
+    color: var(--text-primary); \
+    font-size: var(--text-sm);\
 ";
 
 const AGENT_ROW_ACTIVE_STYLE: &str = "\
     display: flex; \
     align-items: center; \
-    gap: 8px; \
-    padding: 7px 12px; \
-    border-radius: 6px; \
-    cursor: pointer; \
-    color: #ffffff; \
-    font-size: 13px; \
-    background: #2a2a4a;\
+    gap: var(--space-2); \
+    padding: var(--space-2) var(--space-3); \
+    border-radius: var(--radius-md); \
+    cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick); \
+    color: var(--text-primary); \
+    font-size: var(--text-sm); \
+    background: var(--border);\
 ";
 
 const EMPTY_AGENTS_STYLE: &str = "\
-    padding: 8px 12px; \
-    font-size: 12px; \
-    color: #555;\
+    padding: var(--space-2) var(--space-3); \
+    font-size: var(--text-xs); \
+    color: var(--text-muted);\
 ";
 
 /// Derives the display status for an agent from the current `EventState`.
@@ -84,14 +84,14 @@ pub(crate) fn AgentSidebarView(collapsed: bool) -> Element {
         let agent_count = store.read().all().len();
         return rsx! {
             div {
-                style: "display: flex; flex-direction: column; align-items: center; padding: 8px 0;",
+                style: "display: flex; flex-direction: column; align-items: center; padding: var(--space-2) 0;",
                 span {
-                    style: "font-size: 10px; color: #555; writing-mode: vertical-rl; text-orientation: mixed;",
+                    style: "font-size: var(--text-xs); color: var(--text-muted); writing-mode: vertical-rl; text-orientation: mixed;",
                     "NOUS"
                 }
                 if agent_count > 0 {
                     span {
-                        style: "font-size: 10px; color: #22c55e; margin-top: 4px;",
+                        style: "font-size: var(--text-xs); color: var(--status-success); margin-top: var(--space-1);",
                         "● {agent_count}"
                     }
                 }
@@ -144,11 +144,11 @@ pub(crate) fn AgentSidebarView(collapsed: bool) -> Element {
                                     store.write().set_active(&id_clone);
                                 },
                                 span {
-                                    style: "color: {color}; font-size: 9px; flex-shrink: 0;",
+                                    style: "color: {color}; font-size: var(--text-xs); flex-shrink: 0;",
                                     "●"
                                 }
                                 if !emoji.is_empty() {
-                                    span { style: "font-size: 14px;", "{emoji}" }
+                                    span { style: "font-size: var(--text-base);", "{emoji}" }
                                 }
                                 span { "{name}" }
                             }

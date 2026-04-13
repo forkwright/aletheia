@@ -7,69 +7,78 @@ use crate::state::memory::{EntityListStore, EntityType};
 const SEARCH_BAR_STYLE: &str = "\
     display: flex; \
     flex-direction: column; \
-    gap: 8px; \
-    padding-bottom: 8px;\
+    gap: var(--space-2); \
+    padding-bottom: var(--space-2);\
 ";
 
 const SEARCH_ROW_STYLE: &str = "\
     display: flex; \
     align-items: center; \
-    gap: 8px; \
+    gap: var(--space-2); \
     flex-wrap: wrap;\
 ";
 
 const SEARCH_INPUT_STYLE: &str = "\
     flex: 1; \
     min-width: 200px; \
-    background: #1a1a2e; \
-    border: 1px solid #333; \
-    border-radius: 6px; \
-    padding: 8px 12px; \
-    color: #e0e0e0; \
-    font-size: 14px;\
+    background: var(--bg-surface); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
+    padding: var(--space-2) var(--space-3); \
+    color: var(--text-primary); \
+    font-size: var(--text-base);\
 ";
 
 const FILTER_SELECT_STYLE: &str = "\
-    background: #1a1a2e; \
-    border: 1px solid #333; \
-    border-radius: 6px; \
-    padding: 8px 12px; \
-    color: #e0e0e0; \
-    font-size: 13px; \
-    cursor: pointer;\
+    background: var(--bg-surface); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
+    padding: var(--space-2) var(--space-3); \
+    color: var(--text-primary); \
+    font-size: var(--text-sm); \
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const CHIPS_ROW_STYLE: &str = "\
     display: flex; \
     flex-wrap: wrap; \
-    gap: 6px;\
+    gap: var(--space-2);\
 ";
 
 const CHIP_STYLE: &str = "\
     display: flex; \
     align-items: center; \
-    gap: 4px; \
-    background: #2a2a4a; \
-    color: #e0e0e0; \
-    border-radius: 12px; \
-    padding: 4px 10px; \
-    font-size: 12px;\
+    gap: var(--space-1); \
+    background: var(--border); \
+    color: var(--text-primary); \
+    border-radius: var(--radius-lg); \
+    padding: var(--space-1) 10px; \
+    font-size: var(--text-xs);\
 ";
 
 const CHIP_DISMISS_STYLE: &str = "\
     cursor: pointer; \
-    color: #888; \
-    font-size: 14px; \
-    line-height: 1;\
+    color: var(--text-secondary); \
+    font-size: var(--text-base); \
+    line-height: 1; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const CLEAR_ALL_STYLE: &str = "\
     color: #7a7aff; \
-    font-size: 12px; \
+    font-size: var(--text-xs); \
     cursor: pointer; \
     background: none; \
     border: none; \
-    padding: 4px 8px;\
+    padding: var(--space-1) var(--space-2); \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 /// Search and filter bar for entity list.

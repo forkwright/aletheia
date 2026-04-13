@@ -48,9 +48,9 @@ pub(crate) struct GroupedBarEntry {
 // -- Style constants ----------------------------------------------------------
 
 const CHART_LABEL_STYLE: &str = "\
-    font-size: 11px; \
-    color: #706c66; \
-    font-family: 'IBM Plex Mono', monospace;\
+    font-size: var(--text-xs); \
+    color: var(--text-muted); \
+    font-family: var(--font-mono);\
 ";
 
 #[expect(dead_code, reason = "tooltip style reserved for future hover implementation")]
@@ -59,12 +59,12 @@ const TOOLTIP_STYLE: &str = "\
     bottom: 110%; \
     left: 50%; \
     transform: translateX(-50%); \
-    background: #24211e; \
-    border: 1px solid #3a3530; \
-    border-radius: 6px; \
-    padding: 6px 10px; \
-    font-size: 11px; \
-    color: #e8e6e3; \
+    background: var(--bg-surface); \
+    border: 1px solid var(--input-border); \
+    border-radius: var(--radius-md); \
+    padding: var(--space-2) var(--space-3); \
+    font-size: var(--text-xs); \
+    color: var(--text-primary); \
     white-space: nowrap; \
     pointer-events: none; \
     z-index: 10;\
@@ -83,7 +83,7 @@ pub(crate) fn TimeSeriesChart(
     if columns.is_empty() {
         return rsx! {
             div {
-                style: "display: flex; align-items: center; justify-content: center; height: {height_px}px; color: #706c66; font-size: 13px;",
+                style: "display: flex; align-items: center; justify-content: center; height: {height_px}px; color: var(--text-muted); font-size: var(--text-sm);",
                 "No data for this range"
             }
         };
@@ -97,20 +97,20 @@ pub(crate) fn TimeSeriesChart(
 
     rsx! {
         div {
-            style: "display: flex; flex-direction: column; gap: 6px;",
+            style: "display: flex; flex-direction: column; gap: var(--space-2);",
 
             // Legend
             div {
-                style: "display: flex; gap: 12px; align-items: center;",
+                style: "display: flex; gap: var(--space-3); align-items: center;",
                 div {
-                    style: "display: flex; align-items: center; gap: 4px;",
-                    div { style: "width: 10px; height: 10px; border-radius: 2px; background: {columns[0].primary_color};" }
+                    style: "display: flex; align-items: center; gap: var(--space-1);",
+                    div { style: "width: 10px; height: 10px; border-radius: var(--radius-sm); background: {columns[0].primary_color};" }
                     span { style: "{CHART_LABEL_STYLE}", "{primary_label}" }
                 }
                 if !secondary_label.is_empty() {
                     div {
-                        style: "display: flex; align-items: center; gap: 4px;",
-                        div { style: "width: 10px; height: 10px; border-radius: 2px; background: {columns[0].secondary_color};" }
+                        style: "display: flex; align-items: center; gap: var(--space-1);",
+                        div { style: "width: 10px; height: 10px; border-radius: var(--radius-sm); background: {columns[0].secondary_color};" }
                         span { style: "{CHART_LABEL_STYLE}", "{secondary_label}" }
                     }
                 }
@@ -118,7 +118,7 @@ pub(crate) fn TimeSeriesChart(
 
             // Bars
             div {
-                style: "display: flex; align-items: flex-end; gap: 2px; height: {height_px}px; padding: 0 4px;",
+                style: "display: flex; align-items: flex-end; gap: 2px; height: {height_px}px; padding: 0 var(--space-1);",
                 for col in &columns {
                     {
                         let total = col.total();
@@ -136,10 +136,10 @@ pub(crate) fn TimeSeriesChart(
                         let sv = format_chart_value(col.secondary);
                         rsx! {
                             div {
-                                style: "flex: 1; display: flex; flex-direction: column; align-items: stretch; cursor: pointer; position: relative; min-width: 4px;",
+                                style: "flex: 1; display: flex; flex-direction: column; align-items: stretch; cursor: pointer; position: relative; min-width: 4px; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
                                 title: "{lbl}\n{primary_label}: {pv}\n{secondary_label}: {sv}",
                                 div {
-                                    style: "height: {total_pct}%; display: flex; flex-direction: column; overflow: hidden; border-radius: 2px 2px 0 0;",
+                                    style: "height: {total_pct}%; display: flex; flex-direction: column; overflow: hidden; border-radius: var(--radius-sm) var(--radius-sm) 0 0;",
                                     div {
                                         style: "height: {primary_pct}%; background: {pcol}; min-height: 1px;",
                                     }
@@ -156,7 +156,7 @@ pub(crate) fn TimeSeriesChart(
             // X-axis labels
             if columns.len() >= 2 {
                 div {
-                    style: "display: flex; justify-content: space-between; padding: 0 4px;",
+                    style: "display: flex; justify-content: space-between; padding: 0 var(--space-1);",
                     span { style: "{CHART_LABEL_STYLE}", "{columns.first().map(|c| c.label.as_str()).unwrap_or(\"\")}" }
                     span { style: "{CHART_LABEL_STYLE}", "{columns.last().map(|c| c.label.as_str()).unwrap_or(\"\")}" }
                 }
@@ -178,7 +178,7 @@ pub(crate) fn HorizBarChart(
     if entries.is_empty() {
         return rsx! {
             div {
-                style: "color: #706c66; font-size: 13px; padding: 16px 0;",
+                style: "color: var(--text-muted); font-size: var(--text-sm); padding: var(--space-4) 0;",
                 "No data"
             }
         };
@@ -196,7 +196,7 @@ pub(crate) fn HorizBarChart(
 
     rsx! {
         div {
-            style: "display: flex; flex-direction: column; gap: 8px;",
+            style: "display: flex; flex-direction: column; gap: var(--space-2);",
             for (idx, entry) in entries.iter().enumerate() {
                 {
                     #[expect(clippy::as_conversions, reason = "CSS percentage from bounded ratio")]
@@ -212,26 +212,26 @@ pub(crate) fn HorizBarChart(
                     rsx! {
                         div {
                             key: "{idx}",
-                            style: "display: flex; align-items: center; gap: 8px; cursor: pointer;",
+                            style: "display: flex; align-items: center; gap: var(--space-2); cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
                             onclick: move |_| {
                                 if let Some(handler) = &on_click {
                                     handler.call(id.clone());
                                 }
                             },
                             div {
-                                style: "width: 120px; font-size: 12px; color: #a8a49e; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 0;",
+                                style: "width: 120px; font-size: var(--text-xs); color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 0;",
                                 title: "{label}",
                                 "{label}"
                             }
                             div {
-                                style: "flex: 1; height: 20px; background: #1a1816; border-radius: 3px; overflow: hidden;",
+                                style: "flex: 1; height: 20px; background: var(--bg-surface); border-radius: var(--radius-sm); overflow: hidden;",
                                 div {
-                                    style: "height: 100%; width: {pct}%; background: {color}; border-radius: 3px; transition: width 0.3s ease;",
+                                    style: "height: 100%; width: {pct}%; background: {color}; border-radius: var(--radius-sm); transition: width var(--transition-measured);",
                                 }
                             }
                             if show_value {
                                 div {
-                                    style: "width: 72px; text-align: right; font-size: 12px; color: #706c66; font-family: 'IBM Plex Mono', monospace; flex-shrink: 0;",
+                                    style: "width: 72px; text-align: right; font-size: var(--text-xs); color: var(--text-muted); font-family: var(--font-mono); flex-shrink: 0;",
                                     "{value_str}"
                                 }
                             }
@@ -255,7 +255,7 @@ pub(crate) fn DonutChart(
     if segments.is_empty() {
         return rsx! {
             div {
-                style: "color: #706c66; font-size: 13px; padding: 16px 0;",
+                style: "color: var(--text-muted); font-size: var(--text-sm); padding: var(--space-4) 0;",
                 "No data"
             }
         };
@@ -281,21 +281,21 @@ pub(crate) fn DonutChart(
 
     rsx! {
         div {
-            style: "display: flex; flex-direction: column; align-items: center; gap: 16px;",
+            style: "display: flex; flex-direction: column; align-items: center; gap: var(--space-4);",
 
             div {
                 style: "position: relative; width: {size_px}px; height: {size_px}px; border-radius: 50%; background: conic-gradient({gradient});",
                 div {
-                    style: "position: absolute; top: {hole_offset}px; left: {hole_offset}px; width: {hole_size}px; height: {hole_size}px; background: #12110f; border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center;",
+                    style: "position: absolute; top: {hole_offset}px; left: {hole_offset}px; width: {hole_size}px; height: {hole_size}px; background: var(--bg); border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center;",
                     div {
-                        style: "font-size: 11px; color: #706c66; text-align: center;",
+                        style: "font-size: var(--text-xs); color: var(--text-muted); text-align: center;",
                         "{center_label}"
                     }
                 }
             }
 
             div {
-                style: "display: flex; flex-wrap: wrap; gap: 8px 16px; justify-content: center;",
+                style: "display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); justify-content: center;",
                 for seg in &segments {
                     {
                         let pct = seg.value / effective_total * 100.0;
@@ -303,10 +303,10 @@ pub(crate) fn DonutChart(
                         let label = seg.label.clone();
                         rsx! {
                             div {
-                                style: "display: flex; align-items: center; gap: 4px;",
-                                div { style: "width: 10px; height: 10px; border-radius: 2px; background: {color}; flex-shrink: 0;" }
-                                span { style: "font-size: 12px; color: #a8a49e;", "{label}" }
-                                span { style: "font-size: 11px; color: #706c66;", "({pct:.1}%)" }
+                                style: "display: flex; align-items: center; gap: var(--space-1);",
+                                div { style: "width: 10px; height: 10px; border-radius: var(--radius-sm); background: {color}; flex-shrink: 0;" }
+                                span { style: "font-size: var(--text-xs); color: var(--text-secondary);", "{label}" }
+                                span { style: "font-size: var(--text-xs); color: var(--text-muted);", "({pct:.1}%)" }
                             }
                         }
                     }
@@ -329,7 +329,7 @@ pub(crate) fn GroupedBarChart(
     if entries.is_empty() {
         return rsx! {
             div {
-                style: "display: flex; align-items: center; justify-content: center; height: {height_px}px; color: #706c66; font-size: 13px;",
+                style: "display: flex; align-items: center; justify-content: center; height: {height_px}px; color: var(--text-muted); font-size: var(--text-sm);",
                 "No data for this range"
             }
         };
@@ -343,26 +343,26 @@ pub(crate) fn GroupedBarChart(
 
     rsx! {
         div {
-            style: "display: flex; flex-direction: column; gap: 8px;",
+            style: "display: flex; flex-direction: column; gap: var(--space-2);",
 
             div {
-                style: "display: flex; gap: 12px;",
+                style: "display: flex; gap: var(--space-3);",
                 if let Some(first) = entries.first() {
                     div {
-                        style: "display: flex; align-items: center; gap: 4px;",
-                        div { style: "width: 10px; height: 10px; border-radius: 2px; background: {first.current_color};" }
+                        style: "display: flex; align-items: center; gap: var(--space-1);",
+                        div { style: "width: 10px; height: 10px; border-radius: var(--radius-sm); background: {first.current_color};" }
                         span { style: "{CHART_LABEL_STYLE}", "{current_label}" }
                     }
                     div {
-                        style: "display: flex; align-items: center; gap: 4px;",
-                        div { style: "width: 10px; height: 10px; border-radius: 2px; background: {first.previous_color};" }
+                        style: "display: flex; align-items: center; gap: var(--space-1);",
+                        div { style: "width: 10px; height: 10px; border-radius: var(--radius-sm); background: {first.previous_color};" }
                         span { style: "{CHART_LABEL_STYLE}", "{previous_label}" }
                     }
                 }
             }
 
             div {
-                style: "display: flex; align-items: flex-end; gap: 8px; height: {height_px}px; overflow-x: auto; padding-bottom: 4px;",
+                style: "display: flex; align-items: flex-end; gap: var(--space-2); height: {height_px}px; overflow-x: auto; padding-bottom: var(--space-1);",
                 for entry in &entries {
                     {
                         #[expect(clippy::as_conversions, reason = "CSS percentage from bounded ratio")]
@@ -376,15 +376,15 @@ pub(crate) fn GroupedBarChart(
                         let pv = format_chart_value(entry.previous);
                         rsx! {
                             div {
-                                style: "display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 56px;",
+                                style: "display: flex; flex-direction: column; align-items: center; gap: var(--space-1); min-width: 56px;",
                                 div {
                                     style: "display: flex; align-items: flex-end; gap: 2px; height: {height_px}px;",
                                     div {
-                                        style: "width: 24px; height: {curr_pct}%; background: {ccol}; border-radius: 2px 2px 0 0; min-height: 2px;",
+                                        style: "width: 24px; height: {curr_pct}%; background: {ccol}; border-radius: var(--radius-sm) var(--radius-sm) 0 0; min-height: 2px;",
                                         title: "{current_label}: {cv}",
                                     }
                                     div {
-                                        style: "width: 24px; height: {prev_pct}%; background: {pcol}; border-radius: 2px 2px 0 0; min-height: 2px;",
+                                        style: "width: 24px; height: {prev_pct}%; background: {pcol}; border-radius: var(--radius-sm) var(--radius-sm) 0 0; min-height: 2px;",
                                         title: "{previous_label}: {pv}",
                                     }
                                 }
@@ -405,7 +405,7 @@ pub(crate) fn GroupedBarChart(
 
 /// Palette for multi-series charts (8 visually distinct hues).
 pub(crate) const SERIES_COLORS: &[&str] = &[
-    "#5b6af0", "#22c55e", "#eab308", "#ef4444", "#a855f7", "#06b6d4", "#f97316", "#ec4899",
+    "#5b6af0", "var(--status-success)", "var(--status-warning)", "var(--status-error)", "#a855f7", "#06b6d4", "#f97316", "#ec4899",
 ];
 
 // -- Line chart types ---------------------------------------------------------
@@ -435,7 +435,7 @@ pub(crate) fn LineChart(series: Vec<LineSeries>, height: u32) -> Element {
     if series.is_empty() || series.iter().all(|s| s.points.is_empty()) {
         return rsx! {
             div {
-                style: "display: flex; align-items: center; justify-content: center; height: {height}px; color: #706c66; font-size: 13px;",
+                style: "display: flex; align-items: center; justify-content: center; height: {height}px; color: var(--text-muted); font-size: var(--text-sm);",
                 "No data"
             }
         };
@@ -455,19 +455,19 @@ pub(crate) fn LineChart(series: Vec<LineSeries>, height: u32) -> Element {
 
     rsx! {
         div {
-            style: "display: flex; flex-direction: column; gap: 6px;",
+            style: "display: flex; flex-direction: column; gap: var(--space-2);",
 
             // Legend
             div {
-                style: "display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center;",
+                style: "display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-3); align-items: center;",
                 for s in &series {
                     {
                         let color = s.color.clone();
                         let name = s.name.clone();
                         rsx! {
                             div {
-                                style: "display: flex; align-items: center; gap: 4px;",
-                                div { style: "width: 10px; height: 10px; border-radius: 2px; background: {color};" }
+                                style: "display: flex; align-items: center; gap: var(--space-1);",
+                                div { style: "width: 10px; height: 10px; border-radius: var(--radius-sm); background: {color};" }
                                 span { style: "{CHART_LABEL_STYLE}", "{name}" }
                             }
                         }
@@ -477,7 +477,7 @@ pub(crate) fn LineChart(series: Vec<LineSeries>, height: u32) -> Element {
 
             // Chart area: one column per time point, stacked bars per series
             div {
-                style: "display: flex; align-items: flex-end; gap: 1px; height: {height}px; padding: 0 4px;",
+                style: "display: flex; align-items: flex-end; gap: 1px; height: {height}px; padding: 0 var(--space-1);",
                 for idx in 0..num_points {
                     div {
                         style: "flex: 1; display: flex; gap: 1px; align-items: flex-end; min-width: 2px; height: 100%;",
@@ -511,7 +511,7 @@ pub(crate) fn LineChart(series: Vec<LineSeries>, height: u32) -> Element {
                         .unwrap_or_default();
                     rsx! {
                         div {
-                            style: "display: flex; justify-content: space-between; padding: 0 4px;",
+                            style: "display: flex; justify-content: space-between; padding: 0 var(--space-1);",
                             span { style: "{CHART_LABEL_STYLE}", "{first_label}" }
                             span { style: "{CHART_LABEL_STYLE}", "{last_label}" }
                         }
@@ -542,7 +542,7 @@ pub(crate) fn PercentileBarChart(entries: Vec<PercentileEntry>) -> Element {
     if entries.is_empty() {
         return rsx! {
             div {
-                style: "color: #706c66; font-size: 13px; padding: 16px 0;",
+                style: "color: var(--text-muted); font-size: var(--text-sm); padding: var(--space-4) 0;",
                 "No data"
             }
         };
@@ -557,16 +557,16 @@ pub(crate) fn PercentileBarChart(entries: Vec<PercentileEntry>) -> Element {
 
     rsx! {
         div {
-            style: "display: flex; flex-direction: column; gap: 6px;",
+            style: "display: flex; flex-direction: column; gap: var(--space-2);",
 
             // Legend
             div {
-                style: "display: flex; gap: 12px; font-size: 11px; color: #706c66;",
+                style: "display: flex; gap: var(--space-3); font-size: var(--text-xs); color: var(--text-muted);",
                 span { "min-p25" }
                 span { style: "color: #5b6af0;", "p25-p50" }
-                span { style: "color: #22c55e;", "p50-p75" }
-                span { style: "color: #eab308;", "p75-p95" }
-                span { style: "color: #ef4444;", "p95-max" }
+                span { style: "color: var(--status-success);", "p50-p75" }
+                span { style: "color: var(--status-warning);", "p75-p95" }
+                span { style: "color: var(--status-error);", "p95-max" }
             }
 
             for entry in &entries {
@@ -588,20 +588,20 @@ pub(crate) fn PercentileBarChart(entries: Vec<PercentileEntry>) -> Element {
                     );
                     rsx! {
                         div {
-                            style: "display: flex; align-items: center; gap: 8px;",
+                            style: "display: flex; align-items: center; gap: var(--space-2);",
                             div {
-                                style: "width: 120px; font-size: 12px; color: #a8a49e; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 0;",
+                                style: "width: 120px; font-size: var(--text-xs); color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 0;",
                                 title: "{label}",
                                 "{label}"
                             }
                             div {
-                                style: "flex: 1; height: 16px; display: flex; border-radius: 3px; overflow: hidden;",
+                                style: "flex: 1; height: 16px; display: flex; border-radius: var(--radius-sm); overflow: hidden;",
                                 title: "{tip}",
-                                div { style: "width: {w_min_p25}%; background: #3a3530; min-width: 1px;" }
+                                div { style: "width: {w_min_p25}%; background: var(--input-border); min-width: 1px;" }
                                 div { style: "width: {w_p25_p50}%; background: #5b6af0; min-width: 1px;" }
-                                div { style: "width: {w_p50_p75}%; background: #22c55e; min-width: 1px;" }
-                                div { style: "width: {w_p75_p95}%; background: #eab308; min-width: 1px;" }
-                                div { style: "width: {w_p95_max}%; background: #ef4444; min-width: 1px;" }
+                                div { style: "width: {w_p50_p75}%; background: var(--status-success); min-width: 1px;" }
+                                div { style: "width: {w_p75_p95}%; background: var(--status-warning); min-width: 1px;" }
+                                div { style: "width: {w_p95_max}%; background: var(--status-error); min-width: 1px;" }
                             }
                         }
                     }
@@ -678,7 +678,7 @@ pub(crate) fn StackedBarChart(
     if entries.is_empty() {
         return rsx! {
             div {
-                style: "color: #706c66; font-size: 13px; padding: 16px 0;",
+                style: "color: var(--text-muted); font-size: var(--text-sm); padding: var(--space-4) 0;",
                 "No data"
             }
         };
@@ -698,19 +698,19 @@ pub(crate) fn StackedBarChart(
 
     rsx! {
         div {
-            style: "display: flex; flex-direction: column; gap: 6px;",
+            style: "display: flex; flex-direction: column; gap: var(--space-2);",
 
             // Legend
             div {
-                style: "display: flex; gap: 12px; align-items: center;",
+                style: "display: flex; gap: var(--space-3); align-items: center;",
                 div {
-                    style: "display: flex; align-items: center; gap: 4px;",
-                    div { style: "width: 10px; height: 10px; border-radius: 2px; background: #22c55e;" }
+                    style: "display: flex; align-items: center; gap: var(--space-1);",
+                    div { style: "width: 10px; height: 10px; border-radius: var(--radius-sm); background: var(--status-success);" }
                     span { style: "{CHART_LABEL_STYLE}", "Success" }
                 }
                 div {
-                    style: "display: flex; align-items: center; gap: 4px;",
-                    div { style: "width: 10px; height: 10px; border-radius: 2px; background: #ef4444;" }
+                    style: "display: flex; align-items: center; gap: var(--space-1);",
+                    div { style: "width: 10px; height: 10px; border-radius: var(--radius-sm); background: var(--status-error);" }
                     span { style: "{CHART_LABEL_STYLE}", "Failure" }
                 }
             }
@@ -730,29 +730,29 @@ pub(crate) fn StackedBarChart(
                     rsx! {
                         div {
                             key: "{idx}",
-                            style: "display: flex; align-items: center; gap: 8px; cursor: pointer;",
+                            style: "display: flex; align-items: center; gap: var(--space-2); cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
                             onclick: move |_| {
                                 if let Some(handler) = &on_click {
                                     handler.call(id.clone());
                                 }
                             },
                             div {
-                                style: "width: 120px; font-size: 12px; color: #a8a49e; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 0;",
+                                style: "width: 120px; font-size: var(--text-xs); color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 0;",
                                 title: "{label}",
                                 "{label}"
                             }
                             div {
-                                style: "flex: 1; height: 20px; background: #1a1816; border-radius: 3px; overflow: hidden;",
+                                style: "flex: 1; height: 20px; background: var(--bg-surface); border-radius: var(--radius-sm); overflow: hidden;",
                                 div {
-                                    style: "height: 100%; width: {total_pct}%; display: flex; border-radius: 3px; overflow: hidden;",
-                                    div { style: "width: {success_pct}%; background: #22c55e; min-width: 1px;" }
+                                    style: "height: 100%; width: {total_pct}%; display: flex; border-radius: var(--radius-sm); overflow: hidden;",
+                                    div { style: "width: {success_pct}%; background: var(--status-success); min-width: 1px;" }
                                     if failure_pct > 0 {
-                                        div { style: "width: {failure_pct}%; background: #ef4444; min-width: 1px;" }
+                                        div { style: "width: {failure_pct}%; background: var(--status-error); min-width: 1px;" }
                                     }
                                 }
                             }
                             div {
-                                style: "width: 72px; text-align: right; font-size: 12px; color: #706c66; font-family: 'IBM Plex Mono', monospace; flex-shrink: 0;",
+                                style: "width: 72px; text-align: right; font-size: var(--text-xs); color: var(--text-muted); font-family: var(--font-mono); flex-shrink: 0;",
                                 "{total}"
                             }
                         }

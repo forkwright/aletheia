@@ -6,30 +6,30 @@ use crate::components::diff_line::DiffLineView;
 use crate::state::diff::{ChangeType, DiffHunk, DiffLine, DiffViewMode, align_side_by_side};
 
 const HUNK_HEADER_STYLE: &str = "\
-    padding: 4px 12px; \
-    font-family: monospace; \
-    font-size: 12px; \
-    color: #888; \
+    padding: var(--space-1) var(--space-3); \
+    font-family: var(--font-mono); \
+    font-size: var(--text-xs); \
+    color: var(--text-secondary); \
     background: rgba(74, 74, 255, 0.08); \
-    border-top: 1px solid #333; \
-    border-bottom: 1px solid #333; \
+    border-top: 1px solid var(--border); \
+    border-bottom: 1px solid var(--border); \
     user-select: none;\
 ";
 
 const SBS_ROW_STYLE: &str = "\
     display: flex; \
     min-height: 1.5em; \
-    font-family: monospace; \
-    font-size: 13px; \
-    line-height: 1.5;\
+    font-family: var(--font-mono); \
+    font-size: var(--text-sm); \
+    line-height: var(--leading-normal);\
 ";
 
 const SBS_GUTTER_STYLE: &str = "\
     display: inline-block; \
     width: 4ch; \
     text-align: right; \
-    padding: 0 4px; \
-    color: #555; \
+    padding: 0 var(--space-1); \
+    color: var(--text-muted); \
     user-select: none; \
     flex-shrink: 0;\
 ";
@@ -37,13 +37,13 @@ const SBS_GUTTER_STYLE: &str = "\
 const SBS_CONTENT_STYLE: &str = "\
     white-space: pre; \
     flex: 1; \
-    padding: 0 8px; \
+    padding: 0 var(--space-2); \
     overflow: hidden;\
 ";
 
 const SBS_DIVIDER_STYLE: &str = "\
     width: 1px; \
-    background: #333; \
+    background: var(--border); \
     flex-shrink: 0;\
 ";
 
@@ -158,7 +158,7 @@ fn render_sbs_word_spans(
             if span.changed {
                 span {
                     key: "{i}",
-                    style: "background: {changed_bg}; border-radius: 2px;",
+                    style: "background: {changed_bg}; border-radius: var(--radius-sm);",
                     "{span.text}"
                 }
             } else {

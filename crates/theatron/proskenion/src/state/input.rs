@@ -116,6 +116,33 @@ impl InputState {
         self.history_index = None;
         self.draft.clear();
     }
+
+    /// Number of entries in the history ring buffer.
+    #[cfg_attr(not(test), expect(dead_code, reason = "used in tests"))]
+    #[must_use]
+    pub(crate) fn history_len(&self) -> usize {
+        self.history.len()
+    }
+
+    /// Whether the user is currently navigating history (as opposed to editing fresh input).
+    #[cfg_attr(not(test), expect(dead_code, reason = "used in tests"))]
+    #[must_use]
+    pub(crate) fn is_browsing_history(&self) -> bool {
+        self.history_index.is_some()
+    }
+}
+
+/// Submission lifecycle state for the input bar.
+#[cfg_attr(not(test), expect(dead_code, reason = "used in tests"))]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum SubmissionState {
+    /// Ready for input.
+    Idle,
+    /// Message has been submitted and is in flight.
+    Submitting,
+    /// Submission failed with an error message.
+    Error(String),
 }
 
 #[cfg(test)]

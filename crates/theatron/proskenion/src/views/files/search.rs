@@ -7,22 +7,22 @@ use crate::state::connection::ConnectionConfig;
 
 const SEARCH_INPUT_STYLE: &str = "\
     width: 100%; \
-    padding: 6px 10px; \
+    padding: var(--space-2) var(--space-3); \
     border: 1px solid var(--border, #2e2b27); \
     border-radius: var(--radius-sm, 4px); \
     background: var(--bg-surface, #1a1816); \
-    color: var(--text-primary, #e0e0e0); \
-    font-size: 13px; \
+    color: var(--text-primary, var(--text-primary)); \
+    font-size: var(--text-sm); \
     outline: none; \
     box-sizing: border-box;\
 ";
 
 const RESULT_ITEM_STYLE: &str = "\
-    padding: 6px 10px; \
-    cursor: pointer; \
+    padding: var(--space-2) var(--space-3); \
+    cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick); \
     border-radius: var(--radius-sm, 4px); \
-    font-size: 13px; \
-    color: var(--text-primary, #e0e0e0); \
+    font-size: var(--text-sm); \
+    color: var(--text-primary, var(--text-primary)); \
     overflow: hidden; \
     text-overflow: ellipsis; \
     white-space: nowrap;\
@@ -96,7 +96,7 @@ pub(crate) fn FileSearch(
 
     rsx! {
         div {
-            style: "display: flex; flex-direction: column; gap: 4px;",
+            style: "display: flex; flex-direction: column; gap: var(--space-1);",
             input {
                 style: "{SEARCH_INPUT_STYLE}",
                 r#type: "text",
@@ -170,11 +170,11 @@ fn SearchResultItem(
                 is_searching.set(false);
             },
             div {
-                style: "font-weight: 500;",
+                style: "font-weight: var(--weight-medium);",
                 "{display_name}"
             }
             div {
-                style: "font-size: 11px; color: var(--text-muted, #706c66);",
+                style: "font-size: var(--text-xs); color: var(--text-muted, #706c66);",
                 "{display_path}"
             }
         }

@@ -184,8 +184,11 @@ pub(crate) fn CodeBlock(code: String, language: String) -> Element {
                         color: var(--text-muted);
                         font-family: var(--font-mono);
                         font-size: var(--text-xs);
-                        padding: 2px var(--space-2);
-                        cursor: pointer;
+                        padding: var(--space-1) var(--space-2);
+                        cursor: pointer; \
+                        transition: background-color var(--transition-quick), \
+                                    color var(--transition-quick), \
+                                    border-color var(--transition-quick);\
                     ",
                     "copy"
                 }
@@ -235,11 +238,20 @@ pub(crate) fn CodeBlock(code: String, language: String) -> Element {
 }
 
 fn bold_style(bold: bool) -> &'static str {
-    if bold { " font-weight: bold;" } else { "" }
+    if bold { " font-weight: var(--weight-bold);" } else { "" }
 }
 
 fn italic_style(italic: bool) -> &'static str {
     if italic { " font-style: italic;" } else { "" }
+}
+
+/// Extract the language identifier from a fenced code block info string.
+///
+/// Takes the first whitespace-delimited token (e.g. `"rust"` from `"rust playground"`).
+/// Returns an empty string if the input is empty.
+#[cfg_attr(not(test), expect(dead_code, reason = "used in tests"))]
+fn detect_language(info_string: &str) -> &str {
+    info_string.split_whitespace().next().unwrap_or("")
 }
 
 #[cfg(test)]

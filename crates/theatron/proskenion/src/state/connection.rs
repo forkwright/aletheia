@@ -44,6 +44,33 @@ pub enum ConnectionState {
 }
 
 impl ConnectionState {
+    /// Whether the connection is in the [`Connected`](Self::Connected) state.
+    #[cfg_attr(not(test), expect(dead_code, reason = "used in tests"))]
+    #[must_use]
+    pub(crate) fn is_connected(&self) -> bool {
+        matches!(self, Self::Connected)
+    }
+
+    /// Whether the connection is in the [`Disconnected`](Self::Disconnected) state.
+    #[cfg_attr(not(test), expect(dead_code, reason = "used in tests"))]
+    #[must_use]
+    pub(crate) fn is_disconnected(&self) -> bool {
+        matches!(self, Self::Disconnected)
+    }
+
+    /// Human-readable label for the current connection state.
+    #[cfg_attr(not(test), expect(dead_code, reason = "used in tests"))]
+    #[must_use]
+    pub(crate) fn label(&self) -> &'static str {
+        match self {
+            Self::Disconnected => "disconnected",
+            Self::Connecting => "connecting",
+            Self::Connected => "connected",
+            Self::Reconnecting { .. } => "reconnecting",
+            Self::Failed { .. } => "failed",
+        }
+    }
+
     /// Whether the UI should show the connect form (not connected or actively
     /// trying to connect).
     #[must_use]

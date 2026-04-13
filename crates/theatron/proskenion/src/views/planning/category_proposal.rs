@@ -8,45 +8,51 @@ use crate::state::planning::{CategoryProposal, ProposalAction, ProposalActionReq
 
 const CARD_STYLE: &str = "\
     background: #1e1e3a; \
-    border: 1px solid #4a4aff; \
-    border-radius: 8px; \
-    padding: 12px 16px; \
-    margin-bottom: 8px;\
+    border: 1px solid var(--accent); \
+    border-radius: var(--radius-md); \
+    padding: var(--space-3) var(--space-4); \
+    margin-bottom: var(--space-2);\
 ";
 
 const CARD_HEADER: &str = "\
     display: flex; \
     align-items: center; \
     justify-content: space-between; \
-    margin-bottom: 8px;\
+    margin-bottom: var(--space-2);\
 ";
 
 const BADGE: &str = "\
     display: inline-block; \
-    padding: 2px 8px; \
-    border-radius: 4px; \
-    font-size: 11px; \
-    font-weight: 600;\
+    padding: var(--space-1) var(--space-2); \
+    border-radius: var(--radius-sm); \
+    font-size: var(--text-xs); \
+    font-weight: var(--weight-semibold);\
 ";
 
 const ACCEPT_BTN: &str = "\
     background: #1a3a1a; \
-    color: #22c55e; \
-    border: 1px solid #22c55e; \
-    border-radius: 6px; \
-    padding: 4px 12px; \
-    font-size: 12px; \
-    cursor: pointer;\
+    color: var(--status-success); \
+    border: 1px solid var(--status-success); \
+    border-radius: var(--radius-md); \
+    padding: var(--space-1) var(--space-3); \
+    font-size: var(--text-xs); \
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const REJECT_BTN: &str = "\
     background: #3a1a1a; \
-    color: #ef4444; \
-    border: 1px solid #ef4444; \
-    border-radius: 6px; \
-    padding: 4px 12px; \
-    font-size: 12px; \
-    cursor: pointer;\
+    color: var(--status-error); \
+    border: 1px solid var(--status-error); \
+    border-radius: var(--radius-md); \
+    padding: var(--space-1) var(--space-3); \
+    font-size: var(--text-xs); \
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 /// Inline proposal card displayed when an agent proposes a category change.
@@ -77,40 +83,40 @@ pub(crate) fn CategoryProposalCard(
             div {
                 style: "{CARD_HEADER}",
                 div {
-                    style: "font-size: 13px; color: #e0e0e0; font-weight: 600;",
+                    style: "font-size: var(--text-sm); color: var(--text-primary); font-weight: var(--weight-semibold);",
                     "Category Change Proposal"
                 }
                 div {
-                    style: "font-size: 11px; color: #8080ff;",
+                    style: "font-size: var(--text-xs); color: var(--accent);",
                     "by {proposal.agent_name}"
                 }
             }
 
             div {
-                style: "font-size: 13px; color: #e0e0e0; margin-bottom: 8px;",
+                style: "font-size: var(--text-sm); color: var(--text-primary); margin-bottom: var(--space-2);",
                 "{proposal.requirement_title}"
             }
 
             div {
-                style: "display: flex; align-items: center; gap: 8px; margin-bottom: 8px;",
+                style: "display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-2);",
                 span {
-                    style: "{BADGE} background: #2a2a3a; color: #888;",
+                    style: "{BADGE} background: var(--border); color: var(--text-secondary);",
                     "{current_label}"
                 }
-                span { style: "color: #555;", "->" }
+                span { style: "color: var(--text-muted);", "->" }
                 span {
-                    style: "{BADGE} background: #1a2a3a; color: #4a9aff;",
+                    style: "{BADGE} background: var(--bg-surface-dim); color: var(--accent);",
                     "{proposed_label}"
                 }
             }
 
             div {
-                style: "font-size: 12px; color: #aaa; margin-bottom: 10px; font-style: italic;",
+                style: "font-size: var(--text-xs); color: var(--text-secondary); margin-bottom: var(--space-3); font-style: italic;",
                 "\"{proposal.rationale}\""
             }
 
             div {
-                style: "display: flex; gap: 8px;",
+                style: "display: flex; gap: var(--space-2);",
                 button {
                     style: "{ACCEPT_BTN}",
                     disabled: is_submitting,

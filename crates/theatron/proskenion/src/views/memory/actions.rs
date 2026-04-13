@@ -17,135 +17,147 @@ const OVERLAY_STYLE: &str = "\
 ";
 
 const DIALOG_STYLE: &str = "\
-    background: #1a1a2e; \
-    border: 1px solid #333; \
-    border-radius: 12px; \
-    padding: 24px; \
+    background: var(--bg-surface); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-lg); \
+    padding: var(--space-6); \
     min-width: 400px; \
     max-width: 600px; \
     max-height: 80vh; \
     overflow-y: auto; \
-    color: #e0e0e0;\
+    color: var(--text-primary);\
 ";
 
 const DIALOG_TITLE_STYLE: &str = "\
-    font-size: 18px; \
-    font-weight: 700; \
-    margin-bottom: 16px;\
+    font-size: var(--text-lg); \
+    font-weight: var(--weight-bold); \
+    margin-bottom: var(--space-4);\
 ";
 
 const DIALOG_BODY_STYLE: &str = "\
-    font-size: 14px; \
-    line-height: 1.5; \
-    color: #aaa; \
-    margin-bottom: 16px;\
+    font-size: var(--text-base); \
+    line-height: var(--leading-normal); \
+    color: var(--text-secondary); \
+    margin-bottom: var(--space-4);\
 ";
 
 const DIALOG_ACTIONS_STYLE: &str = "\
     display: flex; \
     justify-content: flex-end; \
-    gap: 8px; \
-    margin-top: 16px;\
+    gap: var(--space-2); \
+    margin-top: var(--space-4);\
 ";
 
 const BTN_CANCEL_STYLE: &str = "\
-    background: #2a2a4a; \
-    color: #e0e0e0; \
-    border: 1px solid #444; \
-    border-radius: 6px; \
-    padding: 8px 16px; \
-    font-size: 13px; \
-    cursor: pointer;\
+    background: var(--border); \
+    color: var(--text-primary); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
+    padding: var(--space-2) var(--space-4); \
+    font-size: var(--text-sm); \
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const BTN_PRIMARY_STYLE: &str = "\
-    background: #3b3bbb; \
-    color: #ffffff; \
+    background: var(--accent); \
+    color: var(--text-primary); \
     border: none; \
-    border-radius: 6px; \
-    padding: 8px 16px; \
-    font-size: 13px; \
-    cursor: pointer;\
+    border-radius: var(--radius-md); \
+    padding: var(--space-2) var(--space-4); \
+    font-size: var(--text-sm); \
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const BTN_DANGER_STYLE: &str = "\
-    background: #b91c1c; \
-    color: #ffffff; \
+    background: var(--status-error); \
+    color: var(--text-primary); \
     border: none; \
-    border-radius: 6px; \
-    padding: 8px 16px; \
-    font-size: 13px; \
-    cursor: pointer;\
+    border-radius: var(--radius-md); \
+    padding: var(--space-2) var(--space-4); \
+    font-size: var(--text-sm); \
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const INPUT_STYLE: &str = "\
     width: 100%; \
-    background: #0f0f1a; \
-    border: 1px solid #333; \
-    border-radius: 6px; \
-    padding: 8px 12px; \
-    color: #e0e0e0; \
-    font-size: 14px; \
-    margin-bottom: 12px;\
+    background: var(--bg-surface-dim); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
+    padding: var(--space-2) var(--space-3); \
+    color: var(--text-primary); \
+    font-size: var(--text-base); \
+    margin-bottom: var(--space-3);\
 ";
 
 const SELECT_STYLE: &str = "\
     width: 100%; \
-    background: #0f0f1a; \
-    border: 1px solid #333; \
-    border-radius: 6px; \
-    padding: 8px 12px; \
-    color: #e0e0e0; \
-    font-size: 14px; \
-    margin-bottom: 12px; \
-    cursor: pointer;\
+    background: var(--bg-surface-dim); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
+    padding: var(--space-2) var(--space-3); \
+    color: var(--text-primary); \
+    font-size: var(--text-base); \
+    margin-bottom: var(--space-3); \
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const MERGE_ENTITY_CARD: &str = "\
-    background: #0f0f1a; \
-    border: 1px solid #333; \
-    border-radius: 8px; \
-    padding: 12px; \
+    background: var(--bg-surface-dim); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
+    padding: var(--space-3); \
     flex: 1;\
 ";
 
 const MERGE_SIDE_STYLE: &str = "\
     display: flex; \
-    gap: 12px; \
-    margin-bottom: 16px;\
+    gap: var(--space-3); \
+    margin-bottom: var(--space-4);\
 ";
 
 const MERGE_LABEL_STYLE: &str = "\
-    font-size: 11px; \
-    color: #888; \
+    font-size: var(--text-xs); \
+    color: var(--text-secondary); \
     text-transform: uppercase; \
-    margin-bottom: 4px;\
+    margin-bottom: var(--space-1);\
 ";
 
 const MERGE_NAME_STYLE: &str = "\
-    font-size: 16px; \
-    font-weight: 600; \
-    color: #e0e0e0;\
+    font-size: var(--text-md); \
+    font-weight: var(--weight-semibold); \
+    color: var(--text-primary);\
 ";
 
 const WARNING_STYLE: &str = "\
     background: #4a2a1a; \
-    border: 1px solid #f59e0b44; \
-    border-radius: 6px; \
-    padding: 12px; \
-    color: #f59e0b; \
-    font-size: 13px; \
-    margin-bottom: 12px;\
+    border: 1px solid var(--status-warning)44; \
+    border-radius: var(--radius-md); \
+    padding: var(--space-3); \
+    color: var(--status-warning); \
+    font-size: var(--text-sm); \
+    margin-bottom: var(--space-3);\
 ";
 
 const IMPACT_STYLE: &str = "\
     background: #4a1a1a; \
-    border: 1px solid #ef444444; \
-    border-radius: 6px; \
-    padding: 12px; \
-    color: #ef4444; \
-    font-size: 13px; \
-    margin-bottom: 12px;\
+    border: 1px solid var(--status-error)44; \
+    border-radius: var(--radius-md); \
+    padding: var(--space-3); \
+    color: var(--status-error); \
+    font-size: var(--text-sm); \
+    margin-bottom: var(--space-3);\
 ";
 
 /// Merge dialog: select a secondary entity to merge into the primary.
@@ -210,7 +222,7 @@ pub(crate) fn MergeDialog(
                         if has_selection {
                             div { style: "{MERGE_NAME_STYLE}", "{selected_name}" }
                         } else {
-                            div { style: "color: #555; font-size: 14px;", "Select entity below" }
+                            div { style: "color: var(--text-muted); font-size: var(--text-base);", "Select entity below" }
                         }
                     }
                 }
@@ -326,7 +338,7 @@ pub(crate) fn FlagDialog(
 
                 // Severity
                 label {
-                    style: "font-size: 13px; color: #aaa; display: block; margin-bottom: 4px;",
+                    style: "font-size: var(--text-sm); color: var(--text-secondary); display: block; margin-bottom: var(--space-1);",
                     "Severity"
                 }
                 select {
@@ -352,7 +364,7 @@ pub(crate) fn FlagDialog(
 
                 // Reason
                 label {
-                    style: "font-size: 13px; color: #aaa; display: block; margin-bottom: 4px;",
+                    style: "font-size: var(--text-sm); color: var(--text-secondary); display: block; margin-bottom: var(--space-1);",
                     "Reason"
                 }
                 textarea {
@@ -446,9 +458,9 @@ pub(crate) fn DeleteDialog(
 
                 div {
                     style: "{IMPACT_STYLE}",
-                    div { style: "font-weight: 600; margin-bottom: 8px;", "Impact" }
+                    div { style: "font-weight: var(--weight-semibold); margin-bottom: var(--space-2);", "Impact" }
                     div { "This will permanently delete " strong { "{entity_name}" } " and:" }
-                    ul { style: "margin: 8px 0 0 16px; padding: 0;",
+                    ul { style: "margin: var(--space-2) 0 0 var(--space-4); padding: 0;",
                         li { "Remove {relationship_count} relationship(s)" }
                         li { "Affect {memory_count} associated memory/memories" }
                     }

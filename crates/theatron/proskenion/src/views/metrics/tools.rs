@@ -72,19 +72,19 @@ pub(crate) fn ToolsOverview(date_range: DateRange) -> Element {
 
     rsx! {
         div {
-            style: "display: flex; flex-direction: column; gap: 16px; flex: 1;",
+            style: "display: flex; flex-direction: column; gap: var(--space-4); flex: 1;",
 
             // Date range selector + refresh
             div {
-                style: "display: flex; align-items: center; gap: 8px;",
-                span { style: "font-size: 12px; color: #888;", "Range:" }
+                style: "display: flex; align-items: center; gap: var(--space-2);",
+                span { style: "font-size: var(--text-xs); color: var(--text-secondary);", "Range:" }
                 for range in [DateRange::Last7Days] {
                     {
                         let is_active = store.read().date_range == range;
                         let btn_style = if is_active {
-                            "background: #2a2a4a; color: #e0e0e0; border: 1px solid #4a4aff; border-radius: 4px; padding: 2px 10px; font-size: 12px; cursor: pointer;"
+                            "background: var(--border); color: var(--text-primary); border: 1px solid var(--accent); border-radius: var(--radius-sm); padding: var(--space-1) var(--space-3); font-size: var(--text-xs); cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);"
                         } else {
-                            "background: transparent; color: #666; border: 1px solid #333; border-radius: 4px; padding: 2px 10px; font-size: 12px; cursor: pointer;"
+                            "background: transparent; color: var(--text-muted); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: var(--space-1) var(--space-3); font-size: var(--text-xs); cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);"
                         };
                         rsx! {
                             button {
@@ -100,7 +100,7 @@ pub(crate) fn ToolsOverview(date_range: DateRange) -> Element {
                     }
                 }
                 button {
-                    style: "background: #2a2a4a; color: #e0e0e0; border: 1px solid #444; border-radius: 6px; padding: 4px 12px; font-size: 12px; cursor: pointer;",
+                    style: "background: var(--border); color: var(--text-primary); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-1) var(--space-3); font-size: var(--text-xs); cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
                     onclick: move |_| do_fetch(),
                     "Refresh"
                 }
@@ -132,13 +132,13 @@ fn render_overview_content(
     match store.read().data.clone() {
         FetchState::Loading => rsx! {
             div {
-                style: "display: flex; align-items: center; justify-content: center; flex: 1; color: #888;",
+                style: "display: flex; align-items: center; justify-content: center; flex: 1; color: var(--text-secondary);",
                 "Loading tool statistics..."
             }
         },
         FetchState::Error(err) => rsx! {
             div {
-                style: "color: #ef4444; padding: 8px;",
+                style: "color: var(--status-error); padding: var(--space-2);",
                 "Error: {err}"
             }
         },
@@ -147,15 +147,15 @@ fn render_overview_content(
             rsx! {
                 // Summary cards
                 div {
-                    style: "display: flex; flex-wrap: wrap; gap: 12px;",
+                    style: "display: flex; flex-wrap: wrap; gap: var(--space-3);",
 
                     // Total invocations (weekly)
                     div {
-                        style: "background: #1a1a2e; border: 1px solid #333; border-radius: 8px; padding: 16px 20px; min-width: 150px; flex: 1;",
-                        div { style: "font-size: 28px; font-weight: bold; color: #e0e0e0; margin-bottom: 2px;", "{data.summary.total_invocations_week}" }
-                        div { style: "font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.5px;", "Invocations (7d)" }
+                        style: "background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-4) var(--space-5); min-width: 150px; flex: 1;",
+                        div { style: "font-size: var(--text-2xl); font-weight: var(--weight-bold); color: var(--text-primary); margin-bottom: var(--space-1);", "{data.summary.total_invocations_week}" }
+                        div { style: "font-size: var(--text-xs); color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;", "Invocations (7d)" }
                         div {
-                            style: "font-size: 11px; margin-top: 6px; color: #888;",
+                            style: "font-size: var(--text-xs); margin-top: var(--space-2); color: var(--text-secondary);",
                             "{format_delta(data.summary.delta_week)} vs prior"
                         }
                     }
@@ -164,14 +164,14 @@ fn render_overview_content(
                     {
                         #[expect(clippy::as_conversions, reason = "rate 0.0–1.0 to percentage for display")]
                         let rate_pct = (data.summary.success_rate * 100.0) as u64;
-                        let rate_color = if data.summary.success_rate > 0.9 { "#22c55e" }
-                            else if data.summary.success_rate > 0.7 { "#eab308" }
-                            else { "#ef4444" };
+                        let rate_color = if data.summary.success_rate > 0.9 { "var(--status-success)" }
+                            else if data.summary.success_rate > 0.7 { "var(--status-warning)" }
+                            else { "var(--status-error)" };
                         rsx! {
                             div {
-                                style: "background: #1a1a2e; border: 1px solid #333; border-radius: 8px; padding: 16px 20px; min-width: 150px; flex: 1;",
-                                div { style: "font-size: 28px; font-weight: bold; color: {rate_color}; margin-bottom: 2px;", "{rate_pct}%" }
-                                div { style: "font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.5px;", "Success Rate" }
+                                style: "background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-4) var(--space-5); min-width: 150px; flex: 1;",
+                                div { style: "font-size: var(--text-2xl); font-weight: var(--weight-bold); color: {rate_color}; margin-bottom: var(--space-1);", "{rate_pct}%" }
+                                div { style: "font-size: var(--text-xs); color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;", "Success Rate" }
                             }
                         }
                     }
@@ -181,9 +181,9 @@ fn render_overview_content(
                         let dur = format_duration_ms(data.summary.avg_duration_ms);
                         rsx! {
                             div {
-                                style: "background: #1a1a2e; border: 1px solid #333; border-radius: 8px; padding: 16px 20px; min-width: 150px; flex: 1;",
-                                div { style: "font-size: 28px; font-weight: bold; color: #e0e0e0; margin-bottom: 2px;", "{dur}" }
-                                div { style: "font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.5px;", "Avg Duration" }
+                                style: "background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-4) var(--space-5); min-width: 150px; flex: 1;",
+                                div { style: "font-size: var(--text-2xl); font-weight: var(--weight-bold); color: var(--text-primary); margin-bottom: var(--space-1);", "{dur}" }
+                                div { style: "font-size: var(--text-xs); color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;", "Avg Duration" }
                             }
                         }
                     }
@@ -191,14 +191,14 @@ fn render_overview_content(
                     // Most used tool
                     if !data.summary.most_used_tool.is_empty() {
                         div {
-                            style: "background: #1a1a2e; border: 1px solid #333; border-radius: 8px; padding: 16px 20px; min-width: 150px; flex: 1;",
+                            style: "background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-4) var(--space-5); min-width: 150px; flex: 1;",
                             div {
-                                style: "font-size: 18px; font-weight: bold; color: #e0e0e0; margin-bottom: 2px; font-family: monospace;",
+                                style: "font-size: var(--text-lg); font-weight: var(--weight-bold); color: var(--text-primary); margin-bottom: var(--space-1); font-family: var(--font-mono);",
                                 "{data.summary.most_used_tool}"
                             }
-                            div { style: "font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.5px;", "Most Used Tool" }
+                            div { style: "font-size: var(--text-xs); color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;", "Most Used Tool" }
                             div {
-                                style: "font-size: 11px; margin-top: 6px; color: #888;",
+                                style: "font-size: var(--text-xs); margin-top: var(--space-2); color: var(--text-secondary);",
                                 "{data.summary.most_used_count} calls"
                             }
                         }
@@ -207,8 +207,8 @@ fn render_overview_content(
 
                 // Frequency chart
                 div {
-                    style: "background: #1a1a2e; border: 1px solid #333; border-radius: 8px; padding: 16px;",
-                    div { style: "font-size: 14px; font-weight: bold; color: #aaa; margin-bottom: 12px;", "Usage Frequency" }
+                    style: "background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-4);",
+                    div { style: "font-size: var(--text-base); font-weight: var(--weight-bold); color: var(--text-secondary); margin-bottom: var(--space-3);", "Usage Frequency" }
                     ToolFrequencyView {
                         tools: data.tools.clone(),
                         on_click: EventHandler::new(move |name| on_select(name)),
@@ -217,8 +217,8 @@ fn render_overview_content(
 
                 // Success/failure chart
                 div {
-                    style: "background: #1a1a2e; border: 1px solid #333; border-radius: 8px; padding: 16px;",
-                    div { style: "font-size: 14px; font-weight: bold; color: #aaa; margin-bottom: 12px;", "Success / Failure Rates" }
+                    style: "background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-4);",
+                    div { style: "font-size: var(--text-base); font-weight: var(--weight-bold); color: var(--text-secondary); margin-bottom: var(--space-3);", "Success / Failure Rates" }
                     ToolResultsView {
                         tools: data.tools.clone(),
                         time_series: data.time_series.clone(),
@@ -227,8 +227,8 @@ fn render_overview_content(
 
                 // Duration distribution
                 div {
-                    style: "background: #1a1a2e; border: 1px solid #333; border-radius: 8px; padding: 16px;",
-                    div { style: "font-size: 14px; font-weight: bold; color: #aaa; margin-bottom: 12px;", "Duration Distribution" }
+                    style: "background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-4);",
+                    div { style: "font-size: var(--text-base); font-weight: var(--weight-bold); color: var(--text-secondary); margin-bottom: var(--space-3);", "Duration Distribution" }
                     ToolDurationView { tools: data.tools.clone() }
                 }
             }

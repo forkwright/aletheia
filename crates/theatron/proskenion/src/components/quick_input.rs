@@ -26,46 +26,50 @@ const OVERLAY_BACKDROP: &str = "\
 
 const OVERLAY_PANEL: &str = "\
     width: 600px; \
-    background: #1a1a2e; \
-    border: 1px solid #333; \
-    border-radius: 12px; \
-    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5); \
-    padding: 16px; \
+    background: var(--bg-surface); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-lg); \
+    box-shadow: var(--shadow-lg); \
+    padding: var(--space-4); \
     display: flex; \
     flex-direction: column; \
-    gap: 12px;\
+    gap: var(--space-3);\
 ";
 
 const INPUT_ROW: &str = "\
     display: flex; \
-    gap: 8px; \
+    gap: var(--space-2); \
     align-items: center;\
 ";
 
 const INPUT_STYLE: &str = "\
     flex: 1; \
-    background: #0f0f1a; \
-    border: 1px solid #444; \
-    border-radius: 8px; \
-    padding: 12px 16px; \
-    color: #e0e0e0; \
-    font-size: 15px; \
+    background: var(--input-bg); \
+    border: 1px solid var(--input-border); \
+    border-radius: var(--radius-md); \
+    padding: var(--space-3) var(--space-4); \
+    color: var(--text-primary); \
+    font-size: var(--text-md); \
+    font-family: var(--font-body); \
     outline: none;\
 ";
 
 const SELECT_STYLE: &str = "\
-    background: #2a2a4a; \
-    border: 1px solid #444; \
-    border-radius: 8px; \
-    padding: 12px; \
-    color: #e0e0e0; \
-    font-size: 13px; \
+    background: var(--bg-surface-bright); \
+    border: 1px solid var(--input-border); \
+    border-radius: var(--radius-md); \
+    padding: var(--space-3); \
+    color: var(--text-primary); \
+    font-size: var(--text-sm); \
     cursor: pointer;\
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const HINT_STYLE: &str = "\
-    color: #555; \
-    font-size: 12px; \
+    color: var(--text-muted); \
+    font-size: var(--text-xs); \
     text-align: center;\
 ";
 

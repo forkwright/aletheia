@@ -42,9 +42,9 @@ impl ValidationStatus {
 
     pub(crate) fn color(self) -> &'static str {
         match self {
-            Self::Valid => "#22c55e",
-            Self::Expired => "#ef4444",
-            Self::Untested => "#888888",
+            Self::Valid => "var(--status-success)",
+            Self::Expired => "var(--status-error)",
+            Self::Untested => "var(--text-secondary)",
         }
     }
 }
@@ -89,6 +89,19 @@ impl CredentialStore {
             .filter(|e| &e.provider == provider && e.role == CredentialRole::Primary)
             .count()
             == 1
+    }
+
+    /// Distinct provider names in insertion order.
+    #[cfg_attr(not(test), expect(dead_code, reason = "used in tests"))]
+    #[must_use]
+    pub(crate) fn providers(&self) -> Vec<&str> {
+        let mut seen = Vec::new();
+        for entry in &self.entries {
+            if !seen.contains(&entry.provider.as_str()) {
+                seen.push(entry.provider.as_str());
+            }
+        }
+        seen
     }
 
     /// Returns true if the provider has both a primary and a backup credential.

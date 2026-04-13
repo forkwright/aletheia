@@ -85,177 +85,189 @@ struct AddCredentialRequest {
 const PANEL_STYLE: &str = "\
     display: flex; \
     flex-direction: column; \
-    gap: 12px; \
+    gap: var(--space-3); \
     flex: 1; \
     overflow-y: auto;\
 ";
 
 const CRED_CARD_STYLE: &str = "\
-    background: #1a1a2e; \
-    border: 1px solid #333; \
-    border-radius: 8px; \
-    padding: 16px 20px;\
+    background: var(--bg-surface); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
+    padding: var(--space-4) var(--space-5);\
 ";
 
 const CARD_HEADER: &str = "\
     display: flex; \
     align-items: center; \
     justify-content: space-between; \
-    margin-bottom: 10px;\
+    margin-bottom: var(--space-3);\
 ";
 
 const PROVIDER_NAME: &str = "\
-    font-size: 15px; \
-    font-weight: bold; \
-    color: #e0e0e0;\
+    font-size: var(--text-md); \
+    font-weight: var(--weight-bold); \
+    color: var(--text-primary);\
 ";
 
 const META_ROW: &str = "\
     display: flex; \
     align-items: center; \
-    gap: 14px; \
-    margin-bottom: 6px; \
-    font-size: 13px;\
+    gap: var(--space-4); \
+    margin-bottom: var(--space-2); \
+    font-size: var(--text-sm);\
 ";
 
 const STATS_ROW: &str = "\
     display: flex; \
-    gap: 16px; \
-    font-size: 12px; \
-    color: #666; \
-    margin-bottom: 12px;\
+    gap: var(--space-4); \
+    font-size: var(--text-xs); \
+    color: var(--text-muted); \
+    margin-bottom: var(--space-3);\
 ";
 
 const ACTIONS_ROW: &str = "\
     display: flex; \
-    gap: 8px; \
+    gap: var(--space-2); \
     align-items: center; \
     flex-wrap: wrap;\
 ";
 
 const BTN_STD: &str = "\
-    background: #2a2a4a; \
-    color: #e0e0e0; \
-    border: 1px solid #444; \
-    border-radius: 6px; \
-    padding: 4px 12px; \
-    font-size: 12px; \
+    background: var(--border); \
+    color: var(--text-primary); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
+    padding: var(--space-1) var(--space-3); \
+    font-size: var(--text-xs); \
     cursor: pointer;\
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const BTN_DANGER: &str = "\
-    background: #3a1a1a; \
-    color: #ef4444; \
-    border: 1px solid #5a2a2a; \
-    border-radius: 6px; \
-    padding: 4px 12px; \
-    font-size: 12px; \
+    background: var(--status-error-bg); \
+    color: var(--status-error); \
+    border: 1px solid var(--status-error); \
+    border-radius: var(--radius-md); \
+    padding: var(--space-1) var(--space-3); \
+    font-size: var(--text-xs); \
     cursor: pointer;\
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const BTN_CONFIRM: &str = "\
-    background: #ef4444; \
-    color: #fff; \
+    background: var(--status-error); \
+    color: var(--text-primary); \
     border: none; \
-    border-radius: 6px; \
-    padding: 4px 12px; \
-    font-size: 12px; \
+    border-radius: var(--radius-md); \
+    padding: var(--space-1) var(--space-3); \
+    font-size: var(--text-xs); \
     cursor: pointer;\
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const BTN_CANCEL: &str = "\
-    background: #2a2a2a; \
-    color: #aaa; \
-    border: 1px solid #444; \
-    border-radius: 6px; \
-    padding: 4px 12px; \
-    font-size: 12px; \
+    background: var(--bg-surface-bright); \
+    color: var(--text-secondary); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
+    padding: var(--space-1) var(--space-3); \
+    font-size: var(--text-xs); \
     cursor: pointer;\
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const BTN_DISABLED: &str = "\
-    background: #1a1a2e; \
-    color: #555; \
-    border: 1px solid #2a2a3a; \
-    border-radius: 6px; \
-    padding: 4px 12px; \
-    font-size: 12px; \
+    background: var(--bg-surface); \
+    color: var(--text-muted); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
+    padding: var(--space-1) var(--space-3); \
+    font-size: var(--text-xs); \
     cursor: not-allowed;\
 ";
 
 const CONFIRM_BANNER: &str = "\
     display: flex; \
-    gap: 8px; \
+    gap: var(--space-2); \
     align-items: center; \
-    padding: 8px 0; \
-    border-top: 1px solid #333; \
-    margin-top: 10px;\
+    padding: var(--space-2) 0; \
+    border-top: 1px solid var(--border); \
+    margin-top: var(--space-3);\
 ";
 
 const WARN_TEXT: &str = "\
-    font-size: 12px; \
-    color: #f59e0b; \
+    font-size: var(--text-xs); \
+    color: var(--status-warning); \
     flex: 1;\
 ";
 
 const ADD_CARD_STYLE: &str = "\
-    background: #1a1a2e; \
-    border: 1px solid #2a2a4a; \
-    border-radius: 8px; \
-    padding: 16px 20px;\
+    background: var(--bg-surface); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
+    padding: var(--space-4) var(--space-5);\
 ";
 
 const FORM_TITLE: &str = "\
-    font-size: 14px; \
-    font-weight: bold; \
-    color: #aaa; \
-    margin-bottom: 12px;\
+    font-size: var(--text-base); \
+    font-weight: var(--weight-bold); \
+    color: var(--text-secondary); \
+    margin-bottom: var(--space-3);\
 ";
 
 const FORM_ROW: &str = "\
     display: flex; \
-    gap: 10px; \
+    gap: var(--space-3); \
     align-items: flex-end; \
     flex-wrap: wrap; \
-    margin-bottom: 10px;\
+    margin-bottom: var(--space-3);\
 ";
 
 const FORM_GROUP: &str = "\
     display: flex; \
     flex-direction: column; \
-    gap: 4px;\
+    gap: var(--space-1);\
 ";
 
 const FORM_LABEL: &str = "\
-    font-size: 11px; \
-    color: #888; \
+    font-size: var(--text-xs); \
+    color: var(--text-secondary); \
     text-transform: uppercase; \
     letter-spacing: 0.5px;\
 ";
 
 const FORM_INPUT: &str = "\
-    background: #0f0f1a; \
-    color: #e0e0e0; \
-    border: 1px solid #444; \
-    border-radius: 6px; \
-    padding: 6px 10px; \
-    font-size: 13px; \
+    background: var(--bg-surface-dim); \
+    color: var(--text-primary); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
+    padding: var(--space-2) var(--space-3); \
+    font-size: var(--text-sm); \
     width: 160px;\
 ";
 
 const FORM_SELECT: &str = "\
-    background: #0f0f1a; \
-    color: #e0e0e0; \
-    border: 1px solid #444; \
-    border-radius: 6px; \
-    padding: 6px 10px; \
-    font-size: 13px;\
+    background: var(--bg-surface-dim); \
+    color: var(--text-primary); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
+    padding: var(--space-2) var(--space-3); \
+    font-size: var(--text-sm);\
 ";
 
 const ERROR_TEXT: &str = "\
-    font-size: 12px; \
-    color: #ef4444; \
-    margin-top: 4px;\
+    font-size: var(--text-xs); \
+    color: var(--status-error); \
+    margin-top: var(--space-1);\
 ";
 
 // --- Components ---
@@ -392,15 +404,15 @@ pub(crate) fn CredentialsView() -> Element {
             style: "{PANEL_STYLE}",
 
             if fetch_loading {
-                div { style: "color: #888; font-size: 13px;", "Loading credentials..." }
+                div { style: "color: var(--text-secondary); font-size: var(--text-sm);", "Loading credentials..." }
             }
 
             if let Some(err) = &fetch_error_msg {
-                div { style: "color: #ef4444; font-size: 13px;", "Error: {err}" }
+                div { style: "color: var(--status-error); font-size: var(--text-sm);", "Error: {err}" }
             }
 
             if !fetch_loading && fetch_error_msg.is_none() && cards.is_empty() {
-                div { style: "color: #555; font-size: 13px;", "No credentials configured." }
+                div { style: "color: var(--text-muted); font-size: var(--text-sm);", "No credentials configured." }
             }
 
             for (entry, can_rot, is_last_prim) in cards {
@@ -469,7 +481,7 @@ pub(crate) fn CredentialsView() -> Element {
                         div { style: "{ERROR_TEXT}", "{err}" }
                     }
                     div {
-                        style: "display: flex; gap: 8px; margin-top: 4px;",
+                        style: "display: flex; gap: var(--space-2); margin-top: var(--space-1);",
                         button {
                             style: "{BTN_STD}",
                             onclick: move |_| do_add(),
@@ -620,7 +632,7 @@ fn CredentialCard(
     let role_bg = if entry.role == CredentialRole::Primary {
         "background: #1a2a4a; color: #4a9aff;"
     } else {
-        "background: #2a2a2a; color: #888;"
+        "background: #2a2a2a; color: var(--text-secondary);"
     };
 
     rsx! {
@@ -632,8 +644,8 @@ fn CredentialCard(
                 style: "{CARD_HEADER}",
                 span { style: "{PROVIDER_NAME}", "{entry.provider}" }
                 span {
-                    style: "font-size: 11px; padding: 2px 8px; border-radius: 4px; \
-                            font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; \
+                    style: "font-size: var(--text-xs); padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm); \
+                            font-weight: var(--weight-bold); text-transform: uppercase; letter-spacing: 0.5px; \
                             {role_bg}",
                     "{entry.role.label()}"
                 }
@@ -643,11 +655,11 @@ fn CredentialCard(
             div {
                 style: "{META_ROW}",
                 span {
-                    style: "font-family: monospace; color: #888; font-size: 13px;",
+                    style: "font-family: var(--font-mono); color: var(--text-secondary); font-size: var(--text-sm);",
                     "{entry.masked_key}"
                 }
                 span {
-                    style: "display: inline-flex; align-items: center; gap: 5px; font-size: 13px; \
+                    style: "display: inline-flex; align-items: center; gap: var(--space-1); font-size: var(--text-sm); \
                             color: {entry.status.color()};",
                     span {
                         style: "width: 8px; height: 8px; border-radius: 50%; \
@@ -754,7 +766,7 @@ fn CredentialCard(
 
             // Per-card error
             if let Some(err) = &*card_error.read() {
-                div { style: "color: #ef4444; font-size: 12px; margin-top: 8px;", "{err}" }
+                div { style: "color: var(--status-error); font-size: var(--text-xs); margin-top: var(--space-2);", "{err}" }
             }
         }
     }

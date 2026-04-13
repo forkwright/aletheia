@@ -9,49 +9,55 @@ use crate::state::toasts::{Toast, ToastId};
 const TOAST_STYLE: &str = "\
     display: flex; \
     flex-direction: column; \
-    gap: 4px; \
-    padding: 12px 16px; \
-    border-radius: 8px; \
+    gap: var(--space-1); \
+    padding: var(--space-3) var(--space-4); \
+    border-radius: var(--radius-lg); \
     border-left: 4px solid; \
     min-width: 300px; \
     max-width: 400px; \
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3); \
+    box-shadow: var(--shadow-float, 0 4px 16px rgb(18 17 15 / 0.16)); \
+    animation: toast-enter 350ms cubic-bezier(0.16, 1, 0.3, 1); \
     position: relative;\
 ";
 
 const TITLE_STYLE: &str = "\
-    font-size: 14px; \
-    font-weight: 600;\
+    font-size: var(--text-base); \
+    font-weight: var(--weight-semibold);\
 ";
 
 const BODY_STYLE: &str = "\
-    font-size: 13px; \
+    font-size: var(--text-sm); \
     opacity: 0.85;\
 ";
 
 const DISMISS_STYLE: &str = "\
     position: absolute; \
-    top: 8px; \
-    right: 8px; \
+    top: var(--space-2); \
+    right: var(--space-2); \
     background: none; \
     border: none; \
     color: inherit; \
     opacity: 0.6; \
-    cursor: pointer; \
-    font-size: 14px; \
-    padding: 2px 4px;\
+    cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick); \
+    font-size: var(--text-base); \
+    padding: var(--space-1) var(--space-2); \
+    min-width: 24px; \
+    min-height: 24px; \
+    display: flex; \
+    align-items: center; \
+    justify-content: center;\
 ";
 
 const ACTION_STYLE: &str = "\
-    background: rgba(255, 255, 255, 0.15); \
-    border: 1px solid rgba(255, 255, 255, 0.2); \
-    border-radius: 4px; \
+    background: var(--bg-surface-bright); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-sm); \
     color: inherit; \
-    cursor: pointer; \
-    font-size: 13px; \
-    padding: 4px 12px; \
+    cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick); \
+    font-size: var(--text-sm); \
+    padding: var(--space-1) var(--space-3); \
     align-self: flex-start; \
-    margin-top: 4px;\
+    margin-top: var(--space-1);\
 ";
 
 /// Render a single toast notification.
@@ -75,11 +81,11 @@ pub(crate) fn ToastItem(toast: Toast) -> Element {
 
     rsx! {
         div {
-            style: "{TOAST_STYLE} background: {bg}; border-color: {color}; color: #e0e0e0;",
+            style: "{TOAST_STYLE} background: {bg}; border-color: {color}; color: var(--text-primary);",
             button {
                 style: "{DISMISS_STYLE}",
                 onclick: move |_| toasts.dismiss(toast_id),
-                "x"
+                "\u{2715}"
             }
             div { style: "{TITLE_STYLE}", "{toast.title}" }
             if let Some(ref body) = toast.body {

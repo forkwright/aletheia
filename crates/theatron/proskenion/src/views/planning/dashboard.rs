@@ -37,7 +37,10 @@ const CARD_STYLE: &str = "\
     border: 1px solid var(--border); \
     border-radius: var(--radius-lg); \
     padding: var(--space-4); \
-    cursor: pointer;\
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const CARD_TITLE: &str = "\
@@ -89,7 +92,10 @@ const REFRESH_BTN: &str = "\
     border-radius: var(--radius-md); \
     padding: var(--space-1) var(--space-3); \
     font-size: var(--text-sm); \
-    cursor: pointer;\
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const PLACEHOLDER_STYLE: &str = "\
@@ -157,7 +163,7 @@ pub(crate) fn Planning() -> Element {
 
             div {
                 style: "display: flex; align-items: center; justify-content: space-between;",
-                h2 { style: "font-size: 20px; margin: 0;", "Planning" }
+                h2 { style: "font-size: var(--text-xl); margin: 0;", "Planning" }
                 button {
                     style: "{REFRESH_BTN}",
                     onclick: move |_| do_refresh(),
@@ -181,9 +187,9 @@ pub(crate) fn Planning() -> Element {
                 FetchState::NotAvailable => rsx! {
                     div {
                         style: "{PLACEHOLDER_STYLE}",
-                        div { style: "font-size: 48px;", "[P]" }
-                        div { style: "font-size: 16px;", "Project planning not available" }
-                        div { style: "font-size: 13px; max-width: 400px; text-align: center;",
+                        div { style: "font-size: var(--text-3xl);", "[P]" }
+                        div { style: "font-size: var(--text-md);", "Project planning not available" }
+                        div { style: "font-size: var(--text-sm); max-width: 400px; text-align: center;",
                             "The planning API is not available on this pylon instance. "
                             "Projects will appear here when connected to a pylon with dianoia integration."
                         }
@@ -194,8 +200,8 @@ pub(crate) fn Planning() -> Element {
                         rsx! {
                             div {
                                 style: "{PLACEHOLDER_STYLE}",
-                                div { style: "font-size: 16px;", "No projects" }
-                                div { style: "font-size: 13px;",
+                                div { style: "font-size: var(--text-md);", "No projects" }
+                                div { style: "font-size: var(--text-sm);",
                                     "Projects will appear here when created."
                                 }
                             }

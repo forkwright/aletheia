@@ -123,12 +123,12 @@ pre {
 }
 
 /* ===================================================================== */
-/* Focus ring                                                            */
+/* Focus ring — double-ring technique for visibility on any surface      */
 /* ===================================================================== */
 
 :focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 2px;
+  outline: none;
+  box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
 }
 
 /* ===================================================================== */
@@ -202,7 +202,7 @@ pre {
 
 .resize-handle:hover,
 .resize-handle:focus-visible {
-  background: var(--accent-muted, rgba(122, 122, 255, 0.25)) !important;
+  background: var(--accent-muted, rgba(154, 123, 79, 0.25)) !important;
   outline: none;
 }
 
@@ -216,6 +216,144 @@ a:focus-visible,
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 2px;
+  outline: none;
+  box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
+}
+
+/* ===================================================================== */
+/* Markdown body — word-wrap safety for all rendered markdown content      */
+/* ===================================================================== */
+
+.markdown-body {
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  white-space: normal;
+  line-height: var(--leading-relaxed);
+}
+
+.markdown-body pre {
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.markdown-body p,
+.markdown-body li,
+.markdown-body blockquote {
+  max-width: 100%;
+}
+
+/* ===================================================================== */
+/* Reduced motion — respect user accessibility preferences                */
+/* ===================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ===================================================================== */
+/* Message appear animation — subtle fade+slide for new messages          */
+/* ===================================================================== */
+
+@keyframes message-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.message-appear {
+  animation: message-in 0.2s ease-out;
+}
+
+/* ===================================================================== */
+/* Status dot pulse — active agent indicator                              */
+/* ===================================================================== */
+
+@keyframes status-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.4; }
+}
+
+.status-dot-active {
+  animation: status-pulse 1.5s ease-in-out infinite;
+}
+
+/* ===================================================================== */
+/* Context window usage bar                                               */
+/* ===================================================================== */
+
+.context-bar {
+  height: 2px;
+  background: var(--border-separator);
+  width: 100%;
+  overflow: hidden;
+}
+
+.context-bar-fill {
+  height: 100%;
+  transition: width var(--transition-measured), background-color var(--transition-measured);
+}
+
+/* ===================================================================== */
+/* Nav item hover — sidebar interactive states                            */
+/* ===================================================================== */
+
+nav a:hover {
+  background: var(--bg-surface-bright);
+  color: var(--text-primary);
+}
+
+nav a[aria-current="page"],
+nav a.active {
+  background: var(--bg-surface-bright);
+  color: var(--accent);
+  border-left: 3px solid var(--accent);
+}
+
+/* ===================================================================== */
+/* Toast entrance animation                                              */
+/* ===================================================================== */
+
+@keyframes toast-enter {
+  from { transform: translateX(100%); opacity: 0; }
+  to   { transform: translateX(0); opacity: 1; }
+}
+
+/* ===================================================================== */
+/* Fade-in for content transitions                                       */
+/* ===================================================================== */
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* ===================================================================== */
+/* Button micro-interactions — lift on hover, snap on press              */
+/* ===================================================================== */
+
+button:not([disabled]):not([role="tab"]):not([role="option"]):hover {
+  transform: translateY(-1px);
+}
+
+button:not([disabled]):active {
+  transform: translateY(0);
+  transition-duration: var(--duration-fast);
+}
+
+/* ===================================================================== */
+/* Disabled state                                                        */
+/* ===================================================================== */
+
+[disabled], [aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: not-allowed;
 }

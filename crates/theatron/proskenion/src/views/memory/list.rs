@@ -16,52 +16,57 @@ const LIST_CONTAINER_STYLE: &str = "\
 const SORT_BAR_STYLE: &str = "\
     display: flex; \
     align-items: center; \
-    gap: 8px; \
-    padding: 8px 12px; \
-    border-bottom: 1px solid #2a2a3a; \
-    font-size: 12px; \
-    color: #888;\
+    gap: var(--space-2); \
+    padding: var(--space-2) var(--space-3); \
+    border-bottom: 1px solid var(--border); \
+    font-size: var(--text-xs); \
+    color: var(--text-secondary);\
 ";
 
 const SORT_SELECT_STYLE: &str = "\
-    background: #1a1a2e; \
-    border: 1px solid #333; \
-    border-radius: 4px; \
-    padding: 4px 8px; \
-    color: #e0e0e0; \
-    font-size: 12px; \
-    cursor: pointer;\
+    background: var(--bg-surface); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-sm); \
+    padding: var(--space-1) var(--space-2); \
+    color: var(--text-primary); \
+    font-size: var(--text-xs); \
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const SCROLL_AREA_STYLE: &str = "\
     flex: 1; \
     overflow-y: auto; \
-    padding: 4px;\
+    padding: var(--space-1);\
 ";
 
 const ROW_STYLE: &str = "\
     display: flex; \
     flex-direction: column; \
-    gap: 4px; \
-    padding: 10px 12px; \
-    border-radius: 6px; \
+    gap: var(--space-1); \
+    padding: var(--space-3) var(--space-3); \
+    border-radius: var(--radius-md); \
     cursor: pointer; \
-    transition: background 0.1s;\
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
-const ROW_SELECTED_BG: &str = "background: #2a2a4a;";
+const ROW_SELECTED_BG: &str = "background: var(--border);";
 
 const ROW_HEADER_STYLE: &str = "\
     display: flex; \
     align-items: center; \
     justify-content: space-between; \
-    gap: 8px;\
+    gap: var(--space-2);\
 ";
 
 const ENTITY_NAME_STYLE: &str = "\
-    font-size: 14px; \
-    font-weight: 600; \
-    color: #e0e0e0; \
+    font-size: var(--text-base); \
+    font-weight: var(--weight-semibold); \
+    color: var(--text-primary); \
     overflow: hidden; \
     text-overflow: ellipsis; \
     white-space: nowrap; \
@@ -69,33 +74,36 @@ const ENTITY_NAME_STYLE: &str = "\
 ";
 
 const TYPE_BADGE_STYLE: &str = "\
-    font-size: 11px; \
-    padding: 2px 8px; \
-    border-radius: 10px; \
-    font-weight: 500; \
+    font-size: var(--text-xs); \
+    padding: var(--space-1) var(--space-2); \
+    border-radius: var(--radius-lg); \
+    font-weight: var(--weight-medium); \
     white-space: nowrap;\
 ";
 
 const STATS_ROW_STYLE: &str = "\
     display: flex; \
     align-items: center; \
-    gap: 12px; \
-    font-size: 11px; \
-    color: #888;\
+    gap: var(--space-3); \
+    font-size: var(--text-xs); \
+    color: var(--text-secondary);\
 ";
 
 const FLAG_ICON_STYLE: &str = "\
-    color: #ef4444; \
-    font-size: 12px; \
-    margin-left: 4px;\
+    color: var(--status-error); \
+    font-size: var(--text-xs); \
+    margin-left: var(--space-1);\
 ";
 
 const LOAD_MORE_STYLE: &str = "\
-    padding: 12px; \
+    padding: var(--space-3); \
     text-align: center; \
     color: #7a7aff; \
     cursor: pointer; \
-    font-size: 13px;\
+    font-size: var(--text-sm); \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const EMPTY_STYLE: &str = "\
@@ -103,14 +111,14 @@ const EMPTY_STYLE: &str = "\
     align-items: center; \
     justify-content: center; \
     flex: 1; \
-    color: #555; \
-    font-size: 14px;\
+    color: var(--text-muted); \
+    font-size: var(--text-base);\
 ";
 
 const COUNT_STYLE: &str = "\
-    padding: 4px 12px; \
-    font-size: 11px; \
-    color: #666;\
+    padding: var(--space-1) var(--space-3); \
+    font-size: var(--text-xs); \
+    color: var(--text-muted);\
 ";
 
 /// Entity list panel with sort dropdown, rows, and pagination.

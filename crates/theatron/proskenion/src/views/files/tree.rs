@@ -22,12 +22,12 @@ const TREE_CONTAINER_STYLE: &str = "\
 const TREE_NODE_STYLE: &str = "\
     display: flex; \
     align-items: center; \
-    gap: 6px; \
-    padding: 4px 8px; \
+    gap: var(--space-2); \
+    padding: var(--space-1) var(--space-2); \
     border-radius: var(--radius-sm, 4px); \
-    cursor: pointer; \
-    font-size: 13px; \
-    color: var(--text-primary, #e0e0e0); \
+    cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick); \
+    font-size: var(--text-sm); \
+    color: var(--text-primary, var(--text-primary)); \
     user-select: none;\
 ";
 
@@ -125,13 +125,13 @@ pub(crate) fn FileTree(
             match &*root_state.read() {
                 FetchState::Loading => rsx! {
                     div {
-                        style: "color: var(--text-muted); padding: 8px; font-size: 13px;",
+                        style: "color: var(--text-muted); padding: var(--space-2); font-size: var(--text-sm);",
                         "Loading..."
                     }
                 },
                 FetchState::Error(err) => rsx! {
                     div {
-                        style: "color: var(--status-error); padding: 8px; font-size: 13px;",
+                        style: "color: var(--status-error); padding: var(--space-2); font-size: var(--text-sm);",
                         "Error: {err}"
                     }
                 },
@@ -235,17 +235,17 @@ fn TreeNode(
                     }
                 },
                 span {
-                    style: "font-size: 10px; width: 12px; text-align: center; color: var(--text-muted);",
+                    style: "font-size: var(--text-xs); width: 12px; text-align: center; color: var(--text-muted);",
                     "{chevron}"
                 }
-                span { style: "font-size: 14px;", "{icon}" }
+                span { style: "font-size: var(--text-base);", "{icon}" }
                 span {
                     style: "flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;",
                     "{node.name}"
                 }
                 if let Some((badge, color)) = status_badge {
                     span {
-                        style: "font-size: 10px; font-weight: bold; color: {color}; min-width: 14px; text-align: center;",
+                        style: "font-size: var(--text-xs); font-weight: var(--weight-bold); color: {color}; min-width: 14px; text-align: center;",
                         "{badge}"
                     }
                 }

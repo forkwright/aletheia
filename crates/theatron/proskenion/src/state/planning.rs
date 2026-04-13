@@ -99,10 +99,10 @@ impl RequirementStatus {
     #[must_use]
     pub(crate) fn color(self) -> &'static str {
         match self {
-            Self::Proposed => "#888",
-            Self::Accepted => "#4a9aff",
-            Self::Implemented => "#f59e0b",
-            Self::Verified => "#22c55e",
+            Self::Proposed => "var(--text-secondary)",
+            Self::Accepted => "var(--status-info)",
+            Self::Implemented => "var(--status-warning)",
+            Self::Verified => "var(--status-success)",
         }
     }
 }
@@ -132,9 +132,9 @@ impl RequirementPriority {
     #[must_use]
     pub(crate) fn color(self) -> &'static str {
         match self {
-            Self::P0 => "#ef4444",
-            Self::P1 => "#f59e0b",
-            Self::P2 => "#4a9aff",
+            Self::P0 => "var(--status-error)",
+            Self::P1 => "var(--status-warning)",
+            Self::P2 => "var(--status-info)",
         }
     }
 }
@@ -380,10 +380,10 @@ fn date_to_days(date: &str) -> Option<i64> {
 #[must_use]
 pub(crate) fn status_badge_style(status: ProjectStatus) -> (&'static str, &'static str) {
     match status {
-        ProjectStatus::Planning => ("#1a2a3a", "#4a9aff"),
-        ProjectStatus::InProgress => ("#2a2a1a", "#f59e0b"),
-        ProjectStatus::Completed => ("#1a3a1a", "#22c55e"),
-        ProjectStatus::Paused => ("#2a2a3a", "#888"),
+        ProjectStatus::Planning => ("var(--status-info-bg)", "var(--status-info)"),
+        ProjectStatus::InProgress => ("var(--status-warning-bg)", "var(--status-warning)"),
+        ProjectStatus::Completed => ("var(--status-success-bg)", "var(--status-success)"),
+        ProjectStatus::Paused => ("var(--bg-surface-dim)", "var(--text-secondary)"),
     }
 }
 
@@ -402,9 +402,9 @@ pub(crate) fn status_label(status: ProjectStatus) -> &'static str {
 #[must_use]
 pub(crate) fn phase_status_color(status: PhaseStatus) -> &'static str {
     match status {
-        PhaseStatus::Planned => "#2a2a3a",
-        PhaseStatus::Active => "#1a2a3a",
-        PhaseStatus::Completed => "#1a3a1a",
+        PhaseStatus::Planned => "var(--bg-surface-dim)",
+        PhaseStatus::Active => "var(--status-info-bg)",
+        PhaseStatus::Completed => "var(--status-success-bg)",
     }
 }
 
@@ -412,9 +412,9 @@ pub(crate) fn phase_status_color(status: PhaseStatus) -> &'static str {
 #[must_use]
 pub(crate) fn phase_border_color(status: PhaseStatus) -> &'static str {
     match status {
-        PhaseStatus::Planned => "#444",
-        PhaseStatus::Active => "#4a9aff",
-        PhaseStatus::Completed => "#22c55e",
+        PhaseStatus::Planned => "var(--text-muted)",
+        PhaseStatus::Active => "var(--status-info)",
+        PhaseStatus::Completed => "var(--status-success)",
     }
 }
 

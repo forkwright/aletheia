@@ -133,28 +133,31 @@ const CONTAINER_STYLE: &str = "\
     flex-direction: column; \
     height: 100%; \
     overflow-y: auto; \
-    padding: 0 4px;\
+    padding: 0 var(--space-1);\
 ";
 
 const HEADER_STYLE: &str = "\
     display: flex; \
     align-items: center; \
     justify-content: space-between; \
-    padding: 0 0 12px 0; \
+    padding: 0 0 var(--space-3) 0; \
     position: sticky; \
     top: 0; \
-    background: #0f0f1a; \
+    background: var(--bg-surface-dim); \
     z-index: 10;\
 ";
 
 const REFRESH_BTN: &str = "\
-    background: #2a2a4a; \
-    color: #e0e0e0; \
-    border: 1px solid #444; \
-    border-radius: 6px; \
-    padding: 4px 12px; \
-    font-size: 12px; \
-    cursor: pointer;\
+    background: var(--border); \
+    color: var(--text-primary); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
+    padding: var(--space-1) var(--space-3); \
+    font-size: var(--text-xs); \
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const STATUS_STYLE: &str = "\
@@ -162,72 +165,75 @@ const STATUS_STYLE: &str = "\
     align-items: center; \
     justify-content: center; \
     min-height: 200px; \
-    color: #888; \
-    font-size: 14px;\
+    color: var(--text-secondary); \
+    font-size: var(--text-base);\
 ";
 
 pub(crate) const SECTION_HEADER_STYLE: &str = "\
     display: flex; \
     align-items: center; \
     justify-content: space-between; \
-    padding: 12px 16px; \
-    background: #1a1a2e; \
-    border: 1px solid #333; \
-    border-radius: 8px; \
+    padding: var(--space-3) var(--space-4); \
+    background: var(--bg-surface); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
     cursor: pointer; \
     user-select: none; \
-    margin-bottom: 2px;\
+    margin-bottom: var(--space-1); \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 pub(crate) const SECTION_TITLE_STYLE: &str = "\
-    font-size: 16px; \
-    font-weight: 600; \
-    color: #e0e0e0;\
+    font-size: var(--text-md); \
+    font-weight: var(--weight-semibold); \
+    color: var(--text-primary);\
 ";
 
 pub(crate) const SECTION_BODY_STYLE: &str = "\
-    padding: 16px; \
+    padding: var(--space-4); \
     background: #12121e; \
-    border: 1px solid #2a2a3a; \
+    border: 1px solid var(--border); \
     border-top: none; \
-    border-radius: 0 0 8px 8px; \
-    margin-bottom: 12px;\
+    border-radius: 0 0 var(--radius-lg) var(--radius-lg); \
+    margin-bottom: var(--space-3);\
 ";
 
 pub(crate) const CARD_STYLE: &str = "\
-    background: #1a1a2e; \
-    border: 1px solid #333; \
-    border-radius: 8px; \
-    padding: 16px;\
+    background: var(--bg-surface); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
+    padding: var(--space-4);\
 ";
 
 pub(crate) const GRID_STYLE: &str = "\
     display: flex; \
     flex-wrap: wrap; \
-    gap: 12px;\
+    gap: var(--space-3);\
 ";
 
 pub(crate) const CARD_VALUE: &str = "\
-    font-size: 28px; \
-    font-weight: bold; \
-    color: #e0e0e0;\
+    font-size: var(--text-2xl); \
+    font-weight: var(--weight-bold); \
+    color: var(--text-primary);\
 ";
 
 pub(crate) const CARD_LABEL: &str = "\
-    font-size: 12px; \
-    color: #888; \
+    font-size: var(--text-xs); \
+    color: var(--text-secondary); \
     text-transform: uppercase; \
     letter-spacing: 0.5px; \
-    margin-top: 4px;\
+    margin-top: var(--space-1);\
 ";
 
 pub(crate) const CARD_SUB: &str = "\
-    font-size: 11px; \
-    color: #555; \
-    margin-top: 6px;\
+    font-size: var(--text-xs); \
+    color: var(--text-muted); \
+    margin-top: var(--space-2);\
 ";
 
-pub(crate) const MUTED_TEXT: &str = "font-size: 12px; color: #666;";
+pub(crate) const MUTED_TEXT: &str = "font-size: var(--text-xs); color: var(--text-muted);";
 
 const AUTO_REFRESH_INTERVAL_MS: u64 = 300_000;
 
@@ -277,7 +283,7 @@ pub(crate) fn Meta() -> Element {
             style: "{CONTAINER_STYLE}",
             div {
                 style: "{HEADER_STYLE}",
-                h2 { style: "font-size: 20px; margin: 0;", "Meta-Insights" }
+                h2 { style: "font-size: var(--text-xl); margin: 0;", "Meta-Insights" }
                 button {
                     style: "{REFRESH_BTN}",
                     onclick: move |_| do_refresh(),
@@ -290,7 +296,7 @@ pub(crate) fn Meta() -> Element {
                     div { style: "{STATUS_STYLE}", "Loading meta-insights..." }
                 },
                 FetchState::Error(err) => rsx! {
-                    div { style: "{STATUS_STYLE} color: #ef4444;", "Error: {err}" }
+                    div { style: "{STATUS_STYLE} color: var(--status-error);", "Error: {err}" }
                 },
                 FetchState::Loaded(data) => {
                     let exp = *expanded.read();
@@ -349,7 +355,7 @@ fn AccordionSection(
                 style: "{SECTION_HEADER_STYLE}",
                 onclick: move |evt| on_toggle.call(evt),
                 span { style: "{SECTION_TITLE_STYLE}", "{title}" }
-                span { style: "color: #666; font-size: 14px;", "{arrow}" }
+                span { style: "color: var(--text-muted); font-size: var(--text-base);", "{arrow}" }
             }
             if expanded {
                 div {

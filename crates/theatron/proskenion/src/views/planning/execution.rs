@@ -21,8 +21,8 @@ const CONTAINER_STYLE: &str = "\
     display: flex; \
     flex-direction: column; \
     height: 100%; \
-    padding: 16px; \
-    gap: 12px; \
+    padding: var(--space-4); \
+    gap: var(--space-3); \
     overflow-y: auto;\
 ";
 
@@ -33,19 +33,22 @@ const HEADER_ROW: &str = "\
 ";
 
 const REFRESH_BTN: &str = "\
-    background: #2a2a4a; \
-    color: #e0e0e0; \
-    border: 1px solid #444; \
-    border-radius: 6px; \
-    padding: 4px 12px; \
-    font-size: 12px; \
-    cursor: pointer;\
+    background: var(--border); \
+    color: var(--text-primary); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
+    padding: var(--space-1) var(--space-3); \
+    font-size: var(--text-xs); \
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const PROGRESS_BAR_TRACK: &str = "\
     height: 6px; \
-    background: #2a2a3a; \
-    border-radius: 3px; \
+    background: var(--border); \
+    border-radius: var(--radius-sm); \
     overflow: hidden;\
 ";
 
@@ -53,9 +56,9 @@ const PROGRESS_SUMMARY: &str = "\
     display: flex; \
     align-items: center; \
     justify-content: space-between; \
-    font-size: 13px; \
-    color: #aaa; \
-    margin-bottom: 4px;\
+    font-size: var(--text-sm); \
+    color: var(--text-secondary); \
+    margin-bottom: var(--space-1);\
 ";
 
 const PLACEHOLDER_STYLE: &str = "\
@@ -64,8 +67,8 @@ const PLACEHOLDER_STYLE: &str = "\
     align-items: center; \
     justify-content: center; \
     flex: 1; \
-    gap: 12px; \
-    color: #555;\
+    gap: var(--space-3); \
+    color: var(--text-muted);\
 ";
 
 /// Polling interval for execution state updates (10 seconds).
@@ -135,7 +138,7 @@ pub(crate) fn ExecutionView(project_id: String) -> Element {
             style: "{CONTAINER_STYLE}",
             div {
                 style: "{HEADER_ROW}",
-                h3 { style: "font-size: 16px; margin: 0; color: #e0e0e0;", "Execution" }
+                h3 { style: "font-size: var(--text-md); margin: 0; color: var(--text-primary);", "Execution" }
                 button {
                     style: "{REFRESH_BTN}",
                     onclick: move |_| fetch_trigger.set(fetch_trigger() + 1),
@@ -146,22 +149,22 @@ pub(crate) fn ExecutionView(project_id: String) -> Element {
             match &*fetch_state.read() {
                 ExecutionFetchState::Loading => rsx! {
                     div {
-                        style: "display: flex; align-items: center; justify-content: center; flex: 1; color: #888;",
+                        style: "display: flex; align-items: center; justify-content: center; flex: 1; color: var(--text-secondary);",
                         "Loading execution state..."
                     }
                 },
                 ExecutionFetchState::Error(err) => rsx! {
                     div {
-                        style: "display: flex; align-items: center; justify-content: center; flex: 1; color: #ef4444;",
+                        style: "display: flex; align-items: center; justify-content: center; flex: 1; color: var(--status-error);",
                         "Error: {err}"
                     }
                 },
                 ExecutionFetchState::NotAvailable => rsx! {
                     div {
                         style: "{PLACEHOLDER_STYLE}",
-                        div { style: "font-size: 48px;", "[E]" }
-                        div { style: "font-size: 16px;", "Execution view not available" }
-                        div { style: "font-size: 13px; max-width: 400px; text-align: center;",
+                        div { style: "font-size: var(--text-3xl);", "[E]" }
+                        div { style: "font-size: var(--text-md);", "Execution view not available" }
+                        div { style: "font-size: var(--text-sm); max-width: 400px; text-align: center;",
                             "The execution API is not available on this pylon instance."
                         }
                     }
@@ -171,8 +174,8 @@ pub(crate) fn ExecutionView(project_id: String) -> Element {
                         rsx! {
                             div {
                                 style: "{PLACEHOLDER_STYLE}",
-                                div { style: "font-size: 16px;", "No execution in progress" }
-                                div { style: "font-size: 13px;",
+                                div { style: "font-size: var(--text-md);", "No execution in progress" }
+                                div { style: "font-size: var(--text-sm);",
                                     "Waves will appear here when plan execution begins."
                                 }
                             }
@@ -197,7 +200,7 @@ pub(crate) fn ExecutionView(project_id: String) -> Element {
                             div {
                                 style: "{PROGRESS_BAR_TRACK}",
                                 div {
-                                    style: "height: 100%; background: #4a9aff; width: {overall_pct}%; border-radius: 3px; transition: width 0.3s;",
+                                    style: "height: 100%; background: var(--accent); width: {overall_pct}%; border-radius: var(--radius-sm); transition: width var(--transition-measured);",
                                 }
                             }
 

@@ -220,6 +220,13 @@ impl DebouncedWriter {
         self.dirty.notify_one();
     }
 
+    /// Return a clone of the current buffered state.
+    #[cfg_attr(not(test), expect(dead_code, reason = "used in tests"))]
+    #[must_use]
+    pub(crate) fn snapshot(&self) -> WindowState {
+        let guard = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        guard.clone()
+    }
 }
 
 #[cfg(test)]

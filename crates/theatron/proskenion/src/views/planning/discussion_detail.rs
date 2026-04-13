@@ -59,43 +59,43 @@ pub(crate) fn DiscussionDetailView(
 
     rsx! {
         div {
-            style: "display: flex; flex-direction: column; height: 100%; padding: 16px; gap: 12px; overflow-y: auto;",
+            style: "display: flex; flex-direction: column; height: 100%; padding: var(--space-4); gap: var(--space-3); overflow-y: auto;",
 
             button {
-                style: "background: transparent; color: #4a9aff; border: none; font-size: 13px; cursor: pointer; padding: 0; margin-bottom: 8px;",
+                style: "background: transparent; color: var(--accent); border: none; font-size: var(--text-sm); cursor: pointer; padding: 0; margin-bottom: var(--space-2); transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
                 onclick: move |_| on_back.call(()),
                 "<- Back to discussions"
             }
 
             if let Some(err) = error.read().as_ref() {
                 div {
-                    style: "display: flex; align-items: center; justify-content: center; flex: 1; color: #ef4444;",
+                    style: "display: flex; align-items: center; justify-content: center; flex: 1; color: var(--status-error);",
                     "Error: {err}"
                 }
             } else if let Some(disc) = discussion.read().as_ref() {
                 // Question
-                div { style: "font-size: 18px; font-weight: 600; color: #e0e0e0; margin-bottom: 8px;", "{disc.question}" }
+                div { style: "font-size: var(--text-lg); font-weight: var(--weight-semibold); color: var(--text-primary); margin-bottom: var(--space-2);", "{disc.question}" }
 
                 // Context
                 if !disc.context.is_empty() {
-                    div { style: "font-size: 14px; color: #aaa; padding: 10px 14px; background: #0f0f1a; border: 1px solid #2a2a3a; border-radius: 6px; margin-bottom: 12px;", "{disc.context}" }
+                    div { style: "font-size: var(--text-base); color: var(--text-secondary); padding: var(--space-3) var(--space-4); background: var(--bg-surface-dim); border: 1px solid var(--border); border-radius: var(--radius-md); margin-bottom: var(--space-3);", "{disc.context}" }
                 }
 
                 // Current answer (if answered)
                 if disc.status == DiscussionStatus::Answered {
                     if let Some(summary) = DiscussionStore::answer_summary(disc) {
                         div {
-                            style: "font-size: 12px; font-weight: 600; color: #666; text-transform: uppercase; letter-spacing: 0.5px; margin: 12px 0 6px;",
+                            style: "font-size: var(--text-xs); font-weight: var(--weight-semibold); color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin: var(--space-3) 0 var(--space-2);",
                             "Current Answer"
                         }
-                        div { style: "font-size: 14px; color: #22c55e; padding: 8px 12px; background: #0f1a0f; border: 1px solid #1a3a1a; border-radius: 6px;", "{summary}" }
+                        div { style: "font-size: var(--text-base); color: var(--status-success); padding: var(--space-2) var(--space-3); background: #0f1a0f; border: 1px solid #1a3a1a; border-radius: var(--radius-md);", "{summary}" }
                     }
                 }
 
                 // All options
-                div { style: "font-size: 12px; font-weight: 600; color: #666; text-transform: uppercase; letter-spacing: 0.5px; margin: 12px 0 6px;", "Options" }
+                div { style: "font-size: var(--text-xs); font-weight: var(--weight-semibold); color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin: var(--space-3) 0 var(--space-2);", "Options" }
                 div {
-                    style: "display: flex; flex-direction: column; gap: 8px;",
+                    style: "display: flex; flex-direction: column; gap: var(--space-2);",
                     for opt in &disc.options {
                         OptionCard {
                             key: "{opt.id}",
@@ -110,16 +110,16 @@ pub(crate) fn DiscussionDetailView(
 
                 // Discussion history
                 if !disc.history.is_empty() {
-                    div { style: "font-size: 12px; font-weight: 600; color: #666; text-transform: uppercase; letter-spacing: 0.5px; margin: 12px 0 6px;", "History" }
+                    div { style: "font-size: var(--text-xs); font-weight: var(--weight-semibold); color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin: var(--space-3) 0 var(--space-2);", "History" }
                     for (i, entry) in disc.history.iter().enumerate() {
                         div {
                             key: "{i}",
-                            style: "display: flex; align-items: flex-start; gap: 8px; padding: 6px 10px; border-left: 2px solid #2a2a3a; margin-bottom: 4px;",
+                            style: "display: flex; align-items: flex-start; gap: var(--space-2); padding: var(--space-2) var(--space-3); border-left: 2px solid var(--border); margin-bottom: var(--space-1);",
                             div {
-                                span { style: "font-size: 12px; font-weight: 600; color: #c0c0e0;", "{entry.action}" }
-                                span { style: "font-size: 11px; color: #666;", " by {entry.actor} at {entry.timestamp}" }
+                                span { style: "font-size: var(--text-xs); font-weight: var(--weight-semibold); color: #c0c0e0;", "{entry.action}" }
+                                span { style: "font-size: var(--text-xs); color: var(--text-muted);", " by {entry.actor} at {entry.timestamp}" }
                                 if !entry.detail.is_empty() {
-                                    div { style: "font-size: 12px; color: #999; font-style: italic;", "\"{entry.detail}\"" }
+                                    div { style: "font-size: var(--text-xs); color: var(--text-secondary); font-style: italic;", "\"{entry.detail}\"" }
                                 }
                             }
                         }
@@ -127,7 +127,7 @@ pub(crate) fn DiscussionDetailView(
                 }
             } else {
                 div {
-                    style: "display: flex; align-items: center; justify-content: center; flex: 1; color: #888;",
+                    style: "display: flex; align-items: center; justify-content: center; flex: 1; color: var(--text-secondary);",
                     "Loading discussion..."
                 }
             }

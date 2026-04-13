@@ -9,83 +9,89 @@ use crate::state::verification::{
 const PANEL_STYLE: &str = "\
     display: flex; \
     flex-direction: column; \
-    gap: 8px;\
+    gap: var(--space-2);\
 ";
 
 const FILTER_ROW: &str = "\
     display: flex; \
     align-items: center; \
-    gap: 8px; \
-    margin-bottom: 8px;\
+    gap: var(--space-2); \
+    margin-bottom: var(--space-2);\
 ";
 
 const FILTER_BTN_ACTIVE: &str = "\
-    background: #1e1e5a; \
-    color: #8080ff; \
-    border: 1px solid #4a4aff; \
-    border-radius: 6px; \
-    padding: 3px 10px; \
-    font-size: 12px; \
-    cursor: pointer;\
+    background: var(--bg-surface-dim); \
+    color: var(--accent); \
+    border: 1px solid var(--accent); \
+    border-radius: var(--radius-md); \
+    padding: var(--space-1) var(--space-3); \
+    font-size: var(--text-xs); \
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const FILTER_BTN_INACTIVE: &str = "\
     background: transparent; \
-    color: #888; \
-    border: 1px solid #444; \
-    border-radius: 6px; \
-    padding: 3px 10px; \
-    font-size: 12px; \
-    cursor: pointer;\
+    color: var(--text-secondary); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
+    padding: var(--space-1) var(--space-3); \
+    font-size: var(--text-xs); \
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const GAP_CARD: &str = "\
-    background: #1a1a2e; \
-    border: 1px solid #2a2a3a; \
-    border-radius: 6px; \
-    padding: 12px 14px;\
+    background: var(--bg-surface); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
+    padding: var(--space-3) 14px;\
 ";
 
 const GAP_TITLE_ROW: &str = "\
     display: flex; \
     align-items: center; \
-    gap: 8px; \
-    margin-bottom: 6px;\
+    gap: var(--space-2); \
+    margin-bottom: var(--space-2);\
 ";
 
 const GAP_TITLE: &str = "\
-    font-size: 14px; \
-    font-weight: 600; \
-    color: #e0e0e0;\
+    font-size: var(--text-base); \
+    font-weight: var(--weight-semibold); \
+    color: var(--text-primary);\
 ";
 
 const GAP_LABEL: &str = "\
-    font-size: 11px; \
-    font-weight: 600; \
+    font-size: var(--text-xs); \
+    font-weight: var(--weight-semibold); \
     padding: 1px 6px; \
-    border-radius: 4px; \
+    border-radius: var(--radius-sm); \
     text-transform: uppercase;\
 ";
 
 const CRITERIA_STYLE: &str = "\
-    font-size: 13px; \
-    color: #aaa; \
-    margin-bottom: 4px;\
+    font-size: var(--text-sm); \
+    color: var(--text-secondary); \
+    margin-bottom: var(--space-1);\
 ";
 
 const ACTION_STYLE: &str = "\
-    font-size: 12px; \
-    color: #4a9aff; \
-    background: #0f1a2a; \
-    border-radius: 3px; \
-    padding: 3px 6px; \
-    margin-top: 4px;\
+    font-size: var(--text-xs); \
+    color: var(--accent); \
+    background: var(--bg-surface-dim); \
+    border-radius: var(--radius-sm); \
+    padding: var(--space-1) var(--space-2); \
+    margin-top: var(--space-1);\
 ";
 
 const EMPTY_STYLE: &str = "\
-    color: #555; \
-    font-size: 13px; \
-    padding: 16px 0;\
+    color: var(--text-muted); \
+    font-size: var(--text-sm); \
+    padding: var(--space-4) 0;\
 ";
 
 /// Gap analysis panel listing requirements that are not yet fully verified.
@@ -126,7 +132,7 @@ pub(crate) fn GapAnalysisPanel(requirements: Vec<RequirementVerification>) -> El
             style: "{PANEL_STYLE}",
             div {
                 style: "{FILTER_ROW}",
-                span { style: "font-size: 12px; color: #666;", "Filter:" }
+                span { style: "font-size: var(--text-xs); color: var(--text-muted);", "Filter:" }
                 button {
                     style: if !*show_blocking_only.read() { "{FILTER_BTN_ACTIVE}" } else { "{FILTER_BTN_INACTIVE}" },
                     onclick: move |_| show_blocking_only.set(false),
@@ -162,7 +168,7 @@ pub(crate) fn GapAnalysisPanel(requirements: Vec<RequirementVerification>) -> El
                                     span { style: "{GAP_TITLE}", "{req.title}" }
                                     span { style: "{GAP_LABEL} {priority_style}", "{priority_label}" }
                                     span {
-                                        style: "font-size: 11px; color: {status_color};",
+                                        style: "font-size: var(--text-xs); color: {status_color};",
                                         "{status_label(req.status)}"
                                     }
                                 }
@@ -189,10 +195,10 @@ pub(crate) fn GapAnalysisPanel(requirements: Vec<RequirementVerification>) -> El
 
 fn priority_badge_style(priority: RequirementPriority) -> &'static str {
     match priority {
-        RequirementPriority::P0 => "background: #3a0f0f; color: #ef4444;",
-        RequirementPriority::P1 => "background: #2a1f05; color: #f59e0b;",
-        RequirementPriority::P2 => "background: #0f1f2a; color: #4a9aff;",
-        RequirementPriority::P3 => "background: #1a1a2e; color: #666;",
+        RequirementPriority::P0 => "background: #3a0f0f; color: var(--status-error);",
+        RequirementPriority::P1 => "background: #2a1f05; color: var(--status-warning);",
+        RequirementPriority::P2 => "background: var(--bg-surface-dim); color: var(--accent);",
+        RequirementPriority::P3 => "background: var(--bg-surface); color: var(--text-muted);",
     }
 }
 
@@ -216,9 +222,9 @@ fn status_label(status: VerificationStatus) -> &'static str {
 
 fn status_color(status: VerificationStatus) -> &'static str {
     match status {
-        VerificationStatus::Verified => "#22c55e",
-        VerificationStatus::PartiallyVerified => "#f59e0b",
-        VerificationStatus::Unverified => "#888",
-        VerificationStatus::Failed => "#ef4444",
+        VerificationStatus::Verified => "var(--status-success)",
+        VerificationStatus::PartiallyVerified => "var(--status-warning)",
+        VerificationStatus::Unverified => "var(--text-secondary)",
+        VerificationStatus::Failed => "var(--status-error)",
     }
 }

@@ -7,27 +7,27 @@ use crate::state::connection::ConnectionConfig;
 use crate::state::ops::ToggleStore;
 
 const PANEL_STYLE: &str = "\
-    background: #1a1a2e; \
-    border: 1px solid #333; \
-    border-radius: 8px; \
-    padding: 16px; \
+    background: var(--bg-surface); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
+    padding: var(--space-4); \
     flex: 1; \
     overflow-y: auto; \
     min-width: 280px;\
 ";
 
 const SECTION_TITLE: &str = "\
-    font-size: 14px; \
-    font-weight: bold; \
-    color: #aaa; \
-    margin-bottom: 10px;\
+    font-size: var(--text-base); \
+    font-weight: var(--weight-bold); \
+    color: var(--text-secondary); \
+    margin-bottom: var(--space-3);\
 ";
 
 const SUBSECTION_TITLE: &str = "\
-    font-size: 12px; \
-    font-weight: bold; \
-    color: #888; \
-    margin: 12px 0 6px 0; \
+    font-size: var(--text-xs); \
+    font-weight: var(--weight-bold); \
+    color: var(--text-secondary); \
+    margin: var(--space-3) 0 var(--space-2) 0; \
     text-transform: uppercase; \
     letter-spacing: 0.5px;\
 ";
@@ -36,47 +36,47 @@ const ROW_STYLE: &str = "\
     display: flex; \
     align-items: center; \
     justify-content: space-between; \
-    padding: 6px 0; \
+    padding: var(--space-2) 0; \
     border-bottom: 1px solid #222;\
 ";
 
 const TOGGLE_LABEL: &str = "\
-    color: #e0e0e0; \
-    font-size: 13px;\
+    color: var(--text-primary); \
+    font-size: var(--text-sm);\
 ";
 
 const TOOL_ROW_STYLE: &str = "\
     display: flex; \
     align-items: center; \
     justify-content: space-between; \
-    padding: 4px 0 4px 16px; \
-    border-bottom: 1px solid #1a1a2e; \
-    font-size: 12px;\
+    padding: var(--space-1) 0 var(--space-1) var(--space-4); \
+    border-bottom: 1px solid var(--bg-surface); \
+    font-size: var(--text-xs);\
 ";
 
 const TOOL_LABEL: &str = "\
-    color: #aaa;\
+    color: var(--text-secondary);\
 ";
 
 const EXPAND_BTN: &str = "\
     background: none; \
     border: none; \
-    color: #888; \
-    cursor: pointer; \
-    font-size: 11px; \
-    padding: 2px 6px;\
+    color: var(--text-secondary); \
+    cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick); \
+    font-size: var(--text-xs); \
+    padding: var(--space-1) var(--space-2);\
 ";
 
 const FLAG_DESC: &str = "\
-    color: #666; \
-    font-size: 11px; \
-    padding: 0 0 6px 0;\
+    color: var(--text-muted); \
+    font-size: var(--text-xs); \
+    padding: 0 0 var(--space-2) 0;\
 ";
 
 const EMPTY_STATE: &str = "\
-    color: #555; \
-    font-size: 12px; \
-    padding: 4px 0;\
+    color: var(--text-muted); \
+    font-size: var(--text-xs); \
+    padding: var(--space-1) 0;\
 ";
 
 const CONFIRM_OVERLAY: &str = "\
@@ -90,21 +90,21 @@ const CONFIRM_OVERLAY: &str = "\
 ";
 
 const CONFIRM_BOX: &str = "\
-    background: #1a1a2e; \
-    border: 1px solid #444; \
-    border-radius: 8px; \
-    padding: 24px; \
+    background: var(--bg-surface); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
+    padding: var(--space-6); \
     max-width: 400px; \
     text-align: center;\
 ";
 
 const CONFIRM_BTN: &str = "\
-    padding: 6px 16px; \
-    border-radius: 6px; \
-    border: 1px solid #444; \
-    cursor: pointer; \
-    font-size: 13px; \
-    margin: 0 4px;\
+    padding: var(--space-2) var(--space-4); \
+    border-radius: var(--radius-md); \
+    border: 1px solid var(--border); \
+    cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick); \
+    font-size: var(--text-sm); \
+    margin: 0 var(--space-1);\
 ";
 
 #[component]
@@ -234,7 +234,7 @@ fn AgentToggleRow(
         div {
             style: "{ROW_STYLE}",
             div {
-                style: "display: flex; align-items: center; gap: 8px;",
+                style: "display: flex; align-items: center; gap: var(--space-2);",
                 span { style: "{TOGGLE_LABEL}", "{name}" }
                 button {
                     style: "{EXPAND_BTN}",
@@ -367,16 +367,16 @@ fn ConfirmDisableDialog(
                 style: "{CONFIRM_BOX}",
                 onclick: move |e| e.stop_propagation(),
                 p {
-                    style: "color: #e0e0e0; margin: 0 0 16px 0;",
+                    style: "color: var(--text-primary); margin: 0 0 var(--space-4) 0;",
                     "Disable agent \"{name}\"?"
                 }
                 p {
-                    style: "color: #888; font-size: 12px; margin: 0 0 20px 0;",
+                    style: "color: var(--text-secondary); font-size: var(--text-xs); margin: 0 0 var(--space-5) 0;",
                     "Active sessions will be interrupted."
                 }
                 div {
                     button {
-                        style: "{CONFIRM_BTN} background: #3a1a1a; color: #ef4444;",
+                        style: "{CONFIRM_BTN} background: #3a1a1a; color: var(--status-error);",
                         onclick: {
                             let id = agent_id.clone();
                             move |_| {
@@ -387,7 +387,7 @@ fn ConfirmDisableDialog(
                         "Disable"
                     }
                     button {
-                        style: "{CONFIRM_BTN} background: #2a2a4a; color: #e0e0e0;",
+                        style: "{CONFIRM_BTN} background: var(--border); color: var(--text-primary);",
                         onclick: move |_| confirm_disable.set(None),
                         "Cancel"
                     }
@@ -403,11 +403,11 @@ fn toggle_switch(
     on_click: impl Fn(Event<MouseData>) + 'static,
 ) -> Element {
     let track_style = if pending {
-        "width: 36px; height: 20px; border-radius: 10px; background: #888; position: relative; cursor: wait; opacity: 0.6; flex-shrink: 0;"
+        "width: 36px; height: 20px; border-radius: var(--radius-lg); background: var(--text-secondary); position: relative; cursor: wait; opacity: 0.6; flex-shrink: 0;"
     } else if enabled {
-        "width: 36px; height: 20px; border-radius: 10px; background: #22c55e; position: relative; cursor: pointer; flex-shrink: 0;"
+        "width: 36px; height: 20px; border-radius: var(--radius-lg); background: var(--status-success); position: relative; cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick); flex-shrink: 0;"
     } else {
-        "width: 36px; height: 20px; border-radius: 10px; background: #555; position: relative; cursor: pointer; flex-shrink: 0;"
+        "width: 36px; height: 20px; border-radius: var(--radius-lg); background: var(--text-muted); position: relative; cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick); flex-shrink: 0;"
     };
 
     let knob_style = if enabled {

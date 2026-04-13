@@ -26,34 +26,34 @@ const CONTAINER_STYLE: &str = "\
 
 const CARD_STYLE: &str = "\
     background: var(--bg-surface); \
-    border-radius: 12px; \
+    border-radius: var(--radius-lg); \
     padding: 40px; \
     width: 400px; \
     display: flex; \
     flex-direction: column; \
-    gap: 16px;\
+    gap: var(--space-4);\
 ";
 
 const TITLE_STYLE: &str = "\
-    font-size: 24px; \
-    font-weight: bold; \
+    font-size: var(--text-2xl); \
+    font-weight: var(--weight-bold); \
     text-align: center; \
-    margin-bottom: 8px;\
+    margin-bottom: var(--space-2);\
 ";
 
 const LABEL_STYLE: &str = "\
-    font-size: 14px; \
+    font-size: var(--text-base); \
     color: var(--text-secondary); \
-    margin-bottom: 4px;\
+    margin-bottom: var(--space-1);\
 ";
 
 const INPUT_STYLE: &str = "\
     background: var(--input-bg); \
     border: 1px solid var(--input-border); \
-    border-radius: 6px; \
-    padding: 10px 12px; \
+    border-radius: var(--radius-md); \
+    padding: var(--space-3) var(--space-3); \
     color: var(--text-primary); \
-    font-size: 14px; \
+    font-size: var(--text-base); \
     width: 100%; \
     box-sizing: border-box;\
 ";
@@ -62,27 +62,27 @@ const BUTTON_STYLE: &str = "\
     background: var(--accent); \
     color: var(--text-inverse); \
     border: none; \
-    border-radius: 6px; \
-    padding: 12px; \
-    font-size: 16px; \
-    cursor: pointer; \
-    margin-top: 8px;\
+    border-radius: var(--radius-md); \
+    padding: var(--space-3); \
+    font-size: var(--text-md); \
+    cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick); \
+    margin-top: var(--space-2);\
 ";
 
 const BUTTON_DISABLED_STYLE: &str = "\
     background: var(--bg-surface-bright); \
     color: var(--text-muted); \
     border: none; \
-    border-radius: 6px; \
-    padding: 12px; \
-    font-size: 16px; \
+    border-radius: var(--radius-md); \
+    padding: var(--space-3); \
+    font-size: var(--text-md); \
     cursor: not-allowed; \
-    margin-top: 8px;\
+    margin-top: var(--space-2);\
 ";
 
 const STATUS_STYLE: &str = "\
     text-align: center; \
-    font-size: 14px; \
+    font-size: var(--text-base); \
     min-height: 20px;\
 ";
 

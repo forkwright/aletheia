@@ -511,5 +511,22 @@ fn parse_step_status(s: &str) -> StepStatus {
     }
 }
 
+/// Apply a connection event to the chat state.
+///
+/// `connected == true` sets [`ConnectionState::Connected`]; `false` increments
+/// the reconnection attempt counter.
+#[cfg_attr(not(test), expect(dead_code, reason = "used in tests"))]
+pub(crate) fn apply_connection_event(state: &mut ChatState, connected: bool) {
+    if connected {
+        state.connection = ConnectionState::Connected;
+    } else {
+        let attempt = match &state.connection {
+            ConnectionState::Reconnecting { attempt } => attempt + 1,
+            _ => 1,
+        };
+        state.connection = ConnectionState::Reconnecting { attempt };
+    }
+}
+
 #[cfg(test)]
 mod tests;

@@ -9,80 +9,80 @@ use super::tool_status::ToolStatusIcon;
 const PANEL_COLLAPSED_STYLE: &str = "\
     display: flex; \
     align-items: center; \
-    gap: 8px; \
-    padding: 6px 10px; \
+    gap: var(--space-2); \
+    padding: var(--space-2) var(--space-3); \
     background: var(--bg-surface); \
     border: 1px solid var(--border); \
-    border-radius: 6px; \
-    cursor: pointer; \
-    margin-top: 4px; \
-    font-size: 13px; \
+    border-radius: var(--radius-md); \
+    cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick); \
+    margin-top: var(--space-1); \
+    font-size: var(--text-sm); \
     color: var(--text-secondary);\
 ";
 
 const PANEL_EXPANDED_STYLE: &str = "\
-    padding: 8px 10px; \
+    padding: var(--space-2) var(--space-3); \
     background: var(--bg-surface); \
     border: 1px solid var(--border); \
-    border-radius: 6px; \
-    margin-top: 4px; \
-    font-size: 13px;\
+    border-radius: var(--radius-md); \
+    margin-top: var(--space-1); \
+    font-size: var(--text-sm);\
 ";
 
 const PANEL_HEADER_STYLE: &str = "\
     display: flex; \
     align-items: center; \
-    gap: 8px; \
-    cursor: pointer; \
+    gap: var(--space-2); \
+    cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick); \
     color: var(--text-secondary); \
-    margin-bottom: 8px;\
+    margin-bottom: var(--space-2);\
 ";
 
 const TOOL_NAME_STYLE: &str = "\
-    font-weight: 600; \
+    font-weight: var(--weight-semibold); \
     color: var(--text-primary);\
 ";
 
 const DURATION_BADGE_STYLE: &str = "\
-    font-size: 11px; \
-    padding: 1px 6px; \
+    font-size: var(--text-xs); \
+    padding: 1px var(--space-2); \
     background: var(--border); \
-    border-radius: 10px; \
+    border-radius: var(--radius-lg); \
     color: var(--text-secondary);\
 ";
 
 const CODE_BLOCK_STYLE: &str = "\
     background: var(--code-bg); \
     border: 1px solid var(--border); \
-    border-radius: 4px; \
-    padding: 8px; \
-    margin-top: 6px; \
+    border-radius: var(--radius-sm); \
+    padding: var(--space-2); \
+    margin-top: var(--space-2); \
     overflow-x: auto; \
     white-space: pre-wrap; \
     word-wrap: break-word; \
     font-family: var(--font-mono); \
-    font-size: 12px; \
+    font-size: var(--text-xs); \
     color: var(--code-fg); \
     max-height: 300px; \
     overflow-y: auto;\
 ";
 
 const SECTION_LABEL_STYLE: &str = "\
-    font-size: 11px; \
+    font-size: var(--text-xs); \
     color: var(--text-muted); \
     text-transform: uppercase; \
     letter-spacing: 0.5px; \
-    margin-top: 8px;\
+    margin-top: var(--space-2);\
 ";
 
 const ERROR_DETAIL_STYLE: &str = "\
     color: var(--status-error); \
     background: var(--status-error-bg); \
     border: 1px solid var(--status-error); \
-    border-radius: 4px; \
-    padding: 8px; \
-    margin-top: 6px; \
-    font-size: 12px; \
+    border-radius: var(--radius-sm); \
+    padding: var(--space-2); \
+    margin-top: var(--space-2); \
+    font-size: var(--text-xs); \
     white-space: pre-wrap;\
 ";
 

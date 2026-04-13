@@ -19,13 +19,13 @@ pub enum AgentStatus {
 }
 
 impl AgentStatus {
-    /// CSS hex color for the status indicator dot.
+    /// CSS color for the status indicator dot, using design tokens.
     #[must_use]
     pub(crate) fn dot_color(&self) -> &'static str {
         match self {
-            Self::Active => "#22c55e",
-            Self::Idle => "#555",
-            Self::Error => "#ef4444",
+            Self::Active => "var(--status-success)",
+            Self::Idle => "var(--text-muted)",
+            Self::Error => "var(--status-error)",
         }
     }
 
@@ -104,6 +104,42 @@ impl AgentStore {
     #[must_use]
     pub(crate) fn is_empty(&self) -> bool {
         self.agents.is_empty()
+    }
+
+    /// Alias for [`load_from_api`](Self::load_from_api).
+    #[cfg_attr(not(test), expect(dead_code, reason = "used in tests"))]
+    pub(crate) fn load_agents(&mut self, agents: Vec<Agent>) {
+        self.load_from_api(agents);
+    }
+
+    /// Set the status of an agent by ID. No-op if the ID is unknown.
+    #[cfg_attr(not(test), expect(dead_code, reason = "used in tests"))]
+    pub(crate) fn update_status(&mut self, id: &NousId, status: AgentStatus) {
+        if let Some(record) = self.agents.get_mut(id) {
+            record.status = status;
+        }
+    }
+
+    /// Add agents from the API response. Sets the first agent as active if
+    /// no active agent is set yet.
+    pub(crate) fn load_from_api(&mut self, agents: Vec<Agent>) {
+        for a in agents {
+            let id = a.id.clone();
+            let record = AgentRecord {
+                agent: a,
+                status: AgentStatus::default(),
+            };
+            if !self.agents.contains_key(&id) {
+                self.order.push(id.clone());
+            }
+            self.agents.insert(id, record);
+        }
+        // Auto-select first agent if none is active
+        if self.active_id.is_none() {
+            if let Some(first) = self.order.first() {
+                self.active_id = Some(first.clone());
+            }
+        }
     }
 }
 
@@ -186,9 +222,9 @@ mod tests {
 
     #[test]
     fn agent_status_dot_colors() {
-        assert_eq!(AgentStatus::Active.dot_color(), "#22c55e");
-        assert_eq!(AgentStatus::Idle.dot_color(), "#555");
-        assert_eq!(AgentStatus::Error.dot_color(), "#ef4444");
+        assert_eq!(AgentStatus::Active.dot_color(), "var(--status-success)");
+        assert_eq!(AgentStatus::Idle.dot_color(), "var(--text-muted)");
+        assert_eq!(AgentStatus::Error.dot_color(), "var(--status-error)");
     }
 
     #[test]

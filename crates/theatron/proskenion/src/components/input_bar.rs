@@ -6,76 +6,85 @@ use crate::state::input::InputState;
 
 const INPUT_BAR_STYLE: &str = "\
     display: flex; \
-    gap: 8px; \
-    padding: 12px 16px; \
-    background: #1a1a2e; \
-    border-top: 1px solid #333; \
-    align-items: flex-end;\
+    gap: var(--space-2); \
+    padding: var(--space-3) var(--space-4); \
+    background: var(--bg-surface); \
+    border-top: 1px solid var(--border); \
+    align-items: flex-end; \
+    box-shadow: 0 -1px 3px rgb(18 17 15 / 0.08);\
 ";
 
 const TEXTAREA_STYLE: &str = "\
     flex: 1; \
-    background: #0f0f1a; \
-    border: 1px solid #333; \
-    border-radius: 8px; \
-    padding: 10px 14px; \
-    color: #e0e0e0; \
-    font-size: 14px; \
-    font-family: inherit; \
+    background: var(--input-bg); \
+    border: 1px solid var(--input-border); \
+    border-radius: var(--radius-md); \
+    padding: var(--space-3) var(--space-4); \
+    color: var(--text-primary); \
+    font-size: var(--text-base); \
+    font-family: var(--font-body); \
     resize: none; \
     overflow-y: auto; \
     min-height: 40px; \
     max-height: 200px; \
-    line-height: 1.4;\
+    line-height: var(--leading-normal);\
 ";
 
 const TEXTAREA_DISABLED_STYLE: &str = "\
     flex: 1; \
-    background: #0a0a14; \
-    border: 1px solid #2a2a3a; \
-    border-radius: 8px; \
-    padding: 10px 14px; \
-    color: #555; \
-    font-size: 14px; \
-    font-family: inherit; \
+    background: var(--bg-surface-dim); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
+    padding: var(--space-3) var(--space-4); \
+    color: var(--text-muted); \
+    font-size: var(--text-base); \
+    font-family: var(--font-body); \
     resize: none; \
     overflow-y: auto; \
     min-height: 40px; \
     max-height: 200px; \
-    line-height: 1.4;\
+    line-height: var(--leading-normal);\
 ";
 
 const SEND_BTN_STYLE: &str = "\
-    background: #4a4aff; \
-    color: white; \
+    background: var(--accent); \
+    color: var(--text-inverse); \
     border: none; \
-    border-radius: 8px; \
-    padding: 10px 20px; \
-    font-size: 14px; \
+    border-radius: var(--radius-md); \
+    padding: var(--space-2) var(--space-4); \
+    font-size: var(--text-sm); \
+    font-weight: var(--weight-semibold); \
     cursor: pointer; \
-    white-space: nowrap;\
+    white-space: nowrap; \
+    transition: background-color 150ms ease, transform 120ms ease; \
+    flex-shrink: 0; \
+    min-width: 70px;\
 ";
 
 const SEND_BTN_DISABLED: &str = "\
-    background: #333; \
-    color: #666; \
+    background: var(--border); \
+    color: var(--text-muted); \
     border: none; \
-    border-radius: 8px; \
-    padding: 10px 20px; \
-    font-size: 14px; \
+    border-radius: var(--radius-md); \
+    padding: var(--space-3) var(--space-5); \
+    font-size: var(--text-base); \
     cursor: not-allowed; \
     white-space: nowrap;\
 ";
 
 const ABORT_BTN_STYLE: &str = "\
-    background: #ef4444; \
-    color: white; \
+    background: var(--status-error); \
+    color: var(--text-inverse); \
     border: none; \
-    border-radius: 8px; \
-    padding: 10px 20px; \
-    font-size: 14px; \
+    border-radius: var(--radius-md); \
+    padding: var(--space-2) var(--space-4); \
+    font-size: var(--text-sm); \
+    font-weight: var(--weight-semibold); \
     cursor: pointer; \
-    white-space: nowrap;\
+    white-space: nowrap; \
+    transition: background-color 150ms ease, transform 120ms ease; \
+    flex-shrink: 0; \
+    min-width: 70px;\
 ";
 
 /// Props for the [`InputBar`] component.
@@ -181,6 +190,13 @@ pub(crate) fn InputBar(props: InputBarProps) -> Element {
             }
         }
     }
+}
+
+/// Compute the number of visible rows for the textarea, clamped to [1, 10].
+#[cfg_attr(not(test), expect(dead_code, reason = "used in tests"))]
+fn compute_rows(text: &str) -> usize {
+    let count = text.split('\n').count();
+    count.max(1).min(10)
 }
 
 #[cfg(test)]

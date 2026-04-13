@@ -1,6 +1,5 @@
 //! Dioxus components for the streaming chat interface.
 
-pub mod agent_sidebar;
 /// SVG chart primitives: horizontal bars, stacked bars, line charts, percentile bars.
 pub(crate) mod chart;
 pub mod chat;
@@ -12,6 +11,8 @@ pub(crate) mod confidence_bar;
 pub mod connection_indicator;
 pub(crate) mod coverage_bar;
 pub(crate) mod diff_hunk;
+/// Help overlay listing all keyboard shortcuts (F1).
+pub(crate) mod help_overlay;
 pub(crate) mod diff_line;
 pub mod distillation;
 pub(crate) mod input_bar;
@@ -39,6 +40,8 @@ pub(crate) mod toast_container;
 pub(crate) mod tool_approval;
 pub(crate) mod tool_panel;
 pub(crate) mod tool_status;
+/// Top bar with brand, agent status pills, and connection/theme controls.
+pub(crate) mod topbar;
 /// Virtual scrolling utilities for large lists.
 pub(crate) mod virtual_list;
 pub(crate) mod wave_band;

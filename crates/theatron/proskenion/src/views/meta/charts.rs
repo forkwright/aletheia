@@ -79,7 +79,7 @@ pub(crate) fn LineChart(
                             y1: "{y:.1}",
                             x2: "{padding + chart_w:.1}",
                             y2: "{y:.1}",
-                            stroke: "#2a2a3a",
+                            stroke: "var(--border)",
                             stroke_width: "1",
                         }
                     }
@@ -132,7 +132,7 @@ fn label_elements(
             text {
                 x: "{x:.1}",
                 y: "{y_pos}",
-                fill: "#666",
+                fill: "var(--text-muted)",
                 font_size: "10",
                 text_anchor: "start",
                 "{label}"
@@ -142,7 +142,7 @@ fn label_elements(
             text {
                 x: "{x:.1}",
                 y: "{y_pos}",
-                fill: "#666",
+                fill: "var(--text-muted)",
                 font_size: "10",
                 text_anchor: "end",
                 "{label}"
@@ -206,7 +206,7 @@ pub(crate) fn BarChart(
                         text {
                             x: "{x + bar_width / 2.0:.1}",
                             y: "{height - 4.0:.1}",
-                            fill: "#666",
+                            fill: "var(--text-muted)",
                             font_size: "9",
                             text_anchor: "middle",
                             "{point.label}"

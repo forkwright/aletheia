@@ -72,10 +72,22 @@ pub fn run(verbose: bool) {
     // process with no window — no tray icon is shown, so there would be no way
     // to recover it. SSE disconnect and window-state persistence happen during
     // the normal Dioxus shutdown sequence before the process exits.
+    //
+    // WHY: Dioxus desktop does not auto-inject CSS from the asset directory.
+    // We must add <link> tags via custom_head so the webview loads our design
+    // token system (tokens.css), theme definitions (themes.css), and base
+    // resets/animations (base.css).
+    let custom_head = r#"
+        <link rel="stylesheet" href="styles/tokens.css">
+        <link rel="stylesheet" href="styles/themes.css">
+        <link rel="stylesheet" href="styles/base.css">
+    "#;
+
     let config = Config::new()
         .with_window(window_builder)
         .with_menu(None::<dioxus::desktop::muda::Menu>)
-        .with_close_behaviour(WindowCloseBehaviour::WindowCloses);
+        .with_close_behaviour(WindowCloseBehaviour::WindowCloses)
+        .with_custom_head(custom_head.to_string());
 
     dioxus::LaunchBuilder::desktop()
         .with_cfg(config)

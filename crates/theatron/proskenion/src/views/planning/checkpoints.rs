@@ -20,34 +20,37 @@ const CONTAINER_STYLE: &str = "\
     display: flex; \
     flex-direction: column; \
     height: 100%; \
-    padding: 16px;\
+    padding: var(--space-4);\
 ";
 
 const HEADER_ROW: &str = "\
     display: flex; \
     align-items: center; \
     justify-content: space-between; \
-    margin-bottom: 16px;\
+    margin-bottom: var(--space-4);\
 ";
 
 const PENDING_BANNER: &str = "\
-    background: #1e1e5a; \
-    border: 1px solid #4a4aff; \
-    border-radius: 6px; \
-    padding: 8px 12px; \
-    font-size: 13px; \
-    color: #8080ff; \
-    margin-bottom: 12px;\
+    background: var(--bg-surface-dim); \
+    border: 1px solid var(--accent); \
+    border-radius: var(--radius-md); \
+    padding: var(--space-2) var(--space-3); \
+    font-size: var(--text-sm); \
+    color: var(--accent); \
+    margin-bottom: var(--space-3);\
 ";
 
 const REFRESH_BTN: &str = "\
-    background: #2a2a4a; \
-    color: #e0e0e0; \
-    border: 1px solid #444; \
-    border-radius: 6px; \
-    padding: 4px 12px; \
-    font-size: 12px; \
-    cursor: pointer;\
+    background: var(--border); \
+    color: var(--text-primary); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
+    padding: var(--space-1) var(--space-3); \
+    font-size: var(--text-xs); \
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const PLACEHOLDER_STYLE: &str = "\
@@ -56,8 +59,8 @@ const PLACEHOLDER_STYLE: &str = "\
     align-items: center; \
     justify-content: center; \
     flex: 1; \
-    gap: 10px; \
-    color: #555;\
+    gap: var(--space-3); \
+    color: var(--text-muted);\
 ";
 
 /// Checkpoint approval list for a planning project.
@@ -142,7 +145,7 @@ pub(crate) fn CheckpointsView(project_id: String) -> Element {
             style: "{CONTAINER_STYLE}",
             div {
                 style: "{HEADER_ROW}",
-                h3 { style: "margin: 0; font-size: 16px; color: #e0e0e0;", "Checkpoints" }
+                h3 { style: "margin: 0; font-size: var(--text-md); color: var(--text-primary);", "Checkpoints" }
                 button {
                     style: "{REFRESH_BTN}",
                     onclick: move |_| {
@@ -156,21 +159,21 @@ pub(crate) fn CheckpointsView(project_id: String) -> Element {
             match &*fetch_state.read() {
                 FetchState::Loading => rsx! {
                     div {
-                        style: "display: flex; align-items: center; justify-content: center; flex: 1; color: #888;",
+                        style: "display: flex; align-items: center; justify-content: center; flex: 1; color: var(--text-secondary);",
                         "Loading checkpoints..."
                     }
                 },
                 FetchState::Error(err) => rsx! {
                     div {
-                        style: "display: flex; align-items: center; justify-content: center; flex: 1; color: #ef4444;",
+                        style: "display: flex; align-items: center; justify-content: center; flex: 1; color: var(--status-error);",
                         "Error: {err}"
                     }
                 },
                 FetchState::NotAvailable => rsx! {
                     div {
                         style: "{PLACEHOLDER_STYLE}",
-                        div { style: "font-size: 16px;", "Checkpoints not available" }
-                        div { style: "font-size: 13px; max-width: 360px; text-align: center;",
+                        div { style: "font-size: var(--text-md);", "Checkpoints not available" }
+                        div { style: "font-size: var(--text-sm); max-width: 360px; text-align: center;",
                             "The checkpoint API is not available on this pylon instance."
                         }
                     }
@@ -197,8 +200,8 @@ pub(crate) fn CheckpointsView(project_id: String) -> Element {
                             if sorted_owned.is_empty() {
                                 div {
                                     style: "{PLACEHOLDER_STYLE}",
-                                    div { style: "font-size: 16px;", "No checkpoints" }
-                                    div { style: "font-size: 13px;",
+                                    div { style: "font-size: var(--text-md);", "No checkpoints" }
+                                    div { style: "font-size: var(--text-sm);",
                                         "Checkpoints will appear as the project progresses."
                                     }
                                 }

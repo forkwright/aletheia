@@ -69,7 +69,7 @@ fn MetricsToolDetail(tool_name: String) -> Element {
         div {
             style: "\
                 display: flex; flex-direction: column; \
-                height: 100%; padding: 24px; gap: 16px; \
+                height: 100%; padding: var(--space-6); gap: var(--space-4); \
                 overflow-y: auto;",
             ToolDetailView {
                 tool_name,
@@ -98,8 +98,12 @@ pub(crate) fn App() -> Element {
     let keybindings = use_signal(|| loaded_settings.keybinding_store());
     let is_first_run = use_signal(|| first_run);
 
-    // NOTE: Force dark mode for theme consistency across all platforms.
-    let initial_theme = crate::theme::ThemeMode::Dark;
+    // NOTE: Read saved theme preference; default to Dark if unset.
+    let initial_theme = match appearance.read().theme.as_str() {
+        "light" => crate::theme::ThemeMode::Light,
+        "system" => crate::theme::ThemeMode::System,
+        _ => crate::theme::ThemeMode::Dark,
+    };
 
     // NOTE: Provide signals as context so all views can access them.
     use_context_provider(|| connection_state);
@@ -164,6 +168,25 @@ fn ConnectedApp() -> Element {
     // WHY: Start SSE coroutine here (not in App) so it only runs when connected
     // and has access to the finalized connection config.
     crate::services::sse_coroutine::start_sse_coroutine(&config.read());
+
+    // WHY: Fetch agents immediately on connection so the topbar agent pills
+    // are populated. Without this, agents only appear when the Ops view is
+    // visited — the topbar would be empty on first launch.
+    {
+        let cfg = config.read().clone();
+        let mut agents: Signal<AgentStore> = use_context();
+        use_future(move || {
+            let server_url = cfg.server_url.clone();
+            async move {
+                let Ok(client) = skene::api::client::ApiClient::new(&server_url, None) else {
+                    return;
+                };
+                if let Ok(list) = client.agents().await {
+                    agents.write().load_from_api(list);
+                }
+            }
+        });
+    }
 
     // NOTE: Start platform integration coroutines.
     start_tray_sync();

@@ -409,11 +409,11 @@ pub(crate) fn budget_progress_pct(spent: f64, limit: f64) -> f64 {
 /// Color for budget progress bar based on spend percentage.
 pub(crate) fn budget_bar_color(pct: f64) -> &'static str {
     if pct >= 90.0 {
-        "#ef4444"
+        "var(--status-error)"
     } else if pct >= 70.0 {
-        "#eab308"
+        "var(--status-warning)"
     } else {
-        "#22c55e"
+        "var(--status-success)"
     }
 }
 
@@ -689,17 +689,17 @@ mod tests {
 
     #[test]
     fn budget_bar_color_green() {
-        assert_eq!(budget_bar_color(50.0), "#22c55e");
+        assert_eq!(budget_bar_color(50.0), "var(--status-success)");
     }
 
     #[test]
     fn budget_bar_color_amber() {
-        assert_eq!(budget_bar_color(75.0), "#eab308");
+        assert_eq!(budget_bar_color(75.0), "var(--status-warning)");
     }
 
     #[test]
     fn budget_bar_color_red() {
-        assert_eq!(budget_bar_color(95.0), "#ef4444");
+        assert_eq!(budget_bar_color(95.0), "var(--status-error)");
     }
 
     #[test]

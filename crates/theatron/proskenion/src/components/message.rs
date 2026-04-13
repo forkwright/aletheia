@@ -50,18 +50,22 @@ pub(crate) fn MessageBubble(
         "\
             background: var(--bg-surface); \
             border: 1px solid var(--border); \
-            border-radius: var(--radius-xl) var(--radius-xl) var(--radius-sm) var(--radius-xl); \
+            border-left: 3px solid var(--accent); \
+            border-radius: var(--radius-lg); \
             padding: var(--space-3) var(--space-4); \
-            max-width: 75%; \
+            max-width: min(75%, 720px); \
             color: var(--text-primary); \
+            box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.04); \
+            animation: message-in 0.2s cubic-bezier(0.16, 1, 0.3, 1); \
         "
     } else if is_system {
         "\
             background: var(--bg-surface-dim); \
             border: 1px solid var(--border-separator); \
+            border-left: 3px solid var(--role-system); \
             border-radius: var(--radius-lg); \
             padding: var(--space-2) var(--space-3); \
-            max-width: 85%; \
+            max-width: min(85%, 720px); \
             color: var(--text-muted); \
             font-size: var(--text-sm); \
         "
@@ -70,10 +74,13 @@ pub(crate) fn MessageBubble(
         "\
             background: var(--bg-surface-bright); \
             border: 1px solid var(--border); \
-            border-radius: var(--radius-xl) var(--radius-xl) var(--radius-xl) var(--radius-sm); \
+            border-left: 3px solid var(--role-assistant); \
+            border-radius: var(--radius-lg); \
             padding: var(--space-3) var(--space-4); \
-            max-width: 85%; \
+            max-width: min(85%, 720px); \
             color: var(--text-primary); \
+            box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.04); \
+            animation: message-in 0.2s cubic-bezier(0.16, 1, 0.3, 1); \
         "
     };
 
@@ -95,6 +102,8 @@ pub(crate) fn MessageBubble(
                         font-size: var(--text-xs);
                         color: {role_color(message.role)};
                         font-weight: var(--weight-semibold);
+                        letter-spacing: 0.04em;
+                        text-transform: uppercase;
                         margin-bottom: var(--space-1);
                         font-family: var(--font-body);
                     ",
@@ -107,7 +116,7 @@ pub(crate) fn MessageBubble(
                 if is_user || is_system {
                     // WHY: user/system messages render as plain text (no markdown)
                     div {
-                        style: "white-space: pre-wrap; word-wrap: break-word; line-height: var(--leading-relaxed);",
+                        style: "white-space: pre-wrap; word-wrap: break-word; word-break: break-word; overflow-wrap: break-word; line-height: var(--leading-relaxed);",
                         "{message.content}"
                     }
                 } else {
@@ -120,10 +129,12 @@ pub(crate) fn MessageBubble(
                     display: flex;
                     gap: var(--space-2);
                     align-items: center;
-                    margin-top: 2px;
+                    margin-top: var(--space-1);
                     font-size: var(--text-xs);
                     color: var(--text-muted);
                     font-family: var(--font-body);
+                    opacity: 0.5;
+                    transition: opacity 150ms ease;
                 ",
                 span { "{timestamp}" }
                 if message.role == Role::Assistant {

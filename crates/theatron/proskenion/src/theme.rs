@@ -34,7 +34,6 @@ impl ResolvedTheme {
 impl ThemeMode {
     /// Cycle to the next mode: Dark -> Light -> System -> Dark.
     #[must_use]
-    #[expect(dead_code, reason = "used by theme_toggle component")]
     pub(crate) fn next(self) -> Self {
         match self {
             Self::Dark => Self::Light,

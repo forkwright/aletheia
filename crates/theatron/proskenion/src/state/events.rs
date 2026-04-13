@@ -87,6 +87,18 @@ impl SseConnectionState {
     pub(crate) fn is_connected(&self) -> bool {
         matches!(self, Self::Connected)
     }
+
+    /// Project this into the simplified [`ConnectionState`] used by
+    /// presentation components.
+    #[cfg_attr(not(test), expect(dead_code, reason = "used in tests"))]
+    #[must_use]
+    pub(crate) fn to_connection_state(&self) -> ConnectionState {
+        match self {
+            Self::Disconnected => ConnectionState::Disconnected,
+            Self::Connected => ConnectionState::Connected,
+            Self::Reconnecting { attempt } => ConnectionState::Reconnecting { attempt: *attempt },
+        }
+    }
 }
 
 /// Connection state for the global SSE stream.
@@ -176,6 +188,13 @@ impl DistillationProgress {
             Self::Stage { stage } => stage.as_str(),
             Self::Complete => "complete",
         }
+    }
+
+    /// Whether distillation is actively in progress (not yet complete).
+    #[cfg_attr(not(test), expect(dead_code, reason = "used in tests"))]
+    #[must_use]
+    pub(crate) fn is_active(&self) -> bool {
+        !matches!(self, Self::Complete)
     }
 }
 

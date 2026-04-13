@@ -15,16 +15,16 @@ use crate::theme::ThemeMode;
 const SECTION_STYLE: &str = "\
     background: var(--bg-surface); \
     border: 1px solid var(--border); \
-    border-radius: 8px; \
-    padding: 16px 20px;";
+    border-radius: var(--radius-md); \
+    padding: var(--space-4) var(--space-5);";
 
 const SECTION_LABEL_STYLE: &str = "\
-    font-size: 11px; \
-    font-weight: bold; \
+    font-size: var(--text-xs); \
+    font-weight: var(--weight-bold); \
     color: var(--text-muted); \
     text-transform: uppercase; \
     letter-spacing: 0.6px; \
-    margin-bottom: 14px;";
+    margin-bottom: var(--space-4);";
 
 /// Appearance settings panel.
 #[component]
@@ -38,14 +38,14 @@ pub(crate) fn AppearancePanel() -> Element {
 
     rsx! {
         div {
-            style: "display: flex; flex-direction: column; gap: 24px; max-width: 540px;",
+            style: "display: flex; flex-direction: column; gap: var(--space-6); max-width: 540px;",
 
             // Theme
             section {
                 style: SECTION_STYLE,
                 div { style: SECTION_LABEL_STYLE, "Theme" }
                 div {
-                    style: "display: flex; gap: 8px;",
+                    style: "display: flex; gap: var(--space-2);",
                     for mode in [ThemeMode::Dark, ThemeMode::Light, ThemeMode::System] {
                         {
                             let is_active = current.theme == mode_str(mode);
@@ -53,8 +53,8 @@ pub(crate) fn AppearancePanel() -> Element {
                             let border = if is_active { "1px solid var(--accent)" } else { "1px solid var(--border)" };
                             let color = if is_active { "var(--text-inverse)" } else { "var(--text-secondary)" };
                             let style = format!(
-                                "padding: 8px 18px; background: {bg}; border: {border}; \
-                                 border-radius: 6px; color: {color}; font-size: 13px; cursor: pointer; \
+                                "padding: var(--space-2) 18px; background: {bg}; border: {border}; \
+                                 border-radius: var(--radius-md); color: {color}; font-size: var(--text-sm); cursor: pointer; \
                                  transition: background var(--transition-quick), \
                                  color var(--transition-quick), border-color var(--transition-quick);"
                             );
@@ -83,9 +83,9 @@ pub(crate) fn AppearancePanel() -> Element {
                 style: SECTION_STYLE,
                 div { style: SECTION_LABEL_STYLE, "Font Size" }
                 div {
-                    style: "display: flex; align-items: center; gap: 14px;",
+                    style: "display: flex; align-items: center; gap: var(--space-4);",
                     span {
-                        style: "font-size: 11px; color: var(--text-muted); width: 22px;",
+                        style: "font-size: var(--text-xs); color: var(--text-muted); width: 22px;",
                         "12"
                     }
                     input {
@@ -106,11 +106,11 @@ pub(crate) fn AppearancePanel() -> Element {
                         },
                     }
                     span {
-                        style: "font-size: 11px; color: var(--text-muted); width: 22px;",
+                        style: "font-size: var(--text-xs); color: var(--text-muted); width: 22px;",
                         "20"
                     }
                     span {
-                        style: "font-size: 13px; color: var(--text-primary); width: 36px; text-align: right;",
+                        style: "font-size: var(--text-sm); color: var(--text-primary); width: 36px; text-align: right;",
                         "{current.font_size}px"
                     }
                 }
@@ -121,7 +121,7 @@ pub(crate) fn AppearancePanel() -> Element {
                 style: SECTION_STYLE,
                 div { style: SECTION_LABEL_STYLE, "UI Density" }
                 div {
-                    style: "display: flex; gap: 8px;",
+                    style: "display: flex; gap: var(--space-2);",
                     for density in [UiDensity::Compact, UiDensity::Comfortable, UiDensity::Spacious] {
                         {
                             let is_active = current.density == density;
@@ -129,8 +129,8 @@ pub(crate) fn AppearancePanel() -> Element {
                             let border = if is_active { "1px solid var(--accent)" } else { "1px solid var(--border)" };
                             let color = if is_active { "var(--text-inverse)" } else { "var(--text-secondary)" };
                             let style = format!(
-                                "flex: 1; padding: 8px; background: {bg}; border: {border}; \
-                                 border-radius: 6px; color: {color}; font-size: 13px; cursor: pointer; \
+                                "flex: 1; padding: var(--space-2); background: {bg}; border: {border}; \
+                                 border-radius: var(--radius-md); color: {color}; font-size: var(--text-sm); cursor: pointer; \
                                  text-align: center; transition: background var(--transition-quick), \
                                  color var(--transition-quick), border-color var(--transition-quick);"
                             );
@@ -158,7 +158,7 @@ pub(crate) fn AppearancePanel() -> Element {
                 style: SECTION_STYLE,
                 div { style: SECTION_LABEL_STYLE, "Accent Color" }
                 div {
-                    style: "display: flex; gap: 10px; flex-wrap: wrap;",
+                    style: "display: flex; gap: var(--space-3); flex-wrap: wrap;",
                     for (label, hex) in ACCENT_PRESETS.iter() {
                         {
                             let is_active = current.accent_color == *hex;

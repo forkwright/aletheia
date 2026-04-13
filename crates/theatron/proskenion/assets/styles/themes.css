@@ -21,7 +21,7 @@
   /* Text */
   --text-primary: #e8e6e3;
   --text-secondary: #a8a49e;
-  --text-muted: #706c66;
+  --text-muted: #8a8680; /* WHY: raised from #706c66 for WCAG AA (4.5:1) on bg-surface */
   --text-inverse: #12110f;
 
   /* Borders */
@@ -117,7 +117,7 @@
   /* Text — deep warm brown */
   --text-primary: #2C2418;
   --text-secondary: #5C5248;
-  --text-muted: #8A8078;
+  --text-muted: #6E665E; /* WHY: raised contrast from #8A8078 (2.82:1) to meet WCAG AA (4.5:1) */
   --text-inverse: #F5F0E8;
 
   /* Borders */
@@ -176,6 +176,13 @@
   /* Selection */
   --selection-bg: rgb(154 123 79 / 0.25);
   --selection-fg: #2C2418;
+
+  /* Shadows — lighter for light surfaces */
+  --shadow-card: 0 1px 3px rgb(44 36 24 / 0.08), 0 1px 2px rgb(44 36 24 / 0.05);
+  --shadow-float: 0 4px 16px rgb(44 36 24 / 0.12), 0 2px 4px rgb(44 36 24 / 0.06);
+  --shadow-modal: 0 8px 32px rgb(44 36 24 / 0.16), 0 4px 8px rgb(44 36 24 / 0.08);
+  --shadow-glow: 0 0 0 3px rgb(107 90 56 / 0.25);
+  --shadow-inner-highlight: inset 0 1px 0 rgb(255 255 255 / 0.5);
 
   /* Dye palette — same hues, adapted for light background */
   --aima: #8A3030;

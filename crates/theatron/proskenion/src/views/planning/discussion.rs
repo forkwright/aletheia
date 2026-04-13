@@ -22,8 +22,8 @@ const CONTAINER_STYLE: &str = "\
     display: flex; \
     flex-direction: column; \
     height: 100%; \
-    padding: 16px; \
-    gap: 12px; \
+    padding: var(--space-4); \
+    gap: var(--space-3); \
     overflow-y: auto;\
 ";
 
@@ -34,60 +34,63 @@ const HEADER_ROW: &str = "\
 ";
 
 const REFRESH_BTN: &str = "\
-    background: #2a2a4a; \
-    color: #e0e0e0; \
-    border: 1px solid #444; \
-    border-radius: 6px; \
-    padding: 4px 12px; \
-    font-size: 12px; \
-    cursor: pointer;\
+    background: var(--border); \
+    color: var(--text-primary); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
+    padding: var(--space-1) var(--space-3); \
+    font-size: var(--text-xs); \
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const CARD_BASE: &str = "\
-    border-radius: 8px; \
+    border-radius: var(--radius-md); \
     border: 1px solid; \
-    padding: 14px 18px;\
+    padding: var(--space-4) var(--space-4);\
 ";
 
 const QUESTION_STYLE: &str = "\
-    font-size: 15px; \
-    font-weight: 600; \
-    color: #e0e0e0; \
-    margin-bottom: 6px;\
+    font-size: var(--text-md); \
+    font-weight: var(--weight-semibold); \
+    color: var(--text-primary); \
+    margin-bottom: var(--space-2);\
 ";
 
 const CONTEXT_STYLE: &str = "\
-    font-size: 13px; \
-    color: #999; \
-    margin-bottom: 10px;\
+    font-size: var(--text-sm); \
+    color: var(--text-secondary); \
+    margin-bottom: var(--space-3);\
 ";
 
 const BADGE_BASE: &str = "\
     display: inline-block; \
-    font-size: 10px; \
-    font-weight: 600; \
-    padding: 2px 8px; \
-    border-radius: 10px; \
+    font-size: var(--text-xs); \
+    font-weight: var(--weight-semibold); \
+    padding: var(--space-1) var(--space-2); \
+    border-radius: var(--radius-lg); \
     text-transform: uppercase; \
     letter-spacing: 0.3px; \
-    margin-left: 8px;\
+    margin-left: var(--space-2);\
 ";
 
 const OPTIONS_GRID: &str = "\
     display: flex; \
     flex-direction: column; \
-    gap: 8px; \
-    margin-top: 8px;\
+    gap: var(--space-2); \
+    margin-top: var(--space-2);\
 ";
 
 const FREE_TEXT_INPUT: &str = "\
     width: 100%; \
-    background: #0f0f1a; \
-    border: 1px solid #333; \
-    border-radius: 4px; \
-    padding: 8px 10px; \
-    color: #e0e0e0; \
-    font-size: 13px; \
+    background: var(--bg-surface-dim); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-sm); \
+    padding: var(--space-2) 10px; \
+    color: var(--text-primary); \
+    font-size: var(--text-sm); \
     font-family: inherit; \
     resize: vertical; \
     min-height: 50px; \
@@ -95,45 +98,51 @@ const FREE_TEXT_INPUT: &str = "\
 ";
 
 const SUBMIT_BTN: &str = "\
-    background: #4a4aff; \
+    background: var(--accent); \
     color: white; \
     border: none; \
-    border-radius: 6px; \
-    padding: 6px 16px; \
-    font-size: 13px; \
-    font-weight: 600; \
-    cursor: pointer;\
+    border-radius: var(--radius-md); \
+    padding: var(--space-2) var(--space-4); \
+    font-size: var(--text-sm); \
+    font-weight: var(--weight-semibold); \
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const SUBMIT_BTN_DISABLED: &str = "\
-    background: #333; \
-    color: #666; \
+    background: var(--border); \
+    color: var(--text-muted); \
     border: none; \
-    border-radius: 6px; \
-    padding: 6px 16px; \
-    font-size: 13px; \
-    font-weight: 600; \
+    border-radius: var(--radius-md); \
+    padding: var(--space-2) var(--space-4); \
+    font-size: var(--text-sm); \
+    font-weight: var(--weight-semibold); \
     cursor: not-allowed;\
 ";
 
 const UNDO_BTN: &str = "\
     background: transparent; \
-    color: #4a9aff; \
-    border: 1px solid #4a9aff; \
-    border-radius: 6px; \
-    padding: 4px 12px; \
-    font-size: 12px; \
-    cursor: pointer;\
+    color: var(--accent); \
+    border: 1px solid var(--accent); \
+    border-radius: var(--radius-md); \
+    padding: var(--space-1) var(--space-3); \
+    font-size: var(--text-xs); \
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick), \
+                border-color var(--transition-quick);\
 ";
 
 const ANSWER_SUMMARY: &str = "\
-    font-size: 13px; \
-    color: #22c55e; \
-    padding: 6px 10px; \
+    font-size: var(--text-sm); \
+    color: var(--status-success); \
+    padding: var(--space-2) var(--space-3); \
     background: #0f1a0f; \
     border: 1px solid #1a3a1a; \
-    border-radius: 4px; \
-    margin-top: 8px;\
+    border-radius: var(--radius-sm); \
+    margin-top: var(--space-2);\
 ";
 
 const PLACEHOLDER_STYLE: &str = "\
@@ -142,11 +151,11 @@ const PLACEHOLDER_STYLE: &str = "\
     align-items: center; \
     justify-content: center; \
     flex: 1; \
-    gap: 12px; \
-    color: #555;\
+    gap: var(--space-3); \
+    color: var(--text-muted);\
 ";
 
-const ERROR_STYLE: &str = "color: #ef4444; font-size: 12px; margin-top: 6px;";
+const ERROR_STYLE: &str = "color: var(--status-error); font-size: var(--text-xs); margin-top: var(--space-2);";
 
 /// Discussion panel listing all discussions for a project.
 #[component]
@@ -205,7 +214,7 @@ pub(crate) fn DiscussionView(project_id: String) -> Element {
             style: "{CONTAINER_STYLE}",
             div {
                 style: "{HEADER_ROW}",
-                h3 { style: "font-size: 16px; margin: 0; color: #e0e0e0;", "Discussions" }
+                h3 { style: "font-size: var(--text-md); margin: 0; color: var(--text-primary);", "Discussions" }
                 button {
                     style: "{REFRESH_BTN}",
                     onclick: move |_| fetch_trigger.set(fetch_trigger() + 1),
@@ -216,22 +225,22 @@ pub(crate) fn DiscussionView(project_id: String) -> Element {
             match &*fetch_state.read() {
                 DiscussionFetchState::Loading => rsx! {
                     div {
-                        style: "display: flex; align-items: center; justify-content: center; flex: 1; color: #888;",
+                        style: "display: flex; align-items: center; justify-content: center; flex: 1; color: var(--text-secondary);",
                         "Loading discussions..."
                     }
                 },
                 DiscussionFetchState::Error(err) => rsx! {
                     div {
-                        style: "display: flex; align-items: center; justify-content: center; flex: 1; color: #ef4444;",
+                        style: "display: flex; align-items: center; justify-content: center; flex: 1; color: var(--status-error);",
                         "Error: {err}"
                     }
                 },
                 DiscussionFetchState::NotAvailable => rsx! {
                     div {
                         style: "{PLACEHOLDER_STYLE}",
-                        div { style: "font-size: 48px;", "[?]" }
-                        div { style: "font-size: 16px;", "Discussions not available" }
-                        div { style: "font-size: 13px; max-width: 400px; text-align: center;",
+                        div { style: "font-size: var(--text-3xl);", "[?]" }
+                        div { style: "font-size: var(--text-md);", "Discussions not available" }
+                        div { style: "font-size: var(--text-sm); max-width: 400px; text-align: center;",
                             "The discussions API is not available on this pylon instance."
                         }
                     }
@@ -241,8 +250,8 @@ pub(crate) fn DiscussionView(project_id: String) -> Element {
                         rsx! {
                             div {
                                 style: "{PLACEHOLDER_STYLE}",
-                                div { style: "font-size: 16px;", "No discussions" }
-                                div { style: "font-size: 13px;",
+                                div { style: "font-size: var(--text-md);", "No discussions" }
+                                div { style: "font-size: var(--text-sm);",
                                     "Gray-area questions will appear here when agents need human input."
                                 }
                             }
@@ -378,7 +387,7 @@ fn DiscussionCard(
 
             // Header: question + status + priority
             div {
-                style: "display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 6px;",
+                style: "display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: var(--space-2);",
                 span { style: "{QUESTION_STYLE}", "{discussion.question}" }
                 div {
                     style: "display: flex; align-items: center; flex-shrink: 0;",
@@ -425,9 +434,9 @@ fn DiscussionCard(
 
                 // Free-text override
                 div {
-                    style: "margin-top: 10px;",
+                    style: "margin-top: var(--space-3);",
                     button {
-                        style: "background: transparent; border: none; color: #4a9aff; font-size: 12px; cursor: pointer; padding: 0;",
+                        style: "background: transparent; border: none; color: var(--accent); font-size: var(--text-xs); cursor: pointer; padding: 0; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
                         onclick: move |_| {
                             let current = *show_free_text.read();
                             show_free_text.set(!current);
@@ -453,7 +462,7 @@ fn DiscussionCard(
 
                 // Submit
                 div {
-                    style: "display: flex; gap: 8px; margin-top: 10px;",
+                    style: "display: flex; gap: var(--space-2); margin-top: var(--space-3);",
                     button {
                         style: if can_submit { "{SUBMIT_BTN}" } else { "{SUBMIT_BTN_DISABLED}" },
                         disabled: !can_submit || *submitting.read(),
@@ -479,17 +488,17 @@ fn discussion_card_colors(
         return ("#0f1a0f", "#2a4a2a");
     }
     match priority {
-        DiscussionPriority::Blocking => ("#1e0f0f", "#ef4444"),
-        DiscussionPriority::Important => ("#1e1a10", "#f59e0b"),
-        DiscussionPriority::NiceToHave => ("#1a1a2e", "#2a2a3a"),
+        DiscussionPriority::Blocking => ("#1e0f0f", "var(--status-error)"),
+        DiscussionPriority::Important => ("#1e1a10", "var(--status-warning)"),
+        DiscussionPriority::NiceToHave => ("var(--bg-surface)", "var(--border)"),
     }
 }
 
 fn status_badge_style(status: DiscussionStatus) -> String {
     let (bg, color) = match status {
-        DiscussionStatus::Open => ("#1e1e5a", "#4a9aff"),
-        DiscussionStatus::Answered => ("#0f2a0f", "#22c55e"),
-        DiscussionStatus::Deferred => ("#2a2a3a", "#888"),
+        DiscussionStatus::Open => ("var(--bg-surface-dim)", "var(--accent)"),
+        DiscussionStatus::Answered => ("var(--status-success-bg)", "var(--status-success)"),
+        DiscussionStatus::Deferred => ("var(--border)", "var(--text-secondary)"),
     };
     format!("{BADGE_BASE} background: {bg}; color: {color};")
 }
@@ -504,9 +513,9 @@ fn status_label(status: DiscussionStatus) -> &'static str {
 
 fn priority_badge_style(priority: DiscussionPriority) -> String {
     let (bg, color) = match priority {
-        DiscussionPriority::Blocking => ("#3a0f0f", "#ef4444"),
-        DiscussionPriority::Important => ("#2a1f05", "#f59e0b"),
-        DiscussionPriority::NiceToHave => ("#2a2a3a", "#888"),
+        DiscussionPriority::Blocking => ("#3a0f0f", "var(--status-error)"),
+        DiscussionPriority::Important => ("#2a1f05", "var(--status-warning)"),
+        DiscussionPriority::NiceToHave => ("var(--border)", "var(--text-secondary)"),
     };
     format!("{BADGE_BASE} background: {bg}; color: {color};")
 }
@@ -527,7 +536,7 @@ mod tests {
     fn discussion_card_colors_blocking_has_red_border() {
         let (_, border) =
             discussion_card_colors(DiscussionPriority::Blocking, DiscussionStatus::Open);
-        assert_eq!(border, "#ef4444", "blocking should have red border");
+        assert_eq!(border, "var(--status-error)", "blocking should have red border");
     }
 
     #[test]

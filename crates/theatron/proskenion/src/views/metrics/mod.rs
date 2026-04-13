@@ -17,32 +17,32 @@ use crate::state::metrics::MetricsTab;
 
 const TAB_BAR_STYLE: &str = "\
     display: flex; \
-    gap: 2px; \
+    gap: var(--space-1); \
     border-bottom: 1px solid #2a2724; \
-    padding: 0 16px; \
-    margin-bottom: 16px;\
+    padding: 0 var(--space-4); \
+    margin-bottom: var(--space-4);\
 ";
 
 const TAB_ACTIVE_STYLE: &str = "\
-    padding: 8px 16px; \
-    font-size: 13px; \
+    padding: var(--space-2) var(--space-4); \
+    font-size: var(--text-sm); \
     color: #e8e6e3; \
     background: transparent; \
     border: none; \
     border-bottom: 2px solid #5b6af0; \
-    cursor: pointer; \
-    font-family: 'IBM Plex Mono', monospace;\
+    cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick); \
+    font-family: var(--font-mono);\
 ";
 
 const TAB_INACTIVE_STYLE: &str = "\
-    padding: 8px 16px; \
-    font-size: 13px; \
+    padding: var(--space-2) var(--space-4); \
+    font-size: var(--text-sm); \
     color: #706c66; \
     background: transparent; \
     border: none; \
     border-bottom: 2px solid transparent; \
-    cursor: pointer; \
-    font-family: 'IBM Plex Mono', monospace;\
+    cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick); \
+    font-family: var(--font-mono);\
 ";
 
 /// Metrics dashboard root: tab bar + delegated tab view.
@@ -69,7 +69,7 @@ pub(crate) fn Metrics() -> Element {
             }
 
             div {
-                style: "flex: 1; overflow-y: auto; padding: 0 16px 16px;",
+                style: "flex: 1; overflow-y: auto; padding: 0 var(--space-4) var(--space-4);",
                 match *active_tab.read() {
                     MetricsTab::Tokens => rsx! { tokens::Tokens {} },
                     MetricsTab::Costs => rsx! { costs::Costs {} },

@@ -22,6 +22,15 @@ pub enum ToolStatus {
 
 
 
+impl ToolStatus {
+    /// Whether this status represents a terminal (completed) state.
+    #[cfg_attr(not(test), expect(dead_code, reason = "used in tests"))]
+    #[must_use]
+    pub(crate) fn is_terminal(self) -> bool {
+        matches!(self, Self::Success | Self::Error)
+    }
+}
+
 /// Rich tool call state for the expandable panel display.
 ///
 /// This extends the minimal [`super::events::ToolCallInfo`] with input/output

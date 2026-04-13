@@ -5,7 +5,7 @@
 //! The streaming typing cursor blinks via the `cursor-blink` CSS animation defined
 //! in `assets/styles/base.css`.
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use dioxus::prelude::*;
 use tokio_util::sync::CancellationToken;
@@ -47,10 +47,19 @@ pub(crate) fn Chat() -> Element {
     let mut cancel_token = use_signal(CancellationToken::new);
     let mut palette_open = use_signal(|| false);
     let config: Signal<ConnectionConfig> = use_context();
-    let _cmd_store = use_context::<Signal<CommandStore>>();
+    let cmd_store = use_context::<Signal<CommandStore>>();
     let agent_store = use_context::<Signal<AgentStore>>();
     let mut tab_bar = use_context::<Signal<TabBar>>();
     let mut routing_signal = use_context::<Signal<Option<RoutingState>>>();
+
+    // WHY: Track last user message to enable retry on stream failure.
+    let mut last_user_message = use_signal(String::new);
+    // WHY: Track stream start time for elapsed-time indicator and timeout
+    // escalation messages (30s "taking longer", 5m "abort and retry").
+    let mut stream_start_time = use_signal(|| None::<Instant>);
+    // WHY: Ticking signal drives elapsed-time re-renders every second
+    // during streaming without polling the DOM.
+    let mut elapsed_tick = use_signal(|| 0u64);
 
     // Virtual scroll state
     let mut scroll_top = use_signal(|| 0.0_f64);
@@ -83,6 +92,18 @@ pub(crate) fn Chat() -> Element {
     let active_nous_id = agent_store.read().active_id.clone();
 
     let is_streaming = legacy_state.read().streaming.is_streaming;
+
+    // WHY: Drive elapsed-time re-renders every second during streaming.
+    // The tick signal forces the streaming indicator to re-render with
+    // updated elapsed time without polling the DOM.
+    use_future(move || async move {
+        loop {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            if stream_start_time.read().is_some() {
+                elapsed_tick.set(elapsed_tick() + 1);
+            }
+        }
+    });
 
     // Bridge: sync legacy ChatState messages into the new ChatStore model.
     // WHY: The existing ChatStateManager + streaming pipeline writes to
@@ -159,19 +180,55 @@ pub(crate) fn Chat() -> Element {
         })
         .collect();
 
-    let on_submit = move |text: String| {
+    let mut on_submit = move |text: String| {
         if text.is_empty() || is_streaming {
             return;
         }
 
-        // WHY: Slash commands beginning with `/` are intercepted here so the
-        // palette can handle them. Unrecognised commands fall through to chat.
-        if text.starts_with('/') {
-            palette_open.set(false);
-            // NOTE: Command execution wired at the application level.
-            // The palette already handles known commands via on_execute.
+        // WHY: Guard against no agent selected -- don't silently send to "default".
+        if agent_store.read().active_id.is_none() {
+            if let Some(mut toast_store) = try_consume_context::<Signal<ToastStore>>() {
+                toast_store
+                    .write()
+                    .push(Severity::Warning, "Select an agent first \u{2014} click a pill in the top bar");
+            }
             return;
         }
+
+        // WHY: Set streaming flag BEFORE spawning to prevent double-submit race.
+        // Without this, rapid Ctrl+Enter could spawn two concurrent tasks.
+        legacy_state.write().streaming.is_streaming = true;
+
+        // WHY: Slash commands beginning with `/` are intercepted here so the
+        // palette can handle them. Unrecognised commands get a toast warning
+        // so the operator knows the input was not silently eaten.
+        if text.starts_with('/') {
+            let cmd_name = text[1..].split_whitespace().next().unwrap_or("");
+            let known = cmd_store
+                .read()
+                .filtered
+                .iter()
+                .any(|c| c.name == cmd_name);
+            if !known {
+                if let Some(mut toast_store) = try_consume_context::<Signal<ToastStore>>() {
+                    toast_store.write().push(
+                        Severity::Warning,
+                        format!("Unknown command: /{cmd_name}"),
+                    );
+                }
+            }
+            palette_open.set(false);
+            legacy_state.write().streaming.is_streaming = false;
+            return;
+        }
+
+        // WHY: Clear any previous error so the retry banner disappears
+        // when the user sends a new message.
+        legacy_state.write().streaming.error = None;
+
+        last_user_message.set(text.clone());
+        stream_start_time.set(Some(Instant::now()));
+        elapsed_tick.set(0);
 
         legacy_state.write().messages.push(LegacyChatMessage {
             role: MessageRole::User,
@@ -210,9 +267,12 @@ pub(crate) fn Chat() -> Element {
         spawn(async move {
             let client = authenticated_client(&cfg);
 
-            let nous_id = legacy_state
+            // WHY: Use agent_store.active_id (set by topbar pill clicks) instead
+            // of legacy_state.agent_id (which is always None). Without this,
+            // the server returns 404 because there's no agent named "default".
+            let nous_id = agent_store
                 .read()
-                .agent_id
+                .active_id
                 .as_ref()
                 .map(|id| id.to_string())
                 .unwrap_or_else(|| "default".to_string());
@@ -326,6 +386,9 @@ pub(crate) fn Chat() -> Element {
                 let _ = manager.apply(event, &mut state);
             }
 
+            // WHY: Clear stream start so the elapsed timer stops.
+            stream_start_time.set(None);
+
             // WHY: After streaming completes, transition to Idle after a
             // brief delay so the operator sees "done" before it disappears.
             // 2-second visibility matches the toast auto-dismiss timing.
@@ -341,6 +404,17 @@ pub(crate) fn Chat() -> Element {
 
     let on_abort = move |()| {
         cancel_token.read().cancel();
+    };
+
+    // WHY: Retry re-sends the last user message after clearing the error.
+    // This is a separate closure so it can be used in the error banner
+    // without interfering with the InputBar's on_submit prop.
+    let on_retry = move |_| {
+        let msg = last_user_message.read().clone();
+        if !msg.is_empty() {
+            legacy_state.write().streaming.error = None;
+            on_submit(msg);
+        }
     };
 
     rsx! {
@@ -387,6 +461,7 @@ pub(crate) fn Chat() -> Element {
                     style: "
                         flex: 1;
                         overflow-y: auto;
+                        overflow-x: hidden;
                         position: relative;
                     ",
                     onscroll: move |_evt: Event<ScrollData>| {
@@ -490,7 +565,76 @@ pub(crate) fn Chat() -> Element {
                                                 color: var(--accent);
                                                 font-style: italic;
                                             ",
-                                            "Thinking..."
+                                            {
+                                                // WHY: Read elapsed_tick to subscribe to
+                                                // re-renders, then compute actual elapsed
+                                                // from the Instant for accuracy.
+                                                let _ = elapsed_tick();
+                                                let label = match stream_start_time.read().as_ref() {
+                                                    Some(start) => {
+                                                        let secs = start.elapsed().as_secs();
+                                                        format!("Thinking... ({secs}s)")
+                                                    }
+                                                    None => "Thinking...".to_string(),
+                                                };
+                                                label
+                                            }
+                                        }
+                                    }
+                                    // WHY: Escalating timeout messages give the operator
+                                    // actionable feedback when streaming takes unexpectedly long.
+                                    {
+                                        let _ = elapsed_tick();
+                                        let elapsed_secs = stream_start_time
+                                            .read()
+                                            .as_ref()
+                                            .map(|s| s.elapsed().as_secs())
+                                            .unwrap_or(0);
+                                        if elapsed_secs >= 300 {
+                                            rsx! {
+                                                div {
+                                                    style: "
+                                                        color: var(--status-warning);
+                                                        font-size: var(--text-xs);
+                                                        margin-top: var(--space-2);
+                                                        display: flex;
+                                                        align-items: center;
+                                                        gap: var(--space-2);
+                                                    ",
+                                                    span { "This is taking a while. You can abort and retry." }
+                                                    button {
+                                                        style: "
+                                                            background: var(--status-warning);
+                                                            color: var(--text-inverse);
+                                                            border: none;
+                                                            border-radius: var(--radius-md);
+                                                            padding: var(--space-1) var(--space-3);
+                                                            cursor: pointer;
+                                                            font-size: var(--text-xs);
+                                                            font-weight: var(--weight-semibold);
+                                                            transition: background-color var(--transition-quick);
+                                                        ",
+                                                        onclick: move |_| {
+                                                            cancel_token.read().cancel();
+                                                        },
+                                                        "Abort"
+                                                    }
+                                                }
+                                            }
+                                        } else if elapsed_secs >= 30 {
+                                            rsx! {
+                                                div {
+                                                    style: "
+                                                        color: var(--text-muted);
+                                                        font-size: var(--text-xs);
+                                                        font-style: italic;
+                                                        margin-top: var(--space-2);
+                                                    ",
+                                                    "Taking longer than usual..."
+                                                }
+                                            }
+                                        } else {
+                                            rsx! {}
                                         }
                                     }
                                     // Rich tool call panels (expandable)
@@ -558,6 +702,42 @@ pub(crate) fn Chat() -> Element {
                     palette_open.set(false);
                     // NOTE: Command execution feeds back into the input bar.
                 },
+            }
+
+            // WHY: Error banner above input bar gives the operator immediate
+            // visibility into stream failures with a one-click retry path.
+            if let Some(err) = legacy_state.read().streaming.error.clone() {
+                div {
+                    style: "
+                        background: var(--status-error-bg);
+                        color: var(--status-error);
+                        border: 1px solid var(--status-error);
+                        border-radius: var(--radius-md);
+                        padding: var(--space-2) var(--space-3);
+                        margin: 0 var(--space-4) var(--space-2) var(--space-4);
+                        display: flex;
+                        align-items: center;
+                        justify-content: space-between;
+                        gap: var(--space-3);
+                        font-size: var(--text-sm);
+                    ",
+                    span { "{err}" }
+                    button {
+                        style: "
+                            background: var(--status-error);
+                            color: var(--text-inverse);
+                            border: none;
+                            border-radius: var(--radius-md);
+                            padding: var(--space-1) var(--space-3);
+                            cursor: pointer;
+                            transition: background-color var(--transition-quick);
+                            flex-shrink: 0;
+                            font-size: var(--text-sm);
+                        ",
+                        onclick: on_retry,
+                        "Retry"
+                    }
+                }
             }
 
             InputBar {

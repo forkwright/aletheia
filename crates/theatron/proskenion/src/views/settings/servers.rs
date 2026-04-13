@@ -72,15 +72,15 @@ pub(crate) fn ServersPanel() -> Element {
 
     rsx! {
         div {
-            style: "display: flex; flex-direction: column; gap: 16px; max-width: 680px;",
+            style: "display: flex; flex-direction: column; gap: var(--space-4); max-width: 680px;",
 
             // Header
             div {
                 style: "display: flex; justify-content: space-between; align-items: center;",
-                h3 { style: "margin: 0; font-size: 16px; color: #e0e0e0;", "Server Connections" }
+                h3 { style: "margin: 0; font-size: var(--text-md); color: var(--text-primary);", "Server Connections" }
                 button {
-                    style: "padding: 6px 14px; background: #2a2a4a; border: 1px solid #444; \
-                            border-radius: 6px; color: #e0e0e0; font-size: 13px; cursor: pointer;",
+                    style: "padding: var(--space-2) var(--space-4); background: var(--border); border: 1px solid var(--border); \
+                            border-radius: var(--radius-md); color: var(--text-primary); font-size: var(--text-sm); cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
                     onclick: move |_| show_add.toggle(),
                     if show_add() { "Cancel" } else { "+ Add server" }
                 }
@@ -97,8 +97,8 @@ pub(crate) fn ServersPanel() -> Element {
             // Server list
             if snapshots.is_empty() {
                 div {
-                    style: "padding: 32px; text-align: center; color: #555; font-size: 14px; \
-                            background: #1a1a2e; border: 1px solid #333; border-radius: 8px;",
+                    style: "padding: var(--space-8); text-align: center; color: var(--text-muted); font-size: var(--text-base); \
+                            background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-md);",
                     "No servers configured. Add one above."
                 }
             }
@@ -195,60 +195,60 @@ fn ServerCard(
 
     let health_color = health.color();
     let health_label = health.label();
-    let card_border = if is_active { "1px solid #5b6af0" } else { "1px solid #333" };
+    let card_border = if is_active { "1px solid var(--accent)" } else { "1px solid var(--border)" };
 
     let id_for_save = id.clone();
 
     rsx! {
         div {
-            style: "background: #1a1a2e; border: {card_border}; border-radius: 8px; padding: 14px 16px;",
+            style: "background: var(--bg-surface); border: {card_border}; border-radius: var(--radius-md); padding: var(--space-4) var(--space-4);",
 
             if editing() {
                 // Edit mode
                 div {
-                    style: "display: flex; flex-direction: column; gap: 10px;",
+                    style: "display: flex; flex-direction: column; gap: var(--space-3);",
                     div {
-                        style: "display: flex; flex-direction: column; gap: 4px;",
-                        label { style: "font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.5px;", "Name" }
+                        style: "display: flex; flex-direction: column; gap: var(--space-1);",
+                        label { style: "font-size: var(--text-xs); color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;", "Name" }
                         input {
-                            style: "background: #0d0d1a; border: 1px solid #444; border-radius: 4px; \
-                                    padding: 6px 10px; color: #e0e0e0; font-size: 13px; width: 100%; box-sizing: border-box;",
+                            style: "background: var(--input-bg); border: 1px solid var(--border); border-radius: var(--radius-sm); \
+                                    padding: var(--space-2) var(--space-3); color: var(--text-primary); font-size: var(--text-sm); width: 100%; box-sizing: border-box;",
                             value: "{edit_name}",
                             oninput: move |e| edit_name.set(e.value()),
                         }
                     }
                     div {
-                        style: "display: flex; flex-direction: column; gap: 4px;",
-                        label { style: "font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.5px;", "URL" }
+                        style: "display: flex; flex-direction: column; gap: var(--space-1);",
+                        label { style: "font-size: var(--text-xs); color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;", "URL" }
                         input {
-                            style: "background: #0d0d1a; border: 1px solid #444; border-radius: 4px; \
-                                    padding: 6px 10px; color: #e0e0e0; font-size: 13px; width: 100%; box-sizing: border-box;",
+                            style: "background: var(--input-bg); border: 1px solid var(--border); border-radius: var(--radius-sm); \
+                                    padding: var(--space-2) var(--space-3); color: var(--text-primary); font-size: var(--text-sm); width: 100%; box-sizing: border-box;",
                             value: "{edit_url}",
                             oninput: move |e| edit_url.set(e.value()),
                         }
                     }
                     div {
-                        style: "display: flex; flex-direction: column; gap: 4px;",
-                        label { style: "font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.5px;", "Auth token (leave blank to clear)" }
+                        style: "display: flex; flex-direction: column; gap: var(--space-1);",
+                        label { style: "font-size: var(--text-xs); color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;", "Auth token (leave blank to clear)" }
                         input {
                             r#type: "password",
-                            style: "background: #0d0d1a; border: 1px solid #444; border-radius: 4px; \
-                                    padding: 6px 10px; color: #e0e0e0; font-size: 13px; width: 100%; box-sizing: border-box;",
+                            style: "background: var(--input-bg); border: 1px solid var(--border); border-radius: var(--radius-sm); \
+                                    padding: var(--space-2) var(--space-3); color: var(--text-primary); font-size: var(--text-sm); width: 100%; box-sizing: border-box;",
                             value: "{edit_token}",
                             oninput: move |e| edit_token.set(e.value()),
                         }
                     }
                     div {
-                        style: "display: flex; gap: 8px; justify-content: flex-end;",
+                        style: "display: flex; gap: var(--space-2); justify-content: flex-end;",
                         button {
-                            style: "padding: 6px 14px; background: none; border: 1px solid #444; \
-                                    border-radius: 4px; color: #888; font-size: 12px; cursor: pointer;",
+                            style: "padding: var(--space-2) var(--space-4); background: none; border: 1px solid var(--border); \
+                                    border-radius: var(--radius-sm); color: var(--text-secondary); font-size: var(--text-xs); cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
                             onclick: move |_| editing.set(false),
                             "Cancel"
                         }
                         button {
-                            style: "padding: 6px 14px; background: #5b6af0; border: none; \
-                                    border-radius: 4px; color: #fff; font-size: 12px; cursor: pointer;",
+                            style: "padding: var(--space-2) var(--space-4); background: var(--accent); border: none; \
+                                    border-radius: var(--radius-sm); color: var(--text-primary); font-size: var(--text-xs); cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
                             onclick: move |_| {
                                 let new_name = edit_name();
                                 let new_url = edit_url();
@@ -273,62 +273,62 @@ fn ServerCard(
                     style: "display: flex; justify-content: space-between; align-items: flex-start;",
 
                     div {
-                        style: "display: flex; flex-direction: column; gap: 4px; min-width: 0;",
+                        style: "display: flex; flex-direction: column; gap: var(--space-1); min-width: 0;",
                         div {
-                            style: "display: flex; align-items: center; gap: 8px;",
+                            style: "display: flex; align-items: center; gap: var(--space-2);",
                             span {
-                                style: "font-size: 14px; font-weight: 600; color: #e0e0e0;",
+                                style: "font-size: var(--text-base); font-weight: var(--weight-semibold); color: var(--text-primary);",
                                 "{name}"
                             }
                             if is_active {
                                 span {
-                                    style: "font-size: 10px; padding: 1px 6px; background: #1a1a4a; \
-                                            border: 1px solid #5b6af0; border-radius: 10px; color: #8899ff;",
+                                    style: "font-size: var(--text-xs); padding: 1px var(--space-2); background: var(--bg-surface-dim); \
+                                            border: 1px solid var(--accent); border-radius: var(--radius-lg); color: var(--accent-hover);",
                                     "active"
                                 }
                             }
                         }
                         span {
-                            style: "font-size: 12px; color: #666; word-break: break-all;",
+                            style: "font-size: var(--text-xs); color: var(--text-muted); word-break: break-all;",
                             "{url}"
                         }
                         div {
-                            style: "display: flex; align-items: center; gap: 6px; margin-top: 4px;",
+                            style: "display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-1);",
                             div {
                                 style: "width: 7px; height: 7px; border-radius: 50%; background: {health_color};",
                             }
                             span {
-                                style: "font-size: 11px; color: {health_color};",
+                                style: "font-size: var(--text-xs); color: {health_color};",
                                 if is_testing { "Testing…" } else { "{health_label}" }
                             }
                         }
                     }
 
                     div {
-                        style: "display: flex; gap: 6px; flex-shrink: 0; margin-left: 12px;",
+                        style: "display: flex; gap: var(--space-2); flex-shrink: 0; margin-left: var(--space-3);",
                         button {
-                            style: "padding: 4px 10px; background: none; border: 1px solid #444; \
-                                    border-radius: 4px; color: #888; font-size: 11px; cursor: pointer;",
+                            style: "padding: var(--space-1) var(--space-3); background: none; border: 1px solid var(--border); \
+                                    border-radius: var(--radius-sm); color: var(--text-secondary); font-size: var(--text-xs); cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
                             disabled: is_testing,
                             onclick: move |_| on_test.call(()),
                             "Test"
                         }
                         button {
-                            style: "padding: 4px 10px; background: none; border: 1px solid #444; \
-                                    border-radius: 4px; color: #888; font-size: 11px; cursor: pointer;",
+                            style: "padding: var(--space-1) var(--space-3); background: none; border: 1px solid var(--border); \
+                                    border-radius: var(--radius-sm); color: var(--text-secondary); font-size: var(--text-xs); cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
                             onclick: move |_| editing.set(true),
                             "Edit"
                         }
                         if !is_active {
                             button {
-                                style: "padding: 4px 10px; background: #2a2a4a; border: 1px solid #5b6af0; \
-                                        border-radius: 4px; color: #8899ff; font-size: 11px; cursor: pointer;",
+                                style: "padding: var(--space-1) var(--space-3); background: var(--border); border: 1px solid var(--accent); \
+                                        border-radius: var(--radius-sm); color: var(--accent-hover); font-size: var(--text-xs); cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
                                 onclick: move |_| on_switch.call(()),
                                 "Switch"
                             }
                             button {
-                                style: "padding: 4px 10px; background: none; border: 1px solid #4a2222; \
-                                        border-radius: 4px; color: #f87171; font-size: 11px; cursor: pointer;",
+                                style: "padding: var(--space-1) var(--space-3); background: none; border: 1px solid var(--status-error-bg); \
+                                        border-radius: var(--radius-sm); color: var(--status-error); font-size: var(--text-xs); cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
                                 onclick: move |_| on_remove.call(()),
                                 "Remove"
                             }
@@ -352,38 +352,38 @@ fn AddServerForm(server_store: Signal<ServerConfigStore>, on_saved: EventHandler
 
     rsx! {
         div {
-            style: "background: #161628; border: 1px solid #5b6af0; border-radius: 8px; padding: 16px;",
-            h4 { style: "margin: 0 0 14px; font-size: 14px; color: #e0e0e0;", "Add Server" }
+            style: "background: var(--bg-surface); border: 1px solid var(--accent); border-radius: var(--radius-md); padding: var(--space-4);",
+            h4 { style: "margin: 0 0 var(--space-4); font-size: var(--text-base); color: var(--text-primary);", "Add Server" }
 
             div {
-                style: "display: flex; flex-direction: column; gap: 10px;",
+                style: "display: flex; flex-direction: column; gap: var(--space-3);",
                 div {
-                    style: "display: flex; flex-direction: column; gap: 4px;",
-                    label { style: "font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.5px;", "Name" }
+                    style: "display: flex; flex-direction: column; gap: var(--space-1);",
+                    label { style: "font-size: var(--text-xs); color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;", "Name" }
                     input {
-                        style: "background: #0d0d1a; border: 1px solid #444; border-radius: 4px; \
-                                padding: 6px 10px; color: #e0e0e0; font-size: 13px; width: 100%; box-sizing: border-box;",
+                        style: "background: var(--input-bg); border: 1px solid var(--border); border-radius: var(--radius-sm); \
+                                padding: var(--space-2) var(--space-3); color: var(--text-primary); font-size: var(--text-sm); width: 100%; box-sizing: border-box;",
                         value: "{name}",
                         oninput: move |e| name.set(e.value()),
                     }
                 }
                 div {
-                    style: "display: flex; flex-direction: column; gap: 4px;",
-                    label { style: "font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.5px;", "Server URL" }
+                    style: "display: flex; flex-direction: column; gap: var(--space-1);",
+                    label { style: "font-size: var(--text-xs); color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;", "Server URL" }
                     input {
-                        style: "background: #0d0d1a; border: 1px solid #444; border-radius: 4px; \
-                                padding: 6px 10px; color: #e0e0e0; font-size: 13px; width: 100%; box-sizing: border-box;",
+                        style: "background: var(--input-bg); border: 1px solid var(--border); border-radius: var(--radius-sm); \
+                                padding: var(--space-2) var(--space-3); color: var(--text-primary); font-size: var(--text-sm); width: 100%; box-sizing: border-box;",
                         value: "{url}",
                         oninput: move |e| url.set(e.value()),
                     }
                 }
                 div {
-                    style: "display: flex; flex-direction: column; gap: 4px;",
-                    label { style: "font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.5px;", "Auth token (optional)" }
+                    style: "display: flex; flex-direction: column; gap: var(--space-1);",
+                    label { style: "font-size: var(--text-xs); color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;", "Auth token (optional)" }
                     input {
                         r#type: "password",
-                        style: "background: #0d0d1a; border: 1px solid #444; border-radius: 4px; \
-                                padding: 6px 10px; color: #e0e0e0; font-size: 13px; width: 100%; box-sizing: border-box;",
+                        style: "background: var(--input-bg); border: 1px solid var(--border); border-radius: var(--radius-sm); \
+                                padding: var(--space-2) var(--space-3); color: var(--text-primary); font-size: var(--text-sm); width: 100%; box-sizing: border-box;",
                         value: "{token}",
                         oninput: move |e| token.set(e.value()),
                     }
@@ -391,8 +391,8 @@ fn AddServerForm(server_store: Signal<ServerConfigStore>, on_saved: EventHandler
                 div {
                     style: "display: flex; justify-content: flex-end;",
                     button {
-                        style: "padding: 7px 18px; background: #5b6af0; border: none; \
-                                border-radius: 6px; color: #fff; font-size: 13px; cursor: pointer;",
+                        style: "padding: var(--space-2) var(--space-4); background: var(--accent); border: none; \
+                                border-radius: var(--radius-md); color: var(--text-primary); font-size: var(--text-sm); cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
                         onclick: move |_| {
                             let n = name();
                             let u = url();
