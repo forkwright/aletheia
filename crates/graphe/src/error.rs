@@ -40,6 +40,7 @@ pub enum Error {
     },
 
     /// Session not found.
+    #[cfg(feature = "sqlite")]
     #[snafu(display("session not found: {id}"))]
     SessionNotFound {
         id: String,
@@ -48,17 +49,10 @@ pub enum Error {
     },
 
     /// Session creation failed.
+    #[cfg(feature = "sqlite")]
     #[snafu(display("failed to create session for nous {nous_id}"))]
     SessionCreate {
         nous_id: String,
-        #[snafu(implicit)]
-        location: snafu::Location,
-    },
-
-    /// Storage backend error (fjall or other non-SQLite backend).
-    #[snafu(display("storage error: {message}"))]
-    Storage {
-        message: String,
         #[snafu(implicit)]
         location: snafu::Location,
     },
@@ -95,7 +89,8 @@ pub enum Error {
         location: snafu::Location,
     },
 
-    /// Filesystem I/O error (archive, backup, or store open).
+    /// Filesystem I/O error (archive, backup).
+    #[cfg(feature = "sqlite")]
     #[snafu(display("I/O error at {}: {source}", path.display()))]
     Io {
         path: std::path::PathBuf,

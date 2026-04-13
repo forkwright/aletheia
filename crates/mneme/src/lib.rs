@@ -64,10 +64,8 @@ pub use graphe::retention;
 /// `SQLite` schema DDL constants.
 #[cfg(feature = "sqlite")]
 pub use graphe::schema;
-/// Session store — fjall (default) or `SQLite` backend.
-///
-/// Both backends expose the same `SessionStore` API.
-#[cfg(any(feature = "fjall", feature = "sqlite"))]
+/// `SQLite` session store (WAL mode, prepared statements, transactional writes).
+#[cfg(feature = "sqlite")]
 pub use graphe::store;
 /// Core types for sessions, messages, usage records, and agent notes.
 pub use graphe::types;
