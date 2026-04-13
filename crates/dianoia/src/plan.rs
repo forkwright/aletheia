@@ -5,7 +5,11 @@ use koina::ulid::Ulid;
 
 use crate::error::{self, Result};
 
-const DEFAULT_MAX_ITERATIONS: u32 = 10;
+/// Default maximum planning iterations.
+///
+/// Callers with access to the resolved taxis config should use
+/// `AgentBehaviorDefaults::planning_max_iterations` instead of this fallback.
+pub const DEFAULT_MAX_ITERATIONS: u32 = 10;
 
 /// An executable plan within a phase.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -112,6 +116,16 @@ impl Plan {
             blockers: Vec::new(),
             achievements: Vec::new(),
         }
+    }
+
+    /// Set the maximum iteration limit (builder pattern).
+    ///
+    /// Use to override [`DEFAULT_MAX_ITERATIONS`] with a value from
+    /// `taxis::config::AgentBehaviorDefaults::planning_max_iterations`.
+    #[must_use]
+    pub fn with_max_iterations(mut self, max: u32) -> Self {
+        self.max_iterations = max;
+        self
     }
 
     /// Check if all dependencies are satisfied given completed plan IDs.

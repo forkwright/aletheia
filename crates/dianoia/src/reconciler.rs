@@ -103,9 +103,11 @@ pub struct ReconciliationSummary {
     pub total_conflicts: usize,
 }
 
-/// Tolerance in seconds for timestamp comparison. Differences within this
-/// window are treated as "in sync."
-const TIMESTAMP_TOLERANCE_SECS: i64 = 5;
+/// Default tolerance in seconds for timestamp comparison.
+///
+/// Callers with access to the resolved taxis config should use
+/// `AgentBehaviorDefaults::planning_reconciler_timestamp_tolerance_secs` instead.
+pub const DEFAULT_TIMESTAMP_TOLERANCE_SECS: i64 = 5;
 
 /// Reconcile two optional project snapshots into a single result.
 ///
@@ -120,6 +122,7 @@ const TIMESTAMP_TOLERANCE_SECS: i64 = 5;
 pub(crate) fn reconcile(
     db_snapshot: Option<&ProjectSnapshot>,
     fs_snapshot: Option<&ProjectSnapshot>,
+    tolerance_secs: i64,
 ) -> ReconciliationResult {
     match (db_snapshot, fs_snapshot) {
         (Some(db), None) => ReconciliationResult {
@@ -146,12 +149,12 @@ pub(crate) fn reconcile(
             errors: vec!["no snapshots provided".to_owned()],
         },
 
-        (Some(db), Some(fs)) => reconcile_both(db, fs),
+        (Some(db), Some(fs)) => reconcile_both(db, fs, tolerance_secs),
     }
 }
 
 /// Reconcile when both sources have the project.
-fn reconcile_both(db: &ProjectSnapshot, fs: &ProjectSnapshot) -> ReconciliationResult {
+fn reconcile_both(db: &ProjectSnapshot, fs: &ProjectSnapshot, tolerance_secs: i64) -> ReconciliationResult {
     let project_id = db.project.id.to_string();
     let mut conflicts = Vec::new();
 
@@ -163,9 +166,9 @@ fn reconcile_both(db: &ProjectSnapshot, fs: &ProjectSnapshot) -> ReconciliationR
         .as_second()
         .saturating_sub(fs.project.updated_at.as_second());
 
-    let (direction, winner) = if diff_secs > TIMESTAMP_TOLERANCE_SECS {
+    let (direction, winner) = if diff_secs > tolerance_secs {
         (ReconciliationDirection::DbToFiles, SnapshotOrigin::Database)
-    } else if diff_secs < -TIMESTAMP_TOLERANCE_SECS {
+    } else if diff_secs < -tolerance_secs {
         (
             ReconciliationDirection::FilesToDb,
             SnapshotOrigin::Filesystem,
@@ -255,6 +258,7 @@ fn detect_conflicts(db: &Project, fs: &Project, conflicts: &mut Vec<ConflictEntr
 pub(crate) fn reconcile_all(
     db_snapshots: &[ProjectSnapshot],
     fs_snapshots: &[ProjectSnapshot],
+    tolerance_secs: i64,
 ) -> ReconciliationSummary {
     let mut seen = std::collections::HashSet::new();
     let mut results = Vec::new();
@@ -270,7 +274,7 @@ pub(crate) fn reconcile_all(
         }
         let db = db_by_id.get(id).copied();
         let fs = fs_by_id.get(id).copied();
-        results.push(reconcile(db, fs));
+        results.push(reconcile(db, fs, tolerance_secs));
     }
 
     let total_errors: usize = results.iter().map(|r| r.errors.len()).sum();
@@ -312,7 +316,7 @@ mod tests {
         let project = make_project("db-only");
         let snap = make_snapshot(project.clone(), SnapshotOrigin::Database);
 
-        let result = reconcile(Some(&snap), None);
+        let result = reconcile(Some(&snap), None, DEFAULT_TIMESTAMP_TOLERANCE_SECS);
 
         assert_eq!(result.direction, ReconciliationDirection::DbOnly);
         assert!(result.conflicts.is_empty());
@@ -324,7 +328,7 @@ mod tests {
         let project = make_project("fs-only");
         let snap = make_snapshot(project.clone(), SnapshotOrigin::Filesystem);
 
-        let result = reconcile(None, Some(&snap));
+        let result = reconcile(None, Some(&snap), DEFAULT_TIMESTAMP_TOLERANCE_SECS);
 
         assert_eq!(result.direction, ReconciliationDirection::FilesOnly);
         assert!(result.conflicts.is_empty());
@@ -333,7 +337,7 @@ mod tests {
 
     #[test]
     fn no_snapshots_returns_error() {
-        let result = reconcile(None, None);
+        let result = reconcile(None, None, DEFAULT_TIMESTAMP_TOLERANCE_SECS);
 
         assert_eq!(result.direction, ReconciliationDirection::InSync);
         assert!(!result.errors.is_empty());
@@ -346,7 +350,7 @@ mod tests {
         let db = make_snapshot(project.clone(), SnapshotOrigin::Database);
         let fs = make_snapshot(project, SnapshotOrigin::Filesystem);
 
-        let result = reconcile(Some(&db), Some(&fs));
+        let result = reconcile(Some(&db), Some(&fs), DEFAULT_TIMESTAMP_TOLERANCE_SECS);
 
         assert_eq!(result.direction, ReconciliationDirection::InSync);
         assert!(result.conflicts.is_empty());
@@ -371,7 +375,7 @@ mod tests {
             origin: SnapshotOrigin::Filesystem,
         };
 
-        let result = reconcile(Some(&db), Some(&fs));
+        let result = reconcile(Some(&db), Some(&fs), DEFAULT_TIMESTAMP_TOLERANCE_SECS);
 
         assert_eq!(result.direction, ReconciliationDirection::DbToFiles);
         assert_eq!(
@@ -398,7 +402,7 @@ mod tests {
             origin: SnapshotOrigin::Filesystem,
         };
 
-        let result = reconcile(Some(&db), Some(&fs));
+        let result = reconcile(Some(&db), Some(&fs), DEFAULT_TIMESTAMP_TOLERANCE_SECS);
 
         assert_eq!(result.direction, ReconciliationDirection::FilesToDb);
         assert_eq!(
@@ -422,7 +426,7 @@ mod tests {
         let db = make_snapshot(db_project, SnapshotOrigin::Database);
         let fs = make_snapshot(fs_project, SnapshotOrigin::Filesystem);
 
-        let result = reconcile(Some(&db), Some(&fs));
+        let result = reconcile(Some(&db), Some(&fs), DEFAULT_TIMESTAMP_TOLERANCE_SECS);
 
         assert!(!result.conflicts.is_empty());
         let name_conflict = result.conflicts.iter().find(|c| c.field == "name").unwrap();
@@ -446,7 +450,7 @@ mod tests {
         let db = make_snapshot(db_project, SnapshotOrigin::Database);
         let fs = make_snapshot(fs_project, SnapshotOrigin::Filesystem);
 
-        let result = reconcile(Some(&db), Some(&fs));
+        let result = reconcile(Some(&db), Some(&fs), DEFAULT_TIMESTAMP_TOLERANCE_SECS);
 
         let state_conflict = result
             .conflicts
@@ -473,7 +477,7 @@ mod tests {
         let db = make_snapshot(db_project, SnapshotOrigin::Database);
         let fs = make_snapshot(fs_project, SnapshotOrigin::Filesystem);
 
-        let result = reconcile(Some(&db), Some(&fs));
+        let result = reconcile(Some(&db), Some(&fs), DEFAULT_TIMESTAMP_TOLERANCE_SECS);
 
         let phase_conflict = result
             .conflicts
@@ -499,7 +503,7 @@ mod tests {
             make_snapshot(p3, SnapshotOrigin::Filesystem),
         ];
 
-        let summary = reconcile_all(&db_snaps, &fs_snaps);
+        let summary = reconcile_all(&db_snaps, &fs_snaps, DEFAULT_TIMESTAMP_TOLERANCE_SECS);
 
         assert_eq!(summary.projects.len(), 3);
 
@@ -526,7 +530,7 @@ mod tests {
         let db = make_snapshot(db_project, SnapshotOrigin::Database);
         let fs = make_snapshot(fs_project, SnapshotOrigin::Filesystem);
 
-        let result = reconcile(Some(&db), Some(&fs));
+        let result = reconcile(Some(&db), Some(&fs), DEFAULT_TIMESTAMP_TOLERANCE_SECS);
 
         assert_eq!(result.direction, ReconciliationDirection::InSync);
     }
@@ -547,7 +551,7 @@ mod tests {
         let db = make_snapshot(db_project, SnapshotOrigin::Database);
         let fs = make_snapshot(fs_project, SnapshotOrigin::Filesystem);
 
-        let result = reconcile(Some(&db), Some(&fs));
+        let result = reconcile(Some(&db), Some(&fs), DEFAULT_TIMESTAMP_TOLERANCE_SECS);
 
         assert_eq!(result.direction, ReconciliationDirection::FilesToDb);
         let name_conflict = result.conflicts.iter().find(|c| c.field == "name").unwrap();
@@ -556,7 +560,7 @@ mod tests {
 
     #[test]
     fn reconcile_all_empty_inputs() {
-        let summary = reconcile_all(&[], &[]);
+        let summary = reconcile_all(&[], &[], DEFAULT_TIMESTAMP_TOLERANCE_SECS);
 
         assert!(summary.projects.is_empty());
         assert_eq!(summary.total_errors, 0);
@@ -576,7 +580,7 @@ mod tests {
         let db_snaps = vec![make_snapshot(db_project, SnapshotOrigin::Database)];
         let fs_snaps = vec![make_snapshot(fs_project, SnapshotOrigin::Filesystem)];
 
-        let summary = reconcile_all(&db_snaps, &fs_snaps);
+        let summary = reconcile_all(&db_snaps, &fs_snaps, DEFAULT_TIMESTAMP_TOLERANCE_SECS);
 
         assert_eq!(summary.total_errors, 0);
         assert!(

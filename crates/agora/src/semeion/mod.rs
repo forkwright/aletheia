@@ -26,17 +26,22 @@ use crate::types::{
 };
 use connection::{AccountState, ConnectionHealthReport, ConnectionState, reconnect_delay};
 
-const DEFAULT_POLL_INTERVAL: Duration = Duration::from_secs(2);
-const DEFAULT_BUFFER_CAPACITY: usize = 100;
+/// Default poll interval. Matches `taxis::config::MessagingConfig::poll_interval_ms`.
+pub(crate) const DEFAULT_POLL_INTERVAL: Duration = Duration::from_secs(2);
+/// Default buffer capacity. Matches `taxis::config::MessagingConfig::buffer_capacity`.
+pub(crate) const DEFAULT_BUFFER_CAPACITY: usize = 100;
 
 /// Consecutive poll failures before the circuit breaker trips and polling halts.
 /// WHY: lowered from 20 to 5 because signal-cli being down is the common case
 /// (`auto_start=false`, user hasn't started it), and 20 retries at exponential
 /// backoff = several minutes of warn-level log spam before halting (#3104).
-const CIRCUIT_BREAKER_THRESHOLD: u32 = 5;
+/// Circuit breaker threshold. Matches \.
+pub(crate) const CIRCUIT_BREAKER_THRESHOLD: u32 = 5;
 
 /// Interval between health checks while the circuit breaker is open.
-const HALTED_HEALTH_CHECK_INTERVAL: Duration = Duration::from_mins(1);
+/// Interval between health checks while halted. Matches
+/// \.
+pub(crate) const HALTED_HEALTH_CHECK_INTERVAL: Duration = Duration::from_mins(1);
 
 /// Parsed Signal message target.
 #[derive(Debug, Clone, PartialEq, Eq)]

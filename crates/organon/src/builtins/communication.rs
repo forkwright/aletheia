@@ -15,9 +15,15 @@ use crate::types::{
     ToolInput, ToolResult,
 };
 
-const MESSAGE_MAX_LEN: usize = 4000;
-const INTER_SESSION_MAX_MESSAGE_LEN: usize = 100_000;
-const INTER_SESSION_MAX_TIMEOUT_SECS: u64 = 300;
+/// Maximum characters per intra-session message. Matches
+/// `taxis::config::ToolLimitsConfig::message_max_len`.
+pub(crate) const MESSAGE_MAX_LEN: usize = 4000;
+/// Maximum characters per inter-session message. Matches
+/// `taxis::config::ToolLimitsConfig::inter_session_max_message_len`.
+pub(crate) const INTER_SESSION_MAX_MESSAGE_LEN: usize = 100_000;
+/// Maximum wait timeout for inter-session messages. Matches
+/// `taxis::config::ToolLimitsConfig::inter_session_max_timeout_secs`.
+pub(crate) const INTER_SESSION_MAX_TIMEOUT_SECS: u64 = 300;
 
 struct MessageExecutor;
 

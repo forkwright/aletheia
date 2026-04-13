@@ -39,7 +39,9 @@ fn sanitize_path_in_msg(path: &std::path::Path) -> String {
 ///
 /// WHY: Prevents disk exhaustion or fork-bomb-like abuse via oversized writes.
 /// Closes #1714.
-const MAX_WRITE_BYTES: usize = 10 * 1024 * 1024;
+/// Maximum content size for the write tool. Matches
+/// `taxis::config::ToolLimitsConfig::max_write_bytes`.
+pub(crate) const MAX_WRITE_BYTES: usize = 10 * 1024 * 1024;
 
 /// Expand a leading `~` in a path string to the HOME environment variable.
 ///
@@ -199,10 +201,14 @@ pub(crate) fn extract_opt_f64(args: &serde_json::Value, field: &str) -> Option<f
 }
 
 /// Maximum file size the read tool will process.
-const MAX_READ_BYTES: u64 = 50 * 1024 * 1024; // 50 MB
+/// Maximum file size the read tool will process. Matches
+/// `taxis::config::ToolLimitsConfig::max_read_bytes`.
+pub(crate) const MAX_READ_BYTES: u64 = 50 * 1024 * 1024;
 
 /// Maximum command string length for exec.
-const MAX_COMMAND_LENGTH: usize = 10_000; // 10 KB
+/// Maximum command string length for exec. Matches
+/// `taxis::config::ToolLimitsConfig::max_command_length`.
+pub(crate) const MAX_COMMAND_LENGTH: usize = 10_000;
 
 /// Files that the LLM must not overwrite.
 const PROTECTED_FILES: &[&str] = &[
