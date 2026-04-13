@@ -73,15 +73,18 @@ pub fn run(verbose: bool) {
     // to recover it. SSE disconnect and window-state persistence happen during
     // the normal Dioxus shutdown sequence before the process exits.
     //
-    // WHY: Dioxus desktop does not auto-inject CSS from the asset directory.
-    // We must add <link> tags via custom_head so the webview loads our design
-    // token system (tokens.css), theme definitions (themes.css), and base
-    // resets/animations (base.css).
-    let custom_head = r#"
-        <link rel="stylesheet" href="styles/tokens.css">
-        <link rel="stylesheet" href="styles/themes.css">
-        <link rel="stylesheet" href="styles/base.css">
-    "#;
+    // WHY: CSS is embedded via include_str! rather than served from the asset
+    // directory. External <link> tags resolve relative to the webview's base
+    // URL, which depends on the binary's working directory at launch. When the
+    // binary is installed to a different path (e.g. ~/ergon/bin/proskenion),
+    // the assets/ directory is not alongside it and the <link> tags 404
+    // silently, producing an unstyled white page.
+    let custom_head = format!(
+        "<style>{}</style><style>{}</style><style>{}</style>",
+        include_str!("../assets/styles/tokens.css"),
+        include_str!("../assets/styles/themes.css"),
+        include_str!("../assets/styles/base.css"),
+    );
 
     let config = Config::new()
         .with_window(window_builder)
