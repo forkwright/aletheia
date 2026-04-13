@@ -610,3 +610,82 @@ async fn session_id_adoption_prevents_fk_divergence() {
     handle.shutdown().await.expect("shutdown");
     join.await.expect("join");
 }
+
+/// Regression test for #3103: prosoche daemon FK constraint failure.
+///
+/// Simulates the scenario where the daemon's "daemon:prosoche" session already
+/// exists in the DB (from a previous cycle), but the actor has no in-memory
+/// session for that key (e.g., after restart or LRU eviction). The daemon
+/// bridge calls `send_turn` with `session_id: None`, so the actor generates a
+/// new ULID — which diverges from the DB's canonical ID.
+///
+/// Before the fix, `find_or_create_session` would return the existing DB
+/// session silently (ON CONFLICT DO NOTHING), but `finalize` would call
+/// `append_message` with the actor's newly generated ID (no DB row) →
+/// FOREIGN KEY constraint failure and silent data loss.
+///
+/// After the fix, the actor adopts the DB session ID returned by
+/// `find_or_create_session`, so finalize uses the correct ID.
+#[tokio::test]
+async fn prosoche_daemon_adopts_existing_db_session_id() {
+    let store = mneme::store::SessionStore::open_in_memory().expect("in-memory store");
+    // WHY: SessionId requires UUID v4 format
+    let existing_db_id = "660e8400-e29b-41d4-a716-446655440001";
+
+    // Simulate an existing DB session for the "daemon:prosoche" key
+    // (as would exist from a previous prosoche cycle).
+    store
+        .create_session(
+            existing_db_id,
+            "test-agent",
+            "daemon:prosoche",
+            None,
+            Some("test-model"),
+        )
+        .expect("create pre-existing prosoche session");
+
+    let store = Arc::new(tokio::sync::Mutex::new(store));
+    // WHY: Actor has no in-memory session for "daemon:prosoche" — simulates
+    // restart or eviction. The daemon bridge sends with session_id: None.
+    let (handle, join, _dir) = spawn_test_actor_with_store(Arc::clone(&store));
+
+    // NOTE: Daemon bridge calls send_turn (not send_turn_with_session_id),
+    // so session_id is None — the actor must discover and adopt the DB ID.
+    let result = handle
+        .send_turn("daemon:prosoche", "Run your prosoche heartbeat check.")
+        .await
+        .expect("turn should succeed without FK constraint failure");
+    assert_eq!(result.content, "Hello from actor!");
+
+    let store_guard = store.lock().await;
+
+    // WHY: Messages must be under the existing DB session ID, not a new ULID.
+    let history = store_guard
+        .get_history(existing_db_id, None)
+        .expect("history under existing DB session ID");
+    assert!(
+        history.len() >= 2,
+        "expected at least 2 messages under existing DB session ID, got {}",
+        history.len()
+    );
+
+    // WHY: No orphan session should be created — only one session for
+    // "daemon:prosoche" should exist.
+    let all_sessions = store_guard
+        .list_sessions(Some("test-agent"))
+        .expect("list sessions");
+    assert_eq!(
+        all_sessions.len(),
+        1,
+        "should have exactly 1 session (no orphan), got {}",
+        all_sessions.len()
+    );
+    assert_eq!(
+        all_sessions[0].id, existing_db_id,
+        "surviving session must be the original DB session ID"
+    );
+
+    drop(store_guard);
+    handle.shutdown().await.expect("shutdown");
+    join.await.expect("join");
+}
