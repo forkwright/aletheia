@@ -2392,7 +2392,7 @@ dependencies = [
 
 [[package]]
 name = "koina"
-version = "0.15.0"
+version = "0.15.1"
 dependencies = [
  "compact_str",
  "jiff",
@@ -3490,6 +3490,8 @@ dependencies = [
  "tokio-util",
  "toml 1.1.0+spec-1.1.0",
  "tracing",
+ "tracing-appender",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -4207,7 +4209,7 @@ checksum = "b2aa850e253778c88a04c3d7323b043aeda9d3e30d5971937c1855769763678e"
 
 [[package]]
 name = "skene"
-version = "0.15.0"
+version = "0.15.1"
 dependencies = [
  "bytes",
  "compact_str",
@@ -4858,6 +4860,18 @@ dependencies = [
  "pin-project-lite",
  "tracing-attributes",
  "tracing-core",
+]
+
+[[package]]
+name = "tracing-appender"
+version = "0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "786d480bce6247ab75f005b14ae1624ad978d3029d9113f0a22fa1ac773faeaf"
+dependencies = [
+ "crossbeam-channel",
+ "thiserror 2.0.18",
+ "time",
+ "tracing-subscriber",
 ]
 
 [[package]]

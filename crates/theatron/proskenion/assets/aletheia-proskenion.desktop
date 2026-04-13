@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Aletheia
+Comment=Aletheia AI Assistant
+Exec=proskenion
+Icon=aletheia
+Terminal=false
+Categories=Utility;Development;
