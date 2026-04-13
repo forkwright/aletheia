@@ -539,6 +539,7 @@ impl RuntimeBuilder {
             Arc::clone(&packs),
             Some(Arc::clone(&cross_router)),
             Some(tool_services),
+            self.config.nous_behavior.clone(),
         );
 
         // Spawn nous actors
@@ -583,6 +584,7 @@ impl RuntimeBuilder {
                     recall: resolved.recall.into(),
                     tool_allowlist: None,
                     hooks: nous::config::HookConfig::default(),
+                    behavior: resolved.behavior,
                 };
                 nous_manager
                     .spawn(

@@ -1314,6 +1314,9 @@ pub struct AgentBehaviorDefaults {
     // --- Working state ---
     /// Working-state TTL in seconds before expiry. Default: 604800 (7 days).
     pub working_state_ttl_secs: u64,
+    /// Maximum task stack depth before oldest entries are evicted. Default: 10.
+    /// Mirrors `nous::working_state::MAX_TASK_STACK`.
+    pub working_state_max_task_stack: usize,
 
     // --- Planning ---
     /// Maximum planning iterations per planning cycle. Default: 10.
@@ -1405,6 +1408,12 @@ pub struct AgentBehaviorDefaults {
     /// Mirrors `organon::builtins::view_file::MAX_PDF_BYTES`.
     pub tool_max_pdf_bytes: usize,
 
+    // --- Bootstrap ---
+    /// Minimum token budget remaining before attempting section truncation.
+    /// Below this threshold the section is dropped rather than truncated. Default: 200.
+    /// Mirrors `nous::bootstrap::MIN_TRUNCATION_BUDGET`.
+    pub bootstrap_min_truncation_budget: u64,
+
     // --- Corrections ---
     /// Maximum correction entries stored per agent. Default: 50.
     /// Mirrors `nous::hooks::builtins::correction::MAX_CORRECTIONS`.
@@ -1455,6 +1464,7 @@ impl Default for AgentBehaviorDefaults {
             skills_max_context_chars: 200,
             // Working state
             working_state_ttl_secs: 604_800,
+            working_state_max_task_stack: 10,
             // Planning
             planning_max_iterations: 10,
             planning_stuck_history_window: 20,
@@ -1488,6 +1498,8 @@ impl Default for AgentBehaviorDefaults {
             tool_datalog_default_timeout_secs: 5.0,
             tool_max_image_bytes: 20_971_520,
             tool_max_pdf_bytes: 33_554_432,
+            // Bootstrap
+            bootstrap_min_truncation_budget: 200,
             // Corrections
             corrections_max_corrections: 50,
         }

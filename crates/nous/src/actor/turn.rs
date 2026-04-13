@@ -14,7 +14,9 @@ use crate::pipeline::TurnResult;
 use crate::session::SessionState;
 use crate::stream::TurnStreamEvent;
 
-use super::{DEGRADED_PANIC_THRESHOLD, DEGRADED_WINDOW, NousActor, NousLifecycle};
+use std::time::Duration;
+
+use super::{NousActor, NousLifecycle};
 
 /// Drop guard that drops the streaming sender when the turn completes or is cancelled.
 /// Signals the receiver that no more data is coming, preventing hung SSE connections.
@@ -468,16 +470,25 @@ impl NousActor {
         self.runtime.pipeline_panic_timestamps.push(now);
         self.runtime.last_panic_at = Some(now);
 
+        let degraded_window = Duration::from_secs(self.nous_behavior.degraded_window_secs);
         let cutoff = std::time::Instant::now()
-            .checked_sub(DEGRADED_WINDOW)
+            .checked_sub(degraded_window)
             .unwrap_or(self.runtime.started_at);
         self.runtime.pipeline_panic_timestamps.retain(|t| *t > cutoff);
 
+        let threshold = self.nous_behavior.degraded_panic_threshold;
+        tracing::debug!(
+            degraded_panic_threshold = threshold,
+            degraded_window_secs = self.nous_behavior.degraded_window_secs,
+            recent_panics = self.runtime.pipeline_panic_timestamps.len(),
+            "record_pipeline_panic: checking degraded threshold"
+        );
+
         #[expect(
             clippy::as_conversions,
-            reason = "u32→usize: DEGRADED_PANIC_THRESHOLD is a small constant, fits in usize"
+            reason = "u32→usize: degraded_panic_threshold is a small constant, fits in usize"
         )]
-        if self.runtime.pipeline_panic_timestamps.len() >= DEGRADED_PANIC_THRESHOLD as usize {
+        if self.runtime.pipeline_panic_timestamps.len() >= threshold as usize {
             warn!(
                 nous_id = %self.id,
                 panic_count = self.runtime.pipeline_panic_count,

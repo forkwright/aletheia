@@ -12,7 +12,9 @@ use mneme::store::SessionStore;
 
 use hermeneus::provider::ProviderRegistry;
 
-use super::{DEGRADED_WINDOW, MAX_SPAWNED_TASKS, NousActor};
+use std::time::Duration;
+
+use super::{MAX_SPAWNED_TASKS, NousActor};
 
 /// Drop guard that clears the distillation-in-progress flag on drop.
 /// Prevents the flag from being stuck if the background task panics.
@@ -53,8 +55,9 @@ impl NousActor {
         self.runtime.background_panic_timestamps.push(now);
 
         // Clean up old timestamps outside the window (for accurate logging/monitoring)
+        let degraded_window = Duration::from_secs(self.nous_behavior.degraded_window_secs);
         let cutoff = std::time::Instant::now()
-            .checked_sub(DEGRADED_WINDOW)
+            .checked_sub(degraded_window)
             .unwrap_or(self.runtime.started_at);
         self.runtime.background_panic_timestamps.retain(|t| *t > cutoff);
 

@@ -11,18 +11,62 @@ use snafu::ResultExt as _;
 
 use crate::error;
 
-const CORRECTION_PENALTY: f64 = 0.05;
-const SUCCESS_BONUS: f64 = 0.02;
-const DISAGREEMENT_PENALTY: f64 = 0.01;
-const MIN_SCORE: f64 = 0.1;
-const MAX_SCORE: f64 = 0.95;
-const DEFAULT_SCORE: f64 = 0.5;
+/// Per-agent competence scoring configuration.
+///
+/// All defaults match the constants they replace so behaviour is identical
+/// when the tracker is constructed with `CompetenceConfig::default()`.
+#[derive(Debug, Clone)]
+pub struct CompetenceConfig {
+    /// Competence score penalty per correction. Default: 0.05.
+    pub correction_penalty: f64,
+    /// Competence score bonus per successful turn. Default: 0.02.
+    pub success_bonus: f64,
+    /// Competence score penalty per user disagreement. Default: 0.01.
+    pub disagreement_penalty: f64,
+    /// Competence score floor. Default: 0.1.
+    pub min_score: f64,
+    /// Competence score ceiling. Default: 0.95.
+    pub max_score: f64,
+    /// Initial competence score for a new agent. Default: 0.5.
+    pub default_score: f64,
+    /// Competence score below which escalation fires. Default: 0.30.
+    pub escalation_failure_threshold: f64,
+    /// Minimum samples before escalation threshold is evaluated. Default: 5.
+    pub escalation_min_samples: u32,
+}
 
-/// Failure rate threshold above which model escalation is recommended.
-const ESCALATION_FAILURE_THRESHOLD: f64 = 0.30;
+impl Default for CompetenceConfig {
+    fn default() -> Self {
+        let b = taxis::config::AgentBehaviorDefaults::default();
+        Self {
+            correction_penalty: b.competence_correction_penalty,
+            success_bonus: b.competence_success_bonus,
+            disagreement_penalty: b.competence_disagreement_penalty,
+            min_score: b.competence_min_score,
+            max_score: b.competence_max_score,
+            default_score: b.competence_default_score,
+            escalation_failure_threshold: b.competence_escalation_failure_threshold,
+            escalation_min_samples: b.competence_escalation_min_samples,
+        }
+    }
+}
 
-/// Minimum number of recorded outcomes before escalation logic activates.
-const ESCALATION_MIN_SAMPLES: u32 = 5;
+impl CompetenceConfig {
+    /// Build from a resolved agent behavior config.
+    #[must_use]
+    pub fn from_behavior(behavior: &taxis::config::AgentBehaviorDefaults) -> Self {
+        Self {
+            correction_penalty: behavior.competence_correction_penalty,
+            success_bonus: behavior.competence_success_bonus,
+            disagreement_penalty: behavior.competence_disagreement_penalty,
+            min_score: behavior.competence_min_score,
+            max_score: behavior.competence_max_score,
+            default_score: behavior.competence_default_score,
+            escalation_failure_threshold: behavior.competence_escalation_failure_threshold,
+            escalation_min_samples: behavior.competence_escalation_min_samples,
+        }
+    }
+}
 
 /// Task outcome for competence tracking.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -107,6 +151,7 @@ pub struct EscalationRecommendation {
 )]
 pub struct CompetenceTracker {
     conn: Connection,
+    config: CompetenceConfig,
 }
 
 impl CompetenceTracker {
@@ -119,11 +164,11 @@ impl CompetenceTracker {
         clippy::disallowed_types,
         reason = "competence tracker owns its own isolated SQLite file; not part of the shared SessionStore pipeline"
     )]
-    pub fn open(path: &std::path::Path) -> error::Result<Self> {
+    pub fn open(path: &std::path::Path, config: CompetenceConfig) -> error::Result<Self> {
         let conn = Connection::open(path).context(error::CompetenceStoreSnafu {
             message: "failed to open competence database",
         })?;
-        Self::init(conn)
+        Self::init(conn, config)
     }
 
     /// Open an in-memory competence tracker (for testing).
@@ -139,14 +184,14 @@ impl CompetenceTracker {
         let conn = Connection::open_in_memory().context(error::CompetenceStoreSnafu {
             message: "failed to open in-memory competence database",
         })?;
-        Self::init(conn)
+        Self::init(conn, CompetenceConfig::default())
     }
 
     #[expect(
         clippy::disallowed_types,
         reason = "competence tracker owns its own isolated SQLite file; not part of the shared SessionStore pipeline"
     )]
-    fn init(conn: Connection) -> error::Result<Self> {
+    fn init(conn: Connection, config: CompetenceConfig) -> error::Result<Self> {
         conn.execute_batch(
             "PRAGMA journal_mode = WAL;
              PRAGMA foreign_keys = ON;
@@ -179,7 +224,7 @@ impl CompetenceTracker {
             message: "failed to initialize competence schema",
         })?;
 
-        Ok(Self { conn })
+        Ok(Self { conn, config })
     }
 
     /// Record a task outcome for an agent in a domain.
@@ -211,23 +256,33 @@ impl CompetenceTracker {
             message: "failed to insert outcome",
         })?;
 
-        Self::ensure_domain(&tx, nous_id, domain, &now)?;
+        Self::ensure_domain(&tx, nous_id, domain, &now, self.config.default_score)?;
 
         let score_delta = match outcome {
-            TaskOutcome::Success => SUCCESS_BONUS,
+            TaskOutcome::Success => self.config.success_bonus,
             TaskOutcome::Partial => 0.0,
-            TaskOutcome::Failure => -CORRECTION_PENALTY,
+            TaskOutcome::Failure => -self.config.correction_penalty,
         };
         let counter_field = match outcome {
             TaskOutcome::Success => "successes",
             TaskOutcome::Partial => "partials",
             TaskOutcome::Failure => "failures",
         };
+        let min_score = self.config.min_score;
+        let max_score = self.config.max_score;
+
+        tracing::debug!(
+            score_delta,
+            min_score,
+            max_score,
+            counter_field,
+            "competence record_outcome"
+        );
 
         tx.execute(
             &format!(
                 "UPDATE competence_domains
-                 SET score = MAX({MIN_SCORE}, MIN({MAX_SCORE}, score + ?1)),
+                 SET score = MAX({min_score}, MIN({max_score}, score + ?1)),
                      {counter_field} = {counter_field} + 1,
                      updated_at = ?2
                  WHERE nous_id = ?3 AND domain = ?4"
@@ -252,18 +307,29 @@ impl CompetenceTracker {
     /// Returns `CompetenceStore` on database write failure.
     pub fn record_correction(&self, nous_id: &str, domain: &str) -> error::Result<()> {
         let now = Timestamp::now().to_string();
-        Self::ensure_domain(&self.conn, nous_id, domain, &now)?;
+        Self::ensure_domain(&self.conn, nous_id, domain, &now, self.config.default_score)?;
+
+        let correction_penalty = self.config.correction_penalty;
+        let min_score = self.config.min_score;
+
+        tracing::debug!(
+            correction_penalty,
+            min_score,
+            nous_id,
+            domain,
+            "competence record_correction"
+        );
 
         self.conn
             .execute(
                 &format!(
                     "UPDATE competence_domains
-                 SET score = MAX({MIN_SCORE}, score - ?1),
+                 SET score = MAX({min_score}, score - ?1),
                      corrections = corrections + 1,
                      updated_at = ?2
                  WHERE nous_id = ?3 AND domain = ?4"
                 ),
-                params![CORRECTION_PENALTY, now, nous_id, domain],
+                params![correction_penalty, now, nous_id, domain],
             )
             .context(error::CompetenceStoreSnafu {
                 message: "failed to record correction",
@@ -278,18 +344,29 @@ impl CompetenceTracker {
     /// Returns `CompetenceStore` on database write failure.
     pub fn record_disagreement(&self, nous_id: &str, domain: &str) -> error::Result<()> {
         let now = Timestamp::now().to_string();
-        Self::ensure_domain(&self.conn, nous_id, domain, &now)?;
+        Self::ensure_domain(&self.conn, nous_id, domain, &now, self.config.default_score)?;
+
+        let disagreement_penalty = self.config.disagreement_penalty;
+        let min_score = self.config.min_score;
+
+        tracing::debug!(
+            disagreement_penalty,
+            min_score,
+            nous_id,
+            domain,
+            "competence record_disagreement"
+        );
 
         self.conn
             .execute(
                 &format!(
                     "UPDATE competence_domains
-                 SET score = MAX({MIN_SCORE}, score - ?1),
+                 SET score = MAX({min_score}, score - ?1),
                      disagreements = disagreements + 1,
                      updated_at = ?2
                  WHERE nous_id = ?3 AND domain = ?4"
                 ),
-                params![DISAGREEMENT_PENALTY, now, nous_id, domain],
+                params![disagreement_penalty, now, nous_id, domain],
             )
             .context(error::CompetenceStoreSnafu {
                 message: "failed to record disagreement",
@@ -319,7 +396,7 @@ impl CompetenceTracker {
                 message: "failed to query score",
             })?;
 
-        Ok(result.unwrap_or(DEFAULT_SCORE))
+        Ok(result.unwrap_or(self.config.default_score))
     }
 
     /// Get full competence data for an agent across all domains.
@@ -363,7 +440,7 @@ impl CompetenceTracker {
             })?;
 
         let overall_score = if domains.is_empty() {
-            DEFAULT_SCORE
+            self.config.default_score
         } else {
             #[expect(
                 clippy::cast_precision_loss,
@@ -452,14 +529,25 @@ impl CompetenceTracker {
         let stats = self.rolling_stats(nous_id, domain, 20)?;
         let current_score = self.score(nous_id, domain)?;
 
-        let failure_rate = if stats.total >= ESCALATION_MIN_SAMPLES {
+        let escalation_min_samples = self.config.escalation_min_samples;
+        let escalation_failure_threshold = self.config.escalation_failure_threshold;
+
+        tracing::debug!(
+            escalation_min_samples,
+            escalation_failure_threshold,
+            total = stats.total,
+            failures = stats.failures,
+            "competence escalation_recommendation"
+        );
+
+        let failure_rate = if stats.total >= escalation_min_samples {
             f64::from(stats.failures) / f64::from(stats.total)
         } else {
             0.0
         };
 
         let should_escalate =
-            stats.total >= ESCALATION_MIN_SAMPLES && failure_rate > ESCALATION_FAILURE_THRESHOLD;
+            stats.total >= escalation_min_samples && failure_rate > escalation_failure_threshold;
 
         Ok(EscalationRecommendation {
             domain: domain.to_owned(),
@@ -478,12 +566,13 @@ impl CompetenceTracker {
         nous_id: &str,
         domain: &str,
         now: &str,
+        default_score: f64,
     ) -> error::Result<()> {
         conn.execute(
             "INSERT OR IGNORE INTO competence_domains
                  (nous_id, domain, score, successes, partials, failures, corrections, disagreements, updated_at)
              VALUES (?1, ?2, ?3, 0, 0, 0, 0, 0, ?4)",
-            params![nous_id, domain, DEFAULT_SCORE, now],
+            params![nous_id, domain, default_score, now],
         )
         .context(error::CompetenceStoreSnafu {
             message: "failed to ensure domain row",

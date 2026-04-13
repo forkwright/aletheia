@@ -3,24 +3,6 @@
 use snafu::ResultExt;
 use tracing::{info, instrument};
 
-/// Context token count that unconditionally triggers distillation.
-const CONTEXT_TOKEN_TRIGGER: u64 = 120_000;
-
-/// Message count that unconditionally triggers distillation.
-const MESSAGE_COUNT_TRIGGER: i64 = 150;
-
-/// Days since last distillation before a session is considered stale.
-const STALE_SESSION_DAYS: i64 = 7;
-
-/// Minimum message count required for the stale-session trigger to fire.
-const STALE_SESSION_MIN_MESSAGES: i64 = 20;
-
-/// Message count that triggers distillation when a session has never been distilled.
-const NEVER_DISTILLED_MESSAGE_TRIGGER: i64 = 30;
-
-/// Minimum message count required for the legacy ratio-based trigger to fire.
-const LEGACY_THRESHOLD_MIN_MESSAGES: i64 = 10;
-
 use hermeneus::provider::LlmProvider;
 use hermeneus::types::{Content, Message as HermeneusMessage, Role as HermeneusRole};
 use melete::distill::{DistillConfig, DistillEngine, DistillResult};
@@ -32,22 +14,79 @@ use mneme::types::{SessionMetrics, SessionOrigin};
 use crate::error;
 
 /// Configuration for distillation triggers.
+///
+/// All threshold fields are read from [`taxis::config::AgentBehaviorDefaults`] at
+/// construction. The `Default` impl uses the same values as the deleted constants so
+/// behaviour is unchanged when the config is uncustomised.
 #[derive(Debug, Clone)]
 pub struct DistillTriggerConfig {
-    /// Fraction of context window that triggers legacy threshold (default 0.7).
+    /// Fraction of context window that triggers legacy threshold. Default: 0.7.
     pub max_history_share: f64,
     /// Model to use for distillation.
     pub model: String,
-    /// Messages to preserve verbatim at the tail (default 3).
+    /// Messages to preserve verbatim at the tail. Default: 3.
     pub verbatim_tail: usize,
+    /// Context token count that unconditionally triggers distillation. Default: `120_000`.
+    pub context_token_trigger: u64,
+    /// Message count that unconditionally triggers distillation. Default: 150.
+    pub message_count_trigger: i64,
+    /// Days idle before a session is considered stale for distillation. Default: 7.
+    pub stale_session_days: i64,
+    /// Minimum messages required for stale-session distillation. Default: 20.
+    pub stale_session_min_messages: i64,
+    /// Message count trigger for sessions never distilled. Default: 30.
+    pub never_distilled_trigger: i64,
+    /// Minimum messages for legacy distillation threshold. Default: 10.
+    pub legacy_min_messages: i64,
 }
 
 impl Default for DistillTriggerConfig {
+    #[expect(
+        clippy::cast_possible_wrap,
+        clippy::as_conversions,
+        reason = "taxis config stores u64; DistillTriggerConfig uses i64 to match SessionMetrics::message_count; values are small by domain invariant"
+    )]
     fn default() -> Self {
+        let b = taxis::config::AgentBehaviorDefaults::default();
         Self {
             max_history_share: 0.7,
             model: "claude-sonnet-4-20250514".to_owned(),
             verbatim_tail: 3,
+            context_token_trigger: b.distillation_context_token_trigger,
+            message_count_trigger: b.distillation_message_count_trigger as i64,
+            stale_session_days: b.distillation_stale_session_days as i64,
+            stale_session_min_messages: b.distillation_stale_min_messages as i64,
+            never_distilled_trigger: b.distillation_never_distilled_trigger as i64,
+            legacy_min_messages: b.distillation_legacy_min_messages as i64,
+        }
+    }
+}
+
+impl DistillTriggerConfig {
+    /// Build from a resolved agent behavior config.
+    ///
+    /// Uses `model` and `verbatim_tail` from [`Default`], overrides threshold fields
+    /// from `behavior`. Called at actor construction with the per-agent config
+    /// that cascades from taxis → [`NousConfig`] → [`NousActor`].
+    ///
+    /// [`NousConfig`]: crate::config::NousConfig
+    /// [`NousActor`]: crate::actor::NousActor
+    #[must_use]
+    #[expect(
+        clippy::cast_possible_wrap,
+        clippy::as_conversions,
+        reason = "taxis config stores u64; DistillTriggerConfig uses i64 to match SessionMetrics::message_count; values are small by domain invariant"
+    )]
+    pub fn from_behavior(behavior: &taxis::config::AgentBehaviorDefaults) -> Self {
+        let base = Self::default();
+        Self {
+            context_token_trigger: behavior.distillation_context_token_trigger,
+            message_count_trigger: behavior.distillation_message_count_trigger as i64,
+            stale_session_days: behavior.distillation_stale_session_days as i64,
+            stale_session_min_messages: behavior.distillation_stale_min_messages as i64,
+            never_distilled_trigger: behavior.distillation_never_distilled_trigger as i64,
+            legacy_min_messages: behavior.distillation_legacy_min_messages as i64,
+            ..base
         }
     }
 }
@@ -86,14 +125,26 @@ pub fn should_trigger_distillation(
     // unreachable negative case rather than panicking.
     let actual_context_u64 = u64::try_from(actual_context).unwrap_or(0);
 
-    if actual_context_u64 >= CONTEXT_TOKEN_TRIGGER {
-        return Some(format!("context={actual_context} >= 120K"));
+    tracing::debug!(
+        threshold = config.context_token_trigger,
+        "distillation: context_token_trigger"
+    );
+    if actual_context_u64 >= config.context_token_trigger {
+        return Some(format!(
+            "context={actual_context} >= {}",
+            config.context_token_trigger
+        ));
     }
 
-    if session.metrics.message_count >= MESSAGE_COUNT_TRIGGER {
+    tracing::debug!(
+        threshold = config.message_count_trigger,
+        "distillation: message_count_trigger"
+    );
+    if session.metrics.message_count >= config.message_count_trigger {
         return Some(format!(
-            "message_count={} >= {MESSAGE_COUNT_TRIGGER}",
-            session.metrics.message_count
+            "message_count={} >= {}",
+            session.metrics.message_count,
+            config.message_count_trigger
         ));
     }
 
@@ -102,7 +153,14 @@ pub fn should_trigger_distillation(
     {
         let age = jiff::Timestamp::now().duration_since(last_ts);
         let days = age.as_secs() / 86_400;
-        if days >= STALE_SESSION_DAYS && session.metrics.message_count >= STALE_SESSION_MIN_MESSAGES
+        tracing::debug!(
+            days_idle = days,
+            threshold = config.stale_session_days,
+            min_messages = config.stale_session_min_messages,
+            "distillation: stale_session check"
+        );
+        if days >= config.stale_session_days
+            && session.metrics.message_count >= config.stale_session_min_messages
         {
             return Some(format!(
                 "stale ({days}d) + {} msgs",
@@ -111,8 +169,12 @@ pub fn should_trigger_distillation(
         }
     }
 
+    tracing::debug!(
+        threshold = config.never_distilled_trigger,
+        "distillation: never_distilled_trigger"
+    );
     if session.metrics.distillation_count == 0
-        && session.metrics.message_count >= NEVER_DISTILLED_MESSAGE_TRIGGER
+        && session.metrics.message_count >= config.never_distilled_trigger
     {
         return Some(format!(
             "never distilled + {} msgs",
@@ -128,8 +190,13 @@ pub fn should_trigger_distillation(
         reason = "u64→f64→u64: context_window ≤ model max (~2M tokens), well below f64 mantissa 2^53; product is a rough threshold for comparison and small truncation on round-trip is acceptable"
     )]
     let threshold = (context_window as f64 * config.max_history_share) as u64;
+    tracing::debug!(
+        threshold,
+        min_messages = config.legacy_min_messages,
+        "distillation: legacy threshold check"
+    );
     if actual_context_u64 >= threshold
-        && session.metrics.message_count >= LEGACY_THRESHOLD_MIN_MESSAGES
+        && session.metrics.message_count >= config.legacy_min_messages
     {
         return Some(format!(
             "legacy threshold ({actual_context} >= {threshold})"
@@ -338,7 +405,8 @@ mod tests {
         let config = DistillTriggerConfig::default();
         let result = should_trigger_distillation(&session, 200_000, &config);
         assert!(result.is_some());
-        assert!(result.unwrap().contains("120K"));
+        // WHY: format now includes the configured threshold value, not the literal "120K"
+        assert!(result.unwrap().contains("context="));
     }
 
     #[test]
@@ -349,7 +417,7 @@ mod tests {
         let config = DistillTriggerConfig::default();
         let result = should_trigger_distillation(&session, 200_000, &config);
         assert!(result.is_some());
-        assert!(result.unwrap().contains("150"));
+        assert!(result.unwrap().contains("message_count="));
     }
 
     #[test]

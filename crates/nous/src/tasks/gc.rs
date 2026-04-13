@@ -12,20 +12,28 @@ use tracing::{debug, warn};
 use super::output;
 use super::registry::TaskRegistry;
 
-/// Default interval between GC sweeps.
-const DEFAULT_GC_INTERVAL: Duration = Duration::from_secs(5 * 60);
-
 /// Spawn a background GC task that periodically evicts stale entries.
 ///
 /// The task runs until the `shutdown` token is cancelled. Output files for
-/// evicted tasks are cleaned up from disk.
+/// evicted tasks are cleaned up from disk. The sweep interval is read from
+/// [`taxis::config::NousBehaviorConfig`] defaults.
 ///
 /// Returns a `JoinHandle` so the caller can await shutdown completion.
 pub fn spawn_gc_task(
     registry: TaskRegistry,
     shutdown: CancellationToken,
 ) -> tokio::task::JoinHandle<()> {
-    spawn_gc_task_with_interval(registry, shutdown, DEFAULT_GC_INTERVAL)
+    let gc_interval_secs =
+        taxis::config::NousBehaviorConfig::default().gc_interval_secs;
+    tracing::debug!(
+        gc_interval_secs,
+        "spawn_gc_task: interval from NousBehaviorConfig"
+    );
+    spawn_gc_task_with_interval(
+        registry,
+        shutdown,
+        Duration::from_secs(gc_interval_secs),
+    )
 }
 
 /// Spawn a GC task with a custom sweep interval.

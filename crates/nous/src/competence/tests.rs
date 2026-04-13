@@ -4,6 +4,10 @@ fn tracker() -> CompetenceTracker {
     CompetenceTracker::open_in_memory().unwrap()
 }
 
+fn cfg() -> CompetenceConfig {
+    CompetenceConfig::default()
+}
+
 #[test]
 fn default_score_is_half() {
     let t = tracker();
@@ -16,46 +20,50 @@ fn default_score_is_half() {
 
 #[test]
 fn success_increases_score() {
+    let c = cfg();
     let t = tracker();
     t.record_outcome("syn", "coding", TaskOutcome::Success)
         .unwrap();
     let score = t.score("syn", "coding").unwrap();
     assert!(
-        score > DEFAULT_SCORE,
+        score > c.default_score,
         "score after success should exceed default, got {score}"
     );
     assert!(
-        (score - (DEFAULT_SCORE + SUCCESS_BONUS)).abs() < f64::EPSILON,
+        (score - (c.default_score + c.success_bonus)).abs() < f64::EPSILON,
         "score should equal default + bonus"
     );
 }
 
 #[test]
 fn failure_decreases_score() {
+    let c = cfg();
     let t = tracker();
     t.record_outcome("syn", "coding", TaskOutcome::Failure)
         .unwrap();
     let score = t.score("syn", "coding").unwrap();
     assert!(
-        score < DEFAULT_SCORE,
+        score < c.default_score,
         "score after failure should be below default, got {score}"
     );
 }
 
 #[test]
 fn partial_does_not_change_score() {
+    let c = cfg();
     let t = tracker();
     t.record_outcome("syn", "coding", TaskOutcome::Partial)
         .unwrap();
     let score = t.score("syn", "coding").unwrap();
     assert!(
-        (score - DEFAULT_SCORE).abs() < f64::EPSILON,
+        (score - c.default_score).abs() < f64::EPSILON,
         "partial outcome should not change score"
     );
 }
 
 #[test]
 fn score_clamps_at_minimum() {
+    let c = cfg();
     let t = tracker();
     for _ in 0..20 {
         t.record_outcome("syn", "coding", TaskOutcome::Failure)
@@ -63,13 +71,15 @@ fn score_clamps_at_minimum() {
     }
     let score = t.score("syn", "coding").unwrap();
     assert!(
-        (score - MIN_SCORE).abs() < f64::EPSILON,
-        "score should clamp at minimum {MIN_SCORE}, got {score}"
+        (score - c.min_score).abs() < f64::EPSILON,
+        "score should clamp at minimum {}, got {score}",
+        c.min_score
     );
 }
 
 #[test]
 fn score_clamps_at_maximum() {
+    let c = cfg();
     let t = tracker();
     for _ in 0..50 {
         t.record_outcome("syn", "coding", TaskOutcome::Success)
@@ -77,8 +87,9 @@ fn score_clamps_at_maximum() {
     }
     let score = t.score("syn", "coding").unwrap();
     assert!(
-        (score - MAX_SCORE).abs() < f64::EPSILON,
-        "score should clamp at maximum {MAX_SCORE}, got {score}"
+        (score - c.max_score).abs() < f64::EPSILON,
+        "score should clamp at maximum {}, got {score}",
+        c.max_score
     );
 }
 
@@ -131,6 +142,7 @@ fn agent_competence_returns_all_domains() {
 
 #[test]
 fn overall_score_averages_domains() {
+    let c = cfg();
     let t = tracker();
     t.record_outcome("syn", "coding", TaskOutcome::Success)
         .unwrap();
@@ -138,7 +150,8 @@ fn overall_score_averages_domains() {
         .unwrap();
 
     let comp = t.agent_competence("syn").unwrap();
-    let expected = (DEFAULT_SCORE + SUCCESS_BONUS + DEFAULT_SCORE + SUCCESS_BONUS) / 2.0;
+    let expected =
+        (c.default_score + c.success_bonus + c.default_score + c.success_bonus) / 2.0;
     assert!(
         (comp.overall_score - expected).abs() < f64::EPSILON,
         "overall score should average domains: expected {expected}, got {}",
@@ -174,6 +187,7 @@ fn rolling_stats_empty_domain() {
 
 #[test]
 fn escalation_recommended_on_high_failure_rate() {
+    let c = cfg();
     let t = tracker();
     for _ in 0..3 {
         t.record_outcome("syn", "debugging", TaskOutcome::Success)
@@ -189,11 +203,12 @@ fn escalation_recommended_on_high_failure_rate() {
         rec.should_escalate,
         "should recommend escalation with 70% failure rate"
     );
-    assert!(rec.failure_rate > ESCALATION_FAILURE_THRESHOLD);
+    assert!(rec.failure_rate > c.escalation_failure_threshold);
 }
 
 #[test]
 fn no_escalation_with_few_samples() {
+    let c = cfg();
     let t = tracker();
     t.record_outcome("syn", "writing", TaskOutcome::Failure)
         .unwrap();
@@ -203,7 +218,8 @@ fn no_escalation_with_few_samples() {
     let rec = t.escalation_recommendation("syn", "writing").unwrap();
     assert!(
         !rec.should_escalate,
-        "should not recommend escalation with fewer than {ESCALATION_MIN_SAMPLES} samples"
+        "should not recommend escalation with fewer than {} samples",
+        c.escalation_min_samples
     );
 }
 
@@ -270,11 +286,12 @@ fn rolling_stats_rates() {
 
 #[test]
 fn agent_competence_empty_returns_default() {
+    let c = cfg();
     let t = tracker();
     let comp = t.agent_competence("nonexistent").unwrap();
     assert!(comp.domains.is_empty());
     assert!(
-        (comp.overall_score - DEFAULT_SCORE).abs() < f64::EPSILON,
+        (comp.overall_score - c.default_score).abs() < f64::EPSILON,
         "empty agent should have default overall score"
     );
 }

@@ -172,37 +172,63 @@ pub struct LoopDetector {
     warnings_issued: u32,
     /// Maximum history entries retained.
     window: usize,
+    /// Maximum cycle length examined during cycle detection. Default: 10.
+    cycle_detection_max_len: usize,
 }
 
-const DEFAULT_LOOP_WINDOW: usize = 50;
-
-/// Maximum cycle length tested during the cycle-detection pass.
-const CYCLE_DETECTION_MAX_LEN: usize = 10;
-
 impl LoopDetector {
-    /// Create a new loop detector with the default window size (50).
+    /// Create a new loop detector with the default window size.
+    ///
+    /// Window size and cycle detection length read from
+    /// [`taxis::config::NousBehaviorConfig`] defaults.
     #[must_use]
     pub fn new(threshold: u32) -> Self {
+        let b = taxis::config::NousBehaviorConfig::default();
         Self {
-            history: VecDeque::with_capacity(DEFAULT_LOOP_WINDOW),
+            history: VecDeque::with_capacity(b.loop_detection_window),
             threshold,
             error_threshold: 4,
             max_warnings: 2,
             warnings_issued: 0,
-            window: DEFAULT_LOOP_WINDOW,
+            window: b.loop_detection_window,
+            cycle_detection_max_len: b.cycle_detection_max_len,
         }
     }
 
     /// Create a loop detector with full configuration.
+    ///
+    /// Window size and cycle detection length read from
+    /// [`taxis::config::NousBehaviorConfig`] defaults.
     #[must_use]
     pub fn with_limits(threshold: u32, error_threshold: u32, max_warnings: u32) -> Self {
+        let b = taxis::config::NousBehaviorConfig::default();
         Self {
-            history: VecDeque::with_capacity(DEFAULT_LOOP_WINDOW),
+            history: VecDeque::with_capacity(b.loop_detection_window),
             threshold,
             error_threshold,
             max_warnings,
             warnings_issued: 0,
-            window: DEFAULT_LOOP_WINDOW,
+            window: b.loop_detection_window,
+            cycle_detection_max_len: b.cycle_detection_max_len,
+        }
+    }
+
+    /// Create a loop detector configured from a deployment behavior config.
+    #[must_use]
+    pub fn with_behavior(
+        threshold: u32,
+        error_threshold: u32,
+        max_warnings: u32,
+        behavior: &taxis::config::NousBehaviorConfig,
+    ) -> Self {
+        Self {
+            history: VecDeque::with_capacity(behavior.loop_detection_window),
+            threshold,
+            error_threshold,
+            max_warnings,
+            warnings_issued: 0,
+            window: behavior.loop_detection_window,
+            cycle_detection_max_len: behavior.cycle_detection_max_len,
         }
     }
 
@@ -409,7 +435,7 @@ impl LoopDetector {
         }
     }
 
-    /// Detect repeating cycles of length 2--`CYCLE_DETECTION_MAX_LEN`.
+    /// Detect repeating cycles of length 2--`cycle_detection_max_len`.
     fn detect_cycle(&self) -> Option<String> {
         let n = self.history.len();
         #[expect(
@@ -418,7 +444,12 @@ impl LoopDetector {
         )]
         let t = self.threshold as usize; // kanon:ignore RUST/as-cast
 
-        for cycle_len in 2..=CYCLE_DETECTION_MAX_LEN {
+        tracing::debug!(
+            cycle_detection_max_len = self.cycle_detection_max_len,
+            "loop detector: detect_cycle"
+        );
+
+        for cycle_len in 2..=self.cycle_detection_max_len {
             let needed = cycle_len * t;
             if n < needed {
                 // WHY: cycle_len increases each iteration; if n is too small for this

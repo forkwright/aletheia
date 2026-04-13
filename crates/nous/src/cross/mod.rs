@@ -130,11 +130,7 @@ impl AskGraph {
         let mut chain = vec![from.to_owned(), to.to_owned()];
         let mut current = to;
 
-        loop {
-            let Some(targets) = self.edges.get(current) else {
-                break;
-            };
-
+        while let Some(targets) = self.edges.get(current) {
             for next in targets {
                 if next == from {
                     chain.push(next.clone());

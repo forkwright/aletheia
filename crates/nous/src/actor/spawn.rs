@@ -51,6 +51,7 @@ pub(crate) fn spawn(
     extra_bootstrap: Vec<BootstrapSection>,
     cross_rx: Option<mpsc::Receiver<CrossNousEnvelope>>,
     cancel: CancellationToken,
+    nous_behavior: taxis::config::NousBehaviorConfig,
 ) -> (NousHandle, tokio::task::JoinHandle<()>, Arc<AtomicBool>) {
     let (tx, rx) = mpsc::channel(DEFAULT_INBOX_CAPACITY);
     let id = config.id.to_string();
@@ -76,6 +77,7 @@ pub(crate) fn spawn(
         tool_services,
         extra_bootstrap,
         Arc::clone(&active_turn),
+        nous_behavior,
     );
 
     let span = tracing::info_span!("nous_actor", nous.id = %id);
@@ -146,6 +148,7 @@ pub fn spawn_for_daemon(
         params.extra_bootstrap,
         None, // WHY: daemon-spawned children don't use cross-nous messaging
         cancel,
+        taxis::config::NousBehaviorConfig::default(),
     )
 }
 

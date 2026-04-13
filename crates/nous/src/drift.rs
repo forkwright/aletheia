@@ -11,24 +11,6 @@ use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 use tracing::warn;
 
-/// Default rolling window size (number of turns).
-const DEFAULT_WINDOW_SIZE: usize = 20;
-
-/// Default number of recent turns to compare against the full window.
-const DEFAULT_RECENT_SIZE: usize = 5;
-
-/// Default z-score threshold for drift detection.
-///
-/// A deviation of 2.0 standard deviations from the mean is considered
-/// statistically significant for quality drift.
-const DEFAULT_DEVIATION_THRESHOLD: f64 = 2.0;
-
-/// Minimum number of turns in the window before drift detection activates.
-///
-/// WHY: with fewer samples the standard deviation is unreliable and would
-/// produce false positives.
-const MIN_SAMPLES: usize = 8;
-
 /// Quality metrics collected after each turn.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TurnMetrics {
@@ -84,22 +66,45 @@ pub struct DriftEvent {
 }
 
 /// Configuration for drift detection thresholds.
+///
+/// All defaults match the constants they replace so behaviour is identical
+/// when the detector is constructed with `DriftConfig::default()`.
 #[derive(Debug, Clone)]
 pub struct DriftConfig {
-    /// Number of turns in the rolling window.
+    /// Number of turns in the rolling window. Default: 20.
     pub window_size: usize,
-    /// Number of recent turns to compare against the window.
+    /// Number of recent turns to compare against the window. Default: 5.
     pub recent_size: usize,
-    /// Z-score threshold for triggering a drift event.
+    /// Z-score threshold for triggering a drift event. Default: 2.0.
     pub deviation_threshold: f64,
+    /// Minimum turns in the window before drift detection activates. Default: 8.
+    ///
+    /// WHY: with fewer samples the standard deviation is unreliable and would
+    /// produce false positives.
+    pub min_samples: usize,
 }
 
 impl Default for DriftConfig {
     fn default() -> Self {
+        let b = taxis::config::AgentBehaviorDefaults::default();
         Self {
-            window_size: DEFAULT_WINDOW_SIZE,
-            recent_size: DEFAULT_RECENT_SIZE,
-            deviation_threshold: DEFAULT_DEVIATION_THRESHOLD,
+            window_size: b.drift_window_size,
+            recent_size: b.drift_recent_size,
+            deviation_threshold: b.drift_deviation_threshold,
+            min_samples: b.drift_min_samples,
+        }
+    }
+}
+
+impl DriftConfig {
+    /// Build from a resolved agent behavior config.
+    #[must_use]
+    pub fn from_behavior(behavior: &taxis::config::AgentBehaviorDefaults) -> Self {
+        Self {
+            window_size: behavior.drift_window_size,
+            recent_size: behavior.drift_recent_size,
+            deviation_threshold: behavior.drift_deviation_threshold,
+            min_samples: behavior.drift_min_samples,
         }
     }
 }
@@ -136,7 +141,13 @@ impl DriftDetector {
             self.window.pop_front();
         }
 
-        if self.window.len() < MIN_SAMPLES {
+        tracing::debug!(
+            window_len = self.window.len(),
+            min_samples = self.config.min_samples,
+            "drift record: checking threshold"
+        );
+
+        if self.window.len() < self.config.min_samples {
             return Vec::new();
         }
 
@@ -210,7 +221,7 @@ impl DriftDetector {
         let baseline_end = n.saturating_sub(recent_size);
 
         // WHY: need enough baseline samples for meaningful statistics
-        if baseline_end < MIN_SAMPLES.saturating_sub(self.config.recent_size) {
+        if baseline_end < self.config.min_samples.saturating_sub(self.config.recent_size) {
             return None;
         }
         if baseline_end == 0 {
@@ -371,6 +382,7 @@ mod tests {
             window_size: 20,
             recent_size: 5,
             deviation_threshold: 2.0,
+            ..DriftConfig::default()
         });
 
         // Record 20 turns of stable metrics
@@ -386,6 +398,7 @@ mod tests {
             window_size: 20,
             recent_size: 5,
             deviation_threshold: 2.0,
+            ..DriftConfig::default()
         });
 
         // Build a baseline of normal responses
@@ -410,6 +423,7 @@ mod tests {
             window_size: 20,
             recent_size: 5,
             deviation_threshold: 2.0,
+            ..DriftConfig::default()
         });
 
         // Build a baseline of low error rate
@@ -434,6 +448,7 @@ mod tests {
             window_size: 20,
             recent_size: 5,
             deviation_threshold: 2.0,
+            ..DriftConfig::default()
         });
 
         // Build a baseline with no corrections
@@ -458,6 +473,7 @@ mod tests {
             window_size: 10,
             recent_size: 3,
             deviation_threshold: 2.0,
+            min_samples: 3,
         });
 
         for _ in 0..25 {
@@ -484,6 +500,7 @@ mod tests {
             window_size: 20,
             recent_size: 5,
             deviation_threshold: 2.0,
+            ..DriftConfig::default()
         });
 
         for _ in 0..15 {
@@ -512,6 +529,7 @@ mod tests {
             window_size: 20,
             recent_size: 5,
             deviation_threshold: 2.0,
+            ..DriftConfig::default()
         });
 
         // All identical metrics: zero variance, cannot compute z-score
@@ -600,10 +618,12 @@ mod tests {
 
     #[test]
     fn default_detector_config() {
+        let c = DriftConfig::default();
         let detector = DriftDetector::default();
         assert_eq!(detector.turn_count(), 0);
-        assert_eq!(detector.config.window_size, DEFAULT_WINDOW_SIZE);
-        assert_eq!(detector.config.recent_size, DEFAULT_RECENT_SIZE);
-        assert!((detector.config.deviation_threshold - DEFAULT_DEVIATION_THRESHOLD).abs() < f64::EPSILON);
+        assert_eq!(detector.config.window_size, c.window_size);
+        assert_eq!(detector.config.recent_size, c.recent_size);
+        assert!((detector.config.deviation_threshold - c.deviation_threshold).abs() < f64::EPSILON);
+        assert_eq!(detector.config.min_samples, c.min_samples);
     }
 }

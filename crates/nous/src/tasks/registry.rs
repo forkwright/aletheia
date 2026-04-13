@@ -121,7 +121,7 @@ impl TaskRegistry {
 
     /// Create a registry with the default 30-minute GC deadline.
     pub fn with_default_deadline() -> Self {
-        Self::new(Duration::from_secs(30 * 60))
+        Self::new(Duration::from_mins(30))
     }
 
     /// The configured GC deadline.
@@ -463,7 +463,7 @@ impl TaskRegistry {
 
 impl std::fmt::Debug for TaskRegistry {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let count = self.tasks.read().map(|t| t.len()).unwrap_or(0);
+        let count = self.tasks.read().map_or(0, |t| t.len());
         f.debug_struct("TaskRegistry")
             .field("task_count", &count)
             .field("gc_deadline", &self.gc_deadline)

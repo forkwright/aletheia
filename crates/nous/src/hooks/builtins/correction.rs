@@ -16,12 +16,7 @@ use serde::{Deserialize, Serialize};
 use tracing::{debug, warn};
 
 use crate::hooks::{HookResult, QueryContext, TurnContext, TurnHook};
-
-/// Maximum number of corrections retained per agent.
-///
-/// WHY: Unbounded corrections would bloat the system prompt. 50 covers
-/// realistic operator usage; oldest are evicted when the cap is reached.
-const MAX_CORRECTIONS: usize = 50;
+use taxis::config::AgentBehaviorDefaults;
 
 /// Filename for the corrections store within the agent workspace.
 const CORRECTIONS_FILENAME: &str = "corrections.json";
@@ -410,8 +405,10 @@ async fn append_correction(
 
     // WHY: Evict oldest corrections when over the cap. Operator's most recent
     // corrections are more likely to be relevant.
-    if corrections.len() > MAX_CORRECTIONS {
-        let excess = corrections.len() - MAX_CORRECTIONS;
+    let max_corrections = AgentBehaviorDefaults::default().corrections_max_corrections;
+    debug!(max_corrections, "corrections cap enforced");
+    if corrections.len() > max_corrections {
+        let excess = corrections.len() - max_corrections;
         corrections.drain(..excess);
     }
 
@@ -657,9 +654,10 @@ mod tests {
     #[tokio::test]
     async fn evicts_oldest_when_over_cap() {
         let dir = tempfile::tempdir().expect("create temp dir");
+        let max_corrections = AgentBehaviorDefaults::default().corrections_max_corrections;
 
-        // Write MAX_CORRECTIONS + 5 corrections.
-        for i in 0..MAX_CORRECTIONS + 5 {
+        // Write max_corrections + 5 corrections.
+        for i in 0..max_corrections + 5 {
             let correction = Correction {
                 text: format!("Correction {i}"),
                 created_at: format!("2026-04-06T00:00:{i:02}Z"),
@@ -673,14 +671,14 @@ mod tests {
         let loaded = load_corrections(dir.path()).await.expect("load");
         assert_eq!(
             loaded.len(),
-            MAX_CORRECTIONS,
-            "should cap at MAX_CORRECTIONS"
+            max_corrections,
+            "should cap at max_corrections"
         );
         // Oldest corrections (0-4) should be evicted; newest should remain.
         assert_eq!(loaded[0].text, "Correction 5");
         assert_eq!(
-            loaded[MAX_CORRECTIONS - 1].text,
-            format!("Correction {}", MAX_CORRECTIONS + 4)
+            loaded[max_corrections - 1].text,
+            format!("Correction {}", max_corrections + 4)
         );
     }
 
