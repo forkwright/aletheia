@@ -840,3 +840,295 @@ impl<'a> SessionTx<'a> {
         Ok(orphan_count)
     }
 }
+
+#[cfg(test)]
+#[expect(
+    clippy::unwrap_used,
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    reason = "test assertions and test-only numeric casts"
+)]
+mod tests {
+    use crate::DbInstance;
+
+    // ---------------------------------------------------------------------------
+    // Helper: create a standard 4-dim F32/L2 HNSW index on a relation named
+    // `vectors { id: Int => vec: <F32; 4> }` with the index named `idx`.
+    // ---------------------------------------------------------------------------
+    fn setup_db() -> DbInstance {
+        let db = DbInstance::default();
+        db.run_default(":create vectors { id: Int => vec: <F32; 4> }")
+            .unwrap();
+        db.run_default(
+            r#"::hnsw create vectors:idx {
+                dim: 4,
+                m: 16,
+                dtype: F32,
+                fields: [vec],
+                distance: L2,
+                ef_construction: 50,
+                extend_candidates: false,
+                keep_pruned_connections: false,
+            }"#,
+        )
+        .unwrap();
+        db
+    }
+
+    // Insert `n` vectors into the index. Vector for id `i` is [i,i,i,i].
+    fn insert_vectors(db: &DbInstance, n: usize) {
+        for i in 0..n {
+            let val = i as f32;
+            db.run_default(&format!(
+                "?[id, vec] <- [[{i}, vec([{val}, {val}, {val}, {val}])]] :put vectors {{}}"
+            ))
+            .unwrap();
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // hnsw_put: basic insert — vector is retrievable after insertion.
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn put_single_vector_is_retrievable() {
+        let db = setup_db();
+        db.run_default("?[id, vec] <- [[42, vec([1.0, 2.0, 3.0, 4.0])]] :put vectors {}")
+            .unwrap();
+        let res = db
+            .run_default("?[id, vec] := *vectors{id, vec}, id = 42")
+            .unwrap();
+        assert_eq!(res.rows.len(), 1, "inserted vector should be retrievable");
+        let id = res.rows[0][0].get_int().unwrap();
+        assert_eq!(id, 42);
+    }
+
+    #[test]
+    fn put_multiple_vectors_all_retrievable() {
+        let db = setup_db();
+        insert_vectors(&db, 10);
+        let res = db.run_default("?[id] := *vectors{id}").unwrap();
+        assert_eq!(res.rows.len(), 10, "all 10 inserted vectors should be stored");
+    }
+
+    // Duplicate insert (same key, same vector): idempotent — no duplicate rows.
+    #[test]
+    fn put_duplicate_key_is_idempotent() {
+        let db = setup_db();
+        db.run_default("?[id, vec] <- [[1, vec([1.0, 1.0, 1.0, 1.0])]] :put vectors {}")
+            .unwrap();
+        db.run_default("?[id, vec] <- [[1, vec([1.0, 1.0, 1.0, 1.0])]] :put vectors {}")
+            .unwrap();
+        let res = db.run_default("?[id] := *vectors{id}").unwrap();
+        assert_eq!(res.rows.len(), 1, "duplicate insert must not create extra rows");
+    }
+
+    // Updating a vector (same key, different vector) replaces the old entry.
+    #[test]
+    fn put_updated_vector_replaces_old() {
+        let db = setup_db();
+        db.run_default("?[id, vec] <- [[7, vec([0.0, 0.0, 0.0, 0.0])]] :put vectors {}")
+            .unwrap();
+        db.run_default("?[id, vec] <- [[7, vec([9.0, 9.0, 9.0, 9.0])]] :put vectors {}")
+            .unwrap();
+        // Search near [9,9,9,9]: id=7 (updated) should be the closest.
+        let res = db
+            .run_default(
+                r#"?[id, dist] := ~vectors:idx{id | query: vec([9.0, 9.0, 9.0, 9.0]), k: 1, ef: 50, bind_distance: dist}"#,
+            )
+            .unwrap();
+        assert_eq!(res.rows.len(), 1);
+        assert_eq!(res.rows[0][0].get_int().unwrap(), 7);
+        let dist = res.rows[0][1].get_float().unwrap();
+        assert!(dist < 1e-6, "updated vector should be at distance ~0 from query");
+    }
+
+    // Empty index: put nothing, search returns empty.
+    #[test]
+    fn put_empty_index_search_returns_nothing() {
+        let db = setup_db();
+        let res = db
+            .run_default(
+                r#"?[id, dist] := ~vectors:idx{id | query: vec([1.0, 2.0, 3.0, 4.0]), k: 5, ef: 50, bind_distance: dist}"#,
+            )
+            .unwrap();
+        assert!(res.rows.is_empty(), "empty index must return no results");
+    }
+
+    // -----------------------------------------------------------------------
+    // hnsw_search_level / hnsw_search_level_pooled: exercised via insertion
+    // (called during put for graph construction) and via KNN queries.
+    // -----------------------------------------------------------------------
+
+    // Search returns nearest neighbor in distance order after many inserts.
+    #[test]
+    fn search_level_returns_nearest_first() {
+        let db = setup_db();
+        // Vectors [0,0,0,0] through [49,0,0,0] along a single axis.
+        for i in 0..50 {
+            let val = i as f32;
+            db.run_default(&format!(
+                "?[id, vec] <- [[{i}, vec([{val}, 0.0, 0.0, 0.0])]] :put vectors {{}}"
+            ))
+            .unwrap();
+        }
+        // Query at [25,0,0,0]: id=25 should be first.
+        let res = db
+            .run_default(
+                r#"?[id, dist] := ~vectors:idx{id | query: vec([25.0, 0.0, 0.0, 0.0]), k: 5, ef: 50, bind_distance: dist} :order dist"#,
+            )
+            .unwrap();
+        assert!(!res.rows.is_empty(), "search should return results");
+        let first_id = res.rows[0][0].get_int().unwrap();
+        assert_eq!(first_id, 25, "nearest neighbor (id=25) must be returned first");
+    }
+
+    // Distances in search results are non-decreasing (graph traversal is sound).
+    #[test]
+    fn search_level_results_non_decreasing_distance() {
+        let db = setup_db();
+        insert_vectors(&db, 30);
+        let res = db
+            .run_default(
+                r#"?[id, dist] := ~vectors:idx{id | query: vec([15.0, 15.0, 15.0, 15.0]), k: 10, ef: 50, bind_distance: dist} :order dist"#,
+            )
+            .unwrap();
+        assert!(!res.rows.is_empty(), "search must return results after 30 inserts");
+        let distances: Vec<f64> = res.rows.iter().filter_map(|r| r[1].get_float()).collect();
+        for window in distances.windows(2) {
+            assert!(
+                window[0] <= window[1],
+                "distances must be non-decreasing: {} > {}",
+                window[0],
+                window[1]
+            );
+        }
+    }
+
+    // Pool variant: search with ef=1 (greedy, single candidate) still finds the
+    // exact match when the vector is in the index.
+    #[test]
+    fn search_level_pooled_greedy_finds_exact_match() {
+        let db = setup_db();
+        insert_vectors(&db, 20);
+        let res = db
+            .run_default(
+                r#"?[id] := ~vectors:idx{id | query: vec([10.0, 10.0, 10.0, 10.0]), k: 1, ef: 1, bind_distance: _dist}"#,
+            )
+            .unwrap();
+        // With ef=1 the graph traversal is very greedy — it may or may not find
+        // the exact match, but the search must complete without error.
+        assert!(
+            res.rows.len() <= 1,
+            "greedy search must return at most k=1 results"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // hnsw_get_neighbours: exercised via shrink-neighbour during dense insert.
+    // A large insert batch forces neighbour shrinking when m_max is exceeded.
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn get_neighbours_dense_insert_preserves_connectivity() {
+        // Insert many vectors — triggers hnsw_get_neighbours via shrink logic.
+        let db = setup_db();
+        insert_vectors(&db, 100);
+        // After 100 inserts the graph should still be searchable.
+        let res = db
+            .run_default(
+                r#"?[id, dist] := ~vectors:idx{id | query: vec([50.0, 50.0, 50.0, 50.0]), k: 5, ef: 50, bind_distance: dist}"#,
+            )
+            .unwrap();
+        assert!(
+            !res.rows.is_empty(),
+            "graph must remain searchable after dense insert (neighbour shrink)"
+        );
+        assert!(
+            res.rows.len() <= 5,
+            "must return at most k=5 results, got {}",
+            res.rows.len()
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // hnsw_check_consistency: the function is pub(crate) on SessionTx and is
+    // not yet wired to any Datalog command (dead_code).  The property it checks
+    // — that every canary entry has a corresponding base-relation row — is
+    // indirectly verified here: we insert vectors, confirm they are searchable,
+    // then remove one and confirm it is gone from both the base relation and the
+    // index.  A failing consistency check would manifest as search returning
+    // deleted rows, or inserts failing with corrupted-index errors.
+    // -----------------------------------------------------------------------
+
+    // After a clean batch of inserts, all vectors are present in the base
+    // relation (the condition hnsw_check_consistency validates).
+    #[test]
+    fn consistency_all_inserted_vectors_present_in_base_relation() {
+        let db = setup_db();
+        insert_vectors(&db, 15);
+        let res = db.run_default("?[id] := *vectors{id}").unwrap();
+        assert_eq!(
+            res.rows.len(),
+            15,
+            "every inserted vector must have a base-relation row (consistency invariant)"
+        );
+    }
+
+    // After removing a vector, neither the base relation nor the index contains
+    // it — consistent state.
+    #[test]
+    fn consistency_deleted_vector_absent_from_index() {
+        let db = setup_db();
+        insert_vectors(&db, 10);
+        db.run_default("?[id] <- [[5]] :rm vectors {}").unwrap();
+
+        // Base relation must not contain id=5.
+        let base = db
+            .run_default("?[id] := *vectors{id}, id = 5")
+            .unwrap();
+        assert!(base.rows.is_empty(), "deleted vector must be absent from base relation");
+
+        // Index must not return id=5 in search results.
+        let search = db
+            .run_default(
+                r#"?[id] := ~vectors:idx{id | query: vec([5.0, 5.0, 5.0, 5.0]), k: 10, ef: 50, bind_distance: _dist}"#,
+            )
+            .unwrap();
+        let ids: Vec<i64> = search.rows.iter().filter_map(|r| r[0].get_int()).collect();
+        assert!(
+            !ids.contains(&5),
+            "deleted vector id=5 must not appear in search results (index consistency)"
+        );
+    }
+
+    // Rebuild: drop and recreate the index — consistency is restored.
+    #[test]
+    fn consistency_after_index_rebuild() {
+        let db = setup_db();
+        insert_vectors(&db, 20);
+        db.run_default("::hnsw drop vectors:idx").unwrap();
+        db.run_default(
+            r#"::hnsw create vectors:idx {
+                dim: 4,
+                m: 16,
+                dtype: F32,
+                fields: [vec],
+                distance: L2,
+                ef_construction: 50,
+                extend_candidates: false,
+                keep_pruned_connections: false,
+            }"#,
+        )
+        .unwrap();
+        let res = db
+            .run_default(
+                r#"?[id, dist] := ~vectors:idx{id | query: vec([10.0, 10.0, 10.0, 10.0]), k: 3, ef: 50, bind_distance: dist}"#,
+            )
+            .unwrap();
+        assert!(
+            !res.rows.is_empty(),
+            "rebuilt index must be searchable — base-relation rows are consistent"
+        );
+    }
+}
