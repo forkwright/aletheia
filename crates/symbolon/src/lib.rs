@@ -22,7 +22,7 @@ pub mod jwt;
 pub mod metrics;
 /// Argon2id password hashing and verification.
 pub(crate) mod password;
-/// `SQLite`-backed credential and token storage.
+/// Credential and token storage (fjall by default, `SQLite` with `sqlite` feature).
 pub(crate) mod store;
 /// Shared auth types: claims, roles, actions, token kinds.
 pub mod types;

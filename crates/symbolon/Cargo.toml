@@ -11,6 +11,11 @@ rust-version.workspace = true
 workspace = true
 
 [features]
+# WHY: fjall is the new default backend — pure Rust, zero C dependency.
+# sqlite is preserved for backward compatibility and migration parity.
+default = ["fjall"]
+fjall = ["dep:fjall", "dep:jiff", "dep:tempfile"]
+sqlite = ["dep:rusqlite"]
 keyring = ["dep:keyring"]
 test-support = []
 test-core = []
@@ -21,6 +26,8 @@ koina = { path = "../koina" }
 keyring = { version = "3", optional = true }
 argon2 = { version = "0.5", features = ["std"] }
 blake3 = "1"
+fjall = { version = "3", default-features = false, optional = true }
+jiff = { workspace = true, features = ["serde"], optional = true }
 prometheus = { workspace = true }
 rand = { workspace = true }
 hmac = { workspace = true }
@@ -28,12 +35,13 @@ sha2 = { workspace = true }
 aes-gcm = { workspace = true }
 reqwest = { workspace = true }
 rustix = { workspace = true }
-rusqlite = { workspace = true }
+rusqlite = { workspace = true, optional = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 # WHY: constant-time comparison for secret values (prevents timing side-channels)
 subtle = "2"
 snafu = { workspace = true }
+tempfile = { workspace = true, optional = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
 tracing = { workspace = true }
