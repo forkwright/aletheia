@@ -16,6 +16,24 @@ use crate::error::{self, Result};
 
 use super::parse::{self, CcEvent};
 
+/// Extract the OAuth access token from the raw JSON content of a CC credentials file.
+///
+/// Separated from I/O so it can be unit-tested without touching the real filesystem
+/// or the process environment.
+fn parse_oauth_token_from_json(content: &str) -> std::io::Result<String> {
+    let parsed: serde_json::Value = serde_json::from_str(content)
+        .map_err(|e| std::io::Error::other(e.to_string()))?;
+    // WHY: serde_json::Value::get returns None on missing keys (vs the
+    // panic from indexing), so this is the safe form of
+    // `parsed["claudeAiOauth"]["accessToken"]`.
+    parsed
+        .get("claudeAiOauth")
+        .and_then(|v| v.get("accessToken"))
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_owned)
+        .ok_or_else(|| std::io::Error::other("no accessToken in credentials"))
+}
+
 /// Read the OAuth access token from CC's credential file.
 ///
 /// WHY: CC's `--bare` mode disables OAuth. Instead of `--bare`, we inject
@@ -27,17 +45,7 @@ fn read_oauth_token() -> std::io::Result<String> {
         .ok_or_else(|| std::io::Error::other("HOME is not set"))?;
     let path = std::path::Path::new(&home).join(".claude/.credentials.json");
     let content = std::fs::read_to_string(&path)?;
-    let parsed: serde_json::Value = serde_json::from_str(&content)
-        .map_err(|e| std::io::Error::other(e.to_string()))?;
-    // WHY: serde_json::Value::get returns None on missing keys (vs the
-    // panic from indexing), so this is the safe form of
-    // `parsed["claudeAiOauth"]["accessToken"]`.
-    parsed
-        .get("claudeAiOauth")
-        .and_then(|v| v.get("accessToken"))
-        .and_then(serde_json::Value::as_str)
-        .map(str::to_owned)
-        .ok_or_else(|| std::io::Error::other("no accessToken in credentials"))
+    parse_oauth_token_from_json(&content)
 }
 
 /// Outcome of a CC subprocess invocation.
@@ -486,7 +494,22 @@ where
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
+    use std::fs;
+    use std::os::unix::fs::PermissionsExt as _;
+
     use super::*;
+
+    /// Write a shell script to a unique temp path and make it executable.
+    ///
+    /// Returns the script path. The caller is responsible for cleanup (or letting
+    /// the OS reclaim the temp dir on process exit).
+    fn write_script(name: &str, body: &str) -> PathBuf {
+        let path = std::env::temp_dir().join(format!("hermeneus_test_{name}_{}.sh", std::process::id()));
+        let script = format!("#!/bin/sh\n{body}\n");
+        fs::write(&path, script.as_bytes()).unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+        path
+    }
 
     /// Build a multi-line stream-json buffer from individual event JSON strings.
     fn stream_buf(events: &[&str]) -> Vec<u8> {
@@ -623,5 +646,310 @@ mod tests {
         let output = read_stream(buf.as_slice()).await.unwrap();
         assert!(output.is_error);
         assert_eq!(output.result_text, "rate limit");
+    }
+
+    // ── parse_oauth_token_from_json ───────────────────────────────────────────
+    // WHY: Tests target the JSON-parsing helper rather than read_oauth_token
+    // directly. read_oauth_token wraps parse_oauth_token_from_json with I/O
+    // and HOME resolution. Testing the parser in isolation avoids env var
+    // manipulation (unsafe in Rust 2024) while covering all key branches.
+
+    #[test]
+    fn parse_oauth_token_succeeds_with_valid_credentials() {
+        // WHY: Happy path — valid JSON with the expected key hierarchy returns
+        // the access token string without error.
+        let json = r#"{"claudeAiOauth":{"accessToken":"test-token-abc123"}}"#;
+        let token = parse_oauth_token_from_json(json).unwrap();
+        assert_eq!(token, "test-token-abc123");
+    }
+
+    #[test]
+    fn parse_oauth_token_fails_when_access_token_key_absent() {
+        // WHY: JSON exists but lacks the `accessToken` key — must return an
+        // error rather than silently returning empty, so callers don't inject
+        // a blank token into the subprocess environment.
+        let json = r#"{"claudeAiOauth":{"someOtherKey":"value"}}"#;
+        let err = parse_oauth_token_from_json(json).unwrap_err();
+        assert!(
+            err.to_string().contains("no accessToken"),
+            "expected 'no accessToken' in error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn parse_oauth_token_fails_when_top_level_key_absent() {
+        // WHY: JSON without the `claudeAiOauth` wrapper must fail cleanly —
+        // this covers flat credential formats that don't contain CC OAuth data.
+        let json = r#"{"someOtherProvider":{"accessToken":"irrelevant"}}"#;
+        let err = parse_oauth_token_from_json(json).unwrap_err();
+        assert!(
+            err.to_string().contains("no accessToken"),
+            "expected 'no accessToken' in error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn parse_oauth_token_fails_on_malformed_json() {
+        // WHY: Malformed credentials (e.g. truncated write) must return an
+        // error, not panic. The caller silently skips OAuth injection on error.
+        let err = parse_oauth_token_from_json("not-json{{{").unwrap_err();
+        assert!(!err.to_string().is_empty(), "error message must not be empty");
+    }
+
+    #[test]
+    fn parse_oauth_token_fails_on_empty_input() {
+        let err = parse_oauth_token_from_json("").unwrap_err();
+        assert!(!err.to_string().is_empty());
+    }
+
+    // ── run_completion ────────────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn run_completion_spawn_failure_reports_binary_path() {
+        // WHY: A missing or non-executable binary must produce a ProviderInit
+        // error that names the bad path so the operator can diagnose it.
+        let binary = PathBuf::from("/nonexistent/path/to/claude-binary");
+        let err = run_completion(
+            &binary,
+            "claude-test-model",
+            None,
+            "hello",
+            1024,
+            Duration::from_secs(5),
+        )
+        .await
+        .unwrap_err();
+
+        let msg = err.to_string();
+        assert!(
+            msg.contains("/nonexistent/path/to/claude-binary"),
+            "error must include the binary path, got: {msg}"
+        );
+        assert!(
+            msg.contains("provider init failed"),
+            "error must be ProviderInit variant, got: {msg}"
+        );
+    }
+
+    #[tokio::test]
+    async fn run_completion_success_collects_output() {
+        // WHY: End-to-end subprocess path with a real script. Verifies that
+        // run_completion feeds stdin, reads stdout stream-json, and returns
+        // a populated CcOutput with the result text and delta list intact.
+        let script = write_script(
+            "completion_ok",
+            // Discard all args and stdin; emit a two-event stream.
+            r#"cat > /dev/null
+printf '{"type":"assistant","message":{"type":"text","text":"hello "}}\n'
+printf '{"type":"assistant","message":{"type":"text","text":"world"}}\n'
+printf '{"type":"result","subtype":"success","result":"hello world","is_error":false,"session_id":"s1","cost_usd":0.001,"duration_ms":200}\n'"#,
+        );
+
+        let output = run_completion(
+            &script,
+            "claude-test-model",
+            None,
+            "prompt text",
+            1024,
+            Duration::from_secs(10),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(output.result_text, "hello world");
+        assert!(!output.is_error);
+        assert_eq!(output.stream_deltas, vec!["hello ", "world"]);
+        assert_eq!(output.session_id.as_deref(), Some("s1"));
+        assert_eq!(output.cost_usd, Some(0.001));
+        assert_eq!(output.duration_ms, Some(200));
+
+        let _ = fs::remove_file(&script);
+    }
+
+    #[tokio::test]
+    async fn run_completion_with_system_prompt_succeeds() {
+        // WHY: Verifies the --system-prompt branch executes without error.
+        // The actual arg passing is structural (cmd.arg) and not visible from
+        // outside the subprocess, but the round-trip proves the branch is taken.
+        let script = write_script(
+            "completion_sys",
+            r#"cat > /dev/null
+printf '{"type":"result","subtype":"success","result":"sys ok","is_error":false}\n'"#,
+        );
+
+        let output = run_completion(
+            &script,
+            "claude-test-model",
+            Some("You are a helpful assistant."),
+            "prompt",
+            512,
+            Duration::from_secs(10),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(output.result_text, "sys ok");
+        let _ = fs::remove_file(&script);
+    }
+
+    #[tokio::test]
+    async fn run_completion_timeout_returns_error() {
+        // WHY: Subprocess that sleeps past the deadline must be killed and
+        // must surface a timeout error message that includes the duration.
+        let script = write_script("completion_sleep", "sleep 30");
+
+        let err = run_completion(
+            &script,
+            "claude-test-model",
+            None,
+            "prompt",
+            1024,
+            Duration::from_millis(100),
+        )
+        .await
+        .unwrap_err();
+
+        let msg = err.to_string();
+        assert!(
+            msg.contains("timed out"),
+            "error must mention timeout, got: {msg}"
+        );
+        let _ = fs::remove_file(&script);
+    }
+
+    #[tokio::test]
+    async fn run_completion_nonzero_exit_with_stderr_captured() {
+        // WHY: When CC emits a result event with empty result text and then exits
+        // nonzero, run_completion falls through to the stderr-capture branch
+        // (`!status.success() && result_text.is_empty()`). The captured stderr
+        // must appear in the error so the operator can see the failure reason
+        // (e.g. "not logged in", "invalid model").
+        //
+        // The script emits a result event with an empty result string so that
+        // read_stream returns Ok(CcOutput { result_text: "", ... }), which
+        // triggers the stderr-capture branch when the exit code is nonzero.
+        let script = write_script(
+            "completion_fail",
+            r#"cat > /dev/null
+printf '{"type":"result","subtype":"error","result":"","is_error":true}\n'
+printf 'OAuth token rejected\n' >&2
+exit 1"#,
+        );
+
+        let err = run_completion(
+            &script,
+            "claude-test-model",
+            None,
+            "prompt",
+            1024,
+            Duration::from_secs(10),
+        )
+        .await
+        .unwrap_err();
+
+        let msg = err.to_string();
+        assert!(
+            msg.contains("OAuth token rejected"),
+            "stderr must appear in error message, got: {msg}"
+        );
+        let _ = fs::remove_file(&script);
+    }
+
+    // ── run_streaming ─────────────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn run_streaming_spawn_failure_reports_binary_path() {
+        // WHY: Mirrors run_completion spawn failure — streaming entry point must
+        // also surface the bad binary path in a ProviderInit error.
+        let binary = PathBuf::from("/nonexistent/path/to/claude-stream");
+        let mut on_delta = |_: &str| {};
+        let err = run_streaming(
+            &binary,
+            "claude-test-model",
+            None,
+            "hello",
+            1024,
+            Duration::from_secs(5),
+            &mut on_delta,
+        )
+        .await
+        .unwrap_err();
+
+        let msg = err.to_string();
+        assert!(
+            msg.contains("/nonexistent/path/to/claude-stream"),
+            "error must include binary path, got: {msg}"
+        );
+        assert!(
+            msg.contains("provider init failed"),
+            "error must be ProviderInit variant, got: {msg}"
+        );
+    }
+
+    #[tokio::test]
+    async fn run_streaming_invokes_callback_for_each_delta() {
+        // WHY: run_streaming must call on_delta once per assistant text event,
+        // in order, with the exact text. This is the primary contract of the
+        // streaming API — callers relay deltas to UI/SSE consumers in real time.
+        let script = write_script(
+            "streaming_deltas",
+            r#"cat > /dev/null
+printf '{"type":"assistant","message":{"type":"text","text":"chunk1"}}\n'
+printf '{"type":"assistant","message":{"type":"text","text":"chunk2"}}\n'
+printf '{"type":"assistant","message":{"type":"text","text":"chunk3"}}\n'
+printf '{"type":"result","subtype":"success","result":"chunk1chunk2chunk3","is_error":false}\n'"#,
+        );
+
+        let mut collected: Vec<String> = Vec::new();
+        let mut on_delta = |s: &str| collected.push(s.to_owned());
+
+        let output = run_streaming(
+            &script,
+            "claude-test-model",
+            None,
+            "prompt",
+            1024,
+            Duration::from_secs(10),
+            &mut on_delta,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(output.result_text, "chunk1chunk2chunk3");
+        assert_eq!(output.stream_deltas, vec!["chunk1", "chunk2", "chunk3"]);
+        assert_eq!(
+            collected,
+            vec!["chunk1", "chunk2", "chunk3"],
+            "on_delta must be called in order with each text delta"
+        );
+
+        let _ = fs::remove_file(&script);
+    }
+
+    #[tokio::test]
+    async fn run_streaming_timeout_returns_error() {
+        // WHY: Same timeout contract as run_completion — streaming subprocess
+        // that stalls must be killed and must return a timeout error.
+        let script = write_script("streaming_sleep", "sleep 30");
+
+        let mut on_delta = |_: &str| {};
+        let err = run_streaming(
+            &script,
+            "claude-test-model",
+            None,
+            "prompt",
+            1024,
+            Duration::from_millis(100),
+            &mut on_delta,
+        )
+        .await
+        .unwrap_err();
+
+        let msg = err.to_string();
+        assert!(
+            msg.contains("timed out"),
+            "error must mention timeout, got: {msg}"
+        );
+        let _ = fs::remove_file(&script);
     }
 }
