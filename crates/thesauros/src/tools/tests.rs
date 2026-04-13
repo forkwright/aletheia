@@ -255,6 +255,7 @@ async fn shell_executor_runs_script() {
         allowed_roots: vec![],
         services: None,
         active_tools: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashSet::new())),
+        tool_config: std::sync::Arc::new(taxis::config::ToolLimitsConfig::default()),
     };
 
     let result = executor
@@ -296,6 +297,7 @@ async fn shell_executor_nonzero_exit_is_error() {
         allowed_roots: vec![],
         services: None,
         active_tools: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashSet::new())),
+        tool_config: std::sync::Arc::new(taxis::config::ToolLimitsConfig::default()),
     };
 
     let result = executor
@@ -385,6 +387,7 @@ async fn shell_metacharacters_in_arguments_passed_safely_via_stdin() {
         allowed_roots: vec![],
         services: None,
         active_tools: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashSet::new())),
+        tool_config: std::sync::Arc::new(taxis::config::ToolLimitsConfig::default()),
     };
 
     let result = executor
@@ -477,6 +480,7 @@ async fn shell_executor_does_not_expand_env_vars_in_arguments() {
         allowed_roots: vec![],
         services: None,
         active_tools: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashSet::new())),
+        tool_config: std::sync::Arc::new(taxis::config::ToolLimitsConfig::default()),
     };
 
     let result = executor
@@ -517,6 +521,7 @@ async fn shell_executor_timeout_returns_error() {
         allowed_roots: vec![],
         services: None,
         active_tools: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashSet::new())),
+        tool_config: std::sync::Arc::new(taxis::config::ToolLimitsConfig::default()),
     };
 
     let result = executor
@@ -565,6 +570,7 @@ async fn shell_executor_truncates_at_char_boundary() {
         allowed_roots: vec![],
         services: None,
         active_tools: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashSet::new())),
+        tool_config: std::sync::Arc::new(taxis::config::ToolLimitsConfig::default()),
     };
 
     let result = executor

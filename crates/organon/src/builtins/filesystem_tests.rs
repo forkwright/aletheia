@@ -14,6 +14,7 @@ fn test_ctx(dir: &Path) -> ToolContext {
         allowed_roots: vec![dir.to_path_buf()],
         services: None,
         active_tools: Arc::new(RwLock::new(HashSet::new())),
+        tool_config: Arc::new(taxis::config::ToolLimitsConfig::default()),
     }
 }
 

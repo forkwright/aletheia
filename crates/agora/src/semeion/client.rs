@@ -12,11 +12,11 @@ use koina::http::CONTENT_TYPE_JSON;
 use super::envelope::SignalEnvelope;
 use super::error::{self, Result};
 
-/// Timeout for standard RPC calls. Matches `taxis::config::MessagingConfig::rpc_timeout_secs`.
+/// Fallback default; runtime reads `MessagingConfig::rpc_timeout_secs`.
 pub(crate) const RPC_TIMEOUT: Duration = Duration::from_secs(10);
-/// Timeout for health-check requests. Matches `taxis::config::MessagingConfig::health_timeout_secs`.
+/// Fallback default; runtime reads `MessagingConfig::health_timeout_secs`.
 pub(crate) const HEALTH_TIMEOUT: Duration = Duration::from_secs(2);
-/// Timeout for receive (poll) requests. Matches `taxis::config::MessagingConfig::receive_timeout_secs`.
+/// Fallback default; runtime reads `MessagingConfig::receive_timeout_secs`.
 pub(crate) const RECEIVE_TIMEOUT: Duration = Duration::from_secs(15);
 
 #[derive(Debug, Serialize)]
@@ -49,10 +49,12 @@ pub struct SignalClient {
     client: reqwest::Client,
     rpc_url: String,
     health_url: String,
+    health_timeout: Duration,
+    receive_timeout: Duration,
 }
 
 impl SignalClient {
-    /// Create a new client targeting the given base URL.
+    /// Create a new client targeting the given base URL with default timeouts.
     ///
     /// Normalizes the URL: strips trailing slashes, prepends `http://` if missing.
     ///
@@ -60,10 +62,24 @@ impl SignalClient {
     ///
     /// Returns [`super::error::Error::Http`] if the HTTP client cannot be constructed.
     pub fn new(base_url: &str) -> Result<Self> {
+        Self::with_timeouts(base_url, RPC_TIMEOUT, HEALTH_TIMEOUT, RECEIVE_TIMEOUT)
+    }
+
+    /// Create a new client with explicit timeout configuration.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`super::error::Error::Http`] if the HTTP client cannot be constructed.
+    pub fn with_timeouts(
+        base_url: &str,
+        rpc_timeout: Duration,
+        health_timeout: Duration,
+        receive_timeout: Duration,
+    ) -> Result<Self> {
         let base = normalize_url(base_url);
 
         let client = reqwest::Client::builder()
-            .timeout(RPC_TIMEOUT)
+            .timeout(rpc_timeout)
             .build()
             .context(error::HttpSnafu)?;
 
@@ -71,6 +87,8 @@ impl SignalClient {
             client,
             rpc_url: format!("{base}/api/v1/rpc"),
             health_url: format!("{base}/api/v1/check"),
+            health_timeout,
+            receive_timeout,
         })
     }
 
@@ -146,7 +164,7 @@ impl SignalClient {
         let result = self
             .client
             .get(&self.health_url)
-            .timeout(HEALTH_TIMEOUT)
+            .timeout(self.health_timeout)
             .send()
             .await;
         matches!(result, Ok(r) if r.status().is_success())
@@ -182,7 +200,7 @@ impl SignalClient {
             .client
             .post(&self.rpc_url)
             .header("content-type", CONTENT_TYPE_JSON)
-            .timeout(RECEIVE_TIMEOUT)
+            .timeout(self.receive_timeout)
             .body(body)
             .send()
             .await

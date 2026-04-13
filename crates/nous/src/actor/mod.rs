@@ -61,6 +61,8 @@ pub(crate) struct ActorServices {
     embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
     /// Candidate tracker for skill auto-capture pipeline.
     candidate_tracker: Arc<mneme::skills::CandidateTracker>,
+    /// Deployment-tunable tool limits from taxis config.
+    pub(crate) tool_config: Arc<taxis::config::ToolLimitsConfig>,
 }
 
 /// Data stores for sessions, knowledge, and search.
@@ -192,6 +194,7 @@ impl NousActor {
                 tool_services,
                 embedding_provider,
                 candidate_tracker: Arc::new(mneme::skills::CandidateTracker::new()),
+                tool_config: Arc::new(taxis::config::ToolLimitsConfig::default()),
             },
             stores: ActorStores {
                 session_store,

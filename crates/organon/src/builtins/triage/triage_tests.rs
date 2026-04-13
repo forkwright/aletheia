@@ -31,6 +31,7 @@ fn test_ctx() -> ToolContext {
             server_tool_config: ServerToolConfig::default(),
         })),
         active_tools: Arc::new(RwLock::new(HashSet::new())),
+        tool_config: Arc::new(taxis::config::ToolLimitsConfig::default()),
     }
 }
 
@@ -247,6 +248,7 @@ async fn scan_requires_services() {
         allowed_roots: vec![],
         services: None,
         active_tools: Arc::new(RwLock::new(HashSet::new())),
+        tool_config: Arc::new(taxis::config::ToolLimitsConfig::default()),
     };
 
     let executor = IssueScanExecutor;

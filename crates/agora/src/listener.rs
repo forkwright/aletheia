@@ -31,6 +31,8 @@ pub struct ChannelListener {
     handles: JoinSet<()>,
     /// Abort callbacks registered at task-spawn time; disarmed by `into_receiver`.
     cleanup: koina::cleanup::CleanupRegistry,
+    /// Maximum concurrent inbound-message handler tasks.
+    max_concurrent_handlers: usize,
 }
 
 impl ChannelListener {
@@ -49,7 +51,19 @@ impl ChannelListener {
         Self::from_parts(rx, handles)
     }
 
-    /// Create from pre-built parts.
+    /// Start listening with explicit config for handler concurrency.
+    #[must_use]
+    pub fn start_with_config(
+        signal_provider: &SignalProvider,
+        poll_interval: Option<std::time::Duration>,
+        cancel: CancellationToken,
+        max_concurrent_handlers: usize,
+    ) -> Self {
+        let (rx, handles) = signal_provider.listen(poll_interval, cancel);
+        Self::from_parts_with_config(rx, handles, max_concurrent_handlers)
+    }
+
+    /// Create from pre-built parts with default handler concurrency.
     ///
     /// Use when the caller assembles provider-specific listeners
     /// independently (e.g., merging Signal + future Slack receivers).
@@ -59,6 +73,16 @@ impl ChannelListener {
         rx: mpsc::Receiver<InboundMessage>,
         handles: JoinSet<()>,
     ) -> Self {
+        Self::from_parts_with_config(rx, handles, Self::DEFAULT_MAX_CONCURRENT_HANDLERS)
+    }
+
+    /// Create from pre-built parts with explicit handler concurrency limit.
+    #[must_use]
+    pub(crate) fn from_parts_with_config(
+        rx: mpsc::Receiver<InboundMessage>,
+        handles: JoinSet<()>,
+        max_concurrent_handlers: usize,
+    ) -> Self {
         // WHY: JoinSet aborts all tasks on drop, so no explicit cleanup needed.
         // Handle count is small (single-digit), fits in i64
         crate::metrics::set_active_subscriptions(i64::try_from(handles.len()).unwrap_or(0));
@@ -66,18 +90,18 @@ impl ChannelListener {
             rx: Some(rx),
             handles,
             cleanup: koina::cleanup::CleanupRegistry::new(),
+            max_concurrent_handlers,
         }
     }
 
-    /// Maximum concurrent handler tasks. Matches
-    /// \.
-    const MAX_CONCURRENT_HANDLERS: usize = 64;
+    /// Fallback default; runtime reads `MessagingConfig::max_concurrent_handlers`.
+    const DEFAULT_MAX_CONCURRENT_HANDLERS: usize = 64;
 
     /// Run the listener loop, dispatching each message to the handler concurrently.
     ///
     /// Each inbound message is dispatched to `handler` in a separate spawned task,
     /// so a slow handler does not block delivery of subsequent messages.
-    /// Concurrency is capped at [`MAX_CONCURRENT_HANDLERS`](Self::MAX_CONCURRENT_HANDLERS)
+    /// Concurrency is capped at `max_concurrent_handlers` (from `MessagingConfig`)
     /// to prevent unbounded task growth under load.
     ///
     /// Returns after all senders are dropped (all polling tasks have stopped) and
@@ -95,7 +119,7 @@ impl ChannelListener {
             while let Some(msg) = rx.recv().await {
                 // WHY: cap concurrent handler tasks to prevent unbounded growth
                 // when messages arrive faster than handlers complete.
-                while set.len() >= Self::MAX_CONCURRENT_HANDLERS {
+                while set.len() >= self.max_concurrent_handlers {
                     if let Some(result) = set.join_next().await
                         && let Err(e) = result
                     {

@@ -16,11 +16,11 @@ use crate::types::{
     ToolDef, ToolInput, ToolResult,
 };
 
-/// Default timeout for spawned sub-agents. Matches
-/// `taxis::config::MessagingConfig::agent_dispatch_timeout_secs`.
+/// Fallback default; runtime reads `ctx.tool_config.agent_dispatch_timeout_secs`.
+#[expect(dead_code, reason = "retained as documentation of the default value; runtime reads from ToolLimitsConfig")]
 pub(crate) const DEFAULT_TIMEOUT_SECS: u64 = 300;
-/// Maximum concurrent dispatch tasks. Matches
-/// `taxis::config::AgentBehaviorDefaults::tool_agent_dispatch_max_tasks`.
+/// Fallback default; runtime reads `ctx.tool_config.max_dispatch_tasks`.
+#[expect(dead_code, reason = "retained as documentation of the default value; runtime reads from ToolLimitsConfig")]
 pub(crate) const MAX_DISPATCH_TASKS: usize = 10;
 
 struct SessionsSpawnExecutor;
@@ -46,8 +46,8 @@ impl ToolExecutor for SessionsSpawnExecutor {
                 .get("model")
                 .and_then(|v| v.as_str())
                 .map(String::from);
-            let timeout =
-                extract_opt_u64(&input.arguments, "timeoutSeconds").unwrap_or(DEFAULT_TIMEOUT_SECS);
+            let timeout = extract_opt_u64(&input.arguments, "timeoutSeconds")
+                .unwrap_or(ctx.tool_config.agent_dispatch_timeout_secs);
 
             let request = SpawnRequest {
                 role: role.to_owned(),
@@ -101,15 +101,16 @@ impl ToolExecutor for SessionsDispatchExecutor {
                     .build()
                 })?;
 
-            if tasks.len() > MAX_DISPATCH_TASKS {
+            let max_tasks = ctx.tool_config.max_dispatch_tasks;
+            if tasks.len() > max_tasks {
                 return Ok(ToolResult::error(format!(
-                    "Too many tasks: {} (max {MAX_DISPATCH_TASKS})",
+                    "Too many tasks: {} (max {max_tasks})",
                     tasks.len()
                 )));
             }
 
-            let default_timeout =
-                extract_opt_u64(&input.arguments, "timeoutSeconds").unwrap_or(DEFAULT_TIMEOUT_SECS);
+            let default_timeout = extract_opt_u64(&input.arguments, "timeoutSeconds")
+                .unwrap_or(ctx.tool_config.agent_dispatch_timeout_secs);
             let nous_id = ctx.nous_id.as_str().to_owned();
 
             let mut join_set = tokio::task::JoinSet::new();
@@ -302,6 +303,8 @@ mod tests {
 
     use crate::registry::ToolRegistry;
     use crate::testing::install_crypto_provider;
+    use taxis::config::ToolLimitsConfig;
+
     use crate::types::{
         ServerToolConfig, SpawnRequest, SpawnResult, SpawnService, ToolContext, ToolInput,
         ToolServices,
@@ -315,6 +318,7 @@ mod tests {
             allowed_roots: vec![PathBuf::from("/tmp")],
             services: None,
             active_tools: Arc::new(RwLock::new(HashSet::new())),
+            tool_config: Arc::new(ToolLimitsConfig::default()),
         }
     }
 
@@ -338,6 +342,7 @@ mod tests {
                 http_client: reqwest::Client::new(),
             })),
             active_tools: Arc::new(RwLock::new(HashSet::new())),
+            tool_config: Arc::new(ToolLimitsConfig::default()),
         }
     }
 

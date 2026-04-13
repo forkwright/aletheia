@@ -25,11 +25,11 @@ fn relativize_path(path: &Path, workspace: &Path) -> String {
         .to_string()
 }
 
-/// Maximum image file size in bytes. Matches
-/// `taxis::config::AgentBehaviorDefaults::tool_max_image_bytes`.
+/// Fallback default; runtime reads `ctx.tool_config.max_image_bytes`.
+#[expect(dead_code, reason = "retained as documentation of the default value; runtime reads from ToolLimitsConfig")]
 pub(crate) const MAX_IMAGE_BYTES: u64 = 20 * 1024 * 1024;
-/// Maximum PDF file size in bytes. Matches
-/// `taxis::config::AgentBehaviorDefaults::tool_max_pdf_bytes`.
+/// Fallback default; runtime reads `ctx.tool_config.max_pdf_bytes`.
+#[expect(dead_code, reason = "retained as documentation of the default value; runtime reads from ToolLimitsConfig")]
 pub(crate) const MAX_PDF_BYTES: u64 = 32 * 1024 * 1024;
 
 enum MediaKind {
@@ -120,25 +120,32 @@ impl ToolExecutor for ViewFileExecutor {
                 &metadata,
                 max_lines,
                 &ctx.workspace,
+                &ctx.tool_config,
             ))
         })
     }
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "single cohesive function handling three media kinds; splitting would fragment the config plumbing"
+)]
 fn execute_by_kind(
     kind: &MediaKind,
     path: &std::path::Path,
     metadata: &std::fs::Metadata,
     max_lines: Option<u64>,
     workspace: &std::path::Path,
+    tool_config: &taxis::config::ToolLimitsConfig,
 ) -> ToolResult {
     match kind {
         MediaKind::Image(media_type) => {
-            if metadata.len() > MAX_IMAGE_BYTES {
+            let max_image = tool_config.max_image_bytes;
+            if metadata.len() > max_image {
                 return ToolResult::error(format!(
                     "image too large: {} bytes (max {} MB)",
                     metadata.len(),
-                    MAX_IMAGE_BYTES / (1024 * 1024)
+                    max_image / (1024 * 1024)
                 ));
             }
             #[expect(
@@ -168,11 +175,12 @@ fn execute_by_kind(
             ])
         }
         MediaKind::Pdf => {
-            if metadata.len() > MAX_PDF_BYTES {
+            let max_pdf = tool_config.max_pdf_bytes;
+            if metadata.len() > max_pdf {
                 return ToolResult::error(format!(
                     "PDF too large: {} bytes (max {} MB)",
                     metadata.len(),
-                    MAX_PDF_BYTES / (1024 * 1024)
+                    max_pdf / (1024 * 1024)
                 ));
             }
             #[expect(
@@ -286,6 +294,8 @@ mod tests {
 
     use koina::id::{NousId, SessionId, ToolName};
 
+    use taxis::config::ToolLimitsConfig;
+
     use super::*;
     use crate::types::ToolResultContent;
 
@@ -297,6 +307,7 @@ mod tests {
             allowed_roots: vec![dir.to_path_buf()],
             services: None,
             active_tools: Arc::new(RwLock::new(HashSet::new())),
+            tool_config: Arc::new(ToolLimitsConfig::default()),
         }
     }
 

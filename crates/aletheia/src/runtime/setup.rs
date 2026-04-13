@@ -258,6 +258,7 @@ pub(super) fn open_knowledge_store(
 
 pub(super) fn build_signal_provider(
     signal_config: &taxis::config::SignalConfig,
+    messaging_config: &taxis::config::MessagingConfig,
 ) -> Option<Arc<SignalProvider>> {
     if !signal_config.enabled {
         info!("signal channel disabled");
@@ -269,13 +270,16 @@ pub(super) fn build_signal_provider(
         return None;
     }
 
-    let mut provider = SignalProvider::new();
+    let mut provider = SignalProvider::from_config(messaging_config);
+    let rpc_timeout = std::time::Duration::from_secs(messaging_config.rpc_timeout_secs);
+    let health_timeout = std::time::Duration::from_secs(messaging_config.health_timeout_secs);
+    let receive_timeout = std::time::Duration::from_secs(messaging_config.receive_timeout_secs);
     for (account_id, account_cfg) in &signal_config.accounts {
         if !account_cfg.enabled {
             continue;
         }
         let base_url = format!("http://{}:{}", account_cfg.http_host, account_cfg.http_port);
-        match SignalClient::new(&base_url) {
+        match SignalClient::with_timeouts(&base_url, rpc_timeout, health_timeout, receive_timeout) {
             Ok(client) => {
                 provider.add_account(account_id.clone(), client, account_cfg.auto_start);
                 info!(account = %account_id, auto_start = account_cfg.auto_start, "signal account added");
@@ -310,7 +314,15 @@ pub(super) fn start_inbound_dispatch(
     let channel_registry = Arc::new(channel_registry);
 
     let handle = if let Some(provider) = signal_provider {
-        let listener = ChannelListener::start(provider, None, shutdown_token.child_token());
+        let poll_interval = Some(std::time::Duration::from_millis(
+            config.messaging.poll_interval_ms,
+        ));
+        let listener = ChannelListener::start_with_config(
+            provider,
+            poll_interval,
+            shutdown_token.child_token(),
+            config.messaging.max_concurrent_handlers,
+        );
         info!("signal channel listener started");
         let (rx, _poll_handles) = listener.into_receiver();
 
