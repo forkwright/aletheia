@@ -1,0 +1,27 @@
+[package]
+name = "poiesis-sheet"
+version.workspace = true
+description = "XLSX and ODS spreadsheet rendering backends for poiesis"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+poiesis-core = { path = "../core" }
+snafu = { workspace = true }
+
+# XLSX backend
+rust_xlsxwriter = { version = "0.94", optional = true }
+
+# ODS backend
+spreadsheet-ods = { version = "1.0", optional = true }
+
+[features]
+default = ["xlsx", "ods"]
+xlsx = ["dep:rust_xlsxwriter"]
+ods = ["dep:spreadsheet-ods"]

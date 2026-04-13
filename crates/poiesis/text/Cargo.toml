@@ -1,0 +1,27 @@
+[package]
+name = "poiesis-text"
+version.workspace = true
+description = "PDF and ODT document rendering backends for poiesis"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+poiesis-core = { path = "../core" }
+snafu = { workspace = true }
+
+# PDF backend
+krilla = { version = "0.7", optional = true }
+
+# ODT backend — uses zip for packaging
+zip = { version = "2.2", optional = true }
+
+[features]
+default = ["pdf", "odt"]
+pdf = ["dep:krilla"]
+odt = ["dep:zip"]
