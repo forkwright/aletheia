@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.16.0](https://github.com/forkwright/aletheia/compare/v0.15.1...v0.16.0) (2026-04-13)
+
+
+### Features
+
+* **graphe:** add fjall session store backend (Wave 1) ([#3119](https://github.com/forkwright/aletheia/issues/3119)) ([54766ef](https://github.com/forkwright/aletheia/commit/54766ef21b8ebb6760bbafc0dc32a641278dab5d))
+* **koina:** parameterize deployment defaults via taxis config (Wave 1, [#2306](https://github.com/forkwright/aletheia/issues/2306)) ([#3117](https://github.com/forkwright/aletheia/issues/3117)) ([6117dd0](https://github.com/forkwright/aletheia/commit/6117dd009a34d8dd8090be8a519c9f24fb32ca8a))
+* **poiesis:** Rust-native document generation crate ([#3118](https://github.com/forkwright/aletheia/issues/3118)) ([cd7f0a7](https://github.com/forkwright/aletheia/commit/cd7f0a7a06544e89a64a059c0b7f87b7a6d78c70))
+* **proskenion:** daemonize — log-to-file, .desktop, clean window close ([#3099](https://github.com/forkwright/aletheia/issues/3099)) ([#3112](https://github.com/forkwright/aletheia/issues/3112)) ([80b1137](https://github.com/forkwright/aletheia/commit/80b11377ac103a772e6be15d4b7bd29f3839d628))
+
+
+### Bug Fixes
+
+* **nous:** adopt DB session ID for daemon-originated turns ([#3103](https://github.com/forkwright/aletheia/issues/3103)) ([#3111](https://github.com/forkwright/aletheia/issues/3111)) ([84477b6](https://github.com/forkwright/aletheia/commit/84477b639e76b1f229fb47354f59a6595c0e92f4))
+
+
+### Documentation
+
+* **audit:** catalog 174+ behavioral constants for parameterization ([#2306](https://github.com/forkwright/aletheia/issues/2306)) ([#3115](https://github.com/forkwright/aletheia/issues/3115)) ([dae1ac3](https://github.com/forkwright/aletheia/commit/dae1ac3fff8cb8ce3315ab5c7e10d4f5d1485aac))
+* **dokimion:** LongMemEval/LoCoMo benchmark runbook ([#2854](https://github.com/forkwright/aletheia/issues/2854)) ([#3116](https://github.com/forkwright/aletheia/issues/3116)) ([865cea1](https://github.com/forkwright/aletheia/commit/865cea1c46713f073d84d6b6a3e1e183e7d3bfdd))
+
 ## [0.15.1](https://github.com/forkwright/aletheia/compare/v0.15.0...v0.15.1) (2026-04-11)
 
 
