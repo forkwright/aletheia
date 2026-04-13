@@ -117,6 +117,7 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
         Arc::new(vec![]),
         None,
         None,
+        taxis::config::NousBehaviorConfig::default(),
     );
     let nous_config = NousConfig::default();
     nous_manager

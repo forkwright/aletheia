@@ -348,13 +348,15 @@ fn loop_detector_call_count_tracks() {
 
 #[test]
 fn loop_detector_window_cap_evicts_old_calls() {
+    let default_window =
+        taxis::config::NousBehaviorConfig::default().loop_detection_window;
     let mut det = LoopDetector::new(100);
-    for i in 0..55 {
+    for i in 0..default_window + 5 {
         det.record("tool", &format!("hash{i}"), false);
     }
     assert_eq!(
         det.call_count(),
-        DEFAULT_LOOP_WINDOW,
+        default_window,
         "history should be capped at window size"
     );
 }

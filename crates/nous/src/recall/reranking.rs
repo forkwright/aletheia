@@ -166,7 +166,7 @@ pub(super) fn discover_terminology(results: &[ScoredResult], original_query: &st
     }
 
     let mut terms: Vec<_> = term_freq.into_iter().collect();
-    terms.sort_by(|a, b| b.1.cmp(&a.1));
+    terms.sort_by_key(|b| std::cmp::Reverse(b.1));
     terms.into_iter().take(5).map(|(t, _)| t).collect()
 }
 

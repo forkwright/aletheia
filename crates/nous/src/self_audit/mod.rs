@@ -207,9 +207,6 @@ pub trait ProsocheCheck: Send + Sync {
     fn run(&self, ctx: &CheckContext) -> CheckResult;
 }
 
-/// Default number of agent actions between event-based audit triggers.
-const DEFAULT_EVENT_THRESHOLD: u32 = 50;
-
 /// Self-auditor: manages registered prosoche checks and trigger logic.
 pub struct SelfAuditor {
     checks: Vec<Box<dyn ProsocheCheck>>,
@@ -219,12 +216,20 @@ pub struct SelfAuditor {
 
 impl SelfAuditor {
     /// Create a new auditor with no registered checks.
+    ///
+    /// Event threshold read from [`taxis::config::NousBehaviorConfig`] defaults.
     #[must_use]
     pub fn new() -> Self {
+        let event_threshold =
+            taxis::config::NousBehaviorConfig::default().self_audit_event_threshold;
+        tracing::debug!(
+            event_threshold,
+            "SelfAuditor::new: event threshold from NousBehaviorConfig"
+        );
         Self {
             checks: Vec::new(),
             action_counter: AtomicU32::new(0),
-            event_threshold: DEFAULT_EVENT_THRESHOLD,
+            event_threshold,
         }
     }
 

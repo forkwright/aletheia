@@ -112,6 +112,7 @@ impl SpawnService for SpawnServiceImpl {
             recall: crate::recall::RecallConfig::default(),
             tool_allowlist,
             hooks: crate::config::HookConfig::default(),
+            behavior: taxis::config::AgentBehaviorDefaults::default(),
         };
 
         // WHY: ephemeral sub-agents do not capture training data — their turns
@@ -169,6 +170,7 @@ impl SpawnService for SpawnServiceImpl {
                     Vec::new(),
                     None,
                     ephemeral_cancel,
+                    taxis::config::NousBehaviorConfig::default(),
                 );
 
                 info!(session_key = %session_key, "ephemeral actor started");

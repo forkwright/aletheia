@@ -3,6 +3,7 @@
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
+use taxis::config::AgentBehaviorDefaults;
 
 use crate::recall::RecallConfig;
 
@@ -153,6 +154,13 @@ pub struct NousConfig {
     /// Turn-level hook configuration.
     #[serde(default)]
     pub hooks: HookConfig,
+    /// Resolved per-agent behavioral parameters (distillation, competence, drift, etc.).
+    ///
+    /// Populated at startup from taxis config cascade and passed through the
+    /// pipeline for all behavioral threshold reads. Defaults match the
+    /// constants they replace so behaviour is identical when unconfigured.
+    #[serde(default)]
+    pub behavior: AgentBehaviorDefaults,
 }
 
 /// Configuration for turn-level behavior hooks.
@@ -232,6 +240,7 @@ impl Default for NousConfig {
             recall: RecallConfig::default(),
             tool_allowlist: None,
             hooks: HookConfig::default(),
+            behavior: AgentBehaviorDefaults::default(),
         }
     }
 }
@@ -389,6 +398,7 @@ mod tests {
             recall: RecallConfig::default(),
             tool_allowlist: None,
             hooks: HookConfig::default(),
+            behavior: AgentBehaviorDefaults::default(),
         };
         assert_eq!(config.name.as_deref(), Some("Analyst"));
         assert!(config.generation.thinking_enabled);

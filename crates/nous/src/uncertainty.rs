@@ -10,8 +10,6 @@ use snafu::ResultExt as _;
 
 use crate::error;
 
-/// Maximum stored calibration points before oldest entries are pruned.
-const MAX_CALIBRATION_POINTS: u32 = 1000;
 
 /// Number of bins for the calibration curve (10 bins of width 0.1).
 const NUM_BINS: usize = 10;
@@ -69,6 +67,8 @@ pub struct CalibrationSummary {
 )]
 pub(crate) struct UncertaintyTracker {
     conn: Connection,
+    /// Maximum stored calibration points before oldest entries are pruned.
+    max_calibration_points: u32,
 }
 
 impl UncertaintyTracker {
@@ -89,7 +89,11 @@ impl UncertaintyTracker {
         let conn = Connection::open(path).context(error::UncertaintyStoreSnafu {
             message: "failed to open uncertainty database",
         })?;
-        Self::init(conn)
+        let max_calibration_points = u32::try_from(
+            taxis::config::AgentBehaviorDefaults::default().uncertainty_max_calibration_points
+        )
+        .unwrap_or(1_000);
+        Self::init(conn, max_calibration_points)
     }
 
     /// Open an in-memory uncertainty tracker (for testing).
@@ -112,14 +116,18 @@ impl UncertaintyTracker {
         let conn = Connection::open_in_memory().context(error::UncertaintyStoreSnafu {
             message: "failed to open in-memory uncertainty database",
         })?;
-        Self::init(conn)
+        let max_calibration_points = u32::try_from(
+            taxis::config::AgentBehaviorDefaults::default().uncertainty_max_calibration_points
+        )
+        .unwrap_or(1_000);
+        Self::init(conn, max_calibration_points)
     }
 
     #[expect(
         clippy::disallowed_types,
         reason = "uncertainty tracker owns its own isolated SQLite file; not part of the shared SessionStore pipeline"
     )]
-    fn init(conn: Connection) -> error::Result<Self> {
+    fn init(conn: Connection, max_calibration_points: u32) -> error::Result<Self> {
         conn.execute_batch(
             "PRAGMA journal_mode = WAL;
              PRAGMA foreign_keys = ON;
@@ -143,7 +151,7 @@ impl UncertaintyTracker {
             message: "failed to initialize uncertainty schema",
         })?;
 
-        Ok(Self { conn })
+        Ok(Self { conn, max_calibration_points })
     }
 
     /// Record a confidence prediction and its actual outcome.
@@ -333,7 +341,7 @@ impl UncertaintyTracker {
                     message: "failed to prepare points query",
                 })?;
 
-            stmt.query_map(params![id, MAX_CALIBRATION_POINTS], |row| {
+            stmt.query_map(params![id, self.max_calibration_points], |row| {
                 Ok((row.get::<_, f64>(0)?, row.get::<_, bool>(1)?))
             })
             .context(error::UncertaintyStoreSnafu {
@@ -356,7 +364,7 @@ impl UncertaintyTracker {
                     message: "failed to prepare global points query",
                 })?;
 
-            stmt.query_map(params![MAX_CALIBRATION_POINTS], |row| {
+            stmt.query_map(params![self.max_calibration_points], |row| {
                 Ok((row.get::<_, f64>(0)?, row.get::<_, bool>(1)?))
             })
             .context(error::UncertaintyStoreSnafu {
@@ -380,7 +388,7 @@ impl UncertaintyTracker {
                        ORDER BY recorded_at DESC
                        LIMIT ?2
                    )",
-                params![nous_id, MAX_CALIBRATION_POINTS],
+                params![nous_id, self.max_calibration_points],
             )
             .context(error::UncertaintyStoreSnafu {
                 message: "failed to prune old calibration points",
@@ -662,20 +670,17 @@ mod tests {
     }
 
     #[test]
-    #[expect(
-        clippy::as_conversions,
-        reason = "MAX_CALIBRATION_POINTS is u32; cast to usize for comparison with Vec::len() is safe"
-    )]
     fn pruning_keeps_most_recent_points() {
         let t = tracker();
-        for i in 0..1010u32 {
+        let max = taxis::config::AgentBehaviorDefaults::default().uncertainty_max_calibration_points;
+        for i in 0..(max + 10) as u32 {
             t.record("syn", "coding", 0.5, i % 2 == 0).unwrap();
         }
 
         let points = t.load_points(Some("syn")).unwrap();
         assert!(
-            points.len() <= MAX_CALIBRATION_POINTS as usize,
-            "should prune to at most {MAX_CALIBRATION_POINTS} points, got {}",
+            points.len() <= max,
+            "should prune to at most {max} points, got {}",
             points.len()
         );
     }

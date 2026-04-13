@@ -46,6 +46,7 @@ fn make_manager(oikos: Arc<Oikos>) -> NousManager {
         Arc::new(Vec::new()),
         None,
         None,
+        taxis::config::NousBehaviorConfig::default(),
     )
 }
 
@@ -396,33 +397,34 @@ async fn check_health_busy_actor_reports_alive() {
 
 #[test]
 fn backoff_calculation() {
+    let max_secs = taxis::config::NousBehaviorConfig::default().manager_max_restart_backoff_secs;
     assert_eq!(
-        super::calculate_backoff(0),
+        super::calculate_backoff(0, max_secs),
         Duration::from_secs(5),
         "attempt 0 should be 5s base"
     );
     assert_eq!(
-        super::calculate_backoff(1),
+        super::calculate_backoff(1, max_secs),
         Duration::from_secs(15),
         "attempt 1 should be 15s"
     );
     assert_eq!(
-        super::calculate_backoff(2),
+        super::calculate_backoff(2, max_secs),
         Duration::from_secs(45),
         "attempt 2 should be 45s"
     );
     assert_eq!(
-        super::calculate_backoff(3),
+        super::calculate_backoff(3, max_secs),
         Duration::from_secs(135),
         "attempt 3 should be 135s"
     );
     assert_eq!(
-        super::calculate_backoff(4),
+        super::calculate_backoff(4, max_secs),
         Duration::from_secs(300),
         "attempt 4 should clamp to 300s"
     );
     assert_eq!(
-        super::calculate_backoff(10),
+        super::calculate_backoff(10, max_secs),
         Duration::from_secs(300),
         "attempt 10 should clamp to 300s"
     );

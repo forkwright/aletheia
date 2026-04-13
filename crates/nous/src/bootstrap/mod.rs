@@ -203,9 +203,6 @@ const WORKSPACE_FILES: &[WorkspaceFileSpec] = &[
     },
 ];
 
-/// Minimum tokens remaining before attempting truncation (below this, just drop).
-const MIN_TRUNCATION_BUDGET: u64 = 200;
-
 /// Default output-style directives when USER.md has no `## Communication` section.
 ///
 /// These encode the project operator's cognitive preferences so that the
@@ -223,15 +220,21 @@ const DEFAULT_OUTPUT_STYLE: &str = "\
 pub struct BootstrapAssembler<'a, E: TokenEstimator = CharEstimator> {
     oikos: &'a Oikos,
     estimator: E,
+    /// Minimum tokens remaining before attempting truncation (below this, just drop).
+    /// Default read from [`taxis::config::AgentBehaviorDefaults::bootstrap_min_truncation_budget`].
+    min_truncation_budget: u64,
 }
 
 impl<'a> BootstrapAssembler<'a, CharEstimator> {
     /// Create an assembler with the default character-based estimator.
     #[must_use]
     pub fn new(oikos: &'a Oikos) -> Self {
+        let min_truncation_budget =
+            taxis::config::AgentBehaviorDefaults::default().bootstrap_min_truncation_budget;
         Self {
             oikos,
             estimator: CharEstimator::default(),
+            min_truncation_budget,
         }
     }
 
@@ -241,9 +244,12 @@ impl<'a> BootstrapAssembler<'a, CharEstimator> {
     /// `agents.defaults.chars_per_token` into the bootstrap estimator.
     #[must_use]
     pub fn new_with_chars_per_token(oikos: &'a Oikos, chars_per_token: u64) -> Self {
+        let min_truncation_budget =
+            taxis::config::AgentBehaviorDefaults::default().bootstrap_min_truncation_budget;
         Self {
             oikos,
             estimator: CharEstimator::new(chars_per_token),
+            min_truncation_budget,
         }
     }
 }
@@ -252,7 +258,13 @@ impl<'a, E: TokenEstimator> BootstrapAssembler<'a, E> {
     /// Create an assembler with a custom token estimator.
     #[must_use]
     pub fn with_estimator(oikos: &'a Oikos, estimator: E) -> Self {
-        Self { oikos, estimator }
+        let min_truncation_budget =
+            taxis::config::AgentBehaviorDefaults::default().bootstrap_min_truncation_budget;
+        Self {
+            oikos,
+            estimator,
+            min_truncation_budget,
+        }
     }
 
     /// Assemble the bootstrap system prompt for the given nous.
@@ -361,7 +373,13 @@ impl<'a, E: TokenEstimator> BootstrapAssembler<'a, E> {
             if budget.can_fit(section.tokens) {
                 budget.consume(section.tokens);
                 included.push(section);
-            } else if section.truncatable && budget.remaining() > MIN_TRUNCATION_BUDGET {
+            } else if section.truncatable && budget.remaining() > self.min_truncation_budget {
+                debug!(
+                    section = section.name,
+                    remaining = budget.remaining(),
+                    min_truncation_budget = self.min_truncation_budget,
+                    "truncating section to fit token budget"
+                );
                 let truncated = self.truncate_section(&section, budget.remaining());
                 budget.consume(truncated.tokens);
                 warn!(

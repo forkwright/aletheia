@@ -69,6 +69,7 @@ fn spawn_test_actor() -> (NousHandle, tokio::task::JoinHandle<()>, tempfile::Tem
         Vec::new(),
         None,
         CancellationToken::new(),
+        taxis::config::NousBehaviorConfig::default(),
     );
     (handle, join, dir)
 }
@@ -371,6 +372,7 @@ fn spawn_panicking_actor() -> (NousHandle, tokio::task::JoinHandle<()>, tempfile
         Vec::new(),
         None,
         CancellationToken::new(),
+        taxis::config::NousBehaviorConfig::default(),
     );
     (handle, join, dir)
 }
@@ -542,6 +544,7 @@ fn spawn_test_actor_with_store(
         Vec::new(),
         None,
         CancellationToken::new(),
+        taxis::config::NousBehaviorConfig::default(),
     );
     (handle, join, dir)
 }
@@ -582,6 +585,7 @@ fn make_test_actor(
         None,
         Vec::new(),
         active_turn,
+        taxis::config::NousBehaviorConfig::default(),
     );
     (actor, tx, dir)
 }

@@ -52,23 +52,6 @@ struct ActorEntry {
     active_turn: Arc<AtomicBool>,
 }
 
-/// Default interval between health polls (30 seconds).
-pub const DEFAULT_HEALTH_INTERVAL: Duration = Duration::from_secs(30); // kanon:ignore RUST/pub-visibility
-
-/// Default ping timeout for liveness checks (5 seconds).
-pub const DEFAULT_PING_TIMEOUT: Duration = Duration::from_secs(5); // kanon:ignore RUST/pub-visibility
-
-/// Consecutive misses before declaring an actor dead.
-const DEAD_THRESHOLD: u32 = 3;
-
-/// Maximum backoff between restart attempts (5 minutes).
-const MAX_RESTART_BACKOFF: Duration = Duration::from_secs(300);
-
-/// Timeout for waiting for an actor to drain during restart (30 seconds).
-const RESTART_DRAIN_TIMEOUT: Duration = Duration::from_secs(30);
-
-/// Window of stable operation after which `restart_count` decays to 0 (1 hour).
-const RESTART_DECAY_WINDOW: Duration = Duration::from_secs(3600);
 
 /// Manages the lifecycle of all nous actors.
 // NOTE: 14 fields: runtime dependency injection (providers, tools, stores) plus
@@ -91,6 +74,8 @@ pub struct NousManager {
     /// Root cancellation token. Child tokens are given to each actor.
     /// Cancelling this stops all actors without needing `&mut self`.
     cancel: CancellationToken,
+    /// Deployment-level behavioral configuration (health intervals, restart limits).
+    nous_behavior: taxis::config::NousBehaviorConfig,
 }
 
 impl NousManager {
@@ -111,6 +96,7 @@ impl NousManager {
         packs: Arc<Vec<LoadedPack>>,
         router: Option<Arc<crate::cross::CrossNousRouter>>,
         tool_services: Option<Arc<ToolServices>>,
+        nous_behavior: taxis::config::NousBehaviorConfig,
     ) -> Self {
         let (ready_tx, ready_rx) = watch::channel(false);
         Self {
@@ -129,6 +115,7 @@ impl NousManager {
             ready_tx,
             ready_rx,
             cancel: CancellationToken::new(),
+            nous_behavior,
         }
     }
 
@@ -228,6 +215,7 @@ impl NousManager {
             extra_bootstrap,
             cross_rx,
             child_cancel,
+            self.nous_behavior.clone(),
         );
 
         info!(nous_id = %id, "actor spawned");
@@ -282,8 +270,9 @@ impl NousManager {
     /// mid-loop, partial results are discarded; no manager state is mutated.
     pub async fn check_health(&self) -> BTreeMap<String, ActorHealth> {
         let mut results = BTreeMap::new();
+        let ping_timeout = Duration::from_secs(self.nous_behavior.manager_ping_timeout_secs);
         for (id, entry) in &self.actors {
-            let ping_result = entry.handle.ping(DEFAULT_PING_TIMEOUT).await;
+            let ping_result = entry.handle.ping(ping_timeout).await;
             // WHY: An actor processing a long turn cannot dequeue Ping messages
             // until the turn completes. Treat active_turn=true as a liveness
             // signal so busy actors are not incorrectly declared dead.
@@ -331,7 +320,7 @@ impl NousManager {
                     if entry.consecutive_misses == 1 {
                         warn!(nous_id = %id, "actor missed health check");
                     }
-                    if entry.consecutive_misses >= DEAD_THRESHOLD {
+                    if entry.consecutive_misses >= self.nous_behavior.manager_dead_threshold {
                         error!(
                             nous_id = %id,
                             misses = entry.consecutive_misses,
@@ -358,9 +347,11 @@ impl NousManager {
             return;
         };
 
+        let restart_decay_window =
+            Duration::from_secs(self.nous_behavior.manager_restart_decay_window_secs);
         // Decay restart_count if actor has been stable since last restart
         let restart_count = if let Some(last_restart) = entry.last_restart {
-            if last_restart.elapsed() >= RESTART_DECAY_WINDOW {
+            if last_restart.elapsed() >= restart_decay_window {
                 0
             } else {
                 entry.restart_count
@@ -369,7 +360,17 @@ impl NousManager {
             entry.restart_count
         };
 
-        let backoff = calculate_backoff(restart_count);
+        let backoff = calculate_backoff(
+            restart_count,
+            self.nous_behavior.manager_max_restart_backoff_secs,
+        );
+        tracing::debug!(
+            nous_id = %id,
+            restart_count,
+            backoff_secs = backoff.as_secs(),
+            manager_max_restart_backoff_secs = self.nous_behavior.manager_max_restart_backoff_secs,
+            "restart_actor: calculated backoff"
+        );
 
         info!(
             nous_id = %id,
@@ -388,12 +389,18 @@ impl NousManager {
             // WHY: take join handle before awaiting: must not hold MutexGuard across .await
             let join_opt = old.join.lock().expect("join mutex not poisoned").take(); // kanon:ignore RUST/expect
             if let Some(join) = join_opt {
-                match tokio::time::timeout(RESTART_DRAIN_TIMEOUT, join).await {
+                let restart_drain_timeout =
+                    Duration::from_secs(self.nous_behavior.manager_restart_drain_timeout_secs);
+                match tokio::time::timeout(restart_drain_timeout, join).await {
                     Ok(_) => {
                         tracing::debug!(nous_id = %id, "old actor drained cleanly before restart");
                     }
                     Err(_) => {
-                        tracing::warn!(nous_id = %id, "actor did not drain within {RESTART_DRAIN_TIMEOUT:?}, spawning replacement — concurrent store access possible");
+                        tracing::warn!(
+                            nous_id = %id,
+                            drain_timeout_secs = self.nous_behavior.manager_restart_drain_timeout_secs,
+                            "actor did not drain within timeout, spawning replacement — concurrent store access possible"
+                        );
                     }
                 }
             }
@@ -630,12 +637,12 @@ impl NousManager {
     }
 }
 
-/// Calculate exponential backoff: 5s, 15s, 45s, 2min, 5min cap.
-fn calculate_backoff(restart_count: u32) -> Duration {
+/// Calculate exponential backoff: 5s, 15s, 45s, 2min, up to `max_secs` cap.
+fn calculate_backoff(restart_count: u32, max_secs: u64) -> Duration {
     let base_secs: u64 = 5;
     let multiplier = 3u64.saturating_pow(restart_count);
     let secs = base_secs.saturating_mul(multiplier);
-    Duration::from_secs(secs).min(MAX_RESTART_BACKOFF)
+    Duration::from_secs(secs).min(Duration::from_secs(max_secs))
 }
 
 #[cfg(test)]

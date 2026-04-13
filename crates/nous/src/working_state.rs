@@ -184,9 +184,6 @@ impl<'de> Deserialize<'de> for WorkingState {
     }
 }
 
-/// Maximum task stack depth before oldest entries are evicted.
-const MAX_TASK_STACK: usize = 10;
-
 impl WorkingState {
     /// Create an empty working state.
     #[must_use]
@@ -198,7 +195,13 @@ impl WorkingState {
     /// Push a task onto the stack.
     #[cfg_attr(not(test), expect(dead_code, reason = "working state management for agent context"))]
     pub(crate) fn push_task(&mut self, description: impl Into<String>) {
-        if self.task_stack.len() >= MAX_TASK_STACK {
+        let max_task_stack =
+            taxis::config::AgentBehaviorDefaults::default().working_state_max_task_stack;
+        tracing::debug!(
+            max_task_stack,
+            "push_task: max stack depth from AgentBehaviorDefaults"
+        );
+        if self.task_stack.len() >= max_task_stack {
             self.task_stack.remove(0);
         }
         self.task_stack.push(TaskEntry {
@@ -406,13 +409,6 @@ impl WorkingState {
     }
 }
 
-#[expect(
-    dead_code,
-    reason = "blackboard TTL for working state entry expiration"
-)]
-/// Blackboard TTL for working state entries (7 days).
-pub(crate) const WORKING_STATE_TTL_SECS: i64 = 604_800;
-
 fn now_iso8601() -> String {
     jiff::Timestamp::now().to_string()
 }
@@ -466,13 +462,15 @@ mod tests {
 
     #[test]
     fn task_stack_evicts_at_max_depth() {
+        let max_task_stack =
+            taxis::config::AgentBehaviorDefaults::default().working_state_max_task_stack;
         let mut state = WorkingState::new();
-        for i in 0..15 {
+        for i in 0..max_task_stack + 5 {
             state.push_task(format!("task {i}"));
         }
         assert_eq!(
             state.task_stack.len(),
-            MAX_TASK_STACK,
+            max_task_stack,
             "stack should not exceed max depth"
         );
         assert_eq!(

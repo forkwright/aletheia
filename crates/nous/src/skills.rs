@@ -6,29 +6,27 @@
 //! Skills are injected at `SectionPriority::Flexible`, so they are truncated
 //! before workspace identity files under budget pressure.
 
-/// Maximum characters of task context to send as the BM25 query.
-///
-/// Longer queries dilute BM25 scores; keep the signal tight.
-#[cfg(any(feature = "knowledge-store", test))]
-const MAX_CONTEXT_CHARS: usize = 200;
-
 /// Extracts a concise task description from the latest user message.
 ///
 /// The result is used as the BM25 query for skill search, so brevity
 /// is preferred. Trims whitespace, strips punctuation that `CozoDB` FTS
 /// cannot parse, and truncates at a word boundary.
+///
+/// `max_context_chars` comes from [`taxis::config::AgentBehaviorDefaults::skills_max_context_chars`].
 #[cfg(any(feature = "knowledge-store", test))]
 pub(crate) fn extract_task_context(content: &str) -> String {
+    let max_context_chars =
+        taxis::config::AgentBehaviorDefaults::default().skills_max_context_chars;
     let sanitized = sanitize_fts_query(content);
     let trimmed = sanitized.trim();
     if trimmed.is_empty() {
         return String::new();
     }
-    if trimmed.len() <= MAX_CONTEXT_CHARS {
+    if trimmed.len() <= max_context_chars {
         return trimmed.to_owned();
     }
 
-    let mut end = MAX_CONTEXT_CHARS;
+    let mut end = max_context_chars;
     while end > 0 && !trimmed.is_char_boundary(end) {
         end -= 1;
     }
@@ -111,9 +109,6 @@ use crate::bootstrap::{BootstrapSection, SectionPriority};
 #[cfg(any(feature = "knowledge-store", test))]
 use crate::budget::{CharEstimator, TokenEstimator as _};
 
-/// Default number of skills to inject per session.
-#[cfg(feature = "knowledge-store")]
-pub(crate) const DEFAULT_MAX_SKILLS: usize = 5;
 
 /// Resolves relevant skills from mneme and converts them to bootstrap sections.
 ///
@@ -384,31 +379,37 @@ mod tests {
 
     #[test]
     fn extract_task_context_truncates_long_input() {
-        let long = "a".repeat(250);
+        let max_context_chars =
+            taxis::config::AgentBehaviorDefaults::default().skills_max_context_chars;
+        let long = "a".repeat(max_context_chars + 50);
         let ctx = extract_task_context(&long);
         assert!(
-            ctx.len() <= MAX_CONTEXT_CHARS,
-            "should be truncated to ≤200 chars"
+            ctx.len() <= max_context_chars,
+            "should be truncated to ≤{max_context_chars} chars"
         );
     }
 
     #[test]
     fn extract_task_context_truncates_at_word_boundary() {
-        let prefix = "word ".repeat(39); // 195 chars
+        let max_context_chars =
+            taxis::config::AgentBehaviorDefaults::default().skills_max_context_chars;
+        let prefix = "word ".repeat(max_context_chars / 5 - 1);
         let suffix = "toolongword that keeps going";
         let input = format!("{prefix}{suffix}");
-        assert!(input.len() > MAX_CONTEXT_CHARS);
+        assert!(input.len() > max_context_chars);
 
         let ctx = extract_task_context(&input);
-        assert!(ctx.len() <= MAX_CONTEXT_CHARS);
+        assert!(ctx.len() <= max_context_chars);
         assert!(!ctx.ends_with("toolong"));
     }
 
     #[test]
     fn extract_task_context_exact_boundary_not_truncated() {
-        let exact = "x".repeat(MAX_CONTEXT_CHARS);
+        let max_context_chars =
+            taxis::config::AgentBehaviorDefaults::default().skills_max_context_chars;
+        let exact = "x".repeat(max_context_chars);
         let ctx = extract_task_context(&exact);
-        assert_eq!(ctx.len(), MAX_CONTEXT_CHARS);
+        assert_eq!(ctx.len(), max_context_chars);
     }
 
     fn sample_skill() -> mneme::skill::SkillContent {

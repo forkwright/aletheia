@@ -43,18 +43,6 @@ pub(crate) const MAX_SPAWNED_TASKS: usize = 8;
 /// When exceeded, the oldest session (by last activity) is evicted.
 pub(crate) const MAX_SESSIONS: usize = 1000;
 
-/// Number of panics within `DEGRADED_WINDOW` that triggers degraded mode.
-const DEGRADED_PANIC_THRESHOLD: u32 = 5;
-
-/// Time window for panic counting (10 minutes).
-const DEGRADED_WINDOW: Duration = Duration::from_secs(600);
-
-/// Inbox recv timeout: detects stuck actors during idle periods. (#2159)
-const INBOX_RECV_TIMEOUT: Duration = Duration::from_secs(30);
-
-/// Consecutive timeouts before warning when the actor is Active. (#2159)
-const CONSECUTIVE_TIMEOUT_WARN_THRESHOLD: u32 = 3;
-
 /// Messaging and lifecycle channels for the actor.
 pub(crate) struct ActorChannel {
     inbox: mpsc::Receiver<NousMessage>,
@@ -141,6 +129,8 @@ pub struct NousActor {
     /// // sessions may have different quality baselines. A coding session
     /// // naturally has different tool-error patterns than a research session.
     drift_detectors: HashMap<String, DriftDetector>,
+    /// Deployment-level behavioral configuration (panic thresholds, timeouts).
+    pub(crate) nous_behavior: taxis::config::NousBehaviorConfig,
 }
 
 impl NousActor {
@@ -167,6 +157,7 @@ impl NousActor {
         tool_services: Option<Arc<ToolServices>>,
         extra_bootstrap: Vec<BootstrapSection>,
         active_turn: Arc<AtomicBool>,
+        nous_behavior: taxis::config::NousBehaviorConfig,
     ) -> Self {
         #[cfg(feature = "knowledge-store")]
         let skill_loader = knowledge_store
@@ -225,6 +216,7 @@ impl NousActor {
                 consecutive_timeouts: 0,
             },
             drift_detectors: HashMap::new(),
+            nous_behavior,
         }
     }
 
@@ -265,7 +257,10 @@ impl NousActor {
                 // if this branch is dropped before it fires, the message remains
                 // in the inbox and will be delivered on the next poll.
                 // WHY(#2159): wrapped in timeout to detect stuck actors during idle periods.
-                recv_result = tokio::time::timeout(INBOX_RECV_TIMEOUT, self.channel.inbox.recv()) => {
+                recv_result = tokio::time::timeout(
+                    Duration::from_secs(self.nous_behavior.inbox_recv_timeout_secs),
+                    self.channel.inbox.recv()
+                ) => {
                     let msg = match recv_result {
                         Ok(Some(msg)) => {
                             self.runtime.consecutive_timeouts = 0;
@@ -276,9 +271,10 @@ impl NousActor {
                             self.runtime.consecutive_timeouts += 1;
                             debug!(
                                 consecutive_timeouts = self.runtime.consecutive_timeouts,
+                                inbox_recv_timeout_secs = self.nous_behavior.inbox_recv_timeout_secs,
                                 "inbox recv timed out (idle)"
                             );
-                            if self.runtime.consecutive_timeouts >= CONSECUTIVE_TIMEOUT_WARN_THRESHOLD
+                            if self.runtime.consecutive_timeouts >= self.nous_behavior.consecutive_timeout_warn_threshold
                                 && self.channel.status == NousLifecycle::Active
                             {
                                 warn!(
@@ -448,7 +444,7 @@ impl NousActor {
     }
 
     /// Attempt auto-recovery from degraded mode if the last panic was more than
-    /// `DEGRADED_WINDOW` (10 minutes) ago.
+    /// `degraded_window_secs` ago.
     fn maybe_auto_recover(&mut self) {
         if self.channel.status != NousLifecycle::Degraded {
             return;
@@ -456,11 +452,13 @@ impl NousActor {
         let Some(last_panic) = self.runtime.last_panic_at else {
             return;
         };
-        if last_panic.elapsed() >= DEGRADED_WINDOW {
+        let degraded_window = Duration::from_secs(self.nous_behavior.degraded_window_secs);
+        if last_panic.elapsed() >= degraded_window {
             info!(
                 nous_id = %self.id,
                 panic_count = self.runtime.pipeline_panic_count,
                 elapsed_secs = last_panic.elapsed().as_secs(),
+                degraded_window_secs = self.nous_behavior.degraded_window_secs,
                 "auto-recovering from degraded mode: no panics in recovery window"
             );
             self.runtime.pipeline_panic_count = 0;
@@ -544,8 +542,10 @@ impl NousActor {
         {
             if let Some(ref loader) = self.stores.skill_loader {
                 let task_context = crate::skills::extract_task_context(content);
+                let max_skills = self.config.behavior.skills_max_skills;
+                tracing::debug!(max_skills, "resolve_skill_sections: max_skills from behavior");
                 return loader
-                    .resolve_skills(&self.id, &task_context, crate::skills::DEFAULT_MAX_SKILLS)
+                    .resolve_skills(&self.id, &task_context, max_skills)
                     .await;
             }
         }
