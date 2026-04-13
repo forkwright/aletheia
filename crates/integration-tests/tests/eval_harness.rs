@@ -69,6 +69,7 @@ async fn start_test_server() -> (String, String, tempfile::TempDir) {
         Arc::new(vec![]),
         None,
         None,
+        taxis::config::NousBehaviorConfig::default(),
     );
 
     let nous_config = NousConfig {

@@ -169,6 +169,7 @@ priority = "important"
         Arc::new(packs),
         None,
         None,
+        taxis::config::NousBehaviorConfig::default(),
     );
 
     let config = NousConfig {
@@ -321,6 +322,7 @@ domains = ["healthcare"]
         Arc::new(packs.clone()),
         None,
         None,
+        taxis::config::NousBehaviorConfig::default(),
     );
 
     let analyst_config = NousConfig {
@@ -358,6 +360,7 @@ domains = ["healthcare"]
         Arc::new(packs),
         None,
         None,
+        taxis::config::NousBehaviorConfig::default(),
     );
 
     let hermes_config = NousConfig {

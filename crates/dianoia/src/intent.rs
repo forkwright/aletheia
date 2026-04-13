@@ -261,7 +261,7 @@ impl IntentStore {
             .collect();
         // WHY: Directives must appear before Preferences before Suggestions so that
         // consumers see the highest-conviction intent first without additional sorting.
-        active.sort_by(|a, b| b.conviction_tier.cmp(&a.conviction_tier));
+        active.sort_by_key(|a| std::cmp::Reverse(a.conviction_tier));
         Ok(active)
     }
 

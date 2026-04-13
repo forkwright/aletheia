@@ -20,7 +20,7 @@ impl Default for CronGraphCleanupConfig {
     fn default() -> Self {
         Self {
             enabled: false,
-            interval: Duration::from_secs(7 * 24 * 3600),
+            interval: Duration::from_hours(7 * 24),
         }
     }
 }

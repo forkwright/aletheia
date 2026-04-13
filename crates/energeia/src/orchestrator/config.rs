@@ -69,7 +69,7 @@ impl Default for OrchestratorConfig {
             default_budget_usd: None,
             default_budget_turns: None,
             max_duration: None,
-            session_idle_timeout: Some(Duration::from_secs(600)),
+            session_idle_timeout: Some(Duration::from_mins(10)),
             max_corrective_retries: 1,
         }
     }

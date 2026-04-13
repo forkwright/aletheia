@@ -268,11 +268,7 @@ fn resolve_osc_links(
             continue;
         };
         // Adjust for which visual row within the wrapped line this col sits on.
-        let col_row = if wrap_width > 0 {
-            usize::from(*col) / wrap_width
-        } else {
-            0
-        };
+        let col_row = usize::from(*col).checked_div(wrap_width).unwrap_or(0);
         // WHY: visual row count is bounded by terminal dimensions; unreachable
         // overflow saturates to i32::MAX so the link falls off-screen below.
         let vrow_start_i32 = i32::try_from(vrow_start).unwrap_or(i32::MAX);

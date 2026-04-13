@@ -81,7 +81,10 @@ pub async fn check(State(state): State<HealthState>) -> impl IntoResponse {
     checks.push(check_config_readable(&state).await);
 
     // Check credential validity
-    checks.push(check_credential_validity(&state));
+    let api_limits = &state.config.read().await.api_limits;
+    let clock_skew_leeway = api_limits.clock_skew_leeway_secs;
+    let expiry_warning_threshold = api_limits.expiry_warning_threshold_secs;
+    checks.push(check_credential_validity(&state, clock_skew_leeway, expiry_warning_threshold));
 
     // Check storage writability
     checks.push(check_storage_writable(&state).await);
@@ -174,7 +177,7 @@ async fn check_config_readable(state: &HealthState) -> HealthCheck {
 
     match tokio::fs::metadata(&config_path).await {
         Ok(_metadata) => {
-            if std::fs::metadata(&config_path).map(|m| m.is_file()).unwrap_or(false) {
+            if std::fs::metadata(&config_path).is_ok_and(|m| m.is_file()) {
                 // Also verify we can read the current config in memory
                 let _config = state.config.read().await;
                 HealthCheck {
@@ -207,13 +210,15 @@ async fn check_config_readable(state: &HealthState) -> HealthCheck {
     }
 }
 
-/// Allowed clock skew between the local clock and the JWT issuer.
-const CLOCK_SKEW_LEEWAY: u64 = 30;
-/// Warn when an OAuth token expires within this many seconds (1 hour).
-const EXPIRY_WARNING_THRESHOLD: u64 = 3600;
+// CLOCK_SKEW_LEEWAY and EXPIRY_WARNING_THRESHOLD are now read from
+// `config.api_limits` at runtime. See `taxis::config::ApiLimitsConfig`.
 
 /// Check credential validity (presence and expiry).
-fn check_credential_validity(state: &HealthState) -> HealthCheck {
+fn check_credential_validity(
+    state: &HealthState,
+    clock_skew_leeway: u64,
+    expiry_warning_threshold: u64,
+) -> HealthCheck {
     // Check for API key in environment
     let env_key = RealSystem.var("ANTHROPIC_API_KEY").or_else(|| {
         tracing::debug!("ANTHROPIC_API_KEY not set");
@@ -238,7 +243,7 @@ fn check_credential_validity(state: &HealthState) -> HealthCheck {
                     .unwrap_or_default()
                     .as_secs();
 
-                if exp_secs + CLOCK_SKEW_LEEWAY < now_secs {
+                if exp_secs + clock_skew_leeway < now_secs {
                     return HealthCheck {
                         name: "credential_validity",
                         status: "warn",
@@ -247,7 +252,7 @@ fn check_credential_validity(state: &HealthState) -> HealthCheck {
                 }
 
                 // Check if expiring soon (within 1 hour)
-                if exp_secs + CLOCK_SKEW_LEEWAY + EXPIRY_WARNING_THRESHOLD < now_secs {
+                if exp_secs + clock_skew_leeway + expiry_warning_threshold < now_secs {
                     return HealthCheck {
                         name: "credential_validity",
                         status: "warn",
@@ -271,16 +276,26 @@ fn check_credential_validity(state: &HealthState) -> HealthCheck {
     if let Some(cred_file) = symbolon::credential::CredentialFile::load(&cred_file) {
         // Check if token is expired or expiring soon
         if let Some(remaining_secs) = cred_file.seconds_remaining() {
-            const CLOCK_SKEW_LEEWAY: i64 = 30;
-            const EXPIRY_WARNING_THRESHOLD: i64 = 3600;
+            #[expect(
+                clippy::cast_possible_wrap,
+                clippy::as_conversions,
+                reason = "u64->i64: leeway/threshold values fit in i64"
+            )]
+            let leeway_i64 = clock_skew_leeway as i64; // kanon:ignore RUST/as-cast
+            #[expect(
+                clippy::cast_possible_wrap,
+                clippy::as_conversions,
+                reason = "u64->i64: leeway/threshold values fit in i64"
+            )]
+            let warning_i64 = expiry_warning_threshold as i64; // kanon:ignore RUST/as-cast
 
-            if remaining_secs < CLOCK_SKEW_LEEWAY {
+            if remaining_secs < leeway_i64 {
                 return HealthCheck {
                     name: "credential_validity",
                     status: "warn",
                     message: Some("credential file token has expired".to_owned()),
                 };
-            } else if remaining_secs < EXPIRY_WARNING_THRESHOLD {
+            } else if remaining_secs < warning_i64 {
                 return HealthCheck {
                     name: "credential_validity",
                     status: "warn",

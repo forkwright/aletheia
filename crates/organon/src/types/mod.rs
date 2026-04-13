@@ -396,7 +396,7 @@ impl ToolStats {
             .iter()
             .map(|(k, v)| (k.as_str(), *v))
             .collect();
-        sorted.sort_by(|a, b| b.1.cmp(&a.1));
+        sorted.sort_by_key(|x| std::cmp::Reverse(x.1));
         sorted.truncate(n);
         sorted
     }

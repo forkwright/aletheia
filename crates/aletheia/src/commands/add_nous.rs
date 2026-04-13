@@ -79,12 +79,12 @@ fn check_credential(provider: &str) {
     };
 
     let env = RealSystem;
-    let has_env = env.var(env_var).filter(|v| !v.is_empty()).is_some();
+    let has_env = env.var(env_var).as_ref().is_some_and(|v| !v.is_empty());
 
     let has_auth_token = if provider == "anthropic" {
         env.var("ANTHROPIC_AUTH_TOKEN")
-            .filter(|v| !v.is_empty())
-            .is_some()
+            .as_ref()
+            .is_some_and(|v| !v.is_empty())
     } else {
         false
     };

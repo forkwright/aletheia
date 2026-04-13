@@ -29,7 +29,7 @@ impl RateLimiter {
     pub(crate) fn new(requests_per_minute: u32) -> Self {
         Self {
             max_requests: requests_per_minute,
-            window: Duration::from_secs(60),
+            window: Duration::from_mins(1),
             state: Mutex::new(HashMap::new()),
             trust_proxy: false,
         }

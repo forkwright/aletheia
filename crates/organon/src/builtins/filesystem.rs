@@ -61,7 +61,7 @@ fn truncate_output(mut output: String) -> String {
 /// A 60-second wall-clock timeout prevents hung processes from consuming
 /// resources. On timeout the [`ProcessGuard`] kills and reaps the child.
 /// Closes #2168, #2133.
-const SUBPROCESS_TIMEOUT: Duration = Duration::from_secs(60);
+const SUBPROCESS_TIMEOUT: Duration = Duration::from_mins(1);
 
 fn run_command(cmd: &mut Command) -> std::io::Result<std::process::Output> {
     // NOTE: Wrap in ProcessGuard so the child is killed and reaped on any early

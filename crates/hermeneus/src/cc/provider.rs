@@ -53,7 +53,7 @@ impl Default for CcProviderConfig {
         Self {
             cc_binary: None,
             default_model: "claude-opus-4-6".to_owned(),
-            timeout: Duration::from_secs(300),
+            timeout: Duration::from_mins(5),
         }
     }
 }

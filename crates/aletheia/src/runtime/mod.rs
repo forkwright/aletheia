@@ -661,7 +661,7 @@ impl RuntimeBuilder {
                     name: "Prosoche attention check".to_owned(),
                     nous_id: agent_def.id.clone(),
                     schedule: oikonomos::schedule::Schedule::Interval(
-                        std::time::Duration::from_secs(45 * 60),
+                        std::time::Duration::from_mins(45),
                     ),
                     action: oikonomos::schedule::TaskAction::Builtin(
                         oikonomos::schedule::BuiltinTask::Prosoche,
@@ -705,7 +705,11 @@ impl RuntimeBuilder {
             none_role: self.config.gateway.auth.none_role.clone(),
             config: Arc::new(tokio::sync::RwLock::new(aletheia_config)),
             config_tx,
-            idempotency_cache: Arc::new(pylon::idempotency::IdempotencyCache::new()),
+            idempotency_cache: Arc::new(pylon::idempotency::IdempotencyCache::with_config(
+                std::time::Duration::from_secs(self.config.api_limits.idempotency_ttl_secs),
+                self.config.api_limits.idempotency_capacity,
+                self.config.api_limits.idempotency_max_key_length,
+            )),
             shutdown: shutdown_token.clone(),
             #[cfg(feature = "recall")]
             knowledge_store,

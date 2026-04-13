@@ -9,8 +9,8 @@ use crate::state::KnowledgeState;
 #[cfg(feature = "knowledge-store")]
 use super::SimilarFact;
 use super::{
-    FactsQuery, MAX_SEARCH_LIMIT, SearchQuery, SearchResponse, SearchResult, TimelineEvent,
-    TimelineResponse, default_order, default_sort,
+    FactsQuery, SearchQuery, SearchResponse, SearchResult, TimelineEvent, TimelineResponse,
+    default_order, default_sort,
 };
 
 /// GET /api/v1/knowledge/search
@@ -44,13 +44,14 @@ pub async fn search(
         .build());
     }
 
-    if query.limit > MAX_SEARCH_LIMIT {
+    let max_search_limit = state.config.read().await.api_limits.max_search_limit;
+    if query.limit > max_search_limit {
         return Err(crate::error::BadRequestSnafu {
-            message: format!("limit must not exceed {MAX_SEARCH_LIMIT}"),
+            message: format!("limit must not exceed {max_search_limit}"),
         }
         .build());
     }
-    query.limit = query.limit.min(MAX_SEARCH_LIMIT);
+    query.limit = query.limit.min(max_search_limit);
 
     // WHY: Pass the caller-supplied nous_id so get_stored_facts can query the store.
     // The previous call to get_all_facts hardcoded nous_id: None, causing the store

@@ -30,7 +30,7 @@ impl StewardConfig {
     #[must_use]
     pub fn new(project: String) -> Self {
         Self {
-            interval: Duration::from_secs(300), // 5 minutes default
+            interval: Duration::from_mins(5), // 5 minutes default
             once: false,
             dry_run: false,
             project,

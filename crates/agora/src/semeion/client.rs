@@ -127,7 +127,7 @@ impl SignalClient {
         let config = RetryConfig {
             max_retries: 2,
             strategy: BackoffStrategy::Fixed {
-                delays: vec![Duration::from_millis(500), Duration::from_millis(1000)],
+                delays: vec![Duration::from_millis(500), Duration::from_secs(1)],
             },
         };
         config

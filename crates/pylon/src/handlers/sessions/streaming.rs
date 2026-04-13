@@ -22,7 +22,7 @@ use symbolon::types::Role;
 
 use crate::error::{ApiError, BadRequestSnafu, ConflictSnafu, InternalSnafu, NousNotFoundSnafu};
 use crate::extract::{Claims, require_nous_access, require_role};
-use crate::idempotency::{LookupResult, MAX_KEY_LENGTH};
+use crate::idempotency::LookupResult;
 use crate::middleware::RequestId;
 use crate::state::SessionsState;
 use crate::stream::{SseEvent, TurnOutcome, UsageData, WebchatEvent};
@@ -30,10 +30,8 @@ use crate::stream::{SseEvent, TurnOutcome, UsageData, WebchatEvent};
 use super::types::{SendMessageRequest, StreamTurnRequest};
 use super::{find_session, resolve_session};
 
-/// Maximum user message size in bytes (256 KB).
-const MAX_MESSAGE_BYTES: usize = 262_144;
-/// Maximum identifier field size in bytes (session keys, agent IDs).
-const MAX_IDENTIFIER_BYTES: usize = 256;
+// Message and identifier size limits are now read from `config.api_limits` at runtime.
+// See `taxis::config::ApiLimitsConfig` for defaults and documentation.
 
 /// Guard that aborts a spawned task when dropped.
 ///
@@ -117,7 +115,9 @@ pub async fn send_message(
 ) -> Result<Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>>, ApiError> {
     require_role(&claims, Role::Operator)?;
 
-    let idempotency_key = extract_idempotency_key(&headers)?.map(|k| format!("{}:{k}", claims.sub));
+    let idempotency_key =
+        extract_idempotency_key(&headers, state.idempotency_cache.max_key_length)?
+            .map(|k| format!("{}:{k}", claims.sub));
 
     if let Some(ref key) = idempotency_key {
         match state.idempotency_cache.check_or_insert(key) {
@@ -199,9 +199,10 @@ pub async fn send_message(
     }
 
     // SAFETY: enforce max message size to prevent memory exhaustion from oversized payloads.
-    if content.len() > MAX_MESSAGE_BYTES {
+    let max_msg_bytes = state.config.read().await.api_limits.max_message_bytes;
+    if content.len() > max_msg_bytes {
         return Err(BadRequestSnafu {
-            message: format!("content exceeds maximum size of {MAX_MESSAGE_BYTES} bytes"),
+            message: format!("content exceeds maximum size of {max_msg_bytes} bytes"),
         }
         .build());
     }
@@ -389,21 +390,24 @@ pub async fn stream_turn(
     }
 
     // SAFETY: enforce max message size to prevent memory exhaustion from oversized payloads.
-    if message.len() > MAX_MESSAGE_BYTES {
+    let api_limits = &state.config.read().await.api_limits;
+    let max_msg_bytes = api_limits.max_message_bytes;
+    let max_id_bytes = api_limits.max_identifier_bytes;
+    if message.len() > max_msg_bytes {
         return Err(BadRequestSnafu {
-            message: format!("message exceeds maximum size of {MAX_MESSAGE_BYTES} bytes"),
+            message: format!("message exceeds maximum size of {max_msg_bytes} bytes"),
         }
         .build());
     }
 
     // WHY: bound identifier fields to prevent memory exhaustion from oversized IDs (#2787).
-    if agent_id.len() > MAX_IDENTIFIER_BYTES {
+    if agent_id.len() > max_id_bytes {
         return Err(BadRequestSnafu {
             message: "agent_id exceeds maximum length",
         }
         .build());
     }
-    if session_key.len() > MAX_IDENTIFIER_BYTES {
+    if session_key.len() > max_id_bytes {
         return Err(BadRequestSnafu {
             message: "session_key exceeds maximum length",
         }
@@ -653,7 +657,10 @@ fn sse_event_to_axum(event: SseEvent) -> Result<Event, Infallible> {
 }
 
 /// Extract and validate the optional `Idempotency-Key` header.
-fn extract_idempotency_key(headers: &axum::http::HeaderMap) -> Result<Option<String>, ApiError> {
+fn extract_idempotency_key(
+    headers: &axum::http::HeaderMap,
+    max_key_length: usize,
+) -> Result<Option<String>, ApiError> {
     let Some(value) = headers.get("idempotency-key") else {
         return Ok(None);
     };
@@ -669,9 +676,9 @@ fn extract_idempotency_key(headers: &axum::http::HeaderMap) -> Result<Option<Str
         }
         .build());
     }
-    if key.len() > MAX_KEY_LENGTH {
+    if key.len() > max_key_length {
         return Err(BadRequestSnafu {
-            message: format!("Idempotency-Key must be at most {MAX_KEY_LENGTH} characters"),
+            message: format!("Idempotency-Key must be at most {max_key_length} characters"),
         }
         .build());
     }
@@ -764,6 +771,9 @@ mod tests {
     use super::*;
     use axum::http::HeaderMap;
 
+    /// Default max key length for tests (matches `ApiLimitsConfig::default()`).
+    const TEST_MAX_KEY_LEN: usize = 64;
+
     // ─────────────────────────────────────────────────────────
     // extract_idempotency_key
     // ─────────────────────────────────────────────────────────
@@ -771,7 +781,7 @@ mod tests {
     #[test]
     fn idempotency_key_absent_returns_none() {
         let headers = HeaderMap::new();
-        let result = extract_idempotency_key(&headers).expect("should succeed");
+        let result = extract_idempotency_key(&headers, TEST_MAX_KEY_LEN).expect("should succeed");
         assert!(result.is_none());
     }
 
@@ -779,7 +789,7 @@ mod tests {
     fn idempotency_key_present_returns_value() {
         let mut headers = HeaderMap::new();
         headers.insert("idempotency-key", "abc-123".parse().expect("valid header"));
-        let result = extract_idempotency_key(&headers).expect("should succeed");
+        let result = extract_idempotency_key(&headers, TEST_MAX_KEY_LEN).expect("should succeed");
         assert_eq!(result.as_deref(), Some("abc-123"));
     }
 
@@ -787,28 +797,28 @@ mod tests {
     fn idempotency_key_empty_value_rejected() {
         let mut headers = HeaderMap::new();
         headers.insert("idempotency-key", "".parse().expect("valid header"));
-        let result = extract_idempotency_key(&headers);
+        let result = extract_idempotency_key(&headers, TEST_MAX_KEY_LEN);
         assert!(result.is_err(), "empty key should be rejected");
     }
 
     #[test]
     fn idempotency_key_too_long_rejected() {
         let mut headers = HeaderMap::new();
-        let long_key = "a".repeat(MAX_KEY_LENGTH + 1);
+        let long_key = "a".repeat(TEST_MAX_KEY_LEN + 1);
         headers.insert(
             "idempotency-key",
             long_key.parse().expect("valid ascii header"),
         );
-        let result = extract_idempotency_key(&headers);
+        let result = extract_idempotency_key(&headers, TEST_MAX_KEY_LEN);
         assert!(result.is_err(), "over-long key should be rejected");
     }
 
     #[test]
     fn idempotency_key_at_max_length_accepted() {
         let mut headers = HeaderMap::new();
-        let key = "a".repeat(MAX_KEY_LENGTH);
+        let key = "a".repeat(TEST_MAX_KEY_LEN);
         headers.insert("idempotency-key", key.parse().expect("valid header"));
-        let result = extract_idempotency_key(&headers).expect("should succeed");
+        let result = extract_idempotency_key(&headers, TEST_MAX_KEY_LEN).expect("should succeed");
         assert!(result.is_some());
     }
 
@@ -817,7 +827,7 @@ mod tests {
         // HTTP headers are case-insensitive; axum normalizes them
         let mut headers = HeaderMap::new();
         headers.insert("Idempotency-Key", "mixed-case".parse().expect("valid header"));
-        let result = extract_idempotency_key(&headers).expect("should succeed");
+        let result = extract_idempotency_key(&headers, TEST_MAX_KEY_LEN).expect("should succeed");
         assert_eq!(result.as_deref(), Some("mixed-case"));
     }
 

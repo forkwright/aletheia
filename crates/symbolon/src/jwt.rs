@@ -54,8 +54,8 @@ impl Default for JwtConfig {
     fn default() -> Self {
         Self {
             signing_key: SecretString::from(INSECURE_DEFAULT_KEY.to_owned()),
-            access_ttl: Duration::from_secs(3600),
-            refresh_ttl: Duration::from_secs(7 * 24 * 3600),
+            access_ttl: Duration::from_hours(1),
+            refresh_ttl: Duration::from_hours(7 * 24),
             issuer: "aletheia".to_owned(),
         }
     }

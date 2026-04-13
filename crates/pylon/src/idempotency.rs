@@ -12,17 +12,19 @@ use std::time::{Duration, Instant};
 use axum::http::StatusCode;
 
 /// Default TTL for cached idempotency entries.
-const DEFAULT_TTL: Duration = Duration::from_secs(5 * 60);
+const DEFAULT_TTL: Duration = Duration::from_mins(5);
 
 /// Maximum number of entries in the cache.
 const DEFAULT_CAPACITY: usize = 10_000;
 
-/// Maximum allowed length for an idempotency key string.
-pub(crate) const MAX_KEY_LENGTH: usize = 64;
+/// Default maximum allowed length for an idempotency key string (64).
+const DEFAULT_MAX_KEY_LENGTH: usize = 64;
 
 /// Thread-safe idempotency cache with LRU eviction and TTL expiry.
 pub struct IdempotencyCache {
     inner: Mutex<CacheInner>,
+    /// Maximum key length for idempotency keys.
+    pub(crate) max_key_length: usize,
 }
 
 struct CacheInner {
@@ -72,16 +74,23 @@ impl Default for IdempotencyCache {
 }
 
 impl IdempotencyCache {
-    /// Create a new idempotency cache with default capacity and TTL.
+    /// Create a new idempotency cache with default capacity, TTL, and key length.
     #[must_use]
     pub fn new() -> Self {
+        Self::with_config(DEFAULT_TTL, DEFAULT_CAPACITY, DEFAULT_MAX_KEY_LENGTH)
+    }
+
+    /// Create an idempotency cache from deployment-level config values.
+    #[must_use]
+    pub fn with_config(ttl: Duration, capacity: usize, max_key_length: usize) -> Self {
         Self {
             inner: Mutex::new(CacheInner {
                 entries: HashMap::new(),
                 order: VecDeque::new(),
-                capacity: DEFAULT_CAPACITY,
-                ttl: DEFAULT_TTL,
+                capacity,
+                ttl,
             }),
+            max_key_length,
         }
     }
 
@@ -229,6 +238,7 @@ mod tests {
                 capacity: 3,
                 ttl: DEFAULT_TTL,
             }),
+            max_key_length: DEFAULT_MAX_KEY_LENGTH,
         };
 
         for i in 0..4 {
@@ -250,6 +260,7 @@ mod tests {
                 capacity: DEFAULT_CAPACITY,
                 ttl: Duration::from_millis(0),
             }),
+            max_key_length: DEFAULT_MAX_KEY_LENGTH,
         };
 
         cache.check_or_insert("expired-key");

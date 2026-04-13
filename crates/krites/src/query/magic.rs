@@ -265,13 +265,13 @@ impl NormalFormProgram {
                         for atom in rule.body.iter() {
                             match atom {
                                 NormalFormAtom::Rule(r_app)
-                                | NormalFormAtom::NegatedRule(r_app) => {
-                                    if !own_rules.contains(&r_app.name) {
-                                        downstream_rules.insert(r_app.name.clone());
-                                    }
+                                | NormalFormAtom::NegatedRule(r_app)
+                                    if !own_rules.contains(&r_app.name) =>
+                                {
+                                    downstream_rules.insert(r_app.name.clone());
                                 }
                                 _ => {
-                                    // NOTE: non-rule atoms don't contribute downstream rules
+                                    // NOTE: non-rule atoms and own-rules don't contribute
                                 }
                             }
                         }

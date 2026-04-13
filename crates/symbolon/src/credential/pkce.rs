@@ -689,7 +689,7 @@ pub async fn pkce_login(provider: &OAuthProvider) -> Result<CredentialFile> {
     eprintln!("  {auth_url}\n");
 
     // Wait for callback with timeout
-    let callback_result = tokio::time::timeout(Duration::from_secs(300), callback_rx).await;
+    let callback_result = tokio::time::timeout(Duration::from_mins(5), callback_rx).await;
 
     let callback_data = match callback_result {
         Ok(Ok(Ok(data))) => data,

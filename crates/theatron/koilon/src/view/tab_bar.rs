@@ -30,11 +30,7 @@ pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let plus_width = plus_label.len();
     let available = width.saturating_sub(separators_width + plus_width + 1); // +1 for leading space
 
-    let max_per_tab = if total_tabs > 0 {
-        (available / total_tabs).max(3)
-    } else {
-        available
-    };
+    let max_per_tab = available.checked_div(total_tabs).map_or(available, |v| v.max(3));
 
     let mut spans: Vec<Span> = Vec::new();
 

@@ -271,7 +271,7 @@ pub fn spawn_stale_cleanup(
     shutdown: tokio_util::sync::CancellationToken,
 ) {
     let stale_secs = limiter.config.stale_after_secs;
-    let interval = Duration::from_secs(stale_secs / 2).max(Duration::from_secs(60));
+    let interval = Duration::from_secs(stale_secs / 2).max(Duration::from_mins(1));
     let span = tracing::info_span!("rate_limit_cleanup");
 
     tokio::spawn(

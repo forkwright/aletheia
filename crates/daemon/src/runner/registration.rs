@@ -63,7 +63,7 @@ impl TaskRunner {
             self.register_builtin(
                 "db-monitor",
                 "Database size monitor",
-                Schedule::Interval(Duration::from_secs(6 * 3600)),
+                Schedule::Interval(Duration::from_hours(6)),
                 BuiltinTask::DbSizeMonitor,
                 true,
             );
@@ -99,7 +99,7 @@ impl TaskRunner {
         self.register_builtin(
             "ops-fact-extraction",
             "Operational fact extraction",
-            Schedule::Interval(Duration::from_secs(15 * 60)),
+            Schedule::Interval(Duration::from_mins(15)),
             BuiltinTask::OpsFactExtraction,
             false,
         );
@@ -161,25 +161,25 @@ impl TaskRunner {
             (
                 "decay-refresh",
                 "Decay score refresh",
-                Schedule::Interval(Duration::from_secs(4 * 3600)),
+                Schedule::Interval(Duration::from_hours(4)),
                 BuiltinTask::DecayRefresh,
             ),
             (
                 "entity-dedup",
                 "Entity deduplication",
-                Schedule::Interval(Duration::from_secs(6 * 3600)),
+                Schedule::Interval(Duration::from_hours(6)),
                 BuiltinTask::EntityDedup,
             ),
             (
                 "graph-recompute",
                 "Graph score recomputation",
-                Schedule::Interval(Duration::from_secs(8 * 3600)),
+                Schedule::Interval(Duration::from_hours(8)),
                 BuiltinTask::GraphRecompute,
             ),
             (
                 "embedding-refresh",
                 "Embedding refresh",
-                Schedule::Interval(Duration::from_secs(12 * 3600)),
+                Schedule::Interval(Duration::from_hours(12)),
                 BuiltinTask::EmbeddingRefresh,
             ),
             (

@@ -34,7 +34,7 @@ pub(crate) fn strip_paths(message: &str) -> String {
         // or at the beginning of the string. This avoids false positives on relative
         // paths (config/settings.toml) and fractions (3/4).
         let is_abs_path_start =
-            prev_byte.is_none() || prev_byte.is_some_and(|b| b.is_ascii_whitespace());
+            prev_byte.is_none_or(|b| b.is_ascii_whitespace());
 
         let after_slash = remaining.get(slash_pos + 1..).unwrap_or("");
         let next_is_path_char = after_slash

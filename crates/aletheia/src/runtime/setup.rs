@@ -12,7 +12,7 @@ use agora::router::MessageRouter;
 use agora::semeion::SignalProvider;
 use agora::semeion::client::SignalClient;
 use agora::types::ChannelProvider;
-use hermeneus::anthropic::AnthropicProvider;
+use hermeneus::anthropic::{AnthropicProvider, ProviderBehavior};
 use hermeneus::provider::{ProviderConfig, ProviderRegistry};
 use koina::credential::{CredentialProvider, CredentialSource};
 use mneme::embedding::{
@@ -30,6 +30,7 @@ use taxis::oikos::Oikos;
 
 use crate::error::Result;
 
+#[expect(clippy::too_many_lines, reason = "service wiring function — splitting would scatter related provider setup logic")]
 pub(super) fn build_provider_registry(config: &AletheiaConfig, oikos: &Oikos) -> ProviderRegistry {
     let mut registry = ProviderRegistry::new();
 
@@ -138,7 +139,18 @@ pub(super) fn build_provider_registry(config: &AletheiaConfig, oikos: &Oikos) ->
         }
     }
 
-    match AnthropicProvider::with_credential_provider(credential_chain, &provider_config) {
+    let behavior = ProviderBehavior {
+        non_streaming_timeout: std::time::Duration::from_secs(
+            config.provider_behavior.non_streaming_timeout_secs,
+        ),
+        sse_retry_ms: config.provider_behavior.sse_default_retry_ms,
+    };
+
+    match AnthropicProvider::with_credential_provider_and_behavior(
+        credential_chain,
+        &provider_config,
+        &behavior,
+    ) {
         Ok(provider) => {
             registry.register(Box::new(provider));
             info!("anthropic provider registered");

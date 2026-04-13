@@ -47,7 +47,7 @@ impl Default for BenchmarkRunnerConfig {
         Self {
             nous_id: "benchmark".to_owned(),
             session_key_prefix: "bench".to_owned(),
-            question_timeout: Duration::from_secs(120),
+            question_timeout: Duration::from_mins(2),
             max_questions: None,
             close_between_questions: true,
         }

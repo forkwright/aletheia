@@ -4,12 +4,9 @@
 //! stdin. Results are printed as formatted tables. Meta-commands (`.help`,
 //! `.tables`, `.quit`) are handled before forwarding to the engine.
 
-use std::collections::BTreeMap;
-use std::io::{self, BufRead, Write};
 use std::path::PathBuf;
 
 use clap::Args;
-use snafu::prelude::*;
 
 use crate::error::Result;
 
@@ -18,8 +15,10 @@ pub(crate) struct ReplArgs {
     // instance_root is inherited from the top-level -r flag; nothing extra needed.
 }
 
+#[cfg(feature = "recall")]
 const BANNER: &str = r"aletheia Datalog REPL  (type .help for commands, .quit to exit)";
 
+#[cfg(feature = "recall")]
 const HELP_TEXT: &str = r"Meta-commands:
   .help      Show this help message
   .tables    List all stored relations
@@ -54,6 +53,10 @@ pub(crate) fn run(instance_root: Option<&PathBuf>, _args: &ReplArgs) -> Result<(
 
 #[cfg(feature = "recall")]
 fn run_repl(instance_root: Option<&PathBuf>) -> Result<()> {
+    use std::io::{self, BufRead, Write};
+
+    use snafu::prelude::*;
+
     let oikos = super::resolve_oikos(instance_root)?;
     let knowledge_path = oikos.knowledge_db();
 
@@ -170,6 +173,7 @@ fn run_query_and_print(
     store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
     script: &str,
 ) {
+    use std::collections::BTreeMap;
     match store.run_query(script, BTreeMap::new()) {
         Ok(result) => {
             print_table(&result.headers, &result.rows);
