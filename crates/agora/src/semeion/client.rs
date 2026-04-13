@@ -12,9 +12,12 @@ use koina::http::CONTENT_TYPE_JSON;
 use super::envelope::SignalEnvelope;
 use super::error::{self, Result};
 
-const RPC_TIMEOUT: Duration = Duration::from_secs(10);
-const HEALTH_TIMEOUT: Duration = Duration::from_secs(2);
-const RECEIVE_TIMEOUT: Duration = Duration::from_secs(15);
+/// Timeout for standard RPC calls. Matches `taxis::config::MessagingConfig::rpc_timeout_secs`.
+pub(crate) const RPC_TIMEOUT: Duration = Duration::from_secs(10);
+/// Timeout for health-check requests. Matches `taxis::config::MessagingConfig::health_timeout_secs`.
+pub(crate) const HEALTH_TIMEOUT: Duration = Duration::from_secs(2);
+/// Timeout for receive (poll) requests. Matches `taxis::config::MessagingConfig::receive_timeout_secs`.
+pub(crate) const RECEIVE_TIMEOUT: Duration = Duration::from_secs(15);
 
 #[derive(Debug, Serialize)]
 struct RpcRequest<'a> {

@@ -4,13 +4,11 @@ use std::collections::VecDeque;
 
 use serde::{Deserialize, Serialize};
 
-const DEFAULT_HISTORY_WINDOW: usize = 20;
-const DEFAULT_REPEATED_ERROR_THRESHOLD: u32 = 3;
-const DEFAULT_SAME_ARGS_THRESHOLD: u32 = 3;
-const DEFAULT_ALTERNATING_THRESHOLD: u32 = 3;
-const DEFAULT_ESCALATING_RETRY_THRESHOLD: u32 = 3;
-
 /// Configuration for stuck detection thresholds.
+///
+/// Defaults match `taxis::config::AgentBehaviorDefaults::planning_stuck_*` fields.
+/// Callers should construct from the resolved taxis config rather than relying
+/// on `Default`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StuckConfig {
     /// How many identical consecutive errors trigger detection.
@@ -28,11 +26,11 @@ pub struct StuckConfig {
 impl Default for StuckConfig {
     fn default() -> Self {
         Self {
-            repeated_error_threshold: DEFAULT_REPEATED_ERROR_THRESHOLD,
-            same_args_threshold: DEFAULT_SAME_ARGS_THRESHOLD,
-            alternating_threshold: DEFAULT_ALTERNATING_THRESHOLD,
-            escalating_retry_threshold: DEFAULT_ESCALATING_RETRY_THRESHOLD,
-            history_window: DEFAULT_HISTORY_WINDOW,
+            repeated_error_threshold: 3,
+            same_args_threshold: 3,
+            alternating_threshold: 3,
+            escalating_retry_threshold: 3,
+            history_window: 20,
         }
     }
 }

@@ -1199,6 +1199,9 @@ pub struct MessagingConfig {
     /// Default timeout in seconds for agent-dispatch tool calls. Default: 300.
     /// Mirrors `organon::builtins::agent::DEFAULT_TIMEOUT_SECS`.
     pub agent_dispatch_timeout_secs: u64,
+    /// Maximum concurrent inbound-message handler tasks. Default: 64.
+    /// Mirrors `agora::listener::ChannelListener::MAX_CONCURRENT_HANDLERS`.
+    pub max_concurrent_handlers: usize,
 }
 
 impl Default for MessagingConfig {
@@ -1212,6 +1215,7 @@ impl Default for MessagingConfig {
             health_timeout_secs: 2,
             receive_timeout_secs: 15,
             agent_dispatch_timeout_secs: 300,
+            max_concurrent_handlers: 64,
         }
     }
 }
@@ -1357,6 +1361,9 @@ pub struct AgentBehaviorDefaults {
     /// Escalating retry pattern depth before stuck detection fires. Default: 3.
     /// Mirrors `dianoia::stuck::DEFAULT_ESCALATING_RETRY_THRESHOLD`.
     pub planning_stuck_escalating_retry_threshold: u32,
+    /// Seconds of timestamp difference treated as "in sync" during reconciliation. Default: 5.
+    /// Mirrors `dianoia::reconciler::TIMESTAMP_TOLERANCE_SECS`.
+    pub planning_reconciler_timestamp_tolerance_secs: i64,
 
     // --- Knowledge tuning (instinct / surprise / rules / dedup) ---
     /// Minimum observations before an instinct is eligible. Default: 5.
@@ -1514,6 +1521,7 @@ impl Default for AgentBehaviorDefaults {
             planning_stuck_same_args_threshold: 3,
             planning_stuck_alternating_threshold: 3,
             planning_stuck_escalating_retry_threshold: 3,
+            planning_reconciler_timestamp_tolerance_secs: 5,
             // Knowledge tuning
             knowledge_instinct_min_observations: 5,
             knowledge_instinct_min_success_rate: 0.80,

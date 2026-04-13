@@ -47,7 +47,9 @@ fn canonicalize_and_revalidate(
 /// WHY: Unbounded patterns can trigger catastrophic backtracking in the regex
 /// engine (`ReDoS`). Cap at 1000 chars which covers all legitimate search
 /// patterns. Closes #2167.
-const MAX_PATTERN_LENGTH: usize = 1000;
+/// Maximum character length for search/find patterns. Matches
+/// `taxis::config::ToolLimitsConfig::max_pattern_length`.
+pub(crate) const MAX_PATTERN_LENGTH: usize = 1000;
 
 fn truncate_output(mut output: String) -> String {
     if output.len() > MAX_OUTPUT_BYTES {

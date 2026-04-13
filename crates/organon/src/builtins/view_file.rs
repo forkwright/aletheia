@@ -25,8 +25,12 @@ fn relativize_path(path: &Path, workspace: &Path) -> String {
         .to_string()
 }
 
-const MAX_IMAGE_BYTES: u64 = 20 * 1024 * 1024;
-const MAX_PDF_BYTES: u64 = 32 * 1024 * 1024;
+/// Maximum image file size in bytes. Matches
+/// `taxis::config::AgentBehaviorDefaults::tool_max_image_bytes`.
+pub(crate) const MAX_IMAGE_BYTES: u64 = 20 * 1024 * 1024;
+/// Maximum PDF file size in bytes. Matches
+/// `taxis::config::AgentBehaviorDefaults::tool_max_pdf_bytes`.
+pub(crate) const MAX_PDF_BYTES: u64 = 32 * 1024 * 1024;
 
 enum MediaKind {
     Image(&'static str),

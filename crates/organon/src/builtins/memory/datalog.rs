@@ -19,8 +19,12 @@ use crate::builtins::workspace::extract_str;
 use super::require_services;
 
 const MUTATION_KEYWORDS: &[&str] = &[":put", ":rm", ":replace", ":create", ":ensure"];
-const DEFAULT_ROW_LIMIT: usize = 100;
-const DEFAULT_TIMEOUT_SECS: f64 = 5.0;
+/// Default row limit for query results. Matches
+/// `taxis::config::AgentBehaviorDefaults::tool_datalog_default_row_limit`.
+pub(crate) const DEFAULT_ROW_LIMIT: usize = 100;
+/// Default query timeout in seconds. Matches
+/// `taxis::config::AgentBehaviorDefaults::tool_datalog_default_timeout_secs`.
+pub(crate) const DEFAULT_TIMEOUT_SECS: f64 = 5.0;
 
 struct DatalogQueryExecutor;
 

@@ -69,7 +69,8 @@ impl ChannelListener {
         }
     }
 
-    /// Maximum number of concurrent handler tasks per listener.
+    /// Maximum concurrent handler tasks. Matches
+    /// \.
     const MAX_CONCURRENT_HANDLERS: usize = 64;
 
     /// Run the listener loop, dispatching each message to the handler concurrently.

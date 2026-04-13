@@ -16,8 +16,12 @@ use crate::types::{
     ToolDef, ToolInput, ToolResult,
 };
 
-const DEFAULT_TIMEOUT_SECS: u64 = 300;
-const MAX_DISPATCH_TASKS: usize = 10;
+/// Default timeout for spawned sub-agents. Matches
+/// `taxis::config::MessagingConfig::agent_dispatch_timeout_secs`.
+pub(crate) const DEFAULT_TIMEOUT_SECS: u64 = 300;
+/// Maximum concurrent dispatch tasks. Matches
+/// `taxis::config::AgentBehaviorDefaults::tool_agent_dispatch_max_tasks`.
+pub(crate) const MAX_DISPATCH_TASKS: usize = 10;
 
 struct SessionsSpawnExecutor;
 
