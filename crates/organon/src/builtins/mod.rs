@@ -18,6 +18,8 @@ pub mod enable_tool;
 pub mod energeia;
 /// Filesystem navigation tools (grep, find, ls).
 pub mod filesystem;
+/// Parameter registry query tool (discover tunable parameters).
+pub mod parameters;
 /// Knowledge graph and session memory tools (remember, recall).
 pub mod memory;
 /// Planning project management tools (create, status, execute, verify).
@@ -68,6 +70,7 @@ pub fn register_all_with_sandbox(
     planning::register(registry)?;
     research::register(registry)?;
     triage::register(registry)?;
+    parameters::register(registry)?;
     #[cfg(feature = "energeia")]
     // WHY: No EnergeiaServices provided at this registration level — callers that
     // have services configured should use energeia::register(registry, Some(services)).

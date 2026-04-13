@@ -1,4 +1,4 @@
-//! `aletheia config`: encryption key management and config encryption.
+//! `aletheia config`: encryption key management, config encryption, and parameter description.
 
 use std::path::PathBuf;
 
@@ -7,6 +7,7 @@ use snafu::prelude::*;
 
 use taxis::encrypt;
 use taxis::oikos::Oikos;
+use taxis::registry::{self, ParameterTier};
 
 use crate::error::Result;
 
@@ -16,12 +17,36 @@ pub(crate) enum Action {
     InitKey,
     /// Encrypt sensitive plaintext values in aletheia.toml
     Encrypt,
+    /// List tunable parameters with metadata, bounds, and tuning guidance
+    Describe {
+        /// Filter by config section (e.g. "agents.defaults.behavior", "knowledge")
+        #[arg(long)]
+        section: Option<String>,
+        /// Filter by affected subsystem (e.g. "distillation", "competence")
+        #[arg(long)]
+        affects: Option<String>,
+        /// Show only self-tunable parameters
+        #[arg(long)]
+        self_tunable: bool,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 pub(crate) fn run(action: &Action, instance_root: Option<&PathBuf>) -> Result<()> {
     match action {
         Action::InitKey => run_init_key(),
         Action::Encrypt => run_encrypt(instance_root),
+        Action::Describe {
+            section,
+            affects,
+            self_tunable,
+            json,
+        } => {
+            run_describe(section.as_deref(), affects.as_deref(), *self_tunable, *json);
+            Ok(())
+        }
     }
 }
 
@@ -74,4 +99,64 @@ fn run_encrypt(instance_root: Option<&PathBuf>) -> Result<()> {
         );
     }
     Ok(())
+}
+
+fn run_describe(section: Option<&str>, affects: Option<&str>, self_tunable: bool, json: bool) {
+    let all = registry::all_specs();
+
+    let filtered: Vec<_> = all
+        .iter()
+        .filter(|s| {
+            if let Some(sec) = section
+                && !s.section.contains(sec)
+            {
+                return false;
+            }
+            if let Some(aff) = affects
+                && !s.affects.contains(aff)
+            {
+                return false;
+            }
+            if self_tunable && s.tier != ParameterTier::SelfTuning {
+                return false;
+            }
+            true
+        })
+        .collect();
+
+    if json {
+        // WHY: serde_json::to_string_pretty cannot fail on Vec<&ParameterSpec>
+        // since all fields are serializable static types.
+        let json_output = serde_json::to_string_pretty(&filtered)
+            .unwrap_or_else(|e| format!("{{\"error\": \"{e}\"}}"));
+        println!("{json_output}");
+        return;
+    }
+
+    if filtered.is_empty() {
+        println!("No parameters match the given filters.");
+        return;
+    }
+
+    println!("{} parameter(s) found:\n", filtered.len());
+
+    for spec in &filtered {
+        println!("{}", spec.key);
+        println!("  Section:        {}", spec.section);
+        println!("  Tier:           {}", spec.tier);
+        println!("  Default:        {}", spec.default);
+        if let Some((min, max)) = spec.bounds {
+            println!("  Bounds:         [{min}, {max}]");
+        }
+        println!(
+            "  Hot-reloadable: {}",
+            if spec.hot_reloadable { "yes" } else { "no" }
+        );
+        println!("  Description:    {}", spec.description);
+        println!("  Affects:        {}", spec.affects);
+        println!("  Outcome signal: {}", spec.outcome_signal);
+        println!("  Evidence:       {}", spec.evidence_required);
+        println!("  Direction:      {}", spec.direction_hint);
+        println!();
+    }
 }

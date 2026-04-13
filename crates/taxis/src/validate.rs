@@ -122,11 +122,15 @@ pub fn validate_section(section: &str, value: &Value) -> Result<(), ValidationEr
         "timeouts" => validate_timeouts(value, &mut errors),
         "capacity" => validate_capacity(value, &mut errors),
         "retry" => validate_retry(value, &mut errors),
-        // NOTE: pass-through sections with no validation rules (includes Wave 0
-        // behavioral-constant stubs; real validation added in Wave 5, #2306).
-        "packs" | "pricing" | "sandbox" | "logging" | "mcp" | "localProvider" | "training"
-        | "nousBehavior" | "knowledge" | "providerBehavior" | "apiLimits"
-        | "daemonBehavior" | "toolLimits" | "messaging" => {}
+        "nousBehavior" => validate_nous_behavior(value, &mut errors),
+        "knowledge" => validate_knowledge(value, &mut errors),
+        "providerBehavior" => validate_provider_behavior(value, &mut errors),
+        "apiLimits" => validate_api_limits(value, &mut errors),
+        "daemonBehavior" => validate_daemon_behavior(value, &mut errors),
+        "toolLimits" => validate_tool_limits(value, &mut errors),
+        "messaging" => validate_messaging(value, &mut errors),
+        // NOTE: pass-through sections with no validation rules.
+        "packs" | "pricing" | "sandbox" | "logging" | "mcp" | "localProvider" | "training" => {}
         _ => errors.push(format!("unknown config section: {section}")),
     }
 
@@ -437,6 +441,186 @@ fn check_port(parent: &Value, key: &str, label: &str, errors: &mut Vec<String>) 
     {
         errors.push(format!("{label} must be between 1 and 65535"));
     }
+}
+
+/// Reject a numeric field if its value is outside `[min, max]`.
+fn check_range_f64(parent: &Value, key: &str, min: f64, max: f64, errors: &mut Vec<String>) {
+    if let Some(val) = parent.get(key).and_then(Value::as_f64)
+        && (val < min || val > max)
+    {
+        errors.push(format!("{key} must be between {min} and {max}, got {val}"));
+    }
+}
+
+/// Reject a u64 field if its value is outside `[min, max]`.
+fn check_range_u64(parent: &Value, key: &str, min: u64, max: u64, errors: &mut Vec<String>) {
+    if let Some(val) = parent.get(key).and_then(Value::as_u64)
+        && (val < min || val > max)
+    {
+        errors.push(format!("{key} must be between {min} and {max}, got {val}"));
+    }
+}
+
+fn validate_nous_behavior(value: &Value, errors: &mut Vec<String>) {
+    check_range_u64(value, "degradedPanicThreshold", 1, 100, errors);
+    check_range_u64(value, "degradedWindowSecs", 1, 86_400, errors);
+    check_range_u64(value, "inboxRecvTimeoutSecs", 1, 3600, errors);
+    check_range_u64(value, "inboxCapacity", 1, 10_000, errors);
+    check_range_u64(value, "maxSpawnedTasks", 1, 1_000, errors);
+    check_range_u64(value, "maxSessions", 1, 100_000, errors);
+    check_range_u64(value, "gcIntervalSecs", 30, 3600, errors);
+    check_range_u64(value, "loopDetectionWindow", 5, 500, errors);
+    check_range_u64(value, "cycleDetectionMaxLen", 1, 100, errors);
+    check_range_u64(value, "selfAuditEventThreshold", 1, 10_000, errors);
+    check_range_u64(value, "managerHealthIntervalSecs", 5, 300, errors);
+    check_range_u64(value, "managerPingTimeoutSecs", 1, 60, errors);
+    check_range_u64(value, "managerMaxRestartBackoffSecs", 1, 86_400, errors);
+    check_range_u64(value, "managerRestartDrainTimeoutSecs", 1, 600, errors);
+    check_range_u64(value, "managerRestartDecayWindowSecs", 60, 86_400, errors);
+}
+
+fn validate_knowledge(value: &Value, errors: &mut Vec<String>) {
+    check_range_u64(value, "conflictMaxLlmCallsPerFact", 1, 20, errors);
+    check_range_f64(
+        value,
+        "conflictIntraBatchDedupThreshold",
+        0.5,
+        1.0,
+        errors,
+    );
+    check_range_f64(
+        value,
+        "conflictCandidateDistanceThreshold",
+        0.01,
+        1.0,
+        errors,
+    );
+    check_range_u64(value, "conflictMaxCandidates", 1, 50, errors);
+    check_range_f64(value, "decayReinforcementBoost", 0.001, 1.0, errors);
+    check_range_f64(value, "decayMaxReinforcementBonus", 0.0, 10.0, errors);
+    check_range_f64(value, "decayCrossAgentBonusPerAgent", 0.0, 1.0, errors);
+    check_range_f64(value, "decayMaxCrossAgentMultiplier", 1.0, 10.0, errors);
+    check_range_f64(value, "extractionConfidenceThreshold", 0.0, 1.0, errors);
+    check_range_u64(value, "extractionMinFactLength", 1, 1000, errors);
+    check_range_u64(value, "extractionMaxFactLength", 10, 10_000, errors);
+
+    // INVARIANT: min length must be less than max length.
+    let min_len = value
+        .get("extractionMinFactLength")
+        .and_then(Value::as_u64);
+    let max_len = value
+        .get("extractionMaxFactLength")
+        .and_then(Value::as_u64);
+    if let (Some(min), Some(max)) = (min_len, max_len)
+        && min > max
+    {
+        errors.push(format!(
+            "extractionMinFactLength ({min}) must not exceed extractionMaxFactLength ({max})"
+        ));
+    }
+}
+
+fn validate_provider_behavior(value: &Value, errors: &mut Vec<String>) {
+    check_range_u64(value, "nonStreamingTimeoutSecs", 10, 600, errors);
+    check_range_u64(value, "sseDefaultRetryMs", 100, 60_000, errors);
+    check_range_f64(value, "concurrencyEwmaAlpha", 0.0, 1.0, errors);
+    check_range_f64(
+        value,
+        "concurrencyLatencyThresholdSecs",
+        1.0,
+        300.0,
+        errors,
+    );
+    check_range_u64(value, "complexityLowThreshold", 0, 100, errors);
+    check_range_u64(value, "complexityHighThreshold", 0, 100, errors);
+
+    // INVARIANT: low threshold must be <= high threshold.
+    let low = value
+        .get("complexityLowThreshold")
+        .and_then(Value::as_u64);
+    let high = value
+        .get("complexityHighThreshold")
+        .and_then(Value::as_u64);
+    if let (Some(l), Some(h)) = (low, high)
+        && l > h
+    {
+        errors.push(format!(
+            "complexityLowThreshold ({l}) must not exceed complexityHighThreshold ({h})"
+        ));
+    }
+}
+
+fn validate_api_limits(value: &Value, errors: &mut Vec<String>) {
+    check_range_u64(value, "maxSessionNameLen", 1, 10_000, errors);
+    check_range_u64(value, "maxIdentifierBytes", 1, 10_000, errors);
+    check_range_u64(value, "maxHistoryLimit", 1, 100_000, errors);
+    check_range_u64(value, "defaultHistoryLimit", 1, 100_000, errors);
+    check_range_u64(value, "maxMessageBytes", 1024, 104_857_600, errors);
+    check_range_u64(value, "maxFactsLimit", 1, 100_000, errors);
+    check_range_u64(value, "maxSearchLimit", 1, 100_000, errors);
+    check_range_u64(value, "maxImportBatchSize", 1, 100_000, errors);
+    check_range_u64(value, "idempotencyTtlSecs", 10, 86_400, errors);
+    check_range_u64(value, "idempotencyCapacity", 100, 10_000_000, errors);
+    check_range_u64(value, "idempotencyMaxKeyLength", 1, 1024, errors);
+
+    // INVARIANT: default history limit must be <= max history limit.
+    let default_limit = value
+        .get("defaultHistoryLimit")
+        .and_then(Value::as_u64);
+    let max_limit = value
+        .get("maxHistoryLimit")
+        .and_then(Value::as_u64);
+    if let (Some(d), Some(m)) = (default_limit, max_limit)
+        && d > m
+    {
+        errors.push(format!(
+            "defaultHistoryLimit ({d}) must not exceed maxHistoryLimit ({m})"
+        ));
+    }
+}
+
+fn validate_daemon_behavior(value: &Value, errors: &mut Vec<String>) {
+    check_range_u64(value, "watchdogBackoffBaseSecs", 1, 60, errors);
+    check_range_u64(value, "watchdogBackoffCapSecs", 10, 3600, errors);
+    check_range_u64(value, "prosocheAnomalySampleSize", 2, 1000, errors);
+    check_range_u64(value, "runnerOutputBriefHeadLines", 1, 100, errors);
+    check_range_u64(value, "runnerOutputBriefTailLines", 1, 100, errors);
+
+    // INVARIANT: backoff base must be <= backoff cap.
+    let base = value
+        .get("watchdogBackoffBaseSecs")
+        .and_then(Value::as_u64);
+    let cap = value.get("watchdogBackoffCapSecs").and_then(Value::as_u64);
+    if let (Some(b), Some(c)) = (base, cap)
+        && b > c
+    {
+        errors.push(format!(
+            "watchdogBackoffBaseSecs ({b}) must not exceed watchdogBackoffCapSecs ({c})"
+        ));
+    }
+}
+
+fn validate_tool_limits(value: &Value, errors: &mut Vec<String>) {
+    check_range_u64(value, "maxPatternLength", 10, 100_000, errors);
+    check_range_u64(value, "subprocessTimeoutSecs", 5, 600, errors);
+    check_range_u64(value, "maxWriteBytes", 1024, 1_073_741_824, errors);
+    check_range_u64(value, "maxReadBytes", 1024, 1_073_741_824, errors);
+    check_range_u64(value, "maxCommandLength", 100, 1_000_000, errors);
+    check_range_u64(value, "messageMaxLen", 100, 1_000_000, errors);
+    check_range_u64(value, "interSessionMaxMessageLen", 1000, 10_000_000, errors);
+    check_range_u64(value, "interSessionMaxTimeoutSecs", 10, 3600, errors);
+}
+
+fn validate_messaging(value: &Value, errors: &mut Vec<String>) {
+    check_range_u64(value, "pollIntervalMs", 100, 60_000, errors);
+    check_range_u64(value, "bufferCapacity", 1, 100_000, errors);
+    check_range_u64(value, "circuitBreakerThreshold", 1, 100, errors);
+    check_range_u64(value, "haltedHealthCheckIntervalSecs", 1, 3600, errors);
+    check_range_u64(value, "rpcTimeoutSecs", 1, 300, errors);
+    check_range_u64(value, "healthTimeoutSecs", 1, 60, errors);
+    check_range_u64(value, "receiveTimeoutSecs", 1, 300, errors);
+    check_range_u64(value, "agentDispatchTimeoutSecs", 10, 3600, errors);
+    check_range_u64(value, "maxConcurrentHandlers", 1, 10_000, errors);
 }
 
 #[cfg(test)]
@@ -805,6 +989,190 @@ mod tests {
         assert!(
             err.errors.iter().any(|e| e.contains("maxToolIterations")),
             "error should mention maxToolIterations, got: {err:?}"
+        );
+    }
+
+    // --- Wave 5: behavioral section validators ---
+
+    #[test]
+    fn rejects_invalid_nous_behavior() {
+        let section = json!({ "loopDetectionWindow": 1 });
+        let result = validate_section("nousBehavior", &section);
+        assert!(
+            result.is_err(),
+            "loopDetectionWindow below minimum should be rejected"
+        );
+    }
+
+    #[test]
+    fn accepts_valid_nous_behavior() {
+        let section = json!({
+            "loopDetectionWindow": 50,
+            "gcIntervalSecs": 300,
+            "managerHealthIntervalSecs": 30
+        });
+        assert!(
+            validate_section("nousBehavior", &section).is_ok(),
+            "valid nous behavior config should be accepted"
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_knowledge() {
+        let section = json!({ "conflictIntraBatchDedupThreshold": 0.1 });
+        let result = validate_section("knowledge", &section);
+        assert!(
+            result.is_err(),
+            "intra-batch dedup threshold below 0.5 should be rejected"
+        );
+    }
+
+    #[test]
+    fn rejects_knowledge_min_exceeding_max_fact_length() {
+        let section = json!({
+            "extractionMinFactLength": 600,
+            "extractionMaxFactLength": 500
+        });
+        let result = validate_section("knowledge", &section);
+        assert!(
+            result.is_err(),
+            "min fact length exceeding max should be rejected"
+        );
+    }
+
+    #[test]
+    fn accepts_valid_knowledge() {
+        let section = json!({
+            "conflictIntraBatchDedupThreshold": 0.95,
+            "conflictMaxCandidates": 5,
+            "decayReinforcementBoost": 0.02
+        });
+        assert!(
+            validate_section("knowledge", &section).is_ok(),
+            "valid knowledge config should be accepted"
+        );
+    }
+
+    #[test]
+    fn rejects_complexity_low_exceeding_high() {
+        let section = json!({
+            "complexityLowThreshold": 80,
+            "complexityHighThreshold": 30
+        });
+        let result = validate_section("providerBehavior", &section);
+        assert!(
+            result.is_err(),
+            "low complexity threshold exceeding high should be rejected"
+        );
+    }
+
+    #[test]
+    fn accepts_valid_provider_behavior() {
+        let section = json!({
+            "nonStreamingTimeoutSecs": 120,
+            "complexityLowThreshold": 30,
+            "complexityHighThreshold": 70
+        });
+        assert!(
+            validate_section("providerBehavior", &section).is_ok(),
+            "valid provider behavior config should be accepted"
+        );
+    }
+
+    #[test]
+    fn rejects_api_limits_default_exceeding_max_history() {
+        let section = json!({
+            "defaultHistoryLimit": 2000,
+            "maxHistoryLimit": 1000
+        });
+        let result = validate_section("apiLimits", &section);
+        assert!(
+            result.is_err(),
+            "default history limit exceeding max should be rejected"
+        );
+    }
+
+    #[test]
+    fn accepts_valid_api_limits() {
+        let section = json!({
+            "maxMessageBytes": 262144,
+            "maxHistoryLimit": 1000,
+            "defaultHistoryLimit": 50
+        });
+        assert!(
+            validate_section("apiLimits", &section).is_ok(),
+            "valid API limits config should be accepted"
+        );
+    }
+
+    #[test]
+    fn rejects_daemon_backoff_base_exceeding_cap() {
+        let section = json!({
+            "watchdogBackoffBaseSecs": 50,
+            "watchdogBackoffCapSecs": 10
+        });
+        let result = validate_section("daemonBehavior", &section);
+        assert!(
+            result.is_err(),
+            "backoff base exceeding cap should be rejected"
+        );
+    }
+
+    #[test]
+    fn accepts_valid_daemon_behavior() {
+        let section = json!({
+            "watchdogBackoffBaseSecs": 2,
+            "watchdogBackoffCapSecs": 300
+        });
+        assert!(
+            validate_section("daemonBehavior", &section).is_ok(),
+            "valid daemon behavior config should be accepted"
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_tool_limits() {
+        let section = json!({ "maxPatternLength": 1 });
+        let result = validate_section("toolLimits", &section);
+        assert!(
+            result.is_err(),
+            "maxPatternLength below minimum should be rejected"
+        );
+    }
+
+    #[test]
+    fn accepts_valid_tool_limits() {
+        let section = json!({
+            "maxPatternLength": 1000,
+            "subprocessTimeoutSecs": 60,
+            "maxWriteBytes": 10485760
+        });
+        assert!(
+            validate_section("toolLimits", &section).is_ok(),
+            "valid tool limits config should be accepted"
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_messaging() {
+        let section = json!({ "pollIntervalMs": 10 });
+        let result = validate_section("messaging", &section);
+        assert!(
+            result.is_err(),
+            "pollIntervalMs below 100 should be rejected"
+        );
+    }
+
+    #[test]
+    fn accepts_valid_messaging() {
+        let section = json!({
+            "pollIntervalMs": 2000,
+            "bufferCapacity": 100,
+            "circuitBreakerThreshold": 5
+        });
+        assert!(
+            validate_section("messaging", &section).is_ok(),
+            "valid messaging config should be accepted"
         );
     }
 }
