@@ -62,7 +62,7 @@ fn aggregation_creates_pattern_from_successful_calls() {
         })
         .collect();
 
-    let patterns = aggregate_observations(&observations);
+    let patterns = aggregate_observations(&observations, DEFAULT_MIN_OBSERVATIONS, DEFAULT_MIN_SUCCESS_RATE);
     assert_eq!(
         patterns.len(),
         1,
@@ -103,7 +103,7 @@ fn aggregation_no_pattern_below_minimum_observations() {
         })
         .collect();
 
-    let patterns = aggregate_observations(&observations);
+    let patterns = aggregate_observations(&observations, DEFAULT_MIN_OBSERVATIONS, DEFAULT_MIN_SUCCESS_RATE);
     assert!(
         patterns.is_empty(),
         "3 observations should not produce a pattern (minimum is 5)"
@@ -133,7 +133,7 @@ fn aggregation_no_pattern_below_success_rate() {
         ));
     }
 
-    let patterns = aggregate_observations(&observations);
+    let patterns = aggregate_observations(&observations, DEFAULT_MIN_OBSERVATIONS, DEFAULT_MIN_SUCCESS_RATE);
     assert!(
         patterns.is_empty(),
         "40% success rate should not produce a pattern (minimum is 80%)"
@@ -179,7 +179,7 @@ fn sanitize_strips_secret_parameters() {
         "password": "hunter2",
         "query": "normal value"
     });
-    let sanitized = sanitize_parameters(&params);
+    let sanitized = sanitize_parameters(&params, DEFAULT_MAX_PARAM_VALUE_LEN);
     let obj = sanitized.as_object().expect("should be object");
     assert_eq!(
         obj["api_key"], "[REDACTED]",
@@ -266,10 +266,10 @@ fn classify_unknown_tool_unknown_context_as_other() {
 fn sanitize_truncates_long_values() {
     let long_value = "x".repeat(300);
     let params = serde_json::json!({"content": long_value});
-    let sanitized = sanitize_parameters(&params);
+    let sanitized = sanitize_parameters(&params, DEFAULT_MAX_PARAM_VALUE_LEN);
     let content = sanitized["content"].as_str().expect("should be string");
     assert!(
-        content.len() <= MAX_PARAM_VALUE_LEN + 5,
+        content.len() <= DEFAULT_MAX_PARAM_VALUE_LEN + 5,
         "value should be truncated to ~200 chars"
     );
     assert!(
@@ -282,7 +282,7 @@ fn sanitize_truncates_long_values() {
 fn truncate_context_summary_short_passthrough() {
     let short = "brief summary";
     assert_eq!(
-        truncate_context_summary(short),
+        truncate_context_summary(short, DEFAULT_MAX_CONTEXT_SUMMARY_LEN),
         short,
         "short summary should pass through unchanged"
     );
@@ -291,9 +291,9 @@ fn truncate_context_summary_short_passthrough() {
 #[test]
 fn truncate_context_summary_long_truncated() {
     let long = "a".repeat(200);
-    let truncated = truncate_context_summary(&long);
+    let truncated = truncate_context_summary(&long, DEFAULT_MAX_CONTEXT_SUMMARY_LEN);
     assert!(
-        truncated.len() <= MAX_CONTEXT_SUMMARY_LEN + 5,
+        truncated.len() <= DEFAULT_MAX_CONTEXT_SUMMARY_LEN + 5,
         "truncated summary should be within limit"
     );
     assert!(
@@ -336,7 +336,7 @@ fn pattern_meets_thresholds_at_boundary() {
         last_observed: ts("2026-03-06T00:00:00Z"),
     };
     assert!(
-        pattern.meets_thresholds(),
+        pattern.meets_thresholds(DEFAULT_MIN_OBSERVATIONS, DEFAULT_MIN_SUCCESS_RATE),
         "5 successes with 83% rate should meet thresholds"
     );
 }
@@ -354,7 +354,7 @@ fn pattern_does_not_meet_thresholds_below() {
         last_observed: ts("2026-03-05T00:00:00Z"),
     };
     assert!(
-        !pattern.meets_thresholds(),
+        !pattern.meets_thresholds(DEFAULT_MIN_OBSERVATIONS, DEFAULT_MIN_SUCCESS_RATE),
         "4 successes should not meet threshold (minimum is 5)"
     );
 }
@@ -377,7 +377,7 @@ fn aggregation_separates_tools() {
         ));
     }
 
-    let patterns = aggregate_observations(&observations);
+    let patterns = aggregate_observations(&observations, DEFAULT_MIN_OBSERVATIONS, DEFAULT_MIN_SUCCESS_RATE);
     assert_eq!(patterns.len(), 2, "should have separate patterns per tool");
     let names: Vec<_> = patterns.iter().map(|p| p.tool_name.as_str()).collect();
     assert!(names.contains(&"grep"), "grep pattern should be present");
@@ -395,7 +395,7 @@ fn sanitize_handles_nested_objects() {
             "name": "test"
         }
     });
-    let sanitized = sanitize_parameters(&params);
+    let sanitized = sanitize_parameters(&params, DEFAULT_MAX_PARAM_VALUE_LEN);
     let config = sanitized["config"].as_object().expect("nested object");
     assert_eq!(
         config["api_key"], "[REDACTED]",
@@ -469,7 +469,7 @@ fn observations_different_context_categories_aggregate_separately() {
             observed_at: ts(&format!("2026-03-{:02}T12:00:00Z", i + 1)),
         });
     }
-    let patterns = aggregate_observations(&observations);
+    let patterns = aggregate_observations(&observations, DEFAULT_MIN_OBSERVATIONS, DEFAULT_MIN_SUCCESS_RATE);
     let custom: Vec<_> = patterns
         .iter()
         .filter(|p| p.tool_name == "custom_tool")

@@ -10,17 +10,25 @@ use serde::{Deserialize, Serialize};
 
 use crate::knowledge::{EpistemicTier, FactType, KnowledgeStage, StageTransition};
 
-/// Reinforcement boost per explicit reinforcement event.
-const REINFORCEMENT_BOOST: f64 = 0.02;
+/// Default reinforcement boost per explicit reinforcement event.
+///
+/// Callers should prefer the value from `taxis::config::KnowledgeConfig::decay_reinforcement_boost`.
+pub const DEFAULT_REINFORCEMENT_BOOST: f64 = 0.02;
 
-/// Maximum cumulative reinforcement bonus (caps at 50 reinforcements).
-const MAX_REINFORCEMENT_BONUS: f64 = 1.0;
+/// Default maximum cumulative reinforcement bonus (caps at 50 reinforcements).
+///
+/// Callers should prefer the value from `taxis::config::KnowledgeConfig::decay_max_reinforcement_bonus`.
+pub const DEFAULT_MAX_REINFORCEMENT_BONUS: f64 = 1.0;
 
-/// Multiplier bonus per distinct agent that accessed a fact.
-const CROSS_AGENT_BONUS_PER_AGENT: f64 = 0.15;
+/// Default multiplier bonus per distinct agent that accessed a fact.
+///
+/// Callers should prefer the value from `taxis::config::KnowledgeConfig::decay_cross_agent_bonus_per_agent`.
+pub const DEFAULT_CROSS_AGENT_BONUS_PER_AGENT: f64 = 0.15;
 
-/// Maximum cross-agent multiplier (caps at 5 distinct agents → 1.75×).
-const MAX_CROSS_AGENT_MULTIPLIER: f64 = 1.75;
+/// Default maximum cross-agent multiplier (caps at 5 distinct agents → 1.75×).
+///
+/// Callers should prefer the value from `taxis::config::KnowledgeConfig::decay_max_cross_agent_multiplier`.
+pub const DEFAULT_MAX_CROSS_AGENT_MULTIPLIER: f64 = 1.75;
 
 /// Configuration for multi-factor decay computation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -33,6 +41,14 @@ pub(crate) struct DecayConfig {
     pub confidence: f64,
     /// Weight for reinforcement signal factor. Default: 0.20
     pub reinforcement: f64,
+    /// Boost per reinforcement event. Default: 0.02.
+    pub reinforcement_boost: f64,
+    /// Maximum cumulative reinforcement bonus. Default: 1.0.
+    pub max_reinforcement_bonus: f64,
+    /// Bonus per distinct agent access. Default: 0.15.
+    pub cross_agent_bonus_per_agent: f64,
+    /// Maximum cross-agent multiplier. Default: 1.75.
+    pub max_cross_agent_multiplier: f64,
 }
 
 impl Default for DecayConfig {
@@ -42,6 +58,10 @@ impl Default for DecayConfig {
             frequency: 0.25,
             confidence: 0.20,
             reinforcement: 0.20,
+            reinforcement_boost: DEFAULT_REINFORCEMENT_BOOST,
+            max_reinforcement_bonus: DEFAULT_MAX_REINFORCEMENT_BONUS,
+            cross_agent_bonus_per_agent: DEFAULT_CROSS_AGENT_BONUS_PER_AGENT,
+            max_cross_agent_multiplier: DEFAULT_MAX_CROSS_AGENT_MULTIPLIER,
         }
     }
 }
@@ -98,12 +118,14 @@ pub(crate) fn compute_decay(config: &DecayConfig, factors: &DecayFactors) -> Dec
         factors.access_count,
         factors.reinforcement_count,
         factors.volatility,
+        config.reinforcement_boost,
+        config.max_reinforcement_bonus,
     );
 
     let recency = score_recency(factors.age_hours, effective_stability);
     let frequency = score_frequency(factors.access_count);
     let confidence = score_confidence(factors.tier);
-    let reinforcement = score_reinforcement(factors.reinforcement_count);
+    let reinforcement = score_reinforcement(factors.reinforcement_count, config.reinforcement_boost, config.max_reinforcement_bonus);
 
     let total_weight = config.total_weight();
     let weighted = if total_weight > 0.0 {
@@ -116,7 +138,7 @@ pub(crate) fn compute_decay(config: &DecayConfig, factors: &DecayFactors) -> Dec
         recency
     };
 
-    let cross_agent_mult = cross_agent_multiplier(factors.distinct_agent_count);
+    let cross_agent_mult = cross_agent_multiplier(factors.distinct_agent_count, config.cross_agent_bonus_per_agent, config.max_cross_agent_multiplier);
     let score = (weighted * cross_agent_mult).clamp(0.0, 1.0);
 
     DecayResult {
@@ -165,11 +187,11 @@ fn score_confidence(tier: EpistemicTier) -> f64 {
 
 /// Reinforcement signal score.
 ///
-/// Each reinforcement event adds a fixed boost, capped at `MAX_REINFORCEMENT_BONUS`.
+/// Each reinforcement event adds a fixed boost, capped at `max_reinforcement_bonus`.
 #[must_use]
-fn score_reinforcement(reinforcement_count: u32) -> f64 {
-    let bonus = f64::from(reinforcement_count) * REINFORCEMENT_BOOST;
-    bonus.min(MAX_REINFORCEMENT_BONUS)
+fn score_reinforcement(reinforcement_count: u32, reinforcement_boost: f64, max_reinforcement_bonus: f64) -> f64 {
+    let bonus = f64::from(reinforcement_count) * reinforcement_boost;
+    bonus.min(max_reinforcement_bonus)
 }
 
 /// Cross-agent access multiplier.
@@ -178,18 +200,18 @@ fn score_reinforcement(reinforcement_count: u32) -> f64 {
 /// relevant and decay slower. Each additional agent beyond the first adds
 /// a bonus multiplier.
 #[must_use]
-pub(crate) fn cross_agent_multiplier(distinct_agent_count: u32) -> f64 {
+pub(crate) fn cross_agent_multiplier(distinct_agent_count: u32, bonus_per_agent: f64, max_multiplier: f64) -> f64 {
     if distinct_agent_count <= 1 {
         return 1.0;
     }
-    let bonus = f64::from(distinct_agent_count - 1) * CROSS_AGENT_BONUS_PER_AGENT;
-    (1.0 + bonus).min(MAX_CROSS_AGENT_MULTIPLIER)
+    let bonus = f64::from(distinct_agent_count - 1) * bonus_per_agent;
+    (1.0 + bonus).min(max_multiplier)
 }
 
 /// Compute effective stability incorporating reinforcement signals.
 ///
 /// Extends [`crate::recall::compute_effective_stability`] with:
-/// - Reinforcement bonus: `1 + reinforcement_count × REINFORCEMENT_BOOST`
+/// - Reinforcement bonus: `1 + reinforcement_count × reinforcement_boost`
 /// - Volatility adjustment from succession module
 #[must_use]
 pub(crate) fn compute_effective_stability_with_reinforcement(
@@ -198,10 +220,12 @@ pub(crate) fn compute_effective_stability_with_reinforcement(
     access_count: u32,
     reinforcement_count: u32,
     volatility: f64,
+    reinforcement_boost: f64,
+    max_reinforcement_bonus: f64,
 ) -> f64 {
     let base = crate::recall::compute_effective_stability(fact_type, tier, access_count);
     let reinforcement_mult =
-        1.0 + (f64::from(reinforcement_count) * REINFORCEMENT_BOOST).min(MAX_REINFORCEMENT_BONUS);
+        1.0 + (f64::from(reinforcement_count) * reinforcement_boost).min(max_reinforcement_bonus);
     let volatility_mult = crate::succession::volatility_multiplier(volatility);
     base * reinforcement_mult * volatility_mult
 }
@@ -348,22 +372,22 @@ mod tests {
     #[test]
     fn cross_agent_multiplier_bounds() {
         assert!(
-            (cross_agent_multiplier(0) - 1.0).abs() < f64::EPSILON,
+            (cross_agent_multiplier(0, DEFAULT_CROSS_AGENT_BONUS_PER_AGENT, DEFAULT_MAX_CROSS_AGENT_MULTIPLIER) - 1.0).abs() < f64::EPSILON,
             "zero agents should give 1.0 multiplier"
         );
         assert!(
-            (cross_agent_multiplier(1) - 1.0).abs() < f64::EPSILON,
+            (cross_agent_multiplier(1, DEFAULT_CROSS_AGENT_BONUS_PER_AGENT, DEFAULT_MAX_CROSS_AGENT_MULTIPLIER) - 1.0).abs() < f64::EPSILON,
             "single agent should give 1.0 multiplier"
         );
-        let two = cross_agent_multiplier(2);
+        let two = cross_agent_multiplier(2, DEFAULT_CROSS_AGENT_BONUS_PER_AGENT, DEFAULT_MAX_CROSS_AGENT_MULTIPLIER);
         assert!(
             (two - 1.15).abs() < f64::EPSILON,
             "two agents should give 1.15, got {two}"
         );
-        let capped = cross_agent_multiplier(100);
+        let capped = cross_agent_multiplier(100, DEFAULT_CROSS_AGENT_BONUS_PER_AGENT, DEFAULT_MAX_CROSS_AGENT_MULTIPLIER);
         assert!(
-            (capped - MAX_CROSS_AGENT_MULTIPLIER).abs() < f64::EPSILON,
-            "should cap at {MAX_CROSS_AGENT_MULTIPLIER}, got {capped}"
+            (capped - DEFAULT_MAX_CROSS_AGENT_MULTIPLIER).abs() < f64::EPSILON,
+            "should cap at {DEFAULT_MAX_CROSS_AGENT_MULTIPLIER}, got {capped}"
         );
     }
 
@@ -576,10 +600,10 @@ mod tests {
 
     #[test]
     fn score_reinforcement_caps() {
-        let capped = score_reinforcement(100);
+        let capped = score_reinforcement(100, DEFAULT_REINFORCEMENT_BOOST, DEFAULT_MAX_REINFORCEMENT_BONUS);
         assert!(
-            (capped - MAX_REINFORCEMENT_BONUS).abs() < f64::EPSILON,
-            "reinforcement should cap at {MAX_REINFORCEMENT_BONUS}, got {capped}"
+            (capped - DEFAULT_MAX_REINFORCEMENT_BONUS).abs() < f64::EPSILON,
+            "reinforcement should cap at {DEFAULT_MAX_REINFORCEMENT_BONUS}, got {capped}"
         );
     }
 

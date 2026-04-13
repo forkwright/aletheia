@@ -139,22 +139,50 @@ pub enum KnowledgeStage {
     Archived,
 }
 
-/// Decay score threshold for transitioning from Active to Fading.
-const STAGE_ACTIVE_THRESHOLD: f64 = 0.7;
-/// Decay score threshold for transitioning from Fading to Dormant.
-const STAGE_FADING_THRESHOLD: f64 = 0.3;
-/// Decay score threshold for transitioning from Dormant to Archived.
-const STAGE_DORMANT_THRESHOLD: f64 = 0.1;
+/// Default decay score threshold for transitioning from Active to Fading.
+///
+/// Callers should prefer the value from `taxis::config::AgentBehaviorDefaults::fact_active_threshold`.
+pub const DEFAULT_STAGE_ACTIVE_THRESHOLD: f64 = 0.7;
+/// Default decay score threshold for transitioning from Fading to Dormant.
+///
+/// Callers should prefer the value from `taxis::config::AgentBehaviorDefaults::fact_fading_threshold`.
+pub const DEFAULT_STAGE_FADING_THRESHOLD: f64 = 0.3;
+/// Default decay score threshold for transitioning from Dormant to Archived.
+///
+/// Callers should prefer the value from `taxis::config::AgentBehaviorDefaults::fact_dormant_threshold`.
+pub const DEFAULT_STAGE_DORMANT_THRESHOLD: f64 = 0.1;
 
 impl KnowledgeStage {
     /// Determine the lifecycle stage from a decay score in [0.0, 1.0].
+    ///
+    /// Uses default thresholds. Prefer [`from_decay_score_with_thresholds`](Self::from_decay_score_with_thresholds)
+    /// when taxis config is available.
     #[must_use]
     pub fn from_decay_score(decay_score: f64) -> Self {
-        if decay_score >= STAGE_ACTIVE_THRESHOLD {
+        Self::from_decay_score_with_thresholds(
+            decay_score,
+            DEFAULT_STAGE_ACTIVE_THRESHOLD,
+            DEFAULT_STAGE_FADING_THRESHOLD,
+            DEFAULT_STAGE_DORMANT_THRESHOLD,
+        )
+    }
+
+    /// Determine the lifecycle stage from a decay score with configurable thresholds.
+    ///
+    /// Thresholds are sourced from `taxis::config::AgentBehaviorDefaults`:
+    /// `fact_active_threshold`, `fact_fading_threshold`, `fact_dormant_threshold`.
+    #[must_use]
+    pub fn from_decay_score_with_thresholds(
+        decay_score: f64,
+        active_threshold: f64,
+        fading_threshold: f64,
+        dormant_threshold: f64,
+    ) -> Self {
+        if decay_score >= active_threshold {
             Self::Active
-        } else if decay_score >= STAGE_FADING_THRESHOLD {
+        } else if decay_score >= fading_threshold {
             Self::Fading
-        } else if decay_score >= STAGE_DORMANT_THRESHOLD {
+        } else if decay_score >= dormant_threshold {
             Self::Dormant
         } else {
             Self::Archived

@@ -16,17 +16,25 @@ use std::collections::HashMap;
 /// Default surprise threshold (in nats) above which a turn is classified as an
 /// episode boundary. Empirically, bigram KL divergence on conversational text
 /// clusters around 0.5-1.5 for same-topic turns and 2.0+ for topic shifts.
-const DEFAULT_THRESHOLD: f64 = 2.0;
+///
+/// Callers should prefer the value from `taxis::config::AgentBehaviorDefaults::knowledge_surprise_threshold`.
+pub const DEFAULT_THRESHOLD: f64 = 2.0;
 
-/// Exponential moving average decay factor. Controls how quickly the running
+/// Default exponential moving average decay factor. Controls how quickly the running
 /// distribution forgets old observations. 0.3 = new observation gets 30% weight.
-const EMA_ALPHA: f64 = 0.3;
+///
+/// Callers should prefer the value from `taxis::config::AgentBehaviorDefaults::knowledge_surprise_ema_alpha`.
+pub const DEFAULT_EMA_ALPHA: f64 = 0.3;
 
 /// Laplace smoothing constant added to all n-gram counts to avoid zero
 /// probabilities (and thus infinite KL divergence).
+///
+/// This is a numerical stability constant, not a behavioral tunable.
 const SMOOTHING: f64 = 1e-10;
 
 /// N-gram size. Bigrams balance granularity with vocabulary sparsity.
+///
+/// Used as a const generic (`[u8; NGRAM_SIZE]`), so must remain compile-time.
 const NGRAM_SIZE: usize = 2;
 
 // ---------------------------------------------------------------------------
@@ -62,6 +70,8 @@ pub struct SurpriseCalculator {
     prior: HashMap<[u8; NGRAM_SIZE], f64>,
     /// Total observation mass in the prior (for re-normalization after EMA).
     total_mass: f64,
+    /// EMA decay factor (configurable via taxis).
+    ema_alpha: f64,
 }
 
 impl Default for SurpriseCalculator {
@@ -71,7 +81,7 @@ impl Default for SurpriseCalculator {
 }
 
 impl SurpriseCalculator {
-    /// Create a calculator with an empty prior distribution.
+    /// Create a calculator with an empty prior distribution and default EMA alpha.
     ///
     /// The first call to [`compute_surprise`](Self::compute_surprise) will
     /// return 0.0 because there is no prior to diverge from.
@@ -81,9 +91,19 @@ impl SurpriseCalculator {
     /// O(1).
     #[must_use]
     pub fn new() -> Self {
+        Self::with_alpha(DEFAULT_EMA_ALPHA)
+    }
+
+    /// Create a calculator with a custom EMA alpha.
+    ///
+    /// `ema_alpha` controls how quickly the running distribution forgets old
+    /// observations. Sourced from `taxis::config::AgentBehaviorDefaults::knowledge_surprise_ema_alpha`.
+    #[must_use]
+    pub fn with_alpha(ema_alpha: f64) -> Self {
         Self {
             prior: HashMap::new(),
             total_mass: 0.0,
+            ema_alpha,
         }
     }
 
@@ -121,7 +141,7 @@ impl SurpriseCalculator {
 
     /// Update the running prior via exponential moving average.
     fn update_prior(&mut self, observed: &HashMap<[u8; NGRAM_SIZE], f64>) {
-        let retain = 1.0 - EMA_ALPHA;
+        let retain = 1.0 - self.ema_alpha;
 
         // Scale down existing entries.
         for v in self.prior.values_mut() {
@@ -130,7 +150,7 @@ impl SurpriseCalculator {
 
         // Blend in observed distribution.
         for (&ngram, &freq) in observed {
-            *self.prior.entry(ngram).or_insert(0.0) += EMA_ALPHA * freq;
+            *self.prior.entry(ngram).or_insert(0.0) += self.ema_alpha * freq;
         }
 
         // Re-normalize so the distribution sums to 1.

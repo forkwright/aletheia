@@ -51,11 +51,16 @@ pub struct OpsFact {
 /// - `ops.task_latency`: average task execution latency
 pub struct OpsFactExtractor;
 
-/// Minimum tool calls before success rate is meaningful.
-const MIN_TOOL_CALLS: u64 = 5;
+/// Default minimum tool calls before success rate is meaningful.
+///
+/// Callers should prefer the value from `taxis::config::KnowledgeConfig::instinct_min_tool_calls`.
+pub const DEFAULT_MIN_TOOL_CALLS: u64 = 5;
 
 impl OpsFactExtractor {
     /// Extract operational facts from a metric snapshot.
+    ///
+    /// `min_tool_calls` is the minimum tool calls before success rate is meaningful.
+    /// Sourced from `taxis::config::KnowledgeConfig::instinct_min_tool_calls`.
     ///
     /// Returns a `Vec` of facts suitable for insertion into the knowledge store.
     /// Facts with insufficient data (e.g., zero tool calls) are omitted.
@@ -63,7 +68,7 @@ impl OpsFactExtractor {
     /// # Errors
     ///
     /// Returns an error if fact ID generation fails (should not happen in practice).
-    pub fn extract(snapshot: &OpsSnapshot) -> Result<Vec<OpsFact>, ExtractError> {
+    pub fn extract(snapshot: &OpsSnapshot, min_tool_calls: u64) -> Result<Vec<OpsFact>, ExtractError> {
         let now = jiff::Timestamp::now();
         let mut facts = Vec::with_capacity(4);
 
@@ -77,7 +82,7 @@ impl OpsFactExtractor {
         )?);
 
         // 2. Tool success rate (only if enough data)
-        if snapshot.tool_call_total >= MIN_TOOL_CALLS {
+        if snapshot.tool_call_total >= min_tool_calls {
             // WHY: u64 counts are divided to produce a [0.0, 1.0] ratio.
             // Saturating to u32::MAX before converting to f64 avoids precision loss
             // on absurdly large counts (never expected in practice).
@@ -225,7 +230,7 @@ mod tests {
             task_sample_count: 5,
         };
 
-        let facts = OpsFactExtractor::extract(&snapshot).expect("extraction should succeed");
+        let facts = OpsFactExtractor::extract(&snapshot, DEFAULT_MIN_TOOL_CALLS).expect("extraction should succeed");
         assert_eq!(facts.len(), 4, "full snapshot should produce 4 facts");
 
         for ops_fact in &facts {
@@ -252,7 +257,7 @@ mod tests {
             task_sample_count: 0,
         };
 
-        let facts = OpsFactExtractor::extract(&snapshot).expect("extraction should succeed");
+        let facts = OpsFactExtractor::extract(&snapshot, DEFAULT_MIN_TOOL_CALLS).expect("extraction should succeed");
         // sessions + errors = 2 (no tool rate, no latency)
         assert_eq!(
             facts.len(),
@@ -268,7 +273,7 @@ mod tests {
             ..Default::default()
         };
 
-        let facts = OpsFactExtractor::extract(&snapshot).expect("extraction should succeed");
+        let facts = OpsFactExtractor::extract(&snapshot, DEFAULT_MIN_TOOL_CALLS).expect("extraction should succeed");
         // sessions + errors = 2
         assert_eq!(
             facts.len(),
@@ -289,7 +294,7 @@ mod tests {
             task_sample_count: 10,
         };
 
-        let facts = OpsFactExtractor::extract(&snapshot).expect("extraction should succeed");
+        let facts = OpsFactExtractor::extract(&snapshot, DEFAULT_MIN_TOOL_CALLS).expect("extraction should succeed");
         let contents: Vec<&str> = facts.iter().map(|f| f.fact.content.as_str()).collect();
 
         assert!(

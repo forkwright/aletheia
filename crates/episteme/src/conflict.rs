@@ -172,24 +172,32 @@ pub struct BatchConflictResult {
     pub batch_duplicates_dropped: usize,
 }
 
-/// Maximum number of LLM classification calls per fact.
+/// Default maximum number of LLM classification calls per fact.
+///
+/// Callers should prefer the value from `taxis::config::KnowledgeConfig::conflict_max_llm_calls_per_fact`.
 #[cfg(any(feature = "mneme-engine", test))]
-const MAX_LLM_CALLS_PER_FACT: usize = 3;
+pub const DEFAULT_MAX_LLM_CALLS_PER_FACT: usize = 3;
 
-/// Cosine similarity threshold for intra-batch dedup.
+/// Default cosine similarity threshold for intra-batch dedup.
+///
+/// Callers should prefer the value from `taxis::config::KnowledgeConfig::conflict_intra_batch_dedup_threshold`.
 #[cfg(any(feature = "mneme-engine", test))]
-const INTRA_BATCH_DEDUP_THRESHOLD: f64 = 0.95;
+pub const DEFAULT_INTRA_BATCH_DEDUP_THRESHOLD: f64 = 0.95;
 
-/// Cosine similarity threshold for candidate retrieval.
+/// Default cosine similarity threshold for candidate retrieval.
 ///
 /// HNSW returns cosine distance (1 - similarity), so we convert:
 /// similarity ≥ 0.72 means distance ≤ 0.28.
+///
+/// Callers should prefer the value from `taxis::config::KnowledgeConfig::conflict_candidate_distance_threshold`.
 #[cfg(feature = "mneme-engine")]
-const CANDIDATE_DISTANCE_THRESHOLD: f64 = 0.28;
+pub const DEFAULT_CANDIDATE_DISTANCE_THRESHOLD: f64 = 0.28;
 
-/// Maximum candidates to consider per fact.
+/// Default maximum candidates to consider per fact.
+///
+/// Callers should prefer the value from `taxis::config::KnowledgeConfig::conflict_max_candidates`.
 #[cfg(feature = "mneme-engine")]
-const MAX_CANDIDATES: usize = 5;
+pub const DEFAULT_MAX_CANDIDATES: usize = 5;
 
 /// Remove duplicates within an extraction batch.
 ///
@@ -219,7 +227,7 @@ pub(crate) fn intra_batch_dedup(
                 break;
             }
             let sim = cosine_similarity(&fact.embedding, &existing.embedding);
-            if sim >= INTRA_BATCH_DEDUP_THRESHOLD {
+            if sim >= DEFAULT_INTRA_BATCH_DEDUP_THRESHOLD {
                 if fact.confidence > existing.confidence {
                     replace_idx = Some(i);
                 }
@@ -280,7 +288,7 @@ pub(crate) fn retrieve_candidates(
 
     use crate::engine::DataValue;
 
-    let max_candidates = i64::try_from(MAX_CANDIDATES).unwrap_or(i64::from(i32::MAX));
+    let max_candidates = i64::try_from(DEFAULT_MAX_CANDIDATES).unwrap_or(i64::from(i32::MAX));
     let recall_results = store
         .search_vectors(fact.embedding.clone(), max_candidates, 50)
         .map_err(|e| {
@@ -299,7 +307,7 @@ pub(crate) fn retrieve_candidates(
         if result.source_type != "fact" {
             continue;
         }
-        if result.distance > CANDIDATE_DISTANCE_THRESHOLD {
+        if result.distance > DEFAULT_CANDIDATE_DISTANCE_THRESHOLD {
             continue;
         }
         let fact_id = &result.source_id;
@@ -360,7 +368,7 @@ pub(crate) fn retrieve_candidates(
         }
     }
 
-    candidates.truncate(MAX_CANDIDATES);
+    candidates.truncate(DEFAULT_MAX_CANDIDATES);
     Ok(candidates)
 }
 
@@ -414,7 +422,7 @@ pub(crate) fn classify_against_candidates(
             .unwrap_or(std::cmp::Ordering::Equal)
     });
 
-    for &(idx, candidate) in sorted_candidates.iter().take(MAX_LLM_CALLS_PER_FACT) {
+    for &(idx, candidate) in sorted_candidates.iter().take(DEFAULT_MAX_LLM_CALLS_PER_FACT) {
         let response = classifier.classify(
             &candidate.existing_content,
             candidate.existing_confidence,

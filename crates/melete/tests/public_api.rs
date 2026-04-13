@@ -81,6 +81,7 @@ mod distill_config {
             sections: vec![DistillSection::Summary, DistillSection::KeyDecisions],
             similarity_threshold: 0.9,
             detect_contradictions: true,
+            max_backoff_turns: 8,
         };
         let json = serde_json::to_string(&original).expect("serialize");
         let restored: DistillConfig = serde_json::from_str(&json).expect("deserialize");

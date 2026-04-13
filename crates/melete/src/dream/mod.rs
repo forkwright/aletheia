@@ -28,16 +28,24 @@ use crate::flush::MemoryFlush;
 pub(crate) mod lock;
 
 /// Default minimum hours between consolidation runs.
-const DEFAULT_MIN_HOURS: u64 = 24;
+///
+/// Callers should prefer the value from `taxis::config::AgentBehaviorDefaults::dream_min_hours`.
+pub const DEFAULT_MIN_HOURS: u64 = 24;
 
 /// Default minimum sessions required to trigger consolidation.
-const DEFAULT_MIN_SESSIONS: usize = 5;
+///
+/// Callers should prefer the value from `taxis::config::AgentBehaviorDefaults::dream_min_sessions`.
+pub const DEFAULT_MIN_SESSIONS: usize = 5;
 
-/// Session scan throttle interval (10 minutes in seconds).
-const SCAN_THROTTLE_SECS: i64 = 600;
+/// Default session scan throttle interval (10 minutes in seconds).
+///
+/// Callers should prefer the value from `taxis::config::AgentBehaviorDefaults::dream_scan_throttle_secs`.
+pub const DEFAULT_SCAN_THROTTLE_SECS: i64 = 600;
 
 /// Default stale lock threshold (1 hour in seconds).
-const DEFAULT_STALE_THRESHOLD_SECS: i64 = 3_600;
+///
+/// Callers should prefer the value from `taxis::config::AgentBehaviorDefaults::dream_stale_threshold_secs`.
+pub const DEFAULT_STALE_THRESHOLD_SECS: i64 = 3_600;
 
 /// Configuration for auto-dream consolidation.
 #[derive(Debug, Clone)]
@@ -64,7 +72,7 @@ impl DreamConfig {
             min_hours: DEFAULT_MIN_HOURS,
             min_sessions: DEFAULT_MIN_SESSIONS,
             lock_path,
-            scan_interval_secs: SCAN_THROTTLE_SECS,
+            scan_interval_secs: DEFAULT_SCAN_THROTTLE_SECS,
             stale_threshold_secs: DEFAULT_STALE_THRESHOLD_SECS,
             distill_config: DistillConfig::default(),
         }
@@ -895,7 +903,7 @@ mod tests {
         let config = DreamConfig::new(PathBuf::from("/tmp/test-lock"));
         assert_eq!(config.min_hours, DEFAULT_MIN_HOURS);
         assert_eq!(config.min_sessions, DEFAULT_MIN_SESSIONS);
-        assert_eq!(config.scan_interval_secs, SCAN_THROTTLE_SECS);
+        assert_eq!(config.scan_interval_secs, DEFAULT_SCAN_THROTTLE_SECS);
         assert_eq!(config.stale_threshold_secs, DEFAULT_STALE_THRESHOLD_SECS);
     }
 

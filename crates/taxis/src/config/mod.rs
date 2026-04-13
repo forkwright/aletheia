@@ -936,6 +936,21 @@ pub struct KnowledgeConfig {
     /// Minimum tool calls before operational instinct scoring fires. Default: 5.
     /// Mirrors `episteme::ops_facts::MIN_TOOL_CALLS`.
     pub instinct_min_tool_calls: u64,
+    /// Maximum length for parameter values before truncation. Default: 200.
+    /// Mirrors `episteme::instinct::MAX_PARAM_VALUE_LEN`.
+    pub instinct_max_param_value_len: usize,
+    /// Maximum length for context summaries. Default: 100.
+    /// Mirrors `episteme::instinct::MAX_CONTEXT_SUMMARY_LEN`.
+    pub instinct_max_context_summary_len: usize,
+    /// Default maximum entries returned by a single side-query. Default: 5.
+    /// Mirrors `episteme::side_query::DEFAULT_MAX_RESULTS`.
+    pub side_query_max_results: usize,
+    /// Default cache time-to-live in seconds for side-query. Default: 300.
+    /// Mirrors `episteme::side_query::DEFAULT_CACHE_TTL_SECS`.
+    pub side_query_cache_ttl_secs: u64,
+    /// Default maximum cache entries for side-query. Default: 64.
+    /// Mirrors `episteme::side_query::DEFAULT_CACHE_CAPACITY`.
+    pub side_query_cache_capacity: usize,
 }
 
 impl Default for KnowledgeConfig {
@@ -953,6 +968,11 @@ impl Default for KnowledgeConfig {
             extraction_min_fact_length: 10,
             extraction_max_fact_length: 500,
             instinct_min_tool_calls: 5,
+            instinct_max_param_value_len: 200,
+            instinct_max_context_summary_len: 100,
+            side_query_max_results: 5,
+            side_query_cache_ttl_secs: 300,
+            side_query_cache_capacity: 64,
         }
     }
 }
@@ -1390,6 +1410,28 @@ pub struct AgentBehaviorDefaults {
     // --- Similarity ---
     /// Similarity score threshold for recall deduplication. Default: 0.85.
     pub similarity_threshold: f64,
+    /// Minimum token length to include in Jaccard similarity comparison. Default: 3.
+    /// Mirrors `melete::similarity::MIN_TOKEN_LEN`.
+    pub similarity_min_token_len: usize,
+
+    // --- Distillation prompt ---
+    /// Maximum character length for truncated tool results in distillation prompts. Default: 500.
+    /// Mirrors `melete::prompt::MAX_TOOL_RESULT_LEN`.
+    pub distillation_max_tool_result_len: usize,
+
+    // --- Auto-dream consolidation ---
+    /// Minimum hours between auto-dream consolidation runs. Default: 24.
+    /// Mirrors `melete::dream::DEFAULT_MIN_HOURS`.
+    pub dream_min_hours: u64,
+    /// Minimum sessions required to trigger auto-dream consolidation. Default: 5.
+    /// Mirrors `melete::dream::DEFAULT_MIN_SESSIONS`.
+    pub dream_min_sessions: usize,
+    /// Session scan throttle interval in seconds. Default: 600.
+    /// Mirrors `melete::dream::SCAN_THROTTLE_SECS`.
+    pub dream_scan_throttle_secs: i64,
+    /// Stale lock threshold in seconds for auto-dream. Default: 3600.
+    /// Mirrors `melete::dream::DEFAULT_STALE_THRESHOLD_SECS`.
+    pub dream_stale_threshold_secs: i64,
 
     // --- Tool behavior ---
     /// Maximum concurrent agent-dispatch tasks. Default: 10.
@@ -1492,6 +1534,14 @@ impl Default for AgentBehaviorDefaults {
             fact_dormant_threshold: 0.1,
             // Similarity
             similarity_threshold: 0.85,
+            similarity_min_token_len: 3,
+            // Distillation prompt
+            distillation_max_tool_result_len: 500,
+            // Auto-dream
+            dream_min_hours: 24,
+            dream_min_sessions: 5,
+            dream_scan_throttle_secs: 600,
+            dream_stale_threshold_secs: 3_600,
             // Tool behavior
             tool_agent_dispatch_max_tasks: 10,
             tool_datalog_default_row_limit: 100,

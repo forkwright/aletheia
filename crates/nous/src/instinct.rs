@@ -4,7 +4,8 @@
 use tracing::{debug, instrument, warn};
 
 use mneme::instinct::{
-    ToolObservation, ToolOutcome, sanitize_parameters, truncate_context_summary,
+    DEFAULT_MAX_CONTEXT_SUMMARY_LEN, DEFAULT_MAX_PARAM_VALUE_LEN, ToolObservation, ToolOutcome,
+    sanitize_parameters, truncate_context_summary,
 };
 
 use crate::pipeline::ToolCall;
@@ -33,8 +34,8 @@ pub(crate) fn observation_from_tool_call(
         ToolOutcome::Success
     };
 
-    let sanitized_params = sanitize_parameters(&tool_call.input);
-    let truncated_summary = truncate_context_summary(context_summary);
+    let sanitized_params = sanitize_parameters(&tool_call.input, DEFAULT_MAX_PARAM_VALUE_LEN);
+    let truncated_summary = truncate_context_summary(context_summary, DEFAULT_MAX_CONTEXT_SUMMARY_LEN);
 
     ToolObservation {
         tool_name: tool_call.name.clone(),
