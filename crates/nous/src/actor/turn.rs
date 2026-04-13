@@ -30,7 +30,7 @@ impl Drop for StreamSenderGuard {
 
 impl NousActor {
     /// Wake from dormant if needed, mark the turn active.
-    fn mark_turn_active(&mut self, session_key: &str) {
+    pub(super) fn mark_turn_active(&mut self, session_key: &str) {
         if self.channel.status == NousLifecycle::Dormant {
             debug!("auto-waking from dormant for turn");
             self.channel.status = NousLifecycle::Idle;
@@ -75,7 +75,7 @@ impl NousActor {
 
     /// Extract quality metrics from a turn result and feed them to the
     /// per-session drift detector.
-    fn record_drift_metrics(&mut self, session_key: &str, turn_result: &TurnResult) {
+    pub(super) fn record_drift_metrics(&mut self, session_key: &str, turn_result: &TurnResult) {
         let total_calls = turn_result.tool_calls.len();
         let error_calls = turn_result.tool_calls.iter().filter(|tc| tc.is_error).count();
 
