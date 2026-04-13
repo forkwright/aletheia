@@ -106,11 +106,11 @@ git clone https://github.com/xiaowu0162/LongMemEval /tmp/longmemeval
 
 # The repo contains several splits. Use LongMemEval-M (single-session, 500 Qs):
 cp /tmp/longmemeval/data/longmemeval_m.json \
-   /home/ck/menos-ops/repos/aletheia/benchmark-data/longmemeval.json
+   ./benchmark-data/longmemeval.json
 
 # Or the harder multi-session split (500 Qs, ~115k token histories):
 cp /tmp/longmemeval/data/longmemeval_s.json \
-   /home/ck/menos-ops/repos/aletheia/benchmark-data/longmemeval_s.json
+   ./benchmark-data/longmemeval_s.json
 ```
 
 Expected format: top-level JSON array of items with `question_id`,
@@ -127,7 +127,7 @@ git clone https://github.com/snap-research/locomo /tmp/locomo
 
 # Dataset file location (may vary by release):
 cp /tmp/locomo/data/locomo10.json \
-   /home/ck/menos-ops/repos/aletheia/benchmark-data/locomo.json
+   ./benchmark-data/locomo.json
 ```
 
 Expected format: top-level JSON array of conversations with `sample_id`,
