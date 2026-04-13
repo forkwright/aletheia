@@ -37,14 +37,26 @@ pub mod retention;
 /// `SQLite` schema DDL constants.
 #[cfg(feature = "sqlite")]
 pub mod schema;
-/// `SQLite` session store (WAL mode, prepared statements, transactional writes).
-#[cfg(feature = "sqlite")]
+/// Session store — fjall (default) or SQLite backend.
+///
+/// Both backends expose the same [`store::SessionStore`] API.
+#[cfg(any(feature = "fjall", feature = "sqlite"))]
 pub mod store;
 /// Core types for sessions, messages, usage records, and agent notes.
 pub mod types;
 
 #[cfg(all(test, feature = "sqlite"))]
 mod assertions {
+    use super::store::SessionStore;
+
+    const _: fn() = || {
+        fn assert<T: Send>() {}
+        assert::<SessionStore>();
+    };
+}
+
+#[cfg(all(test, feature = "fjall", not(feature = "sqlite")))]
+mod fjall_assertions {
     use super::store::SessionStore;
 
     const _: fn() = || {

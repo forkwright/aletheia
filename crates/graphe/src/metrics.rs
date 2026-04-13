@@ -44,9 +44,9 @@ pub(crate) fn init() {
 
 /// Record a session creation.
 ///
-/// Only compiled when the `sqlite` feature is enabled — the only call site
-/// (`store::session::create`) lives behind that feature gate.
-#[cfg(any(feature = "sqlite", test))]
+/// Compiled when either the `sqlite` or `fjall` feature is enabled — both
+/// store backends call this on successful session creation.
+#[cfg(any(feature = "sqlite", feature = "fjall", test))]
 pub(crate) fn record_session_created(nous_id: &str, session_type: &str) {
     SESSIONS_TOTAL
         .with_label_values(&[nous_id, session_type])
