@@ -359,6 +359,7 @@ mod tests {
             domains: Vec::new(),
             default: false,
             recall: None,
+            behavior: None,
         });
 
         let err = validate_agent_workspaces(&config, &oikos).unwrap_err();
@@ -394,6 +395,7 @@ mod tests {
             domains: Vec::new(),
             default: false,
             recall: None,
+            behavior: None,
         });
 
         let err = validate_agent_workspaces(&config, &oikos).unwrap_err();
@@ -433,6 +435,7 @@ mod tests {
             domains: Vec::new(),
             default: false,
             recall: None,
+            behavior: None,
         });
 
         assert!(

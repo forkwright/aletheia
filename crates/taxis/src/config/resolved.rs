@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use super::{AgencyLevel, AletheiaConfig, RecallSettings};
+use super::{AgencyLevel, AgentBehaviorDefaults, AletheiaConfig, RecallSettings};
 
 /// Resolved model selection for an agent.
 #[derive(Debug, Clone)]
@@ -72,6 +72,8 @@ pub struct ResolvedNousConfig {
     pub recall: RecallSettings,
     /// Model used for prosoche heartbeat sessions.
     pub prosoche_model: Arc<str>,
+    /// Resolved per-agent behavioral parameters (safety, hooks, distillation, etc.).
+    pub behavior: AgentBehaviorDefaults,
 }
 
 /// Resolve effective configuration for a specific nous agent.
@@ -137,6 +139,12 @@ pub fn resolve_nous(config: &AletheiaConfig, nous_id: &str) -> ResolvedNousConfi
         .and_then(|a| a.recall.clone())
         .unwrap_or_else(|| defaults.recall.clone());
 
+    // NOTE: Agent-level behavior overrides; falls back to shared defaults.
+    // Same cascade pattern as recall: per-agent wins, otherwise defaults apply.
+    let behavior = agent
+        .and_then(|a| a.behavior.clone())
+        .unwrap_or_else(|| defaults.behavior.clone());
+
     // WHY: Opus models have a 1M token context window; apply model-aware default
     // when the config still holds the global default (200K). Computed before
     // `model` is moved into `ResolvedModelConfig`.
@@ -177,5 +185,6 @@ pub fn resolve_nous(config: &AletheiaConfig, nous_id: &str) -> ResolvedNousConfi
         domains,
         recall,
         prosoche_model: Arc::from(defaults.model_defaults.prosoche_model.as_str()),
+        behavior,
     }
 }

@@ -122,8 +122,11 @@ pub fn validate_section(section: &str, value: &Value) -> Result<(), ValidationEr
         "timeouts" => validate_timeouts(value, &mut errors),
         "capacity" => validate_capacity(value, &mut errors),
         "retry" => validate_retry(value, &mut errors),
-        // NOTE: these sections are pass-through with no validation rules
-        "packs" | "pricing" | "sandbox" | "logging" | "mcp" | "localProvider" | "training" => {}
+        // NOTE: pass-through sections with no validation rules (includes Wave 0
+        // behavioral-constant stubs; real validation added in Wave 5, #2306).
+        "packs" | "pricing" | "sandbox" | "logging" | "mcp" | "localProvider" | "training"
+        | "nousBehavior" | "knowledge" | "providerBehavior" | "apiLimits"
+        | "daemonBehavior" | "toolLimits" | "messaging" => {}
         _ => errors.push(format!("unknown config section: {section}")),
     }
 

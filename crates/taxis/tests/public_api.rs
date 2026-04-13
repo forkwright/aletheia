@@ -98,6 +98,7 @@ fn resolve_nous_agent_model_override_replaces_defaults() {
         domains: vec!["code".to_owned()],
         default: false,
         recall: None,
+        behavior: None,
     });
 
     let resolved = resolve_nous(&config, "syn");
@@ -120,6 +121,7 @@ fn resolve_nous_unrestricted_agency_sets_10k_tool_iterations() {
         domains: Vec::new(),
         default: false,
         recall: None,
+        behavior: None,
     });
 
     let resolved = resolve_nous(&config, "free");
@@ -141,6 +143,7 @@ fn resolve_nous_restricted_agency_sets_50_tool_iterations() {
         domains: Vec::new(),
         default: false,
         recall: None,
+        behavior: None,
     });
 
     let resolved = resolve_nous(&config, "safe");

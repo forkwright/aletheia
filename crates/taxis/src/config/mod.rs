@@ -57,6 +57,20 @@ pub struct AletheiaConfig {
     pub capacity: CapacityConfig,
     /// Deployment-tunable LLM retry and backoff parameters.
     pub retry: RetrySettings,
+    /// Nous actor/manager health, restart, GC, and loop-detection settings.
+    pub nous_behavior: NousBehaviorConfig,
+    /// Episteme conflict resolution, decay, and extraction parameters.
+    pub knowledge: KnowledgeConfig,
+    /// Hermeneus provider timeout, concurrency, and complexity routing thresholds.
+    pub provider_behavior: ProviderBehaviorConfig,
+    /// Pylon request size and idempotency limits.
+    pub api_limits: ApiLimitsConfig,
+    /// Daemon watchdog, prosoche, and runner output settings.
+    pub daemon_behavior: DaemonBehaviorConfig,
+    /// Organon tool size and timeout limits.
+    pub tool_limits: ToolLimitsConfig,
+    /// Agora messaging transport poll, buffer, and circuit-breaker settings.
+    pub messaging: MessagingConfig,
 }
 
 /// Sandbox enforcement level for tool execution.
@@ -321,6 +335,8 @@ pub struct AgentDefaults {
     pub recall: RecallSettings,
     /// Fraction of the context window reserved for conversation history.
     pub history_budget_ratio: f64,
+    /// Default per-agent behavioral parameters (safety, hooks, distillation, etc.).
+    pub behavior: AgentBehaviorDefaults,
 }
 
 impl Default for AgentDefaults {
@@ -334,6 +350,7 @@ impl Default for AgentDefaults {
             caching: CachingConfig::default(),
             recall: RecallSettings::default(),
             history_budget_ratio: d::HISTORY_BUDGET_RATIO,
+            behavior: AgentBehaviorDefaults::default(),
         }
     }
 }
@@ -413,6 +430,9 @@ pub struct NousDefinition {
     /// Recall pipeline override; when `None`, inherits from [`AgentDefaults::recall`].
     #[serde(default)]
     pub recall: Option<RecallSettings>,
+    /// Per-agent behavioral override; when `None`, inherits from [`AgentDefaults::behavior`].
+    #[serde(default)]
+    pub behavior: Option<AgentBehaviorDefaults>,
 }
 
 /// HTTP gateway configuration.
@@ -790,6 +810,686 @@ impl Default for RetrySettings {
             max_attempts: 3,
             backoff_base_ms: 1_000,
             backoff_max_ms: 30_000,
+        }
+    }
+}
+
+/// Nous actor/manager health, restart, GC, and loop-detection thresholds.
+///
+/// All defaults match the current hardcoded constants in the `nous` crate so
+/// that omitting this section from `aletheia.toml` produces identical behaviour.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+pub struct NousBehaviorConfig {
+    /// Panics within the window that trigger degraded mode. Default: 5.
+    /// Mirrors `nous::actor::DEGRADED_PANIC_THRESHOLD`.
+    pub degraded_panic_threshold: u32,
+    /// Window in seconds for counting panics toward degraded threshold. Default: 600.
+    /// Mirrors `nous::actor::DEGRADED_WINDOW`.
+    pub degraded_window_secs: u64,
+    /// Actor inbox receive timeout in seconds before a warning is logged. Default: 30.
+    /// Mirrors `nous::actor::INBOX_RECV_TIMEOUT`.
+    pub inbox_recv_timeout_secs: u64,
+    /// Consecutive receive timeouts before a warning log is emitted. Default: 3.
+    /// Mirrors `nous::actor::CONSECUTIVE_TIMEOUT_WARN_THRESHOLD`.
+    pub consecutive_timeout_warn_threshold: u32,
+    /// Actor inbox channel capacity. Default: 32.
+    pub inbox_capacity: usize,
+    /// Maximum number of concurrently spawned tasks per agent. Default: 8.
+    pub max_spawned_tasks: usize,
+    /// Maximum number of concurrent sessions across all agents. Default: 1000.
+    pub max_sessions: usize,
+    /// Completed-task garbage collection interval in seconds. Default: 300.
+    /// Mirrors `nous::tasks::gc::DEFAULT_GC_INTERVAL`.
+    pub gc_interval_secs: u64,
+    /// Consecutive failed pings before marking an agent dead. Default: 3.
+    /// Mirrors `nous::manager::DEAD_THRESHOLD`.
+    pub manager_dead_threshold: u32,
+    /// Cap on exponential restart backoff in seconds. Default: 300.
+    /// Mirrors `nous::manager::MAX_RESTART_BACKOFF`.
+    pub manager_max_restart_backoff_secs: u64,
+    /// Drain timeout in seconds before forcing an agent restart. Default: 30.
+    /// Mirrors `nous::manager::RESTART_DRAIN_TIMEOUT`.
+    pub manager_restart_drain_timeout_secs: u64,
+    /// Window in seconds over which the failure count decays to zero. Default: 3600.
+    /// Mirrors `nous::manager::RESTART_DECAY_WINDOW`.
+    pub manager_restart_decay_window_secs: u64,
+    /// Agent health poll interval in seconds. Default: 30.
+    /// Mirrors `nous::manager::DEFAULT_HEALTH_INTERVAL`.
+    pub manager_health_interval_secs: u64,
+    /// Timeout in seconds for health-ping responses. Default: 5.
+    /// Mirrors `nous::manager::DEFAULT_PING_TIMEOUT`.
+    pub manager_ping_timeout_secs: u64,
+    /// Number of recent tool calls scanned for loop detection. Default: 50.
+    /// Mirrors `nous::pipeline::DEFAULT_LOOP_WINDOW`.
+    pub loop_detection_window: usize,
+    /// Maximum sequence length examined for repeating cycles. Default: 10.
+    /// Mirrors `nous::pipeline::CYCLE_DETECTION_MAX_LEN`.
+    pub cycle_detection_max_len: usize,
+    /// Events accumulated before self-audit runs. Default: 50.
+    /// Mirrors `nous::self_audit::DEFAULT_EVENT_THRESHOLD`.
+    pub self_audit_event_threshold: u32,
+}
+
+impl Default for NousBehaviorConfig {
+    fn default() -> Self {
+        Self {
+            degraded_panic_threshold: 5,
+            degraded_window_secs: 600,
+            inbox_recv_timeout_secs: 30,
+            consecutive_timeout_warn_threshold: 3,
+            inbox_capacity: 32,
+            max_spawned_tasks: 8,
+            max_sessions: 1_000,
+            gc_interval_secs: 300,
+            manager_dead_threshold: 3,
+            manager_max_restart_backoff_secs: 300,
+            manager_restart_drain_timeout_secs: 30,
+            manager_restart_decay_window_secs: 3_600,
+            manager_health_interval_secs: 30,
+            manager_ping_timeout_secs: 5,
+            loop_detection_window: 50,
+            cycle_detection_max_len: 10,
+            self_audit_event_threshold: 50,
+        }
+    }
+}
+
+/// Episteme knowledge conflict resolution, decay, and extraction parameters.
+///
+/// All defaults match the current hardcoded constants in the `episteme` crate.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+pub struct KnowledgeConfig {
+    /// Maximum LLM calls per fact during conflict resolution. Default: 3.
+    /// Mirrors `episteme::conflict::MAX_LLM_CALLS_PER_FACT`.
+    pub conflict_max_llm_calls_per_fact: usize,
+    /// Similarity threshold above which intra-batch candidates are merged. Default: 0.95.
+    /// Mirrors `episteme::conflict::INTRA_BATCH_DEDUP_THRESHOLD`.
+    pub conflict_intra_batch_dedup_threshold: f64,
+    /// Maximum vector distance for a fact to be a conflict candidate. Default: 0.28.
+    /// Mirrors `episteme::conflict::CANDIDATE_DISTANCE_THRESHOLD`.
+    pub conflict_candidate_distance_threshold: f64,
+    /// Maximum conflict candidates evaluated per fact. Default: 5.
+    /// Mirrors `episteme::conflict::MAX_CANDIDATES`.
+    pub conflict_max_candidates: usize,
+    /// Confidence boost per reinforcement event. Default: 0.02.
+    /// Mirrors `episteme::decay::REINFORCEMENT_BOOST`.
+    pub decay_reinforcement_boost: f64,
+    /// Maximum cumulative reinforcement bonus. Default: 1.0.
+    /// Mirrors `episteme::decay::MAX_REINFORCEMENT_BONUS`.
+    pub decay_max_reinforcement_bonus: f64,
+    /// Confidence bonus per additional corroborating agent. Default: 0.15.
+    /// Mirrors `episteme::decay::CROSS_AGENT_BONUS_PER_AGENT`.
+    pub decay_cross_agent_bonus_per_agent: f64,
+    /// Cap on total cross-agent multiplier. Default: 1.75.
+    /// Mirrors `episteme::decay::MAX_CROSS_AGENT_MULTIPLIER`.
+    pub decay_max_cross_agent_multiplier: f64,
+    /// Minimum confidence for a fact to pass extraction filtering. Default: 0.3.
+    pub extraction_confidence_threshold: f64,
+    /// Minimum character length for an extracted fact. Default: 10.
+    pub extraction_min_fact_length: usize,
+    /// Maximum character length for an extracted fact. Default: 500.
+    pub extraction_max_fact_length: usize,
+    /// Minimum tool calls before operational instinct scoring fires. Default: 5.
+    /// Mirrors `episteme::ops_facts::MIN_TOOL_CALLS`.
+    pub instinct_min_tool_calls: u64,
+}
+
+impl Default for KnowledgeConfig {
+    fn default() -> Self {
+        Self {
+            conflict_max_llm_calls_per_fact: 3,
+            conflict_intra_batch_dedup_threshold: 0.95,
+            conflict_candidate_distance_threshold: 0.28,
+            conflict_max_candidates: 5,
+            decay_reinforcement_boost: 0.02,
+            decay_max_reinforcement_bonus: 1.0,
+            decay_cross_agent_bonus_per_agent: 0.15,
+            decay_max_cross_agent_multiplier: 1.75,
+            extraction_confidence_threshold: 0.3,
+            extraction_min_fact_length: 10,
+            extraction_max_fact_length: 500,
+            instinct_min_tool_calls: 5,
+        }
+    }
+}
+
+/// Hermeneus provider timeout, concurrency, and complexity routing thresholds.
+///
+/// All defaults match the current hardcoded constants in the `hermeneus` crate.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+pub struct ProviderBehaviorConfig {
+    /// Timeout in seconds for non-streaming LLM requests. Default: 120.
+    /// Mirrors `hermeneus::anthropic::client::NON_STREAMING_TIMEOUT`.
+    pub non_streaming_timeout_secs: u64,
+    /// Default retry delay from SSE stream retry field in milliseconds. Default: 1000.
+    /// Mirrors `hermeneus::anthropic::error::SSE_DEFAULT_RETRY_MS`.
+    pub sse_default_retry_ms: u64,
+    /// EWMA smoothing factor for adaptive concurrency limiter. Default: 0.8.
+    /// Mirrors `hermeneus::concurrency::DEFAULT_EWMA_ALPHA`.
+    pub concurrency_ewma_alpha: f64,
+    /// Latency threshold in seconds above which concurrency limit is reduced. Default: 30.0.
+    /// Mirrors `hermeneus::concurrency::DEFAULT_LATENCY_THRESHOLD_SECS`.
+    pub concurrency_latency_threshold_secs: f64,
+    /// Complexity score below which Haiku-class model is selected. Default: 30.
+    /// Mirrors `hermeneus::complexity::DEFAULT_LOW_THRESHOLD`.
+    pub complexity_low_threshold: u32,
+    /// Complexity score above which Opus-class model is selected. Default: 70.
+    /// Mirrors `hermeneus::complexity::DEFAULT_HIGH_THRESHOLD`.
+    pub complexity_high_threshold: u32,
+}
+
+impl Default for ProviderBehaviorConfig {
+    fn default() -> Self {
+        Self {
+            non_streaming_timeout_secs: 120,
+            sse_default_retry_ms: 1_000,
+            concurrency_ewma_alpha: 0.8,
+            concurrency_latency_threshold_secs: 30.0,
+            complexity_low_threshold: 30,
+            complexity_high_threshold: 70,
+        }
+    }
+}
+
+/// Pylon API request size and idempotency cache limits.
+///
+/// All defaults match the current hardcoded constants in the `pylon` crate.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+pub struct ApiLimitsConfig {
+    /// Maximum characters in a session name. Default: 255.
+    /// Mirrors `pylon::handlers::sessions::MAX_SESSION_NAME_LEN`.
+    pub max_session_name_len: usize,
+    /// Maximum bytes in a session identifier. Default: 256.
+    /// Mirrors `pylon::handlers::sessions::MAX_IDENTIFIER_BYTES`.
+    pub max_identifier_bytes: usize,
+    /// Maximum messages returned by the history endpoint. Default: 1000.
+    /// Mirrors `pylon::handlers::sessions::MAX_HISTORY_LIMIT`.
+    pub max_history_limit: u32,
+    /// Default messages returned by the history endpoint. Default: 50.
+    /// Mirrors `pylon::handlers::sessions::DEFAULT_HISTORY_LIMIT`.
+    pub default_history_limit: u32,
+    /// Maximum bytes per streaming message body. Default: 262144 (256 KiB).
+    /// Mirrors `pylon::handlers::sessions::streaming::MAX_MESSAGE_BYTES`.
+    pub max_message_bytes: usize,
+    /// Maximum facts returned by a single knowledge list request. Default: 1000.
+    /// Mirrors `pylon::handlers::knowledge::MAX_FACTS_LIMIT`.
+    pub max_facts_limit: usize,
+    /// Maximum results for a single knowledge search request. Default: 1000.
+    /// Mirrors `pylon::handlers::knowledge::MAX_SEARCH_LIMIT`.
+    pub max_search_limit: usize,
+    /// Maximum facts in a single bulk-import request. Default: 1000.
+    /// Mirrors `pylon::handlers::knowledge::bulk_import::MAX_IMPORT_BATCH_SIZE`.
+    pub max_import_batch_size: usize,
+    /// TTL in seconds for idempotency key cache entries. Default: 300.
+    /// Mirrors `pylon::idempotency::DEFAULT_TTL`.
+    pub idempotency_ttl_secs: u64,
+    /// Maximum idempotency cache entries (LRU cap). Default: 10000.
+    /// Mirrors `pylon::idempotency::DEFAULT_CAPACITY`.
+    pub idempotency_capacity: usize,
+    /// Maximum character length of an idempotency key. Default: 64.
+    pub idempotency_max_key_length: usize,
+    /// Acceptable clock skew in seconds before token expiry check warns. Default: 30.
+    /// Mirrors `pylon::handlers::health::CLOCK_SKEW_LEEWAY`.
+    pub clock_skew_leeway_secs: u64,
+    /// Time in seconds before token expiry that triggers a warning. Default: 3600.
+    /// Mirrors `pylon::handlers::health::EXPIRY_WARNING_THRESHOLD`.
+    pub expiry_warning_threshold_secs: u64,
+}
+
+impl Default for ApiLimitsConfig {
+    fn default() -> Self {
+        Self {
+            max_session_name_len: 255,
+            max_identifier_bytes: 256,
+            max_history_limit: 1_000,
+            default_history_limit: 50,
+            max_message_bytes: 262_144,
+            max_facts_limit: 1_000,
+            max_search_limit: 1_000,
+            max_import_batch_size: 1_000,
+            idempotency_ttl_secs: 300,
+            idempotency_capacity: 10_000,
+            idempotency_max_key_length: 64,
+            clock_skew_leeway_secs: 30,
+            expiry_warning_threshold_secs: 3_600,
+        }
+    }
+}
+
+/// Daemon watchdog, prosoche anomaly detection, and runner output settings.
+///
+/// All defaults match the current hardcoded constants in the `daemon` crate.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+pub struct DaemonBehaviorConfig {
+    /// Base duration in seconds for watchdog restart backoff. Default: 2.
+    /// Mirrors `daemon::watchdog::BACKOFF_BASE`.
+    pub watchdog_backoff_base_secs: u64,
+    /// Maximum watchdog restart backoff duration in seconds. Default: 300.
+    /// Mirrors `daemon::watchdog::BACKOFF_CAP`.
+    pub watchdog_backoff_cap_secs: u64,
+    /// Samples used for anomaly detection in prosoche attention check. Default: 15.
+    /// Mirrors `daemon::prosoche::ANOMALY_SAMPLE_SIZE`.
+    pub prosoche_anomaly_sample_size: usize,
+    /// Lines from task output head to include in brief summary. Default: 5.
+    /// Mirrors `daemon::runner::output::BRIEF_HEAD_LINES`.
+    pub runner_output_brief_head_lines: usize,
+    /// Lines from task output tail to include in brief summary. Default: 3.
+    /// Mirrors `daemon::runner::output::BRIEF_TAIL_LINES`.
+    pub runner_output_brief_tail_lines: usize,
+}
+
+impl Default for DaemonBehaviorConfig {
+    fn default() -> Self {
+        Self {
+            watchdog_backoff_base_secs: 2,
+            watchdog_backoff_cap_secs: 300,
+            prosoche_anomaly_sample_size: 15,
+            runner_output_brief_head_lines: 5,
+            runner_output_brief_tail_lines: 3,
+        }
+    }
+}
+
+/// Organon tool size, timeout, and length limits.
+///
+/// All defaults match the current hardcoded constants in the `organon` crate.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+pub struct ToolLimitsConfig {
+    /// Maximum character length for glob patterns. Default: 1000.
+    /// Mirrors `organon::builtins::filesystem::MAX_PATTERN_LENGTH`.
+    pub max_pattern_length: usize,
+    /// Timeout in seconds for filesystem subprocess commands. Default: 60.
+    /// Mirrors `organon::builtins::filesystem::SUBPROCESS_TIMEOUT`.
+    pub subprocess_timeout_secs: u64,
+    /// Maximum bytes per workspace write operation. Default: 10485760 (10 MiB).
+    /// Mirrors `organon::builtins::workspace::MAX_WRITE_BYTES`.
+    pub max_write_bytes: usize,
+    /// Maximum bytes per workspace read operation. Default: 52428800 (50 MiB).
+    /// Mirrors `organon::builtins::workspace::MAX_READ_BYTES`.
+    pub max_read_bytes: u64,
+    /// Maximum character length of a shell command. Default: 10000.
+    /// Mirrors `organon::builtins::workspace::MAX_COMMAND_LENGTH`.
+    pub max_command_length: usize,
+    /// Maximum characters per intra-session message. Default: 4000.
+    /// Mirrors `organon::builtins::communication::MESSAGE_MAX_LEN`.
+    pub message_max_len: usize,
+    /// Maximum characters per inter-session message. Default: 100000.
+    /// Mirrors `organon::builtins::communication::INTER_SESSION_MAX_MESSAGE_LEN`.
+    pub inter_session_max_message_len: usize,
+    /// Maximum wait timeout in seconds for inter-session messages. Default: 300.
+    /// Mirrors `organon::builtins::communication::INTER_SESSION_MAX_TIMEOUT_SECS`.
+    pub inter_session_max_timeout_secs: u64,
+}
+
+impl Default for ToolLimitsConfig {
+    fn default() -> Self {
+        Self {
+            max_pattern_length: 1_000,
+            subprocess_timeout_secs: 60,
+            max_write_bytes: 10_485_760,
+            max_read_bytes: 52_428_800,
+            max_command_length: 10_000,
+            message_max_len: 4_000,
+            inter_session_max_message_len: 100_000,
+            inter_session_max_timeout_secs: 300,
+        }
+    }
+}
+
+/// Agora messaging transport poll, buffer, circuit-breaker, and RPC settings.
+///
+/// All defaults match the current hardcoded constants in the `agora` crate.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+pub struct MessagingConfig {
+    /// How often Semeion polls for new channel messages in milliseconds. Default: 2000.
+    /// Mirrors `agora::semeion::DEFAULT_POLL_INTERVAL`.
+    pub poll_interval_ms: u64,
+    /// Inbound message buffer size per channel. Default: 100.
+    /// Mirrors `agora::semeion::DEFAULT_BUFFER_CAPACITY`.
+    pub buffer_capacity: usize,
+    /// Consecutive channel errors before the channel is halted. Default: 5.
+    /// Mirrors `agora::semeion::CIRCUIT_BREAKER_THRESHOLD`.
+    pub circuit_breaker_threshold: u32,
+    /// How often a halted channel is health-checked in seconds. Default: 60.
+    /// Mirrors `agora::semeion::HALTED_HEALTH_CHECK_INTERVAL`.
+    pub halted_health_check_interval_secs: u64,
+    /// Timeout in seconds for Semeion RPC calls. Default: 10.
+    /// Mirrors `agora::semeion::client::RPC_TIMEOUT`.
+    pub rpc_timeout_secs: u64,
+    /// Timeout in seconds for Semeion health-check requests. Default: 2.
+    /// Mirrors `agora::semeion::client::HEALTH_TIMEOUT`.
+    pub health_timeout_secs: u64,
+    /// Timeout in seconds waiting to receive a Semeion response. Default: 15.
+    /// Mirrors `agora::semeion::client::RECEIVE_TIMEOUT`.
+    pub receive_timeout_secs: u64,
+    /// Default timeout in seconds for agent-dispatch tool calls. Default: 300.
+    /// Mirrors `organon::builtins::agent::DEFAULT_TIMEOUT_SECS`.
+    pub agent_dispatch_timeout_secs: u64,
+}
+
+impl Default for MessagingConfig {
+    fn default() -> Self {
+        Self {
+            poll_interval_ms: 2_000,
+            buffer_capacity: 100,
+            circuit_breaker_threshold: 5,
+            halted_health_check_interval_secs: 60,
+            rpc_timeout_secs: 10,
+            health_timeout_secs: 2,
+            receive_timeout_secs: 15,
+            agent_dispatch_timeout_secs: 300,
+        }
+    }
+}
+
+/// Per-agent behavioral parameters: safety, hooks, distillation, competence,
+/// drift, uncertainty, skills, planning, knowledge tuning, fact lifecycle,
+/// similarity, tool behavior, and correction limits.
+///
+/// All defaults match the current hardcoded constants spread across `nous`,
+/// `episteme`, `dianoia`, `melete`, `eidos`, and `organon`. Wave 0 adds the
+/// schema; waves 1-4 will replace the individual `const` declarations with
+/// reads from the resolved config.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "hook toggles are a genuine set of independent feature flags, not a state machine"
+)]
+pub struct AgentBehaviorDefaults {
+    // --- Safety ---
+    /// Consecutive identical tool-call sequences before loop detection fires. Default: 3.
+    pub safety_loop_detection_threshold: u32,
+    /// Consecutive errors before the pipeline aborts with a safety interrupt. Default: 4.
+    pub safety_consecutive_error_threshold: u32,
+    /// Maximum loop-detection warnings before the session is halted. Default: 2.
+    pub safety_loop_max_warnings: u32,
+    /// Hard token cap for a single session. Default: 500000.
+    pub safety_session_token_cap: u64,
+    /// Maximum consecutive tool-only iterations before forcing a text response. Default: 3.
+    pub safety_max_consecutive_tool_only_iterations: u32,
+
+    // --- Hooks ---
+    /// Whether cost-control hooks are active. Default: true.
+    pub hooks_cost_control_enabled: bool,
+    /// Per-turn token budget (0 = unlimited). Default: 0.
+    pub hooks_turn_token_budget: u64,
+    /// Whether scope-enforcement hooks are active. Default: true.
+    pub hooks_scope_enforcement_enabled: bool,
+    /// Whether correction hooks are active. Default: true.
+    pub hooks_correction_hooks_enabled: bool,
+    /// Whether audit logging hooks are active. Default: true.
+    pub hooks_audit_logging_enabled: bool,
+
+    // --- Distillation ---
+    /// Context token count that triggers automatic distillation. Default: 120000.
+    /// Mirrors `nous::distillation::CONTEXT_TOKEN_TRIGGER`.
+    pub distillation_context_token_trigger: u64,
+    /// Message count that triggers distillation. Default: 150.
+    /// Mirrors `nous::distillation::MESSAGE_COUNT_TRIGGER`.
+    pub distillation_message_count_trigger: u64,
+    /// Days idle before a session is considered stale for distillation. Default: 7.
+    /// Mirrors `nous::distillation::STALE_SESSION_DAYS`.
+    pub distillation_stale_session_days: u64,
+    /// Minimum messages required for stale-session distillation. Default: 20.
+    /// Mirrors `nous::distillation::STALE_SESSION_MIN_MESSAGES`.
+    pub distillation_stale_min_messages: u64,
+    /// Message count trigger for sessions never distilled. Default: 30.
+    /// Mirrors `nous::distillation::NEVER_DISTILLED_MESSAGE_TRIGGER`.
+    pub distillation_never_distilled_trigger: u64,
+    /// Minimum messages for legacy distillation threshold. Default: 10.
+    /// Mirrors `nous::distillation::LEGACY_THRESHOLD_MIN_MESSAGES`.
+    pub distillation_legacy_min_messages: u64,
+    /// Maximum backoff turns before distillation is forced. Default: 8.
+    /// Mirrors `melete::distill::MAX_BACKOFF_TURNS`.
+    pub distillation_max_backoff_turns: u32,
+
+    // --- Competence scoring ---
+    /// Competence score penalty per correction. Default: 0.05.
+    /// Mirrors `nous::competence::CORRECTION_PENALTY`.
+    pub competence_correction_penalty: f64,
+    /// Competence score bonus per successful turn. Default: 0.02.
+    /// Mirrors `nous::competence::SUCCESS_BONUS`.
+    pub competence_success_bonus: f64,
+    /// Competence score penalty per user disagreement. Default: 0.01.
+    /// Mirrors `nous::competence::DISAGREEMENT_PENALTY`.
+    pub competence_disagreement_penalty: f64,
+    /// Competence score floor. Default: 0.1.
+    /// Mirrors `nous::competence::MIN_SCORE`.
+    pub competence_min_score: f64,
+    /// Competence score ceiling. Default: 0.95.
+    /// Mirrors `nous::competence::MAX_SCORE`.
+    pub competence_max_score: f64,
+    /// Initial competence score for a new agent. Default: 0.5.
+    /// Mirrors `nous::competence::DEFAULT_SCORE`.
+    pub competence_default_score: f64,
+    /// Competence score below which escalation fires. Default: 0.30.
+    /// Mirrors `nous::competence::ESCALATION_FAILURE_THRESHOLD`.
+    pub competence_escalation_failure_threshold: f64,
+    /// Minimum samples before escalation threshold is evaluated. Default: 5.
+    /// Mirrors `nous::competence::ESCALATION_MIN_SAMPLES`.
+    pub competence_escalation_min_samples: u32,
+
+    // --- Drift detection ---
+    /// Sliding window size for response-quality drift detection. Default: 20.
+    /// Mirrors `nous::drift::DEFAULT_WINDOW_SIZE`.
+    pub drift_window_size: usize,
+    /// Comparison window for recent vs. historical drift. Default: 5.
+    /// Mirrors `nous::drift::DEFAULT_RECENT_SIZE`.
+    pub drift_recent_size: usize,
+    /// Standard deviations required to flag drift. Default: 2.0.
+    /// Mirrors `nous::drift::DEFAULT_DEVIATION_THRESHOLD`.
+    pub drift_deviation_threshold: f64,
+    /// Minimum samples before drift detection activates. Default: 8.
+    /// Mirrors `nous::drift::MIN_SAMPLES`.
+    pub drift_min_samples: usize,
+
+    // --- Uncertainty calibration ---
+    /// Maximum calibration data points retained for the uncertainty model. Default: 1000.
+    /// Mirrors `nous::uncertainty::MAX_CALIBRATION_POINTS`.
+    pub uncertainty_max_calibration_points: usize,
+
+    // --- Skills ---
+    /// Maximum number of skills loadable per agent. Default: 5.
+    pub skills_max_skills: usize,
+    /// Maximum chars from context used when matching skills. Default: 200.
+    /// Mirrors `nous::skills::MAX_CONTEXT_CHARS`.
+    pub skills_max_context_chars: usize,
+
+    // --- Working state ---
+    /// Working-state TTL in seconds before expiry. Default: 604800 (7 days).
+    pub working_state_ttl_secs: u64,
+
+    // --- Planning ---
+    /// Maximum planning iterations per planning cycle. Default: 10.
+    /// Mirrors `dianoia::plan::DEFAULT_MAX_ITERATIONS`.
+    pub planning_max_iterations: u32,
+    /// History turns inspected for stuck-detection. Default: 20.
+    /// Mirrors `dianoia::stuck::DEFAULT_HISTORY_WINDOW`.
+    pub planning_stuck_history_window: u32,
+    /// Repeated errors before agent is flagged stuck. Default: 3.
+    /// Mirrors `dianoia::stuck::DEFAULT_REPEATED_ERROR_THRESHOLD`.
+    pub planning_stuck_repeated_error_threshold: u32,
+    /// Identical-argument tool calls before stuck detection fires. Default: 3.
+    /// Mirrors `dianoia::stuck::DEFAULT_SAME_ARGS_THRESHOLD`.
+    pub planning_stuck_same_args_threshold: u32,
+    /// Alternating tool-call pairs before stuck detection fires. Default: 3.
+    /// Mirrors `dianoia::stuck::DEFAULT_ALTERNATING_THRESHOLD`.
+    pub planning_stuck_alternating_threshold: u32,
+    /// Escalating retry pattern depth before stuck detection fires. Default: 3.
+    /// Mirrors `dianoia::stuck::DEFAULT_ESCALATING_RETRY_THRESHOLD`.
+    pub planning_stuck_escalating_retry_threshold: u32,
+
+    // --- Knowledge tuning (instinct / surprise / rules / dedup) ---
+    /// Minimum observations before an instinct is eligible. Default: 5.
+    pub knowledge_instinct_min_observations: u32,
+    /// Minimum success rate for an instinct to surface. Default: 0.80.
+    pub knowledge_instinct_min_success_rate: f64,
+    /// Minimum stability hours before an instinct is surfaced. Default: 168.0.
+    pub knowledge_instinct_stability_hours: f64,
+    /// Standard deviations above baseline for surprise detection. Default: 2.0.
+    /// Mirrors `episteme::surprise::DEFAULT_THRESHOLD`.
+    pub knowledge_surprise_threshold: f64,
+    /// EMA alpha for surprise baseline. Default: 0.3.
+    /// Mirrors `episteme::surprise::EMA_ALPHA`.
+    pub knowledge_surprise_ema_alpha: f64,
+    /// Minimum observations before a rule proposal is eligible. Default: 5.
+    /// Mirrors `episteme::rule_proposals::MIN_OBSERVATIONS`.
+    pub knowledge_rule_min_observations: u32,
+    /// Minimum confidence for a rule proposal to surface. Default: 0.60.
+    /// Mirrors `episteme::rule_proposals::MIN_CONFIDENCE`.
+    pub knowledge_rule_min_confidence: f64,
+    /// Weight of name similarity in dedup scoring. Default: 0.4.
+    /// Mirrors `episteme::dedup::WEIGHT_NAME`.
+    pub knowledge_dedup_weight_name: f64,
+    /// Weight of embedding similarity in dedup scoring. Default: 0.3.
+    /// Mirrors `episteme::dedup::WEIGHT_EMBED`.
+    pub knowledge_dedup_weight_embed: f64,
+    /// Weight of fact-type match in dedup scoring. Default: 0.2.
+    /// Mirrors `episteme::dedup::WEIGHT_TYPE`.
+    pub knowledge_dedup_weight_type: f64,
+    /// Weight of alias similarity in dedup scoring. Default: 0.1.
+    /// Mirrors `episteme::dedup::WEIGHT_ALIAS`.
+    pub knowledge_dedup_weight_alias: f64,
+    /// Jaro-Winkler score above which strings are considered similar. Default: 0.85.
+    /// Mirrors `episteme::dedup::JW_THRESHOLD`.
+    pub knowledge_dedup_jw_threshold: f64,
+    /// Cosine similarity above which embeddings are considered similar. Default: 0.80.
+    /// Mirrors `episteme::dedup::EMBED_THRESHOLD`.
+    pub knowledge_dedup_embed_threshold: f64,
+
+    // --- Fact lifecycle ---
+    /// Confidence above which a fact is considered Active. Default: 0.7.
+    /// Mirrors `eidos::knowledge::fact::STAGE_ACTIVE_THRESHOLD`.
+    pub fact_active_threshold: f64,
+    /// Confidence below which a fact is considered Fading. Default: 0.3.
+    /// Mirrors `eidos::knowledge::fact::STAGE_FADING_THRESHOLD`.
+    pub fact_fading_threshold: f64,
+    /// Confidence below which a fact is considered Dormant. Default: 0.1.
+    /// Mirrors `eidos::knowledge::fact::STAGE_DORMANT_THRESHOLD`.
+    pub fact_dormant_threshold: f64,
+
+    // --- Similarity ---
+    /// Similarity score threshold for recall deduplication. Default: 0.85.
+    pub similarity_threshold: f64,
+
+    // --- Tool behavior ---
+    /// Maximum concurrent agent-dispatch tasks. Default: 10.
+    /// Mirrors `organon::builtins::agent::MAX_DISPATCH_TASKS`.
+    pub tool_agent_dispatch_max_tasks: usize,
+    /// Default row limit for Datalog memory queries. Default: 100.
+    /// Mirrors `organon::builtins::memory::datalog::DEFAULT_ROW_LIMIT`.
+    pub tool_datalog_default_row_limit: u32,
+    /// Default query timeout in seconds for the Datalog memory tool. Default: 5.0.
+    /// Mirrors `organon::builtins::memory::datalog::DEFAULT_TIMEOUT_SECS`.
+    pub tool_datalog_default_timeout_secs: f64,
+    /// Maximum image file size in bytes for the view-file tool. Default: 20971520 (20 MiB).
+    /// Mirrors `organon::builtins::view_file::MAX_IMAGE_BYTES`.
+    pub tool_max_image_bytes: usize,
+    /// Maximum PDF file size in bytes for the view-file tool. Default: 33554432 (32 MiB).
+    /// Mirrors `organon::builtins::view_file::MAX_PDF_BYTES`.
+    pub tool_max_pdf_bytes: usize,
+
+    // --- Corrections ---
+    /// Maximum correction entries stored per agent. Default: 50.
+    /// Mirrors `nous::hooks::builtins::correction::MAX_CORRECTIONS`.
+    pub corrections_max_corrections: usize,
+}
+
+impl Default for AgentBehaviorDefaults {
+    fn default() -> Self {
+        Self {
+            // Safety
+            safety_loop_detection_threshold: 3,
+            safety_consecutive_error_threshold: 4,
+            safety_loop_max_warnings: 2,
+            safety_session_token_cap: 500_000,
+            safety_max_consecutive_tool_only_iterations: 3,
+            // Hooks
+            hooks_cost_control_enabled: true,
+            hooks_turn_token_budget: 0,
+            hooks_scope_enforcement_enabled: true,
+            hooks_correction_hooks_enabled: true,
+            hooks_audit_logging_enabled: true,
+            // Distillation
+            distillation_context_token_trigger: 120_000,
+            distillation_message_count_trigger: 150,
+            distillation_stale_session_days: 7,
+            distillation_stale_min_messages: 20,
+            distillation_never_distilled_trigger: 30,
+            distillation_legacy_min_messages: 10,
+            distillation_max_backoff_turns: 8,
+            // Competence
+            competence_correction_penalty: 0.05,
+            competence_success_bonus: 0.02,
+            competence_disagreement_penalty: 0.01,
+            competence_min_score: 0.1,
+            competence_max_score: 0.95,
+            competence_default_score: 0.5,
+            competence_escalation_failure_threshold: 0.30,
+            competence_escalation_min_samples: 5,
+            // Drift
+            drift_window_size: 20,
+            drift_recent_size: 5,
+            drift_deviation_threshold: 2.0,
+            drift_min_samples: 8,
+            // Uncertainty
+            uncertainty_max_calibration_points: 1_000,
+            // Skills
+            skills_max_skills: 5,
+            skills_max_context_chars: 200,
+            // Working state
+            working_state_ttl_secs: 604_800,
+            // Planning
+            planning_max_iterations: 10,
+            planning_stuck_history_window: 20,
+            planning_stuck_repeated_error_threshold: 3,
+            planning_stuck_same_args_threshold: 3,
+            planning_stuck_alternating_threshold: 3,
+            planning_stuck_escalating_retry_threshold: 3,
+            // Knowledge tuning
+            knowledge_instinct_min_observations: 5,
+            knowledge_instinct_min_success_rate: 0.80,
+            knowledge_instinct_stability_hours: 168.0,
+            knowledge_surprise_threshold: 2.0,
+            knowledge_surprise_ema_alpha: 0.3,
+            knowledge_rule_min_observations: 5,
+            knowledge_rule_min_confidence: 0.60,
+            knowledge_dedup_weight_name: 0.4,
+            knowledge_dedup_weight_embed: 0.3,
+            knowledge_dedup_weight_type: 0.2,
+            knowledge_dedup_weight_alias: 0.1,
+            knowledge_dedup_jw_threshold: 0.85,
+            knowledge_dedup_embed_threshold: 0.80,
+            // Fact lifecycle
+            fact_active_threshold: 0.7,
+            fact_fading_threshold: 0.3,
+            fact_dormant_threshold: 0.1,
+            // Similarity
+            similarity_threshold: 0.85,
+            // Tool behavior
+            tool_agent_dispatch_max_tasks: 10,
+            tool_datalog_default_row_limit: 100,
+            tool_datalog_default_timeout_secs: 5.0,
+            tool_max_image_bytes: 20_971_520,
+            tool_max_pdf_bytes: 33_554_432,
+            // Corrections
+            corrections_max_corrections: 50,
         }
     }
 }
