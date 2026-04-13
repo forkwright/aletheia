@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.17.0](https://github.com/forkwright/aletheia/compare/v0.16.0...v0.17.0) (2026-04-13)
+
+
+### Features
+
+* **daemon:** fjall storage backend for task/cron state (Wave 4) ([#3128](https://github.com/forkwright/aletheia/issues/3128)) ([998a7fe](https://github.com/forkwright/aletheia/commit/998a7fe8b4aede9c726a6b669393958f46b7f416))
+* **nous:** parameterize all behavioral consts — Wave 1 ([7491ce6](https://github.com/forkwright/aletheia/commit/7491ce61b68cd9ad09617c20df7b71f322413b6d))
+* **nous:** replace all 70 behavioral constants with config reads ([#2306](https://github.com/forkwright/aletheia/issues/2306)) ([#3129](https://github.com/forkwright/aletheia/issues/3129)) ([265eceb](https://github.com/forkwright/aletheia/commit/265ecebb4e6df9f3f60a1588a45daff137dd1ecd))
+* **symbolon:** fjall storage backend for auth/token store ([#2285](https://github.com/forkwright/aletheia/issues/2285)) ([#3127](https://github.com/forkwright/aletheia/issues/3127)) ([4876f4c](https://github.com/forkwright/aletheia/commit/4876f4c6b178104021389b2792daaa59859e2453))
+* **taxis:** config schema for 190 behavioral constants ([#2306](https://github.com/forkwright/aletheia/issues/2306)) ([#3124](https://github.com/forkwright/aletheia/issues/3124)) ([afbe8ee](https://github.com/forkwright/aletheia/commit/afbe8ee8919193268cfd48cf28b413a4360880dd))
+
 ## [0.16.0](https://github.com/forkwright/aletheia/compare/v0.15.1...v0.16.0) (2026-04-13)
 
 
