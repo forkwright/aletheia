@@ -19,7 +19,7 @@ snafu = { workspace = true }
 krilla = { version = "0.7", optional = true }
 
 # ODT backend — uses zip for packaging
-zip = { version = "2.2", optional = true }
+zip = { version = "7.2", optional = true }
 
 [features]
 default = ["pdf", "odt"]
