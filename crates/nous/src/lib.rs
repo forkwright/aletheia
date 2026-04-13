@@ -64,6 +64,8 @@ pub mod spawn_svc;
 pub mod stream;
 /// Task registry with progress streaming, cooperative cancellation, and GC.
 pub mod tasks;
+/// Self-tuning feedback loop: evidence-based parameter change proposals.
+pub mod tuning;
 /// Uncertainty quantification: calibration tracking for agent confidence predictions.
 pub mod uncertainty;
 /// User-facing error formatting for display in chat responses.
