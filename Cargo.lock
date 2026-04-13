@@ -4384,6 +4384,7 @@ version = "0.16.0"
 dependencies = [
  "axum 0.8.8",
  "episteme",
+ "fjall",
  "flate2",
  "jiff",
  "koina",

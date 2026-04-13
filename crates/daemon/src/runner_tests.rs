@@ -771,7 +771,7 @@ fn register_task_with_jitter_shifts_next_run() {
 #[test]
 fn with_state_store_persists_across_restarts() {
     let tmp = tempfile::tempdir().expect("tempdir");
-    let db_path = tmp.path().join("state.db");
+    let db_path = tmp.path().join("state");
 
     // First runner: register, complete a task, persist
     {
@@ -796,7 +796,7 @@ fn with_state_store_persists_across_restarts() {
         let statuses = runner.status();
         assert_eq!(
             statuses[0].run_count, 1,
-            "run_count should be restored from SQLite"
+            "run_count should be restored from store"
         );
     }
 }

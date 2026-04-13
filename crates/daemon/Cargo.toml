@@ -1,7 +1,7 @@
 [package]
 name = "oikonomos"
 version.workspace = true
-description = "Oikonomos (the steward) — per-nous background task runner, cron scheduling, prosoche attention"
+description = "Oikonomos (the steward) -- per-nous background task runner, cron scheduling, prosoche attention"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -11,6 +11,11 @@ rust-version.workspace = true
 workspace = true
 
 [features]
+# WHY: fjall is the new default backend -- pure Rust, zero C dependency.
+# sqlite is preserved for backward compatibility during the Wave 4 migration window.
+default = ["fjall"]
+fjall = ["dep:fjall"]
+sqlite = ["dep:rusqlite"]
 # WHY: gates anomaly detection (prosoche memory consistency checks) on the
 # heavy CozoDB-backed KnowledgeStore from episteme. Not all daemon users need it.
 knowledge-store = ["episteme/mneme-engine"]
@@ -28,6 +33,8 @@ axum = { workspace = true }
 # WorkspaceGuard for the lifetime of the daemon process. rustix's flock binds
 # the lock to the file descriptor, so the lock lives until the File is dropped.
 rustix = { version = "1", default-features = false, features = ["fs", "std"] }
+# WHY: fjall is the default task-state backend -- pure Rust LSM-tree, zero C deps.
+fjall = { version = "3", default-features = false, optional = true }
 flate2 = { workspace = true }
 jiff = { workspace = true, features = ["serde"] }
 # WHY: file watcher triggers (inotify on Linux)
@@ -40,7 +47,7 @@ tokio = { workspace = true, features = ["process", "signal"] }
 tokio-util = { workspace = true }
 # WHY: daemon.toml workspace opt-in config
 toml = { workspace = true }
-rusqlite = { workspace = true }
+rusqlite = { workspace = true, optional = true }
 tracing = { workspace = true }
 
 [dev-dependencies]

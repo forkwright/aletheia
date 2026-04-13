@@ -1,8 +1,12 @@
-//! SQLite-backed persistence for daemon task execution state.
+//! Task-state persistence for daemon: scheduled task execution state across restarts.
 //!
-//! Survives process restarts so tasks resume their schedules rather than
-//! running immediately on every restart. Also provides workspace-level
-//! daemon configuration and single-instance locking.
+//! Selects a backend at compile time via feature flags:
+//!
+//! - `fjall` (default): pure-Rust LSM-tree store via `fjall`. Zero C deps.
+//! - `sqlite`: single-writer SQLite via `rusqlite`.
+//!
+//! Both backends expose the same [`TaskStateStore`] type with identical methods.
+//! Also provides workspace-level daemon configuration and single-instance locking.
 
 use std::path::{Path, PathBuf};
 
@@ -13,7 +17,7 @@ use snafu::ResultExt as _;
 use crate::error::Result;
 
 /// Persisted execution state for a single registered task.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskState {
     /// Task ID matching `TaskDef::id`.
     pub task_id: String,
@@ -25,132 +29,23 @@ pub struct TaskState {
     pub consecutive_failures: u32,
 }
 
-/// SQLite-backed store for task execution state.
-///
-/// One `task_state.db` file holds state for all tasks in a runner.
-/// Single-writer: no WAL needed.
-pub(crate) struct TaskStateStore {
-    conn: rusqlite::Connection,
-}
+// -- Fjall backend -----------------------------------------------------------
+// WHY: when both fjall and sqlite are active (workspace feature unification),
+// prefer sqlite so TaskStateStore is unambiguous and fjall helpers are not dead
+// code. Fjall module only compiles when sqlite is absent.
 
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "open + create_schema are called from #[cfg(test)] state::tests and runner_tests; production wiring lives in the binary crate"
-    )
-)]
-impl TaskStateStore {
-    /// Open (or create) the task state database at `path`.
-    pub(crate) fn open(path: &Path) -> Result<Self> {
-        let conn = rusqlite::Connection::open(path).map_err(|e| {
-            crate::error::TaskFailedSnafu {
-                task_id: "state-db-open".to_owned(),
-                reason: e.to_string(),
-            }
-            .build()
-        })?;
-        conn.busy_timeout(std::time::Duration::from_secs(5))
-            .map_err(|e| {
-                crate::error::TaskFailedSnafu {
-                    task_id: "state-db-open".to_owned(),
-                    reason: e.to_string(),
-                }
-                .build()
-            })?;
-        Self::create_schema(&conn)?;
-        Ok(Self { conn })
-    }
+#[cfg(all(feature = "fjall", not(feature = "sqlite")))]
+mod fjall_store;
+#[cfg(all(feature = "fjall", not(feature = "sqlite")))]
+pub(crate) use fjall_store::TaskStateStore;
 
-    fn create_schema(conn: &rusqlite::Connection) -> Result<()> {
-        conn.execute_batch(
-            "CREATE TABLE IF NOT EXISTS task_state (
-                task_id              TEXT PRIMARY KEY NOT NULL,
-                last_run_ts          TEXT,
-                run_count            INTEGER NOT NULL DEFAULT 0,
-                consecutive_failures INTEGER NOT NULL DEFAULT 0
-            );",
-        )
-        .map_err(|e| {
-            crate::error::TaskFailedSnafu {
-                task_id: "state-db-schema".to_owned(),
-                reason: e.to_string(),
-            }
-            .build()
-        })?;
-        Ok(())
-    }
+// -- SQLite backend ----------------------------------------------------------
+#[cfg(feature = "sqlite")]
+mod sqlite_store;
+#[cfg(feature = "sqlite")]
+pub(crate) use sqlite_store::TaskStateStore;
 
-    /// Load all persisted task states.
-    pub(crate) fn load_all(&self) -> Result<Vec<TaskState>> {
-        let mut stmt = self
-            .conn
-            .prepare(
-                "SELECT task_id, last_run_ts, run_count, consecutive_failures
-                 FROM task_state",
-            )
-            .map_err(|e| {
-                crate::error::TaskFailedSnafu {
-                    task_id: "state-db-prepare".to_owned(),
-                    reason: e.to_string(),
-                }
-                .build()
-            })?;
-
-        let rows = stmt
-            .query_map([], |row| {
-                Ok(TaskState {
-                    task_id: row.get(0)?,
-                    last_run_ts: row.get(1)?,
-                    run_count: u64::try_from(row.get::<_, i64>(2)?).unwrap_or(0),
-                    consecutive_failures: u32::try_from(row.get::<_, i64>(3)?).unwrap_or(0),
-                })
-            })
-            .map_err(|e| {
-                crate::error::TaskFailedSnafu {
-                    task_id: "state-db-query".to_owned(),
-                    reason: e.to_string(),
-                }
-                .build()
-            })?;
-
-        let mut states = Vec::new();
-        for row in rows {
-            states.push(row.map_err(|e| {
-                crate::error::TaskFailedSnafu {
-                    task_id: "state-db-row".to_owned(),
-                    reason: e.to_string(),
-                }
-                .build()
-            })?);
-        }
-        Ok(states)
-    }
-
-    /// Persist (upsert) the state for a task.
-    pub(crate) fn save(&self, state: &TaskState) -> Result<()> {
-        self.conn
-            .execute(
-                "INSERT OR REPLACE INTO task_state
-                 (task_id, last_run_ts, run_count, consecutive_failures)
-                 VALUES (?1, ?2, ?3, ?4)",
-                rusqlite::params![
-                    state.task_id,
-                    state.last_run_ts,
-                    i64::try_from(state.run_count).unwrap_or(i64::MAX),
-                    i64::from(state.consecutive_failures),
-                ],
-            )
-            .map_err(|e| {
-                crate::error::TaskFailedSnafu {
-                    task_id: state.task_id.clone(),
-                    reason: format!("save task state: {e}"),
-                }
-                .build()
-            })?;
-        Ok(())
-    }
-}
+// -- Workspace config and locking (shared across backends) -------------------
 
 /// Per-workspace daemon configuration parsed from `.aletheia/daemon.toml`.
 ///
@@ -240,7 +135,7 @@ impl DaemonConfig {
         if !config_path.exists() {
             tracing::debug!(
                 path = %config_path.display(),
-                "daemon.toml not found — daemon disabled for this workspace"
+                "daemon.toml not found -- daemon disabled for this workspace"
             );
             return Ok(Self::default());
         }
@@ -402,7 +297,7 @@ mod tests {
     #[test]
     fn roundtrip_task_state() {
         let tmp = tempfile::tempdir().unwrap();
-        let store = TaskStateStore::open(&tmp.path().join("state.db")).unwrap();
+        let store = TaskStateStore::open(&tmp.path().join("state")).unwrap();
 
         let state = TaskState {
             task_id: "test-task".to_owned(),
@@ -426,7 +321,7 @@ mod tests {
     #[test]
     fn upsert_updates_existing() {
         let tmp = tempfile::tempdir().unwrap();
-        let store = TaskStateStore::open(&tmp.path().join("state.db")).unwrap();
+        let store = TaskStateStore::open(&tmp.path().join("state")).unwrap();
 
         let state = TaskState {
             task_id: "t1".to_owned(),
@@ -452,7 +347,7 @@ mod tests {
     #[test]
     fn empty_store_returns_empty_vec() {
         let tmp = tempfile::tempdir().unwrap();
-        let store = TaskStateStore::open(&tmp.path().join("state.db")).unwrap();
+        let store = TaskStateStore::open(&tmp.path().join("state")).unwrap();
         let loaded = store.load_all().unwrap();
         assert!(loaded.is_empty());
     }
@@ -460,7 +355,7 @@ mod tests {
     #[test]
     fn survives_reopen() {
         let tmp = tempfile::tempdir().unwrap();
-        let db_path = tmp.path().join("state.db");
+        let db_path = tmp.path().join("state");
 
         {
             let store = TaskStateStore::open(&db_path).unwrap();
@@ -528,7 +423,7 @@ webhook = true
     fn daemon_config_missing_file_returns_default() {
         let tmp = tempfile::tempdir().unwrap();
         let config = DaemonConfig::load(tmp.path()).unwrap();
-        assert!(!config.enabled, "missing config file → disabled");
+        assert!(!config.enabled, "missing config file -> disabled");
     }
 
     #[test]
@@ -579,12 +474,6 @@ webhook = true
 
     #[test]
     fn workspace_guard_prevents_double_acquisition() {
-        // REGRESSION (#3026): the previous fd-lock implementation released the
-        // advisory lock before WorkspaceGuard returned to the caller, allowing
-        // a second acquire() in the same process to silently succeed. The
-        // rustix::fs::flock implementation binds the lock to the file
-        // descriptor, so a second acquire() opens a new fd and the kernel
-        // correctly reports the inode is already locked.
         let tmp = tempfile::tempdir().unwrap();
         let guard1 = WorkspaceGuard::acquire(tmp.path()).expect("first acquire");
         assert!(guard1.lock_path().exists(), "lock file exists after first acquire");
@@ -595,19 +484,15 @@ webhook = true
             "second acquire() in same process must fail while first guard is held"
         );
 
-        // First guard still holds the lock — its fd is still open.
         assert!(guard1.lock_path().exists(), "lock file still exists");
     }
 
     #[test]
     fn workspace_guard_releases_after_first_drop_allows_reacquire() {
-        // Drop the first guard, then a second acquire should succeed.
         let tmp = tempfile::tempdir().unwrap();
         {
             let _guard1 = WorkspaceGuard::acquire(tmp.path()).expect("first acquire");
-            // First guard holds the lock here.
         }
-        // First guard dropped, file closed, flock released.
         let _guard2 = WorkspaceGuard::acquire(tmp.path()).expect(
             "second acquire after first guard dropped should succeed",
         );
@@ -622,7 +507,6 @@ webhook = true
             lock_path = guard.lock_path().to_owned();
             assert!(lock_path.exists(), "lock file should exist while held");
         }
-        // NOTE: after drop, lock file is removed (best-effort)
         assert!(
             !lock_path.exists(),
             "lock file should be removed after guard drop"
@@ -632,7 +516,6 @@ webhook = true
     #[test]
     fn workspace_guard_creates_lock_directory() {
         let tmp = tempfile::tempdir().unwrap();
-        // NOTE: .aletheia/ does not exist yet
         assert!(!tmp.path().join(".aletheia").exists());
         let _guard = WorkspaceGuard::acquire(tmp.path()).unwrap();
         assert!(
