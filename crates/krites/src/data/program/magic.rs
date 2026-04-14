@@ -54,12 +54,18 @@ impl Default for MagicRulesOrFixed {
 
 impl MagicRulesOrFixed {
     pub(crate) fn arity(&self) -> Result<usize> {
-        Ok(match self {
+        match self {
             MagicRulesOrFixed::Rules { rules } => {
-                rules.first().unwrap_or_else(|| unreachable!()).head.len()
+                let first = rules.first().ok_or_else(|| {
+                    crate::data::error::ProgramConstraintSnafu {
+                        message: "rule set has no rules".to_string(),
+                    }
+                    .build()
+                })?;
+                Ok(first.head.len())
             }
-            MagicRulesOrFixed::Fixed { fixed } => fixed.arity,
-        })
+            MagicRulesOrFixed::Fixed { fixed } => Ok(fixed.arity),
+        }
     }
     pub(crate) fn mut_rules(&mut self) -> Option<&mut Vec<MagicInlineRule>> {
         match self {

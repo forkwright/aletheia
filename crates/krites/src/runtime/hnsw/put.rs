@@ -67,12 +67,18 @@ impl<'a> SessionTx<'a> {
         if let Some(ep) = ep_res {
             let ep = ep?;
             // SAFETY: `ep` comes from HNSW index scan which yields tuples with at least 1 element.
-            let bottom_level = ep[0].get_int().unwrap_or_else(|| unreachable!());
+            let bottom_level = ep[0].get_int().ok_or_else(|| InvalidOperationSnafu {
+                op: "hnsw_read",
+                reason: "entry point bottom_level is not an integer".to_string(),
+            }.build())?;
             let ep_t_key = ep[1..orig_table.metadata.keys.len() + 1].to_vec();
             let ep_idx = usize::try_from(
                 ep[orig_table.metadata.keys.len() + 1]
                     .get_int()
-                    .unwrap_or_else(|| unreachable!()),
+                    .ok_or_else(|| InvalidOperationSnafu {
+                        op: "hnsw_read",
+                        reason: "stored index is not an integer".to_string(),
+                    }.build())?,
             )
             .map_err(|_e| {
                 InvalidOperationSnafu {
@@ -84,7 +90,10 @@ impl<'a> SessionTx<'a> {
             let ep_subidx = i32::try_from(
                 ep[orig_table.metadata.keys.len() + 2]
                     .get_int()
-                    .unwrap_or_else(|| unreachable!()),
+                    .ok_or_else(|| InvalidOperationSnafu {
+                        op: "hnsw_read",
+                        reason: "stored subindex is not an integer".to_string(),
+                    }.build())?,
             )
             .map_err(|_e| {
                 InvalidOperationSnafu {
@@ -252,7 +261,10 @@ impl<'a> SessionTx<'a> {
                     // SAFETY: `target_self_val` is deserialized from HNSW metadata which always has at least 1 element.
                     let mut target_degree = target_self_val[0]
                         .get_float()
-                        .unwrap_or_else(|| unreachable!())
+                        .ok_or_else(|| InvalidOperationSnafu {
+                            op: "hnsw_index",
+                            reason: "degree is not a float".to_string(),
+                        }.build())?
                         as usize
                         + 1;
                     if target_degree > m_max {
@@ -390,7 +402,10 @@ impl<'a> SessionTx<'a> {
                 })?;
                 if old_existing_val[2]
                     .get_bool()
-                    .unwrap_or_else(|| unreachable!())
+                    .ok_or_else(|| InvalidOperationSnafu {
+                        op: "hnsw_index",
+                        reason: "deleted flag is not a boolean".to_string(),
+                    }.build())?
                 {
                     self.store_tx.del(&old_key_bytes)?;
                 } else {
@@ -445,7 +460,10 @@ impl<'a> SessionTx<'a> {
         }
         while !candidates.is_empty() && ret.len() < m {
             let (cand_key, Reverse(OrderedFloat(cand_dist_to_q))) =
-                candidates.pop().unwrap_or_else(|| unreachable!());
+                candidates.pop().ok_or_else(|| InvalidOperationSnafu {
+                    op: "hnsw_select_neighbors",
+                    reason: "candidate queue unexpectedly empty".to_string(),
+                }.build())?;
             let mut should_add = true;
             for (existing, _) in ret.iter() {
                 vec_cache.ensure_key(&cand_key, orig_table, self)?;
@@ -465,7 +483,10 @@ impl<'a> SessionTx<'a> {
         if manifest.keep_pruned_connections {
             while !discarded.is_empty() && ret.len() < m {
                 let (nearest_triple, Reverse(OrderedFloat(nearest_dist))) =
-                    discarded.pop().unwrap_or_else(|| unreachable!());
+                    discarded.pop().ok_or_else(|| InvalidOperationSnafu {
+                        op: "hnsw_select_neighbors",
+                        reason: "discarded queue unexpectedly empty".to_string(),
+                    }.build())?;
                 ret.push(nearest_triple, Reverse(OrderedFloat(nearest_dist)));
             }
         }
@@ -529,7 +550,10 @@ impl<'a> SessionTx<'a> {
 
         while let Some((candidate, Reverse(OrderedFloat(candidate_dist)))) = candidates.pop() {
             let (_, OrderedFloat(furtherest_dist)) =
-                found_nn.peek().unwrap_or_else(|| unreachable!());
+                found_nn.peek().ok_or_else(|| InvalidOperationSnafu {
+                    op: "hnsw_search_level",
+                    reason: "found_nn empty during level search".to_string(),
+                }.build())?;
             let furtherest_dist = *furtherest_dist;
             if candidate_dist > furtherest_dist {
                 break;
@@ -543,7 +567,10 @@ impl<'a> SessionTx<'a> {
                 vec_cache.ensure_key(&neighbour_key, orig_table, self)?;
                 let neighbour_dist = vec_cache.v_dist(q, &neighbour_key)?;
                 let (_, OrderedFloat(cand_furtherest_dist)) =
-                    found_nn.peek().unwrap_or_else(|| unreachable!());
+                    found_nn.peek().ok_or_else(|| InvalidOperationSnafu {
+                        op: "hnsw_search_level",
+                        reason: "found_nn empty during neighbor evaluation".to_string(),
+                    }.build())?;
                 if found_nn.len() < ef || neighbour_dist < *cand_furtherest_dist {
                     candidates.push(neighbour_key.clone(), Reverse(OrderedFloat(neighbour_dist)));
                     found_nn.push(neighbour_key.clone(), OrderedFloat(neighbour_dist));
@@ -585,16 +612,17 @@ impl<'a> SessionTx<'a> {
                 let tuple = res.ok()?;
 
                 #[expect(clippy::cast_sign_loss, reason = "HNSW indices are non-negative")]
+                // INVARIANT: HNSW index tuples store int values at these positions
                 let key_idx = tuple[2 * key_len + 3]
                     .get_int()
-                    .unwrap_or_else(|| unreachable!()) as usize;
+                    .unwrap_or_else(|| unreachable!("HNSW neighbor index is not an integer")) as usize;
                 #[expect(
                     clippy::cast_possible_truncation,
                     reason = "HNSW subindex bounded by m_max (< i32::MAX)"
                 )]
                 let key_subidx = tuple[2 * key_len + 4]
                     .get_int()
-                    .unwrap_or_else(|| unreachable!()) as i32;
+                    .unwrap_or_else(|| unreachable!("HNSW neighbor subindex is not an integer")) as i32;
                 let key_tup = tuple[key_len + 3..2 * key_len + 3].to_vec();
                 if key_tup == cand_key.0 {
                     None
@@ -604,12 +632,12 @@ impl<'a> SessionTx<'a> {
                             (key_tup, key_idx, key_subidx),
                             tuple[2 * key_len + 5]
                                 .get_float()
-                                .unwrap_or_else(|| unreachable!()),
+                                .unwrap_or_else(|| unreachable!("HNSW neighbor distance is not a float")),
                         ));
                     }
                     let is_deleted = tuple[2 * key_len + 7]
                         .get_bool()
-                        .unwrap_or_else(|| unreachable!());
+                        .unwrap_or_else(|| unreachable!("HNSW deleted flag is not a boolean"));
                     if is_deleted {
                         None
                     } else {
@@ -617,7 +645,7 @@ impl<'a> SessionTx<'a> {
                             (key_tup, key_idx, key_subidx),
                             tuple[2 * key_len + 5]
                                 .get_float()
-                                .unwrap_or_else(|| unreachable!()),
+                                .unwrap_or_else(|| unreachable!("HNSW neighbor distance is not a float")),
                         ))
                     }
                 }
@@ -643,7 +671,10 @@ impl<'a> SessionTx<'a> {
         let mut canary_key = vec![DataValue::from(1)];
         for _ in 0..2 {
             for i in 0..orig_table.metadata.keys.len() {
-                target_key.push(tuple.get(i).unwrap_or_else(|| unreachable!()).clone());
+                target_key.push(tuple.get(i).ok_or_else(|| InvalidOperationSnafu {
+                    op: "hnsw_put",
+                    reason: format!("tuple index {i} out of bounds (len {})", tuple.len()),
+                }.build())?.clone());
                 canary_key.push(DataValue::Null);
             }
             target_key.push(DataValue::from(idx_to_i64(idx)));
@@ -740,7 +771,10 @@ impl<'a> SessionTx<'a> {
 
         let mut extracted_vectors = vec![];
         for idx in &manifest.vec_fields {
-            let val = tuple.get(*idx).unwrap_or_else(|| unreachable!());
+            let val = tuple.get(*idx).ok_or_else(|| InvalidOperationSnafu {
+                op: "hnsw_put",
+                reason: format!("vector field index {} out of bounds (tuple len {})", idx, tuple.len()),
+            }.build())?;
             if let DataValue::Vec(v) = val {
                 extracted_vectors.push((v, *idx, -1));
             } else if let DataValue::List(l) = val {

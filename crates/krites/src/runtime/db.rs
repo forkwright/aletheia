@@ -467,14 +467,15 @@ impl<'s, S: Storage<'s>> Db<S> {
         if let Some(cb) = &ret {
             guard
                 .1
+                // INVARIANT: register_callback inserts into both maps
                 .get_mut(&cb.dependent)
-                .unwrap_or_else(|| unreachable!())
+                .unwrap_or_else(|| unreachable!("callback dependent entry missing from reverse index"))
                 .remove(&id);
 
             if guard
                 .1
                 .get(&cb.dependent)
-                .unwrap_or_else(|| unreachable!())
+                .unwrap_or_else(|| unreachable!("callback dependent entry missing from reverse index"))
                 .is_empty()
             {
                 guard.1.remove(&cb.dependent);

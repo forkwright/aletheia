@@ -96,7 +96,9 @@ fn louvain(
             break;
         }
         collected.push((node2comm, new_graph));
-        current = &collected.last().unwrap_or_else(|| unreachable!()).1;
+        // INVARIANT: we just pushed to `collected`, so `.last()` is guaranteed
+        // INVARIANT: we just pushed to `collected`, so `.last()` is guaranteed
+        current = &collected.last().unwrap_or_else(|| panic!("collected is non-empty after push")).1;
     }
     Ok(collected.into_iter().map(|(a, _)| a).collect_vec())
 }

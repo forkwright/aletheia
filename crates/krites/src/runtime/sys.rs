@@ -109,7 +109,10 @@ impl<'s, S: Storage<'s>> Db<S> {
                     let lock = self
                         .obtain_relation_locks(iter::once(&rel_name.name))
                         .pop()
-                        .unwrap_or_else(|| unreachable!());
+                        .ok_or_else(|| crate::runtime::error::InvalidOperationSnafu {
+                            op: "sys_op",
+                            reason: "failed to obtain relation lock".to_string(),
+                        }.build())?;
                     let _guard = lock.write().unwrap_or_else(|e| e.into_inner());
                     tx.create_index(rel_name, idx_name, cols)?;
                 }
@@ -131,7 +134,10 @@ impl<'s, S: Storage<'s>> Db<S> {
                     let lock = self
                         .obtain_relation_locks(iter::once(&config.base_relation))
                         .pop()
-                        .unwrap_or_else(|| unreachable!());
+                        .ok_or_else(|| crate::runtime::error::InvalidOperationSnafu {
+                            op: "sys_op",
+                            reason: "failed to obtain relation lock".to_string(),
+                        }.build())?;
                     let _guard = lock.write().unwrap_or_else(|e| e.into_inner());
                     tx.create_hnsw_index(config)?;
                 }
@@ -153,7 +159,10 @@ impl<'s, S: Storage<'s>> Db<S> {
                     let lock = self
                         .obtain_relation_locks(iter::once(&config.base_relation))
                         .pop()
-                        .unwrap_or_else(|| unreachable!());
+                        .ok_or_else(|| crate::runtime::error::InvalidOperationSnafu {
+                            op: "sys_op",
+                            reason: "failed to obtain relation lock".to_string(),
+                        }.build())?;
                     let _guard = lock.write().unwrap_or_else(|e| e.into_inner());
                     tx.create_fts_index(config)?;
                 }
@@ -175,7 +184,10 @@ impl<'s, S: Storage<'s>> Db<S> {
                     let lock = self
                         .obtain_relation_locks(iter::once(&config.base_relation))
                         .pop()
-                        .unwrap_or_else(|| unreachable!());
+                        .ok_or_else(|| crate::runtime::error::InvalidOperationSnafu {
+                            op: "sys_op",
+                            reason: "failed to obtain relation lock".to_string(),
+                        }.build())?;
                     let _guard = lock.write().unwrap_or_else(|e| e.into_inner());
                     tx.create_minhash_lsh_index(config)?;
                 }
@@ -198,7 +210,10 @@ impl<'s, S: Storage<'s>> Db<S> {
                     let lock = self
                         .obtain_relation_locks(iter::once(&rel_name.name))
                         .pop()
-                        .unwrap_or_else(|| unreachable!());
+                        .ok_or_else(|| crate::runtime::error::InvalidOperationSnafu {
+                            op: "sys_op",
+                            reason: "failed to obtain relation lock".to_string(),
+                        }.build())?;
                     let _guard = lock.read().unwrap_or_else(|e| e.into_inner());
                     tx.remove_index(rel_name, idx_name)?
                 };

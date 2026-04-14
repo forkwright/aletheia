@@ -67,7 +67,8 @@ pub(crate) struct VectorCache {
 impl VectorCache {
     pub(crate) fn new(distance: HnswDistance, capacity: usize) -> Self {
         Self {
-            cache: LruCache::new(NonZeroUsize::new(capacity).unwrap_or_else(|| unreachable!())),
+            // INVARIANT: capacity is validated as positive at config time
+            cache: LruCache::new(NonZeroUsize::new(capacity).unwrap_or_else(|| unreachable!("vector cache capacity must be non-zero"))),
             distance,
         }
     }
@@ -158,7 +159,10 @@ impl VectorCache {
     // many keys were ensured between the ensure and the access: callers that
     // need multiple keys should ensure them close to their use site).
     pub(crate) fn v_dist(&self, v: &Vector, key: &CompoundKey) -> Result<f64> {
-        let v2 = self.cache.peek(key).unwrap_or_else(|| unreachable!());
+        let v2 = self.cache.peek(key).ok_or_else(|| InvalidOperationSnafu {
+            op: "hnsw_cache",
+            reason: "vector not found in cache after ensure_key".to_string(),
+        }.build())?;
         self.dist(v, v2)
     }
     pub(crate) fn k_dist(&self, k1: &CompoundKey, k2: &CompoundKey) -> Result<f64> {
@@ -166,13 +170,20 @@ impl VectorCache {
         let v1 = self
             .cache
             .peek(k1)
-            .unwrap_or_else(|| unreachable!())
+            .ok_or_else(|| InvalidOperationSnafu {
+                op: "hnsw_cache",
+                reason: "vector k1 not found in cache after ensure_key".to_string(),
+            }.build())?
             .clone();
-        let v2 = self.cache.peek(k2).unwrap_or_else(|| unreachable!());
+        let v2 = self.cache.peek(k2).ok_or_else(|| InvalidOperationSnafu {
+            op: "hnsw_cache",
+            reason: "vector k2 not found in cache after ensure_key".to_string(),
+        }.build())?;
         self.dist(&v1, v2)
     }
     pub(crate) fn get_key(&self, key: &CompoundKey) -> &Vector {
-        self.cache.peek(key).unwrap_or_else(|| unreachable!())
+        // INVARIANT: callers must call ensure_key() before get_key
+        self.cache.peek(key).unwrap_or_else(|| unreachable!("vector not found in cache; ensure_key was not called"))
     }
     pub(crate) fn ensure_key(
         &mut self,

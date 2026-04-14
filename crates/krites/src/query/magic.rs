@@ -190,7 +190,7 @@ fn magic_rewrite_ruleset(
                             .entry(sup_kw.clone())
                             .or_default()
                             .mut_rules()
-                            .unwrap_or_else(|| unreachable!());
+                            .unwrap_or_else(|| panic!("freshly-defaulted MagicRulesOrFixed must be Rules"));
                         let mut sup_rule_atoms = vec![];
                         mem::swap(&mut sup_rule_atoms, &mut collected_atoms);
 
@@ -216,7 +216,7 @@ fn magic_rewrite_ruleset(
                             .entry(inp_kw.clone())
                             .or_default()
                             .mut_rules()
-                            .unwrap_or_else(|| unreachable!());
+                            .unwrap_or_else(|| panic!("freshly-defaulted MagicRulesOrFixed must be Rules"));
                         let inp_args = r_app
                             .args
                             .iter()
@@ -245,7 +245,7 @@ fn magic_rewrite_ruleset(
             .entry(rule_head.clone())
             .or_default()
             .mut_rules()
-            .unwrap_or_else(|| unreachable!());
+            .unwrap_or_else(|| panic!("freshly-defaulted MagicRulesOrFixed must be Rules"));
         entry.push(MagicInlineRule {
             head: rule.head,
             aggr: rule.aggr,
@@ -479,7 +479,14 @@ impl NormalFormProgram {
             let original_rules = self
                 .prog
                 .get(head.as_plain_symbol())
-                .unwrap_or_else(|| unreachable!())
+                .ok_or_else(|| {
+                    crate::error::InternalError::from(CompilationFailedSnafu {
+                        message: format!(
+                            "rule '{}' referenced during adornment but not found in program",
+                            head.as_plain_symbol()
+                        ),
+                    }.build())
+                })?
                 .rules()
                 .ok_or_else(|| {
                     crate::error::InternalError::from(
@@ -661,7 +668,7 @@ mod tests {
 
         let res = db
             .run_default(query)
-            .unwrap_or_else(|_| unreachable!())
+            .unwrap_or_else(|e| panic!("magic sets test query must succeed: {e}"))
             .into_json();
         assert_eq!(res["rows"], json!([[0], [1]]));
     }

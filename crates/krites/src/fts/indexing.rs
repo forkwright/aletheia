@@ -186,7 +186,14 @@ impl<'a> SessionTx<'a> {
             let (kvec, vvec) = item?;
             let key_tuple = decode_tuple_from_key(&kvec, idx_handle.metadata.keys.len());
             #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
-            let found_str_key = key_tuple[0].get_str().unwrap_or_else(|| unreachable!());
+            let found_str_key = key_tuple[0].get_str().ok_or_else(|| {
+                crate::error::InternalError::from(
+                    TokenizationFailedSnafu {
+                        message: "FTS index key is not a string".to_string(),
+                    }
+                    .build(),
+                )
+            })?;
             if literal.is_prefix {
                 if !found_str_key.starts_with(start_key_str) {
                     break;
@@ -204,12 +211,21 @@ impl<'a> SessionTx<'a> {
                         .build(),
                     )
                 })?;
+            let fts_type_err = |field: &str| {
+                crate::error::InternalError::from(
+                    TokenizationFailedSnafu {
+                        message: format!("FTS index '{field}' is not a list"),
+                    }
+                    .build(),
+                )
+            };
+            let froms = vals[0].get_slice().ok_or_else(|| fts_type_err("froms"))?;
             #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
-            let froms = vals[0].get_slice().unwrap_or_else(|| unreachable!());
+            let tos = vals[1].get_slice().ok_or_else(|| fts_type_err("tos"))?;
             #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
-            let tos = vals[1].get_slice().unwrap_or_else(|| unreachable!());
-            #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
-            let positions = vals[2].get_slice().unwrap_or_else(|| unreachable!());
+            let positions = vals[2]
+                .get_slice()
+                .ok_or_else(|| fts_type_err("positions"))?;
             #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
             let total_length = u32::try_from(vals[3].get_int().unwrap_or(0)).map_err(|_e| {
                 crate::error::InternalError::from(
@@ -225,8 +241,15 @@ impl<'a> SessionTx<'a> {
                 .zip(tos.iter())
                 .zip(positions.iter())
                 .map(|(_, p)| {
-                    let position = u32::try_from(p.get_int().unwrap_or_else(|| unreachable!()))
-                        .map_err(|_e| {
+                    let raw_pos = p.get_int().ok_or_else(|| {
+                        crate::error::InternalError::from(
+                            TokenizationFailedSnafu {
+                                message: "FTS index position is not an integer".to_string(),
+                            }
+                            .build(),
+                        )
+                    })?;
+                    let position = u32::try_from(raw_pos).map_err(|_e| {
                             crate::error::InternalError::from(
                                 InvalidOperationSnafu {
                                     op: "fts_search",
@@ -290,12 +313,15 @@ impl<'a> SessionTx<'a> {
             }
             FtsExpr::And(ls) => {
                 let mut l_iter = ls.iter();
-                let mut res = self.fts_search_impl(
-                    l_iter.next().unwrap_or_else(|| unreachable!()),
-                    config,
-                    n,
-                    avgdl,
-                )?;
+                let first = l_iter.next().ok_or_else(|| {
+                    crate::error::InternalError::from(
+                        TokenizationFailedSnafu {
+                            message: "FTS AND expression has no operands".to_string(),
+                        }
+                        .build(),
+                    )
+                })?;
+                let mut res = self.fts_search_impl(first, config, n, avgdl)?;
                 for nxt in l_iter {
                     let nxt_res = self.fts_search_impl(nxt, config, n, avgdl)?;
                     res = res
@@ -321,11 +347,16 @@ impl<'a> SessionTx<'a> {
             }
             FtsExpr::Near(FtsNear { literals, distance }) => {
                 let mut l_it = literals.iter();
+                let first_lit = l_it.next().ok_or_else(|| {
+                    crate::error::InternalError::from(
+                        TokenizationFailedSnafu {
+                            message: "FTS NEAR expression has no literals".to_string(),
+                        }
+                        .build(),
+                    )
+                })?;
                 let mut coll: FxHashMap<_, _> = FxHashMap::default();
-                for first_el in self.fts_search_literal(
-                    l_it.next().unwrap_or_else(|| unreachable!()),
-                    &config.idx_handle,
-                )? {
+                for first_el in self.fts_search_literal(first_lit, &config.idx_handle)? {
                     coll.insert(
                         first_el.key,
                         first_el

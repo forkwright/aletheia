@@ -219,7 +219,13 @@ impl<'s> StoreTx<'s> for FjallTx<'s> {
         match self {
             FjallTx::Reader(_) => Err(WriteInReadTransactionSnafu.build()),
             FjallTx::Writer(w) => {
-                let tx = w.tx.as_mut().unwrap_or_else(|| unreachable!());
+                let tx = w.tx.as_mut().ok_or_else(|| {
+                    TransactionFailedSnafu {
+                        backend: "fjall",
+                        message: "write transaction already committed",
+                    }
+                    .build()
+                })?;
                 tx.insert(w.keyspace, key, val);
                 Ok(())
             }
@@ -234,7 +240,13 @@ impl<'s> StoreTx<'s> for FjallTx<'s> {
         match self {
             FjallTx::Reader(_) => Err(WriteInReadTransactionSnafu.build()),
             FjallTx::Writer(w) => {
-                let tx = w.tx.as_mut().unwrap_or_else(|| unreachable!());
+                let tx = w.tx.as_mut().ok_or_else(|| {
+                    TransactionFailedSnafu {
+                        backend: "fjall",
+                        message: "write transaction already committed",
+                    }
+                    .build()
+                })?;
                 tx.remove(w.keyspace, key);
                 Ok(())
             }
@@ -259,7 +271,13 @@ impl<'s> StoreTx<'s> for FjallTx<'s> {
                         })
                     })
                     .collect::<Result<Vec<_>>>()?;
-                let tx = w.tx.as_mut().unwrap_or_else(|| unreachable!());
+                let tx = w.tx.as_mut().ok_or_else(|| {
+                    TransactionFailedSnafu {
+                        backend: "fjall",
+                        message: "write transaction already committed",
+                    }
+                    .build()
+                })?;
                 for k in keys {
                     tx.remove(w.keyspace, k);
                 }

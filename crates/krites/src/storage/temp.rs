@@ -29,14 +29,22 @@ impl<'s> Storage<'s> for TempStorage {
     }
 
     fn range_compact(&'s self, _lower: &[u8], _upper: &[u8]) -> Result<()> {
-        panic!("range compact called on temp store")
+        Err(crate::storage::error::TransactionFailedSnafu {
+            backend: "temp",
+            message: "range_compact is not supported on temp storage",
+        }
+        .build())
     }
 
     fn batch_put<'a>(
         &'a self,
         _data: Box<dyn Iterator<Item = Result<(Vec<u8>, Vec<u8>)>> + 'a>,
     ) -> Result<()> {
-        panic!("batch put compact called on temp store")
+        Err(crate::storage::error::TransactionFailedSnafu {
+            backend: "temp",
+            message: "batch_put is not supported on temp storage",
+        }
+        .build())
     }
 }
 

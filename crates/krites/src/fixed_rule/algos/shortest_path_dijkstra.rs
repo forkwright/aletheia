@@ -72,7 +72,8 @@ impl FixedRule for ShortestPathDijkstra {
             for start in starting_nodes {
                 let res = if let Some(tn) = &termination_nodes {
                     if tn.len() == 1 {
-                        let single = Some(*tn.iter().next().unwrap_or_else(|| unreachable!()));
+                        // INVARIANT: `tn.len() == 1` check above guarantees `.next()` succeeds
+                        let single = Some(*tn.iter().next().unwrap_or_else(|| panic!("tn verified len==1 above")));
                         if keep_ties {
                             dijkstra_keep_ties(&graph, start, &single, &(), &(), poison.clone())?
                         } else {
@@ -110,7 +111,8 @@ impl FixedRule for ShortestPathDijkstra {
                         if let Some(tn) = &termination_nodes {
                             if tn.len() == 1 {
                                 let single =
-                                    Some(*tn.iter().next().unwrap_or_else(|| unreachable!()));
+                                    // INVARIANT: `tn.len() == 1` check above guarantees `.next()` succeeds
+                                    Some(*tn.iter().next().unwrap_or_else(|| panic!("tn verified len==1 above")));
                                 if keep_ties {
                                     dijkstra_keep_ties(
                                         &graph,
@@ -395,7 +397,9 @@ pub(crate) fn dijkstra_keep_ties<FE: ForbiddenEdge, FN: ForbiddenNode, G: Goal +
                         cost: f32,
                         back_pointers: &[SmallVec<[u32; 1]>],
                     ) {
-                        let last = chain.last().unwrap_or_else(|| unreachable!());
+                        // INVARIANT: `collect` is always called with non-empty `chain`
+                        // INVARIANT: `collect` is always called with non-empty `chain`
+                        let last = chain.last().unwrap_or_else(|| panic!("chain is non-empty by construction"));
                         let prevs = &back_pointers[*last as usize];
                         for nxt in prevs {
                             let mut ret = chain.to_vec();

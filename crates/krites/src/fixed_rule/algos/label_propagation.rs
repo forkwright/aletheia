@@ -89,9 +89,11 @@ fn label_propagation(
                 .take_while(|(_, score)| *score == max_score)
                 .map(|(l, _)| l)
                 .collect_vec();
+            // INVARIANT: `candidate_labels` is non-empty (derived from non-empty `labels_by_score`)
+            // INVARIANT: `candidate_labels` is non-empty (derived from non-empty `labels_by_score`)
             let new_label = *candidate_labels
                 .choose(&mut rng)
-                .unwrap_or_else(|| unreachable!());
+                .unwrap_or_else(|| panic!("candidate_labels is non-empty by construction"));
             if new_label != labels[*node as usize] {
                 changed = true;
                 labels[*node as usize] = new_label;

@@ -169,9 +169,11 @@ impl FtsSearchRA {
                             match d {
                                 DataValue::Str(s) => {
                                     if !coll.is_empty() {
-                                        coll.write_str(" OR ").unwrap_or_else(|_| unreachable!());
+                                        // INVARIANT: CompactString::write_str is infallible
+                                        let _ = coll.write_str(" OR ");
                                     }
-                                    coll.write_str(&s).unwrap_or_else(|_| unreachable!());
+                                    // INVARIANT: CompactString::write_str is infallible
+                                    let _ = coll.write_str(&s);
                                 }
                                 d => {
                                     return Err(TypeSnafu {

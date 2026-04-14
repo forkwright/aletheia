@@ -34,9 +34,10 @@ impl FixedRule for TopSort {
         let sorted = kahn_g(&graph, poison)?;
 
         for (idx, val_id) in sorted.iter().enumerate() {
+            // INVARIANT: `val_id` comes from Kahn's algorithm over the graph, indices are valid
             let val = indices
                 .get(*val_id as usize)
-                .unwrap_or_else(|| unreachable!());
+                .unwrap_or_else(|| panic!("topological sort index must be valid"));
             #[expect(clippy::cast_possible_wrap, reason = "value fits i64")]
             let tuple = vec![DataValue::from(idx as i64), val.clone()];
             out.put(tuple);

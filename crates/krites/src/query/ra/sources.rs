@@ -422,7 +422,11 @@ impl TempStoreRA {
     ) -> Result<TupleIter<'a>> {
         let storage = stores
             .get(&self.storage_key)
-            .unwrap_or_else(|| unreachable!());
+            .ok_or_else(|| {
+                crate::error::InternalError::from(crate::query::error::EvalFailedSnafu {
+                    message: format!("temp store '{}' not found in epoch stores", self.storage_key),
+                }.build())
+            })?;
 
         let scan_epoch = match delta_rule {
             None => false,
@@ -448,7 +452,11 @@ impl TempStoreRA {
     ) -> Result<TupleIter<'a>> {
         let storage = stores
             .get(&self.storage_key)
-            .unwrap_or_else(|| unreachable!());
+            .ok_or_else(|| {
+                crate::error::InternalError::from(crate::query::error::EvalFailedSnafu {
+                    message: format!("temp store '{}' not found in epoch stores", self.storage_key),
+                }.build())
+            })?;
         debug_assert!(!right_join_indices.is_empty());
         let mut right_invert_indices = right_join_indices.iter().enumerate().collect_vec();
         right_invert_indices.sort_by_key(|(_, b)| **b);
@@ -550,7 +558,11 @@ impl TempStoreRA {
     ) -> Result<TupleIter<'a>> {
         let storage = stores
             .get(&self.storage_key)
-            .unwrap_or_else(|| unreachable!());
+            .ok_or_else(|| {
+                crate::error::InternalError::from(crate::query::error::EvalFailedSnafu {
+                    message: format!("temp store '{}' not found in epoch stores", self.storage_key),
+                }.build())
+            })?;
 
         let mut right_invert_indices = right_join_indices.iter().enumerate().collect_vec();
         right_invert_indices.sort_by_key(|(_, b)| **b);

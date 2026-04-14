@@ -35,7 +35,15 @@ impl ReorderRA {
         let reorder_indices = self
             .new_order
             .iter()
-            .map(|k| *old_order_indices.get(k).unwrap_or_else(|| unreachable!()))
+            .map(|k| {
+                old_order_indices.get(k).copied().ok_or_else(|| {
+                    crate::error::InternalError::from(crate::query::error::CompilationFailedSnafu {
+                        message: format!("reorder binding '{k}' not found in original order"),
+                    }.build())
+                })
+            })
+            .collect::<crate::error::InternalResult<Vec<_>>>()?
+            .into_iter()
             .collect_vec();
         Ok(Box::new(
             self.relation

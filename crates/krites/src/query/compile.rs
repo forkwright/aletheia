@@ -599,7 +599,11 @@ impl<'a> SessionTx<'a> {
             let unbound = ret_vars_set
                 .difference(&cur_ret_set)
                 .next()
-                .unwrap_or_else(|| unreachable!());
+                .ok_or_else(|| {
+                    crate::error::InternalError::from(CompilationFailedSnafu {
+                        message: "no unbound symbols found despite set mismatch",
+                    }.build())
+                })?;
             return Err(UnboundVariableSnafu {
                 message: format!("symbol '{unbound}' in rule head is unbound"),
             }

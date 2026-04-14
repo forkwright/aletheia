@@ -116,9 +116,11 @@ impl FixedRule for RandomWalk {
                         })?;
                         &candidate_steps[dist.sample(&mut rng)]
                     } else {
+                        // INVARIANT: `candidate_steps` is checked non-empty before entering this branch
+                        // INVARIANT: `candidate_steps` is checked non-empty before entering this branch
                         candidate_steps
                             .choose(&mut rng)
-                            .unwrap_or_else(|| unreachable!())
+                            .unwrap_or_else(|| panic!("candidate_steps is non-empty"))
                     };
                     // SAFETY: `next_step` comes from `edges.prefix_iter()` which yields tuples
                     // with at least 2 elements.

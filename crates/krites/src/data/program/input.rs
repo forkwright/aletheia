@@ -132,7 +132,13 @@ impl InputProgram {
         if let Some(entry) = self.prog.get(&Symbol::new(PROG_ENTRY, SourceSpan(0, 0))) {
             return match entry {
                 InputInlineRulesOrFixed::Rules { rules } => {
-                    Ok(rules.last().unwrap_or_else(|| unreachable!()).head.len())
+                    let last = rules.last().ok_or_else(|| {
+                        ProgramConstraintSnafu {
+                            message: "entry has no rules".to_string(),
+                        }
+                        .build()
+                    })?;
+                    Ok(last.head.len())
                 }
                 InputInlineRulesOrFixed::Fixed { fixed } => fixed.arity(),
             };
@@ -155,7 +161,12 @@ impl InputProgram {
         if let Some(entry) = self.prog.get(&Symbol::new(PROG_ENTRY, SourceSpan(0, 0))) {
             return match entry {
                 InputInlineRulesOrFixed::Rules { rules } => {
-                    let last_rule = rules.last().unwrap_or_else(|| unreachable!());
+                    let last_rule = rules.last().ok_or_else(|| {
+                        ProgramConstraintSnafu {
+                            message: "entry has no rules".to_string(),
+                        }
+                        .build()
+                    })?;
                     let head = &last_rule.head;
                     let mut ret = Vec::with_capacity(head.len());
                     let aggrs = &last_rule.aggr;

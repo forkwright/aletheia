@@ -106,7 +106,8 @@ impl<'a> SessionTx<'a> {
                         return i + rel_handle.metadata.keys.len();
                     }
                 }
-                unreachable!()
+                // INVARIANT: index columns were validated against the relation schema above
+                unreachable!("index column '{}' not found in relation schema", col.name)
             })
             .collect_vec();
 

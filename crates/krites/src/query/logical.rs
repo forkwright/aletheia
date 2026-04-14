@@ -229,7 +229,14 @@ impl InputAtom {
                     let r = Self::convert_named_field_relation(inner, r#gen, tx)?;
                     r.normalize(true, r#gen)
                 }
-                _ => unreachable!(),
+                other => {
+                    return Err(CompilationFailedSnafu {
+                        message: format!(
+                            "negation not supported for atom type: {:?}",
+                            std::mem::discriminant(&other)
+                        ),
+                    }.build().into());
+                }
             },
             InputAtom::Unification { inner: u } => {
                 Disjunction::singlet(NormalFormAtom::Unification(u))

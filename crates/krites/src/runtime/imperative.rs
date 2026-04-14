@@ -143,7 +143,13 @@ impl<'s, S: Storage<'s>> Db<S> {
             current = Some(Box::new(nr))
         }
         Ok(ControlCode::Termination(
-            *current.unwrap_or_else(|| unreachable!()),
+            *current.ok_or_else(|| crate::error::InternalError::Runtime {
+                source: crate::runtime::error::InvalidOperationSnafu {
+                    op: "collect_return_rows",
+                    reason: "non-empty returns produced no result".to_string(),
+                }
+                .build(),
+            })?,
         ))
     }
 

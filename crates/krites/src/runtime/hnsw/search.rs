@@ -68,7 +68,10 @@ impl<'a> SessionTx<'a> {
         if let Some(ep) = ep_res {
             let ep = ep?;
             // SAFETY: `ep` comes from HNSW index scan which yields tuples with at least 1 element.
-            let bottom_level = ep[0].get_int().unwrap_or_else(|| unreachable!());
+            let bottom_level = ep[0].get_int().ok_or_else(|| InvalidOperationSnafu {
+                op: "hnsw_search",
+                reason: "entry point bottom_level is not an integer".to_string(),
+            }.build())?;
             let ep_idx = match ep[config.base_handle.metadata.keys.len() + 1].get_int() {
                 Some(x) => usize::try_from(x).map_err(|_e| {
                     InvalidOperationSnafu {
@@ -85,7 +88,10 @@ impl<'a> SessionTx<'a> {
             let ep_subidx = i32::try_from(
                 ep[config.base_handle.metadata.keys.len() + 2]
                     .get_int()
-                    .unwrap_or_else(|| unreachable!()),
+                    .ok_or_else(|| InvalidOperationSnafu {
+                        op: "hnsw_search",
+                        reason: "stored subindex is not an integer".to_string(),
+                    }.build())?,
             )
             .map_err(|_e| {
                 InvalidOperationSnafu {

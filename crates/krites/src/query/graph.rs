@@ -106,7 +106,8 @@ pub(crate) fn generalized_kahn(
             }
             break;
         }
-        let removed = safe_pending.pop().unwrap_or_else(|| unreachable!());
+        // INVARIANT: the `safe_pending.is_empty()` check above guarantees at least one element
+        let removed = safe_pending.pop().unwrap_or_else(|| panic!("safe_pending verified non-empty above"));
         current_stratum.push(removed);
         if let Some(edges) = graph.get(&removed) {
             for (nxt, poisoned) in edges {
@@ -183,13 +184,13 @@ impl<'a> TarjanScc<'a> {
                 self.low[at] = min(self.low[at], self.low[to]);
             }
         }
-        // SAFETY: `at` is always less than `graph.len()` (validated by caller).
-        if self.ids[at].unwrap_or_else(|| unreachable!()) == self.low[at] {
+        // INVARIANT: `self.ids[at]` was set to `Some(self.id)` at the top of this function
+        if self.ids[at].unwrap_or_else(|| panic!("ids[at] set earlier in dfs")) == self.low[at] {
             while let Some(node) = self.stack.pop() {
                 // SAFETY: `node` was pushed from valid indices within this function.
                 self.on_stack[node] = false;
-                // SAFETY: `node` and `at` are always less than `graph.len()`.
-                self.low[node] = self.ids[at].unwrap_or_else(|| unreachable!());
+                // INVARIANT: `self.ids[at]` was set to `Some(self.id)` at the top of this function
+                self.low[node] = self.ids[at].unwrap_or_else(|| panic!("ids[at] set earlier in dfs"));
                 if node == at {
                     break;
                 }

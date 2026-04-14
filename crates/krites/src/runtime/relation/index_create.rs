@@ -110,7 +110,13 @@ impl<'a> SessionTx<'a> {
                 .build(),
             })?
             .next()
-            .unwrap_or_else(|| unreachable!());
+            .ok_or_else(|| crate::error::InternalError::Runtime {
+                source: InvalidOperationSnafu {
+                    op: "index",
+                    reason: "extractor parse produced no expression".to_string(),
+                }
+                .build(),
+            })?;
         let mut code_expr = build_expr(parsed, &Default::default())?;
         let binding_map = rel_handle.raw_binding_map();
         code_expr.fill_binding_indices(&binding_map)?;
@@ -252,7 +258,13 @@ impl<'a> SessionTx<'a> {
                 .build(),
             })?
             .next()
-            .unwrap_or_else(|| unreachable!());
+            .ok_or_else(|| crate::error::InternalError::Runtime {
+                source: InvalidOperationSnafu {
+                    op: "index",
+                    reason: "extractor parse produced no expression".to_string(),
+                }
+                .build(),
+            })?;
         let mut code_expr = build_expr(parsed, &Default::default())?;
         let binding_map = rel_handle.raw_binding_map();
         code_expr.fill_binding_indices(&binding_map)?;
@@ -486,7 +498,13 @@ impl<'a> SessionTx<'a> {
                     .build(),
                 })?
                 .next()
-                .unwrap_or_else(|| unreachable!());
+                .ok_or_else(|| crate::error::InternalError::Runtime {
+                    source: InvalidOperationSnafu {
+                        op: "index",
+                        reason: "filter parse produced no expression".to_string(),
+                    }
+                    .build(),
+                })?;
             let mut code_expr = build_expr(parsed, &Default::default())?;
             let binding_map = rel_handle.raw_binding_map();
             code_expr.fill_binding_indices(&binding_map)?;

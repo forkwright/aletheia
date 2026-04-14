@@ -56,9 +56,13 @@ pub trait StoreTx<'s>: Sync {
     /// Put a key-value pair into the storage. In case of existing key,
     /// the storage engine needs to overwrite the old value.
     /// The difference between this one and `put` is the mutability of self.
-    /// It is OK to always panic if `supports_par_put` returns `false`.
+    /// Backends that do not support parallel put should return an error.
     fn par_put(&self, _key: &[u8], _val: &[u8]) -> StorageResult<()> {
-        panic!("par_put is not supported")
+        Err(error::TransactionFailedSnafu {
+            backend: "default",
+            message: "par_put is not supported by this backend",
+        }
+        .build())
     }
 
     /// Delete a key-value pair from the storage.

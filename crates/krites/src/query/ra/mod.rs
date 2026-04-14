@@ -173,7 +173,8 @@ impl Debug for RelAlgebra {
                 } else if r.data.len() == 1 {
                     f.debug_tuple("Singlet")
                         .field(&bindings)
-                        .field(r.data.first().unwrap_or_else(|| unreachable!()))
+                        // INVARIANT: data.len()==1 checked above
+                        .field(r.data.first().unwrap_or_else(|| panic!("data.len()==1 checked above")))
                         .finish()
                 } else {
                     f.debug_tuple("Fixed")
@@ -716,7 +717,7 @@ mod tests {
         ?[x] := a = 3, data[x, a]
         "#,
             )
-            .unwrap_or_else(|_| unreachable!())
+            .unwrap_or_else(|e| panic!("materialized join test query must succeed: {e}"))
             .rows;
         assert_eq!(
             res,

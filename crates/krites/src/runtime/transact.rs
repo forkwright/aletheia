@@ -278,10 +278,11 @@ impl<'s, S: Storage<'s>> Db<S> {
                     if let Some(write_lock_name) = p.needs_write_lock() {
                         match write_locks.entry(write_lock_name) {
                             Entry::Vacant(e) => {
+                                // INVARIANT: obtain_relation_locks returns one lock per input name
                                 let lock = self
                                     .obtain_relation_locks(iter::once(e.key()))
                                     .pop()
-                                    .unwrap_or_else(|| unreachable!());
+                                    .unwrap_or_else(|| unreachable!("obtain_relation_locks returned empty vec for single input"));
                                 e.insert(lock);
                             }
                             // NOTE: write lock already acquired for this relation

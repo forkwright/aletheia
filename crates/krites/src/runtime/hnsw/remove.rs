@@ -31,16 +31,17 @@ impl<'a> SessionTx<'a> {
             .filter_map(|t| match t {
                 Ok(t) => {
                     #[expect(clippy::cast_sign_loss, reason = "HNSW indices are non-negative")]
+                    // INVARIANT: HNSW index tuples store int values at index positions
                     let idx = t[orig_table.metadata.keys.len() + 1]
                         .get_int()
-                        .unwrap_or_else(|| unreachable!()) as usize;
+                        .unwrap_or_else(|| unreachable!("HNSW index value is not an integer")) as usize;
                     #[expect(
                         clippy::cast_possible_truncation,
                         reason = "HNSW subindex bounded by m_max (< i32::MAX)"
                     )]
                     let subidx = t[orig_table.metadata.keys.len() + 2]
                         .get_int()
-                        .unwrap_or_else(|| unreachable!()) as i32;
+                        .unwrap_or_else(|| unreachable!("HNSW subindex value is not an integer")) as i32;
                     Some((
                         t[1..orig_table.metadata.keys.len() + 1].to_vec(),
                         idx,
@@ -140,7 +141,10 @@ impl<'a> SessionTx<'a> {
                 neighbour_val[0] = DataValue::from(
                     neighbour_val[0]
                         .get_float()
-                        .unwrap_or_else(|| unreachable!())
+                        .ok_or_else(|| InvalidOperationSnafu {
+                            op: "hnsw_remove",
+                            reason: "neighbor degree is not a float".to_string(),
+                        }.build())?
                         - 1.,
                 );
                 self.store_tx.put(
@@ -173,7 +177,10 @@ impl<'a> SessionTx<'a> {
                 let ep = ep?;
                 let target_key_bytes = idx_table.encode_key_for_store(&ep, Default::default())?;
                 // SAFETY: `ep` comes from HNSW index scan which yields tuples with at least 1 element.
-                let bottom_level = ep[0].get_int().unwrap_or_else(|| unreachable!());
+                let bottom_level = ep[0].get_int().ok_or_else(|| InvalidOperationSnafu {
+                    op: "hnsw_remove",
+                    reason: "entry point bottom_level is not an integer".to_string(),
+                }.build())?;
                 // WHY: canary value is for conflict detection: prevent the scenario of disconnected graphs at all levels
                 let canary_value = [
                     DataValue::from(bottom_level),

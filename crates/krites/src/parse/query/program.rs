@@ -126,8 +126,12 @@ fn add_rule_to_program(
             let key = e.key().to_string();
             match e.get_mut() {
                 InputInlineRulesOrFixed::Rules { rules: rs } => {
-                    // INVARIANT: Occupied entry guarantees non-empty vector.
-                    let prev = rs.first().unwrap_or_else(|| unreachable!());
+                    let prev = rs.first().ok_or_else(|| {
+                        InvalidQuerySnafu {
+                            message: "rule set unexpectedly empty".to_string(),
+                        }
+                        .build()
+                    })?;
                     if prev.aggr != rule.aggr {
                         return Err(InvalidQuerySnafu {
                             message: format!(
@@ -188,9 +192,13 @@ fn add_const_rule_to_program(
 ) -> Result<()> {
     let span = pair.extract_span();
     let mut src = pair.into_inner();
-    // INVARIANT: grammar guarantees const_rule has rule_head.
-    let (name, head, aggr) =
-        parse_rule_head(src.next().unwrap_or_else(|| unreachable!()), param_pool)?;
+    let rule_head = src.next().ok_or_else(|| {
+        InvalidQuerySnafu {
+            message: "const_rule missing rule_head".to_string(),
+        }
+        .build()
+    })?;
+    let (name, head, aggr) = parse_rule_head(rule_head, param_pool)?;
 
     if progs.contains_key(&name) {
         return Err(InvalidQuerySnafu {
@@ -213,8 +221,12 @@ fn add_const_rule_to_program(
         }
     }
 
-    // INVARIANT: grammar guarantees const_rule has data_part.
-    let data_part = src.next().unwrap_or_else(|| unreachable!());
+    let data_part = src.next().ok_or_else(|| {
+        InvalidQuerySnafu {
+            message: "const_rule missing data_part".to_string(),
+        }
+        .build()
+    })?;
     build_and_insert_const_rule(name, head, data_part, param_pool, progs, span)
 }
 
@@ -255,9 +267,9 @@ fn build_and_insert_const_rule(
     if head.is_empty()
         && name.is_prog_entry()
         && let Ok(mut datalist) = DatalogParser::parse(Rule::param_list, data_part_str)
+        && let Some(param_list) = datalist.next()
     {
-        // INVARIANT: grammar guarantees param_list has content.
-        extend_head_from_params(&mut head, datalist.next().unwrap_or_else(|| unreachable!()));
+        extend_head_from_params(&mut head, param_list);
     }
 
     progs.insert(
@@ -280,7 +292,8 @@ fn build_and_insert_const_rule(
 fn extend_head_from_params(head: &mut Vec<Symbol>, param_list: Pair<'_>) {
     for s in param_list.into_inner() {
         if s.as_rule() == Rule::param {
-            // INVARIANT: param always starts with '$' per grammar.
+            // INVARIANT: the pest grammar `param` rule requires a leading '$',
+            // so strip_prefix always succeeds on a matched param token.
             head.push(Symbol::new(
                 s.as_str()
                     .strip_prefix('$')
@@ -295,8 +308,12 @@ fn parse_query_option_float(
     pair: Pair<'_>,
     param_pool: &BTreeMap<String, DataValue>,
 ) -> Result<f64> {
-    // INVARIANT: grammar guarantees query options have content.
-    let inner = pair.into_inner().next().unwrap_or_else(|| unreachable!());
+    let inner = pair.into_inner().next().ok_or_else(|| {
+        InvalidQuerySnafu {
+            message: "query option missing value".to_string(),
+        }
+        .build()
+    })?;
     build_expr(inner, param_pool)?
         .eval_to_const()
         .map_err(|_err| {
@@ -341,8 +358,12 @@ fn parse_query_option_usize(
     pair: Pair<'_>,
     param_pool: &BTreeMap<String, DataValue>,
 ) -> Result<usize> {
-    // INVARIANT: grammar guarantees query options have content.
-    let inner = pair.into_inner().next().unwrap_or_else(|| unreachable!());
+    let inner = pair.into_inner().next().ok_or_else(|| {
+        InvalidQuerySnafu {
+            message: "query option missing value".to_string(),
+        }
+        .build()
+    })?;
     let n = build_expr(inner, param_pool)?
         .eval_to_const()
         .map_err(|_err| {
@@ -366,8 +387,12 @@ fn parse_query_option_bool(
     pair: Pair<'_>,
     param_pool: &BTreeMap<String, DataValue>,
 ) -> Result<bool> {
-    // INVARIANT: grammar guarantees query options have content.
-    let inner = pair.into_inner().next().unwrap_or_else(|| unreachable!());
+    let inner = pair.into_inner().next().ok_or_else(|| {
+        InvalidQuerySnafu {
+            message: "query option missing value".to_string(),
+        }
+        .build()
+    })?;
     build_expr(inner, param_pool)?
         .eval_to_const()
         .map_err(|_err| {
@@ -428,8 +453,13 @@ fn parse_relation_stored_option(
 ) -> Result<StoredRelationSpec> {
     let span = pair.extract_span();
     let mut args = pair.into_inner();
-    // INVARIANT: grammar guarantees relation_option has operator.
-    let op = match args.next().unwrap_or_else(|| unreachable!()).as_rule() {
+    let op_pair = args.next().ok_or_else(|| {
+        InvalidQuerySnafu {
+            message: "relation option missing operator".to_string(),
+        }
+        .build()
+    })?;
+    let op = match op_pair.as_rule() {
         Rule::relation_create => RelationOp::Create,
         Rule::relation_replace => RelationOp::Replace,
         Rule::relation_put => RelationOp::Put,
@@ -447,8 +477,12 @@ fn parse_relation_stored_option(
             .into());
         }
     };
-    // INVARIANT: grammar guarantees relation_option has name.
-    let name_p = args.next().unwrap_or_else(|| unreachable!());
+    let name_p = args.next().ok_or_else(|| {
+        InvalidQuerySnafu {
+            message: "relation option missing name".to_string(),
+        }
+        .build()
+    })?;
     let name = Symbol::new(name_p.as_str(), name_p.extract_span());
     match args.next() {
         None => Ok(Left((name, span, op))),

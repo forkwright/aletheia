@@ -146,7 +146,12 @@ impl Aggregation {
             name if name == AGGR_INTERSECTION.name => Box::new(MeetAggrIntersection),
             name if name == AGGR_SHORTEST.name => Box::new(MeetAggrShortest),
             name if name == AGGR_MIN_COST.name => Box::new(MeetAggrMinCost),
-            name => unreachable!("{}", name),
+            name => {
+                return NotImplementedSnafu {
+                    message: format!("meet aggregation not supported for '{name}'"),
+                }
+                .fail();
+            }
         });
         Ok(())
     }
@@ -199,7 +204,12 @@ impl Aggregation {
                     AggrCollect::new(usize::try_from(arg).unwrap_or(usize::MAX))
                 }
             }),
-            _ => unreachable!(),
+            name => {
+                return NotImplementedSnafu {
+                    message: format!("normal aggregation not supported for '{name}'"),
+                }
+                .fail();
+            }
         });
         Ok(())
     }

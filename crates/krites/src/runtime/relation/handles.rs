@@ -180,7 +180,8 @@ impl RelationHandle {
         if self.indices.is_empty() {
             return None;
         }
-        if *arg_uses.first().unwrap_or_else(|| unreachable!()) == IndexPositionUse::Join {
+        // INVARIANT: choose_index is only called when arg_uses is non-empty
+        if *arg_uses.first().unwrap_or_else(|| unreachable!("arg_uses must be non-empty")) == IndexPositionUse::Join {
             return None;
         }
         let mut max_prefix_len = 0;
@@ -198,7 +199,8 @@ impl RelationHandle {
         let mut chosen = None;
         for (manifest, mapper) in self.indices.values() {
             if validity_query
-                && *mapper.last().unwrap_or_else(|| unreachable!()) != self.metadata.keys.len() - 1
+                // INVARIANT: mapper is non-empty because indices require at least one column
+                && *mapper.last().unwrap_or_else(|| unreachable!("index mapper must be non-empty")) != self.metadata.keys.len() - 1
             {
                 continue;
             }
@@ -352,7 +354,8 @@ impl RelationHandle {
     ) -> impl Iterator<Item = Result<Tuple>> + use<'a> {
         let lower = Tuple::default().encode_as_key(self.id);
         let upper =
-            Tuple::default().encode_as_key(self.id.next().unwrap_or_else(|_| unreachable!()));
+            // INVARIANT: RelationId values never approach the 6-byte limit
+            Tuple::default().encode_as_key(self.id.next().unwrap_or_else(|_| unreachable!("RelationId overflow")));
         if self.is_temp {
             tx.temp_store_tx.range_scan_tuple(&lower, &upper)
         } else {
@@ -367,7 +370,8 @@ impl RelationHandle {
     ) -> impl Iterator<Item = Result<Tuple>> + use<'a> {
         let lower = Tuple::default().encode_as_key(self.id);
         let upper =
-            Tuple::default().encode_as_key(self.id.next().unwrap_or_else(|_| unreachable!()));
+            // INVARIANT: RelationId values never approach the 6-byte limit
+            Tuple::default().encode_as_key(self.id.next().unwrap_or_else(|_| unreachable!("RelationId overflow")));
         if self.is_temp {
             tx.temp_store_tx
                 .range_skip_scan_tuple(&lower, &upper, valid_at)
@@ -541,7 +545,7 @@ pub fn extend_tuple_from_v(key: &mut Tuple, val: &[u8]) {
     if !val.is_empty() {
         // INVARIANT: storage layer writes well-formed msgpack tuples; deserialization only fails on data corruption
         let vals: Vec<DataValue> =
-            rmp_serde::from_slice(&val[ENCODED_KEY_MIN_LEN..]).unwrap_or_else(|_| unreachable!());
+            rmp_serde::from_slice(&val[ENCODED_KEY_MIN_LEN..]).unwrap_or_else(|_| unreachable!("corrupt msgpack in stored tuple value"));
         key.extend(vals);
     }
 }

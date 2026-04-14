@@ -97,9 +97,9 @@ impl<'a> crate::runtime::transact::SessionTx<'a> {
                     headers.clone(),
                     new_tuples
                         .into_iter()
-                        .map(|v| match v {
-                            DataValue::List(l) => l,
-                            _ => unreachable!(),
+                        .filter_map(|v| match v {
+                            DataValue::List(l) => Some(l),
+                            _ => None,
                         })
                         .collect_vec(),
                 ),
@@ -107,9 +107,9 @@ impl<'a> crate::runtime::transact::SessionTx<'a> {
                     headers,
                     old_tuples
                         .into_iter()
-                        .map(|v| match v {
-                            DataValue::List(l) => l,
-                            _ => unreachable!(),
+                        .filter_map(|v| match v {
+                            DataValue::List(l) => Some(l),
+                            _ => None,
                         })
                         .collect_vec(),
                 ),
@@ -437,9 +437,9 @@ impl<'a> crate::runtime::transact::SessionTx<'a> {
                             .collect_vec(),
                         new_tuples
                             .into_iter()
-                            .map(|v| match v {
-                                DataValue::List(l) => l,
-                                _ => unreachable!(),
+                            .filter_map(|v| match v {
+                                DataValue::List(l) => Some(l),
+                                _ => None,
                             })
                             .collect_vec(),
                     ),
@@ -450,9 +450,9 @@ impl<'a> crate::runtime::transact::SessionTx<'a> {
                             .collect_vec(),
                         old_tuples
                             .into_iter()
-                            .map(|v| match v {
-                                DataValue::List(l) => l,
-                                _ => unreachable!(),
+                            .filter_map(|v| match v {
+                                DataValue::List(l) => Some(l),
+                                _ => None,
                             })
                             .collect_vec(),
                     ),

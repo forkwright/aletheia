@@ -32,7 +32,13 @@ pub(crate) fn add_vecs(args: &[DataValue]) -> Result<DataValue> {
     if args.len() == 1 {
         return Ok(arg(args, 0)?.clone());
     }
-    let (last, first) = args.split_last().unwrap_or_else(|| unreachable!());
+    let (last, first) = args.split_last().ok_or_else(|| {
+        TypeMismatchSnafu {
+            op: "add",
+            expected: "non-empty arguments",
+        }
+        .build()
+    })?;
     let first = add_vecs(first)?;
     match (first, last) {
         (DataValue::Vec(a), DataValue::Vec(b)) => {
@@ -108,7 +114,13 @@ pub(crate) fn mul_vecs(args: &[DataValue]) -> Result<DataValue> {
     if args.len() == 1 {
         return Ok(arg(args, 0)?.clone());
     }
-    let (last, first) = args.split_last().unwrap_or_else(|| unreachable!());
+    let (last, first) = args.split_last().ok_or_else(|| {
+        TypeMismatchSnafu {
+            op: "mul",
+            expected: "non-empty arguments",
+        }
+        .build()
+    })?;
     let first = add_vecs(first)?;
     match (first, last) {
         (DataValue::Vec(a), DataValue::Vec(b)) => {

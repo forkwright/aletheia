@@ -167,7 +167,14 @@ pub(crate) fn op_pack_bits(args: &[DataValue]) -> Result<DataValue> {
                     if *b {
                         let chunk = i.div(&8);
                         let idx = i % 8;
-                        let target = res.get_mut(chunk).unwrap_or_else(|| unreachable!());
+                        let target = res.get_mut(chunk).ok_or_else(|| {
+                            TypeMismatchSnafu {
+                                op: "pack_bits",
+                                expected: "valid bit index",
+                            }
+                            .build()
+                        })?;
+                        // INVARIANT: idx = i % 8, range [0,7]; all matched.
                         match idx {
                             0 => *target |= 0b10000000,
                             1 => *target |= 0b01000000,

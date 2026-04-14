@@ -65,8 +65,16 @@ impl Joiner {
         let mut ret_l = Vec::with_capacity(self.left_keys.len());
         let mut ret_r = Vec::with_capacity(self.left_keys.len());
         for (l, r) in self.left_keys.iter().zip(self.right_keys.iter()) {
-            let l_pos = left_binding_map.get(l).unwrap_or_else(|| unreachable!());
-            let r_pos = right_binding_map.get(r).unwrap_or_else(|| unreachable!());
+            let l_pos = left_binding_map.get(l).ok_or_else(|| {
+                crate::error::InternalError::from(CompilationFailedSnafu {
+                    message: format!("left join key '{l}' not found in bindings"),
+                }.build())
+            })?;
+            let r_pos = right_binding_map.get(r).ok_or_else(|| {
+                crate::error::InternalError::from(CompilationFailedSnafu {
+                    message: format!("right join key '{r}' not found in bindings"),
+                }.build())
+            })?;
             ret_l.push(*l_pos);
             ret_r.push(*r_pos)
         }
@@ -99,36 +107,30 @@ impl NegJoin {
     pub(crate) fn join_type(&self) -> &str {
         match &self.right {
             RelAlgebra::TempStore(_) => {
-                let join_indices = self
+                match self
                     .joiner
                     .join_indices(
                         &self.left.bindings_after_eliminate(),
                         &self.right.bindings_after_eliminate(),
-                    )
-                    .unwrap_or_else(|_| unreachable!());
-                if join_is_prefix(&join_indices.1) {
-                    "mem_neg_prefix_join"
-                } else {
-                    "mem_neg_mat_join"
+                    ) {
+                    Ok(join_indices) if join_is_prefix(&join_indices.1) => "mem_neg_prefix_join",
+                    Ok(_) => "mem_neg_mat_join",
+                    Err(_) => "mem_neg_join_unknown",
                 }
             }
             RelAlgebra::Stored(_) => {
-                let join_indices = self
+                match self
                     .joiner
                     .join_indices(
                         &self.left.bindings_after_eliminate(),
                         &self.right.bindings_after_eliminate(),
-                    )
-                    .unwrap_or_else(|_| unreachable!());
-                if join_is_prefix(&join_indices.1) {
-                    "stored_neg_prefix_join"
-                } else {
-                    "stored_neg_mat_join"
+                    ) {
+                    Ok(join_indices) if join_is_prefix(&join_indices.1) => "stored_neg_prefix_join",
+                    Ok(_) => "stored_neg_mat_join",
+                    Err(_) => "stored_neg_join_unknown",
                 }
             }
-            _ => {
-                unreachable!()
-            }
+            _ => "neg_join_unexpected_rhs",
         }
     }
 
@@ -167,9 +169,11 @@ impl NegJoin {
                     eliminate_indices,
                 )
             }
-            _ => {
-                unreachable!()
+            _ => CompilationFailedSnafu {
+                message: "NegJoin RHS must be TempStore or Stored relation",
             }
+            .fail()
+            .map_err(|e| e.into()),
         }
     }
 }
@@ -217,59 +221,51 @@ impl InnerJoin {
         match &self.right {
             RelAlgebra::Fixed(f) => f.join_type(),
             RelAlgebra::TempStore(_) => {
-                let join_indices = self
+                match self
                     .joiner
                     .join_indices(
                         &self.left.bindings_after_eliminate(),
                         &self.right.bindings_after_eliminate(),
-                    )
-                    .unwrap_or_else(|_| unreachable!());
-                if join_is_prefix(&join_indices.1) {
-                    "mem_prefix_join"
-                } else {
-                    "mem_mat_join"
+                    ) {
+                    Ok(join_indices) if join_is_prefix(&join_indices.1) => "mem_prefix_join",
+                    Ok(_) => "mem_mat_join",
+                    Err(_) => "mem_join_unknown",
                 }
             }
             RelAlgebra::Stored(_) => {
-                let join_indices = self
+                match self
                     .joiner
                     .join_indices(
                         &self.left.bindings_after_eliminate(),
                         &self.right.bindings_after_eliminate(),
-                    )
-                    .unwrap_or_else(|_| unreachable!());
-                if join_is_prefix(&join_indices.1) {
-                    "stored_prefix_join"
-                } else {
-                    "stored_mat_join"
+                    ) {
+                    Ok(join_indices) if join_is_prefix(&join_indices.1) => "stored_prefix_join",
+                    Ok(_) => "stored_mat_join",
+                    Err(_) => "stored_join_unknown",
                 }
             }
             RelAlgebra::HnswSearch(_) => "hnsw_search_join",
             RelAlgebra::FtsSearch(_) => "fts_search_join",
             RelAlgebra::LshSearch(_) => "lsh_search_join",
             RelAlgebra::StoredWithValidity(_) => {
-                let join_indices = self
+                match self
                     .joiner
                     .join_indices(
                         &self.left.bindings_after_eliminate(),
                         &self.right.bindings_after_eliminate(),
-                    )
-                    .unwrap_or_else(|_| unreachable!());
-                if join_is_prefix(&join_indices.1) {
-                    "stored_prefix_join"
-                } else {
-                    "stored_mat_join"
+                    ) {
+                    Ok(join_indices) if join_is_prefix(&join_indices.1) => "stored_prefix_join",
+                    Ok(_) => "stored_mat_join",
+                    Err(_) => "stored_validity_join_unknown",
                 }
             }
             RelAlgebra::Join(_) | RelAlgebra::Filter(_) | RelAlgebra::Unification(_) => {
                 "generic_mat_join"
             }
-            RelAlgebra::Reorder(_) => {
-                unreachable!("query plan invariant: Reorder must be resolved before join")
-            }
-            RelAlgebra::NegJoin(_) => {
-                unreachable!("query plan invariant: NegJoin cannot appear as join RHS")
-            }
+            // INVARIANT: query plan construction resolves Reorder before join
+            RelAlgebra::Reorder(_) => "reorder_join_invariant_violated",
+            // INVARIANT: NegJoin cannot appear as join RHS
+            RelAlgebra::NegJoin(_) => "negjoin_rhs_invariant_violated",
         }
     }
     pub(crate) fn iter<'a>(

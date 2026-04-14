@@ -89,10 +89,14 @@ impl NormalFormInlineRule {
                     seen_variables.extend(v.args.iter().cloned());
                     collected.push(NormalFormAtom::Relation(v))
                 }
+                // INVARIANT: round_1_collected only contains Rule, Relation, Unification,
+                // and Search atoms (NegatedRule, NegatedRelation, Predicate go to pending)
                 NormalFormAtom::NegatedRule(_)
                 | NormalFormAtom::NegatedRelation(_)
                 | NormalFormAtom::Predicate(_) => {
-                    unreachable!()
+                    return Err(CompilationFailedSnafu {
+                        message: "unexpected atom type in round_1_collected during reorder",
+                    }.build().into());
                 }
                 NormalFormAtom::Unification(u) => {
                     seen_variables.insert(u.binding.clone());
@@ -113,7 +117,12 @@ impl NormalFormInlineRule {
             }
             for atom in last_pending.iter() {
                 match atom {
-                    NormalFormAtom::Rule(_) | NormalFormAtom::Relation(_) => unreachable!(),
+                    // INVARIANT: pending never contains Rule or Relation atoms
+                    NormalFormAtom::Rule(_) | NormalFormAtom::Relation(_) => {
+                        return Err(CompilationFailedSnafu {
+                            message: "unexpected Rule/Relation in pending during reorder",
+                        }.build().into());
+                    }
                     NormalFormAtom::NegatedRule(r) => {
                         if r.args.iter().all(|a| seen_variables.contains(a)) {
                             collected.push(NormalFormAtom::NegatedRule(r.clone()));
@@ -173,7 +182,12 @@ impl NormalFormInlineRule {
         if !pending.is_empty() {
             for atom in pending {
                 match atom {
-                    NormalFormAtom::Rule(_) | NormalFormAtom::Relation(_) => unreachable!(),
+                    // INVARIANT: final pending never contains Rule or Relation atoms
+                    NormalFormAtom::Rule(_) | NormalFormAtom::Relation(_) => {
+                        return Err(CompilationFailedSnafu {
+                            message: "unexpected Rule/Relation in final pending during reorder",
+                        }.build().into());
+                    }
                     NormalFormAtom::NegatedRule(r) => {
                         if r.args.iter().any(|a| seen_variables.contains(a)) {
                             collected.push(NormalFormAtom::NegatedRule(r.clone()));

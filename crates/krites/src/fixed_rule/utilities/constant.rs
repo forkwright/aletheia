@@ -22,16 +22,29 @@ impl FixedRule for Constant {
         out: &mut RegularTempStore,
         _poison: Poison,
     ) -> Result<()> {
-        let data = payload
-            .expr_option("data", None)
-            .unwrap_or_else(|_| unreachable!());
+        let data = payload.expr_option("data", None)?;
         let data = data
             .get_const()
-            .unwrap_or_else(|| unreachable!())
+            .ok_or_else(|| FixedRuleError::InvalidInput {
+                rule: "Constant".to_string(),
+                message: "'data' option is not a constant expression".to_string(),
+                location: snafu::location!(),
+            })?
             .get_slice()
-            .unwrap_or_else(|| unreachable!());
+            .ok_or_else(|| FixedRuleError::InvalidInput {
+                rule: "Constant".to_string(),
+                message: "'data' constant is not a list".to_string(),
+                location: snafu::location!(),
+            })?;
         for row in data {
-            let tuple = row.get_slice().unwrap_or_else(|| unreachable!()).into();
+            let tuple = row
+                .get_slice()
+                .ok_or_else(|| FixedRuleError::InvalidInput {
+                    rule: "Constant".to_string(),
+                    message: "row in 'data' is not a list".to_string(),
+                    location: snafu::location!(),
+                })?
+                .into();
             out.put(tuple)
         }
         Ok(())
@@ -43,13 +56,27 @@ impl FixedRule for Constant {
         rule_head: &[Symbol],
         _span: SourceSpan,
     ) -> Result<usize> {
-        let data = options
+        let data_expr = options
             .get("data")
-            .unwrap_or_else(|| unreachable!())
+            .ok_or_else(|| FixedRuleError::InvalidInput {
+                rule: "Constant".to_string(),
+                message: "'data' option missing in arity check".to_string(),
+                location: snafu::location!(),
+            })?;
+        let data_const = data_expr
             .get_const()
-            .unwrap_or_else(|| unreachable!())
+            .ok_or_else(|| FixedRuleError::InvalidInput {
+                rule: "Constant".to_string(),
+                message: "'data' option is not a constant in arity check".to_string(),
+                location: snafu::location!(),
+            })?;
+        let data = data_const
             .get_slice()
-            .unwrap_or_else(|| unreachable!());
+            .ok_or_else(|| FixedRuleError::InvalidInput {
+                rule: "Constant".to_string(),
+                message: "'data' constant is not a list in arity check".to_string(),
+                location: snafu::location!(),
+            })?;
         Ok(if data.is_empty() {
             match rule_head.len() {
                 0 => {
@@ -64,9 +91,17 @@ impl FixedRule for Constant {
             }
         } else {
             data.first()
-                .unwrap_or_else(|| unreachable!())
+                .ok_or_else(|| FixedRuleError::InvalidInput {
+                    rule: "Constant".to_string(),
+                    message: "first row missing in non-empty data".to_string(),
+                    location: snafu::location!(),
+                })?
                 .get_slice()
-                .unwrap_or_else(|| unreachable!())
+                .ok_or_else(|| FixedRuleError::InvalidInput {
+                    rule: "Constant".to_string(),
+                    message: "first row is not a list".to_string(),
+                    location: snafu::location!(),
+                })?
                 .len()
         })
     }

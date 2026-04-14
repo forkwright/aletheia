@@ -105,7 +105,11 @@ impl<'s> StoreTx<'s> for MemTx<'s> {
     }
 
     fn par_put(&self, _key: &[u8], _val: &[u8]) -> Result<()> {
-        panic!()
+        Err(crate::storage::error::TransactionFailedSnafu {
+            backend: "mem",
+            message: "par_put is not supported",
+        }
+        .build())
     }
 
     fn del(&mut self, key: &[u8]) -> Result<()> {
@@ -291,31 +295,39 @@ where
 
     #[inline]
     fn next_inner(&mut self) -> InternalResult<Option<(Vec<u8>, Vec<u8>)>> {
+        let corrupted = || {
+            crate::error::InternalError::from(
+                crate::storage::error::CorruptedDataSnafu {
+                    message: "cache unexpectedly empty after match confirmed Some",
+                }
+                .build(),
+            )
+        };
         loop {
             self.fill_cache()?;
             match (&self.change_cache, &self.db_cache) {
                 (None, None) => return Ok(None),
                 (Some(_), None) => {
-                    let (k, cv) = self.change_cache.take().unwrap_or_else(|| unreachable!());
+                    let (k, cv) = self.change_cache.take().ok_or_else(corrupted)?;
                     match cv {
                         None => continue,
                         Some(v) => return Ok(Some((k.clone(), v.clone()))),
                     }
                 }
                 (None, Some(_)) => {
-                    let (k, v) = self.db_cache.take().unwrap_or_else(|| unreachable!());
+                    let (k, v) = self.db_cache.take().ok_or_else(corrupted)?;
                     return Ok(Some((k.clone(), v.clone())));
                 }
                 (Some((ck, _)), Some((dk, _))) => match ck.cmp(dk) {
                     Ordering::Less => {
-                        let (k, sv) = self.change_cache.take().unwrap_or_else(|| unreachable!());
+                        let (k, sv) = self.change_cache.take().ok_or_else(corrupted)?;
                         match sv {
                             None => continue,
                             Some(v) => return Ok(Some((k.clone(), v.clone()))),
                         }
                     }
                     Ordering::Greater => {
-                        let (k, v) = self.db_cache.take().unwrap_or_else(|| unreachable!());
+                        let (k, v) = self.db_cache.take().ok_or_else(corrupted)?;
                         return Ok(Some((k.clone(), v.clone())));
                     }
                     Ordering::Equal => {
@@ -368,31 +380,39 @@ impl CacheIter<'_> {
 
     #[inline]
     fn next_inner(&mut self) -> InternalResult<Option<Tuple>> {
+        let corrupted = || {
+            crate::error::InternalError::from(
+                crate::storage::error::CorruptedDataSnafu {
+                    message: "cache unexpectedly empty after match confirmed Some",
+                }
+                .build(),
+            )
+        };
         loop {
             self.fill_cache()?;
             match (&self.change_cache, &self.db_cache) {
                 (None, None) => return Ok(None),
                 (Some(_), None) => {
-                    let (k, cv) = self.change_cache.take().unwrap_or_else(|| unreachable!());
+                    let (k, cv) = self.change_cache.take().ok_or_else(corrupted)?;
                     match cv {
                         None => continue,
                         Some(v) => return Ok(Some(decode_tuple_from_kv(k, v, None))),
                     }
                 }
                 (None, Some(_)) => {
-                    let (k, v) = self.db_cache.take().unwrap_or_else(|| unreachable!());
+                    let (k, v) = self.db_cache.take().ok_or_else(corrupted)?;
                     return Ok(Some(decode_tuple_from_kv(k, v, None)));
                 }
                 (Some((ck, _)), Some((dk, _))) => match ck.cmp(dk) {
                     Ordering::Less => {
-                        let (k, sv) = self.change_cache.take().unwrap_or_else(|| unreachable!());
+                        let (k, sv) = self.change_cache.take().ok_or_else(corrupted)?;
                         match sv {
                             None => continue,
                             Some(v) => return Ok(Some(decode_tuple_from_kv(k, v, None))),
                         }
                     }
                     Ordering::Greater => {
-                        let (k, v) = self.db_cache.take().unwrap_or_else(|| unreachable!());
+                        let (k, v) = self.db_cache.take().ok_or_else(corrupted)?;
                         return Ok(Some(decode_tuple_from_kv(k, v, None)));
                     }
                     Ordering::Equal => {

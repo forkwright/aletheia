@@ -54,7 +54,9 @@ impl FixedRule for StronglyConnectedComponent {
         let tarjan = TarjanSccG::new(graph).run(poison)?;
         for (grp_id, cc) in tarjan.iter().enumerate() {
             for idx in cc {
-                let val = indices.get(*idx as usize).unwrap_or_else(|| unreachable!());
+                // INVARIANT: `idx` comes from graph traversal, all indices are within `indices` bounds
+                // INVARIANT: `idx` comes from graph traversal, all indices are within `indices` bounds
+                let val = indices.get(*idx as usize).unwrap_or_else(|| panic!("graph index must be valid"));
                 #[expect(clippy::cast_possible_wrap, reason = "value fits i64")]
                 let tuple = vec![val.clone(), DataValue::from(grp_id as i64)];
                 out.put(tuple);

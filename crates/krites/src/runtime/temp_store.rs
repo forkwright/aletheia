@@ -117,7 +117,14 @@ impl MeetAggrStore {
             Some(prev_aggr) => {
                 let mut changed = false;
                 for (i, (aggr_op, _)) in self.aggregations.iter().enumerate() {
-                    let op = aggr_op.meet_op.as_ref().unwrap_or_else(|| unreachable!());
+                    let op = aggr_op.meet_op.as_ref().ok_or_else(|| {
+                        crate::error::InternalError::Runtime {
+                            source: crate::runtime::error::InvalidOperationSnafu {
+                                op: "meet_put",
+                                reason: "aggregation missing meet_op".to_string(),
+                            }.build(),
+                        }
+                    })?;
                     changed |= op.update(&mut prev_aggr[i], &val_part[i])?;
                 }
                 Ok(changed)
@@ -155,7 +162,8 @@ impl MeetAggrStore {
                 } else {
                     match ret
                         .partial_cmp(&upper as &[DataValue])
-                        .unwrap_or_else(|| unreachable!())
+                        // INVARIANT: well-formed tuples always have comparable DataValue types
+                        .unwrap_or_else(|| unreachable!("incomparable DataValue types in tuple range scan"))
                     {
                         Ordering::Less => Some(ret),
                         Ordering::Equal => {
@@ -192,7 +200,14 @@ impl MeetAggrStore {
                     {
                         let target = ent.get_mut();
                         for (i, (aggr_op, _)) in self.aggregations.iter().enumerate() {
-                            let op = aggr_op.meet_op.as_ref().unwrap_or_else(|| unreachable!());
+                            let op = aggr_op.meet_op.as_ref().ok_or_else(|| {
+                                crate::error::InternalError::Runtime {
+                                    source: crate::runtime::error::InvalidOperationSnafu {
+                                        op: "merge_in",
+                                        reason: "aggregation missing meet_op".to_string(),
+                                    }.build(),
+                                }
+                            })?;
                             changed |= op.update(&mut target[i], &v[i])?;
                         }
                     }
@@ -274,7 +289,14 @@ impl EpochStore {
             (TempStore::MeetAggr(total), TempStore::MeetAggr(prev), TempStore::MeetAggr(new)) => {
                 self.use_total_for_delta = total.merge_in(prev, new)?;
             }
-            _ => unreachable!(),
+            _ => {
+                return Err(crate::error::InternalError::Runtime {
+                    source: crate::runtime::error::InvalidOperationSnafu {
+                        op: "epoch_merge",
+                        reason: "mismatched TempStore variants".to_string(),
+                    }.build(),
+                });
+            }
         }
         Ok(())
     }
@@ -340,7 +362,8 @@ impl<'a> TupleInIter<'a> {
         self.0.get(idx).unwrap_or_else(|| {
             self.1
                 .get(idx - self.0.len())
-                .unwrap_or_else(|| unreachable!())
+                // INVARIANT: idx is within the combined bounds of key and value tuples
+                .unwrap_or_else(|| unreachable!("tuple index out of bounds in TupleInIter::get"))
         })
     }
     fn should_skip(&self) -> bool {
