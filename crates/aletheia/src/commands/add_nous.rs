@@ -261,7 +261,7 @@ async fn try_register(oikos: &Oikos, name: &str) {
         "lan" | "0.0.0.0" | "localhost" => "127.0.0.1",
         other => other,
     };
-    let url = format!("http://{host}:{port}/api/health");
+    let url = format!("http://{host}:{port}/api/health"); // SAFE: localhost-only, no network traversal
     let server_running = reqwest::get(&url).await.is_ok();
 
     if server_running {

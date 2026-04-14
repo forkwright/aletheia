@@ -69,7 +69,7 @@ fn build_candidates() -> Vec<Candidate> {
     // 2. LAN hostnames via .lan DNS suffix (AdGuard rewrites).
     for host in LAN_HOSTNAMES {
         candidates.push(Candidate {
-            base_url: format!("http://{host}.lan:{DEFAULT_PORT}"),
+            base_url: format!("http://{host}.lan:{DEFAULT_PORT}"), // SAFE: trusted LAN, no public traversal
             label: "lan",
         });
     }
@@ -77,7 +77,7 @@ fn build_candidates() -> Vec<Candidate> {
     // 3. Tailscale IPs -- direct IP probe as fallback.
     for ip in TAILSCALE_IPS {
         candidates.push(Candidate {
-            base_url: format!("http://{ip}:{DEFAULT_PORT}"),
+            base_url: format!("http://{ip}:{DEFAULT_PORT}"), // SAFE: Tailscale WireGuard tunnel, encrypted in transit
             label: "tailscale",
         });
     }

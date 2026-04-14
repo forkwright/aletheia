@@ -717,6 +717,7 @@ pub async fn pkce_login(provider: &OAuthProvider) -> Result<CredentialFile> {
     let client = reqwest::Client::new();
     let token_response = exchange_code(&client, provider, &code, &pkce.verifier, port).await?;
 
+    // SAFETY: logging success status, not the token value
     info!("successfully obtained access token");
 
     // Build credential file

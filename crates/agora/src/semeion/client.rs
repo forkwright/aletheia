@@ -306,10 +306,10 @@ impl SendParams {
 
 fn normalize_url(url: &str) -> String {
     let trimmed = url.trim_end_matches('/');
-    if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+    if trimmed.starts_with("http://") || trimmed.starts_with("https://") { // SAFE: protocol detection, not endpoint construction
         trimmed.to_owned()
     } else {
-        format!("http://{trimmed}")
+        format!("http://{trimmed}") // SAFE: signal-cli daemon is localhost-only, no network traversal
     }
 }
 

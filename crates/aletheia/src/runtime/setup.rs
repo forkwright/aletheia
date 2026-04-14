@@ -72,13 +72,16 @@ pub(super) fn build_provider_registry(config: &AletheiaConfig, oikos: &Oikos) ->
     {
         if cred.has_refresh_token() {
             if let Some(refreshing) = RefreshingCredentialProvider::new(cred_file.clone()) {
+                // SAFETY: logging file path, not credential value
                 info!(path = %cred_file.display(), "credential file found (OAuth auto-refresh)");
                 chain.push(Box::new(refreshing));
             } else {
+                // SAFETY: logging file path, not credential value
                 info!(path = %cred_file.display(), "credential file found (static)");
                 chain.push(Box::new(FileCredentialProvider::new(cred_file.clone())));
             }
         } else {
+            // SAFETY: logging file path, not credential value
             info!(path = %cred_file.display(), "credential file found (static API key)");
             chain.push(Box::new(FileCredentialProvider::new(cred_file.clone())));
         }
@@ -107,6 +110,7 @@ pub(super) fn build_provider_registry(config: &AletheiaConfig, oikos: &Oikos) ->
 
     let resolved_source = credential_chain.get_credential().map(|c| c.source);
     if let Some(ref source) = resolved_source {
+        // SAFETY: logging credential source name (e.g. "oauth", "api-key"), not credential value
         info!(source = %source, "credential resolved");
     } else {
         warn!(
@@ -134,6 +138,7 @@ pub(super) fn build_provider_registry(config: &AletheiaConfig, oikos: &Oikos) ->
         match CcProvider::new(&cc_config) {
             Ok(provider) => {
                 registry.register(Box::new(provider));
+                // SAFETY: logging provider registration status, not credential value
                 info!("CC subprocess provider registered (OAuth credential detected)");
             }
             Err(e) => {
@@ -281,7 +286,7 @@ pub(super) fn build_signal_provider(
         if !account_cfg.enabled {
             continue;
         }
-        let base_url = format!("http://{}:{}", account_cfg.http_host, account_cfg.http_port);
+        let base_url = format!("http://{}:{}", account_cfg.http_host, account_cfg.http_port); // SAFE: signal-cli daemon, defaults to localhost
         match SignalClient::with_timeouts(&base_url, rpc_timeout, health_timeout, receive_timeout) {
             Ok(client) => {
                 provider.add_account(account_id.clone(), client, account_cfg.auto_start);

@@ -152,6 +152,7 @@ pub(crate) async fn run(args: Args) -> Result<()> {
     axum::serve(listener, app)
         .with_graceful_shutdown(async move {
             shutdown_signal().await;
+            // SAFETY: "token" here is a CancellationToken (shutdown coordination), not a credential
             info!("signal received -- cancelling shutdown token");
             token_for_signal.cancel();
         })

@@ -366,6 +366,7 @@ impl NousActor {
                 // SAFETY: cancel-safe. `CancellationToken::cancelled()` is cancel-safe;
                 // dropping this branch before it resolves has no side effects.
                 () = self.channel.cancel.cancelled() => {
+                    // SAFETY: "token" here is a CancellationToken (shutdown coordination), not a credential
                     info!("cancellation token fired, draining and stopping");
                     break;
                 }

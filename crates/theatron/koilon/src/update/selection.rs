@@ -256,6 +256,7 @@ fn extract_urls(text: &str) -> Vec<String> {
                 .trim_end_matches(')')
                 .trim_end_matches(',')
                 .trim_end_matches('.');
+            // SAFE: protocol detection for URL extraction from text, not endpoint construction
             if candidate.starts_with("http://") || candidate.starts_with("https://") {
                 urls.push(candidate.to_string());
                 continue;
@@ -269,6 +270,7 @@ fn extract_urls(text: &str) -> Vec<String> {
             .trim_end_matches(']')
             .trim_end_matches(',')
             .trim_end_matches('.');
+        // SAFE: protocol detection for URL extraction from text, not endpoint construction
         if candidate.starts_with("http://") || candidate.starts_with("https://") {
             urls.push(candidate.to_string());
         }

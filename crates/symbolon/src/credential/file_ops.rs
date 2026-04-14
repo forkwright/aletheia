@@ -97,9 +97,11 @@ impl CredentialFile {
         let json = if let Some(encoded) = contents.strip_prefix(ENCRYPTED_SENTINEL) {
             // WHY: encrypted files must be decrypted before JSON parsing.
             let key = load_or_create_key(path)
+                // SAFETY: logging file path and error kind, not credential value
                 .map_err(|e| tracing::warn!(error = %e, path = %path.display(), "failed to load encryption key"))
                 .ok()?;
             let plaintext = decrypt(&key, encoded.trim_end())
+                // SAFETY: logging file path and error kind, not credential value
                 .map_err(|e| tracing::warn!(error = %e, path = %path.display(), "failed to decrypt credential file"))
                 .ok()?;
             String::from_utf8(plaintext)

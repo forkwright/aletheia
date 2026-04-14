@@ -87,6 +87,7 @@ pub async fn mcp_auth(
             next.run(req).await
         }
         Err(_err) => {
+            // SAFETY: logging rejection status, not the token value
             warn!("MCP request rejected: invalid Bearer token");
             unauthorized()
         }

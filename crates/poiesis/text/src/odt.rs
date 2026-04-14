@@ -126,6 +126,7 @@ fn build_meta(doc: &Document) -> String {
         .as_deref()
         .map(xml_escape)
         .unwrap_or_default();
+    // XML namespace URIs below (http://purl.org/dc/...) are identifiers, not network endpoints
     format!(
         r#"<?xml version="1.0" encoding="UTF-8"?>
 <office:document-meta xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"

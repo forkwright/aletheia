@@ -396,6 +396,7 @@ pub async fn device_code_login(provider: &DeviceOAuthProvider) -> Result<Credent
     )
     .await?;
 
+    // SAFETY: logging success status, not the token value
     info!("successfully obtained access token via device flow");
     eprintln!("\n✓ Authentication successful!\n");
 
@@ -479,6 +480,7 @@ where
     )
     .await?;
 
+    // SAFETY: logging success status, not the token value
     info!("successfully obtained access token via device flow");
 
     // Step 4: Build credential file

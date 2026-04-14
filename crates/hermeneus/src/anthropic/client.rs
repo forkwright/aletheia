@@ -79,6 +79,11 @@ impl CredentialProvider for StaticCredentialProvider {
 /// Per-request timeout for non-streaming completions.
 const NON_STREAMING_TIMEOUT: Duration = Duration::from_mins(2);
 
+/// Per-request timeout for streaming completions. Generous because actual stall
+/// detection is handled by the SSE parser's idle timeout; this is a safety net
+/// that overrides the shorter client-level default.
+const STREAMING_TIMEOUT: Duration = Duration::from_mins(10);
+
 /// Returns true when the URL is safe to use without TLS.
 ///
 /// Localhost addresses never leave the machine, so cleartext is acceptable
@@ -92,12 +97,13 @@ fn build_http_client() -> Result<Client> {
     // install_default() is idempotent: subsequent calls return Err and are ignored.
     let _ = rustls::crypto::ring::default_provider().install_default();
 
-    // TODO(#2181): separate streaming timeout. The client-level timeout applies
-    // to the full response lifecycle. Streaming requests set no per-request
-    // timeout (relying on the SSE parser's idle detection instead); non-streaming
-    // requests override with NON_STREAMING_TIMEOUT.
+    // WHY: client-level timeout is a safety net for the full request lifecycle.
+    // Non-streaming requests override with NON_STREAMING_TIMEOUT per-request.
+    // Streaming requests override with a generous per-request timeout since the
+    // SSE parser's idle detection handles actual stall recovery.
     Client::builder()
         .connect_timeout(Duration::from_secs(10))
+        .timeout(Duration::from_secs(60))
         .build()
         .map_err(|e| {
             error::ProviderInitSnafu {
@@ -316,6 +322,7 @@ impl AnthropicProvider {
                 .post(format!("{}/v1/messages", self.base_url))
                 .headers(headers)
                 .body(body.clone())
+                .timeout(STREAMING_TIMEOUT)
                 .send()
                 .await
             {
