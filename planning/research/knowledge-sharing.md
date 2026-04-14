@@ -123,8 +123,8 @@ Subscriptions are evaluated at publication time. When `publish_fact` runs, it ch
 ```
 recall_federated(query, options) -> Vec<RecallResult>
   options := {
-    include_agents: Vec<NousId>,     -- whitelist (empty = all)
-    exclude_agents: Vec<NousId>,     -- blacklist
+    include_agents: Vec<NousId>,     -- allowlist (empty = all)
+    exclude_agents: Vec<NousId>,     -- blocklist
     min_relevance_override: f64,     -- override 0.3 penalty
     require_tier: EpistemicTier,     -- minimum tier
   }
@@ -135,7 +135,7 @@ recall_federated(query, options) -> Vec<RecallResult>
 | Approach | Pro | Con |
 |----------|-----|-----|
 | Current model (soft scoring) | Already works, no changes needed | No opt-out, privacy is scoring-based |
-| Explicit whitelist/blacklist | Agents control who sees their facts | Requires registration, maintenance |
+| Explicit allowlist/blocklist | Agents control who sees their facts | Requires registration, maintenance |
 | Per-fact visibility flags | Granular control | Schema change, extraction complexity |
 
 **Recommendation.** Extend the existing model with per-fact visibility instead of building a separate federation layer. Add a `visibility` field to facts:

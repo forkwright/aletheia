@@ -204,7 +204,7 @@ async fn archive_post_nonexistent_session_returns_404_with_envelope() {
 }
 
 #[tokio::test]
-async fn get_archived_session_returns_404_with_envelope() {
+async fn get_archived_session_returns_200_with_status() {
     let (router, _dir) = app().await;
     let created = create_test_session(&router).await;
     let id = created["id"]
@@ -229,11 +229,12 @@ async fn get_archived_session_returns_404_with_envelope() {
         .expect("GET /sessions/{id} request should succeed");
     assert_eq!(
         resp.status(),
-        StatusCode::NOT_FOUND,
-        "archived session should return 404 on GET"
+        StatusCode::OK,
+        "archived session should be retrievable via GET"
     );
     let body = body_json(resp).await;
-    assert_error_envelope(&body, "session_not_found");
+    assert_eq!(body["id"], id);
+    assert_eq!(body["status"], "archived");
 }
 
 #[tokio::test]

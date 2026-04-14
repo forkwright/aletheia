@@ -100,13 +100,8 @@ impl ProviderHealthTracker {
         }
     }
 
-    /// Acquire the inner lock, panicking on poison (thread panic is unrecoverable).
-    #[expect(
-        clippy::expect_used,
-        reason = "Mutex poisoning means a thread panicked; no Result return to propagate through"
-    )]
     fn lock_inner(&self) -> std::sync::MutexGuard<'_, TrackerInner> {
-        self.inner.lock().expect("health lock poisoned") // kanon:ignore RUST/expect
+        self.inner.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     /// Current health state.

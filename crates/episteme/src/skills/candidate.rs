@@ -107,9 +107,11 @@ pub struct CandidateTracker {
 }
 
 impl std::fmt::Debug for CandidateTracker {
-    #[expect(clippy::expect_used, reason = "mutex poisoning is unrecoverable")]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let guard = self.candidates.lock().expect("lock not poisoned");
+        let guard = self.candidates.lock().unwrap_or_else(|e| {
+            tracing::warn!("CandidateTracker lock poisoned, recovering");
+            e.into_inner()
+        });
         f.debug_struct("CandidateTracker")
             .field("count", &guard.len())
             .finish()
@@ -136,7 +138,6 @@ impl CandidateTracker {
     /// Returns [`TrackResult::Rejected`] when the heuristic gates fail.
     /// Returns [`TrackResult::Promoted`] when the candidate's recurrence
     /// count reaches [`PROMOTION_THRESHOLD`].
-    #[expect(clippy::expect_used, reason = "mutex poisoning is unrecoverable")]
     pub fn track_sequence(
         &self,
         tool_calls: &[ToolCallRecord],
@@ -151,7 +152,10 @@ impl CandidateTracker {
         let sig = sequence_signature(tool_calls);
         let now = jiff::Timestamp::now();
 
-        let mut candidates = self.candidates.lock().expect("lock not poisoned");
+        let mut candidates = self.candidates.lock().unwrap_or_else(|e| {
+            tracing::warn!("CandidateTracker lock poisoned, recovering");
+            e.into_inner()
+        });
 
         if let Some(existing) = candidates.iter_mut().find(|c| {
             c.nous_id == nous_id && signature_similarity(&c.signature, &sig) >= SIMILARITY_THRESHOLD
@@ -188,9 +192,11 @@ impl CandidateTracker {
     }
 
     /// Return all current candidates for a given nous.
-    #[expect(clippy::expect_used, reason = "mutex poisoning is unrecoverable")]
     pub fn candidates_for(&self, nous_id: &str) -> Vec<SkillCandidate> {
-        let guard = self.candidates.lock().expect("lock not poisoned");
+        let guard = self.candidates.lock().unwrap_or_else(|e| {
+            tracing::warn!("CandidateTracker lock poisoned, recovering");
+            e.into_inner()
+        });
         guard
             .iter()
             .filter(|c| c.nous_id == nous_id)
@@ -199,10 +205,12 @@ impl CandidateTracker {
     }
 
     /// Return all promoted candidates (`recurrence_count` ≥ threshold) for a nous.
-    #[expect(clippy::expect_used, reason = "mutex poisoning is unrecoverable")]
     #[cfg_attr(not(test), expect(dead_code, reason = "skill candidate tracking for auto-extraction"))]
     pub(crate) fn promoted_for(&self, nous_id: &str) -> Vec<SkillCandidate> {
-        let guard = self.candidates.lock().expect("lock not poisoned");
+        let guard = self.candidates.lock().unwrap_or_else(|e| {
+            tracing::warn!("CandidateTracker lock poisoned, recovering");
+            e.into_inner()
+        });
         guard
             .iter()
             .filter(|c| c.nous_id == nous_id && c.recurrence_count >= PROMOTION_THRESHOLD)
@@ -211,9 +219,11 @@ impl CandidateTracker {
     }
 
     /// Total number of tracked candidates (all nous IDs).
-    #[expect(clippy::expect_used, reason = "mutex poisoning is unrecoverable")]
     pub(crate) fn len(&self) -> usize {
-        self.candidates.lock().expect("lock not poisoned").len()
+        self.candidates.lock().unwrap_or_else(|e| {
+            tracing::warn!("CandidateTracker lock poisoned, recovering");
+            e.into_inner()
+        }).len()
     }
 
     /// Returns `true` if no candidates are tracked.

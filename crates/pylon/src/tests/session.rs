@@ -67,7 +67,7 @@ async fn close_session_returns_204() {
 }
 
 #[tokio::test]
-async fn get_deleted_session_returns_404() {
+async fn get_archived_session_returns_200_with_archived_status() {
     let (router, _dir) = app().await;
     let created = create_test_session(&router).await;
     let id = created["id"].as_str().unwrap();
@@ -85,9 +85,10 @@ async fn get_deleted_session_returns_404() {
         .await
         .unwrap();
 
-    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    assert_eq!(resp.status(), StatusCode::OK);
     let body = body_json(resp).await;
-    assert_eq!(body["error"]["code"], "session_not_found");
+    assert_eq!(body["id"], id);
+    assert_eq!(body["status"], "archived");
 }
 
 #[tokio::test]
@@ -156,7 +157,9 @@ async fn double_close_session_is_idempotent() {
         .oneshot(authed_get(&format!("/api/v1/sessions/{id}")))
         .await
         .expect("get after double close");
-    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert_eq!(body["status"], "archived");
 }
 
 #[tokio::test]
@@ -283,7 +286,9 @@ async fn archive_via_post_returns_204() {
         .oneshot(authed_get(&format!("/api/v1/sessions/{id}")))
         .await
         .unwrap();
-    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert_eq!(body["status"], "archived");
 }
 
 #[tokio::test]

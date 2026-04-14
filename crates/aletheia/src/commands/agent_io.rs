@@ -93,6 +93,9 @@ pub(crate) struct ReviewSkillsArgs {
     /// Fact ID of the pending skill (required for approve/reject)
     #[arg(short, long)]
     pub fact_id: Option<String>,
+    /// Server URL for lock detection
+    #[arg(long, default_value = "http://127.0.0.1:18789")]
+    pub url: String,
 }
 
 #[derive(Debug, Clone, Args)]
@@ -598,10 +601,12 @@ pub(crate) fn export_skills(
     }
 }
 
-pub(crate) fn review_skills(
+pub(crate) async fn review_skills(
     instance_root: Option<&PathBuf>,
     args: &ReviewSkillsArgs,
 ) -> Result<()> {
+    guard_knowledge_lock(&args.url).await?;
+
     #[cfg(feature = "recall")]
     {
         use mneme::knowledge_store::KnowledgeStore;
@@ -770,4 +775,22 @@ fn generate_simple_embedding(text: &str) -> Vec<f32> {
     }
 
     embedding
+}
+
+/// Check if the server is running and holding the knowledge store lock.
+///
+/// Returns an error with a helpful message if the server is reachable,
+/// preventing a confusing `FjallError::Locked` crash.
+async fn guard_knowledge_lock(url: &str) -> Result<()> {
+    let endpoint = format!("{url}/api/health");
+    if let Ok(resp) = reqwest::get(&endpoint).await
+        && (resp.status().is_success() || resp.status().as_u16() == 503)
+    {
+        whatever!(
+            "The server at {url} is running and holds an exclusive lock on the knowledge store.\n  \
+             Stop the server first to use this subcommand, or use the REST API:\n  \
+             GET {url}/api/v1/knowledge/facts"
+        );
+    }
+    Ok(())
 }

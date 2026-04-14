@@ -146,10 +146,6 @@ impl NousManager {
     /// Not cancel-safe. If cancelled after removing an old actor but before
     /// inserting the new entry, the old actor is lost. Only call during
     /// sequential startup, never in a `select!`.
-    #[expect(
-        clippy::expect_used,
-        reason = "Mutex::lock is infallible under normal operation"
-    )]
     pub async fn spawn(
         &mut self,
         config: NousConfig,
@@ -161,7 +157,10 @@ impl NousManager {
             warn!(nous_id = %id, "replacing existing actor");
             let _ = old.handle.shutdown().await;
             // WHY: take join handle before awaiting: must not hold MutexGuard across .await
-            let join_opt = old.join.lock().expect("join mutex not poisoned").take(); // kanon:ignore RUST/expect
+            let join_opt = old.join.lock().unwrap_or_else(|e| {
+                warn!(nous_id = %id, "join mutex poisoned, recovering");
+                e.into_inner()
+            }).take();
             if let Some(join) = join_opt {
                 let _ = join.await;
             }
@@ -338,10 +337,6 @@ impl NousManager {
     }
 
     /// Restart a dead actor with exponential backoff.
-    #[expect(
-        clippy::expect_used,
-        reason = "Mutex::lock is infallible under normal operation"
-    )]
     async fn restart_actor(&mut self, id: &str) {
         let Some(entry) = self.actors.get(id) else {
             return;
@@ -387,7 +382,10 @@ impl NousManager {
 
         if let Some(old) = self.actors.remove(id) {
             // WHY: take join handle before awaiting: must not hold MutexGuard across .await
-            let join_opt = old.join.lock().expect("join mutex not poisoned").take(); // kanon:ignore RUST/expect
+            let join_opt = old.join.lock().unwrap_or_else(|e| {
+                warn!(nous_id = %id, "join mutex poisoned, recovering");
+                e.into_inner()
+            }).take();
             if let Some(join) = join_opt {
                 let restart_drain_timeout =
                     Duration::from_secs(self.nous_behavior.manager_restart_drain_timeout_secs);

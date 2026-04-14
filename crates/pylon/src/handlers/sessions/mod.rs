@@ -211,11 +211,6 @@ pub async fn get_session(
     Path(id): Path<String>,
 ) -> Result<Json<SessionResponse>, ApiError> {
     let session = find_session(&state, &id).await?;
-    // WHY: DELETE archives the session. Archived sessions are non-retrievable via GET
-    // so that DELETE has the expected "resource gone" semantics (#1251).
-    if session.status != SessionStatus::Active {
-        return Err(SessionNotFoundSnafu { id }.build());
-    }
     Ok(Json(SessionResponse::from_mneme(&session)))
 }
 

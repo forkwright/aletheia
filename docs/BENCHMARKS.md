@@ -52,7 +52,7 @@ Run a specific bench function:
 cargo bench -p aletheia-symbolon --bench jwt -- jwt_validate_round_trip
 ```
 
-Run all benches with `--quick` for a fast sanity check (suitable for CI
+Run all benches with `--quick` for a fast validity check (suitable for CI
 and pre-commit):
 
 ```bash

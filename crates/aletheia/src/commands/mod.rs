@@ -101,7 +101,7 @@ pub(crate) async fn dispatch(cmd: Command, instance_root: Option<&PathBuf>) -> R
             agent_io::export_skills(instance_root, &a).map_err(Into::into)
         }
         Command::ReviewSkills(a) => {
-            agent_io::review_skills(instance_root, &a).map_err(Into::into)
+            agent_io::review_skills(instance_root, &a).await.map_err(Into::into)
         }
         Command::Completions { shell } => {
             clap_complete::generate(shell, &mut Cli::command(), "aletheia", &mut std::io::stdout());
