@@ -177,6 +177,17 @@ pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -
         None => Oikos::discover(),
     };
     let config = load_config(&oikos).whatever_context("failed to load config")?;
+
+    let agent_known = config.agents.list.iter().any(|a| a.id == nous_id.as_str());
+    let workspace_path = oikos.nous_dir(nous_id);
+    if !agent_known && !workspace_path.exists() {
+        whatever!(
+            "agent '{}' not found (no config entry and no workspace at {})",
+            nous_id,
+            workspace_path.display()
+        );
+    }
+
     let resolved = resolve_nous(&config, nous_id);
 
     let db_path = oikos.sessions_db();

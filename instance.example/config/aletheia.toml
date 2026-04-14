@@ -120,6 +120,10 @@ workspace = "nous/main"
 # inputCostPerMtok = 3.0
 # outputCostPerMtok = 15.0
 
+# [pricing."claude-opus-4-6"]
+# inputCostPerMtok = 15.0
+# outputCostPerMtok = 75.0
+
 # --- Data retention ---
 # [data.retention]
 # sessionMaxAgeDays = 90

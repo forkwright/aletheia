@@ -56,6 +56,13 @@ pub(crate) enum CcEvent {
         #[serde(flatten)]
         _extra: serde_json::Value,
     },
+
+    /// User-turn echo event emitted by newer CC CLI versions. Ignored.
+    #[serde(rename = "user")]
+    User {
+        #[serde(flatten)]
+        _extra: serde_json::Value,
+    },
 }
 
 /// Assistant message body.
@@ -202,6 +209,13 @@ mod tests {
         let line = r#"{"type":"system","subtype":"init","session_id":"abc"}"#;
         let event = parse_event(line).unwrap();
         assert!(matches!(event, CcEvent::System { .. }));
+    }
+
+    #[test]
+    fn parse_user_event() {
+        let line = r#"{"type":"user","message":{"role":"user","content":"hello"}}"#;
+        let event = parse_event(line).unwrap();
+        assert!(matches!(event, CcEvent::User { .. }));
     }
 
     #[test]

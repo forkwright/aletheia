@@ -180,7 +180,7 @@ pub async fn list_sessions(
             status: s.status.as_str().to_owned(),
             message_count: s.metrics.message_count,
             updated_at: s.updated_at,
-            display_name: s.origin.display_name,
+            name: s.origin.display_name,
         })
         .collect();
 

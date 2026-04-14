@@ -84,9 +84,9 @@ pub struct SessionListItem {
     pub message_count: i64,
     /// ISO 8601 last-updated timestamp.
     pub updated_at: String,
-    /// Human-readable display name, if set.
+    /// Human-readable name, if set.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub display_name: Option<String>,
+    pub name: Option<String>,
 }
 
 /// Session metadata returned by create and get endpoints.

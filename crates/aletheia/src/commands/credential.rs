@@ -150,6 +150,15 @@ pub(crate) async fn run(action: Action, instance_root: Option<&PathBuf>) -> Resu
             }
         }
         Action::Refresh => {
+            // WHY: static API keys have no refresh token; attempting refresh
+            // produces a confusing OAuth troubleshooting message
+            if let Some(cred) = CredentialFile::load(&cred_path)
+                && !cred.has_refresh_token()
+            {
+                println!("Credential is a static API key; refresh is not applicable.");
+                return Ok(());
+            }
+
             println!("Refreshing OAuth token...");
             match symbolon::credential::force_refresh(&cred_path).await {
                 Ok(updated) => {

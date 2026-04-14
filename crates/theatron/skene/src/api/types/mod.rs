@@ -57,7 +57,7 @@ pub struct Session {
     #[serde(default)]
     pub updated_at: Option<String>,
     /// User-assigned display name.
-    #[serde(default)]
+    #[serde(default, alias = "name")]
     pub display_name: Option<String>,
 }
 
@@ -690,6 +690,19 @@ mod tests {
         let session: Session = serde_json::from_str(json).unwrap();
         assert_eq!(session.display_name.as_deref(), Some("My Chat"));
         assert_eq!(session.label(), "My Chat");
+    }
+
+    #[test]
+    fn session_deserialization_with_name_alias() {
+        let json = r#"{
+            "id": "s1",
+            "nous_id": "syn",
+            "session_key": "main",
+            "name": "Via Name"
+        }"#;
+        let session: Session = serde_json::from_str(json).unwrap();
+        assert_eq!(session.display_name.as_deref(), Some("Via Name"));
+        assert_eq!(session.label(), "Via Name");
     }
 
     #[test]
