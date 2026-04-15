@@ -4,12 +4,8 @@
     reason = "test assertions"
 )]
 use super::*;
-use crate::store::SessionStore;
+use crate::test_fixtures::test_store;
 use crate::types::Role;
-
-fn test_store() -> SessionStore {
-    SessionStore::open_in_memory().expect("open in-memory store")
-}
 
 #[test]
 fn binary_path_detection() {

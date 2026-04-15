@@ -10,12 +10,8 @@ use std::collections::HashMap;
 use super::super::*;
 use crate::export::{ExportOptions, export_agent};
 use crate::portability::*;
-use crate::store::SessionStore;
+use crate::test_fixtures::test_store;
 use crate::types::Role;
-
-fn test_store() -> SessionStore {
-    SessionStore::open_in_memory().expect("open in-memory store")
-}
 
 fn counter_id_gen() -> Box<dyn Fn() -> String> {
     let counter = std::sync::atomic::AtomicU64::new(1);
