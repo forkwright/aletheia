@@ -30,7 +30,10 @@ tui/target/
 fuzz/target/
 fuzz/artifacts/
 fuzz/Cargo.lock
-.cargo/
+.cargo/*
+# Keep cargo-audit config under version control so CI and local runs share the same
+# advisory-ignore list (mirrors deny.toml's [[advisories.ignore]]).
+!.cargo/audit.toml
 
 # === Model caches ===
 .fastembed_cache/

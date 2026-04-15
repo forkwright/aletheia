@@ -1,0 +1,82 @@
+# WHY: Run the full Rust gate on every PR — format, type check, clippy (zero
+# warnings), and the workspace test suite. These are the commands CLAUDE.md
+# lists under "Before submitting"; until this workflow existed, nothing on CI
+# enforced them. Scoped to ubuntu-latest for now; macOS lives behind issue
+# #3390 and slots in as another matrix entry when unblocked.
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# PROJECT: explicit top-level default deny; job-level permissions grant only what's needed
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"
+  # WHY: workspace MSRV is 1.94 (Cargo.toml workspace.package.rust-version).
+  # The stable toolchain is used everywhere; MSRV is enforced by the compiler.
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  fmt:
+    name: cargo fmt
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false # PROJECT: security hardening — never expose token to steps
+      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+        with:
+          components: rustfmt
+      - name: cargo fmt --check
+        run: cargo fmt --all -- --check
+
+  check-clippy-test:
+    # WHY: single job on ubuntu runs check, clippy, and test sharing one
+    # target/ cache. Splitting them across jobs would rebuild the workspace
+    # 3× and burn ~30 min of runner time per PR. Structure is a matrix so
+    # macOS (#3390) slots in when unblocked without restructuring.
+    name: ${{ matrix.name }} (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: check + clippy + test
+            os: ubuntu-latest
+            features: test-core
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          # WHY: one cache per OS so macOS (when added) doesn't clobber Linux.
+          key: ${{ matrix.os }}-${{ matrix.features }}
+
+      - name: cargo check --workspace --features ${{ matrix.features }}
+        run: cargo check --workspace --features ${{ matrix.features }} --all-targets
+
+      - name: cargo clippy --workspace --features ${{ matrix.features }} -- -D warnings
+        # WHY: RUSTFLAGS already sets -D warnings, but pass it to clippy
+        # explicitly too so the intent is local to the step.
+        run: cargo clippy --workspace --features ${{ matrix.features }} --all-targets -- -D warnings
+
+      - name: cargo test --workspace --features ${{ matrix.features }}
+        run: cargo test --workspace --features ${{ matrix.features }} --no-fail-fast
