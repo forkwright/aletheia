@@ -85,6 +85,10 @@ pub async fn get_status(
 
 /// GET /api/v1/nous/{id}/tools: list tools available to a nous.
 ///
+/// Returns only the tools that the requesting agent is permitted to use,
+/// filtered by the agent's `tool_allowlist` from its `NousConfig`. When no
+/// allowlist is configured, all registered tools are returned (#3229).
+///
 /// # Cancel safety
 ///
 /// Cancel-safe. Axum handler; cancellation drops the future with no
@@ -105,13 +109,27 @@ pub async fn tools(
     _claims: Claims,
     Path(id): Path<String>,
 ) -> Result<Json<ToolsResponse>, ApiError> {
-    if state.nous_manager.get_config(&id).is_none() {
-        return Err(NousNotFoundSnafu { id }.build());
-    }
+    let config = state
+        .nous_manager
+        .get_config(&id)
+        .ok_or_else(|| NousNotFoundSnafu { id }.build())?;
 
     let defs = state.tool_registry.definitions();
+
+    // WHY: Without filtering, the API returns the global tool registry
+    // regardless of which agent is requesting. Agents with a `tool_allowlist`
+    // (e.g. role-restricted sub-agents) should only see their permitted tools.
+    // This matches the execution-layer enforcement in `execute/mod.rs` (#3229).
     let tools = defs
         .into_iter()
+        .filter(|d| {
+            config
+                .tool_allowlist
+                .as_ref()
+                .is_none_or(|allowlist| {
+                    allowlist.iter().any(|a| a == d.name.as_str())
+                })
+        })
         .map(|d| ToolSummary {
             name: d.name.as_str().to_owned(),
             description: d.description.clone(),
