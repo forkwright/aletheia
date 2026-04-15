@@ -145,10 +145,11 @@ pub async fn create(
     path = "/api/v1/sessions",
     params(
         ("nous_id" = Option<String>, Query, description = "Filter sessions by agent ID"),
-        ("limit" = Option<u32>, Query, description = "Maximum number of sessions to return"),
+        ("limit" = Option<u32>, Query, description = "Maximum number of sessions to return (default 50, max 1000)"),
+        ("after" = Option<String>, Query, description = "Cursor token from a previous response's next_cursor field"),
     ),
     responses(
-        (status = 200, description = "Session list", body = ListSessionsResponse),
+        (status = 200, description = "Paginated session list"),
         (status = 401, description = "Unauthorized", body = ErrorResponse),
     ),
     security(("bearer_auth" = []))
@@ -159,8 +160,10 @@ pub async fn list_sessions(
     _claims: Claims,
     Query(params): Query<ListSessionsParams>,
 ) -> Result<Json<ListSessionsResponse>, ApiError> {
+    use crate::pagination::{DEFAULT_LIMIT, MAX_LIMIT, PaginatedResponse};
+
     let nous_id = params.nous_id;
-    let limit = params.limit;
+    let limit = params.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT);
 
     let state_clone = state.clone();
     let sessions = tokio::task::spawn_blocking(move || {
@@ -171,14 +174,8 @@ pub async fn list_sessions(
     })
     .await??;
 
-    // WHY: the store does not accept a LIMIT parameter; apply the cap in-process
-    // after retrieval. Datasets are small enough that this is not a bottleneck (#1254).
-    let mut sessions = sessions;
-    if let Some(n) = limit {
-        sessions.truncate(usize::try_from(n).unwrap_or(usize::MAX));
-    }
-
-    let items = sessions
+    let total = u64::try_from(sessions.len()).unwrap_or(u64::MAX);
+    let items: Vec<SessionListItem> = sessions
         .into_iter()
         .map(|s| SessionListItem {
             id: s.id,
@@ -191,7 +188,13 @@ pub async fn list_sessions(
         })
         .collect();
 
-    Ok(Json(ListSessionsResponse { sessions: items }))
+    Ok(Json(PaginatedResponse::from_vec(
+        items,
+        limit,
+        params.after.as_deref(),
+        |s| s.id.clone(),
+        Some(total),
+    )))
 }
 
 /// GET /api/v1/sessions/{id}: get session state.

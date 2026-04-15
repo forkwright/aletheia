@@ -185,7 +185,7 @@ async fn list_sessions_returns_empty_initially() {
 
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_json(resp).await;
-    assert!(body["sessions"].is_array());
+    assert!(body["items"].is_array());
 }
 
 #[tokio::test]
@@ -202,7 +202,7 @@ async fn list_sessions_includes_created_session() {
         .unwrap();
 
     let body = body_json(resp).await;
-    let sessions = body["sessions"].as_array().unwrap();
+    let sessions = body["items"].as_array().unwrap();
     assert!(!sessions.is_empty());
     assert_eq!(sessions[0]["nous_id"], "syn");
 }
@@ -221,7 +221,7 @@ async fn list_sessions_filter_by_nous_id() {
         .unwrap();
 
     let body = body_json(resp).await;
-    let sessions = body["sessions"].as_array().unwrap();
+    let sessions = body["items"].as_array().unwrap();
     assert!(!sessions.is_empty());
 
     let resp2 = router
@@ -231,7 +231,7 @@ async fn list_sessions_filter_by_nous_id() {
         .unwrap();
 
     let body2 = body_json(resp2).await;
-    let sessions2 = body2["sessions"].as_array().unwrap();
+    let sessions2 = body2["items"].as_array().unwrap();
     assert!(sessions2.is_empty());
 }
 
@@ -262,7 +262,7 @@ async fn list_sessions_limit_param_returns_n_sessions() {
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_json(resp).await;
     assert_eq!(
-        body["sessions"].as_array().unwrap().len(),
+        body["items"].as_array().unwrap().len(),
         3,
         "limit=3 must return exactly 3 sessions"
     );

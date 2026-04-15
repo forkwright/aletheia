@@ -158,7 +158,8 @@ impl TestEnvBuilder {
             };
             nous_manager
                 .spawn(nous_config, PipelineConfig::default())
-                .await;
+                .await
+                .expect("spawn nous in test harness");
         }
 
         let jwt_manager = Arc::new(JwtManager::new(JwtConfig {

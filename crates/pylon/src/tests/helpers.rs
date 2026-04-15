@@ -137,7 +137,8 @@ bind = "localhost"
     };
     nous_manager
         .spawn(nous_config, PipelineConfig::default())
-        .await;
+        .await
+        .expect("spawn nous in test harness");
 
     let jwt_manager = test_jwt_manager();
 
