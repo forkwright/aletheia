@@ -29,6 +29,7 @@ async fn probe_health(url: &str, token: Option<&str>) -> ServerHealth {
         server_url: url.to_string(),
         auth_token: token.map(str::to_string),
         auto_reconnect: false,
+        ..ConnectionConfig::default()
     };
     match PylonClient::new(&config) {
         Ok(client) => match client.health().await {
