@@ -1,4 +1,4 @@
-# Memory Benchmark Results: LongMemEval and LoCoMo
+# Memory benchmark results: LongMemEval and LoCoMo
 
 **Status:** Harness implemented, awaiting live run. See [Prerequisites](#prerequisites) before executing.
 

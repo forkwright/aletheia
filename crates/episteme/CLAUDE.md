@@ -86,7 +86,7 @@ Used by: mneme (facade re-export)
 | `KnowledgeStore::search` | `knowledge_store/search.rs` | `limit`, `ef` |
 | `KnowledgeStore::insert_fact` | `knowledge_store/facts.rs` | `fact_id` |
 
-### Log Events
+### Log events
 
 | Level | Event | When |
 |-------|-------|------|

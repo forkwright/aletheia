@@ -10,14 +10,14 @@ assignees: ''
 
 What problem does this solve? What's the current limitation?
 
-## Proposed Solution
+## Proposed solution
 
 Describe the feature or change you'd like.
 
-## Alternatives Considered
+## Alternatives considered
 
 Other approaches you've thought about and why they're less suitable.
 
-## Additional Context
+## Additional context
 
 Examples, mockups, references, or related issues.

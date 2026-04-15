@@ -1,4 +1,4 @@
-# Font Acquisition
+# Font acquisition
 
 The desktop design system uses two typefaces, both licensed under the SIL Open Font License (OFL):
 

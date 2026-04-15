@@ -1,4 +1,4 @@
-# Test Tiers
+# Test tiers
 
 Aletheia uses Cargo feature flags to organize tests into tiers that balance
 coverage against build time and resource requirements.

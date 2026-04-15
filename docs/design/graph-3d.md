@@ -1,4 +1,4 @@
-# 3D Force-Directed Knowledge Graph
+# 3D force-directed knowledge graph
 
 Architecture for the Dioxus desktop 3D graph visualization.
 

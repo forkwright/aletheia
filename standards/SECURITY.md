@@ -672,7 +672,7 @@ Log DNS queries for security analysis and debugging. Retain query logs for at mi
 
 ---
 
-## Software Bill of Materials (SBOM)
+## Software bill of materials (SBOM)
 
 Every released binary and container image must have a machine-readable SBOM attached. The SBOM lists every dependency (direct and transitive), its version, and its license. Without an SBOM, you cannot answer "are we affected?" when a CVE drops — you are reduced to grepping lockfiles across dozens of repos under time pressure.
 

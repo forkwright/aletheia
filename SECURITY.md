@@ -45,7 +45,7 @@ After a fix ships, we publish a GitHub Security Advisory with CVE (if warranted)
 | 0.x (previous minor) | Bug fixes only |
 | < current - 2 minors | No |
 
-## Software Bill of Materials (SBOM)
+## Software bill of materials (SBOM)
 
 Per basanos security requirements, every dependency must be tracked in an SBOM with component name, version, PURL, license (SPDX), and hash.
 

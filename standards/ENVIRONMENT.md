@@ -1,4 +1,4 @@
-# Environment Configuration
+# Environment configuration
 
 > Standards for environment variables, configuration files, and runtime settings. Defines how values vary across deploy contexts and how configuration is discovered, loaded, and validated.
 
