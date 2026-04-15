@@ -17,7 +17,7 @@ use crate::runtime::error::InvalidOperationSnafu;
 use crate::runtime::transact::SessionTx;
 use crate::{DataValue, SourceSpan};
 
-impl<'a> SessionTx<'a> {
+impl SessionTx<'_> {
     /// Perform k-nearest neighbors search on an HNSW index.
     ///
     /// # Complexity

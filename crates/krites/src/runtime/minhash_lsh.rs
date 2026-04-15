@@ -19,7 +19,7 @@ use crate::runtime::relation::RelationHandle;
 use crate::runtime::transact::SessionTx;
 use crate::{DataValue, Expr, SourceSpan, Symbol};
 
-impl<'a> SessionTx<'a> {
+impl SessionTx<'_> {
     pub(crate) fn del_lsh_index_item(
         &mut self,
         tuple: &[DataValue],

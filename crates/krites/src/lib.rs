@@ -51,19 +51,6 @@ pub(crate) mod fixed_rule;
 pub(crate) mod fts;
 pub(crate) mod parse;
 pub(crate) mod query;
-#[expect(
-    dead_code,
-    private_interfaces,
-    clippy::as_conversions,
-    clippy::indexing_slicing,
-    clippy::mutable_key_type,
-    clippy::needless_return,
-    clippy::pedantic,
-    clippy::result_large_err,
-    clippy::too_many_arguments,
-    clippy::type_complexity,
-    reason = "krites engine internal — runtime casts and indexing are engine-internal invariants"
-)]
 pub(crate) mod runtime;
 pub(crate) mod storage;
 #[expect(
