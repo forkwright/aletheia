@@ -34,9 +34,8 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use fjall::{KeyspaceCreateOptions, SingleWriterTxDatabase};
-use jiff::Zoned;
 use serde::{Deserialize, Serialize};
-use snafu::{IntoError as _, ResultExt};
+use snafu::ResultExt;
 use tracing::{debug, info, instrument, warn};
 
 use crate::error::{self, Result};
@@ -70,7 +69,7 @@ fn encode_u64(v: u64) -> [u8; 8] {
 
 /// ISO 8601 timestamp string for "now".
 fn now_iso() -> String {
-    Zoned::now().strftime("%Y-%m-%dT%H:%M:%S%.3fZ").to_string()
+    koina::fjall::now_iso()
 }
 
 // ── Distillation record (fjall-internal, not a public type) ────────────────
@@ -88,6 +87,17 @@ struct DistillationRecord {
 
 // ── SessionStore ───────────────────────────────────────────────────────────
 
+/// Partitions used by the graphe session store.
+const PARTITIONS: &[&str] = &[
+    "sessions",
+    "messages",
+    "usage",
+    "distillations",
+    "notes",
+    "blackboard",
+    "counters",
+];
+
 /// Fjall-backed session store.
 ///
 /// Open with [`SessionStore::open`] for persistent storage or
@@ -95,19 +105,9 @@ struct DistillationRecord {
 /// `TempDir` that is cleaned up on drop).
 pub struct SessionStore {
     db: Arc<SingleWriterTxDatabase>,
-    /// Shared write mutex.
-    ///
-    /// WHY: fjall's `SingleWriterTxDatabase` serialises writers internally,
-    /// but the graphe API takes `&self` (shared ref) for all write methods —
-    /// matching the `SQLite` backend where `Connection` uses interior mutability.
-    /// We use a `Mutex<()>` so only one logical "graphe write" runs at
-    /// a time, mirroring the serial-write contract of `SingleWriterTxDatabase`.
+    /// Shared write mutex — see [`koina::fjall::FjallDb::write_lock`].
     write_lock: Mutex<()>,
     /// Kept alive to auto-delete the temp directory when the store is dropped.
-    ///
-    /// WHY: The leading `_` makes Rust suppress `dead_code` warnings for a field
-    /// that is intentionally unused for its value but needed for its `Drop` side
-    /// effect (deleting the temp directory when `SessionStore` is dropped).
     _temp_dir: Option<tempfile::TempDir>,
 }
 
@@ -119,18 +119,9 @@ impl SessionStore {
     #[instrument(skip(path))]
     pub fn open(path: &Path) -> Result<Self> {
         info!(path = %path.display(), "Opening fjall session store");
-        std::fs::create_dir_all(path).map_err(|e| {
-            error::IoSnafu {
-                path: path.to_path_buf(),
-            }
-            .into_error(e)
-        })?;
-
-        let db = SingleWriterTxDatabase::builder(path)
-            .open()
-            .map_err(|e| error::StorageSnafu { message: format!("fjall open: {e}") }.build())?;
-
-        Self::init(db, None)
+        let fdb = koina::fjall::FjallDb::open(path, PARTITIONS)
+            .map_err(|e| error::StorageSnafu { message: e.to_string() }.build())?;
+        Ok(Self::from_fjall_db(fdb))
     }
 
     /// Open an ephemeral session store backed by a `TempDir` (for testing).
@@ -143,36 +134,17 @@ impl SessionStore {
     /// created.
     #[instrument]
     pub fn open_in_memory() -> Result<Self> {
-        let dir = tempfile::TempDir::new().map_err(|e| {
-            error::IoSnafu {
-                path: std::path::PathBuf::from("<tempdir>"),
-            }
-            .into_error(e)
-        })?;
-
-        let db = SingleWriterTxDatabase::builder(dir.path())
-            .open()
-            .map_err(|e| error::StorageSnafu { message: format!("fjall open temp: {e}") }.build())?;
-
-        Self::init(db, Some(dir))
+        let fdb = koina::fjall::FjallDb::open_temp(PARTITIONS)
+            .map_err(|e| error::StorageSnafu { message: e.to_string() }.build())?;
+        Ok(Self::from_fjall_db(fdb))
     }
 
-    fn init(db: SingleWriterTxDatabase, temp_dir: Option<tempfile::TempDir>) -> Result<Self> {
-        // Open all partitions eagerly so they exist before any read/write.
-        for name in &["sessions", "messages", "usage", "distillations", "notes", "blackboard", "counters"] {
-            db.keyspace(name, KeyspaceCreateOptions::default)
-                .map_err(|e| {
-                    error::StorageSnafu {
-                        message: format!("fjall open partition {name}: {e}"),
-                    }
-                    .build()
-                })?;
+    fn from_fjall_db(fdb: koina::fjall::FjallDb) -> Self {
+        Self {
+            db: Arc::new(fdb.db),
+            write_lock: fdb.write_lock,
+            _temp_dir: fdb._temp_dir,
         }
-        Ok(Self {
-            db: Arc::new(db),
-            write_lock: Mutex::new(()),
-            _temp_dir: temp_dir,
-        })
     }
 
     // ── Partition helpers ─────────────────────────────────────────────────

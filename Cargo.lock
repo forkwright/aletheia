@@ -3564,6 +3564,7 @@ version = "0.18.0"
 dependencies = [
  "compact_str",
  "criterion",
+ "fjall",
  "jiff",
  "rand 0.9.4",
  "regex",
