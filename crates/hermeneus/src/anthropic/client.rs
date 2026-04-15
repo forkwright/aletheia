@@ -299,7 +299,8 @@ impl AnthropicProvider {
 
         let request = &self.maybe_prepend_oauth_identity(request);
         let attribution = self.compute_attribution(request);
-        let wire = WireRequest::from_request(request, Some(true), attribution.as_deref());
+        let wire = WireRequest::from_request(request, Some(true), attribution.as_deref())
+            .context(error::ParseResponseSnafu)?;
         let body = serde_json::to_string(&wire).context(error::ParseResponseSnafu)?;
 
         let mut last_error = None;
@@ -729,7 +730,8 @@ impl AnthropicProvider {
         // models are available. This matches what Claude Code itself sends.
         let request = &self.maybe_prepend_oauth_identity(request);
         let attribution = self.compute_attribution(request);
-        let wire = WireRequest::from_request(request, None, attribution.as_deref());
+        let wire = WireRequest::from_request(request, None, attribution.as_deref())
+            .context(error::ParseResponseSnafu)?;
         let body = serde_json::to_string(&wire).context(error::ParseResponseSnafu)?;
 
         let mut last_error = None;

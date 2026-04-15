@@ -235,16 +235,53 @@ fn read_pid(path: &Path) -> Option<u32> {
 }
 
 /// Check whether a PID corresponds to a running process.
+///
+/// Uses `/proc/{pid}` on Linux and `kill(pid, 0)` on other Unix platforms
+/// (macOS, BSDs). The `kill(pid, 0)` syscall sends no signal but checks
+/// whether the process exists and is reachable.
+///
+/// WHY: The previous non-Linux fallback always returned `true`, which meant
+/// a stale lock from a crashed process would block consolidation for the
+/// full mtime stale threshold (up to 24 hours). Using `kill(pid, 0)` allows
+/// immediate reclamation on macOS and other Unix platforms.
 fn is_pid_alive(pid: u32) -> bool {
     #[cfg(target_os = "linux")]
     {
         std::path::Path::new(&format!("/proc/{pid}")).exists()
     }
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(all(unix, not(target_os = "linux")))]
     {
-        // NOTE: conservative fallback; rely on mtime stale threshold for non-Linux.
+        // WHY: kill(pid, 0) checks process existence without sending a signal.
+        // Returns 0 if the process exists, -1 with ESRCH if it does not.
+        // EPERM (no permission to signal) still means the process exists.
+        #[expect(
+            clippy::as_conversions,
+            reason = "u32→i32: PIDs are always positive and fit in i32 on Unix"
+        )]
+        let pid_i32 = pid as i32;
+        // SAFETY: kill(pid, 0) is safe — signal 0 performs a permission check
+        // without delivering any signal. This is the standard Unix idiom for
+        // process existence checks.
+        let ret = unsafe { libc::kill(pid_i32, 0) };
+        if ret == 0 {
+            return true;
+        }
+        // WHY: EPERM means the process exists but we lack permission to signal it.
+        // ESRCH means no process with this PID exists.
+        let errno = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
+        errno == libc::EPERM
+    }
+    // NOTE: Non-Unix platforms (e.g., Windows) cannot check PID liveness.
+    // Return false so stale locks are reclaimed via mtime threshold rather than
+    // blocking consolidation indefinitely.
+    #[cfg(not(unix))]
+    {
         let _ = pid;
-        true
+        tracing::warn!(
+            pid,
+            "PID liveness check unavailable on this platform; assuming dead"
+        );
+        false
     }
 }
 
@@ -402,42 +439,57 @@ mod tests {
         // NOTE: write a fake PID that is very unlikely to be alive.
         write_file(&lock_path, b"4294967295").unwrap_or_default();
 
-        // NOTE: on Linux, PID 4294967295 (u32::MAX) is not alive, so lock is reclaimable.
-        #[cfg(target_os = "linux")]
+        // WHY (#3334): On all Unix platforms (Linux via /proc, macOS/BSD via
+        // kill(pid, 0)), PID 4294967295 (u32::MAX) should be detected as dead
+        // and the lock should be reclaimable without waiting for mtime stale.
+        #[cfg(unix)]
         {
             let acquired =
                 try_acquire(&lock_path, DEFAULT_STALE_THRESHOLD_SECS).unwrap();
             assert!(
                 acquired.is_some(),
-                "lock with dead PID should be reclaimable"
+                "lock with dead PID should be reclaimable on Unix"
             );
             if let Some(lock) = acquired {
                 lock.mark_complete().unwrap_or_default();
             }
         }
 
-        // NOTE: on non-Linux, PIDs are conservatively treated as alive.
-        // Set mtime to 2 hours ago for stale detection fallback.
-        #[cfg(not(target_os = "linux"))]
+        // NOTE: on non-Unix, dead PIDs return false from is_pid_alive, so
+        // the lock is also reclaimable.
+        #[cfg(not(unix))]
         {
-            let past = std::time::SystemTime::now() - std::time::Duration::from_secs(7_200);
-            let times = std::fs::FileTimes::new().set_modified(past);
-            let file = std::fs::File::options()
-                .write(true)
-                .open(&lock_path)
-                .unwrap();
-            file.set_times(times).unwrap_or_default();
-            drop(file);
             let acquired =
                 try_acquire(&lock_path, DEFAULT_STALE_THRESHOLD_SECS).unwrap();
             assert!(
                 acquired.is_some(),
-                "stale lock with old mtime should be reclaimable"
+                "lock with dead PID should be reclaimable on non-Unix"
             );
             if let Some(lock) = acquired {
                 lock.mark_complete().unwrap_or_default();
             }
         }
+    }
+
+    #[test]
+    fn is_pid_alive_detects_current_process() {
+        // WHY: The current process PID must always be detected as alive.
+        // This validates the cross-platform PID detection works correctly.
+        assert!(
+            is_pid_alive(std::process::id()),
+            "current process PID should be detected as alive"
+        );
+    }
+
+    #[test]
+    fn is_pid_alive_detects_dead_pid() {
+        // WHY (#3334): A PID that does not correspond to any running process
+        // must return false so stale locks are reclaimable.
+        // PID u32::MAX is extremely unlikely to be in use.
+        assert!(
+            !is_pid_alive(u32::MAX),
+            "u32::MAX PID should be detected as dead"
+        );
     }
 
     #[test]

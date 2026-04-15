@@ -467,3 +467,107 @@ async fn run_streaming_timeout_returns_error() {
     );
     let _ = fs::remove_file(&script);
 }
+
+// ── output size limits (#3324) ───────────────────────────────────────────
+
+#[tokio::test]
+async fn read_stream_rejects_oversized_output_by_bytes() {
+    // WHY: A CC subprocess that outputs more than MAX_OUTPUT_BYTES must be
+    // rejected with a clear error, not allowed to grow unbounded to OOM.
+    let big_text = "x".repeat(MAX_OUTPUT_BYTES + 1);
+    let event = format!(
+        r#"{{"type":"assistant","message":{{"type":"text","text":"{}"}}}}"#,
+        big_text
+    );
+    let buf = stream_buf(&[&event]);
+    let err = read_stream(buf.as_slice()).await.unwrap_err();
+    let msg = err.to_string();
+    assert!(
+        msg.contains("byte limit"),
+        "error should mention byte limit, got: {msg}"
+    );
+}
+
+#[tokio::test]
+async fn read_stream_with_callback_rejects_oversized_output() {
+    // WHY: The streaming variant must enforce the same size limits.
+    let big_text = "x".repeat(MAX_OUTPUT_BYTES + 1);
+    let event = format!(
+        r#"{{"type":"assistant","message":{{"type":"text","text":"{}"}}}}"#,
+        big_text
+    );
+    let buf = stream_buf(&[&event]);
+    let mut on_delta = |_: &str| {};
+    let err = read_stream_with_callback(buf.as_slice(), &mut on_delta)
+        .await
+        .unwrap_err();
+    let msg = err.to_string();
+    assert!(
+        msg.contains("byte limit"),
+        "error should mention byte limit, got: {msg}"
+    );
+}
+
+#[tokio::test]
+async fn read_stream_accepts_output_within_limits() {
+    // WHY: Output within the byte limit must succeed normally.
+    let text = "x".repeat(1000);
+    let event = format!(
+        r#"{{"type":"assistant","message":{{"type":"text","text":"{}"}}}}"#,
+        text
+    );
+    let result_event = format!(
+        r#"{{"type":"result","subtype":"success","result":"{}","is_error":false}}"#,
+        text
+    );
+    let buf = stream_buf(&[&event, &result_event]);
+    let output = read_stream(buf.as_slice()).await.unwrap();
+    assert_eq!(output.result_text, text);
+}
+
+#[tokio::test]
+async fn run_completion_rejects_oversized_system_prompt() {
+    // WHY: A system prompt exceeding MAX_SYSTEM_PROMPT_BYTES must be
+    // rejected before spawning the subprocess.
+    let big_prompt = "x".repeat(MAX_SYSTEM_PROMPT_BYTES + 1);
+    let binary = PathBuf::from("/bin/echo"); // won't be reached
+    let err = run_completion(
+        &binary,
+        "test-model",
+        Some(&big_prompt),
+        "hello",
+        1024,
+        Duration::from_secs(5),
+    )
+    .await
+    .unwrap_err();
+    let msg = err.to_string();
+    assert!(
+        msg.contains("system prompt exceeds maximum size"),
+        "error should mention system prompt size, got: {msg}"
+    );
+}
+
+#[tokio::test]
+async fn run_streaming_rejects_oversized_system_prompt() {
+    // WHY: The streaming variant must enforce the same system prompt limit.
+    let big_prompt = "x".repeat(MAX_SYSTEM_PROMPT_BYTES + 1);
+    let binary = PathBuf::from("/bin/echo");
+    let mut on_delta = |_: &str| {};
+    let err = run_streaming(
+        &binary,
+        "test-model",
+        Some(&big_prompt),
+        "hello",
+        1024,
+        Duration::from_secs(5),
+        &mut on_delta,
+    )
+    .await
+    .unwrap_err();
+    let msg = err.to_string();
+    assert!(
+        msg.contains("system prompt exceeds maximum size"),
+        "error should mention system prompt size, got: {msg}"
+    );
+}

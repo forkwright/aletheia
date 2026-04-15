@@ -101,11 +101,16 @@ impl<'a> WireRequest<'a> {
     /// prompt. When present, the system prompt is always sent as an array of
     /// text blocks (matching CC format). The attribution block intentionally
     /// omits `cache_control` since it contains a per-conversation fingerprint.
+    ///
+    /// # Errors
+    ///
+    /// Returns `serde_json::Error` if any content block fails to serialize
+    /// during cache control injection.
     pub(crate) fn from_request(
         req: &'a CompletionRequest,
         stream: Option<bool>,
         attribution: Option<&str>,
-    ) -> Self {
+    ) -> Result<Self, serde_json::Error> {
         // WHY: Anthropic API requires system prompt as a top-level field, not in messages.
         let system_text = req.system.clone().or_else(|| {
             let system_texts: Vec<&str> = req
@@ -177,16 +182,16 @@ impl<'a> WireRequest<'a> {
             .enumerate()
             .map(|(i, m)| {
                 let content = if cached_indices.contains(&i) {
-                    WireContent::WithCacheControl(content_with_cache_control(&m.content))
+                    WireContent::WithCacheControl(content_with_cache_control(&m.content)?)
                 } else {
                     WireContent::Borrowed(&m.content)
                 };
-                WireMessage {
+                Ok(WireMessage {
                     role: m.role.as_str(),
                     content,
-                }
+                })
             })
-            .collect();
+            .collect::<Result<Vec<_>, serde_json::Error>>()?;
 
         let user_tool_count = req.tools.len();
         let mut tools: Vec<WireToolEntry<'a>> = req
@@ -230,7 +235,7 @@ impl<'a> WireRequest<'a> {
 
         let stop_sequences: Vec<&str> = req.stop_sequences.iter().map(String::as_str).collect();
 
-        Self {
+        Ok(Self {
             model: &req.model,
             max_tokens: req.max_tokens,
             messages,
@@ -243,7 +248,7 @@ impl<'a> WireRequest<'a> {
             tool_choice: req.tool_choice.as_ref(),
             metadata: req.metadata.as_ref(),
             citations: req.citations.as_ref(),
-        }
+        })
     }
 }
 

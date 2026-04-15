@@ -97,7 +97,7 @@ fn wire_request_code_execution_server_tool() {
         }],
         ..Default::default()
     };
-    let wire = WireRequest::from_request(&req, None, None);
+    let wire = WireRequest::from_request(&req, None, None).unwrap();
     let json = serde_json::to_value(&wire).unwrap();
     let tools = json["tools"].as_array().unwrap();
     assert_eq!(tools.len(), 1, "should have one server tool");
@@ -123,7 +123,7 @@ fn wire_request_no_cache_system_is_string() {
         max_tokens: 1024,
         ..Default::default()
     };
-    let wire = WireRequest::from_request(&req, None, None);
+    let wire = WireRequest::from_request(&req, None, None).unwrap();
     let json = serde_json::to_value(&wire).unwrap();
     assert!(
         json["system"].is_string(),
@@ -154,7 +154,7 @@ fn cache_turns_marks_text_content_as_blocks() {
         cache_turns: true,
         ..Default::default()
     };
-    let wire = WireRequest::from_request(&req, None, None);
+    let wire = WireRequest::from_request(&req, None, None).unwrap();
     let json = serde_json::to_value(&wire).unwrap();
     let msgs = json["messages"].as_array().unwrap();
     let first_content = &msgs[0]["content"];
@@ -192,7 +192,7 @@ fn cache_turns_disabled_leaves_content_unchanged() {
         cache_turns: false,
         ..Default::default()
     };
-    let wire = WireRequest::from_request(&req, None, None);
+    let wire = WireRequest::from_request(&req, None, None).unwrap();
     let json = serde_json::to_value(&wire).unwrap();
     let msgs = json["messages"].as_array().unwrap();
     for msg in msgs {
@@ -215,7 +215,7 @@ fn cache_turns_single_message_no_breakpoints() {
         cache_turns: true,
         ..Default::default()
     };
-    let wire = WireRequest::from_request(&req, None, None);
+    let wire = WireRequest::from_request(&req, None, None).unwrap();
     let json = serde_json::to_value(&wire).unwrap();
     let msgs = json["messages"].as_array().unwrap();
     assert!(
@@ -262,7 +262,7 @@ fn cache_turns_multi_turn_marks_recent_user_messages() {
         cache_turns: true,
         ..Default::default()
     };
-    let wire = WireRequest::from_request(&req, None, None);
+    let wire = WireRequest::from_request(&req, None, None).unwrap();
     let json = serde_json::to_value(&wire).unwrap();
     let msgs = json["messages"].as_array().unwrap();
 
@@ -318,7 +318,7 @@ fn cache_turns_with_block_content() {
         cache_turns: true,
         ..Default::default()
     };
-    let wire = WireRequest::from_request(&req, None, None);
+    let wire = WireRequest::from_request(&req, None, None).unwrap();
     let json = serde_json::to_value(&wire).unwrap();
     let msgs = json["messages"].as_array().unwrap();
 
@@ -356,7 +356,7 @@ fn cache_turns_never_marks_current_message() {
         cache_turns: true,
         ..Default::default()
     };
-    let wire = WireRequest::from_request(&req, None, None);
+    let wire = WireRequest::from_request(&req, None, None).unwrap();
     let json = serde_json::to_value(&wire).unwrap();
     let msgs = json["messages"].as_array().unwrap();
     assert!(
@@ -560,7 +560,7 @@ fn wire_usage_cache_tokens_parsed() {
 #[test]
 fn content_with_cache_control_text() {
     let content = Content::Text("hello".to_owned());
-    let value = content_with_cache_control(&content);
+    let value = content_with_cache_control(&content).unwrap();
     let arr = value.as_array().unwrap();
     assert_eq!(arr.len(), 1, "text content should produce single block");
     assert_eq!(arr[0]["type"], "text", "block type should be text");
@@ -583,7 +583,7 @@ fn content_with_cache_control_blocks() {
             citations: None,
         },
     ]);
-    let value = content_with_cache_control(&content);
+    let value = content_with_cache_control(&content).unwrap();
     let arr = value.as_array().unwrap();
     assert_eq!(arr.len(), 2, "blocks content should preserve block count");
     assert!(
@@ -627,7 +627,7 @@ fn cache_turns_combined_with_system_and_tools() {
         cache_turns: true,
         ..Default::default()
     };
-    let wire = WireRequest::from_request(&req, None, None);
+    let wire = WireRequest::from_request(&req, None, None).unwrap();
     let json = serde_json::to_value(&wire).unwrap();
     assert_eq!(
         json["system"][0]["cache_control"]["type"], "ephemeral",
@@ -690,7 +690,7 @@ fn wire_request_disable_passthrough_serialized() {
         }],
         ..Default::default()
     };
-    let wire = WireRequest::from_request(&req, None, None);
+    let wire = WireRequest::from_request(&req, None, None).unwrap();
     let json = serde_json::to_value(&wire).unwrap();
     let tools = json["tools"].as_array().unwrap();
     assert_eq!(
@@ -716,7 +716,7 @@ fn wire_request_disable_passthrough_none_omitted() {
         }],
         ..Default::default()
     };
-    let wire = WireRequest::from_request(&req, None, None);
+    let wire = WireRequest::from_request(&req, None, None).unwrap();
     let json = serde_json::to_value(&wire).unwrap();
     let tools = json["tools"].as_array().unwrap();
     assert!(

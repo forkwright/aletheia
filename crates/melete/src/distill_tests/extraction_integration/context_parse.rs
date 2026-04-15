@@ -349,3 +349,170 @@ fn parse_summary_flush_source_is_extracted() {
         "extracted decision source should be FlushSource::Extracted"
     );
 }
+
+// ── flush extraction for all 7 sections (#3333) ─────────────────────────
+
+#[test]
+fn parse_summary_extracts_summary_section_as_fact() {
+    let summary = "\
+## Summary
+Fixed login bug in auth module.
+
+## Key Decisions
+- Use null check.
+";
+    let flush = parse_summary_to_flush(summary, "2026-04-15T00:00:00Z");
+    assert!(
+        flush.facts.iter().any(|f| f.content.contains("[Summary]")),
+        "Summary section should be extracted as a fact with [Summary] prefix"
+    );
+    assert!(
+        flush.facts.iter().any(|f| f.content.contains("login bug")),
+        "Summary fact should contain the summary text"
+    );
+}
+
+#[test]
+fn parse_summary_extracts_completed_work_items_as_facts() {
+    let summary = "\
+## Summary
+Auth work.
+
+## Completed Work
+- Fixed null check on line 42 of src/auth/login.rs
+- Added regression test for the fix
+";
+    let flush = parse_summary_to_flush(summary, "2026-04-15T00:00:00Z");
+    let completed_facts: Vec<_> = flush
+        .facts
+        .iter()
+        .filter(|f| f.content.starts_with("[Completed]"))
+        .collect();
+    assert_eq!(
+        completed_facts.len(),
+        2,
+        "should extract 2 Completed Work items as facts"
+    );
+    assert!(
+        completed_facts.iter().any(|f| f.content.contains("null check")),
+        "first completed work fact should mention null check"
+    );
+    assert!(
+        completed_facts.iter().any(|f| f.content.contains("regression test")),
+        "second completed work fact should mention regression test"
+    );
+}
+
+#[test]
+fn parse_summary_extracts_current_state_as_fact() {
+    let summary = "\
+## Summary
+Auth work.
+
+## Current State
+Bug is fixed, test passes. Awaiting code review.
+";
+    let flush = parse_summary_to_flush(summary, "2026-04-15T00:00:00Z");
+    let state_facts: Vec<_> = flush
+        .facts
+        .iter()
+        .filter(|f| f.content.starts_with("[State]"))
+        .collect();
+    assert_eq!(
+        state_facts.len(),
+        1,
+        "Current State section should produce exactly 1 state fact"
+    );
+    assert!(
+        state_facts[0].content.contains("Bug is fixed"),
+        "state fact should contain the current state text"
+    );
+}
+
+#[test]
+fn parse_summary_extracts_open_threads_as_facts() {
+    let summary = "\
+## Summary
+Auth work.
+
+## Open Threads
+- Investigate performance regression in session handler
+- Update documentation for new auth flow
+";
+    let flush = parse_summary_to_flush(summary, "2026-04-15T00:00:00Z");
+    let open_facts: Vec<_> = flush
+        .facts
+        .iter()
+        .filter(|f| f.content.starts_with("[Open]"))
+        .collect();
+    assert_eq!(
+        open_facts.len(),
+        2,
+        "should extract 2 Open Threads items as facts"
+    );
+    assert!(
+        open_facts.iter().any(|f| f.content.contains("performance regression")),
+        "first open thread fact should mention performance regression"
+    );
+}
+
+#[test]
+fn parse_summary_extracts_all_seven_sections() {
+    // WHY: End-to-end test that all 7 section types produce output.
+    let flush = parse_summary_to_flush(MOCK_SUMMARY, "2026-04-15T00:00:00Z");
+
+    // Decisions from "Key Decisions"
+    assert!(
+        !flush.decisions.is_empty(),
+        "Key Decisions section should produce decision items"
+    );
+
+    // Corrections from "Corrections"
+    assert!(
+        !flush.corrections.is_empty(),
+        "Corrections section should produce correction items"
+    );
+
+    // Task state from "Task Context"
+    assert!(
+        flush.task_state.is_some(),
+        "Task Context section should populate task_state"
+    );
+
+    // Facts from Summary, Completed Work, Current State, Open Threads
+    assert!(
+        flush.facts.iter().any(|f| f.content.starts_with("[Summary]")),
+        "Summary section should produce a [Summary] fact"
+    );
+    assert!(
+        flush.facts.iter().any(|f| f.content.starts_with("[Completed]")),
+        "Completed Work section should produce [Completed] facts"
+    );
+    assert!(
+        flush.facts.iter().any(|f| f.content.starts_with("[State]")),
+        "Current State section should produce a [State] fact"
+    );
+    // NOTE: MOCK_SUMMARY has "- None" for Open Threads, which produces a fact
+    assert!(
+        flush.facts.iter().any(|f| f.content.starts_with("[Open]")),
+        "Open Threads section should produce [Open] facts"
+    );
+}
+
+#[test]
+fn parse_summary_empty_sections_produce_no_facts() {
+    let summary = "\
+## Summary
+
+## Completed Work
+
+## Current State
+
+## Open Threads
+";
+    let flush = parse_summary_to_flush(summary, "2026-04-15T00:00:00Z");
+    assert!(
+        flush.facts.is_empty(),
+        "empty sections should produce no facts"
+    );
+}
