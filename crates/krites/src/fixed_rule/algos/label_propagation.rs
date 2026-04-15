@@ -17,6 +17,12 @@ use crate::runtime::temp_store::RegularTempStore;
 
 pub(crate) struct LabelPropagation;
 
+#[expect(
+    clippy::as_conversions,
+    clippy::cast_lossless,
+    clippy::indexing_slicing,
+    reason = "graph label propagation indices are bounds-checked by the CSR adjacency structure and node count"
+)]
 impl FixedRule for LabelPropagation {
     /// Run label propagation community detection.
     ///
@@ -59,6 +65,23 @@ impl FixedRule for LabelPropagation {
 ///
 /// O(I * (V + E)) where I is iterations until convergence. Typically
 /// converges in 5-10 iterations for real-world graphs.
+#[expect(
+    clippy::as_conversions,
+    clippy::indexing_slicing,
+    reason = "graph label propagation indices are bounds-checked by the CSR node count and label arrays"
+)]
+#[expect(
+    clippy::result_large_err,
+    reason = "InternalError carries structured context — boxing deferred to avoid API churn"
+)]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "Poison is lightweight and passed by value for ergonomic .check() calls"
+)]
+#[expect(
+    clippy::float_cmp,
+    reason = "label propagation ties detected via exact f32 equality — scores computed by same accumulation path"
+)]
 fn label_propagation(
     graph: &DirectedCsrGraph<f32>,
     max_iter: usize,

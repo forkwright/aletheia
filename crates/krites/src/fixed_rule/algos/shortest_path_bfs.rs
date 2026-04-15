@@ -16,6 +16,26 @@ use crate::runtime::temp_store::RegularTempStore;
 
 pub(crate) struct ShortestPathBFS;
 
+#[expect(
+    clippy::mutable_key_type,
+    reason = "DataValue implements Hash via canonical byte representation — safe as BTreeMap/BTreeSet key"
+)]
+#[expect(
+    clippy::default_trait_access,
+    reason = "Default::default() is idiomatic for type-inferred collection initialization"
+)]
+#[expect(
+    clippy::explicit_iter_loop,
+    reason = "explicit .iter() clarifies read-only traversal over shared references"
+)]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "graph BFS shortest path indices are bounds-checked by the visited set"
+)]
+#[expect(
+    clippy::semicolon_if_nothing_returned,
+    reason = "trailing semicolons in match arms kept for consistency with surrounding style"
+)]
 impl FixedRule for ShortestPathBFS {
     /// Run unweighted shortest path search via BFS.
     ///

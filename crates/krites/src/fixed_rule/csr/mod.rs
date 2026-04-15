@@ -42,6 +42,11 @@ struct Csr<EV> {
     targets: Box<[Target<EV>]>,
 }
 
+#[expect(
+    clippy::as_conversions,
+    clippy::indexing_slicing,
+    reason = "CSR offset/target arrays are built with matching sizes — indices are structurally valid"
+)]
 impl<EV> Csr<EV> {
     fn node_count(&self) -> u32 {
         #[expect(clippy::cast_possible_truncation, reason = "value fits u32")]
@@ -64,6 +69,11 @@ impl<EV> Csr<EV> {
     }
 }
 
+#[expect(
+    clippy::as_conversions,
+    clippy::indexing_slicing,
+    reason = "CSR offset/target arrays are built with matching sizes — indices are structurally valid"
+)]
 impl Csr<()> {
     fn targets_iter(&self, node: u32) -> impl Iterator<Item = u32> + '_ {
         let i = node as usize;
@@ -118,6 +128,11 @@ impl<EV> Default for CsrBuilder<EV> {
     }
 }
 
+#[expect(
+    clippy::as_conversions,
+    clippy::indexing_slicing,
+    reason = "CSR builder indices derive from edge list max node id — structurally valid for adjacency construction"
+)]
 impl<EV: Copy> CsrBuilder<EV> {
     pub fn new() -> Self {
         Self::default()

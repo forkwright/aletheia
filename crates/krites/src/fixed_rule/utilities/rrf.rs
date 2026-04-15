@@ -18,6 +18,10 @@ const RRF_K: f64 = 60.0;
 
 pub(crate) struct ReciprocalRankFusion;
 
+#[expect(
+    clippy::ignored_unit_patterns,
+    reason = "FxHashMap<CompactString, ()> uses unit value as set membership — _ pattern is clearest"
+)]
 impl FixedRule for ReciprocalRankFusion {
     fn arity(
         &self,
@@ -79,6 +83,11 @@ impl FixedRule for ReciprocalRankFusion {
     }
 }
 
+#[expect(
+    clippy::as_conversions,
+    clippy::cast_precision_loss,
+    reason = "rank-to-f64 cast for RRF denominator — rank values are small and precision loss is negligible"
+)]
 fn signal_contribution(rank: usize) -> f64 {
     if rank == 0 {
         0.0
@@ -87,6 +96,10 @@ fn signal_contribution(rank: usize) -> f64 {
     }
 }
 
+#[expect(
+    clippy::result_large_err,
+    reason = "InternalError carries structured context — boxing deferred to avoid API churn"
+)]
 fn collect_signal_scores(
     input: crate::fixed_rule::FixedRuleInputRelation<'_, '_>,
 ) -> Result<FxHashMap<CompactString, f64>> {
@@ -113,6 +126,11 @@ fn assign_ranks(scores: &FxHashMap<CompactString, f64>) -> FxHashMap<CompactStri
         .collect()
 }
 
+#[expect(
+    clippy::as_conversions,
+    clippy::cast_possible_wrap,
+    reason = "rank-to-i64 cast — rank values are small positive numbers well within i64 range"
+)]
 fn rank_to_output(rank: usize) -> i64 {
     if rank == 0 { -1 } else { rank as i64 }
 }

@@ -14,6 +14,23 @@ use crate::runtime::temp_store::RegularTempStore;
 
 pub(crate) struct DegreeCentrality;
 
+#[expect(
+    clippy::mutable_key_type,
+    reason = "DataValue implements Hash via canonical byte representation — safe as BTreeMap key"
+)]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "graph degree counter indices are bounds-checked by the node map"
+)]
+#[expect(
+    clippy::explicit_into_iter_loop,
+    reason = "explicit .into_iter() clarifies ownership transfer of collected results"
+)]
+#[expect(
+    clippy::as_conversions,
+    clippy::cast_possible_wrap,
+    reason = "usize-to-isize degree counts are small positive values well within isize range"
+)]
 impl FixedRule for DegreeCentrality {
     /// Run degree centrality computation.
     ///

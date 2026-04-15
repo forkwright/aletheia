@@ -17,6 +17,11 @@ use crate::runtime::temp_store::RegularTempStore;
 
 pub(crate) struct CommunityDetectionLouvain;
 
+#[expect(
+    clippy::as_conversions,
+    clippy::indexing_slicing,
+    reason = "graph Louvain community indices are bounds-checked by the CSR node count and community arrays"
+)]
 impl FixedRule for CommunityDetectionLouvain {
     /// Run Louvain community detection algorithm.
     ///
@@ -77,6 +82,14 @@ impl FixedRule for CommunityDetectionLouvain {
 ///
 /// O(P * I * V * log V) where P is hierarchy levels, I is iterations, V is vertices.
 /// Typically converges in 2-5 levels for real-world graphs.
+#[expect(
+    clippy::result_large_err,
+    reason = "InternalError carries structured context — boxing deferred to avoid API churn"
+)]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "Poison is lightweight and passed by value — cloned per iteration level"
+)]
 fn louvain(
     graph: &DirectedCsrGraph<f32>,
     delta: f32,
@@ -103,6 +116,15 @@ fn louvain(
     Ok(collected.into_iter().map(|(a, _)| a).collect_vec())
 }
 
+#[expect(
+    clippy::as_conversions,
+    clippy::indexing_slicing,
+    reason = "graph Louvain modularity delta indices are bounds-checked by the community membership sets"
+)]
+#[expect(
+    clippy::explicit_iter_loop,
+    reason = "explicit .iter() on BTreeSet clarifies read-only traversal over community membership"
+)]
 fn calculate_delta(
     node: u32,
     target_community: u32,
@@ -141,6 +163,31 @@ fn calculate_delta(
             / total_weight
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "Louvain phase 1 (node moves) + phase 2 (graph coarsening) kept together for algorithmic clarity"
+)]
+#[expect(
+    clippy::as_conversions,
+    clippy::indexing_slicing,
+    reason = "graph Louvain step indices are bounds-checked by the CSR node count and community arrays"
+)]
+#[expect(
+    clippy::result_large_err,
+    reason = "InternalError carries structured context — boxing deferred to avoid API churn"
+)]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "Poison is consumed by .check() and must be cloneable — owned value matches the pattern"
+)]
+#[expect(
+    clippy::default_trait_access,
+    reason = "Default::default() is idiomatic for type-inferred BTreeMap initialization"
+)]
+#[expect(
+    clippy::redundant_else,
+    reason = "explicit else branch clarifies the modularity convergence control flow"
+)]
 fn louvain_step(
     graph: &DirectedCsrGraph<f32>,
     delta: f32,

@@ -22,6 +22,43 @@ use crate::runtime::temp_store::RegularTempStore;
 
 pub(crate) struct ShortestPathDijkstra;
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "Dijkstra setup, parallel dispatch, and path reconstruction kept together for algorithmic clarity"
+)]
+#[expect(
+    clippy::as_conversions,
+    clippy::indexing_slicing,
+    reason = "graph Dijkstra indices are bounds-checked by the CSR adjacency structure and visited set"
+)]
+#[expect(
+    clippy::result_large_err,
+    reason = "InternalError carries structured context — boxing deferred to avoid API churn"
+)]
+#[expect(
+    clippy::type_complexity,
+    reason = "Dijkstra returns parallel results with paths, costs, and node indices together"
+)]
+#[expect(
+    clippy::semicolon_if_nothing_returned,
+    reason = "trailing semicolons in match arms kept for consistency with surrounding style"
+)]
+#[expect(
+    clippy::cloned_instead_of_copied,
+    reason = "DataValue is not Copy — .cloned() is correct"
+)]
+#[expect(
+    clippy::if_not_else,
+    reason = "negative condition checks (not keep_ties, no termination) read better for the algorithm control flow"
+)]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "FixedRule trait requires owned FixedRulePayload and Poison"
+)]
+#[expect(
+    clippy::float_cmp,
+    reason = "Dijkstra distance comparison uses exact f32 zero check — not accumulated floating-point"
+)]
 impl FixedRule for ShortestPathDijkstra {
     /// Run Dijkstra's shortest path algorithm.
     ///
@@ -257,6 +294,11 @@ impl Goal for BTreeSet<u32> {
 /// # Complexity
 ///
 /// O(E log V) using binary heap. Space: O(V) for distances and backpointers.
+#[expect(
+    clippy::as_conversions,
+    clippy::indexing_slicing,
+    reason = "graph Dijkstra indices are bounds-checked by the CSR node count and distance arrays"
+)]
 pub(crate) fn dijkstra<FE: ForbiddenEdge, FN: ForbiddenNode, G: Goal + Clone>(
     edges: &DirectedCsrGraph<f32>,
     start: u32,
@@ -328,6 +370,19 @@ pub(crate) fn dijkstra<FE: ForbiddenEdge, FN: ForbiddenNode, G: Goal + Clone>(
 ///
 /// O(E log V + P) where P is the number of paths found. Can be exponential
 /// in worst case when many equal-cost paths exist.
+#[expect(
+    clippy::as_conversions,
+    clippy::indexing_slicing,
+    reason = "graph Dijkstra indices are bounds-checked by the CSR node count and distance arrays"
+)]
+#[expect(
+    clippy::float_cmp,
+    reason = "Dijkstra equal-cost tie detection compares distances set from same arithmetic path — exact equality is correct"
+)]
+#[expect(
+    clippy::semicolon_if_nothing_returned,
+    reason = "trailing semicolons in if-blocks kept for consistency with surrounding style"
+)]
 pub(crate) fn dijkstra_keep_ties<FE: ForbiddenEdge, FN: ForbiddenNode, G: Goal + Clone>(
     edges: &DirectedCsrGraph<f32>,
     start: u32,

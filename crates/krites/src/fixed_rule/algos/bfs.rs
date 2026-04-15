@@ -15,6 +15,18 @@ use crate::runtime::temp_store::RegularTempStore;
 
 pub(crate) struct Bfs;
 
+#[expect(
+    clippy::mutable_key_type,
+    reason = "DataValue implements Hash via canonical byte representation — safe as BTreeSet key"
+)]
+#[expect(
+    clippy::default_trait_access,
+    reason = "Default::default() is idiomatic for type-inferred collection initialization"
+)]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "graph BFS indices are bounds-checked by the visited set"
+)]
 impl FixedRule for Bfs {
     /// Run breadth-first search traversal.
     ///

@@ -18,6 +18,23 @@ use crate::runtime::temp_store::RegularTempStore;
 
 pub(crate) struct ReorderSort;
 
+#[expect(
+    clippy::result_large_err,
+    reason = "InternalError carries structured context — boxing deferred to avoid API churn"
+)]
+#[expect(
+    clippy::explicit_iter_loop,
+    reason = "explicit .iter_mut() on out_list clarifies mutable traversal"
+)]
+#[expect(
+    clippy::redundant_closure_for_method_calls,
+    reason = "closure form |e| e.compile() matches the map pattern used throughout this function"
+)]
+#[expect(
+    clippy::as_conversions,
+    clippy::indexing_slicing,
+    reason = "sort rank cast to i64 is guarded by buffer length — slice removes trailing sort key"
+)]
 impl FixedRule for ReorderSort {
     fn run(
         &self,

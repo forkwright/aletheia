@@ -1,4 +1,4 @@
-//! PageRank fixed rule.
+//! `PageRank` fixed rule.
 use std::collections::BTreeMap;
 
 use compact_str::CompactString;
@@ -15,8 +15,17 @@ use crate::runtime::temp_store::RegularTempStore;
 
 pub(crate) struct PageRank;
 
+#[expect(
+    clippy::as_conversions,
+    clippy::cast_lossless,
+    reason = "f32-to-f64 promotion is lossless but clippy flags it — kept as `as` for graph output consistency"
+)]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "PageRank result indices are bounds-checked by the graph node count"
+)]
 impl FixedRule for PageRank {
-    /// Run PageRank on the input edge relation.
+    /// Run `PageRank` on the input edge relation.
     ///
     /// # Complexity
     ///
