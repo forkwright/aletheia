@@ -21,6 +21,7 @@ test-full = ["test-core"]
 [dependencies]
 dianoia = { path = "../dianoia" }
 eidos = { path = "../eidos" }
+episteme = { path = "../episteme", default-features = false }
 hermeneus = { path = "../hermeneus" }
 koina = { path = "../koina" }
 melete = { path = "../melete" }

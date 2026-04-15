@@ -73,7 +73,7 @@ impl std::fmt::Display for TurnType {
 /// 5. Procedural patterns → `Procedural`
 /// 6. Default → `Discussion`
 #[must_use]
-pub(crate) fn classify_turn(content: &str) -> TurnType {
+pub fn classify_turn(content: &str) -> TurnType {
     let lower = content.to_lowercase();
 
     if has_correction_patterns(&lower) {
@@ -279,7 +279,7 @@ impl std::fmt::Display for FactType {
 
 /// Classify a fact's type from its content using keyword heuristics.
 #[must_use]
-pub(crate) fn classify_fact(content: &str) -> FactType {
+pub fn classify_fact(content: &str) -> FactType {
     let lower = content.to_lowercase();
 
     if has_identity_patterns(&lower) {
@@ -411,7 +411,7 @@ pub struct CorrectionSignal {
 
 /// Detect whether content contains an explicit correction.
 #[must_use]
-pub(crate) fn detect_correction(content: &str) -> CorrectionSignal {
+pub fn detect_correction(content: &str) -> CorrectionSignal {
     let lower = content.to_lowercase();
     let is_correction = has_correction_patterns(&lower);
     CorrectionSignal {
