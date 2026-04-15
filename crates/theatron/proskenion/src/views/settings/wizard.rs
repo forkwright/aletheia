@@ -126,6 +126,7 @@ pub(crate) fn SetupWizard() -> Element {
                                             server_url: data.server_url.clone(),
                                             auth_token: token,
                                             auto_reconnect: true,
+                                            ..ConnectionConfig::default()
                                         };
                                         connection_config.set(new_config.clone());
                                         if let Err(e) = config::save(&new_config) {

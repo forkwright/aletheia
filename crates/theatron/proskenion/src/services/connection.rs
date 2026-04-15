@@ -57,6 +57,13 @@ pub enum ConnectionError {
         status: u16,
     },
 
+    /// Connection attempt exceeded the configured timeout.
+    #[snafu(display("connection timed out after {timeout_secs}s"))]
+    Timeout {
+        /// Configured timeout in seconds.
+        timeout_secs: u64,
+    },
+
     /// Auth token contains non-ASCII characters.
     #[snafu(display("invalid auth token: contains non-ASCII characters"))]
     InvalidToken,
@@ -190,7 +197,12 @@ impl ConnectionService {
         let _ = self.tx.send(state);
     }
 
-    /// Run the connection loop until cancelled.
+    /// Run the connection loop until cancelled or timed out.
+    ///
+    /// The overall connection phase (all retries combined) is bounded by
+    /// `ConnectionConfig::connect_timeout_secs` (default 30s). If the
+    /// deadline elapses without a successful health check, the service
+    /// emits `ConnectionState::TimedOut` so the UI can offer a retry button.
     ///
     /// This is designed to be spawned as a background task:
     /// ```ignore
@@ -212,8 +224,10 @@ impl ConnectionService {
             }
         };
 
-        // Initial connection attempt.
+        // Initial connection attempt with overall timeout.
         self.emit(ConnectionState::Connecting);
+        let deadline = tokio::time::sleep(self.config.connect_timeout());
+        tokio::pin!(deadline);
         let mut attempt: u32 = 0;
 
         loop {
@@ -223,7 +237,23 @@ impl ConnectionService {
 
             attempt = attempt.saturating_add(1);
 
-            match client.health().await {
+            // Race the health check against cancellation and the overall deadline.
+            let health_result = tokio::select! {
+                biased;
+                _ = self.cancel.cancelled() => return,
+                _ = &mut deadline => {
+                    tracing::warn!(
+                        timeout_secs = self.config.connect_timeout_secs,
+                        attempts = attempt,
+                        "connection timed out"
+                    );
+                    self.emit(ConnectionState::TimedOut);
+                    return;
+                }
+                result = client.health() => result,
+            };
+
+            match health_result {
                 Ok(()) => {
                     tracing::info!(base_url = client.base_url(), "connected to pylon");
                     self.emit(ConnectionState::Connected);
@@ -241,6 +271,15 @@ impl ConnectionService {
                     tokio::select! {
                         biased;
                         _ = self.cancel.cancelled() => return,
+                        _ = &mut deadline => {
+                            tracing::warn!(
+                                timeout_secs = self.config.connect_timeout_secs,
+                                attempts = attempt,
+                                "connection timed out during backoff"
+                            );
+                            self.emit(ConnectionState::TimedOut);
+                            return;
+                        }
                         // NOTE: backoff elapsed, retry connection
                         _ = tokio::time::sleep(delay) => {}
                     }
