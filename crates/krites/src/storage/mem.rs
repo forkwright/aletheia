@@ -24,6 +24,10 @@ type Result<T> = StorageResult<T>;
 /// Create a database backed by memory.
 /// This is the fastest storage, but non-persistent.
 /// Supports concurrent readers but only a single writer.
+#[expect(
+    clippy::result_large_err,
+    reason = "InternalError carries structured context — boxing deferred to avoid API churn across engine internals"
+)]
 pub fn new_mem_db() -> crate::error::InternalResult<crate::DbCore<MemStorage>> {
     let ret = crate::DbCore::new(MemStorage::default())?;
     ret.initialize()?;
@@ -45,10 +49,16 @@ impl<'s> Storage<'s> for MemStorage {
 
     fn transact(&'s self, write: bool) -> Result<Self::Tx> {
         Ok(if write {
-            let wtr = self.store.write().unwrap_or_else(|e| e.into_inner());
-            MemTx::Writer(wtr, Default::default())
+            let wtr = self
+                .store
+                .write()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            MemTx::Writer(wtr, BTreeMap::default())
         } else {
-            let rdr = self.store.read().unwrap_or_else(|e| e.into_inner());
+            let rdr = self
+                .store
+                .read()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             MemTx::Reader(rdr)
         })
     }
@@ -61,7 +71,10 @@ impl<'s> Storage<'s> for MemStorage {
         &'a self,
         data: Box<dyn Iterator<Item = Result<(Vec<u8>, Vec<u8>)>> + 'a>,
     ) -> Result<()> {
-        let mut store = self.store.write().unwrap_or_else(|e| e.into_inner());
+        let mut store = self
+            .store
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         for pair in data {
             let (k, v) = pair?;
             store.insert(k, v);
@@ -130,7 +143,7 @@ impl<'s> StoreTx<'s> for MemTx<'s> {
                     .range(lower.to_vec()..upper.to_vec())
                     .map(|kv| kv.0.clone())
                     .collect_vec();
-                for k in keys.iter() {
+                for k in &keys {
                     wtr.remove(k);
                 }
                 Ok(())
@@ -169,6 +182,10 @@ impl<'s> StoreTx<'s> for MemTx<'s> {
         }
     }
 
+    #[expect(
+        clippy::result_large_err,
+        reason = "InternalResult is the engine-wide error type — cannot box without changing the trait contract"
+    )]
     fn range_scan_tuple<'a>(
         &'a self,
         lower: &[u8],
@@ -221,6 +238,10 @@ impl<'s> StoreTx<'s> for MemTx<'s> {
         }
     }
 
+    #[expect(
+        clippy::result_large_err,
+        reason = "InternalResult is the engine-wide error type — cannot box without changing the trait contract"
+    )]
     fn range_scan<'a>(
         &'a self,
         lower: &[u8],
@@ -277,6 +298,18 @@ where
     T: Iterator<Item = (&'a Vec<u8>, &'a Vec<u8>)>,
 {
     #[inline]
+    #[expect(
+        clippy::unnecessary_wraps,
+        reason = "returns Result for consistency with next_inner's ? chaining — fill_cache is always called via `self.fill_cache()?`"
+    )]
+    #[expect(
+        clippy::result_large_err,
+        reason = "InternalResult is the engine-wide error type — cannot box without changing the trait contract"
+    )]
+    #[expect(
+        clippy::semicolon_if_nothing_returned,
+        reason = "let-chain in if-expression — adding semicolon changes semantics inside let-else"
+    )]
     fn fill_cache(&mut self) -> InternalResult<()> {
         if self.change_cache.is_none()
             && let Some(kmv) = self.change_iter.next()
@@ -294,6 +327,14 @@ where
     }
 
     #[inline]
+    #[expect(
+        clippy::result_large_err,
+        reason = "InternalResult is the engine-wide error type — cannot box without changing the trait contract"
+    )]
+    #[expect(
+        clippy::needless_continue,
+        reason = "explicit continue clarifies the merge-iterator control flow across three match arms"
+    )]
     fn next_inner(&mut self) -> InternalResult<Option<(Vec<u8>, Vec<u8>)>> {
         let corrupted = || {
             crate::error::InternalError::from(
@@ -362,6 +403,18 @@ struct CacheIter<'a> {
 
 impl CacheIter<'_> {
     #[inline]
+    #[expect(
+        clippy::unnecessary_wraps,
+        reason = "returns Result for consistency with next_inner's ? chaining — fill_cache is always called via `self.fill_cache()?`"
+    )]
+    #[expect(
+        clippy::result_large_err,
+        reason = "InternalResult is the engine-wide error type — cannot box without changing the trait contract"
+    )]
+    #[expect(
+        clippy::semicolon_if_nothing_returned,
+        reason = "let-chain in if-expression — adding semicolon changes semantics inside let-else"
+    )]
     fn fill_cache(&mut self) -> InternalResult<()> {
         if self.change_cache.is_none()
             && let Some(kmv) = self.change_iter.next()
@@ -379,6 +432,14 @@ impl CacheIter<'_> {
     }
 
     #[inline]
+    #[expect(
+        clippy::result_large_err,
+        reason = "InternalResult is the engine-wide error type — cannot box without changing the trait contract"
+    )]
+    #[expect(
+        clippy::needless_continue,
+        reason = "explicit continue clarifies the merge-iterator control flow across three match arms"
+    )]
     fn next_inner(&mut self) -> InternalResult<Option<Tuple>> {
         let corrupted = || {
             crate::error::InternalError::from(
@@ -434,7 +495,7 @@ impl Iterator for CacheIter<'_> {
     }
 }
 
-/// Keep an eye on https://github.com/rust-lang/rust/issues/49638
+/// Keep an eye on <https://github.com/rust-lang/rust/issues/49638>
 pub(crate) struct SkipIterator<'a> {
     pub(crate) inner: &'a BTreeMap<Vec<u8>, Vec<u8>>,
     pub(crate) upper: Vec<u8>,
@@ -443,7 +504,7 @@ pub(crate) struct SkipIterator<'a> {
     pub(crate) size_hint: Option<usize>,
 }
 
-impl<'a> Iterator for SkipIterator<'a> {
+impl Iterator for SkipIterator<'_> {
     type Item = Tuple;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -479,7 +540,7 @@ struct SkipDualIterator<'a> {
     next_bound: Vec<u8>,
 }
 
-impl<'a> Iterator for SkipDualIterator<'a> {
+impl Iterator for SkipDualIterator<'_> {
     type Item = Tuple;
 
     fn next(&mut self) -> Option<Self::Item> {

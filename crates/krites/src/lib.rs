@@ -103,13 +103,6 @@ pub(crate) mod query;
     reason = "krites engine internal — runtime casts and indexing are engine-internal invariants"
 )]
 pub(crate) mod runtime;
-#[expect(
-    dead_code,
-    clippy::pedantic,
-    clippy::result_large_err,
-    clippy::type_complexity,
-    reason = "krites engine internal — storage backend trait implementations"
-)]
 pub(crate) mod storage;
 #[expect(
     clippy::pedantic,

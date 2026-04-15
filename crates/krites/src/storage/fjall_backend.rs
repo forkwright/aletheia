@@ -20,6 +20,14 @@ type Result<T> = StorageResult<T>;
 /// Pure Rust, zero C dependencies, LSM-tree with LZ4 compression.
 /// Uses `SingleWriterTxDatabase` for serialized write transactions
 /// with native read-your-own-writes semantics.
+#[expect(
+    clippy::result_large_err,
+    reason = "InternalResult is the engine-wide error type — boxing deferred to avoid API churn across engine internals"
+)]
+#[expect(
+    clippy::items_after_statements,
+    reason = "scoped import keeps snafu::ResultExt close to its only use site"
+)]
 pub fn new_krites_fjall(
     path: impl AsRef<Path>,
 ) -> crate::error::InternalResult<DbCore<FjallStorage>> {
@@ -324,6 +332,10 @@ impl<'s> StoreTx<'s> for FjallTx<'s> {
         }
     }
 
+    #[expect(
+        clippy::result_large_err,
+        reason = "InternalResult is the engine-wide error type — cannot box without changing the trait contract"
+    )]
     fn range_scan_tuple<'a>(
         &'a self,
         lower: &[u8],
