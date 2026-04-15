@@ -67,7 +67,7 @@ impl From<DataValue> for JsonValue {
                         json!("INFINITY")
                     }
                 } else {
-                    unreachable!()
+                    unreachable!("INVARIANT: f64 is always finite, NaN, or infinite")
                 }
             }
             DataValue::Str(t) => JsonValue::String(t.into()),

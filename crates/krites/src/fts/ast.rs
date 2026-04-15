@@ -78,7 +78,7 @@ impl FtsExpr {
                     flattened
                         .into_iter()
                         .next()
-                        .unwrap_or_else(|| unreachable!())
+                        .unwrap_or_else(|| unreachable!("INVARIANT: flattened.len() == 1 guarantees next() yields Some"))
                 } else {
                     FtsExpr::And(flattened)
                 }
@@ -99,7 +99,7 @@ impl FtsExpr {
                     flattened
                         .into_iter()
                         .next()
-                        .unwrap_or_else(|| unreachable!())
+                        .unwrap_or_else(|| unreachable!("INVARIANT: flattened.len() == 1 guarantees next() yields Some"))
                 } else {
                     FtsExpr::Or(flattened)
                 }
@@ -124,7 +124,7 @@ impl FtsExpr {
                 let mut tokens = vec![];
                 l.tokenize(tokenizer, &mut tokens);
                 if tokens.len() == 1 {
-                    FtsExpr::Literal(tokens.into_iter().next().unwrap_or_else(|| unreachable!()))
+                    FtsExpr::Literal(tokens.into_iter().next().unwrap_or_else(|| unreachable!("INVARIANT: tokens.len() == 1 guarantees next() yields Some")))
                 } else {
                     FtsExpr::And(tokens.into_iter().map(FtsExpr::Literal).collect())
                 }

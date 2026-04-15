@@ -187,7 +187,7 @@ pub(crate) fn op_pack_bits(args: &[DataValue]) -> Result<DataValue> {
                             5 => *target |= 0b00000100,
                             6 => *target |= 0b00000010,
                             7 => *target |= 0b00000001,
-                            _ => unreachable!(),
+                            _ => unreachable!("INVARIANT: idx = i % 8, range [0,7]"),
                         }
                     }
                 }
