@@ -67,7 +67,7 @@ async fn close_session_returns_204() {
 }
 
 #[tokio::test]
-async fn get_archived_session_returns_200_with_archived_status() {
+async fn get_archived_session_returns_404() {
     let (router, _dir) = app().await;
     let created = create_test_session(&router).await;
     let id = created["id"].as_str().unwrap();
@@ -79,16 +79,14 @@ async fn get_archived_session_returns_200_with_archived_status() {
         .unwrap();
     assert_eq!(del.status(), StatusCode::NO_CONTENT);
 
+    // WHY: archived sessions must not be visible via normal GET (#3196).
     let resp = router
         .clone()
         .oneshot(authed_get(&format!("/api/v1/sessions/{id}")))
         .await
         .unwrap();
 
-    assert_eq!(resp.status(), StatusCode::OK);
-    let body = body_json(resp).await;
-    assert_eq!(body["id"], id);
-    assert_eq!(body["status"], "archived");
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
@@ -152,14 +150,13 @@ async fn double_close_session_is_idempotent() {
         .expect("second close");
     assert_eq!(second.status(), StatusCode::NO_CONTENT);
 
+    // WHY: archived sessions must not be visible via normal GET (#3196).
     let resp = router
         .clone()
         .oneshot(authed_get(&format!("/api/v1/sessions/{id}")))
         .await
         .expect("get after double close");
-    assert_eq!(resp.status(), StatusCode::OK);
-    let body = body_json(resp).await;
-    assert_eq!(body["status"], "archived");
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
@@ -281,14 +278,13 @@ async fn archive_via_post_returns_204() {
     let resp = router.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::NO_CONTENT);
 
+    // WHY: archived sessions must not be visible via normal GET (#3196).
     let resp = router
         .clone()
         .oneshot(authed_get(&format!("/api/v1/sessions/{id}")))
         .await
         .unwrap();
-    assert_eq!(resp.status(), StatusCode::OK);
-    let body = body_json(resp).await;
-    assert_eq!(body["status"], "archived");
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
