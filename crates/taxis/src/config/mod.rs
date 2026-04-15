@@ -8,7 +8,7 @@ mod resolved;
 
 pub use agents::{
     AgentBehaviorDefaults, AgentDefaults, AgentModelDefaults, AgentsConfig,
-    CachingConfig, ModelSpec, NousDefinition, RecallEngineWeights, RecallSettings,
+    CachingConfig, ModelSpec, NousDefinition, RecallSettings,
     RecallWeights,
 };
 pub use behavior::{
@@ -67,26 +67,67 @@ pub struct AletheiaConfig {
     /// Training data capture configuration.
     pub training: eidos::training::TrainingConfig,
     /// Deployment-tunable timeout thresholds.
+    ///
+    /// WHY configurable: LLM call timeouts vary by provider and network
+    /// conditions; operators running behind proxies or on slow links need to
+    /// adjust without code changes.
     pub timeouts: TimeoutsConfig,
     /// Deployment-tunable capacity limits for tool output and context windows.
+    ///
+    /// WHY configurable: tool output truncation and Opus context upgrade
+    /// thresholds depend on host hardware and model provider limits.
     pub capacity: CapacityConfig,
     /// Deployment-tunable LLM retry and backoff parameters.
+    ///
+    /// WHY configurable: retry aggressiveness must adapt to provider SLAs and
+    /// cost constraints; operators may want zero retries in latency-sensitive
+    /// deployments or more retries behind rate-limited providers.
     pub retry: RetrySettings,
     /// Nous actor/manager health, restart, GC, and loop-detection settings.
+    ///
+    /// WHY configurable: actor inbox sizes, session caps, and health poll
+    /// intervals depend on workload characteristics and host resources.
     pub nous_behavior: NousBehaviorConfig,
     /// Episteme conflict resolution, decay, and extraction parameters.
+    ///
+    /// WHY configurable: knowledge extraction thresholds and conflict
+    /// resolution aggressiveness vary by deployment use case (research vs
+    /// production, single-agent vs multi-agent).
     pub knowledge: KnowledgeConfig,
     /// Hermeneus provider timeout, concurrency, and complexity routing thresholds.
+    ///
+    /// WHY configurable: non-streaming timeouts and concurrency limits depend
+    /// on provider rate limits and latency characteristics. Complexity
+    /// thresholds control model routing (Haiku vs Opus) which affects cost.
     pub provider_behavior: ProviderBehaviorConfig,
     /// Pylon request size and idempotency limits.
+    ///
+    /// WHY configurable: API body size limits, idempotency cache capacity,
+    /// and history pagination defaults vary by deployment scale and client
+    /// requirements.
     pub api_limits: ApiLimitsConfig,
     /// Daemon watchdog, prosoche, and runner output settings.
+    ///
+    /// WHY configurable: watchdog backoff and anomaly detection sensitivity
+    /// depend on system stability requirements and agent workload patterns.
     pub daemon_behavior: DaemonBehaviorConfig,
     /// Organon tool size and timeout limits.
+    ///
+    /// WHY configurable: filesystem write caps, subprocess timeouts, and
+    /// message size limits must match the deployment's security posture and
+    /// resource constraints.
     pub tool_limits: ToolLimitsConfig,
     /// Agora messaging transport poll, buffer, and circuit-breaker settings.
+    ///
+    /// WHY configurable: poll intervals and buffer sizes depend on channel
+    /// message volume; circuit-breaker thresholds must balance reliability
+    /// against false positives in flaky network conditions.
     pub messaging: MessagingConfig,
     /// Self-tuning feedback loop configuration.
+    ///
+    /// WHY configurable: tuning is disabled by default (experimental). The
+    /// global kill switch and evidence thresholds let operators enable and
+    /// tune the feedback loop incrementally.
     pub tuning: TuningConfig,
 }
 
