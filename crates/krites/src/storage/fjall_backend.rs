@@ -20,7 +20,7 @@ type Result<T> = StorageResult<T>;
 /// Pure Rust, zero C dependencies, LSM-tree with LZ4 compression.
 /// Uses `SingleWriterTxDatabase` for serialized write transactions
 /// with native read-your-own-writes semantics.
-pub fn new_cozo_fjall(
+pub fn new_krites_fjall(
     path: impl AsRef<Path>,
 ) -> crate::error::InternalResult<DbCore<FjallStorage>> {
     let path = path.as_ref();
@@ -523,7 +523,7 @@ mod tests {
 
     fn setup_test_db() -> InternalResult<(TempDir, DbCore<FjallStorage>)> {
         let temp_dir = TempDir::new().unwrap_or_else(|_| unreachable!());
-        let db = new_cozo_fjall(temp_dir.path())?;
+        let db = new_krites_fjall(temp_dir.path())?;
         db.run_script(
             r#"
             {:create plain {k: Int => v}}
@@ -640,7 +640,7 @@ mod tests {
         let dir = TempDir::new().unwrap_or_else(|_| unreachable!());
 
         {
-            let db = new_cozo_fjall(dir.path())?;
+            let db = new_krites_fjall(dir.path())?;
             db.run_script(
                 "{:create persist_test {k: Int => v: String}}",
                 Default::default(),
@@ -654,7 +654,7 @@ mod tests {
         }
 
         {
-            let db = new_cozo_fjall(dir.path())?;
+            let db = new_krites_fjall(dir.path())?;
             let result = db.run_script(
                 "?[k, v] := *persist_test{k, v}",
                 Default::default(),

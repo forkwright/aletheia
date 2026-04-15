@@ -3,7 +3,7 @@
 //! Krites (Κριτής): "judge." Evaluates Datalog queries against a graph store
 //! with HNSW vector search and graph algorithms.
 // SAFETY: warn-level satisfies the ARCHITECTURE/no-deny-missing-docs lint.
-// deny-level is impractical for vendored CozoDB modules.
+// deny-level is impractical for krites internal modules.
 #![warn(missing_docs)]
 
 use std::collections::BTreeMap;
@@ -44,7 +44,7 @@ pub(crate) type DbInstance = crate::runtime::db::Db<crate::storage::mem::MemStor
     clippy::mutable_key_type,
     clippy::pedantic,
     clippy::result_large_err,
-    reason = "vendored CozoDB engine — unsafe for DataValue layout, numeric casts and indexing are engine-internal invariants"
+    reason = "krites engine internal — unsafe for DataValue layout, numeric casts and indexing are engine-internal invariants"
 )]
 pub(crate) mod data;
 #[expect(
@@ -55,7 +55,7 @@ pub(crate) mod data;
     clippy::pedantic,
     clippy::result_large_err,
     clippy::type_complexity,
-    reason = "vendored CozoDB engine — graph algorithm casts and indexing are engine-internal invariants"
+    reason = "krites engine internal — graph algorithm casts and indexing are engine-internal invariants"
 )]
 pub(crate) mod fixed_rule;
 #[expect(
@@ -65,7 +65,7 @@ pub(crate) mod fixed_rule;
     clippy::pedantic,
     clippy::result_large_err,
     clippy::too_many_arguments,
-    reason = "vendored CozoDB engine — FTS tokenizer casts and indexing are engine-internal invariants"
+    reason = "krites engine internal — FTS tokenizer casts and indexing are engine-internal invariants"
 )]
 pub(crate) mod fts;
 #[expect(
@@ -75,7 +75,7 @@ pub(crate) mod fts;
     clippy::pedantic,
     clippy::result_large_err,
     clippy::type_complexity,
-    reason = "vendored CozoDB engine — parser casts and indexing are engine-internal invariants"
+    reason = "krites engine internal — parser casts and indexing are engine-internal invariants"
 )]
 pub(crate) mod parse;
 #[expect(
@@ -86,7 +86,7 @@ pub(crate) mod parse;
     clippy::result_large_err,
     clippy::too_many_arguments,
     clippy::type_complexity,
-    reason = "vendored CozoDB engine — query planner casts and indexing are engine-internal invariants"
+    reason = "krites engine internal — query planner casts and indexing are engine-internal invariants"
 )]
 pub(crate) mod query;
 #[expect(
@@ -100,7 +100,7 @@ pub(crate) mod query;
     clippy::result_large_err,
     clippy::too_many_arguments,
     clippy::type_complexity,
-    reason = "vendored CozoDB engine — runtime casts and indexing are engine-internal invariants"
+    reason = "krites engine internal — runtime casts and indexing are engine-internal invariants"
 )]
 pub(crate) mod runtime;
 #[expect(
@@ -108,12 +108,12 @@ pub(crate) mod runtime;
     clippy::pedantic,
     clippy::result_large_err,
     clippy::type_complexity,
-    reason = "vendored CozoDB engine — storage backend trait implementations"
+    reason = "krites engine internal — storage backend trait implementations"
 )]
 pub(crate) mod storage;
 #[expect(
     clippy::pedantic,
-    reason = "vendored CozoDB engine — utility functions"
+    reason = "krites engine internal — utility functions"
 )]
 pub(crate) mod utils;
 
@@ -196,7 +196,7 @@ impl Db {
     /// native read-your-own-writes.
     #[cfg(feature = "storage-fjall")]
     pub fn open_fjall(path: impl AsRef<Path>) -> crate::Result<Self> {
-        crate::storage::fjall_backend::new_cozo_fjall(path)
+        crate::storage::fjall_backend::new_krites_fjall(path)
             .map(|db| Self::new(DbInner::Fjall(db)))
             .map_err(convert_internal)
     }

@@ -1,6 +1,6 @@
 # krites
 
-Embedded Datalog engine with HNSW vector search, full-text search, and graph algorithms. 55K lines. Vendored from CozoDB with Aletheia-specific facade.
+Embedded Datalog engine with HNSW vector search, full-text search, and graph algorithms. 55K lines. Embedded Datalog engine for Aletheia knowledge graph.
 
 ## Read first
 
@@ -29,7 +29,7 @@ Embedded Datalog engine with HNSW vector search, full-text search, and graph alg
 | `ScriptMutability` | `runtime/db.rs` | Enum: Mutable, Immutable (query execution mode) |
 | `Poison` | `runtime/db.rs` | Cancellation token for killing long-running queries |
 
-## Internal modules (vendored CozoDB)
+## Internal modules
 
 | Module | Purpose |
 |--------|---------|
@@ -53,7 +53,7 @@ Embedded Datalog engine with HNSW vector search, full-text search, and graph alg
 - **Facade pattern**: public `Db` struct dispatches to `DbInner` enum (Mem or Fjall) for each operation.
 - **Error conversion**: internal `InternalError` (rich module-level errors) converted to public `Error` at facade boundary via `convert_internal()`.
 - **Query cache**: optional LRU cache normalizes whitespace before key comparison. Attach with `Db::with_cache(capacity)`.
-- **Vendored code**: CozoDB internals carry broad `#[expect]` attributes for clippy/pedantic lints. Do not enforce strict linting on vendored modules.
+- **Internal engine modules carry per-site lint suppressions with documented reasons.
 - **Transaction model**: `multi_transaction()` spawns on rayon, communicates via crossbeam channels.
 
 ## Common tasks
