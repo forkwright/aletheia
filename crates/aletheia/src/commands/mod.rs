@@ -3,6 +3,7 @@
 pub(crate) mod add_nous;
 pub(crate) mod agent_io;
 pub(crate) mod backup;
+pub(crate) mod benchmark;
 pub(crate) mod check_config;
 pub(crate) mod config;
 pub(crate) mod credential;
@@ -91,6 +92,7 @@ pub(crate) async fn dispatch(cmd: Command, instance_root: Option<&PathBuf>) -> R
         #[cfg(not(feature = "tui"))]
         Command::Tui(_) => anyhow::bail!("TUI not available - rebuild with `--features tui`"),
         Command::Desktop(a) => desktop::run(&a),
+        Command::Benchmark(a) => benchmark::run(a).await.map_err(Into::into),
         Command::Eval(a) => eval::run(a).await.map_err(Into::into),
         Command::EvalEmbeddings(ref a) => eval_embeddings::run(a).map_err(Into::into),
         Command::Export(a) => agent_io::export_agent(instance_root, &a).map_err(Into::into),
