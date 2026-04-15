@@ -17,6 +17,14 @@ reason = "bincode unmaintained — transitive via syntect/aletheia-tui, no safe 
 id = "RUSTSEC-2024-0436"
 reason = "paste unmaintained, transitive via tokenizers; no safe upgrade"
 
+[[advisories.ignore]]
+id = "RUSTSEC-2025-0134"
+reason = "rustls-pemfile unmaintained — transitive via tonic 0.12/qdrant-client 1.17; tracked in follow-up issue to upgrade qdrant-client when its tonic upgrades"
+
+[[advisories.ignore]]
+id = "RUSTSEC-2026-0097"
+reason = "rand 0.8.5 unsound only when a custom logger calls rand::rng() — we don't; transitive via tonic 0.12/qdrant-client 1.17 and rust_decimal/spreadsheet-ods; tracked in follow-up issue"
+
 [licenses]
 allow = [
     "MIT",
@@ -32,9 +40,7 @@ allow = [
     "0BSD",
     "MPL-2.0",              # option-ext, smartstring
     "LGPL-3.0-or-later",    # priority-queue
-    "CDLA-Permissive-2.0",  # webpki-roots, webpki-root-certs,
-,
-
+    "CDLA-Permissive-2.0",  # webpki-roots, webpki-root-certs
 ]
 confidence-threshold = 0.8
 
@@ -133,7 +139,7 @@ skip = [
     # WHY: some deps have not yet migrated to rand 0.10 (e.g., rmcp uses 0.10,
     # while older audio/crypto crates still pull rand 0.9).
     # Blocked until all transitive deps migrate to rand 0.10.
-    { name = "rand", version = "=0.9.2" },
+    { name = "rand", version = "=0.9.4" },
 
     # WHY: password-hash pins rand_core 0.6; rand 0.9 chain uses rand_core 0.9.
     # Canonical: rand_core 0.10 (rand 0.10). Blocked on rand ecosystem upgrade.
@@ -159,9 +165,8 @@ skip = [
     { name = "toml", version = "=0.8.23" },
     { name = "toml_datetime", version = "=0.6.11" },
 
-    # WHY: cron crate pins winnow 0.6; toml_edit pins winnow 0.7.
-    # Canonical: winnow 1.0 (toml 1.x). Blocked until cron and toml_edit update.
-    { name = "winnow", version = "=0.6.26" },
+    # WHY: toml_edit pins winnow 0.7.
+    # Canonical: winnow 1.0 (toml 1.x). Blocked until toml_edit updates.
     { name = "winnow", version = "=0.7.15" },
 ]
 
