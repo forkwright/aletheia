@@ -300,8 +300,8 @@ pub async fn send_message(
                     let (err_code, err_message) = turn_error_info(&err);
                     let _ = tx
                         .send(SseEvent::Error {
-                            code: err_code.to_owned(),
-                            message: err_message.to_owned(),
+                            code: err_code,
+                            message: err_message,
                         })
                         .await;
                     // WHY: Always send a completion marker so the client knows the
@@ -550,7 +550,7 @@ pub async fn stream_turn(
                     let (_, err_message) = turn_error_info(&err);
                     let _ = webchat_tx
                         .send(WebchatEvent::Error {
-                            message: err_message.to_owned(),
+                            message: err_message,
                         })
                         .await;
                     // WHY: Always send a completion marker so the TUI knows the stream
@@ -689,37 +689,136 @@ fn extract_idempotency_key(
 ///
 /// Codes and messages identify the failure class without leaking internal
 /// paths, SQL, or provider credentials. See #844 for the security rationale.
-fn turn_error_info(err: &nous::error::Error) -> (&'static str, &'static str) {
+///
+/// WHY `(String, String)`: dynamic messages let clients see the failure category
+/// and a sanitized root cause without needing to parse server logs (#3162).
+fn turn_error_info(err: &nous::error::Error) -> (String, String) {
     use nous::error::Error;
     match err {
-        Error::PipelineTimeout { .. } | Error::AskTimeout { .. } => {
-            ("turn_timeout", "turn timed out")
-        }
-        Error::GuardRejected { .. } => ("guard_rejected", "request rejected by safety guard"),
-        Error::InboxFull { .. } | Error::ServiceDegraded { .. } => {
-            ("service_busy", "agent is temporarily unavailable")
-        }
+        Error::PipelineTimeout { stage, timeout_secs, .. } => (
+            "turn_timeout".to_owned(),
+            format!("pipeline stage '{stage}' timed out after {timeout_secs}s"),
+        ),
+        Error::AskTimeout { nous_id, timeout_secs, .. } => (
+            "turn_timeout".to_owned(),
+            format!("cross-agent ask to '{nous_id}' timed out after {timeout_secs}s"),
+        ),
+        Error::GuardRejected { reason, .. } => (
+            "guard_rejected".to_owned(),
+            format!("request rejected by safety guard: {reason}"),
+        ),
+        Error::InboxFull { .. } | Error::ServiceDegraded { .. } => (
+            "service_busy".to_owned(),
+            "agent is temporarily unavailable".to_owned(),
+        ),
+        Error::ContextAssembly { message, .. } => (
+            "context_error".to_owned(),
+            format!("context assembly failed: {message}"),
+        ),
+        Error::ContextAssemblyIo { file, .. } => (
+            "context_error".to_owned(),
+            format!("context assembly failed: required file '{file}' unreadable"),
+        ),
+        Error::LoopDetected { iterations, pattern, .. } => (
+            "loop_detected".to_owned(),
+            format!("loop detected after {iterations} iterations: {pattern}"),
+        ),
+        Error::PipelineStage { stage, message, .. } => (
+            "pipeline_error".to_owned(),
+            format!("pipeline stage '{stage}' failed: {message}"),
+        ),
+        Error::PipelinePanic { .. } => (
+            "pipeline_error".to_owned(),
+            "pipeline encountered an unexpected internal error".to_owned(),
+        ),
         Error::Llm { source, .. } => classify_llm_error(source),
-        _ => ("turn_failed", "An internal error occurred"),
+        _ => (
+            "turn_failed".to_owned(),
+            "an internal error occurred".to_owned(),
+        ),
     }
 }
 
 /// Map an LLM provider error to a client-visible (code, message) pair.
-fn classify_llm_error(err: &hermeneus::error::Error) -> (&'static str, &'static str) {
+///
+/// WHY: surface the failure category (timeout, auth, rate limit, model) so
+/// clients can react programmatically. The original provider message is
+/// included for non-sensitive errors; auth errors omit credential detail.
+fn classify_llm_error(err: &hermeneus::error::Error) -> (String, String) {
     use hermeneus::error::Error;
     match err {
-        Error::RateLimited { .. } => ("rate_limited", "rate limit exceeded"),
-        Error::ApiError { status, .. } if *status == 429 => ("rate_limited", "rate limit exceeded"),
+        Error::RateLimited { retry_after_ms, .. } => (
+            "rate_limited".to_owned(),
+            format!("rate limit exceeded, retry after {retry_after_ms}ms"),
+        ),
+        Error::ApiError { status, .. } if *status == 429 => (
+            "rate_limited".to_owned(),
+            "rate limit exceeded".to_owned(),
+        ),
         Error::AuthFailed { .. } => (
-            "provider_unavailable",
-            "provider authentication failed. Run 'aletheia credential status' to diagnose",
+            "auth_failure".to_owned(),
+            "provider authentication failed — run 'aletheia credential status' to diagnose".to_owned(),
         ),
-        Error::ApiError { status, .. } if *status == 503 => (
-            "provider_unavailable",
-            "provider temporarily unavailable. Run 'aletheia credential status' to diagnose",
+        Error::ApiError { status, .. } if *status == 503 || *status == 529 => (
+            "provider_unavailable".to_owned(),
+            format!("provider returned {status} — temporarily unavailable"),
         ),
-        _ => ("turn_failed", "An internal error occurred"),
+        Error::ApiError { status, message, .. } if (400..500).contains(status) => (
+            "invalid_request".to_owned(),
+            format!("provider rejected request ({status}): {}", redact_secrets(message)),
+        ),
+        Error::ApiError { status, message, .. } if (500..600).contains(status) => (
+            "provider_error".to_owned(),
+            format!("provider error ({status}): {}", redact_secrets(message)),
+        ),
+        Error::UnsupportedModel { model, .. } => (
+            "unsupported_model".to_owned(),
+            format!("model '{model}' is not supported by this provider"),
+        ),
+        Error::ApiRequest { message, .. } => {
+            let msg = message.to_lowercase();
+            if msg.contains("timeout") {
+                (
+                    "provider_timeout".to_owned(),
+                    format!("provider request timed out: {}", redact_secrets(message)),
+                )
+            } else {
+                (
+                    "provider_error".to_owned(),
+                    format!("provider request failed: {}", redact_secrets(message)),
+                )
+            }
+        }
+        _ => (
+            "provider_error".to_owned(),
+            "an LLM provider error occurred".to_owned(),
+        ),
     }
+}
+
+/// Regex matching common secret patterns in error messages.
+///
+/// WHY: match common key prefixes (sk-ant-, sk-, key-, bearer tokens)
+/// and hex/base64 sequences that look like credentials (32+ chars).
+#[expect(
+    clippy::expect_used,
+    reason = "compile-time-constant regex literals cannot fail"
+)]
+static SECRET_PATTERN: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+    regex::Regex::new(
+        r"(?i)(sk-ant-[a-zA-Z0-9_-]+|sk-[a-zA-Z0-9_-]{20,}|key-[a-zA-Z0-9_-]{20,}|bearer\s+[a-zA-Z0-9._-]{20,}|[a-f0-9]{40,})"
+    )
+    .expect("compile-time-constant regex literals cannot fail")
+});
+
+/// Strip potential secrets (API keys, bearer tokens) from an error message
+/// before including it in a client-visible SSE event.
+///
+/// WHY #844: error messages from providers may contain credential fragments
+/// in rejection messages (e.g. "invalid key sk-ant-..."). This strips
+/// anything that looks like a secret token.
+fn redact_secrets(msg: &str) -> String {
+    SECRET_PATTERN.replace_all(msg, "[REDACTED]").into_owned()
 }
 
 /// Emit turn result as individual SSE events to a single client channel.
@@ -853,8 +952,9 @@ mod tests {
             retry_after_ms: 60_000_u64,
         }
         .into_error(snafu::NoneError);
-        let (code, _) = classify_llm_error(&err);
+        let (code, msg) = classify_llm_error(&err);
         assert_eq!(code, "rate_limited");
+        assert!(msg.contains("60000"), "message should include retry_after_ms");
     }
 
     #[test]
@@ -871,14 +971,14 @@ mod tests {
     }
 
     #[test]
-    fn llm_error_auth_failed_classified_as_provider_unavailable() {
+    fn llm_error_auth_failed_classified() {
         use snafu::IntoError;
         let err = hermeneus::error::AuthFailedSnafu {
             message: "bad key".to_owned(),
         }
         .into_error(snafu::NoneError);
         let (code, msg) = classify_llm_error(&err);
-        assert_eq!(code, "provider_unavailable");
+        assert_eq!(code, "auth_failure");
         assert!(msg.contains("authentication"));
     }
 
@@ -891,12 +991,13 @@ mod tests {
             context: make_api_context(),
         }
         .into_error(snafu::NoneError);
-        let (code, _) = classify_llm_error(&err);
+        let (code, msg) = classify_llm_error(&err);
         assert_eq!(code, "provider_unavailable");
+        assert!(msg.contains("503"), "message should include status code");
     }
 
     #[test]
-    fn llm_error_api_500_falls_through_to_turn_failed() {
+    fn llm_error_api_500_classified_as_provider_error() {
         use snafu::IntoError;
         let err = hermeneus::error::ApiSnafu {
             status: 500_u16,
@@ -905,10 +1006,74 @@ mod tests {
         }
         .into_error(snafu::NoneError);
         let (code, msg) = classify_llm_error(&err);
-        assert_eq!(code, "turn_failed");
-        // WHY #844: internal error details must NOT leak in the client-visible message
-        assert!(!msg.contains("500"));
-        assert!(!msg.contains("Internal Server Error"));
+        assert_eq!(code, "provider_error");
+        assert!(msg.contains("500"), "message should include status code");
+        assert!(msg.contains("Internal Server Error"), "message should include provider detail");
+    }
+
+    #[test]
+    fn llm_error_api_400_classified_as_invalid_request() {
+        use snafu::IntoError;
+        let err = hermeneus::error::ApiSnafu {
+            status: 400_u16,
+            message: "max tokens exceeded".to_owned(),
+            context: make_api_context(),
+        }
+        .into_error(snafu::NoneError);
+        let (code, msg) = classify_llm_error(&err);
+        assert_eq!(code, "invalid_request");
+        assert!(msg.contains("400"));
+        assert!(msg.contains("max tokens exceeded"));
+    }
+
+    #[test]
+    fn llm_error_unsupported_model_classified() {
+        use snafu::IntoError;
+        let err = hermeneus::error::UnsupportedModelSnafu {
+            model: "gpt-99".to_owned(),
+        }
+        .into_error(snafu::NoneError);
+        let (code, msg) = classify_llm_error(&err);
+        assert_eq!(code, "unsupported_model");
+        assert!(msg.contains("gpt-99"));
+    }
+
+    #[test]
+    fn llm_error_api_request_timeout_classified() {
+        use snafu::IntoError;
+        let err = hermeneus::error::ApiRequestSnafu {
+            message: "connection timeout after 30s".to_owned(),
+        }
+        .into_error(snafu::NoneError);
+        let (code, msg) = classify_llm_error(&err);
+        assert_eq!(code, "provider_timeout");
+        assert!(msg.contains("timed out"));
+    }
+
+    #[test]
+    fn llm_error_api_request_non_timeout_classified() {
+        use snafu::IntoError;
+        let err = hermeneus::error::ApiRequestSnafu {
+            message: "connection refused".to_owned(),
+        }
+        .into_error(snafu::NoneError);
+        let (code, _) = classify_llm_error(&err);
+        assert_eq!(code, "provider_error");
+    }
+
+    #[test]
+    fn llm_error_api_500_redacts_secrets_in_message() {
+        use snafu::IntoError;
+        let err = hermeneus::error::ApiSnafu {
+            status: 500_u16,
+            message: "invalid key sk-ant-abc123def456".to_owned(),
+            context: make_api_context(),
+        }
+        .into_error(snafu::NoneError);
+        let (_, msg) = classify_llm_error(&err);
+        // WHY #844: secrets must be redacted from client-visible messages
+        assert!(!msg.contains("sk-ant-abc123def456"), "API key must be redacted");
+        assert!(msg.contains("[REDACTED]"));
     }
 
     // ─────────────────────────────────────────────────────────
@@ -923,8 +1088,10 @@ mod tests {
             timeout_secs: 30_u32,
         }
         .into_error(snafu::NoneError);
-        let (code, _) = turn_error_info(&err);
+        let (code, msg) = turn_error_info(&err);
         assert_eq!(code, "turn_timeout");
+        assert!(msg.contains("execute"), "message should include stage name");
+        assert!(msg.contains("30"), "message should include timeout duration");
     }
 
     #[test]
@@ -935,8 +1102,9 @@ mod tests {
             timeout_secs: 10_u64,
         }
         .into_error(snafu::NoneError);
-        let (code, _) = turn_error_info(&err);
+        let (code, msg) = turn_error_info(&err);
         assert_eq!(code, "turn_timeout");
+        assert!(msg.contains("target"), "message should include target nous_id");
     }
 
     #[test]
@@ -949,6 +1117,88 @@ mod tests {
         .into_error(snafu::NoneError);
         let (code, _) = turn_error_info(&err);
         assert_eq!(code, "service_busy");
+    }
+
+    #[test]
+    fn nous_context_assembly_classified() {
+        let err = nous::error::ContextAssemblySnafu {
+            message: "SOUL.md missing",
+        }
+        .build();
+        let (code, msg) = turn_error_info(&err);
+        assert_eq!(code, "context_error");
+        assert!(msg.contains("SOUL.md missing"));
+    }
+
+    #[test]
+    fn nous_loop_detected_classified() {
+        let err = nous::error::LoopDetectedSnafu {
+            iterations: 5_u32,
+            pattern: "exec:abc123",
+        }
+        .build();
+        let (code, msg) = turn_error_info(&err);
+        assert_eq!(code, "loop_detected");
+        assert!(msg.contains("5 iterations"));
+        assert!(msg.contains("exec:abc123"));
+    }
+
+    #[test]
+    fn nous_pipeline_stage_classified() {
+        let err = nous::error::PipelineStageSnafu {
+            stage: "recall",
+            message: "embedding service down",
+        }
+        .build();
+        let (code, msg) = turn_error_info(&err);
+        assert_eq!(code, "pipeline_error");
+        assert!(msg.contains("recall"));
+        assert!(msg.contains("embedding service down"));
+    }
+
+    #[test]
+    fn nous_guard_rejected_includes_reason() {
+        let err = nous::error::GuardRejectedSnafu {
+            reason: "token limit exceeded",
+        }
+        .build();
+        let (code, msg) = turn_error_info(&err);
+        assert_eq!(code, "guard_rejected");
+        assert!(msg.contains("token limit exceeded"));
+    }
+
+    // ─────────────────────────────────────────────────────────
+    // redact_secrets
+    // ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn redact_strips_anthropic_api_key() {
+        let msg = "invalid key sk-ant-abc123def456ghi789";
+        let redacted = redact_secrets(msg);
+        assert!(!redacted.contains("sk-ant-"), "API key prefix should be redacted");
+        assert!(redacted.contains("[REDACTED]"));
+    }
+
+    #[test]
+    fn redact_strips_generic_sk_key() {
+        let msg = "auth error with sk-abcdefghijklmnopqrstuvwxyz";
+        let redacted = redact_secrets(msg);
+        assert!(!redacted.contains("sk-abcdef"), "sk- key should be redacted");
+        assert!(redacted.contains("[REDACTED]"));
+    }
+
+    #[test]
+    fn redact_preserves_normal_messages() {
+        let msg = "connection timeout after 30s";
+        let redacted = redact_secrets(msg);
+        assert_eq!(redacted, msg);
+    }
+
+    #[test]
+    fn redact_strips_bearer_token() {
+        let msg = "rejected bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.payload";
+        let redacted = redact_secrets(msg);
+        assert!(!redacted.contains("eyJh"), "bearer token should be redacted");
     }
 
     // ─────────────────────────────────────────────────────────
