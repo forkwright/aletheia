@@ -1,4 +1,13 @@
 //! Data extraction helpers for stored relation operations.
+#![expect(
+    clippy::default_trait_access,
+    clippy::explicit_iter_loop,
+    clippy::indexing_slicing,
+    clippy::result_large_err,
+    clippy::wildcard_imports,
+    reason = "engine-internal data extractors — indexing validated by make_extractor callers"
+)]
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 

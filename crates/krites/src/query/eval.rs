@@ -1,4 +1,21 @@
 //! Query plan evaluation.
+#![expect(
+    clippy::as_conversions,
+    clippy::elidable_lifetime_names,
+    clippy::explicit_iter_loop,
+    clippy::indexing_slicing,
+    clippy::manual_let_else,
+    clippy::match_wildcard_for_single_variants,
+    clippy::mutable_key_type,
+    clippy::needless_pass_by_value,
+    clippy::redundant_closure_for_method_calls,
+    clippy::result_large_err,
+    clippy::semicolon_if_nothing_returned,
+    clippy::too_many_arguments,
+    clippy::too_many_lines,
+    clippy::wildcard_imports,
+    reason = "engine-internal query evaluator — pass-by-value for Poison, indexing on validated bounds"
+)]
 
 use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;

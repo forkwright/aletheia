@@ -1,4 +1,13 @@
 //! Logical plan representation.
+#![expect(
+    clippy::match_same_arms,
+    clippy::redundant_closure_for_method_calls,
+    clippy::result_large_err,
+    clippy::semicolon_if_nothing_returned,
+    clippy::wildcard_imports,
+    reason = "engine-internal logical plan — match arms kept explicit for clarity"
+)]
+
 use std::collections::BTreeSet;
 
 use itertools::Itertools;

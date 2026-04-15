@@ -1,3 +1,17 @@
+#![expect(
+    clippy::default_trait_access,
+    clippy::explicit_iter_loop,
+    clippy::if_not_else,
+    clippy::indexing_slicing,
+    clippy::iter_not_returning_iterator,
+    clippy::mutable_key_type,
+    clippy::result_large_err,
+    clippy::semicolon_if_nothing_returned,
+    clippy::too_many_arguments,
+    clippy::unnecessary_wraps,
+    reason = "engine-internal source RAs — indexing validated by join construction, mutable keys are Symbol"
+)]
+
 use std::collections::{BTreeMap, BTreeSet};
 
 use either::{Left, Right};
