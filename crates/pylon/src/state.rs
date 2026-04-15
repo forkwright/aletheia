@@ -8,6 +8,7 @@ use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
 use hermeneus::provider::ProviderRegistry;
+use mneme::embedding::EmbeddingProvider;
 #[cfg(feature = "knowledge-store")]
 use mneme::knowledge_store::KnowledgeStore;
 use mneme::store::SessionStore;
@@ -53,6 +54,12 @@ pub struct AppState {
     /// Shared knowledge store for fact/entity/relationship queries.
     #[cfg(feature = "knowledge-store")]
     pub knowledge_store: Option<Arc<KnowledgeStore>>,
+    /// Active embedding provider. Used by health checks to report degraded
+    /// mode when the real provider failed to load at startup (#3380).
+    ///
+    /// `None` only when the pylon-only standalone server builds state without
+    /// a configured embedding pipeline.
+    pub embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
 }
 
 impl AppState {
@@ -85,6 +92,8 @@ pub struct HealthState {
     pub oikos: Arc<Oikos>,
     /// Runtime configuration for config readability checks.
     pub config: Arc<tokio::sync::RwLock<AletheiaConfig>>,
+    /// Active embedding provider (for degraded-mode reporting, #3380).
+    pub embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
 }
 
 impl FromRef<Arc<AppState>> for HealthState {
@@ -96,6 +105,7 @@ impl FromRef<Arc<AppState>> for HealthState {
             start_time: state.start_time,
             oikos: Arc::clone(&state.oikos),
             config: Arc::clone(&state.config),
+            embedding_provider: state.embedding_provider.clone(),
         }
     }
 }

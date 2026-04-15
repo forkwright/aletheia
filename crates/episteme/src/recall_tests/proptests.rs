@@ -56,6 +56,29 @@ proptest! {
         prop_assert!((0.0..=1.0).contains(&rp), "relationship_proximity {rp} out of bounds");
     }
 
+    /// WHY (#3392): For any finite `age_hours`, including negative values
+    /// (clock jumped backward) or zero, the decay must remain in [0, 1].
+    /// Previously, negative `age_hours` short-circuited to 1.0 silently;
+    /// now it is clamped to 0 and still returns 1.0, but the property
+    /// holds for the whole finite domain (including pre-clamp inputs).
+    #[test]
+    fn decay_bounded_under_clock_jump(
+        age_hours in any::<f64>().prop_filter("finite", |x| x.is_finite()),
+        access_count in 0_u32..=10_000,
+    ) {
+        let e = RecallEngine::new();
+        let ds = e.score_decay(
+            age_hours,
+            FactType::Event,
+            EpistemicTier::Inferred,
+            access_count,
+        );
+        prop_assert!(
+            (0.0..=1.0).contains(&ds),
+            "decay {ds} out of [0.0, 1.0] for age_hours={age_hours}"
+        );
+    }
+
     #[test]
     fn weights_total_matches_sum(
         vs in 0.0_f64..=1.0,

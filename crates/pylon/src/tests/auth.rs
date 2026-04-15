@@ -145,6 +145,7 @@ async fn app_auth_disabled() -> (axum::Router, tempfile::TempDir) {
         shutdown: state.shutdown.clone(),
         #[cfg(feature = "knowledge-store")]
         knowledge_store: None,
+        embedding_provider: state.embedding_provider.clone(),
     });
     (build_router(state, &test_security_config()), dir)
 }
