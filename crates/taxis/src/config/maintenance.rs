@@ -276,6 +276,9 @@ pub struct CredentialConfig {
     /// Override path to the Claude Code credentials file.
     /// Defaults to `~/.claude/.credentials.json`.
     pub claude_code_credentials: Option<String>,
+    /// Refresh when token has less than this many seconds remaining. Default: 3600 (1 hour).
+    /// Mirrors `symbolon::credential::REFRESH_THRESHOLD_SECS`.
+    pub refresh_threshold_secs: u64,
     /// Circuit breaker settings for OAuth token refresh.
     pub circuit_breaker: CircuitBreakerSettings,
 }
@@ -285,6 +288,7 @@ impl Default for CredentialConfig {
         Self {
             source: "auto".to_owned(),
             claude_code_credentials: None,
+            refresh_threshold_secs: 3_600,
             circuit_breaker: CircuitBreakerSettings::default(),
         }
     }

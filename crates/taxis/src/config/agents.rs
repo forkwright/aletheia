@@ -356,6 +356,11 @@ pub struct AgentBehaviorDefaults {
     /// Mirrors `nous::uncertainty::MAX_CALIBRATION_POINTS`.
     pub uncertainty_max_calibration_points: usize,
 
+    // --- Manifest ---
+    /// Maximum memory entries in a single manifest for side-query pre-filtering. Default: 200.
+    /// Mirrors `episteme::manifest::MAX_MEMORY_ENTRIES`.
+    pub manifest_max_entries: usize,
+
     // --- Skills ---
     /// Maximum number of skills loadable per agent. Default: 5.
     pub skills_max_skills: usize,
@@ -543,6 +548,8 @@ impl Default for AgentBehaviorDefaults {
             drift_min_samples: 8,
             // Uncertainty
             uncertainty_max_calibration_points: 1_000,
+            // Manifest
+            manifest_max_entries: 200,
             // Skills
             skills_max_skills: 5,
             skills_max_context_chars: 200,

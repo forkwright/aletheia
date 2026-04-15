@@ -961,6 +961,57 @@ fn build_registry() -> Vec<ParameterSpec> {
             evidence_required: "Maximum downtime tolerance analysis",
             direction_hint: TuningDirection::Contextual,
         },
+
+        // ===================================================================
+        // Knowledge — content limits
+        // ===================================================================
+        ParameterSpec {
+            key: "knowledge.maxContentLength",
+            section: "knowledge",
+            tier: ParameterTier::Deployment,
+            default: ParameterValue::Int(102_400),
+            bounds: Some((1_024.0, 10_485_760.0)),
+            hot_reloadable: true,
+            description: "Maximum byte length for fact content strings",
+            affects: "knowledge_storage_capacity",
+            outcome_signal: "content_truncation_rate",
+            evidence_required: "Fact content length distribution",
+            direction_hint: TuningDirection::Contextual,
+        },
+
+        // ===================================================================
+        // Manifest — memory entries
+        // ===================================================================
+        ParameterSpec {
+            key: "agents.defaults.behavior.manifestMaxEntries",
+            section: "agents.defaults.behavior",
+            tier: ParameterTier::PerAgent,
+            default: ParameterValue::Int(200),
+            bounds: Some((10.0, 10_000.0)),
+            hot_reloadable: true,
+            description: "Maximum memory entries in a single manifest for side-query pre-filtering",
+            affects: "recall_quality",
+            outcome_signal: "side_query_recall_precision",
+            evidence_required: "Manifest size vs. recall precision analysis",
+            direction_hint: TuningDirection::Contextual,
+        },
+
+        // ===================================================================
+        // Credential — refresh threshold
+        // ===================================================================
+        ParameterSpec {
+            key: "credential.refreshThresholdSecs",
+            section: "credential",
+            tier: ParameterTier::Deployment,
+            default: ParameterValue::Duration(3_600),
+            bounds: Some((60.0, 86_400.0)),
+            hot_reloadable: true,
+            description: "Refresh token when less than this many seconds remain before expiry",
+            affects: "credential_management",
+            outcome_signal: "token_refresh_failure_rate",
+            evidence_required: "Token expiry distribution and refresh success rates",
+            direction_hint: TuningDirection::Contextual,
+        },
     ]
 }
 
