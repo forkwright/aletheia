@@ -5,7 +5,7 @@
 //!
 //! Run: `cargo test -p aletheia-nous --test proptest_budget`
 
-use nous::budget::{CharEstimator, TokenBudget, TokenEstimator};
+use nous::budget::{CharEstimator, TokenBudget};
 use proptest::prelude::*;
 
 // ── CharEstimator properties ──────────────────────────────────────────────────

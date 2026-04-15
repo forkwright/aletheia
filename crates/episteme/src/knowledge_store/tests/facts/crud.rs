@@ -49,7 +49,7 @@ fn query_without_timeout_succeeds() {
 
     assert!(result.is_ok(), "query without timeout should succeed");
     let rows = result.expect("query without timeout must succeed");
-    assert_eq!(rows.rows.len(), 1, "simple query should return one row");
+    assert_eq!(rows.row_count(), 1, "simple query should return one row");
 }
 
 #[test]

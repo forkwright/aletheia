@@ -181,15 +181,158 @@ use crate::query::queries;
 /// Hides the `crate::engine::NamedRows` type from callers, keeping `CozoDB`
 /// internals encapsulated within the knowledge layer.
 ///
-/// Row values are [`crate::engine::DataValue`]: call `.get_str()`, `.get_float()`,
-/// etc. to extract typed values.
+/// Use the typed accessor methods ([`get_string`](Self::get_string),
+/// [`get_f64`](Self::get_f64), [`get_i64`](Self::get_i64),
+/// [`get_bool`](Self::get_bool)) to extract values by column name.
+/// Type mismatches return `None` instead of silently producing defaults.
 #[cfg(feature = "mneme-engine")]
 #[derive(Debug, Clone)]
 pub struct QueryResult {
     /// Column names in the order they appear in each row.
     pub headers: Vec<String>,
     /// Result rows. Each row is a flat `Vec` matching `headers` by position.
-    pub rows: Vec<Vec<crate::engine::DataValue>>,
+    ///
+    /// Crate-internal: external callers should use the typed accessor methods
+    /// ([`get_string`](Self::get_string), [`get_f64`](Self::get_f64), etc.)
+    /// instead of indexing into rows directly.
+    pub(crate) rows: Vec<Vec<crate::engine::DataValue>>,
+}
+
+#[cfg(feature = "mneme-engine")]
+impl QueryResult {
+    /// Number of result rows.
+    #[must_use]
+    pub fn row_count(&self) -> usize {
+        self.rows.len()
+    }
+
+    /// Whether the result set is empty.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.rows.is_empty()
+    }
+
+    /// Look up column index by name.
+    fn col_index(&self, col: &str) -> Option<usize> {
+        self.headers.iter().position(|h| h == col)
+    }
+
+    /// Extract a string value by row index and column name.
+    ///
+    /// Returns `None` if the row index is out of bounds, the column name
+    /// is not present, or the value is not a string.
+    #[must_use]
+    pub fn get_string(&self, row: usize, col: &str) -> Option<String> {
+        let ci = self.col_index(col)?;
+        self.rows
+            .get(row)?
+            .get(ci)?
+            .get_str()
+            .map(str::to_owned)
+    }
+
+    /// Extract an `f64` value by row index and column name.
+    ///
+    /// Returns `None` if the row index is out of bounds, the column name
+    /// is not present, or the value is not numeric.
+    #[must_use]
+    pub fn get_f64(&self, row: usize, col: &str) -> Option<f64> {
+        let ci = self.col_index(col)?;
+        self.rows.get(row)?.get(ci)?.get_float()
+    }
+
+    /// Extract an `i64` value by row index and column name.
+    ///
+    /// Returns `None` if the row index is out of bounds, the column name
+    /// is not present, or the value is not an integer.
+    #[must_use]
+    pub fn get_i64(&self, row: usize, col: &str) -> Option<i64> {
+        let ci = self.col_index(col)?;
+        self.rows.get(row)?.get(ci)?.get_int()
+    }
+
+    /// Extract a boolean value by row index and column name.
+    ///
+    /// Returns `None` if the row index is out of bounds, the column name
+    /// is not present, or the value is not a boolean.
+    #[must_use]
+    pub fn get_bool(&self, row: usize, col: &str) -> Option<bool> {
+        let ci = self.col_index(col)?;
+        self.rows.get(row)?.get(ci)?.get_bool()
+    }
+
+    /// Format all rows as display strings, one `Vec<String>` per row.
+    ///
+    /// Each cell is converted to its display representation:
+    /// - Null -> `"null"`
+    /// - Strings -> the string value (unquoted)
+    /// - Numbers -> decimal representation (integers without `.0`)
+    /// - Booleans -> `"true"` / `"false"`
+    /// - Other -> debug representation
+    #[must_use]
+    pub fn rows_as_strings(&self) -> Vec<Vec<String>> {
+        self.rows
+            .iter()
+            .map(|row| row.iter().map(Self::format_cell).collect())
+            .collect()
+    }
+
+    /// Convert all row data to `serde_json::Value` for serialization.
+    ///
+    /// Each cell is mapped to the closest JSON type:
+    /// - Null -> `Value::Null`
+    /// - Bool -> `Value::Bool`
+    /// - Int -> `Value::Number`
+    /// - Float -> `Value::Number` (falls back to string for non-finite)
+    /// - Str -> `Value::String`
+    /// - Other -> `Value::String` via debug formatting
+    #[must_use]
+    pub fn rows_to_json(&self) -> Vec<Vec<serde_json::Value>> {
+        self.rows
+            .iter()
+            .map(|row| row.iter().map(Self::cell_to_json).collect())
+            .collect()
+    }
+
+    /// Format a single cell for display.
+    fn format_cell(v: &crate::engine::DataValue) -> String {
+        use crate::engine::DataValue;
+        match v {
+            DataValue::Null => "null".to_owned(),
+            DataValue::Str(s) => s.to_string(),
+            DataValue::Bool(b) => b.to_string(),
+            dv @ DataValue::Num(_) => {
+                if let Some(i) = dv.get_int() {
+                    i.to_string()
+                } else if let Some(f) = dv.get_float() {
+                    f.to_string()
+                } else {
+                    format!("{dv:?}")
+                }
+            }
+            other => format!("{other:?}"),
+        }
+    }
+
+    /// Convert a single cell to a JSON value.
+    fn cell_to_json(v: &crate::engine::DataValue) -> serde_json::Value {
+        use crate::engine::DataValue;
+        match v {
+            DataValue::Null => serde_json::Value::Null,
+            DataValue::Bool(b) => serde_json::Value::Bool(*b),
+            DataValue::Str(s) => serde_json::Value::String(s.to_string()),
+            dv => {
+                if let Some(i) = dv.get_int() {
+                    serde_json::Value::Number(serde_json::Number::from(i))
+                } else if let Some(f) = dv.get_float() {
+                    serde_json::Number::from_f64(f)
+                        .map_or_else(|| serde_json::Value::String(f.to_string()), serde_json::Value::Number)
+                } else {
+                    serde_json::Value::String(format!("{dv:?}"))
+                }
+            }
+        }
+    }
 }
 
 #[cfg(feature = "mneme-engine")]
@@ -542,7 +685,7 @@ impl KnowledgeStore {
     /// Raw query escape hatch for callers needing custom Datalog.
     ///
     /// Returns a [`QueryResult`] rather than raw `NamedRows` to keep `CozoDB`
-    /// internals encapsulated. Access row values via `result.rows[i][j]`.
+    /// internals encapsulated. Use typed accessors (`get_string`, `get_f64`, etc.).
     ///
     /// # Complexity
     ///

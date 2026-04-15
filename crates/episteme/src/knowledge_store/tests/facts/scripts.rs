@@ -20,7 +20,7 @@ fn run_script_read_only_basic() {
         .run_script_read_only("?[x] := x = 42", BTreeMap::new())
         .expect("read-only query should succeed");
     assert_eq!(
-        result.rows.len(),
+        result.row_count(),
         1,
         "basic read-only query should return one row"
     );
@@ -389,7 +389,7 @@ fn run_query_returns_results() {
         .run_query("?[x] := x = 42", std::collections::BTreeMap::new())
         .expect("run_query");
     assert_eq!(
-        rows.rows.len(),
+        rows.row_count(),
         1,
         "run_query should return one row for x = 42"
     );

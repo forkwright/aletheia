@@ -408,13 +408,10 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
                 })?;
 
             let columns = rows.headers.iter().map(ToString::to_string).collect();
-            let truncated = rows.rows.len() > row_limit;
-            let result_rows: Vec<Vec<serde_json::Value>> = rows
-                .rows
-                .into_iter()
-                .take(row_limit)
-                .map(|row| row.iter().map(datavalue_to_json).collect())
-                .collect();
+            let truncated = rows.row_count() > row_limit;
+            let all_json = rows.rows_to_json();
+            let result_rows: Vec<Vec<serde_json::Value>> =
+                all_json.into_iter().take(row_limit).collect();
 
             Ok(DatalogResult {
                 columns,
@@ -454,25 +451,5 @@ fn json_to_datavalue(v: &serde_json::Value) -> mneme::engine::DataValue {
         }
         serde_json::Value::String(s) => DataValue::Str(s.as_str().into()),
         _ => DataValue::Str(v.to_string().into()),
-    }
-}
-
-fn datavalue_to_json(v: &mneme::engine::DataValue) -> serde_json::Value {
-    use mneme::engine::DataValue;
-    match v {
-        DataValue::Null => serde_json::Value::Null,
-        DataValue::Bool(b) => serde_json::Value::Bool(*b),
-        DataValue::Str(s) => serde_json::Value::String(s.to_string()),
-        dv => {
-            if let Some(i) = dv.get_int() {
-                serde_json::Value::Number(serde_json::Number::from(i))
-            } else if let Some(f) = dv.get_float() {
-                serde_json::Number::from_f64(f)
-                    .map(serde_json::Value::Number)
-                    .unwrap_or(serde_json::Value::String(f.to_string()))
-            } else {
-                serde_json::Value::String(format!("{dv:?}"))
-            }
-        }
     }
 }
