@@ -3,10 +3,10 @@ use std::mem;
 
 use super::{BoxTokenStream, Token, TokenFilter, TokenStream};
 
-/// This class converts alphabetic, numeric, and symbolic Unicode characters
-/// which are not in the first 127 ASCII characters (the "Basic Latin" Unicode
-/// block) into their ASCII equivalents, if one exists.
-#[derive(Clone)]
+/// Folds non-ASCII Unicode characters to their closest ASCII equivalents.
+///
+/// Characters in the Basic Latin block (U+0000..U+007F) pass through unchanged.
+#[derive(Debug, Clone)]
 pub(crate) struct AsciiFoldingFilter;
 
 impl TokenFilter for AsciiFoldingFilter {

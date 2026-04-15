@@ -1,6 +1,8 @@
 //! Core tokenizer trait implementations.
-/// The tokenizer module contains all of the tools used to process
-/// text in `tantivy`.
+//!
+//! Defines the foundational traits (`Tokenizer`, `TokenFilter`, `TokenStream`)
+//! and wrapper types (`TextAnalyzer`, `BoxTokenStream`, `BoxTokenFilter`) that
+//! form the FTS text analysis pipeline.
 use std::borrow::{Borrow, BorrowMut};
 use std::iter;
 use std::ops::{Deref, DerefMut};
@@ -10,21 +12,23 @@ use rustc_hash::FxHashSet;
 
 use crate::fts::tokenizer::empty_tokenizer::EmptyTokenizer;
 
-/// Token
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Eq, PartialEq)]
+/// A single token produced by the tokenization pipeline.
+///
+/// Carries the token text along with source offsets and position metadata.
+/// Offsets are byte indices into the original input string.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Eq, PartialEq, Hash)]
 pub(crate) struct Token {
-    /// Offset (byte index) of the first character of the token.
-    /// Offsets shall not be modified by token filters.
+    /// Byte offset of the first character of the token in the source text.
+    /// Token filters must not modify offsets.
     pub(crate) offset_from: usize,
-    /// Offset (byte index) of the last character of the token + 1.
-    /// The text that generated the token should be obtained by
-    /// `&text[token.offset_from..token.offset_to]`
+    /// Byte offset one past the last character: `&text[offset_from..offset_to]`.
+    /// Token filters must not modify offsets.
     pub(crate) offset_to: usize,
-    /// Position, expressed in number of tokens.
+    /// Zero-based position in the token sequence.
     pub(crate) position: usize,
-    /// Actual text content of the token.
+    /// The token text content, possibly transformed by filters.
     pub(crate) text: String,
-    /// Is the length expressed in term of number of original tokens.
+    /// Span length in original tokens (typically 1; n-gram tokenizers may differ).
     pub(crate) position_length: usize,
 }
 
@@ -40,9 +44,11 @@ impl Default for Token {
     }
 }
 
-/// `TextAnalyzer` tokenizes an input text into tokens and modifies the resulting `TokenStream`.
+/// Text analysis pipeline: a [`Tokenizer`] followed by zero or more [`TokenFilter`]s.
 ///
-/// It simply wraps a `Tokenizer` and a list of `TokenFilter` that are applied sequentially.
+/// The tokenizer splits input text into a raw token stream. Each filter in
+/// sequence then transforms the stream (lowercasing, stemming, stop-word
+/// removal, etc.).
 pub(crate) struct TextAnalyzer {
     pub(crate) tokenizer: Box<dyn Tokenizer>,
     pub(crate) token_filters: Vec<BoxTokenFilter>,
@@ -75,21 +81,7 @@ impl TextAnalyzer {
         }
     }
 
-    /// Appends a token filter to the current tokenizer.
-    ///
-    /// The method consumes the current `TokenStream` and returns a
-    /// new one.
-    ///
-    /// # Example
-    ///
-    /// ```text
-    /// use tantivy::tokenizer::*;
-    ///
-    /// let en_stem = TextAnalyzer::from(SimpleTokenizer)
-    ///     .filter(RemoveLongFilter::limit(40))
-    ///     .filter(LowerCaser)
-    ///     .filter(Stemmer::default());
-    /// ```
+    /// Appends a token filter to the pipeline, returning the modified analyzer.
     #[cfg(test)]
     pub(crate) fn filter<F: Into<BoxTokenFilter>>(mut self, token_filter: F) -> Self {
         self.token_filters.push(token_filter.into());
@@ -104,10 +96,11 @@ impl TextAnalyzer {
         }
         token_stream
     }
+    /// Produces the set of unique token n-grams (sliding windows of size `n`).
     pub(crate) fn unique_ngrams(&self, text: &str, n: usize) -> FxHashSet<Vec<CompactString>> {
-        let mut token_steam = self.token_stream(text);
+        let mut token_stream = self.token_stream(text);
         let mut coll: Vec<CompactString> = vec![];
-        while let Some(token) = token_steam.next() {
+        while let Some(token) = token_stream.next() {
             coll.push(CompactString::from(token.text.as_str()));
         }
 
@@ -138,19 +131,13 @@ impl Clone for TextAnalyzer {
     }
 }
 
-/// `Tokenizer` are in charge of splitting text into a stream of token
-/// before indexing.
-///
-/// See the [module documentation](crate::tokenizer) for more detail.
-///
-/// # Warning
-///
-/// This API may change to use associated types.
+/// Splits input text into a stream of [`Token`]s.
 pub(crate) trait Tokenizer: 'static + Send + Sync + TokenizerClone {
     /// Creates a token stream for a given `str`.
     fn token_stream<'a>(&self, text: &'a str) -> BoxTokenStream<'a>;
 }
 
+/// Object-safe cloning for [`Tokenizer`] trait objects.
 pub(crate) trait TokenizerClone {
     fn box_clone(&self) -> Box<dyn Tokenizer>;
 }
@@ -178,9 +165,7 @@ impl<'a> TokenStream for Box<dyn TokenStream + 'a> {
     }
 }
 
-/// Simple wrapper of `Box<dyn TokenStream + 'a>`.
-///
-/// See [`TokenStream`] for more information.
+/// Type-erased [`TokenStream`], used as the uniform return type across the pipeline.
 pub(crate) struct BoxTokenStream<'a>(Box<dyn TokenStream + 'a>);
 
 impl<'a, T> From<T> for BoxTokenStream<'a>
@@ -205,9 +190,7 @@ impl DerefMut for BoxTokenStream<'_> {
     }
 }
 
-/// Simple wrapper of `Box<dyn TokenFilter + 'a>`.
-///
-/// See [`TokenFilter`] for more information.
+/// Type-erased [`TokenFilter`], used to store heterogeneous filter chains.
 pub(crate) struct BoxTokenFilter(Box<dyn TokenFilter>);
 
 impl Deref for BoxTokenFilter {
@@ -224,34 +207,7 @@ impl<T: TokenFilter> From<T> for BoxTokenFilter {
     }
 }
 
-/// `TokenStream` is the result of the tokenization.
-///
-/// It consists consumable stream of `Token`s.
-///
-/// # Example
-///
-/// ```text
-/// use tantivy::tokenizer::*;
-///
-/// let tokenizer = TextAnalyzer::from(SimpleTokenizer)
-///        .filter(RemoveLongFilter::limit(40))
-///        .filter(LowerCaser);
-/// let mut token_stream = tokenizer.token_stream("Hello, happy tax payer");
-/// {
-///     let token = token_stream.next()?;
-///     assert_eq!(&token.text, "hello");
-///     assert_eq!(token.offset_from, 0);
-///     assert_eq!(token.offset_to, 5);
-///     assert_eq!(token.position, 0);
-/// }
-/// {
-///     let token = token_stream.next()?;
-///     assert_eq!(&token.text, "happy");
-///     assert_eq!(token.offset_from, 7);
-///     assert_eq!(token.offset_to, 12);
-///     assert_eq!(token.position, 1);
-/// }
-/// ```
+/// Consumable stream of [`Token`]s produced by a [`Tokenizer`] or [`TokenFilter`].
 pub(crate) trait TokenStream {
     /// Advance to the next token
     ///
@@ -264,21 +220,7 @@ pub(crate) trait TokenStream {
     /// Returns a mutable reference to the current token.
     fn token_mut(&mut self) -> &mut Token;
 
-    /// Helper to iterate over tokens. It
-    /// simply combines a call to `.advance()`
-    /// and `.token()`.
-    ///
-    /// ```text
-    /// use tantivy::tokenizer::*;
-    ///
-    /// let tokenizer = TextAnalyzer::from(SimpleTokenizer)
-    ///       .filter(RemoveLongFilter::limit(40))
-    ///       .filter(LowerCaser);
-    /// let mut token_stream = tokenizer.token_stream("Hello, happy tax payer");
-    /// while let Some(token) = token_stream.next() {
-    ///     println!("Token {:?}", token.text);
-    /// }
-    /// ```
+    /// Advances and returns the next token, or `None` when exhausted.
     fn next(&mut self) -> Option<&Token> {
         if self.advance() {
             Some(self.token())
@@ -298,11 +240,12 @@ pub(crate) trait TokenStream {
     }
 }
 
+/// Object-safe cloning for [`TokenFilter`] trait objects.
 pub(crate) trait TokenFilterClone {
     fn box_clone(&self) -> BoxTokenFilter;
 }
 
-/// Trait for the pluggable components of `Tokenizer`s.
+/// Transforms a [`TokenStream`] by modifying, filtering, or expanding tokens.
 pub(crate) trait TokenFilter: 'static + Send + Sync + TokenFilterClone {
     /// Wraps a token stream and returns the modified one.
     fn transform<'a>(&self, token_stream: BoxTokenStream<'a>) -> BoxTokenStream<'a>;

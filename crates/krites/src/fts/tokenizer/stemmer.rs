@@ -7,8 +7,8 @@ use rust_stemmers::{self, Algorithm};
 use super::{Token, TokenFilter, TokenStream};
 use crate::fts::tokenizer::BoxTokenStream;
 
-/// Available stemmer languages.
-#[derive(Debug, serde::Serialize, serde::Deserialize, Eq, PartialEq, Copy, Clone)]
+/// Languages supported by the Snowball stemmer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub(crate) enum Language {
     Arabic,
     Danish,
@@ -57,10 +57,11 @@ impl Language {
     }
 }
 
-/// `Stemmer` token filter. Several languages are supported, see [`Language`] for the available
-/// languages.
-/// Tokens are expected to be lowercased beforehand.
-#[derive(Clone)]
+/// Snowball stemmer filter. Reduces tokens to their word stems.
+///
+/// Tokens should be lowercased before stemming for correct results.
+/// See [`Language`] for supported languages.
+#[derive(Debug, Clone)]
 pub(crate) struct Stemmer {
     stemmer_algorithm: Algorithm,
 }

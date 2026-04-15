@@ -2,12 +2,10 @@
 use super::{Token, TokenFilter, TokenStream};
 use crate::fts::tokenizer::BoxTokenStream;
 
-/// `RemoveLongFilter` removes tokens that are longer
-/// than a given number of bytes (in UTF-8 representation).
+/// Drops tokens whose UTF-8 byte length meets or exceeds the configured limit.
 ///
-/// It is especially useful when indexing unconstrained content.
-/// e.g. Mail containing base-64 encoded pictures etc.
-#[derive(Clone)]
+/// Useful when indexing unconstrained content (e.g. base-64 blobs in mail).
+#[derive(Debug, Clone)]
 pub(crate) struct RemoveLongFilter {
     length_limit: usize,
 }
