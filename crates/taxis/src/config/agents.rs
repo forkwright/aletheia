@@ -47,45 +47,6 @@ impl Default for RecallWeights {
     }
 }
 
-/// Per-factor engine scoring weights for the mneme `RecallEngine`.
-///
-/// These multipliers determine how much each retrieval signal contributes to the
-/// final relevance score. Weights need not sum to 1.0: the engine normalises
-/// the weighted sum automatically. Defaults match the mneme engine's built-in
-/// values so that omitting this section produces identical behaviour.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[serde(default)]
-pub struct RecallEngineWeights {
-    /// Cosine-similarity weight. Default: 0.35
-    pub vector_similarity: f64,
-    /// FSRS power-law temporal decay weight. Default: 0.20
-    pub decay: f64,
-    /// Nous-relevance weight (own memories rank higher). Default: 0.15
-    pub relevance: f64,
-    /// Epistemic-tier weight (verified > inferred > assumed). Default: 0.15
-    pub epistemic_tier: f64,
-    /// Knowledge-graph relationship proximity weight. Default: 0.10
-    pub relationship_proximity: f64,
-    /// Access-frequency weight. Default: 0.05
-    pub access_frequency: f64,
-}
-
-impl Default for RecallEngineWeights {
-    fn default() -> Self {
-        // WHY: values match mneme::recall::RecallWeights defaults so no behavioural
-        //      change occurs when an operator omits this section from the config.
-        Self {
-            vector_similarity: 0.35,
-            decay: 0.20,
-            relevance: 0.15,
-            epistemic_tier: 0.15,
-            relationship_proximity: 0.10,
-            access_frequency: 0.05,
-        }
-    }
-}
-
 /// Recall pipeline settings for a nous agent.
 ///
 /// Resolved from taxis config and forwarded to the recall stage via
@@ -108,11 +69,6 @@ pub struct RecallSettings {
     pub max_cycles: usize,
     /// Per-factor scoring weights (factor scores for non-vector signals).
     pub weights: RecallWeights,
-    /// Per-factor engine scoring weights used by the mneme `RecallEngine`.
-    ///
-    /// Controls how much each retrieval signal contributes to the final
-    /// weighted relevance score. Defaults match mneme's built-in values.
-    pub engine_weights: RecallEngineWeights,
 }
 
 impl Default for RecallSettings {
@@ -125,7 +81,6 @@ impl Default for RecallSettings {
             iterative: false,
             max_cycles: 2,
             weights: RecallWeights::default(),
-            engine_weights: RecallEngineWeights::default(),
         }
     }
 }

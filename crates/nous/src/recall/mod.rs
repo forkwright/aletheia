@@ -61,20 +61,16 @@ pub struct RecallStage {
 }
 
 impl RecallStage {
-    /// Create a recall stage, wiring operator-configured engine weights.
+    /// Create a recall stage with mneme's default engine weights.
+    ///
+    /// Engine weights are defined once in `mneme::recall::RecallWeights` (the
+    /// single source of truth) and used directly here. If operator
+    /// customization is needed in the future, add it back with a single
+    /// source of truth rather than mirroring the struct in taxis.
     #[must_use]
     pub fn new(config: RecallConfig) -> Self {
-        let ew = &config.engine_weights;
-        let engine_weights = mneme::recall::RecallWeights {
-            vector_similarity: ew.vector_similarity,
-            decay: ew.decay,
-            relevance: ew.relevance,
-            epistemic_tier: ew.epistemic_tier,
-            relationship_proximity: ew.relationship_proximity,
-            access_frequency: ew.access_frequency,
-        };
         Self {
-            engine: RecallEngine::with_weights(engine_weights),
+            engine: RecallEngine::with_weights(mneme::recall::RecallWeights::default()),
             config,
             side_query_ids: None,
         }

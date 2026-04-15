@@ -70,6 +70,19 @@ pub(crate) fn validate_config(config: &AletheiaConfig) -> Result<(), ValidationE
 pub fn validate_startup(config: &AletheiaConfig, oikos: &Oikos) -> Result<(), ValidationError> {
     let mut errors = Vec::new();
 
+    // WHY: Instance subdirectories are checked first because missing layout
+    // causes runtime failures (e.g. first write to data/ fails).
+    for subdir in REQUIRED_INSTANCE_SUBDIRS {
+        let path = oikos.root().join(subdir);
+        if !path.is_dir() {
+            errors.push(format!(
+                "required instance directory '{}' does not exist\n  \
+                 help: run `aletheia init` to create the instance layout",
+                path.display()
+            ));
+        }
+    }
+
     if config.agents.list.is_empty() {
         errors.push("agents.list is empty: at least one agent must be configured".to_owned());
     }
@@ -94,6 +107,12 @@ pub fn validate_startup(config: &AletheiaConfig, oikos: &Oikos) -> Result<(), Va
         ValidationSnafu { errors }.fail()
     }
 }
+
+/// Instance subdirectories required for correct runtime operation.
+///
+/// Missing any of these causes failures at first use (e.g. database writes
+/// to data/, log file creation in logs/, agent workspace loading from nous/).
+const REQUIRED_INSTANCE_SUBDIRS: &[&str] = &["config", "data", "nous"];
 
 /// Validate a config section update.
 ///

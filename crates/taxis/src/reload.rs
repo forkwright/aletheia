@@ -102,6 +102,11 @@ pub(crate) fn diff_configs(old: &AletheiaConfig, new: &AletheiaConfig) -> Config
 }
 
 /// Log all changes from a config diff at appropriate levels.
+///
+/// Cold changes (those requiring restart) are logged at `warn` level with
+/// an explicit message that the new value is staged but not yet effective.
+/// This satisfies the observability contract: the system's reported state
+/// must reflect its actual state.
 pub fn log_diff(diff: &ConfigDiff) {
     if diff.is_empty() {
         info!("config reload: no changes detected");
@@ -112,20 +117,28 @@ pub fn log_diff(diff: &ConfigDiff) {
         if change.restart_required {
             warn!(
                 path = %change.path,
-                "config reload: cold value changed (restart required to take effect)"
+                "config reload: cold value changed — new value is staged but NOT effective \
+                 until the process is restarted"
             );
         } else {
-            info!(path = %change.path, "config reload: value updated");
+            info!(path = %change.path, "config reload: hot value applied immediately");
         }
     }
 
     let hot = diff.hot_changes().len();
     let cold = diff.cold_changes().len();
-    info!(
-        hot_reloaded = hot,
-        restart_required = cold,
-        "config reload complete"
-    );
+    if cold > 0 {
+        warn!(
+            hot_applied = hot,
+            cold_staged = cold,
+            "config reload: {cold} change(s) require restart to take effect"
+        );
+    } else {
+        info!(
+            hot_applied = hot,
+            "config reload complete: all changes applied"
+        );
+    }
 }
 
 /// Errors from config reload attempts.

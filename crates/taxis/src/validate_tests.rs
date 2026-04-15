@@ -549,3 +549,110 @@ fn accepts_valid_messaging() {
         "valid messaging config should be accepted"
     );
 }
+
+// --- validate_startup instance subdirectory checks (#3338) ---
+
+#[test]
+fn validate_startup_rejects_missing_config_dir() {
+    let dir = tempfile::tempdir().unwrap();
+    // WHY: create data/ and nous/ but not config/ to isolate the check
+    std::fs::create_dir_all(dir.path().join("data")).unwrap();
+    std::fs::create_dir_all(dir.path().join("nous")).unwrap();
+
+    let oikos = crate::oikos::Oikos::from_root(dir.path());
+    let mut config = AletheiaConfig::default();
+    config.agents.list.clear();
+
+    let err = validate_startup(&config, &oikos).unwrap_err();
+    assert!(
+        err.errors.iter().any(|e| e.contains("config")),
+        "error should mention missing config/ directory: {err:?}"
+    );
+}
+
+#[test]
+fn validate_startup_rejects_missing_data_dir() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join("config")).unwrap();
+    std::fs::create_dir_all(dir.path().join("nous")).unwrap();
+
+    let oikos = crate::oikos::Oikos::from_root(dir.path());
+    let mut config = AletheiaConfig::default();
+    config.agents.list.clear();
+
+    let err = validate_startup(&config, &oikos).unwrap_err();
+    assert!(
+        err.errors.iter().any(|e| e.contains("data")),
+        "error should mention missing data/ directory: {err:?}"
+    );
+}
+
+#[test]
+fn validate_startup_rejects_missing_nous_dir() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join("config")).unwrap();
+    std::fs::create_dir_all(dir.path().join("data")).unwrap();
+
+    let oikos = crate::oikos::Oikos::from_root(dir.path());
+    let mut config = AletheiaConfig::default();
+    config.agents.list.clear();
+
+    let err = validate_startup(&config, &oikos).unwrap_err();
+    assert!(
+        err.errors.iter().any(|e| e.contains("nous")),
+        "error should mention missing nous/ directory: {err:?}"
+    );
+}
+
+#[test]
+fn validate_startup_collects_all_missing_subdirs() {
+    let dir = tempfile::tempdir().unwrap();
+    // WHY: no subdirectories at all — all three should be reported
+    let oikos = crate::oikos::Oikos::from_root(dir.path());
+    let mut config = AletheiaConfig::default();
+    config.agents.list.clear();
+
+    let err = validate_startup(&config, &oikos).unwrap_err();
+    assert!(
+        err.errors.len() >= 3,
+        "should report at least 3 missing directories, got {}: {err:?}",
+        err.errors.len()
+    );
+}
+
+#[test]
+fn validate_startup_passes_with_complete_layout() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join("config")).unwrap();
+    std::fs::create_dir_all(dir.path().join("data")).unwrap();
+    std::fs::create_dir_all(dir.path().join("nous")).unwrap();
+
+    let oikos = crate::oikos::Oikos::from_root(dir.path());
+    let mut config = AletheiaConfig::default();
+    config.agents.list.clear();
+
+    // WHY: agents.list is empty, but that's also an error — push a
+    // dummy agent. We skip the agent check by verifying ONLY the
+    // subdirectory check passes when agents.list is empty and we remove
+    // that check below. Since agents.list is empty, that check still
+    // fires, so let's just verify no subdir error is in the output.
+    let err = validate_startup(&config, &oikos).unwrap_err();
+    assert!(
+        err.errors.iter().all(|e| !e.contains("required instance directory")),
+        "no subdirectory errors should be present when layout is complete: {err:?}"
+    );
+}
+
+#[test]
+fn validate_startup_error_includes_init_hint() {
+    let dir = tempfile::tempdir().unwrap();
+    let oikos = crate::oikos::Oikos::from_root(dir.path());
+    let mut config = AletheiaConfig::default();
+    config.agents.list.clear();
+
+    let err = validate_startup(&config, &oikos).unwrap_err();
+    assert!(
+        err.errors.iter().any(|e| e.contains("aletheia init")),
+        "error should include help hint about `aletheia init`: {err:?}"
+    );
+}
