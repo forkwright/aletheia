@@ -66,6 +66,14 @@ pub enum Error {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+
+    /// Caller lacks the required role for this operation.
+    #[snafu(display("unauthorized: {message}"))]
+    Unauthorized {
+        message: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
 }
 
 /// Result alias using diaporeia's [`Error`] type.
@@ -82,6 +90,11 @@ impl From<Error> for rmcp::ErrorData {
             // NOTE: client provided an invalid agent or session ID: include what wasn't found
             Error::NousNotFound { .. } | Error::SessionNotFound { .. } => {
                 rmcp::ErrorData::invalid_params(message, None)
+            }
+            // WHY: authorization failures return a clear message so clients can
+            // distinguish access-denied from invalid-params.
+            Error::Unauthorized { .. } => {
+                rmcp::ErrorData::new(rmcp::model::ErrorCode(-32001), message, None)
             }
             // WHY: server-side failures expose only a sanitized message, never internal details
             Error::Pipeline { .. }
@@ -198,5 +211,20 @@ mod tests {
             mcp.message.contains("syn"),
             "message must identify the missing agent"
         );
+    }
+
+    #[test]
+    fn unauthorized_maps_to_custom_error_code() {
+        let err = UnauthorizedSnafu {
+            message: "session_create requires operator role or above".to_string(),
+        }
+        .build();
+        let mcp: rmcp::ErrorData = err.into();
+        assert_eq!(
+            mcp.code,
+            rmcp::model::ErrorCode(-32001),
+            "unauthorized must use custom error code -32001"
+        );
+        assert!(mcp.message.contains("operator"));
     }
 }
