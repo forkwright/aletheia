@@ -73,6 +73,12 @@ pub enum ServerError {
     Validation {
         source: taxis::error::Error,
     },
+
+    /// Default nous agent failed to spawn during startup.
+    #[snafu(display("default nous spawn failed: {source}"))]
+    NousSpawn {
+        source: nous::error::Error,
+    },
 }
 
 /// Start the HTTP gateway and block until shutdown.
@@ -83,6 +89,7 @@ pub enum ServerError {
 /// Returns [`ServerError::SessionStore`] if the session database cannot be opened.
 /// Returns [`ServerError::Bind`] if the server cannot bind to the configured address.
 /// Returns [`ServerError::Serve`] if the HTTP server encounters a fatal I/O error.
+/// Returns [`ServerError::NousSpawn`] if the default nous agent fails to spawn.
 /// Returns [`ServerError::TlsConfig`] if TLS is enabled but certs cannot be loaded.
 /// Returns [`ServerError::TlsNotCompiled`] if TLS is enabled but the feature is absent.
 ///
@@ -124,12 +131,10 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
         taxis::config::NousBehaviorConfig::default(),
     );
     let nous_config = NousConfig::default();
-    // WHY: Test/dev server: validation failure for the default nous config
-    // is a startup error, not a recoverable condition.
     nous_manager
         .spawn(nous_config, PipelineConfig::default())
         .await
-        .expect("default nous spawn");
+        .context(NousSpawnSnafu)?;
 
     let aletheia_config = taxis::loader::load_config(&oikos).unwrap_or_else(|e| {
         tracing::warn!("failed to load config, using defaults: {e}");

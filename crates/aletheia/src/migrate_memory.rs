@@ -291,7 +291,7 @@ fn import_fact(
     let valid_from = parse_timestamp(&record.created_at).unwrap_or(now);
 
     let fact = Fact {
-        id: FactId::new(&fact_id).expect("migrated-<hash> is non-empty and under 256 bytes"),
+        id: FactId::new(&fact_id).expect("fact_id is `migrated-{hash}` which is non-empty and under MAX_ID_LEN"),
         nous_id: agent_id.to_owned(),
         content: record.content.clone(),
         fact_type: String::new(),
@@ -324,7 +324,7 @@ fn import_fact(
     if let Ok(embedding) = embedder.embed(&record.content) {
         let chunk = EmbeddedChunk {
             id: EmbeddingId::new(&format!("emb-{fact_id}"))
-                .expect("emb-migrated-<hash> is non-empty and under 256 bytes"),
+                .expect("`emb-{fact_id}` is non-empty and under MAX_ID_LEN"),
             content: record.content.clone(),
             source_type: "fact".to_owned(),
             source_id: fact_id,

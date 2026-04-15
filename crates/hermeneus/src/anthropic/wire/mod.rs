@@ -61,7 +61,13 @@ pub(super) fn content_with_cache_control(content: &Content) -> serde_json::Value
         Content::Blocks(blocks) => {
             let mut arr: Vec<serde_json::Value> = blocks
                 .iter()
-                .map(|b| serde_json::to_value(b).unwrap_or_default())
+                .filter_map(|b| {
+                    serde_json::to_value(b)
+                        .inspect_err(|e| {
+                            tracing::warn!(error = %e, "content block serialization failed, dropping block");
+                        })
+                        .ok()
+                })
                 .collect();
             if let Some(last) = arr.last_mut()
                 && let Some(obj) = last.as_object_mut()

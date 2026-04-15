@@ -279,7 +279,11 @@ mod tests {
         );
 
         let mut handles = JoinSet::new();
-        handles.spawn(async { handle.await.ok(); });
+        handles.spawn(async move {
+            if let Err(e) = handle.await {
+                tracing::warn!(error = %e, "spawned task failed");
+            }
+        });
         let listener = ChannelListener::from_parts(rx, handles);
         listener.stop();
     }
@@ -301,7 +305,11 @@ mod tests {
 
         {
             let mut handles = JoinSet::new();
-            handles.spawn(async { handle.await.ok(); });
+            handles.spawn(async move {
+                if let Err(e) = handle.await {
+                    tracing::warn!(error = %e, "spawned task failed");
+                }
+            });
             let _listener = ChannelListener::from_parts(rx, handles);
         }
 
@@ -325,7 +333,11 @@ mod tests {
         );
 
         let mut join_set = JoinSet::new();
-        join_set.spawn(async { handle.await.ok(); });
+        join_set.spawn(async move {
+            if let Err(e) = handle.await {
+                tracing::warn!(error = %e, "spawned task failed");
+            }
+        });
         let listener = ChannelListener::from_parts(rx, join_set);
         let (_rx, mut handles) = listener.into_receiver();
 
