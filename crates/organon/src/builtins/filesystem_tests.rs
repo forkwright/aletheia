@@ -744,6 +744,47 @@ fn test_truncate_output_exactly_at_limit_unchanged() {
 }
 
 #[test]
+fn test_truncate_output_multibyte_at_boundary_produces_valid_utf8() {
+    // WHY: If MAX_OUTPUT_BYTES falls in the middle of a multi-byte character,
+    // naive truncation produces invalid UTF-8. This test places a 4-byte emoji
+    // exactly at the truncation boundary to verify char-boundary-aware
+    // truncation. Closes #3335.
+    let emoji = "\u{1F600}"; // 4 bytes
+    let padding_len = MAX_OUTPUT_BYTES - 2; // 2 bytes short of limit
+    let mut input = "x".repeat(padding_len);
+    input.push_str(emoji); // total = padding_len + 4 > MAX_OUTPUT_BYTES
+    assert!(
+        input.len() > MAX_OUTPUT_BYTES,
+        "test input should exceed limit"
+    );
+
+    let result = truncate_output(input);
+
+    // The result must be valid UTF-8 (it's a String, so this is guaranteed
+    // at the type level, but verify the emoji was cleanly removed rather than
+    // partially included).
+    assert!(
+        result.ends_with("[output truncated]"),
+        "should end with truncation marker"
+    );
+    assert!(
+        !result.contains(emoji),
+        "emoji spanning the boundary should be removed entirely"
+    );
+    // Verify no partial bytes leaked: the text portion before the marker
+    // should be valid on its own.
+    let text_part = result.trim_end_matches("\n[output truncated]");
+    assert!(
+        text_part.len() <= MAX_OUTPUT_BYTES,
+        "text portion should not exceed limit"
+    );
+    assert!(
+        text_part.len() >= padding_len,
+        "text portion should retain the padding"
+    );
+}
+
+#[test]
 fn test_grep_def_has_pattern_as_required() {
     let mut reg = crate::registry::ToolRegistry::new();
     register(&mut reg).expect("register");

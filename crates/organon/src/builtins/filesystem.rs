@@ -53,7 +53,14 @@ pub(crate) const MAX_PATTERN_LENGTH: usize = 1000;
 
 fn truncate_output(mut output: String) -> String {
     if output.len() > MAX_OUTPUT_BYTES {
-        output.truncate(MAX_OUTPUT_BYTES);
+        // WHY: Truncating at an arbitrary byte position can split a multi-byte
+        // UTF-8 character, producing invalid UTF-8. Walk backwards to the
+        // nearest char boundary before truncating. Closes #3335.
+        let mut end = MAX_OUTPUT_BYTES;
+        while end > 0 && !output.is_char_boundary(end) {
+            end -= 1;
+        }
+        output.truncate(end);
         output.push_str("\n[output truncated]");
     }
     output
