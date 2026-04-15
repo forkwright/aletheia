@@ -18,7 +18,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 // Re-export types from eidos for convenience
-pub use eidos::training::{TrainingConfig, TrainingRecord};
+pub use eidos::training::{TrainingConfig, TrainingRecord, TRAINING_RECORD_SCHEMA_VERSION};
 use jiff::Timestamp;
 use snafu::{ResultExt, Snafu};
 use tracing::{debug, warn};
@@ -181,6 +181,7 @@ impl TrainingCapture {
         }
 
         let record = TrainingRecord {
+            schema_version: TRAINING_RECORD_SCHEMA_VERSION,
             session_id: input.session_id.to_owned(),
             nous_id: input.nous_id.to_owned(),
             user_message: input.user_message.to_owned(),
@@ -231,6 +232,7 @@ mod tests {
         let capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
         let record = TrainingRecord {
+            schema_version: TRAINING_RECORD_SCHEMA_VERSION,
             session_id: "ses-1".to_owned(),
             nous_id: "syn".to_owned(),
             user_message: "Hello".to_owned(),
@@ -246,6 +248,7 @@ mod tests {
         assert_eq!(lines.len(), 1);
 
         let parsed: TrainingRecord = serde_json::from_str(lines[0]).expect("parse");
+        assert_eq!(parsed.schema_version, TRAINING_RECORD_SCHEMA_VERSION);
         assert_eq!(parsed.session_id, "ses-1");
         assert_eq!(parsed.nous_id, "syn");
         assert_eq!(parsed.user_message, "Hello");
@@ -264,6 +267,7 @@ mod tests {
 
         for i in 0..3 {
             let record = TrainingRecord {
+                schema_version: TRAINING_RECORD_SCHEMA_VERSION,
                 session_id: format!("ses-{i}"),
                 nous_id: "syn".to_owned(),
                 user_message: format!("msg-{i}"),
@@ -353,6 +357,7 @@ mod tests {
     #[test]
     fn training_record_serde_roundtrip() {
         let record = TrainingRecord {
+            schema_version: TRAINING_RECORD_SCHEMA_VERSION,
             session_id: "ses-1".to_owned(),
             nous_id: "syn".to_owned(),
             user_message: "test input".to_owned(),
@@ -364,6 +369,7 @@ mod tests {
 
         let json = serde_json::to_string(&record).expect("serialize");
         let back: TrainingRecord = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(back.schema_version, TRAINING_RECORD_SCHEMA_VERSION);
         assert_eq!(back.session_id, record.session_id);
         assert_eq!(back.tokens, record.tokens);
     }
