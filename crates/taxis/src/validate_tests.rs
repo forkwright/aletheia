@@ -1,0 +1,551 @@
+#![expect(clippy::unwrap_used, reason = "test assertions")]
+#![expect(
+    clippy::indexing_slicing,
+    reason = "test: vec[0] is valid after asserting errors are non-empty"
+)]
+
+use serde_json::json;
+
+use super::*;
+
+#[test]
+fn rejects_zero_timeout() {
+    let section = json!({ "defaults": { "timeoutSeconds": 0 } });
+    let result = validate_section("agents", &section);
+    assert!(result.is_err(), "zero timeoutSeconds should be rejected");
+    assert!(
+        result.unwrap_err().errors[0].contains("timeoutSeconds"),
+        "error should mention timeoutSeconds"
+    );
+}
+
+#[test]
+fn rejects_excessive_tool_iterations() {
+    let section = json!({ "defaults": { "maxToolIterations": 10_001 } });
+    let result = validate_section("agents", &section);
+    assert!(
+        result.is_err(),
+        "maxToolIterations exceeding 10000 should be rejected"
+    );
+}
+
+#[test]
+fn accepts_tool_iterations_within_unrestricted_range() {
+    let section = json!({ "defaults": { "maxToolIterations": 10_000 } });
+    assert!(
+        validate_section("agents", &section).is_ok(),
+        "maxToolIterations at 10000 should be accepted"
+    );
+}
+
+#[test]
+fn rejects_invalid_port() {
+    let section = json!({ "port": 0 });
+    let result = validate_section("gateway", &section);
+    assert!(result.is_err(), "port 0 should be rejected");
+
+    let section = json!({ "port": 70000 });
+    let result = validate_section("gateway", &section);
+    assert!(
+        result.is_err(),
+        "port 70000 exceeding 65535 should be rejected"
+    );
+}
+
+#[test]
+fn rejects_warn_exceeding_alert() {
+    let section = json!({
+        "dbMonitoring": { "warnThresholdMb": 500, "alertThresholdMb": 100 }
+    });
+    let result = validate_section("maintenance", &section);
+    assert!(
+        result.is_err(),
+        "warn threshold exceeding alert threshold should be rejected"
+    );
+}
+
+#[test]
+fn accepts_valid_agents() {
+    let section = json!({
+        "defaults": {
+            "contextTokens": 200_000,
+            "timeoutSeconds": 300,
+            "maxToolIterations": 200,
+            "thinkingBudget": 10_000
+        }
+    });
+    assert!(
+        validate_section("agents", &section).is_ok(),
+        "valid agent defaults should be accepted"
+    );
+}
+
+#[test]
+fn accepts_valid_gateway() {
+    let section = json!({ "port": 8080, "cors": { "maxAgeSecs": 3600 } });
+    assert!(
+        validate_section("gateway", &section).is_ok(),
+        "valid gateway config should be accepted"
+    );
+}
+
+#[test]
+fn unknown_section_errors() {
+    let result = validate_section("nonexistent", &json!({}));
+    assert!(result.is_err(), "unknown config section should be rejected");
+}
+
+#[test]
+fn rejects_bootstrap_exceeding_context() {
+    let section = json!({
+        "defaults": {
+            "contextTokens": 10_000,
+            "bootstrapMaxTokens": 20_000
+        }
+    });
+    let result = validate_section("agents", &section);
+    assert!(
+        result.is_err(),
+        "bootstrapMaxTokens exceeding contextTokens should be rejected"
+    );
+    let err = result.unwrap_err();
+    assert!(
+        err.errors[0].contains("bootstrapMaxTokens"),
+        "error should mention bootstrapMaxTokens"
+    );
+}
+
+#[test]
+fn accepts_bootstrap_within_context() {
+    let section = json!({
+        "defaults": {
+            "contextTokens": 200_000,
+            "bootstrapMaxTokens": 40_000
+        }
+    });
+    assert!(
+        validate_section("agents", &section).is_ok(),
+        "bootstrapMaxTokens within contextTokens should be accepted"
+    );
+}
+
+#[test]
+fn rejects_invalid_auth_mode() {
+    let section = json!({ "auth": { "mode": "magic" } });
+    let result = validate_section("gateway", &section);
+    assert!(result.is_err(), "invalid auth mode should be rejected");
+    let err = result.unwrap_err();
+    assert!(err.errors[0].contains("gateway.auth.mode"));
+}
+
+#[test]
+fn accepts_valid_auth_modes() {
+    for mode in &["none", "token", "jwt"] {
+        let section = json!({ "auth": { "mode": mode } });
+        assert!(
+            validate_section("gateway", &section).is_ok(),
+            "mode '{mode}' should be valid"
+        );
+    }
+}
+
+#[test]
+fn rejects_zero_embedding_dimension() {
+    let section = json!({ "dimension": 0 });
+    let result = validate_section("embedding", &section);
+    assert!(
+        result.is_err(),
+        "zero embedding dimension should be rejected"
+    );
+}
+
+#[test]
+fn rejects_empty_embedding_provider() {
+    let section = json!({ "provider": "" });
+    let result = validate_section("embedding", &section);
+    assert!(
+        result.is_err(),
+        "empty embedding provider should be rejected"
+    );
+}
+
+#[test]
+fn accepts_valid_embedding() {
+    let section = json!({ "provider": "candle", "dimension": 384 });
+    assert!(
+        validate_section("embedding", &section).is_ok(),
+        "valid embedding config should be accepted"
+    );
+}
+
+#[test]
+fn rejects_invalid_signal_port() {
+    let section = json!({
+        "signal": {
+            "accounts": {
+                "primary": { "httpPort": 0 }
+            }
+        }
+    });
+    let result = validate_section("channels", &section);
+    assert!(result.is_err(), "zero signal httpPort should be rejected");
+}
+
+#[test]
+fn accepts_valid_channels() {
+    let section = json!({
+        "signal": {
+            "accounts": {
+                "primary": { "httpPort": 8080 }
+            }
+        }
+    });
+    assert!(
+        validate_section("channels", &section).is_ok(),
+        "valid channel config should be accepted"
+    );
+}
+
+#[test]
+fn rejects_binding_with_empty_fields() {
+    let section = json!([
+        { "channel": "signal", "source": "*", "nousId": "" }
+    ]);
+    let result = validate_section("bindings", &section);
+    assert!(
+        result.is_err(),
+        "binding with empty nousId should be rejected"
+    );
+}
+
+#[test]
+fn accepts_valid_bindings() {
+    let section = json!([
+        { "channel": "signal", "source": "*", "nousId": "main" }
+    ]);
+    assert!(
+        validate_section("bindings", &section).is_ok(),
+        "valid binding config should be accepted"
+    );
+}
+
+#[test]
+fn rejects_invalid_credential_source() {
+    let section = json!({ "source": "magic" });
+    let result = validate_section("credential", &section);
+    assert!(
+        result.is_err(),
+        "invalid credential source should be rejected"
+    );
+    let err = result.unwrap_err();
+    assert!(err.errors[0].contains("credential.source"));
+}
+
+#[test]
+fn accepts_valid_credential_sources() {
+    for source in &["auto", "api-key", "claude-code"] {
+        let section = json!({ "source": source });
+        assert!(
+            validate_section("credential", &section).is_ok(),
+            "source '{source}' should be valid"
+        );
+    }
+}
+
+#[test]
+fn rejects_invalid_agency_level() {
+    let section = json!({ "defaults": { "agency": "yolo" } });
+    let result = validate_section("agents", &section);
+    assert!(result.is_err(), "invalid agency level should be rejected");
+    let err = result.unwrap_err();
+    assert!(err.errors[0].contains("agency"));
+}
+
+#[test]
+fn accepts_valid_agency_levels() {
+    for level in &["unrestricted", "standard", "restricted"] {
+        let section = json!({ "defaults": { "agency": level } });
+        assert!(
+            validate_section("agents", &section).is_ok(),
+            "agency level '{level}' should be valid"
+        );
+    }
+}
+
+#[test]
+fn rejects_empty_model_primary() {
+    let section = json!({ "defaults": { "model": { "primary": "" } } });
+    let result = validate_section("agents", &section);
+    assert!(result.is_err(), "empty model primary should be rejected");
+    let err = result.unwrap_err();
+    assert!(
+        err.errors.iter().any(|e| e.contains("model.primary")),
+        "expected model.primary error, got: {err:?}"
+    );
+}
+
+#[test]
+fn rejects_empty_model_fallback() {
+    let section = json!({ "defaults": { "model": { "primary": "claude-sonnet-4-6", "fallbacks": [""] } } });
+    let result = validate_section("agents", &section);
+    assert!(result.is_err(), "empty model fallback should be rejected");
+    let err = result.unwrap_err();
+    assert!(
+        err.errors.iter().any(|e| e.contains("fallbacks[0]")),
+        "expected fallbacks[0] error, got: {err:?}"
+    );
+}
+
+#[test]
+fn accepts_valid_model_ids() {
+    let section = json!({
+        "defaults": {
+            "model": {
+                "primary": "claude-sonnet-4-6",
+                "fallbacks": ["claude-haiku-3-5"]
+            }
+        }
+    });
+    assert!(
+        validate_section("agents", &section).is_ok(),
+        "valid model ids should be accepted"
+    );
+}
+
+#[test]
+fn rejects_token_budget_exceeding_maximum() {
+    for field in [
+        "contextTokens",
+        "maxOutputTokens",
+        "bootstrapMaxTokens",
+        "thinkingBudget",
+    ] {
+        let section = json!({ "defaults": { field: 1_000_001_u64 } });
+        let result = validate_section("agents", &section);
+        assert!(
+            result.is_err(),
+            "{field} exceeding MAX_TOKEN_BUDGET should be rejected"
+        );
+        let err = result.unwrap_err();
+        assert!(
+            err.errors.iter().any(|e| e.contains(field)),
+            "expected error mentioning {field}, got: {err:?}"
+        );
+    }
+}
+
+#[test]
+fn accepts_token_budget_at_maximum() {
+    let section = json!({ "defaults": { "contextTokens": 1_000_000_u64 } });
+    assert!(
+        validate_section("agents", &section).is_ok(),
+        "token budget at maximum should be accepted"
+    );
+}
+
+#[test]
+fn validate_config_accepts_defaults() {
+    let config = AletheiaConfig::default();
+    assert!(
+        validate_config(&config).is_ok(),
+        "default config should be valid"
+    );
+}
+
+#[test]
+fn validate_config_rejects_invalid_tool_iterations() {
+    let mut config = AletheiaConfig::default();
+    config.agents.defaults.max_tool_iterations = 0;
+
+    let result = validate_config(&config);
+    assert!(result.is_err(), "zero maxToolIterations should be rejected");
+    let err = result.unwrap_err();
+    assert!(
+        err.errors.iter().any(|e| e.contains("maxToolIterations")),
+        "error should mention maxToolIterations, got: {err:?}"
+    );
+}
+
+// --- Wave 5: behavioral section validators ---
+
+#[test]
+fn rejects_invalid_nous_behavior() {
+    let section = json!({ "loopDetectionWindow": 1 });
+    let result = validate_section("nousBehavior", &section);
+    assert!(
+        result.is_err(),
+        "loopDetectionWindow below minimum should be rejected"
+    );
+}
+
+#[test]
+fn accepts_valid_nous_behavior() {
+    let section = json!({
+        "loopDetectionWindow": 50,
+        "gcIntervalSecs": 300,
+        "managerHealthIntervalSecs": 30
+    });
+    assert!(
+        validate_section("nousBehavior", &section).is_ok(),
+        "valid nous behavior config should be accepted"
+    );
+}
+
+#[test]
+fn rejects_invalid_knowledge() {
+    let section = json!({ "conflictIntraBatchDedupThreshold": 0.1 });
+    let result = validate_section("knowledge", &section);
+    assert!(
+        result.is_err(),
+        "intra-batch dedup threshold below 0.5 should be rejected"
+    );
+}
+
+#[test]
+fn rejects_knowledge_min_exceeding_max_fact_length() {
+    let section = json!({
+        "extractionMinFactLength": 600,
+        "extractionMaxFactLength": 500
+    });
+    let result = validate_section("knowledge", &section);
+    assert!(
+        result.is_err(),
+        "min fact length exceeding max should be rejected"
+    );
+}
+
+#[test]
+fn accepts_valid_knowledge() {
+    let section = json!({
+        "conflictIntraBatchDedupThreshold": 0.95,
+        "conflictMaxCandidates": 5,
+        "decayReinforcementBoost": 0.02
+    });
+    assert!(
+        validate_section("knowledge", &section).is_ok(),
+        "valid knowledge config should be accepted"
+    );
+}
+
+#[test]
+fn rejects_complexity_low_exceeding_high() {
+    let section = json!({
+        "complexityLowThreshold": 80,
+        "complexityHighThreshold": 30
+    });
+    let result = validate_section("providerBehavior", &section);
+    assert!(
+        result.is_err(),
+        "low complexity threshold exceeding high should be rejected"
+    );
+}
+
+#[test]
+fn accepts_valid_provider_behavior() {
+    let section = json!({
+        "nonStreamingTimeoutSecs": 120,
+        "complexityLowThreshold": 30,
+        "complexityHighThreshold": 70
+    });
+    assert!(
+        validate_section("providerBehavior", &section).is_ok(),
+        "valid provider behavior config should be accepted"
+    );
+}
+
+#[test]
+fn rejects_api_limits_default_exceeding_max_history() {
+    let section = json!({
+        "defaultHistoryLimit": 2000,
+        "maxHistoryLimit": 1000
+    });
+    let result = validate_section("apiLimits", &section);
+    assert!(
+        result.is_err(),
+        "default history limit exceeding max should be rejected"
+    );
+}
+
+#[test]
+fn accepts_valid_api_limits() {
+    let section = json!({
+        "maxMessageBytes": 262_144,
+        "maxHistoryLimit": 1000,
+        "defaultHistoryLimit": 50
+    });
+    assert!(
+        validate_section("apiLimits", &section).is_ok(),
+        "valid API limits config should be accepted"
+    );
+}
+
+#[test]
+fn rejects_daemon_backoff_base_exceeding_cap() {
+    let section = json!({
+        "watchdogBackoffBaseSecs": 50,
+        "watchdogBackoffCapSecs": 10
+    });
+    let result = validate_section("daemonBehavior", &section);
+    assert!(
+        result.is_err(),
+        "backoff base exceeding cap should be rejected"
+    );
+}
+
+#[test]
+fn accepts_valid_daemon_behavior() {
+    let section = json!({
+        "watchdogBackoffBaseSecs": 2,
+        "watchdogBackoffCapSecs": 300
+    });
+    assert!(
+        validate_section("daemonBehavior", &section).is_ok(),
+        "valid daemon behavior config should be accepted"
+    );
+}
+
+#[test]
+fn rejects_invalid_tool_limits() {
+    let section = json!({ "maxPatternLength": 1 });
+    let result = validate_section("toolLimits", &section);
+    assert!(
+        result.is_err(),
+        "maxPatternLength below minimum should be rejected"
+    );
+}
+
+#[test]
+fn accepts_valid_tool_limits() {
+    let section = json!({
+        "maxPatternLength": 1000,
+        "subprocessTimeoutSecs": 60,
+        "maxWriteBytes": 10_485_760
+    });
+    assert!(
+        validate_section("toolLimits", &section).is_ok(),
+        "valid tool limits config should be accepted"
+    );
+}
+
+#[test]
+fn rejects_invalid_messaging() {
+    let section = json!({ "pollIntervalMs": 10 });
+    let result = validate_section("messaging", &section);
+    assert!(
+        result.is_err(),
+        "pollIntervalMs below 100 should be rejected"
+    );
+}
+
+#[test]
+fn accepts_valid_messaging() {
+    let section = json!({
+        "pollIntervalMs": 2000,
+        "bufferCapacity": 100,
+        "circuitBreakerThreshold": 5
+    });
+    assert!(
+        validate_section("messaging", &section).is_ok(),
+        "valid messaging config should be accepted"
+    );
+}
