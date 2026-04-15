@@ -109,7 +109,10 @@ impl ToolExecutor for DokimasiaExecutor {
             // access which is outside this tool's scope. Callers may pass a diff
             // via a future `diff` field extension. Mechanical checks on an empty
             // diff produce no findings.
-            let qa_result = run_qa("", &qa_prompt, pr_number);
+            // WHY: No LLM provider available in the tool context — runs
+            // mechanical-only evaluation. Semantic evaluation requires the
+            // orchestrator which has access to hermeneus providers.
+            let qa_result = run_qa("", &qa_prompt, pr_number, None).await;
 
             Ok(to_json_text(&qa_result))
         })

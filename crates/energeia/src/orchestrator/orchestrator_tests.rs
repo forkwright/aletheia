@@ -46,6 +46,7 @@ impl QaGate for MockQaGate {
                 mechanical_issues: vec![],
                 cost_usd: 0.0,
                 evaluated_at: Timestamp::now(),
+                semantic_evaluated: false,
             })
         })
     }

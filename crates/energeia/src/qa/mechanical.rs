@@ -197,6 +197,11 @@ pub fn parse_changed_files(diff: &str) -> Vec<String> {
 // ---------------------------------------------------------------------------
 
 /// Verify all changed files fall within the declared blast radius.
+///
+/// Uses component-based path matching instead of string prefix matching
+/// to prevent path tricks. For example, `src/lib` as a blast radius does
+/// not match `src/library/mod.rs` because `library` is a different path
+/// component than `lib`.
 fn check_blast_radius(
     changed_files: &[String],
     blast_radius: &[String],
@@ -207,13 +212,17 @@ fn check_blast_radius(
     }
 
     for file in changed_files {
+        let file_path = Path::new(file);
         let within_scope = blast_radius.iter().any(|allowed| {
-            // WHY: A blast radius entry ending with `/` is a directory prefix.
-            // Anything under that path is allowed. Otherwise, exact match only.
+            // WHY: A blast radius entry ending with `/` is a directory scope.
+            // Anything under that directory is allowed. Otherwise, exact file
+            // match only. We use component-based matching so that `src/lib/`
+            // does not match `src/library/mod.rs`.
             if allowed.ends_with('/') {
-                file.starts_with(allowed.as_str())
+                let dir_path = Path::new(allowed.trim_end_matches('/'));
+                path_is_under(file_path, dir_path)
             } else {
-                file == allowed
+                file_path == Path::new(allowed)
             }
         });
 
@@ -225,6 +234,25 @@ fn check_blast_radius(
             });
         }
     }
+}
+
+/// Check if `child` is under `parent` using component-based matching.
+///
+/// Returns `true` if every component of `parent` matches the corresponding
+/// leading component of `child`. This prevents false positives from string
+/// prefix matching (e.g., `src/lib` would NOT match `src/library/mod.rs`).
+fn path_is_under(child: &Path, parent: &Path) -> bool {
+    let parent_components: Vec<_> = parent.components().collect();
+    let child_components: Vec<_> = child.components().collect();
+
+    if parent_components.len() > child_components.len() {
+        return false;
+    }
+
+    parent_components
+        .iter()
+        .zip(child_components.iter())
+        .all(|(p, c)| p == c)
 }
 
 // ---------------------------------------------------------------------------
@@ -403,6 +431,83 @@ diff --git a/src/lib.rs b/src/lib.rs
 
         assert!(
             !issues
+                .iter()
+                .any(|i| i.kind == MechanicalIssueKind::BlastRadiusViolation)
+        );
+    }
+
+    #[test]
+    fn blast_radius_prefix_similar_names_rejected() {
+        // WHY: `src/lib/` should NOT match `src/library/mod.rs` — these are
+        // different path components. String prefix matching would incorrectly
+        // allow this.
+        let diff = "+++ b/src/library/mod.rs\n@@ -1 +1,2 @@\n+new line\n";
+        let prompt = stub_prompt(vec!["src/lib/".to_owned()]);
+
+        let issues = mechanical_check(diff, &prompt);
+
+        assert!(
+            issues
+                .iter()
+                .any(|i| i.kind == MechanicalIssueKind::BlastRadiusViolation)
+        );
+    }
+
+    #[test]
+    fn blast_radius_parent_child_directory() {
+        // WHY: Changes in `src/foo/bar.rs` should be allowed when
+        // `src/foo/` is in the blast radius.
+        let diff = "+++ b/src/foo/bar.rs\n@@ -1 +1,2 @@\n+new line\n";
+        let prompt = stub_prompt(vec!["src/foo/".to_owned()]);
+
+        let issues = mechanical_check(diff, &prompt);
+
+        assert!(
+            !issues
+                .iter()
+                .any(|i| i.kind == MechanicalIssueKind::BlastRadiusViolation)
+        );
+    }
+
+    #[test]
+    fn blast_radius_sibling_directories_rejected() {
+        // WHY: `src/foo/` should not match `src/bar/baz.rs`.
+        let diff = "+++ b/src/bar/baz.rs\n@@ -1 +1,2 @@\n+new line\n";
+        let prompt = stub_prompt(vec!["src/foo/".to_owned()]);
+
+        let issues = mechanical_check(diff, &prompt);
+
+        assert!(
+            issues
+                .iter()
+                .any(|i| i.kind == MechanicalIssueKind::BlastRadiusViolation)
+        );
+    }
+
+    #[test]
+    fn blast_radius_same_file_allowed() {
+        let diff = "+++ b/src/lib.rs\n@@ -1 +1,2 @@\n+new line\n";
+        let prompt = stub_prompt(vec!["src/lib.rs".to_owned()]);
+
+        let issues = mechanical_check(diff, &prompt);
+
+        assert!(
+            !issues
+                .iter()
+                .any(|i| i.kind == MechanicalIssueKind::BlastRadiusViolation)
+        );
+    }
+
+    #[test]
+    fn blast_radius_file_does_not_match_prefix_similar_file() {
+        // WHY: `src/lib.rs` as exact match should not match `src/lib_utils.rs`.
+        let diff = "+++ b/src/lib_utils.rs\n@@ -1 +1,2 @@\n+new line\n";
+        let prompt = stub_prompt(vec!["src/lib.rs".to_owned()]);
+
+        let issues = mechanical_check(diff, &prompt);
+
+        assert!(
+            issues
                 .iter()
                 .any(|i| i.kind == MechanicalIssueKind::BlastRadiusViolation)
         );
