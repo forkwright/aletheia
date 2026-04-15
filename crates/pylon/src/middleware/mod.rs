@@ -95,16 +95,33 @@ impl From<RequestId> for String {
     }
 }
 
+/// Header name for request ID correlation across systems.
+const X_REQUEST_ID: &str = "x-request-id";
+
 /// Middleware that generates a ULID request ID and stores it in request extensions.
+///
+/// If the client sends an `X-Request-ID` header, the server echoes it for
+/// client-initiated correlation. Otherwise a new ULID is generated.
 ///
 /// # Cancel safety
 ///
 /// Cancel-safe. Axum middleware; cancellation drops the future with no
 /// side effects beyond not returning a response.
 pub async fn inject_request_id(mut request: Request, next: Next) -> Response {
-    let id = koina::ulid::Ulid::new().to_string();
-    request.extensions_mut().insert(RequestId(id));
-    next.run(request).await
+    let id = request
+        .headers()
+        .get(X_REQUEST_ID)
+        .and_then(|v| v.to_str().ok())
+        .map_or_else(|| koina::ulid::Ulid::new().to_string(), String::from);
+    request.extensions_mut().insert(RequestId(id.clone()));
+
+    let mut response = next.run(request).await;
+    if let Ok(header_value) = axum::http::HeaderValue::from_str(&id) {
+        response
+            .headers_mut()
+            .insert(X_REQUEST_ID, header_value);
+    }
+    response
 }
 
 /// Middleware that normalizes error responses into the `ErrorResponse` JSON

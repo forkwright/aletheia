@@ -136,7 +136,7 @@ fn default_limit_is_capped_at_max() {
 }
 
 #[test]
-fn search_result_serializes_camel_case() {
+fn search_result_serializes_snake_case() {
     let result = SearchResult {
         id: "fact-1".to_owned(),
         content: "Alice works at Acme Corp".to_owned(),
@@ -146,9 +146,8 @@ fn search_result_serializes_camel_case() {
         score: 0.64,
     };
     let json = serde_json::to_value(&result).unwrap();
-    // NOTE: serde(rename_all = "camelCase") maps fact_type to factType.
-    assert!(json.get("factType").is_some());
-    assert_eq!(json["factType"], "knowledge");
+    assert!(json.get("fact_type").is_some());
+    assert_eq!(json["fact_type"], "knowledge");
     assert_eq!(json["confidence"], 0.8);
 }
 
@@ -167,9 +166,13 @@ fn empty_search_returns_empty_results() {
 
 #[test]
 fn entities_response_serializes_empty() {
-    let response = EntitiesResponse { entities: vec![] };
+    let response = EntitiesResponse {
+        entities: vec![],
+        total: 0,
+    };
     let json = serde_json::to_value(&response).unwrap();
     assert!(json["entities"].as_array().unwrap().is_empty());
+    assert_eq!(json["total"], 0);
 }
 
 #[test]
