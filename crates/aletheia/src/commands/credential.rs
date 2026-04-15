@@ -66,6 +66,7 @@ pub(crate) async fn run(action: Action, instance_root: Option<&PathBuf>) -> Resu
                 };
                 println!("Source:        file ({})", cred_path.display());
                 println!("Type:          {cred_type}");
+                // SAFETY: token_preview redacts to first 4 + last 3 chars only (7 of ~100+)
                 println!(
                     "Token:         {}",
                     token_preview(cred.token.expose_secret())
@@ -102,6 +103,7 @@ pub(crate) async fn run(action: Action, instance_root: Option<&PathBuf>) -> Resu
                     found_any = true;
                     println!("Source:        keyring (OS)");
                     println!("Type:          static API key");
+                    // SAFETY: token_preview redacts to first 4 + last 3 chars only (7 of ~100+)
                     println!(
                         "Token:         {}",
                         token_preview(cred.secret.expose_secret())
