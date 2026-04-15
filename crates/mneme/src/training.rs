@@ -9,9 +9,14 @@
 //!
 //! # Quality gate
 //!
-//! Only turns where the assistant produced a non-empty response with no
-//! errors are captured. Empty responses and error recoveries are excluded
-//! to keep the training corpus clean.
+//! Only turns where the assistant produced substantive text content with a
+//! clean stop reason are captured. The gate rejects:
+//! - Empty or whitespace-only responses
+//! - Tool-use-only turns (tool calls present but no text content)
+//! - Error, degraded, or max-tokens stop reasons
+//!
+//! This keeps the training corpus clean of failure modes and non-content
+//! turns that would teach the model to reproduce degenerate outputs.
 
 use std::fs::{self, OpenOptions};
 use std::io::Write;
@@ -61,9 +66,62 @@ pub enum TrainingCaptureError {
 /// Result alias for training capture operations.
 pub type Result<T> = std::result::Result<T, TrainingCaptureError>;
 
+/// Stop reason classification for the training capture quality gate.
+///
+/// WHY: the provider-level `StopReason` lives in hermeneus which is a higher
+/// layer than mneme. Rather than adding an upward dependency, this enum
+/// captures just what the quality gate needs. Callers parse the string stop
+/// reason into this enum at the call site.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CaptureStopReason {
+    /// Normal end of turn — safe to capture.
+    EndTurn,
+    /// Model requested tool use — may or may not have text content.
+    ToolUse,
+    /// Hit max tokens limit — response is likely truncated.
+    MaxTokens,
+    /// Hit a stop sequence — safe to capture.
+    StopSequence,
+    /// Degraded mode — LLM was unavailable, response is synthetic.
+    Degraded,
+    /// Any unrecognized stop reason.
+    Unknown,
+}
+
+impl CaptureStopReason {
+    /// Parse a wire-format stop reason string into the enum.
+    ///
+    /// Unrecognized values map to [`CaptureStopReason::Unknown`] rather than
+    /// failing, since new provider stop reasons shouldn't crash capture.
+    ///
+    /// WHY `parse` not `from_str`: this is infallible (unknown maps to a
+    /// variant, not an error), so it doesn't match the `FromStr` trait's
+    /// fallible signature.
+    #[must_use]
+    pub fn parse(s: &str) -> Self {
+        match s {
+            "end_turn" => Self::EndTurn,
+            "tool_use" => Self::ToolUse,
+            "max_tokens" => Self::MaxTokens,
+            "stop_sequence" => Self::StopSequence,
+            "degraded" => Self::Degraded,
+            _ => Self::Unknown,
+        }
+    }
+
+    /// Whether this stop reason indicates the response should be excluded
+    /// from training data.
+    fn is_rejected(self) -> bool {
+        matches!(
+            self,
+            Self::MaxTokens | Self::Degraded | Self::Unknown
+        )
+    }
+}
+
 /// Borrowed inputs to [`TrainingCapture::maybe_capture`].
 ///
-/// Bundles the seven per-turn fields into a single record so the call sites
+/// Bundles the per-turn fields into a single record so the call sites
 /// remain self-documenting and so the function signature stays under the
 /// workspace's `too_many_arguments` threshold.
 #[derive(Debug, Clone, Copy)]
@@ -81,7 +139,13 @@ pub struct CaptureInput<'a> {
     /// Total tokens consumed by the turn (prompt + completion).
     pub tokens: u64,
     /// Stop reason reported by the provider.
-    pub stop_reason: &'a str,
+    pub stop_reason: CaptureStopReason,
+    /// Whether the turn included any tool calls.
+    ///
+    /// WHY: tool-use-only turns (tool calls present but no text content)
+    /// are not useful training data — they teach the model to produce
+    /// empty text responses.
+    pub has_tool_calls: bool,
 }
 
 /// Append-only training data writer.
@@ -154,28 +218,43 @@ impl TrainingCapture {
     /// Capture a conversation turn if it passes the quality gate.
     ///
     /// Quality gate criteria:
-    /// - Assistant response must be non-empty
-    /// - Stop reason must not indicate an error
+    /// - Assistant response must contain non-whitespace text
+    /// - Stop reason must not indicate an error or degraded mode
+    /// - Turn must not be tool-use-only (tool calls with no text content)
     ///
     /// Returns `true` if the record was written, `false` if it was
     /// filtered out by the quality gate. I/O errors are logged as
     /// warnings and do not propagate: training capture must never
     /// block the pipeline.
     pub fn maybe_capture(&self, input: CaptureInput<'_>) -> bool {
-        // Quality gate: reject empty or error responses
-        if input.assistant_response.is_empty() {
-            debug!(session_id = input.session_id, "training capture skipped: empty response");
+        // WHY: empty and whitespace-only responses teach the model to produce
+        // vacuous output. `.trim().is_empty()` catches both `""` and `"  \n"`.
+        if input.assistant_response.trim().is_empty() {
+            debug!(session_id = input.session_id, "training capture skipped: empty/whitespace response");
             return false;
         }
 
-        // WHY: error stop reasons indicate the model failed to produce a
-        // usable response. Including these in training data would teach
+        // WHY: rejected stop reasons indicate the model failed to produce a
+        // usable response (max_tokens = truncated, degraded = synthetic,
+        // unknown = unrecognized provider state). Including these would teach
         // the model to reproduce failure modes.
-        if input.stop_reason == "error" || input.stop_reason == "max_tokens_exceeded" {
+        if input.stop_reason.is_rejected() {
             debug!(
                 session_id = input.session_id,
-                stop_reason = input.stop_reason,
-                "training capture skipped: error stop reason"
+                stop_reason = ?input.stop_reason,
+                "training capture skipped: rejected stop reason"
+            );
+            return false;
+        }
+
+        // WHY: tool-use-only turns (tool calls present but the "response" is
+        // just tool invocation scaffolding) don't represent useful assistant
+        // behavior for text generation training. The text content in these
+        // turns is typically empty or trivial preamble.
+        if input.has_tool_calls && input.stop_reason == CaptureStopReason::ToolUse {
+            debug!(
+                session_id = input.session_id,
+                "training capture skipped: tool-use-only turn"
             );
             return false;
         }
@@ -213,6 +292,21 @@ impl TrainingCapture {
 #[expect(clippy::indexing_slicing, reason = "test assertions on a known-length collection")]
 mod tests {
     use super::*;
+
+    /// Helper: build a default `CaptureInput` for a normal successful turn.
+    /// Tests override individual fields to exercise specific gate conditions.
+    fn good_input() -> CaptureInput<'static> {
+        CaptureInput {
+            session_id: "ses-1",
+            nous_id: "syn",
+            user_message: "Hello",
+            assistant_response: "Hi there!",
+            model: "test-model",
+            tokens: 150,
+            stop_reason: CaptureStopReason::EndTurn,
+            has_tool_calls: false,
+        }
+    }
 
     #[test]
     fn training_config_defaults() {
@@ -280,6 +374,8 @@ mod tests {
         assert_eq!(lines.len(), 3);
     }
 
+    // ── Quality gate: empty / whitespace ──────────────────────────────────
+
     #[test]
     fn quality_gate_rejects_empty_response() {
         let dir = tempfile::tempdir().expect("tempdir");
@@ -290,23 +386,36 @@ mod tests {
         let capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
         let captured = capture.maybe_capture(CaptureInput {
-            session_id: "ses-1",
-            nous_id: "syn",
-            user_message: "Hi",
             assistant_response: "",
-            model: "end_turn",
-            tokens: 10,
-            stop_reason: "end_turn",
+            ..good_input()
         });
-        assert!(!captured);
-
-        // File should not exist or be empty
-        let exists = capture.file_path().exists();
-        assert!(!exists);
+        assert!(!captured, "empty response should be rejected");
+        assert!(!capture.file_path().exists(), "no file should be created");
     }
 
     #[test]
-    fn quality_gate_rejects_error_stop_reason() {
+    fn quality_gate_rejects_whitespace_only_response() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = TrainingConfig {
+            enabled: true,
+            path: "training".to_owned(),
+        };
+        let capture = TrainingCapture::new(dir.path(), &config).expect("new");
+
+        for ws in ["  ", "\n", "\t\n  ", "   \n\n   "] {
+            let captured = capture.maybe_capture(CaptureInput {
+                assistant_response: ws,
+                ..good_input()
+            });
+            assert!(!captured, "whitespace-only response {ws:?} should be rejected");
+        }
+        assert!(!capture.file_path().exists(), "no file should be created");
+    }
+
+    // ── Quality gate: stop reasons ────────────────────────────────────────
+
+    #[test]
+    fn quality_gate_rejects_max_tokens_stop_reason() {
         let dir = tempfile::tempdir().expect("tempdir");
         let config = TrainingConfig {
             enabled: true,
@@ -315,16 +424,84 @@ mod tests {
         let capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
         let captured = capture.maybe_capture(CaptureInput {
-            session_id: "ses-1",
-            nous_id: "syn",
-            user_message: "Hi",
-            assistant_response: "Response",
-            model: "test",
-            tokens: 50,
-            stop_reason: "error",
+            stop_reason: CaptureStopReason::MaxTokens,
+            ..good_input()
         });
-        assert!(!captured);
+        assert!(!captured, "max_tokens stop reason should be rejected");
     }
+
+    #[test]
+    fn quality_gate_rejects_degraded_stop_reason() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = TrainingConfig {
+            enabled: true,
+            path: "training".to_owned(),
+        };
+        let capture = TrainingCapture::new(dir.path(), &config).expect("new");
+
+        let captured = capture.maybe_capture(CaptureInput {
+            stop_reason: CaptureStopReason::Degraded,
+            ..good_input()
+        });
+        assert!(!captured, "degraded stop reason should be rejected");
+    }
+
+    #[test]
+    fn quality_gate_rejects_unknown_stop_reason() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = TrainingConfig {
+            enabled: true,
+            path: "training".to_owned(),
+        };
+        let capture = TrainingCapture::new(dir.path(), &config).expect("new");
+
+        let captured = capture.maybe_capture(CaptureInput {
+            stop_reason: CaptureStopReason::Unknown,
+            ..good_input()
+        });
+        assert!(!captured, "unknown stop reason should be rejected");
+    }
+
+    // ── Quality gate: tool-use-only ───────────────────────────────────────
+
+    #[test]
+    fn quality_gate_rejects_tool_use_only_turn() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = TrainingConfig {
+            enabled: true,
+            path: "training".to_owned(),
+        };
+        let capture = TrainingCapture::new(dir.path(), &config).expect("new");
+
+        let captured = capture.maybe_capture(CaptureInput {
+            assistant_response: "Let me check that.",
+            stop_reason: CaptureStopReason::ToolUse,
+            has_tool_calls: true,
+            ..good_input()
+        });
+        assert!(!captured, "tool-use-only turn (tool_use stop + has_tool_calls) should be rejected");
+    }
+
+    #[test]
+    fn quality_gate_accepts_tool_use_with_end_turn() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = TrainingConfig {
+            enabled: true,
+            path: "training".to_owned(),
+        };
+        let capture = TrainingCapture::new(dir.path(), &config).expect("new");
+
+        // Turn that used tools but ended with text (end_turn)
+        let captured = capture.maybe_capture(CaptureInput {
+            assistant_response: "Based on the file contents, here is the answer.",
+            stop_reason: CaptureStopReason::EndTurn,
+            has_tool_calls: true,
+            ..good_input()
+        });
+        assert!(captured, "tool-using turn that ended with text should be accepted");
+    }
+
+    // ── Quality gate: happy path ──────────────────────────────────────────
 
     #[test]
     fn quality_gate_accepts_good_response() {
@@ -335,20 +512,43 @@ mod tests {
         };
         let capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
-        let captured = capture.maybe_capture(CaptureInput {
-            session_id: "ses-1",
-            nous_id: "syn",
-            user_message: "Hello",
-            assistant_response: "Hi there!",
-            model: "test-model",
-            tokens: 150,
-            stop_reason: "end_turn",
-        });
+        let captured = capture.maybe_capture(good_input());
         assert!(captured);
 
         let content = std::fs::read_to_string(capture.file_path()).expect("read");
         assert_eq!(content.lines().count(), 1);
     }
+
+    #[test]
+    fn quality_gate_accepts_stop_sequence() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = TrainingConfig {
+            enabled: true,
+            path: "training".to_owned(),
+        };
+        let capture = TrainingCapture::new(dir.path(), &config).expect("new");
+
+        let captured = capture.maybe_capture(CaptureInput {
+            stop_reason: CaptureStopReason::StopSequence,
+            ..good_input()
+        });
+        assert!(captured, "stop_sequence with content should be accepted");
+    }
+
+    // ── CaptureStopReason parsing ─────────────────────────────────────────
+
+    #[test]
+    fn capture_stop_reason_from_str() {
+        assert_eq!(CaptureStopReason::parse("end_turn"), CaptureStopReason::EndTurn);
+        assert_eq!(CaptureStopReason::parse("tool_use"), CaptureStopReason::ToolUse);
+        assert_eq!(CaptureStopReason::parse("max_tokens"), CaptureStopReason::MaxTokens);
+        assert_eq!(CaptureStopReason::parse("stop_sequence"), CaptureStopReason::StopSequence);
+        assert_eq!(CaptureStopReason::parse("degraded"), CaptureStopReason::Degraded);
+        assert_eq!(CaptureStopReason::parse("error"), CaptureStopReason::Unknown);
+        assert_eq!(CaptureStopReason::parse("anything_else"), CaptureStopReason::Unknown);
+    }
+
+    // ── Serde roundtrip ───────────────────────────────────────────────────
 
     #[test]
     fn training_record_serde_roundtrip() {
