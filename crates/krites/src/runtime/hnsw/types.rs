@@ -93,6 +93,7 @@ impl VectorCache {
                     }))
                 }
                 _ => {
+                    #[expect(clippy::needless_return, reason = "explicit return for early exit in match arm")]
                     return Err(InvalidOperationSnafu {
                         op: "hnsw_l2",
                         reason: format!("Cannot compute L2 distance between {:?} and {:?}", v1, v2),
@@ -119,6 +120,7 @@ impl VectorCache {
                     Ok(1.0 - dot / (a_norm * b_norm).sqrt())
                 }
                 _ => {
+                    #[expect(clippy::needless_return, reason = "explicit return for early exit in match arm")]
                     return Err(InvalidOperationSnafu {
                         op: "hnsw_cosine",
                         reason: format!(
@@ -140,6 +142,7 @@ impl VectorCache {
                     Ok(1. - dot)
                 }
                 _ => {
+                    #[expect(clippy::needless_return, reason = "explicit return for early exit in match arm")]
                     return Err(InvalidOperationSnafu {
                         op: "hnsw_ip",
                         reason: format!(

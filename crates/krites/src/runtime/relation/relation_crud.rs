@@ -17,7 +17,7 @@ use crate::runtime::transact::SessionTx;
 
 use super::handles::{AccessLevel, InputRelationHandle, RelationHandle, RelationId};
 
-impl<'a> SessionTx<'a> {
+impl SessionTx<'_> {
     pub(crate) fn relation_exists(&self, name: &str) -> Result<bool> {
         let key = DataValue::from(name);
         let encoded = vec![key].encode_as_key(RelationId::SYSTEM);

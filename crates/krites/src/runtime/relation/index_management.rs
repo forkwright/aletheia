@@ -19,7 +19,7 @@ use crate::utils::TempCollector;
 
 use super::handles::{AccessLevel, InputRelationHandle, RelationId};
 
-impl<'a> SessionTx<'a> {
+impl SessionTx<'_> {
     pub(crate) fn create_index(
         &mut self,
         rel_name: &Symbol,
