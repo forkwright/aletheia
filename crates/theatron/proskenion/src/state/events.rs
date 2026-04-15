@@ -66,7 +66,7 @@ impl Default for EventState {
 }
 
 /// SSE connection lifecycle state, separate from the server connection
-/// (P604). This tracks specifically whether we are receiving SSE events.
+/// (P604). This tracks whether we are receiving SSE events.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum SseConnectionState {

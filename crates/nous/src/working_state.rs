@@ -94,7 +94,7 @@ pub(crate) struct CacheSafeParams {
 impl CacheSafeParams {
     /// Create cache-safe params with deterministically sorted tools.
     ///
-    /// Tools are sorted by name to ensure identical cache keys regardless
+    /// Tools are sorted by name to guarantee identical cache keys regardless
     /// of registration order.
     #[cfg_attr(
         not(test),

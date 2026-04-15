@@ -70,7 +70,7 @@ pub struct FinalizeResult {
 /// # Session guarantee
 ///
 /// The nous actor creates sessions in memory (not in `SQLite`). Before
-/// appending messages we ensure the session record exists in the store,
+/// appending messages we verify the session record exists in the store,
 /// avoiding a FOREIGN KEY constraint violation on the `messages` table.
 // NOTE(#940): 120 lines: sequential persistence pipeline: persist assistant message,
 // store tool results, update session, emit events. One cohesive commit sequence.

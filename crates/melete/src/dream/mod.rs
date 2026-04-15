@@ -2,7 +2,7 @@
 //!
 //! Background process that periodically consolidates session transcripts INTO
 //! the knowledge graph. Uses a triple-gate system (time → sessions → lock) to
-//! ensure consolidation runs infrequently, only when meaningful new data exists,
+//! so consolidation runs infrequently, only when meaningful new data exists,
 //! and never concurrently.
 //!
 //! Gate ORDER matters: each subsequent gate is more expensive.

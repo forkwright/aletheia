@@ -283,7 +283,7 @@ ps aux | grep restic
 restic unlock
 ```
 
-**Prevention**: Use `trap EXIT` in scripts to ensure cleanup on interruption.
+**Prevention**: Use `trap EXIT` in scripts to run cleanup on interruption.
 
 ### Permission denied on restore
 

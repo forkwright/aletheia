@@ -40,7 +40,7 @@ const USABLE_W: f32 = PAGE_W - 2.0 * MARGIN_X;
 #[derive(Debug, Snafu)]
 pub enum PdfError {
     /// No usable system font was found. Install a font (e.g. `liberation-sans-fonts`
-    /// or `google-noto-sans-fonts`) and ensure it is readable.
+    /// or `google-noto-sans-fonts`) and verify it is readable.
     #[snafu(display("no usable system font found for PDF rendering"))]
     NoFont,
 

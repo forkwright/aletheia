@@ -3,7 +3,7 @@
 //! Triggers when token usage exceeds a configurable threshold of the context
 //! window. Replaces history with a summary plus the last N turns. After
 //! compaction, critical files (recently modified or referenced) are re-injected
-//! to ensure the agent retains context about files it's actively editing.
+//! so the agent retains context about files it's actively editing.
 
 use tracing::debug;
 

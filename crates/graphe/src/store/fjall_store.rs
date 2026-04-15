@@ -100,7 +100,7 @@ pub struct SessionStore {
     /// WHY: fjall's `SingleWriterTxDatabase` serialises writers internally,
     /// but the graphe API takes `&self` (shared ref) for all write methods —
     /// matching the `SQLite` backend where `Connection` uses interior mutability.
-    /// We use a `Mutex<()>` to ensure only one logical "graphe write" runs at
+    /// We use a `Mutex<()>` so only one logical "graphe write" runs at
     /// a time, mirroring the serial-write contract of `SingleWriterTxDatabase`.
     write_lock: Mutex<()>,
     /// Kept alive to auto-delete the temp directory when the store is dropped.
