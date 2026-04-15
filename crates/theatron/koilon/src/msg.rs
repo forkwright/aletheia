@@ -543,10 +543,6 @@ pub enum NotificationKind {
         expect(dead_code, reason = "API bridge sends these; not yet wired")
     )]
     Info,
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "API bridge sends these; not yet wired")
-    )]
     Warning,
     #[cfg_attr(
         not(test),
