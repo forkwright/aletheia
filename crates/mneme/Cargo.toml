@@ -13,7 +13,10 @@ workspace = true
 [features]
 # WHY: fjall is the new default session backend — pure Rust, zero C dependency.
 # sqlite is preserved for migration parity and operator opt-in.
-default = ["fjall", "graph-algo"]
+# mneme-engine enables the Datalog knowledge store and typed query builder —
+# without it, downstream consumers get the session store but not the knowledge
+# engine that the crate description promises.
+default = ["fjall", "graph-algo", "mneme-engine"]
 fjall = ["graphe/fjall"]
 graph-algo = ["episteme/graph-algo"]
 # Gates MockEmbeddingProvider and other test helpers. No test code in release binaries.
