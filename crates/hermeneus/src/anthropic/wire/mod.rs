@@ -47,34 +47,34 @@ pub(super) fn compute_turn_cache_indices(messages: &[&crate::types::Message]) ->
 ///
 /// For `Content::Text`, wraps as a single-element block array.
 /// For `Content::Blocks`, clones and injects `cache_control` on the final block.
-pub(super) fn content_with_cache_control(content: &Content) -> serde_json::Value {
+///
+/// # Errors
+///
+/// Returns `serde_json::Error` if any content block fails to serialize.
+/// WHY: Silent `unwrap_or_default()` or `filter_map(ok())` would produce
+/// `Value::Null` or silently drop blocks, corrupting the API request.
+pub(super) fn content_with_cache_control(
+    content: &Content,
+) -> Result<serde_json::Value, serde_json::Error> {
     let cc = serde_json::json!({"type": "ephemeral"});
 
     match content {
-        Content::Text(text) => {
-            serde_json::json!([{
-                "type": "text",
-                "text": text,
-                "cache_control": cc
-            }])
-        }
+        Content::Text(text) => Ok(serde_json::json!([{
+            "type": "text",
+            "text": text,
+            "cache_control": cc
+        }])),
         Content::Blocks(blocks) => {
             let mut arr: Vec<serde_json::Value> = blocks
                 .iter()
-                .filter_map(|b| {
-                    serde_json::to_value(b)
-                        .inspect_err(|e| {
-                            tracing::warn!(error = %e, "content block serialization failed, dropping block");
-                        })
-                        .ok()
-                })
-                .collect();
+                .map(serde_json::to_value)
+                .collect::<Result<Vec<_>, _>>()?;
             if let Some(last) = arr.last_mut()
                 && let Some(obj) = last.as_object_mut()
             {
                 obj.insert(String::from("cache_control"), cc);
             }
-            serde_json::Value::Array(arr)
+            Ok(serde_json::Value::Array(arr))
         }
     }
 }

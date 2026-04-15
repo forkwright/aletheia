@@ -27,6 +27,9 @@ tracing = { workspace = true }
 tokio = { workspace = true }
 jiff = { workspace = true }
 
+[target.'cfg(all(unix, not(target_os = "linux")))'.dependencies]
+libc = { workspace = true }
+
 [dev-dependencies]
 hermeneus = { path = "../hermeneus", features = ["test-utils"] }
 tempfile = { workspace = true }

@@ -3977,6 +3977,7 @@ dependencies = [
  "hermeneus",
  "jiff",
  "koina",
+ "libc",
  "prometheus",
  "serde",
  "serde_json",
