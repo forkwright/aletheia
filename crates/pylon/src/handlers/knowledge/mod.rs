@@ -79,6 +79,17 @@ pub struct FactsResponse {
     pub total: usize,
 }
 
+/// Query parameters for listing entities.
+#[derive(Debug, Deserialize)]
+pub struct EntitiesQuery {
+    /// Maximum results to return (default: 100, max: 1000).
+    #[serde(default = "default_limit")]
+    pub limit: usize,
+    /// Offset for pagination.
+    #[serde(default)]
+    pub offset: usize,
+}
+
 /// Response wrapper for entity listing.
 #[derive(Debug, Serialize)]
 #[expect(
@@ -87,6 +98,7 @@ pub struct FactsResponse {
 )]
 pub struct EntitiesResponse {
     pub entities: Vec<mneme::knowledge::Entity>,
+    pub total: usize,
 }
 
 /// Response wrapper for relationships.
@@ -146,7 +158,6 @@ fn default_search_limit() -> usize {
 
 /// Search result item.
 #[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
 #[expect(
     missing_docs,
     reason = "response struct fields are self-documenting by name"
@@ -184,7 +195,6 @@ pub struct SimilarFact {
 
 /// Fact detail response with related entities and similar facts.
 #[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
 #[expect(
     missing_docs,
     reason = "response struct fields are self-documenting by name"
@@ -196,8 +206,7 @@ pub struct FactDetailResponse {
 }
 
 /// Timeline event.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, Serialize)]
 #[expect(
     missing_docs,
     reason = "response struct fields are self-documenting by name"
@@ -210,6 +219,20 @@ pub struct TimelineEvent {
     pub confidence: Option<f64>,
 }
 
+/// Query parameters for timeline listing.
+#[derive(Debug, Deserialize)]
+pub struct TimelineQuery {
+    /// Filter by nous agent ID.
+    #[serde(default)]
+    pub nous_id: Option<String>,
+    /// Maximum events to return (default: 100, max: 1000).
+    #[serde(default = "default_limit")]
+    pub limit: usize,
+    /// Offset for pagination.
+    #[serde(default)]
+    pub offset: usize,
+}
+
 /// Timeline response.
 #[derive(Debug, Serialize)]
 #[expect(
@@ -218,6 +241,7 @@ pub struct TimelineEvent {
 )]
 pub struct TimelineResponse {
     pub events: Vec<TimelineEvent>,
+    pub total: usize,
 }
 
 /// Validate sort/order query parameters, returning 400 with descriptive errors.
@@ -394,17 +418,36 @@ pub async fn get_fact(
 #[utoipa::path(
     get,
     path = "/api/v1/knowledge/entities",
+    params(
+        ("limit" = Option<usize>, Query, description = "Maximum results (default: 100, max: 1000)"),
+        ("offset" = Option<usize>, Query, description = "Pagination offset"),
+    ),
     responses(
-        (status = 200, description = "Entity list"),
+        (status = 200, description = "Entity list with total count"),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = []))
 )]
 pub async fn list_entities(
     State(state): State<KnowledgeState>,
+    Query(mut query): Query<EntitiesQuery>,
 ) -> Result<Json<EntitiesResponse>, ApiError> {
+    let max_facts_limit = state.config.read().await.api_limits.max_facts_limit;
+    query.limit = query.limit.min(max_facts_limit);
+
     let entities = get_stored_entities(&state);
-    Ok(Json(EntitiesResponse { entities }))
+    let total = entities.len();
+
+    let start = query.offset.min(entities.len());
+    let end = (start + query.limit).min(entities.len());
+    // start and end are both bounded by entities.len() via .min()
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "start and end are bounded by entities.len() via .min()"
+    )]
+    let entities = entities[start..end].to_vec();
+
+    Ok(Json(EntitiesResponse { entities, total }))
 }
 
 /// GET /api/v1/knowledge/entities/{id}/relationships
@@ -473,6 +516,16 @@ pub struct GraphCheckReport {
 ///
 /// Cancel-safe. Axum handler; cancellation drops the future with no
 /// side effects beyond not returning a response.
+#[utoipa::path(
+    get,
+    path = "/api/v1/knowledge/check",
+    responses(
+        (status = 200, description = "Graph health report"),
+        (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 503, description = "Knowledge store not enabled", body = crate::error::ErrorResponse),
+    ),
+    security(("bearer_auth" = []))
+)]
 pub async fn check_graph_health(
     State(state): State<KnowledgeState>,
 ) -> impl axum::response::IntoResponse {
