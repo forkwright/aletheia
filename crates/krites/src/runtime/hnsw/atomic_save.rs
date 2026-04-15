@@ -31,8 +31,8 @@ fn save_err(reason: String) -> crate::error::InternalError {
 /// Atomically write `data` to `target_path`.
 ///
 /// 1. Write to a temporary file in the same directory as `target_path`.
-/// 2. `fsync` the temporary file to ensure data is on disk.
-/// 3. `fsync` on Unix platforms to ensure directory entry is durable.
+/// 2. `fsync` the temporary file to guarantee data is on disk.
+/// 3. `fsync` on Unix platforms to guarantee the directory entry is durable.
 /// 4. Atomically rename the temp file to `target_path`.
 ///
 /// If any step fails, the temp file is cleaned up and `target_path` is

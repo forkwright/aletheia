@@ -696,7 +696,7 @@ Defense: use STRICT tables (see § SQLite > STRICT tables). With STRICT, SQLite 
 
 Rule: use `CAST()` for portable code. Use `::` only in PostgreSQL-specific contexts.
 
-For JSON casting specifically:
+For JSON casting:
 - PostgreSQL: `value::jsonb` or `CAST(value AS jsonb)` -- both work, `::` is idiomatic
 - SQLite: no JSON cast -- use `json()` to validate and minify, `json_valid()` to check
 

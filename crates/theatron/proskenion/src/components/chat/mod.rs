@@ -484,7 +484,7 @@ impl ChatStateManager {
     }
 
     /// Force-flush all buffered text. Call this on a timer tick (100ms)
-    /// from the Dioxus coroutine to ensure text is never stuck in the
+    /// from the Dioxus coroutine so text is never stuck in the
     /// buffer longer than the debounce interval.
     #[must_use]
     pub(crate) fn tick(&mut self, state: &mut ChatState) -> bool {

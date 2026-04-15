@@ -289,7 +289,7 @@ fuser -k 18789/tcp    # kill the process on that port
 
 The default auth mode from the init wizard is `none` (no bearer token). When `gateway.auth.mode = "none"`, the role assigned to all requests is controlled by `gateway.auth.none_role`. The compiled default is `"admin"`, which permits all operations. If you explicitly set `none_role` to `"readonly"`, only dashboard reads will work -- sessions, messages, and config changes will be rejected.
 
-Fix: ensure your config has:
+Fix: verify your config has:
 
 ```toml
 [gateway.auth]

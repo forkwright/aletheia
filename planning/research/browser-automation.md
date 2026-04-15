@@ -375,7 +375,7 @@ Connection pooling for browser instances across sessions. Only justified if brow
 
 ## Gotchas
 
-1. **Chrome binary availability.** Headless Chrome must be installed on the host or auto-downloaded via `chromiumoxide_fetcher`. The feature flag approach means builds without `browser` have zero Chrome dependency, but deployments that enable it must ensure Chrome is present. Document the requirement and provide a Nix flake overlay.
+1. **Chrome binary availability.** Headless Chrome must be installed on the host or auto-downloaded via `chromiumoxide_fetcher`. The feature flag approach means builds without `browser` have zero Chrome dependency, but deployments that enable it must verify Chrome is present. Document the requirement and provide a Nix flake overlay.
 
 2. **Landlock + Chrome sandbox conflict.** Chrome's internal sandbox uses user namespaces and seccomp-bpf. Running Chrome under Landlock with `--no-sandbox` disables Chrome's own sandbox, relying on Landlock for isolation instead. This is safe (Landlock is stricter) but non-obvious. Document the security rationale.
 

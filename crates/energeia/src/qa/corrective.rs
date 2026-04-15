@@ -68,7 +68,7 @@ pub fn derive_failure_type(qa_result: &QaResult) -> String {
 
 /// Determine the blast radius for a corrective prompt.
 ///
-/// Prefers files specifically mentioned in mechanical issues. Falls back to
+/// Prefers files mentioned in mechanical issues. Falls back to
 /// the original prompt's blast radius.
 fn extract_corrective_blast_radius(qa_result: &QaResult, original: &PromptSpec) -> Vec<String> {
     let mut files_from_issues: Vec<String> = qa_result

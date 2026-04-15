@@ -97,7 +97,7 @@ pub(crate) struct AuthStore {
     /// WHY: `SingleWriterTxDatabase` serialises writers internally, but the
     /// symbolon API takes `&self` for all write methods (matching the `SQLite`
     /// backend where `Connection` uses interior mutability). We use a `Mutex<()>`
-    /// to ensure only one write runs at a time, matching that serial contract.
+    /// so only one write runs at a time, matching that serial contract.
     write_lock: Mutex<()>,
     /// Kept alive to auto-delete the temp directory when the store is dropped.
     ///

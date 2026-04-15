@@ -300,7 +300,7 @@ When results land, compare against the SOTA table above and analyze:
   factual recall is working
 - `temporal-reasoning` above 60%: Bayesian surprise and staleness features
   (#2848, #2852) are contributing
-- F1 notably above EM: the model is producing correct-content answers that
+- F1 above EM: the model is producing correct-content answers that
   fail normalized exact match — consider relaxing the scorer or accepting
   contains as partial credit
 
