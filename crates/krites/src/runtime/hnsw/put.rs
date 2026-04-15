@@ -1077,6 +1077,7 @@ mod tests {
             !res.rows.is_empty(),
             "graph must remain searchable after dense insert (neighbour shrink)"
         );
+        // codequality:ignore — test fixture with synthetic vector data, not production records
         assert!(
             res.rows.len() <= 5,
             "must return at most k=5 results, got {}",
