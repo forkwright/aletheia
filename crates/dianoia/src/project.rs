@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use koina::ulid::Ulid;
 
 use crate::error::Result;
+use crate::gate::default_gate;
 use crate::phase::Phase;
 use crate::state::{ProjectState, Transition};
 
@@ -99,10 +100,15 @@ impl Project {
         }
     }
 
-    /// Advance project state via a transition.
+    /// Advance project state via a transition, enforcing phase gates.
+    ///
+    /// Advance transitions (`StartExecution`, `StartVerification`, `Complete`) are
+    /// checked against the default gate for the current state. Non-advance transitions
+    /// (e.g. `Abandon`, `Pause`, `Resume`) bypass gates.
     pub fn advance(&mut self, transition: Transition) -> Result<()> {
+        let gate = default_gate(&self.state);
         let current = self.state.clone();
-        self.state = current.transition(transition)?;
+        self.state = current.transition_gated(transition, gate.as_ref())?;
         self.updated_at = jiff::Timestamp::now();
         Ok(())
     }
@@ -289,6 +295,35 @@ mod tests {
         let result = project.advance(Transition::StartExecution);
         assert!(result.is_err());
         assert_eq!(project.state, ProjectState::Created);
+    }
+
+    #[test]
+    fn advance_enforces_default_gate() {
+        // Walk a project to Planning, then try StartExecution.
+        // Planning has a default gate requiring acceptance_criteria_defined,
+        // so the advance should be rejected.
+        let mut project = Project::new(
+            "gated".into(),
+            "gate test".into(),
+            ProjectMode::Full,
+            "syn".into(),
+        );
+        project.advance(Transition::StartQuestioning).unwrap();
+        project.advance(Transition::StartResearch).unwrap();
+        project.advance(Transition::StartScoping).unwrap();
+        project.advance(Transition::StartPlanning).unwrap();
+        assert_eq!(project.state, ProjectState::Planning);
+
+        let result = project.advance(Transition::StartExecution);
+        assert!(
+            result.is_err(),
+            "StartExecution from Planning should be blocked by the default gate"
+        );
+        assert_eq!(
+            project.state,
+            ProjectState::Planning,
+            "state should remain Planning after a blocked advance"
+        );
     }
 
     #[test]

@@ -152,41 +152,41 @@ fn project_state_full_lifecycle() {
     let state = ProjectState::Created;
 
     let state = state
-        .transition(Transition::StartQuestioning)
+        .transition_gated(Transition::StartQuestioning, None)
         .expect("Created -> Questioning");
     assert_eq!(state, ProjectState::Questioning);
 
     let state = state
-        .transition(Transition::StartResearch)
+        .transition_gated(Transition::StartResearch, None)
         .expect("Questioning -> Researching");
     assert_eq!(state, ProjectState::Researching);
 
     let state = state
-        .transition(Transition::StartScoping)
+        .transition_gated(Transition::StartScoping, None)
         .expect("Researching -> Scoping");
     assert_eq!(state, ProjectState::Scoping);
 
     let state = state
-        .transition(Transition::StartPlanning)
+        .transition_gated(Transition::StartPlanning, None)
         .expect("Scoping -> Planning");
     assert_eq!(state, ProjectState::Planning);
 
     let state = state
-        .transition(Transition::StartDiscussion)
+        .transition_gated(Transition::StartDiscussion, None)
         .expect("Planning -> Discussing");
     assert_eq!(state, ProjectState::Discussing);
 
     let state = state
-        .transition(Transition::StartExecution)
+        .transition_gated(Transition::StartExecution, None)
         .expect("Discussing -> Executing");
     assert_eq!(state, ProjectState::Executing);
 
     let state = state
-        .transition(Transition::StartVerification)
+        .transition_gated(Transition::StartVerification, None)
         .expect("Executing -> Verifying");
     assert_eq!(state, ProjectState::Verifying);
 
-    let state = state.transition(Transition::Complete).expect("Verifying -> Complete");
+    let state = state.transition_gated(Transition::Complete, None).expect("Verifying -> Complete");
     assert_eq!(state, ProjectState::Complete);
 }
 
@@ -194,19 +194,19 @@ fn project_state_full_lifecycle() {
 fn project_state_skip_paths() {
     // Skip from Created directly to Scoping
     let state = ProjectState::Created
-        .transition(Transition::SkipToResearch)
+        .transition_gated(Transition::SkipToResearch, None)
         .expect("Created -> Scoping (skip)");
     assert_eq!(state, ProjectState::Scoping);
 
     // Skip from Questioning to Scoping
     let state = ProjectState::Questioning
-        .transition(Transition::SkipResearch)
+        .transition_gated(Transition::SkipResearch, None)
         .expect("Questioning -> Scoping (skip)");
     assert_eq!(state, ProjectState::Scoping);
 
     // Skip from Planning to Executing
     let state = ProjectState::Planning
-        .transition(Transition::StartExecution)
+        .transition_gated(Transition::StartExecution, None)
         .expect("Planning -> Executing (skip discussion)");
     assert_eq!(state, ProjectState::Executing);
 }
@@ -215,7 +215,7 @@ fn project_state_skip_paths() {
 fn project_state_pause_and_resume() {
     let original = ProjectState::Executing;
     let paused = original
-        .transition(Transition::Pause)
+        .transition_gated(Transition::Pause, None)
         .expect("Executing -> Pause");
 
     assert!(
@@ -223,7 +223,7 @@ fn project_state_pause_and_resume() {
         "Expected Paused state"
     );
 
-    let resumed = paused.transition(Transition::Resume).expect("Paused -> Resume");
+    let resumed = paused.transition_gated(Transition::Resume, None).expect("Paused -> Resume");
     assert_eq!(resumed, ProjectState::Executing);
 }
 
@@ -239,7 +239,7 @@ fn project_state_abandon_from_any_state() {
         ProjectState::Executing,
         ProjectState::Verifying,
     ] {
-        let result = state.clone().transition(Transition::Abandon);
+        let result = state.clone().transition_gated(Transition::Abandon, None);
         assert!(
             result.is_ok(),
             "Abandon should succeed from {state:?}"
@@ -254,13 +254,13 @@ fn project_state_abandon_from_any_state() {
 
 #[test]
 fn project_state_invalid_transition_fails() {
-    let result = ProjectState::Complete.transition(Transition::StartQuestioning);
+    let result = ProjectState::Complete.transition_gated(Transition::StartQuestioning, None);
     assert!(result.is_err(), "Should not be able to transition from Complete");
 
-    let result = ProjectState::Abandoned.transition(Transition::Pause);
+    let result = ProjectState::Abandoned.transition_gated(Transition::Pause, None);
     assert!(result.is_err(), "Should not be able to pause Abandoned");
 
-    let result = ProjectState::Created.transition(Transition::Complete);
+    let result = ProjectState::Created.transition_gated(Transition::Complete, None);
     assert!(result.is_err(), "Should not be able to Complete from Created");
 }
 
@@ -270,24 +270,24 @@ fn project_state_revert_from_verifying() {
 
     let reverted = verifying
         .clone()
-        .transition(Transition::Revert {
+        .transition_gated(Transition::Revert {
             to: ProjectState::Executing,
-        })
+        }, None)
         .expect("Revert to Executing");
     assert_eq!(reverted, ProjectState::Executing);
 
     let reverted = verifying
         .clone()
-        .transition(Transition::Revert {
+        .transition_gated(Transition::Revert {
             to: ProjectState::Planning,
-        })
+        }, None)
         .expect("Revert to Planning");
     assert_eq!(reverted, ProjectState::Planning);
 
     let reverted = verifying
-        .transition(Transition::Revert {
+        .transition_gated(Transition::Revert {
             to: ProjectState::Scoping,
-        })
+        }, None)
         .expect("Revert to Scoping");
     assert_eq!(reverted, ProjectState::Scoping);
 }
@@ -724,7 +724,7 @@ fn blocker_serde_roundtrip() {
 
 #[test]
 fn error_invalid_transition() {
-    let result = ProjectState::Complete.transition(Transition::StartQuestioning);
+    let result = ProjectState::Complete.transition_gated(Transition::StartQuestioning, None);
     assert!(result.is_err());
 
     // The error should be InvalidTransition

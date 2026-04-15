@@ -64,13 +64,18 @@ mod tests {
 
     #[test]
     fn record_phase_transition_increments_counter() {
-        // Get initial count
+        // WHY: use unique labels that no real transition produces, so concurrent
+        // test threads running state-machine transitions don't inflate the count.
         let metric = &*PHASE_TRANSITIONS_TOTAL;
-        let initial = metric.with_label_values(&["planning", "executing"]).get();
+        let initial = metric
+            .with_label_values(&["_test_from", "_test_to"])
+            .get();
 
-        record_phase_transition("planning", "executing");
+        record_phase_transition("_test_from", "_test_to");
 
-        let after = metric.with_label_values(&["planning", "executing"]).get();
+        let after = metric
+            .with_label_values(&["_test_from", "_test_to"])
+            .get();
         assert_eq!(after, initial + 1, "counter should increment by 1");
     }
 

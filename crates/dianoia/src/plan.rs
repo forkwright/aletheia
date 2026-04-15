@@ -1,7 +1,10 @@
 //! Executable plans within a phase.
 
+use std::collections::{HashMap, HashSet};
+
 use serde::{Deserialize, Serialize};
 use koina::ulid::Ulid;
+use snafu::ensure;
 
 use crate::error::{self, Result};
 
@@ -128,6 +131,18 @@ impl Plan {
         self
     }
 
+    /// Set dependencies for this plan, validating against all plans in the set
+    /// to detect circular dependencies.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`error::Error::CircularDependency`] if adding these dependencies
+    /// would create a cycle in the dependency graph.
+    pub fn set_depends_on(&mut self, deps: Vec<Ulid>, all_plans: &[Plan]) -> Result<()> {
+        self.depends_on = deps;
+        detect_cycles(all_plans, self)
+    }
+
     /// Check if all dependencies are satisfied given completed plan IDs.
     #[must_use]
     #[cfg_attr(
@@ -165,6 +180,95 @@ impl Plan {
         self.state = PlanState::Stuck;
         self.blockers.push(blocker);
     }
+}
+
+/// Detect circular dependencies in the plan graph.
+///
+/// Builds an adjacency list from `all_plans` (with `updated_plan` overriding any
+/// plan with the same ID), then runs DFS-based cycle detection. Returns `Ok(())`
+/// if the graph is acyclic, or an error describing the first cycle found.
+///
+/// WHY separate function: called from `Plan::set_depends_on` and available for
+/// bulk validation of an entire phase's plan set.
+pub fn detect_cycles(all_plans: &[Plan], updated_plan: &Plan) -> Result<()> {
+    // Build adjacency: plan_id -> list of dependency plan_ids.
+    let mut adj: HashMap<Ulid, Vec<Ulid>> = HashMap::new();
+    let mut titles: HashMap<Ulid, &str> = HashMap::new();
+
+    for plan in all_plans {
+        if plan.id == updated_plan.id {
+            adj.insert(updated_plan.id, updated_plan.depends_on.clone());
+            titles.insert(updated_plan.id, &updated_plan.title);
+        } else {
+            adj.insert(plan.id, plan.depends_on.clone());
+            titles.insert(plan.id, &plan.title);
+        }
+    }
+    // If updated_plan isn't in all_plans yet (new plan being added), include it.
+    adj.entry(updated_plan.id)
+        .or_insert_with(|| updated_plan.depends_on.clone());
+    titles.entry(updated_plan.id).or_insert(&updated_plan.title);
+
+    // DFS cycle detection with path tracking.
+    let mut visited = HashSet::new();
+    let mut on_stack = HashSet::new();
+    let mut path = Vec::new();
+
+    let ids: Vec<Ulid> = adj.keys().copied().collect();
+    for &start in &ids {
+        if !visited.contains(&start)
+            && dfs_find_cycle(start, &adj, &mut visited, &mut on_stack, &mut path)
+        {
+            // `path` now contains the cycle. Format it with titles.
+            let cycle_str = path
+                .iter()
+                .map(|id| {
+                    titles
+                        .get(id)
+                        .copied()
+                        .unwrap_or("unknown")
+                })
+                .collect::<Vec<_>>()
+                .join(" -> ");
+            ensure!(false, error::CircularDependencySnafu { cycle: cycle_str });
+        }
+    }
+
+    Ok(())
+}
+
+/// DFS helper: returns `true` if a cycle is found, populating `path` with the cycle.
+fn dfs_find_cycle(
+    node: Ulid,
+    adj: &HashMap<Ulid, Vec<Ulid>>,
+    visited: &mut HashSet<Ulid>,
+    on_stack: &mut HashSet<Ulid>,
+    path: &mut Vec<Ulid>,
+) -> bool {
+    visited.insert(node);
+    on_stack.insert(node);
+    path.push(node);
+
+    if let Some(deps) = adj.get(&node) {
+        for &dep in deps {
+            if !visited.contains(&dep) {
+                if dfs_find_cycle(dep, adj, visited, on_stack, path) {
+                    return true;
+                }
+            } else if on_stack.contains(&dep) {
+                // Found cycle — trim path to start at the cycle entry point.
+                if let Some(pos) = path.iter().position(|&id| id == dep) {
+                    path.drain(..pos);
+                }
+                path.push(dep); // Close the cycle: A -> B -> A
+                return true;
+            }
+        }
+    }
+
+    on_stack.remove(&node);
+    path.pop();
+    false
 }
 
 #[cfg(test)]
@@ -330,5 +434,84 @@ mod tests {
             detected_at: jiff::Timestamp::now(),
         });
         assert_eq!(plan.blockers.len(), 2);
+    }
+
+    // ── Cycle detection ───────────────────────────────────────────────────────
+
+    #[test]
+    fn no_cycle_linear_chain() {
+        let mut a = Plan::new("A".into(), "plan A".into(), 1);
+        let mut b = Plan::new("B".into(), "plan B".into(), 1);
+        let c = Plan::new("C".into(), "plan C".into(), 1);
+
+        b.depends_on = vec![a.id];
+        a.depends_on = vec![];
+
+        let all = vec![a.clone(), b.clone(), c.clone()];
+        // Set C to depend on B — no cycle: A <- B <- C
+        let mut c_mut = c;
+        let result = c_mut.set_depends_on(vec![b.id], &all);
+        assert!(result.is_ok(), "linear chain should have no cycle");
+    }
+
+    #[test]
+    fn direct_cycle_detected() {
+        let a = Plan::new("A".into(), "plan A".into(), 1);
+        let mut b = Plan::new("B".into(), "plan B".into(), 1);
+        b.depends_on = vec![a.id];
+
+        let all = vec![a.clone(), b.clone()];
+
+        // Set A to depend on B — creates A -> B -> A cycle.
+        let mut a_mut = a;
+        let result = a_mut.set_depends_on(vec![b.id], &all);
+        assert!(result.is_err(), "A -> B -> A should be detected as a cycle");
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("A") && err.contains("B"),
+            "error should name plans in cycle, got: {err}"
+        );
+    }
+
+    #[test]
+    fn transitive_cycle_detected() {
+        let a = Plan::new("A".into(), "plan A".into(), 1);
+        let mut b = Plan::new("B".into(), "plan B".into(), 1);
+        let mut c = Plan::new("C".into(), "plan C".into(), 1);
+
+        b.depends_on = vec![a.id];
+        c.depends_on = vec![b.id];
+
+        let all = vec![a.clone(), b.clone(), c.clone()];
+
+        // Set A to depend on C — creates A -> C -> B -> A cycle.
+        let mut a_mut = a;
+        let result = a_mut.set_depends_on(vec![c.id], &all);
+        assert!(result.is_err(), "A -> C -> B -> A should be detected as a cycle");
+    }
+
+    #[test]
+    fn no_cycle_with_shared_dependency() {
+        let a = Plan::new("A".into(), "plan A".into(), 1);
+        let mut b = Plan::new("B".into(), "plan B".into(), 1);
+        let mut c = Plan::new("C".into(), "plan C".into(), 1);
+
+        // B and C both depend on A — diamond but no cycle.
+        b.depends_on = vec![a.id];
+        c.depends_on = vec![a.id];
+
+        let all = vec![a, b, c.clone()];
+        let result = detect_cycles(&all, &c);
+        assert!(result.is_ok(), "diamond dependency should not be a cycle");
+    }
+
+    #[test]
+    fn self_dependency_detected() {
+        let a = Plan::new("A".into(), "plan A".into(), 1);
+        let all = vec![a.clone()];
+
+        let mut a_mut = a;
+        let result = a_mut.set_depends_on(vec![a_mut.id], &all);
+        assert!(result.is_err(), "self-dependency should be detected as a cycle");
     }
 }
