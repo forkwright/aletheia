@@ -1,3 +1,10 @@
+#![expect(
+    clippy::explicit_iter_loop,
+    clippy::iter_not_returning_iterator,
+    clippy::result_large_err,
+    reason = "engine-internal filter RA — iter returns TupleIter (boxed trait), not Self::Iterator"
+)]
+
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::data::expr::{Bytecode, Expr, eval_bytecode_pred};

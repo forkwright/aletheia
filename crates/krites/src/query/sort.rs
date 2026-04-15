@@ -1,4 +1,15 @@
 //! Sort operators for query output.
+#![expect(
+    clippy::elidable_lifetime_names,
+    clippy::indexing_slicing,
+    clippy::needless_pass_by_value,
+    clippy::redundant_closure_for_method_calls,
+    clippy::result_large_err,
+    clippy::unnecessary_wraps,
+    clippy::unused_self,
+    reason = "engine-internal sort — indexing validated by head_indices lookup"
+)]
+
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 

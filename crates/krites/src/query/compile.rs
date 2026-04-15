@@ -1,4 +1,17 @@
 //! Query plan compilation from logical to relational algebra.
+#![expect(
+    clippy::as_conversions,
+    clippy::default_trait_access,
+    clippy::elidable_lifetime_names,
+    clippy::explicit_iter_loop,
+    clippy::indexing_slicing,
+    clippy::result_large_err,
+    clippy::semicolon_if_nothing_returned,
+    clippy::too_many_lines,
+    clippy::unnecessary_semicolon,
+    clippy::wildcard_imports,
+    reason = "engine-internal query compiler — casts, indexing, and result size are structural"
+)]
 
 use std::collections::{BTreeMap, BTreeSet};
 

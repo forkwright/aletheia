@@ -1,4 +1,19 @@
 //! Relational algebra operators.
+#![expect(
+    clippy::default_trait_access,
+    clippy::explicit_iter_loop,
+    clippy::match_same_arms,
+    clippy::redundant_closure_for_method_calls,
+    clippy::result_large_err,
+    clippy::semicolon_if_nothing_returned,
+    clippy::stable_sort_primitive,
+    clippy::too_many_lines,
+    clippy::unnecessary_semicolon,
+    clippy::unnecessary_wraps,
+    clippy::wildcard_imports,
+    reason = "engine-internal relational algebra — match arms kept explicit, result size structural"
+)]
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Debug, Formatter};
 

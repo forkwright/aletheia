@@ -1,4 +1,14 @@
 //! Datalog program stratification.
+#![expect(
+    clippy::cloned_instead_of_copied,
+    clippy::default_trait_access,
+    clippy::redundant_closure_for_method_calls,
+    clippy::result_large_err,
+    clippy::too_many_lines,
+    clippy::wildcard_imports,
+    reason = "engine-internal stratification — complex graph analysis with BTreeMap defaults"
+)]
+
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
 

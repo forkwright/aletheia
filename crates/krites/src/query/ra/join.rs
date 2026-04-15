@@ -1,3 +1,20 @@
+#![expect(
+    clippy::as_conversions,
+    clippy::cloned_instead_of_copied,
+    clippy::elidable_lifetime_names,
+    clippy::from_iter_instead_of_collect,
+    clippy::indexing_slicing,
+    clippy::iter_not_returning_iterator,
+    clippy::match_same_arms,
+    clippy::mutable_key_type,
+    clippy::redundant_closure_for_method_calls,
+    clippy::result_large_err,
+    clippy::semicolon_if_nothing_returned,
+    clippy::single_match_else,
+    clippy::wildcard_imports,
+    reason = "engine-internal join operators — indexing validated by join_indices, mutable keys are Symbol"
+)]
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Debug, Formatter};
 use std::iter;
