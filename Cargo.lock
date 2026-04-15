@@ -4187,6 +4187,7 @@ dependencies = [
  "criterion",
  "dianoia",
  "eidos",
+ "episteme",
  "hermeneus",
  "indexmap 2.13.1",
  "jiff",

@@ -844,7 +844,16 @@ pub(crate) async fn run_pipeline(
             oikos.root(),
             &pipeline_config.training,
         ) {
-            Ok(capture) => {
+            Ok(mut capture) => {
+                // Compute episteme labels from the user message for training enrichment.
+                // These are cheap heuristic classifiers — no LLM calls.
+                let turn_classification =
+                    episteme::extract::refinement::classify_turn(&input.content);
+                let correction_signal =
+                    episteme::extract::refinement::detect_correction(&input.content);
+                let fact_type =
+                    episteme::extract::refinement::classify_fact(&input.content);
+
                 capture.maybe_capture(crate::training::CaptureInput {
                     session_id: &input.session.id,
                     nous_id: &config.id,
@@ -856,6 +865,10 @@ pub(crate) async fn run_pipeline(
                         &result.stop_reason,
                     ),
                     has_tool_calls: !result.tool_calls.is_empty(),
+                    turn_type: Some(turn_classification.to_string()),
+                    is_correction: Some(correction_signal.is_correction),
+                    fact_types: Some(vec![fact_type.to_string()]),
+                    quality_score: None,
                 });
             }
             Err(e) => {
