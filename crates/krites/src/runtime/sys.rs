@@ -1,8 +1,13 @@
 //! System operation and metadata query methods for the Db engine.
+//!
+//! Handles schema DDL (create/remove relations and indices), metadata queries
+//! (list relations/columns/indices/running), trigger management, access level
+//! changes, and administrative ops (compact, explain, kill).
 
 use std::iter;
 use std::sync::atomic::Ordering;
 
+use compact_str::CompactString;
 use itertools::Itertools;
 use serde_json::json;
 
@@ -17,7 +22,38 @@ use crate::runtime::relation::{RelationHandle, RelationId};
 use crate::runtime::transact::SessionTx;
 use crate::storage::Storage;
 
+/// Build a single-row OK status response (used by many sys ops).
+fn ok_rows() -> NamedRows {
+    NamedRows::new(
+        vec![STATUS_STR.to_string()],
+        vec![vec![DataValue::from(OK_STR)]],
+    )
+}
+
 impl<'s, S: Storage<'s>> Db<S> {
+    /// Acquire a write lock on `relation_name` unless `skip_locking` is set,
+    /// then execute `body`. Returns the body's result.
+    fn with_relation_write_lock<R>(
+        &'s self,
+        relation_name: &CompactString,
+        skip_locking: bool,
+        body: impl FnOnce() -> Result<R>,
+    ) -> Result<R> {
+        if skip_locking {
+            body()
+        } else {
+            let lock = self
+                .obtain_relation_locks(iter::once(relation_name))
+                .pop()
+                .ok_or_else(|| crate::runtime::error::InvalidOperationSnafu {
+                    op: "sys_op",
+                    reason: "failed to obtain relation lock".to_string(),
+                }.build())?;
+            let _guard = lock.write().unwrap_or_else(|e| e.into_inner());
+            body()
+        }
+    }
+
     pub(crate) fn run_sys_op_with_tx(
         &'s self,
         tx: &mut SessionTx<'_>,
@@ -41,10 +77,7 @@ impl<'s, S: Storage<'s>> Db<S> {
                     .fail()?;
                 }
                 self.compact_relation()?;
-                Ok(NamedRows::new(
-                    vec![STATUS_STR.to_string()],
-                    vec![vec![DataValue::from(OK_STR)]],
-                ))
+                Ok(ok_rows())
             }
             SysOp::ListRelations => self.list_relations(tx),
             SysOp::ListFixedRules => {
@@ -84,17 +117,11 @@ impl<'s, S: Storage<'s>> Db<S> {
                 for (lower, upper) in bounds {
                     tx.store_tx.del_range_from_persisted(&lower, &upper)?;
                 }
-                Ok(NamedRows::new(
-                    vec![STATUS_STR.to_string()],
-                    vec![vec![DataValue::from(OK_STR)]],
-                ))
+                Ok(ok_rows())
             }
             SysOp::DescribeRelation(rel_name, description) => {
                 tx.describe_relation(rel_name, description)?;
-                Ok(NamedRows::new(
-                    vec![STATUS_STR.to_string()],
-                    vec![vec![DataValue::from(OK_STR)]],
-                ))
+                Ok(ok_rows())
             }
             SysOp::CreateIndex(rel_name, idx_name, cols) => {
                 if read_only {
@@ -103,23 +130,10 @@ impl<'s, S: Storage<'s>> Db<S> {
                     }
                     .fail()?;
                 }
-                if skip_locking {
-                    tx.create_index(rel_name, idx_name, cols)?;
-                } else {
-                    let lock = self
-                        .obtain_relation_locks(iter::once(&rel_name.name))
-                        .pop()
-                        .ok_or_else(|| crate::runtime::error::InvalidOperationSnafu {
-                            op: "sys_op",
-                            reason: "failed to obtain relation lock".to_string(),
-                        }.build())?;
-                    let _guard = lock.write().unwrap_or_else(|e| e.into_inner());
-                    tx.create_index(rel_name, idx_name, cols)?;
-                }
-                Ok(NamedRows::new(
-                    vec![STATUS_STR.to_string()],
-                    vec![vec![DataValue::from(OK_STR)]],
-                ))
+                self.with_relation_write_lock(&rel_name.name, skip_locking, || {
+                    tx.create_index(rel_name, idx_name, cols)
+                })?;
+                Ok(ok_rows())
             }
             SysOp::CreateVectorIndex(config) => {
                 if read_only {
@@ -128,23 +142,10 @@ impl<'s, S: Storage<'s>> Db<S> {
                     }
                     .fail()?;
                 }
-                if skip_locking {
-                    tx.create_hnsw_index(config)?;
-                } else {
-                    let lock = self
-                        .obtain_relation_locks(iter::once(&config.base_relation))
-                        .pop()
-                        .ok_or_else(|| crate::runtime::error::InvalidOperationSnafu {
-                            op: "sys_op",
-                            reason: "failed to obtain relation lock".to_string(),
-                        }.build())?;
-                    let _guard = lock.write().unwrap_or_else(|e| e.into_inner());
-                    tx.create_hnsw_index(config)?;
-                }
-                Ok(NamedRows::new(
-                    vec![STATUS_STR.to_string()],
-                    vec![vec![DataValue::from(OK_STR)]],
-                ))
+                self.with_relation_write_lock(&config.base_relation, skip_locking, || {
+                    tx.create_hnsw_index(config)
+                })?;
+                Ok(ok_rows())
             }
             SysOp::CreateFtsIndex(config) => {
                 if read_only {
@@ -153,23 +154,10 @@ impl<'s, S: Storage<'s>> Db<S> {
                     }
                     .fail()?;
                 }
-                if skip_locking {
-                    tx.create_fts_index(config)?;
-                } else {
-                    let lock = self
-                        .obtain_relation_locks(iter::once(&config.base_relation))
-                        .pop()
-                        .ok_or_else(|| crate::runtime::error::InvalidOperationSnafu {
-                            op: "sys_op",
-                            reason: "failed to obtain relation lock".to_string(),
-                        }.build())?;
-                    let _guard = lock.write().unwrap_or_else(|e| e.into_inner());
-                    tx.create_fts_index(config)?;
-                }
-                Ok(NamedRows::new(
-                    vec![STATUS_STR.to_string()],
-                    vec![vec![DataValue::from(OK_STR)]],
-                ))
+                self.with_relation_write_lock(&config.base_relation, skip_locking, || {
+                    tx.create_fts_index(config)
+                })?;
+                Ok(ok_rows())
             }
             SysOp::CreateMinHashLshIndex(config) => {
                 if read_only {
@@ -178,24 +166,10 @@ impl<'s, S: Storage<'s>> Db<S> {
                     }
                     .fail()?;
                 }
-                if skip_locking {
-                    tx.create_minhash_lsh_index(config)?;
-                } else {
-                    let lock = self
-                        .obtain_relation_locks(iter::once(&config.base_relation))
-                        .pop()
-                        .ok_or_else(|| crate::runtime::error::InvalidOperationSnafu {
-                            op: "sys_op",
-                            reason: "failed to obtain relation lock".to_string(),
-                        }.build())?;
-                    let _guard = lock.write().unwrap_or_else(|e| e.into_inner());
-                    tx.create_minhash_lsh_index(config)?;
-                }
-
-                Ok(NamedRows::new(
-                    vec![STATUS_STR.to_string()],
-                    vec![vec![DataValue::from(OK_STR)]],
-                ))
+                self.with_relation_write_lock(&config.base_relation, skip_locking, || {
+                    tx.create_minhash_lsh_index(config)
+                })?;
+                Ok(ok_rows())
             }
             SysOp::RemoveIndex(rel_name, idx_name) => {
                 if read_only {
@@ -221,10 +195,7 @@ impl<'s, S: Storage<'s>> Db<S> {
                 for (lower, upper) in bounds {
                     tx.store_tx.del_range_from_persisted(&lower, &upper)?;
                 }
-                Ok(NamedRows::new(
-                    vec![STATUS_STR.to_string()],
-                    vec![vec![DataValue::from(OK_STR)]],
-                ))
+                Ok(ok_rows())
             }
             SysOp::ListColumns(rs) => self.list_columns(tx, rs),
             SysOp::ListIndices(rs) => self.list_indices(tx, rs),
@@ -248,10 +219,7 @@ impl<'s, S: Storage<'s>> Db<S> {
                 for (old, new) in rename_pairs {
                     tx.rename_relation(old, new)?;
                 }
-                Ok(NamedRows::new(
-                    vec![STATUS_STR.to_string()],
-                    vec![vec![DataValue::from(OK_STR)]],
-                ))
+                Ok(ok_rows())
             }
             SysOp::ListRunning => self.list_running(),
             SysOp::KillRunning(id) => {
@@ -302,10 +270,7 @@ impl<'s, S: Storage<'s>> Db<S> {
                     .fail()?;
                 }
                 tx.set_relation_triggers(name, puts, rms, replaces)?;
-                Ok(NamedRows::new(
-                    vec![STATUS_STR.to_string()],
-                    vec![vec![DataValue::from(OK_STR)]],
-                ))
+                Ok(ok_rows())
             }
             SysOp::SetAccessLevel(names, level) => {
                 if read_only {
@@ -317,10 +282,7 @@ impl<'s, S: Storage<'s>> Db<S> {
                 for name in names {
                     tx.set_access_level(name, *level)?;
                 }
-                Ok(NamedRows::new(
-                    vec![STATUS_STR.to_string()],
-                    vec![vec![DataValue::from(OK_STR)]],
-                ))
+                Ok(ok_rows())
             }
         }
     }

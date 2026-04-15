@@ -1,4 +1,18 @@
 //! Runtime execution layer for the Datalog engine.
+//!
+//! ## Module layout
+//!
+//! - [`db`]: Core database instance, session management, `NamedRows` result type
+//! - [`transact`]: Transaction lifecycle — session creation, storage init, commit
+//! - [`exec`]: Query compilation, execution, and result assembly
+//! - [`imperative`]: Imperative script execution (loops, branches, control flow)
+//! - [`relation`]: Stored relation handles, CRUD, index management
+//! - [`hnsw`]: HNSW approximate nearest-neighbor vector index
+//! - [`minhash_lsh`]: `MinHash` locality-sensitive hashing index
+//! - [`sys`]: System operations (explain, compact, list, rename, triggers)
+//! - [`temp_store`]: In-memory tuple store for intermediate query evaluation
+//! - [`callback`]: Event callback registry for relation mutation notifications
+//! - [`error`]: `RuntimeError` enum with snafu context variants
 #[expect(
     clippy::redundant_closure_for_method_calls,
     clippy::semicolon_if_nothing_returned,

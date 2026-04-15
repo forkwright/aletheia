@@ -1,4 +1,15 @@
 //! Temporary in-memory tuple store for query evaluation.
+//!
+//! Provides `EpochStore` -- the per-stratum working storage for Datalog
+//! semi-naive evaluation. Each epoch tracks both a `total` set (all derived
+//! tuples) and a `delta` set (newly derived in the last iteration). The
+//! `merge_in` operation integrates new tuples from one iteration and updates
+//! the delta for the next.
+//!
+//! Two backing stores:
+//! - `RegularTempStore`: standard BTree-backed set with optional skip flags
+//! - `MeetAggrStore`: meet-semilattice aggregation store where values converge
+//!   monotonically via meet operations
 
 use std::cmp::Ordering;
 use std::collections::BTreeMap;

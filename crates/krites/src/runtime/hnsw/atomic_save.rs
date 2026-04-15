@@ -5,7 +5,7 @@
 //! file in a partial-write state visible to readers.
 //!
 //! The pattern: write → fsync → rename.
-#![allow(
+#![expect(
     dead_code,
     reason = "infrastructure for future HNSW persistence integration"
 )]

@@ -19,7 +19,7 @@ impl EvalProvider for BuiltinProvider {
     // WHY: trait signature is `fn name(&self) -> &str`. CompositeProvider
     // returns a borrowed self.name field, so the trait cannot use 'static.
     // Allowed locally on impls that happen to return literals.
-    #[allow(
+    #[expect(
         clippy::unnecessary_literal_bound,
         reason = "trait signature returns &str (borrowed), not &'static str"
     )]
