@@ -113,13 +113,13 @@ fn sse_event_error_omits_request_id_when_none() {
 }
 
 #[test]
-fn tui_event_turn_start_type() {
-    let event = crate::stream::WebchatEvent::TurnStart {
+fn tui_event_message_start_type() {
+    let event = crate::stream::WebchatEvent::MessageStart {
         session_id: "s1".to_owned(),
         nous_id: "syn".to_owned(),
         turn_id: "t1".to_owned(),
     };
-    assert_eq!(event.event_type(), "turn_start");
+    assert_eq!(event.event_type(), "message_start");
 }
 
 #[test]
@@ -139,13 +139,13 @@ fn tui_event_thinking_delta_type() {
 }
 
 #[test]
-fn tui_event_tool_start_type() {
-    let event = crate::stream::WebchatEvent::ToolStart {
+fn tui_event_tool_use_type() {
+    let event = crate::stream::WebchatEvent::ToolUse {
         tool_name: "search".to_owned(),
         tool_id: "t1".to_owned(),
         input: serde_json::json!({}),
     };
-    assert_eq!(event.event_type(), "tool_start");
+    assert_eq!(event.event_type(), "tool_use");
 }
 
 #[test]
@@ -161,8 +161,8 @@ fn tui_event_tool_result_type() {
 }
 
 #[test]
-fn tui_event_turn_complete_type() {
-    let event = crate::stream::WebchatEvent::TurnComplete {
+fn tui_event_message_complete_type() {
+    let event = crate::stream::WebchatEvent::MessageComplete {
         outcome: crate::stream::TurnOutcome {
             text: "done".to_owned(),
             nous_id: "syn".to_owned(),
@@ -175,7 +175,7 @@ fn tui_event_turn_complete_type() {
             cache_write_tokens: 0,
         },
     };
-    assert_eq!(event.event_type(), "turn_complete");
+    assert_eq!(event.event_type(), "message_complete");
 }
 
 #[test]
@@ -188,22 +188,22 @@ fn tui_event_error_type() {
 }
 
 #[test]
-fn tui_event_turn_start_serialization() {
-    let event = crate::stream::WebchatEvent::TurnStart {
+fn tui_event_message_start_serialization() {
+    let event = crate::stream::WebchatEvent::MessageStart {
         session_id: "s1".to_owned(),
         nous_id: "syn".to_owned(),
         turn_id: "t1".to_owned(),
     };
     let json = serde_json::to_value(&event).unwrap();
-    assert_eq!(json["type"], "turn_start");
-    assert_eq!(json["sessionId"], "s1");
-    assert_eq!(json["nousId"], "syn");
-    assert_eq!(json["turnId"], "t1");
+    assert_eq!(json["type"], "message_start");
+    assert_eq!(json["session_id"], "s1");
+    assert_eq!(json["nous_id"], "syn");
+    assert_eq!(json["turn_id"], "t1");
 }
 
 #[test]
-fn tui_event_turn_complete_serialization() {
-    let event = crate::stream::WebchatEvent::TurnComplete {
+fn tui_event_message_complete_serialization() {
+    let event = crate::stream::WebchatEvent::MessageComplete {
         outcome: crate::stream::TurnOutcome {
             text: "response".to_owned(),
             nous_id: "syn".to_owned(),
@@ -217,11 +217,11 @@ fn tui_event_turn_complete_serialization() {
         },
     };
     let json = serde_json::to_value(&event).unwrap();
-    assert_eq!(json["type"], "turn_complete");
+    assert_eq!(json["type"], "message_complete");
     let outcome = &json["outcome"];
     assert_eq!(outcome["text"], "response");
-    assert_eq!(outcome["nousId"], "syn");
-    assert_eq!(outcome["toolCalls"], 2);
-    assert_eq!(outcome["cacheReadTokens"], 10);
-    assert_eq!(outcome["cacheWriteTokens"], 20);
+    assert_eq!(outcome["nous_id"], "syn");
+    assert_eq!(outcome["tool_calls"], 2);
+    assert_eq!(outcome["cache_read_tokens"], 10);
+    assert_eq!(outcome["cache_write_tokens"], 20);
 }

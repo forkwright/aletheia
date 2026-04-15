@@ -455,7 +455,7 @@ pub async fn stream_turn(
     let (nous_tx, mut nous_rx) = mpsc::channel::<TurnStreamEvent>(64);
 
     let _ = webchat_tx
-        .send(WebchatEvent::TurnStart {
+        .send(WebchatEvent::MessageStart {
             session_id: session_id.clone(),
             nous_id: agent_id.clone(),
             turn_id,
@@ -491,7 +491,7 @@ pub async fn stream_turn(
                         tool_id,
                         tool_name,
                         input,
-                    } => WebchatEvent::ToolStart {
+                    } => WebchatEvent::ToolUse {
                         tool_name,
                         tool_id,
                         input,
@@ -546,7 +546,7 @@ pub async fn stream_turn(
                     let _ = bridge_handle.await;
 
                     let _ = webchat_tx
-                        .send(WebchatEvent::TurnComplete {
+                        .send(WebchatEvent::MessageComplete {
                             outcome: TurnOutcome {
                                 text: result.content.clone(),
                                 nous_id: aid,
@@ -575,7 +575,7 @@ pub async fn stream_turn(
                     // WHY: Always send a completion marker so the TUI knows the stream
                     // is finished, even on error paths.
                     let _ = webchat_tx
-                        .send(WebchatEvent::TurnComplete {
+                        .send(WebchatEvent::MessageComplete {
                             outcome: TurnOutcome {
                                 text: String::new(),
                                 nous_id: aid,

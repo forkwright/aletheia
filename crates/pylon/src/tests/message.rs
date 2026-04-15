@@ -235,8 +235,8 @@ async fn stream_turn_contains_turn_start_event() {
     let resp = router.oneshot(req).await.unwrap();
     let body = body_string(resp).await;
     assert!(
-        body.contains("event: turn_start"),
-        "should contain turn_start event"
+        body.contains("event: message_start"),
+        "should contain message_start event"
     );
 }
 
