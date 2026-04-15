@@ -21,7 +21,7 @@ use crate::utils::TempCollector;
 
 use super::handles::{InputRelationHandle, RelationHandle, RelationId};
 
-impl<'a> SessionTx<'a> {
+impl SessionTx<'_> {
     pub(crate) fn create_minhash_lsh_index(&mut self, config: &MinHashLshConfig) -> Result<()> {
         let mut rel_handle = self.get_relation(&config.base_relation, true)?;
 

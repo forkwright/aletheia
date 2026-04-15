@@ -35,7 +35,7 @@ fn storage_version_key() -> Vec<u8> {
 const STATUS_STR: &str = "status";
 const OK_STR: &str = "OK";
 
-impl<'a> SessionTx<'a> {
+impl SessionTx<'_> {
     pub(crate) fn get_returning_rows(
         &self,
         callback_collector: &CallbackCollector,

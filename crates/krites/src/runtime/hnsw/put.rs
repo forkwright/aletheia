@@ -19,7 +19,7 @@ use crate::runtime::error::InvalidOperationSnafu;
 use crate::runtime::relation::RelationHandle;
 use crate::runtime::transact::SessionTx;
 
-impl<'a> SessionTx<'a> {
+impl SessionTx<'_> {
     /// Insert a single vector into the HNSW index.
     ///
     /// # Complexity
@@ -612,6 +612,7 @@ impl<'a> SessionTx<'a> {
                 let tuple = res.ok()?;
 
                 #[expect(clippy::cast_sign_loss, reason = "HNSW indices are non-negative")]
+                #[expect(clippy::cast_possible_truncation, reason = "HNSW index fits in usize on all platforms")]
                 // INVARIANT: HNSW index tuples store int values at these positions
                 let key_idx = tuple[2 * key_len + 3]
                     .get_int()
@@ -782,6 +783,7 @@ impl<'a> SessionTx<'a> {
                     if let DataValue::Vec(v) = v {
                         #[expect(
                             clippy::cast_possible_truncation,
+                            clippy::cast_possible_wrap,
                             reason = "HNSW layer indices bounded by m_max (< i32::MAX)"
                         )]
                         let sidx_i32 = sidx as i32;

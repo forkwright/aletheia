@@ -50,6 +50,7 @@ impl AdaptiveSearchConfig {
     }
 
     /// Whether to use exact search for the given dataset size.
+    #[expect(clippy::trivially_copy_pass_by_ref, reason = "&self is idiomatic")]
     pub(crate) fn should_use_exact(&self, dataset_size: usize) -> bool {
         dataset_size <= self.exact_threshold
     }
@@ -64,7 +65,7 @@ pub(crate) enum SearchStrategy {
     Approximate,
 }
 
-impl<'a> SessionTx<'a> {
+impl SessionTx<'_> {
     /// Perform exact (brute-force) kNN search by scanning all vectors.
     ///
     /// Iterates over every canary entry in the index, computes the distance to

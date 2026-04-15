@@ -11,7 +11,7 @@ use crate::runtime::error::InvalidOperationSnafu;
 use crate::runtime::relation::RelationHandle;
 use crate::runtime::transact::SessionTx;
 
-impl<'a> SessionTx<'a> {
+impl SessionTx<'_> {
     /// Remove all vectors associated with a tuple from the HNSW index.
     ///
     /// # Complexity
@@ -31,6 +31,7 @@ impl<'a> SessionTx<'a> {
             .filter_map(|t| match t {
                 Ok(t) => {
                     #[expect(clippy::cast_sign_loss, reason = "HNSW indices are non-negative")]
+                    #[expect(clippy::cast_possible_truncation, reason = "HNSW index fits in usize on all platforms")]
                     // INVARIANT: HNSW index tuples store int values at index positions
                     let idx = t[orig_table.metadata.keys.len() + 1]
                         .get_int()
