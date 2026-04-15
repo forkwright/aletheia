@@ -852,7 +852,10 @@ pub(crate) async fn run_pipeline(
                     assistant_response: &result.content,
                     model: &config.generation.model,
                     tokens: result.usage.total_tokens(),
-                    stop_reason: &result.stop_reason,
+                    stop_reason: mneme::training::CaptureStopReason::parse(
+                        &result.stop_reason,
+                    ),
+                    has_tool_calls: !result.tool_calls.is_empty(),
                 });
             }
             Err(e) => {
