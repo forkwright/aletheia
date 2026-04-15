@@ -3,8 +3,8 @@ use std::str::CharIndices;
 
 use super::{BoxTokenStream, Token, TokenStream, Tokenizer};
 
-/// Tokenize the text by splitting on whitespaces and punctuation.
-#[derive(Clone)]
+/// Splits on non-alphanumeric characters, producing one token per word.
+#[derive(Debug, Clone)]
 pub(crate) struct SimpleTokenizer;
 
 pub(crate) struct SimpleTokenStream<'a> {

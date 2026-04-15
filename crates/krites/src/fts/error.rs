@@ -14,4 +14,12 @@ pub(crate) enum FtsError {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+
+    /// N-gram tokenizer was constructed with invalid gram bounds.
+    #[snafu(display("invalid n-gram configuration: {message}"))]
+    InvalidNgramConfig {
+        message: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
 }

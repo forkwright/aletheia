@@ -2,8 +2,8 @@
 use super::{Token, TokenStream, Tokenizer};
 use crate::fts::tokenizer::BoxTokenStream;
 
-/// For each value of the field, emit a single unprocessed token.
-#[derive(Clone)]
+/// Emits the entire input as a single unprocessed token.
+#[derive(Debug, Clone)]
 pub(crate) struct RawTokenizer;
 
 pub(crate) struct RawTokenStream {

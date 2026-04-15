@@ -1,7 +1,8 @@
 //! No-op tokenizer producing zero tokens.
 use crate::fts::tokenizer::{BoxTokenStream, Token, TokenStream, Tokenizer};
 
-#[derive(Clone)]
+/// Produces zero tokens for any input. Used as the default `TextAnalyzer` tokenizer.
+#[derive(Debug, Clone)]
 pub(crate) struct EmptyTokenizer;
 
 impl Tokenizer for EmptyTokenizer {
