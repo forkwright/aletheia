@@ -311,7 +311,7 @@ fn validate_rejects_curly_braces() {
 
 #[test]
 fn validate_rejects_at_sign() {
-    let path = Path::new("/tmp/backup@host.db");
+    let path = Path::new("/tmp/backup@host.db"); // pii-allow: tests `@` rejection in backup path validator
     assert!(validate_backup_path(path, None).is_err());
 }
 
