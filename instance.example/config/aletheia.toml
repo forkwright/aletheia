@@ -17,6 +17,11 @@ bind = "lan"              # lan | localhost | auto
 
 [gateway.auth]
 mode = "token"            # token | none
+# SECURITY: mode = "none" disables ALL authentication on both the HTTP API
+# and MCP server. Every connection receives the role specified by noneRole
+# (defaults to "admin"). Only use for single-operator localhost deployments.
+# When bind != "localhost", the server logs an ERROR at startup.
+# noneRole = "admin"      # readonly | agent | operator | admin
 
 # [gateway.tls]
 # enabled = true
