@@ -335,10 +335,39 @@ pub(crate) fn handle_clear_screen(app: &mut App) {
     app.viewport.dirty = true;
 }
 
+/// Maximum clipboard paste size in bytes. Pastes exceeding this are truncated
+/// to prevent blocking the event loop or growing the input buffer unboundedly.
+const MAX_PASTE_BYTES: usize = 100 * 1024; // 100 KB
+
+/// Maximum total size of the input buffer in bytes. Any insertion (paste or
+/// keystroke) that would exceed this is silently rejected.
+const MAX_INPUT_BYTES: usize = 512 * 1024; // 512 KB
+
 /// Ctrl+V: paste from clipboard. Text goes into input; images become attachments.
 pub(crate) fn handle_clipboard_paste(app: &mut App) {
     match crate::clipboard::read_from_clipboard() {
-        crate::clipboard::ClipboardContent::Text(text) => {
+        crate::clipboard::ClipboardContent::Text(mut text) => {
+            // WHY: Multi-MB pastes would block the event loop during insertion
+            // and cause the input buffer to grow unboundedly.
+            let was_truncated = text.len() > MAX_PASTE_BYTES;
+            if was_truncated {
+                // Truncate at a char boundary to avoid splitting a multi-byte character.
+                let mut end = MAX_PASTE_BYTES;
+                while end > 0 && !text.is_char_boundary(end) {
+                    end -= 1;
+                }
+                text.truncate(end);
+            }
+
+            // Reject if the input buffer would exceed its cap.
+            if app.interaction.input.text.len() + text.len() > MAX_INPUT_BYTES {
+                app.viewport.toasts.push(crate::state::Toast::new(
+                    "Paste rejected: input buffer full".to_string(),
+                    crate::msg::NotificationKind::Warning,
+                ));
+                return;
+            }
+
             app.interaction
                 .input
                 .text
@@ -347,6 +376,13 @@ pub(crate) fn handle_clipboard_paste(app: &mut App) {
             app.interaction.input.history_index = None;
             app.interaction.input.kill_ring.last_yank = None;
             app.interaction.input.trigger_cursor_flash();
+
+            if was_truncated {
+                app.viewport.toasts.push(crate::state::Toast::new(
+                    "Paste truncated to 100KB".to_string(),
+                    crate::msg::NotificationKind::Warning,
+                ));
+            }
         }
         crate::clipboard::ClipboardContent::Image {
             png_data,

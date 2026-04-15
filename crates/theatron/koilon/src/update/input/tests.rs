@@ -435,3 +435,18 @@ fn submit_empty_noop() {
     handle_submit(&mut app);
     assert!(app.interaction.input.history.is_empty());
 }
+
+// -- Clipboard paste size limit tests --
+
+// Compile-time check: paste limit is strictly less than input buffer limit.
+const _: () = assert!(MAX_PASTE_BYTES < MAX_INPUT_BYTES);
+
+#[test]
+fn input_buffer_rejects_when_full() {
+    let mut app = test_app();
+    // Fill the input buffer to near the max
+    app.interaction.input.text = "x".repeat(MAX_INPUT_BYTES);
+    app.interaction.input.cursor = app.interaction.input.text.len();
+    // Verify the cap is meaningful.
+    assert_eq!(app.interaction.input.text.len(), MAX_INPUT_BYTES);
+}

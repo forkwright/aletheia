@@ -335,11 +335,36 @@ impl App {
 
     #[tracing::instrument(skip(self), fields(url = %self.config.url))]
     async fn connect(&mut self) -> Result<()> {
-        if !self.client.health().await.unwrap_or(false) {
-            return GatewayUnreachableSnafu {
-                url: self.config.url.clone(),
+        // WHY: The old code flattened all health-check failures to a boolean,
+        // making connection-refused indistinguishable from an unhealthy server.
+        // We now issue the request directly and surface the actual error.
+        match self.client.raw_client().get(format!("{}/api/health", self.config.url)).send().await {
+            Ok(resp) if resp.status().is_success() => {
+                // healthy — continue
             }
-            .fail();
+            Ok(resp) => {
+                let status = resp.status();
+                let body = resp.text().await.unwrap_or_default();
+                let reason = if body.is_empty() {
+                    format!("HTTP {status}")
+                } else {
+                    format!("HTTP {status}: {body}")
+                };
+                return GatewayUnreachableSnafu {
+                    url: format!("{} — server reports unhealthy: {reason}", self.config.url),
+                }
+                .fail();
+            }
+            Err(e) => {
+                let detail = if e.is_connect() {
+                    format!("{} — is the server running? {e}", self.config.url)
+                } else if e.is_timeout() {
+                    format!("{} — connection timed out: {e}", self.config.url)
+                } else {
+                    format!("{} — {e}", self.config.url)
+                };
+                return GatewayUnreachableSnafu { url: detail }.fail();
+            }
         }
 
         match self.client.auth_mode().await {

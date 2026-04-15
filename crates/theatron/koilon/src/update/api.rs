@@ -183,6 +183,14 @@ pub(crate) fn handle_tick(app: &mut App) {
         app.viewport.success_toast = None;
     }
     app.viewport.toasts.retain(|t| !t.is_expired());
+    // WHY: Defense-in-depth cap on the toast queue. Normal expiry handles
+    // removal, but if toasts accumulate faster than they expire this prevents
+    // unbounded growth.
+    if app.viewport.toasts.len() > crate::state::notification::MAX_TOASTS {
+        app.viewport
+            .toasts
+            .drain(..app.viewport.toasts.len() - crate::state::notification::MAX_TOASTS);
+    }
     super::sse::check_sse_reconnect_timeout(app);
     super::sse::check_distill_auto_dismiss(app);
     check_stream_stall(app);

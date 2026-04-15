@@ -182,10 +182,6 @@ fn render_sparkline(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     frame.render_widget(paragraph, area);
 }
 
-#[expect(
-    clippy::indexing_slicing,
-    reason = "visible range start..end is guaranteed valid: start = scroll_offset clamped to len, end = min(start+h, len)"
-)]
 fn render_agent_table(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let metrics = &app.layout.metrics;
     let agents = &app.dashboard.agents;
@@ -210,7 +206,11 @@ fn render_agent_table(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
         let start = metrics.scroll_offset.min(agents.len().saturating_sub(1));
         let end = (start + visible_height).min(agents.len());
 
-        for (i, agent) in agents[start..end].iter().enumerate() {
+        // WHY: .get() with fallback instead of direct indexing to prevent
+        // panics when scroll_offset exceeds agent list length (e.g. agents
+        // list shrinks after a reconnect while scroll position is stale).
+        let visible = agents.get(start..end).unwrap_or(&[]);
+        for (i, agent) in visible.iter().enumerate() {
             let row_idx = start + i;
             let is_selected = row_idx == metrics.selected_agent;
             let marker = if is_selected { "▸ " } else { "  " };
@@ -299,6 +299,31 @@ fn truncate_str(s: &str, max_chars: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn get_on_empty_slice_returns_empty() {
+        // WHY: Verifies the .get(start..end).unwrap_or(&[]) pattern used in
+        // render_agent_table never panics on an empty agent list, even when
+        // scroll_offset is non-zero.
+        let agents: Vec<crate::state::AgentState> = Vec::new();
+        let scroll_offset: usize = 50;
+        let start = scroll_offset.min(agents.len().saturating_sub(1));
+        let end = (start + 10).min(agents.len());
+        let visible = agents.get(start..end).unwrap_or(&[]);
+        assert!(visible.is_empty());
+    }
+
+    #[test]
+    fn get_with_scroll_beyond_list_clamps() {
+        // WHY: With 1 agent and scroll_offset=100, the clamping arithmetic
+        // produces start=0, end=1, so the single agent is still visible.
+        let agents = [crate::app::test_helpers::test_agent("syn", "Syn")];
+        let scroll_offset: usize = 100;
+        let start = scroll_offset.min(agents.len().saturating_sub(1));
+        let end = (start + 10).min(agents.len());
+        let visible = agents.get(start..end).unwrap_or(&[]);
+        assert_eq!(visible.len(), 1);
+    }
 
     #[test]
     fn truncate_str_short() {

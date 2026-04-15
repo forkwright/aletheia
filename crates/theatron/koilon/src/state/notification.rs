@@ -13,10 +13,6 @@ pub struct Toast {
 }
 
 impl Toast {
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "convenience ctor for non-test callers")
-    )]
     pub(crate) fn new(message: String, kind: NotificationKind) -> Self {
         Self::with_duration(message, kind, 5)
     }
@@ -64,7 +60,19 @@ pub struct Notification {
     pub created_at: Instant,
 }
 
-/// Append-only log of notifications with read/unread tracking.
+/// Maximum number of notifications retained in the store.
+/// Oldest notifications are evicted when this cap is reached.
+const MAX_NOTIFICATIONS: usize = 10_000;
+
+/// Maximum number of toasts retained in the viewport queue.
+/// Defense-in-depth: prevents unbounded growth if dismiss logic stalls.
+pub(crate) const MAX_TOASTS: usize = 100;
+
+/// Bounded log of notifications with read/unread tracking.
+///
+/// WHY: Without a cap, every notification appended over a long-running session
+/// grows memory without bound. When the store reaches `MAX_NOTIFICATIONS`, the
+/// oldest entries are drained to make room.
 #[derive(Debug, Default)]
 pub struct NotificationStore {
     pub items: Vec<Notification>,
@@ -78,6 +86,11 @@ impl NotificationStore {
         message: String,
         kind: NotificationKind,
     ) {
+        // WHY: drain from the front to evict oldest entries when at capacity.
+        if self.items.len() >= MAX_NOTIFICATIONS {
+            let drain_count = self.items.len() - MAX_NOTIFICATIONS + 1;
+            self.items.drain(..drain_count);
+        }
         self.items.push(Notification {
             id: self.next_id,
             nous_id,
@@ -189,5 +202,35 @@ mod tests {
             message: "oops".to_string(),
         };
         assert_eq!(b.message, "oops");
+    }
+
+    #[test]
+    fn notification_store_evicts_oldest_at_capacity() {
+        let mut store = NotificationStore::default();
+        // Fill to capacity
+        for i in 0..MAX_NOTIFICATIONS {
+            store.push(None, format!("msg-{i}"), NotificationKind::Info);
+        }
+        assert_eq!(store.items.len(), MAX_NOTIFICATIONS);
+
+        // One more should evict the oldest
+        store.push(None, "overflow".to_string(), NotificationKind::Info);
+        assert_eq!(store.items.len(), MAX_NOTIFICATIONS);
+        // First item should now be "msg-1" (msg-0 was evicted)
+        assert_eq!(store.items[0].message, "msg-1");
+        // Last item is the new one
+        assert_eq!(store.items[MAX_NOTIFICATIONS - 1].message, "overflow");
+    }
+
+    #[test]
+    fn notification_store_preserves_unread_count_after_eviction() {
+        let mut store = NotificationStore::default();
+        for i in 0..MAX_NOTIFICATIONS {
+            store.push(None, format!("msg-{i}"), NotificationKind::Info);
+        }
+        // Mark all read, then add one unread
+        store.mark_all_read();
+        store.push(None, "new".to_string(), NotificationKind::Info);
+        assert_eq!(store.unread_count(), 1);
     }
 }
