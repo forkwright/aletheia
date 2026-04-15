@@ -1,4 +1,4 @@
-# Theatron LOC Audit
+# Theatron LOC audit
 
 > As of v0.13.59 (April 2026). Issue #2317.
 

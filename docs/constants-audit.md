@@ -1,4 +1,4 @@
-# Constants Audit — #2306 Wave 7 (Completion)
+# Constants audit — #2306 wave 7 (completion)
 
 **Issue:** forkwright/aletheia#2306
 **Date:** 2026-04-13

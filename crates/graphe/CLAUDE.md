@@ -96,7 +96,7 @@ Used by: mneme (facade re-export), episteme
 | `import_agent_file` | `import.rs` | `agent_file` |
 | `export_sessions` | `export.rs` | - |
 
-### Log Events
+### Log events
 
 | Level | Event | When |
 |-------|-------|------|

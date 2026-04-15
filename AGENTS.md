@@ -53,6 +53,6 @@ cargo check --manifest-path crates/theatron/proskenion/Cargo.toml
 All PRs need `Gate-Passed: kanon 0.1.0` in a commit body.
 Desktop PRs: `Gate-Passed: kanon 0.1.0 desktop-only (excluded from workspace build)`.
 
-## Skip Setup section
+## Skip setup section
 
 If you're reading this in a worktree, skip setup — you're already there.

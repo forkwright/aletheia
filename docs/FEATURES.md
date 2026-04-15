@@ -1,8 +1,8 @@
-# Feature Matrix
+# Feature matrix
 
 This document documents all compile-time feature flags across the Aletheia workspace.
 
-## Feature Matrix by Crate
+## Feature matrix by crate
 
 | Crate | Feature | Default | Gates |
 |-------|---------|---------|-------|
@@ -102,9 +102,9 @@ This document documents all compile-time feature flags across the Aletheia works
 | aletheia-thesauros | test-core | no | Test helpers |
 | aletheia-thesauros | test-full | no | Full test suite |
 
-## Build Profiles
+## Build profiles
 
-### Dev Profile
+### Dev profile
 
 Optimized for fast incremental builds during development:
 
@@ -136,7 +136,7 @@ Proc-macro crates use `opt-level = 1` for faster cold builds:
 - `snafu-derive`
 - `tracing-attributes`
 
-### Release Profile
+### Release profile
 
 Optimized for production binaries:
 
@@ -153,9 +153,9 @@ strip = "symbols"
 | `codegen-units` | 1 | Maximum optimization, single codegen unit |
 | `strip` | "symbols" | Remove debug symbols for smaller binaries |
 
-## Workspace-Level vs Crate-Level Features
+## Workspace-level vs crate-level features
 
-### Workspace-Level Configuration
+### Workspace-level configuration
 
 The workspace `Cargo.toml` defines:
 - **Workspace members**: 27 crate paths (including nested crates like `theatron`)
@@ -163,7 +163,7 @@ The workspace `Cargo.toml` defines:
 - **Shared dependencies**: Common crate versions via `[workspace.dependencies]`
 - **Lint configuration**: Rust and clippy lints applied workspace-wide
 
-### Crate-Level Features
+### Crate-level features
 
 Features are defined per-crate in their respective `Cargo.toml` files:
 
@@ -171,7 +171,7 @@ Features are defined per-crate in their respective `Cargo.toml` files:
 - **Library crates** (`aletheia-*`): Export features for composition by dependent crates.
 - **Test features** (`test-core`, `test-full`, `test-support`): Hierarchical test configuration across the workspace.
 
-### Feature Propagation
+### Feature propagation
 
 Features flow downstream through dependencies:
 
@@ -182,9 +182,9 @@ aletheia (binary)
                                           ──► aletheia-krites
 ```
 
-## Common Feature Patterns
+## Common feature patterns
 
-### Test Tiers
+### Test tiers
 
 All crates follow a consistent test tier pattern:
 
@@ -194,7 +194,7 @@ All crates follow a consistent test tier pattern:
 | Full | `test-full` | Superset of test-core, includes ML embedding tests |
 | Support | `test-support` | Mock implementations for dependent crates |
 
-### Optional Dependencies
+### Optional dependencies
 
 Features often gate optional dependencies using the `dep:` prefix:
 
@@ -205,7 +205,7 @@ tls = ["dep:axum-server"]
 keyring = ["dep:keyring"]
 ```
 
-## Build Examples
+## Build examples
 
 ```bash
 # Default build (tui, recall, storage-fjall, embed-candle)
@@ -227,7 +227,7 @@ cargo test --workspace --features test-core
 cargo test --workspace --features test-full
 ```
 
-## Important Notes
+## Important notes
 
 - **`embed-candle`** must remain in default features. It has been accidentally removed three times (#1263, #1326, #1378). A compile-time test in `tests/default_features.rs` guards against recurrence.
 - **`computer-use`** requires Linux kernel 5.13+ with Landlock support.

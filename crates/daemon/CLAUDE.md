@@ -67,7 +67,7 @@ Used by: aletheia (binary)
 
 _No `#[instrument]` spans in this crate. Spans created via `tracing::info_span!` at task spawn points._
 
-### Log Events
+### Log events
 
 | Level | Event | When |
 |-------|-------|------|

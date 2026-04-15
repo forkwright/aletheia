@@ -87,7 +87,7 @@ Used by: aletheia (binary)
 | `config_reload` | `handlers/config.rs` | - |
 | `config_update` | `handlers/config.rs` | - |
 
-### Log Events
+### Log events
 
 | Level | Event | When |
 |-------|-------|------|

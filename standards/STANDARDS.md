@@ -1,4 +1,4 @@
-# Coding Standards
+# Coding standards
 
 > Universal principles for all code, all languages, all projects. All other standards in this directory are additive to this document. Read this first.
 

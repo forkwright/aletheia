@@ -87,7 +87,7 @@ Used by: pylon, aletheia (binary)
 | `cross_router_deliver` | `cross/router.rs` | `msg_id`, `from`, `to` |
 | `cross_router_handle_reply` | `cross/router.rs` | `in_reply_to`, `from` |
 
-### Log Events
+### Log events
 
 | Level | Event | When |
 |-------|-------|------|

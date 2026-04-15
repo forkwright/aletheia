@@ -18,7 +18,7 @@
 
 Don't test private functions directly. Test them through the public API. If a private function is complex enough to need its own tests, it should be a public function in a smaller module.
 
-## When NOT to test
+## When not to test
 
 - getters/setters
 - Direct delegation (fn that calls one other fn and returns)
