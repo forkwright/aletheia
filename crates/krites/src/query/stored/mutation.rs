@@ -1,6 +1,23 @@
 //! Stored relation mutation: put, delete, and index maintenance.
 //! SessionTx methods for stored relation mutation and FTS/HNSW/LSH index maintenance.
 //! Stored relation access operators.
+#![expect(
+    clippy::default_trait_access,
+    clippy::doc_markdown,
+    clippy::elidable_lifetime_names,
+    clippy::explicit_iter_loop,
+    clippy::indexing_slicing,
+    clippy::redundant_closure_for_method_calls,
+    clippy::result_large_err,
+    clippy::semicolon_if_nothing_returned,
+    clippy::too_many_arguments,
+    clippy::too_many_lines,
+    clippy::type_complexity,
+    clippy::unnecessary_semicolon,
+    clippy::unused_self,
+    clippy::wildcard_imports,
+    reason = "engine-internal mutation — many arguments required for trigger/callback propagation"
+)]
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;

@@ -1,4 +1,14 @@
 //! Magic sets query transformation.
+#![expect(
+    clippy::default_trait_access,
+    clippy::explicit_iter_loop,
+    clippy::needless_pass_by_value,
+    clippy::result_large_err,
+    clippy::semicolon_if_nothing_returned,
+    clippy::too_many_lines,
+    clippy::wildcard_imports,
+    reason = "engine-internal magic sets rewrite — complex transformation with many intermediate collections"
+)]
 
 use std::collections::BTreeSet;
 use std::mem;

@@ -1,4 +1,11 @@
 //! Dependency graph analysis for stratification.
+#![expect(
+    clippy::cloned_instead_of_copied,
+    clippy::indexing_slicing,
+    clippy::needless_pass_by_value,
+    clippy::result_large_err,
+    reason = "engine-internal graph algorithms — indexing validated by construction"
+)]
 
 use std::cmp::min;
 use std::collections::{BTreeMap, BTreeSet};

@@ -1,4 +1,13 @@
 //! Join reordering heuristics.
+#![expect(
+    clippy::explicit_iter_loop,
+    clippy::result_large_err,
+    clippy::semicolon_if_nothing_returned,
+    clippy::too_many_lines,
+    clippy::wildcard_imports,
+    reason = "engine-internal join reordering — complex pattern matching over atom types"
+)]
+
 use std::collections::BTreeSet;
 use std::mem;
 

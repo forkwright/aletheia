@@ -1,3 +1,10 @@
+#![expect(
+    clippy::indexing_slicing,
+    clippy::iter_not_returning_iterator,
+    clippy::result_large_err,
+    reason = "engine-internal reorder RA — indexing validated by old_order_indices lookup"
+)]
+
 use std::collections::BTreeMap;
 
 use itertools::Itertools;
