@@ -18,7 +18,7 @@ pub(crate) struct Token {
     pub(crate) offset_from: usize,
     /// Offset (byte index) of the last character of the token + 1.
     /// The text that generated the token should be obtained by
-    /// &text[token.offset_from..token.offset_to]
+    /// `&text[token.offset_from..token.offset_to]`
     pub(crate) offset_to: usize,
     /// Position, expressed in number of tokens.
     pub(crate) position: usize,
@@ -199,7 +199,7 @@ impl<'a> Deref for BoxTokenStream<'a> {
         &*self.0
     }
 }
-impl<'a> DerefMut for BoxTokenStream<'a> {
+impl DerefMut for BoxTokenStream<'_> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut *self.0
     }

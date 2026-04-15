@@ -23,7 +23,7 @@ pub(crate) struct AsciiFoldingFilterTokenStream<'a> {
     tail: BoxTokenStream<'a>,
 }
 
-impl<'a> TokenStream for AsciiFoldingFilterTokenStream<'a> {
+impl TokenStream for AsciiFoldingFilterTokenStream<'_> {
     fn advance(&mut self) -> bool {
         if !self.tail.advance() {
             return false;

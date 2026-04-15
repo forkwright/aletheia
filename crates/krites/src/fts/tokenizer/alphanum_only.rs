@@ -10,7 +10,8 @@ pub(crate) struct AlphaNumOnlyFilterStream<'a> {
     tail: BoxTokenStream<'a>,
 }
 
-impl<'a> AlphaNumOnlyFilterStream<'a> {
+impl AlphaNumOnlyFilterStream<'_> {
+    #[expect(clippy::unused_self, reason = "method predicate follows TokenFilter pattern for consistency")]
     fn predicate(&self, token: &Token) -> bool {
         token.text.chars().all(|c| c.is_ascii_alphanumeric())
     }
@@ -22,7 +23,7 @@ impl TokenFilter for AlphaNumOnlyFilter {
     }
 }
 
-impl<'a> TokenStream for AlphaNumOnlyFilterStream<'a> {
+impl TokenStream for AlphaNumOnlyFilterStream<'_> {
     fn advance(&mut self) -> bool {
         while self.tail.advance() {
             if self.predicate(self.tail.token()) {

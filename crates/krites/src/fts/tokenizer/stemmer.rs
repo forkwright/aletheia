@@ -32,6 +32,7 @@ pub(crate) enum Language {
 
 impl Language {
     fn algorithm(self) -> Algorithm {
+        #[expect(clippy::enum_glob_use, reason = "local import for concise match arms in Language-to-Algorithm mapping")]
         use self::Language::*;
         match self {
             Arabic => Algorithm::Arabic,
@@ -97,7 +98,7 @@ pub(crate) struct StemmerTokenStream<'a> {
     buffer: String,
 }
 
-impl<'a> TokenStream for StemmerTokenStream<'a> {
+impl TokenStream for StemmerTokenStream<'_> {
     fn advance(&mut self) -> bool {
         if !self.tail.advance() {
             return false;

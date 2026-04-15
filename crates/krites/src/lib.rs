@@ -58,15 +58,6 @@ pub(crate) mod data;
     reason = "krites engine internal — graph algorithm casts and indexing are engine-internal invariants"
 )]
 pub(crate) mod fixed_rule;
-#[expect(
-    clippy::as_conversions,
-    clippy::indexing_slicing,
-    clippy::mutable_key_type,
-    clippy::pedantic,
-    clippy::result_large_err,
-    clippy::too_many_arguments,
-    reason = "krites engine internal — FTS tokenizer casts and indexing are engine-internal invariants"
-)]
 pub(crate) mod fts;
 pub(crate) mod parse;
 #[expect(

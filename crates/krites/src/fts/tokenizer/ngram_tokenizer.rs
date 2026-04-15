@@ -8,21 +8,21 @@ use crate::fts::tokenizer::BoxTokenStream;
 /// Beware however, in presence of multiple value for the same field,
 /// the position will be `POSITION_GAP * index of value`.
 ///
-/// Example 1: `hello` would be tokenized as (min_gram: 2, max_gram: 3, prefix_only: false)
+/// Example 1: `hello` would be tokenized as (`min_gram`: 2, `max_gram`: 3, `prefix_only`: false)
 ///
 /// | Term     | he  | hel | el  | ell | ll  | llo | lo |
 /// |----------|-----|-----|-----|-----|-----|-----|----|
 /// | Position | 0   | 0   | 0   | 0   | 0   | 0   | 0  |
 /// | Offsets  | 0,2 | 0,3 | 1,3 | 1,4 | 2,4 | 2,5 | 3,5|
 ///
-/// Example 2: `hello` would be tokenized as (min_gram: 2, max_gram: 5, prefix_only: **true**)
+/// Example 2: `hello` would be tokenized as (`min_gram`: 2, `max_gram`: 5, `prefix_only`: **true**)
 ///
 /// | Term     | he  | hel | hell  | hello |
 /// |----------|-----|-----|-------|-------|
 /// | Position | 0   | 0   | 0     | 0     |
 /// | Offsets  | 0,2 | 0,3 | 0,4   | 0,5   |
 ///
-/// Example 3: `hεllo` (non-ascii) would be tokenized as (min_gram: 2, max_gram: 5, prefix_only:
+/// Example 3: `hεllo` (non-ascii) would be tokenized as (`min_gram`: 2, `max_gram`: 5, `prefix_only`:
 /// **true**)
 ///
 /// | Term     | hε  | hεl | hεll  | hεllo |
@@ -107,11 +107,11 @@ impl NgramTokenizer {
     }
 }
 
-/// TokenStream associate to the `NgramTokenizer`
+/// `TokenStream` associate to the [`NgramTokenizer`].
 pub(crate) struct NgramTokenStream<'a> {
     /// parameters
     ngram_charidx_iterator: StutteringIterator<CodepointFrontiers<'a>>,
-    /// true if the NgramTokenStream is in prefix mode.
+    /// true if the `NgramTokenStream` is in prefix mode.
     prefix_only: bool,
     /// input
     text: &'a str,
@@ -134,7 +134,7 @@ impl Tokenizer for NgramTokenizer {
     }
 }
 
-impl<'a> TokenStream for NgramTokenStream<'a> {
+impl TokenStream for NgramTokenStream<'_> {
     fn advance(&mut self) -> bool {
         if let Some((offset_from, offset_to)) = self.ngram_charidx_iterator.next() {
             if self.prefix_only && offset_from > 0 {
@@ -220,6 +220,7 @@ where
 {
     type Item = (usize, usize);
 
+    #[expect(clippy::indexing_slicing, reason = "cursor is bounded by memory.len() via modular arithmetic")]
     fn next(&mut self) -> Option<(usize, usize)> {
         if self.gram_len > self.max_gram {
             self.gram_len = self.min_gram;
@@ -261,9 +262,10 @@ impl<'a> CodepointFrontiers<'a> {
     }
 }
 
-impl<'a> Iterator for CodepointFrontiers<'a> {
+impl Iterator for CodepointFrontiers<'_> {
     type Item = usize;
 
+    #[expect(clippy::indexing_slicing, reason = "is_empty() guard ensures index 0 is valid")]
     fn next(&mut self) -> Option<usize> {
         self.next_el.inspect(|&offset| {
             if self.s.is_empty() {
@@ -284,6 +286,11 @@ const CODEPOINT_UTF8_WIDTH: [u8; 16] = [1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2
 // the first byte.
 //
 // To do that we count the number of higher significant bits set to `1`.
+#[expect(
+    clippy::as_conversions,
+    clippy::indexing_slicing,
+    reason = "u8-to-usize widening cast is lossless; top-4-bit index into 16-element table is always in bounds"
+)]
 fn utf8_codepoint_width(b: u8) -> usize {
     let higher_4_bits = (b as usize) >> 4;
     CODEPOINT_UTF8_WIDTH[higher_4_bits] as usize
