@@ -25,6 +25,8 @@ pub mod security;
 pub mod server;
 /// Shared application state accessible across all handlers.
 pub mod state;
+/// Cursor-based pagination types for list endpoints.
+pub mod pagination;
 /// SSE event types for streaming agent responses to clients.
 pub mod stream;
 

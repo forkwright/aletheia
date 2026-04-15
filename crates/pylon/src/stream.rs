@@ -88,47 +88,46 @@ impl SseEvent {
 
 /// SSE events for the TUI streaming protocol (`POST /api/v1/sessions/stream`).
 ///
-/// Used by `koilon` and the Signal integration. Separate from `SseEvent`
-/// to avoid changing the per-session message API shape.
+/// Used by `koilon` and the Signal integration. Unified with `SseEvent` naming:
+/// event types use the same `message_start`/`message_complete` vocabulary,
+/// and all fields use `snake_case` per API.md (#3271).
 #[derive(Debug, Clone, Serialize)]
-#[serde(tag = "type", rename_all = "camelCase")]
+#[serde(tag = "type")]
 #[non_exhaustive]
 pub(crate) enum WebchatEvent {
-    #[serde(rename = "turn_start")]
-    TurnStart {
-        #[serde(rename = "sessionId")]
+    /// Turn accepted — mirrors `SseEvent::MessageStart`.
+    #[serde(rename = "message_start")]
+    MessageStart {
         session_id: String,
-        #[serde(rename = "nousId")]
         nous_id: String,
-        #[serde(rename = "turnId")]
         turn_id: String,
     },
+    /// Incremental extended-thinking output.
     #[serde(rename = "thinking_delta")]
     ThinkingDelta { text: String },
+    /// Incremental text output.
     #[serde(rename = "text_delta")]
     TextDelta { text: String },
-    #[serde(rename = "tool_start")]
-    ToolStart {
-        #[serde(rename = "toolName")]
+    /// Tool invocation started.
+    #[serde(rename = "tool_use")]
+    ToolUse {
         tool_name: String,
-        #[serde(rename = "toolId")]
         tool_id: String,
         input: serde_json::Value,
     },
+    /// Tool execution result.
     #[serde(rename = "tool_result")]
     ToolResult {
-        #[serde(rename = "toolName")]
         tool_name: String,
-        #[serde(rename = "toolId")]
         tool_id: String,
         result: String,
-        #[serde(rename = "isError")]
         is_error: bool,
-        #[serde(rename = "durationMs")]
         duration_ms: u64,
     },
-    #[serde(rename = "turn_complete")]
-    TurnComplete { outcome: TurnOutcome },
+    /// Turn completed — mirrors `SseEvent::MessageComplete`.
+    #[serde(rename = "message_complete")]
+    MessageComplete { outcome: TurnOutcome },
+    /// An error occurred during the turn.
     #[serde(rename = "error")]
     Error {
         message: String,
@@ -143,20 +142,19 @@ impl WebchatEvent {
     #[must_use]
     pub(crate) fn event_type(&self) -> &'static str {
         match self {
-            Self::TurnStart { .. } => "turn_start",
+            Self::MessageStart { .. } => "message_start",
             Self::ThinkingDelta { .. } => "thinking_delta",
             Self::TextDelta { .. } => "text_delta",
-            Self::ToolStart { .. } => "tool_start",
+            Self::ToolUse { .. } => "tool_use",
             Self::ToolResult { .. } => "tool_result",
-            Self::TurnComplete { .. } => "turn_complete",
+            Self::MessageComplete { .. } => "message_complete",
             Self::Error { .. } => "error",
         }
     }
 }
 
-/// Turn completion data emitted in `TurnComplete` events.
+/// Turn completion data emitted in `MessageComplete` events.
 #[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub(crate) struct TurnOutcome {
     pub text: String,
     pub nous_id: String,

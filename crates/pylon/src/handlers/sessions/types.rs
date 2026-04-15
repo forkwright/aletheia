@@ -49,8 +49,11 @@ fn default_session_key() -> String {
 pub struct ListSessionsParams {
     /// Filter sessions by agent ID.
     pub nous_id: Option<String>,
-    /// Maximum number of sessions to return.
+    /// Maximum number of sessions to return (default 50, max 1000).
     pub limit: Option<u32>,
+    /// Cursor token from a previous response's `next_cursor` field.
+    #[serde(default)]
+    pub after: Option<String>,
 }
 
 /// Query parameters for `GET /api/v1/sessions/{id}/history`.
@@ -63,11 +66,10 @@ pub struct HistoryParams {
 }
 
 /// Response for `GET /api/v1/sessions` (list).
-#[derive(Debug, Serialize, ToSchema)]
-pub struct ListSessionsResponse {
-    /// Session summaries matching the query.
-    pub sessions: Vec<SessionListItem>,
-}
+///
+/// Uses the standard paginated envelope. The `items` field contains
+/// `SessionListItem` values; `has_more` and `next_cursor` enable paging.
+pub type ListSessionsResponse = crate::pagination::PaginatedResponse<SessionListItem>;
 
 /// Session summary for list endpoints.
 #[derive(Debug, Serialize, ToSchema)]
