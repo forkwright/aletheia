@@ -12,11 +12,14 @@ workspace = true
 
 [features]
 default = []
+fjall = ["dep:fjall", "dep:tempfile"]
 test-core = []
 test-full = []
 test-support = []
 
 [dependencies]
+fjall = { version = "3", default-features = false, optional = true }
+tempfile = { workspace = true, optional = true }
 compact_str = { workspace = true }
 jiff = { workspace = true }
 rustix = { workspace = true, features = ["fs"] }

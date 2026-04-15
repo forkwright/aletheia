@@ -14,7 +14,7 @@ workspace = true
 # WHY: fjall is the new default backend — pure Rust, zero C dependency.
 # sqlite is preserved for backward compatibility and migration parity.
 default = ["fjall"]
-fjall = ["dep:fjall", "dep:jiff", "dep:tempfile"]
+fjall = ["dep:fjall", "dep:jiff", "dep:tempfile", "koina/fjall"]
 sqlite = ["dep:rusqlite"]
 keyring = ["dep:keyring"]
 test-support = []
