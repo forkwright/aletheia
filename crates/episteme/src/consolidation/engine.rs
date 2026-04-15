@@ -19,8 +19,23 @@ use crate::knowledge::{EpistemicTier, FactAccess, FactLifecycle, FactProvenance,
 use crate::knowledge_store::KnowledgeStore;
 
 /// Convert a non-negative `i64` from a Datalog row to `usize`.
+///
+/// Negative values indicate data corruption in the knowledge store (counts
+/// should never be negative). When detected, a warning is logged with the
+/// raw value and the function returns 0 for operational continuity.
 fn i64_as_usize(v: i64) -> usize {
-    v.try_into().unwrap_or(0)
+    match v.try_into() {
+        Ok(n) => n,
+        Err(_) => {
+            // WHY: negative counts are a data corruption indicator — surface it
+            // via logging rather than silently defaulting.
+            tracing::warn!(
+                raw_value = v,
+                "negative i64 encountered where usize expected — possible data corruption, defaulting to 0"
+            );
+            0
+        }
+    }
 }
 
 impl KnowledgeStore {

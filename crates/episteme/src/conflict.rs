@@ -437,6 +437,16 @@ pub(crate) fn classify_against_candidates(
             if classification != ConflictClassification::Unrelated {
                 return Ok(Some((classification, idx)));
             }
+        } else {
+            // WHY: a systematically misbehaving LLM would silently cause all conflicts
+            // to be classified as Unrelated without this warning.
+            let snippet_len = response.len().min(200);
+            tracing::warn!(
+                response_snippet = &response[..snippet_len],
+                existing_content = %candidate.existing_content,
+                new_content = %fact.content,
+                "conflict classification response did not match any known class, falling back to Unrelated"
+            );
         }
     }
 

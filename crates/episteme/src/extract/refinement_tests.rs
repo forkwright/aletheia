@@ -628,3 +628,97 @@ fn full_pipeline_tool_heavy_turn() {
         "full pipeline tool heavy turn: expected to contain value"
     );
 }
+
+// --- #3303: Empty field validation ---
+
+#[test]
+fn validate_triple_fields_all_populated() {
+    assert!(
+        validate_triple_fields("Alice", "uses", "Rust"),
+        "all non-empty fields should pass validation"
+    );
+}
+
+#[test]
+fn validate_triple_fields_empty_subject() {
+    assert!(
+        !validate_triple_fields("", "uses", "Rust"),
+        "empty subject should fail validation"
+    );
+}
+
+#[test]
+fn validate_triple_fields_empty_predicate() {
+    assert!(
+        !validate_triple_fields("Alice", "", "Rust"),
+        "empty predicate should fail validation"
+    );
+}
+
+#[test]
+fn validate_triple_fields_empty_object() {
+    assert!(
+        !validate_triple_fields("Alice", "uses", ""),
+        "empty object should fail validation"
+    );
+}
+
+#[test]
+fn validate_triple_fields_whitespace_only() {
+    assert!(
+        !validate_triple_fields("  ", "uses", "Rust"),
+        "whitespace-only subject should fail validation"
+    );
+    assert!(
+        !validate_triple_fields("Alice", "  \t  ", "Rust"),
+        "whitespace-only predicate should fail validation"
+    );
+    assert!(
+        !validate_triple_fields("Alice", "uses", "  \n  "),
+        "whitespace-only object should fail validation"
+    );
+}
+
+#[test]
+fn validate_triple_fields_all_empty() {
+    assert!(
+        !validate_triple_fields("", "", ""),
+        "all empty fields should fail validation"
+    );
+}
+
+#[test]
+fn confidence_inflation_detected() {
+    let facts: Vec<(f64,)> = vec![(0.96,), (0.97,), (0.98,), (0.99,), (0.95,)];
+    assert!(
+        has_confidence_inflation(&facts),
+        "100% at >=0.95 should trigger inflation warning"
+    );
+}
+
+#[test]
+fn confidence_inflation_not_triggered_below_threshold() {
+    let facts: Vec<(f64,)> = vec![(0.95,), (0.80,), (0.70,), (0.60,), (0.95,)];
+    assert!(
+        !has_confidence_inflation(&facts),
+        "40% at >=0.95 should not trigger inflation warning"
+    );
+}
+
+#[test]
+fn confidence_inflation_empty_batch() {
+    let facts: Vec<(f64,)> = vec![];
+    assert!(
+        !has_confidence_inflation(&facts),
+        "empty batch should not trigger inflation warning"
+    );
+}
+
+#[test]
+fn filter_reason_empty_field_display() {
+    assert_eq!(
+        FilterReason::EmptyField.to_string(),
+        "empty_field",
+        "EmptyField filter reason display"
+    );
+}
