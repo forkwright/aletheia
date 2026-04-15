@@ -5277,6 +5277,7 @@ dependencies = [
  "organon",
  "prometheus",
  "rand 0.9.2",
+ "regex",
  "reqwest 0.13.2",
  "serde",
  "serde_json",
