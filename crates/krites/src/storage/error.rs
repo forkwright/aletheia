@@ -6,7 +6,7 @@ use snafu::Snafu;
 #[snafu(visibility(pub(crate)))]
 #[non_exhaustive]
 pub enum StorageError {
-    /// A storage backend operation failed (e.g., begin_write, open_table, commit).
+    /// A storage backend operation failed (e.g., `begin_write`, `open_table`, commit).
     #[snafu(display("transaction failed ({backend}): {message}"))]
     TransactionFailed {
         backend: &'static str,
