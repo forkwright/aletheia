@@ -166,13 +166,38 @@ fn check_provider_reachability(state: &HealthState) -> HealthCheck {
 async fn check_config_readable(state: &HealthState) -> HealthCheck {
     // Check for TOML config first, then JSON
     let config_dir = state.oikos.config();
+    let instance_root = state.oikos.root();
+
+    // WHY: validate that constructed config paths stay within the instance
+    // root to prevent path-traversal if the config directory is misconfigured.
     let toml_path = config_dir.join("aletheia.toml");
     let json_path = config_dir.join("aletheia.json");
 
     let config_path = if tokio::fs::metadata(&toml_path).await.is_ok() {
-        toml_path
+        match koina::fs::validate_within_root(&toml_path, instance_root) {
+            Ok(p) => p,
+            Err(e) => {
+                return HealthCheck {
+                    name: "config_readable",
+                    status: "fail",
+                    message: Some(format!("config path validation failed: {e}")),
+                };
+            }
+        }
     } else {
-        json_path
+        match koina::fs::validate_within_root(&json_path, instance_root) {
+            Ok(p) => p,
+            Err(e) => {
+                // WHY: json_path may not exist yet (first run); validation
+                // failure here means the parent directory itself is outside
+                // the instance root, which is a real misconfiguration.
+                return HealthCheck {
+                    name: "config_readable",
+                    status: "warn",
+                    message: Some(format!("config path validation failed: {e}")),
+                };
+            }
+        }
     };
 
     match tokio::fs::metadata(&config_path).await {
@@ -331,6 +356,7 @@ fn check_credential_validity(
 /// Check if the data directory is writable.
 async fn check_storage_writable(state: &HealthState) -> HealthCheck {
     let data_dir = state.oikos.data();
+    let instance_root = state.oikos.root();
 
     // Ensure data directory exists
     if let Err(e) = tokio::fs::create_dir_all(&data_dir).await {
@@ -341,7 +367,27 @@ async fn check_storage_writable(state: &HealthState) -> HealthCheck {
         };
     }
 
+    // WHY: validate that the data directory resolves within the instance
+    // root to prevent path-traversal if oikos is misconfigured.
+    if let Err(e) = koina::fs::validate_within_root(&data_dir, instance_root) {
+        return HealthCheck {
+            name: "storage_writable",
+            status: "fail",
+            message: Some(format!("data directory path validation failed: {e}")),
+        };
+    }
+
     let test_file = data_dir.join(".health-check-write-test");
+
+    // WHY: validate the test file path stays within the data directory
+    // (defense-in-depth against crafted data_dir values).
+    if let Err(e) = koina::fs::validate_within_root(&test_file, &data_dir) {
+        return HealthCheck {
+            name: "storage_writable",
+            status: "fail",
+            message: Some(format!("test file path validation failed: {e}")),
+        };
+    }
 
     match tokio::fs::write(&test_file, b"health-check").await {
         Ok(()) => {

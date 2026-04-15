@@ -82,9 +82,27 @@ impl CredentialFile {
     /// are invisible and the chain falls back to a stale env-var token.
     #[must_use]
     pub fn load(path: &Path) -> Option<Self> {
+        // WHY: validate path stays within its parent directory to prevent
+        // path-traversal via crafted credential config paths (CodeQL
+        // "Uncontrolled data used in path expression").
+        let parent = path.parent()?;
+        if parent.exists()
+            && let Err(e) = koina::fs::validate_within_root(path, parent)
+        {
+            warn!(error = %e, path = %path.display(), "credential path validation failed");
+            return None;
+        }
+
         // WHY: orphaned .json.tmp files from crashed writes waste disk and confuse operators
         let tmp = path.with_extension("json.tmp");
         if tmp.exists() {
+            // WHY: validate derived tmp path before filesystem operations
+            if parent.exists()
+                && let Err(e) = koina::fs::validate_within_root(&tmp, parent)
+            {
+                warn!(error = %e, path = %tmp.display(), "temp file path validation failed");
+                return None;
+            }
             if let Err(e) = std::fs::remove_file(&tmp) {
                 warn!(error = %e, path = %tmp.display(), "failed to clean up orphaned temp file");
             } else {
@@ -129,6 +147,15 @@ impl CredentialFile {
     /// for the duration to prevent races with Claude Code.
     pub(crate) fn save(&self, path: &Path) -> std::io::Result<()> {
         use std::io::Write as _;
+
+        // WHY: validate path stays within its parent directory to prevent
+        // path-traversal via crafted credential config paths (CodeQL
+        // "Uncontrolled data used in path expression").
+        if let Some(parent) = path.parent()
+            && parent.exists()
+        {
+            koina::fs::validate_within_root(path, parent)?;
+        }
 
         let json = serde_json::to_string_pretty(self).map_err(std::io::Error::other)?;
 
