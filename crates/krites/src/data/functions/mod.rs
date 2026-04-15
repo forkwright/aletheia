@@ -8,6 +8,7 @@ use crate::data::value::DataValue;
 
 mod aggregate;
 mod bits;
+mod collections;
 mod math;
 mod string;
 mod temporal;
@@ -32,6 +33,7 @@ pub(crate) fn arg(args: &[DataValue], idx: usize) -> Result<&DataValue> {
 
 pub(crate) use aggregate::*;
 pub(crate) use bits::*;
+pub(crate) use collections::*;
 pub(crate) use math::*;
 pub(crate) use string::*;
 pub(crate) use temporal::*;

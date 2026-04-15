@@ -35,6 +35,15 @@ pub(crate) use numeric::{
     AggrStdDev, AggrSum, AggrVariance, MeetAggrMax, MeetAggrMin, MeetAggrMinCost,
 };
 
+/// A named aggregation operator that can run in either "normal" (accumulating)
+/// or "meet" (lattice-monotone) mode.
+///
+/// Normal aggregations accumulate values one at a time via [`NormalAggrObj::set`],
+/// then produce a final result via [`NormalAggrObj::get`].
+///
+/// Meet aggregations maintain a running lattice value that converges in
+/// fixed-point iteration: [`MeetAggrObj::update`] returns whether the value
+/// changed, allowing the engine to detect convergence.
 pub(crate) struct Aggregation {
     pub(crate) name: &'static str,
     pub(crate) is_meet: bool,
@@ -53,13 +62,29 @@ impl Clone for Aggregation {
     }
 }
 
+/// Accumulating aggregation: values are fed one at a time, final result read at end.
+///
+/// # Contract
+/// - `set` is called zero or more times with individual values.
+/// - `get` is called once after all values have been set; it must not panic.
+/// - Type mismatches in `set` return `DataError::TypeMismatch`.
 pub(crate) trait NormalAggrObj: Send + Sync {
+    /// Feed a single value into the accumulator.
     fn set(&mut self, value: &DataValue) -> Result<()>;
+    /// Produce the aggregated result.
     fn get(&self) -> Result<DataValue>;
 }
 
+/// Lattice-monotone (meet) aggregation for fixed-point convergence.
+///
+/// # Contract
+/// - `init_val` returns the identity element for the lattice.
+/// - `update` merges `right` into `left`, returning `true` if `left` changed.
+/// - The engine calls `update` repeatedly until it returns `false` for all rows.
 pub(crate) trait MeetAggrObj: Send + Sync {
+    /// The lattice identity value (e.g., `true` for AND, `Null` for MIN).
     fn init_val(&self) -> DataValue;
+    /// Merge `right` into `left`. Returns `true` if `left` was modified.
     fn update(&self, left: &mut DataValue, right: &DataValue) -> Result<bool>;
 }
 

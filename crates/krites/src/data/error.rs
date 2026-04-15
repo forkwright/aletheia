@@ -179,4 +179,5 @@ pub(crate) enum DataError {
     },
 }
 
+/// Convenience alias for results returning [`DataError`].
 pub(crate) type DataResult<T> = std::result::Result<T, DataError>;
