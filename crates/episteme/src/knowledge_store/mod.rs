@@ -224,11 +224,7 @@ impl QueryResult {
     #[must_use]
     pub fn get_string(&self, row: usize, col: &str) -> Option<String> {
         let ci = self.col_index(col)?;
-        self.rows
-            .get(row)?
-            .get(ci)?
-            .get_str()
-            .map(str::to_owned)
+        self.rows.get(row)?.get(ci)?.get_str().map(str::to_owned)
     }
 
     /// Extract an `f64` value by row index and column name.
@@ -325,8 +321,10 @@ impl QueryResult {
                 if let Some(i) = dv.get_int() {
                     serde_json::Value::Number(serde_json::Number::from(i))
                 } else if let Some(f) = dv.get_float() {
-                    serde_json::Number::from_f64(f)
-                        .map_or_else(|| serde_json::Value::String(f.to_string()), serde_json::Value::Number)
+                    serde_json::Number::from_f64(f).map_or_else(
+                        || serde_json::Value::String(f.to_string()),
+                        serde_json::Value::Number,
+                    )
                 } else {
                     serde_json::Value::String(format!("{dv:?}"))
                 }

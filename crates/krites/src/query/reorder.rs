@@ -105,7 +105,9 @@ impl NormalFormInlineRule {
                 | NormalFormAtom::Predicate(_) => {
                     return Err(CompilationFailedSnafu {
                         message: "unexpected atom type in round_1_collected during reorder",
-                    }.build().into());
+                    }
+                    .build()
+                    .into());
                 }
                 NormalFormAtom::Unification(u) => {
                     seen_variables.insert(u.binding.clone());
@@ -130,7 +132,9 @@ impl NormalFormInlineRule {
                     NormalFormAtom::Rule(_) | NormalFormAtom::Relation(_) => {
                         return Err(CompilationFailedSnafu {
                             message: "unexpected Rule/Relation in pending during reorder",
-                        }.build().into());
+                        }
+                        .build()
+                        .into());
                     }
                     NormalFormAtom::NegatedRule(r) => {
                         if r.args.iter().all(|a| seen_variables.contains(a)) {

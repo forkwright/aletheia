@@ -22,19 +22,16 @@ mod ids {
     fn constructors_accept_valid_ids() {
         // WHY: contract — small, non-empty, ASCII IDs must round-trip
         // through new() without validation errors.
-        assert_eq!(
-            FactId::new("fact-001").expect("valid").as_str(),
-            "fact-001"
-        );
+        assert_eq!(FactId::new("fact-001").expect("valid").as_str(), "fact-001");
         assert_eq!(
             EntityId::new("entity-abc").expect("valid").as_str(),
             "entity-abc"
         );
-        assert_eq!(EmbeddingId::new("emb-42").expect("valid").as_str(), "emb-42");
         assert_eq!(
-            CausalEdgeId::new("ce-1").expect("valid").as_str(),
-            "ce-1"
+            EmbeddingId::new("emb-42").expect("valid").as_str(),
+            "emb-42"
         );
+        assert_eq!(CausalEdgeId::new("ce-1").expect("valid").as_str(), "ce-1");
     }
 
     #[test]
@@ -205,8 +202,14 @@ mod knowledge_stage {
     fn from_decay_score_thresholds() {
         // WHY: thresholds are 0.7 / 0.3 / 0.1. A fact at exactly the
         // boundary belongs to the higher stage (inclusive lower bound).
-        assert_eq!(KnowledgeStage::from_decay_score(1.0), KnowledgeStage::Active);
-        assert_eq!(KnowledgeStage::from_decay_score(0.7), KnowledgeStage::Active);
+        assert_eq!(
+            KnowledgeStage::from_decay_score(1.0),
+            KnowledgeStage::Active
+        );
+        assert_eq!(
+            KnowledgeStage::from_decay_score(0.7),
+            KnowledgeStage::Active
+        );
         assert_eq!(
             KnowledgeStage::from_decay_score(0.69),
             KnowledgeStage::Fading
@@ -283,12 +286,22 @@ mod fact_type {
     fn base_stability_ordering_by_volatility() {
         // WHY: identity should outlast preference, which outlasts skill,
         // etc. This ordering is the entire point of the type taxonomy.
-        assert!(FactType::Identity.base_stability_hours() > FactType::Preference.base_stability_hours());
-        assert!(FactType::Preference.base_stability_hours() > FactType::Skill.base_stability_hours());
-        assert!(FactType::Skill.base_stability_hours() > FactType::Relationship.base_stability_hours());
-        assert!(FactType::Relationship.base_stability_hours() > FactType::Event.base_stability_hours());
+        assert!(
+            FactType::Identity.base_stability_hours() > FactType::Preference.base_stability_hours()
+        );
+        assert!(
+            FactType::Preference.base_stability_hours() > FactType::Skill.base_stability_hours()
+        );
+        assert!(
+            FactType::Skill.base_stability_hours() > FactType::Relationship.base_stability_hours()
+        );
+        assert!(
+            FactType::Relationship.base_stability_hours() > FactType::Event.base_stability_hours()
+        );
         assert!(FactType::Event.base_stability_hours() > FactType::Task.base_stability_hours());
-        assert!(FactType::Task.base_stability_hours() > FactType::Observation.base_stability_hours());
+        assert!(
+            FactType::Task.base_stability_hours() > FactType::Observation.base_stability_hours()
+        );
     }
 
     #[test]
@@ -306,10 +319,7 @@ mod fact_type {
             FactType::classify("I prefer tabs over spaces"),
             FactType::Preference
         );
-        assert_eq!(
-            FactType::classify("I like dark mode"),
-            FactType::Preference
-        );
+        assert_eq!(FactType::classify("I like dark mode"), FactType::Preference);
     }
 
     #[test]
@@ -341,10 +351,7 @@ mod fact_type {
             FactType::Observation
         );
         assert_eq!(FactType::from_str_lossy("identity"), FactType::Identity);
-        assert_eq!(
-            FactType::from_str_lossy("preference"),
-            FactType::Preference
-        );
+        assert_eq!(FactType::from_str_lossy("preference"), FactType::Preference);
     }
 }
 

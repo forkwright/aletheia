@@ -379,9 +379,12 @@ impl<'a> crate::runtime::transact::SessionTx<'a> {
     ) -> Result<()> {
         for (k, (idx_handle, _)) in rel_handle.fts_indices.iter() {
             let (tokenizer, extractor) = processors.get(k).ok_or_else(|| {
-                crate::error::InternalError::from(CompilationFailedSnafu {
-                    message: format!("FTS processor not found for index '{k}'"),
-                }.build())
+                crate::error::InternalError::from(
+                    CompilationFailedSnafu {
+                        message: format!("FTS processor not found for index '{k}'"),
+                    }
+                    .build(),
+                )
             })?;
             self.put_fts_index_item(new_kv, extractor, stack, tokenizer, rel_handle, idx_handle)?;
         }
@@ -397,9 +400,12 @@ impl<'a> crate::runtime::transact::SessionTx<'a> {
     ) -> Result<()> {
         for (k, (idx_handle, _)) in rel_handle.fts_indices.iter() {
             let (tokenizer, extractor) = processors.get(k).ok_or_else(|| {
-                crate::error::InternalError::from(CompilationFailedSnafu {
-                    message: format!("FTS processor not found for index '{k}'"),
-                }.build())
+                crate::error::InternalError::from(
+                    CompilationFailedSnafu {
+                        message: format!("FTS processor not found for index '{k}'"),
+                    }
+                    .build(),
+                )
             })?;
             self.del_fts_index_item(old_kv, extractor, stack, tokenizer, rel_handle, idx_handle)?;
         }
@@ -416,9 +422,12 @@ impl<'a> crate::runtime::transact::SessionTx<'a> {
     ) -> Result<()> {
         for (k, (idx_handle, inv_idx_handle, manifest)) in rel_handle.lsh_indices.iter() {
             let (tokenizer, extractor) = processors.get(k).ok_or_else(|| {
-                crate::error::InternalError::from(CompilationFailedSnafu {
-                    message: format!("LSH processor not found for index '{k}'"),
-                }.build())
+                crate::error::InternalError::from(
+                    CompilationFailedSnafu {
+                        message: format!("LSH processor not found for index '{k}'"),
+                    }
+                    .build(),
+                )
             })?;
             self.put_lsh_index_item(
                 new_kv,
@@ -430,9 +439,12 @@ impl<'a> crate::runtime::transact::SessionTx<'a> {
                 inv_idx_handle,
                 manifest,
                 hash_perms_map.get(k).ok_or_else(|| {
-                    crate::error::InternalError::from(CompilationFailedSnafu {
-                        message: format!("LSH hash permutations not found for index '{k}'"),
-                    }.build())
+                    crate::error::InternalError::from(
+                        CompilationFailedSnafu {
+                            message: format!("LSH hash permutations not found for index '{k}'"),
+                        }
+                        .build(),
+                    )
                 })?,
             )?;
         }

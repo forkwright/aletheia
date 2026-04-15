@@ -144,10 +144,7 @@ pub async fn discover_server() -> Option<String> {
         .ok()?;
 
     let candidates = build_candidates();
-    tracing::info!(
-        count = candidates.len(),
-        "starting server discovery"
-    );
+    tracing::info!(count = candidates.len(), "starting server discovery");
 
     // WHY: tokio::time::timeout wraps the entire sequential probe loop so we
     // honour the total wall-clock budget even if individual probes are slow

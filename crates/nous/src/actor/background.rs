@@ -59,7 +59,9 @@ impl NousActor {
         let cutoff = std::time::Instant::now()
             .checked_sub(degraded_window)
             .unwrap_or(self.runtime.started_at);
-        self.runtime.background_panic_timestamps.retain(|t| *t > cutoff);
+        self.runtime
+            .background_panic_timestamps
+            .retain(|t| *t > cutoff);
 
         warn!(
             nous_id = %self.id,
@@ -570,12 +572,11 @@ async fn run_background_distillation(
     };
 
     let messages = crate::distillation::convert_to_hermeneus_messages(&history);
-    let engine =
-        melete::distill::DistillEngine::new(melete::distill::DistillConfig {
-            model: config.model.clone(),
-            verbatim_tail: config.verbatim_tail,
-            ..Default::default()
-        });
+    let engine = melete::distill::DistillEngine::new(melete::distill::DistillConfig {
+        model: config.model.clone(),
+        verbatim_tail: config.verbatim_tail,
+        ..Default::default()
+    });
 
     #[expect(
         clippy::cast_possible_truncation,

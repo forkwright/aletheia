@@ -5,16 +5,16 @@
 //! format-agnostic document tree that all poiesis backends consume.
 //! Backends implement the [`Renderer`] trait to produce format-specific bytes.
 
-/// Document metadata: title, author, creation timestamp.
-pub mod metadata;
 /// Block-level document elements: headings, paragraphs, tables, lists, images.
 pub mod block;
-/// Inline rich text spans: plain, bold, italic, code, links.
-pub mod rich_text;
 /// Top-level [`Document`] type assembling metadata and content blocks.
 pub mod document;
+/// Document metadata: title, author, creation timestamp.
+pub mod metadata;
 /// [`Renderer`] trait for format backends.
 pub mod renderer;
+/// Inline rich text spans: plain, bold, italic, code, links.
+pub mod rich_text;
 
 pub use block::{Block, Image, ListItem, Table};
 pub use document::Document;

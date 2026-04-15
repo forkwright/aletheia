@@ -54,22 +54,22 @@ impl DaemonBridge for TestBridge {
         session_key: &str,
         prompt: &str,
     ) -> Pin<Box<dyn Future<Output = Result<ExecutionResult>> + Send + '_>> {
-        self.calls
-            .lock()
-            .expect("not poisoned")
-            .push((nous_id.to_owned(), session_key.to_owned(), prompt.to_owned()));
+        self.calls.lock().expect("not poisoned").push((
+            nous_id.to_owned(),
+            session_key.to_owned(),
+            prompt.to_owned(),
+        ));
         // WHY: clone the canned outcome out of the mutex so the future
         // doesn't borrow self past the lock guard. Snafu errors aren't
         // Clone, so we synthesize a fresh one for each Err invocation.
-        let res: Result<ExecutionResult> =
-            match &*self.result.lock().expect("not poisoned") {
-                Ok(r) => Ok(r.clone()),
-                Err(()) => error::TaskFailedSnafu {
-                    task_id: "test".to_owned(),
-                    reason: "simulated bridge error".to_owned(),
-                }
-                .fail(),
-            };
+        let res: Result<ExecutionResult> = match &*self.result.lock().expect("not poisoned") {
+            Ok(r) => Ok(r.clone()),
+            Err(()) => error::TaskFailedSnafu {
+                task_id: "test".to_owned(),
+                reason: "simulated bridge error".to_owned(),
+            }
+            .fail(),
+        };
         Box::pin(async move { res })
     }
 }
@@ -193,16 +193,9 @@ async fn execute_action_dispatches_builtin_variant() {
 
 #[tokio::test]
 async fn prosoche_no_bridge_returns_unconfigured() {
-    let result = execute_builtin(
-        &BuiltinTask::Prosoche,
-        "test-nous",
-        None,
-        None,
-        None,
-        None,
-    )
-    .await
-    .expect("should not error");
+    let result = execute_builtin(&BuiltinTask::Prosoche, "test-nous", None, None, None, None)
+        .await
+        .expect("should not error");
     assert!(!result.success);
     assert!(
         result
@@ -262,16 +255,9 @@ async fn prosoche_bridge_error_returns_failure() {
 
 #[tokio::test]
 async fn self_audit_no_bridge_returns_unconfigured() {
-    let result = execute_builtin(
-        &BuiltinTask::SelfAudit,
-        "test-nous",
-        None,
-        None,
-        None,
-        None,
-    )
-    .await
-    .expect("should not error");
+    let result = execute_builtin(&BuiltinTask::SelfAudit, "test-nous", None, None, None, None)
+        .await
+        .expect("should not error");
     assert!(!result.success);
     assert!(
         result

@@ -135,9 +135,9 @@ impl Config {
         // WHY: When neither CLI flag nor config file provides a URL, attempt
         // auto-discovery before falling back to the compiled default.
         // Discovery runs a blocking runtime because Config::load is sync.
-        let url = cli_url.or(file_config.url).unwrap_or_else(|| {
-            Self::try_discover().unwrap_or_else(|| DEFAULT_URL.to_string())
-        });
+        let url = cli_url
+            .or(file_config.url)
+            .unwrap_or_else(|| Self::try_discover().unwrap_or_else(|| DEFAULT_URL.to_string()));
 
         Ok(Config {
             url,

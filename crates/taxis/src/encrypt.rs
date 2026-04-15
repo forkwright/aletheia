@@ -176,11 +176,9 @@ pub fn generate_primary_key(path: &Path) -> Result<()> {
     rand::fill(&mut key);
 
     let hex = to_hex(&key);
-    koina::fs::write_restricted(path, hex.as_bytes()).context(
-        error::WriteConfigSnafu {
-            path: path.to_path_buf(),
-        },
-    )?;
+    koina::fs::write_restricted(path, hex.as_bytes()).context(error::WriteConfigSnafu {
+        path: path.to_path_buf(),
+    })?;
 
     Ok(())
 }
@@ -208,8 +206,7 @@ pub(crate) fn is_encrypted(value: &str) -> bool {
     reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
 )]
 pub(crate) fn encrypt_value(plaintext: &str, primary_key: &[u8; KEY_LEN]) -> Result<String> {
-    let cipher =
-        ChaCha20Poly1305::new(GenericArray::from_slice(primary_key));
+    let cipher = ChaCha20Poly1305::new(GenericArray::from_slice(primary_key));
     let nonce = ChaCha20Poly1305::generate_nonce(&mut OsRng);
 
     let ciphertext_with_tag = cipher
@@ -254,15 +251,12 @@ pub(crate) fn decrypt_value(encrypted: &str, primary_key: &[u8; KEY_LEN]) -> Res
 
     let (nonce_bytes, ciphertext) = payload.split_at(NONCE_LEN);
 
-    let cipher =
-        ChaCha20Poly1305::new(GenericArray::from_slice(primary_key));
+    let cipher = ChaCha20Poly1305::new(GenericArray::from_slice(primary_key));
     let nonce = GenericArray::from_slice(nonce_bytes);
 
-    let plaintext = cipher
-        .decrypt(nonce, ciphertext)
-        .map_err(|_aead_err| {
-            build_decrypt_error("decryption failed (wrong key or corrupted data)")
-        })?;
+    let plaintext = cipher.decrypt(nonce, ciphertext).map_err(|_aead_err| {
+        build_decrypt_error("decryption failed (wrong key or corrupted data)")
+    })?;
 
     String::from_utf8(plaintext)
         .map_err(|_utf8_err| build_decrypt_error("decrypted value is not valid UTF-8"))

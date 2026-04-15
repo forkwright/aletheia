@@ -4,8 +4,8 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::time::Duration;
 
-use serde::{Deserialize, Serialize};
 use crate::error::Result;
+use serde::{Deserialize, Serialize};
 
 /// When a task should run.
 #[non_exhaustive]
@@ -153,9 +153,7 @@ impl Schedule {
                 let span = jiff::SignedDuration::from_nanos(
                     i64::try_from(duration.as_nanos()).unwrap_or_default(),
                 );
-                let next = jiff::Timestamp::now()
-                    .checked_add(span)
-                    .unwrap_or_default();
+                let next = jiff::Timestamp::now().checked_add(span).unwrap_or_default();
                 Ok(Some(next))
             }
             Self::Once(ts) => {
@@ -268,10 +266,7 @@ pub(crate) fn apply_jitter(
     let ts = base?;
     let max_jitter = jitter?;
     let offset = compute_jitter(task_id, max_jitter);
-    Some(
-        ts.checked_add(offset)
-            .unwrap_or_default(),
-    )
+    Some(ts.checked_add(offset).unwrap_or_default())
 }
 
 /// Compute exponential backoff delay based on consecutive failure count.
@@ -320,10 +315,7 @@ mod tests {
     #[test]
     fn interval_next_run_returns_future() {
         let schedule = Schedule::Interval(Duration::from_secs(10));
-        let next = schedule
-            .next_run()
-            .unwrap_or_default()
-            .unwrap_or_default();
+        let next = schedule.next_run().unwrap_or_default().unwrap_or_default();
         assert!(next > jiff::Timestamp::now());
     }
 
@@ -333,10 +325,7 @@ mod tests {
             .checked_add(jiff::SignedDuration::from_secs(3600))
             .unwrap();
         let schedule = Schedule::Once(future);
-        let next = schedule
-            .next_run()
-            .unwrap_or_default()
-            .unwrap_or_default();
+        let next = schedule.next_run().unwrap_or_default().unwrap_or_default();
         assert_eq!(next, future);
     }
 
@@ -397,13 +386,8 @@ mod tests {
     #[test]
     fn interval_short_duration() {
         let schedule = Schedule::Interval(Duration::from_millis(1));
-        let next = schedule
-            .next_run()
-            .unwrap_or_default()
-            .unwrap_or_default();
-        let diff = next
-            .since(jiff::Timestamp::now())
-            .unwrap_or_default();
+        let next = schedule.next_run().unwrap_or_default().unwrap_or_default();
+        let diff = next.since(jiff::Timestamp::now()).unwrap_or_default();
         assert!(diff.get_seconds() < 2, "1ms interval should be near-future");
     }
 

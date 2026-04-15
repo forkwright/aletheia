@@ -91,7 +91,10 @@ pub enum TraceEvent {
 /// schema. Only the `mneme-engine`-gated `engine_tests` mod reads it.
 #[cfg_attr(
     not(all(test, feature = "mneme-engine")),
-    expect(dead_code, reason = "schema referenced from mneme-engine tests only; production init path lives in knowledge_store::init")
+    expect(
+        dead_code,
+        reason = "schema referenced from mneme-engine tests only; production init path lives in knowledge_store::init"
+    )
 )]
 pub(crate) const OPS_DDL: &[&str] = &[
     r":create ops_turns {
@@ -224,7 +227,10 @@ impl Clone for TraceIngestLayer {
 
 #[cfg_attr(
     not(test),
-    expect(dead_code, reason = "impl used from tests; production wiring lands with knowledge_store::init migration")
+    expect(
+        dead_code,
+        reason = "impl used from tests; production wiring lands with knowledge_store::init migration"
+    )
 )]
 impl TraceIngestLayer {
     /// Create a new ingest layer with an empty buffer.
@@ -241,17 +247,13 @@ impl TraceIngestLayer {
     /// a knowledge store is available.  Use [`TraceIngestLayer::flush`] to write
     /// them to Datalog.
     pub(crate) fn drain(&self) -> Vec<TraceEvent> {
-        let mut buf = self
-            .buffer
-            .lock();
+        let mut buf = self.buffer.lock();
         std::mem::take(&mut *buf)
     }
 
     /// How many events are waiting in the buffer.
     pub(crate) fn pending(&self) -> usize {
-        self.buffer
-            .lock()
-            .len()
+        self.buffer.lock().len()
     }
 
     /// Flush buffered events into the Datalog knowledge store.
@@ -273,7 +275,10 @@ impl TraceIngestLayer {
             return;
         }
 
-        tracing::debug!(count = events.len(), "trace_ingest: flushing buffered events");
+        tracing::debug!(
+            count = events.len(),
+            "trace_ingest: flushing buffered events"
+        );
 
         for event in events {
             let (script, params) = match event {
@@ -327,10 +332,7 @@ impl TraceIngestLayer {
                 } => {
                     let mut p = BTreeMap::new();
                     p.insert("session_id".to_owned(), DataValue::Str(session_id.into()));
-                    p.insert(
-                        "error_class".to_owned(),
-                        DataValue::Str(error_class.into()),
-                    );
+                    p.insert("error_class".to_owned(), DataValue::Str(error_class.into()));
                     p.insert("message".to_owned(), DataValue::Str(message.into()));
                     p.insert("timestamp".to_owned(), DataValue::Str(timestamp.into()));
                     let script = concat!(
@@ -438,15 +440,16 @@ where
             _ => return,
         };
 
-        let mut buf = self
-            .buffer
-            .lock();
+        let mut buf = self.buffer.lock();
         buf.push(captured);
     }
 }
 
 #[cfg(test)]
-#[expect(clippy::indexing_slicing, reason = "test assertions on collections with known length")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test assertions on collections with known length"
+)]
 mod tests {
     use tracing_subscriber::layer::SubscriberExt;
     use tracing_subscriber::util::SubscriberInitExt;
@@ -454,9 +457,7 @@ mod tests {
     use super::*;
 
     fn push_event(layer: &TraceIngestLayer, event: TraceEvent) {
-        let mut buf = layer
-            .buffer
-            .lock();
+        let mut buf = layer.buffer.lock();
         buf.push(event);
     }
 
@@ -602,9 +603,7 @@ mod tests {
         let captured = layer.clone();
 
         // Set a per-test default subscriber scoped to this thread.
-        let _guard = tracing_subscriber::registry()
-            .with(layer)
-            .set_default();
+        let _guard = tracing_subscriber::registry().with(layer).set_default();
 
         tracing::info!(
             message = "tool_executed",

@@ -86,7 +86,9 @@ mod tests {
     fn record_auth_attempt_increments_counter() {
         let method = "test-auth-method";
         let ok_before = AUTH_ATTEMPTS_TOTAL.with_label_values(&[method, "ok"]).get();
-        let error_before = AUTH_ATTEMPTS_TOTAL.with_label_values(&[method, "error"]).get();
+        let error_before = AUTH_ATTEMPTS_TOTAL
+            .with_label_values(&[method, "error"])
+            .get();
 
         record_auth_attempt(method, true);
         assert_eq!(
@@ -95,7 +97,9 @@ mod tests {
             "ok counter should increment by 1"
         );
         assert_eq!(
-            AUTH_ATTEMPTS_TOTAL.with_label_values(&[method, "error"]).get(),
+            AUTH_ATTEMPTS_TOTAL
+                .with_label_values(&[method, "error"])
+                .get(),
             error_before,
             "error counter should not change for successful auth"
         );
@@ -107,7 +111,9 @@ mod tests {
             "ok counter should be unchanged"
         );
         assert_eq!(
-            AUTH_ATTEMPTS_TOTAL.with_label_values(&[method, "error"]).get(),
+            AUTH_ATTEMPTS_TOTAL
+                .with_label_values(&[method, "error"])
+                .get(),
             error_before + 1,
             "error counter should increment by 1"
         );

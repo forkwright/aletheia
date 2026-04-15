@@ -1,9 +1,24 @@
 //! SearchInput normalize_lsh and normalize_fts implementations.
-#![expect(clippy::result_large_err, reason = "engine InternalError carries structured context — boxing deferred")]
-#![expect(clippy::too_many_lines, reason = "FTS LSH normalization handles multiple index configurations")]
-#![expect(clippy::semicolon_if_nothing_returned, reason = "push calls in normalization — semicolon not needed before continue")]
-#![expect(clippy::uninlined_format_args, reason = "format args style is consistent within FTS normalization code")]
-#![expect(clippy::doc_markdown, reason = "SearchInput, LSH, and FTS are type/algorithm names in module documentation")]
+#![expect(
+    clippy::result_large_err,
+    reason = "engine InternalError carries structured context — boxing deferred"
+)]
+#![expect(
+    clippy::too_many_lines,
+    reason = "FTS LSH normalization handles multiple index configurations"
+)]
+#![expect(
+    clippy::semicolon_if_nothing_returned,
+    reason = "push calls in normalization — semicolon not needed before continue"
+)]
+#![expect(
+    clippy::uninlined_format_args,
+    reason = "format args style is consistent within FTS normalization code"
+)]
+#![expect(
+    clippy::doc_markdown,
+    reason = "SearchInput, LSH, and FTS are type/algorithm names in module documentation"
+)]
 use std::collections::BTreeSet;
 
 use crate::data::error::*;

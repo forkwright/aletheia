@@ -1,5 +1,11 @@
-#![expect(clippy::result_large_err, reason = "engine InternalError carries structured context — boxing deferred")]
-#![expect(clippy::explicit_iter_loop, reason = "explicit .iter() in magic set rewriting")]
+#![expect(
+    clippy::result_large_err,
+    reason = "engine InternalError carries structured context — boxing deferred"
+)]
+#![expect(
+    clippy::explicit_iter_loop,
+    reason = "explicit .iter() in magic set rewriting"
+)]
 use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
 use std::fmt::{Debug, Display, Formatter};

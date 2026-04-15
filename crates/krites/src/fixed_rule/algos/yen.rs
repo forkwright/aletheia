@@ -117,13 +117,7 @@ impl FixedRule for KShortestPathYen {
                         Ok((
                             start,
                             goal,
-                            k_shortest_path_yen(
-                                path_count,
-                                &graph,
-                                start,
-                                goal,
-                                poison.clone(),
-                            )?,
+                            k_shortest_path_yen(path_count, &graph, start, goal, poison.clone())?,
                         ))
                     },
                 )
@@ -252,7 +246,10 @@ fn k_shortest_path_yen(
                 let mut total_path = root_path.to_vec();
                 total_path.pop();
                 total_path.extend(spur_path);
-                if candidates.iter().all(|(_, existing)| *existing != total_path) {
+                if candidates
+                    .iter()
+                    .all(|(_, existing)| *existing != total_path)
+                {
                     candidates.push((total_cost, total_path));
                 }
                 poison.check()?;

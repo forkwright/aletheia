@@ -154,7 +154,11 @@ pub(crate) fn reconcile(
 }
 
 /// Reconcile when both sources have the project.
-fn reconcile_both(db: &ProjectSnapshot, fs: &ProjectSnapshot, tolerance_secs: i64) -> ReconciliationResult {
+fn reconcile_both(
+    db: &ProjectSnapshot,
+    fs: &ProjectSnapshot,
+    tolerance_secs: i64,
+) -> ReconciliationResult {
     let project_id = db.project.id.to_string();
     let mut conflicts = Vec::new();
 
@@ -250,10 +254,7 @@ fn detect_conflicts(db: &Project, fs: &Project, conflicts: &mut Vec<ConflictEntr
 #[must_use]
 #[cfg_attr(
     not(test),
-    expect(
-        dead_code,
-        reason = "WIP: database-filesystem state reconciliation"
-    )
+    expect(dead_code, reason = "WIP: database-filesystem state reconciliation")
 )]
 pub(crate) fn reconcile_all(
     db_snapshots: &[ProjectSnapshot],

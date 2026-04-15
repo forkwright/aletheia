@@ -13,7 +13,7 @@
 //! [`SlideContent`]: ppt_rs::SlideContent
 //! [`PageBreak`]: poiesis_core::Block::PageBreak
 
-use poiesis_core::{Block, Document, RichText, Renderer};
+use poiesis_core::{Block, Document, Renderer, RichText};
 use ppt_rs::{SlideContent, create_pptx_with_content};
 use snafu::Snafu;
 
@@ -68,8 +68,7 @@ impl Renderer for PptxRenderer {
                     current_slide = SlideContent::new(&text.plain_text());
                 }
                 Block::Paragraph(rt) => {
-                    current_slide =
-                        current_slide.add_bullet(&rt.plain_text());
+                    current_slide = current_slide.add_bullet(&rt.plain_text());
                 }
                 Block::List { ordered, items } => {
                     for (i, item) in items.iter().enumerate() {
@@ -91,8 +90,7 @@ impl Renderer for PptxRenderer {
                     }
                 }
                 Block::Image(img) => {
-                    current_slide =
-                        current_slide.add_bullet(&format!("[Image: {}]", img.alt));
+                    current_slide = current_slide.add_bullet(&format!("[Image: {}]", img.alt));
                 }
                 Block::PageBreak => {
                     slides.push(current_slide);
@@ -165,7 +163,11 @@ mod tests {
     }
 
     #[test]
-    #[expect(clippy::expect_used, clippy::indexing_slicing, reason = "test assertions on known-good data")]
+    #[expect(
+        clippy::expect_used,
+        clippy::indexing_slicing,
+        reason = "test assertions on known-good data"
+    )]
     fn pptx_starts_with_pk_magic() {
         // WHY: PPTX is a ZIP/OOXML archive; valid files start with PK (0x50 0x4B).
         let r = PptxRenderer::new();

@@ -361,8 +361,14 @@ impl ChannelProvider for SignalProvider {
                     let map = detail.as_object_mut();
                     debug_assert!(map.is_some(), "detail is a JSON object");
                     if let Some(map) = map {
-                        map.insert("connection_state".to_owned(), serde_json::json!(format!("{:?}", s.state)));
-                        map.insert("buffered_messages".to_owned(), serde_json::json!(s.buffered_count()));
+                        map.insert(
+                            "connection_state".to_owned(),
+                            serde_json::json!(format!("{:?}", s.state)),
+                        );
+                        map.insert(
+                            "buffered_messages".to_owned(),
+                            serde_json::json!(s.buffered_count()),
+                        );
                     }
                 }
 
@@ -638,7 +644,11 @@ mod tests {
         token.cancel();
         drop(rx);
         let mut handles = handles;
-        while let Some(result) = tokio::time::timeout(Duration::from_secs(5), handles.join_next()).await.ok().flatten() {
+        while let Some(result) = tokio::time::timeout(Duration::from_secs(5), handles.join_next())
+            .await
+            .ok()
+            .flatten()
+        {
             let _ = result;
         }
     }
@@ -674,7 +684,11 @@ mod tests {
         token.cancel();
         drop(rx);
         let mut handles = handles;
-        while let Some(result) = tokio::time::timeout(Duration::from_secs(5), handles.join_next()).await.ok().flatten() {
+        while let Some(result) = tokio::time::timeout(Duration::from_secs(5), handles.join_next())
+            .await
+            .ok()
+            .flatten()
+        {
             let _ = result;
         }
     }

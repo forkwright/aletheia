@@ -2,8 +2,8 @@
 
 use std::collections::{HashMap, HashSet};
 
-use serde::{Deserialize, Serialize};
 use koina::ulid::Ulid;
+use serde::{Deserialize, Serialize};
 use snafu::ensure;
 
 use crate::error::{self, Result};
@@ -145,19 +145,13 @@ impl Plan {
 
     /// Check if all dependencies are satisfied given completed plan IDs.
     #[must_use]
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "WIP: plan execution lifecycle")
-    )]
+    #[cfg_attr(not(test), expect(dead_code, reason = "WIP: plan execution lifecycle"))]
     pub(crate) fn is_ready(&self, completed: &[Ulid]) -> bool {
         self.depends_on.iter().all(|dep| completed.contains(dep))
     }
 
     /// Record an iteration. Returns `Err` if `max_iterations` exceeded.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "WIP: plan execution lifecycle")
-    )]
+    #[cfg_attr(not(test), expect(dead_code, reason = "WIP: plan execution lifecycle"))]
     pub(crate) fn record_iteration(&mut self) -> Result<()> {
         self.iterations += 1;
         if self.iterations > self.max_iterations {
@@ -172,10 +166,7 @@ impl Plan {
     }
 
     /// Mark as stuck with a blocker.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "WIP: planning orchestration")
-    )]
+    #[cfg_attr(not(test), expect(dead_code, reason = "WIP: planning orchestration"))]
     pub(crate) fn mark_stuck(&mut self, blocker: Blocker) {
         self.state = PlanState::Stuck;
         self.blockers.push(blocker);
@@ -222,12 +213,7 @@ pub fn detect_cycles(all_plans: &[Plan], updated_plan: &Plan) -> Result<()> {
             // `path` now contains the cycle. Format it with titles.
             let cycle_str = path
                 .iter()
-                .map(|id| {
-                    titles
-                        .get(id)
-                        .copied()
-                        .unwrap_or("unknown")
-                })
+                .map(|id| titles.get(id).copied().unwrap_or("unknown"))
                 .collect::<Vec<_>>()
                 .join(" -> ");
             ensure!(false, error::CircularDependencySnafu { cycle: cycle_str });
@@ -487,7 +473,10 @@ mod tests {
         // Set A to depend on C — creates A -> C -> B -> A cycle.
         let mut a_mut = a;
         let result = a_mut.set_depends_on(vec![c.id], &all);
-        assert!(result.is_err(), "A -> C -> B -> A should be detected as a cycle");
+        assert!(
+            result.is_err(),
+            "A -> C -> B -> A should be detected as a cycle"
+        );
     }
 
     #[test]
@@ -512,6 +501,9 @@ mod tests {
 
         let mut a_mut = a;
         let result = a_mut.set_depends_on(vec![a_mut.id], &all);
-        assert!(result.is_err(), "self-dependency should be detected as a cycle");
+        assert!(
+            result.is_err(),
+            "self-dependency should be detected as a cycle"
+        );
     }
 }

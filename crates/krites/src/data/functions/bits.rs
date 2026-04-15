@@ -1,7 +1,16 @@
 //! Bitwise and boolean operations.
-#![expect(clippy::unreadable_literal, reason = "bit mask literals (0b10000000) are clearer without separators")]
-#![expect(clippy::indexing_slicing, reason = "bit pack/unpack indices are structurally bounded by chunk iteration")]
-#![expect(clippy::explicit_iter_loop, reason = "explicit .iter_mut() is clearer for byte buffer mutation")]
+#![expect(
+    clippy::unreadable_literal,
+    reason = "bit mask literals (0b10000000) are clearer without separators"
+)]
+#![expect(
+    clippy::indexing_slicing,
+    reason = "bit pack/unpack indices are structurally bounded by chunk iteration"
+)]
+#![expect(
+    clippy::explicit_iter_loop,
+    reason = "explicit .iter_mut() is clearer for byte buffer mutation"
+)]
 
 use std::ops::Div;
 

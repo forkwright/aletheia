@@ -69,10 +69,7 @@ impl ChannelListener {
     /// independently (e.g., merging Signal + future Slack receivers).
     /// Abort callbacks are registered at construction time for each handle.
     #[must_use]
-    pub(crate) fn from_parts(
-        rx: mpsc::Receiver<InboundMessage>,
-        handles: JoinSet<()>,
-    ) -> Self {
+    pub(crate) fn from_parts(rx: mpsc::Receiver<InboundMessage>, handles: JoinSet<()>) -> Self {
         Self::from_parts_with_config(rx, handles, Self::DEFAULT_MAX_CONCURRENT_HANDLERS)
     }
 
@@ -168,7 +165,10 @@ impl ChannelListener {
     }
 
     /// Stop all polling tasks.
-    #[cfg_attr(not(test), expect(dead_code, reason = "explicit stop for channel listener polling tasks"))]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "explicit stop for channel listener polling tasks")
+    )]
     pub(crate) fn stop(self) {
         drop(self);
     }

@@ -300,7 +300,10 @@ pub(crate) fn detect_causal_cue(text: &str) -> Option<(CausalRelationType, f64)>
 #[must_use]
 #[cfg_attr(
     not(test),
-    expect(dead_code, reason = "documented hook for RefinedExtraction.causal_signal consumers; exercised from tests until first in-tree caller lands")
+    expect(
+        dead_code,
+        reason = "documented hook for RefinedExtraction.causal_signal consumers; exercised from tests until first in-tree caller lands"
+    )
 )]
 pub(crate) fn extract_causal_edges(
     session_text: &str,
@@ -340,7 +343,10 @@ pub(crate) fn extract_causal_edges(
 
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
-#[expect(clippy::indexing_slicing, reason = "test assertions on collections with known length")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test assertions on collections with known length"
+)]
 mod tests {
     use super::*;
 
@@ -428,7 +434,10 @@ mod tests {
         let chain = store.trace_effects(&fact_id("fact-a"));
         let fact_c_node = chain.iter().find(|n| n.fact_id == fact_id("fact-c"));
         let conf = fact_c_node.expect("fact-c in chain").chain_confidence;
-        assert!((conf - 0.4).abs() < 1e-9, "expected 0.8*0.5=0.4, got {conf}");
+        assert!(
+            (conf - 0.4).abs() < 1e-9,
+            "expected 0.8*0.5=0.4, got {conf}"
+        );
     }
 
     #[test]
@@ -443,13 +452,17 @@ mod tests {
             .expect("ok");
         // Should terminate without infinite recursion.
         let chain = store.trace_effects(&fact_id("fact-a"));
-        assert!(chain.len() <= 3, "cycle must be cut off; got {}", chain.len());
+        assert!(
+            chain.len() <= 3,
+            "cycle must be cut off; got {}",
+            chain.len()
+        );
     }
 
     #[test]
     fn detect_causal_cue_because() {
-        let (rel, conf) = detect_causal_cue("it failed because the config was wrong")
-            .expect("cue found");
+        let (rel, conf) =
+            detect_causal_cue("it failed because the config was wrong").expect("cue found");
         assert_eq!(rel, CausalRelationType::Caused);
         assert!(conf > 0.5);
     }

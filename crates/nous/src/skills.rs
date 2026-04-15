@@ -109,7 +109,6 @@ use crate::bootstrap::{BootstrapSection, SectionPriority};
 #[cfg(any(feature = "knowledge-store", test))]
 use crate::budget::CharEstimator;
 
-
 /// Resolves relevant skills from mneme and converts them to bootstrap sections.
 ///
 /// Skill loading is additive and gracefully degrades: if the knowledge store
@@ -242,13 +241,12 @@ impl SkillLoader {
 /// Falls back to the raw content string if parsing fails (e.g. plain-text skills).
 #[cfg(any(feature = "knowledge-store", test))]
 pub(crate) fn fact_to_section(fact: &Fact) -> BootstrapSection {
-    let content = if let Ok(skill) =
-        serde_json::from_str::<mneme::skill::SkillContent>(&fact.content)
-    {
-        format_skill_as_markdown(&skill)
-    } else {
-        fact.content.clone()
-    };
+    let content =
+        if let Ok(skill) = serde_json::from_str::<mneme::skill::SkillContent>(&fact.content) {
+            format_skill_as_markdown(&skill)
+        } else {
+            fact.content.clone()
+        };
 
     let tokens = CharEstimator::default().estimate(&content);
 

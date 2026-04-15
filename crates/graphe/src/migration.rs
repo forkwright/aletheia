@@ -655,7 +655,10 @@ CREATE INDEX IF NOT EXISTS idx_blackboard_key ON blackboard(key);",
 #[derive(Debug)]
 #[cfg_attr(
     not(test),
-    expect(dead_code, reason = "fields are read by #[cfg(test)] migration test suite")
+    expect(
+        dead_code,
+        reason = "fields are read by #[cfg(test)] migration test suite"
+    )
 )]
 pub(crate) struct MigrationResult {
     /// Versions applied during this run.
@@ -672,7 +675,10 @@ pub(crate) struct MigrationResult {
 #[derive(Debug)]
 #[cfg_attr(
     not(test),
-    expect(dead_code, reason = "fields are read by #[cfg(test)] migration test suite")
+    expect(
+        dead_code,
+        reason = "fields are read by #[cfg(test)] migration test suite"
+    )
 )]
 pub(crate) struct PendingMigration {
     /// Version number that would be applied.

@@ -492,8 +492,11 @@ mod tests {
 
         // WHY: No LLM provider -> semantic criteria fail with clear evidence.
         assert!(!result.semantic_evaluated);
-        assert!(result.criteria_results.iter().any(|cr| {
-            cr.evidence.contains("no LLM provider available")
-        }));
+        assert!(
+            result
+                .criteria_results
+                .iter()
+                .any(|cr| { cr.evidence.contains("no LLM provider available") })
+        );
     }
 }

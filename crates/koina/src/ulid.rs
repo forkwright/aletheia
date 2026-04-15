@@ -247,9 +247,7 @@ impl FromStr for Ulid {
             }
             value = value
                 .checked_shl(5)
-                .ok_or(DecodeError {
-                    reason: "overflow",
-                })?
+                .ok_or(DecodeError { reason: "overflow" })?
                 | u128::from(digit);
         }
 

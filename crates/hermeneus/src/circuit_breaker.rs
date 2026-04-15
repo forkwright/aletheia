@@ -124,7 +124,10 @@ impl CircuitBreaker {
     #[must_use]
     pub fn is_allowed(&self) -> bool {
         // kanon:ignore RUST/pub-visibility
-        let mut inner = self.inner.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut inner = self
+            .inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         match &inner.state {
             CircuitState::Closed => true,
             CircuitState::HalfOpen => false,
@@ -155,7 +158,10 @@ impl CircuitBreaker {
     /// - `HalfOpen`: transitions to `Closed` and resets probe attempt count.
     pub fn on_success(&self) {
         // kanon:ignore RUST/pub-visibility
-        let mut inner = self.inner.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut inner = self
+            .inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         match inner.state {
             CircuitState::Closed => {
                 inner.consecutive_failures = 0;
@@ -183,7 +189,10 @@ impl CircuitBreaker {
     /// - `Open`: no-op (already open).
     pub fn on_failure(&self) {
         // kanon:ignore RUST/pub-visibility
-        let mut inner = self.inner.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut inner = self
+            .inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         match inner.state {
             CircuitState::Closed => {
                 inner.consecutive_failures += 1;

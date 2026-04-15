@@ -10,14 +10,18 @@ pub(super) fn strip_code_fences(s: &str) -> &str {
         if let Some(stripped) = rest.strip_suffix("```") {
             stripped.trim()
         } else {
-            tracing::warn!("LLM response has opening ```json fence but no closing ```, stripping opening fence only");
+            tracing::warn!(
+                "LLM response has opening ```json fence but no closing ```, stripping opening fence only"
+            );
             rest.trim()
         }
     } else if let Some(rest) = trimmed.strip_prefix("```") {
         if let Some(stripped) = rest.strip_suffix("```") {
             stripped.trim()
         } else {
-            tracing::warn!("LLM response has opening ``` fence but no closing ```, stripping opening fence only");
+            tracing::warn!(
+                "LLM response has opening ``` fence but no closing ```, stripping opening fence only"
+            );
             rest.trim()
         }
     } else {

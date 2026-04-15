@@ -394,11 +394,15 @@ Auth work.
         "should extract 2 Completed Work items as facts"
     );
     assert!(
-        completed_facts.iter().any(|f| f.content.contains("null check")),
+        completed_facts
+            .iter()
+            .any(|f| f.content.contains("null check")),
         "first completed work fact should mention null check"
     );
     assert!(
-        completed_facts.iter().any(|f| f.content.contains("regression test")),
+        completed_facts
+            .iter()
+            .any(|f| f.content.contains("regression test")),
         "second completed work fact should mention regression test"
     );
 }
@@ -451,7 +455,9 @@ Auth work.
         "should extract 2 Open Threads items as facts"
     );
     assert!(
-        open_facts.iter().any(|f| f.content.contains("performance regression")),
+        open_facts
+            .iter()
+            .any(|f| f.content.contains("performance regression")),
         "first open thread fact should mention performance regression"
     );
 }
@@ -481,11 +487,17 @@ fn parse_summary_extracts_all_seven_sections() {
 
     // Facts from Summary, Completed Work, Current State, Open Threads
     assert!(
-        flush.facts.iter().any(|f| f.content.starts_with("[Summary]")),
+        flush
+            .facts
+            .iter()
+            .any(|f| f.content.starts_with("[Summary]")),
         "Summary section should produce a [Summary] fact"
     );
     assert!(
-        flush.facts.iter().any(|f| f.content.starts_with("[Completed]")),
+        flush
+            .facts
+            .iter()
+            .any(|f| f.content.starts_with("[Completed]")),
         "Completed Work section should produce [Completed] facts"
     );
     assert!(

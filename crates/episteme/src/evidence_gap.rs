@@ -359,7 +359,10 @@ fn extract_interrogatives(clause: &str) -> Vec<String> {
 }
 
 #[cfg(test)]
-#[expect(clippy::indexing_slicing, reason = "test assertions on collections with known length")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test assertions on collections with known length"
+)]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
@@ -519,7 +522,9 @@ mod tests {
     fn suggest_refinement_returns_single_gap_directly() {
         let mut tracker = EvidenceGapTracker::new("A and B");
         tracker.record_evidence(0, "fact-001", 0.9);
-        let suggestion = tracker.suggest_refinement().expect("should have a suggestion");
+        let suggestion = tracker
+            .suggest_refinement()
+            .expect("should have a suggestion");
         // Single remaining gap returned directly (no wrapping).
         assert_eq!(suggestion, tracker.remaining_gaps()[0]);
     }
@@ -527,7 +532,9 @@ mod tests {
     #[test]
     fn suggest_refinement_combines_multiple_gaps() {
         let tracker = EvidenceGapTracker::new("A and B and C");
-        let suggestion = tracker.suggest_refinement().expect("should have a suggestion");
+        let suggestion = tracker
+            .suggest_refinement()
+            .expect("should have a suggestion");
         // Multiple gaps: includes original query context.
         assert!(suggestion.contains("Regarding"));
         assert!(suggestion.contains(&tracker.query().original_query));

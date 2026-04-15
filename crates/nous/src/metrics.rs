@@ -248,15 +248,11 @@ mod tests {
     #[test]
     fn record_turn_increments_counter() {
         let agent = "test-record-turn";
-        let before = PIPELINE_TURNS_TOTAL
-            .with_label_values(&[agent])
-            .get();
+        let before = PIPELINE_TURNS_TOTAL.with_label_values(&[agent]).get();
         record_turn(agent);
         record_turn(agent);
         record_turn(agent);
-        let after = PIPELINE_TURNS_TOTAL
-            .with_label_values(&[agent])
-            .get();
+        let after = PIPELINE_TURNS_TOTAL.with_label_values(&[agent]).get();
         assert_eq!(after - before, 3, "expected counter to increment by 3");
     }
 
@@ -271,7 +267,11 @@ mod tests {
         let after = PIPELINE_ERRORS_TOTAL
             .with_label_values(&[agent, "execute", error_type])
             .get();
-        assert_eq!(after - before, 1, "expected error counter to increment by 1");
+        assert_eq!(
+            after - before,
+            1,
+            "expected error counter to increment by 1"
+        );
     }
 
     #[test]
@@ -301,16 +301,12 @@ mod tests {
     #[test]
     fn record_cache_usage_increments_counters() {
         let agent = "test-cache-usage";
-        let read_before = CACHE_READ_TOKENS_TOTAL
-            .with_label_values(&[agent])
-            .get();
+        let read_before = CACHE_READ_TOKENS_TOTAL.with_label_values(&[agent]).get();
         let creation_before = CACHE_CREATION_TOKENS_TOTAL
             .with_label_values(&[agent])
             .get();
         record_cache_usage(agent, 1500, 500);
-        let read_after = CACHE_READ_TOKENS_TOTAL
-            .with_label_values(&[agent])
-            .get();
+        let read_after = CACHE_READ_TOKENS_TOTAL.with_label_values(&[agent]).get();
         let creation_after = CACHE_CREATION_TOKENS_TOTAL
             .with_label_values(&[agent])
             .get();
@@ -364,19 +360,13 @@ mod tests {
         let agents = ["parent-agent", "child-fork-1", "child-fork-2"];
         let before_counts: Vec<_> = agents
             .iter()
-            .map(|agent| {
-                CACHE_READ_TOKENS_TOTAL
-                    .with_label_values(&[agent])
-                    .get()
-            })
+            .map(|agent| CACHE_READ_TOKENS_TOTAL.with_label_values(&[agent]).get())
             .collect();
         for agent in agents {
             record_cache_usage(agent, 1000, 200);
         }
         for (i, agent) in agents.iter().enumerate() {
-            let after = CACHE_READ_TOKENS_TOTAL
-                .with_label_values(&[agent])
-                .get();
+            let after = CACHE_READ_TOKENS_TOTAL.with_label_values(&[agent]).get();
             assert_eq!(
                 after - before_counts[i],
                 1000,

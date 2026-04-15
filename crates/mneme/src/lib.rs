@@ -162,7 +162,7 @@ pub mod types {
 /// [`TrainingRecord`](training::TrainingRecord),
 /// [`TRAINING_RECORD_SCHEMA_VERSION`](training::TRAINING_RECORD_SCHEMA_VERSION)
 pub mod training {
-    pub use eidos::training::{TrainingConfig, TrainingRecord, TRAINING_RECORD_SCHEMA_VERSION};
+    pub use eidos::training::{TRAINING_RECORD_SCHEMA_VERSION, TrainingConfig, TrainingRecord};
 }
 
 // ── Knowledge pipeline (episteme) ──────────────────────────────────────────
@@ -234,8 +234,8 @@ pub mod extract {
 /// [`truncate_context_summary`](instinct::truncate_context_summary)
 pub mod instinct {
     pub use episteme::instinct::{
-        DEFAULT_MAX_CONTEXT_SUMMARY_LEN, DEFAULT_MAX_PARAM_VALUE_LEN, ToolObservation,
-        ToolOutcome, sanitize_parameters, truncate_context_summary,
+        DEFAULT_MAX_CONTEXT_SUMMARY_LEN, DEFAULT_MAX_PARAM_VALUE_LEN, ToolObservation, ToolOutcome,
+        sanitize_parameters, truncate_context_summary,
     };
 }
 

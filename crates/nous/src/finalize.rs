@@ -6,9 +6,9 @@
 //! 3. Persists the assistant's response
 //! 4. Records token usage
 
+use koina::ulid::Ulid;
 use snafu::ResultExt;
 use tracing::{debug, instrument, warn};
-use koina::ulid::Ulid;
 
 use mneme::store::SessionStore;
 use mneme::types::{Role, UsageRecord};

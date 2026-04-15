@@ -73,7 +73,10 @@ pub(crate) struct CorrectionDetector {
     ///
     /// WHY: Reserved for future use when the detector gains the ability to
     /// extract corrections from multi-turn patterns in `on_turn_complete`.
-    #[expect(dead_code, reason = "reserved for future on_turn_complete correction extraction")]
+    #[expect(
+        dead_code,
+        reason = "reserved for future on_turn_complete correction extraction"
+    )]
     workspace: PathBuf,
 }
 
@@ -369,13 +372,12 @@ async fn load_corrections(workspace: &Path) -> Result<Vec<Correction>, std::io::
 
     match tokio::fs::read_to_string(&path).await {
         Ok(content) => {
-            let corrections: Vec<Correction> =
-                serde_json::from_str(&content).map_err(|e| {
-                    std::io::Error::new(
-                        std::io::ErrorKind::InvalidData,
-                        format!("invalid corrections JSON: {e}"),
-                    )
-                })?;
+            let corrections: Vec<Correction> = serde_json::from_str(&content).map_err(|e| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!("invalid corrections JSON: {e}"),
+                )
+            })?;
             Ok(corrections)
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
@@ -384,10 +386,7 @@ async fn load_corrections(workspace: &Path) -> Result<Vec<Correction>, std::io::
 }
 
 /// Append a correction to the workspace file, enforcing the max cap.
-async fn append_correction(
-    workspace: &Path,
-    correction: Correction,
-) -> Result<(), std::io::Error> {
+async fn append_correction(workspace: &Path, correction: Correction) -> Result<(), std::io::Error> {
     let path = corrections_path(workspace);
 
     // Ensure the workspace directory exists.
@@ -412,9 +411,8 @@ async fn append_correction(
         corrections.drain(..excess);
     }
 
-    let json = serde_json::to_string_pretty(&corrections).map_err(|e| {
-        std::io::Error::other(format!("failed to serialize corrections: {e}"))
-    })?;
+    let json = serde_json::to_string_pretty(&corrections)
+        .map_err(|e| std::io::Error::other(format!("failed to serialize corrections: {e}")))?;
 
     tokio::fs::write(&path, json).await
 }

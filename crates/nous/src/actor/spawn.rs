@@ -52,7 +52,12 @@ pub(crate) fn spawn(
     cross_rx: Option<mpsc::Receiver<CrossNousEnvelope>>,
     cancel: CancellationToken,
     nous_behavior: taxis::config::NousBehaviorConfig,
-) -> (NousHandle, tokio::task::JoinHandle<()>, Arc<AtomicBool>, Arc<AtomicU64>) {
+) -> (
+    NousHandle,
+    tokio::task::JoinHandle<()>,
+    Arc<AtomicBool>,
+    Arc<AtomicU64>,
+) {
     let (tx, rx) = mpsc::channel(DEFAULT_INBOX_CAPACITY);
     let id = config.id.to_string();
     let handle = NousHandle::new(id.clone(), tx);
@@ -134,7 +139,12 @@ pub struct DaemonSpawnParams {
 pub fn spawn_for_daemon(
     params: DaemonSpawnParams,
     cancel: CancellationToken,
-) -> (NousHandle, tokio::task::JoinHandle<()>, Arc<AtomicBool>, Arc<AtomicU64>) {
+) -> (
+    NousHandle,
+    tokio::task::JoinHandle<()>,
+    Arc<AtomicBool>,
+    Arc<AtomicU64>,
+) {
     spawn(
         params.config,
         params.pipeline_config,

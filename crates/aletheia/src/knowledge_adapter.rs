@@ -312,9 +312,7 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
                     content: f.content,
                     confidence: f.provenance.confidence,
                     tier: f.provenance.tier.to_string(),
-                    recorded_at: mneme::knowledge::format_timestamp(
-                        &f.temporal.recorded_at,
-                    ),
+                    recorded_at: mneme::knowledge::format_timestamp(&f.temporal.recorded_at),
                     is_forgotten: f.lifecycle.is_forgotten,
                     forgotten_at: f.lifecycle.forgotten_at.map(|s| s.to_string()),
                     forget_reason: f.lifecycle.forget_reason.map(|r| r.to_string()),

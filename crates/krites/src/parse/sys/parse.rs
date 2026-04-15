@@ -13,6 +13,7 @@ use std::sync::Arc;
 
 use itertools::Itertools;
 
+use crate::FixedRule;
 use crate::data::symb::Symbol;
 use crate::data::value::{DataValue, ValidityTs};
 use crate::error::InternalResult as Result;
@@ -21,7 +22,6 @@ use crate::parse::expr::{build_expr, parse_string};
 use crate::parse::query::parse_query;
 use crate::parse::{ExtractSpan, Pairs, Rule};
 use crate::runtime::relation::AccessLevel;
-use crate::FixedRule;
 
 use super::SysOp;
 use super::index::{
@@ -67,12 +67,8 @@ pub(crate) fn parse_sys(
         Rule::list_indices_op => parse_single_relation_op(inner, SysOp::ListIndices)?,
         Rule::rename_relations_op => parse_rename_op(inner)?,
         Rule::access_level_op => parse_access_level_op(inner)?,
-        Rule::trigger_relation_show_op => {
-            parse_single_relation_op(inner, SysOp::ShowTrigger)?
-        }
-        Rule::trigger_relation_op => {
-            parse_trigger_op(inner, param_pool, algorithms, cur_vld)?
-        }
+        Rule::trigger_relation_show_op => parse_single_relation_op(inner, SysOp::ShowTrigger)?,
+        Rule::trigger_relation_op => parse_trigger_op(inner, param_pool, algorithms, cur_vld)?,
         Rule::lsh_idx_op => parse_adv_index_op(inner, param_pool, parse_lsh_index_create)?,
         Rule::fts_idx_op => parse_adv_index_op(inner, param_pool, parse_fts_index_create)?,
         Rule::vec_idx_op => parse_adv_index_op(inner, param_pool, parse_hnsw_index_create)?,

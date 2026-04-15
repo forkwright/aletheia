@@ -117,15 +117,14 @@ impl ToolExecutor for DromeusExecutor {
 
             // WHY: spec is a JSON array of PromptSpec objects. Callers build the
             // spec programmatically (e.g. from prographe output) and pass it inline.
-            let prompts: Vec<energeia::prompt::PromptSpec> =
-                match serde_json::from_str(spec_str) {
-                    Ok(p) => p,
-                    Err(e) => {
-                        return Ok(ToolResult::error(format!(
-                            "dromeus: invalid spec JSON: {e}"
-                        )));
-                    }
-                };
+            let prompts: Vec<energeia::prompt::PromptSpec> = match serde_json::from_str(spec_str) {
+                Ok(p) => p,
+                Err(e) => {
+                    return Ok(ToolResult::error(format!(
+                        "dromeus: invalid spec JSON: {e}"
+                    )));
+                }
+            };
 
             if dry_run {
                 return match orchestrator.dry_run(&prompts) {

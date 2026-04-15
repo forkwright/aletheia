@@ -121,11 +121,7 @@ fn run_list(manager: &mneme::backup::BackupManager<'_>, json: bool) -> Result<()
     Ok(())
 }
 
-fn run_prune(
-    manager: &mneme::backup::BackupManager<'_>,
-    keep: usize,
-    yes: bool,
-) -> Result<()> {
+fn run_prune(manager: &mneme::backup::BackupManager<'_>, keep: usize, yes: bool) -> Result<()> {
     let backups = manager
         .list_backups()
         .whatever_context("failed to list backups")?;

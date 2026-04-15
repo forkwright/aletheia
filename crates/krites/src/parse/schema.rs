@@ -43,12 +43,16 @@ pub(crate) fn parse_schema(
     let mut dep_bindings = vec![];
     let mut seen_names = BTreeSet::new();
 
-    for p in src.next().ok_or_else(|| {
-        InvalidQuerySnafu {
-            message: "expected element".to_string(),
-        }
-        .build()
-    })?.into_inner() {
+    for p in src
+        .next()
+        .ok_or_else(|| {
+            InvalidQuerySnafu {
+                message: "expected element".to_string(),
+            }
+            .build()
+        })?
+        .into_inner()
+    {
         let _span = p.extract_span();
         let (col, ident) = parse_col(p)?;
         if !seen_names.insert(col.name.clone()) {
@@ -195,12 +199,16 @@ fn parse_type_inner(pair: Pair<'_>) -> Result<ColType> {
         }
         Rule::vec_type => {
             let mut inner = pair.into_inner();
-            let eltype = match inner.next().ok_or_else(|| {
-                InvalidQuerySnafu {
-                    message: "expected element".to_string(),
-                }
-                .build()
-            })?.as_str() {
+            let eltype = match inner
+                .next()
+                .ok_or_else(|| {
+                    InvalidQuerySnafu {
+                        message: "expected element".to_string(),
+                    }
+                    .build()
+                })?
+                .as_str()
+            {
                 "F32" | "Float" => VecElementType::F32,
                 "F64" | "Double" => VecElementType::F64,
                 _ => {

@@ -336,9 +336,8 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
         force: args.force,
     };
     let id_gen = || koina::ulid::Ulid::new().to_string();
-    let result =
-        mneme::import::import_agent(&agent_file, &store, &workspace_path, &id_gen, &opts)
-            .whatever_context("import failed")?;
+    let result = mneme::import::import_agent(&agent_file, &store, &workspace_path, &id_gen, &opts)
+        .whatever_context("import failed")?;
 
     println!("Imported agent: {}", result.nous_id);
     println!("Files restored: {}", result.files_restored);
@@ -423,8 +422,7 @@ pub(crate) fn seed_skills(args: &SeedSkillsArgs) -> Result<()> {
             if let Some(existing_id) = existing {
                 if args.force {
                     if let Err(e) = store.forget_fact(
-                        &mneme::id::FactId::new(existing_id)
-                            .whatever_context("invalid fact id")?,
+                        &mneme::id::FactId::new(existing_id).whatever_context("invalid fact id")?,
                         mneme::knowledge::ForgetReason::Outdated,
                     ) {
                         eprintln!("  WARN: failed to supersede {slug}: {e}");
@@ -442,8 +440,7 @@ pub(crate) fn seed_skills(args: &SeedSkillsArgs) -> Result<()> {
 
             let fact_id = koina::ulid::Ulid::new().to_string();
             let fact = Fact {
-                id: mneme::id::FactId::new(fact_id.clone())
-                    .whatever_context("invalid fact id")?,
+                id: mneme::id::FactId::new(fact_id.clone()).whatever_context("invalid fact id")?,
                 nous_id: nous_id.to_owned(),
                 content: content_json.clone(),
                 fact_type: "skill".to_owned(),
@@ -478,8 +475,7 @@ pub(crate) fn seed_skills(args: &SeedSkillsArgs) -> Result<()> {
             let embedding_text = format!("{}: {}", skill.name, skill.description);
             let emb_id = koina::ulid::Ulid::new().to_string();
             let chunk = mneme::knowledge::EmbeddedChunk {
-                id: mneme::id::EmbeddingId::new(emb_id)
-                    .whatever_context("invalid embedding id")?,
+                id: mneme::id::EmbeddingId::new(emb_id).whatever_context("invalid embedding id")?,
                 content: embedding_text,
                 source_type: "fact".to_owned(),
                 source_id: fact_id,
@@ -674,8 +670,7 @@ pub(crate) async fn review_skills(
                 let fid = args.fact_id.as_deref().ok_or_else(|| {
                     crate::error::Error::msg("--fact-id required for approve action")
                 })?;
-                let fact_id =
-                    mneme::id::FactId::new(fid).whatever_context("invalid fact id")?;
+                let fact_id = mneme::id::FactId::new(fid).whatever_context("invalid fact id")?;
                 let new_id = store
                     .approve_pending_skill(&fact_id, nous_id)
                     .whatever_context("failed to approve skill")?;
@@ -685,8 +680,7 @@ pub(crate) async fn review_skills(
                 let fid = args.fact_id.as_deref().ok_or_else(|| {
                     crate::error::Error::msg("--fact-id required for reject action")
                 })?;
-                let fact_id =
-                    mneme::id::FactId::new(fid).whatever_context("invalid fact id")?;
+                let fact_id = mneme::id::FactId::new(fid).whatever_context("invalid fact id")?;
                 store
                     .reject_pending_skill(&fact_id)
                     .whatever_context("failed to reject skill")?;

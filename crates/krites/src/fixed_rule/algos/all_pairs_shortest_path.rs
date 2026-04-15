@@ -87,7 +87,9 @@ impl FixedRule for BetweennessCentrality {
                 let paths_for_start =
                     dijkstra_keep_ties(&graph, start, &(), &(), &(), poison.clone())?;
                 let mut accumulator: BTreeMap<u32, f32> = Default::default();
-                let grouped = paths_for_start.into_iter().chunk_by(|(target, _, _)| *target);
+                let grouped = paths_for_start
+                    .into_iter()
+                    .chunk_by(|(target, _, _)| *target);
                 for (_, group) in grouped.into_iter() {
                     let group = group.collect_vec();
                     #[expect(
@@ -185,7 +187,8 @@ impl FixedRule for ClosenessCentrality {
                     clippy::cast_precision_loss,
                     reason = "reachable node count acceptable as approximate float"
                 )]
-                let reachable_count: f32 = distances.iter().filter(|d| d.is_finite()).count() as f32;
+                let reachable_count: f32 =
+                    distances.iter().filter(|d| d.is_finite()).count() as f32;
                 #[expect(
                     clippy::cast_precision_loss,
                     reason = "node count minus one acceptable as approximate float"

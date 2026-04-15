@@ -282,7 +282,11 @@ fn collect_interactive(mut answers: Answers) -> Result<Answers, InitError> {
     }
 
     let model: &str = cliclack::select("Default model")
-        .item(koina::defaults::DEFAULT_MODEL_SHORT, "claude-sonnet-4-6 (recommended)", "")
+        .item(
+            koina::defaults::DEFAULT_MODEL_SHORT,
+            "claude-sonnet-4-6 (recommended)",
+            "",
+        )
         .item("claude-opus-4-6", "claude-opus-4-6", "")
         .item("claude-haiku-4-5", "claude-haiku-4-5", "")
         .interact()
@@ -373,9 +377,9 @@ fn collect_credential() -> Result<Option<SecretString>, InitError> {
 mod helpers;
 mod scaffold;
 
-use helpers::{capitalize, detect_timezone};
 #[cfg(feature = "tui")]
 use helpers::set_permissions;
+use helpers::{capitalize, detect_timezone};
 use scaffold::scaffold;
 
 #[cfg(feature = "tui")]
@@ -404,9 +408,7 @@ fn wizard_answers_to_answers(wa: &koilon::wizard::WizardAnswers) -> Answers {
     clippy::disallowed_methods,
     reason = "sync init wizard; no async runtime"
 )]
-fn write_user_profile_from_wizard(
-    wa: &koilon::wizard::WizardAnswers,
-) -> Result<(), InitError> {
+fn write_user_profile_from_wizard(wa: &koilon::wizard::WizardAnswers) -> Result<(), InitError> {
     if wa.user_name.is_empty() && wa.user_role.is_empty() {
         return Ok(());
     }

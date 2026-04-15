@@ -40,8 +40,9 @@ impl DegradedMode {
     #[must_use]
     pub fn status_banner(&self) -> &str {
         match self {
-            Self::DistillationCache { status_banner }
-            | Self::Unavailable { status_banner } => status_banner,
+            Self::DistillationCache { status_banner } | Self::Unavailable { status_banner } => {
+                status_banner
+            }
         }
     }
 }
@@ -95,15 +96,13 @@ pub fn build_degraded_response(
     );
 
     if let Some(summary) = recent_distillation {
-        let banner =
-            "Operating in degraded mode — LLM unavailable. \
+        let banner = "Operating in degraded mode — LLM unavailable. \
              Showing response based on previous conversation context."
-                .to_owned();
+            .to_owned();
 
         info!(
             nous_id,
-            session_id,
-            "degraded mode: returning cached distillation summary"
+            session_id, "degraded mode: returning cached distillation summary"
         );
 
         let content = format!(
@@ -124,15 +123,13 @@ pub fn build_degraded_response(
             }),
         }
     } else {
-        let banner =
-            "Operating in degraded mode — LLM unavailable. \
+        let banner = "Operating in degraded mode — LLM unavailable. \
              No cached context available for this session."
-                .to_owned();
+            .to_owned();
 
         info!(
             nous_id,
-            session_id,
-            "degraded mode: no distillation cache, returning unavailable message"
+            session_id, "degraded mode: no distillation cache, returning unavailable message"
         );
 
         let content = "I can't reach the LLM right now and have no cached context \
@@ -208,7 +205,10 @@ mod tests {
         let err = llm_rate_limit_error();
         let result = build_degraded_response("alice", "ses-1", &err, Some("User prefers brevity."));
         assert!(
-            matches!(result.degraded, Some(DegradedMode::DistillationCache { .. })),
+            matches!(
+                result.degraded,
+                Some(DegradedMode::DistillationCache { .. })
+            ),
             "expected DistillationCache, got {:?}",
             result.degraded
         );
@@ -237,18 +237,22 @@ mod tests {
         let with_cache = build_degraded_response("alice", "ses-1", &err, Some("ctx"));
         let without_cache = build_degraded_response("alice", "ses-1", &err, None);
 
-        assert!(!with_cache
-            .degraded
-            .as_ref()
-            .unwrap()
-            .status_banner()
-            .is_empty());
-        assert!(!without_cache
-            .degraded
-            .as_ref()
-            .unwrap()
-            .status_banner()
-            .is_empty());
+        assert!(
+            !with_cache
+                .degraded
+                .as_ref()
+                .unwrap()
+                .status_banner()
+                .is_empty()
+        );
+        assert!(
+            !without_cache
+                .degraded
+                .as_ref()
+                .unwrap()
+                .status_banner()
+                .is_empty()
+        );
     }
 
     #[test]

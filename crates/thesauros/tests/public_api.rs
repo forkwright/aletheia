@@ -20,10 +20,10 @@
 use std::fs;
 use std::path::PathBuf;
 
+use tempfile::TempDir;
 use thesauros::error::Error;
 use thesauros::loader::{LoadedPack, load_packs};
 use thesauros::manifest::{PackManifest, PackPropertyDef, PackToolDef, Priority};
-use tempfile::TempDir;
 
 // --- Helpers ---
 
@@ -100,7 +100,10 @@ mod manifest_serde {
 
         assert_eq!(back.name, "acme");
         assert_eq!(back.version, "2.3.1");
-        assert_eq!(back.description.as_deref(), Some("an integration-test pack"));
+        assert_eq!(
+            back.description.as_deref(),
+            Some("an integration-test pack")
+        );
 
         let ctx = back.context.first().expect("one context entry");
         assert_eq!(ctx.priority, Priority::Required);
@@ -148,8 +151,7 @@ mod manifest_serde {
         // must not appear in serialized JSON when unused, so pack.toml
         // files stay minimal and deserialization of legacy files works.
         let prop_json = r#"{"type": "string", "description": "a string"}"#;
-        let prop: PackPropertyDef =
-            serde_json::from_str(prop_json).expect("deserialize property");
+        let prop: PackPropertyDef = serde_json::from_str(prop_json).expect("deserialize property");
         assert!(prop.enum_values.is_none());
         let reserialized = serde_json::to_string(&prop).expect("serialize");
         assert!(
@@ -364,8 +366,7 @@ domains = ["healthcare", "sql"]
 
         // A random agent id with the healthcare domain should see
         // general + healthcare, but not analyst.
-        let sections =
-            pack.sections_for_agent_or_domains("hermes", &["healthcare".to_owned()]);
+        let sections = pack.sections_for_agent_or_domains("hermes", &["healthcare".to_owned()]);
         let names: Vec<&str> = sections.iter().map(|s| s.name.as_str()).collect();
         assert!(names.contains(&"general.md"));
         assert!(names.contains(&"healthcare.md"));

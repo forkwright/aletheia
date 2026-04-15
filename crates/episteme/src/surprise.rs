@@ -255,10 +255,7 @@ fn bigram_frequencies(text: &str) -> HashMap<[u8; NGRAM_SIZE], f64> {
 ///
 /// Computes `sum_x P(x) * ln(P(x) / Q(x))` over all n-grams present in
 /// either distribution, using [`SMOOTHING`] to avoid log(0).
-fn kl_divergence(
-    p: &HashMap<[u8; NGRAM_SIZE], f64>,
-    q: &HashMap<[u8; NGRAM_SIZE], f64>,
-) -> f64 {
+fn kl_divergence(p: &HashMap<[u8; NGRAM_SIZE], f64>, q: &HashMap<[u8; NGRAM_SIZE], f64>) -> f64 {
     // Collect the union of keys.
     let mut all_keys: Vec<&[u8; NGRAM_SIZE]> = p.keys().collect();
     for k in q.keys() {
@@ -392,9 +389,8 @@ mod tests {
         }
 
         // First exposure to new topic: high surprise.
-        let first = calc.compute_surprise(
-            "the mitochondria is the powerhouse of the cell in biology",
-        );
+        let first =
+            calc.compute_surprise("the mitochondria is the powerhouse of the cell in biology");
 
         // Repeated new topic: surprise should decrease as prior adapts.
         let mut previous = first;
@@ -432,10 +428,7 @@ mod tests {
     fn kl_self_divergence_near_zero() {
         let freq = bigram_frequencies("hello world this is a test");
         let div = kl_divergence(&freq, &freq);
-        assert!(
-            div < 1e-6,
-            "self-divergence {div} should be near zero"
-        );
+        assert!(div < 1e-6, "self-divergence {div} should be near zero");
     }
 
     /// Bigram frequencies should sum to approximately 1.

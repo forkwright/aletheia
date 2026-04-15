@@ -206,10 +206,7 @@ impl HandoffFile {
     }
 
     /// Remove handoff files after a successful resume.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "WIP: planning orchestration")
-    )]
+    #[cfg_attr(not(test), expect(dead_code, reason = "WIP: planning orchestration"))]
     pub(crate) fn clear(&self) -> Result<()> {
         let json_path = self.json_path();
         let md_path = self.md_path();

@@ -1,5 +1,7 @@
 use super::*;
-use crate::self_audit::{CorrectionRecord, MemoryRecallStats, SessionContinuityStats, ToolCallRecord};
+use crate::self_audit::{
+    CorrectionRecord, MemoryRecallStats, SessionContinuityStats, ToolCallRecord,
+};
 
 // --- KnowledgeConsistencyCheck ---
 
@@ -239,7 +241,10 @@ fn coherence_passes_when_responses_get_longer() {
     };
     let result = check.run(&ctx);
     assert_eq!(result.status, CheckStatus::Pass);
-    assert!(result.score >= 1.0 - f64::EPSILON, "lengthening should score 1.0");
+    assert!(
+        result.score >= 1.0 - f64::EPSILON,
+        "lengthening should score 1.0"
+    );
 }
 
 // --- CorrectionFrequencyCheck ---
@@ -459,20 +464,38 @@ fn continuity_fails_on_both_bad_signals() {
 
 #[test]
 fn worse_status_returns_fail_when_either_fails() {
-    assert_eq!(worse_status(CheckStatus::Fail, CheckStatus::Pass), CheckStatus::Fail);
-    assert_eq!(worse_status(CheckStatus::Pass, CheckStatus::Fail), CheckStatus::Fail);
-    assert_eq!(worse_status(CheckStatus::Fail, CheckStatus::Warn), CheckStatus::Fail);
+    assert_eq!(
+        worse_status(CheckStatus::Fail, CheckStatus::Pass),
+        CheckStatus::Fail
+    );
+    assert_eq!(
+        worse_status(CheckStatus::Pass, CheckStatus::Fail),
+        CheckStatus::Fail
+    );
+    assert_eq!(
+        worse_status(CheckStatus::Fail, CheckStatus::Warn),
+        CheckStatus::Fail
+    );
 }
 
 #[test]
 fn worse_status_returns_warn_when_either_warns() {
-    assert_eq!(worse_status(CheckStatus::Warn, CheckStatus::Pass), CheckStatus::Warn);
-    assert_eq!(worse_status(CheckStatus::Pass, CheckStatus::Warn), CheckStatus::Warn);
+    assert_eq!(
+        worse_status(CheckStatus::Warn, CheckStatus::Pass),
+        CheckStatus::Warn
+    );
+    assert_eq!(
+        worse_status(CheckStatus::Pass, CheckStatus::Warn),
+        CheckStatus::Warn
+    );
 }
 
 #[test]
 fn worse_status_returns_pass_when_both_pass() {
-    assert_eq!(worse_status(CheckStatus::Pass, CheckStatus::Pass), CheckStatus::Pass);
+    assert_eq!(
+        worse_status(CheckStatus::Pass, CheckStatus::Pass),
+        CheckStatus::Pass
+    );
 }
 
 // --- Trait conformance ---

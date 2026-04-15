@@ -8,9 +8,9 @@ use std::collections::HashSet;
 
 use jiff::{SignedDuration, Timestamp};
 
-use super::{Clock, Environment, FileSystem, RealSystem};
 #[cfg(any(test, feature = "test-support"))]
 use super::TestSystem;
+use super::{Clock, Environment, FileSystem, RealSystem};
 
 // ── RealSystem implementations ───────────────────────────────────────────────
 

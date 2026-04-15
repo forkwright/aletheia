@@ -97,7 +97,9 @@ mod tests {
     fn record_distillation_records_success_and_failure() {
         let nous_id = "test-nous-distillation";
         let ok_before = DISTILLATION_TOTAL.with_label_values(&[nous_id, "ok"]).get();
-        let error_before = DISTILLATION_TOTAL.with_label_values(&[nous_id, "error"]).get();
+        let error_before = DISTILLATION_TOTAL
+            .with_label_values(&[nous_id, "error"])
+            .get();
         let hist_before = DISTILLATION_DURATION_SECONDS
             .with_label_values(&[nous_id])
             .get_sample_count();
@@ -110,7 +112,9 @@ mod tests {
             "ok counter should increment for success=true"
         );
         assert_eq!(
-            DISTILLATION_TOTAL.with_label_values(&[nous_id, "error"]).get(),
+            DISTILLATION_TOTAL
+                .with_label_values(&[nous_id, "error"])
+                .get(),
             error_before,
             "error counter should not change for success=true"
         );
@@ -123,7 +127,9 @@ mod tests {
             "ok counter should be unchanged after error"
         );
         assert_eq!(
-            DISTILLATION_TOTAL.with_label_values(&[nous_id, "error"]).get(),
+            DISTILLATION_TOTAL
+                .with_label_values(&[nous_id, "error"])
+                .get(),
             error_before + 1,
             "error counter should increment for success=false"
         );

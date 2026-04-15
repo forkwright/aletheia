@@ -111,7 +111,11 @@ mod tests {
     use super::*;
 
     fn cache(cap: usize) -> QueryCache {
-        QueryCache::new(NonZeroUsize::new(cap).unwrap_or_else(|| unreachable!("INVARIANT: test cache capacity is always non-zero")))
+        QueryCache::new(
+            NonZeroUsize::new(cap).unwrap_or_else(|| {
+                unreachable!("INVARIANT: test cache capacity is always non-zero")
+            }),
+        )
     }
 
     #[test]

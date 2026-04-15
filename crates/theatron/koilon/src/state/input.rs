@@ -19,8 +19,7 @@ impl InputState {
     /// Trigger cursor flash on input activity.
     pub(crate) fn trigger_cursor_flash(&mut self) {
         self.cursor_flash_until = Some(
-            std::time::Instant::now()
-                + std::time::Duration::from_millis(CURSOR_FLASH_DURATION_MS),
+            std::time::Instant::now() + std::time::Duration::from_millis(CURSOR_FLASH_DURATION_MS),
         );
     }
 

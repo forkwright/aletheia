@@ -84,9 +84,8 @@ pub(crate) async fn run(action: Action, url: &str, instance_root: Option<&PathBu
         }
 
         let config = mneme::knowledge_store::KnowledgeConfig::default();
-        let store =
-            mneme::knowledge_store::KnowledgeStore::open_fjall(&knowledge_path, config)
-                .whatever_context("failed to open knowledge store")?;
+        let store = mneme::knowledge_store::KnowledgeStore::open_fjall(&knowledge_path, config)
+            .whatever_context("failed to open knowledge store")?;
 
         match action {
             Action::Check { json } => run_check(&store, json),
@@ -351,9 +350,15 @@ fn find_dangling_edges(
         .whatever_context("dangling edge query failed")?;
     Ok((0..result.row_count())
         .map(|i| {
-            let src = result.get_string(i, "src").unwrap_or_else(|| "?".to_owned());
-            let dst = result.get_string(i, "dst").unwrap_or_else(|| "?".to_owned());
-            let rel = result.get_string(i, "relation").unwrap_or_else(|| "?".to_owned());
+            let src = result
+                .get_string(i, "src")
+                .unwrap_or_else(|| "?".to_owned());
+            let dst = result
+                .get_string(i, "dst")
+                .unwrap_or_else(|| "?".to_owned());
+            let rel = result
+                .get_string(i, "relation")
+                .unwrap_or_else(|| "?".to_owned());
             format!("{src} --[{rel}]--> {dst}")
         })
         .collect())

@@ -1,11 +1,35 @@
-#![expect(clippy::result_large_err, reason = "engine InternalError carries structured context — boxing deferred")]
-#![expect(clippy::indexing_slicing, reason = "input head[0] access is validated by non-empty check")]
-#![expect(clippy::semicolon_if_nothing_returned, reason = "push calls in builder pattern — semicolon not needed before Ok")]
-#![expect(clippy::explicit_iter_loop, reason = "explicit .iter() calls are idiomatic in program input processing")]
-#![expect(clippy::if_not_else, reason = "negative condition check reads better for the control flow")]
-#![expect(clippy::single_match_else, reason = "if-let reads better than match for single-pattern dispatch")]
-#![expect(clippy::implicit_clone, reason = "clone via method call is clearer in context")]
-#![expect(clippy::default_trait_access, reason = "BTreeMap::new() is idiomatic for explicit construction")]
+#![expect(
+    clippy::result_large_err,
+    reason = "engine InternalError carries structured context — boxing deferred"
+)]
+#![expect(
+    clippy::indexing_slicing,
+    reason = "input head[0] access is validated by non-empty check"
+)]
+#![expect(
+    clippy::semicolon_if_nothing_returned,
+    reason = "push calls in builder pattern — semicolon not needed before Ok"
+)]
+#![expect(
+    clippy::explicit_iter_loop,
+    reason = "explicit .iter() calls are idiomatic in program input processing"
+)]
+#![expect(
+    clippy::if_not_else,
+    reason = "negative condition check reads better for the control flow"
+)]
+#![expect(
+    clippy::single_match_else,
+    reason = "if-let reads better than match for single-pattern dispatch"
+)]
+#![expect(
+    clippy::implicit_clone,
+    reason = "clone via method call is clearer in context"
+)]
+#![expect(
+    clippy::default_trait_access,
+    reason = "BTreeMap::new() is idiomatic for explicit construction"
+)]
 #![expect(clippy::as_conversions, reason = "input arity cast is engine-internal")]
 use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;

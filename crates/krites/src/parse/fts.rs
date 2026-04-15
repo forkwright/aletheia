@@ -40,11 +40,13 @@ pub(crate) fn parse_fts_query(q: &str) -> Result<FtsExpr> {
         }
         .build()
     })?;
-    let pairs = pairs.next()
+    let pairs = pairs
+        .next()
         .ok_or_else(|| {
             InvalidQuerySnafu {
                 message: "FTS parser produced no tokens".to_string(),
-            }.build()
+            }
+            .build()
         })?
         .into_inner();
     let pairs: Vec<_> = pairs
@@ -52,12 +54,12 @@ pub(crate) fn parse_fts_query(q: &str) -> Result<FtsExpr> {
         .map(parse_fts_expr)
         .try_collect()?;
     Ok(if pairs.len() == 1 {
-        pairs.into_iter().next()
-            .ok_or_else(|| {
-                InvalidQuerySnafu {
-                    message: "FTS parser produced empty expression".to_string(),
-                }.build()
-            })?
+        pairs.into_iter().next().ok_or_else(|| {
+            InvalidQuerySnafu {
+                message: "FTS parser produced empty expression".to_string(),
+            }
+            .build()
+        })?
     } else {
         FtsExpr::And(pairs)
     })
@@ -84,7 +86,9 @@ fn build_infix(lhs: Result<FtsExpr>, op: Pair<'_>, rhs: Result<FtsExpr>) -> Resu
         r => {
             return Err(InvalidQuerySnafu {
                 message: format!("unexpected rule {:?} in FTS parser - grammar mismatch", r),
-            }.build().into());
+            }
+            .build()
+            .into());
         }
     })
 }
@@ -95,14 +99,12 @@ fn build_term(pair: Pair<'_>) -> Result<FtsExpr> {
         Rule::fts_grouped => {
             let collected: Vec<_> = pair.into_inner().map(parse_fts_expr).try_collect()?;
             if collected.len() == 1 {
-                collected
-                    .into_iter()
-                    .next()
-                    .ok_or_else(|| {
-                        InvalidQuerySnafu {
-                            message: "FTS grouped expression is empty".to_string(),
-                        }.build()
-                    })?
+                collected.into_iter().next().ok_or_else(|| {
+                    InvalidQuerySnafu {
+                        message: "FTS grouped expression is empty".to_string(),
+                    }
+                    .build()
+                })?
             } else {
                 FtsExpr::And(collected)
             }
@@ -146,19 +148,21 @@ fn build_term(pair: Pair<'_>) -> Result<FtsExpr> {
 /// Build an FTS phrase literal with optional prefix marker and boost weight.
 fn build_phrase(pair: Pair<'_>) -> Result<FtsLiteral> {
     let mut inner = pair.into_inner();
-    let kernel = inner.next()
-        .ok_or_else(|| {
-            InvalidQuerySnafu {
-                message: "FTS phrase has no content".to_string(),
-            }.build()
-        })?;
+    let kernel = inner.next().ok_or_else(|| {
+        InvalidQuerySnafu {
+            message: "FTS phrase has no content".to_string(),
+        }
+        .build()
+    })?;
     let core_text = match kernel.as_rule() {
         Rule::fts_phrase_group => CompactString::from(kernel.as_str().trim()),
         Rule::quoted_string | Rule::s_quoted_string | Rule::raw_string => parse_string(kernel)?,
         r => {
             return Err(InvalidQuerySnafu {
                 message: format!("unexpected rule {:?} in FTS phrase - grammar mismatch", r),
-            }.build().into());
+            }
+            .build()
+            .into());
         }
     };
     let mut is_quoted = false;
@@ -167,12 +171,12 @@ fn build_phrase(pair: Pair<'_>) -> Result<FtsLiteral> {
         match pair.as_rule() {
             Rule::fts_prefix_marker => is_quoted = true,
             Rule::fts_booster => {
-                let boosted = pair.into_inner().next()
-                    .ok_or_else(|| {
-                        InvalidQuerySnafu {
-                            message: "FTS booster has no value".to_string(),
-                        }.build()
-                    })?;
+                let boosted = pair.into_inner().next().ok_or_else(|| {
+                    InvalidQuerySnafu {
+                        message: "FTS booster has no value".to_string(),
+                    }
+                    .build()
+                })?;
                 match boosted.as_rule() {
                     Rule::dot_float => {
                         let f = boosted
@@ -209,15 +213,25 @@ fn build_phrase(pair: Pair<'_>) -> Result<FtsLiteral> {
                     }
                     r => {
                         return Err(InvalidQuerySnafu {
-                            message: format!("unexpected rule {:?} in FTS booster - grammar mismatch", r),
-                        }.build().into());
+                            message: format!(
+                                "unexpected rule {:?} in FTS booster - grammar mismatch",
+                                r
+                            ),
+                        }
+                        .build()
+                        .into());
                     }
                 }
             }
             r => {
                 return Err(InvalidQuerySnafu {
-                    message: format!("unexpected rule {:?} in FTS phrase modifier - grammar mismatch", r),
-                }.build().into());
+                    message: format!(
+                        "unexpected rule {:?} in FTS phrase modifier - grammar mismatch",
+                        r
+                    ),
+                }
+                .build()
+                .into());
             }
         }
     }

@@ -270,10 +270,8 @@ mod tests {
                 for metric in family.get_metric() {
                     let labels = metric.get_label();
                     // Match labels by name->value
-                    let label_map: std::collections::HashMap<_, _> = labels
-                        .iter()
-                        .map(|l| (l.name(), l.value()))
-                        .collect();
+                    let label_map: std::collections::HashMap<_, _> =
+                        labels.iter().map(|l| (l.name(), l.value())).collect();
                     let matches =
                         label_names
                             .iter()
@@ -297,10 +295,8 @@ mod tests {
             if family.name() == name {
                 for metric in family.get_metric() {
                     let labels = metric.get_label();
-                    let label_map: std::collections::HashMap<_, _> = labels
-                        .iter()
-                        .map(|l| (l.name(), l.value()))
-                        .collect();
+                    let label_map: std::collections::HashMap<_, _> =
+                        labels.iter().map(|l| (l.name(), l.value())).collect();
                     let matches =
                         label_names
                             .iter()
@@ -324,10 +320,8 @@ mod tests {
             if family.name() == name {
                 for metric in family.get_metric() {
                     let labels = metric.get_label();
-                    let label_map: std::collections::HashMap<_, _> = labels
-                        .iter()
-                        .map(|l| (l.name(), l.value()))
-                        .collect();
+                    let label_map: std::collections::HashMap<_, _> =
+                        labels.iter().map(|l| (l.name(), l.value())).collect();
                     let matches =
                         label_names
                             .iter()
@@ -366,43 +360,92 @@ mod tests {
             .collect();
 
         // Core metrics that are always registered after recording
-        assert!(metric_names.contains("aletheia_llm_tokens_total"), "tokens metric should be registered");
-        assert!(metric_names.contains("aletheia_llm_cost_total"), "cost metric should be registered");
-        assert!(metric_names.contains("aletheia_llm_requests_total"), "requests metric should be registered");
-        assert!(metric_names.contains("aletheia_llm_cache_tokens_total"), "cache tokens metric should be registered");
-        assert!(metric_names.contains("aletheia_llm_request_duration_seconds"), "request duration metric should be registered");
-        assert!(metric_names.contains("aletheia_llm_ttft_seconds"), "ttft metric should be registered");
+        assert!(
+            metric_names.contains("aletheia_llm_tokens_total"),
+            "tokens metric should be registered"
+        );
+        assert!(
+            metric_names.contains("aletheia_llm_cost_total"),
+            "cost metric should be registered"
+        );
+        assert!(
+            metric_names.contains("aletheia_llm_requests_total"),
+            "requests metric should be registered"
+        );
+        assert!(
+            metric_names.contains("aletheia_llm_cache_tokens_total"),
+            "cache tokens metric should be registered"
+        );
+        assert!(
+            metric_names.contains("aletheia_llm_request_duration_seconds"),
+            "request duration metric should be registered"
+        );
+        assert!(
+            metric_names.contains("aletheia_llm_ttft_seconds"),
+            "ttft metric should be registered"
+        );
         // Concurrency metrics registered after setting values
-        assert!(metric_names.contains("aletheia_llm_concurrency_limit"), "concurrency limit metric should be registered");
-        assert!(metric_names.contains("aletheia_llm_concurrency_latency_ewma_seconds"), "concurrency latency metric should be registered");
-        assert!(metric_names.contains("aletheia_llm_concurrency_in_flight"), "concurrency in-flight metric should be registered");
+        assert!(
+            metric_names.contains("aletheia_llm_concurrency_limit"),
+            "concurrency limit metric should be registered"
+        );
+        assert!(
+            metric_names.contains("aletheia_llm_concurrency_latency_ewma_seconds"),
+            "concurrency latency metric should be registered"
+        );
+        assert!(
+            metric_names.contains("aletheia_llm_concurrency_in_flight"),
+            "concurrency in-flight metric should be registered"
+        );
     }
 
     #[test]
     fn record_completion_success_updates_all_metrics() {
         // Use a unique provider name to avoid test interference
         let provider = "test-completion-success";
-        let before_requests = read_counter("aletheia_llm_requests_total", &["provider", "status"], &[provider, "ok"]);
-        let before_tokens_in =
-            read_counter("aletheia_llm_tokens_total", &["provider", "direction"], &[provider, "input"]);
-        let before_tokens_out =
-            read_counter("aletheia_llm_tokens_total", &["provider", "direction"], &[provider, "output"]);
+        let before_requests = read_counter(
+            "aletheia_llm_requests_total",
+            &["provider", "status"],
+            &[provider, "ok"],
+        );
+        let before_tokens_in = read_counter(
+            "aletheia_llm_tokens_total",
+            &["provider", "direction"],
+            &[provider, "input"],
+        );
+        let before_tokens_out = read_counter(
+            "aletheia_llm_tokens_total",
+            &["provider", "direction"],
+            &[provider, "output"],
+        );
         let before_cost = read_float_counter("aletheia_llm_cost_total", &["provider"], &[provider]);
 
         record_completion(provider, 100, 50, 0.001, true);
 
         assert_eq!(
-            read_counter("aletheia_llm_requests_total", &["provider", "status"], &[provider, "ok"]),
+            read_counter(
+                "aletheia_llm_requests_total",
+                &["provider", "status"],
+                &[provider, "ok"]
+            ),
             before_requests + 1,
             "request counter should increment"
         );
         assert_eq!(
-            read_counter("aletheia_llm_tokens_total", &["provider", "direction"], &[provider, "input"]),
+            read_counter(
+                "aletheia_llm_tokens_total",
+                &["provider", "direction"],
+                &[provider, "input"]
+            ),
             before_tokens_in + 100,
             "input token counter should increment by 100"
         );
         assert_eq!(
-            read_counter("aletheia_llm_tokens_total", &["provider", "direction"], &[provider, "output"]),
+            read_counter(
+                "aletheia_llm_tokens_total",
+                &["provider", "direction"],
+                &[provider, "output"]
+            ),
             before_tokens_out + 50,
             "output token counter should increment by 50"
         );
@@ -416,12 +459,20 @@ mod tests {
     #[test]
     fn record_completion_failure_updates_error_metrics() {
         let provider = "test-completion-failure";
-        let before = read_counter("aletheia_llm_requests_total", &["provider", "status"], &[provider, "error"]);
+        let before = read_counter(
+            "aletheia_llm_requests_total",
+            &["provider", "status"],
+            &[provider, "error"],
+        );
 
         record_completion(provider, 0, 0, 0.0, false);
 
         assert_eq!(
-            read_counter("aletheia_llm_requests_total", &["provider", "status"], &[provider, "error"]),
+            read_counter(
+                "aletheia_llm_requests_total",
+                &["provider", "status"],
+                &[provider, "error"]
+            ),
             before + 1,
             "error request counter should increment"
         );
@@ -463,7 +514,11 @@ mod tests {
         record_ttft(model, status, 0.25);
 
         assert_eq!(
-            read_histogram_count("aletheia_llm_ttft_seconds", &["model", "status"], &[model, status]),
+            read_histogram_count(
+                "aletheia_llm_ttft_seconds",
+                &["model", "status"],
+                &[model, status]
+            ),
             before + 1,
             "ttft histogram should have one more observation"
         );
@@ -472,20 +527,34 @@ mod tests {
     #[test]
     fn record_cache_tokens_increments_counters() {
         let provider = "test-cache-tokens";
-        let before_read =
-            read_counter("aletheia_llm_cache_tokens_total", &["provider", "direction"], &[provider, "read"]);
-        let before_write =
-            read_counter("aletheia_llm_cache_tokens_total", &["provider", "direction"], &[provider, "write"]);
+        let before_read = read_counter(
+            "aletheia_llm_cache_tokens_total",
+            &["provider", "direction"],
+            &[provider, "read"],
+        );
+        let before_write = read_counter(
+            "aletheia_llm_cache_tokens_total",
+            &["provider", "direction"],
+            &[provider, "write"],
+        );
 
         record_cache_tokens(provider, 1000, 500);
 
         assert_eq!(
-            read_counter("aletheia_llm_cache_tokens_total", &["provider", "direction"], &[provider, "read"]),
+            read_counter(
+                "aletheia_llm_cache_tokens_total",
+                &["provider", "direction"],
+                &[provider, "read"]
+            ),
             before_read + 1000,
             "read cache token counter should increment by 1000"
         );
         assert_eq!(
-            read_counter("aletheia_llm_cache_tokens_total", &["provider", "direction"], &[provider, "write"]),
+            read_counter(
+                "aletheia_llm_cache_tokens_total",
+                &["provider", "direction"],
+                &[provider, "write"]
+            ),
             before_write + 500,
             "write cache token counter should increment by 500"
         );

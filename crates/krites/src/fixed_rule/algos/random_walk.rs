@@ -96,9 +96,8 @@ impl FixedRule for RandomWalk {
                     if candidate_steps.is_empty() {
                         break;
                     }
-                    let next_step =
-                        if let Some((weight_bytecode, _span)) = &maybe_weight_bytecode {
-                            let weights: Vec<_> = candidate_steps
+                    let next_step = if let Some((weight_bytecode, _span)) = &maybe_weight_bytecode {
+                        let weights: Vec<_> = candidate_steps
                                 .iter()
                                 .map(|tuple| -> Result<f64> {
                                     let mut combined = current_tuple.clone();
@@ -130,17 +129,16 @@ impl FixedRule for RandomWalk {
                                     )
                                 })
                                 .try_collect()?;
-                            let distribution =
-                                WeightedIndex::new(&weights).map_err(|err| {
-                                    GraphAlgorithmSnafu {
-                                        algorithm: "random_walk",
-                                        message: format!("invalid edge weights: {err}"),
-                                    }
-                                    .build()
-                                })?;
-                            &candidate_steps[distribution.sample(&mut rng)]
-                        } else {
-                            candidate_steps.choose(&mut rng).ok_or_else(|| {
+                        let distribution = WeightedIndex::new(&weights).map_err(|err| {
+                            GraphAlgorithmSnafu {
+                                algorithm: "random_walk",
+                                message: format!("invalid edge weights: {err}"),
+                            }
+                            .build()
+                        })?;
+                        &candidate_steps[distribution.sample(&mut rng)]
+                    } else {
+                        candidate_steps.choose(&mut rng).ok_or_else(|| {
                                 GraphAlgorithmSnafu {
                                     algorithm: "random_walk",
                                     message:
@@ -148,7 +146,7 @@ impl FixedRule for RandomWalk {
                                 }
                                 .build()
                             })?
-                        };
+                    };
                     let next_node = &next_step[1];
                     path.push(next_node.clone());
                     current_tuple = nodes.prefix_iter(next_node)?.next().ok_or_else(

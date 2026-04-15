@@ -179,11 +179,7 @@ impl NamedRows {
         let rows = self
             .rows
             .into_iter()
-            .map(|row| {
-                row.into_iter()
-                    .map(JsonValue::from)
-                    .collect::<JsonValue>()
-            })
+            .map(|row| row.into_iter().map(JsonValue::from).collect::<JsonValue>())
             .collect::<JsonValue>();
         json!({
             "headers": self.headers,
@@ -487,13 +483,17 @@ impl<'s, S: Storage<'s>> Db<S> {
                 .1
                 // INVARIANT: register_callback inserts into both maps
                 .get_mut(&cb.dependent)
-                .unwrap_or_else(|| unreachable!("callback dependent entry missing from reverse index"))
+                .unwrap_or_else(|| {
+                    unreachable!("callback dependent entry missing from reverse index")
+                })
                 .remove(&id);
 
             if guard
                 .1
                 .get(&cb.dependent)
-                .unwrap_or_else(|| unreachable!("callback dependent entry missing from reverse index"))
+                .unwrap_or_else(|| {
+                    unreachable!("callback dependent entry missing from reverse index")
+                })
                 .is_empty()
             {
                 guard.1.remove(&cb.dependent);

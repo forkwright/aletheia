@@ -115,7 +115,10 @@ pub fn specs_by_section(section: &str) -> Vec<&'static ParameterSpec> {
 /// Return specs whose `affects` field contains `outcome`.
 #[must_use]
 pub fn specs_affecting(outcome: &str) -> Vec<&'static ParameterSpec> {
-    REGISTRY.iter().filter(|s| s.affects.contains(outcome)).collect()
+    REGISTRY
+        .iter()
+        .filter(|s| s.affects.contains(outcome))
+        .collect()
 }
 
 /// Look up a single spec by its dotted key.
@@ -233,7 +236,6 @@ fn build_registry() -> Vec<ParameterSpec> {
             evidence_required: "Comparison of distillation accuracy at different truncation points",
             direction_hint: TuningDirection::Higher,
         },
-
         // ===================================================================
         // Competence scoring
         // ===================================================================
@@ -328,7 +330,6 @@ fn build_registry() -> Vec<ParameterSpec> {
             evidence_required: "False-positive and false-negative escalation rates",
             direction_hint: TuningDirection::Contextual,
         },
-
         // ===================================================================
         // Knowledge — conflict resolution
         // ===================================================================
@@ -410,7 +411,6 @@ fn build_registry() -> Vec<ParameterSpec> {
             evidence_required: "Multi-agent confidence distribution analysis",
             direction_hint: TuningDirection::Contextual,
         },
-
         // ===================================================================
         // Knowledge — dedup weights
         // ===================================================================
@@ -466,7 +466,6 @@ fn build_registry() -> Vec<ParameterSpec> {
             evidence_required: "Embedding-match accuracy at different thresholds",
             direction_hint: TuningDirection::Contextual,
         },
-
         // ===================================================================
         // Knowledge — fact lifecycle thresholds
         // ===================================================================
@@ -509,7 +508,6 @@ fn build_registry() -> Vec<ParameterSpec> {
             evidence_required: "Dormant fact recovery rate analysis",
             direction_hint: TuningDirection::Lower,
         },
-
         // ===================================================================
         // Tool limits
         // ===================================================================
@@ -617,7 +615,6 @@ fn build_registry() -> Vec<ParameterSpec> {
             evidence_required: "Inter-session response time distribution",
             direction_hint: TuningDirection::Contextual,
         },
-
         // ===================================================================
         // API limits
         // ===================================================================
@@ -686,7 +683,6 @@ fn build_registry() -> Vec<ParameterSpec> {
             evidence_required: "Cache utilization and eviction rate analysis",
             direction_hint: TuningDirection::Higher,
         },
-
         // ===================================================================
         // Timeouts and retry
         // ===================================================================
@@ -742,7 +738,6 @@ fn build_registry() -> Vec<ParameterSpec> {
             evidence_required: "Backoff ceiling vs. retry outcome analysis",
             direction_hint: TuningDirection::Contextual,
         },
-
         // ===================================================================
         // Safety
         // ===================================================================
@@ -785,7 +780,6 @@ fn build_registry() -> Vec<ParameterSpec> {
             evidence_required: "Session token usage distribution",
             direction_hint: TuningDirection::Contextual,
         },
-
         // ===================================================================
         // Capacity
         // ===================================================================
@@ -815,7 +809,6 @@ fn build_registry() -> Vec<ParameterSpec> {
             evidence_required: "Context utilization and quality at different window sizes",
             direction_hint: TuningDirection::Higher,
         },
-
         // ===================================================================
         // Nous behavior
         // ===================================================================
@@ -858,7 +851,6 @@ fn build_registry() -> Vec<ParameterSpec> {
             evidence_required: "Time-to-detect-failure at different poll intervals",
             direction_hint: TuningDirection::Lower,
         },
-
         // ===================================================================
         // Provider behavior
         // ===================================================================
@@ -901,7 +893,6 @@ fn build_registry() -> Vec<ParameterSpec> {
             evidence_required: "Quality and cost comparison across routing thresholds",
             direction_hint: TuningDirection::Contextual,
         },
-
         // ===================================================================
         // Messaging
         // ===================================================================
@@ -931,7 +922,6 @@ fn build_registry() -> Vec<ParameterSpec> {
             evidence_required: "Channel error patterns and recovery times",
             direction_hint: TuningDirection::Contextual,
         },
-
         // ===================================================================
         // Daemon behavior
         // ===================================================================
@@ -961,7 +951,6 @@ fn build_registry() -> Vec<ParameterSpec> {
             evidence_required: "Maximum downtime tolerance analysis",
             direction_hint: TuningDirection::Contextual,
         },
-
         // ===================================================================
         // Knowledge — content limits
         // ===================================================================
@@ -978,7 +967,6 @@ fn build_registry() -> Vec<ParameterSpec> {
             evidence_required: "Fact content length distribution",
             direction_hint: TuningDirection::Contextual,
         },
-
         // ===================================================================
         // Manifest — memory entries
         // ===================================================================
@@ -995,7 +983,6 @@ fn build_registry() -> Vec<ParameterSpec> {
             evidence_required: "Manifest size vs. recall precision analysis",
             direction_hint: TuningDirection::Contextual,
         },
-
         // ===================================================================
         // Credential — refresh threshold
         // ===================================================================

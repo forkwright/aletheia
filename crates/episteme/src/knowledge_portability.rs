@@ -73,12 +73,14 @@ fn query_all_entities(
                 .map(|s: &str| s.trim().to_owned())
                 .collect()
         };
-        let created_at =
-            crate::knowledge::parse_timestamp(&rows.get_string(i, "created_at").unwrap_or_default())
-                .unwrap_or_else(jiff::Timestamp::now);
-        let updated_at =
-            crate::knowledge::parse_timestamp(&rows.get_string(i, "updated_at").unwrap_or_default())
-                .unwrap_or_else(jiff::Timestamp::now);
+        let created_at = crate::knowledge::parse_timestamp(
+            &rows.get_string(i, "created_at").unwrap_or_default(),
+        )
+        .unwrap_or_else(jiff::Timestamp::now);
+        let updated_at = crate::knowledge::parse_timestamp(
+            &rows.get_string(i, "updated_at").unwrap_or_default(),
+        )
+        .unwrap_or_else(jiff::Timestamp::now);
 
         entities.push(crate::knowledge::Entity {
             id,
@@ -114,9 +116,10 @@ fn query_all_relationships(
         let dst = crate::id::EntityId::new(&dst_str).context(crate::error::InvalidIdSnafu)?;
         let relation = rows.get_string(i, "relation").unwrap_or_default();
         let weight = rows.get_f64(i, "weight").unwrap_or(0.0);
-        let created_at =
-            crate::knowledge::parse_timestamp(&rows.get_string(i, "created_at").unwrap_or_default())
-                .unwrap_or_else(jiff::Timestamp::now);
+        let created_at = crate::knowledge::parse_timestamp(
+            &rows.get_string(i, "created_at").unwrap_or_default(),
+        )
+        .unwrap_or_else(jiff::Timestamp::now);
 
         relationships.push(crate::knowledge::Relationship {
             src,

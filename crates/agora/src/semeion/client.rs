@@ -6,7 +6,6 @@ use serde::{Deserialize, Serialize};
 use snafu::ResultExt;
 use tracing::instrument;
 
-
 use koina::http::CONTENT_TYPE_JSON;
 
 use super::envelope::SignalEnvelope;
@@ -227,7 +226,9 @@ impl SignalClient {
                     .filter_map(|item| {
                         let env_value = item.get("envelope").cloned().unwrap_or(item);
                         serde_json::from_value::<SignalEnvelope>(env_value)
-                            .inspect_err(|e| tracing::debug!(error = %e, "skipping unparseable envelope"))
+                            .inspect_err(
+                                |e| tracing::debug!(error = %e, "skipping unparseable envelope"),
+                            )
                             .ok()
                     })
                     .collect();
@@ -239,7 +240,10 @@ impl SignalClient {
 
     /// The base RPC URL this client targets.
     #[must_use]
-    #[cfg_attr(not(test), expect(dead_code, reason = "Signal client RPC URL accessor for diagnostics"))]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "Signal client RPC URL accessor for diagnostics")
+    )]
     pub(crate) fn rpc_url(&self) -> &str {
         &self.rpc_url
     }
@@ -306,7 +310,8 @@ impl SendParams {
 
 fn normalize_url(url: &str) -> String {
     let trimmed = url.trim_end_matches('/');
-    if trimmed.starts_with("http://") || trimmed.starts_with("https://") { // SAFE: protocol detection, not endpoint construction // kanon:ignore SECURITY/insecure-transport -- protocol detection, not an endpoint
+    if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+        // SAFE: protocol detection, not endpoint construction // kanon:ignore SECURITY/insecure-transport -- protocol detection, not an endpoint
         trimmed.to_owned()
     } else {
         format!("http://{trimmed}") // SAFE: signal-cli daemon is localhost-only, no network traversal

@@ -109,11 +109,11 @@ pub struct SessionOutcome {
     /// Error message if the session failed.
     pub error: Option<String>,
     /// LLM model used for this session (e.g., "claude-3-5-sonnet").
-    /// 
+    ///
     /// This is `None` if the model could not be determined from the session.
     pub model: Option<String>,
     /// Blast radius paths from the prompt spec.
-    /// 
+    ///
     /// Used for cost attribution to specific modules/features.
     pub blast_radius: Vec<String>,
 }

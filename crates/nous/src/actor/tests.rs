@@ -599,13 +599,23 @@ fn mark_turn_active_sets_active_lifecycle_and_session() {
     let (mut actor, _tx, _dir) = make_test_actor(PipelineConfig::default());
     assert_eq!(actor.channel.status, NousLifecycle::Idle);
     assert!(actor.active_session.is_none());
-    assert!(!actor.runtime.active_turn.load(std::sync::atomic::Ordering::Acquire));
+    assert!(
+        !actor
+            .runtime
+            .active_turn
+            .load(std::sync::atomic::Ordering::Acquire)
+    );
 
     actor.mark_turn_active("my-session");
 
     assert_eq!(actor.channel.status, NousLifecycle::Active);
     assert_eq!(actor.active_session.as_deref(), Some("my-session"));
-    assert!(actor.runtime.active_turn.load(std::sync::atomic::Ordering::Acquire));
+    assert!(
+        actor
+            .runtime
+            .active_turn
+            .load(std::sync::atomic::Ordering::Acquire)
+    );
 }
 
 #[test]
@@ -733,10 +743,7 @@ fn record_drift_metrics_zero_tool_calls_produces_zero_error_rate() {
 #[test]
 fn record_drift_metrics_all_errored_calls_produces_rate_one() {
     let (mut actor, _tx, _dir) = make_test_actor(PipelineConfig::default());
-    let calls = vec![
-        make_tool_call("bash", true),
-        make_tool_call("read", true),
-    ];
+    let calls = vec![make_tool_call("bash", true), make_tool_call("read", true)];
     let result = make_turn_result(80, calls);
     // Should not panic; rate = 1.0.
     actor.record_drift_metrics("s", &result);
@@ -749,7 +756,7 @@ fn record_drift_metrics_mixed_calls_partial_error_rate() {
     let (mut actor, _tx, _dir) = make_test_actor(PipelineConfig::default());
     let calls = vec![
         make_tool_call("bash", false),
-        make_tool_call("read", true),  // 1 of 2 errors → rate = 0.5
+        make_tool_call("read", true), // 1 of 2 errors → rate = 0.5
     ];
     let result = make_turn_result(60, calls);
     actor.record_drift_metrics("s", &result);
@@ -835,8 +842,7 @@ async fn reap_background_tasks_records_background_panic() {
     actor.reap_background_tasks();
 
     assert_eq!(
-        actor.runtime.background_panic_count,
-        1,
+        actor.runtime.background_panic_count, 1,
         "panic in background task should increment background_panic_count"
     );
 }

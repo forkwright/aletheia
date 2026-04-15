@@ -59,7 +59,10 @@ impl KnowledgeStore {
         reason = "sequential param mapping, splitting adds indirection"
     )]
     #[instrument(skip(self, old_fact, new_fact), fields(old_id = %old_fact.id, new_id = %new_fact.id))]
-    #[expect(dead_code, reason = "fact temporal pipeline — no callers yet including tests")]
+    #[expect(
+        dead_code,
+        reason = "fact temporal pipeline — no callers yet including tests"
+    )]
     pub(crate) fn supersede_fact(
         &self,
         old_fact: &crate::knowledge::Fact,
@@ -205,7 +208,10 @@ impl KnowledgeStore {
 
     /// Point-in-time fact query.
     #[instrument(skip(self))]
-    #[cfg_attr(not(test), expect(dead_code, reason = "fact temporal operations for knowledge store"))]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "fact temporal operations for knowledge store")
+    )]
     pub(crate) fn query_facts_at(
         &self,
         time: &str,
@@ -873,7 +879,10 @@ mod tests {
             .query_facts("alice", "2026-06-01", 100)
             .expect("query after upsert");
         assert_eq!(results.len(), 1, "upsert must not create a duplicate row");
-        assert_eq!(results[0].content, "Updated content", "content should be the updated value");
+        assert_eq!(
+            results[0].content, "Updated content",
+            "content should be the updated value"
+        );
     }
 
     #[test]
@@ -883,7 +892,10 @@ mod tests {
         let result = store.insert_fact(&fact);
         assert!(result.is_err(), "empty content should be rejected");
         assert!(
-            matches!(result.expect_err("must fail"), crate::error::Error::EmptyContent { .. }),
+            matches!(
+                result.expect_err("must fail"),
+                crate::error::Error::EmptyContent { .. }
+            ),
             "error variant should be EmptyContent"
         );
     }
@@ -896,9 +908,15 @@ mod tests {
         let mut fact = make_fact("too-long", "alice", "placeholder");
         fact.content = long;
         let result = store.insert_fact(&fact);
-        assert!(result.is_err(), "content exceeding max length should be rejected");
         assert!(
-            matches!(result.expect_err("must fail"), crate::error::Error::ContentTooLong { .. }),
+            result.is_err(),
+            "content exceeding max length should be rejected"
+        );
+        assert!(
+            matches!(
+                result.expect_err("must fail"),
+                crate::error::Error::ContentTooLong { .. }
+            ),
             "error variant should be ContentTooLong"
         );
     }
@@ -911,7 +929,10 @@ mod tests {
         let result = store.insert_fact(&fact);
         assert!(result.is_err(), "confidence > 1.0 must be rejected");
         assert!(
-            matches!(result.expect_err("must fail"), crate::error::Error::InvalidConfidence { .. }),
+            matches!(
+                result.expect_err("must fail"),
+                crate::error::Error::InvalidConfidence { .. }
+            ),
             "error variant should be InvalidConfidence"
         );
     }
@@ -924,7 +945,10 @@ mod tests {
         let result = store.insert_fact(&fact);
         assert!(result.is_err(), "confidence < 0.0 must be rejected");
         assert!(
-            matches!(result.expect_err("must fail"), crate::error::Error::InvalidConfidence { .. }),
+            matches!(
+                result.expect_err("must fail"),
+                crate::error::Error::InvalidConfidence { .. }
+            ),
             "error variant should be InvalidConfidence"
         );
     }
@@ -935,16 +959,24 @@ mod tests {
 
         let mut fact_zero = make_fact("conf-zero", "alice", "zero confidence");
         fact_zero.provenance.confidence = 0.0;
-        store.insert_fact(&fact_zero).expect("confidence 0.0 should be accepted");
+        store
+            .insert_fact(&fact_zero)
+            .expect("confidence 0.0 should be accepted");
 
         let mut fact_one = make_fact("conf-one", "alice", "full confidence");
         fact_one.provenance.confidence = 1.0;
-        store.insert_fact(&fact_one).expect("confidence 1.0 should be accepted");
+        store
+            .insert_fact(&fact_one)
+            .expect("confidence 1.0 should be accepted");
 
         let results = store
             .query_facts("alice", "2026-06-01", 100)
             .expect("query boundary confidence facts");
-        assert_eq!(results.len(), 2, "both boundary-confidence facts should be stored");
+        assert_eq!(
+            results.len(),
+            2,
+            "both boundary-confidence facts should be stored"
+        );
     }
 
     // ── Query operations ───────────────────────────────────────────────────────
@@ -976,7 +1008,11 @@ mod tests {
         let store = make_store();
         for i in 0..3_u8 {
             store
-                .insert_fact(&make_fact(&format!("q-multi-{i}"), "alice", &format!("Fact {i}")))
+                .insert_fact(&make_fact(
+                    &format!("q-multi-{i}"),
+                    "alice",
+                    &format!("Fact {i}"),
+                ))
                 .expect("insert");
         }
         let results = store
@@ -991,7 +1027,10 @@ mod tests {
         let results = store
             .query_facts_by_type("alice", "preference", 100)
             .expect("query by type on empty store");
-        assert!(results.is_empty(), "empty store should return no typed facts");
+        assert!(
+            results.is_empty(),
+            "empty store should return no typed facts"
+        );
     }
 
     #[test]
@@ -1023,13 +1062,21 @@ mod tests {
         let prefs = store
             .query_facts_by_type("alice", "preference", 100)
             .expect("query preference type");
-        assert_eq!(prefs.len(), 1, "only the preference fact should be returned");
+        assert_eq!(
+            prefs.len(),
+            1,
+            "only the preference fact should be returned"
+        );
         assert_eq!(prefs[0].id.as_str(), "qt-pref");
 
         let obs_results = store
             .query_facts_by_type("alice", "observation", 100)
             .expect("query observation type");
-        assert_eq!(obs_results.len(), 1, "only the observation fact should be returned");
+        assert_eq!(
+            obs_results.len(),
+            1,
+            "only the observation fact should be returned"
+        );
         assert_eq!(obs_results[0].id.as_str(), "qt-obs");
     }
 
@@ -1043,7 +1090,10 @@ mod tests {
         let results = store
             .query_facts_by_type("alice", "preference", 100)
             .expect("query alice preference");
-        assert!(results.is_empty(), "bob's facts must not appear in alice's query");
+        assert!(
+            results.is_empty(),
+            "bob's facts must not appear in alice's query"
+        );
     }
 
     #[test]
@@ -1062,14 +1112,20 @@ mod tests {
         let results = store
             .query_facts_by_type("alice", "preference", 100)
             .expect("query after forget");
-        assert!(results.is_empty(), "forgotten facts must not appear in typed query");
+        assert!(
+            results.is_empty(),
+            "forgotten facts must not appear in typed query"
+        );
     }
 
     #[test]
     fn list_all_facts_empty_store_returns_empty() {
         let store = make_store();
         let all = store.list_all_facts(100).expect("list_all_facts empty");
-        assert!(all.is_empty(), "list_all_facts on empty store should return empty");
+        assert!(
+            all.is_empty(),
+            "list_all_facts on empty store should return empty"
+        );
     }
 
     #[test]
@@ -1085,8 +1141,14 @@ mod tests {
         let all = store.list_all_facts(100).expect("list_all_facts");
         assert_eq!(all.len(), 2, "both agents' facts must be returned");
         let ids: Vec<&str> = all.iter().map(|f| f.id.as_str()).collect();
-        assert!(ids.contains(&"la-1"), "alice's fact must be in list_all_facts");
-        assert!(ids.contains(&"la-2"), "bob's fact must be in list_all_facts");
+        assert!(
+            ids.contains(&"la-1"),
+            "alice's fact must be in list_all_facts"
+        );
+        assert!(
+            ids.contains(&"la-2"),
+            "bob's fact must be in list_all_facts"
+        );
     }
 
     #[test]
@@ -1094,11 +1156,19 @@ mod tests {
         let store = make_store();
         for i in 0..5_u8 {
             store
-                .insert_fact(&make_fact(&format!("la-limit-{i}"), "alice", &format!("Fact {i}")))
+                .insert_fact(&make_fact(
+                    &format!("la-limit-{i}"),
+                    "alice",
+                    &format!("Fact {i}"),
+                ))
                 .expect("insert");
         }
         let limited = store.list_all_facts(2).expect("list_all_facts limit 2");
-        assert_eq!(limited.len(), 2, "list_all_facts should honour the limit parameter");
+        assert_eq!(
+            limited.len(),
+            2,
+            "list_all_facts should honour the limit parameter"
+        );
     }
 
     // ── Soft-delete lifecycle ──────────────────────────────────────────────────
@@ -1116,7 +1186,10 @@ mod tests {
                 ForgetReason::UserRequested,
             )
             .expect("forget");
-        assert!(forgotten.lifecycle.is_forgotten, "returned fact should be marked forgotten");
+        assert!(
+            forgotten.lifecycle.is_forgotten,
+            "returned fact should be marked forgotten"
+        );
         assert_eq!(
             forgotten.lifecycle.forget_reason,
             Some(ForgetReason::UserRequested),
@@ -1144,7 +1217,10 @@ mod tests {
         let results = store
             .query_facts("alice", "2026-06-01", 100)
             .expect("query after forget");
-        assert!(results.is_empty(), "forgotten fact must not appear in query_facts");
+        assert!(
+            results.is_empty(),
+            "forgotten fact must not appear in query_facts"
+        );
     }
 
     #[test]
@@ -1163,7 +1239,10 @@ mod tests {
         let restored = store
             .unforget_fact(&crate::id::FactId::new("sd-3").expect("valid test id"))
             .expect("unforget");
-        assert!(!restored.lifecycle.is_forgotten, "restored fact must not be marked as forgotten");
+        assert!(
+            !restored.lifecycle.is_forgotten,
+            "restored fact must not be marked as forgotten"
+        );
         assert!(
             restored.lifecycle.forgotten_at.is_none(),
             "forgotten_at must be cleared after unforget"
@@ -1196,12 +1275,17 @@ mod tests {
             )
             .expect("forget");
 
-        let forgotten = store
-            .list_forgotten("alice", 100)
-            .expect("list_forgotten");
-        assert_eq!(forgotten.len(), 1, "list_forgotten should return only the forgotten fact");
+        let forgotten = store.list_forgotten("alice", 100).expect("list_forgotten");
+        assert_eq!(
+            forgotten.len(),
+            1,
+            "list_forgotten should return only the forgotten fact"
+        );
         assert_eq!(forgotten[0].id.as_str(), "lf-gone");
-        assert!(forgotten[0].lifecycle.is_forgotten, "listed fact must be marked as forgotten");
+        assert!(
+            forgotten[0].lifecycle.is_forgotten,
+            "listed fact must be marked as forgotten"
+        );
     }
 
     #[test]
@@ -1213,7 +1297,10 @@ mod tests {
         );
         assert!(result.is_err(), "forgetting a non-existent fact must error");
         let msg = result.expect_err("must fail").to_string();
-        assert!(msg.contains("not found"), "error should mention 'not found': {msg}");
+        assert!(
+            msg.contains("not found"),
+            "error should mention 'not found': {msg}"
+        );
     }
 
     #[test]
@@ -1221,7 +1308,10 @@ mod tests {
         let store = make_store();
         let result =
             store.unforget_fact(&crate::id::FactId::new("does-not-exist").expect("valid test id"));
-        assert!(result.is_err(), "unforgetting a non-existent fact must error");
+        assert!(
+            result.is_err(),
+            "unforgetting a non-existent fact must error"
+        );
     }
 
     // ── Confidence updates ─────────────────────────────────────────────────────
@@ -1234,10 +1324,7 @@ mod tests {
             .expect("insert");
 
         let updated = store
-            .update_confidence(
-                &crate::id::FactId::new("uc-1").expect("valid test id"),
-                0.5,
-            )
+            .update_confidence(&crate::id::FactId::new("uc-1").expect("valid test id"), 0.5)
             .expect("update_confidence 0.5");
         assert!(
             (updated.provenance.confidence - 0.5).abs() < f64::EPSILON,
@@ -1303,9 +1390,15 @@ mod tests {
             &crate::id::FactId::new("uc-hi").expect("valid test id"),
             1.5,
         );
-        assert!(result.is_err(), "confidence > 1.0 must be rejected by update_confidence");
         assert!(
-            matches!(result.expect_err("must fail"), crate::error::Error::InvalidConfidence { .. }),
+            result.is_err(),
+            "confidence > 1.0 must be rejected by update_confidence"
+        );
+        assert!(
+            matches!(
+                result.expect_err("must fail"),
+                crate::error::Error::InvalidConfidence { .. }
+            ),
             "error variant should be InvalidConfidence"
         );
     }
@@ -1321,9 +1414,15 @@ mod tests {
             &crate::id::FactId::new("uc-lo").expect("valid test id"),
             -0.1,
         );
-        assert!(result.is_err(), "confidence < 0.0 must be rejected by update_confidence");
         assert!(
-            matches!(result.expect_err("must fail"), crate::error::Error::InvalidConfidence { .. }),
+            result.is_err(),
+            "confidence < 0.0 must be rejected by update_confidence"
+        );
+        assert!(
+            matches!(
+                result.expect_err("must fail"),
+                crate::error::Error::InvalidConfidence { .. }
+            ),
             "error variant should be InvalidConfidence"
         );
     }
@@ -1335,9 +1434,15 @@ mod tests {
             &crate::id::FactId::new("no-such-fact").expect("valid test id"),
             0.5,
         );
-        assert!(result.is_err(), "update_confidence on missing fact must error");
+        assert!(
+            result.is_err(),
+            "update_confidence on missing fact must error"
+        );
         let msg = result.expect_err("must fail").to_string();
-        assert!(msg.contains("not found"), "error should mention 'not found': {msg}");
+        assert!(
+            msg.contains("not found"),
+            "error should mention 'not found': {msg}"
+        );
     }
 
     // ── Temporal queries ───────────────────────────────────────────────────────
@@ -1348,12 +1453,17 @@ mod tests {
         let mut fact = make_fact("temp-1", "alice", "Temporal fact");
         fact.temporal.valid_from =
             crate::knowledge::parse_timestamp("2026-01-01").expect("valid_from");
-        fact.temporal.valid_to =
-            crate::knowledge::parse_timestamp("2026-06-01").expect("valid_to");
+        fact.temporal.valid_to = crate::knowledge::parse_timestamp("2026-06-01").expect("valid_to");
         store.insert_fact(&fact).expect("insert temporal fact");
 
-        let results = store.query_facts_at("2026-03-15").expect("query at mid-window");
-        assert_eq!(results.len(), 1, "fact should be visible inside its validity window");
+        let results = store
+            .query_facts_at("2026-03-15")
+            .expect("query at mid-window");
+        assert_eq!(
+            results.len(),
+            1,
+            "fact should be visible inside its validity window"
+        );
         assert_eq!(results[0].id.as_str(), "temp-1");
     }
 
@@ -1363,12 +1473,16 @@ mod tests {
         let mut fact = make_fact("temp-2", "alice", "Expired temporal fact");
         fact.temporal.valid_from =
             crate::knowledge::parse_timestamp("2026-01-01").expect("valid_from");
-        fact.temporal.valid_to =
-            crate::knowledge::parse_timestamp("2026-06-01").expect("valid_to");
+        fact.temporal.valid_to = crate::knowledge::parse_timestamp("2026-06-01").expect("valid_to");
         store.insert_fact(&fact).expect("insert expired fact");
 
-        let results = store.query_facts_at("2026-07-01").expect("query after window closes");
-        assert!(results.is_empty(), "fact should not be visible after its validity window ends");
+        let results = store
+            .query_facts_at("2026-07-01")
+            .expect("query after window closes");
+        assert!(
+            results.is_empty(),
+            "fact should not be visible after its validity window ends"
+        );
     }
 
     #[test]
@@ -1391,13 +1505,21 @@ mod tests {
         let at_feb = store
             .query_facts_temporal("alice", "2026-02-01", None)
             .expect("query feb");
-        assert_eq!(at_feb.len(), 1, "only the early fact should be visible in February");
+        assert_eq!(
+            at_feb.len(),
+            1,
+            "only the early fact should be visible in February"
+        );
         assert_eq!(at_feb[0].id.as_str(), "temp-early");
 
         let at_jun = store
             .query_facts_temporal("alice", "2026-06-01", None)
             .expect("query june");
-        assert_eq!(at_jun.len(), 1, "only the late fact should be visible in June");
+        assert_eq!(
+            at_jun.len(),
+            1,
+            "only the late fact should be visible in June"
+        );
         assert_eq!(at_jun[0].id.as_str(), "temp-late");
     }
 
@@ -1423,7 +1545,11 @@ mod tests {
             .expect("query diff");
         assert_eq!(diff.added.len(), 1, "one fact should be in the added set");
         assert_eq!(diff.added[0].id.as_str(), "diff-new");
-        assert_eq!(diff.removed.len(), 1, "one fact should be in the removed set");
+        assert_eq!(
+            diff.removed.len(),
+            1,
+            "one fact should be in the removed set"
+        );
         assert_eq!(diff.removed[0].id.as_str(), "diff-old");
         assert!(diff.modified.is_empty(), "no modified pairs expected");
     }
@@ -1433,8 +1559,13 @@ mod tests {
     #[test]
     fn read_facts_by_id_unknown_id_returns_empty() {
         let store = make_store();
-        let results = store.read_facts_by_id("unknown-id").expect("read by id succeeds");
-        assert!(results.is_empty(), "reading an unknown id should return an empty vec, not an error");
+        let results = store
+            .read_facts_by_id("unknown-id")
+            .expect("read by id succeeds");
+        assert!(
+            results.is_empty(),
+            "reading an unknown id should return an empty vec, not an error"
+        );
     }
 
     // ── query_forgotten_ids ────────────────────────────────────────────────────
@@ -1465,7 +1596,13 @@ mod tests {
         let forgotten_ids = store
             .query_forgotten_ids(&["qfi-visible", "qfi-gone"])
             .expect("query_forgotten_ids");
-        assert!(!forgotten_ids.contains("qfi-visible"), "visible fact must not appear in forgotten ids");
-        assert!(forgotten_ids.contains("qfi-gone"), "forgotten fact must appear in forgotten ids");
+        assert!(
+            !forgotten_ids.contains("qfi-visible"),
+            "visible fact must not appear in forgotten ids"
+        );
+        assert!(
+            forgotten_ids.contains("qfi-gone"),
+            "forgotten fact must appear in forgotten ids"
+        );
     }
 }

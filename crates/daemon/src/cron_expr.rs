@@ -48,8 +48,7 @@ impl CronExpr {
     pub(crate) fn parse(expr: &str) -> Result<Self, error::Error> {
         let fields: Vec<&str> = expr.split_whitespace().collect();
 
-        let (sec_str, minute_str, hour_str, dom_str, month_str, dow_str) = match fields.len()
-        {
+        let (sec_str, minute_str, hour_str, dom_str, month_str, dow_str) = match fields.len() {
             5 => ("0", fields[0], fields[1], fields[2], fields[3], fields[4]),
             6 => (
                 fields[0], fields[1], fields[2], fields[3], fields[4], fields[5],
@@ -287,10 +286,8 @@ impl CronExpr {
             }
 
             // All fields matched — construct result.
-            let civil = jiff::civil::DateTime::new(
-                year, month, day, hour, minute, second, 0,
-            )
-            .ok()?;
+            let civil =
+                jiff::civil::DateTime::new(year, month, day, hour, minute, second, 0).ok()?;
             let zoned = civil.to_zoned(jiff::tz::TimeZone::UTC).ok()?;
             return Some(zoned.timestamp());
         }
@@ -411,12 +408,7 @@ fn parse_field(
 }
 
 /// Resolve a single token to a numeric value, checking name aliases.
-fn resolve_value(
-    token: &str,
-    names: &[(&str, u8)],
-    min: u8,
-    max: u8,
-) -> Result<u8, FieldError> {
+fn resolve_value(token: &str, names: &[(&str, u8)], min: u8, max: u8) -> Result<u8, FieldError> {
     // Try name lookup first.
     let upper = token.to_uppercase();
     for &(name, val) in names {
@@ -429,9 +421,7 @@ fn resolve_value(
         .parse()
         .map_err(|_e| FieldError(format!("invalid value: {token}")))?;
     if v < min || v > max {
-        return Err(FieldError(format!(
-            "value {v} out of range [{min}, {max}]"
-        )));
+        return Err(FieldError(format!("value {v} out of range [{min}, {max}]")));
     }
     Ok(v)
 }

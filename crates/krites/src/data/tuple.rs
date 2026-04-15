@@ -1,7 +1,16 @@
 //! Tuple encoding and decoding.
-#![expect(clippy::explicit_iter_loop, reason = "explicit .iter() is idiomatic in tuple processing")]
-#![expect(clippy::indexing_slicing, reason = "tuple indices validated by caller contract")]
-#![expect(clippy::manual_let_else, reason = "if-let pattern is clearer for the fallback logic")]
+#![expect(
+    clippy::explicit_iter_loop,
+    reason = "explicit .iter() is idiomatic in tuple processing"
+)]
+#![expect(
+    clippy::indexing_slicing,
+    reason = "tuple indices validated by caller contract"
+)]
+#![expect(
+    clippy::manual_let_else,
+    reason = "if-let pattern is clearer for the fallback logic"
+)]
 
 use std::cmp::Reverse;
 
@@ -60,26 +69,40 @@ pub fn check_key_for_validity(
     size_hint: Option<usize>,
 ) -> (Option<Tuple>, Vec<u8>) {
     let mut decoded = decode_tuple_from_key(key, size_hint.unwrap_or(DEFAULT_SIZE_HINT));
-    let rel_id = RelationId::raw_decode(key).unwrap_or_else(|_| unreachable!("INVARIANT: key always contains a valid RelationId prefix"));
-    let vld = match decoded.last().unwrap_or_else(|| unreachable!("INVARIANT: decoded tuple is never empty")) {
+    let rel_id = RelationId::raw_decode(key).unwrap_or_else(|_| {
+        unreachable!("INVARIANT: key always contains a valid RelationId prefix")
+    });
+    let vld = match decoded
+        .last()
+        .unwrap_or_else(|| unreachable!("INVARIANT: decoded tuple is never empty"))
+    {
         DataValue::Validity(vld) => vld,
-        _ => unreachable!("INVARIANT: last element of a validity-keyed tuple is always DataValue::Validity"),
+        _ => unreachable!(
+            "INVARIANT: last element of a validity-keyed tuple is always DataValue::Validity"
+        ),
     };
     if vld.timestamp < valid_at {
-        *decoded.last_mut().unwrap_or_else(|| unreachable!("INVARIANT: decoded tuple is never empty")) = DataValue::Validity(Validity {
-            timestamp: valid_at,
-            is_assert: Reverse(true),
-        });
+        *decoded
+            .last_mut()
+            .unwrap_or_else(|| unreachable!("INVARIANT: decoded tuple is never empty")) =
+            DataValue::Validity(Validity {
+                timestamp: valid_at,
+                is_assert: Reverse(true),
+            });
         let nxt_seek = decoded.encode_as_key(rel_id);
         (None, nxt_seek)
     } else if !vld.is_assert.0 {
-        *decoded.last_mut().unwrap_or_else(|| unreachable!("INVARIANT: decoded tuple is never empty")) =
+        *decoded
+            .last_mut()
+            .unwrap_or_else(|| unreachable!("INVARIANT: decoded tuple is never empty")) =
             DataValue::Validity(TERMINAL_VALIDITY);
         let nxt_seek = decoded.encode_as_key(rel_id);
         (None, nxt_seek)
     } else {
         let ret = decoded.clone();
-        *decoded.last_mut().unwrap_or_else(|| unreachable!("INVARIANT: decoded tuple is never empty")) =
+        *decoded
+            .last_mut()
+            .unwrap_or_else(|| unreachable!("INVARIANT: decoded tuple is never empty")) =
             DataValue::Validity(TERMINAL_VALIDITY);
         let nxt_seek = decoded.encode_as_key(rel_id);
         (Some(ret), nxt_seek)

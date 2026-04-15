@@ -189,10 +189,7 @@ fn datalog_query_execution() {
 
     // Test aggregation
     let result = db
-        .run_read_only(
-            "?[count(from)] := *edge{from, to}",
-            BTreeMap::new(),
-        )
+        .run_read_only("?[count(from)] := *edge{from, to}", BTreeMap::new())
         .expect("aggregation query should succeed");
     assert_eq!(result.rows[0][0], DataValue::from(4i64));
 
@@ -200,10 +197,7 @@ fn datalog_query_execution() {
     let mut params = BTreeMap::new();
     params.insert("start".to_string(), DataValue::from(1i64));
     let result = db
-        .run_read_only(
-            "?[to] := *edge{from: $start, to}",
-            params,
-        )
+        .run_read_only("?[to] := *edge{from: $start, to}", params)
         .expect("parameterized query should succeed");
     assert_eq!(result.rows.len(), 2); // 1->2 and 1->3
 }
@@ -311,15 +305,18 @@ fn hnsw_vector_search_lifecycle() {
     let vec3: Vec<f32> = (0..128).map(|i| (i + 100) as f32).collect();
 
     let mut params = BTreeMap::new();
-    params.insert("v1".to_string(), DataValue::Vec(krites::Vector::F32(
-        ndarray::Array1::from(vec1.clone()),
-    )));
-    params.insert("v2".to_string(), DataValue::Vec(krites::Vector::F32(
-        ndarray::Array1::from(vec2),
-    )));
-    params.insert("v3".to_string(), DataValue::Vec(krites::Vector::F32(
-        ndarray::Array1::from(vec3.clone()),
-    )));
+    params.insert(
+        "v1".to_string(),
+        DataValue::Vec(krites::Vector::F32(ndarray::Array1::from(vec1.clone()))),
+    );
+    params.insert(
+        "v2".to_string(),
+        DataValue::Vec(krites::Vector::F32(ndarray::Array1::from(vec2))),
+    );
+    params.insert(
+        "v3".to_string(),
+        DataValue::Vec(krites::Vector::F32(ndarray::Array1::from(vec3.clone()))),
+    );
 
     db.run(
         r#"?[id, vec] <- [["a", $v1], ["b", $v2], ["c", $v3]] :put embeddings {id => vec}"#,
@@ -345,9 +342,10 @@ fn hnsw_vector_search_lifecycle() {
     // Perform KNN search using the index
     let query_vec: Vec<f32> = (0..128).map(|i| i as f32 + 0.5).collect();
     let mut params = BTreeMap::new();
-    params.insert("q".to_string(), DataValue::Vec(krites::Vector::F32(
-        ndarray::Array1::from(query_vec),
-    )));
+    params.insert(
+        "q".to_string(),
+        DataValue::Vec(krites::Vector::F32(ndarray::Array1::from(query_vec))),
+    );
 
     let result = db
         .run(
@@ -395,7 +393,10 @@ fn vector_operations_in_memory() {
 
     // Query vectors back
     let result = db
-        .run_read_only("?[id, embedding] := *vectors{id, embedding}", BTreeMap::new())
+        .run_read_only(
+            "?[id, embedding] := *vectors{id, embedding}",
+            BTreeMap::new(),
+        )
         .expect("querying vectors should succeed");
     assert_eq!(result.rows.len(), 3);
 
@@ -457,7 +458,11 @@ fn fts_index_lifecycle() {
             BTreeMap::new(),
         )
         .expect("FTS search should succeed");
-    assert_eq!(result.rows.len(), 2, "should find documents containing 'quick'");
+    assert_eq!(
+        result.rows.len(),
+        2,
+        "should find documents containing 'quick'"
+    );
 
     // Search for "fox" - FTS requires k parameter in the search options
     let result = db
@@ -466,7 +471,11 @@ fn fts_index_lifecycle() {
             BTreeMap::new(),
         )
         .expect("FTS search for 'fox' should succeed");
-    assert_eq!(result.rows.len(), 2, "should find documents containing 'fox'");
+    assert_eq!(
+        result.rows.len(),
+        2,
+        "should find documents containing 'fox'"
+    );
 
     // Add more documents after index creation (should be auto-indexed)
     db.run(
@@ -483,7 +492,11 @@ fn fts_index_lifecycle() {
             BTreeMap::new(),
         )
         .expect("FTS search for 'red' should succeed");
-    assert_eq!(result.rows.len(), 1, "should find document containing 'red'");
+    assert_eq!(
+        result.rows.len(),
+        1,
+        "should find document containing 'red'"
+    );
 
     // Drop the FTS index
     db.run(
@@ -684,10 +697,7 @@ fn malformed_query_errors() {
     )
     .expect("creating relation should succeed");
     let result = db.run_read_only(r#"?[n] := *typed{n: "string"}"#, BTreeMap::new());
-    assert!(
-        result.is_err(),
-        "type mismatch in query should error"
-    );
+    assert!(result.is_err(), "type mismatch in query should error");
 }
 
 /// Test error on invalid relation operations.
@@ -717,7 +727,10 @@ fn invalid_relation_operations() {
         BTreeMap::new(),
         ScriptMutability::Mutable,
     );
-    assert!(result.is_err(), "dropping non-existent relation should fail");
+    assert!(
+        result.is_err(),
+        "dropping non-existent relation should fail"
+    );
 }
 
 // ============================================================================
@@ -803,5 +816,3 @@ fn data_value_types() {
     assert_eq!(result.rows[0][1], DataValue::from(true));
     assert!(result.rows[0][2].get_float().unwrap() - 3.14 < 0.001);
 }
-
-

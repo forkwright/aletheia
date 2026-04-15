@@ -132,13 +132,13 @@ impl SessionTx<'_> {
                     }
                     .build(),
                 })?;
-                if old_existing_val[2]
-                    .get_bool()
-                    .ok_or_else(|| InvalidOperationSnafu {
+                if old_existing_val[2].get_bool().ok_or_else(|| {
+                    InvalidOperationSnafu {
                         op: "hnsw_index",
                         reason: "deleted flag is not a boolean".to_string(),
-                    }.build())?
-                {
+                    }
+                    .build()
+                })? {
                     self.store_tx.del(&old_key_bytes)?;
                 } else {
                     let old_val = vec![
@@ -202,10 +202,13 @@ impl SessionTx<'_> {
         }
         while !candidates.is_empty() && ret.len() < m {
             let (cand_key, Reverse(OrderedFloat(cand_dist_to_q))) =
-                candidates.pop().ok_or_else(|| InvalidOperationSnafu {
-                    op: "hnsw_select_neighbors",
-                    reason: "candidate queue unexpectedly empty".to_string(),
-                }.build())?;
+                candidates.pop().ok_or_else(|| {
+                    InvalidOperationSnafu {
+                        op: "hnsw_select_neighbors",
+                        reason: "candidate queue unexpectedly empty".to_string(),
+                    }
+                    .build()
+                })?;
             let mut should_add = true;
             for (existing, _) in ret.iter() {
                 vec_cache.ensure_key(&cand_key, orig_table, self)?;
@@ -225,10 +228,13 @@ impl SessionTx<'_> {
         if manifest.keep_pruned_connections {
             while !discarded.is_empty() && ret.len() < m {
                 let (nearest_triple, Reverse(OrderedFloat(nearest_dist))) =
-                    discarded.pop().ok_or_else(|| InvalidOperationSnafu {
-                        op: "hnsw_select_neighbors",
-                        reason: "discarded queue unexpectedly empty".to_string(),
-                    }.build())?;
+                    discarded.pop().ok_or_else(|| {
+                        InvalidOperationSnafu {
+                            op: "hnsw_select_neighbors",
+                            reason: "discarded queue unexpectedly empty".to_string(),
+                        }
+                        .build()
+                    })?;
                 ret.push(nearest_triple, Reverse(OrderedFloat(nearest_dist)));
             }
         }
@@ -297,11 +303,13 @@ impl SessionTx<'_> {
         }
 
         while let Some((candidate, Reverse(OrderedFloat(candidate_dist)))) = candidates.pop() {
-            let (_, OrderedFloat(furtherest_dist)) =
-                found_nn.peek().ok_or_else(|| InvalidOperationSnafu {
+            let (_, OrderedFloat(furtherest_dist)) = found_nn.peek().ok_or_else(|| {
+                InvalidOperationSnafu {
                     op: "hnsw_search_level",
                     reason: "found_nn empty during level search".to_string(),
-                }.build())?;
+                }
+                .build()
+            })?;
             let furtherest_dist = *furtherest_dist;
             if candidate_dist > furtherest_dist {
                 break;
@@ -314,11 +322,13 @@ impl SessionTx<'_> {
                 }
                 vec_cache.ensure_key(&neighbour_key, orig_table, self)?;
                 let neighbour_dist = vec_cache.v_dist(q, &neighbour_key)?;
-                let (_, OrderedFloat(cand_furtherest_dist)) =
-                    found_nn.peek().ok_or_else(|| InvalidOperationSnafu {
+                let (_, OrderedFloat(cand_furtherest_dist)) = found_nn.peek().ok_or_else(|| {
+                    InvalidOperationSnafu {
                         op: "hnsw_search_level",
                         reason: "found_nn empty during neighbor evaluation".to_string(),
-                    }.build())?;
+                    }
+                    .build()
+                })?;
                 if found_nn.len() < ef || neighbour_dist < *cand_furtherest_dist {
                     candidates.push(neighbour_key.clone(), Reverse(OrderedFloat(neighbour_dist)));
                     found_nn.push(neighbour_key.clone(), OrderedFloat(neighbour_dist));
@@ -366,18 +376,23 @@ impl SessionTx<'_> {
                 let tuple = res.ok()?;
 
                 #[expect(clippy::cast_sign_loss, reason = "HNSW indices are non-negative")]
-                #[expect(clippy::cast_possible_truncation, reason = "HNSW index fits in usize on all platforms")]
+                #[expect(
+                    clippy::cast_possible_truncation,
+                    reason = "HNSW index fits in usize on all platforms"
+                )]
                 // INVARIANT: HNSW index tuples store int values at these positions
                 let key_idx = tuple[2 * key_len + 3]
                     .get_int()
-                    .unwrap_or_else(|| unreachable!("HNSW neighbor index is not an integer")) as usize;
+                    .unwrap_or_else(|| unreachable!("HNSW neighbor index is not an integer"))
+                    as usize;
                 #[expect(
                     clippy::cast_possible_truncation,
                     reason = "HNSW subindex bounded by m_max (< i32::MAX)"
                 )]
                 let key_subidx = tuple[2 * key_len + 4]
                     .get_int()
-                    .unwrap_or_else(|| unreachable!("HNSW neighbor subindex is not an integer")) as i32;
+                    .unwrap_or_else(|| unreachable!("HNSW neighbor subindex is not an integer"))
+                    as i32;
                 let key_tup = tuple[key_len + 3..2 * key_len + 3].to_vec();
                 if key_tup == cand_key.0 {
                     None
@@ -385,9 +400,9 @@ impl SessionTx<'_> {
                     if include_deleted {
                         return Some((
                             (key_tup, key_idx, key_subidx),
-                            tuple[2 * key_len + 5]
-                                .get_float()
-                                .unwrap_or_else(|| unreachable!("HNSW neighbor distance is not a float")),
+                            tuple[2 * key_len + 5].get_float().unwrap_or_else(|| {
+                                unreachable!("HNSW neighbor distance is not a float")
+                            }),
                         ));
                     }
                     let is_deleted = tuple[2 * key_len + 7]
@@ -398,9 +413,9 @@ impl SessionTx<'_> {
                     } else {
                         Some((
                             (key_tup, key_idx, key_subidx),
-                            tuple[2 * key_len + 5]
-                                .get_float()
-                                .unwrap_or_else(|| unreachable!("HNSW neighbor distance is not a float")),
+                            tuple[2 * key_len + 5].get_float().unwrap_or_else(|| {
+                                unreachable!("HNSW neighbor distance is not a float")
+                            }),
                         ))
                     }
                 }

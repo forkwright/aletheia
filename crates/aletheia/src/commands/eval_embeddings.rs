@@ -72,10 +72,8 @@ fn load_corpus(path: &std::path::Path) -> Result<Vec<(String, String)>> {
         if trimmed.is_empty() {
             continue;
         }
-        let entry: CorpusEntry = serde_json::from_str(trimmed).whatever_context(format!(
-            "corpus line {}: invalid JSON",
-            idx + 1
-        ))?;
+        let entry: CorpusEntry = serde_json::from_str(trimmed)
+            .whatever_context(format!("corpus line {}: invalid JSON", idx + 1))?;
         pairs.push((entry.id, entry.text));
     }
     Ok(pairs)
@@ -174,7 +172,11 @@ fn print_table(run: &mneme::embedding_eval::EvalRunResult) {
         println!("  K         : {}", c.k);
         let diff_rk = c.recall_at_k - b.recall_at_k;
         let diff_mrr = c.mrr - b.mrr;
-        let rk_str = format!("{:.1}%  (Δ {:+.1}%)", c.recall_at_k * 100.0, diff_rk * 100.0);
+        let rk_str = format!(
+            "{:.1}%  (Δ {:+.1}%)",
+            c.recall_at_k * 100.0,
+            diff_rk * 100.0
+        );
         if diff_rk >= 0.0 {
             println!("  Recall@K  : {}", rk_str.green());
         } else {
@@ -194,7 +196,10 @@ fn print_table(run: &mneme::embedding_eval::EvalRunResult) {
     if run.passed {
         println!("  {}", "GATE PASSED".green().bold());
     } else {
-        println!("  {}", "GATE FAILED — candidate regresses Recall@K".red().bold());
+        println!(
+            "  {}",
+            "GATE FAILED — candidate regresses Recall@K".red().bold()
+        );
     }
     println!();
 }
@@ -209,7 +214,10 @@ pub(crate) fn run(args: &EvalEmbeddingsArgs) -> Result<()> {
         .whatever_context("failed to load eval dataset")?;
 
     if dataset.is_empty() {
-        snafu::whatever!("eval dataset is empty: add at least one query to {}", args.dataset.display());
+        snafu::whatever!(
+            "eval dataset is empty: add at least one query to {}",
+            args.dataset.display()
+        );
     }
 
     // Load or use built-in corpus.
@@ -269,7 +277,9 @@ pub(crate) fn run(args: &EvalEmbeddingsArgs) -> Result<()> {
         snafu::whatever!(
             "embedding evaluation gate failed: candidate Recall@{} ({:.1}%) regresses below baseline ({:.1}%)",
             run.candidate.as_ref().map_or(0, |c| c.k),
-            run.candidate.as_ref().map_or(0.0, |c| c.recall_at_k * 100.0),
+            run.candidate
+                .as_ref()
+                .map_or(0.0, |c| c.recall_at_k * 100.0),
             run.baseline.recall_at_k * 100.0,
         )
     }

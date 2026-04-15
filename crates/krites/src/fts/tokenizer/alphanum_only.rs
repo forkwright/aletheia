@@ -10,7 +10,10 @@ pub(crate) struct AlphaNumOnlyFilterStream<'a> {
 }
 
 impl AlphaNumOnlyFilterStream<'_> {
-    #[expect(clippy::unused_self, reason = "method predicate follows TokenFilter pattern for consistency")]
+    #[expect(
+        clippy::unused_self,
+        reason = "method predicate follows TokenFilter pattern for consistency"
+    )]
     fn predicate(&self, token: &Token) -> bool {
         token.text.chars().all(|c| c.is_ascii_alphanumeric())
     }

@@ -58,7 +58,10 @@ pub fn register(
     )?;
     registry.register(qa::dokimasia_def(), Box::new(qa::DokimasiaExecutor))?;
     registry.register(qa::diorthosis_def(), Box::new(qa::DiorthosisExecutor))?;
-    registry.register(steward::epitropos_def(), Box::new(steward::EpitroposExecutor))?;
+    registry.register(
+        steward::epitropos_def(),
+        Box::new(steward::EpitroposExecutor),
+    )?;
     registry.register(
         observation::parateresis_def(),
         Box::new(observation::ParateresisExecutor {
@@ -71,9 +74,18 @@ pub fn register(
             store: store.clone(),
         }),
     )?;
-    registry.register(planning::prographe_def(), Box::new(planning::ProographeExecutor))?;
-    registry.register(planning::schedion_def(), Box::new(planning::SchedionExecutor))?;
-    registry.register(metrics::metron_def(), Box::new(metrics::MetronExecutor { store }))?;
+    registry.register(
+        planning::prographe_def(),
+        Box::new(planning::ProographeExecutor),
+    )?;
+    registry.register(
+        planning::schedion_def(),
+        Box::new(planning::SchedionExecutor),
+    )?;
+    registry.register(
+        metrics::metron_def(),
+        Box::new(metrics::MetronExecutor { store }),
+    )?;
     Ok(())
 }
 

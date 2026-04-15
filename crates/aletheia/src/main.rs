@@ -21,9 +21,9 @@ mod recall_sources;
 mod runtime;
 mod status;
 
-use koina::system::{Environment, RealSystem};
 use anyhow::Result;
 use clap::Parser;
+use koina::system::{Environment, RealSystem};
 
 use cli::{Cli, Command};
 

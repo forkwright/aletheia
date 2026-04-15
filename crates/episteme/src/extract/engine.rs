@@ -18,10 +18,10 @@ use super::types::PersistResult;
 use super::types::{
     ConversationMessage, Extraction, ExtractionConfig, ExtractionPrompt, RefinedExtraction,
 };
-use crate::causal;
 #[cfg(feature = "mneme-engine")]
 use super::utils::slugify;
 use super::utils::strip_code_fences;
+use crate::causal;
 
 /// Drives the extraction pipeline: prompt building, LLM calling, response parsing.
 pub struct ExtractionEngine {
@@ -230,11 +230,8 @@ Rules:
             .filter_map(|mut fact| {
                 // WHY: reject facts with empty triple fields before any other processing —
                 // a fact with no subject, predicate, or object has zero semantic value.
-                if !refinement::validate_triple_fields(
-                    &fact.subject,
-                    &fact.predicate,
-                    &fact.object,
-                ) {
+                if !refinement::validate_triple_fields(&fact.subject, &fact.predicate, &fact.object)
+                {
                     filtered_count += 1;
                     tracing::debug!(
                         subject = %fact.subject,

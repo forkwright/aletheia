@@ -1,5 +1,8 @@
 #![expect(clippy::expect_used, reason = "test assertions")]
-#![expect(clippy::indexing_slicing, reason = "test assertions on known-length collections")]
+#![expect(
+    clippy::indexing_slicing,
+    reason = "test assertions on known-length collections"
+)]
 
 use super::*;
 
@@ -66,13 +69,15 @@ fn ignores_non_correction() {
 #[test]
 fn ignores_empty_message() {
     let result = extract_correction("");
-    assert!(result.is_none(), "should not detect correction in empty string");
+    assert!(
+        result.is_none(),
+        "should not detect correction in empty string"
+    );
 }
 
 #[test]
 fn detects_correction_in_multi_sentence() {
-    let result =
-        extract_correction("That looks good. Always use snake_case for variable names.");
+    let result = extract_correction("That looks good. Always use snake_case for variable names.");
     assert!(
         result.is_some(),
         "should detect correction in second sentence"
@@ -171,7 +176,10 @@ fn formats_multiple_corrections() {
 async fn load_returns_empty_when_no_file() {
     let dir = tempfile::tempdir().expect("create temp dir");
     let corrections = load_corrections(dir.path()).await.expect("load");
-    assert!(corrections.is_empty(), "should return empty vec for missing file");
+    assert!(
+        corrections.is_empty(),
+        "should return empty vec for missing file"
+    );
 }
 
 #[tokio::test]

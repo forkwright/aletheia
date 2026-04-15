@@ -43,10 +43,7 @@ impl RoleContract {
     pub fn to_prompt_section(&self) -> String {
         use std::fmt::Write;
 
-        let mut out = format!(
-            "## Role Contract: {} (v{})\n\n",
-            self.role, self.version
-        );
+        let mut out = format!("## Role Contract: {} (v{})\n\n", self.role, self.version);
 
         if !self.behaviors.is_empty() {
             out.push_str("### Expected Behaviors\n\n");
@@ -271,7 +268,8 @@ fn reviewer_contract() -> RoleContract {
         behaviors: vec![
             "Provide specific findings with file paths and line numbers".to_owned(),
             "Categorize issues by severity (error, warning, info)".to_owned(),
-            "Check correctness, edge cases, error handling, style, backward compatibility".to_owned(),
+            "Check correctness, edge cases, error handling, style, backward compatibility"
+                .to_owned(),
             "Check test coverage for new code paths".to_owned(),
             "Acknowledge clean code without inventing problems".to_owned(),
         ],
@@ -448,10 +446,7 @@ constraints = ["Execute plans"]
             section.contains("Role Contract: coder (v2)"),
             "should contain role and version"
         );
-        assert!(
-            section.contains("- Write code"),
-            "should list behaviors"
-        );
+        assert!(section.contains("- Write code"), "should list behaviors");
         assert!(
             section.contains("- MUST NOT: Break the build"),
             "should list constraints with MUST NOT prefix"

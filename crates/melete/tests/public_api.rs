@@ -96,7 +96,10 @@ mod distill_config {
         assert!(
             (restored.similarity_threshold - original.similarity_threshold).abs() < f64::EPSILON,
         );
-        assert_eq!(restored.detect_contradictions, original.detect_contradictions);
+        assert_eq!(
+            restored.detect_contradictions,
+            original.detect_contradictions
+        );
     }
 
     #[test]
@@ -179,7 +182,11 @@ mod distill_engine {
         // and min_messages=6 so the engine has real work to split.
         (0..10)
             .map(|i| {
-                let role = if i % 2 == 0 { Role::User } else { Role::Assistant };
+                let role = if i % 2 == 0 {
+                    Role::User
+                } else {
+                    Role::Assistant
+                };
                 text_msg(role, &format!("turn {i}: building the auth module"))
             })
             .collect()
@@ -375,12 +382,7 @@ mod distill_engine {
         let provider = MockProvider::new("## Summary\ns").models(&["claude-sonnet-4-20250514"]);
         let engine = DistillEngine::new(DistillConfig::default());
         engine
-            .distill(
-                &long_conversation(),
-                "bad`id\nevil",
-                &provider,
-                1,
-            )
+            .distill(&long_conversation(), "bad`id\nevil", &provider, 1)
             .await
             .expect("distillation");
 

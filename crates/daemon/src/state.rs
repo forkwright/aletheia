@@ -239,17 +239,20 @@ impl WorkspaceGuard {
         // `NonBlockingLockExclusive` returns `EWOULDBLOCK` if another process
         // (or another file descriptor in this process) already holds an
         // exclusive flock on the same inode.
-        rustix::fs::flock(file.as_fd(), rustix::fs::FlockOperation::NonBlockingLockExclusive)
-            .map_err(|e| {
-                crate::error::TaskFailedSnafu {
-                    task_id: "workspace-lock".to_owned(),
-                    reason: format!(
-                        "another daemon instance holds the lock at {}: {e}",
-                        lock_path.display()
-                    ),
-                }
-                .build()
-            })?;
+        rustix::fs::flock(
+            file.as_fd(),
+            rustix::fs::FlockOperation::NonBlockingLockExclusive,
+        )
+        .map_err(|e| {
+            crate::error::TaskFailedSnafu {
+                task_id: "workspace-lock".to_owned(),
+                reason: format!(
+                    "another daemon instance holds the lock at {}: {e}",
+                    lock_path.display()
+                ),
+            }
+            .build()
+        })?;
 
         tracing::info!(
             path = %lock_path.display(),
@@ -476,7 +479,10 @@ webhook = true
     fn workspace_guard_prevents_double_acquisition() {
         let tmp = tempfile::tempdir().unwrap();
         let guard1 = WorkspaceGuard::acquire(tmp.path()).expect("first acquire");
-        assert!(guard1.lock_path().exists(), "lock file exists after first acquire");
+        assert!(
+            guard1.lock_path().exists(),
+            "lock file exists after first acquire"
+        );
 
         let guard2 = WorkspaceGuard::acquire(tmp.path());
         assert!(
@@ -493,9 +499,8 @@ webhook = true
         {
             let _guard1 = WorkspaceGuard::acquire(tmp.path()).expect("first acquire");
         }
-        let _guard2 = WorkspaceGuard::acquire(tmp.path()).expect(
-            "second acquire after first guard dropped should succeed",
-        );
+        let _guard2 = WorkspaceGuard::acquire(tmp.path())
+            .expect("second acquire after first guard dropped should succeed");
     }
 
     #[test]

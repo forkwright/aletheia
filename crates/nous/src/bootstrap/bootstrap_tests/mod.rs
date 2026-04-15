@@ -724,10 +724,7 @@ fn extract_output_style_case_insensitive() {
 - Be terse
 ";
     let style = extract_output_style(user_md);
-    assert!(
-        style.is_some(),
-        "heading match should be case-insensitive"
-    );
+    assert!(style.is_some(), "heading match should be case-insensitive");
     let style = style.expect("just asserted Some");
     assert!(
         style.contains("Be terse"),

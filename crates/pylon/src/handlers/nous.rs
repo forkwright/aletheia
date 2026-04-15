@@ -126,9 +126,7 @@ pub async fn tools(
             config
                 .tool_allowlist
                 .as_ref()
-                .is_none_or(|allowlist| {
-                    allowlist.iter().any(|a| a == d.name.as_str())
-                })
+                .is_none_or(|allowlist| allowlist.iter().any(|a| a == d.name.as_str()))
         })
         .map(|d| ToolSummary {
             name: d.name.as_str().to_owned(),
@@ -269,9 +267,9 @@ mod tests {
             reason = "compile-time shape assertion: proves field types via unused local fn"
         )]
         fn assert_nous_state_fields(state: &NousState) {
-            use std::sync::Arc;
             use nous::manager::NousManager;
             use organon::registry::ToolRegistry;
+            use std::sync::Arc;
 
             let _: &Arc<NousManager> = &state.nous_manager;
             let _: &Arc<ToolRegistry> = &state.tool_registry;

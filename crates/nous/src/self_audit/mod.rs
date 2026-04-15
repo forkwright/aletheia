@@ -339,8 +339,7 @@ pub fn store_audit_report(
             CheckStatus::Fail => EpistemicTier::Assumed,
         };
 
-        let fact_id = match mneme::id::FactId::new(format!("audit-{}", koina::ulid::Ulid::new()))
-        {
+        let fact_id = match mneme::id::FactId::new(format!("audit-{}", koina::ulid::Ulid::new())) {
             Ok(id) => id,
             Err(e) => {
                 tracing::warn!(error = %e, "failed to create audit fact ID");

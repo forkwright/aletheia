@@ -52,9 +52,7 @@ impl ModelCard {
             parts.push(format!("Capabilities: {}", caps.join(", ")));
         }
 
-        if let (Some(input), Some(output)) =
-            (self.input_cost_per_mtok, self.output_cost_per_mtok)
-        {
+        if let (Some(input), Some(output)) = (self.input_cost_per_mtok, self.output_cost_per_mtok) {
             parts.push(format!(
                 "Pricing: ${input:.2}/MTok input, ${output:.2}/MTok output"
             ));
@@ -128,7 +126,10 @@ fn extract_context_size_k(query: &str) -> Option<u64> {
             // WHY: Check for 'k' suffix immediately after digits.
             if bytes.get(i).is_some_and(|&b| b == b'k' || b == b'K') {
                 // SAFETY: start..i are within bounds (guarded by .get() above)
-                #[expect(clippy::string_slice, reason = "bounds verified via .get() checks above")]
+                #[expect(
+                    clippy::string_slice,
+                    reason = "bounds verified via .get() checks above"
+                )]
                 if let Ok(n) = query[start..i].parse::<u64>() {
                     return Some(n);
                 }

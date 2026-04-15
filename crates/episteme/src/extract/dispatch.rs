@@ -191,7 +191,10 @@ pub struct GradeInputs {
 #[must_use]
 #[cfg_attr(
     not(test),
-    expect(dead_code, reason = "scoring helper exercised from tests; steward wiring lands with dispatch reporter")
+    expect(
+        dead_code,
+        reason = "scoring helper exercised from tests; steward wiring lands with dispatch reporter"
+    )
 )]
 pub(crate) fn compute_grade(inputs: GradeInputs) -> Grade {
     if inputs.has_failure {

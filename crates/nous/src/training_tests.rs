@@ -1,5 +1,8 @@
 #![expect(clippy::expect_used, reason = "test assertions")]
-#![expect(clippy::indexing_slicing, reason = "test assertions on a known-length collection")]
+#![expect(
+    clippy::indexing_slicing,
+    reason = "test assertions on a known-length collection"
+)]
 
 use super::*;
 
@@ -152,7 +155,11 @@ fn shard_rotation_on_size_limit() {
     // All shard files should exist
     for shard in &capture.manifest().shards {
         let shard_path = dir.path().join("training").join(&shard.file_name);
-        assert!(shard_path.exists(), "shard {} should exist", shard.file_name);
+        assert!(
+            shard_path.exists(),
+            "shard {} should exist",
+            shard.file_name
+        );
     }
 }
 
@@ -210,8 +217,7 @@ fn manifest_persisted_atomically() {
 
     // Should be valid JSON
     let content = fs::read_to_string(&manifest_path).expect("read manifest");
-    let manifest: TrainingManifest =
-        serde_json::from_str(&content).expect("parse manifest");
+    let manifest: TrainingManifest = serde_json::from_str(&content).expect("parse manifest");
     assert_eq!(manifest.total_records, 1);
 }
 
@@ -249,7 +255,10 @@ fn quality_gate_rejects_whitespace_only_response() {
             assistant_response: ws,
             ..good_input()
         });
-        assert!(!captured, "whitespace-only response {ws:?} should be rejected");
+        assert!(
+            !captured,
+            "whitespace-only response {ws:?} should be rejected"
+        );
     }
 }
 
@@ -324,7 +333,10 @@ fn quality_gate_rejects_tool_use_only_turn() {
         has_tool_calls: true,
         ..good_input()
     });
-    assert!(!captured, "tool-use-only turn (tool_use stop + has_tool_calls) should be rejected");
+    assert!(
+        !captured,
+        "tool-use-only turn (tool_use stop + has_tool_calls) should be rejected"
+    );
 }
 
 #[test]
@@ -344,7 +356,10 @@ fn quality_gate_accepts_tool_use_with_end_turn() {
         has_tool_calls: true,
         ..good_input()
     });
-    assert!(captured, "tool-using turn that ended with text should be accepted");
+    assert!(
+        captured,
+        "tool-using turn that ended with text should be accepted"
+    );
 }
 
 // -- Quality gate: happy path -------------------------------------------------
@@ -420,13 +435,34 @@ fn capture_preserves_episteme_labels() {
 
 #[test]
 fn capture_stop_reason_from_str() {
-    assert_eq!(CaptureStopReason::parse("end_turn"), CaptureStopReason::EndTurn);
-    assert_eq!(CaptureStopReason::parse("tool_use"), CaptureStopReason::ToolUse);
-    assert_eq!(CaptureStopReason::parse("max_tokens"), CaptureStopReason::MaxTokens);
-    assert_eq!(CaptureStopReason::parse("stop_sequence"), CaptureStopReason::StopSequence);
-    assert_eq!(CaptureStopReason::parse("degraded"), CaptureStopReason::Degraded);
-    assert_eq!(CaptureStopReason::parse("error"), CaptureStopReason::Unknown);
-    assert_eq!(CaptureStopReason::parse("anything_else"), CaptureStopReason::Unknown);
+    assert_eq!(
+        CaptureStopReason::parse("end_turn"),
+        CaptureStopReason::EndTurn
+    );
+    assert_eq!(
+        CaptureStopReason::parse("tool_use"),
+        CaptureStopReason::ToolUse
+    );
+    assert_eq!(
+        CaptureStopReason::parse("max_tokens"),
+        CaptureStopReason::MaxTokens
+    );
+    assert_eq!(
+        CaptureStopReason::parse("stop_sequence"),
+        CaptureStopReason::StopSequence
+    );
+    assert_eq!(
+        CaptureStopReason::parse("degraded"),
+        CaptureStopReason::Degraded
+    );
+    assert_eq!(
+        CaptureStopReason::parse("error"),
+        CaptureStopReason::Unknown
+    );
+    assert_eq!(
+        CaptureStopReason::parse("anything_else"),
+        CaptureStopReason::Unknown
+    );
 }
 
 // -- Serde roundtrip ----------------------------------------------------------

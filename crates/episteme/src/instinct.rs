@@ -415,9 +415,11 @@ fn sanitize_value(value: &serde_json::Value, max_param_value_len: usize) -> serd
                 serde_json::Value::String(s.clone())
             }
         }
-        serde_json::Value::Array(arr) => {
-            serde_json::Value::Array(arr.iter().map(|v| sanitize_value(v, max_param_value_len)).collect())
-        }
+        serde_json::Value::Array(arr) => serde_json::Value::Array(
+            arr.iter()
+                .map(|v| sanitize_value(v, max_param_value_len))
+                .collect(),
+        ),
         serde_json::Value::Object(map) => {
             sanitize_parameters(&serde_json::Value::Object(map.clone()), max_param_value_len)
         }

@@ -17,6 +17,8 @@ pub(crate) mod metrics;
 pub mod middleware;
 /// OpenAPI specification generation via utoipa.
 pub(crate) mod openapi;
+/// Cursor-based pagination types for list endpoints.
+pub mod pagination;
 /// Axum router construction with CORS, auth, and body-limit layers.
 pub mod router;
 /// Security configuration derived from the gateway config section.
@@ -25,8 +27,6 @@ pub mod security;
 pub mod server;
 /// Shared application state accessible across all handlers.
 pub mod state;
-/// Cursor-based pagination types for list endpoints.
-pub mod pagination;
 /// SSE event types for streaming agent responses to clients.
 pub mod stream;
 

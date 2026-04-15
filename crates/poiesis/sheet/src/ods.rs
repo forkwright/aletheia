@@ -9,7 +9,7 @@
 
 use poiesis_core::{Block, Document, Renderer};
 use snafu::Snafu;
-use spreadsheet_ods::{WorkBook, Sheet, write_ods_buf};
+use spreadsheet_ods::{Sheet, WorkBook, write_ods_buf};
 
 /// Errors produced by the ODS renderer.
 #[derive(Debug, Snafu)]
@@ -140,8 +140,12 @@ mod tests {
             content: vec![Block::Table(Table {
                 headers: vec!["Item".to_owned(), "Qty".to_owned()],
                 rows: vec![vec![
-                    RichText { spans: vec![Span::Plain("Widget".to_owned())] },
-                    RichText { spans: vec![Span::Plain("42".to_owned())] },
+                    RichText {
+                        spans: vec![Span::Plain("Widget".to_owned())],
+                    },
+                    RichText {
+                        spans: vec![Span::Plain("42".to_owned())],
+                    },
                 ]],
             })],
         }
@@ -157,7 +161,10 @@ mod tests {
 
     #[test]
     #[expect(clippy::expect_used, reason = "test assertion")]
-    #[expect(clippy::indexing_slicing, reason = "test assertions on known-good data")]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "test assertions on known-good data"
+    )]
     fn ods_starts_with_pk_magic() {
         // WHY: ODS is a ZIP archive; valid files start with PK (0x50 0x4B).
         let r = OdsRenderer::new();

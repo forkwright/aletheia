@@ -208,9 +208,7 @@ fn build_project_costs(
 
         acc.dispatches += 1;
 
-        let session_count = sessions_per_dispatch
-            .get(d.id.as_str())
-            .map_or(0, Vec::len);
+        let session_count = sessions_per_dispatch.get(d.id.as_str()).map_or(0, Vec::len);
 
         acc.sessions += u64::try_from(session_count).unwrap_or(u64::MAX);
 
@@ -279,9 +277,7 @@ fn build_daily_velocity(
 
         acc.dispatches += 1;
 
-        let session_count = sessions_per_dispatch
-            .get(d.id.as_str())
-            .map_or(0, Vec::len);
+        let session_count = sessions_per_dispatch.get(d.id.as_str()).map_or(0, Vec::len);
 
         acc.sessions += u64::try_from(session_count).unwrap_or(u64::MAX);
 
@@ -330,7 +326,10 @@ fn build_daily_velocity(
 #[cfg(feature = "storage-fjall")]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 #[expect(clippy::float_cmp, reason = "test assertions on exact float values")]
-#[expect(clippy::indexing_slicing, reason = "test assertions on collections with known length")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test assertions on collections with known length"
+)]
 mod tests {
     use super::*;
     use tempfile::TempDir;

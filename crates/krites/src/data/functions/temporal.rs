@@ -1,9 +1,24 @@
 //! UUID, timestamp, validity, and random number functions.
-#![expect(clippy::as_conversions, reason = "temporal functions require i64/f64 casts for Unix timestamps")]
-#![expect(clippy::unnecessary_wraps, reason = "temporal functions return Result for API consistency with other builtins")]
-#![expect(clippy::cast_lossless, reason = "uuid timestamp subsec is u32 — cast_lossless wants From but as is clearer in context")]
-#![expect(clippy::single_match_else, reason = "timezone branch reads better as if-let for the happy path")]
-#![expect(clippy::cloned_instead_of_copied, reason = "DataValue is not Copy — .cloned() is correct")]
+#![expect(
+    clippy::as_conversions,
+    reason = "temporal functions require i64/f64 casts for Unix timestamps"
+)]
+#![expect(
+    clippy::unnecessary_wraps,
+    reason = "temporal functions return Result for API consistency with other builtins"
+)]
+#![expect(
+    clippy::cast_lossless,
+    reason = "uuid timestamp subsec is u32 — cast_lossless wants From but as is clearer in context"
+)]
+#![expect(
+    clippy::single_match_else,
+    reason = "timezone branch reads better as if-let for the happy path"
+)]
+#![expect(
+    clippy::cloned_instead_of_copied,
+    reason = "DataValue is not Copy — .cloned() is correct"
+)]
 
 use std::cmp::Reverse;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -158,7 +173,10 @@ pub(crate) fn op_parse_timestamp(args: &[DataValue]) -> Result<DataValue> {
 
 pub(crate) fn op_rand_uuid_v1(_args: &[DataValue]) -> Result<DataValue> {
     let mut rng = rand::rng();
-    #[expect(deprecated, reason = "vendored CozoDB: uuid Context → ContextV1 rename pending uuid 2.x")]
+    #[expect(
+        deprecated,
+        reason = "vendored CozoDB: uuid Context → ContextV1 rename pending uuid 2.x"
+    )]
     let uuid_ctx = uuid::v1::Context::new(rng.random());
     #[cfg(target_arch = "wasm32")]
     let ts = {

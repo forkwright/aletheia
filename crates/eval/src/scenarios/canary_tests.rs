@@ -4,7 +4,10 @@ use super::*;
 fn canary_provider_returns_scenarios() {
     let provider = CanaryProvider;
     let scenarios = provider.provide();
-    assert!(!scenarios.is_empty(), "canary provider should return scenarios");
+    assert!(
+        !scenarios.is_empty(),
+        "canary provider should return scenarios"
+    );
     assert_eq!(provider.name(), "canary");
 }
 

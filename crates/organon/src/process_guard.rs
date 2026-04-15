@@ -103,7 +103,10 @@ mod tests {
     /// is no longer alive.
     #[test]
     fn kills_child_on_drop() {
-        let child = Command::new("sleep").arg("60").spawn().expect("spawn sleep");
+        let child = Command::new("sleep")
+            .arg("60")
+            .spawn()
+            .expect("spawn sleep");
         let pid = child.id();
 
         let guard = ProcessGuard::new(child);
@@ -123,7 +126,10 @@ mod tests {
     /// After `detach()`, the guard no longer kills the child.
     #[test]
     fn detach_prevents_kill() {
-        let child = Command::new("sleep").arg("60").spawn().expect("spawn sleep");
+        let child = Command::new("sleep")
+            .arg("60")
+            .spawn()
+            .expect("spawn sleep");
         let pid = child.id();
 
         let guard = ProcessGuard::new(child);
@@ -216,7 +222,10 @@ mod tests {
     fn guard_cleans_up_on_thread_panic() {
         use std::sync::mpsc;
 
-        let child = Command::new("sleep").arg("60").spawn().expect("spawn sleep");
+        let child = Command::new("sleep")
+            .arg("60")
+            .spawn()
+            .expect("spawn sleep");
         let pid = child.id();
 
         let (tx, rx) = mpsc::channel::<std::process::Child>();

@@ -199,7 +199,9 @@ fn make_scc_reduced_graph(
     let mut ret: BTreeMap<usize, BTreeMap<usize, bool>> = Default::default();
     for (from, tos) in graph {
         // INVARIANT: `from` is a key of `graph` which was used to build `indices`
-        let from_idx = *indices.get(from).unwrap_or_else(|| panic!("graph key must exist in SCC indices"));
+        let from_idx = *indices
+            .get(from)
+            .unwrap_or_else(|| panic!("graph key must exist in SCC indices"));
         let cur_entry = ret.entry(from_idx).or_default();
         for (to, poisoned) in tos {
             let to_idx = match indices.get(to) {
@@ -294,13 +296,16 @@ impl NormalFormProgram {
                 && let Some(rev_stratum_idx) = invert_sort_result.get(scc_idx)
             {
                 // INVARIANT: `rev_stratum_idx` comes from `invert_sort_result` which maps to 0..n_strata
-                let target = ret
-                    .get_mut(*rev_stratum_idx)
-                    .ok_or_else(|| {
-                        crate::error::InternalError::from(StratificationFailedSnafu {
-                            message: format!("stratum index {rev_stratum_idx} out of range (n_strata={n_strata})"),
-                        }.build())
-                    })?;
+                let target = ret.get_mut(*rev_stratum_idx).ok_or_else(|| {
+                    crate::error::InternalError::from(
+                        StratificationFailedSnafu {
+                            message: format!(
+                                "stratum index {rev_stratum_idx} out of range (n_strata={n_strata})"
+                            ),
+                        }
+                        .build(),
+                    )
+                })?;
                 target.prog.insert(name, ruleset);
             }
         }

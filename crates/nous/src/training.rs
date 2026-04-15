@@ -38,7 +38,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 // Re-export types from eidos for convenience
-pub use eidos::training::{TrainingConfig, TrainingRecord, TRAINING_RECORD_SCHEMA_VERSION};
+pub use eidos::training::{TRAINING_RECORD_SCHEMA_VERSION, TrainingConfig, TrainingRecord};
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 use snafu::{ResultExt, Snafu};
@@ -154,10 +154,7 @@ impl CaptureStopReason {
     /// Whether this stop reason indicates the response should be excluded
     /// from training data.
     fn is_rejected(self) -> bool {
-        matches!(
-            self,
-            Self::MaxTokens | Self::Degraded | Self::Unknown
-        )
+        matches!(self, Self::MaxTokens | Self::Degraded | Self::Unknown)
     }
 }
 
@@ -190,7 +187,6 @@ pub struct CaptureInput<'a> {
     pub has_tool_calls: bool,
 
     // ── Episteme labels ──────────────────────────────────────────────
-
     /// Classification of the conversation turn (e.g. "discussion", "correction").
     pub turn_type: Option<String>,
     /// Whether this turn corrects a previous response.
@@ -240,8 +236,7 @@ impl TrainingManifest {
 
     /// Persist the manifest atomically: write to temp, then rename.
     fn persist(&self, manifest_path: &Path) -> Result<()> {
-        let json =
-            serde_json::to_string_pretty(self).context(SerializeManifestSnafu)?;
+        let json = serde_json::to_string_pretty(self).context(SerializeManifestSnafu)?;
 
         let tmp_path = manifest_path.with_extension("json.tmp");
 
@@ -322,18 +317,14 @@ impl TrainingCapture {
                 .iter()
                 .any(|s| s.file_name == "conversations.jsonl")
         {
-            let meta = fs::metadata(&legacy_path).context(ReadMetadataSnafu {
-                path: &legacy_path,
-            })?;
+            let meta =
+                fs::metadata(&legacy_path).context(ReadMetadataSnafu { path: &legacy_path })?;
             let line_count = fs::read_to_string(&legacy_path)
                 .unwrap_or_default()
                 .lines()
                 .filter(|l| !l.trim().is_empty())
                 .count();
-            #[expect(
-                clippy::as_conversions,
-                reason = "usize→u64: line count fits in u64"
-            )]
+            #[expect(clippy::as_conversions, reason = "usize→u64: line count fits in u64")]
             let record_count = line_count as u64; // kanon:ignore RUST/as-cast
 
             manifest.shards.push(ShardEntry {
@@ -390,9 +381,8 @@ impl TrainingCapture {
         if let Some(last) = manifest.shards.last() {
             let last_path = dir.join(&last.file_name);
             if last_path.exists() {
-                let meta = fs::metadata(&last_path).context(ReadMetadataSnafu {
-                    path: &last_path,
-                })?;
+                let meta =
+                    fs::metadata(&last_path).context(ReadMetadataSnafu { path: &last_path })?;
                 if meta.len() < max_shard_bytes {
                     return Ok(last_path);
                 }
@@ -410,17 +400,10 @@ impl TrainingCapture {
     fn new_shard_name(dir: &Path) -> String {
         let today = jiff::civil::date(
             Timestamp::now().to_zoned(jiff::tz::TimeZone::UTC).year(),
-            Timestamp::now()
-                .to_zoned(jiff::tz::TimeZone::UTC)
-                .month(),
+            Timestamp::now().to_zoned(jiff::tz::TimeZone::UTC).month(),
             Timestamp::now().to_zoned(jiff::tz::TimeZone::UTC).day(),
         );
-        let date_str = format!(
-            "{:04}{:02}{:02}",
-            today.year(),
-            today.month(),
-            today.day()
-        );
+        let date_str = format!("{:04}{:02}{:02}", today.year(), today.month(), today.day());
 
         // Find the highest sequence number for today's date
         let prefix = format!("training-{date_str}-");
@@ -490,19 +473,15 @@ impl TrainingCapture {
                 path: &self.current_shard,
             })?;
 
-        file.write_all(line.as_bytes())
-            .context(WriteRecordSnafu {
-                path: &self.current_shard,
-            })?;
+        file.write_all(line.as_bytes()).context(WriteRecordSnafu {
+            path: &self.current_shard,
+        })?;
 
         // Update manifest
         if let Some(last) = self.manifest.shards.last_mut() {
             last.record_count += 1;
             // Update size estimate from the line we just wrote
-            #[expect(
-                clippy::as_conversions,
-                reason = "usize→u64: line length fits in u64"
-            )]
+            #[expect(clippy::as_conversions, reason = "usize→u64: line length fits in u64")]
             {
                 last.size_bytes += line.len() as u64; // kanon:ignore RUST/as-cast
             }
@@ -541,7 +520,10 @@ impl TrainingCapture {
         // WHY: empty and whitespace-only responses teach the model to produce
         // vacuous output. `.trim().is_empty()` catches both `""` and `"  \n"`.
         if input.assistant_response.trim().is_empty() {
-            debug!(session_id = input.session_id, "training capture skipped: empty/whitespace response");
+            debug!(
+                session_id = input.session_id,
+                "training capture skipped: empty/whitespace response"
+            );
             return false;
         }
 

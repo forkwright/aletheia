@@ -73,9 +73,8 @@ fn run_repl(instance_root: Option<&PathBuf>) -> Result<()> {
     }
 
     let config = mneme::knowledge_store::KnowledgeConfig::default();
-    let store =
-        mneme::knowledge_store::KnowledgeStore::open_fjall(&knowledge_path, config)
-            .whatever_context("failed to open knowledge store")?;
+    let store = mneme::knowledge_store::KnowledgeStore::open_fjall(&knowledge_path, config)
+        .whatever_context("failed to open knowledge store")?;
 
     let stdin = io::stdin();
     let stdout = io::stdout();
@@ -261,7 +260,10 @@ fn print_table(headers: &[String], rows: &[Vec<String>]) {
     }
 
     println!("{sep}");
-    println!("({} row{})", rows.len(), if rows.len() == 1 { "" } else { "s" });
+    println!(
+        "({} row{})",
+        rows.len(),
+        if rows.len() == 1 { "" } else { "s" }
+    );
     println!();
 }
-

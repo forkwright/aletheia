@@ -143,8 +143,7 @@ pub fn should_trigger_distillation(
     if session.metrics.message_count >= config.message_count_trigger {
         return Some(format!(
             "message_count={} >= {}",
-            session.metrics.message_count,
-            config.message_count_trigger
+            session.metrics.message_count, config.message_count_trigger
         ));
     }
 
@@ -337,9 +336,7 @@ pub fn apply_distillation(
 
 /// Convert mneme messages to hermeneus messages for the distillation engine.
 #[must_use]
-pub fn convert_to_hermeneus_messages(
-    history: &[mneme::types::Message],
-) -> Vec<HermeneusMessage> {
+pub fn convert_to_hermeneus_messages(history: &[mneme::types::Message]) -> Vec<HermeneusMessage> {
     history
         .iter()
         .map(|msg| {

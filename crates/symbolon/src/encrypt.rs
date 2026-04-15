@@ -205,10 +205,7 @@ pub(crate) fn encrypt(key: &[u8; KEY_LEN], plaintext: &[u8]) -> std::io::Result<
 /// Returns an `io::Error` if base64 decoding or AES-GCM authentication fails.
 pub(crate) fn decrypt(key: &[u8; KEY_LEN], encoded: &str) -> std::io::Result<Vec<u8>> {
     let combined = base64_decode(encoded).ok_or_else(|| {
-        std::io::Error::new(
-            std::io::ErrorKind::InvalidData,
-            "base64 decode failed",
-        )
+        std::io::Error::new(std::io::ErrorKind::InvalidData, "base64 decode failed")
     })?;
 
     if combined.len() < NONCE_LEN {

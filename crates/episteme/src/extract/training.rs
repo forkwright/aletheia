@@ -215,9 +215,11 @@ pub fn extract_from_training_data(training_dir: &Path) -> std::io::Result<Extrac
     }
 
     // Sort lessons by confidence descending for deterministic output.
-    result
-        .lessons
-        .sort_by(|a, b| b.confidence.partial_cmp(&a.confidence).unwrap_or(std::cmp::Ordering::Equal));
+    result.lessons.sort_by(|a, b| {
+        b.confidence
+            .partial_cmp(&a.confidence)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     Ok(result)
 }
@@ -243,7 +245,11 @@ pub fn lessons_to_facts(lessons: &[TrainingLesson]) -> Vec<super::types::Extract
             };
 
             let object = if let Some(pr) = lesson.pr_number {
-                format!("{} (PR #{pr}, {} files)", lesson.description, lesson.affected_files.len())
+                format!(
+                    "{} (PR #{pr}, {} files)",
+                    lesson.description,
+                    lesson.affected_files.len()
+                )
             } else {
                 format!(
                     "{} ({} occurrences across {} files)",
@@ -317,9 +323,7 @@ impl RuleBucket {
                 lessons.push(TrainingLesson {
                     rule: rule.to_owned(),
                     outcome: LessonOutcome::FixedInPr,
-                    description: format!(
-                        "rule {rule} violation fixed: {sample_snippet}"
-                    ),
+                    description: format!("rule {rule} violation fixed: {sample_snippet}"),
                     // WHY: PR-linked violations are verified fixes (high confidence).
                     confidence: 0.9,
                     affected_files: pr_files,
@@ -396,9 +400,15 @@ fn detect_trends(summary: &LintSummaryRecord, buckets: &mut HashMap<String, Rule
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
-#[expect(clippy::indexing_slicing, reason = "test assertions on collections with known length")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test assertions on collections with known length"
+)]
 #[expect(clippy::float_cmp, reason = "test assertions on exact float values")]
-#[expect(clippy::disallowed_methods, reason = "tests use std::fs for synchronous fixture setup")]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "tests use std::fs for synchronous fixture setup"
+)]
 mod tests {
     use super::*;
 
@@ -465,8 +475,16 @@ mod tests {
 
         let lessons = bucket.to_lessons("RUST/expect");
         assert_eq!(lessons.len(), 2, "one fixed + one recurring");
-        assert!(lessons.iter().any(|l| l.outcome == LessonOutcome::FixedInPr));
-        assert!(lessons.iter().any(|l| l.outcome == LessonOutcome::RecurringViolation));
+        assert!(
+            lessons
+                .iter()
+                .any(|l| l.outcome == LessonOutcome::FixedInPr)
+        );
+        assert!(
+            lessons
+                .iter()
+                .any(|l| l.outcome == LessonOutcome::RecurringViolation)
+        );
     }
 
     #[test]
@@ -568,11 +586,7 @@ mod tests {
             r#"{"type":"violation","schema_version":2,"ts":"2026-03-25T15:43:30Z","rule":"RUST/expect","file":"/src/lib.rs","line":10,"snippet":".expect(\"msg\")","project":"","pr_number":42,"sha":"abc123"}"#,
             r#"{"type":"violation","schema_version":2,"ts":"2026-03-25T15:43:30Z","rule":"RUST/expect","file":"/src/main.rs","line":20,"snippet":".expect(\"other\")","project":"","pr_number":null,"sha":null}"#,
         ];
-        std::fs::write(
-            dir.path().join("violations.jsonl"),
-            violations.join("\n"),
-        )
-        .unwrap();
+        std::fs::write(dir.path().join("violations.jsonl"), violations.join("\n")).unwrap();
 
         // Write a lint summary file.
         let lint = r#"{"type":"lint","schema_version":2,"ts":"2026-03-25T15:43:30Z","repo":"/repo","total_violations":100,"rules_triggered":10,"duration_ms":5000}"#;
@@ -585,11 +599,17 @@ mod tests {
 
         // Should have a fixed lesson and a recurring lesson.
         assert!(
-            result.lessons.iter().any(|l| l.outcome == LessonOutcome::FixedInPr),
+            result
+                .lessons
+                .iter()
+                .any(|l| l.outcome == LessonOutcome::FixedInPr),
             "should have a FixedInPr lesson"
         );
         assert!(
-            result.lessons.iter().any(|l| l.outcome == LessonOutcome::RecurringViolation),
+            result
+                .lessons
+                .iter()
+                .any(|l| l.outcome == LessonOutcome::RecurringViolation),
             "should have a RecurringViolation lesson"
         );
     }
@@ -608,7 +628,10 @@ mod tests {
     #[test]
     fn outcome_display() {
         assert_eq!(LessonOutcome::FixedInPr.to_string(), "fixed_in_pr");
-        assert_eq!(LessonOutcome::RecurringViolation.to_string(), "recurring_violation");
+        assert_eq!(
+            LessonOutcome::RecurringViolation.to_string(),
+            "recurring_violation"
+        );
         assert_eq!(LessonOutcome::ImprovingTrend.to_string(), "improving_trend");
         assert_eq!(LessonOutcome::DegradingTrend.to_string(), "degrading_trend");
     }
@@ -620,11 +643,7 @@ mod tests {
             r#"{"type":"violation","schema_version":2,"ts":"2026-01-01T00:00:00Z","rule":"LOW/rule","file":"/a.rs","line":1,"snippet":"x","project":"","pr_number":null,"sha":null}"#,
             r#"{"type":"violation","schema_version":2,"ts":"2026-01-01T00:00:00Z","rule":"HIGH/rule","file":"/b.rs","line":1,"snippet":"y","project":"","pr_number":99,"sha":"abc"}"#,
         ];
-        std::fs::write(
-            dir.path().join("violations.jsonl"),
-            violations.join("\n"),
-        )
-        .unwrap();
+        std::fs::write(dir.path().join("violations.jsonl"), violations.join("\n")).unwrap();
 
         let result = extract_from_training_data(dir.path()).unwrap();
         assert!(result.lessons.len() >= 2);

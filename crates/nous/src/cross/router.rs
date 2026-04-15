@@ -4,9 +4,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
+use koina::ulid::Ulid;
 use tokio::sync::{RwLock, mpsc, oneshot};
 use tracing::{instrument, warn};
-use koina::ulid::Ulid;
 
 use crate::error::{
     self, AskCycleDetectedSnafu, AskTimeoutSnafu, DeliveryFailedSnafu, NousNotFoundSnafu,

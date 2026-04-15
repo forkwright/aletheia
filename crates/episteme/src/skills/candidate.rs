@@ -66,7 +66,10 @@ impl SkillCandidate {
     /// # Errors
     ///
     /// Returns a [`serde_json::Error`] if serialisation fails.
-    #[cfg_attr(not(test), expect(dead_code, reason = "skill candidate tracking for auto-extraction"))]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "skill candidate tracking for auto-extraction")
+    )]
     pub(crate) fn to_json(&self) -> Result<String, serde_json::Error> {
         serde_json::to_string(self)
     }
@@ -76,7 +79,10 @@ impl SkillCandidate {
     /// # Errors
     ///
     /// Returns a [`serde_json::Error`] if the JSON is malformed or the schema changed.
-    #[cfg_attr(not(test), expect(dead_code, reason = "skill candidate tracking for auto-extraction"))]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "skill candidate tracking for auto-extraction")
+    )]
     pub(crate) fn from_json(json: &str) -> Result<Self, serde_json::Error> {
         serde_json::from_str(json)
     }
@@ -205,7 +211,10 @@ impl CandidateTracker {
     }
 
     /// Return all promoted candidates (`recurrence_count` ≥ threshold) for a nous.
-    #[cfg_attr(not(test), expect(dead_code, reason = "skill candidate tracking for auto-extraction"))]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "skill candidate tracking for auto-extraction")
+    )]
     pub(crate) fn promoted_for(&self, nous_id: &str) -> Vec<SkillCandidate> {
         let guard = self.candidates.lock().unwrap_or_else(|e| {
             tracing::warn!("CandidateTracker lock poisoned, recovering");
@@ -220,14 +229,20 @@ impl CandidateTracker {
 
     /// Total number of tracked candidates (all nous IDs).
     pub(crate) fn len(&self) -> usize {
-        self.candidates.lock().unwrap_or_else(|e| {
-            tracing::warn!("CandidateTracker lock poisoned, recovering");
-            e.into_inner()
-        }).len()
+        self.candidates
+            .lock()
+            .unwrap_or_else(|e| {
+                tracing::warn!("CandidateTracker lock poisoned, recovering");
+                e.into_inner()
+            })
+            .len()
     }
 
     /// Returns `true` if no candidates are tracked.
-    #[cfg_attr(not(test), expect(dead_code, reason = "skill candidate tracking for auto-extraction"))]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "skill candidate tracking for auto-extraction")
+    )]
     pub(crate) fn is_empty(&self) -> bool {
         self.len() == 0
     }

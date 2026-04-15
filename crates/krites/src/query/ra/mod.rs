@@ -224,7 +224,11 @@ impl Debug for RelAlgebra {
                     f.debug_tuple("Singlet")
                         .field(&bindings)
                         // SAFETY: data.len()==1 checked above
-                        .field(r.data.first().unwrap_or_else(|| panic!("data.len()==1 checked above")))
+                        .field(
+                            r.data
+                                .first()
+                                .unwrap_or_else(|| panic!("data.len()==1 checked above")),
+                        )
                         .finish()
                 } else {
                     f.debug_tuple("Fixed")
