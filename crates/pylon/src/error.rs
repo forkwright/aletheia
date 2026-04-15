@@ -204,30 +204,44 @@ impl IntoResponse for ApiError {
     }
 }
 
-/// Convert a crate error into an [`ApiError`], with a catch-all mapping to [`InternalSnafu`].
+/// Convert a crate error into an [`ApiError`] with explicit match arms for
+/// every known variant, plus a `#[non_exhaustive]` catch-all that logs the
+/// full error (including source chain) at `error` level.
 ///
-/// WHY: three downstream crate errors (mneme, hermeneus, nous) share the same
-/// pattern — match specific variants, fall through to `InternalSnafu`. This
-/// macro eliminates the repeated catch-all and `From` boilerplate.
+/// WHY: every known variant gets an explicit match arm so the HTTP status code
+/// is semantically correct (transient -> 503, permanent -> 500, client fault
+/// -> 4xx). The catch-all exists only because downstream enums are
+/// `#[non_exhaustive]` — if a new variant is added, it triggers the catch-all
+/// which logs the full error with `tracing::error!`, making the gap immediately
+/// visible in monitoring without silently erasing the error type (#3283).
 macro_rules! impl_from_error {
     ($error_mod:path, |$err:ident| { $($arms:tt)* }) => {
         impl From<$error_mod> for ApiError {
             fn from($err: $error_mod) -> Self {
-                // WHY: `#[allow]` rather than `#[expect]` because each macro
-                // invocation has different match coverage — for some error
-                // types every variant is matched (catch-all unreachable), for
-                // others the catch-all is genuinely needed. `#[expect]`
-                // would fire `unfulfilled_lint_expectations` on the cases
-                // where the lint doesn't fire.
                 #[allow(clippy::enum_glob_use, reason = "scoped to From impl body for concise match arms")]
                 use $error_mod::*;
                 match $err {
                     $($arms)*
-                    #[allow(unreachable_patterns, reason = "catch-all after explicit arms")]
-                    _ => InternalSnafu {
-                        message: $err.to_string(),
+                    // WHY: `#[non_exhaustive]` requires a catch-all. Unlike the
+                    // previous version that silently converted to `Internal` via
+                    // `.to_string()`, this logs the full error at error level so
+                    // new unclassified variants are immediately visible (#3283).
+                    // WHY `#[allow]` not `#[expect]`: this arm is unreachable when
+                    // all current variants are matched, but becomes reachable when
+                    // a downstream crate adds a new variant. `#[expect]` would
+                    // fire `unfulfilled_lint_expectations` in the common case.
+                    #[allow(unreachable_patterns, reason = "required by #[non_exhaustive]; triggers on new unhandled variants")]
+                    _ => {
+                        tracing::error!(
+                            error = %$err,
+                            error_debug = ?$err,
+                            "unclassified error variant — add an explicit match arm"
+                        );
+                        InternalSnafu {
+                            message: $err.to_string(),
+                        }
+                        .build()
                     }
-                    .build(),
                 }
             }
         }
@@ -248,10 +262,63 @@ impl_from_error!(mneme::error::Error, |err| {
     | EmptyEntityName { .. }
     | InvalidWeight { .. }
     | EmptyEmbedding { .. }
-    | EmptyEmbeddingContent { .. } => BadRequestSnafu {
+    | EmptyEmbeddingContent { .. }
+    | AdmissionRejected { .. }
+    | InvalidId { .. } => BadRequestSnafu {
         message: err.to_string(),
     }
     .build(),
+    // WHY: database and storage errors are transient infrastructure failures.
+    // 503 tells clients the server is alive but the store is temporarily
+    // unavailable, so they know to retry.
+    Database { .. }
+    | DatabaseDegraded { .. }
+    | DatabaseCorrupt { .. } => {
+        tracing::error!(error = %err, "mneme storage error");
+        ServiceUnavailableSnafu {
+            message: format!("storage error: {err}"),
+        }
+        .build()
+    }
+    Migration { .. } | ChecksumMismatch { .. } | SchemaTooNew { .. } => {
+        tracing::error!(error = %err, "mneme schema error");
+        InternalSnafu {
+            message: format!("schema error: {err}"),
+        }
+        .build()
+    }
+    UnsupportedVersion { .. } | UnsafePath { .. } | InvalidBackupPath { .. } | BackupPathTraversal { .. } => {
+        BadRequestSnafu {
+            message: err.to_string(),
+        }
+        .build()
+    }
+    EngineInit { .. } | EngineQuery { .. } | SchemaVersion { .. } | Conversion { .. } => {
+        tracing::error!(error = %err, "mneme engine error");
+        InternalSnafu {
+            message: format!("engine error: {err}"),
+        }
+        .build()
+    }
+    QueryTimeout { .. } => ServiceUnavailableSnafu {
+        message: format!("query timed out: {err}"),
+    }
+    .build(),
+    Join { .. } => InternalSnafu {
+        message: format!("task join failed: {err}"),
+    }
+    .build(),
+    EmbeddingDimensionMismatch { .. } => BadRequestSnafu {
+        message: err.to_string(),
+    }
+    .build(),
+    SessionCreate { .. } | Storage { .. } | StoredJson { .. } | Io { .. } => {
+        tracing::error!(error = %err, "mneme internal error");
+        InternalSnafu {
+            message: err.to_string(),
+        }
+        .build()
+    }
 });
 
 impl_from_error!(hermeneus::error::Error, |err| {
@@ -280,6 +347,42 @@ impl_from_error!(hermeneus::error::Error, |err| {
         message,
         ..
     } => ServiceUnavailableSnafu { message }.build(),
+    // WHY: 5xx from the upstream provider is a transient condition. 503 tells
+    // the client to retry.
+    ApiError {
+        status: 500..=599,
+        message,
+        ..
+    } => ServiceUnavailableSnafu {
+        message: format!("provider error: {message}"),
+    }
+    .build(),
+    // WHY: 4xx from upstream is the caller's fault (bad model, too many tokens, etc.)
+    ApiError { status, ref message, .. } => {
+        tracing::error!(error = %err, "hermeneus API error");
+        InternalSnafu {
+            message: format!("provider API error ({status}): {message}"),
+        }
+        .build()
+    }
+    // WHY: Parse errors indicate the provider returned unexpected data — not retryable.
+    ParseResponse { .. } => {
+        tracing::error!(error = %err, "hermeneus parse response error");
+        InternalSnafu {
+            message: format!("provider response parse failed: {err}"),
+        }
+        .build()
+    }
+    UnsupportedModel { model, .. } => BadRequestSnafu {
+        message: format!("model '{model}' is not supported by this provider"),
+    }
+    .build(),
+    // WHY: network-level request failures (timeout, connection refused, etc.)
+    // are transient — 503 so clients know to retry.
+    ApiRequest { .. } => ServiceUnavailableSnafu {
+        message: format!("provider request failed: {err}"),
+    }
+    .build(),
 });
 
 impl_from_error!(nous::error::Error, |err| {
@@ -299,11 +402,99 @@ impl_from_error!(nous::error::Error, |err| {
     PipelineStage { stage, message, .. } if stage == "execute" && message.contains("unavailable") => {
         ServiceUnavailableSnafu { message }.build()
     }
+    PipelineStage { ref stage, ref message, .. } => {
+        tracing::error!(error = %err, "pipeline stage error");
+        InternalSnafu {
+            message: format!("pipeline stage '{stage}' failed: {message}"),
+        }
+        .build()
+    }
     ServiceDegraded { nous_id, panic_count, .. } => ServiceUnavailableSnafu {
         message: format!("agent '{nous_id}' is degraded after {panic_count} panics"),
     }
     .build(),
     Llm { source, .. } => Self::from(source),
+    // WHY: transient failures (actor channels, recall, stores) map to 503
+    // so clients know the server is alive but temporarily unable to process.
+    ActorSend { .. } | ActorRecv { .. } => ServiceUnavailableSnafu {
+        message: format!("agent actor unavailable: {err}"),
+    }
+    .build(),
+    AskTimeout { nous_id, timeout_secs, .. } => ServiceUnavailableSnafu {
+        message: format!("cross-agent ask to '{nous_id}' timed out after {timeout_secs}s"),
+    }
+    .build(),
+    InboxFull { nous_id, .. } => ServiceUnavailableSnafu {
+        message: format!("agent '{nous_id}' is overloaded"),
+    }
+    .build(),
+    RecallEmbedding { .. } | RecallSearch { .. } => ServiceUnavailableSnafu {
+        message: format!("recall service unavailable: {err}"),
+    }
+    .build(),
+    Store { .. } => ServiceUnavailableSnafu {
+        message: format!("session store unavailable: {err}"),
+    }
+    .build(),
+    CompetenceStore { .. } | UncertaintyStore { .. } => ServiceUnavailableSnafu {
+        message: format!("store unavailable: {err}"),
+    }
+    .build(),
+    // WHY: permanent configuration/validation errors — cannot succeed on retry.
+    Config { message, .. } => InternalSnafu {
+        message: format!("configuration error: {message}"),
+    }
+    .build(),
+    WorkspaceValidation { nous_id, message, .. } => InternalSnafu {
+        message: format!("agent '{nous_id}' workspace invalid: {message}"),
+    }
+    .build(),
+    ContextAssembly { message, .. } => InternalSnafu {
+        message: format!("context assembly failed: {message}"),
+    }
+    .build(),
+    ContextAssemblyIo { file, .. } => InternalSnafu {
+        message: format!("context assembly failed: file '{file}' unreadable"),
+    }
+    .build(),
+    LoopDetected { iterations, pattern, .. } => InternalSnafu {
+        message: format!("loop detected after {iterations} iterations: {pattern}"),
+    }
+    .build(),
+    AskCycleDetected { chain, .. } => InternalSnafu {
+        message: format!("ask cycle detected: {chain}"),
+    }
+    .build(),
+    DeliveryFailed { nous_id, .. } => ServiceUnavailableSnafu {
+        message: format!("delivery to '{nous_id}' failed"),
+    }
+    .build(),
+    ReplyNotFound { .. } => InternalSnafu {
+        message: format!("reply channel not found: {err}"),
+    }
+    .build(),
+    MutexPoisoned { .. } => InternalSnafu {
+        message: format!("internal lock poisoned: {err}"),
+    }
+    .build(),
+    PipelinePanic { .. } => InternalSnafu {
+        message: "pipeline encountered an unexpected internal error".to_owned(),
+    }
+    .build(),
+    Distillation { .. } => {
+        tracing::error!(error = %err, "distillation failed");
+        InternalSnafu {
+            message: format!("distillation failed: {err}"),
+        }
+        .build()
+    }
+    SelfAudit { .. } | RoleContract { .. } => {
+        tracing::error!(error = %err, "self-monitoring error");
+        InternalSnafu {
+            message: format!("self-monitoring error: {err}"),
+        }
+        .build()
+    }
 });
 
 impl From<tokio::task::JoinError> for ApiError {
