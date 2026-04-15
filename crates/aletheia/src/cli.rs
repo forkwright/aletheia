@@ -10,6 +10,7 @@ use crate::commands::agent_io::{
     SeedSkillsArgs, TuiArgs,
 };
 use crate::commands::backup::BackupArgs;
+use crate::commands::benchmark::BenchmarkArgs;
 use crate::commands::config;
 use crate::commands::credential;
 use crate::commands::desktop::DesktopArgs;
@@ -90,6 +91,8 @@ pub(crate) enum Command {
         #[command(subcommand)]
         action: credential::Action,
     },
+    /// Run memory benchmarks (`LongMemEval`, `LoCoMo`) against a live instance
+    Benchmark(BenchmarkArgs),
     /// Run behavioral evaluation scenarios against a live instance
     Eval(EvalArgs),
     /// Embedding quality gate: Recall@K and MRR before model upgrades
