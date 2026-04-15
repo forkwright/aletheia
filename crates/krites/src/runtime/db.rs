@@ -181,7 +181,7 @@ impl NamedRows {
             .into_iter()
             .map(|row| {
                 row.into_iter()
-                    .map(|v| JsonValue::try_from(v).unwrap_or(JsonValue::Null))
+                    .map(JsonValue::from)
                     .collect::<JsonValue>()
             })
             .collect::<JsonValue>();
