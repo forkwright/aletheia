@@ -470,7 +470,7 @@ async fn shell_executor_does_not_expand_env_vars_in_arguments() {
         name: ToolName::new("cat_tool").expect("cat_tool is a valid tool name"),
         tool_use_id: "toolu_env".to_owned(),
         arguments: serde_json::json!({
-            "path": "$HOME/.ssh/id_rsa"
+            "path": "$HOME/.ssh/id_rsa" // pii-allow: SSH filename literal, no key material
         }),
     };
     let ctx = ToolContext {
