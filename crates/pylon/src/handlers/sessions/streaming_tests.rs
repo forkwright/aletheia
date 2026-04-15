@@ -354,6 +354,7 @@ fn sse_event_error_serializes_correctly() {
     let event = SseEvent::Error {
         code: "turn_failed".to_owned(),
         message: "something broke".to_owned(),
+        request_id: Some("req-abc".to_owned()),
     };
     let result = sse_event_to_axum(event).expect("infallible");
     drop(result);

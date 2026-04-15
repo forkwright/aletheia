@@ -2,6 +2,7 @@
 
 use axum::Json;
 use axum::extract::{Path, State};
+use axum::http::StatusCode;
 
 use symbolon::types::Role;
 
@@ -22,7 +23,7 @@ use super::{ForgetRequest, UpdateConfidenceRequest};
         content_type = "application/json"
     ),
     responses(
-        (status = 200, description = "Fact marked forgotten"),
+        (status = 204, description = "Fact marked forgotten"),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = []))
@@ -37,7 +38,7 @@ pub async fn forget_fact(
     claims: Claims,
     Path(id): Path<String>,
     Json(body): Json<ForgetRequest>,
-) -> Result<Json<serde_json::Value>, ApiError> {
+) -> Result<StatusCode, ApiError> {
     require_role(&claims, Role::Operator)?;
     #[cfg(feature = "knowledge-store")]
     if let Some(ref store) = state.knowledge_store {
@@ -52,7 +53,7 @@ pub async fn forget_fact(
         return match store.forget_fact_async(fact_id, reason).await {
             Ok(_) => {
                 tracing::info!(fact_id = %id, "fact forgotten");
-                Ok(Json(serde_json::json!({ "status": "forgotten", "id": id })))
+                Ok(StatusCode::NO_CONTENT)
             }
             Err(mneme::error::Error::FactNotFound { .. }) => Err(ApiError::NotFound {
                 path: format!("fact/{id}"),
@@ -79,7 +80,7 @@ pub async fn forget_fact(
     path = "/api/v1/knowledge/facts/{id}/restore",
     params(("id" = String, Path, description = "Fact ID")),
     responses(
-        (status = 200, description = "Fact restored"),
+        (status = 204, description = "Fact restored"),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = []))
@@ -93,7 +94,7 @@ pub async fn restore_fact(
     State(state): State<KnowledgeState>,
     claims: Claims,
     Path(id): Path<String>,
-) -> Result<Json<serde_json::Value>, ApiError> {
+) -> Result<StatusCode, ApiError> {
     require_role(&claims, Role::Operator)?;
     #[cfg(feature = "knowledge-store")]
     if let Some(ref store) = state.knowledge_store {
@@ -104,7 +105,7 @@ pub async fn restore_fact(
         return match store.unforget_fact_async(fact_id).await {
             Ok(_) => {
                 tracing::info!(fact_id = %id, "fact restored");
-                Ok(Json(serde_json::json!({ "status": "restored", "id": id })))
+                Ok(StatusCode::NO_CONTENT)
             }
             Err(mneme::error::Error::FactNotFound { .. }) => Err(ApiError::NotFound {
                 path: format!("fact/{id}"),

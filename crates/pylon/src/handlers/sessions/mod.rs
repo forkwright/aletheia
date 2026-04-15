@@ -548,11 +548,11 @@ pub(crate) async fn resolve_session(
 
 /// Returns `true` when a mneme error is a `SQLite` UNIQUE constraint violation.
 ///
-/// `SQLite` always includes "UNIQUE constraint failed" in the error message for
-/// constraint violations. We match on the string because pylon does not take a
-/// direct rusqlite dependency: the type lives inside mneme's `Database` variant.
+/// WHY: Uses the typed `rusqlite::ErrorCode::ConstraintViolation` via
+/// `mneme::error::Error::is_unique_constraint_violation()` instead of
+/// string matching on the error message, which is fragile (#3282).
 fn is_unique_constraint_violation(err: &mneme::error::Error) -> bool {
-    err.to_string().contains("UNIQUE constraint failed")
+    err.is_unique_constraint_violation()
 }
 
 pub(crate) async fn find_session(

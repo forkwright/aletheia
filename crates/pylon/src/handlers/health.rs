@@ -1,5 +1,7 @@
 //! Health check endpoint.
 
+use std::time::Duration;
+
 use koina::system::{Environment, RealSystem};
 use axum::Json;
 use axum::extract::State;
@@ -9,6 +11,12 @@ use serde::Serialize;
 use utoipa::ToSchema;
 
 use crate::state::HealthState;
+
+/// Per-check timeout: individual health checks that exceed this are reported as "timeout".
+const CHECK_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// Overall endpoint timeout: the health response is always returned within this bound.
+const OVERALL_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// GET /api/health: liveness + readiness check.
 ///
@@ -27,69 +35,53 @@ use crate::state::HealthState;
 pub async fn check(State(state): State<HealthState>) -> impl IntoResponse {
     let uptime = state.start_time.elapsed().as_secs();
 
-    let mut checks = Vec::new();
+    // WHY: Run all health checks concurrently with individual timeouts so a
+    // single hanging check (e.g., provider connection) cannot block the entire
+    // endpoint. The overall timeout guarantees a response even if multiple
+    // checks hang simultaneously (#3277).
+    let checks = tokio::time::timeout(OVERALL_TIMEOUT, async {
+        // Read config once before spawning concurrent checks.
+        let api_limits = &state.config.read().await.api_limits;
+        let clock_skew_leeway = api_limits.clock_skew_leeway_secs;
+        let expiry_warning_threshold = api_limits.expiry_warning_threshold_secs;
 
-    let store_ok = state.session_store.lock().await.ping().is_ok();
-    checks.push(HealthCheck {
-        name: "session_store",
-        status: if store_ok { "pass" } else { "fail" },
-        message: if store_ok {
-            None
-        } else {
-            Some("session store unavailable".to_owned())
-        },
+        let (store_check, actor_check, config_check, storage_check) = tokio::join!(
+            timed_check("session_store", check_session_store(&state)),
+            timed_check("nous_actors", check_nous_actors(&state)),
+            timed_check("config_readable", check_config_readable(&state)),
+            timed_check("storage_writable", check_storage_writable(&state)),
+        );
+
+        // These are synchronous / cheap — no timeout needed.
+        let provider_check = check_provider_availability(&state);
+        let credential_check =
+            check_credential_validity(&state, clock_skew_leeway, expiry_warning_threshold);
+
+        vec![
+            store_check,
+            provider_check,
+            actor_check,
+            check_provider_reachability(&state),
+            config_check,
+            credential_check,
+            storage_check,
+        ]
+    })
+    .await
+    .unwrap_or_else(|_| {
+        vec![HealthCheck {
+            name: "overall",
+            status: "fail",
+            message: Some("health check timed out".to_owned()),
+        }]
     });
 
-    let has_providers = !state.provider_registry.providers().is_empty();
-    checks.push(HealthCheck {
-        name: "providers",
-        status: if has_providers { "pass" } else { "warn" },
-        message: if has_providers {
-            None
-        } else {
-            Some("no LLM providers registered".to_owned())
-        },
-    });
-
-    let actor_health = state.nous_manager.check_health().await;
-    let any_dead = actor_health.values().any(|h| !h.alive);
-    checks.push(HealthCheck {
-        name: "nous_actors",
-        status: if actor_health.is_empty() || any_dead {
-            "fail"
-        } else {
-            "pass"
-        },
-        message: if actor_health.is_empty() {
-            Some("no nous actors registered".to_owned())
-        } else if any_dead {
-            let dead: Vec<_> = actor_health
-                .iter()
-                .filter(|(_, h)| !h.alive)
-                .map(|(id, _)| id.as_str())
-                .collect();
-            Some(format!("actors not responding: {}", dead.join(", ")))
-        } else {
-            None
-        },
-    });
-
-    // Check provider reachability via health tracker
-    checks.push(check_provider_reachability(&state));
-
-    // Check config readability
-    checks.push(check_config_readable(&state).await);
-
-    // Check credential validity
-    let api_limits = &state.config.read().await.api_limits;
-    let clock_skew_leeway = api_limits.clock_skew_leeway_secs;
-    let expiry_warning_threshold = api_limits.expiry_warning_threshold_secs;
-    checks.push(check_credential_validity(&state, clock_skew_leeway, expiry_warning_threshold));
-
-    // Check storage writability
-    checks.push(check_storage_writable(&state).await);
-
-    let status = if checks.iter().any(|c| c.status == "fail") {
+    // WHY: "timeout" is treated as "fail" for aggregate status because
+    // a timed-out check means we cannot confirm the subsystem is healthy.
+    let status = if checks
+        .iter()
+        .any(|c| c.status == "fail" || c.status == "timeout")
+    {
         "unhealthy"
     } else if checks.iter().any(|c| c.status == "warn") {
         "degraded"
@@ -113,6 +105,76 @@ pub async fn check(State(state): State<HealthState>) -> impl IntoResponse {
             data_dir: state.oikos.data().to_string_lossy().into_owned(),
         }),
     )
+}
+
+/// Run a health check with a per-check timeout. If the check exceeds
+/// [`CHECK_TIMEOUT`], a "timeout" status is returned instead of blocking.
+async fn timed_check(
+    name: &'static str,
+    future: impl std::future::Future<Output = HealthCheck>,
+) -> HealthCheck {
+    match tokio::time::timeout(CHECK_TIMEOUT, future).await {
+        Ok(check) => check,
+        Err(_elapsed) => HealthCheck {
+            name,
+            status: "timeout",
+            message: Some(format!("{name} check timed out after {}s", CHECK_TIMEOUT.as_secs())),
+        },
+    }
+}
+
+/// Check session store connectivity.
+async fn check_session_store(state: &HealthState) -> HealthCheck {
+    let store_ok = state.session_store.lock().await.ping().is_ok();
+    HealthCheck {
+        name: "session_store",
+        status: if store_ok { "pass" } else { "fail" },
+        message: if store_ok {
+            None
+        } else {
+            Some("session store unavailable".to_owned())
+        },
+    }
+}
+
+/// Check whether any LLM providers are registered.
+fn check_provider_availability(state: &HealthState) -> HealthCheck {
+    let has_providers = !state.provider_registry.providers().is_empty();
+    HealthCheck {
+        name: "providers",
+        status: if has_providers { "pass" } else { "warn" },
+        message: if has_providers {
+            None
+        } else {
+            Some("no LLM providers registered".to_owned())
+        },
+    }
+}
+
+/// Check nous actor liveness.
+async fn check_nous_actors(state: &HealthState) -> HealthCheck {
+    let actor_health = state.nous_manager.check_health().await;
+    let any_dead = actor_health.values().any(|h| !h.alive);
+    HealthCheck {
+        name: "nous_actors",
+        status: if actor_health.is_empty() || any_dead {
+            "fail"
+        } else {
+            "pass"
+        },
+        message: if actor_health.is_empty() {
+            Some("no nous actors registered".to_owned())
+        } else if any_dead {
+            let dead: Vec<_> = actor_health
+                .iter()
+                .filter(|(_, h)| !h.alive)
+                .map(|(id, _)| id.as_str())
+                .collect();
+            Some(format!("actors not responding: {}", dead.join(", ")))
+        } else {
+            None
+        },
+    }
 }
 
 /// Check LLM provider connectivity by querying the provider registry health.
@@ -481,7 +543,7 @@ pub struct HealthCheck {
     /// Subsystem name (e.g. `"session_store"`, `"providers"`).
     #[schema(value_type = String)]
     pub name: &'static str,
-    /// Check outcome: `"pass"`, `"warn"`, or `"fail"`.
+    /// Check outcome: `"pass"`, `"warn"`, `"fail"`, or `"timeout"`.
     #[schema(value_type = String)]
     pub status: &'static str,
     /// Diagnostic message when status is not `"pass"`.
@@ -637,6 +699,62 @@ mod tests {
             "healthy"
         };
         assert_eq!(status, "healthy");
+    }
+
+    #[test]
+    fn aggregate_status_unhealthy_when_any_check_times_out() {
+        let checks = [
+            HealthCheck {
+                name: "a",
+                status: "pass",
+                message: None,
+            },
+            HealthCheck {
+                name: "b",
+                status: "timeout",
+                message: Some("check timed out after 5s".to_owned()),
+            },
+        ];
+        // WHY: "timeout" is treated as "fail" for aggregate status because
+        // a timed-out check means we cannot confirm the subsystem is healthy.
+        let status = if checks.iter().any(|c| c.status == "fail" || c.status == "timeout") {
+            "unhealthy"
+        } else if checks.iter().any(|c| c.status == "warn") {
+            "degraded"
+        } else {
+            "healthy"
+        };
+        assert_eq!(status, "unhealthy");
+    }
+
+    #[tokio::test]
+    async fn timed_check_returns_timeout_on_slow_future() {
+        let check = timed_check("slow_check", async {
+            tokio::time::sleep(Duration::from_secs(60)).await;
+            HealthCheck {
+                name: "slow_check",
+                status: "pass",
+                message: None,
+            }
+        })
+        .await;
+        assert_eq!(check.status, "timeout");
+        assert_eq!(check.name, "slow_check");
+        assert!(check.message.unwrap().contains("timed out"));
+    }
+
+    #[tokio::test]
+    async fn timed_check_returns_result_on_fast_future() {
+        let check = timed_check("fast_check", async {
+            HealthCheck {
+                name: "fast_check",
+                status: "pass",
+                message: None,
+            }
+        })
+        .await;
+        assert_eq!(check.status, "pass");
+        assert_eq!(check.name, "fast_check");
     }
 
     #[test]

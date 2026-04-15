@@ -238,6 +238,7 @@ pub async fn send_message(
     let idem_key = idempotency_key.clone();
     let idem_cache = Arc::clone(&state.idempotency_cache);
 
+    let request_id_str = request_id.0.clone();
     let turn_span = tracing::info_span!(
         "send_turn",
         session.id = %session_id,
@@ -302,6 +303,7 @@ pub async fn send_message(
                         .send(SseEvent::Error {
                             code: err_code,
                             message: err_message,
+                            request_id: Some(request_id_str.clone()),
                         })
                         .await;
                     // WHY: Always send a completion marker so the client knows the
@@ -432,6 +434,7 @@ pub async fn stream_turn(
 
     let session_id = resolve_session(&state, &agent_id, &session_key, model.as_deref()).await?;
 
+    let webchat_request_id = request_id.0.clone();
     let turn_id = koina::ulid::Ulid::new().to_string();
     let (webchat_tx, webchat_rx) = mpsc::channel::<WebchatEvent>(32);
     let (nous_tx, mut nous_rx) = mpsc::channel::<TurnStreamEvent>(64);
@@ -551,6 +554,7 @@ pub async fn stream_turn(
                     let _ = webchat_tx
                         .send(WebchatEvent::Error {
                             message: err_message,
+                            request_id: Some(webchat_request_id.clone()),
                         })
                         .await;
                     // WHY: Always send a completion marker so the TUI knows the stream
