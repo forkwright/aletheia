@@ -73,9 +73,19 @@ use koina::http::CONTENT_TYPE_JSON;
         crate::stream::SseEvent,
         crate::stream::UsageData,
     )),
-    modifiers(&SecurityAddon),
+    modifiers(&VersionFromCrate, &SecurityAddon),
 )]
 pub(crate) struct ApiDoc;
+
+/// Override the hardcoded OpenAPI `info.version` with the crate version
+/// from `Cargo.toml` so the spec tracks releases automatically.
+struct VersionFromCrate;
+
+impl utoipa::Modify for VersionFromCrate {
+    fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
+        openapi.info.version = env!("CARGO_PKG_VERSION").to_owned();
+    }
+}
 
 struct SecurityAddon;
 
@@ -118,6 +128,16 @@ mod tests {
             .to_json()
             .expect("OpenAPI spec serialization must not fail");
         assert!(!json.is_empty());
+    }
+
+    #[test]
+    fn openapi_spec_version_tracks_crate_version() {
+        let spec = ApiDoc::openapi();
+        assert_eq!(
+            spec.info.version,
+            env!("CARGO_PKG_VERSION"),
+            "OpenAPI spec version must match CARGO_PKG_VERSION"
+        );
     }
 
     #[test]

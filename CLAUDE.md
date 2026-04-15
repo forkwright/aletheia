@@ -180,7 +180,7 @@ Register in `crates/organon/src/builtins/mod.rs` via `register_all()`.
 | GET | `/api/v1/knowledge/search` | Full-text search (query: `q`, `nous_id`, `limit`) |
 | GET | `/api/v1/knowledge/timeline` | Fact activity timeline |
 
-> **Note:** The OpenAPI spec version at `/api/docs/openapi.json` is fixed at `"1.0.0"` and does not track the release version.
+> **Note:** The OpenAPI spec version at `/api/docs/openapi.json` tracks `CARGO_PKG_VERSION` automatically.
 
 ## Scripts
 
