@@ -121,10 +121,10 @@ impl CaptureStopReason {
 
 /// Borrowed inputs to [`TrainingCapture::maybe_capture`].
 ///
-/// Bundles the per-turn fields into a single record so the call sites
-/// remain self-documenting and so the function signature stays under the
+/// Bundles per-turn fields into a single record so the call sites remain
+/// self-documenting and so the function signature stays under the
 /// workspace's `too_many_arguments` threshold.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct CaptureInput<'a> {
     /// Session identifier the turn belongs to.
     pub session_id: &'a str,
@@ -146,6 +146,17 @@ pub struct CaptureInput<'a> {
     /// are not useful training data — they teach the model to produce
     /// empty text responses.
     pub has_tool_calls: bool,
+
+    // ── Episteme classification labels ───────────────────────────────
+
+    /// Classified turn type (e.g. `discussion`, `planning`, `correction`).
+    pub turn_type: Option<&'a str>,
+    /// Whether the turn contains an explicit correction.
+    pub is_correction: Option<bool>,
+    /// Classified fact types detected in the combined turn content.
+    pub fact_types: Option<Vec<String>>,
+    /// Aggregate quality score (0.0--1.0).
+    pub quality_score: Option<f32>,
 }
 
 /// Append-only training data writer.
@@ -226,7 +237,7 @@ impl TrainingCapture {
     /// filtered out by the quality gate. I/O errors are logged as
     /// warnings and do not propagate: training capture must never
     /// block the pipeline.
-    pub fn maybe_capture(&self, input: CaptureInput<'_>) -> bool {
+    pub fn maybe_capture(&self, input: &CaptureInput<'_>) -> bool {
         // WHY: empty and whitespace-only responses teach the model to produce
         // vacuous output. `.trim().is_empty()` catches both `""` and `"  \n"`.
         if input.assistant_response.trim().is_empty() {
@@ -268,6 +279,10 @@ impl TrainingCapture {
             model: input.model.to_owned(),
             tokens: input.tokens,
             timestamp: Timestamp::now(),
+            turn_type: input.turn_type.map(str::to_owned),
+            is_correction: input.is_correction,
+            fact_types: input.fact_types.clone(),
+            quality_score: input.quality_score,
         };
 
         match self.write_record(&record) {
@@ -306,6 +321,10 @@ mod tests {
             tokens: 150,
             stop_reason: CaptureStopReason::EndTurn,
             has_tool_calls: false,
+            turn_type: None,
+            is_correction: None,
+            fact_types: None,
+            quality_score: None,
         }
     }
 
@@ -334,6 +353,10 @@ mod tests {
             model: "claude-opus-4-20250514".to_owned(),
             tokens: 150,
             timestamp: Timestamp::UNIX_EPOCH,
+            turn_type: Some("discussion".to_owned()),
+            is_correction: Some(false),
+            fact_types: None,
+            quality_score: None,
         };
         capture.write_record(&record).expect("write");
 
@@ -348,6 +371,7 @@ mod tests {
         assert_eq!(parsed.user_message, "Hello");
         assert_eq!(parsed.assistant_response, "Hi there!");
         assert_eq!(parsed.tokens, 150);
+        assert_eq!(parsed.turn_type.as_deref(), Some("discussion"));
     }
 
     #[test]
@@ -369,6 +393,10 @@ mod tests {
                 model: "test-model".to_owned(),
                 tokens: 100,
                 timestamp: Timestamp::UNIX_EPOCH,
+                turn_type: None,
+                is_correction: None,
+                fact_types: None,
+                quality_score: None,
             };
             capture.write_record(&record).expect("write");
         }
@@ -389,7 +417,7 @@ mod tests {
         };
         let capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
-        let captured = capture.maybe_capture(CaptureInput {
+        let captured = capture.maybe_capture(&CaptureInput {
             assistant_response: "",
             ..good_input()
         });
@@ -407,7 +435,7 @@ mod tests {
         let capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
         for ws in ["  ", "\n", "\t\n  ", "   \n\n   "] {
-            let captured = capture.maybe_capture(CaptureInput {
+            let captured = capture.maybe_capture(&CaptureInput {
                 assistant_response: ws,
                 ..good_input()
             });
@@ -427,7 +455,7 @@ mod tests {
         };
         let capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
-        let captured = capture.maybe_capture(CaptureInput {
+        let captured = capture.maybe_capture(&CaptureInput {
             stop_reason: CaptureStopReason::MaxTokens,
             ..good_input()
         });
@@ -443,7 +471,7 @@ mod tests {
         };
         let capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
-        let captured = capture.maybe_capture(CaptureInput {
+        let captured = capture.maybe_capture(&CaptureInput {
             stop_reason: CaptureStopReason::Degraded,
             ..good_input()
         });
@@ -459,7 +487,7 @@ mod tests {
         };
         let capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
-        let captured = capture.maybe_capture(CaptureInput {
+        let captured = capture.maybe_capture(&CaptureInput {
             stop_reason: CaptureStopReason::Unknown,
             ..good_input()
         });
@@ -477,7 +505,7 @@ mod tests {
         };
         let capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
-        let captured = capture.maybe_capture(CaptureInput {
+        let captured = capture.maybe_capture(&CaptureInput {
             assistant_response: "Let me check that.",
             stop_reason: CaptureStopReason::ToolUse,
             has_tool_calls: true,
@@ -496,7 +524,7 @@ mod tests {
         let capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
         // Turn that used tools but ended with text (end_turn)
-        let captured = capture.maybe_capture(CaptureInput {
+        let captured = capture.maybe_capture(&CaptureInput {
             assistant_response: "Based on the file contents, here is the answer.",
             stop_reason: CaptureStopReason::EndTurn,
             has_tool_calls: true,
@@ -516,7 +544,7 @@ mod tests {
         };
         let capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
-        let captured = capture.maybe_capture(good_input());
+        let captured = capture.maybe_capture(&good_input());
         assert!(captured);
 
         let content = std::fs::read_to_string(capture.file_path()).expect("read");
@@ -532,7 +560,7 @@ mod tests {
         };
         let capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
-        let captured = capture.maybe_capture(CaptureInput {
+        let captured = capture.maybe_capture(&CaptureInput {
             stop_reason: CaptureStopReason::StopSequence,
             ..good_input()
         });
@@ -565,6 +593,10 @@ mod tests {
             model: "claude-opus-4-20250514".to_owned(),
             tokens: 200,
             timestamp: Timestamp::UNIX_EPOCH,
+            turn_type: Some("planning".to_owned()),
+            is_correction: Some(true),
+            fact_types: Some(vec!["skill".to_owned(), "preference".to_owned()]),
+            quality_score: Some(0.9),
         };
 
         let json = serde_json::to_string(&record).expect("serialize");
@@ -572,5 +604,37 @@ mod tests {
         assert_eq!(back.schema_version, TRAINING_RECORD_SCHEMA_VERSION);
         assert_eq!(back.session_id, record.session_id);
         assert_eq!(back.tokens, record.tokens);
+        assert_eq!(back.turn_type.as_deref(), Some("planning"));
+        assert_eq!(back.is_correction, Some(true));
+        assert_eq!(back.fact_types.as_deref(), Some(&["skill".to_owned(), "preference".to_owned()][..]));
+        assert_eq!(back.quality_score, Some(0.9));
+    }
+
+    #[test]
+    fn labels_persisted_in_maybe_capture() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = TrainingConfig {
+            enabled: true,
+            path: "training".to_owned(),
+        };
+        let capture = TrainingCapture::new(dir.path(), &config).expect("new");
+
+        let captured = capture.maybe_capture(&CaptureInput {
+            turn_type: Some("correction"),
+            is_correction: Some(true),
+            fact_types: Some(vec!["preference".to_owned()]),
+            quality_score: Some(0.7),
+            ..good_input()
+        });
+        assert!(captured);
+
+        let content = std::fs::read_to_string(capture.file_path()).expect("read");
+        let parsed: TrainingRecord =
+            serde_json::from_str(content.lines().next().expect("one line")).expect("parse");
+        assert_eq!(parsed.schema_version, TRAINING_RECORD_SCHEMA_VERSION);
+        assert_eq!(parsed.turn_type.as_deref(), Some("correction"));
+        assert_eq!(parsed.is_correction, Some(true));
+        assert_eq!(parsed.fact_types.as_deref(), Some(&["preference".to_owned()][..]));
+        assert_eq!(parsed.quality_score, Some(0.7));
     }
 }

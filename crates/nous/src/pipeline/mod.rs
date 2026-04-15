@@ -845,7 +845,29 @@ pub(crate) async fn run_pipeline(
             &pipeline_config.training,
         ) {
             Ok(capture) => {
-                capture.maybe_capture(mneme::training::CaptureInput {
+                // WHY: compute episteme classification labels at capture time
+                // using the same lightweight heuristics that extract_refined
+                // uses during background extraction. These are pure,
+                // synchronous functions — no LLM call needed.
+                let combined = format!("{}\n{}", input.content, result.content);
+                let turn_type = mneme::extract::refinement::classify_turn(&combined);
+                let correction = mneme::extract::refinement::detect_correction(&combined);
+                let fact_type = mneme::extract::refinement::classify_fact(&combined);
+
+                // WHY: quality score aggregates the turn-type confidence boost
+                // and correction signal into a single 0.0--1.0 value. Base of
+                // 0.5 (neutral) plus boosts from turn type and correction.
+                #[expect(
+                    clippy::cast_possible_truncation,
+                    clippy::as_conversions,
+                    reason = "f64→f32: quality score range [0.0, 1.0] fits in f32"
+                )]
+                let quality_score = (0.5_f64 + turn_type.confidence_boost()
+                    + correction.confidence_boost)
+                    .min(1.0) as f32; // kanon:ignore RUST/as-cast
+
+                let turn_type_str = turn_type.to_string();
+                capture.maybe_capture(&mneme::training::CaptureInput {
                     session_id: &input.session.id,
                     nous_id: &config.id,
                     user_message: &input.content,
@@ -856,6 +878,10 @@ pub(crate) async fn run_pipeline(
                         &result.stop_reason,
                     ),
                     has_tool_calls: !result.tool_calls.is_empty(),
+                    turn_type: Some(&turn_type_str),
+                    is_correction: Some(correction.is_correction),
+                    fact_types: Some(vec![fact_type.to_string()]),
+                    quality_score: Some(quality_score),
                 });
             }
             Err(e) => {

@@ -184,6 +184,10 @@ pub mod extract {
         ConversationMessage, ExtractionConfig, ExtractionEngine, ExtractionError,
         ExtractionProvider, LlmCallSnafu,
     };
+
+    /// Context-dependent extraction refinement: turn classification, correction
+    /// detection, quality filters, and fact type classification.
+    pub use episteme::extract::refinement;
 }
 
 /// Instinct system: behavioral memory from tool usage patterns.
