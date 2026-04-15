@@ -378,7 +378,7 @@ mod tests {
         assert_eq!(lines.len(), 3);
     }
 
-    // ── Quality gate: empty / whitespace ──────────────────────────────────
+    // -- Quality gate: empty / whitespace -----------------------------------------
 
     #[test]
     fn quality_gate_rejects_empty_response() {
@@ -416,7 +416,7 @@ mod tests {
         assert!(!capture.file_path().exists(), "no file should be created");
     }
 
-    // ── Quality gate: stop reasons ────────────────────────────────────────
+    // -- Quality gate: stop reasons -----------------------------------------------
 
     #[test]
     fn quality_gate_rejects_max_tokens_stop_reason() {
@@ -466,7 +466,7 @@ mod tests {
         assert!(!captured, "unknown stop reason should be rejected");
     }
 
-    // ── Quality gate: tool-use-only ───────────────────────────────────────
+    // -- Quality gate: tool-use-only ----------------------------------------------
 
     #[test]
     fn quality_gate_rejects_tool_use_only_turn() {
@@ -505,7 +505,7 @@ mod tests {
         assert!(captured, "tool-using turn that ended with text should be accepted");
     }
 
-    // ── Quality gate: happy path ──────────────────────────────────────────
+    // -- Quality gate: happy path -------------------------------------------------
 
     #[test]
     fn quality_gate_accepts_good_response() {
@@ -539,7 +539,7 @@ mod tests {
         assert!(captured, "stop_sequence with content should be accepted");
     }
 
-    // ── CaptureStopReason parsing ─────────────────────────────────────────
+    // -- CaptureStopReason parsing ------------------------------------------------
 
     #[test]
     fn capture_stop_reason_from_str() {
@@ -552,7 +552,7 @@ mod tests {
         assert_eq!(CaptureStopReason::parse("anything_else"), CaptureStopReason::Unknown);
     }
 
-    // ── Serde roundtrip ───────────────────────────────────────────────────
+    // -- Serde roundtrip ----------------------------------------------------------
 
     #[test]
     fn training_record_serde_roundtrip() {

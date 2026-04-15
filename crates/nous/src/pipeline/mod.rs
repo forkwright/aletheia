@@ -840,19 +840,19 @@ pub(crate) async fn run_pipeline(
     // turns enter the training corpus. Errors are logged, never propagated:
     // training capture must never block the pipeline.
     if pipeline_config.training.enabled {
-        match mneme::training::TrainingCapture::new(
+        match crate::training::TrainingCapture::new(
             oikos.root(),
             &pipeline_config.training,
         ) {
             Ok(capture) => {
-                capture.maybe_capture(mneme::training::CaptureInput {
+                capture.maybe_capture(crate::training::CaptureInput {
                     session_id: &input.session.id,
                     nous_id: &config.id,
                     user_message: &input.content,
                     assistant_response: &result.content,
                     model: &config.generation.model,
                     tokens: result.usage.total_tokens(),
-                    stop_reason: mneme::training::CaptureStopReason::parse(
+                    stop_reason: crate::training::CaptureStopReason::parse(
                         &result.stop_reason,
                     ),
                     has_tool_calls: !result.tool_calls.is_empty(),
