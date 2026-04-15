@@ -1,4 +1,8 @@
-//! Schema definition parsing.
+//! Relation schema definition parsing.
+//!
+//! Parses `{ key1: Type, key2: Type => dep1: Type, dep2: Type }` column
+//! definitions into [`StoredRelationMetadata`] with key/dependent splits
+//! and binding symbols.
 #![expect(
     clippy::as_conversions,
     clippy::pedantic,
@@ -20,6 +24,15 @@ use crate::parse::error::InvalidQuerySnafu;
 use crate::parse::expr::build_expr;
 use crate::parse::{ExtractSpan, Pair, Rule};
 
+/// Parse a schema definition into metadata, key bindings, and dependent bindings.
+///
+/// The schema has two sections separated by `=>`: key columns (before) and
+/// dependent columns (after). Each column has a name, optional type, optional
+/// default expression, and optional output binding.
+///
+/// # Errors
+///
+/// Returns an error if column names are duplicated or types are invalid.
 pub(crate) fn parse_schema(
     pair: Pair<'_>,
 ) -> Result<(StoredRelationMetadata, Vec<Symbol>, Vec<Symbol>)> {
@@ -74,6 +87,7 @@ pub(crate) fn parse_schema(
     ))
 }
 
+/// Parse a single column definition: `name: Type = default_expr -> binding`.
 fn parse_col(pair: Pair<'_>) -> Result<(ColumnDef, Symbol)> {
     let mut src = pair.into_inner();
     let name_p = src.next().ok_or_else(|| {
@@ -117,6 +131,7 @@ fn parse_col(pair: Pair<'_>) -> Result<(ColumnDef, Symbol)> {
     ))
 }
 
+/// Parse a type annotation with trailing `?` for nullability.
 pub(crate) fn parse_nullable_type(pair: Pair<'_>) -> Result<NullableColType> {
     let nullable = pair.as_str().ends_with('?');
     let coltype = parse_type_inner(pair.into_inner().next().ok_or_else(|| {
@@ -128,6 +143,7 @@ pub(crate) fn parse_nullable_type(pair: Pair<'_>) -> Result<NullableColType> {
     Ok(NullableColType { coltype, nullable })
 }
 
+/// Parse a concrete column type (Any, Bool, Int, Float, String, etc.).
 fn parse_type_inner(pair: Pair<'_>) -> Result<ColType> {
     Ok(match pair.as_rule() {
         Rule::any_type => ColType::Any,
