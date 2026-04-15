@@ -1,8 +1,14 @@
+//! Unification (variable binding) operator.
+//!
+//! Evaluates an expression against each parent tuple and appends the
+//! result as a new column. For "one-many" unification (spread), the
+//! expression must evaluate to a list, and each element produces a
+//! separate output tuple.
 #![expect(
     clippy::iter_not_returning_iterator,
     clippy::result_large_err,
     clippy::wildcard_imports,
-    reason = "engine-internal unification RA — iter returns TupleIter (boxed trait)"
+    reason = "engine-internal unification RA -- iter returns TupleIter (boxed trait)"
 )]
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -19,6 +25,17 @@ use crate::parse::SourceSpan;
 use crate::query::error::*;
 use crate::runtime::temp_store::EpochStore;
 use crate::runtime::transact::SessionTx;
+
+/// Unification (variable binding) operator.
+///
+/// Evaluates `expr` against each parent tuple, binding the result to `binding`.
+/// If `is_multi` is true, the expression must evaluate to a list and each
+/// element produces a separate output tuple (spread/one-many unification).
+///
+/// # Complexity
+///
+/// - Single: O(P) where P is parent tuples.
+/// - Multi: O(P * M) where M is average list length.
 pub(crate) struct UnificationRA {
     pub(crate) parent: Box<RelAlgebra>,
     pub(crate) binding: Symbol,

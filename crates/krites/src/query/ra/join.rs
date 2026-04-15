@@ -1,3 +1,12 @@
+//! Join operators: inner (equi) join and anti-join (negation).
+//!
+//! The join strategy is chosen at iteration time:
+//! - **Prefix join**: when right join keys form a prefix of the right relation's
+//!   storage key. Scans only matching prefix ranges. O(L * log R) per left tuple.
+//! - **Point lookup**: when all storage keys are bound. O(L * log R).
+//! - **Materialized join**: builds a B-tree index on the right side, then probes
+//!   it for each left tuple. O(R log R + L log R).
+//! - **Anti-join**: same strategy selection but filters out matches instead.
 #![expect(
     clippy::as_conversions,
     clippy::cloned_instead_of_copied,
@@ -12,7 +21,7 @@
     clippy::semicolon_if_nothing_returned,
     clippy::single_match_else,
     clippy::wildcard_imports,
-    reason = "engine-internal join operators — indexing validated by join_indices, mutable keys are Symbol"
+    reason = "engine-internal join operators -- indexing validated by join_indices, mutable keys are Symbol"
 )]
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -33,15 +42,9 @@ use crate::runtime::temp_store::EpochStore;
 use crate::runtime::transact::SessionTx;
 use crate::utils::swap_option_result;
 
-struct BindingFormatter(Vec<Symbol>);
-
-impl Debug for BindingFormatter {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let s = self.0.iter().map(|f| f.to_string()).join(", ");
-        write!(f, "[{s}]")
-    }
-}
-
+/// Maps left join keys to right join keys for equi-join.
+///
+/// Invariant: `left_keys` and `right_keys` always have the same length.
 pub(crate) struct Joiner {
     // INVARIANT: these are of the same lengths
     pub(crate) left_keys: Vec<Symbol>,
@@ -50,9 +53,9 @@ pub(crate) struct Joiner {
 
 impl Debug for Joiner {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let left_bindings = BindingFormatter(self.left_keys.clone());
-        let right_bindings = BindingFormatter(self.right_keys.clone());
-        write!(f, "{left_bindings:?}<->{right_bindings:?}")
+        let left = self.left_keys.iter().map(|k| k.to_string()).join(", ");
+        let right = self.right_keys.iter().map(|k| k.to_string()).join(", ");
+        write!(f, "[{left}]<->[{right}]")
     }
 }
 
@@ -99,6 +102,10 @@ impl Joiner {
     }
 }
 
+/// Anti-join (negation): passes left tuples that have NO match on the right.
+///
+/// Used for negated rule/relation atoms in Datalog. The right side must be
+/// either a `TempStore` or `Stored` relation.
 #[derive(Debug)]
 pub(crate) struct NegJoin {
     pub(crate) left: RelAlgebra,
@@ -195,6 +202,12 @@ impl NegJoin {
     }
 }
 
+/// Inner (equi) join of two sub-plans.
+///
+/// At iteration time, chooses between prefix join (when right keys align
+/// with storage prefix), point lookup (all keys bound), or materialized
+/// hash join (general case). Filter pushdown moves predicates into the
+/// appropriate side during plan construction.
 #[derive(Debug)]
 pub(crate) struct InnerJoin {
     pub(crate) left: RelAlgebra,

@@ -1,7 +1,22 @@
-//! Relational algebra operators.
+//! Relational algebra operators for query plan execution.
+//!
+//! This module defines the physical query plan: a tree of [`RelAlgebra`] nodes
+//! that the evaluator walks to produce tuples. Each variant corresponds to a
+//! relational algebra operator:
+//!
+//! - **Sources**: [`InlineFixedRA`] (constants), [`TempStoreRA`] (derived),
+//!   [`StoredRA`] / [`StoredWithValidityRA`] (persistent)
+//! - **Joins**: [`InnerJoin`] (equi-join), [`NegJoin`] (anti-join)
+//! - **Transforms**: [`FilteredRA`] (predicate), [`UnificationRA`] (binding),
+//!   [`ReorderRA`] (column permutation)
+//! - **Search**: [`HnswSearchRA`], [`FtsSearchRA`], [`LshSearchRA`]
+//!
+//! Join strategy selection (prefix vs materialized vs point-lookup) happens
+//! at iteration time based on whether join keys align with storage key prefixes.
 #![expect(
     clippy::default_trait_access,
     clippy::explicit_iter_loop,
+    clippy::iter_not_returning_iterator,
     clippy::match_same_arms,
     clippy::redundant_closure_for_method_calls,
     clippy::result_large_err,
@@ -11,7 +26,7 @@
     clippy::unnecessary_semicolon,
     clippy::unnecessary_wraps,
     clippy::wildcard_imports,
-    reason = "engine-internal relational algebra — match arms kept explicit, result size structural"
+    reason = "engine-internal relational algebra -- match arms kept explicit, result size structural"
 )]
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -34,31 +49,51 @@ use crate::runtime::temp_store::EpochStore;
 use crate::runtime::transact::SessionTx;
 
 mod filter;
+mod inline_fixed;
 mod join;
 mod project;
 mod search;
 mod sort;
-mod sources;
+mod stored;
+mod temp_store;
 
 pub(crate) use filter::FilteredRA;
+pub(crate) use inline_fixed::InlineFixedRA;
 pub(crate) use join::{InnerJoin, Joiner, NegJoin};
 pub(crate) use project::UnificationRA;
 pub(crate) use search::{FtsSearchRA, HnswSearchRA, LshSearchRA};
 pub(crate) use sort::ReorderRA;
-pub(crate) use sources::{InlineFixedRA, StoredRA, StoredWithValidityRA, TempStoreRA};
+pub(crate) use stored::{StoredRA, StoredWithValidityRA};
+pub(crate) use temp_store::TempStoreRA;
 
+/// The physical query plan tree.
+///
+/// Each variant is a relational algebra operator that produces tuples.
+/// The evaluator calls [`iter()`](RelAlgebra::iter) to walk the tree.
 pub(crate) enum RelAlgebra {
+    /// Inline constant data (e.g. `data[a, b] <- [[1, 2]]`).
     Fixed(InlineFixedRA),
+    /// Derived relation from semi-naive evaluation.
     TempStore(TempStoreRA),
+    /// Persistent stored relation scan.
     Stored(StoredRA),
+    /// Persistent stored relation scan with time-travel.
     StoredWithValidity(StoredWithValidityRA),
+    /// Inner (equi) join of two sub-plans.
     Join(Box<InnerJoin>),
+    /// Anti-join: left tuples with no match on right.
     NegJoin(Box<NegJoin>),
+    /// Column reordering (permutation).
     Reorder(ReorderRA),
+    /// Predicate filter on parent tuples.
     Filter(FilteredRA),
+    /// Variable binding (unification).
     Unification(UnificationRA),
+    /// HNSW approximate nearest neighbor search.
     HnswSearch(HnswSearchRA),
+    /// Full-text search (BM25).
     FtsSearch(FtsSearchRA),
+    /// Locality-sensitive hashing search.
     LshSearch(LshSearchRA),
 }
 
@@ -188,7 +223,7 @@ impl Debug for RelAlgebra {
                 } else if r.data.len() == 1 {
                     f.debug_tuple("Singlet")
                         .field(&bindings)
-                        // INVARIANT: data.len()==1 checked above
+                        // SAFETY: data.len()==1 checked above
                         .field(r.data.first().unwrap_or_else(|| panic!("data.len()==1 checked above")))
                         .finish()
                 } else {

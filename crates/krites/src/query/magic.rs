@@ -1,4 +1,18 @@
-//! Magic sets query transformation.
+//! Supplementary Magic Sets query transformation.
+//!
+//! Rewrites a stratified Datalog program so that only tuples relevant to the
+//! query entry point are computed. For each adorned rule `p^{bf}(X,Y)` where
+//! `b`=bound and `f`=free, generates:
+//!
+//! - **Input relation** `input_p^{bf}`: seeds the rule with bound arguments.
+//! - **Supplementary relations** `sup_p^{bf}_i`: capture intermediate bindings
+//!   at each rule atom boundary, enabling sideways information passing.
+//!
+//! The adornment phase marks each rule argument as bound or free based on
+//! whether it was previously seen in the rule body. Rules with aggregation
+//! are exempt from rewriting (they need all tuples for correct aggregation).
+//!
+//! Reference: Beeri & Ramakrishnan, "On the power of magic" (JLCS, 1991).
 #![expect(
     clippy::default_trait_access,
     clippy::explicit_iter_loop,
