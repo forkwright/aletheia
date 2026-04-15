@@ -127,14 +127,14 @@ Research shows agent performance degrades when context files exceed ~500 words i
 General prompt voice rules (positive over negative, WHY on every rule, dial back aggressive emphasis) apply here too -- see [PROMPTING.md § Voice](PROMPTING.md#voice). The following are specific to context files:
 
 - **Direct and terse** -- every word costs tokens in always-loaded files; context files compete for attention more than one-shot prompts
-- **Concrete over abstract** -- "run `kanon gate`" not "ensure CI passes" because agents cannot act on vague instructions without additional lookup
+- **Concrete over abstract** -- "run `kanon gate`" not "verify CI passes" because agents cannot act on vague instructions without additional lookup
 - **Imperative mood** -- "add tests for new public functions" not "tests should be added" because imperative framing maps directly to agent actions
 
 ---
 
 ## Anti-patterns
 
-- **Codebase overviews** -- agents navigate codebases well without guidance. Over 90% of files with overviews showed no measurable navigation improvement.
+- **Codebase overviews** -- agents explore codebases well without guidance. Over 90% of files with overviews showed no measurable navigation improvement.
 - **LLM-generated content** -- ETH Zurich research shows LLM-generated context files reduce success rates by 3% while increasing cost 20%+. Manually craft every line.
 - **Linter-enforceable rules** -- use actual linters and hooks. Asking an agent to check formatting wastes context on something a tool does better.
 - **README duplication** -- if it's in the README, package.json, or config files, agents already find it.

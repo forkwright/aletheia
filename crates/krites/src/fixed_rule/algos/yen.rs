@@ -3,7 +3,7 @@
 //! Finds the k shortest simple (loopless) paths between a source and target
 //! node.  Works by iteratively finding spur paths from each node on the
 //! previous shortest path, with appropriate edge and node exclusions to
-//! ensure new paths are discovered.
+//! so new paths are discovered.
 //!
 //! Reference: Yen, J.Y. (1971). "Finding the K Shortest Loopless Paths in
 //! a Network." *Management Science*, 17(11), 712--716.

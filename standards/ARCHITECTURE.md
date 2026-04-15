@@ -158,7 +158,7 @@ Run `cargo tree -f '{p} {f}'` to display each package with its resolved features
 # Show all packages and their resolved features
 cargo tree -f '{p} {f}'
 
-# Show the feature graph specifically
+# Show the feature graph
 cargo tree -e features
 
 # Check a specific feature's activation path

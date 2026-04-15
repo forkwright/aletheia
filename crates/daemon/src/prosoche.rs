@@ -416,7 +416,7 @@ pub(crate) fn parse_vmrss(contents: &str) -> std::io::Result<u64> {
 
 /// Number of recent facts to sample per consistency check.
 ///
-/// Kept small to ensure the check is lightweight. Each sampled fact triggers
+/// Kept small so the check is lightweight. Each sampled fact triggers
 /// one additional Datalog query for entity-path verification.
 #[cfg(feature = "knowledge-store")]
 const ANOMALY_SAMPLE_SIZE: usize = 15;

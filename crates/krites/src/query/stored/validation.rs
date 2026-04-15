@@ -1,4 +1,4 @@
-//! Stored relation validation: ensure constraints and removal operations.
+//! Stored relation validation: verify constraints and removal operations.
 //! SessionTx methods for stored relation mutation and FTS/HNSW/LSH index maintenance.
 //! Stored relation access operators.
 #![expect(

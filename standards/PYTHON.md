@@ -550,7 +550,7 @@ Include an empty `py.typed` file in the package root. WHY: tells mypy and pyrigh
 
 ### Module size
 
-Split modules when they exceed ~300 lines. A module with 800 lines of mixed concerns is hard to navigate and harder to test in isolation. Group by domain concept, not by implementation pattern (don't create `utils.py`, `helpers.py`, or `misc.py`).
+Split modules when they exceed ~300 lines. A module with 800 lines of mixed concerns is hard to follow and harder to test in isolation. Group by domain concept, not by implementation pattern (don't create `utils.py`, `helpers.py`, or `misc.py`).
 
 - WHY: a `utils.py` file is a gravity well. Every unrelated function lands there. It grows unbounded, has no cohesion, and becomes a dependency bottleneck that everything imports.
 
