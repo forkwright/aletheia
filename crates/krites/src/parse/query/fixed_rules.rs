@@ -1,5 +1,12 @@
 //! Fixed rule parsing.
 //! Datalog query parsing.
+#![expect(
+    clippy::as_conversions,
+    clippy::needless_return,
+    clippy::pedantic,
+    clippy::result_large_err,
+    reason = "Fixed rule parser — CompactString-to-str coercion via as, InternalError is the crate-wide Result type"
+)]
 
 use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet};
