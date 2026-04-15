@@ -1,10 +1,7 @@
 //! Vector creation and distance operations.
-#![expect(unsafe_code, reason = "base64-decoded vectors require unsafe reinterpret via ArrayView1::from_shape_ptr")]
-#![expect(clippy::as_conversions, reason = "vector operations require pointer and numeric casts — engine-internal")]
-#![expect(clippy::cast_ptr_alignment, reason = "global allocator guarantees alignment; debug_assert verifies")]
-#![expect(clippy::ptr_as_ptr, reason = "pointer casts required for byte-to-float reinterpretation")]
+#![expect(clippy::as_conversions, reason = "vector operations require numeric casts (f64 → f32) for element conversion")]
+#![expect(clippy::map_err_ignore, reason = "bytemuck PodCastError detail is not useful to the caller; the message describes the failure")]
 #![expect(clippy::too_many_lines, reason = "op_vec handles multiple input types and vector element types")]
-use std::mem;
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
@@ -142,64 +139,26 @@ pub(crate) fn op_vec(args: &[DataValue]) -> Result<DataValue> {
             })?;
             match t {
                 VecElementType::F32 => {
-                    let f32_count = bytes.len() / mem::size_of::<f32>();
-                    debug_assert_eq!(
-                        bytes.as_ptr().addr() % mem::align_of::<f32>(),
-                        0,
-                        "Vec<u8> buffer must be aligned for f32 reinterpretation"
-                    );
-                    // SAFETY: `bytes` is a Vec<u8> produced by base64-decoding a
-                    // serialised f32 vector (written by `Vector::serialize`). Three
-                    // invariants hold:
-                    // (1) Alignment: the global allocator guarantees the buffer is
-                    //     aligned to at least max_align_t (≥ 16 B), which is larger
-                    //     than align_of::<f32>() (4 B); the debug_assert above
-                    //     verifies this at runtime in debug builds.
-                    // (2) Length: `f32_count` is `bytes.len() / size_of::<f32>()`, so
-                    //     the pointer covers exactly `f32_count` fully-initialised f32
-                    //     elements within the live `bytes` allocation.
-                    // (3) Lifetime: `arr` is immediately converted to an owned array
-                    //     via `to_owned()` before `bytes` is dropped, so the view
-                    //     never outlives the backing buffer.
-                    // Violating any of these would cause UB: misaligned read,
-                    // out-of-bounds access, or dangling pointer respectively.
-                    let arr = unsafe {
-                        ndarray::ArrayView1::from_shape_ptr(
-                            ndarray::Dim([f32_count]),
-                            bytes.as_ptr() as *const f32,
-                        )
-                    };
-                    Ok(DataValue::Vec(Vector::F32(arr.to_owned())))
+                    let floats: &[f32] = bytemuck::try_cast_slice(&bytes).map_err(|_| {
+                        EncodingFailedSnafu {
+                            message: "f32 vector data is not properly aligned or sized",
+                        }
+                        .build()
+                    })?;
+                    Ok(DataValue::Vec(Vector::F32(ndarray::Array1::from(
+                        floats.to_vec(),
+                    ))))
                 }
                 VecElementType::F64 => {
-                    let f64_count = bytes.len() / mem::size_of::<f64>();
-                    debug_assert_eq!(
-                        bytes.as_ptr().addr() % mem::align_of::<f64>(),
-                        0,
-                        "Vec<u8> buffer must be aligned for f64 reinterpretation"
-                    );
-                    // SAFETY: `bytes` is a Vec<u8> produced by base64-decoding a
-                    // serialised f64 vector (written by `Vector::serialize`). Three
-                    // invariants hold:
-                    // (1) Alignment: the global allocator guarantees the buffer is
-                    //     aligned to at least max_align_t (≥ 16 B), which is larger
-                    //     than align_of::<f64>() (8 B); the debug_assert above
-                    //     verifies this at runtime in debug builds.
-                    // (2) Length: `f64_count` is `bytes.len() / size_of::<f64>()`, so
-                    //     the pointer covers exactly `f64_count` fully-initialised f64
-                    //     elements within the live `bytes` allocation.
-                    // (3) Lifetime: `arr` is immediately converted to an owned array
-                    //     via `to_owned()` before `bytes` is dropped, so the view
-                    //     never outlives the backing buffer.
-                    // Violating any of these would cause UB: misaligned read,
-                    // out-of-bounds access, or dangling pointer respectively.
-                    let arr = unsafe {
-                        ndarray::ArrayView1::from_shape_ptr(
-                            ndarray::Dim([f64_count]),
-                            bytes.as_ptr() as *const f64,
-                        )
-                    };
-                    Ok(DataValue::Vec(Vector::F64(arr.to_owned())))
+                    let floats: &[f64] = bytemuck::try_cast_slice(&bytes).map_err(|_| {
+                        EncodingFailedSnafu {
+                            message: "f64 vector data is not properly aligned or sized",
+                        }
+                        .build()
+                    })?;
+                    Ok(DataValue::Vec(Vector::F64(ndarray::Array1::from(
+                        floats.to_vec(),
+                    ))))
                 }
             }
         }
