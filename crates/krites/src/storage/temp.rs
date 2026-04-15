@@ -24,7 +24,7 @@ impl<'s> Storage<'s> for TempStorage {
 
     fn transact(&'s self, _write: bool) -> Result<Self::Tx> {
         Ok(TempTx {
-            store: Default::default(),
+            store: BTreeMap::default(),
         })
     }
 
@@ -83,6 +83,10 @@ impl<'s> StoreTx<'s> for TempTx {
         Ok(())
     }
 
+    #[expect(
+        clippy::result_large_err,
+        reason = "InternalResult is the engine-wide error type — cannot box without changing the trait contract"
+    )]
     fn range_scan_tuple<'a>(
         &'a self,
         lower: &[u8],
@@ -116,6 +120,10 @@ impl<'s> StoreTx<'s> for TempTx {
         )
     }
 
+    #[expect(
+        clippy::result_large_err,
+        reason = "InternalResult is the engine-wide error type — cannot box without changing the trait contract"
+    )]
     fn range_scan<'a>(
         &'a self,
         lower: &[u8],
