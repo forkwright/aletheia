@@ -1966,6 +1966,7 @@ version = "0.18.0"
 dependencies = [
  "eidos",
  "fjall",
+ "hermeneus",
  "jiff",
  "koina",
  "parking_lot",
