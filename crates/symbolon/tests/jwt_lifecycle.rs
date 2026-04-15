@@ -22,9 +22,10 @@ use symbolon::types::{Role, TokenKind};
 fn test_manager() -> JwtManager {
     JwtManager::new(JwtConfig {
         signing_key: SecretString::from("test-signing-key-for-integration-tests".to_owned()),
-        access_ttl: Duration::from_secs(3600),
-        refresh_ttl: Duration::from_secs(86400 * 7),
+        access_ttl: Duration::from_hours(1),
+        refresh_ttl: Duration::from_hours(168),
         issuer: "aletheia-test".to_owned(),
+        ..JwtConfig::default()
     })
 }
 
@@ -35,8 +36,8 @@ fn default_config_uses_insecure_placeholder() {
     // WHY: Default JwtConfig uses an insecure placeholder key. The library
     // *must* allow this for testing/dev, but production paths must reject it.
     let config = JwtConfig::default();
-    assert_eq!(config.access_ttl, Duration::from_secs(3600));
-    assert_eq!(config.refresh_ttl, Duration::from_secs(7 * 24 * 3600));
+    assert_eq!(config.access_ttl, Duration::from_hours(1));
+    assert_eq!(config.refresh_ttl, Duration::from_hours(168));
     assert_eq!(config.issuer, "aletheia");
 }
 
@@ -207,15 +208,17 @@ fn validate_rejects_token_signed_with_different_key() {
     // JwtManager (with a different signing key) is not valid.
     let mgr_a = JwtManager::new(JwtConfig {
         signing_key: SecretString::from("key-A-issuer-of-the-token".to_owned()),
-        access_ttl: Duration::from_secs(3600),
-        refresh_ttl: Duration::from_secs(86400),
+        access_ttl: Duration::from_hours(1),
+        refresh_ttl: Duration::from_hours(24),
         issuer: "issuer-a".to_owned(),
+        ..JwtConfig::default()
     });
     let mgr_b = JwtManager::new(JwtConfig {
         signing_key: SecretString::from("key-B-different-validator".to_owned()),
-        access_ttl: Duration::from_secs(3600),
-        refresh_ttl: Duration::from_secs(86400),
+        access_ttl: Duration::from_hours(1),
+        refresh_ttl: Duration::from_hours(24),
         issuer: "issuer-b".to_owned(),
+        ..JwtConfig::default()
     });
 
     let token = mgr_a
@@ -244,12 +247,15 @@ fn validate_rejects_malformed_token() {
 #[test]
 fn validate_rejects_expired_token() {
     // WHY: expired tokens must be rejected. Issue a token with a 0-second
-    // TTL and verify it fails immediately.
+    // TTL and verify it fails immediately. Leeway is explicitly 0 so the
+    // 30s default clock-skew tolerance does not keep the token alive past
+    // the short sleep below.
     let mgr = JwtManager::new(JwtConfig {
         signing_key: SecretString::from("key-for-expiry-test".to_owned()),
         access_ttl: Duration::from_secs(0),
         refresh_ttl: Duration::from_secs(0),
         issuer: "test".to_owned(),
+        clock_skew_leeway_secs: 0,
     });
     let token = mgr
         .issue_access("user", Role::Operator, None)

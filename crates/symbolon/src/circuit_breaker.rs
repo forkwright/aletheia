@@ -377,9 +377,9 @@ mod tests {
     fn exponential_backoff_computes_correct_cooldowns() {
         let config = CircuitBreakerConfig {
             failure_threshold: 5,
-            failure_window: Duration::from_secs(60),
+            failure_window: Duration::from_mins(1),
             cooldown: Duration::from_secs(30),
-            max_cooldown: Duration::from_secs(300),
+            max_cooldown: Duration::from_mins(5),
         };
         assert_eq!(
             CircuitBreaker::compute_cooldown(&config, 0),
@@ -388,27 +388,27 @@ mod tests {
         );
         assert_eq!(
             CircuitBreaker::compute_cooldown(&config, 1),
-            Duration::from_secs(60),
+            Duration::from_mins(1),
             "trip 1: 2x base"
         );
         assert_eq!(
             CircuitBreaker::compute_cooldown(&config, 2),
-            Duration::from_secs(120),
+            Duration::from_mins(2),
             "trip 2: 4x base"
         );
         assert_eq!(
             CircuitBreaker::compute_cooldown(&config, 3),
-            Duration::from_secs(240),
+            Duration::from_mins(4),
             "trip 3: 8x base"
         );
         assert_eq!(
             CircuitBreaker::compute_cooldown(&config, 4),
-            Duration::from_secs(300),
+            Duration::from_mins(5),
             "trip 4: capped at max"
         );
         assert_eq!(
             CircuitBreaker::compute_cooldown(&config, 10),
-            Duration::from_secs(300),
+            Duration::from_mins(5),
             "trip 10: still capped"
         );
     }
@@ -417,9 +417,9 @@ mod tests {
     fn cooldown_caps_at_max() {
         let config = CircuitBreakerConfig {
             failure_threshold: 1,
-            failure_window: Duration::from_secs(60),
+            failure_window: Duration::from_mins(1),
             cooldown: Duration::from_secs(100),
-            max_cooldown: Duration::from_secs(300),
+            max_cooldown: Duration::from_mins(5),
         };
         assert_eq!(
             CircuitBreaker::compute_cooldown(&config, 0),
@@ -433,12 +433,12 @@ mod tests {
         );
         assert_eq!(
             CircuitBreaker::compute_cooldown(&config, 2),
-            Duration::from_secs(300),
+            Duration::from_mins(5),
             "trip 2: capped"
         );
         assert_eq!(
             CircuitBreaker::compute_cooldown(&config, 3),
-            Duration::from_secs(300),
+            Duration::from_mins(5),
             "trip 3: still capped"
         );
     }

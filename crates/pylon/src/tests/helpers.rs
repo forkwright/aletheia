@@ -40,6 +40,7 @@ pub(super) fn test_jwt_manager() -> Arc<JwtManager> {
         access_ttl: std::time::Duration::from_secs(3600),
         refresh_ttl: std::time::Duration::from_secs(86400),
         issuer: "aletheia-test".to_owned(),
+        ..JwtConfig::default()
     }))
 }
 
