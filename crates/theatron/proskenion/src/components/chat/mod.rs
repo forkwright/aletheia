@@ -132,6 +132,66 @@ impl Default for ChatState {
     }
 }
 
+impl ChatState {
+    /// Project legacy messages into the render-ready `ChatMessage` model.
+    ///
+    /// WHY: Centralizes the legacy-to-render projection so it is defined once
+    /// and shared by all consumers (chat view, command palette export, etc.).
+    /// This eliminates the duplicate projection that was previously inlined
+    /// in each call site (#3323).
+    ///
+    /// `limit` controls how many of the most recent messages to include.
+    /// Pass `None` to include all messages.
+    #[must_use]
+    pub(crate) fn project_messages(
+        &self,
+        limit: Option<usize>,
+    ) -> Vec<crate::state::chat::ChatMessage> {
+        use crate::state::chat::{ChatMessage as RenderMessage, Role};
+
+        let now_ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| {
+                #[expect(clippy::as_conversions, reason = "epoch seconds fit in i64 until year 292B")]
+                let secs = d.as_secs() as i64;
+                secs
+            })
+            .unwrap_or(0);
+
+        let skip_count = match limit {
+            Some(lim) => self.messages.len().saturating_sub(lim),
+            None => 0,
+        };
+
+        self.messages
+            .iter()
+            .enumerate()
+            .skip(skip_count)
+            .map(|(i, m)| RenderMessage {
+                #[expect(clippy::as_conversions, reason = "message index to u64 id")]
+                id: i as u64 + 1,
+                role: match m.role {
+                    MessageRole::User => Role::User,
+                    MessageRole::Assistant => Role::Assistant,
+                },
+                content: m.content.clone(),
+                timestamp: {
+                    #[expect(clippy::as_conversions, reason = "message offset to i64 for timestamp spacing")]
+                    let offset = (self.messages.len() - 1 - i) as i64 * 30;
+                    now_ts - offset
+                },
+                agent_id: self.agent_id.clone(),
+                tool_calls: m.tool_calls,
+                thinking_content: None,
+                is_streaming: false,
+                model: m.model.clone(),
+                input_tokens: m.input_tokens,
+                output_tokens: m.output_tokens,
+            })
+            .collect()
+    }
+}
+
 /// Manages `ChatState` transitions in response to `StreamEvent`s.
 ///
 /// Encapsulates the debounce buffer and flush logic. In a Dioxus component,

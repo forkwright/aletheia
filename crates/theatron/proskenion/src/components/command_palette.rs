@@ -9,7 +9,7 @@ use dioxus::prelude::*;
 use crate::app::Route;
 use crate::components::chat::ChatState;
 use crate::services::export::messages_to_markdown;
-use crate::state::chat::{ChatMessage, Role};
+use crate::state::chat::ChatMessage;
 use crate::state::commands::{CommandCategory, CommandStore};
 use crate::state::toasts::{Severity, ToastStore};
 
@@ -121,32 +121,10 @@ fn dispatch_command(
                 return;
             };
 
-            let messages: Vec<ChatMessage> = {
-                use crate::components::chat::MessageRole;
-                let state = legacy_state.read();
-                state
-                    .messages
-                    .iter()
-                    .enumerate()
-                    .map(|(i, m)| ChatMessage {
-                        #[expect(clippy::as_conversions, reason = "message index to u64 id")]
-                        id: i as u64 + 1,
-                        role: match m.role {
-                            MessageRole::User => Role::User,
-                            MessageRole::Assistant => Role::Assistant,
-                        },
-                        content: m.content.clone(),
-                        timestamp: 0,
-                        agent_id: None,
-                        tool_calls: 0,
-                        thinking_content: None,
-                        is_streaming: false,
-                        model: None,
-                        input_tokens: 0,
-                        output_tokens: 0,
-                    })
-                    .collect()
-            };
+            // WHY: Use the centralized projection method instead of
+            // duplicating the legacy-to-render mapping here (#3323).
+            let messages: Vec<ChatMessage> =
+                legacy_state.read().project_messages(None);
 
             if messages.is_empty() {
                 if let Some(mut toast_store) = try_consume_context::<Signal<ToastStore>>() {

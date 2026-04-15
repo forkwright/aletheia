@@ -105,6 +105,8 @@ pub(crate) fn ConnectView(
             .clone()
             .unwrap_or_default()
     });
+    // WHY: Hold the cancel token so the user can abort a connection attempt.
+    let mut active_cancel = use_signal(|| None::<CancellationToken>);
 
     // WHY: Run auto-discovery once on first render when the URL is the compiled
     // default. If a server is found, update the URL input so the user does not
@@ -135,17 +137,24 @@ pub(crate) fn ConnectView(
         ConnectionState::Reconnecting { attempt } => {
             format!("Reconnecting (attempt {attempt})...")
         }
+        ConnectionState::TimedOut => "Connection timed out".to_string(),
         ConnectionState::Failed { reason } => format!("Failed: {reason}"),
     };
 
     let status_color = match &*connection_state.read() {
         ConnectionState::Connected => "var(--status-success)",
-        ConnectionState::Failed { .. } => "var(--status-error)",
+        ConnectionState::Failed { .. } | ConnectionState::TimedOut => "var(--status-error)",
         ConnectionState::Reconnecting { .. } | ConnectionState::Connecting => "var(--status-warning)",
         ConnectionState::Disconnected => "var(--text-muted)",
     };
 
     let on_connect = move |_| {
+        // WHY: Cancel any previously running connection attempt so we do not
+        // leak background tasks when the user clicks Connect multiple times.
+        if let Some(prev) = active_cancel.read().as_ref() {
+            prev.cancel();
+        }
+
         let url = url_input.read().clone();
         let token = token_input.read().clone();
         let token_opt = if token.is_empty() { None } else { Some(token) };
@@ -154,6 +163,7 @@ pub(crate) fn ConnectView(
             server_url: url,
             auth_token: token_opt,
             auto_reconnect: true,
+            ..ConnectionConfig::default()
         };
 
         // WHY: Persist config to disk so settings survive app restarts.
@@ -167,6 +177,7 @@ pub(crate) fn ConnectView(
         // NOTE: Set up channel for background to UI communication.
         let (tx, mut rx) = mpsc::unbounded_channel::<ConnectionState>();
         let cancel = CancellationToken::new();
+        active_cancel.set(Some(cancel.clone()));
         let svc = ConnectionService::new(new_config, cancel, tx);
 
         // WHY: Spawn the connection service on the tokio runtime so it runs
@@ -184,6 +195,14 @@ pub(crate) fn ConnectView(
                 state_signal.set(new_state);
             }
         });
+    };
+
+    // WHY: Allow the user to abort a connection attempt that is taking too long.
+    let on_cancel = move |_| {
+        if let Some(cancel) = active_cancel.read().as_ref() {
+            cancel.cancel();
+        }
+        connection_state.set(ConnectionState::Disconnected);
     };
 
     rsx! {
@@ -219,13 +238,50 @@ pub(crate) fn ConnectView(
                             token_input.set(evt.value().clone());
                         },
                     }
+                    if !token_input.read().is_empty() {
+                        div {
+                            style: "\
+                                font-size: var(--text-xs); \
+                                color: var(--status-warning); \
+                                margin-top: var(--space-1); \
+                                line-height: 1.4;\
+                            ",
+                            "Token will be stored in plaintext (~/.config/aletheia/desktop.toml, mode 0600). \
+                             OS keyring integration is planned but not yet implemented."
+                        }
+                    }
                 }
 
-                button {
-                    style: if is_connecting { "{BUTTON_DISABLED_STYLE}" } else { "{BUTTON_STYLE}" },
-                    disabled: is_connecting,
-                    onclick: on_connect,
-                    if is_connecting { "Connecting..." } else { "Connect" }
+                if is_connecting {
+                    button {
+                        style: "{BUTTON_DISABLED_STYLE}",
+                        disabled: true,
+                        "Connecting..."
+                    }
+                    button {
+                        style: "\
+                            background: transparent; \
+                            color: var(--status-error); \
+                            border: 1px solid var(--status-error); \
+                            border-radius: var(--radius-md); \
+                            padding: var(--space-2); \
+                            font-size: var(--text-sm); \
+                            cursor: pointer; \
+                            transition: background-color var(--transition-quick);\
+                        ",
+                        onclick: on_cancel,
+                        "Cancel"
+                    }
+                } else {
+                    button {
+                        style: "{BUTTON_STYLE}",
+                        onclick: on_connect,
+                        if matches!(*connection_state.read(), ConnectionState::TimedOut) {
+                            "Retry"
+                        } else {
+                            "Connect"
+                        }
+                    }
                 }
 
                 div {

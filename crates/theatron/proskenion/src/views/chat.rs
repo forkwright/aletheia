@@ -27,7 +27,7 @@ use crate::components::tool_panel::ToolPanel;
 use crate::services::file_watcher::{self, FileChangeTracker};
 use crate::state::agents::AgentStore;
 use crate::state::app::TabBar;
-use crate::state::chat::{ChatMessage, ChatStore, Role};
+use crate::state::chat::ChatMessage;
 use crate::state::commands::CommandStore;
 use crate::state::connection::ConnectionConfig;
 use crate::state::input::InputState;
@@ -38,11 +38,16 @@ use crate::state::view_preservation::{PreservedViewState, ViewKey, ViewPreservat
 /// Estimated message height in pixels for virtual scroll calculations.
 const ESTIMATED_MSG_HEIGHT: f64 = 80.0;
 
+/// Number of messages to load initially and per pagination chunk.
+const PAGE_SIZE: usize = 100;
+
+/// Scroll threshold in pixels from the top to trigger loading older messages.
+const LOAD_MORE_THRESHOLD: f64 = 200.0;
+
 /// Chat view with virtualized scrolling, markdown rendering, and agent switching.
 #[component]
 pub(crate) fn Chat() -> Element {
     let mut legacy_state = use_signal(ChatState::default);
-    let _store = use_signal(ChatStore::default);
     let mut input_state = use_signal(InputState::default);
     let mut cancel_token = use_signal(CancellationToken::new);
     let mut palette_open = use_signal(|| false);
@@ -60,6 +65,11 @@ pub(crate) fn Chat() -> Element {
     // WHY: Ticking signal drives elapsed-time re-renders every second
     // during streaming without polling the DOM.
     let mut elapsed_tick = use_signal(|| 0u64);
+
+    // WHY: Paginate message history so only the most recent PAGE_SIZE
+    // messages are projected into ChatMessage structs. Scrolling up past
+    // the LOAD_MORE_THRESHOLD loads the next page (#3321).
+    let mut loaded_page_count = use_signal(|| 1_usize);
 
     // Virtual scroll state
     let mut scroll_top = use_signal(|| 0.0_f64);
@@ -105,49 +115,14 @@ pub(crate) fn Chat() -> Element {
         }
     });
 
-    // Bridge: sync legacy ChatState messages into the new ChatStore model.
-    // WHY: The existing ChatStateManager + streaming pipeline writes to
-    // ChatState.messages (Vec<LegacyChatMessage>). Rather than rewriting
-    // the entire streaming pipeline, we project legacy messages into
-    // ChatMessage for rendering.
-    let messages: Vec<ChatMessage> = {
-        let state = legacy_state.read();
-        let now_ts = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| {
-                #[expect(clippy::as_conversions, reason = "epoch seconds fit in i64 until year 292B")]
-                let secs = d.as_secs() as i64;
-                secs
-            })
-            .unwrap_or(0);
-
-        state
-            .messages
-            .iter()
-            .enumerate()
-            .map(|(i, m)| ChatMessage {
-                #[expect(clippy::as_conversions, reason = "message index to u64 id")]
-                id: i as u64 + 1,
-                role: match m.role {
-                    MessageRole::User => Role::User,
-                    MessageRole::Assistant => Role::Assistant,
-                },
-                content: m.content.clone(),
-                timestamp: {
-                    #[expect(clippy::as_conversions, reason = "message offset to i64 for timestamp spacing")]
-                    let offset = (state.messages.len() - 1 - i) as i64 * 30;
-                    now_ts - offset
-                },
-                agent_id: state.agent_id.clone(),
-                tool_calls: m.tool_calls,
-                thinking_content: None,
-                is_streaming: false,
-                model: m.model.clone(),
-                input_tokens: m.input_tokens,
-                output_tokens: m.output_tokens,
-            })
-            .collect()
-    };
+    // WHY: Use the centralized projection method to convert legacy ChatState
+    // messages into render-ready ChatMessage structs. Only the most recent
+    // loaded_page_count * PAGE_SIZE messages are projected (#3321, #3323).
+    let total_message_count = legacy_state.read().messages.len();
+    let loaded_limit = loaded_page_count() * PAGE_SIZE;
+    let has_more_history = total_message_count > loaded_limit;
+    let messages: Vec<ChatMessage> =
+        legacy_state.read().project_messages(Some(loaded_limit));
 
     // Virtual scroll: compute visible range using shared utility.
     let total_messages = messages.len();
@@ -483,6 +458,11 @@ pub(crate) fn Chat() -> Element {
                                 if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(cleaned) {
                                     if let Some(top) = parsed.get("top").and_then(|v| v.as_f64()) {
                                         scroll_top.set(top);
+                                        // WHY: Load older messages when the user scrolls
+                                        // near the top of the viewport (#3321).
+                                        if top < LOAD_MORE_THRESHOLD && has_more_history {
+                                            loaded_page_count.set(loaded_page_count() + 1);
+                                        }
                                     }
                                     if let Some(h) = parsed.get("height").and_then(|v| v.as_f64()) {
                                         if h > 0.0 {
@@ -498,6 +478,23 @@ pub(crate) fn Chat() -> Element {
                     // Virtual scroll spacer (top)
                     div {
                         style: "height: {pad_top}px;",
+                    }
+
+                    // "Load more" indicator when older messages exist
+                    if has_more_history {
+                        div {
+                            style: "\
+                                text-align: center; \
+                                padding: var(--space-2); \
+                                color: var(--text-muted); \
+                                font-size: var(--text-xs); \
+                                cursor: pointer;\
+                            ",
+                            onclick: move |_| {
+                                loaded_page_count.set(loaded_page_count() + 1);
+                            },
+                            "Scroll up or click to load older messages ({total_message_count} total)"
+                        }
                     }
 
                     // Visible messages

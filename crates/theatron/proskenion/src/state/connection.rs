@@ -35,6 +35,8 @@ pub enum ConnectionState {
         /// Consecutive reconnection failures (1-indexed).
         attempt: u32,
     },
+    /// Connection attempt exceeded the configured timeout.
+    TimedOut,
     /// Permanently failed: requires user intervention (e.g. bad URL, auth
     /// rejected, max retries exceeded).
     Failed {
@@ -67,6 +69,7 @@ impl ConnectionState {
             Self::Connecting => "connecting",
             Self::Connected => "connected",
             Self::Reconnecting { .. } => "reconnecting",
+            Self::TimedOut => "timed out",
             Self::Failed { .. } => "failed",
         }
     }
@@ -86,14 +89,23 @@ pub struct ConnectionConfig {
     pub server_url: String,
     /// Optional authentication token. Injected as `Authorization: Bearer <token>`.
     ///
-    /// NOTE: Stored in plaintext in the config file for v1. Future versions
-    /// should integrate with the OS keyring (e.g. libsecret on Linux,
-    /// Keychain on macOS) for secure token storage.
+    /// SECURITY: Stored in plaintext in the config file (`~/.config/aletheia/desktop.toml`).
+    /// The file is written with 0600 permissions (owner-only), but any process running
+    /// as the same user can read it. Full OS keyring integration (libsecret on Linux,
+    /// Keychain on macOS) is tracked as future work. Do not copy this file or commit
+    /// it to version control.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub auth_token: Option<String>,
     /// Whether to automatically reconnect on connection loss.
     #[serde(default = "default_auto_reconnect")]
     pub auto_reconnect: bool,
+    /// Maximum time in seconds to wait for a connection attempt before timing out.
+    #[serde(default = "default_connect_timeout_secs")]
+    pub connect_timeout_secs: u64,
+}
+
+fn default_connect_timeout_secs() -> u64 {
+    DEFAULT_CONNECT_TIMEOUT.as_secs()
 }
 
 fn default_auto_reconnect() -> bool {
@@ -106,9 +118,22 @@ impl Default for ConnectionConfig {
             server_url: "http://localhost:3000".to_string(),
             auth_token: None,
             auto_reconnect: true,
+            connect_timeout_secs: DEFAULT_CONNECT_TIMEOUT.as_secs(),
         }
     }
 }
+
+/// Returns the configured connect timeout as a [`Duration`].
+impl ConnectionConfig {
+    /// Connection timeout as a [`Duration`].
+    #[must_use]
+    pub(crate) fn connect_timeout(&self) -> Duration {
+        Duration::from_secs(self.connect_timeout_secs)
+    }
+}
+
+/// Default timeout for an individual connection attempt.
+pub(crate) const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Initial backoff delay after a connection failure.
 const INITIAL_BACKOFF: Duration = Duration::from_secs(1);
@@ -146,6 +171,7 @@ mod tests {
         assert!(!ConnectionState::Disconnected.is_connected());
         assert!(!ConnectionState::Connecting.is_connected());
         assert!(!ConnectionState::Reconnecting { attempt: 1 }.is_connected());
+        assert!(!ConnectionState::TimedOut.is_connected());
         assert!(
             !ConnectionState::Failed {
                 reason: "bad".into()
@@ -160,6 +186,7 @@ mod tests {
         assert!(ConnectionState::Connecting.needs_connect_view());
         assert!(!ConnectionState::Connected.needs_connect_view());
         assert!(ConnectionState::Reconnecting { attempt: 1 }.needs_connect_view());
+        assert!(ConnectionState::TimedOut.needs_connect_view());
         assert!(
             ConnectionState::Failed {
                 reason: "err".into()
@@ -177,6 +204,7 @@ mod tests {
             ConnectionState::Reconnecting { attempt: 3 }.label(),
             "reconnecting"
         );
+        assert_eq!(ConnectionState::TimedOut.label(), "timed out");
         assert_eq!(
             ConnectionState::Failed { reason: "x".into() }.label(),
             "failed"
@@ -213,6 +241,16 @@ mod tests {
         assert_eq!(cfg.server_url, "http://localhost:3000");
         assert!(cfg.auth_token.is_none());
         assert!(cfg.auto_reconnect);
+        assert_eq!(cfg.connect_timeout_secs, 30);
+    }
+
+    #[test]
+    fn connection_config_connect_timeout() {
+        let cfg = ConnectionConfig {
+            connect_timeout_secs: 60,
+            ..ConnectionConfig::default()
+        };
+        assert_eq!(cfg.connect_timeout(), Duration::from_secs(60));
     }
 
     #[test]
@@ -221,12 +259,14 @@ mod tests {
             server_url: "https://example.com:8080".to_string(),
             auth_token: Some("secret-token".to_string()),
             auto_reconnect: false,
+            connect_timeout_secs: 45,
         };
         let serialized = toml::to_string(&cfg).unwrap();
         let deserialized: ConnectionConfig = toml::from_str(&serialized).unwrap();
         assert_eq!(deserialized.server_url, cfg.server_url);
         assert_eq!(deserialized.auth_token, cfg.auth_token);
         assert_eq!(deserialized.auto_reconnect, cfg.auto_reconnect);
+        assert_eq!(deserialized.connect_timeout_secs, cfg.connect_timeout_secs);
     }
 
     #[test]
@@ -241,5 +281,19 @@ mod tests {
         let toml_str = r#"server_url = "http://localhost:3000""#;
         let cfg: ConnectionConfig = toml::from_str(toml_str).unwrap();
         assert!(cfg.auto_reconnect);
+    }
+
+    #[test]
+    fn connection_config_toml_defaults_connect_timeout() {
+        let toml_str = r#"server_url = "http://localhost:3000""#;
+        let cfg: ConnectionConfig = toml::from_str(toml_str).unwrap();
+        assert_eq!(cfg.connect_timeout_secs, DEFAULT_CONNECT_TIMEOUT.as_secs());
+    }
+
+    #[test]
+    fn connection_state_timed_out() {
+        assert!(ConnectionState::TimedOut.needs_connect_view());
+        assert!(!ConnectionState::TimedOut.is_connected());
+        assert!(!ConnectionState::TimedOut.is_disconnected());
     }
 }

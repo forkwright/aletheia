@@ -3,8 +3,11 @@
 //! Loads on startup and saves after each successful connection so the user
 //! does not have to re-enter the server URL on every launch.
 //!
-//! NOTE: Auth tokens are currently stored in plaintext. Future versions should
-//! integrate with the OS keyring (libsecret, Keychain, Credential Manager).
+//! SECURITY: Auth tokens are stored in plaintext in the config file. The file
+//! is written with 0600 (owner-only) permissions, but any process running as
+//! the same user can read it. Full OS keyring integration (libsecret on Linux,
+//! Keychain on macOS) is tracked as future work. Do not copy this file or
+//! commit it to version control.
 
 use std::io::Write;
 use std::path::PathBuf;
@@ -153,14 +156,49 @@ pub(crate) fn save(config: &ConnectionConfig) -> Result<(), ConfigError> {
 ///
 /// Logs a warning if loading fails. Suitable for startup where a missing
 /// or corrupt config file should not prevent the app from launching.
+///
+/// Emits a `tracing::warn!` if an auth token is present, since it is stored
+/// in plaintext (see module-level SECURITY note).
 #[must_use]
 pub(crate) fn load_or_default() -> ConnectionConfig {
-    match load() {
+    let config = match load() {
         Ok(config) => config,
         Err(e) => {
             tracing::warn!("failed to load config, using defaults: {e}");
-            ConnectionConfig::default()
+            return ConnectionConfig::default();
         }
+    };
+
+    if config.auth_token.is_some() {
+        tracing::warn!(
+            "auth token loaded from plaintext config file (~/.config/aletheia/desktop.toml). \
+             OS keyring integration is not yet implemented. The file is 0600 but any \
+             same-user process can read it."
+        );
+        // Verify the config file has correct permissions (0600).
+        warn_if_permissions_loose();
+    }
+
+    config
+}
+
+/// Check that the config file has restrictive permissions (0600) and warn if not.
+fn warn_if_permissions_loose() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let Ok(path) = config_path() else { return };
+    let Ok(metadata) = std::fs::metadata(&path) else {
+        return;
+    };
+    let mode = metadata.permissions().mode() & 0o777;
+    if mode != 0o600 {
+        tracing::warn!(
+            path = %path.display(),
+            mode = format!("{mode:04o}"),
+            "config file has loose permissions (expected 0600). \
+             Run: chmod 600 {}",
+            path.display(),
+        );
     }
 }
 
@@ -243,6 +281,7 @@ mod tests {
             server_url: "https://pylon.example.com:8443".to_string(),
             auth_token: Some("tok_abc123".to_string()),
             auto_reconnect: false,
+            ..ConnectionConfig::default()
         };
 
         let desktop = DesktopConfig {
@@ -270,6 +309,7 @@ mod tests {
             server_url: "http://10.0.0.1:3000".to_string(),
             auth_token: Some("my-token".to_string()),
             auto_reconnect: true,
+            ..ConnectionConfig::default()
         };
 
         let desktop = DesktopConfig {
