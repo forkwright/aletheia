@@ -732,10 +732,12 @@ mod training_config {
         let cfg = TrainingConfig {
             enabled: true,
             path: "var/training/custom".to_owned(),
+            max_shard_bytes: 100 * 1024 * 1024,
         };
         let json = serde_json::to_string(&cfg).expect("serialize");
         let back: TrainingConfig = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(back.enabled, cfg.enabled);
         assert_eq!(back.path, cfg.path);
+        assert_eq!(back.max_shard_bytes, cfg.max_shard_bytes);
     }
 }

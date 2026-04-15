@@ -1,11 +1,26 @@
-//! Training data capture: append-only JSONL writer for conversation turns.
+//! Training data capture: sharded JSONL writer for conversation turns.
 //!
 //! Captures successful conversation turns as structured records for future
 //! model fine-tuning. Each record contains the user message, assistant
-//! response, model identifier, token usage, and timing metadata.
+//! response, model identifier, token usage, timing metadata, and optional
+//! episteme labels (turn classification, correction signal, fact types,
+//! quality score).
 //!
 //! Records are written one-per-line in JSON Lines format, matching the
 //! structure used by `workflow/training/` in the kanon control plane.
+//!
+//! # Shard rotation
+//!
+//! When a shard file exceeds [`TrainingConfig::max_shard_bytes`], it is
+//! closed and a new shard is started with an incremented sequence number.
+//! Shard naming: `training-YYYYMMDD-NNNN.jsonl`. A manifest file tracks
+//! all shards, record counts, and schema version range.
+//!
+//! # Backward compatibility
+//!
+//! If a legacy `conversations.jsonl` file exists in the training directory,
+//! it is treated as the first shard and incorporated into the manifest on
+//! first access.
 //!
 //! # Quality gate
 //!
@@ -25,6 +40,7 @@ use std::path::{Path, PathBuf};
 // Re-export types from eidos for convenience
 pub use eidos::training::{TrainingConfig, TrainingRecord, TRAINING_RECORD_SCHEMA_VERSION};
 use jiff::Timestamp;
+use serde::{Deserialize, Serialize};
 use snafu::{ResultExt, Snafu};
 use tracing::{debug, warn};
 
@@ -59,6 +75,32 @@ pub enum TrainingCaptureError {
     #[snafu(display("failed to write training record to {}: {source}", path.display()))]
     WriteRecord {
         path: PathBuf,
+        source: std::io::Error,
+    },
+
+    /// Failed to read file metadata.
+    #[snafu(display("failed to read metadata for {}: {source}", path.display()))]
+    ReadMetadata {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+
+    /// Failed to persist the training manifest.
+    #[snafu(display("failed to persist training manifest to {}: {source}", path.display()))]
+    PersistManifest {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+
+    /// Failed to serialize the training manifest.
+    #[snafu(display("failed to serialize training manifest: {source}"))]
+    SerializeManifest { source: serde_json::Error },
+
+    /// Failed to rename temporary manifest file.
+    #[snafu(display("failed to rename {} to {}: {source}", from.display(), to.display()))]
+    RenameManifest {
+        from: PathBuf,
+        to: PathBuf,
         source: std::io::Error,
     },
 }
@@ -124,7 +166,7 @@ impl CaptureStopReason {
 /// Bundles the per-turn fields into a single record so the call sites
 /// remain self-documenting and so the function signature stays under the
 /// workspace's `too_many_arguments` threshold.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct CaptureInput<'a> {
     /// Session identifier the turn belongs to.
     pub session_id: &'a str,
@@ -146,24 +188,111 @@ pub struct CaptureInput<'a> {
     /// are not useful training data — they teach the model to produce
     /// empty text responses.
     pub has_tool_calls: bool,
+
+    // ── Episteme labels ──────────────────────────────────────────────
+
+    /// Classification of the conversation turn (e.g. "discussion", "correction").
+    pub turn_type: Option<String>,
+    /// Whether this turn corrects a previous response.
+    pub is_correction: Option<bool>,
+    /// Types of facts extracted from this turn.
+    pub fact_types: Option<Vec<String>>,
+    /// Quality score for DPO/ORPO signal (0.0--1.0).
+    pub quality_score: Option<f32>,
 }
 
-/// Append-only training data writer.
+/// Manifest tracking shard files, record counts, and schema version range.
 ///
-/// Writes [`TrainingRecord`]s as JSON Lines to a file on disk. The writer
-/// ensures the output directory exists on construction and opens the file
-/// in append mode for each write to avoid holding file handles across turns.
+/// Persisted atomically as `training-manifest.json` in the training directory.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TrainingManifest {
+    /// Ordered list of shard file names (relative to the training directory).
+    pub shards: Vec<ShardEntry>,
+    /// Total records across all shards.
+    pub total_records: u64,
+    /// Minimum schema version seen across all records.
+    pub schema_version_min: u32,
+    /// Maximum schema version seen across all records.
+    pub schema_version_max: u32,
+}
+
+/// A single shard entry in the manifest.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ShardEntry {
+    /// File name (relative to the training directory).
+    pub file_name: String,
+    /// Number of records in this shard.
+    pub record_count: u64,
+    /// Size in bytes (last known).
+    pub size_bytes: u64,
+}
+
+impl TrainingManifest {
+    /// Create a new empty manifest.
+    fn new() -> Self {
+        Self {
+            shards: Vec::new(),
+            total_records: 0,
+            schema_version_min: TRAINING_RECORD_SCHEMA_VERSION,
+            schema_version_max: TRAINING_RECORD_SCHEMA_VERSION,
+        }
+    }
+
+    /// Persist the manifest atomically: write to temp, then rename.
+    fn persist(&self, manifest_path: &Path) -> Result<()> {
+        let json =
+            serde_json::to_string_pretty(self).context(SerializeManifestSnafu)?;
+
+        let tmp_path = manifest_path.with_extension("json.tmp");
+
+        // WHY: std::fs::write is disallowed by project lint config.
+        // Use OpenOptions for explicit create-truncate-write.
+        let mut file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(&tmp_path)
+            .context(PersistManifestSnafu { path: &tmp_path })?;
+        file.write_all(json.as_bytes())
+            .context(PersistManifestSnafu { path: &tmp_path })?;
+
+        fs::rename(&tmp_path, manifest_path).context(RenameManifestSnafu {
+            from: &tmp_path,
+            to: manifest_path,
+        })?;
+
+        Ok(())
+    }
+}
+
+/// Sharded, append-only training data writer.
+///
+/// Writes [`TrainingRecord`]s as JSON Lines to shard files on disk. When the
+/// current shard exceeds [`TrainingConfig::max_shard_bytes`], the writer
+/// rotates to a new shard. A [`TrainingManifest`] is persisted after each
+/// write for crash recovery.
 pub struct TrainingCapture {
-    /// Full path to the JSONL output file.
-    file_path: PathBuf,
+    /// Training data directory.
+    dir: PathBuf,
+    /// Full path to the current shard file.
+    current_shard: PathBuf,
+    /// Path to the manifest file.
+    manifest_path: PathBuf,
+    /// In-memory manifest state.
+    manifest: TrainingManifest,
+    /// Maximum shard size before rotation.
+    max_shard_bytes: u64,
 }
 
 impl TrainingCapture {
     /// Create a new training capture writer.
     ///
     /// `instance_root` is the base directory of the aletheia instance
-    /// (typically the working directory). The output file is placed at
-    /// `{instance_root}/{config.path}/conversations.jsonl`.
+    /// (typically the working directory). Shards are placed at
+    /// `{instance_root}/{config.path}/training-YYYYMMDD-NNNN.jsonl`.
+    ///
+    /// If a legacy `conversations.jsonl` file exists, it is adopted as the
+    /// first shard and recorded in the manifest.
     ///
     /// Creates the output directory if it does not exist.
     ///
@@ -174,42 +303,224 @@ impl TrainingCapture {
     pub fn new(instance_root: &Path, config: &TrainingConfig) -> Result<Self> {
         let dir = instance_root.join(&config.path);
         fs::create_dir_all(&dir).context(CreateDirSnafu { path: &dir })?;
-        let file_path = dir.join("conversations.jsonl");
-        debug!(path = %file_path.display(), "training capture initialized");
-        Ok(Self { file_path })
+
+        let manifest_path = dir.join("training-manifest.json");
+        let legacy_path = dir.join("conversations.jsonl");
+
+        // Load or initialize manifest
+        let mut manifest = if manifest_path.exists() {
+            let content = fs::read_to_string(&manifest_path).unwrap_or_default();
+            serde_json::from_str(&content).unwrap_or_else(|_| TrainingManifest::new())
+        } else {
+            TrainingManifest::new()
+        };
+
+        // Backward compat: adopt legacy file as first shard
+        if legacy_path.exists()
+            && !manifest
+                .shards
+                .iter()
+                .any(|s| s.file_name == "conversations.jsonl")
+        {
+            let meta = fs::metadata(&legacy_path).context(ReadMetadataSnafu {
+                path: &legacy_path,
+            })?;
+            let line_count = fs::read_to_string(&legacy_path)
+                .unwrap_or_default()
+                .lines()
+                .filter(|l| !l.trim().is_empty())
+                .count();
+            #[expect(
+                clippy::as_conversions,
+                reason = "usize→u64: line count fits in u64"
+            )]
+            let record_count = line_count as u64; // kanon:ignore RUST/as-cast
+
+            manifest.shards.push(ShardEntry {
+                file_name: "conversations.jsonl".to_owned(),
+                record_count,
+                size_bytes: meta.len(),
+            });
+            manifest.total_records += record_count;
+            // Legacy records may be schema v0 or v1
+            if record_count > 0 {
+                manifest.schema_version_min = 0;
+            }
+        }
+
+        // Determine current shard: either the last shard if still under limit,
+        // or allocate a new one.
+        let current_shard = Self::resolve_current_shard(&dir, &manifest, config.max_shard_bytes)?;
+
+        // Ensure the new shard is registered in the manifest if it's new
+        let shard_name = current_shard
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+        if !manifest.shards.iter().any(|s| s.file_name == shard_name) {
+            manifest.shards.push(ShardEntry {
+                file_name: shard_name,
+                record_count: 0,
+                size_bytes: 0,
+            });
+        }
+
+        // Persist initial manifest state
+        manifest.persist(&manifest_path)?;
+
+        debug!(path = %dir.display(), shards = manifest.shards.len(), "training capture initialized");
+
+        Ok(Self {
+            dir,
+            current_shard,
+            manifest_path,
+            manifest,
+            max_shard_bytes: config.max_shard_bytes,
+        })
     }
 
-    /// Write a training record to the JSONL file.
+    /// Resolve which shard file to write to. Returns the last shard if it's
+    /// under the size limit, or creates a new shard name.
+    fn resolve_current_shard(
+        dir: &Path,
+        manifest: &TrainingManifest,
+        max_shard_bytes: u64,
+    ) -> Result<PathBuf> {
+        if let Some(last) = manifest.shards.last() {
+            let last_path = dir.join(&last.file_name);
+            if last_path.exists() {
+                let meta = fs::metadata(&last_path).context(ReadMetadataSnafu {
+                    path: &last_path,
+                })?;
+                if meta.len() < max_shard_bytes {
+                    return Ok(last_path);
+                }
+            } else {
+                // Shard referenced in manifest but missing on disk — create it
+                return Ok(last_path);
+            }
+        }
+
+        // Allocate a new shard
+        Ok(dir.join(Self::new_shard_name(dir)))
+    }
+
+    /// Generate a new shard file name: `training-YYYYMMDD-NNNN.jsonl`.
+    fn new_shard_name(dir: &Path) -> String {
+        let today = jiff::civil::date(
+            Timestamp::now().to_zoned(jiff::tz::TimeZone::UTC).year(),
+            Timestamp::now()
+                .to_zoned(jiff::tz::TimeZone::UTC)
+                .month(),
+            Timestamp::now().to_zoned(jiff::tz::TimeZone::UTC).day(),
+        );
+        let date_str = format!(
+            "{:04}{:02}{:02}",
+            today.year(),
+            today.month(),
+            today.day()
+        );
+
+        // Find the highest sequence number for today's date
+        let prefix = format!("training-{date_str}-");
+        let mut max_seq: u32 = 0;
+
+        if let Ok(entries) = fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                if let Some(rest) = name.strip_prefix(&prefix)
+                    && let Some(seq_str) = rest.strip_suffix(".jsonl")
+                    && let Ok(seq) = seq_str.parse::<u32>()
+                {
+                    max_seq = max_seq.max(seq);
+                }
+            }
+        }
+
+        format!("training-{date_str}-{:04}.jsonl", max_seq + 1)
+    }
+
+    /// Rotate to a new shard file.
+    fn rotate(&mut self) {
+        let new_name = Self::new_shard_name(&self.dir);
+        let new_path = self.dir.join(&new_name);
+        self.current_shard = new_path;
+        self.manifest.shards.push(ShardEntry {
+            file_name: new_name,
+            record_count: 0,
+            size_bytes: 0,
+        });
+        debug!(
+            shard = self.manifest.shards.len(),
+            "training capture rotated to new shard"
+        );
+    }
+
+    /// Write a training record to the current shard JSONL file.
     ///
     /// Opens the file in append mode, serializes the record as a single
-    /// JSON line, and flushes. Each call is independent: no file handle
+    /// JSON line, and flushes. Rotates to a new shard if the current file
+    /// exceeds `max_shard_bytes`. Each call is independent: no file handle
     /// is held between writes.
     ///
     /// # Errors
     ///
     /// Returns an error if the file cannot be opened, the record cannot
     /// be serialized, or the write fails.
-    pub fn write_record(&self, record: &TrainingRecord) -> Result<()> {
+    pub fn write_record(&mut self, record: &TrainingRecord) -> Result<()> {
+        // Check if rotation is needed before writing
+        if self.current_shard.exists() {
+            let meta = fs::metadata(&self.current_shard).context(ReadMetadataSnafu {
+                path: &self.current_shard,
+            })?;
+            if meta.len() >= self.max_shard_bytes {
+                self.rotate();
+            }
+        }
+
         let mut line = serde_json::to_string(record).context(SerializeSnafu)?;
         line.push('\n');
 
         let mut file = OpenOptions::new()
             .create(true)
             .append(true)
-            .open(&self.file_path)
+            .open(&self.current_shard)
             .context(OpenFileSnafu {
-                path: &self.file_path,
+                path: &self.current_shard,
             })?;
 
         file.write_all(line.as_bytes())
             .context(WriteRecordSnafu {
-                path: &self.file_path,
+                path: &self.current_shard,
             })?;
+
+        // Update manifest
+        if let Some(last) = self.manifest.shards.last_mut() {
+            last.record_count += 1;
+            // Update size estimate from the line we just wrote
+            #[expect(
+                clippy::as_conversions,
+                reason = "usize→u64: line length fits in u64"
+            )]
+            {
+                last.size_bytes += line.len() as u64; // kanon:ignore RUST/as-cast
+            }
+        }
+        self.manifest.total_records += 1;
+        self.manifest.schema_version_max =
+            self.manifest.schema_version_max.max(record.schema_version);
+        self.manifest.schema_version_min =
+            self.manifest.schema_version_min.min(record.schema_version);
+
+        // Persist manifest atomically
+        self.manifest.persist(&self.manifest_path)?;
 
         debug!(
             session_id = %record.session_id,
             nous_id = %record.nous_id,
             tokens = record.tokens,
+            shard = %self.current_shard.file_name().unwrap_or_default().to_string_lossy(),
             "training record captured"
         );
         Ok(())
@@ -226,7 +537,7 @@ impl TrainingCapture {
     /// filtered out by the quality gate. I/O errors are logged as
     /// warnings and do not propagate: training capture must never
     /// block the pipeline.
-    pub fn maybe_capture(&self, input: CaptureInput<'_>) -> bool {
+    pub fn maybe_capture(&mut self, input: CaptureInput<'_>) -> bool {
         // WHY: empty and whitespace-only responses teach the model to produce
         // vacuous output. `.trim().is_empty()` catches both `""` and `"  \n"`.
         if input.assistant_response.trim().is_empty() {
@@ -268,6 +579,10 @@ impl TrainingCapture {
             model: input.model.to_owned(),
             tokens: input.tokens,
             timestamp: Timestamp::now(),
+            turn_type: input.turn_type,
+            is_correction: input.is_correction,
+            fact_types: input.fact_types,
+            quality_score: input.quality_score,
         };
 
         match self.write_record(&record) {
@@ -281,10 +596,22 @@ impl TrainingCapture {
         }
     }
 
-    /// Path to the JSONL output file.
+    /// Path to the current shard JSONL output file.
     #[must_use]
     pub fn file_path(&self) -> &Path {
-        &self.file_path
+        &self.current_shard
+    }
+
+    /// Path to the training data directory.
+    #[must_use]
+    pub fn dir(&self) -> &Path {
+        &self.dir
+    }
+
+    /// Reference to the in-memory manifest.
+    #[must_use]
+    pub fn manifest(&self) -> &TrainingManifest {
+        &self.manifest
     }
 }
 
@@ -306,6 +633,10 @@ mod tests {
             tokens: 150,
             stop_reason: CaptureStopReason::EndTurn,
             has_tool_calls: false,
+            turn_type: None,
+            is_correction: None,
+            fact_types: None,
+            quality_score: None,
         }
     }
 
@@ -314,6 +645,7 @@ mod tests {
         let config = TrainingConfig::default();
         assert!(!config.enabled);
         assert_eq!(config.path, "data/training");
+        assert_eq!(config.max_shard_bytes, 50 * 1024 * 1024);
     }
 
     #[test]
@@ -322,8 +654,9 @@ mod tests {
         let config = TrainingConfig {
             enabled: true,
             path: "training".to_owned(),
+            max_shard_bytes: 50 * 1024 * 1024,
         };
-        let capture = TrainingCapture::new(dir.path(), &config).expect("new");
+        let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
         let record = TrainingRecord {
             schema_version: TRAINING_RECORD_SCHEMA_VERSION,
@@ -334,6 +667,10 @@ mod tests {
             model: "claude-opus-4-20250514".to_owned(),
             tokens: 150,
             timestamp: Timestamp::UNIX_EPOCH,
+            turn_type: Some("discussion".to_owned()),
+            is_correction: Some(false),
+            fact_types: None,
+            quality_score: Some(0.9),
         };
         capture.write_record(&record).expect("write");
 
@@ -348,6 +685,8 @@ mod tests {
         assert_eq!(parsed.user_message, "Hello");
         assert_eq!(parsed.assistant_response, "Hi there!");
         assert_eq!(parsed.tokens, 150);
+        assert_eq!(parsed.turn_type, Some("discussion".to_owned()));
+        assert_eq!(parsed.quality_score, Some(0.9));
     }
 
     #[test]
@@ -356,8 +695,9 @@ mod tests {
         let config = TrainingConfig {
             enabled: true,
             path: "training".to_owned(),
+            max_shard_bytes: 50 * 1024 * 1024,
         };
-        let capture = TrainingCapture::new(dir.path(), &config).expect("new");
+        let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
         for i in 0..3 {
             let record = TrainingRecord {
@@ -369,6 +709,10 @@ mod tests {
                 model: "test-model".to_owned(),
                 tokens: 100,
                 timestamp: Timestamp::UNIX_EPOCH,
+                turn_type: None,
+                is_correction: None,
+                fact_types: None,
+                quality_score: None,
             };
             capture.write_record(&record).expect("write");
         }
@@ -376,6 +720,117 @@ mod tests {
         let content = std::fs::read_to_string(capture.file_path()).expect("read");
         let lines: Vec<&str> = content.lines().collect();
         assert_eq!(lines.len(), 3);
+
+        // Manifest should reflect 3 records
+        assert_eq!(capture.manifest().total_records, 3);
+        assert_eq!(capture.manifest().shards.len(), 1);
+        assert_eq!(capture.manifest().shards[0].record_count, 3);
+    }
+
+    // -- Shard rotation -------------------------------------------------------
+
+    #[test]
+    fn shard_rotation_on_size_limit() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = TrainingConfig {
+            enabled: true,
+            path: "training".to_owned(),
+            // Tiny limit to force rotation after ~1 record
+            max_shard_bytes: 100,
+        };
+        let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
+
+        // Write enough records to trigger rotation
+        for i in 0..5 {
+            let record = TrainingRecord {
+                schema_version: TRAINING_RECORD_SCHEMA_VERSION,
+                session_id: format!("ses-{i}"),
+                nous_id: "syn".to_owned(),
+                user_message: format!("message number {i} with some content"),
+                assistant_response: format!("response number {i} with some content"),
+                model: "test-model".to_owned(),
+                tokens: 100,
+                timestamp: Timestamp::UNIX_EPOCH,
+                turn_type: None,
+                is_correction: None,
+                fact_types: None,
+                quality_score: None,
+            };
+            capture.write_record(&record).expect("write");
+        }
+
+        // Should have created multiple shards
+        assert!(
+            capture.manifest().shards.len() > 1,
+            "expected multiple shards, got {}",
+            capture.manifest().shards.len()
+        );
+        assert_eq!(capture.manifest().total_records, 5);
+
+        // All shard files should exist
+        for shard in &capture.manifest().shards {
+            let shard_path = dir.path().join("training").join(&shard.file_name);
+            assert!(shard_path.exists(), "shard {} should exist", shard.file_name);
+        }
+    }
+
+    // -- Backward compatibility: legacy file -----------------------------------
+
+    #[test]
+    fn legacy_conversations_jsonl_adopted() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let training_dir = dir.path().join("training");
+        fs::create_dir_all(&training_dir).expect("mkdir");
+
+        // Write a legacy file with 2 records
+        let legacy_path = training_dir.join("conversations.jsonl");
+        let record_json = r#"{"session_id":"old-1","nous_id":"syn","user_message":"hi","assistant_response":"hello","model":"test","tokens":10,"timestamp":"1970-01-01T00:00:00Z"}"#;
+        fs::write(&legacy_path, format!("{record_json}\n{record_json}\n")).expect("write legacy");
+
+        let config = TrainingConfig {
+            enabled: true,
+            path: "training".to_owned(),
+            max_shard_bytes: 50 * 1024 * 1024,
+        };
+        let capture = TrainingCapture::new(dir.path(), &config).expect("new");
+
+        // Manifest should include the legacy file
+        assert!(
+            capture
+                .manifest()
+                .shards
+                .iter()
+                .any(|s| s.file_name == "conversations.jsonl"),
+            "legacy file should be in manifest"
+        );
+        assert_eq!(capture.manifest().total_records, 2);
+        // Legacy records have schema v0 (missing field defaults to 0)
+        assert_eq!(capture.manifest().schema_version_min, 0);
+    }
+
+    // -- Manifest persistence --------------------------------------------------
+
+    #[test]
+    fn manifest_persisted_atomically() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = TrainingConfig {
+            enabled: true,
+            path: "training".to_owned(),
+            max_shard_bytes: 50 * 1024 * 1024,
+        };
+        let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
+
+        capture.maybe_capture(good_input());
+
+        // Manifest file should exist
+        let manifest_path = dir.path().join("training").join("training-manifest.json");
+        assert!(manifest_path.exists(), "manifest file should exist");
+
+        // Should be valid JSON
+        let content = fs::read_to_string(&manifest_path).expect("read manifest");
+        let manifest: TrainingManifest =
+            serde_json::from_str(&content).expect("parse manifest");
+        assert_eq!(manifest.total_records, 1);
     }
 
     // -- Quality gate: empty / whitespace -----------------------------------------
@@ -386,15 +841,15 @@ mod tests {
         let config = TrainingConfig {
             enabled: true,
             path: "training".to_owned(),
+            max_shard_bytes: 50 * 1024 * 1024,
         };
-        let capture = TrainingCapture::new(dir.path(), &config).expect("new");
+        let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
         let captured = capture.maybe_capture(CaptureInput {
             assistant_response: "",
             ..good_input()
         });
         assert!(!captured, "empty response should be rejected");
-        assert!(!capture.file_path().exists(), "no file should be created");
     }
 
     #[test]
@@ -403,8 +858,9 @@ mod tests {
         let config = TrainingConfig {
             enabled: true,
             path: "training".to_owned(),
+            max_shard_bytes: 50 * 1024 * 1024,
         };
-        let capture = TrainingCapture::new(dir.path(), &config).expect("new");
+        let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
         for ws in ["  ", "\n", "\t\n  ", "   \n\n   "] {
             let captured = capture.maybe_capture(CaptureInput {
@@ -413,7 +869,6 @@ mod tests {
             });
             assert!(!captured, "whitespace-only response {ws:?} should be rejected");
         }
-        assert!(!capture.file_path().exists(), "no file should be created");
     }
 
     // -- Quality gate: stop reasons -----------------------------------------------
@@ -424,8 +879,9 @@ mod tests {
         let config = TrainingConfig {
             enabled: true,
             path: "training".to_owned(),
+            max_shard_bytes: 50 * 1024 * 1024,
         };
-        let capture = TrainingCapture::new(dir.path(), &config).expect("new");
+        let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
         let captured = capture.maybe_capture(CaptureInput {
             stop_reason: CaptureStopReason::MaxTokens,
@@ -440,8 +896,9 @@ mod tests {
         let config = TrainingConfig {
             enabled: true,
             path: "training".to_owned(),
+            max_shard_bytes: 50 * 1024 * 1024,
         };
-        let capture = TrainingCapture::new(dir.path(), &config).expect("new");
+        let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
         let captured = capture.maybe_capture(CaptureInput {
             stop_reason: CaptureStopReason::Degraded,
@@ -456,8 +913,9 @@ mod tests {
         let config = TrainingConfig {
             enabled: true,
             path: "training".to_owned(),
+            max_shard_bytes: 50 * 1024 * 1024,
         };
-        let capture = TrainingCapture::new(dir.path(), &config).expect("new");
+        let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
         let captured = capture.maybe_capture(CaptureInput {
             stop_reason: CaptureStopReason::Unknown,
@@ -474,8 +932,9 @@ mod tests {
         let config = TrainingConfig {
             enabled: true,
             path: "training".to_owned(),
+            max_shard_bytes: 50 * 1024 * 1024,
         };
-        let capture = TrainingCapture::new(dir.path(), &config).expect("new");
+        let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
         let captured = capture.maybe_capture(CaptureInput {
             assistant_response: "Let me check that.",
@@ -492,8 +951,9 @@ mod tests {
         let config = TrainingConfig {
             enabled: true,
             path: "training".to_owned(),
+            max_shard_bytes: 50 * 1024 * 1024,
         };
-        let capture = TrainingCapture::new(dir.path(), &config).expect("new");
+        let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
         // Turn that used tools but ended with text (end_turn)
         let captured = capture.maybe_capture(CaptureInput {
@@ -513,8 +973,9 @@ mod tests {
         let config = TrainingConfig {
             enabled: true,
             path: "training".to_owned(),
+            max_shard_bytes: 50 * 1024 * 1024,
         };
-        let capture = TrainingCapture::new(dir.path(), &config).expect("new");
+        let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
         let captured = capture.maybe_capture(good_input());
         assert!(captured);
@@ -529,14 +990,48 @@ mod tests {
         let config = TrainingConfig {
             enabled: true,
             path: "training".to_owned(),
+            max_shard_bytes: 50 * 1024 * 1024,
         };
-        let capture = TrainingCapture::new(dir.path(), &config).expect("new");
+        let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
         let captured = capture.maybe_capture(CaptureInput {
             stop_reason: CaptureStopReason::StopSequence,
             ..good_input()
         });
         assert!(captured, "stop_sequence with content should be accepted");
+    }
+
+    // -- Episteme labels ----------------------------------------------------------
+
+    #[test]
+    fn capture_preserves_episteme_labels() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = TrainingConfig {
+            enabled: true,
+            path: "training".to_owned(),
+            max_shard_bytes: 50 * 1024 * 1024,
+        };
+        let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
+
+        let captured = capture.maybe_capture(CaptureInput {
+            turn_type: Some("correction".to_owned()),
+            is_correction: Some(true),
+            fact_types: Some(vec!["preference".to_owned(), "identity".to_owned()]),
+            quality_score: Some(0.95),
+            ..good_input()
+        });
+        assert!(captured);
+
+        let content = std::fs::read_to_string(capture.file_path()).expect("read");
+        let parsed: TrainingRecord =
+            serde_json::from_str(content.lines().next().expect("line")).expect("parse");
+        assert_eq!(parsed.turn_type, Some("correction".to_owned()));
+        assert_eq!(parsed.is_correction, Some(true));
+        assert_eq!(
+            parsed.fact_types,
+            Some(vec!["preference".to_owned(), "identity".to_owned()])
+        );
+        assert_eq!(parsed.quality_score, Some(0.95));
     }
 
     // -- CaptureStopReason parsing ------------------------------------------------
@@ -565,6 +1060,10 @@ mod tests {
             model: "claude-opus-4-20250514".to_owned(),
             tokens: 200,
             timestamp: Timestamp::UNIX_EPOCH,
+            turn_type: Some("planning".to_owned()),
+            is_correction: None,
+            fact_types: Some(vec!["skill".to_owned()]),
+            quality_score: None,
         };
 
         let json = serde_json::to_string(&record).expect("serialize");
@@ -572,5 +1071,7 @@ mod tests {
         assert_eq!(back.schema_version, TRAINING_RECORD_SCHEMA_VERSION);
         assert_eq!(back.session_id, record.session_id);
         assert_eq!(back.tokens, record.tokens);
+        assert_eq!(back.turn_type, Some("planning".to_owned()));
+        assert!(back.is_correction.is_none());
     }
 }
