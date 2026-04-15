@@ -18,6 +18,11 @@
 /// Tool summary generation for inclusion in the bootstrap system prompt.
 pub mod tools;
 
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::sync::RwLock;
+use std::time::{Duration, Instant, SystemTime};
+
 use snafu::IntoError as _;
 use tracing::{debug, info, warn};
 
@@ -28,6 +33,190 @@ use thesauros::manifest::Priority as PackPriority;
 
 use crate::budget::{CharEstimator, TokenBudget};
 use crate::error::{self, Result};
+
+/// Default TTL for bootstrap file cache entries when no operator override is set.
+///
+/// // WHY: 60s balances freshness (operator edits to SOUL.md/USER.md should
+/// // surface within about a minute) against the cost of re-reading every
+/// // workspace file on every turn. mtime-based invalidation catches edits
+/// // sooner when they happen.
+pub const DEFAULT_BOOTSTRAP_CACHE_TTL_SECS: u64 = 60;
+
+/// Cached content of a bootstrap workspace file.
+///
+/// Stores the trimmed content along with the mtime at read time and the
+/// pre-computed token estimate. The token estimate is keyed to a specific
+/// [`CharEstimator`] configuration (the assembler's `chars_per_token`), so
+/// the cache records that value and invalidates on mismatch.
+#[derive(Debug, Clone)]
+struct CachedFile {
+    /// Trimmed file content at read time.
+    content: String,
+    /// File mtime at read time: any on-disk change invalidates the entry.
+    mtime: SystemTime,
+    /// Pre-computed token estimate for `content`.
+    tokens: u64,
+    /// The `chars_per_token` value used to compute `tokens`: mismatch forces recompute.
+    chars_per_token: u64,
+    /// Wall-clock instant at insertion: drives TTL expiry.
+    read_at: Instant,
+}
+
+/// TTL + mtime cache for bootstrap workspace file reads.
+///
+/// Bootstrap assembles the system prompt on every turn by reading the same
+/// handful of workspace files (SOUL.md, USER.md, etc.) from disk. Before
+/// this cache, each turn paid the cost of re-reading and re-tokenising
+/// identical content (issue #3388). The cache keys on the resolved cascade
+/// path and validates against the on-disk mtime, so:
+///
+/// - A hit within `ttl` with unchanged mtime avoids both I/O and tokenisation.
+/// - An mtime change invalidates the entry immediately, without waiting for
+///   the TTL to elapse: operator edits take effect on the next turn.
+/// - TTL expiry forces a re-stat + re-read so silently swapped files
+///   (e.g. via filesystem snapshots) are eventually observed.
+///
+/// The cache is `Send + Sync` and is designed to be shared across actor
+/// pipeline turns via `Arc`.
+#[derive(Debug)]
+pub struct BootstrapFileCache {
+    entries: RwLock<HashMap<PathBuf, CachedFile>>,
+    ttl: Duration,
+}
+
+impl BootstrapFileCache {
+    /// Create a new cache with the given TTL.
+    #[must_use]
+    pub fn new(ttl: Duration) -> Self {
+        Self {
+            entries: RwLock::new(HashMap::new()),
+            ttl,
+        }
+    }
+
+    /// Create a cache with TTL from `ttl_secs`. A value of `0` disables caching.
+    #[must_use]
+    pub fn with_ttl_secs(ttl_secs: u64) -> Self {
+        Self::new(Duration::from_secs(ttl_secs))
+    }
+
+    /// Returns `true` when caching is disabled (TTL == 0).
+    #[must_use]
+    fn is_disabled(&self) -> bool {
+        self.ttl.is_zero()
+    }
+
+    /// Clear all cached entries. Intended for tests and explicit invalidation.
+    pub fn clear(&self) {
+        if let Ok(mut entries) = self.entries.write() {
+            entries.clear();
+        }
+    }
+
+    /// Number of entries currently held in the cache (for tests/metrics).
+    #[must_use]
+    pub fn len(&self) -> usize {
+        // WHY: poisoned lock treated as empty; metrics are never load-bearing.
+        self.entries.read().map_or(0, |e| e.len())
+    }
+
+    /// Returns `true` if the cache is empty.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Fast-path read: return a cached entry when it is fresh and matches mtime.
+    ///
+    /// Returns `Some((content, tokens))` on a hit, or `None` on miss (entry
+    /// absent, TTL expired, mtime changed, estimator mismatch, or stat failed).
+    /// Never performs disk I/O except the mtime stat.
+    fn get_fresh(&self, path: &Path, chars_per_token: u64) -> Option<(String, u64)> {
+        if self.is_disabled() {
+            return None;
+        }
+
+        let entries = self.entries.read().ok()?;
+        let entry = entries.get(path)?;
+
+        if entry.chars_per_token != chars_per_token {
+            debug!(
+                path = %path.display(),
+                cached = entry.chars_per_token,
+                wanted = chars_per_token,
+                "bootstrap cache miss: chars_per_token mismatch"
+            );
+            return None;
+        }
+
+        if entry.read_at.elapsed() > self.ttl {
+            debug!(
+                path = %path.display(),
+                ttl_secs = self.ttl.as_secs(),
+                "bootstrap cache miss: TTL expired"
+            );
+            return None;
+        }
+
+        // WHY: stat after TTL check so cheap cases short-circuit first.
+        let Ok(meta) = std::fs::metadata(path) else {
+            debug!(
+                path = %path.display(),
+                "bootstrap cache miss: stat failed"
+            );
+            return None;
+        };
+        let Ok(mtime) = meta.modified() else {
+            return None;
+        };
+        if mtime != entry.mtime {
+            debug!(
+                path = %path.display(),
+                "bootstrap cache miss: mtime changed"
+            );
+            return None;
+        }
+
+        debug!(
+            path = %path.display(),
+            tokens = entry.tokens,
+            "bootstrap cache hit"
+        );
+        Some((entry.content.clone(), entry.tokens))
+    }
+
+    /// Insert a freshly-read entry into the cache.
+    fn insert(
+        &self,
+        path: PathBuf,
+        content: String,
+        mtime: SystemTime,
+        tokens: u64,
+        chars_per_token: u64,
+    ) {
+        if self.is_disabled() {
+            return;
+        }
+        if let Ok(mut entries) = self.entries.write() {
+            entries.insert(
+                path,
+                CachedFile {
+                    content,
+                    mtime,
+                    tokens,
+                    chars_per_token,
+                    read_at: Instant::now(),
+                },
+            );
+        }
+    }
+}
+
+impl Default for BootstrapFileCache {
+    fn default() -> Self {
+        Self::with_ttl_secs(DEFAULT_BOOTSTRAP_CACHE_TTL_SECS)
+    }
+}
 
 /// Priority level for bootstrap sections.
 ///
@@ -217,16 +406,23 @@ const DEFAULT_OUTPUT_STYLE: &str = "\
 ///
 /// Resolves files through the three-tier cascade (`nous/{id}/` → `shared/` → `theke/`),
 /// reads contents, estimates tokens, and packs sections in priority order.
+///
+/// Workspace file reads are served from an optional [`BootstrapFileCache`]
+/// when one is attached via [`new_with_cache`](Self::new_with_cache). Without
+/// a cache, every call re-reads every file from disk (legacy behaviour).
 pub struct BootstrapAssembler<'a> {
     oikos: &'a Oikos,
     estimator: CharEstimator,
     /// Minimum tokens remaining before attempting truncation (below this, just drop).
     /// Default read from [`taxis::config::AgentBehaviorDefaults::bootstrap_min_truncation_budget`].
     min_truncation_budget: u64,
+    /// Shared file cache: `None` disables caching (legacy path, used by tests
+    /// that want guaranteed fresh reads).
+    cache: Option<&'a BootstrapFileCache>,
 }
 
 impl<'a> BootstrapAssembler<'a> {
-    /// Create an assembler with the default character-based estimator.
+    /// Create an assembler with the default character-based estimator and no cache.
     #[must_use]
     pub fn new(oikos: &'a Oikos) -> Self {
         let min_truncation_budget =
@@ -235,6 +431,7 @@ impl<'a> BootstrapAssembler<'a> {
             oikos,
             estimator: CharEstimator::default(),
             min_truncation_budget,
+            cache: None,
         }
     }
 
@@ -250,7 +447,19 @@ impl<'a> BootstrapAssembler<'a> {
             oikos,
             estimator: CharEstimator::new(chars_per_token),
             min_truncation_budget,
+            cache: None,
         }
+    }
+
+    /// Attach a shared [`BootstrapFileCache`] to this assembler.
+    ///
+    /// With a cache attached, workspace file reads within the TTL window skip
+    /// both the disk read and token estimation when the on-disk `mtime` is
+    /// unchanged. Without a cache, every call re-reads every file.
+    #[must_use]
+    pub fn with_cache(mut self, cache: &'a BootstrapFileCache) -> Self {
+        self.cache = Some(cache);
+        self
     }
 
     /// Assemble the bootstrap system prompt for the given nous.
@@ -440,6 +649,10 @@ impl<'a> BootstrapAssembler<'a> {
     ///
     /// O(f) where f is the number of workspace files. Each file requires
     /// a cascade resolution and potentially a disk read.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "cache-aware read path keeps cold/warm/insert flows colocated — splitting obscures the caching logic"
+    )]
     async fn resolve_workspace_files(
         &self,
         nous_id: &str,
@@ -467,14 +680,59 @@ impl<'a> BootstrapAssembler<'a> {
                 continue;
             };
 
+            // WHY: try the cache first to avoid re-reading and re-tokenising
+            // workspace files that change rarely relative to turn frequency (#3388).
+            if let Some(cache) = self.cache
+                && let Some((content, tokens)) =
+                    cache.get_fresh(&p, self.estimator.chars_per_token())
+            {
+                if content.is_empty() {
+                    debug!(file = spec.filename, "skipping empty file (cached)");
+                    continue;
+                }
+                sections.push(BootstrapSection {
+                    name: spec.filename.to_owned(),
+                    priority: spec.priority,
+                    content,
+                    tokens,
+                    truncatable: spec.truncatable,
+                });
+                continue;
+            }
+
             match tokio::fs::read_to_string(&p).await {
-                Ok(content) => {
-                    let content = content.trim().to_owned();
+                Ok(raw) => {
+                    let content = raw.trim().to_owned();
                     if content.is_empty() {
                         debug!(file = spec.filename, "skipping empty file");
+                        // WHY: still cache the empty read so repeated skips don't re-hit disk.
+                        if let Some(cache) = self.cache
+                            && let Ok(meta) = tokio::fs::metadata(&p).await
+                            && let Ok(mtime) = meta.modified()
+                        {
+                            cache.insert(
+                                p.clone(),
+                                String::new(),
+                                mtime,
+                                0,
+                                self.estimator.chars_per_token(),
+                            );
+                        }
                         continue;
                     }
                     let tokens = self.estimator.estimate(&content);
+                    if let Some(cache) = self.cache
+                        && let Ok(meta) = tokio::fs::metadata(&p).await
+                        && let Ok(mtime) = meta.modified()
+                    {
+                        cache.insert(
+                            p.clone(),
+                            content.clone(),
+                            mtime,
+                            tokens,
+                            self.estimator.chars_per_token(),
+                        );
+                    }
                     sections.push(BootstrapSection {
                         name: spec.filename.to_owned(),
                         priority: spec.priority,

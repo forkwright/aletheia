@@ -17,6 +17,15 @@ impl CharEstimator {
         Self { chars_per_token }
     }
 
+    /// The configured characters-per-token divisor.
+    ///
+    /// Exposed so cache keys (e.g. the bootstrap file cache) can detect when
+    /// a cached token estimate was computed against a different estimator.
+    #[must_use]
+    pub fn chars_per_token(&self) -> u64 {
+        self.chars_per_token
+    }
+
     /// Estimate the number of tokens in the given text.
     #[must_use]
     pub fn estimate(&self, text: &str) -> u64 {

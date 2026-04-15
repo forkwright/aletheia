@@ -10,6 +10,7 @@ use tempfile::TempDir;
 use super::*;
 use crate::budget::TokenBudget;
 
+mod cache;
 mod conditional;
 
 pub(super) fn setup_oikos(nous_id: &str, files: &[(&str, &str)]) -> (TempDir, Oikos) {

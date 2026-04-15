@@ -6,6 +6,7 @@ mod dispatch;
 mod tests;
 
 use std::collections::HashSet;
+use std::sync::Arc;
 
 use snafu::ResultExt;
 use tokio::sync::mpsc;
@@ -60,13 +61,25 @@ fn resolve_provider_checked<'a>(
 
 /// Read the current active-tools set and derive server-tool definitions.
 ///
-/// Returns `(active_set, server_tools)` so callers can also filter local tool
-/// definitions against the same snapshot of `active`.
+/// Returns `(active_set, server_tools)` so callers can filter local tool
+/// definitions against the same snapshot of `active` while reusing the
+/// server-tool `Arc` when nothing changed (#3389).
+///
+/// The `config_server_tools` argument is an `Arc` of the config's static
+/// server-tool list, hoisted out of the per-iteration loop by the caller so
+/// the backward-compatibility clone pays once per turn instead of once per
+/// LLM iteration. When the session has no dynamically-activated server tools
+/// and the call site has no [`ToolServices`], the same `Arc` is returned
+/// without allocation.
 fn resolve_active_server_tools(
     tool_ctx: &ToolContext,
-    config: &NousConfig,
-) -> (HashSet<ToolName>, Vec<ServerToolDefinition>) {
-    let active = tool_ctx
+    config_server_tools: &Arc<Vec<ServerToolDefinition>>,
+) -> (Arc<HashSet<ToolName>>, Arc<Vec<ServerToolDefinition>>) {
+    // WHY: the std::sync::RwLock is held only long enough to clone the inner
+    // HashSet into an Arc. Downstream iteration reads the Arc without the lock,
+    // which means enable_tool can take the write lock without blocking on
+    // long-running tool iterations.
+    let active_snapshot = tool_ctx
         .active_tools
         .read()
         .unwrap_or_else(|poisoned| {
@@ -74,17 +87,29 @@ fn resolve_active_server_tools(
             poisoned.into_inner()
         })
         .clone();
+    let active = Arc::new(active_snapshot);
 
-    let server_tools = if let Some(services) = tool_ctx.services.as_deref() {
-        let mut st = services.server_tool_config.active_definitions(&active);
-        // WHY: also include raw server_tools from NousConfig for backward compatibility
-        st.extend(config.server_tools.clone());
-        st
-    } else {
-        config.server_tools.clone()
+    // WHY: fast path — no ToolServices means server tools come solely from
+    // static config, which we already hold as an Arc. Skip the Vec allocation
+    // and return the shared handle unchanged.
+    let Some(services) = tool_ctx.services.as_deref() else {
+        return (active, Arc::clone(config_server_tools));
     };
 
-    (active, server_tools)
+    let dynamic = services.server_tool_config.active_definitions(&active);
+
+    // WHY: fast path — no dynamically-activated server tools (the common case
+    // when no enable_tool call has fired) reuses the config Arc as-is.
+    if dynamic.is_empty() {
+        return (active, Arc::clone(config_server_tools));
+    }
+
+    // WHY: combine dynamic and static definitions in a fresh Vec exactly when
+    // the dynamic list is non-empty. Wrapping in Arc keeps the return type
+    // uniform so callers don't branch on cardinality.
+    let mut combined = dynamic;
+    combined.extend_from_slice(config_server_tools.as_slice());
+    (active, Arc::new(combined))
 }
 
 /// Extracted text, tool uses, and server-tool flags from a single LLM response.
@@ -191,6 +216,12 @@ pub async fn execute(
             budget_tokens: config.generation.thinking_budget,
         });
 
+    // WHY: hoist the config server_tools Vec into an Arc once per turn so the
+    // per-iteration backward-compat clone becomes a pointer bump (#3389).
+    // Cloning the Arc once at the boundary keeps downstream helpers pure of
+    // lifetime concerns.
+    let config_server_tools: Arc<Vec<ServerToolDefinition>> = Arc::new(config.server_tools.clone());
+
     loop {
         iterations += 1;
 
@@ -199,20 +230,24 @@ pub async fn execute(
             break;
         }
 
-        let (active, server_tools) = resolve_active_server_tools(tool_ctx, config);
+        let (active, server_tools) = resolve_active_server_tools(tool_ctx, &config_server_tools);
         let mut tool_defs = tools.to_hermeneus_tools_filtered(&active);
 
         if let Some(allowlist) = &config.tool_allowlist {
             tool_defs.retain(|td| allowlist.iter().any(|a| a == &td.name));
         }
 
+        // WHY: CompletionRequest owns a Vec; this clone is the only unavoidable
+        // copy (one per iteration). When nothing has changed, the Arc we hold
+        // has refcount > 1 and the underlying Vec is shared across turns, so
+        // only this leaf clone pays. Still cheaper than rebuilding every turn.
         let request = CompletionRequest {
             model: config.generation.model.clone(),
             system: ctx.system_prompt.clone(),
             messages: messages.clone(),
             max_tokens: config.generation.max_output_tokens,
             tools: tool_defs,
-            server_tools,
+            server_tools: (*server_tools).clone(),
             temperature: None,
             thinking: thinking.clone(),
             stop_sequences: vec![],
@@ -468,6 +503,9 @@ pub async fn execute_streaming(
         tool_defs.retain(|td| allowlist.iter().any(|a| a == &td.name));
     }
 
+    // WHY: hoist config server_tools Vec into Arc once per turn (#3389).
+    let config_server_tools: Arc<Vec<ServerToolDefinition>> = Arc::new(config.server_tools.clone());
+
     loop {
         iterations += 1;
 
@@ -483,8 +521,9 @@ pub async fn execute_streaming(
             break;
         }
 
-        // WHY: derive server tools on each iteration so enable_tool activations take effect
-        let (_active, server_tools) = resolve_active_server_tools(tool_ctx, config);
+        // WHY: derive server tools on each iteration so enable_tool activations take effect.
+        // resolve_active_server_tools reuses the hoisted Arc when no dynamic changes occurred.
+        let (_active, server_tools) = resolve_active_server_tools(tool_ctx, &config_server_tools);
 
         let request = CompletionRequest {
             model: config.generation.model.clone(),
@@ -492,7 +531,7 @@ pub async fn execute_streaming(
             messages: messages.clone(),
             max_tokens: config.generation.max_output_tokens,
             tools: tool_defs.clone(),
-            server_tools,
+            server_tools: (*server_tools).clone(),
             temperature: None,
             thinking: thinking.clone(),
             stop_sequences: vec![],
