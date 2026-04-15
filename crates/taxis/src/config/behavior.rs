@@ -161,6 +161,15 @@ pub struct NousBehaviorConfig {
     /// Events accumulated before self-audit runs. Default: 50.
     /// Mirrors `nous::self_audit::DEFAULT_EVENT_THRESHOLD`.
     pub self_audit_event_threshold: u32,
+    /// TTL in seconds for the bootstrap workspace file cache. Default: 60.
+    ///
+    /// // WHY: bootstrap files (SOUL.md, USER.md, etc.) change rarely relative
+    /// // to turn frequency. Caching their content and token estimates for up
+    /// // to this many seconds avoids redundant disk reads per turn (#3388).
+    /// // mtime-based invalidation catches operator edits immediately, so the
+    /// // TTL is a backstop rather than the primary freshness mechanism.
+    /// // Set to 0 to disable the cache.
+    pub bootstrap_cache_ttl_secs: u64,
 }
 
 impl Default for NousBehaviorConfig {
@@ -184,6 +193,7 @@ impl Default for NousBehaviorConfig {
             loop_detection_window: 50,
             cycle_detection_max_len: 10,
             self_audit_event_threshold: 50,
+            bootstrap_cache_ttl_secs: 60,
         }
     }
 }

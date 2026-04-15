@@ -20,7 +20,7 @@ use organon::registry::ToolRegistry;
 use organon::types::ToolServices;
 use taxis::oikos::Oikos;
 
-use crate::bootstrap::BootstrapSection;
+use crate::bootstrap::{BootstrapFileCache, BootstrapSection};
 use crate::config::{NousConfig, PipelineConfig};
 use crate::cross::CrossNousEnvelope;
 use crate::drift::DriftDetector;
@@ -63,6 +63,11 @@ pub(crate) struct ActorServices {
     candidate_tracker: Arc<mneme::skills::CandidateTracker>,
     /// Deployment-tunable tool limits from taxis config.
     pub(crate) tool_config: Arc<taxis::config::ToolLimitsConfig>,
+    /// Shared TTL + mtime cache for bootstrap workspace file reads (#3388).
+    ///
+    /// // WHY: lives on the actor so entries survive across turns. A single
+    /// // actor services one `nous_id`, so cache lifetime tracks actor lifetime.
+    pub(crate) bootstrap_cache: Arc<BootstrapFileCache>,
 }
 
 /// Data stores for sessions, knowledge, and search.
@@ -201,6 +206,11 @@ impl NousActor {
                 embedding_provider,
                 candidate_tracker: Arc::new(mneme::skills::CandidateTracker::new()),
                 tool_config: Arc::new(taxis::config::ToolLimitsConfig::default()),
+                // WHY: default TTL (60s) until wired to operator config; TTL-zero
+                // would disable the cache, so default ensures the happy path benefits.
+                bootstrap_cache: Arc::new(BootstrapFileCache::with_ttl_secs(
+                    nous_behavior.bootstrap_cache_ttl_secs,
+                )),
             },
             stores: ActorStores {
                 session_store,
