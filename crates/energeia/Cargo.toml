@@ -17,7 +17,6 @@ storage-fjall = ["dep:fjall"]
 
 [dependencies]
 koina = { path = "../koina" }
-async-trait = "0.1"
 eidos = { path = "../eidos" }
 prometheus = { workspace = true }
 regex = { workspace = true }
