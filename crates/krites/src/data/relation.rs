@@ -1,4 +1,14 @@
 //! Relation metadata and schema definitions.
+#![expect(unsafe_code, reason = "relation accessors use ptr::read for zero-copy column type deserialization")]
+#![expect(clippy::as_conversions, reason = "relation metadata requires numeric casts for column indices")]
+#![expect(clippy::cast_ptr_alignment, reason = "relation byte buffers are allocator-aligned; deserialization requires reinterpret casts")]
+#![expect(clippy::ptr_as_ptr, reason = "relation byte deserialization requires pointer type casts")]
+#![expect(clippy::unsafe_derive_deserialize, reason = "NullableColType derives Deserialize with unsafe accessors — audited")]
+#![expect(clippy::too_many_lines, reason = "ensure_compatible handles all DataValue variant combinations")]
+#![expect(clippy::uninlined_format_args, reason = "format args style is consistent within relation coercion code")]
+#![expect(clippy::semicolon_if_nothing_returned, reason = "Display write calls — semicolon not needed")]
+#![expect(clippy::match_same_arms, reason = "coerce variant arms are intentionally explicit for type safety")]
+#![expect(clippy::redundant_else, reason = "else after return keeps error path visually grouped with the check")]
 use std::cmp::Reverse;
 use std::fmt::{Display, Formatter};
 use std::mem;

@@ -1,4 +1,7 @@
 //! Transcendental and utility math operators.
+#![expect(clippy::as_conversions, reason = "transcendental functions require i64-to-f64 casts — precision loss is acceptable")]
+#![expect(clippy::redundant_closure_for_method_calls, reason = "vector mapv closures (|x| x.sqrt()) are clearer than method references for ndarray")]
+#![expect(clippy::unnecessary_wraps, reason = "op_coalesce returns Result for API consistency with other builtins")]
 use std::ops::Rem;
 
 use super::arg;

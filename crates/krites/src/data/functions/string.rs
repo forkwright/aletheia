@@ -1,4 +1,5 @@
 //! String manipulation, regex, unicode, and encoding functions.
+#![expect(clippy::as_conversions, reason = "string function casts (CompactString as &str) are safe coercions")]
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use compact_str::CompactString;

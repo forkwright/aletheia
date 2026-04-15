@@ -53,6 +53,7 @@ impl NormalAggrObj for AggrVariance {
 
     fn get(&self) -> Result<DataValue> {
         #[expect(
+            clippy::as_conversions,
             clippy::cast_precision_loss,
             reason = "i64 to f64: precision loss acceptable"
         )]
@@ -92,6 +93,7 @@ impl NormalAggrObj for AggrStdDev {
 
     fn get(&self) -> Result<DataValue> {
         #[expect(
+            clippy::as_conversions,
             clippy::cast_precision_loss,
             reason = "i64 to f64: precision loss acceptable"
         )]
@@ -127,6 +129,7 @@ impl NormalAggrObj for AggrMean {
 
     fn get(&self) -> Result<DataValue> {
         #[expect(
+            clippy::as_conversions,
             clippy::cast_precision_loss,
             reason = "i64 count to f64: precision loss above 2^53 samples is acceptable"
         )]
@@ -379,6 +382,7 @@ impl Default for AggrLatestBy {
 }
 
 impl NormalAggrObj for AggrLatestBy {
+    #[expect(clippy::indexing_slicing, reason = "l.len() == 2 validated by ensure! above")]
     fn set(&mut self, value: &DataValue) -> Result<()> {
         match value {
             DataValue::List(l) => {
@@ -388,7 +392,6 @@ impl NormalAggrObj for AggrLatestBy {
                         message: "'latest_by' requires a list of exactly two items as argument"
                     }
                 );
-                #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
                 let c = &l[1];
                 if *c > self.cost {
                     self.cost = c.clone();
@@ -424,6 +427,7 @@ impl Default for AggrSmallestBy {
 }
 
 impl NormalAggrObj for AggrSmallestBy {
+    #[expect(clippy::indexing_slicing, reason = "l.len() == 2 validated by ensure! above")]
     fn set(&mut self, value: &DataValue) -> Result<()> {
         match value {
             DataValue::List(l) => {
@@ -433,7 +437,6 @@ impl NormalAggrObj for AggrSmallestBy {
                         message: "'smallest_by' requires a list of exactly two items as argument"
                     }
                 );
-                #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
                 let c = &l[1];
                 if self.cost == DataValue::Null || *c < self.cost {
                     self.cost = c.clone();
@@ -469,6 +472,7 @@ impl Default for AggrMinCost {
 }
 
 impl NormalAggrObj for AggrMinCost {
+    #[expect(clippy::indexing_slicing, reason = "l.len() == 2 validated by ensure! above")]
     fn set(&mut self, value: &DataValue) -> Result<()> {
         match value {
             DataValue::List(l) => {
@@ -478,7 +482,6 @@ impl NormalAggrObj for AggrMinCost {
                         message: "'min_cost' requires a list of exactly two items as argument"
                     }
                 );
-                #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
                 let c = &l[1];
                 let cost = c.get_float().ok_or_else(|| {
                     TypeMismatchSnafu {
@@ -549,7 +552,7 @@ impl MeetAggrObj for MeetAggrMinCost {
                 if prev_cost <= cur_cost {
                     false
                 } else {
-                    *prev = l.clone();
+                    prev.clone_from(l);
                     true
                 }
             }
