@@ -9,12 +9,8 @@
     clippy::similar_names,
     reason = "seq_a1/seq_b1/seq_a2/seq_b2 mirror paired-session assertions"
 )]
-use super::super::SessionStore;
+use crate::test_fixtures::test_store;
 use crate::types::{Role, SessionStatus, SessionType, UsageRecord};
-
-fn test_store() -> SessionStore {
-    SessionStore::open_in_memory().expect("open in-memory store")
-}
 
 #[test]
 fn create_and_find_session() {

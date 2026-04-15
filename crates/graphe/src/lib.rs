@@ -45,6 +45,10 @@ pub mod store;
 /// Core types for sessions, messages, usage records, and agent notes.
 pub mod types;
 
+/// Shared test fixtures for session store tests (DRY helpers).
+#[cfg(all(test, any(feature = "sqlite", feature = "fjall")))]
+pub(crate) mod test_fixtures;
+
 #[cfg(all(test, feature = "sqlite"))]
 mod assertions {
     use super::store::SessionStore;

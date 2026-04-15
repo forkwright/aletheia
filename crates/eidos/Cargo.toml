@@ -13,6 +13,9 @@ workspace = true
 [features]
 test-core = []
 test-full = []
+# WHY: exposes test_fixtures module with Fact/Entity/Relationship builders
+# for downstream crates. Not compiled in production builds.
+test-support = []
 
 [dependencies]
 jiff = { workspace = true, features = ["serde"] }

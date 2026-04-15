@@ -5,54 +5,8 @@
     reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
 )]
 
-use std::sync::Arc;
-
-use super::super::*;
-use crate::knowledge::{
-    EmbeddedChunk, EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactTemporal,
-};
-
-const DIM: usize = 4;
-
-fn make_store() -> Arc<KnowledgeStore> {
-    KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim: DIM, ..Default::default() }).expect("open_mem")
-}
-
-fn test_ts(s: &str) -> jiff::Timestamp {
-    crate::knowledge::parse_timestamp(s).expect("valid test timestamp in test helper")
-}
-
-fn make_fact(id: &str, nous_id: &str, content: &str) -> Fact {
-    Fact {
-        id: crate::id::FactId::new(id).expect("valid test id"),
-        nous_id: nous_id.to_owned(),
-        content: content.to_owned(),
-        fact_type: String::new(),
-        temporal: FactTemporal {
-            valid_from: test_ts("2026-01-01"),
-            valid_to: crate::knowledge::far_future(),
-            recorded_at: test_ts("2026-03-01T00:00:00Z"),
-        },
-        provenance: FactProvenance {
-            confidence: 0.9,
-            tier: EpistemicTier::Inferred,
-            source_session_id: None,
-            stability_hours: 720.0,
-        },
-        lifecycle: FactLifecycle {
-            superseded_by: None,
-            is_forgotten: false,
-            forgotten_at: None,
-            forget_reason: None,
-        },
-        access: FactAccess {
-            access_count: 0,
-            last_accessed_at: None,
-        },
-        scope: None,
-    }
-}
-
+use crate::knowledge::EmbeddedChunk;
+use crate::test_fixtures::{make_fact, make_store, test_ts};
 fn make_embedding(id: &str, content: &str, source_id: &str, nous_id: &str) -> EmbeddedChunk {
     EmbeddedChunk {
         id: crate::id::EmbeddingId::new(id).expect("valid test id"),
@@ -160,52 +114,12 @@ async fn search_vectors_async_works() {
 }
 
 mod correctness {
-    use super::super::super::*;
-    use crate::knowledge::{
-        EmbeddedChunk, EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance,
-        FactTemporal, ForgetReason,
-    };
+    use crate::knowledge::{EmbeddedChunk, ForgetReason};
+    use crate::test_fixtures::{make_store, test_ts};
 
-    const DIM: usize = 4;
-
-    fn make_store() -> std::sync::Arc<KnowledgeStore> {
-        KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim: DIM, ..Default::default() })
-            .expect("open in-memory store")
-    }
-
-    fn ts(s: &str) -> jiff::Timestamp {
-        crate::knowledge::parse_timestamp(s).expect("valid test timestamp")
-    }
-
-    fn fact(id: &str, content: &str) -> Fact {
-        Fact {
-            id: crate::id::FactId::new(id).expect("valid test id"),
-            nous_id: "test-nous".to_owned(),
-            content: content.to_owned(),
-            fact_type: String::new(),
-            temporal: FactTemporal {
-                valid_from: ts("2026-01-01"),
-                valid_to: crate::knowledge::far_future(),
-                recorded_at: ts("2026-03-01T00:00:00Z"),
-            },
-            provenance: FactProvenance {
-                confidence: 0.9,
-                tier: EpistemicTier::Inferred,
-                source_session_id: None,
-                stability_hours: 720.0,
-            },
-            lifecycle: FactLifecycle {
-                superseded_by: None,
-                is_forgotten: false,
-                forgotten_at: None,
-                forget_reason: None,
-            },
-            access: FactAccess {
-                access_count: 0,
-                last_accessed_at: None,
-            },
-            scope: None,
-        }
+    /// Shorthand: build a fact with a fixed nous_id for correctness tests.
+    fn fact(id: &str, content: &str) -> crate::knowledge::Fact {
+        crate::test_fixtures::make_fact(id, "test-nous", content)
     }
 
     fn embedding(id: &str, source_id: &str, vec: Vec<f32>) -> EmbeddedChunk {
@@ -216,7 +130,7 @@ mod correctness {
             source_id: source_id.to_owned(),
             nous_id: "test-nous".to_owned(),
             embedding: vec,
-            created_at: ts("2026-03-01T00:00:00Z"),
+            created_at: test_ts("2026-03-01T00:00:00Z"),
         }
     }
 
@@ -279,7 +193,7 @@ mod correctness {
             nous_id: "test-nous".to_owned(),
             // WHY: Wrong: 6 values instead of DIM=4
             embedding: vec![0.1, 0.2, 0.3, 0.4, 0.5, 0.6],
-            created_at: ts("2026-03-01T00:00:00Z"),
+            created_at: test_ts("2026-03-01T00:00:00Z"),
         };
 
         let err = store
@@ -311,7 +225,7 @@ mod correctness {
             source_id: "dim-ok".to_owned(),
             nous_id: "test-nous".to_owned(),
             embedding: vec![0.5, 0.5, 0.5, 0.5],
-            created_at: ts("2026-03-01T00:00:00Z"),
+            created_at: test_ts("2026-03-01T00:00:00Z"),
         };
         store
             .insert_embedding(&correct)

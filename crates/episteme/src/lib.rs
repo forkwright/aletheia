@@ -79,6 +79,10 @@ pub mod rule_proposals;
 /// Bayesian surprise for episode boundary detection (EM-LLM, arXiv 2407.09450).
 pub mod surprise;
 
+/// Shared test fixtures for knowledge store tests (DRY helpers).
+#[cfg(all(test, feature = "mneme-engine"))]
+pub(crate) mod test_fixtures;
+
 #[cfg(test)]
 mod phase_f_integration_tests;
 #[cfg(test)]
