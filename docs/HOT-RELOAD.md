@@ -83,7 +83,6 @@ This document classifies all `AletheiaConfig` fields as either **Hot** (safe to 
 | `agents.defaults.recall.iterative` | Hot | Iterative mode toggle read per-request |
 | `agents.defaults.recall.maxCycles` | Hot | Max cycles read per-request |
 | `agents.defaults.recall.weights.*` | Hot | Recall weights read per-request |
-| `agents.defaults.recall.engineWeights.*` | Hot | Engine weights read per-request |
 | `agents.defaults.historyBudgetRatio` | Hot | Budget ratio read per-request |
 | `agents.list` | Hot | Agent definitions resolved per-request |
 | `agents.list[].id` | Hot | Agent ID used for resolution |
