@@ -88,7 +88,7 @@ optimisation. The link time is dominated by the candle and mneme objects.
 ```toml
 [profile.dev]
 opt-level = 1
-codegen-units = 256        # fast incremental builds
+codegen-units = 16         # enough parallelism without excessive linker pressure
 
 [profile.dev.package."*"]
 opt-level = 2              # optimise deps, keep local code fast
