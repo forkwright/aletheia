@@ -1,5 +1,8 @@
 //! String manipulation, regex, unicode, and encoding functions.
-#![expect(clippy::as_conversions, reason = "string function casts (CompactString as &str) are safe coercions")]
+#![expect(
+    clippy::as_conversions,
+    reason = "string function casts (CompactString as &str) are safe coercions"
+)]
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use compact_str::CompactString;
@@ -302,9 +305,7 @@ pub(crate) fn op_slice_string(args: &[DataValue]) -> Result<DataValue> {
     // unless they exceed usize::MAX, which on 64-bit is the same as i64::MAX.
     let m_us = usize::try_from(m).unwrap_or(usize::MAX);
     let span = usize::try_from(n - m).unwrap_or(usize::MAX);
-    Ok(DataValue::Str(
-        s.chars().skip(m_us).take(span).collect(),
-    ))
+    Ok(DataValue::Str(s.chars().skip(m_us).take(span).collect()))
 }
 
 pub(crate) fn op_from_substrings(args: &[DataValue]) -> Result<DataValue> {

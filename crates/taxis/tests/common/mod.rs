@@ -4,7 +4,10 @@
 //! its own test binary; it is only reachable via `mod common;` from the
 //! real top-level test files in `tests/`.
 
-#![expect(clippy::expect_used, reason = "test fixtures use expect on setup failures")]
+#![expect(
+    clippy::expect_used,
+    reason = "test fixtures use expect on setup failures"
+)]
 #![expect(
     clippy::disallowed_methods,
     reason = "fixtures need std::fs::write to seed real file content"

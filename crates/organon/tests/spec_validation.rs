@@ -9,12 +9,12 @@
 
 #![expect(clippy::expect_used, reason = "test assertions may panic on failure")]
 
+use indexmap::IndexMap;
 use koina::id::ToolName;
 use organon::testing::{MockToolExecutor, ToolExecutorSpec, make_test_context};
 use organon::types::{
     InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolDef,
 };
-use indexmap::IndexMap;
 
 fn echo_def() -> ToolDef {
     ToolDef {

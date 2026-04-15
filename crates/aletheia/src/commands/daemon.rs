@@ -32,8 +32,8 @@ pub(crate) async fn do_daemon() -> Result<()> {
     if let Some(parent) = crash_log_path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
-    let stderr_file = std::fs::File::create(&crash_log_path)
-        .context("failed to create daemon stderr log")?;
+    let stderr_file =
+        std::fs::File::create(&crash_log_path).context("failed to create daemon stderr log")?;
 
     let child = std::process::Command::new(&exe)
         .args(&child_args)

@@ -9,6 +9,12 @@
 
 /// Anthropic Messages API client with streaming, retries, and cost estimation.
 pub mod anthropic;
+/// Claude Code subprocess provider: delegates LLM calls to the `claude` CLI.
+///
+/// Bypasses attestation-based API blocking by routing through CC's own
+/// authentication. Gated behind the `cc-provider` feature flag.
+#[cfg(feature = "cc-provider")]
+pub mod cc;
 /// Circuit breaker (Closed / Open / HalfOpen) with exponential backoff for LLM provider health.
 pub mod circuit_breaker;
 /// Complexity-based model routing: scores queries and routes to Haiku/Sonnet/Opus.
@@ -21,12 +27,6 @@ pub mod error;
 pub mod fallback;
 /// Provider health state machine (Up / Degraded / Down) with automatic recovery.
 pub mod health;
-/// Claude Code subprocess provider: delegates LLM calls to the `claude` CLI.
-///
-/// Bypasses attestation-based API blocking by routing through CC's own
-/// authentication. Gated behind the `cc-provider` feature flag.
-#[cfg(feature = "cc-provider")]
-pub mod cc;
 /// Prometheus metrics for LLM request counts, latency, and token usage.
 pub mod metrics;
 /// Model constants and API configuration defaults.

@@ -7,10 +7,7 @@
 //! - TopSort: ordering respects all edges
 #![cfg(test)]
 #![expect(clippy::expect_used, reason = "test assertions")]
-#![expect(
-    clippy::indexing_slicing,
-    reason = "test data with known structure"
-)]
+#![expect(clippy::indexing_slicing, reason = "test data with known structure")]
 #![expect(
     clippy::cast_precision_loss,
     reason = "small graph sizes -- precision loss irrelevant"

@@ -1,7 +1,16 @@
 //! Basic arithmetic operators.
-#![expect(clippy::as_conversions, reason = "mixed-type arithmetic requires i64-to-f64 casts — precision loss is acceptable")]
-#![expect(clippy::redundant_closure_for_method_calls, reason = "closure form is consistent with surrounding numeric dispatch")]
-#![expect(clippy::float_cmp, reason = "exact zero check in division-by-zero guard — not accumulated floating-point")]
+#![expect(
+    clippy::as_conversions,
+    reason = "mixed-type arithmetic requires i64-to-f64 casts — precision loss is acceptable"
+)]
+#![expect(
+    clippy::redundant_closure_for_method_calls,
+    reason = "closure form is consistent with surrounding numeric dispatch"
+)]
+#![expect(
+    clippy::float_cmp,
+    reason = "exact zero check in division-by-zero guard — not accumulated floating-point"
+)]
 
 use super::{arg, mul_vecs};
 use crate::data::error::*;

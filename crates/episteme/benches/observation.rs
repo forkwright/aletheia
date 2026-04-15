@@ -10,11 +10,10 @@ use std::hint::black_box;
 
 use criterion::{Criterion, criterion_group, criterion_main};
 
-use episteme::extract::observation::{
-    ObservationType, extract_tags, parse_observations,
-};
+use episteme::extract::observation::{ObservationType, extract_tags, parse_observations};
 
-const SHORT_BODY: &str = "## Observations\n- bug: foo crashed when bar #tag\n- idea: try baz instead";
+const SHORT_BODY: &str =
+    "## Observations\n- bug: foo crashed when bar #tag\n- idea: try baz instead";
 
 const LONG_BODY: &str = "
 ## Summary

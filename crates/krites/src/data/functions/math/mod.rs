@@ -1,8 +1,20 @@
 //! Comparison, arithmetic, and basic math functions.
-#![expect(clippy::as_conversions, reason = "numeric comparison and clamping require i64/f64 casts — engine-internal")]
-#![expect(clippy::cast_precision_loss, reason = "i64-to-f64 casts for numeric operations — precision loss is acceptable")]
-#![expect(clippy::float_cmp, reason = "exact equality for integer-representable float check — not accumulated arithmetic")]
-#![expect(clippy::enum_glob_use, reason = "DataValue::* glob import is scoped to function body for pattern matching")]
+#![expect(
+    clippy::as_conversions,
+    reason = "numeric comparison and clamping require i64/f64 casts — engine-internal"
+)]
+#![expect(
+    clippy::cast_precision_loss,
+    reason = "i64-to-f64 casts for numeric operations — precision loss is acceptable"
+)]
+#![expect(
+    clippy::float_cmp,
+    reason = "exact equality for integer-representable float check — not accumulated arithmetic"
+)]
+#![expect(
+    clippy::enum_glob_use,
+    reason = "DataValue::* glob import is scoped to function body for pattern matching"
+)]
 
 use super::arg;
 use crate::data::error::*;

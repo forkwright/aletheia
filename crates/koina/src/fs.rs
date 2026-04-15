@@ -24,10 +24,7 @@ pub fn validate_within_root(path: &Path, root: &Path) -> std::io::Result<PathBuf
         if let std::path::Component::ParentDir = component {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
-                format!(
-                    "path contains '..' component: {}",
-                    path.display()
-                ),
+                format!("path contains '..' component: {}", path.display()),
             ));
         }
     }
@@ -137,7 +134,13 @@ mod tests {
     #[test]
     fn validate_within_root_rejects_dotdot_traversal() {
         let dir = tempfile::tempdir().unwrap();
-        let escape = dir.path().join("data").join("..").join("..").join("etc").join("passwd");
+        let escape = dir
+            .path()
+            .join("data")
+            .join("..")
+            .join("..")
+            .join("etc")
+            .join("passwd");
 
         let result = validate_within_root(&escape, dir.path());
         assert!(result.is_err(), "path with '..' should be rejected");
@@ -171,10 +174,7 @@ mod tests {
         std::os::unix::fs::symlink(&outside_file, &link).unwrap();
 
         let result = validate_within_root(&link, root.path());
-        assert!(
-            result.is_err(),
-            "symlink escaping root should be rejected"
-        );
+        assert!(result.is_err(), "symlink escaping root should be rejected");
     }
 
     #[test]

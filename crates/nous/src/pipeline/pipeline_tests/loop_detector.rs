@@ -348,8 +348,7 @@ fn loop_detector_call_count_tracks() {
 
 #[test]
 fn loop_detector_window_cap_evicts_old_calls() {
-    let default_window =
-        taxis::config::NousBehaviorConfig::default().loop_detection_window;
+    let default_window = taxis::config::NousBehaviorConfig::default().loop_detection_window;
     let mut det = LoopDetector::new(100);
     for i in 0..default_window + 5 {
         det.record("tool", &format!("hash{i}"), false);

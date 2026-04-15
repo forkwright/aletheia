@@ -86,14 +86,20 @@ impl Joiner {
         let mut ret_r = Vec::with_capacity(self.left_keys.len());
         for (l, r) in self.left_keys.iter().zip(self.right_keys.iter()) {
             let l_pos = left_binding_map.get(l).ok_or_else(|| {
-                crate::error::InternalError::from(CompilationFailedSnafu {
-                    message: format!("left join key '{l}' not found in bindings"),
-                }.build())
+                crate::error::InternalError::from(
+                    CompilationFailedSnafu {
+                        message: format!("left join key '{l}' not found in bindings"),
+                    }
+                    .build(),
+                )
             })?;
             let r_pos = right_binding_map.get(r).ok_or_else(|| {
-                crate::error::InternalError::from(CompilationFailedSnafu {
-                    message: format!("right join key '{r}' not found in bindings"),
-                }.build())
+                crate::error::InternalError::from(
+                    CompilationFailedSnafu {
+                        message: format!("right join key '{r}' not found in bindings"),
+                    }
+                    .build(),
+                )
             })?;
             ret_l.push(*l_pos);
             ret_r.push(*r_pos)
@@ -131,24 +137,20 @@ impl NegJoin {
     pub(crate) fn join_type(&self) -> &str {
         match &self.right {
             RelAlgebra::TempStore(_) => {
-                match self
-                    .joiner
-                    .join_indices(
-                        &self.left.bindings_after_eliminate(),
-                        &self.right.bindings_after_eliminate(),
-                    ) {
+                match self.joiner.join_indices(
+                    &self.left.bindings_after_eliminate(),
+                    &self.right.bindings_after_eliminate(),
+                ) {
                     Ok(join_indices) if join_is_prefix(&join_indices.1) => "mem_neg_prefix_join",
                     Ok(_) => "mem_neg_mat_join",
                     Err(_) => "mem_neg_join_unknown",
                 }
             }
             RelAlgebra::Stored(_) => {
-                match self
-                    .joiner
-                    .join_indices(
-                        &self.left.bindings_after_eliminate(),
-                        &self.right.bindings_after_eliminate(),
-                    ) {
+                match self.joiner.join_indices(
+                    &self.left.bindings_after_eliminate(),
+                    &self.right.bindings_after_eliminate(),
+                ) {
                     Ok(join_indices) if join_is_prefix(&join_indices.1) => "stored_neg_prefix_join",
                     Ok(_) => "stored_neg_mat_join",
                     Err(_) => "stored_neg_join_unknown",
@@ -251,24 +253,20 @@ impl InnerJoin {
         match &self.right {
             RelAlgebra::Fixed(f) => f.join_type(),
             RelAlgebra::TempStore(_) => {
-                match self
-                    .joiner
-                    .join_indices(
-                        &self.left.bindings_after_eliminate(),
-                        &self.right.bindings_after_eliminate(),
-                    ) {
+                match self.joiner.join_indices(
+                    &self.left.bindings_after_eliminate(),
+                    &self.right.bindings_after_eliminate(),
+                ) {
                     Ok(join_indices) if join_is_prefix(&join_indices.1) => "mem_prefix_join",
                     Ok(_) => "mem_mat_join",
                     Err(_) => "mem_join_unknown",
                 }
             }
             RelAlgebra::Stored(_) => {
-                match self
-                    .joiner
-                    .join_indices(
-                        &self.left.bindings_after_eliminate(),
-                        &self.right.bindings_after_eliminate(),
-                    ) {
+                match self.joiner.join_indices(
+                    &self.left.bindings_after_eliminate(),
+                    &self.right.bindings_after_eliminate(),
+                ) {
                     Ok(join_indices) if join_is_prefix(&join_indices.1) => "stored_prefix_join",
                     Ok(_) => "stored_mat_join",
                     Err(_) => "stored_join_unknown",
@@ -278,12 +276,10 @@ impl InnerJoin {
             RelAlgebra::FtsSearch(_) => "fts_search_join",
             RelAlgebra::LshSearch(_) => "lsh_search_join",
             RelAlgebra::StoredWithValidity(_) => {
-                match self
-                    .joiner
-                    .join_indices(
-                        &self.left.bindings_after_eliminate(),
-                        &self.right.bindings_after_eliminate(),
-                    ) {
+                match self.joiner.join_indices(
+                    &self.left.bindings_after_eliminate(),
+                    &self.right.bindings_after_eliminate(),
+                ) {
                     Ok(join_indices) if join_is_prefix(&join_indices.1) => "stored_prefix_join",
                     Ok(_) => "stored_mat_join",
                     Err(_) => "stored_validity_join_unknown",

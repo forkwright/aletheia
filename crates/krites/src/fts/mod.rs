@@ -49,7 +49,10 @@ pub(crate) struct TokenizerCache {
 }
 
 impl TokenizerCache {
-    #[expect(clippy::result_large_err, reason = "FTS error carries structured tokenization context")]
+    #[expect(
+        clippy::result_large_err,
+        reason = "FTS error carries structured tokenization context"
+    )]
     pub(crate) fn get(
         &self,
         tokenizer_name: &str,
@@ -57,25 +60,40 @@ impl TokenizerCache {
         filters: &[TokenizerConfig],
     ) -> Result<Arc<TextAnalyzer>> {
         {
-            let idx_cache = self.named_cache.read().unwrap_or_else(std::sync::PoisonError::into_inner);
+            let idx_cache = self
+                .named_cache
+                .read()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             if let Some(analyzer) = idx_cache.get(tokenizer_name) {
                 return Ok(analyzer.clone());
             }
         }
         let hash = tokenizer.config_hash(filters);
         {
-            let hashed_cache = self.hashed_cache.read().unwrap_or_else(std::sync::PoisonError::into_inner);
+            let hashed_cache = self
+                .hashed_cache
+                .read()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             if let Some(analyzer) = hashed_cache.get(hash.as_ref()) {
-                let mut idx_cache = self.named_cache.write().unwrap_or_else(std::sync::PoisonError::into_inner);
+                let mut idx_cache = self
+                    .named_cache
+                    .write()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
                 idx_cache.insert(tokenizer_name.into(), analyzer.clone());
                 return Ok(analyzer.clone());
             }
         }
         {
             let analyzer = Arc::new(tokenizer.build(filters)?);
-            let mut hashed_cache = self.hashed_cache.write().unwrap_or_else(std::sync::PoisonError::into_inner);
+            let mut hashed_cache = self
+                .hashed_cache
+                .write()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             hashed_cache.insert(hash.as_ref().to_vec(), analyzer.clone());
-            let mut idx_cache = self.named_cache.write().unwrap_or_else(std::sync::PoisonError::into_inner);
+            let mut idx_cache = self
+                .named_cache
+                .write()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             idx_cache.insert(tokenizer_name.into(), analyzer.clone());
             Ok(analyzer)
         }

@@ -476,24 +476,35 @@ mod tests {
 
     #[test]
     fn roundtrip_push_and_get() {
-        let dir = tempfile::tempdir().unwrap_or_else(|_| unreachable!("INVARIANT: temp dir creation should not fail in tests"));
+        let dir = tempfile::tempdir().unwrap_or_else(|_| {
+            unreachable!("INVARIANT: temp dir creation should not fail in tests")
+        });
         let path = dir.path().join("vectors.bin");
-        let mut storage = MmapVectorStorage::open(&path, 3).unwrap_or_else(|_| unreachable!("INVARIANT: valid path and dim=3 should not fail"));
+        let mut storage = MmapVectorStorage::open(&path, 3)
+            .unwrap_or_else(|_| unreachable!("INVARIANT: valid path and dim=3 should not fail"));
         assert!(storage.is_empty(), "new storage must be empty");
 
         let v1 = [1.0f32, 2.0, 3.0];
         let v2 = [4.0f32, 5.0, 6.0];
-        let idx1 = storage.push(&v1).unwrap_or_else(|_| unreachable!("INVARIANT: push with correct dimension should not fail"));
-        let idx2 = storage.push(&v2).unwrap_or_else(|_| unreachable!("INVARIANT: push with correct dimension should not fail"));
+        let idx1 = storage.push(&v1).unwrap_or_else(|_| {
+            unreachable!("INVARIANT: push with correct dimension should not fail")
+        });
+        let idx2 = storage.push(&v2).unwrap_or_else(|_| {
+            unreachable!("INVARIANT: push with correct dimension should not fail")
+        });
 
         assert_eq!(idx1, 0, "first vector index");
         assert_eq!(idx2, 1, "second vector index");
         assert_eq!(storage.len(), 2, "count after two pushes");
 
-        let got1 = storage.get(0).unwrap_or_else(|| unreachable!("INVARIANT: index 0 exists after push"));
+        let got1 = storage
+            .get(0)
+            .unwrap_or_else(|| unreachable!("INVARIANT: index 0 exists after push"));
         assert_eq!(got1, &v1, "vector 0 roundtrip");
 
-        let got2 = storage.get(1).unwrap_or_else(|| unreachable!("INVARIANT: index 1 exists after push"));
+        let got2 = storage
+            .get(1)
+            .unwrap_or_else(|| unreachable!("INVARIANT: index 1 exists after push"));
         assert_eq!(got2, &v2, "vector 1 roundtrip");
 
         assert!(storage.get(2).is_none(), "out-of-bounds returns None");
@@ -501,10 +512,15 @@ mod tests {
 
     #[test]
     fn access_hint_switching() {
-        let dir = tempfile::tempdir().unwrap_or_else(|_| unreachable!("INVARIANT: temp dir creation should not fail in tests"));
+        let dir = tempfile::tempdir().unwrap_or_else(|_| {
+            unreachable!("INVARIANT: temp dir creation should not fail in tests")
+        });
         let path = dir.path().join("vectors.bin");
-        let mut storage = MmapVectorStorage::open(&path, 2).unwrap_or_else(|_| unreachable!("INVARIANT: valid path and dim=2 should not fail"));
-        storage.push(&[1.0, 2.0]).unwrap_or_else(|_| unreachable!("INVARIANT: push with correct dimension should not fail"));
+        let mut storage = MmapVectorStorage::open(&path, 2)
+            .unwrap_or_else(|_| unreachable!("INVARIANT: valid path and dim=2 should not fail"));
+        storage.push(&[1.0, 2.0]).unwrap_or_else(|_| {
+            unreachable!("INVARIANT: push with correct dimension should not fail")
+        });
 
         assert_eq!(
             storage.access_hint(),
@@ -521,16 +537,21 @@ mod tests {
 
     #[test]
     fn dimension_mismatch_rejected() {
-        let dir = tempfile::tempdir().unwrap_or_else(|_| unreachable!("INVARIANT: temp dir creation should not fail in tests"));
+        let dir = tempfile::tempdir().unwrap_or_else(|_| {
+            unreachable!("INVARIANT: temp dir creation should not fail in tests")
+        });
         let path = dir.path().join("vectors.bin");
-        let mut storage = MmapVectorStorage::open(&path, 4).unwrap_or_else(|_| unreachable!("INVARIANT: valid path and dim=4 should not fail"));
+        let mut storage = MmapVectorStorage::open(&path, 4)
+            .unwrap_or_else(|_| unreachable!("INVARIANT: valid path and dim=4 should not fail"));
         let result = storage.push(&[1.0, 2.0]);
         assert!(result.is_err(), "wrong dimension should error");
     }
 
     #[test]
     fn zero_dimension_rejected() {
-        let dir = tempfile::tempdir().unwrap_or_else(|_| unreachable!("INVARIANT: temp dir creation should not fail in tests"));
+        let dir = tempfile::tempdir().unwrap_or_else(|_| {
+            unreachable!("INVARIANT: temp dir creation should not fail in tests")
+        });
         let path = dir.path().join("vectors.bin");
         let result = MmapVectorStorage::open(&path, 0);
         assert!(result.is_err(), "zero dimension should error");
@@ -538,27 +559,43 @@ mod tests {
 
     #[test]
     fn reopen_persists_data() {
-        let dir = tempfile::tempdir().unwrap_or_else(|_| unreachable!("INVARIANT: temp dir creation should not fail in tests"));
+        let dir = tempfile::tempdir().unwrap_or_else(|_| {
+            unreachable!("INVARIANT: temp dir creation should not fail in tests")
+        });
         let path = dir.path().join("vectors.bin");
 
         {
-            let mut storage = MmapVectorStorage::open(&path, 2).unwrap_or_else(|_| unreachable!("INVARIANT: valid path and dim=2 should not fail"));
-            storage.push(&[1.0, 2.0]).unwrap_or_else(|_| unreachable!("INVARIANT: push with correct dimension should not fail"));
-            storage.push(&[3.0, 4.0]).unwrap_or_else(|_| unreachable!("INVARIANT: push with correct dimension should not fail"));
-            storage.flush().unwrap_or_else(|_| unreachable!("INVARIANT: flush should not fail on valid storage"));
+            let mut storage = MmapVectorStorage::open(&path, 2).unwrap_or_else(|_| {
+                unreachable!("INVARIANT: valid path and dim=2 should not fail")
+            });
+            storage.push(&[1.0, 2.0]).unwrap_or_else(|_| {
+                unreachable!("INVARIANT: push with correct dimension should not fail")
+            });
+            storage.push(&[3.0, 4.0]).unwrap_or_else(|_| {
+                unreachable!("INVARIANT: push with correct dimension should not fail")
+            });
+            storage.flush().unwrap_or_else(|_| {
+                unreachable!("INVARIANT: flush should not fail on valid storage")
+            });
         }
 
-        let storage = MmapVectorStorage::open(&path, 2).unwrap_or_else(|_| unreachable!("INVARIANT: valid path and dim=2 should not fail"));
+        let storage = MmapVectorStorage::open(&path, 2)
+            .unwrap_or_else(|_| unreachable!("INVARIANT: valid path and dim=2 should not fail"));
         assert_eq!(storage.len(), 2, "persisted count");
-        let got = storage.get(1).unwrap_or_else(|| unreachable!("INVARIANT: index 1 exists after push"));
+        let got = storage
+            .get(1)
+            .unwrap_or_else(|| unreachable!("INVARIANT: index 1 exists after push"));
         assert_eq!(got, &[3.0f32, 4.0], "persisted vector roundtrip");
     }
 
     #[test]
     fn mmap_fallback_for_empty_file() {
-        let dir = tempfile::tempdir().unwrap_or_else(|_| unreachable!("INVARIANT: temp dir creation should not fail in tests"));
+        let dir = tempfile::tempdir().unwrap_or_else(|_| {
+            unreachable!("INVARIANT: temp dir creation should not fail in tests")
+        });
         let path = dir.path().join("empty.bin");
-        let storage = MmapVectorStorage::open(&path, 4).unwrap_or_else(|_| unreachable!("INVARIANT: valid path and dim=4 should not fail"));
+        let storage = MmapVectorStorage::open(&path, 4)
+            .unwrap_or_else(|_| unreachable!("INVARIANT: valid path and dim=4 should not fail"));
         assert!(storage.is_empty(), "empty file yields empty storage");
         assert!(storage.get(0).is_none(), "no vectors in empty storage");
     }
@@ -577,9 +614,13 @@ mod tests {
         const NUM_THREADS: usize = 16;
         const READS_PER_THREAD: usize = 1000;
 
-        let dir = tempfile::tempdir().unwrap_or_else(|_| unreachable!("INVARIANT: temp dir creation should not fail in tests"));
+        let dir = tempfile::tempdir().unwrap_or_else(|_| {
+            unreachable!("INVARIANT: temp dir creation should not fail in tests")
+        });
         let path = dir.path().join("stress.bin");
-        let mut storage = MmapVectorStorage::open(&path, DIM).unwrap_or_else(|_| unreachable!("INVARIANT: valid path and non-zero DIM should not fail"));
+        let mut storage = MmapVectorStorage::open(&path, DIM).unwrap_or_else(|_| {
+            unreachable!("INVARIANT: valid path and non-zero DIM should not fail")
+        });
 
         // Deterministic pattern: vector[i][j] = (i * DIM + j) as f32
         for i in 0..NUM_VECTORS {
@@ -588,7 +629,9 @@ mod tests {
                 reason = "test fixture uses small integers well within f32 mantissa range"
             )]
             let vec: Vec<f32> = (0..DIM).map(|j| (i * DIM + j) as f32).collect();
-            storage.push(&vec).unwrap_or_else(|_| unreachable!("INVARIANT: push with correct dimension should not fail"));
+            storage.push(&vec).unwrap_or_else(|_| {
+                unreachable!("INVARIANT: push with correct dimension should not fail")
+            });
         }
 
         let storage_ref = &storage;

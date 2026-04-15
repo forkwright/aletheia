@@ -1,11 +1,32 @@
 //! Core value type for the Datalog engine.
-#![expect(clippy::as_conversions, reason = "DataValue numeric conversions require i64/f64/pointer casts")]
-#![expect(clippy::semicolon_if_nothing_returned, reason = "hash/display impls — semicolon not needed before closing brace")]
-#![expect(clippy::explicit_iter_loop, reason = "explicit .iter() in DataValue collection processing")]
-#![expect(clippy::needless_continue, reason = "explicit continue in sort comparison arms aids readability")]
-#![expect(clippy::match_same_arms, reason = "Ord comparison arms are explicit for correctness auditing")]
-#![expect(clippy::float_cmp, reason = "exact f64 equality check for hash consistency — not accumulated arithmetic")]
-#![expect(clippy::doc_markdown, reason = "JsonValue and DataValues are type names in doc comments")]
+#![expect(
+    clippy::as_conversions,
+    reason = "DataValue numeric conversions require i64/f64/pointer casts"
+)]
+#![expect(
+    clippy::semicolon_if_nothing_returned,
+    reason = "hash/display impls — semicolon not needed before closing brace"
+)]
+#![expect(
+    clippy::explicit_iter_loop,
+    reason = "explicit .iter() in DataValue collection processing"
+)]
+#![expect(
+    clippy::needless_continue,
+    reason = "explicit continue in sort comparison arms aids readability"
+)]
+#![expect(
+    clippy::match_same_arms,
+    reason = "Ord comparison arms are explicit for correctness auditing"
+)]
+#![expect(
+    clippy::float_cmp,
+    reason = "exact f64 equality check for hash consistency — not accumulated arithmetic"
+)]
+#![expect(
+    clippy::doc_markdown,
+    reason = "JsonValue and DataValues are type names in doc comments"
+)]
 
 use std::cmp::{Ordering, Reverse};
 use std::collections::BTreeSet;

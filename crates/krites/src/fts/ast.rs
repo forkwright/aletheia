@@ -53,7 +53,10 @@ impl FtsExpr {
         match self {
             FtsExpr::Literal(l) => l.booster == 0. || l.value.is_empty(),
             FtsExpr::Near(FtsNear { literals, .. }) => literals.is_empty(),
-            #[expect(clippy::match_same_arms, reason = "FTS AST variants listed separately for clarity")]
+            #[expect(
+                clippy::match_same_arms,
+                reason = "FTS AST variants listed separately for clarity"
+            )]
             FtsExpr::And(v) => v.is_empty(),
             FtsExpr::Or(v) => v.is_empty(),
             FtsExpr::Not(lhs, _) => lhs.is_empty(),
@@ -75,10 +78,11 @@ impl FtsExpr {
                     }
                 }
                 if flattened.len() == 1 {
-                    flattened
-                        .into_iter()
-                        .next()
-                        .unwrap_or_else(|| unreachable!("INVARIANT: flattened.len() == 1 guarantees next() yields Some"))
+                    flattened.into_iter().next().unwrap_or_else(|| {
+                        unreachable!(
+                            "INVARIANT: flattened.len() == 1 guarantees next() yields Some"
+                        )
+                    })
                 } else {
                     FtsExpr::And(flattened)
                 }
@@ -96,10 +100,11 @@ impl FtsExpr {
                     }
                 }
                 if flattened.len() == 1 {
-                    flattened
-                        .into_iter()
-                        .next()
-                        .unwrap_or_else(|| unreachable!("INVARIANT: flattened.len() == 1 guarantees next() yields Some"))
+                    flattened.into_iter().next().unwrap_or_else(|| {
+                        unreachable!(
+                            "INVARIANT: flattened.len() == 1 guarantees next() yields Some"
+                        )
+                    })
                 } else {
                     FtsExpr::Or(flattened)
                 }
@@ -124,7 +129,9 @@ impl FtsExpr {
                 let mut tokens = vec![];
                 l.tokenize(tokenizer, &mut tokens);
                 if tokens.len() == 1 {
-                    FtsExpr::Literal(tokens.into_iter().next().unwrap_or_else(|| unreachable!("INVARIANT: tokens.len() == 1 guarantees next() yields Some")))
+                    FtsExpr::Literal(tokens.into_iter().next().unwrap_or_else(|| {
+                        unreachable!("INVARIANT: tokens.len() == 1 guarantees next() yields Some")
+                    }))
                 } else {
                     FtsExpr::And(tokens.into_iter().map(FtsExpr::Literal).collect())
                 }

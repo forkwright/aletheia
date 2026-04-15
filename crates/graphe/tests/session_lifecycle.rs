@@ -45,7 +45,13 @@ fn create_session_returns_populated_record() {
     let (store, _dir) = fresh_store();
     let id = Ulid::new().to_string();
     let session = store
-        .create_session(&id, "nous-int-test", "primary", None, Some("claude-sonnet-4-6"))
+        .create_session(
+            &id,
+            "nous-int-test",
+            "primary",
+            None,
+            Some("claude-sonnet-4-6"),
+        )
         .expect("create_session succeeds");
 
     assert_eq!(session.id, id, "id should round-trip");
@@ -220,9 +226,7 @@ fn list_sessions_filters_by_nous_id() {
         .create_session(&id_b, "nous-b", "primary", None, None)
         .expect("create b");
 
-    let nous_a_sessions = store
-        .list_sessions(Some("nous-a"))
-        .expect("list nous-a");
+    let nous_a_sessions = store.list_sessions(Some("nous-a")).expect("list nous-a");
     assert_eq!(nous_a_sessions.len(), 1);
     assert_eq!(nous_a_sessions[0].id, id_a);
 
@@ -244,9 +248,7 @@ fn delete_session_removes_empty_session() {
 
     let deleted = store.delete_session(&session_id).expect("delete");
     assert!(deleted, "delete should report success");
-    let after = store
-        .find_session_by_id(&session_id)
-        .expect("query");
+    let after = store.find_session_by_id(&session_id).expect("query");
     assert!(
         after.is_none(),
         "session should not be findable after delete"
@@ -270,17 +272,13 @@ fn delete_session_removes_session_and_messages() {
 
     let deleted = store.delete_session(&session_id).expect("delete");
     assert!(deleted, "delete should report success");
-    let after = store
-        .find_session_by_id(&session_id)
-        .expect("query");
+    let after = store.find_session_by_id(&session_id).expect("query");
     assert!(
         after.is_none(),
         "session should not be findable after delete"
     );
     // WHY: also verify no orphan rows remain in messages.
-    let history = store
-        .get_history(&session_id, None)
-        .expect("history query");
+    let history = store.get_history(&session_id, None).expect("history query");
     assert!(
         history.is_empty(),
         "messages should be deleted along with the session"
@@ -305,9 +303,7 @@ fn open_in_memory_creates_isolated_stores() {
         .create_session(&id, "nous-mem", "primary", None, None)
         .expect("create in store_a");
 
-    let in_b = store_b
-        .find_session_by_id(&id)
-        .expect("query store_b");
+    let in_b = store_b.find_session_by_id(&id).expect("query store_b");
     assert!(
         in_b.is_none(),
         "store_b should not see sessions created in store_a"

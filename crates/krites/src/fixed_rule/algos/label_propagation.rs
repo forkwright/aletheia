@@ -119,15 +119,13 @@ fn label_propagation(
                 .take_while(|(_, score)| *score == max_score)
                 .map(|(label, _)| label)
                 .collect_vec();
-            let new_label = candidate_labels
-                .choose(&mut rng)
-                .ok_or_else(|| {
-                    GraphAlgorithmSnafu {
-                        algorithm: "label_propagation",
-                        message: "candidate label set is unexpectedly empty",
-                    }
-                    .build()
-                })?;
+            let new_label = candidate_labels.choose(&mut rng).ok_or_else(|| {
+                GraphAlgorithmSnafu {
+                    algorithm: "label_propagation",
+                    message: "candidate label set is unexpectedly empty",
+                }
+                .build()
+            })?;
             if *new_label != labels[*node as usize] {
                 changed = true;
                 labels[*node as usize] = *new_label;

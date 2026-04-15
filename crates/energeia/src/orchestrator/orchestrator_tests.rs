@@ -35,8 +35,7 @@ impl QaGate for MockQaGate {
         prompt: &'a crate::qa::PromptSpec,
         pr_number: u64,
         _diff: &'a str,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<QaResult>> + Send + 'a>>
-    {
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<QaResult>> + Send + 'a>> {
         Box::pin(async move {
             Ok(QaResult {
                 prompt_number: prompt.prompt_number,
@@ -232,7 +231,10 @@ async fn dispatch_budget_exceeded_aborts() {
         .default_budget_usd(0.15);
 
     let orchestrator = Orchestrator::new(engine, qa, config);
-    let prompts = vec![sample_prompt_spec(1, vec![]), sample_prompt_spec(2, vec![1])];
+    let prompts = vec![
+        sample_prompt_spec(1, vec![]),
+        sample_prompt_spec(2, vec![1]),
+    ];
     let spec = sample_dispatch_spec(vec![1, 2]);
 
     let result = orchestrator.dispatch(spec, &prompts).await.unwrap();
@@ -253,7 +255,9 @@ async fn dispatch_empty_prompts_returns_preflight_error() {
     let config = OrchestratorConfig::default();
 
     let orchestrator = Orchestrator::new(engine, qa, config);
-    let result = orchestrator.dispatch(sample_dispatch_spec(vec![]), &[]).await;
+    let result = orchestrator
+        .dispatch(sample_dispatch_spec(vec![]), &[])
+        .await;
 
     assert!(result.is_err());
     assert!(result.unwrap_err().to_string().contains("no prompts"));
@@ -349,7 +353,10 @@ fn dry_run_roundtrip_serialization() {
     let config = OrchestratorConfig::default();
 
     let orchestrator = Orchestrator::new(engine, qa, config);
-    let prompts = vec![sample_prompt_spec(1, vec![]), sample_prompt_spec(2, vec![1])];
+    let prompts = vec![
+        sample_prompt_spec(1, vec![]),
+        sample_prompt_spec(2, vec![1]),
+    ];
 
     let plan = orchestrator.dry_run(&prompts).unwrap();
     let json = serde_json::to_string(&plan).unwrap();

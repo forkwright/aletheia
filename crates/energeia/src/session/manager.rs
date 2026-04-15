@@ -92,7 +92,7 @@ impl SessionManager {
         };
 
         let initial_opts = options.to_agent_options();
-        
+
         // NOTE: Capture model for cost attribution
         let model = initial_opts.model.clone();
 
@@ -117,7 +117,7 @@ impl SessionManager {
 
         let (run_cost, run_turns, run_success, result_text, run_model) =
             extract_run_metrics(session_result, &stream_result);
-        
+
         // Use model from result if available, otherwise from initial options
         let effective_model = run_model.or_else(|| model.clone());
 
@@ -290,7 +290,7 @@ impl SessionManager {
 
             let (run_cost, run_turns, run_success, result_text, run_model) =
                 extract_run_metrics(session_result, &stream_result);
-            
+
             // Use model from result if available, otherwise preserve existing
             let effective_model = run_model.or_else(|| effective_model.clone());
 

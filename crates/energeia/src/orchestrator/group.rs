@@ -213,7 +213,11 @@ mod tests {
         let budget = Arc::new(Budget::new(Some(10.0), Some(500), None));
         let cancel = CancellationToken::new();
 
-        let prompts = vec![sample_prompt_spec(1), sample_prompt_spec(2), sample_prompt_spec(3)];
+        let prompts = vec![
+            sample_prompt_spec(1),
+            sample_prompt_spec(2),
+            sample_prompt_spec(3),
+        ];
 
         let outcomes = execute_group(
             &prompts,
@@ -246,7 +250,11 @@ mod tests {
         let budget = Arc::new(Budget::new(None, None, None));
         let cancel = CancellationToken::new();
 
-        let prompts = vec![sample_prompt_spec(1), sample_prompt_spec(2), sample_prompt_spec(3)];
+        let prompts = vec![
+            sample_prompt_spec(1),
+            sample_prompt_spec(2),
+            sample_prompt_spec(3),
+        ];
 
         let outcomes = execute_group(
             &prompts,

@@ -53,16 +53,12 @@ impl MockEngine {
 
     /// Pop the next configured outcome.
     async fn next_outcome(&self) -> Result<MockOutcome> {
-        self.outcomes
-            .lock()
-            .await
-            .pop_front()
-            .ok_or_else(|| {
-                error::EngineSnafu {
-                    detail: "MockEngine: no more configured outcomes",
-                }
-                .build()
-            })
+        self.outcomes.lock().await.pop_front().ok_or_else(|| {
+            error::EngineSnafu {
+                detail: "MockEngine: no more configured outcomes",
+            }
+            .build()
+        })
     }
 }
 

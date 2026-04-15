@@ -170,7 +170,11 @@ mod tests {
             &["alice is a software engineer".to_owned()],
         );
         assert!(!score.exact_match);
-        assert!((score.f1 - 0.6).abs() < 0.01, "expected ~0.6, got {}", score.f1);
+        assert!(
+            (score.f1 - 0.6).abs() < 0.01,
+            "expected ~0.6, got {}",
+            score.f1
+        );
     }
 
     #[test]

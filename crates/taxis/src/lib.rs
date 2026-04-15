@@ -53,7 +53,13 @@ mod tests {
             cascade_name.contains("Tier"),
             "cascade module should export Tier"
         );
-        assert!(error_name.contains("Error"), "error module should export Error");
-        assert!(oikos_name.contains("Oikos"), "oikos module should export Oikos");
+        assert!(
+            error_name.contains("Error"),
+            "error module should export Error"
+        );
+        assert!(
+            oikos_name.contains("Oikos"),
+            "oikos module should export Oikos"
+        );
     }
 }

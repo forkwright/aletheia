@@ -101,7 +101,9 @@ impl ProviderHealthTracker {
     }
 
     fn lock_inner(&self) -> std::sync::MutexGuard<'_, TrackerInner> {
-        self.inner.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+        self.inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     /// Current health state.

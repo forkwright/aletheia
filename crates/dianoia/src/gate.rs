@@ -205,10 +205,7 @@ mod tests {
         let result = evaluate_gate(&gate);
         assert_eq!(
             result,
-            GateResult::Fail(vec![
-                "tests_passing".to_owned(),
-                "lint_clean".to_owned()
-            ])
+            GateResult::Fail(vec!["tests_passing".to_owned(), "lint_clean".to_owned()])
         );
     }
 
@@ -220,10 +217,7 @@ mod tests {
         );
         gate.mark_satisfied("tests_passing");
         let result = evaluate_gate(&gate);
-        assert_eq!(
-            result,
-            GateResult::Fail(vec!["lint_clean".to_owned()])
-        );
+        assert_eq!(result, GateResult::Fail(vec!["lint_clean".to_owned()]));
     }
 
     #[test]
@@ -250,13 +244,14 @@ mod tests {
 
     #[test]
     fn mark_satisfied_is_idempotent() {
-        let mut gate = PhaseGate::new(
-            ProjectState::Verifying,
-            vec![GateCondition::ReviewApproved],
+        let mut gate = PhaseGate::new(ProjectState::Verifying, vec![GateCondition::ReviewApproved]);
+        gate.mark_satisfied("review_approved");
+        gate.mark_satisfied("review_approved");
+        assert_eq!(
+            gate.satisfied.len(),
+            1,
+            "duplicate mark_satisfied should not add duplicates"
         );
-        gate.mark_satisfied("review_approved");
-        gate.mark_satisfied("review_approved");
-        assert_eq!(gate.satisfied.len(), 1, "duplicate mark_satisfied should not add duplicates");
         assert_eq!(evaluate_gate(&gate), GateResult::Pass);
     }
 
@@ -277,7 +272,10 @@ mod tests {
     fn default_gate_executing_requires_code_committed_and_tests() {
         let gate = default_gate(&ProjectState::Executing).unwrap();
         assert_eq!(gate.from, ProjectState::Executing);
-        assert!(gate.conditions.contains(&GateCondition::Custom("code_committed".into())));
+        assert!(
+            gate.conditions
+                .contains(&GateCondition::Custom("code_committed".into()))
+        );
         assert!(gate.conditions.contains(&GateCondition::TestsPassing));
     }
 
@@ -320,7 +318,10 @@ mod tests {
     fn phase_gate_serde_roundtrip() {
         let mut gate = PhaseGate::new(
             ProjectState::Executing,
-            vec![GateCondition::TestsPassing, GateCondition::Custom("ci_green".into())],
+            vec![
+                GateCondition::TestsPassing,
+                GateCondition::Custom("ci_green".into()),
+            ],
         );
         gate.mark_satisfied("tests_passing");
 

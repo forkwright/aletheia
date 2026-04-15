@@ -1,7 +1,16 @@
 //! List construction, concatenation, get/set, and JSON merge functions.
-#![expect(clippy::as_conversions, reason = "numeric aggregation requires i64/usize/f64 casts — values are engine-internal")]
-#![expect(clippy::unnecessary_wraps, reason = "op_list and op_maybe_get return Result for API consistency with other builtins")]
-#![expect(clippy::redundant_else, reason = "else after early return keeps the fallback visually grouped")]
+#![expect(
+    clippy::as_conversions,
+    reason = "numeric aggregation requires i64/usize/f64 casts — values are engine-internal"
+)]
+#![expect(
+    clippy::unnecessary_wraps,
+    reason = "op_list and op_maybe_get return Result for API consistency with other builtins"
+)]
+#![expect(
+    clippy::redundant_else,
+    reason = "else after early return keeps the fallback visually grouped"
+)]
 
 use itertools::Itertools;
 use serde_json::{Value, json};

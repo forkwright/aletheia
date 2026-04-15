@@ -2,8 +2,8 @@
 
 use std::time::Instant;
 
-use tracing::{info, instrument};
 use koina::ulid::Ulid;
+use tracing::{info, instrument};
 
 use crate::config::NousConfig;
 

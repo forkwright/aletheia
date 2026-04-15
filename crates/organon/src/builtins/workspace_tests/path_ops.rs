@@ -100,10 +100,7 @@ async fn write_creates_file() {
         "write",
         serde_json::json!({ "path": "out.txt", "content": "data" }),
     );
-    let result = WriteExecutor
-        .execute(&input, &ctx)
-        .await
-        .expect("execute");
+    let result = WriteExecutor.execute(&input, &ctx).await.expect("execute");
     assert!(
         !result.is_error,
         "writing a new file should not produce an error"
@@ -127,10 +124,7 @@ async fn write_creates_parent_dirs() {
         "write",
         serde_json::json!({ "path": "sub/deep/file.txt", "content": "nested" }),
     );
-    let result = WriteExecutor
-        .execute(&input, &ctx)
-        .await
-        .expect("execute");
+    let result = WriteExecutor.execute(&input, &ctx).await.expect("execute");
     assert!(
         !result.is_error,
         "writing to a nested path should create parent directories"
@@ -156,10 +150,7 @@ async fn write_append_mode() {
         "write",
         serde_json::json!({ "path": "log.txt", "content": "second\n", "append": true }),
     );
-    let result = WriteExecutor
-        .execute(&input, &ctx)
-        .await
-        .expect("execute");
+    let result = WriteExecutor.execute(&input, &ctx).await.expect("execute");
     assert!(!result.is_error, "append write should not produce an error");
     let on_disk = std::fs::read_to_string(dir.path().join("log.txt")).expect("read");
     assert_eq!(

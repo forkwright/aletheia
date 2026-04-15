@@ -274,10 +274,7 @@ pub(super) async fn dispatch_tools(
             );
             crate::metrics::record_tool_failure(tool_ctx.nous_id.as_ref(), tool_name);
         } else {
-            debug!(
-                tool = tool_name.as_str(),
-                duration_ms, "tool executed"
-            );
+            debug!(tool = tool_name.as_str(), duration_ms, "tool executed");
         }
 
         all_tool_calls.push(ToolCall {
@@ -418,10 +415,7 @@ pub(super) async fn dispatch_tools_streaming(
             );
             crate::metrics::record_tool_failure(tool_ctx.nous_id.as_ref(), tool_name);
         } else {
-            debug!(
-                tool = tool_name.as_str(),
-                duration_ms, "tool executed"
-            );
+            debug!(tool = tool_name.as_str(), duration_ms, "tool executed");
         }
 
         if let Err(e) = stream_tx.try_send(TurnStreamEvent::ToolResult {

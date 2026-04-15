@@ -6,8 +6,8 @@
 
 use std::process::Command;
 
-use tracing::warn;
 use koina::uuid::Uuid;
+use tracing::warn;
 
 /// Fingerprint salt from CC source (constants/system.ts).
 /// Must match exactly for server-side validation.
@@ -58,7 +58,10 @@ impl CcProfile {
     }
 
     /// Add the 1M context beta header if the model supports it.
-    #[expect(dead_code, reason = "public API reserved for extended context window callers")]
+    #[expect(
+        dead_code,
+        reason = "public API reserved for extended context window callers"
+    )]
     pub fn with_context_1m(&mut self) {
         let header = "context-1m-2025-08-07";
         if !self.beta_headers.iter().any(|h| h == header) {
@@ -115,12 +118,19 @@ pub(crate) fn compute_fingerprint(first_message_text: &str, version: &str) -> St
     let hash = Sha256::digest(input.as_bytes());
     // First 3 hex chars: take 2 bytes (= 4 hex chars), then slice to 3.
     // All chars are ASCII hex digits so the byte slice is always valid UTF-8.
-    let hex: String = hash.iter().take(2).flat_map(|b| {
-        let hi = char::from_digit(u32::from(b >> 4), 16).unwrap_or('0');
-        let lo = char::from_digit(u32::from(b & 0xf), 16).unwrap_or('0');
-        [hi, lo]
-    }).collect();
-    #[expect(clippy::string_slice, reason = "ASCII hex digits: byte slice is always on char boundary")]
+    let hex: String = hash
+        .iter()
+        .take(2)
+        .flat_map(|b| {
+            let hi = char::from_digit(u32::from(b >> 4), 16).unwrap_or('0');
+            let lo = char::from_digit(u32::from(b & 0xf), 16).unwrap_or('0');
+            [hi, lo]
+        })
+        .collect();
+    #[expect(
+        clippy::string_slice,
+        reason = "ASCII hex digits: byte slice is always on char boundary"
+    )]
     hex[..3].to_owned()
 }
 

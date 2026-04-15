@@ -243,8 +243,14 @@ fn redact_scrubs_tls_key_and_cert_paths() {
     config.gateway.tls.cert_path = Some("/etc/ssl/redact-probe-cert.pem".to_owned());
 
     let redacted = redact(&config).to_string();
-    assert!(!redacted.contains("redact-probe-key.pem"), "key path leaked");
-    assert!(!redacted.contains("redact-probe-cert.pem"), "cert path leaked");
+    assert!(
+        !redacted.contains("redact-probe-key.pem"),
+        "key path leaked"
+    );
+    assert!(
+        !redacted.contains("redact-probe-cert.pem"),
+        "cert path leaked"
+    );
 }
 
 // ─── WorkspaceSchema builder API ────────────────────────────────────────

@@ -286,7 +286,8 @@ fn rejects_empty_model_primary() {
 
 #[test]
 fn rejects_empty_model_fallback() {
-    let section = json!({ "defaults": { "model": { "primary": "claude-sonnet-4-6", "fallbacks": [""] } } });
+    let section =
+        json!({ "defaults": { "model": { "primary": "claude-sonnet-4-6", "fallbacks": [""] } } });
     let result = validate_section("agents", &section);
     assert!(result.is_err(), "empty model fallback should be rejected");
     let err = result.unwrap_err();
@@ -638,7 +639,9 @@ fn validate_startup_passes_with_complete_layout() {
     // fires, so let's just verify no subdir error is in the output.
     let err = validate_startup(&config, &oikos).unwrap_err();
     assert!(
-        err.errors.iter().all(|e| !e.contains("required instance directory")),
+        err.errors
+            .iter()
+            .all(|e| !e.contains("required instance directory")),
         "no subdirectory errors should be present when layout is complete: {err:?}"
     );
 }

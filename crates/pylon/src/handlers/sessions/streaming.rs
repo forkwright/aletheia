@@ -428,7 +428,10 @@ pub async fn stream_turn(
         });
     }
     if !field_errors.is_empty() {
-        return Err(ValidationFailedSnafu { errors: field_errors }.build());
+        return Err(ValidationFailedSnafu {
+            errors: field_errors,
+        }
+        .build());
     }
 
     let handle = state
@@ -672,9 +675,9 @@ fn sse_event_to_axum(event: SseEvent) -> Result<Event, Infallible> {
             warn!(error = %e, "failed to serialize SSE event");
             // WHY: Use the SseEvent::Error variant so the fallback event has the same
             // shape as all other error events in the stream (#3160).
-            Ok(Event::default()
-                .event("error")
-                .data(r#"{"type":"error","code":"serialization_error","message":"serialization failed"}"#))
+            Ok(Event::default().event("error").data(
+                r#"{"type":"error","code":"serialization_error","message":"serialization failed"}"#,
+            ))
         }
     }
 }
@@ -718,11 +721,19 @@ fn extract_idempotency_key(
 fn turn_error_info(err: &nous::error::Error) -> (String, String) {
     use nous::error::Error;
     match err {
-        Error::PipelineTimeout { stage, timeout_secs, .. } => (
+        Error::PipelineTimeout {
+            stage,
+            timeout_secs,
+            ..
+        } => (
             "turn_timeout".to_owned(),
             format!("pipeline stage '{stage}' timed out after {timeout_secs}s"),
         ),
-        Error::AskTimeout { nous_id, timeout_secs, .. } => (
+        Error::AskTimeout {
+            nous_id,
+            timeout_secs,
+            ..
+        } => (
             "turn_timeout".to_owned(),
             format!("cross-agent ask to '{nous_id}' timed out after {timeout_secs}s"),
         ),
@@ -742,7 +753,11 @@ fn turn_error_info(err: &nous::error::Error) -> (String, String) {
             "context_error".to_owned(),
             format!("context assembly failed: required file '{file}' unreadable"),
         ),
-        Error::LoopDetected { iterations, pattern, .. } => (
+        Error::LoopDetected {
+            iterations,
+            pattern,
+            ..
+        } => (
             "loop_detected".to_owned(),
             format!("loop detected after {iterations} iterations: {pattern}"),
         ),
@@ -774,23 +789,30 @@ fn classify_llm_error(err: &hermeneus::error::Error) -> (String, String) {
             "rate_limited".to_owned(),
             format!("rate limit exceeded, retry after {retry_after_ms}ms"),
         ),
-        Error::ApiError { status, .. } if *status == 429 => (
-            "rate_limited".to_owned(),
-            "rate limit exceeded".to_owned(),
-        ),
+        Error::ApiError { status, .. } if *status == 429 => {
+            ("rate_limited".to_owned(), "rate limit exceeded".to_owned())
+        }
         Error::AuthFailed { .. } => (
             "auth_failure".to_owned(),
-            "provider authentication failed — run 'aletheia credential status' to diagnose".to_owned(),
+            "provider authentication failed — run 'aletheia credential status' to diagnose"
+                .to_owned(),
         ),
         Error::ApiError { status, .. } if *status == 503 || *status == 529 => (
             "provider_unavailable".to_owned(),
             format!("provider returned {status} — temporarily unavailable"),
         ),
-        Error::ApiError { status, message, .. } if (400..500).contains(status) => (
+        Error::ApiError {
+            status, message, ..
+        } if (400..500).contains(status) => (
             "invalid_request".to_owned(),
-            format!("provider rejected request ({status}): {}", redact_secrets(message)),
+            format!(
+                "provider rejected request ({status}): {}",
+                redact_secrets(message)
+            ),
         ),
-        Error::ApiError { status, message, .. } if (500..600).contains(status) => (
+        Error::ApiError {
+            status, message, ..
+        } if (500..600).contains(status) => (
             "provider_error".to_owned(),
             format!("provider error ({status}): {}", redact_secrets(message)),
         ),

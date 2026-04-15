@@ -188,8 +188,7 @@ mod tests {
 
     #[test]
     fn parses_sample_dataset() {
-        let dataset = LocomoDataset::from_bytes(SAMPLE_JSON.as_bytes())
-            .expect("valid sample JSON");
+        let dataset = LocomoDataset::from_bytes(SAMPLE_JSON.as_bytes()).expect("valid sample JSON");
         assert_eq!(dataset.conversations.len(), 1);
         assert_eq!(dataset.question_count(), 2);
         assert_eq!(dataset.len(), 2);
@@ -199,8 +198,7 @@ mod tests {
 
     #[test]
     fn questions_include_all_sessions() {
-        let dataset = LocomoDataset::from_bytes(SAMPLE_JSON.as_bytes())
-            .expect("valid sample JSON");
+        let dataset = LocomoDataset::from_bytes(SAMPLE_JSON.as_bytes()).expect("valid sample JSON");
         let questions: Vec<_> = dataset.questions().collect();
         assert_eq!(questions.len(), 2);
 
@@ -212,8 +210,7 @@ mod tests {
 
     #[test]
     fn question_ids_include_sample_and_index() {
-        let dataset = LocomoDataset::from_bytes(SAMPLE_JSON.as_bytes())
-            .expect("valid sample JSON");
+        let dataset = LocomoDataset::from_bytes(SAMPLE_JSON.as_bytes()).expect("valid sample JSON");
         let questions: Vec<_> = dataset.questions().collect();
         assert_eq!(questions[0].id, "conv_1:qa_0");
         assert_eq!(questions[1].id, "conv_1:qa_1");
@@ -221,19 +218,20 @@ mod tests {
 
     #[test]
     fn answer_alternatives_preserved() {
-        let dataset = LocomoDataset::from_bytes(SAMPLE_JSON.as_bytes())
-            .expect("valid sample JSON");
+        let dataset = LocomoDataset::from_bytes(SAMPLE_JSON.as_bytes()).expect("valid sample JSON");
         let questions: Vec<_> = dataset.questions().collect();
         assert_eq!(
             questions[1].expected_answers,
-            vec!["visited the museums".to_owned(), "went to museums".to_owned()]
+            vec![
+                "visited the museums".to_owned(),
+                "went to museums".to_owned()
+            ]
         );
     }
 
     #[test]
     fn category_preserved() {
-        let dataset = LocomoDataset::from_bytes(SAMPLE_JSON.as_bytes())
-            .expect("valid sample JSON");
+        let dataset = LocomoDataset::from_bytes(SAMPLE_JSON.as_bytes()).expect("valid sample JSON");
         let questions: Vec<_> = dataset.questions().collect();
         assert_eq!(questions[0].category, "single_hop");
         assert_eq!(questions[1].category, "multi_hop");
@@ -241,12 +239,13 @@ mod tests {
 
     #[test]
     fn speaker_preserved_as_role() {
-        let dataset = LocomoDataset::from_bytes(SAMPLE_JSON.as_bytes())
-            .expect("valid sample JSON");
+        let dataset = LocomoDataset::from_bytes(SAMPLE_JSON.as_bytes()).expect("valid sample JSON");
         let questions: Vec<_> = dataset.questions().collect();
         let session_0 = &questions[0].sessions[0];
         assert!(
-            session_0.iter().any(|(role, _)| role == "Alice" || role == "Bob"),
+            session_0
+                .iter()
+                .any(|(role, _)| role == "Alice" || role == "Bob"),
             "speakers should be preserved as roles"
         );
     }

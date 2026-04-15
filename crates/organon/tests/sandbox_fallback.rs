@@ -6,9 +6,7 @@
 #[cfg(target_os = "linux")]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod linux {
-    use organon::sandbox::{
-        SandboxConfig, SandboxEnforcement, apply_sandbox, probe_landlock_abi,
-    };
+    use organon::sandbox::{SandboxConfig, SandboxEnforcement, apply_sandbox, probe_landlock_abi};
 
     #[test]
     fn probe_returns_consistent_result() {

@@ -130,8 +130,7 @@ mod tests {
     use super::*;
 
     fn make_samples(values: &[f64]) -> Vec<MetricSample> {
-        let base = jiff::Timestamp::from_second(1_700_000_000)
-            .expect("valid timestamp");
+        let base = jiff::Timestamp::from_second(1_700_000_000).expect("valid timestamp");
         values
             .iter()
             .enumerate()
@@ -178,7 +177,10 @@ mod tests {
         // Linearly increasing: 0.1, 0.2, 0.3, 0.4, 0.5
         let samples = make_samples(&[0.1, 0.2, 0.3, 0.4, 0.5]);
         let slope = compute_competence_trajectory(&samples);
-        assert!(slope.unwrap() > 0.0, "increasing values should have positive slope");
+        assert!(
+            slope.unwrap() > 0.0,
+            "increasing values should have positive slope"
+        );
         assert!((slope.unwrap() - 0.1).abs() < 0.001, "slope should be ~0.1");
     }
 
@@ -186,7 +188,10 @@ mod tests {
     fn competence_trajectory_negative_slope() {
         let samples = make_samples(&[0.5, 0.4, 0.3, 0.2, 0.1]);
         let slope = compute_competence_trajectory(&samples);
-        assert!(slope.unwrap() < 0.0, "decreasing values should have negative slope");
+        assert!(
+            slope.unwrap() < 0.0,
+            "decreasing values should have negative slope"
+        );
     }
 
     #[test]
@@ -194,7 +199,10 @@ mod tests {
         let samples = make_samples(&[0.5, 0.5, 0.5, 0.5, 0.5]);
         let slope = compute_competence_trajectory(&samples);
         // With constant values, numerator is 0, denominator is non-zero
-        assert!((slope.unwrap()).abs() < f64::EPSILON, "flat values should have zero slope");
+        assert!(
+            (slope.unwrap()).abs() < f64::EPSILON,
+            "flat values should have zero slope"
+        );
     }
 
     #[test]
@@ -210,11 +218,7 @@ mod tests {
         let orig_len = names.len();
         names.sort_unstable();
         names.dedup();
-        assert_eq!(
-            names.len(),
-            orig_len,
-            "signal names must be unique"
-        );
+        assert_eq!(names.len(), orig_len, "signal names must be unique");
     }
 
     #[test]

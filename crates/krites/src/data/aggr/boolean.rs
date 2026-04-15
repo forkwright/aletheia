@@ -1,5 +1,8 @@
 //! Boolean and collection aggregation operators.
-#![expect(clippy::mutable_key_type, reason = "DataValue contains interior-mutable Regex; BTreeSet/Map usage is engine-internal")]
+#![expect(
+    clippy::mutable_key_type,
+    reason = "DataValue contains interior-mutable Regex; BTreeSet/Map usage is engine-internal"
+)]
 use std::collections::{BTreeMap, BTreeSet};
 
 use rand::prelude::*;

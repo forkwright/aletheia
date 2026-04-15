@@ -4,10 +4,7 @@
 //! deserializes, and verifies equality. Also tests rmp-serde round-trips
 //! and sort-order preservation.
 #![expect(clippy::expect_used, reason = "test assertions")]
-#![expect(
-    clippy::indexing_slicing,
-    reason = "test data with known structure"
-)]
+#![expect(clippy::indexing_slicing, reason = "test data with known structure")]
 
 use std::collections::BTreeSet;
 
@@ -37,13 +34,11 @@ fn arb_validity() -> impl Strategy<Value = Validity> {
 }
 
 fn arb_vector_f32(max_len: usize) -> impl Strategy<Value = Vector> {
-    proptest::collection::vec(any::<f32>(), 0..=max_len)
-        .prop_map(|v| Vector::F32(Array1::from(v)))
+    proptest::collection::vec(any::<f32>(), 0..=max_len).prop_map(|v| Vector::F32(Array1::from(v)))
 }
 
 fn arb_vector_f64(max_len: usize) -> impl Strategy<Value = Vector> {
-    proptest::collection::vec(any::<f64>(), 0..=max_len)
-        .prop_map(|v| Vector::F64(Array1::from(v)))
+    proptest::collection::vec(any::<f64>(), 0..=max_len).prop_map(|v| Vector::F64(Array1::from(v)))
 }
 
 fn arb_vector() -> impl Strategy<Value = Vector> {

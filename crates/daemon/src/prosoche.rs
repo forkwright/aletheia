@@ -26,7 +26,10 @@ impl std::fmt::Debug for ProsocheCheck {
             .field("data_dir", &self.data_dir)
             .field("db_paths", &self.db_paths);
         #[cfg(feature = "knowledge-store")]
-        s.field("knowledge_store", &self.knowledge_store.as_ref().map(|_| "<KnowledgeStore>"));
+        s.field(
+            "knowledge_store",
+            &self.knowledge_store.as_ref().map(|_| "<KnowledgeStore>"),
+        );
         s.finish()
     }
 }
@@ -370,11 +373,7 @@ fn check_memory() -> Vec<AttentionItem> {
                 reason = "u64→f64: process RSS in MB is bounded by host RAM (under 2^53 MB); cast is exact at practical scale"
             )]
             let rss_f64 = rss_mb as f64;
-            let label = if rss_mb >= 2048 {
-                "critical"
-            } else {
-                "high"
-            };
+            let label = if rss_mb >= 2048 { "critical" } else { "high" };
             check_threshold(rss_f64, 1024.0, 2048.0, |mb| {
                 format!("Process memory {label}: {mb:.0} MB RSS")
             })
@@ -506,7 +505,10 @@ impl ConsistencyCheck for MultiPathConsistencyCheck {
         }
 
         tracing::debug!(
-            orphaned = items.iter().filter(|i| matches!(i.urgency, Urgency::Low)).count(),
+            orphaned = items
+                .iter()
+                .filter(|i| matches!(i.urgency, Urgency::Low))
+                .count(),
             dangling = dangling.len(),
             sampled = facts.len(),
             "memory consistency check completed"
@@ -577,7 +579,10 @@ fn query_dangling_fact_entity_refs(
 
     // Step 1: Get a sample of fact IDs from fact_entities.
     let mut params1 = BTreeMap::new();
-    params1.insert("limit".to_owned(), aletheia_episteme::engine::DataValue::from(limit_i64));
+    params1.insert(
+        "limit".to_owned(),
+        aletheia_episteme::engine::DataValue::from(limit_i64),
+    );
     let fe_result = store.run_query(
         "?[fact_id] := *fact_entities{fact_id, entity_id} :limit $limit",
         params1,

@@ -58,7 +58,10 @@ fn pad_u64(v: u64) -> String {
 
 /// Decode a big-endian u64 from 8 bytes.
 fn decode_u64(bytes: &[u8]) -> u64 {
-    let arr: [u8; 8] = bytes.get(..8).and_then(|s| s.try_into().ok()).unwrap_or([0u8; 8]);
+    let arr: [u8; 8] = bytes
+        .get(..8)
+        .and_then(|s| s.try_into().ok())
+        .unwrap_or([0u8; 8]);
     u64::from_be_bytes(arr)
 }
 
@@ -119,8 +122,12 @@ impl SessionStore {
     #[instrument(skip(path))]
     pub fn open(path: &Path) -> Result<Self> {
         info!(path = %path.display(), "Opening fjall session store");
-        let fdb = koina::fjall::FjallDb::open(path, PARTITIONS)
-            .map_err(|e| error::StorageSnafu { message: e.to_string() }.build())?;
+        let fdb = koina::fjall::FjallDb::open(path, PARTITIONS).map_err(|e| {
+            error::StorageSnafu {
+                message: e.to_string(),
+            }
+            .build()
+        })?;
         Ok(Self::from_fjall_db(fdb))
     }
 
@@ -134,8 +141,12 @@ impl SessionStore {
     /// created.
     #[instrument]
     pub fn open_in_memory() -> Result<Self> {
-        let fdb = koina::fjall::FjallDb::open_temp(PARTITIONS)
-            .map_err(|e| error::StorageSnafu { message: e.to_string() }.build())?;
+        let fdb = koina::fjall::FjallDb::open_temp(PARTITIONS).map_err(|e| {
+            error::StorageSnafu {
+                message: e.to_string(),
+            }
+            .build()
+        })?;
         Ok(Self::from_fjall_db(fdb))
     }
 
@@ -160,12 +171,21 @@ impl SessionStore {
             })
     }
 
-    fn get_bytes(&self, partition: &fjall::SingleWriterTxKeyspace, key: &str) -> Result<Option<Vec<u8>>> {
+    fn get_bytes(
+        &self,
+        partition: &fjall::SingleWriterTxKeyspace,
+        key: &str,
+    ) -> Result<Option<Vec<u8>>> {
         use fjall::Readable;
         let snap = self.db.read_tx();
         snap.get(partition, key.as_bytes())
             .map(|opt| opt.map(|s| s.to_vec()))
-            .map_err(|e| error::StorageSnafu { message: format!("fjall get: {e}") }.build())
+            .map_err(|e| {
+                error::StorageSnafu {
+                    message: format!("fjall get: {e}"),
+                }
+                .build()
+            })
     }
 
     fn get_json<T: for<'de> Deserialize<'de>>(
@@ -205,11 +225,16 @@ impl SessionStore {
         );
         tx.insert(
             &sessions,
-            Self::session_nous_index_key(&session.nous_id, &session.updated_at, &session.id).as_str(),
+            Self::session_nous_index_key(&session.nous_id, &session.updated_at, &session.id)
+                .as_str(),
             b"",
         );
-        tx.commit()
-            .map_err(|e| error::StorageSnafu { message: format!("fjall session write: {e}") }.build())?;
+        tx.commit().map_err(|e| {
+            error::StorageSnafu {
+                message: format!("fjall session write: {e}"),
+            }
+            .build()
+        })?;
         Ok(())
     }
 
@@ -279,7 +304,10 @@ impl SessionStore {
         parent_session_id: Option<&str>,
         model: Option<&str>,
     ) -> Result<Session> {
-        let _guard = self.write_lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _guard = self
+            .write_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let session_type = SessionType::from_key(session_key);
         let now = now_iso();
 
@@ -337,7 +365,10 @@ impl SessionStore {
         model: Option<&str>,
         parent_session_id: Option<&str>,
     ) -> Result<Session> {
-        let _guard = self.write_lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _guard = self
+            .write_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let sessions_part = self.partition("sessions")?;
         let idx_key = Self::session_key_index_key(nous_id, session_key);
 
@@ -349,14 +380,12 @@ impl SessionStore {
                 .build()
             })?;
 
-            let mut session = self
-                .read_session_by_raw_id(&existing_id)?
-                .ok_or_else(|| {
-                    error::SessionCreateSnafu {
-                        nous_id: nous_id.to_owned(),
-                    }
-                    .build()
-                })?;
+            let mut session = self.read_session_by_raw_id(&existing_id)?.ok_or_else(|| {
+                error::SessionCreateSnafu {
+                    nous_id: nous_id.to_owned(),
+                }
+                .build()
+            })?;
 
             if session.status != SessionStatus::Active {
                 let old_updated_at = session.updated_at.clone();
@@ -491,7 +520,10 @@ impl SessionStore {
     /// Update session status.
     #[instrument(skip(self))]
     pub fn update_session_status(&self, id: &str, status: SessionStatus) -> Result<()> {
-        let _guard = self.write_lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _guard = self
+            .write_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let sessions_part = self.partition("sessions")?;
         let mut session = self
             .read_session_by_raw_id(id)?
@@ -505,8 +537,7 @@ impl SessionStore {
         let mut tx = self.db.write_tx();
         tx.insert(&sessions_part, id, data.as_slice());
         Self::update_session_nous_index(&mut tx, &sessions_part, &session, &old_updated_at);
-        let new_nous_key =
-            Self::session_nous_index_key(&session.nous_id, &session.updated_at, id);
+        let new_nous_key = Self::session_nous_index_key(&session.nous_id, &session.updated_at, id);
         tx.insert(&sessions_part, new_nous_key.as_str(), b"");
         tx.commit().map_err(|e| {
             error::StorageSnafu {
@@ -520,7 +551,10 @@ impl SessionStore {
     /// Update session display name.
     #[instrument(skip(self))]
     pub fn update_display_name(&self, id: &str, display_name: &str) -> Result<()> {
-        let _guard = self.write_lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _guard = self
+            .write_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let sessions_part = self.partition("sessions")?;
         let mut session = self
             .read_session_by_raw_id(id)?
@@ -534,8 +568,7 @@ impl SessionStore {
         let mut tx = self.db.write_tx();
         tx.insert(&sessions_part, id, data.as_slice());
         Self::update_session_nous_index(&mut tx, &sessions_part, &session, &old_updated_at);
-        let new_nous_key =
-            Self::session_nous_index_key(&session.nous_id, &session.updated_at, id);
+        let new_nous_key = Self::session_nous_index_key(&session.nous_id, &session.updated_at, id);
         tx.insert(&sessions_part, new_nous_key.as_str(), b"");
         tx.commit().map_err(|e| {
             error::StorageSnafu {
@@ -554,7 +587,10 @@ impl SessionStore {
     pub fn delete_session(&self, id: &str) -> Result<bool> {
         use fjall::Readable;
 
-        let _guard = self.write_lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _guard = self
+            .write_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let sessions_part = self.partition("sessions")?;
 
         let Some(session) = self.read_session_by_raw_id(id)? else {
@@ -563,8 +599,7 @@ impl SessionStore {
 
         // Gather index keys to delete.
         let key_idx = Self::session_key_index_key(&session.nous_id, &session.session_key);
-        let nous_idx =
-            Self::session_nous_index_key(&session.nous_id, &session.updated_at, id);
+        let nous_idx = Self::session_nous_index_key(&session.nous_id, &session.updated_at, id);
 
         let messages_part = self.partition("messages")?;
         let usage_part = self.partition("usage")?;
@@ -667,7 +702,10 @@ impl SessionStore {
     ) -> Result<i64> {
         use fjall::Readable;
 
-        let _guard = self.write_lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _guard = self
+            .write_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let messages_part = self.partition("messages")?;
         let sessions_part = self.partition("sessions")?;
 
@@ -722,14 +760,12 @@ impl SessionStore {
         let msg_data = serde_json::to_vec(&msg).context(error::StoredJsonSnafu)?;
 
         // Update session counters.
-        let mut session = self
-            .read_session_by_raw_id(session_id)?
-            .ok_or_else(|| {
-                error::SessionNotFoundSnafu {
-                    id: session_id.to_owned(),
-                }
-                .build()
-            })?;
+        let mut session = self.read_session_by_raw_id(session_id)?.ok_or_else(|| {
+            error::SessionNotFoundSnafu {
+                id: session_id.to_owned(),
+            }
+            .build()
+        })?;
         let old_updated_at = session.updated_at.clone();
         session.metrics.message_count += 1;
         session.metrics.token_count_estimate += token_estimate;
@@ -759,11 +795,7 @@ impl SessionStore {
     }
 
     /// Get non-distilled messages, newest `limit` in chronological order.
-    fn load_messages_in_range(
-        &self,
-        session_id: &str,
-        limit: Option<i64>,
-    ) -> Result<Vec<Message>> {
+    fn load_messages_in_range(&self, session_id: &str, limit: Option<i64>) -> Result<Vec<Message>> {
         use fjall::Readable;
 
         let messages_part = self.partition("messages")?;
@@ -906,7 +938,10 @@ impl SessionStore {
             return Ok(());
         }
 
-        let _guard = self.write_lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _guard = self
+            .write_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let messages_part = self.partition("messages")?;
         let sessions_part = self.partition("sessions")?;
 
@@ -968,7 +1003,10 @@ impl SessionStore {
     pub fn insert_distillation_summary(&self, session_id: &str, content: &str) -> Result<()> {
         use fjall::Readable;
 
-        let _guard = self.write_lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _guard = self
+            .write_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let messages_part = self.partition("messages")?;
         let sessions_part = self.partition("sessions")?;
 
@@ -1057,7 +1095,10 @@ impl SessionStore {
             .build()
         })?;
 
-        info!(session_id, msg_count, total_tokens, "inserted distillation summary");
+        info!(
+            session_id,
+            msg_count, total_tokens, "inserted distillation summary"
+        );
         Ok(())
     }
 
@@ -1074,7 +1115,10 @@ impl SessionStore {
     ) -> Result<()> {
         use fjall::Readable;
 
-        let _guard = self.write_lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _guard = self
+            .write_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let distillations_part = self.partition("distillations")?;
         let sessions_part = self.partition("sessions")?;
         let counters_part = self.partition("counters")?;
@@ -1141,9 +1185,16 @@ impl SessionStore {
     /// Record token usage for a turn.
     #[instrument(skip(self, record), level = "debug")]
     pub fn record_usage(&self, record: &UsageRecord) -> Result<()> {
-        let _guard = self.write_lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _guard = self
+            .write_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let usage_part = self.partition("usage")?;
-        let key = format!("{}:{}", record.session_id, pad_u64(record.turn_seq.cast_unsigned()));
+        let key = format!(
+            "{}:{}",
+            record.session_id,
+            pad_u64(record.turn_seq.cast_unsigned())
+        );
         let data = serde_json::to_vec(record).context(error::StoredJsonSnafu)?;
         let mut tx = self.db.write_tx();
         tx.insert(&usage_part, key.as_str(), data.as_slice());
@@ -1184,7 +1235,10 @@ impl SessionStore {
             .build());
         }
 
-        let _guard = self.write_lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _guard = self
+            .write_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let notes_part = self.partition("notes")?;
         let counters_part = self.partition("counters")?;
 
@@ -1253,7 +1307,10 @@ impl SessionStore {
     pub fn delete_note(&self, note_id: i64) -> Result<bool> {
         use fjall::Readable;
 
-        let _guard = self.write_lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _guard = self
+            .write_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let notes_part = self.partition("notes")?;
 
         let gid_key = format!("gid:{}", pad_u64(note_id.cast_unsigned()));
@@ -1300,7 +1357,10 @@ impl SessionStore {
         author: &str,
         ttl_secs: i64,
     ) -> Result<()> {
-        let _guard = self.write_lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _guard = self
+            .write_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let bb_part = self.partition("blackboard")?;
 
         let now = now_iso();
@@ -1367,7 +1427,10 @@ impl SessionStore {
     pub(crate) fn cleanup_expired_entries(&self) -> Result<u64> {
         use fjall::Readable;
 
-        let _guard = self.write_lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _guard = self
+            .write_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let bb_part = self.partition("blackboard")?;
         let snap = self.db.read_tx();
 
@@ -1403,7 +1466,10 @@ impl SessionStore {
     /// Delete a blackboard entry. Only the original author can delete.
     #[instrument(skip(self))]
     pub fn blackboard_delete(&self, key: &str, author: &str) -> Result<bool> {
-        let _guard = self.write_lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _guard = self
+            .write_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let bb_part = self.partition("blackboard")?;
 
         let row: Option<BlackboardRow> = self.get_json(&bb_part, key)?;

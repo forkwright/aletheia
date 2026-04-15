@@ -758,179 +758,175 @@ pub(crate) async fn run_pipeline(
     // Wrapping the async body with .instrument() sets the span correctly
     // for each poll without holding a guard across suspension points.
     async move {
-    let mut stages_completed: u32 = 0;
+        let mut stages_completed: u32 = 0;
 
-    let mut ctx = PipelineContext::default();
-    let task_hint = classify_task_hint(&input.content);
+        let mut ctx = PipelineContext::default();
+        let task_hint = classify_task_hint(&input.content);
 
-    run_context_stage(
-        oikos,
-        config,
-        pipeline_config,
-        &mut ctx,
-        extra_bootstrap,
-        task_hint,
-        emitter,
-    )
-    .await?;
-    stages_completed += 1;
+        run_context_stage(
+            oikos,
+            config,
+            pipeline_config,
+            &mut ctx,
+            extra_bootstrap,
+            task_hint,
+            emitter,
+        )
+        .await?;
+        stages_completed += 1;
 
-    run_recall_stage(
-        config,
-        pipeline_config,
-        &mut ctx,
-        &input.content,
-        embedding_provider,
-        vector_search,
-        text_search,
-        emitter,
-    )
-    .await;
-    stages_completed += 1;
+        run_recall_stage(
+            config,
+            pipeline_config,
+            &mut ctx,
+            &input.content,
+            embedding_provider,
+            vector_search,
+            text_search,
+            emitter,
+        )
+        .await;
+        stages_completed += 1;
 
-    run_history_stage(config, &mut ctx, &input, session_store, emitter).await?;
-    stages_completed += 1;
+        run_history_stage(config, &mut ctx, &input, session_store, emitter).await?;
+        stages_completed += 1;
 
-    run_microcompact_stage(config, &mut ctx, emitter);
-    stages_completed += 1;
+        run_microcompact_stage(config, &mut ctx, emitter);
+        stages_completed += 1;
 
-    run_full_compact_stage(config, &mut ctx, emitter);
-    stages_completed += 1;
+        run_full_compact_stage(config, &mut ctx, emitter);
+        stages_completed += 1;
 
-    run_guard_stage(&input.session, config, emitter)?;
-    stages_completed += 1;
+        run_guard_stage(&input.session, config, emitter)?;
+        stages_completed += 1;
 
-    // Before-query hooks run after guard (so rejected requests never reach hooks)
-    // but before execute (so hooks can modify context before the model call).
-    if let Some(hook_registry) = hooks {
-        let mut query_ctx = QueryContext {
-            pipeline: &mut ctx,
-            nous_id: &config.id,
-            user_message: &input.content,
-        };
-        if let crate::hooks::HookResult::Abort { reason } =
-            hook_registry.run_before_query(&mut query_ctx).await
+        // Before-query hooks run after guard (so rejected requests never reach hooks)
+        // but before execute (so hooks can modify context before the model call).
+        if let Some(hook_registry) = hooks {
+            let mut query_ctx = QueryContext {
+                pipeline: &mut ctx,
+                nous_id: &config.id,
+                user_message: &input.content,
+            };
+            if let crate::hooks::HookResult::Abort { reason } =
+                hook_registry.run_before_query(&mut query_ctx).await
+            {
+                return Err(error::GuardRejectedSnafu { reason }.build());
+            }
+        }
+
+        let result = run_execute_stage(
+            config,
+            pipeline_config,
+            &ctx,
+            &input,
+            providers,
+            tools,
+            tool_ctx,
+            stream_tx,
+            pipeline_start,
+            total_timeout,
+            emitter,
+            hooks,
+            session_store,
+        )
+        .await?;
+        stages_completed += 1;
+
+        run_finalize_stage(config, &input, &result, session_store, emitter).await;
+        stages_completed += 1;
+
+        // WHY: training capture runs after finalize so only persisted, successful
+        // turns enter the training corpus. Errors are logged, never propagated:
+        // training capture must never block the pipeline.
+        if pipeline_config.training.enabled {
+            match crate::training::TrainingCapture::new(oikos.root(), &pipeline_config.training) {
+                Ok(mut capture) => {
+                    // Compute episteme labels from the user message for training enrichment.
+                    // These are cheap heuristic classifiers — no LLM calls.
+                    let turn_classification =
+                        episteme::extract::refinement::classify_turn(&input.content);
+                    let correction_signal =
+                        episteme::extract::refinement::detect_correction(&input.content);
+                    let fact_type = episteme::extract::refinement::classify_fact(&input.content);
+
+                    capture.maybe_capture(crate::training::CaptureInput {
+                        session_id: &input.session.id,
+                        nous_id: &config.id,
+                        user_message: &input.content,
+                        assistant_response: &result.content,
+                        model: &config.generation.model,
+                        tokens: result.usage.total_tokens(),
+                        stop_reason: crate::training::CaptureStopReason::parse(&result.stop_reason),
+                        has_tool_calls: !result.tool_calls.is_empty(),
+                        turn_type: Some(turn_classification.to_string()),
+                        is_correction: Some(correction_signal.is_correction),
+                        fact_types: Some(vec![fact_type.to_string()]),
+                        quality_score: None,
+                    });
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "training capture initialization failed");
+                }
+            }
+        }
+
+        // WHY: on_turn_complete hooks run after finalize so audit hooks see the
+        // fully persisted state. Does not short-circuit: all hooks fire.
+        if let Some(hook_registry) = hooks {
+            let turn_ctx = TurnContext {
+                result: &result,
+                nous_id: &config.id,
+                session_tokens: input.session.cumulative_tokens,
+            };
+            hook_registry.run_on_turn_complete(&turn_ctx).await;
+        }
+
+        if !result.tool_calls.is_empty() {
+            crate::instinct::record_observations(&result.tool_calls, &input.content, &config.id);
+        }
+
+        let current_span = tracing::Span::current();
+        #[expect(
+            clippy::cast_possible_truncation,
+            clippy::as_conversions,
+            reason = "u128→u64: pipeline duration fits in u64; usize→u64 for tool call count"
+        )]
         {
-            return Err(error::GuardRejectedSnafu { reason }.build());
+            current_span.record(
+                "pipeline.total_duration_ms",
+                pipeline_start.elapsed().as_millis() as u64, // kanon:ignore RUST/as-cast
+            );
         }
+        current_span.record("pipeline.stages_completed", stages_completed);
+        #[expect(
+            clippy::as_conversions,
+            reason = "usize→u64: tool call count fits in u64"
+        )]
+        current_span.record("pipeline.tool_calls", result.tool_calls.len() as u64); // kanon:ignore RUST/as-cast
+
+        // Single event emission replaces separate metrics::record_turn + tracing::info.
+        crate::metrics::record_turn(&config.id);
+        let duration_ms = u64::try_from(pipeline_start.elapsed().as_millis()).unwrap_or(u64::MAX);
+        #[expect(
+            clippy::as_conversions,
+            reason = "usize→u64: tool call count fits in u64"
+        )]
+        let tool_calls_count = result.tool_calls.len() as u64; // kanon:ignore RUST/as-cast
+        emitter.emit(&events::TurnCompleted {
+            nous_id: config.id.to_string(),
+            model: config.generation.model.clone(),
+            duration_ms,
+            input_tokens: result.usage.input_tokens,
+            output_tokens: result.usage.output_tokens,
+            tool_calls: tool_calls_count,
+            stages_completed,
+        });
+
+        Ok(result)
     }
-
-    let result = run_execute_stage(
-        config,
-        pipeline_config,
-        &ctx,
-        &input,
-        providers,
-        tools,
-        tool_ctx,
-        stream_tx,
-        pipeline_start,
-        total_timeout,
-        emitter,
-        hooks,
-        session_store,
-    )
-    .await?;
-    stages_completed += 1;
-
-    run_finalize_stage(config, &input, &result, session_store, emitter).await;
-    stages_completed += 1;
-
-    // WHY: training capture runs after finalize so only persisted, successful
-    // turns enter the training corpus. Errors are logged, never propagated:
-    // training capture must never block the pipeline.
-    if pipeline_config.training.enabled {
-        match crate::training::TrainingCapture::new(
-            oikos.root(),
-            &pipeline_config.training,
-        ) {
-            Ok(mut capture) => {
-                // Compute episteme labels from the user message for training enrichment.
-                // These are cheap heuristic classifiers — no LLM calls.
-                let turn_classification =
-                    episteme::extract::refinement::classify_turn(&input.content);
-                let correction_signal =
-                    episteme::extract::refinement::detect_correction(&input.content);
-                let fact_type =
-                    episteme::extract::refinement::classify_fact(&input.content);
-
-                capture.maybe_capture(crate::training::CaptureInput {
-                    session_id: &input.session.id,
-                    nous_id: &config.id,
-                    user_message: &input.content,
-                    assistant_response: &result.content,
-                    model: &config.generation.model,
-                    tokens: result.usage.total_tokens(),
-                    stop_reason: crate::training::CaptureStopReason::parse(
-                        &result.stop_reason,
-                    ),
-                    has_tool_calls: !result.tool_calls.is_empty(),
-                    turn_type: Some(turn_classification.to_string()),
-                    is_correction: Some(correction_signal.is_correction),
-                    fact_types: Some(vec![fact_type.to_string()]),
-                    quality_score: None,
-                });
-            }
-            Err(e) => {
-                tracing::warn!(error = %e, "training capture initialization failed");
-            }
-        }
-    }
-
-    // WHY: on_turn_complete hooks run after finalize so audit hooks see the
-    // fully persisted state. Does not short-circuit: all hooks fire.
-    if let Some(hook_registry) = hooks {
-        let turn_ctx = TurnContext {
-            result: &result,
-            nous_id: &config.id,
-            session_tokens: input.session.cumulative_tokens,
-        };
-        hook_registry.run_on_turn_complete(&turn_ctx).await;
-    }
-
-    if !result.tool_calls.is_empty() {
-        crate::instinct::record_observations(&result.tool_calls, &input.content, &config.id);
-    }
-
-    let current_span = tracing::Span::current();
-    #[expect(
-        clippy::cast_possible_truncation,
-        clippy::as_conversions,
-        reason = "u128→u64: pipeline duration fits in u64; usize→u64 for tool call count"
-    )]
-    {
-        current_span.record(
-            "pipeline.total_duration_ms",
-            pipeline_start.elapsed().as_millis() as u64, // kanon:ignore RUST/as-cast
-        );
-    }
-    current_span.record("pipeline.stages_completed", stages_completed);
-    #[expect(
-        clippy::as_conversions,
-        reason = "usize→u64: tool call count fits in u64"
-    )]
-    current_span.record("pipeline.tool_calls", result.tool_calls.len() as u64); // kanon:ignore RUST/as-cast
-
-    // Single event emission replaces separate metrics::record_turn + tracing::info.
-    crate::metrics::record_turn(&config.id);
-    let duration_ms = u64::try_from(pipeline_start.elapsed().as_millis()).unwrap_or(u64::MAX);
-    #[expect(
-        clippy::as_conversions,
-        reason = "usize→u64: tool call count fits in u64"
-    )]
-    let tool_calls_count = result.tool_calls.len() as u64; // kanon:ignore RUST/as-cast
-    emitter.emit(&events::TurnCompleted {
-        nous_id: config.id.to_string(),
-        model: config.generation.model.clone(),
-        duration_ms,
-        input_tokens: result.usage.input_tokens,
-        output_tokens: result.usage.output_tokens,
-        tool_calls: tool_calls_count,
-        stages_completed,
-    });
-
-    Ok(result)
-    }.instrument(pipeline_span).await
+    .instrument(pipeline_span)
+    .await
 }
 
 /// Typed pipeline events for the internal event system.

@@ -356,8 +356,8 @@ const STOP_WORDS: &[&str] = &[
     "the", "and", "for", "are", "but", "not", "you", "all", "can", "had", "her", "was", "one",
     "our", "out", "has", "his", "how", "its", "may", "new", "now", "old", "see", "way", "who",
     "did", "get", "let", "say", "she", "too", "use", "will", "with", "this", "that", "from",
-    "have", "been", "some", "they", "were", "what", "when", "your", "each", "make", "like",
-    "into", "just", "over", "such", "than", "them", "then", "also", "more", "should",
+    "have", "been", "some", "they", "were", "what", "when", "your", "each", "make", "like", "into",
+    "just", "over", "such", "than", "them", "then", "also", "more", "should",
 ];
 
 /// Tokenize text into lowercase words for overlap comparison, excluding stop words.
@@ -468,7 +468,10 @@ mod tests {
         let report = verifier.verify(&flush, transcript);
         assert!(!report.all_passed());
         // Skydiving fact should fail, the others should pass
-        assert!(!report.failed_facts.is_empty(), "hallucinated fact should fail");
+        assert!(
+            !report.failed_facts.is_empty(),
+            "hallucinated fact should fail"
+        );
     }
 
     #[test]

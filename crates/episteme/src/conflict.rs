@@ -422,7 +422,10 @@ pub(crate) fn classify_against_candidates(
             .unwrap_or(std::cmp::Ordering::Equal)
     });
 
-    for &(idx, candidate) in sorted_candidates.iter().take(DEFAULT_MAX_LLM_CALLS_PER_FACT) {
+    for &(idx, candidate) in sorted_candidates
+        .iter()
+        .take(DEFAULT_MAX_LLM_CALLS_PER_FACT)
+    {
         let response = classifier.classify(
             &candidate.existing_content,
             candidate.existing_confidence,

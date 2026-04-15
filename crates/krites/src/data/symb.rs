@@ -1,5 +1,8 @@
 //! Symbol (identifier) types.
-#![expect(clippy::semicolon_if_nothing_returned, reason = "push calls in symbol builder — semicolon style consistent")]
+#![expect(
+    clippy::semicolon_if_nothing_returned,
+    reason = "push calls in symbol builder — semicolon style consistent"
+)]
 use std::cmp::Ordering;
 use std::fmt::{Debug, Display, Formatter};
 use std::hash::{Hash, Hasher};

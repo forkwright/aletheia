@@ -71,9 +71,7 @@ impl FjallDb {
 
         for name in partitions {
             db.keyspace(name, KeyspaceCreateOptions::default)
-                .map_err(|e| {
-                    FjallOpenError::Open(format!("fjall open partition {name}: {e}"))
-                })?;
+                .map_err(|e| FjallOpenError::Open(format!("fjall open partition {name}: {e}")))?;
         }
 
         Ok(Self {
@@ -94,8 +92,7 @@ impl FjallDb {
     /// Returns a `String` error message if temp-dir creation, database open, or
     /// partition initialization fails.
     pub fn open_temp(partitions: &[&str]) -> Result<Self, FjallOpenError> {
-        let dir =
-            tempfile::TempDir::new().map_err(|source| FjallOpenError::TempDir { source })?;
+        let dir = tempfile::TempDir::new().map_err(|source| FjallOpenError::TempDir { source })?;
 
         let db = SingleWriterTxDatabase::builder(dir.path())
             .open()
@@ -103,9 +100,7 @@ impl FjallDb {
 
         for name in partitions {
             db.keyspace(name, KeyspaceCreateOptions::default)
-                .map_err(|e| {
-                    FjallOpenError::Open(format!("fjall open partition {name}: {e}"))
-                })?;
+                .map_err(|e| FjallOpenError::Open(format!("fjall open partition {name}: {e}")))?;
         }
 
         Ok(Self {

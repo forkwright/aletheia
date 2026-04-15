@@ -10,7 +10,6 @@ use snafu::ResultExt as _;
 
 use crate::error;
 
-
 /// Number of bins for the calibration curve (10 bins of width 0.1).
 const NUM_BINS: usize = 10;
 
@@ -90,7 +89,7 @@ impl UncertaintyTracker {
             message: "failed to open uncertainty database",
         })?;
         let max_calibration_points = u32::try_from(
-            taxis::config::AgentBehaviorDefaults::default().uncertainty_max_calibration_points
+            taxis::config::AgentBehaviorDefaults::default().uncertainty_max_calibration_points,
         )
         .unwrap_or(1_000);
         Self::init(conn, max_calibration_points)
@@ -117,7 +116,7 @@ impl UncertaintyTracker {
             message: "failed to open in-memory uncertainty database",
         })?;
         let max_calibration_points = u32::try_from(
-            taxis::config::AgentBehaviorDefaults::default().uncertainty_max_calibration_points
+            taxis::config::AgentBehaviorDefaults::default().uncertainty_max_calibration_points,
         )
         .unwrap_or(1_000);
         Self::init(conn, max_calibration_points)
@@ -151,7 +150,10 @@ impl UncertaintyTracker {
             message: "failed to initialize uncertainty schema",
         })?;
 
-        Ok(Self { conn, max_calibration_points })
+        Ok(Self {
+            conn,
+            max_calibration_points,
+        })
     }
 
     /// Record a confidence prediction and its actual outcome.
@@ -202,7 +204,10 @@ impl UncertaintyTracker {
     /// # Errors
     ///
     /// Returns `UncertaintyStore` on database read failure.
-    #[cfg_attr(not(test), expect(dead_code, reason = "WIP: agent pipeline infrastructure"))]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "WIP: agent pipeline infrastructure")
+    )]
     pub(crate) fn calibration_curve(
         &self,
         nous_id: Option<&str>,
@@ -218,7 +223,10 @@ impl UncertaintyTracker {
     /// # Errors
     ///
     /// Returns `UncertaintyStore` on database read failure.
-    #[cfg_attr(not(test), expect(dead_code, reason = "WIP: agent pipeline infrastructure"))]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "WIP: agent pipeline infrastructure")
+    )]
     pub(crate) fn brier_score(&self, nous_id: Option<&str>) -> error::Result<f64> {
         let points = self.load_points(nous_id)?;
         Ok(compute_brier_score(&points))
@@ -232,7 +240,10 @@ impl UncertaintyTracker {
     /// # Errors
     ///
     /// Returns `UncertaintyStore` on database read failure.
-    #[expect(dead_code, reason = "WIP: agent pipeline infrastructure — no callers yet, including tests")]
+    #[expect(
+        dead_code,
+        reason = "WIP: agent pipeline infrastructure — no callers yet, including tests"
+    )]
     pub(crate) fn ece(&self, nous_id: Option<&str>) -> error::Result<f64> {
         let points = self.load_points(nous_id)?;
         let curve = compute_calibration_curve(&points);
@@ -672,7 +683,8 @@ mod tests {
     #[test]
     fn pruning_keeps_most_recent_points() {
         let t = tracker();
-        let max = taxis::config::AgentBehaviorDefaults::default().uncertainty_max_calibration_points;
+        let max =
+            taxis::config::AgentBehaviorDefaults::default().uncertainty_max_calibration_points;
         #[expect(
             clippy::cast_possible_truncation,
             clippy::as_conversions,

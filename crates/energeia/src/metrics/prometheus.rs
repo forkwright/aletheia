@@ -197,7 +197,14 @@ mod tests {
     #[test]
     fn record_session_increments_counter_and_histogram() {
         init();
-        record_session("acme", "success", 0.50, 30_000, "claude-3-5-sonnet", "crates/foo/");
+        record_session(
+            "acme",
+            "success",
+            0.50,
+            30_000,
+            "claude-3-5-sonnet",
+            "crates/foo/",
+        );
         let count = SESSIONS_TOTAL.with_label_values(&["acme", "success"]).get();
         assert!(count >= 1);
     }
@@ -209,7 +216,14 @@ mod tests {
         let before = COST_USD_TOTAL
             .with_label_values(&["nocost-project", "claude-3-5-sonnet", "crates/foo/"])
             .get();
-        record_session("nocost-project", "failed", 0.0, 5_000, "claude-3-5-sonnet", "crates/foo/");
+        record_session(
+            "nocost-project",
+            "failed",
+            0.0,
+            5_000,
+            "claude-3-5-sonnet",
+            "crates/foo/",
+        );
         let after = COST_USD_TOTAL
             .with_label_values(&["nocost-project", "claude-3-5-sonnet", "crates/foo/"])
             .get();

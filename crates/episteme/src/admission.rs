@@ -394,11 +394,7 @@ mod tests {
             0.5,
             "observation",
         );
-        let long = make_fact(
-            &"x".repeat(200),
-            0.5,
-            "observation",
-        );
+        let long = make_fact(&"x".repeat(200), 0.5, "observation");
 
         assert!(policy.score_utility(&short) < policy.score_utility(&medium));
         assert!(policy.score_utility(&medium) < policy.score_utility(&long));
@@ -429,7 +425,10 @@ mod tests {
             type_prior: 1.0,
         };
         let combined = scores.combined();
-        assert!((combined - 1.0).abs() < f64::EPSILON, "all 1.0 should combine to 1.0");
+        assert!(
+            (combined - 1.0).abs() < f64::EPSILON,
+            "all 1.0 should combine to 1.0"
+        );
 
         let scores_zero = AdmissionScores {
             utility: 0.0,
@@ -438,6 +437,9 @@ mod tests {
             recency: 0.0,
             type_prior: 0.0,
         };
-        assert!(scores_zero.combined().abs() < f64::EPSILON, "all 0.0 should combine to 0.0");
+        assert!(
+            scores_zero.combined().abs() < f64::EPSILON,
+            "all 0.0 should combine to 0.0"
+        );
     }
 }

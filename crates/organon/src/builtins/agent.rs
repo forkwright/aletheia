@@ -17,10 +17,16 @@ use crate::types::{
 };
 
 /// Fallback default; runtime reads `ctx.tool_config.agent_dispatch_timeout_secs`.
-#[expect(dead_code, reason = "retained as documentation of the default value; runtime reads from ToolLimitsConfig")]
+#[expect(
+    dead_code,
+    reason = "retained as documentation of the default value; runtime reads from ToolLimitsConfig"
+)]
 pub(crate) const DEFAULT_TIMEOUT_SECS: u64 = 300;
 /// Fallback default; runtime reads `ctx.tool_config.max_dispatch_tasks`.
-#[expect(dead_code, reason = "retained as documentation of the default value; runtime reads from ToolLimitsConfig")]
+#[expect(
+    dead_code,
+    reason = "retained as documentation of the default value; runtime reads from ToolLimitsConfig"
+)]
 pub(crate) const MAX_DISPATCH_TASKS: usize = 10;
 
 struct SessionsSpawnExecutor;

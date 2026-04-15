@@ -198,7 +198,9 @@ fn write_then_read_roundtrip_facts_and_entities() {
         .expect("link fact to entity");
 
     // NOTE: Read via scoped query (simulates ?nous_id=agent-01)
-    let scoped = store.audit_all_facts("agent-01", 100).expect("audit scoped");
+    let scoped = store
+        .audit_all_facts("agent-01", 100)
+        .expect("audit scoped");
     assert_eq!(scoped.len(), 1);
     assert_eq!(scoped[0].content, "Alice prefers dark mode");
 

@@ -168,7 +168,8 @@ pub fn propose_rules(
     let mut groups: HashMap<String, Accum> = HashMap::new();
 
     for obs in observations {
-        let category = crate::instinct::ContextCategory::classify(&obs.tool_name, &obs.context_summary);
+        let category =
+            crate::instinct::ContextCategory::classify(&obs.tool_name, &obs.context_summary);
         let key = format!("{}/{}", obs.tool_name, category.as_str());
 
         let accum = groups.entry(key).or_insert_with(|| Accum {
@@ -191,8 +192,7 @@ pub fn propose_rules(
                 return None;
             }
 
-            let failure_rate =
-                f64::from(accum.failure_count) / f64::from(accum.total_count);
+            let failure_rate = f64::from(accum.failure_count) / f64::from(accum.total_count);
             let count_f = f64::from(accum.total_count);
             let min_obs_f = f64::from(min_observations);
 
@@ -328,7 +328,10 @@ fn sanitize_tool_name(name: &str) -> String {
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 #[expect(clippy::expect_used, reason = "test assertions")]
-#[expect(clippy::indexing_slicing, reason = "test assertions on collections with known length")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test assertions on collections with known length"
+)]
 mod tests {
     use super::*;
     use crate::instinct::{ToolObservation, ToolOutcome};
@@ -348,7 +351,13 @@ mod tests {
 
     #[test]
     fn below_min_observations_no_proposal() {
-        let obs = make_obs("grep", &ToolOutcome::Failure { error: "not found".to_owned() }, 3);
+        let obs = make_obs(
+            "grep",
+            &ToolOutcome::Failure {
+                error: "not found".to_owned(),
+            },
+            3,
+        );
         let proposals = propose_rules(&obs, DEFAULT_MIN_OBSERVATIONS, DEFAULT_MIN_CONFIDENCE);
         assert!(proposals.is_empty(), "3 observations < MIN_OBSERVATIONS=5");
     }
@@ -356,10 +365,19 @@ mod tests {
     #[test]
     fn high_failure_rate_above_threshold_emits_proposal() {
         // 8 failures, 2 successes → 80% failure rate → confidence well above 0.60
-        let mut obs = make_obs("grep", &ToolOutcome::Failure { error: "x".to_owned() }, 8);
+        let mut obs = make_obs(
+            "grep",
+            &ToolOutcome::Failure {
+                error: "x".to_owned(),
+            },
+            8,
+        );
         obs.extend(make_obs("grep", &ToolOutcome::Success, 2));
         let proposals = propose_rules(&obs, DEFAULT_MIN_OBSERVATIONS, DEFAULT_MIN_CONFIDENCE);
-        assert!(!proposals.is_empty(), "80% failure rate should generate a proposal");
+        assert!(
+            !proposals.is_empty(),
+            "80% failure rate should generate a proposal"
+        );
         assert!(proposals[0].confidence >= DEFAULT_MIN_CONFIDENCE);
     }
 
@@ -367,15 +385,30 @@ mod tests {
     fn all_successes_no_proposal() {
         let obs = make_obs("grep", &ToolOutcome::Success, 20);
         let proposals = propose_rules(&obs, DEFAULT_MIN_OBSERVATIONS, DEFAULT_MIN_CONFIDENCE);
-        assert!(proposals.is_empty(), "0% failure rate should not generate proposals");
+        assert!(
+            proposals.is_empty(),
+            "0% failure rate should not generate proposals"
+        );
     }
 
     #[test]
     fn proposals_sorted_by_confidence_descending() {
         // Two tools with different failure rates
-        let mut obs = make_obs("exec", &ToolOutcome::Failure { error: "x".to_owned() }, 9);
+        let mut obs = make_obs(
+            "exec",
+            &ToolOutcome::Failure {
+                error: "x".to_owned(),
+            },
+            9,
+        );
         obs.extend(make_obs("exec", &ToolOutcome::Success, 1)); // 90% failure
-        obs.extend(make_obs("grep", &ToolOutcome::Failure { error: "x".to_owned() }, 7));
+        obs.extend(make_obs(
+            "grep",
+            &ToolOutcome::Failure {
+                error: "x".to_owned(),
+            },
+            7,
+        ));
         obs.extend(make_obs("grep", &ToolOutcome::Success, 3)); // 70% failure
 
         let proposals = propose_rules(&obs, DEFAULT_MIN_OBSERVATIONS, DEFAULT_MIN_CONFIDENCE);
@@ -401,7 +434,13 @@ mod tests {
         let data_dir = dir.path().join("data");
 
         let obs = {
-            let mut v = make_obs("exec", &ToolOutcome::Failure { error: "x".to_owned() }, 8);
+            let mut v = make_obs(
+                "exec",
+                &ToolOutcome::Failure {
+                    error: "x".to_owned(),
+                },
+                8,
+            );
             v.extend(make_obs("exec", &ToolOutcome::Success, 2));
             v
         };
@@ -412,6 +451,9 @@ mod tests {
         assert!(out.exists(), "output file should be created");
 
         let content = std::fs::read_to_string(&out).unwrap();
-        assert!(content.contains("rule_name"), "TOML should contain rule_name field");
+        assert!(
+            content.contains("rule_name"),
+            "TOML should contain rule_name field"
+        );
     }
 }

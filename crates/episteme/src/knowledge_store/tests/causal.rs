@@ -4,8 +4,8 @@
     reason = "test assertions use direct indexing"
 )]
 
-use crate::id::FactId;
 use crate::id::CausalEdgeId;
+use crate::id::FactId;
 use crate::knowledge::{
     CausalEdge, CausalRelationType, EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance,
     FactTemporal, TemporalOrdering, far_future,
@@ -95,7 +95,11 @@ fn insert_and_query_causal_edge() {
         .query_causes(&FactId::new("fact-b").expect("valid test id"))
         .expect("query_causes should succeed");
     assert_eq!(causes.len(), 1, "should have one cause");
-    assert_eq!(causes[0].source_id.as_str(), "fact-a", "cause should be fact-a");
+    assert_eq!(
+        causes[0].source_id.as_str(),
+        "fact-a",
+        "cause should be fact-a"
+    );
 }
 
 #[test]

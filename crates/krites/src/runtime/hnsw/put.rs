@@ -85,18 +85,24 @@ impl SessionTx<'_> {
             .next();
         if let Some(ep) = ep_res {
             let ep = ep?;
-            let bottom_level = ep[0].get_int().ok_or_else(|| InvalidOperationSnafu {
-                op: "hnsw_read",
-                reason: "entry point bottom_level is not an integer".to_string(),
-            }.build())?;
+            let bottom_level = ep[0].get_int().ok_or_else(|| {
+                InvalidOperationSnafu {
+                    op: "hnsw_read",
+                    reason: "entry point bottom_level is not an integer".to_string(),
+                }
+                .build()
+            })?;
             let ep_t_key = ep[1..orig_table.metadata.keys.len() + 1].to_vec();
             let ep_idx = usize::try_from(
                 ep[orig_table.metadata.keys.len() + 1]
                     .get_int()
-                    .ok_or_else(|| InvalidOperationSnafu {
-                        op: "hnsw_read",
-                        reason: "stored index is not an integer".to_string(),
-                    }.build())?,
+                    .ok_or_else(|| {
+                        InvalidOperationSnafu {
+                            op: "hnsw_read",
+                            reason: "stored index is not an integer".to_string(),
+                        }
+                        .build()
+                    })?,
             )
             .map_err(|_e| {
                 InvalidOperationSnafu {
@@ -108,10 +114,13 @@ impl SessionTx<'_> {
             let ep_subidx = i32::try_from(
                 ep[orig_table.metadata.keys.len() + 2]
                     .get_int()
-                    .ok_or_else(|| InvalidOperationSnafu {
-                        op: "hnsw_read",
-                        reason: "stored subindex is not an integer".to_string(),
-                    }.build())?,
+                    .ok_or_else(|| {
+                        InvalidOperationSnafu {
+                            op: "hnsw_read",
+                            reason: "stored subindex is not an integer".to_string(),
+                        }
+                        .build()
+                    })?,
             )
             .map_err(|_e| {
                 InvalidOperationSnafu {
@@ -276,13 +285,13 @@ impl SessionTx<'_> {
                         clippy::cast_sign_loss,
                         reason = "degree is a small non-negative integer stored as f64"
                     )]
-                    let mut target_degree = target_self_val[0]
-                        .get_float()
-                        .ok_or_else(|| InvalidOperationSnafu {
+                    let mut target_degree = target_self_val[0].get_float().ok_or_else(|| {
+                        InvalidOperationSnafu {
                             op: "hnsw_index",
                             reason: "degree is not a float".to_string(),
-                        }.build())?
-                        as usize
+                        }
+                        .build()
+                    })? as usize
                         + 1;
                     if target_degree > m_max {
                         target_degree = self.hnsw_shrink_neighbour(
@@ -348,10 +357,21 @@ impl SessionTx<'_> {
         let mut canary_key = vec![DataValue::from(1)];
         for _ in 0..2 {
             for i in 0..orig_table.metadata.keys.len() {
-                target_key.push(tuple.get(i).ok_or_else(|| InvalidOperationSnafu {
-                    op: "hnsw_put",
-                    reason: format!("tuple index {i} out of bounds (len {})", tuple.len()),
-                }.build())?.clone());
+                target_key.push(
+                    tuple
+                        .get(i)
+                        .ok_or_else(|| {
+                            InvalidOperationSnafu {
+                                op: "hnsw_put",
+                                reason: format!(
+                                    "tuple index {i} out of bounds (len {})",
+                                    tuple.len()
+                                ),
+                            }
+                            .build()
+                        })?
+                        .clone(),
+                );
                 canary_key.push(DataValue::Null);
             }
             target_key.push(DataValue::from(idx_to_i64(idx)));
@@ -454,10 +474,17 @@ impl SessionTx<'_> {
 
         let mut extracted_vectors = vec![];
         for idx in &manifest.vec_fields {
-            let val = tuple.get(*idx).ok_or_else(|| InvalidOperationSnafu {
-                op: "hnsw_put",
-                reason: format!("vector field index {} out of bounds (tuple len {})", idx, tuple.len()),
-            }.build())?;
+            let val = tuple.get(*idx).ok_or_else(|| {
+                InvalidOperationSnafu {
+                    op: "hnsw_put",
+                    reason: format!(
+                        "vector field index {} out of bounds (tuple len {})",
+                        idx,
+                        tuple.len()
+                    ),
+                }
+                .build()
+            })?;
             if let DataValue::Vec(v) = val {
                 extracted_vectors.push((v, *idx, -1));
             } else if let DataValue::List(l) = val {
@@ -595,7 +622,10 @@ mod tests {
     // Insert `n` vectors into the index. Vector for id `i` is [i,i,i,i].
     fn insert_vectors(db: &DbInstance, n: usize) {
         for i in 0..n {
-            #[expect(clippy::cast_precision_loss, reason = "test fixture with small integers")]
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "test fixture with small integers"
+            )]
             let val = i as f32;
             db.run_default(&format!(
                 "?[id, vec] <- [[{i}, vec([{val}, {val}, {val}, {val}])]] :put vectors {{}}"
@@ -622,7 +652,11 @@ mod tests {
         let db = setup_db();
         insert_vectors(&db, 10);
         let res = db.run_default("?[id] := *vectors{id}").unwrap();
-        assert_eq!(res.rows.len(), 10, "all 10 inserted vectors should be stored");
+        assert_eq!(
+            res.rows.len(),
+            10,
+            "all 10 inserted vectors should be stored"
+        );
     }
 
     #[test]
@@ -633,7 +667,11 @@ mod tests {
         db.run_default("?[id, vec] <- [[1, vec([1.0, 1.0, 1.0, 1.0])]] :put vectors {}")
             .unwrap();
         let res = db.run_default("?[id] := *vectors{id}").unwrap();
-        assert_eq!(res.rows.len(), 1, "duplicate insert must not create extra rows");
+        assert_eq!(
+            res.rows.len(),
+            1,
+            "duplicate insert must not create extra rows"
+        );
     }
 
     #[test]
@@ -651,7 +689,10 @@ mod tests {
         assert_eq!(res.rows.len(), 1);
         assert_eq!(res.rows[0][0].get_int().unwrap(), 7);
         let dist = res.rows[0][1].get_float().unwrap();
-        assert!(dist < 1e-6, "updated vector should be at distance ~0 from query");
+        assert!(
+            dist < 1e-6,
+            "updated vector should be at distance ~0 from query"
+        );
     }
 
     #[test]
@@ -669,7 +710,10 @@ mod tests {
     fn search_level_returns_nearest_first() {
         let db = setup_db();
         for i in 0..50 {
-            #[expect(clippy::cast_precision_loss, reason = "test fixture with small integers")]
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "test fixture with small integers"
+            )]
             let val = i as f32;
             db.run_default(&format!(
                 "?[id, vec] <- [[{i}, vec([{val}, 0.0, 0.0, 0.0])]] :put vectors {{}}"
@@ -683,7 +727,10 @@ mod tests {
             .unwrap();
         assert!(!res.rows.is_empty(), "search should return results");
         let first_id = res.rows[0][0].get_int().unwrap();
-        assert_eq!(first_id, 25, "nearest neighbor (id=25) must be returned first");
+        assert_eq!(
+            first_id, 25,
+            "nearest neighbor (id=25) must be returned first"
+        );
     }
 
     #[test]
@@ -695,7 +742,10 @@ mod tests {
                 r#"?[id, dist] := ~vectors:idx{id | query: vec([15.0, 15.0, 15.0, 15.0]), k: 10, ef: 50, bind_distance: dist} :order dist"#,
             )
             .unwrap();
-        assert!(!res.rows.is_empty(), "search must return results after 30 inserts");
+        assert!(
+            !res.rows.is_empty(),
+            "search must return results after 30 inserts"
+        );
         let distances: Vec<f64> = res.rows.iter().filter_map(|r| r[1].get_float()).collect();
         for window in distances.windows(2) {
             assert!(
@@ -760,10 +810,11 @@ mod tests {
         insert_vectors(&db, 10);
         db.run_default("?[id] <- [[5]] :rm vectors {}").unwrap();
 
-        let base = db
-            .run_default("?[id] := *vectors{id}, id = 5")
-            .unwrap();
-        assert!(base.rows.is_empty(), "deleted vector must be absent from base relation");
+        let base = db.run_default("?[id] := *vectors{id}, id = 5").unwrap();
+        assert!(
+            base.rows.is_empty(),
+            "deleted vector must be absent from base relation"
+        );
 
         let search = db
             .run_default(

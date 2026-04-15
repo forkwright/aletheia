@@ -249,7 +249,10 @@ fn sample_cache_params() -> Arc<CacheSafeParams> {
         Arc::from(vec![sample_message("hello"), sample_message("world")]);
     Arc::new(CacheSafeParams::new(
         "You are a test agent.",
-        vec![sample_tool_definition("zeta_tool"), sample_tool_definition("alpha_tool")],
+        vec![
+            sample_tool_definition("zeta_tool"),
+            sample_tool_definition("alpha_tool"),
+        ],
         "claude-opus-4-20250514",
         messages,
         Some(ThinkingConfig {

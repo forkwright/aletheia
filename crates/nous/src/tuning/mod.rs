@@ -110,11 +110,7 @@ impl TuningProposer {
         clippy::as_conversions,
         reason = "u32->usize: max_changes_per_cycle is a small config value, always fits in usize"
     )]
-    pub fn evaluate(
-        &self,
-        observations: &[MetricSample],
-        nous_id: &str,
-    ) -> Vec<ProposalOutcome> {
+    pub fn evaluate(&self, observations: &[MetricSample], nous_id: &str) -> Vec<ProposalOutcome> {
         if !self.config.enabled {
             return Vec::new();
         }
@@ -125,7 +121,10 @@ impl TuningProposer {
         let mut by_metric: std::collections::HashMap<&str, Vec<&MetricSample>> =
             std::collections::HashMap::new();
         for obs in observations {
-            by_metric.entry(obs.metric_name.as_str()).or_default().push(obs);
+            by_metric
+                .entry(obs.metric_name.as_str())
+                .or_default()
+                .push(obs);
         }
 
         let mut outcomes = Vec::new();
@@ -192,10 +191,7 @@ impl TuningProposer {
 
         // Split samples into before/after halves for A/B comparison.
         let values: Vec<f64> = samples.iter().map(|s| s.value).collect();
-        let validation = evidence::validate_evidence(
-            &values,
-            self.config.significance_threshold,
-        );
+        let validation = evidence::validate_evidence(&values, self.config.significance_threshold);
 
         let Some(result) = validation else {
             return ProposalOutcome::Rejected {
@@ -291,10 +287,18 @@ fn derive_proposed_value(spec: &ParameterSpec, delta: f64) -> ParameterValue {
     // it degraded. The direction_hint tells us which direction to nudge.
     let nudge_factor = match spec.direction_hint {
         TuningDirection::Higher => {
-            if delta > 0.0 { 0.10 } else { -0.10 }
+            if delta > 0.0 {
+                0.10
+            } else {
+                -0.10
+            }
         }
         TuningDirection::Lower => {
-            if delta > 0.0 { -0.10 } else { 0.10 }
+            if delta > 0.0 {
+                -0.10
+            } else {
+                0.10
+            }
         }
         TuningDirection::Contextual => {
             // For contextual parameters, use the sign of delta directly.
@@ -344,7 +348,13 @@ fn parameter_value_to_f64(value: &ParameterValue) -> f64 {
     match value {
         ParameterValue::Int(v) => *v as f64, // kanon:ignore RUST/as-cast
         ParameterValue::Float(v) => *v,
-        ParameterValue::Bool(v) => if *v { 1.0 } else { 0.0 },
+        ParameterValue::Bool(v) => {
+            if *v {
+                1.0
+            } else {
+                0.0
+            }
+        }
         ParameterValue::Duration(v) => *v as f64, // kanon:ignore RUST/as-cast
     }
 }
@@ -407,7 +417,10 @@ mod tests {
         let proposer = TuningProposer::new(make_config(false));
         let samples = make_samples("turn_quality_post_distillation", &[0.5; 30]);
         let outcomes = proposer.evaluate(&samples, "test-nous");
-        assert!(outcomes.is_empty(), "disabled tuning should produce no outcomes");
+        assert!(
+            outcomes.is_empty(),
+            "disabled tuning should produce no outcomes"
+        );
     }
 
     #[test]
@@ -420,7 +433,10 @@ mod tests {
         for outcome in &outcomes {
             match outcome {
                 ProposalOutcome::Rejected { reason, .. } => {
-                    assert!(reason.contains("insufficient samples"), "expected insufficient samples rejection, got: {reason}");
+                    assert!(
+                        reason.contains("insufficient samples"),
+                        "expected insufficient samples rejection, got: {reason}"
+                    );
                 }
                 _ => panic!("expected Rejected outcome"),
             }
@@ -451,7 +467,8 @@ mod tests {
             match outcome {
                 ProposalOutcome::Rejected { reason, .. } => {
                     assert!(
-                        reason.contains("insufficient variance") || reason.contains("does not exceed"),
+                        reason.contains("insufficient variance")
+                            || reason.contains("does not exceed"),
                         "expected weak evidence rejection, got: {reason}"
                     );
                 }
@@ -473,9 +490,9 @@ mod tests {
         let outcomes = proposer.evaluate(&samples, "test-nous");
 
         // Should have at least one Applied or OutOfBounds (not all Rejected)
-        let has_non_rejected = outcomes.iter().any(|o| {
-            !matches!(o, ProposalOutcome::Rejected { .. })
-        });
+        let has_non_rejected = outcomes
+            .iter()
+            .any(|o| !matches!(o, ProposalOutcome::Rejected { .. }));
         // The test may produce OutOfBounds too, which is acceptable
         assert!(
             has_non_rejected || outcomes.is_empty(),
@@ -524,6 +541,8 @@ mod tests {
         assert!((parameter_value_to_f64(&ParameterValue::Float(2.78)) - 2.78).abs() < f64::EPSILON);
         assert!((parameter_value_to_f64(&ParameterValue::Bool(true)) - 1.0).abs() < f64::EPSILON);
         assert!((parameter_value_to_f64(&ParameterValue::Bool(false)) - 0.0).abs() < f64::EPSILON);
-        assert!((parameter_value_to_f64(&ParameterValue::Duration(100)) - 100.0).abs() < f64::EPSILON);
+        assert!(
+            (parameter_value_to_f64(&ParameterValue::Duration(100)) - 100.0).abs() < f64::EPSILON
+        );
     }
 }

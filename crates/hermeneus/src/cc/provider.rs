@@ -221,12 +221,14 @@ fn extract_text_content(content: &Content) -> String {
             let parts: Vec<String> = blocks
                 .iter()
                 .filter_map(|block| match block {
-                    ContentBlock::Text { text, .. } if !text.is_empty() => {
-                        Some(text.to_owned())
-                    }
+                    ContentBlock::Text { text, .. } if !text.is_empty() => Some(text.to_owned()),
                     ContentBlock::ToolResult { content, .. } => {
                         let summary = content.text_summary();
-                        if summary.is_empty() { None } else { Some(summary) }
+                        if summary.is_empty() {
+                            None
+                        } else {
+                            Some(summary)
+                        }
                     }
                     // Thinking, server tool use, web search, code execution have
                     // no text representation for CC's flat prompt format.

@@ -265,7 +265,10 @@ impl Orchestrator {
                     "unknown"
                 } else {
                     // SAFETY: blast_radius checked non-empty above
-                    #[expect(clippy::indexing_slicing, reason = "blast_radius checked non-empty at line above")]
+                    #[expect(
+                        clippy::indexing_slicing,
+                        reason = "blast_radius checked non-empty at line above"
+                    )]
                     outcome.blast_radius[0].as_str()
                 };
 

@@ -117,9 +117,7 @@ pub async fn inject_request_id(mut request: Request, next: Next) -> Response {
 
     let mut response = next.run(request).await;
     if let Ok(header_value) = axum::http::HeaderValue::from_str(&id) {
-        response
-            .headers_mut()
-            .insert(X_REQUEST_ID, header_value);
+        response.headers_mut().insert(X_REQUEST_ID, header_value);
     }
     response
 }
@@ -482,7 +480,9 @@ mod tests {
                 "user {i} should be allowed (within per-user burst)"
             );
             assert!(
-                limiter.check_ip("192.168.1.100", EndpointCategory::General).is_none(),
+                limiter
+                    .check_ip("192.168.1.100", EndpointCategory::General)
+                    .is_none(),
                 "IP should be allowed for user {i} (within IP ceiling burst)"
             );
         }
@@ -493,7 +493,9 @@ mod tests {
             "user-5 per-user bucket should allow (first request)"
         );
         assert!(
-            limiter.check_ip("192.168.1.100", EndpointCategory::General).is_some(),
+            limiter
+                .check_ip("192.168.1.100", EndpointCategory::General)
+                .is_some(),
             "IP ceiling should reject the 6th request from the same IP"
         );
     }

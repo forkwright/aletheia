@@ -11,7 +11,10 @@ pub mod id;
 pub mod knowledge;
 /// Shared test data builders for `Fact`, `Entity`, and `Relationship`.
 #[cfg(any(test, feature = "test-support"))]
-#[expect(clippy::expect_used, reason = "test fixture builders — panics are intentional")]
+#[expect(
+    clippy::expect_used,
+    reason = "test fixture builders — panics are intentional"
+)]
 pub mod test_fixtures;
 /// Training data capture types.
 pub mod training;

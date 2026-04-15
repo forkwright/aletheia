@@ -18,10 +18,10 @@ pub mod enable_tool;
 pub mod energeia;
 /// Filesystem navigation tools (grep, find, ls).
 pub mod filesystem;
-/// Parameter registry query tool (discover tunable parameters).
-pub mod parameters;
 /// Knowledge graph and session memory tools (remember, recall).
 pub mod memory;
+/// Parameter registry query tool (discover tunable parameters).
+pub mod parameters;
 /// Planning project management tools (create, status, execute, verify).
 pub mod planning;
 /// Web research tools (web_fetch). Web search uses Anthropic server-side tools.

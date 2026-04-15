@@ -9,9 +9,7 @@ pub use services::*;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
-pub use hermeneus::types::{
-    DocumentSource, ImageSource, ToolResultBlock, ToolResultContent,
-};
+pub use hermeneus::types::{DocumentSource, ImageSource, ToolResultBlock, ToolResultContent};
 use koina::id::ToolName;
 
 /// Tool definition: the rich metadata that organon tracks internally.

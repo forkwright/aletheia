@@ -57,12 +57,19 @@ impl From<MemoryHeaderRaw> for MemoryHeader {
 
 #[cfg_attr(
     not(test),
-    expect(dead_code, reason = "test-only constructors; MemoryHeader is built via serde in lib builds")
+    expect(
+        dead_code,
+        reason = "test-only constructors; MemoryHeader is built via serde in lib builds"
+    )
 )]
 impl MemoryHeader {
     /// Create a new header with the required fields.
     #[must_use]
-    pub(crate) fn new(source_id: impl Into<String>, name: impl Into<String>, mtime_ms: i64) -> Self {
+    pub(crate) fn new(
+        source_id: impl Into<String>,
+        name: impl Into<String>,
+        mtime_ms: i64,
+    ) -> Self {
         Self {
             source_id: source_id.into(),
             name: name.into(),
@@ -314,7 +321,14 @@ mod tests {
     fn from_headers_preserves_all_within_cap() {
         let count = MAX_MEMORY_ENTRIES - 1;
         let headers: Vec<MemoryHeader> = (0..count)
-            .map(|i| make_header(&format!("id-{i}"), &format!("n-{i}"), i.try_into().expect("count < MAX_MEMORY_ENTRIES (200) fits i64")))
+            .map(|i| {
+                make_header(
+                    &format!("id-{i}"),
+                    &format!("n-{i}"),
+                    i.try_into()
+                        .expect("count < MAX_MEMORY_ENTRIES (200) fits i64"),
+                )
+            })
             .collect();
         let manifest = MemoryManifest::from_headers(headers);
         assert_eq!(

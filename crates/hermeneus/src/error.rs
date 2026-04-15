@@ -328,10 +328,7 @@ mod tests {
             message: "CC process exited with exit status: 1: OAuth token rejected",
         }
         .build();
-        assert!(
-            err.is_retryable(),
-            "CC process exit should be retryable"
-        );
+        assert!(err.is_retryable(), "CC process exit should be retryable");
     }
 
     #[test]

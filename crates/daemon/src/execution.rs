@@ -339,15 +339,13 @@ pub(crate) async fn execute_builtin(
                     episteme::rule_proposals::DEFAULT_MIN_OBSERVATIONS,
                     episteme::rule_proposals::DEFAULT_MIN_CONFIDENCE,
                 );
-                episteme::rule_proposals::write_proposals(
-                    &proposals,
-                    0,
-                    &data_dir,
-                )
-                .map_err(|e| crate::error::TaskFailedSnafu {
-                    task_id: "propose-rules".to_owned(),
-                    reason: e.to_string(),
-                }.build())
+                episteme::rule_proposals::write_proposals(&proposals, 0, &data_dir).map_err(|e| {
+                    crate::error::TaskFailedSnafu {
+                        task_id: "propose-rules".to_owned(),
+                        reason: e.to_string(),
+                    }
+                    .build()
+                })
             })
             .await
             .context(error::BlockingJoinSnafu {
@@ -356,7 +354,9 @@ pub(crate) async fn execute_builtin(
 
             Ok(ExecutionResult {
                 success: true,
-                output: Some("rule proposals written to instance/data/rule_proposals.toml".to_owned()),
+                output: Some(
+                    "rule proposals written to instance/data/rule_proposals.toml".to_owned(),
+                ),
             })
         }
         BuiltinTask::RetentionExecution => {
@@ -423,10 +423,7 @@ async fn execute_probe_audit(
             // Evaluate the returned text against each probe's constraints.
             // The bridge returns the full response text in `output`; if absent,
             // treat as empty (all probes that require patterns will fail).
-            let response_text = dispatch_result
-                .output
-                .as_deref()
-                .unwrap_or_default();
+            let response_text = dispatch_result.output.as_deref().unwrap_or_default();
 
             let results = probe_set.evaluate_all(|probe_id| {
                 // WHY: the response contains all probe answers in a single block.
@@ -662,7 +659,8 @@ async fn execute_ops_fact_extraction(nous_id: &str) -> Result<ExecutionResult> {
         task_sample_count: 0,
     };
 
-    let facts = OpsFactExtractor::extract(&snapshot, episteme::ops_facts::DEFAULT_MIN_TOOL_CALLS).map_err(|e| {
+    let facts = OpsFactExtractor::extract(&snapshot, episteme::ops_facts::DEFAULT_MIN_TOOL_CALLS)
+        .map_err(|e| {
         error::TaskFailedSnafu {
             task_id: String::from("ops-fact-extraction"),
             reason: e.to_string(),

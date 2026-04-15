@@ -494,14 +494,7 @@ async fn history_messages_have_expected_fields() {
     {
         let store = state.session_store.lock().await;
         store
-            .append_message(
-                id,
-                mneme::types::Role::User,
-                "test message",
-                None,
-                None,
-                10,
-            )
+            .append_message(id, mneme::types::Role::User, "test message", None, None, 10)
             .unwrap();
     }
 
@@ -537,7 +530,11 @@ async fn create_session_empty_nous_id_returns_422() {
     let body = body_json(resp).await;
     assert_eq!(body["error"]["code"], "validation_failed");
     let errors = body["error"]["details"]["errors"].as_array().unwrap();
-    assert!(errors.iter().any(|e| e["field"] == "nous_id" && e["code"] == "required"));
+    assert!(
+        errors
+            .iter()
+            .any(|e| e["field"] == "nous_id" && e["code"] == "required")
+    );
 }
 
 #[tokio::test]
@@ -557,7 +554,11 @@ async fn create_session_empty_session_key_returns_422() {
     let body = body_json(resp).await;
     assert_eq!(body["error"]["code"], "validation_failed");
     let errors = body["error"]["details"]["errors"].as_array().unwrap();
-    assert!(errors.iter().any(|e| e["field"] == "session_key" && e["code"] == "required"));
+    assert!(
+        errors
+            .iter()
+            .any(|e| e["field"] == "session_key" && e["code"] == "required")
+    );
 }
 
 #[tokio::test]
@@ -578,7 +579,11 @@ async fn create_session_oversized_nous_id_returns_422() {
     let body = body_json(resp).await;
     assert_eq!(body["error"]["code"], "validation_failed");
     let errors = body["error"]["details"]["errors"].as_array().unwrap();
-    assert!(errors.iter().any(|e| e["field"] == "nous_id" && e["code"] == "too_long"));
+    assert!(
+        errors
+            .iter()
+            .any(|e| e["field"] == "nous_id" && e["code"] == "too_long")
+    );
 }
 
 #[tokio::test]
@@ -599,7 +604,11 @@ async fn create_session_oversized_session_key_returns_422() {
     let body = body_json(resp).await;
     assert_eq!(body["error"]["code"], "validation_failed");
     let errors = body["error"]["details"]["errors"].as_array().unwrap();
-    assert!(errors.iter().any(|e| e["field"] == "session_key" && e["code"] == "too_long"));
+    assert!(
+        errors
+            .iter()
+            .any(|e| e["field"] == "session_key" && e["code"] == "too_long")
+    );
 }
 
 #[tokio::test]
@@ -619,7 +628,11 @@ async fn rename_session_empty_name_returns_422() {
     let body = body_json(resp).await;
     assert_eq!(body["error"]["code"], "validation_failed");
     let errors = body["error"]["details"]["errors"].as_array().unwrap();
-    assert!(errors.iter().any(|e| e["field"] == "name" && e["code"] == "required"));
+    assert!(
+        errors
+            .iter()
+            .any(|e| e["field"] == "name" && e["code"] == "required")
+    );
 }
 
 #[tokio::test]
@@ -640,7 +653,11 @@ async fn rename_session_oversized_name_returns_422() {
     let body = body_json(resp).await;
     assert_eq!(body["error"]["code"], "validation_failed");
     let errors = body["error"]["details"]["errors"].as_array().unwrap();
-    assert!(errors.iter().any(|e| e["field"] == "name" && e["code"] == "too_long"));
+    assert!(
+        errors
+            .iter()
+            .any(|e| e["field"] == "name" && e["code"] == "too_long")
+    );
 }
 
 #[tokio::test]

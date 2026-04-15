@@ -82,7 +82,10 @@ impl SpawnService for SpawnServiceImpl {
 
         let timeout = Duration::from_secs(request.timeout_secs);
         let task = request.task.clone();
-        let session_key = format!("spawn:{}", koina::ulid::Ulid::new().to_string().to_lowercase());
+        let session_key = format!(
+            "spawn:{}",
+            koina::ulid::Ulid::new().to_string().to_lowercase()
+        );
 
         let config = NousConfig {
             id: Arc::from(spawn_id.as_str()),
@@ -333,9 +336,8 @@ mod tests {
             _request: &'a CompletionRequest,
         ) -> std::pin::Pin<
             Box<
-                dyn std::future::Future<
-                        Output = hermeneus::error::Result<CompletionResponse>,
-                    > + Send
+                dyn std::future::Future<Output = hermeneus::error::Result<CompletionResponse>>
+                    + Send
                     + 'a,
             >,
         > {

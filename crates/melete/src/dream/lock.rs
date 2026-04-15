@@ -295,7 +295,8 @@ fn is_stale(mtime: Option<&std::time::SystemTime>, stale_threshold_secs: i64) ->
         // NOTE: mtime in the future → not stale.
         return false;
     };
-    let threshold = std::time::Duration::from_secs(u64::try_from(stale_threshold_secs).unwrap_or_default());
+    let threshold =
+        std::time::Duration::from_secs(u64::try_from(stale_threshold_secs).unwrap_or_default());
     elapsed > threshold
 }
 
@@ -342,8 +343,7 @@ mod tests {
             .unwrap()
             .unwrap();
 
-        let result =
-            try_acquire(&lock_path, DEFAULT_STALE_THRESHOLD_SECS).unwrap();
+        let result = try_acquire(&lock_path, DEFAULT_STALE_THRESHOLD_SECS).unwrap();
         assert!(result.is_none(), "should reject concurrent acquisition");
     }
 
@@ -382,9 +382,7 @@ mod tests {
         drop(file);
 
         // NOTE: stale threshold of 0 so the lock is reclaimable.
-        let acquired = try_acquire(&lock_path, 0)
-            .unwrap()
-            .unwrap();
+        let acquired = try_acquire(&lock_path, 0).unwrap().unwrap();
 
         assert!(
             acquired.prior_mtime().is_some(),
@@ -444,8 +442,7 @@ mod tests {
         // and the lock should be reclaimable without waiting for mtime stale.
         #[cfg(unix)]
         {
-            let acquired =
-                try_acquire(&lock_path, DEFAULT_STALE_THRESHOLD_SECS).unwrap();
+            let acquired = try_acquire(&lock_path, DEFAULT_STALE_THRESHOLD_SECS).unwrap();
             assert!(
                 acquired.is_some(),
                 "lock with dead PID should be reclaimable on Unix"
@@ -459,8 +456,7 @@ mod tests {
         // the lock is also reclaimable.
         #[cfg(not(unix))]
         {
-            let acquired =
-                try_acquire(&lock_path, DEFAULT_STALE_THRESHOLD_SECS).unwrap();
+            let acquired = try_acquire(&lock_path, DEFAULT_STALE_THRESHOLD_SECS).unwrap();
             assert!(
                 acquired.is_some(),
                 "lock with dead PID should be reclaimable on non-Unix"

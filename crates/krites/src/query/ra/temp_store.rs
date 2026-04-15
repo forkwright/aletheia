@@ -65,13 +65,17 @@ impl TempStoreRA {
         &self,
         stores: &'a BTreeMap<MagicSymbol, EpochStore>,
     ) -> Result<&'a EpochStore> {
-        stores
-            .get(&self.storage_key)
-            .ok_or_else(|| {
-                crate::error::InternalError::from(crate::query::error::EvalFailedSnafu {
-                    message: format!("temp store '{}' not found in epoch stores", self.storage_key),
-                }.build())
-            })
+        stores.get(&self.storage_key).ok_or_else(|| {
+            crate::error::InternalError::from(
+                crate::query::error::EvalFailedSnafu {
+                    message: format!(
+                        "temp store '{}' not found in epoch stores",
+                        self.storage_key
+                    ),
+                }
+                .build(),
+            )
+        })
     }
 
     /// Iterate over all (or delta) tuples in this derived relation.

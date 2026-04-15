@@ -56,7 +56,6 @@ struct ActorEntry {
     turn_started_at_ms: Arc<AtomicU64>,
 }
 
-
 /// Manages the lifecycle of all nous actors.
 // NOTE: 14 fields: runtime dependency injection (providers, tools, stores) plus
 // actor state. Kept flat because splitting would scatter logically-paired fields.
@@ -162,10 +161,14 @@ impl NousManager {
             warn!(nous_id = %id, "replacing existing actor");
             let _ = old.handle.shutdown().await;
             // WHY: take join handle before awaiting: must not hold MutexGuard across .await
-            let join_opt = old.join.lock().unwrap_or_else(|e| {
-                warn!(nous_id = %id, "join mutex poisoned, recovering");
-                e.into_inner()
-            }).take();
+            let join_opt = old
+                .join
+                .lock()
+                .unwrap_or_else(|e| {
+                    warn!(nous_id = %id, "join mutex poisoned, recovering");
+                    e.into_inner()
+                })
+                .take();
             if let Some(join) = join_opt {
                 let _ = join.await;
             }
@@ -453,10 +456,14 @@ impl NousManager {
 
         if let Some(old) = self.actors.remove(id) {
             // WHY: take join handle before awaiting: must not hold MutexGuard across .await
-            let join_opt = old.join.lock().unwrap_or_else(|e| {
-                warn!(nous_id = %id, "join mutex poisoned, recovering");
-                e.into_inner()
-            }).take();
+            let join_opt = old
+                .join
+                .lock()
+                .unwrap_or_else(|e| {
+                    warn!(nous_id = %id, "join mutex poisoned, recovering");
+                    e.into_inner()
+                })
+                .take();
             if let Some(join) = join_opt {
                 let restart_drain_timeout =
                     Duration::from_secs(self.nous_behavior.manager_restart_drain_timeout_secs);

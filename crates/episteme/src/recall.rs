@@ -368,7 +368,10 @@ impl RecallEngine {
     /// Access the current weights.
     #[must_use]
     #[instrument(skip(self))]
-    #[cfg_attr(not(test), expect(dead_code, reason = "knowledge pipeline infrastructure"))]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "knowledge pipeline infrastructure")
+    )]
     pub(crate) fn weights(&self) -> &RecallWeights {
         &self.weights
     }
@@ -395,7 +398,10 @@ impl RecallEngine {
     /// Returns the base tier score directly when graph recall weight is zero.
     #[must_use]
     #[instrument(skip(self))]
-    #[cfg_attr(not(test), expect(dead_code, reason = "knowledge pipeline infrastructure"))]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "knowledge pipeline infrastructure")
+    )]
     pub(crate) fn score_epistemic_tier_with_importance(&self, tier: &str, importance: f64) -> f64 {
         let base = self.score_epistemic_tier(tier);
         self.graph_enhanced(base, |b| {
@@ -411,7 +417,10 @@ impl RecallEngine {
     /// Returns the base hop score directly when graph recall weight is zero.
     #[must_use]
     #[instrument(skip(self))]
-    #[cfg_attr(not(test), expect(dead_code, reason = "knowledge pipeline infrastructure"))]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "knowledge pipeline infrastructure")
+    )]
     pub(crate) fn score_relationship_proximity_with_cluster(
         &self,
         hops: Option<u32>,

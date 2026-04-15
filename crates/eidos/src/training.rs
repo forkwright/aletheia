@@ -76,7 +76,6 @@ pub struct TrainingRecord {
     pub timestamp: Timestamp,
 
     // ── Episteme labels (v2) ──────────────────────────────────────────
-
     /// Classification of the conversation turn (e.g. "discussion", "correction").
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub turn_type: Option<String>,
@@ -152,9 +151,18 @@ mod tests {
 
         let json = serde_json::to_string(&record).expect("serialize");
         assert!(!json.contains("turn_type"), "None fields should be skipped");
-        assert!(!json.contains("is_correction"), "None fields should be skipped");
-        assert!(!json.contains("fact_types"), "None fields should be skipped");
-        assert!(!json.contains("quality_score"), "None fields should be skipped");
+        assert!(
+            !json.contains("is_correction"),
+            "None fields should be skipped"
+        );
+        assert!(
+            !json.contains("fact_types"),
+            "None fields should be skipped"
+        );
+        assert!(
+            !json.contains("quality_score"),
+            "None fields should be skipped"
+        );
 
         let back: TrainingRecord = serde_json::from_str(&json).expect("deserialize");
         assert!(back.turn_type.is_none());

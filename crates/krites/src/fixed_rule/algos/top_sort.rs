@@ -92,10 +92,7 @@ impl FixedRule for TopSort {
     clippy::needless_pass_by_value,
     reason = "Poison is lightweight and passed by value for ergonomic .check() calls"
 )]
-pub(crate) fn kahn_topological_sort(
-    graph: &DirectedCsrGraph,
-    poison: Poison,
-) -> Result<Vec<u32>> {
+pub(crate) fn kahn_topological_sort(graph: &DirectedCsrGraph, poison: Poison) -> Result<Vec<u32>> {
     let graph_size = graph.node_count();
     let mut in_degree = vec![0; graph_size as usize];
     for source in 0..graph_size {

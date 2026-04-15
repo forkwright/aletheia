@@ -221,7 +221,12 @@ impl DriftDetector {
         let baseline_end = n.saturating_sub(recent_size);
 
         // WHY: need enough baseline samples for meaningful statistics
-        if baseline_end < self.config.min_samples.saturating_sub(self.config.recent_size) {
+        if baseline_end
+            < self
+                .config
+                .min_samples
+                .saturating_sub(self.config.recent_size)
+        {
             return None;
         }
         if baseline_end == 0 {
@@ -229,7 +234,10 @@ impl DriftDetector {
         }
 
         // SAFETY: baseline_end > 0 checked above, and baseline_end <= n
-        #[expect(clippy::indexing_slicing, reason = "baseline_end > 0 and <= values.len()")]
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "baseline_end > 0 and <= values.len()"
+        )]
         let baseline_slice = &values[..baseline_end];
         #[expect(clippy::indexing_slicing, reason = "baseline_end <= values.len()")]
         let recent_slice = &values[baseline_end..];
@@ -357,7 +365,11 @@ fn slice_mean(values: &[f64]) -> f64 {
 mod tests {
     use super::*;
 
-    fn make_metrics(response_tokens: u64, tool_error_rate: f64, user_correction: bool) -> TurnMetrics {
+    fn make_metrics(
+        response_tokens: u64,
+        tool_error_rate: f64,
+        user_correction: bool,
+    ) -> TurnMetrics {
         TurnMetrics {
             response_tokens,
             tool_error_rate,
@@ -372,7 +384,10 @@ mod tests {
         let mut detector = DriftDetector::default();
         for _ in 0..5 {
             let events = detector.record(make_metrics(500, 0.1, false));
-            assert!(events.is_empty(), "should not detect drift with few samples");
+            assert!(
+                events.is_empty(),
+                "should not detect drift with few samples"
+            );
         }
     }
 
@@ -410,7 +425,10 @@ mod tests {
         let mut drift_detected = false;
         for _ in 0..5 {
             let events = detector.record(make_metrics(50, 0.1, false));
-            if events.iter().any(|e| e.metric == DriftMetric::ResponseLength) {
+            if events
+                .iter()
+                .any(|e| e.metric == DriftMetric::ResponseLength)
+            {
                 drift_detected = true;
             }
         }
@@ -435,7 +453,10 @@ mod tests {
         let mut drift_detected = false;
         for _ in 0..5 {
             let events = detector.record(make_metrics(500, 0.8, false));
-            if events.iter().any(|e| e.metric == DriftMetric::ToolErrorRate) {
+            if events
+                .iter()
+                .any(|e| e.metric == DriftMetric::ToolErrorRate)
+            {
                 drift_detected = true;
             }
         }
@@ -460,7 +481,10 @@ mod tests {
         let mut drift_detected = false;
         for _ in 0..5 {
             let events = detector.record(make_metrics(500, 0.1, true));
-            if events.iter().any(|e| e.metric == DriftMetric::UserCorrections) {
+            if events
+                .iter()
+                .any(|e| e.metric == DriftMetric::UserCorrections)
+            {
                 drift_detected = true;
             }
         }
@@ -480,7 +504,11 @@ mod tests {
             detector.record(make_metrics(500, 0.1, false));
         }
 
-        assert_eq!(detector.turn_count(), 10, "window should cap at window_size");
+        assert_eq!(
+            detector.turn_count(),
+            10,
+            "window should cap at window_size"
+        );
     }
 
     #[test]
@@ -517,10 +545,19 @@ mod tests {
         let tool_drift = events_seen
             .iter()
             .find(|e| e.metric == DriftMetric::ToolErrorRate);
-        assert!(tool_drift.is_some(), "should have a tool error rate drift event");
+        assert!(
+            tool_drift.is_some(),
+            "should have a tool error rate drift event"
+        );
         let event = tool_drift.unwrap(); // kanon:ignore RUST/unwrap
-        assert!(event.current > event.baseline, "current should exceed baseline for error rate");
-        assert!(event.z_score > 0.0, "z-score should be positive for increases");
+        assert!(
+            event.current > event.baseline,
+            "current should exceed baseline for error rate"
+        );
+        assert!(
+            event.z_score > 0.0,
+            "z-score should be positive for increases"
+        );
     }
 
     #[test]
@@ -584,8 +621,14 @@ mod tests {
         // [2, 4, 4, 4, 5, 5, 7, 9] -> mean=5, stddev=2
         let values = [2.0, 4.0, 4.0, 4.0, 5.0, 5.0, 7.0, 9.0];
         let (mean, stddev) = mean_and_stddev(&values);
-        assert!((mean - 5.0).abs() < f64::EPSILON, "mean should be 5.0, got {mean}");
-        assert!((stddev - 2.0).abs() < f64::EPSILON, "stddev should be 2.0, got {stddev}");
+        assert!(
+            (mean - 5.0).abs() < f64::EPSILON,
+            "mean should be 5.0, got {mean}"
+        );
+        assert!(
+            (stddev - 2.0).abs() < f64::EPSILON,
+            "stddev should be 2.0, got {stddev}"
+        );
     }
 
     // --- slice_mean ---

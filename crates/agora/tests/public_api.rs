@@ -422,7 +422,10 @@ fn registry_register_duplicate_fails() {
         err_msg.contains("duplicate channel"),
         "error should indicate duplicate: {err_msg}"
     );
-    assert!(err_msg.contains("signal"), "error should name the channel: {err_msg}");
+    assert!(
+        err_msg.contains("signal"),
+        "error should name the channel: {err_msg}"
+    );
 }
 
 #[tokio::test]
@@ -442,7 +445,10 @@ async fn registry_send_verifies_provider_registered() {
     };
 
     // This will only succeed if the provider is registered
-    let result = registry.send("signal", &params).await.expect("send succeeds");
+    let result = registry
+        .send("signal", &params)
+        .await
+        .expect("send succeeds");
     assert!(result.sent);
 }
 
@@ -461,7 +467,10 @@ async fn registry_send_to_existing_channel() {
         attachments: None,
     };
 
-    let result = registry.send("signal", &params).await.expect("send succeeds");
+    let result = registry
+        .send("signal", &params)
+        .await
+        .expect("send succeeds");
     assert!(result.sent);
 }
 
@@ -477,7 +486,10 @@ async fn registry_send_to_missing_channel_fails() {
         attachments: None,
     };
 
-    let err = registry.send("nonexistent", &params).await.expect_err("send fails");
+    let err = registry
+        .send("nonexistent", &params)
+        .await
+        .expect_err("send fails");
     let err_msg = err.to_string();
     assert!(
         err_msg.contains("unknown channel"),
@@ -505,8 +517,12 @@ async fn registry_probe_all_collects_results() {
         details: None,
     };
 
-    registry.register(Arc::new(ok_provider)).expect("register signal");
-    registry.register(Arc::new(fail_provider)).expect("register slack");
+    registry
+        .register(Arc::new(ok_provider))
+        .expect("register signal");
+    registry
+        .register(Arc::new(fail_provider))
+        .expect("register slack");
 
     let results = registry.probe_all().await;
     assert_eq!(results.len(), 2);
@@ -1132,7 +1148,10 @@ fn connection_health_report_clone() {
     let cloned = original.clone();
     assert_eq!(original.buffered_messages, cloned.buffered_messages);
     assert_eq!(original.dropped_count, cloned.dropped_count);
-    assert_eq!(format!("{:?}", original.state), format!("{:?}", cloned.state));
+    assert_eq!(
+        format!("{:?}", original.state),
+        format!("{:?}", cloned.state)
+    );
 }
 
 // ---------------------------------------------------------------------------

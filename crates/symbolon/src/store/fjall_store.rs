@@ -114,8 +114,8 @@ impl AuthStore {
     /// The directory and all data are deleted when the returned store is dropped.
     #[instrument]
     pub(crate) fn open_in_memory() -> Result<Self> {
-        let fdb = koina::fjall::FjallDb::open_temp(PARTITIONS)
-            .map_err(|e| storage_err(e.to_string()))?;
+        let fdb =
+            koina::fjall::FjallDb::open_temp(PARTITIONS).map_err(|e| storage_err(e.to_string()))?;
         Ok(Self::from_fjall_db(fdb))
     }
 
@@ -170,10 +170,14 @@ impl AuthStore {
     ) -> Result<()> {
         let bytes = serde_json::to_vec(value)
             .map_err(|e| storage_err(format!("fjall json encode key={key}: {e}")))?;
-        let _guard = self.write_lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _guard = self
+            .write_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let mut tx = self.db.write_tx();
         tx.insert(partition, key.as_bytes(), &bytes);
-        tx.commit().map_err(|e| storage_err(format!("fjall commit: {e}")))
+        tx.commit()
+            .map_err(|e| storage_err(format!("fjall commit: {e}")))
     }
 
     fn key_exists(&self, partition: &fjall::SingleWriterTxKeyspace, key: &str) -> Result<bool> {
@@ -184,7 +188,10 @@ impl AuthStore {
         if !self.key_exists(partition, key)? {
             return Ok(false);
         }
-        let _guard = self.write_lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _guard = self
+            .write_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let mut tx = self.db.write_tx();
         tx.remove(partition, key.as_bytes());
         tx.commit()
@@ -306,7 +313,10 @@ impl AuthStore {
         let bytes = serde_json::to_vec(&entry)
             .map_err(|e| storage_err(format!("api key json encode: {e}")))?;
 
-        let _guard = self.write_lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _guard = self
+            .write_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let mut tx = self.db.write_tx();
         tx.insert(&api_keys, primary_key.as_bytes(), &bytes);
         tx.insert(&api_keys, hash_key.as_bytes(), record.id.as_bytes());
@@ -395,7 +405,10 @@ impl AuthStore {
         let key = format!("revoked:{jti}");
         // WHY: INSERT OR IGNORE semantics — silently skip if already present.
         if !self.key_exists(&revoked, &key)? {
-            let _guard = self.write_lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            let _guard = self
+                .write_lock
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             let mut tx = self.db.write_tx();
             tx.insert(&revoked, key.as_bytes(), expires_at.as_bytes());
             tx.commit()
@@ -438,7 +451,10 @@ impl AuthStore {
 
         let count = expired_keys.len();
         if count > 0 {
-            let _guard = self.write_lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            let _guard = self
+                .write_lock
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             let mut tx = self.db.write_tx();
             for key in &expired_keys {
                 tx.remove(&revoked, key.as_slice());

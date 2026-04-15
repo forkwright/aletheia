@@ -553,7 +553,10 @@ impl NousActor {
             if let Some(ref loader) = self.stores.skill_loader {
                 let task_context = crate::skills::extract_task_context(content);
                 let max_skills = self.config.behavior.skills_max_skills;
-                tracing::debug!(max_skills, "resolve_skill_sections: max_skills from behavior");
+                tracing::debug!(
+                    max_skills,
+                    "resolve_skill_sections: max_skills from behavior"
+                );
                 return loader
                     .resolve_skills(&self.id, &task_context, max_skills)
                     .await;

@@ -1,6 +1,12 @@
 //! Trigonometric, hyperbolic, and geographic functions.
-#![expect(clippy::as_conversions, reason = "trig functions require i64-to-f64 casts — precision loss is acceptable")]
-#![expect(clippy::redundant_closure_for_method_calls, reason = "vector mapv closures (|x| x.sin()) are clearer than method references for ndarray")]
+#![expect(
+    clippy::as_conversions,
+    reason = "trig functions require i64-to-f64 casts — precision loss is acceptable"
+)]
+#![expect(
+    clippy::redundant_closure_for_method_calls,
+    reason = "vector mapv closures (|x| x.sin()) are clearer than method references for ndarray"
+)]
 use crate::data::error::*;
 type Result<T> = DataResult<T>;
 use super::arg;

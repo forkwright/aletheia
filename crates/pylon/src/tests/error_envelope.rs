@@ -54,7 +54,9 @@ async fn create_session_empty_nous_id_returns_422_with_envelope() {
         .as_array()
         .expect("details.errors should be an array");
     assert!(
-        errors.iter().any(|e| e["field"] == "nous_id" && e["code"] == "required"),
+        errors
+            .iter()
+            .any(|e| e["field"] == "nous_id" && e["code"] == "required"),
         "errors should contain a required error for nous_id"
     );
 }
@@ -85,7 +87,9 @@ async fn create_session_empty_session_key_returns_422_with_envelope() {
         .as_array()
         .expect("details.errors should be an array");
     assert!(
-        errors.iter().any(|e| e["field"] == "session_key" && e["code"] == "required"),
+        errors
+            .iter()
+            .any(|e| e["field"] == "session_key" && e["code"] == "required"),
         "errors should contain a required error for session_key"
     );
 }
@@ -164,7 +168,9 @@ async fn rename_session_empty_name_returns_422_with_envelope() {
         .as_array()
         .expect("details.errors should be an array");
     assert!(
-        errors.iter().any(|e| e["field"] == "name" && e["code"] == "required"),
+        errors
+            .iter()
+            .any(|e| e["field"] == "name" && e["code"] == "required"),
         "errors should contain a required error for name"
     );
 }

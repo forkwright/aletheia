@@ -1,5 +1,8 @@
 //! Miscellaneous aggregation operators: path, choice, bitwise.
-#![expect(clippy::assigning_clones, reason = "aggregation accumulators clone into existing storage — clone_from not always applicable")]
+#![expect(
+    clippy::assigning_clones,
+    reason = "aggregation accumulators clone into existing storage — clone_from not always applicable"
+)]
 use super::super::error::*;
 
 type Result<T> = DataResult<T>;

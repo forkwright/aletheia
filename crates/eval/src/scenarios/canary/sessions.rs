@@ -38,7 +38,10 @@ impl Scenario for SessionCreateSendHistory {
                 let _ = client.send_message(&session.id, test_msg).await?;
                 let history = client.get_history(&session.id).await?;
 
-                assert_eval(history.messages.len() >= 2, "History should have user + assistant")?;
+                assert_eval(
+                    history.messages.len() >= 2,
+                    "History should have user + assistant",
+                )?;
                 let user_msg = history
                     .messages
                     .iter()
@@ -194,13 +197,22 @@ impl Scenario for SessionConcurrentOrdering {
                 let session = client.create_session(nous_id, &key).await?;
 
                 // Send messages in known order
-                let _ = client.send_message(&session.id, "First message: ALPHA").await?;
-                let _ = client.send_message(&session.id, "Second message: BETA").await?;
-                let _ = client.send_message(&session.id, "Third message: GAMMA").await?;
+                let _ = client
+                    .send_message(&session.id, "First message: ALPHA")
+                    .await?;
+                let _ = client
+                    .send_message(&session.id, "Second message: BETA")
+                    .await?;
+                let _ = client
+                    .send_message(&session.id, "Third message: GAMMA")
+                    .await?;
 
                 let history = client.get_history(&session.id).await?;
                 // Verify we have the expected number of messages
-                assert_eval(history.messages.len() >= 6, "Should have 6+ messages (3 user + 3 assistant)")?;
+                assert_eval(
+                    history.messages.len() >= 6,
+                    "Should have 6+ messages (3 user + 3 assistant)",
+                )?;
 
                 let _ = client.close_session(&session.id).await;
                 Ok(())
@@ -259,7 +271,10 @@ impl Scenario for SessionLargeContextDistillation {
                     .send_message(&session.id, "Summarize what we've discussed.")
                     .await?;
                 let text = sse::extract_text(&events);
-                assert_eval(!text.is_empty(), "Large context response should not be empty")?;
+                assert_eval(
+                    !text.is_empty(),
+                    "Large context response should not be empty",
+                )?;
 
                 let _ = client.close_session(&session.id).await;
                 Ok(())

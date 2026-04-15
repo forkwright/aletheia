@@ -323,7 +323,11 @@ async fn send_message_empty_content_returns_422() {
     let body = body_json(resp).await;
     assert_eq!(body["error"]["code"], "validation_failed");
     let errors = body["error"]["details"]["errors"].as_array().unwrap();
-    assert!(errors.iter().any(|e| e["field"] == "content" && e["code"] == "required"));
+    assert!(
+        errors
+            .iter()
+            .any(|e| e["field"] == "content" && e["code"] == "required")
+    );
 }
 
 /// Error path: sending an oversized message returns 422 Unprocessable Entity.
@@ -345,7 +349,11 @@ async fn send_message_oversized_content_returns_422() {
     let body = body_json(resp).await;
     assert_eq!(body["error"]["code"], "validation_failed");
     let errors = body["error"]["details"]["errors"].as_array().unwrap();
-    assert!(errors.iter().any(|e| e["field"] == "content" && e["code"] == "too_long"));
+    assert!(
+        errors
+            .iter()
+            .any(|e| e["field"] == "content" && e["code"] == "too_long")
+    );
 }
 
 /// Error path: sending message to unknown session returns 404 Not Found.
@@ -435,7 +443,11 @@ async fn stream_turn_empty_message_returns_422() {
     let body = body_json(resp).await;
     assert_eq!(body["error"]["code"], "validation_failed");
     let errors = body["error"]["details"]["errors"].as_array().unwrap();
-    assert!(errors.iter().any(|e| e["field"] == "message" && e["code"] == "required"));
+    assert!(
+        errors
+            .iter()
+            .any(|e| e["field"] == "message" && e["code"] == "required")
+    );
 }
 
 /// Error path: `stream_turn` with oversized message returns 422.
@@ -458,7 +470,11 @@ async fn stream_turn_oversized_message_returns_422() {
     let body = body_json(resp).await;
     assert_eq!(body["error"]["code"], "validation_failed");
     let errors = body["error"]["details"]["errors"].as_array().unwrap();
-    assert!(errors.iter().any(|e| e["field"] == "message" && e["code"] == "too_long"));
+    assert!(
+        errors
+            .iter()
+            .any(|e| e["field"] == "message" && e["code"] == "too_long")
+    );
 }
 
 /// Error path: `stream_turn` with unknown `agent_id` returns 404 Not Found.
@@ -501,7 +517,11 @@ async fn stream_turn_oversized_agent_id_returns_422() {
     let body = body_json(resp).await;
     assert_eq!(body["error"]["code"], "validation_failed");
     let errors = body["error"]["details"]["errors"].as_array().unwrap();
-    assert!(errors.iter().any(|e| e["field"] == "agent_id" && e["code"] == "too_long"));
+    assert!(
+        errors
+            .iter()
+            .any(|e| e["field"] == "agent_id" && e["code"] == "too_long")
+    );
 }
 
 /// Error path: `stream_turn` with oversized `session_key` returns 422.
@@ -524,5 +544,9 @@ async fn stream_turn_oversized_session_key_returns_422() {
     let body = body_json(resp).await;
     assert_eq!(body["error"]["code"], "validation_failed");
     let errors = body["error"]["details"]["errors"].as_array().unwrap();
-    assert!(errors.iter().any(|e| e["field"] == "session_key" && e["code"] == "too_long"));
+    assert!(
+        errors
+            .iter()
+            .any(|e| e["field"] == "session_key" && e["code"] == "too_long")
+    );
 }

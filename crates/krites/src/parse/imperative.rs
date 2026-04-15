@@ -20,8 +20,8 @@ use crate::error::InternalResult as Result;
 use crate::parse::query::parse_query;
 use crate::parse::sys::parse_sys;
 use crate::parse::{
-    error::InvalidQuerySnafu, ExtractSpan, ImperativeProgram, ImperativeStmt, ImperativeStmtClause,
-    ImperativeSysop, Pair, Rule,
+    ExtractSpan, ImperativeProgram, ImperativeStmt, ImperativeStmtClause, ImperativeSysop, Pair,
+    Rule, error::InvalidQuerySnafu,
 };
 use crate::{DataValue, FixedRule, ValidityTs};
 
@@ -144,8 +144,7 @@ fn parse_imperative_stmt(
             }
         }
         Rule::imperative_clause => {
-            let prog =
-                parse_query_with_store_as(pair, param_pool, fixed_rules, cur_vld)?;
+            let prog = parse_query_with_store_as(pair, param_pool, fixed_rules, cur_vld)?;
             ImperativeStmt::Program { prog }
         }
         Rule::ignore_error_script => {
@@ -155,8 +154,7 @@ fn parse_imperative_stmt(
                 }
                 .build()
             })?;
-            let prog =
-                parse_query_with_store_as(inner_pair, param_pool, fixed_rules, cur_vld)?;
+            let prog = parse_query_with_store_as(inner_pair, param_pool, fixed_rules, cur_vld)?;
             ImperativeStmt::IgnoreErrorProgram { prog }
         }
         r => {
@@ -183,8 +181,7 @@ fn parse_return_stmt(
                 rets.push(Right(CompactString::from(p.as_str())));
             }
             Rule::query_script_inner => {
-                let prog =
-                    parse_query_with_store_as(p, param_pool, fixed_rules, cur_vld)?;
+                let prog = parse_query_with_store_as(p, param_pool, fixed_rules, cur_vld)?;
                 rets.push(Left(prog));
             }
             r => {
@@ -217,9 +214,7 @@ fn parse_if_stmt(
     let cond = match condition.as_rule() {
         Rule::underscore_ident => Left(CompactString::from(condition.as_str())),
         Rule::imperative_clause => {
-            let prog = parse_query_with_store_as(
-                condition, param_pool, fixed_rules, cur_vld,
-            )?;
+            let prog = parse_query_with_store_as(condition, param_pool, fixed_rules, cur_vld)?;
             Right(prog)
         }
         r => {

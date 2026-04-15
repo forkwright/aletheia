@@ -198,8 +198,7 @@ fn load_and_render_halfblocks(path: &Path, max_width: usize) -> Vec<Line<'static
 
     // Reserve 2 columns for left margin. Terminal width always fits in u32;
     // saturate at u32::MAX for the unreachable branch.
-    let avail_width =
-        u32::try_from(max_width.saturating_sub(2).max(1)).unwrap_or(u32::MAX);
+    let avail_width = u32::try_from(max_width.saturating_sub(2).max(1)).unwrap_or(u32::MAX);
     let max_pixel_h = MAX_IMAGE_HEIGHT * 2;
 
     let scale_w = f64::from(avail_width) / f64::from(orig_w);

@@ -88,7 +88,10 @@ pub async fn create(
         });
     }
     if !field_errors.is_empty() {
-        return Err(ValidationFailedSnafu { errors: field_errors }.build());
+        return Err(ValidationFailedSnafu {
+            errors: field_errors,
+        }
+        .build());
     }
 
     let config = state.nous_manager.get_config(&nous_id).ok_or_else(|| {

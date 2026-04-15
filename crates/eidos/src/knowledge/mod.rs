@@ -23,20 +23,20 @@ pub use entity::{EmbeddedChunk, Entity, RecallResult, Relationship};
 
 // ── Re-exports: fact ─────────────────────────────────────────────────────
 
-pub use fact::{
-    EpistemicTier, Fact, FactAccess, FactDiff, FactLifecycle, FactProvenance, FactTemporal,
-    FactType, ForgetReason, KnowledgeStage, StageTransition, VerificationRecord,
-    VerificationSource, VerificationStatus, MAX_CONTENT_LENGTH, default_stability_hours,
-    far_future, format_timestamp, parse_timestamp,
-};
 #[cfg(test)]
 pub(crate) use fact::is_far_future;
+pub use fact::{
+    EpistemicTier, Fact, FactAccess, FactDiff, FactLifecycle, FactProvenance, FactTemporal,
+    FactType, ForgetReason, KnowledgeStage, MAX_CONTENT_LENGTH, StageTransition,
+    VerificationRecord, VerificationSource, VerificationStatus, default_stability_hours,
+    far_future, format_timestamp, parse_timestamp,
+};
 
 // ── Re-exports: path ─────────────────────────────────────────────────────
 
 pub use path::{
-    PathValidationError, PathValidationLayer, ValidatedPath, PATH_VALIDATION_FS_LAYERS,
-    SYMLINK_HOP_LIMIT, validate_memory_path,
+    PATH_VALIDATION_FS_LAYERS, PathValidationError, PathValidationLayer, SYMLINK_HOP_LIMIT,
+    ValidatedPath, validate_memory_path,
 };
 
 // ── Re-exports: scope ────────────────────────────────────────────────────

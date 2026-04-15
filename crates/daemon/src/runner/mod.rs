@@ -4,12 +4,12 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use serde::{Deserialize, Serialize};
-use tokio_util::sync::CancellationToken;
 use crate::bridge::DaemonBridge;
 use crate::error::Result;
 use crate::maintenance::{KnowledgeMaintenanceExecutor, MaintenanceConfig, RetentionExecutor};
 use crate::schedule::TaskDef;
+use serde::{Deserialize, Serialize};
+use tokio_util::sync::CancellationToken;
 // WHY: tests use `use super::*` and reference Schedule/BuiltinTask/TaskAction directly.
 #[cfg(test)]
 use crate::schedule::{BuiltinTask, Schedule, TaskAction};
@@ -190,7 +190,6 @@ impl TaskRunner {
         self.self_prompt_config = config;
         self
     }
-
 }
 
 #[cfg(test)]

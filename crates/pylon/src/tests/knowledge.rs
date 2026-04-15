@@ -31,10 +31,12 @@ async fn list_facts_invalid_sort_returns_400() {
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
     let body = body_json(resp).await;
     assert_eq!(body["error"]["code"], "bad_request");
-    assert!(body["error"]["message"]
-        .as_str()
-        .unwrap()
-        .contains("invalid sort field"));
+    assert!(
+        body["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("invalid sort field")
+    );
 }
 
 /// Error path: `list_facts` with invalid order parameter returns 400 Bad Request.
@@ -49,10 +51,12 @@ async fn list_facts_invalid_order_returns_400() {
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
     let body = body_json(resp).await;
     assert_eq!(body["error"]["code"], "bad_request");
-    assert!(body["error"]["message"]
-        .as_str()
-        .unwrap()
-        .contains("invalid order"));
+    assert!(
+        body["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("invalid order")
+    );
 }
 
 /// Error path: `forget_fact` returns 503 Service Unavailable when knowledge store not enabled.
@@ -113,10 +117,12 @@ async fn update_confidence_out_of_range_returns_400() {
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
     let body = body_json(resp).await;
     assert_eq!(body["error"]["code"], "bad_request");
-    assert!(body["error"]["message"]
-        .as_str()
-        .unwrap()
-        .contains("between 0.0 and 1.0"));
+    assert!(
+        body["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("between 0.0 and 1.0")
+    );
 }
 
 /// Error path: `update_confidence` with negative confidence returns 400 Bad Request.
@@ -154,7 +160,9 @@ async fn check_graph_health_without_knowledge_store_returns_503() {
 async fn entity_relationships_without_knowledge_store_returns_empty() {
     let (app, _dir) = app().await;
     let resp = app
-        .oneshot(authed_get("/api/v1/knowledge/entities/some-id/relationships"))
+        .oneshot(authed_get(
+            "/api/v1/knowledge/entities/some-id/relationships",
+        ))
         .await
         .unwrap();
 

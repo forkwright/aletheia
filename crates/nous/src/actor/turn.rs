@@ -49,7 +49,9 @@ impl NousActor {
             reason = "u128→u64: actor uptime in ms won't exceed u64::MAX"
         )]
         let elapsed_ms = self.runtime.started_at.elapsed().as_millis() as u64; // kanon:ignore RUST/as-cast
-        self.runtime.turn_started_at_ms.store(elapsed_ms, Ordering::Release);
+        self.runtime
+            .turn_started_at_ms
+            .store(elapsed_ms, Ordering::Release);
     }
 
     /// Finalize turn: update session tokens, check drift, spawn side-effects, reset state.
@@ -90,7 +92,11 @@ impl NousActor {
     /// per-session drift detector.
     pub(super) fn record_drift_metrics(&mut self, session_key: &str, turn_result: &TurnResult) {
         let total_calls = turn_result.tool_calls.len();
-        let error_calls = turn_result.tool_calls.iter().filter(|tc| tc.is_error).count();
+        let error_calls = turn_result
+            .tool_calls
+            .iter()
+            .filter(|tc| tc.is_error)
+            .count();
 
         // WHY: tool call counts are in the low tens per turn; u32 is ample and
         // the u32→f64 conversion is lossless (u32::MAX < f64 mantissa precision).
@@ -486,7 +492,9 @@ impl NousActor {
         let cutoff = std::time::Instant::now()
             .checked_sub(degraded_window)
             .unwrap_or(self.runtime.started_at);
-        self.runtime.pipeline_panic_timestamps.retain(|t| *t > cutoff);
+        self.runtime
+            .pipeline_panic_timestamps
+            .retain(|t| *t > cutoff);
 
         let threshold = self.nous_behavior.degraded_panic_threshold;
         tracing::debug!(

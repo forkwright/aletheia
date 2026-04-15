@@ -41,8 +41,14 @@ fn structural_summary_preserves_recent_turns() {
     assert!(summary.contains("msg1"), "msg1 should be summarized");
     assert!(summary.contains("msg2"), "msg2 should be summarized");
     assert!(summary.contains("msg3"), "msg3 should be summarized");
-    assert!(!summary.contains("msg4"), "msg4 should be preserved (not summarized)");
-    assert!(!summary.contains("msg5"), "msg5 should be preserved (not summarized)");
+    assert!(
+        !summary.contains("msg4"),
+        "msg4 should be preserved (not summarized)"
+    );
+    assert!(
+        !summary.contains("msg5"),
+        "msg5 should be preserved (not summarized)"
+    );
     assert!(summary.contains("3 messages summarized"));
 }
 
@@ -116,10 +122,7 @@ fn structural_summary_handles_multibyte_content() {
 #[test]
 fn structural_summary_preserve_exactly_equals_len() {
     // preserve_turns == len: everything is preserved, nothing summarized
-    let msgs = vec![
-        make_msg("user", "one"),
-        make_msg("assistant", "two"),
-    ];
+    let msgs = vec![make_msg("user", "one"), make_msg("assistant", "two")];
     let config = config_with_preserve(2);
     let summary = build_structural_summary(&msgs, &config);
     assert!(summary.contains("0 messages summarized"));

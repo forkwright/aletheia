@@ -1,6 +1,15 @@
-#![expect(clippy::as_conversions, reason = "column type metadata requires numeric casts")]
-#![expect(clippy::too_many_lines, reason = "column type display handles all type combinations")]
-#![expect(clippy::semicolon_if_nothing_returned, reason = "write! calls in Display impl — semicolon not needed")]
+#![expect(
+    clippy::as_conversions,
+    reason = "column type metadata requires numeric casts"
+)]
+#![expect(
+    clippy::too_many_lines,
+    reason = "column type display handles all type combinations"
+)]
+#![expect(
+    clippy::semicolon_if_nothing_returned,
+    reason = "write! calls in Display impl — semicolon not needed"
+)]
 use std::fmt::{Debug, Display, Formatter};
 
 use crate::data::relation::StoredRelationMetadata;

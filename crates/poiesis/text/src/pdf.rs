@@ -10,7 +10,7 @@ use krilla::geom::Point;
 use krilla::page::PageSettings;
 use krilla::text::{Font, TextDirection};
 
-use poiesis_core::{Block, Document, RichText, Renderer};
+use poiesis_core::{Block, Document, Renderer, RichText};
 use snafu::Snafu;
 
 /// A4 page width in PDF points (1 pt = 1/72 inch).
@@ -106,11 +106,9 @@ impl PdfRenderer {
             "/usr/share/fonts/dejavu-sans-fonts/DejaVuSans.ttf",
         ];
 
-        candidates.iter().find_map(|path| {
-            std::fs::read(path)
-                .ok()
-                .filter(|data| !data.is_empty())
-        })
+        candidates
+            .iter()
+            .find_map(|path| std::fs::read(path).ok().filter(|data| !data.is_empty()))
     }
 }
 
@@ -129,13 +127,12 @@ impl Renderer for PdfRenderer {
         "pdf"
     }
 
-    #[expect(clippy::too_many_lines, reason = "PDF page layout is inherently sequential; splitting would scatter related rendering logic")]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "PDF page layout is inherently sequential; splitting would scatter related rendering logic"
+    )]
     fn render(&self, doc: &Document) -> Result<Vec<u8>, Self::Error> {
-        let font = Font::new(
-            self.font_data.clone().into(),
-            0,
-        )
-        .ok_or(PdfError::NoFont)?;
+        let font = Font::new(self.font_data.clone().into(), 0).ok_or(PdfError::NoFont)?;
 
         let mut krilla_doc = KrillaDocument::new();
 
@@ -249,15 +246,7 @@ impl Renderer for PdfRenderer {
                 Block::Image(img) => {
                     // Images are not rendered inline — emit the alt text instead.
                     let alt = format!("[Image: {}]", img.alt);
-                    y = draw_wrapped(
-                        &mut surface,
-                        &font,
-                        FONT_SIZE_BODY,
-                        &alt,
-                        x,
-                        y,
-                        USABLE_W,
-                    );
+                    y = draw_wrapped(&mut surface, &font, FONT_SIZE_BODY, &alt, x, y, USABLE_W);
                     y += PARA_SPACING;
                 }
                 Block::PageBreak => {
@@ -309,7 +298,12 @@ fn draw_wrapped(
     let char_w_approx = font_size * 0.55;
     // WHY: safe cast — max_width and char_w_approx are positive finite f32 values
     // produced from compile-time page constants; the ratio fits comfortably in usize.
-    #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss, clippy::as_conversions, reason = "max_width and char_w_approx are positive finite f32 from page constants; ratio fits in usize")]
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        clippy::as_conversions,
+        reason = "max_width and char_w_approx are positive finite f32 from page constants; ratio fits in usize"
+    )]
     let chars_per_line = (max_width / char_w_approx).max(1.0) as usize;
 
     let line_h = font_size * LEADING;

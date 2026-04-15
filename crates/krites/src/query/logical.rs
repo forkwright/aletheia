@@ -244,7 +244,9 @@ impl InputAtom {
                             "negation not supported for atom type: {:?}",
                             std::mem::discriminant(&other)
                         ),
-                    }.build().into());
+                    }
+                    .build()
+                    .into());
                 }
             },
             InputAtom::Unification { inner: u } => {

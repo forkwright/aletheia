@@ -62,8 +62,12 @@ fn estimate_long(c: &mut Criterion) {
 fn budget_new(c: &mut Criterion) {
     c.bench_function("token_budget_new", |b| {
         b.iter(|| {
-            let budget =
-                TokenBudget::new(black_box(200_000), black_box(0.6), black_box(8_192), black_box(40_000));
+            let budget = TokenBudget::new(
+                black_box(200_000),
+                black_box(0.6),
+                black_box(8_192),
+                black_box(40_000),
+            );
             black_box(budget)
         });
     });

@@ -212,7 +212,10 @@ fn memory_anomaly_serialization_roundtrip() {
 // --- Knowledge-store-gated tests ---
 
 #[cfg(feature = "knowledge-store")]
-#[expect(clippy::indexing_slicing, reason = "test assertions on known-length vectors")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test assertions on known-length vectors"
+)]
 mod knowledge_store_tests {
     use super::*;
 
@@ -226,8 +229,7 @@ mod knowledge_store_tests {
             scope: None,
             temporal: aletheia_episteme::knowledge::FactTemporal {
                 valid_from: jiff::Timestamp::now(),
-                valid_to: jiff::Timestamp::from_second(253_402_207_200)
-                    .expect("far future"),
+                valid_to: jiff::Timestamp::from_second(253_402_207_200).expect("far future"),
                 recorded_at: jiff::Timestamp::now(),
             },
             provenance: aletheia_episteme::knowledge::FactProvenance {
@@ -255,8 +257,8 @@ mod knowledge_store_tests {
         fact_id: &str,
         entity_id: &str,
     ) {
-        use std::collections::BTreeMap;
         use aletheia_episteme::engine::DataValue;
+        use std::collections::BTreeMap;
 
         let now = aletheia_episteme::knowledge::format_timestamp(&jiff::Timestamp::now());
         let mut params = BTreeMap::new();

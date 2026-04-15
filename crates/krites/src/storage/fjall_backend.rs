@@ -190,7 +190,9 @@ unsafe impl Sync for FjallWriteTx<'_> {}
 
 impl FjallWriteTx<'_> {
     fn tx_ref(&self) -> &fjall::SingleWriterWriteTx<'_> {
-        self.tx.as_ref().unwrap_or_else(|| unreachable!("INVARIANT: tx is always Some while FjallWriteTx is live"))
+        self.tx.as_ref().unwrap_or_else(|| {
+            unreachable!("INVARIANT: tx is always Some while FjallWriteTx is live")
+        })
     }
 }
 
@@ -534,7 +536,9 @@ mod tests {
     use crate::runtime::db::ScriptMutability;
 
     fn setup_test_db() -> InternalResult<(TempDir, DbCore<FjallStorage>)> {
-        let temp_dir = TempDir::new().unwrap_or_else(|_| unreachable!("INVARIANT: temp dir creation should not fail in tests"));
+        let temp_dir = TempDir::new().unwrap_or_else(|_| {
+            unreachable!("INVARIANT: temp dir creation should not fail in tests")
+        });
         let db = new_krites_fjall(temp_dir.path())?;
         db.run_script(
             r#"
@@ -649,7 +653,9 @@ mod tests {
 
     #[test]
     fn persistence_across_restarts() -> InternalResult<()> {
-        let dir = TempDir::new().unwrap_or_else(|_| unreachable!("INVARIANT: temp dir creation should not fail in tests"));
+        let dir = TempDir::new().unwrap_or_else(|_| {
+            unreachable!("INVARIANT: temp dir creation should not fail in tests")
+        });
 
         {
             let db = new_krites_fjall(dir.path())?;
@@ -766,7 +772,8 @@ mod tests {
         );
         db.import_relations(to_import)?;
 
-        let expected_rows = usize::try_from(NUM_ROWS).unwrap_or_else(|_| unreachable!("INVARIANT: NUM_ROWS fits in usize"));
+        let expected_rows = usize::try_from(NUM_ROWS)
+            .unwrap_or_else(|_| unreachable!("INVARIANT: NUM_ROWS fits in usize"));
         std::thread::scope(|s| {
             for _ in 0..NUM_THREADS {
                 let db = db.clone();
@@ -778,7 +785,9 @@ mod tests {
                                 Default::default(),
                                 ScriptMutability::Immutable,
                             )
-                            .unwrap_or_else(|_| unreachable!("INVARIANT: concurrent read query should not fail"));
+                            .unwrap_or_else(|_| {
+                                unreachable!("INVARIANT: concurrent read query should not fail")
+                            });
                         assert_eq!(
                             result.rows.len(),
                             expected_rows,
@@ -835,7 +844,9 @@ mod tests {
                                 Default::default(),
                                 ScriptMutability::Immutable,
                             )
-                            .unwrap_or_else(|_| unreachable!("INVARIANT: concurrent read query should not fail"));
+                            .unwrap_or_else(|_| {
+                                unreachable!("INVARIANT: concurrent read query should not fail")
+                            });
                         // Every row must have exactly 2 columns matching the
                         // relation schema. A torn read would surface here.
                         for row in &result.rows {
@@ -856,7 +867,9 @@ mod tests {
                             Default::default(),
                             ScriptMutability::Mutable,
                         )
-                        .unwrap_or_else(|_| unreachable!("INVARIANT: sequential write should not fail"));
+                        .unwrap_or_else(|_| {
+                            unreachable!("INVARIANT: sequential write should not fail")
+                        });
                 }
                 done_writer.store(true, std::sync::atomic::Ordering::Relaxed);
             });
@@ -868,7 +881,8 @@ mod tests {
             Default::default(),
             ScriptMutability::Immutable,
         )?;
-        let expected_total = usize::try_from(NUM_WRITES).unwrap_or_else(|_| unreachable!("INVARIANT: NUM_WRITES fits in usize"));
+        let expected_total = usize::try_from(NUM_WRITES)
+            .unwrap_or_else(|_| unreachable!("INVARIANT: NUM_WRITES fits in usize"));
         assert_eq!(result.rows.len(), expected_total, "all writes persisted");
 
         Ok(())

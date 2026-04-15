@@ -4,11 +4,12 @@
 //! and state machine transitions (`ProjectState`, `PhaseState`, `PlanState`).
 
 #![expect(clippy::expect_used, reason = "test assertions")]
-#![expect(clippy::indexing_slicing, reason = "test: index safety verified by assertions")]
+#![expect(
+    clippy::indexing_slicing,
+    reason = "test: index safety verified by assertions"
+)]
 
-use dianoia::gate::{
-    evaluate_gate, default_gate, GateCondition, GateResult, PhaseGate,
-};
+use dianoia::gate::{GateCondition, GateResult, PhaseGate, default_gate, evaluate_gate};
 use dianoia::phase::{Phase, PhaseState};
 use dianoia::plan::{Blocker, Plan, PlanState};
 use dianoia::project::{Project, ProjectMode};
@@ -186,7 +187,9 @@ fn project_state_full_lifecycle() {
         .expect("Executing -> Verifying");
     assert_eq!(state, ProjectState::Verifying);
 
-    let state = state.transition_gated(Transition::Complete, None).expect("Verifying -> Complete");
+    let state = state
+        .transition_gated(Transition::Complete, None)
+        .expect("Verifying -> Complete");
     assert_eq!(state, ProjectState::Complete);
 }
 
@@ -223,7 +226,9 @@ fn project_state_pause_and_resume() {
         "Expected Paused state"
     );
 
-    let resumed = paused.transition_gated(Transition::Resume, None).expect("Paused -> Resume");
+    let resumed = paused
+        .transition_gated(Transition::Resume, None)
+        .expect("Paused -> Resume");
     assert_eq!(resumed, ProjectState::Executing);
 }
 
@@ -240,10 +245,7 @@ fn project_state_abandon_from_any_state() {
         ProjectState::Verifying,
     ] {
         let result = state.clone().transition_gated(Transition::Abandon, None);
-        assert!(
-            result.is_ok(),
-            "Abandon should succeed from {state:?}"
-        );
+        assert!(result.is_ok(), "Abandon should succeed from {state:?}");
         assert_eq!(
             result.expect("abandon transition"),
             ProjectState::Abandoned,
@@ -255,13 +257,19 @@ fn project_state_abandon_from_any_state() {
 #[test]
 fn project_state_invalid_transition_fails() {
     let result = ProjectState::Complete.transition_gated(Transition::StartQuestioning, None);
-    assert!(result.is_err(), "Should not be able to transition from Complete");
+    assert!(
+        result.is_err(),
+        "Should not be able to transition from Complete"
+    );
 
     let result = ProjectState::Abandoned.transition_gated(Transition::Pause, None);
     assert!(result.is_err(), "Should not be able to pause Abandoned");
 
     let result = ProjectState::Created.transition_gated(Transition::Complete, None);
-    assert!(result.is_err(), "Should not be able to Complete from Created");
+    assert!(
+        result.is_err(),
+        "Should not be able to Complete from Created"
+    );
 }
 
 #[test]
@@ -270,24 +278,33 @@ fn project_state_revert_from_verifying() {
 
     let reverted = verifying
         .clone()
-        .transition_gated(Transition::Revert {
-            to: ProjectState::Executing,
-        }, None)
+        .transition_gated(
+            Transition::Revert {
+                to: ProjectState::Executing,
+            },
+            None,
+        )
         .expect("Revert to Executing");
     assert_eq!(reverted, ProjectState::Executing);
 
     let reverted = verifying
         .clone()
-        .transition_gated(Transition::Revert {
-            to: ProjectState::Planning,
-        }, None)
+        .transition_gated(
+            Transition::Revert {
+                to: ProjectState::Planning,
+            },
+            None,
+        )
         .expect("Revert to Planning");
     assert_eq!(reverted, ProjectState::Planning);
 
     let reverted = verifying
-        .transition_gated(Transition::Revert {
-            to: ProjectState::Scoping,
-        }, None)
+        .transition_gated(
+            Transition::Revert {
+                to: ProjectState::Scoping,
+            },
+            None,
+        )
         .expect("Revert to Scoping");
     assert_eq!(reverted, ProjectState::Scoping);
 }
@@ -300,10 +317,7 @@ fn project_state_revert_from_verifying() {
 fn phase_gate_new() {
     let gate = PhaseGate::new(
         ProjectState::Planning,
-        vec![
-            GateCondition::TestsPassing,
-            GateCondition::ReviewApproved,
-        ],
+        vec![GateCondition::TestsPassing, GateCondition::ReviewApproved],
     );
 
     assert_eq!(gate.from, ProjectState::Planning);
@@ -478,7 +492,12 @@ fn workspace_open_existing() {
 
     // Create first
     let ws = ProjectWorkspace::create(&root).expect("create workspace");
-    let project = Project::new("Existing".into(), "desc".into(), ProjectMode::Full, "owner".into());
+    let project = Project::new(
+        "Existing".into(),
+        "desc".into(),
+        ProjectMode::Full,
+        "owner".into(),
+    );
     ws.save_project(&project).expect("save");
 
     // Then open
@@ -490,7 +509,10 @@ fn workspace_open_existing() {
 #[test]
 fn workspace_open_nonexistent_fails() {
     let result = ProjectWorkspace::open("/nonexistent/path/to/project");
-    assert!(result.is_err(), "Opening non-existent workspace should fail");
+    assert!(
+        result.is_err(),
+        "Opening non-existent workspace should fail"
+    );
 
     match result {
         Err(e) => {
@@ -763,10 +785,7 @@ fn error_gate_blocked() {
 
     let gate = PhaseGate::new(
         ProjectState::Planning,
-        vec![
-            GateCondition::TestsPassing,
-            GateCondition::ReviewApproved,
-        ],
+        vec![GateCondition::TestsPassing, GateCondition::ReviewApproved],
     );
 
     // Try to transition through a blocking gate

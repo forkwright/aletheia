@@ -109,7 +109,10 @@ impl SessionStore {
     /// # Errors
     /// Returns an error if the database cannot be opened or initialized.
     #[instrument(skip(path, recovery_config))]
-    pub(crate) fn open_with_recovery(path: &Path, recovery_config: &RecoveryConfig) -> Result<Self> {
+    pub(crate) fn open_with_recovery(
+        path: &Path,
+        recovery_config: &RecoveryConfig,
+    ) -> Result<Self> {
         info!(path = %path.display(), "Opening session store");
         let conn = Connection::open(path).context(error::DatabaseSnafu)?;
 

@@ -48,7 +48,10 @@ fn canonicalize_and_revalidate(
 /// engine (`ReDoS`). Cap at 1000 chars which covers all legitimate search
 /// patterns. Closes #2167.
 /// Fallback default; runtime reads `ctx.tool_config.max_pattern_length`.
-#[expect(dead_code, reason = "retained as documentation of the default value; runtime reads from ToolLimitsConfig")]
+#[expect(
+    dead_code,
+    reason = "retained as documentation of the default value; runtime reads from ToolLimitsConfig"
+)]
 pub(crate) const MAX_PATTERN_LENGTH: usize = 1000;
 
 fn truncate_output(mut output: String) -> String {

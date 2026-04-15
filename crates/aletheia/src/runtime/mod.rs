@@ -286,7 +286,9 @@ impl RuntimeBuilder {
         // JWT key resolution
         let jwt_key: Option<SecretString> =
             self.config.gateway.auth.signing_key.clone().or_else(|| {
-                RealSystem.var("ALETHEIA_JWT_SECRET").map(SecretString::from)
+                RealSystem
+                    .var("ALETHEIA_JWT_SECRET")
+                    .map(SecretString::from)
             });
         let jwt_config = match jwt_key {
             Some(k) => JwtConfig {
@@ -339,8 +341,7 @@ impl RuntimeBuilder {
 
         // Register domain pack tools
         if self.domain_packs {
-            let tool_errors =
-                thesauros::tools::register_pack_tools(&packs, &mut tool_registry);
+            let tool_errors = thesauros::tools::register_pack_tools(&packs, &mut tool_registry);
             for err in &tool_errors {
                 warn!(error = %err, "failed to register pack tool");
             }
@@ -419,10 +420,9 @@ impl RuntimeBuilder {
                     Arc::clone(&self.oikos),
                 )));
             let planning_root = self.oikos.data().join("planning");
-            let planning: Option<Arc<dyn organon::types::PlanningService>> =
-                Some(Arc::new(planning_adapter::FilesystemPlanningService::new(
-                    planning_root,
-                )));
+            let planning: Option<Arc<dyn organon::types::PlanningService>> = Some(Arc::new(
+                planning_adapter::FilesystemPlanningService::new(planning_root),
+            ));
             (
                 Some(cross_nous),
                 messenger,
@@ -451,9 +451,8 @@ impl RuntimeBuilder {
         )]
         let vector_search: Option<Arc<dyn nous::recall::VectorSearch>> =
             knowledge_store.as_ref().map(|ks| {
-                Arc::new(nous::recall::KnowledgeVectorSearch::new(
-                    Arc::clone(ks),
-                )) as Arc<dyn nous::recall::VectorSearch>
+                Arc::new(nous::recall::KnowledgeVectorSearch::new(Arc::clone(ks)))
+                    as Arc<dyn nous::recall::VectorSearch>
             });
         #[cfg(not(feature = "recall"))]
         let vector_search: Option<Arc<dyn nous::recall::VectorSearch>> = None;
@@ -496,19 +495,16 @@ impl RuntimeBuilder {
             clippy::as_conversions,
             reason = "coercion to dyn trait object: required to satisfy Arc<dyn Trait> type annotation"
         )]
-        let knowledge_search: Option<
-            Arc<dyn organon::types::KnowledgeSearchService>,
-        > = knowledge_store.as_ref().map(|ks| {
-            Arc::new(crate::knowledge_adapter::KnowledgeSearchAdapter::new(
-                Arc::clone(ks),
-                Arc::clone(&embedding_provider),
-                Arc::clone(&recall_source_registry),
-            )) as Arc<dyn organon::types::KnowledgeSearchService>
-        });
+        let knowledge_search: Option<Arc<dyn organon::types::KnowledgeSearchService>> =
+            knowledge_store.as_ref().map(|ks| {
+                Arc::new(crate::knowledge_adapter::KnowledgeSearchAdapter::new(
+                    Arc::clone(ks),
+                    Arc::clone(&embedding_provider),
+                    Arc::clone(&recall_source_registry),
+                )) as Arc<dyn organon::types::KnowledgeSearchService>
+            });
         #[cfg(not(feature = "recall"))]
-        let knowledge_search: Option<
-            Arc<dyn organon::types::KnowledgeSearchService>,
-        > = None;
+        let knowledge_search: Option<Arc<dyn organon::types::KnowledgeSearchService>> = None;
 
         let tool_services = Arc::new(ToolServices {
             cross_nous,
@@ -738,9 +734,9 @@ use validate::{validate_external_tools, validate_jwt};
 mod setup;
 mod tool_adapters;
 
-use setup::{
-    build_provider_registry, build_signal_provider, build_tool_registry,
-    create_embedding_provider, start_inbound_dispatch,
-};
 #[cfg(feature = "recall")]
 use setup::open_knowledge_store;
+use setup::{
+    build_provider_registry, build_signal_provider, build_tool_registry, create_embedding_provider,
+    start_inbound_dispatch,
+};

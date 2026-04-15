@@ -322,8 +322,7 @@ impl UserRateLimiter {
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             let before = ip_state.len();
-            ip_state
-                .retain(|_, buckets| now.duration_since(buckets.last_access) < stale_threshold);
+            ip_state.retain(|_, buckets| now.duration_since(buckets.last_access) < stale_threshold);
             before - ip_state.len()
         };
 
@@ -451,10 +450,7 @@ pub(crate) fn inject_rate_limit_headers(
 ) {
     // WHY: HeaderName::from_static requires lowercase; these are standard draft headers.
     if let Ok(v) = axum::http::HeaderValue::from_str(&quota.limit.to_string()) {
-        headers.insert(
-            axum::http::HeaderName::from_static("ratelimit-limit"),
-            v,
-        );
+        headers.insert(axum::http::HeaderName::from_static("ratelimit-limit"), v);
     }
     if let Ok(v) = axum::http::HeaderValue::from_str(&quota.remaining.to_string()) {
         headers.insert(
@@ -463,10 +459,7 @@ pub(crate) fn inject_rate_limit_headers(
         );
     }
     if let Ok(v) = axum::http::HeaderValue::from_str(&quota.reset_secs.to_string()) {
-        headers.insert(
-            axum::http::HeaderName::from_static("ratelimit-reset"),
-            v,
-        );
+        headers.insert(axum::http::HeaderName::from_static("ratelimit-reset"), v);
     }
 }
 
@@ -477,9 +470,7 @@ fn rate_limit_response(retry_after_secs: u64, category: EndpointCategory) -> Res
         axum::Json(ErrorResponse {
             error: ErrorBody {
                 code: "rate_limited".to_owned(),
-                message: format!(
-                    "per-user rate limit exceeded, retry after {retry_after_secs}s"
-                ),
+                message: format!("per-user rate limit exceeded, retry after {retry_after_secs}s"),
                 request_id: None,
                 details: Some(serde_json::json!({
                     "retry_after_secs": retry_after_secs,

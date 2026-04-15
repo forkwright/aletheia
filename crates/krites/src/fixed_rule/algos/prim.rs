@@ -64,9 +64,7 @@ impl FixedRule for MinimumSpanningTreePrim {
                 *inv_indices.get(node_value).ok_or_else(|| {
                     crate::fixed_rule::error::InvalidInputSnafu {
                         rule: "MinimumSpanningTreePrim",
-                        message: format!(
-                            "The requested starting node {node_value:?} is not found"
-                        ),
+                        message: format!("The requested starting node {node_value:?} is not found"),
                     }
                     .build()
                 })?

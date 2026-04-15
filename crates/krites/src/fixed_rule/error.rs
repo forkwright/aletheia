@@ -35,4 +35,3 @@ pub(crate) enum FixedRuleError {
         location: snafu::Location,
     },
 }
-

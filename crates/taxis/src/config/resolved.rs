@@ -89,7 +89,10 @@ pub fn resolve_nous(config: &AletheiaConfig, nous_id: &str) -> ResolvedNousConfi
         match agent.and_then(|a| a.model.as_ref()) {
             Some(spec) => (
                 Arc::from(spec.primary.as_str()),
-                spec.fallbacks.iter().map(|s| Arc::from(s.as_str())).collect(),
+                spec.fallbacks
+                    .iter()
+                    .map(|s| Arc::from(s.as_str()))
+                    .collect(),
                 spec.retries_before_fallback,
             ),
             None => (

@@ -38,20 +38,17 @@ async fn setup_mock_server(answer_text: &str) -> MockServer {
     // POST /api/v1/sessions → 201 with a session ID + all fields SessionResponse requires
     Mock::given(method("POST"))
         .and(path("/api/v1/sessions"))
-        .respond_with(
-            ResponseTemplate::new(201)
-                .set_body_json(serde_json::json!({
-                    "id": "sess_benchmark_123",
-                    "nous_id": "benchmark",
-                    "session_key": "bench-key",
-                    "status": "active",
-                    "model": null,
-                    "message_count": 0,
-                    "token_count_estimate": 0,
-                    "created_at": "2026-04-10T00:00:00Z",
-                    "updated_at": "2026-04-10T00:00:00Z"
-                })),
-        )
+        .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
+            "id": "sess_benchmark_123",
+            "nous_id": "benchmark",
+            "session_key": "bench-key",
+            "status": "active",
+            "model": null,
+            "message_count": 0,
+            "token_count_estimate": 0,
+            "created_at": "2026-04-10T00:00:00Z",
+            "updated_at": "2026-04-10T00:00:00Z"
+        })))
         .mount(&server)
         .await;
 
@@ -99,8 +96,7 @@ async fn runner_scores_perfect_answer() {
     let config = BenchmarkRunnerConfig::default();
     let runner = BenchmarkRunner::new(client, config);
 
-    let dataset =
-        LongMemEvalDataset::from_bytes(SAMPLE_DATASET.as_bytes()).expect("valid dataset");
+    let dataset = LongMemEvalDataset::from_bytes(SAMPLE_DATASET.as_bytes()).expect("valid dataset");
     let report = runner.run(&dataset).await.expect("run should succeed");
 
     assert_eq!(report.total, 1);
@@ -116,12 +112,14 @@ async fn runner_scores_wrong_answer_as_zero() {
     let config = BenchmarkRunnerConfig::default();
     let runner = BenchmarkRunner::new(client, config);
 
-    let dataset =
-        LongMemEvalDataset::from_bytes(SAMPLE_DATASET.as_bytes()).expect("valid dataset");
+    let dataset = LongMemEvalDataset::from_bytes(SAMPLE_DATASET.as_bytes()).expect("valid dataset");
     let report = runner.run(&dataset).await.expect("run should succeed");
 
     assert_eq!(report.total, 1);
-    assert!(report.exact_match_rate() < 0.01, "wrong answer should not EM");
+    assert!(
+        report.exact_match_rate() < 0.01,
+        "wrong answer should not EM"
+    );
     assert!(report.mean_f1() < 0.01, "wrong answer should have zero F1");
 }
 
@@ -136,8 +134,7 @@ async fn runner_respects_max_questions_limit() {
     };
     let runner = BenchmarkRunner::new(client, config);
 
-    let dataset =
-        LongMemEvalDataset::from_bytes(SAMPLE_DATASET.as_bytes()).expect("valid dataset");
+    let dataset = LongMemEvalDataset::from_bytes(SAMPLE_DATASET.as_bytes()).expect("valid dataset");
     let report = runner.run(&dataset).await.expect("run should succeed");
 
     assert_eq!(report.total, 0, "max_questions=0 should score nothing");
@@ -150,8 +147,7 @@ async fn runner_preserves_question_metadata_in_results() {
     let client = EvalClient::new(server.uri(), None);
     let runner = BenchmarkRunner::new(client, BenchmarkRunnerConfig::default());
 
-    let dataset =
-        LongMemEvalDataset::from_bytes(SAMPLE_DATASET.as_bytes()).expect("valid dataset");
+    let dataset = LongMemEvalDataset::from_bytes(SAMPLE_DATASET.as_bytes()).expect("valid dataset");
     let report = runner.run(&dataset).await.expect("run should succeed");
 
     let question = &report.questions[0];
@@ -167,8 +163,7 @@ async fn runner_produces_per_category_breakdown() {
     let client = EvalClient::new(server.uri(), None);
     let runner = BenchmarkRunner::new(client, BenchmarkRunnerConfig::default());
 
-    let dataset =
-        LongMemEvalDataset::from_bytes(SAMPLE_DATASET.as_bytes()).expect("valid dataset");
+    let dataset = LongMemEvalDataset::from_bytes(SAMPLE_DATASET.as_bytes()).expect("valid dataset");
     let report = runner.run(&dataset).await.expect("run should succeed");
 
     let per_cat = report.per_category();

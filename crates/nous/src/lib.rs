@@ -9,8 +9,6 @@ pub mod adapters;
 pub mod bootstrap;
 /// Token and wall-clock time budget tracking for pipeline stages.
 pub mod budget;
-/// Self-auditing loop: prosoche checks, audit triggers, and knowledge graph storage.
-pub mod self_audit;
 /// Context compaction: microcompaction (per-turn clearing) and full compaction (summarization).
 pub(crate) mod compact;
 /// Per-agent per-domain competence tracking with rolling statistics and model escalation.
@@ -54,6 +52,8 @@ pub mod recall;
 pub mod research;
 /// Specialized role templates for ephemeral sub-agents.
 pub mod roles;
+/// Self-auditing loop: prosoche checks, audit triggers, and knowledge graph storage.
+pub mod self_audit;
 /// Session state tracking within a nous actor.
 pub mod session;
 /// Skill loading: queries mneme for task-relevant skills and injects them as bootstrap sections.
@@ -62,6 +62,8 @@ pub(crate) mod skills;
 pub mod spawn_svc;
 /// Real-time streaming events for the turn pipeline.
 pub mod stream;
+/// Task registry with progress streaming, cooperative cancellation, and GC.
+pub mod tasks;
 /// Training data capture: append-only JSONL writer for conversation turns.
 ///
 /// Pipeline tap that observes the turn loop and writes qualifying turns
@@ -69,8 +71,6 @@ pub mod stream;
 /// `TrainingRecord`) live in eidos; capture logic lives here because it
 /// is a pipeline concern, not a memory operation.
 pub mod training;
-/// Task registry with progress streaming, cooperative cancellation, and GC.
-pub mod tasks;
 /// Self-tuning feedback loop: evidence-based parameter change proposals.
 pub mod tuning;
 /// Uncertainty quantification: calibration tracking for agent confidence predictions.

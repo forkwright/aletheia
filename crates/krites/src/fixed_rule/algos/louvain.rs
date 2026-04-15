@@ -344,18 +344,15 @@ fn louvain_step(
 
     let coarsened_graph: DirectedCsrGraph<f32> = CsrBuilder::new()
         .sorted()
-        .edges_with_values(
-            coarsened_adjacency
-                .into_iter()
-                .enumerate()
-                .flat_map(move |(from_community, neighbors)| {
-                    neighbors.into_iter().map(move |(to_community, weight)| {
-                        #[expect(clippy::cast_possible_truncation, reason = "value fits u32")]
-                        let from_u32 = from_community as u32;
-                        (from_u32, to_community, weight)
-                    })
-                }),
-        )
+        .edges_with_values(coarsened_adjacency.into_iter().enumerate().flat_map(
+            move |(from_community, neighbors)| {
+                neighbors.into_iter().map(move |(to_community, weight)| {
+                    #[expect(clippy::cast_possible_truncation, reason = "value fits u32")]
+                    let from_u32 = from_community as u32;
+                    (from_u32, to_community, weight)
+                })
+            },
+        ))
         .build();
 
     Ok((node_to_community, coarsened_graph))

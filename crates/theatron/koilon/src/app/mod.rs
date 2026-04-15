@@ -338,7 +338,13 @@ impl App {
         // WHY: The old code flattened all health-check failures to a boolean,
         // making connection-refused indistinguishable from an unhealthy server.
         // We now issue the request directly and surface the actual error.
-        match self.client.raw_client().get(format!("{}/api/health", self.config.url)).send().await {
+        match self
+            .client
+            .raw_client()
+            .get(format!("{}/api/health", self.config.url))
+            .send()
+            .await
+        {
             Ok(resp) if resp.status().is_success() => {
                 // healthy — continue
             }

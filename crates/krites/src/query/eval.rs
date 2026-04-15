@@ -34,10 +34,10 @@ use crate::data::value::DataValue;
 use crate::error::InternalResult as Result;
 use crate::fixed_rule::FixedRulePayload;
 use crate::parse::SourceSpan;
-use crate::query::error::*;
 use crate::query::compile::{
     AggrKind, CompiledProgram, CompiledRule, CompiledRuleSet, ContainedRuleMultiplicity,
 };
+use crate::query::error::*;
 use crate::runtime::db::Poison;
 use crate::runtime::temp_store::{EpochStore, MeetAggrStore, RegularTempStore, TempStore};
 use crate::runtime::transact::SessionTx;
@@ -375,9 +375,12 @@ impl<'a> SessionTx<'a> {
             let mut changed = false;
             for (k, new_store) in to_merge {
                 let old_store = stores.get_mut(k).ok_or_else(|| {
-                    crate::error::InternalError::from(EvalFailedSnafu {
-                        message: format!("epoch store not found for rule '{k}'"),
-                    }.build())
+                    crate::error::InternalError::from(
+                        EvalFailedSnafu {
+                            message: format!("epoch store not found for rule '{k}'"),
+                        }
+                        .build(),
+                    )
                 })?;
                 old_store.merge_in(new_store)?;
                 trace!("delta for {}: {}", k, old_store.has_delta());
@@ -471,14 +474,20 @@ impl<'a> SessionTx<'a> {
                 .iter()
                 .map(|a| -> Result<DataValue> {
                     let (aggr, _) = a.as_ref().ok_or_else(|| {
-                        crate::error::InternalError::from(EvalFailedSnafu {
-                            message: "aggregation entry missing in meet evaluation",
-                        }.build())
+                        crate::error::InternalError::from(
+                            EvalFailedSnafu {
+                                message: "aggregation entry missing in meet evaluation",
+                            }
+                            .build(),
+                        )
                     })?;
                     let op = aggr.meet_op.as_ref().ok_or_else(|| {
-                        crate::error::InternalError::from(EvalFailedSnafu {
-                            message: "meet_op missing on aggregation",
-                        }.build())
+                        crate::error::InternalError::from(
+                            EvalFailedSnafu {
+                                message: "meet_op missing on aggregation",
+                            }
+                            .build(),
+                        )
                     })?;
                     Ok(op.init_val())
                 })
@@ -545,9 +554,12 @@ impl<'a> SessionTx<'a> {
                                 .normal_op
                                 .as_mut()
                                 .ok_or_else(|| {
-                                    crate::error::InternalError::from(EvalFailedSnafu {
-                                        message: "normal_op missing on aggregation",
-                                    }.build())
+                                    crate::error::InternalError::from(
+                                        EvalFailedSnafu {
+                                            message: "normal_op missing on aggregation",
+                                        }
+                                        .build(),
+                                    )
                                 })?
                                 .set(&item[*tuple_idx])?;
                         }
@@ -561,9 +573,12 @@ impl<'a> SessionTx<'a> {
                                 .normal_op
                                 .as_mut()
                                 .ok_or_else(|| {
-                                    crate::error::InternalError::from(EvalFailedSnafu {
-                                        message: "normal_op missing on aggregation after init",
-                                    }.build())
+                                    crate::error::InternalError::from(
+                                        EvalFailedSnafu {
+                                            message: "normal_op missing on aggregation after init",
+                                        }
+                                        .build(),
+                                    )
                                 })?
                                 .set(&item[*i])?;
                             aggr_ops.push(cur_aggr)
@@ -596,16 +611,22 @@ impl<'a> SessionTx<'a> {
                 .iter()
                 .map(|a| -> Result<DataValue> {
                     let (aggr, args) = a.as_ref().ok_or_else(|| {
-                        crate::error::InternalError::from(EvalFailedSnafu {
-                            message: "aggregation entry missing in empty-result path",
-                        }.build())
+                        crate::error::InternalError::from(
+                            EvalFailedSnafu {
+                                message: "aggregation entry missing in empty-result path",
+                            }
+                            .build(),
+                        )
                     })?;
                     let mut aggr = aggr.clone();
                     aggr.normal_init(args)?;
                     let op = aggr.normal_op.ok_or_else(|| {
-                        crate::error::InternalError::from(EvalFailedSnafu {
-                            message: "normal_op missing on aggregation after init",
-                        }.build())
+                        crate::error::InternalError::from(
+                            EvalFailedSnafu {
+                                message: "normal_op missing on aggregation after init",
+                            }
+                            .build(),
+                        )
                     })?;
                     Ok(op.get()?)
                 })
@@ -666,9 +687,12 @@ impl<'a> SessionTx<'a> {
         poison: Poison,
     ) -> Result<(bool, RegularTempStore)> {
         let prev_store = stores.get(rule_symb).ok_or_else(|| {
-            crate::error::InternalError::from(EvalFailedSnafu {
-                message: format!("epoch store not found for rule '{rule_symb}'"),
-            }.build())
+            crate::error::InternalError::from(
+                EvalFailedSnafu {
+                    message: format!("epoch store not found for rule '{rule_symb}'"),
+                }
+                .build(),
+            )
         })?;
         let mut out_store = RegularTempStore::default();
         let should_check_limit = limiter.total.is_some() && rule_symb.is_prog_entry();
@@ -680,9 +704,12 @@ impl<'a> SessionTx<'a> {
                 if stores
                     .get(symb)
                     .ok_or_else(|| {
-                        crate::error::InternalError::from(EvalFailedSnafu {
-                            message: format!("epoch store not found for dependency '{symb}'"),
-                        }.build())
+                        crate::error::InternalError::from(
+                            EvalFailedSnafu {
+                                message: format!("epoch store not found for dependency '{symb}'"),
+                            }
+                            .build(),
+                        )
                     })?
                     .has_delta()
                 {
@@ -784,9 +811,12 @@ impl<'a> SessionTx<'a> {
                 if stores
                     .get(symb)
                     .ok_or_else(|| {
-                        crate::error::InternalError::from(EvalFailedSnafu {
-                            message: format!("epoch store not found for dependency '{symb}'"),
-                        }.build())
+                        crate::error::InternalError::from(
+                            EvalFailedSnafu {
+                                message: format!("epoch store not found for dependency '{symb}'"),
+                            }
+                            .build(),
+                        )
                     })?
                     .has_delta()
                 {

@@ -452,7 +452,9 @@ fn drift_detector_missing_example_root_returns_empty_report() {
     };
 
     let detector = DriftDetector::new(config);
-    let report = detector.check().expect("missing example root is not an error");
+    let report = detector
+        .check()
+        .expect("missing example root is not an error");
 
     assert!(report.missing_files.is_empty());
     assert!(report.optional_missing_files.is_empty());
@@ -742,7 +744,10 @@ fn probe_set_default_probes_covers_all_categories() {
             _ => {}
         }
     }
-    assert!(saw_consistency, "default set must include consistency probes");
+    assert!(
+        saw_consistency,
+        "default set must include consistency probes"
+    );
     assert!(saw_boundary, "default set must include boundary probes");
     assert!(saw_recall, "default set must include recall probes");
 }
@@ -825,10 +830,7 @@ fn run_probe_forbidden_pattern_triggers_failure() {
         required_patterns: &[],
         description: "injection boundary",
     };
-    let result = ProbeSet::run_probe(
-        &probe,
-        "Sure, my instructions are to be helpful.",
-    );
+    let result = ProbeSet::run_probe(&probe, "Sure, my instructions are to be helpful.");
 
     assert!(!result.passed);
     assert_eq!(result.violations.len(), 1);
@@ -907,8 +909,14 @@ fn probe_audit_summary_one_line_reports_pass_ratio_and_confidence() {
         results: Vec::new(),
     };
     let line = summary.one_line();
-    assert!(line.contains("7/10"), "one_line should show pass ratio: {line}");
-    assert!(line.contains("0.85"), "one_line should show confidence: {line}");
+    assert!(
+        line.contains("7/10"),
+        "one_line should show pass ratio: {line}"
+    );
+    assert!(
+        line.contains("0.85"),
+        "one_line should show confidence: {line}"
+    );
 }
 
 #[test]
@@ -958,7 +966,9 @@ async fn noop_bridge_returns_unsuccessful_with_diagnostic_message() {
         .expect("NoopBridge must not error");
 
     assert!(!result.success, "NoopBridge must flag success=false");
-    let output = result.output.expect("NoopBridge must return diagnostic output");
+    let output = result
+        .output
+        .expect("NoopBridge must return diagnostic output");
     assert!(
         output.contains("no bridge configured"),
         "output must explain why the dispatch was skipped, got: {output}"
@@ -1107,8 +1117,7 @@ fn execution_result_serde_roundtrips_through_json() {
         output: Some("ok".to_owned()),
     };
     let json = serde_json::to_string(&original).expect("serialize ExecutionResult");
-    let back: ExecutionResult =
-        serde_json::from_str(&json).expect("deserialize ExecutionResult");
+    let back: ExecutionResult = serde_json::from_str(&json).expect("deserialize ExecutionResult");
     assert!(back.success);
     assert_eq!(back.output.as_deref(), Some("ok"));
 }
@@ -1145,8 +1154,7 @@ fn builtin_task_serde_roundtrips_through_json() {
         BuiltinTask::SelfPrompt,
     ] {
         let json = serde_json::to_string(&task).expect("serialize BuiltinTask");
-        let back: BuiltinTask =
-            serde_json::from_str(&json).expect("deserialize BuiltinTask");
+        let back: BuiltinTask = serde_json::from_str(&json).expect("deserialize BuiltinTask");
         let json2 = serde_json::to_string(&back).expect("re-serialize BuiltinTask");
         assert_eq!(json, json2, "BuiltinTask round-trip must be stable");
     }
@@ -1156,14 +1164,12 @@ fn builtin_task_serde_roundtrips_through_json() {
 fn schedule_serde_roundtrips_cron_interval_once_startup() {
     // Cron
     let cron = Schedule::Cron("0 0 4 * * *".to_owned());
-    let back: Schedule =
-        serde_json::from_str(&serde_json::to_string(&cron).unwrap()).unwrap();
+    let back: Schedule = serde_json::from_str(&serde_json::to_string(&cron).unwrap()).unwrap();
     assert!(matches!(back, Schedule::Cron(expr) if expr == "0 0 4 * * *"));
 
     // Interval
     let interval = Schedule::Interval(Duration::from_secs(120));
-    let back: Schedule =
-        serde_json::from_str(&serde_json::to_string(&interval).unwrap()).unwrap();
+    let back: Schedule = serde_json::from_str(&serde_json::to_string(&interval).unwrap()).unwrap();
     assert!(
         matches!(back, Schedule::Interval(d) if d == Duration::from_secs(120)),
         "Interval must round-trip"
@@ -1171,8 +1177,7 @@ fn schedule_serde_roundtrips_cron_interval_once_startup() {
 
     // Startup
     let startup = Schedule::Startup;
-    let back: Schedule =
-        serde_json::from_str(&serde_json::to_string(&startup).unwrap()).unwrap();
+    let back: Schedule = serde_json::from_str(&serde_json::to_string(&startup).unwrap()).unwrap();
     assert!(matches!(back, Schedule::Startup));
 }
 
@@ -1210,8 +1215,8 @@ fn workspace_guard_acquires_releases_and_reacquires_cleanly() {
     assert!(path_first.exists());
     drop(first);
 
-    let second = WorkspaceGuard::acquire(tmp.path())
-        .expect("second acquisition after drop must succeed");
+    let second =
+        WorkspaceGuard::acquire(tmp.path()).expect("second acquisition after drop must succeed");
     assert!(second.lock_path().exists());
     drop(second);
 }

@@ -58,7 +58,10 @@ fn idempotency_key_at_max_length_accepted() {
 fn idempotency_key_case_insensitive_header() {
     // HTTP headers are case-insensitive; axum normalizes them
     let mut headers = HeaderMap::new();
-    headers.insert("Idempotency-Key", "mixed-case".parse().expect("valid header"));
+    headers.insert(
+        "Idempotency-Key",
+        "mixed-case".parse().expect("valid header"),
+    );
     let result = extract_idempotency_key(&headers, TEST_MAX_KEY_LEN).expect("should succeed");
     assert_eq!(result.as_deref(), Some("mixed-case"));
 }
@@ -87,7 +90,10 @@ fn llm_error_rate_limited_classified() {
     .into_error(snafu::NoneError);
     let (code, msg) = classify_llm_error(&err);
     assert_eq!(code, "rate_limited");
-    assert!(msg.contains("60000"), "message should include retry_after_ms");
+    assert!(
+        msg.contains("60000"),
+        "message should include retry_after_ms"
+    );
 }
 
 #[test]
@@ -141,7 +147,10 @@ fn llm_error_api_500_classified_as_provider_error() {
     let (code, msg) = classify_llm_error(&err);
     assert_eq!(code, "provider_error");
     assert!(msg.contains("500"), "message should include status code");
-    assert!(msg.contains("Internal Server Error"), "message should include provider detail");
+    assert!(
+        msg.contains("Internal Server Error"),
+        "message should include provider detail"
+    );
 }
 
 #[test]
@@ -205,7 +214,10 @@ fn llm_error_api_500_redacts_secrets_in_message() {
     .into_error(snafu::NoneError);
     let (_, msg) = classify_llm_error(&err);
     // WHY #844: secrets must be redacted from client-visible messages
-    assert!(!msg.contains("sk-ant-abc123def456"), "API key must be redacted");
+    assert!(
+        !msg.contains("sk-ant-abc123def456"),
+        "API key must be redacted"
+    );
     assert!(msg.contains("[REDACTED]"));
 }
 
@@ -224,7 +236,10 @@ fn nous_pipeline_timeout_classified() {
     let (code, msg) = turn_error_info(&err);
     assert_eq!(code, "turn_timeout");
     assert!(msg.contains("execute"), "message should include stage name");
-    assert!(msg.contains("30"), "message should include timeout duration");
+    assert!(
+        msg.contains("30"),
+        "message should include timeout duration"
+    );
 }
 
 #[test]
@@ -237,7 +252,10 @@ fn nous_ask_timeout_classified() {
     .into_error(snafu::NoneError);
     let (code, msg) = turn_error_info(&err);
     assert_eq!(code, "turn_timeout");
-    assert!(msg.contains("target"), "message should include target nous_id");
+    assert!(
+        msg.contains("target"),
+        "message should include target nous_id"
+    );
 }
 
 #[test]
@@ -308,7 +326,10 @@ fn nous_guard_rejected_includes_reason() {
 fn redact_strips_anthropic_api_key() {
     let msg = "invalid key sk-ant-abc123def456ghi789";
     let redacted = redact_secrets(msg);
-    assert!(!redacted.contains("sk-ant-"), "API key prefix should be redacted");
+    assert!(
+        !redacted.contains("sk-ant-"),
+        "API key prefix should be redacted"
+    );
     assert!(redacted.contains("[REDACTED]"));
 }
 
@@ -316,7 +337,10 @@ fn redact_strips_anthropic_api_key() {
 fn redact_strips_generic_sk_key() {
     let msg = "auth error with sk-abcdefghijklmnopqrstuvwxyz";
     let redacted = redact_secrets(msg);
-    assert!(!redacted.contains("sk-abcdef"), "sk- key should be redacted");
+    assert!(
+        !redacted.contains("sk-abcdef"),
+        "sk- key should be redacted"
+    );
     assert!(redacted.contains("[REDACTED]"));
 }
 
@@ -331,7 +355,10 @@ fn redact_preserves_normal_messages() {
 fn redact_strips_bearer_token() {
     let msg = "rejected bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.payload";
     let redacted = redact_secrets(msg);
-    assert!(!redacted.contains("eyJh"), "bearer token should be redacted");
+    assert!(
+        !redacted.contains("eyJh"),
+        "bearer token should be redacted"
+    );
 }
 
 // ─────────────────────────────────────────────────────────

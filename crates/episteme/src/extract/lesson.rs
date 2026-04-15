@@ -98,7 +98,10 @@ pub struct LessonConfig {
 /// 3. Extract knowledge facts from the changes
 /// 4. Produce entities, relationships, and causal edges
 #[must_use]
-#[cfg_attr(not(test), expect(dead_code, reason = "post-merge lesson extraction from git diffs"))]
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "post-merge lesson extraction from git diffs")
+)]
 pub(crate) fn extract_lessons(diff: &str, config: &LessonConfig) -> ExtractedLesson {
     let parsed = parse_unified_diff(diff);
     let changes = classify_changes(&parsed);
@@ -543,8 +546,14 @@ pub(crate) fn persist_lesson(
             fact_ids.get(causal.effect_index),
         ) {
             let edge = CausalEdge {
-                id: crate::id::CausalEdgeId::new(koina::ulid::Ulid::new().to_string())
-                    .map_err(|e| PersistSnafu { message: e.to_string() }.build())?,
+                id: crate::id::CausalEdgeId::new(koina::ulid::Ulid::new().to_string()).map_err(
+                    |e| {
+                        PersistSnafu {
+                            message: e.to_string(),
+                        }
+                        .build()
+                    },
+                )?,
                 source_id: cause_id.clone(),
                 target_id: effect_id.clone(),
                 relationship_type: crate::knowledge::CausalRelationType::Caused,

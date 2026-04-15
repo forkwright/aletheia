@@ -21,9 +21,9 @@ pub(crate) mod tls;
 
 use std::path::PathBuf;
 
-use taxis::oikos::Oikos;
 use anyhow::Result;
 use clap::CommandFactory;
+use taxis::oikos::Oikos;
 
 use crate::cli::{Cli, Command};
 use crate::init;
@@ -84,11 +84,9 @@ pub(crate) async fn dispatch(cmd: Command, instance_root: Option<&PathBuf>) -> R
             .await
             .map_err(Into::into),
         #[cfg(feature = "tui")]
-        Command::Tui(a) => {
-            koilon::run_tui(a.url, a.token, a.agent, a.session, a.logout)
-                .await
-                .map_err(anyhow::Error::from)
-        }
+        Command::Tui(a) => koilon::run_tui(a.url, a.token, a.agent, a.session, a.logout)
+            .await
+            .map_err(anyhow::Error::from),
         #[cfg(not(feature = "tui"))]
         Command::Tui(_) => anyhow::bail!("TUI not available - rebuild with `--features tui`"),
         Command::Desktop(a) => desktop::run(&a),
@@ -99,14 +97,19 @@ pub(crate) async fn dispatch(cmd: Command, instance_root: Option<&PathBuf>) -> R
         Command::SessionExport(a) => session_export::run(&a).await.map_err(Into::into),
         Command::Import(a) => agent_io::import_agent(instance_root, &a).map_err(Into::into),
         Command::SeedSkills(a) => agent_io::seed_skills(&a).map_err(Into::into),
-        Command::ExportSkills(a) => {
-            agent_io::export_skills(instance_root, &a).await.map_err(Into::into)
-        }
-        Command::ReviewSkills(a) => {
-            agent_io::review_skills(instance_root, &a).await.map_err(Into::into)
-        }
+        Command::ExportSkills(a) => agent_io::export_skills(instance_root, &a)
+            .await
+            .map_err(Into::into),
+        Command::ReviewSkills(a) => agent_io::review_skills(instance_root, &a)
+            .await
+            .map_err(Into::into),
         Command::Completions { shell } => {
-            clap_complete::generate(shell, &mut Cli::command(), "aletheia", &mut std::io::stdout());
+            clap_complete::generate(
+                shell,
+                &mut Cli::command(),
+                "aletheia",
+                &mut std::io::stdout(),
+            );
             Ok(())
         }
         Command::MigrateMemory(a) => agent_io::migrate_memory(instance_root, a)

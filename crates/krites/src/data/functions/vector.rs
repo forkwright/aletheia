@@ -1,7 +1,16 @@
 //! Vector creation and distance operations.
-#![expect(clippy::as_conversions, reason = "vector operations require numeric casts (f64 → f32) for element conversion")]
-#![expect(clippy::map_err_ignore, reason = "bytemuck PodCastError detail is not useful to the caller; the message describes the failure")]
-#![expect(clippy::too_many_lines, reason = "op_vec handles multiple input types and vector element types")]
+#![expect(
+    clippy::as_conversions,
+    reason = "vector operations require numeric casts (f64 → f32) for element conversion"
+)]
+#![expect(
+    clippy::map_err_ignore,
+    reason = "bytemuck PodCastError detail is not useful to the caller; the message describes the failure"
+)]
+#![expect(
+    clippy::too_many_lines,
+    reason = "op_vec handles multiple input types and vector element types"
+)]
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;

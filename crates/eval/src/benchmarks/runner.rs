@@ -20,9 +20,7 @@ use tracing::{info, instrument, warn};
 use crate::client::EvalClient;
 use crate::error::{BenchmarkSnafu, Result};
 
-use super::{
-    BenchmarkQuestion, BenchmarkReport, MemoryBenchmark, QuestionResult, score_answer,
-};
+use super::{BenchmarkQuestion, BenchmarkReport, MemoryBenchmark, QuestionResult, score_answer};
 
 /// Configuration for a benchmark run.
 #[derive(Debug, Clone)]
@@ -80,9 +78,7 @@ impl BenchmarkRunner {
         let limit = self.config.max_questions.unwrap_or(total);
         info!(
             benchmark = benchmark.name(),
-            total,
-            limit,
-            "starting benchmark run"
+            total, limit, "starting benchmark run"
         );
 
         let mut results = Vec::new();
@@ -166,7 +162,10 @@ impl BenchmarkRunner {
         }
 
         // Ask the question.
-        let events = self.client.send_message(&session_id, &question.question).await?;
+        let events = self
+            .client
+            .send_message(&session_id, &question.question)
+            .await?;
 
         // Extract the concatenated text response.
         let answer = crate::sse::extract_text(&events);
@@ -243,7 +242,10 @@ mod tests {
         };
         // Simulate the `.take(limit)` pattern the runner uses
         let items: Vec<i32> = (0..10).collect();
-        let taken: Vec<_> = items.iter().take(config.max_questions.unwrap_or(items.len())).collect();
+        let taken: Vec<_> = items
+            .iter()
+            .take(config.max_questions.unwrap_or(items.len()))
+            .collect();
         assert_eq!(taken.len(), 3);
     }
 }

@@ -150,8 +150,7 @@ fn overall_score_averages_domains() {
         .unwrap();
 
     let comp = t.agent_competence("syn").unwrap();
-    let expected =
-        (c.default_score + c.success_bonus + c.default_score + c.success_bonus) / 2.0;
+    let expected = (c.default_score + c.success_bonus + c.default_score + c.success_bonus) / 2.0;
     assert!(
         (comp.overall_score - expected).abs() < f64::EPSILON,
         "overall score should average domains: expected {expected}, got {}",

@@ -380,19 +380,16 @@ impl KnowledgeSearchService for StubKnowledgeService {
         _row_limit: Option<usize>,
     ) -> Pin<
         Box<
-            dyn Future<
-                    Output = Result<organon::types::DatalogResult, KnowledgeAdapterError>,
-                > + Send
+            dyn Future<Output = Result<organon::types::DatalogResult, KnowledgeAdapterError>>
+                + Send
                 + '_,
         >,
     > {
-        Box::pin(std::future::ready(Ok(
-            organon::types::DatalogResult {
-                columns: vec!["stub".to_owned()],
-                rows: vec![],
-                truncated: false,
-            },
-        )))
+        Box::pin(std::future::ready(Ok(organon::types::DatalogResult {
+            columns: vec!["stub".to_owned()],
+            rows: vec![],
+            truncated: false,
+        })))
     }
 }
 

@@ -27,7 +27,10 @@ use crate::state::DiaporeiaState;
 pub struct DiaporeiaServer {
     pub(crate) state: Arc<DiaporeiaState>,
     pub(crate) rate_limiter: Arc<RateLimiter>,
-    #[expect(dead_code, reason = "read by #[tool_handler] macro-generated code in ServerHandler impl")]
+    #[expect(
+        dead_code,
+        reason = "read by #[tool_handler] macro-generated code in ServerHandler impl"
+    )]
     tool_router: ToolRouter<Self>,
 }
 
