@@ -20,7 +20,10 @@ use mneme::types::SessionStatus;
 
 use symbolon::types::Role;
 
-use crate::error::{ApiError, BadRequestSnafu, ConflictSnafu, InternalSnafu, NousNotFoundSnafu};
+use crate::error::{
+    ApiError, BadRequestSnafu, ConflictSnafu, FieldError, InternalSnafu, NousNotFoundSnafu,
+    ValidationFailedSnafu,
+};
 use crate::extract::{Claims, require_nous_access, require_role};
 use crate::idempotency::LookupResult;
 use crate::middleware::RequestId;
@@ -191,18 +194,25 @@ pub async fn send_message(
 
     let content = body.content;
 
+    // WHY(#3275): field-level validation for send_message content.
+    let max_msg_bytes = state.config.read().await.api_limits.max_message_bytes;
     if content.is_empty() {
-        return Err(BadRequestSnafu {
-            message: "content must not be empty",
+        return Err(ValidationFailedSnafu {
+            errors: vec![FieldError {
+                field: "content".to_owned(),
+                code: "required".to_owned(),
+                message: "must not be empty".to_owned(),
+            }],
         }
         .build());
     }
-
-    // SAFETY: enforce max message size to prevent memory exhaustion from oversized payloads.
-    let max_msg_bytes = state.config.read().await.api_limits.max_message_bytes;
     if content.len() > max_msg_bytes {
-        return Err(BadRequestSnafu {
-            message: format!("content exceeds maximum size of {max_msg_bytes} bytes"),
+        return Err(ValidationFailedSnafu {
+            errors: vec![FieldError {
+                field: "content".to_owned(),
+                code: "too_long".to_owned(),
+                message: format!("exceeds maximum size of {max_msg_bytes} bytes"),
+            }],
         }
         .build());
     }
@@ -384,36 +394,41 @@ pub async fn stream_turn(
     let message = body.message;
     let session_key = body.session_key;
 
-    if message.is_empty() {
-        return Err(BadRequestSnafu {
-            message: "message must not be empty",
-        }
-        .build());
-    }
-
-    // SAFETY: enforce max message size to prevent memory exhaustion from oversized payloads.
+    // WHY(#3275): collect all field errors and return in one response.
     let api_limits = &state.config.read().await.api_limits;
     let max_msg_bytes = api_limits.max_message_bytes;
     let max_id_bytes = api_limits.max_identifier_bytes;
-    if message.len() > max_msg_bytes {
-        return Err(BadRequestSnafu {
-            message: format!("message exceeds maximum size of {max_msg_bytes} bytes"),
-        }
-        .build());
-    }
 
-    // WHY: bound identifier fields to prevent memory exhaustion from oversized IDs (#2787).
+    let mut field_errors = Vec::new();
+    if message.is_empty() {
+        field_errors.push(FieldError {
+            field: "message".to_owned(),
+            code: "required".to_owned(),
+            message: "must not be empty".to_owned(),
+        });
+    } else if message.len() > max_msg_bytes {
+        field_errors.push(FieldError {
+            field: "message".to_owned(),
+            code: "too_long".to_owned(),
+            message: format!("exceeds maximum size of {max_msg_bytes} bytes"),
+        });
+    }
     if agent_id.len() > max_id_bytes {
-        return Err(BadRequestSnafu {
-            message: "agent_id exceeds maximum length",
-        }
-        .build());
+        field_errors.push(FieldError {
+            field: "agent_id".to_owned(),
+            code: "too_long".to_owned(),
+            message: format!("exceeds maximum length of {max_id_bytes} bytes"),
+        });
     }
     if session_key.len() > max_id_bytes {
-        return Err(BadRequestSnafu {
-            message: "session_key exceeds maximum length",
-        }
-        .build());
+        field_errors.push(FieldError {
+            field: "session_key".to_owned(),
+            code: "too_long".to_owned(),
+            message: format!("exceeds maximum length of {max_id_bytes} bytes"),
+        });
+    }
+    if !field_errors.is_empty() {
+        return Err(ValidationFailedSnafu { errors: field_errors }.build());
     }
 
     let handle = state

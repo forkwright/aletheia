@@ -305,9 +305,9 @@ async fn sse_dropping_response_body_does_not_panic() {
     tokio::time::sleep(Duration::from_millis(50)).await;
 }
 
-/// Error path: sending an empty message returns 400 Bad Request.
+/// Error path: sending an empty message returns 422 Unprocessable Entity.
 #[tokio::test]
-async fn send_message_empty_content_returns_400() {
+async fn send_message_empty_content_returns_422() {
     let (router, _dir) = app().await;
     let created = create_test_session(&router).await;
     let id = created["id"].as_str().unwrap();
@@ -319,15 +319,16 @@ async fn send_message_empty_content_returns_400() {
     );
     let resp = router.clone().oneshot(req).await.unwrap();
 
-    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
     let body = body_json(resp).await;
-    assert_eq!(body["error"]["code"], "bad_request");
-    assert!(body["error"]["message"].as_str().unwrap().contains("empty"));
+    assert_eq!(body["error"]["code"], "validation_failed");
+    let errors = body["error"]["details"]["errors"].as_array().unwrap();
+    assert!(errors.iter().any(|e| e["field"] == "content" && e["code"] == "required"));
 }
 
-/// Error path: sending an oversized message returns 400 Bad Request.
+/// Error path: sending an oversized message returns 422 Unprocessable Entity.
 #[tokio::test]
-async fn send_message_oversized_content_returns_400() {
+async fn send_message_oversized_content_returns_422() {
     let (router, _dir) = app().await;
     let created = create_test_session(&router).await;
     let id = created["id"].as_str().unwrap();
@@ -340,10 +341,11 @@ async fn send_message_oversized_content_returns_400() {
     );
     let resp = router.clone().oneshot(req).await.unwrap();
 
-    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
     let body = body_json(resp).await;
-    assert_eq!(body["error"]["code"], "bad_request");
-    assert!(body["error"]["message"].as_str().unwrap().contains("maximum size"));
+    assert_eq!(body["error"]["code"], "validation_failed");
+    let errors = body["error"]["details"]["errors"].as_array().unwrap();
+    assert!(errors.iter().any(|e| e["field"] == "content" && e["code"] == "too_long"));
 }
 
 /// Error path: sending message to unknown session returns 404 Not Found.
@@ -414,9 +416,9 @@ async fn send_message_empty_idempotency_key_returns_400() {
     assert_eq!(body["error"]["code"], "bad_request");
 }
 
-/// Error path: `stream_turn` with empty message returns 400 Bad Request.
+/// Error path: `stream_turn` with empty message returns 422.
 #[tokio::test]
-async fn stream_turn_empty_message_returns_400() {
+async fn stream_turn_empty_message_returns_422() {
     let (app, _dir) = app().await;
     let req = authed_request(
         "POST",
@@ -429,15 +431,16 @@ async fn stream_turn_empty_message_returns_400() {
     );
     let resp = app.oneshot(req).await.unwrap();
 
-    // WHY: Handler validates message and returns 400 for empty
-    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
     let body = body_json(resp).await;
-    assert_eq!(body["error"]["code"], "bad_request");
+    assert_eq!(body["error"]["code"], "validation_failed");
+    let errors = body["error"]["details"]["errors"].as_array().unwrap();
+    assert!(errors.iter().any(|e| e["field"] == "message" && e["code"] == "required"));
 }
 
-/// Error path: `stream_turn` with oversized message returns 400 Bad Request.
+/// Error path: `stream_turn` with oversized message returns 422.
 #[tokio::test]
-async fn stream_turn_oversized_message_returns_400() {
+async fn stream_turn_oversized_message_returns_422() {
     let (app, _dir) = app().await;
     let oversized_message = "x".repeat(300_000);
     let req = authed_request(
@@ -451,10 +454,11 @@ async fn stream_turn_oversized_message_returns_400() {
     );
     let resp = app.oneshot(req).await.unwrap();
 
-    // WHY: Handler validates message and returns 400 for oversized
-    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
     let body = body_json(resp).await;
-    assert_eq!(body["error"]["code"], "bad_request");
+    assert_eq!(body["error"]["code"], "validation_failed");
+    let errors = body["error"]["details"]["errors"].as_array().unwrap();
+    assert!(errors.iter().any(|e| e["field"] == "message" && e["code"] == "too_long"));
 }
 
 /// Error path: `stream_turn` with unknown `agent_id` returns 404 Not Found.
@@ -477,9 +481,9 @@ async fn stream_turn_unknown_agent_returns_404() {
     assert_eq!(body["error"]["code"], "nous_not_found");
 }
 
-/// Error path: `stream_turn` with oversized `agent_id` returns 400 Bad Request.
+/// Error path: `stream_turn` with oversized `agent_id` returns 422.
 #[tokio::test]
-async fn stream_turn_oversized_agent_id_returns_400() {
+async fn stream_turn_oversized_agent_id_returns_422() {
     let (app, _dir) = app().await;
     let oversized_agent_id = "a".repeat(300);
     let req = authed_request(
@@ -493,15 +497,16 @@ async fn stream_turn_oversized_agent_id_returns_400() {
     );
     let resp = app.oneshot(req).await.unwrap();
 
-    // WHY: Handler validates agent_id and returns 400 for oversized
-    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
     let body = body_json(resp).await;
-    assert_eq!(body["error"]["code"], "bad_request");
+    assert_eq!(body["error"]["code"], "validation_failed");
+    let errors = body["error"]["details"]["errors"].as_array().unwrap();
+    assert!(errors.iter().any(|e| e["field"] == "agent_id" && e["code"] == "too_long"));
 }
 
-/// Error path: `stream_turn` with oversized `session_key` returns 400 Bad Request.
+/// Error path: `stream_turn` with oversized `session_key` returns 422.
 #[tokio::test]
-async fn stream_turn_oversized_session_key_returns_400() {
+async fn stream_turn_oversized_session_key_returns_422() {
     let (app, _dir) = app().await;
     let oversized_session_key = "b".repeat(300);
     let req = authed_request(
@@ -515,8 +520,9 @@ async fn stream_turn_oversized_session_key_returns_400() {
     );
     let resp = app.oneshot(req).await.unwrap();
 
-    // WHY: Handler validates session_key and returns 400 for oversized
-    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
     let body = body_json(resp).await;
-    assert_eq!(body["error"]["code"], "bad_request");
+    assert_eq!(body["error"]["code"], "validation_failed");
+    let errors = body["error"]["details"]["errors"].as_array().unwrap();
+    assert!(errors.iter().any(|e| e["field"] == "session_key" && e["code"] == "too_long"));
 }

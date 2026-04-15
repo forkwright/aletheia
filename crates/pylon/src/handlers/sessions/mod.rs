@@ -22,8 +22,8 @@ use mneme::types::SessionStatus;
 use symbolon::types::Role;
 
 use crate::error::{
-    ApiError, BadRequestSnafu, ConflictSnafu, ErrorResponse, NousNotFoundSnafu,
-    SessionNotFoundSnafu,
+    ApiError, ConflictSnafu, ErrorResponse, FieldError, NousNotFoundSnafu, SessionNotFoundSnafu,
+    ValidationFailedSnafu,
 };
 use crate::extract::{Claims, require_nous_access, require_role};
 use crate::state::SessionsState;
@@ -57,31 +57,38 @@ pub async fn create(
     let nous_id = body.nous_id;
     let session_key = body.session_key;
 
+    // WHY(#3275): collect all field errors and return them in one response so
+    // callers can fix all issues in a single round-trip.
+    let max_id_bytes = state.config.read().await.api_limits.max_identifier_bytes;
+    let mut field_errors = Vec::new();
     if nous_id.is_empty() {
-        return Err(BadRequestSnafu {
-            message: "nous_id must not be empty",
-        }
-        .build());
+        field_errors.push(FieldError {
+            field: "nous_id".to_owned(),
+            code: "required".to_owned(),
+            message: "must not be empty".to_owned(),
+        });
+    } else if nous_id.len() > max_id_bytes {
+        field_errors.push(FieldError {
+            field: "nous_id".to_owned(),
+            code: "too_long".to_owned(),
+            message: format!("exceeds maximum length of {max_id_bytes} bytes"),
+        });
     }
     if session_key.is_empty() {
-        return Err(BadRequestSnafu {
-            message: "session_key must not be empty",
-        }
-        .build());
+        field_errors.push(FieldError {
+            field: "session_key".to_owned(),
+            code: "required".to_owned(),
+            message: "must not be empty".to_owned(),
+        });
+    } else if session_key.len() > max_id_bytes {
+        field_errors.push(FieldError {
+            field: "session_key".to_owned(),
+            code: "too_long".to_owned(),
+            message: format!("exceeds maximum length of {max_id_bytes} bytes"),
+        });
     }
-    // WHY: bound identifier fields to prevent memory exhaustion from oversized IDs (#2787).
-    let max_id_bytes = state.config.read().await.api_limits.max_identifier_bytes;
-    if nous_id.len() > max_id_bytes {
-        return Err(BadRequestSnafu {
-            message: "nous_id exceeds maximum length",
-        }
-        .build());
-    }
-    if session_key.len() > max_id_bytes {
-        return Err(BadRequestSnafu {
-            message: "session_key exceeds maximum length",
-        }
-        .build());
+    if !field_errors.is_empty() {
+        return Err(ValidationFailedSnafu { errors: field_errors }.build());
     }
 
     let config = state.nous_manager.get_config(&nous_id).ok_or_else(|| {
@@ -408,18 +415,25 @@ pub async fn rename(
     let session = find_session(&state, &id).await?;
     require_nous_access(&claims, &session.nous_id)?;
 
+    // WHY(#3275): field-level validation errors for the rename endpoint.
+    let max_name_len = state.config.read().await.api_limits.max_session_name_len;
     if body.name.is_empty() {
-        return Err(BadRequestSnafu {
-            message: "name must not be empty",
+        return Err(ValidationFailedSnafu {
+            errors: vec![FieldError {
+                field: "name".to_owned(),
+                code: "required".to_owned(),
+                message: "must not be empty".to_owned(),
+            }],
         }
         .build());
     }
-
-    // SAFETY: enforce max session name length to prevent oversized input.
-    let max_name_len = state.config.read().await.api_limits.max_session_name_len;
     if body.name.len() > max_name_len {
-        return Err(BadRequestSnafu {
-            message: format!("name exceeds maximum length of {max_name_len} bytes"),
+        return Err(ValidationFailedSnafu {
+            errors: vec![FieldError {
+                field: "name".to_owned(),
+                code: "too_long".to_owned(),
+                message: format!("exceeds maximum length of {max_name_len} bytes"),
+            }],
         }
         .build());
     }
