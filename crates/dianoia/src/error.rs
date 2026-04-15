@@ -67,6 +67,16 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// Circular dependency detected among plan `depends_on` relationships.
+    #[snafu(display("circular dependency detected: {cycle}"))]
+    CircularDependency {
+        /// Human-readable cycle path, e.g. "A -> B -> A".
+        cycle: String,
+        #[snafu(implicit)]
+        /// Source location captured by snafu.
+        location: snafu::Location,
+    },
+
     /// Filesystem operation failed in the project workspace.
     #[snafu(display("workspace I/O error at {}", path.display()))]
     WorkspaceIo {

@@ -77,7 +77,10 @@ pub enum Transition {
 impl ProjectState {
     /// Attempt a state transition. Returns the new state or an error
     /// if the transition is invalid from the current state.
-    pub fn transition(self, t: Transition) -> Result<Self> {
+    ///
+    /// This is `pub(crate)` — external callers must use [`transition_gated`](Self::transition_gated)
+    /// so that phase gates are structurally impossible to bypass.
+    pub(crate) fn transition(self, t: Transition) -> Result<Self> {
         let from_label = state_label(&self);
         let result = match (&self, &t) {
             (Self::Created, Transition::StartQuestioning) => Ok(Self::Questioning),
