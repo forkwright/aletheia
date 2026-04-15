@@ -290,12 +290,20 @@ impl RuntimeBuilder {
                     .var("ALETHEIA_JWT_SECRET")
                     .map(SecretString::from)
             });
+        // WHY: honor the configured clock-skew leeway on every path so the
+        // advertised 30s tolerance (or an operator override) applies uniformly.
+        // Fixes #3379.
+        let jwt_leeway = self.config.jwt.clock_skew_leeway_secs;
         let jwt_config = match jwt_key {
             Some(k) => JwtConfig {
                 signing_key: k,
+                clock_skew_leeway_secs: jwt_leeway,
                 ..JwtConfig::default()
             },
-            None => JwtConfig::default(),
+            None => JwtConfig {
+                clock_skew_leeway_secs: jwt_leeway,
+                ..JwtConfig::default()
+            },
         };
         jwt_config
             .validate_for_auth_mode(self.config.gateway.auth.mode.as_str())

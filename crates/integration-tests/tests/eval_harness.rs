@@ -93,6 +93,7 @@ async fn start_test_server() -> (String, String, tempfile::TempDir) {
         access_ttl: Duration::from_secs(3600),
         refresh_ttl: Duration::from_secs(86400),
         issuer: "aletheia-test".to_owned(),
+        ..JwtConfig::default()
     }));
 
     let token = jwt_manager

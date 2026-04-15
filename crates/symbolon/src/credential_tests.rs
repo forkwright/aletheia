@@ -428,7 +428,7 @@ fn file_provider_detects_file_change() {
         && let Some(ref mut c) = *guard
     {
         c.checked_at = Instant::now()
-            .checked_sub(Duration::from_secs(60))
+            .checked_sub(Duration::from_mins(1))
             .unwrap_or(Instant::now());
         c.mtime = SystemTime::UNIX_EPOCH;
     }

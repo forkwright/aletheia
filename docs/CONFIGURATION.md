@@ -16,6 +16,7 @@ Later layers override earlier ones. All field names use `snake_case` in TOML; `c
 
 - [agents](#agents)
 - [gateway](#gateway)
+- [jwt](#jwt)
 - [channels](#channels)
 - [bindings](#bindings)
 - [embedding](#embedding)
@@ -187,6 +188,21 @@ max_bytes = 2097152
 
 [gateway.csrf]
 enabled = true
+```
+
+---
+
+## jwt
+
+JWT validation tuning. Applies to every bearer token the gateway accepts.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `clock_skew_leeway_secs` | u64 | `30` | Seconds of clock drift tolerated when checking the `exp` claim. A token whose `exp` lies up to this many seconds in the past is still accepted. Set to `0` for strict expiry on tightly synchronized hosts. |
+
+```toml
+[jwt]
+clock_skew_leeway_secs = 30
 ```
 
 ---

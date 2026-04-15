@@ -177,6 +177,7 @@ impl TestHarness {
             access_ttl: Duration::from_secs(3600),
             refresh_ttl: Duration::from_secs(86400),
             issuer: "aletheia-test".to_owned(),
+            ..JwtConfig::default()
         }));
 
         let default_config = taxis::config::AletheiaConfig::default();

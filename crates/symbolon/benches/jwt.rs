@@ -23,6 +23,7 @@ fn make_manager() -> JwtManager {
         access_ttl: Duration::from_secs(3600),
         refresh_ttl: Duration::from_secs(86400),
         issuer: "bench".to_owned(),
+        ..JwtConfig::default()
     })
 }
 

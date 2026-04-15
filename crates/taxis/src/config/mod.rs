@@ -11,9 +11,9 @@ pub use agents::{
     ModelSpec, NousDefinition, RecallSettings, RecallWeights,
 };
 pub use behavior::{
-    AnthropicConfig, ApiLimitsConfig, CapacityConfig, DaemonBehaviorConfig, KnowledgeConfig,
-    MessagingConfig, NousBehaviorConfig, PromptCacheMode, ProviderBehaviorConfig, RetrySettings,
-    TimeoutsConfig, ToolLimitsConfig, TuningConfig,
+    AnthropicConfig, ApiLimitsConfig, CapacityConfig, DaemonBehaviorConfig, JwtSettings,
+    KnowledgeConfig, MessagingConfig, NousBehaviorConfig, PromptCacheMode, ProviderBehaviorConfig,
+    RetrySettings, TimeoutsConfig, ToolLimitsConfig, TuningConfig,
 };
 pub use gateway::{
     BodyLimitConfig, CorsConfig, CsrfConfig, GatewayAuthConfig, GatewayConfig,
@@ -135,6 +135,13 @@ pub struct AletheiaConfig {
     /// operators who accept the tradeoff may opt in to reduce per-turn token
     /// cost.
     pub anthropic: AnthropicConfig,
+    /// JWT validation tuning (clock-skew leeway, etc.).
+    ///
+    /// WHY configurable: clock drift between issuer and validator can
+    /// immediately invalidate fresh tokens. Default 30s leeway tolerates
+    /// typical NTP drift; operators on tightly synchronized hosts may
+    /// lower this, and those behind mis-synced proxies may raise it.
+    pub jwt: JwtSettings,
 }
 
 /// Sandbox enforcement level for tool execution.

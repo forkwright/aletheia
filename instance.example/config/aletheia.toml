@@ -23,6 +23,15 @@ mode = "token"            # token | none
 # When bind != "localhost", the server logs an ERROR at startup.
 # noneRole = "admin"      # readonly | agent | operator | admin
 
+# --- JWT validation ---
+# [jwt]
+# clockSkewLeewaySecs = 30  # seconds of clock drift tolerated on exp checks
+# WHY: clock differences between the issuer and validator (or NTP jumps on
+# the validator) can immediately invalidate freshly issued tokens. 30s is
+# small enough that truly expired tokens are rejected in practice while
+# tolerating typical NTP drift. Raise on networks with known clock drift;
+# lower (or set to 0) only on tightly synchronized hosts.
+
 # [gateway.tls]
 # enabled = true
 # certPath = "config/tls/cert.pem"

@@ -113,6 +113,7 @@ impl StateBuilder {
             access_ttl: Duration::from_hours(1),
             refresh_ttl: Duration::from_hours(24),
             issuer: "aletheia-diaporeia-tests".to_owned(),
+            ..JwtConfig::default()
         }));
 
         let jwt_for_state = if self.auth_mode == "none" {
@@ -482,13 +483,16 @@ async fn router_rejects_expired_bearer_token() {
         taxis::config::NousBehaviorConfig::default(),
     ));
 
-    // WHY: zero access_ttl guarantees that every issued token is already
-    // expired by the time validation runs, triggering the expired-token path.
+    // WHY: zero access_ttl plus zero clock-skew leeway guarantees that
+    // every issued token is already expired by the time validation runs,
+    // triggering the expired-token path. The default 30s leeway would
+    // otherwise keep the token alive past the 50ms sleep below.
     let jwt_manager = Arc::new(JwtManager::new(JwtConfig {
         signing_key: SecretString::from("expired-token-test-signing-key-bytes!".to_owned()),
         access_ttl: Duration::from_secs(0),
         refresh_ttl: Duration::from_secs(0),
         issuer: "aletheia-diaporeia-tests".to_owned(),
+        clock_skew_leeway_secs: 0,
     }));
 
     let config = Arc::new(RwLock::new(AletheiaConfig::default()));
@@ -542,6 +546,7 @@ async fn router_rejects_token_signed_with_wrong_key() {
         access_ttl: Duration::from_secs(3600),
         refresh_ttl: Duration::from_secs(86400),
         issuer: "rogue-issuer".to_owned(),
+        ..JwtConfig::default()
     });
     let rogue_token = issue_token(&foreign_jwt, "mallory", Role::Admin);
 
