@@ -1,4 +1,11 @@
 //! Degree centrality computation.
+//!
+//! Counts in-degree, out-degree, and total degree for every node in a
+//! directed edge relation.  Optionally includes isolated nodes from a
+//! secondary node relation.
+//!
+//! Reference: Freeman, L.C. (1978). "Centrality in Social Networks:
+//! Conceptual Clarification." *Social Networks*, 1(3), 215--239.
 use std::collections::BTreeMap;
 
 use compact_str::CompactString;
@@ -12,6 +19,13 @@ use crate::parse::SourceSpan;
 use crate::runtime::db::Poison;
 use crate::runtime::temp_store::RegularTempStore;
 
+/// Degree centrality: total, out, and in degree per node.
+///
+/// **Complexity:** O(E) where E is edges.  Single pass counting.
+///
+/// **When to use:** Quick identification of hubs and authorities in directed
+/// networks, or as a baseline centrality measure before computing more
+/// expensive metrics.
 pub(crate) struct DegreeCentrality;
 
 #[expect(
@@ -32,28 +46,21 @@ pub(crate) struct DegreeCentrality;
     reason = "usize-to-isize degree counts are small positive values well within isize range"
 )]
 impl FixedRule for DegreeCentrality {
-    /// Run degree centrality computation.
-    ///
-    /// # Complexity
-    ///
-    /// O(E) where E is edges. Single pass counting in/out/total degrees.
     fn run(
         &self,
         payload: FixedRulePayload<'_, '_>,
         out: &mut RegularTempStore,
         poison: Poison,
     ) -> Result<()> {
-        let it = payload.get_input(0)?.ensure_min_len(2)?.iter()?;
+        let edge_iter = payload.get_input(0)?.ensure_min_len(2)?.iter()?;
         let mut counter: BTreeMap<DataValue, (usize, usize, usize)> = BTreeMap::new();
-        for tuple in it {
+        for tuple in edge_iter {
             let tuple = tuple?;
-            // SAFETY: `tuple` comes from `ensure_min_len(2)` so has at least 2 elements.
             let from = tuple[0].clone();
             let (from_total, from_out, _) = counter.entry(from).or_default();
             *from_total += 1;
             *from_out += 1;
 
-            // SAFETY: `tuple` comes from `ensure_min_len(2)` so has at least 2 elements.
             let to = tuple[1].clone();
             let (to_total, _, to_in) = counter.entry(to).or_default();
             *to_total += 1;
@@ -63,7 +70,6 @@ impl FixedRule for DegreeCentrality {
         if let Ok(nodes) = payload.get_input(1) {
             for tuple in nodes.iter()? {
                 let tuple = tuple?;
-                // SAFETY: `tuple` comes from `nodes` input which is validated to have arity >= 1.
                 let id = &tuple[0];
                 if !counter.contains_key(id) {
                     counter.insert(id.clone(), (0, 0, 0));
@@ -71,12 +77,12 @@ impl FixedRule for DegreeCentrality {
                 poison.check()?;
             }
         }
-        for (k, (total_d, out_d, in_d)) in counter.into_iter() {
+        for (node, (total_degree, out_degree, in_degree)) in counter.into_iter() {
             let tuple = vec![
-                k,
-                DataValue::from(total_d as i64),
-                DataValue::from(out_d as i64),
-                DataValue::from(in_d as i64),
+                node,
+                DataValue::from(total_degree as i64),
+                DataValue::from(out_degree as i64),
+                DataValue::from(in_degree as i64),
             ];
             out.put(tuple);
         }

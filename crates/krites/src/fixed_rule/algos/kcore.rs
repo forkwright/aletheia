@@ -1,11 +1,14 @@
 //! K-core decomposition.
 //!
 //! Assigns each node the largest k such that it belongs to the k-core, i.e.,
-//! the maximal induced subgraph where every node has degree ≥ k.
+//! the maximal induced subgraph where every node has degree >= k.
 //!
-//! Algorithm: iterative peeling.  For increasing k, remove every node whose
-//! current effective degree (within the surviving subgraph) falls below k.
-//! The k-value assigned to each node is the largest k at which it survived.
+//! Uses iterative peeling: for increasing k, remove every node whose current
+//! effective degree (within the surviving subgraph) falls below k.  The
+//! k-value assigned to each node is the largest k at which it survived.
+//!
+//! Reference: Batagelj, V., Zaversnik, M. (2003). "An O(m) Algorithm for
+//! Cores Decomposition of Networks." *arXiv:cs/0310049*.
 use std::collections::BTreeMap;
 
 use compact_str::CompactString;
@@ -20,6 +23,12 @@ use crate::parse::SourceSpan;
 use crate::runtime::db::Poison;
 use crate::runtime::temp_store::RegularTempStore;
 
+/// K-core decomposition via iterative peeling.
+///
+/// **Complexity:** O(V + E) where V is vertices and E is edges.
+///
+/// **When to use:** Identifying densely connected subgraphs, filtering
+/// peripheral nodes, or as a pre-processing step for community detection.
 pub(crate) struct KCore;
 
 #[expect(
@@ -28,12 +37,6 @@ pub(crate) struct KCore;
     reason = "graph k-core peeling indices are bounds-checked by the node count and degree arrays"
 )]
 impl FixedRule for KCore {
-    /// Run k-core decomposition algorithm.
-    ///
-    /// # Complexity
-    ///
-    /// O(V + E) where V is vertices and E is edges. Uses iterative peeling
-    /// with a bucket queue approach (similar to radix sort on degrees).
     fn run(
         &self,
         payload: FixedRulePayload<'_, '_>,
@@ -45,37 +48,37 @@ impl FixedRule for KCore {
 
         let (graph, indices, _) = edges.as_directed_graph(undirected)?;
 
-        let n = graph.node_count() as usize;
-        if n == 0 {
+        let node_count = graph.node_count() as usize;
+        if node_count == 0 {
             return Ok(());
         }
 
         #[expect(clippy::cast_possible_truncation, reason = "value fits u32")]
-        let n_u32 = n as u32;
-        let adj: Vec<Vec<u32>> = (0..n_u32)
+        let node_count_u32 = node_count as u32;
+        let adjacency: Vec<Vec<u32>> = (0..node_count_u32)
             .map(|node| {
-                let mut nb: Vec<u32> = graph.out_neighbors(node).collect();
-                nb.sort_unstable();
-                nb.dedup();
-                nb
+                let mut neighbors: Vec<u32> = graph.out_neighbors(node).collect();
+                neighbors.sort_unstable();
+                neighbors.dedup();
+                neighbors
             })
             .collect_vec();
 
-        let mut effective_degree: Vec<u32> = adj
+        let mut effective_degree: Vec<u32> = adjacency
             .iter()
-            .map(|nb: &Vec<u32>| {
+            .map(|neighbors: &Vec<u32>| {
                 #[expect(clippy::cast_possible_truncation, reason = "value fits u32")]
-                let len = nb.len() as u32;
+                let len = neighbors.len() as u32;
                 len
             })
             .collect();
-        let mut alive: Vec<bool> = vec![true; n];
-        let mut core: Vec<u32> = vec![0; n];
+        let mut alive: Vec<bool> = vec![true; node_count];
+        let mut core_number: Vec<u32> = vec![0; node_count];
 
         let max_degree = effective_degree.iter().copied().max().unwrap_or(0);
         let mut k: u32 = 1;
         while k <= max_degree {
-            let mut queue: Vec<u32> = (0..n_u32)
+            let mut queue: Vec<u32> = (0..node_count_u32)
                 .filter(|&v| alive[v as usize] && effective_degree[v as usize] < k)
                 .collect();
 
@@ -84,8 +87,8 @@ impl FixedRule for KCore {
                     continue;
                 }
                 alive[v as usize] = false;
-                core[v as usize] = k - 1;
-                for &u in &adj[v as usize] {
+                core_number[v as usize] = k - 1;
+                for &u in &adjacency[v as usize] {
                     if alive[u as usize] {
                         effective_degree[u as usize] -= 1;
                         if effective_degree[u as usize] < k {
@@ -99,14 +102,17 @@ impl FixedRule for KCore {
             k += 1;
         }
 
-        for v in 0..n {
+        for v in 0..node_count {
             if alive[v] {
-                core[v] = k - 1;
+                core_number[v] = k - 1;
             }
         }
 
-        for (v, k_val) in core.into_iter().enumerate() {
-            out.put(vec![indices[v].clone(), DataValue::from(i64::from(k_val))]);
+        for (v, k_value) in core_number.into_iter().enumerate() {
+            out.put(vec![
+                indices[v].clone(),
+                DataValue::from(i64::from(k_value)),
+            ]);
         }
 
         Ok(())

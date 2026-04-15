@@ -1,4 +1,10 @@
 //! Unweighted shortest path via BFS.
+//!
+//! Finds shortest paths in an unweighted graph between sets of starting and
+//! ending nodes.  Uses standard BFS which guarantees minimum-hop paths.
+//!
+//! Reference: Cormen, T.H. et al. (2009). *Introduction to Algorithms*,
+//! 3rd ed., MIT Press, Section 22.2.
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use compact_str::CompactString;
@@ -14,6 +20,13 @@ use crate::parse::SourceSpan;
 use crate::runtime::db::Poison;
 use crate::runtime::temp_store::RegularTempStore;
 
+/// Unweighted shortest path via BFS.
+///
+/// **Complexity:** O(S * (V + E)) where S is starting nodes, V is vertices,
+/// E is edges.  Performs BFS from each starting node to all ending nodes.
+///
+/// **When to use:** Finding shortest hop-count paths in unweighted graphs.
+/// For weighted graphs, use `ShortestPathDijkstra` instead.
 pub(crate) struct ShortestPathBFS;
 
 #[expect(
@@ -37,12 +50,6 @@ pub(crate) struct ShortestPathBFS;
     reason = "trailing semicolons in match arms kept for consistency with surrounding style"
 )]
 impl FixedRule for ShortestPathBFS {
-    /// Run unweighted shortest path search via BFS.
-    ///
-    /// # Complexity
-    ///
-    /// O(S * (V + E)) where S is starting nodes, V is vertices, E is edges.
-    /// Performs BFS from each starting node to all ending nodes.
     fn run(
         &self,
         payload: FixedRulePayload<'_, '_>,
@@ -54,13 +61,13 @@ impl FixedRule for ShortestPathBFS {
             .get_input(1)?
             .ensure_min_len(1)?
             .iter()?
-            .map_ok(|n| n.into_iter().next().unwrap_or(DataValue::Null))
+            .map_ok(|tuple| tuple.into_iter().next().unwrap_or(DataValue::Null))
             .try_collect()?;
         let ending_nodes: BTreeSet<_> = payload
             .get_input(2)?
             .ensure_min_len(1)?
             .iter()?
-            .map_ok(|n| n.into_iter().next().unwrap_or(DataValue::Null))
+            .map_ok(|tuple| tuple.into_iter().next().unwrap_or(DataValue::Null))
             .try_collect()?;
 
         for starting_node in starting_nodes.iter() {
@@ -76,7 +83,6 @@ impl FixedRule for ShortestPathBFS {
             while let Some(candidate) = queue.pop_back() {
                 for edge in edges.prefix_iter(&candidate)? {
                     let edge = edge?;
-                    // SAFETY: `edge` comes from `ensure_min_len(2)` so has at least 2 elements.
                     let to_node = &edge[1];
                     if visited.contains(to_node) {
                         continue;

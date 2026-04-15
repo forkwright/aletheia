@@ -1,4 +1,11 @@
-//! Depth-first search traversal.
+//! Depth-first search traversal with condition filtering.
+//!
+//! Performs stack-based (non-recursive) DFS from one or more starting nodes,
+//! returning paths to nodes that satisfy a user-provided condition predicate.
+//! Stops early when the configured `limit` is reached.
+//!
+//! Reference: Cormen, T.H. et al. (2009). *Introduction to Algorithms*,
+//! 3rd ed., MIT Press, Section 22.3.
 use std::collections::{BTreeMap, BTreeSet};
 
 use compact_str::CompactString;
@@ -13,6 +20,17 @@ use crate::parse::SourceSpan;
 use crate::runtime::db::Poison;
 use crate::runtime::temp_store::RegularTempStore;
 
+/// Depth-first search with condition-based target discovery.
+///
+/// Uses an explicit stack instead of recursion to avoid stack overflow on
+/// large graphs.
+///
+/// **Complexity:** O(V + E) where V is vertices reachable from starting
+/// nodes and E is edges traversed.
+///
+/// **When to use:** Finding any path (not necessarily shortest) to a node
+/// satisfying a predicate, or when exploration order favours depth over
+/// breadth.
 pub(crate) struct Dfs;
 
 #[expect(
@@ -28,12 +46,6 @@ pub(crate) struct Dfs;
     reason = "graph DFS indices are bounds-checked by the visited set"
 )]
 impl FixedRule for Dfs {
-    /// Run depth-first search traversal.
-    ///
-    /// # Complexity
-    ///
-    /// O(V + E) where V is vertices reachable from starting nodes and E is
-    /// edges traversed. Uses explicit stack to avoid recursion depth issues.
     fn run(
         &self,
         payload: FixedRulePayload<'_, '_>,
@@ -59,7 +71,6 @@ impl FixedRule for Dfs {
 
         'outer: for node_tuple in starting_nodes.iter()? {
             let node_tuple = node_tuple?;
-            // SAFETY: `node_tuple` comes from `starting_nodes` input validated to have arity >= 1.
             let starting_node = &node_tuple[0];
             if visited.contains(starting_node) {
                 continue;
@@ -73,7 +84,7 @@ impl FixedRule for Dfs {
                     continue;
                 }
 
-                let cand_tuple = if skip_query_nodes {
+                let candidate_tuple = if skip_query_nodes {
                     vec![candidate.clone()]
                 } else {
                     nodes.prefix_iter(&candidate)?.next().ok_or_else(
@@ -87,8 +98,12 @@ impl FixedRule for Dfs {
                     )??
                 };
 
-                if eval_bytecode_pred(&condition_bytecode, &cand_tuple, &mut stack, condition_span)?
-                {
+                if eval_bytecode_pred(
+                    &condition_bytecode,
+                    &candidate_tuple,
+                    &mut stack,
+                    condition_span,
+                )? {
                     found.push((starting_node.clone(), candidate.clone()));
                     if found.len() >= limit {
                         break 'outer;
@@ -99,7 +114,6 @@ impl FixedRule for Dfs {
 
                 for edge in edges.prefix_iter(&candidate)? {
                     let edge = edge?;
-                    // SAFETY: `edge` comes from `ensure_min_len(2)` so has at least 2 elements.
                     let to_node = &edge[1];
                     if visited.contains(to_node) {
                         continue;
