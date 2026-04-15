@@ -158,8 +158,19 @@ pub(crate) fn compute_decay(config: &DecayConfig, factors: &DecayFactors) -> Dec
 /// FSRS power-law recency score.
 ///
 /// `R(t) = (1 + 19/81 × t/S)^(-0.5)`
+///
+/// # Clock-jump handling
+///
+/// Negative or non-finite `age_hours` is clamped to `0.0` (treat as "just now").
+/// WHY: A negative age means the fact's `last_accessed` timestamp is in the
+/// future relative to `now` — this happens when the system clock jumps
+/// backward (NTP correction, suspend/resume, VM migration). Returning a raw
+/// decay score on negative input silently inflates recall toward 1.0; clamping
+/// to 0 makes the "fresh" semantics explicit and avoids pathological ranking.
+/// NaN is handled identically to defend against arithmetic upstream.
 #[must_use]
 fn score_recency(age_hours: f64, effective_stability: f64) -> f64 {
+    let age_hours = sanitize_age_hours(age_hours);
     if age_hours <= 0.0 {
         return 1.0;
     }
@@ -167,6 +178,31 @@ fn score_recency(age_hours: f64, effective_stability: f64) -> f64 {
         return 0.0;
     }
     (1.0 + (19.0 / 81.0) * age_hours / effective_stability).powf(-0.5)
+}
+
+/// Clamp `age_hours` to `[0, ∞)`, mapping NaN to 0. Positive infinity passes
+/// through so the downstream formula naturally yields 0.
+///
+/// Emits a `debug` log when clamping fires so operators tracking clock-jump
+/// events can correlate against NTP/suspend logs.
+#[must_use]
+pub(crate) fn sanitize_age_hours(age_hours: f64) -> f64 {
+    if age_hours.is_nan() {
+        tracing::debug!(
+            age_hours,
+            "FSRS decay received NaN age_hours, clamping to 0 (treat as just-now)"
+        );
+        return 0.0;
+    }
+    if age_hours < 0.0 {
+        tracing::debug!(
+            age_hours,
+            "FSRS decay received negative age_hours (clock jumped backward?), \
+             clamping to 0 (treat as just-now)"
+        );
+        return 0.0;
+    }
+    age_hours
 }
 
 /// Logarithmic access frequency score.
@@ -613,6 +649,44 @@ mod tests {
             (s - 1.0).abs() < f64::EPSILON,
             "recency at t=0 should be 1.0, got {s}"
         );
+    }
+
+    /// WHY (#3392): clock-jump-backward (negative age) is clamped to 0 so
+    /// decay returns 1.0 ("just now") instead of crashing or inflating
+    /// scores through downstream multipliers.
+    #[test]
+    fn score_recency_negative_age_clamps_to_fresh() {
+        let s = score_recency(-12.5, 720.0);
+        assert!(
+            (s - 1.0).abs() < f64::EPSILON,
+            "negative age should clamp to 1.0 (just-now), got {s}"
+        );
+    }
+
+    #[test]
+    fn score_recency_nan_age_clamps_to_fresh() {
+        let s = score_recency(f64::NAN, 720.0);
+        assert!(
+            (s - 1.0).abs() < f64::EPSILON,
+            "NaN age should clamp to 1.0 (just-now), got {s}"
+        );
+    }
+
+    #[test]
+    fn sanitize_age_hours_passes_through_non_negative_finite() {
+        assert!((sanitize_age_hours(0.0) - 0.0).abs() < f64::EPSILON);
+        assert!((sanitize_age_hours(42.0) - 42.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn sanitize_age_hours_clamps_negative() {
+        assert!((sanitize_age_hours(-1.0) - 0.0).abs() < f64::EPSILON);
+        assert!((sanitize_age_hours(-1e12) - 0.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn sanitize_age_hours_clamps_nan() {
+        assert!((sanitize_age_hours(f64::NAN) - 0.0).abs() < f64::EPSILON);
     }
 
     #[test]

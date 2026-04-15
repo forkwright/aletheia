@@ -188,6 +188,7 @@ pub mod consolidation {
 pub mod embedding {
     pub use episteme::embedding::{
         DegradedEmbeddingProvider, EmbeddingConfig, EmbeddingProvider, create_provider,
+        is_degraded_provider,
     };
 
     #[cfg(any(test, feature = "test-support"))]

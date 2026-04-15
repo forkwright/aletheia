@@ -156,6 +156,9 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
         shutdown: CancellationToken::new(),
         #[cfg(feature = "knowledge-store")]
         knowledge_store,
+        // WHY: pylon's standalone server does not configure embeddings; the
+        // aletheia binary owns the embedding pipeline. Health reports "warn".
+        embedding_provider: None,
     });
 
     #[cfg(unix)]

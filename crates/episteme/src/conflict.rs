@@ -443,9 +443,11 @@ pub(crate) fn classify_against_candidates(
         } else {
             // WHY: a systematically misbehaving LLM would silently cause all conflicts
             // to be classified as Unrelated without this warning.
-            let snippet_len = response.len().min(200);
+            // WHY: take first 200 chars (not bytes) so the snippet can never
+            // slice a multi-byte UTF-8 sequence.
+            let snippet: String = response.chars().take(200).collect();
             tracing::warn!(
-                response_snippet = &response[..snippet_len],
+                response_snippet = %snippet,
                 existing_content = %candidate.existing_content,
                 new_content = %fact.content,
                 "conflict classification response did not match any known class, falling back to Unrelated"

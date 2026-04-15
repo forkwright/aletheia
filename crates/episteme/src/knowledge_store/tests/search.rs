@@ -19,6 +19,84 @@ fn make_embedding(id: &str, content: &str, source_id: &str, nous_id: &str) -> Em
     }
 }
 
+/// #3380 integration: when the real embedding provider fails to initialize,
+/// the system must fall back to [`DegradedEmbeddingProvider`] and the
+/// `KnowledgeStore` must still build and serve BM25 recall.
+///
+/// WHY: A broken embedding model (missing files, HF fetch failure, bad
+/// config) must not crash startup — basic conversation and text-based
+/// recall should keep working in degraded mode.
+#[test]
+fn knowledge_store_builds_and_bm25_works_with_degraded_embedding() {
+    use std::sync::Arc;
+
+    use crate::embedding::{
+        DegradedEmbeddingProvider, EmbeddingConfig, EmbeddingProvider, create_provider,
+        is_degraded_provider,
+    };
+
+    // 1. Deliberately-invalid embedding config: unknown provider name.
+    let bad_config = EmbeddingConfig {
+        provider: "this-provider-does-not-exist".to_owned(),
+        model: None,
+        dimension: Some(4),
+        api_key: None,
+    };
+    assert!(
+        create_provider(&bad_config).is_err(),
+        "invalid embedding config must yield Err, not panic"
+    );
+
+    // 2. Fallback: DegradedEmbeddingProvider stands in.
+    let fallback: Arc<dyn EmbeddingProvider> = Arc::new(DegradedEmbeddingProvider::new(4));
+    assert!(
+        is_degraded_provider(fallback.as_ref()),
+        "fallback must be flagged as degraded for health reporting"
+    );
+    assert_eq!(fallback.dimension(), 4);
+    assert!(
+        fallback.embed("anything").is_err(),
+        "degraded provider's embed() must fail so recall skips vector search"
+    );
+
+    // 3. KnowledgeStore still builds with no real embeddings available.
+    let store = make_store();
+
+    // 4. Insert facts with distinct text content.
+    let f1 = make_fact(
+        "f-rust",
+        "agent-a",
+        "Rust memory safety is enforced by the borrow checker",
+    );
+    let f2 = make_fact(
+        "f-python",
+        "agent-a",
+        "Python uses reference counting for garbage collection",
+    );
+    let f3 = make_fact(
+        "f-go",
+        "agent-a",
+        "Go has a concurrent tracing garbage collector",
+    );
+    store.insert_fact(&f1).expect("insert f1");
+    store.insert_fact(&f2).expect("insert f2");
+    store.insert_fact(&f3).expect("insert f3");
+
+    // 5. BM25 search (no embeddings required) returns results.
+    let results = store
+        .search_text_for_recall("garbage collector", 10)
+        .expect("BM25 recall must succeed in degraded mode");
+    assert!(
+        !results.is_empty(),
+        "BM25 must return matches for 'garbage collector' even without embeddings"
+    );
+    let ids: Vec<String> = results.iter().map(|r| r.source_id.clone()).collect();
+    assert!(
+        ids.iter().any(|id| id == "f-python" || id == "f-go"),
+        "BM25 must match documents containing 'garbage' or 'collector'; got ids {ids:?}"
+    );
+}
+
 #[test]
 fn insert_embedding_and_search() {
     let store = make_store();
