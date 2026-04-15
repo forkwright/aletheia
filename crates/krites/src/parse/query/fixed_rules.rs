@@ -1,5 +1,8 @@
 //! Fixed rule parsing.
-//! Datalog query parsing.
+//!
+//! Parses fixed rule applications (`?[...] <~ RuleName(args, options)`) into
+//! [`FixedRuleApply`] nodes, and provides helpers for constant rule
+//! construction and validity timestamp parsing.
 #![expect(
     clippy::as_conversions,
     clippy::needless_return,
@@ -29,6 +32,7 @@ use crate::parse::{ExtractSpan, Pair, Rule};
 
 use super::atoms::parse_rule_head;
 
+/// Parse a fixed rule application into its output symbol and [`FixedRuleApply`].
 pub(crate) fn parse_fixed_rule(
     src: Pair<'_>,
     param_pool: &BTreeMap<String, DataValue>,
@@ -115,6 +119,7 @@ pub(crate) fn parse_fixed_rule(
     ))
 }
 
+/// Collect the argument list of a fixed rule: relation references and option key-value pairs.
 fn collect_fixed_rule_args<'i>(
     args_list: Pair<'i>,
     seen_bindings: &mut BTreeSet<&'i str>,
@@ -192,6 +197,7 @@ fn collect_fixed_rule_args<'i>(
     Ok((rule_args, options))
 }
 
+/// Parse an in-memory rule argument (`name[binding1, binding2, ...]`).
 fn parse_fixed_rule_rel_arg<'i>(
     inner: Pair<'i>,
     seen_bindings: &mut BTreeSet<&'i str>,
@@ -230,6 +236,7 @@ fn parse_fixed_rule_rel_arg<'i>(
     })
 }
 
+/// Parse a stored relation argument (`*name[binding1, ...] @ validity`).
 fn parse_fixed_relation_rel_arg<'i>(
     inner: Pair<'i>,
     seen_bindings: &mut BTreeSet<&'i str>,
@@ -301,6 +308,7 @@ fn parse_fixed_relation_rel_arg<'i>(
     })
 }
 
+/// Parse a named stored relation argument (`:name{field: binding, ...} @ validity`).
 fn parse_fixed_named_relation_rel_arg<'i>(
     inner: Pair<'i>,
     seen_bindings: &mut BTreeSet<&'i str>,
@@ -387,6 +395,10 @@ fn parse_fixed_named_relation_rel_arg<'i>(
     })
 }
 
+/// Insert an empty `Constant` fixed rule into the program as the entry point.
+///
+/// Used when a `::create` relation has no query body -- the entry point
+/// produces zero rows but carries the column bindings.
 pub(crate) fn make_empty_const_rule(prog: &mut InputProgram, bindings: &[Symbol]) {
     let entry_symbol = Symbol::new(PROG_ENTRY, Default::default());
     let mut options = BTreeMap::new();
@@ -415,6 +427,10 @@ pub(crate) fn make_empty_const_rule(prog: &mut InputProgram, bindings: &[Symbol]
     );
 }
 
+/// Convert an expression to a validity timestamp specification.
+///
+/// Accepts integer microseconds, the string `"NOW"` (resolves to `cur_vld`),
+/// `"END"` (maximum validity), or a parseable timestamp string.
 pub(crate) fn expr2vld_spec(expr: Expr, cur_vld: ValidityTs) -> Result<ValidityTs> {
     let _vld_span = expr.span();
     match expr.eval_to_const()? {

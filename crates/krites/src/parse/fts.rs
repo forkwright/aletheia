@@ -1,4 +1,8 @@
-//! Full-text search clause parsing.
+//! Full-text search query parsing.
+//!
+//! Parses FTS query strings into an [`FtsExpr`] AST supporting boolean
+//! operators (AND, OR, NOT), proximity (NEAR), phrase matching, prefix
+//! wildcards, and boost weights.
 #![expect(
     clippy::as_conversions,
     clippy::pedantic,
@@ -11,24 +15,28 @@ use std::sync::LazyLock;
 use compact_str::CompactString;
 use itertools::Itertools;
 use pest::Parser;
-use pest::error::InputLocation;
 use pest::pratt_parser::{Op, PrattParser};
 
 use crate::error::InternalResult as Result;
 use crate::fts::ast::{FtsExpr, FtsLiteral, FtsNear};
 use crate::parse::error::{InvalidQuerySnafu, SyntaxSnafu};
 use crate::parse::expr::parse_string;
-use crate::parse::{DatalogParser, Pair, Rule, SourceSpan};
+use crate::parse::{DatalogParser, Pair, Rule, input_location_to_span};
 
+/// Parse a full-text search query string into an [`FtsExpr`] tree.
+///
+/// Multiple top-level terms are implicitly ANDed together.
+///
+/// # Errors
+///
+/// Returns an error if the query string contains invalid FTS syntax.
 pub(crate) fn parse_fts_query(q: &str) -> Result<FtsExpr> {
     let mut pairs = DatalogParser::parse(Rule::fts_doc, q).map_err(|err| {
-        let span = match err.location {
-            InputLocation::Pos(p) => SourceSpan(p, 0),
-            InputLocation::Span((start, end)) => SourceSpan(start, end - start),
-        };
+        let message = err.to_string();
+        let span = input_location_to_span(err.location);
         SyntaxSnafu {
             span: span.to_string(),
-            message: err.to_string(),
+            message,
         }
         .build()
     })?;
@@ -55,6 +63,7 @@ pub(crate) fn parse_fts_query(q: &str) -> Result<FtsExpr> {
     })
 }
 
+/// Parse a single FTS expression using Pratt precedence for AND/OR/NOT.
 fn parse_fts_expr(pair: Pair<'_>) -> Result<FtsExpr> {
     debug_assert!(pair.as_rule() == Rule::fts_expr);
     let pairs = pair.into_inner();
@@ -64,6 +73,7 @@ fn parse_fts_expr(pair: Pair<'_>) -> Result<FtsExpr> {
         .parse(pairs)
 }
 
+/// Handle FTS binary operators (AND, OR, NOT).
 fn build_infix(lhs: Result<FtsExpr>, op: Pair<'_>, rhs: Result<FtsExpr>) -> Result<FtsExpr> {
     let lhs = lhs?;
     let rhs = rhs?;
@@ -79,6 +89,7 @@ fn build_infix(lhs: Result<FtsExpr>, op: Pair<'_>, rhs: Result<FtsExpr>) -> Resu
     })
 }
 
+/// Build a primary FTS term: grouped expression, NEAR proximity, or phrase literal.
 fn build_term(pair: Pair<'_>) -> Result<FtsExpr> {
     Ok(match pair.as_rule() {
         Rule::fts_grouped => {
@@ -132,6 +143,7 @@ fn build_term(pair: Pair<'_>) -> Result<FtsExpr> {
     })
 }
 
+/// Build an FTS phrase literal with optional prefix marker and boost weight.
 fn build_phrase(pair: Pair<'_>) -> Result<FtsLiteral> {
     let mut inner = pair.into_inner();
     let kernel = inner.next()
