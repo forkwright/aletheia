@@ -443,4 +443,76 @@ mod tests {
         assert_eq!(evicted, 0, "recent entries should not be evicted");
         assert_eq!(limiter.tracked_users(), 1, "active user should remain");
     }
+
+    #[test]
+    fn ip_ceiling_limits_aggregate_traffic_from_one_ip() {
+        // WHY: Verifies that multiple tokens from the same IP cannot bypass
+        // the per-user rate limit. The IP ceiling is 5x the per-user burst
+        // (IP_CEILING_BURST_MULTIPLIER = 5), so 5 different users can each
+        // make 1 request, but 6 total from the same IP hits the ceiling (#3228).
+        let config = PerUserRateLimitConfig {
+            default_rpm: 60,
+            default_burst: 1,
+            ..PerUserRateLimitConfig::default()
+        };
+        let limiter = UserRateLimiter::new(config);
+
+        // 5 distinct users, 1 request each = 5 total from same IP (at ceiling).
+        for i in 0..5 {
+            let user = format!("user-{i}");
+            assert!(
+                limiter.check(&user, EndpointCategory::General).is_none(),
+                "user {i} should be allowed (within per-user burst)"
+            );
+            assert!(
+                limiter.check_ip("192.168.1.100", EndpointCategory::General).is_none(),
+                "IP should be allowed for user {i} (within IP ceiling burst)"
+            );
+        }
+
+        // 6th user from same IP: per-user bucket allows it, but IP ceiling rejects.
+        assert!(
+            limiter.check("user-5", EndpointCategory::General).is_none(),
+            "user-5 per-user bucket should allow (first request)"
+        );
+        assert!(
+            limiter.check_ip("192.168.1.100", EndpointCategory::General).is_some(),
+            "IP ceiling should reject the 6th request from the same IP"
+        );
+    }
+
+    #[test]
+    fn ip_ceiling_tracks_separately_from_user_state() {
+        let config = PerUserRateLimitConfig {
+            stale_after_secs: 600,
+            ..PerUserRateLimitConfig::default()
+        };
+        let limiter = UserRateLimiter::new(config);
+
+        limiter.check("alice", EndpointCategory::General);
+        limiter.check_ip("192.168.1.100", EndpointCategory::General);
+
+        assert_eq!(limiter.tracked_users(), 1, "should track 1 user");
+        assert_eq!(limiter.tracked_ips(), 1, "should track 1 IP");
+    }
+
+    #[test]
+    fn cleanup_stale_evicts_ip_entries() {
+        let config = PerUserRateLimitConfig {
+            stale_after_secs: 0,
+            ..PerUserRateLimitConfig::default()
+        };
+        let limiter = UserRateLimiter::new(config);
+
+        limiter.check("alice", EndpointCategory::General);
+        limiter.check_ip("192.168.1.100", EndpointCategory::General);
+        assert_eq!(limiter.tracked_users(), 1);
+        assert_eq!(limiter.tracked_ips(), 1);
+
+        std::thread::sleep(Duration::from_millis(10));
+        let evicted = limiter.cleanup_stale();
+        assert_eq!(evicted, 2, "both user and IP entries should be evicted");
+        assert_eq!(limiter.tracked_users(), 0);
+        assert_eq!(limiter.tracked_ips(), 0);
+    }
 }
