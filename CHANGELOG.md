@@ -1,5 +1,50 @@
 # Changelog
 
+## [0.18.0](https://github.com/forkwright/aletheia/compare/v0.17.0...v0.18.0) (2026-04-15)
+
+
+### Features
+
+* **aletheia:** add benchmark CLI for LongMemEval and LoCoMo ([#3195](https://github.com/forkwright/aletheia/issues/3195)) ([3374a10](https://github.com/forkwright/aletheia/commit/3374a10fa1eb91d82323cffcc08e95a4b8b68953))
+* **eidos:** add schema_version to TrainingRecord ([#3186](https://github.com/forkwright/aletheia/issues/3186)) ([dc3e0f2](https://github.com/forkwright/aletheia/commit/dc3e0f24864d34f9e54a7b83ada561dc917cc98f))
+* **episteme,eidos,melete:** parameterize knowledge constants via taxis config ([#2306](https://github.com/forkwright/aletheia/issues/2306)) ([#3132](https://github.com/forkwright/aletheia/issues/3132)) ([22564b4](https://github.com/forkwright/aletheia/commit/22564b4ad1fa2a86c6841c6e322fe991ad8926e2))
+* **nous,taxis:** self-tuning feedback loop ([#2306](https://github.com/forkwright/aletheia/issues/2306) wave 6) ([#3137](https://github.com/forkwright/aletheia/issues/3137)) ([c1e8b70](https://github.com/forkwright/aletheia/commit/c1e8b701c5ef0efdcc22ee100ae78f4ab0904c5a))
+* **organon,agora,dianoia:** parameterize tool and planning constants via taxis config ([#2306](https://github.com/forkwright/aletheia/issues/2306)) ([#3133](https://github.com/forkwright/aletheia/issues/3133)) ([96d71b3](https://github.com/forkwright/aletheia/commit/96d71b35de4d898259568d1fdc156ed0e0bb3e74))
+* **organon,agora:** wire tool and channel constants to taxis config reads ([#2306](https://github.com/forkwright/aletheia/issues/2306)) ([#3136](https://github.com/forkwright/aletheia/issues/3136)) ([5562860](https://github.com/forkwright/aletheia/commit/55628601dd17e0108b06cbb09b242891db05dc1a))
+* **pylon,hermeneus,daemon:** parameterize infra constants via taxis config ([#2306](https://github.com/forkwright/aletheia/issues/2306)) ([#3130](https://github.com/forkwright/aletheia/issues/3130)) ([81727b7](https://github.com/forkwright/aletheia/commit/81727b7cba1b482bcfe2c79c6a7a803a56630409))
+* **taxis,organon,aletheia:** parameter registry + agent tool + CLI describe ([#2306](https://github.com/forkwright/aletheia/issues/2306)) ([#3135](https://github.com/forkwright/aletheia/issues/3135)) ([9b52daf](https://github.com/forkwright/aletheia/commit/9b52daf57c6a59a019c28720a7391952ebdc8398))
+* **training:** enrich records with episteme labels and add shard rotation ([#3193](https://github.com/forkwright/aletheia/issues/3193)) ([86563bc](https://github.com/forkwright/aletheia/commit/86563bcadb9d245e1f2e030004a1ff0e5f74653d))
+
+
+### Bug Fixes
+
+* **aletheia:** detect fjall lock contention in CLI memory commands ([#3181](https://github.com/forkwright/aletheia/issues/3181)) ([4741469](https://github.com/forkwright/aletheia/commit/47414691e08a7fe6ff714b80de786be044cfd85a))
+* archived sessions, review-skills lock, lock handling, inclusive language ([#3171](https://github.com/forkwright/aletheia/issues/3171)) ([6bb51a9](https://github.com/forkwright/aletheia/commit/6bb51a951eab0fac07eff6389dbc297220ab3b28))
+* audit expect() calls — add missing annotations, fix misleading messages ([#3231](https://github.com/forkwright/aletheia/issues/3231)) ([#3310](https://github.com/forkwright/aletheia/issues/3310)) ([82d5e4c](https://github.com/forkwright/aletheia/commit/82d5e4c8967ddcd526e291e1d8f9f0c478396606))
+* deployment upgrade path, CC provider routing, clippy zero-warnings ([#3154](https://github.com/forkwright/aletheia/issues/3154)) ([0d5d304](https://github.com/forkwright/aletheia/commit/0d5d3046dd661f846e51e7ed28049a8a243b6d77))
+* fsync temp scripts to prevent ETXTBSY, set GTK dark theme for CSD ([#3156](https://github.com/forkwright/aletheia/issues/3156)) ([e2f956d](https://github.com/forkwright/aletheia/commit/e2f956d5a5f81033b2d2ead4e808179578e2c5c2)), closes [#3146](https://github.com/forkwright/aletheia/issues/3146)
+* **hermeneus:** graceful degradation when CC provider becomes unavailable ([#3158](https://github.com/forkwright/aletheia/issues/3158)) ([#3183](https://github.com/forkwright/aletheia/issues/3183)) ([86a0ca5](https://github.com/forkwright/aletheia/commit/86a0ca5996d1fc1d9c5980daa9f85c80690e699a))
+* **krites:** replace 137 unreachable!() with proper error returns ([#3172](https://github.com/forkwright/aletheia/issues/3172)) ([a1a3347](https://github.com/forkwright/aletheia/commit/a1a3347181040c54bc396a5e874714c3b53df293)), closes [#3169](https://github.com/forkwright/aletheia/issues/3169)
+* **mneme:** include mneme-engine in default features ([#3187](https://github.com/forkwright/aletheia/issues/3187)) ([453def5](https://github.com/forkwright/aletheia/commit/453def5b292a3e5fc5c0dfee2704c4c0578067cf))
+* **mneme:** tighten training capture quality gate ([#3178](https://github.com/forkwright/aletheia/issues/3178)) ([#3185](https://github.com/forkwright/aletheia/issues/3185)) ([13733c6](https://github.com/forkwright/aletheia/commit/13733c641d0ec81bfc92518645e4311c3a6b52a3))
+* pricing, CC parser, export validation, credential refresh, session field naming ([#3168](https://github.com/forkwright/aletheia/issues/3168)) ([ce1a488](https://github.com/forkwright/aletheia/commit/ce1a488b1cae66b7942381248c431af15183b7f0))
+* **proskenion:** embed CSS via include_str for reliable theme loading ([#3155](https://github.com/forkwright/aletheia/issues/3155)) ([ca0885e](https://github.com/forkwright/aletheia/commit/ca0885e7bf43a4734fd4381c8506ff04e692a80f)), closes [#3145](https://github.com/forkwright/aletheia/issues/3145)
+* **pylon:** return 404 for archived sessions on GET ([#3196](https://github.com/forkwright/aletheia/issues/3196)) ([#3204](https://github.com/forkwright/aletheia/issues/3204)) ([20904ba](https://github.com/forkwright/aletheia/commit/20904ba9cedea3b4deb4b29ded1e657585b63437))
+* **pylon:** surface root cause in SSE turn_failed errors ([#3182](https://github.com/forkwright/aletheia/issues/3182)) ([76c38b7](https://github.com/forkwright/aletheia/commit/76c38b7a8d15b52510de98cdc68068f6d0d569b2))
+* resolve all high-severity security lint findings from kanon QA ([#3170](https://github.com/forkwright/aletheia/issues/3170)) ([0a87d23](https://github.com/forkwright/aletheia/commit/0a87d2347aac6163169283b98ace3721abe3d926)), closes [#3169](https://github.com/forkwright/aletheia/issues/3169)
+* **security:** address CodeQL cleartext and hardcoded crypto alerts ([#3201](https://github.com/forkwright/aletheia/issues/3201)) ([6a79b89](https://github.com/forkwright/aletheia/commit/6a79b892a0a73ea39e1f5cd63b377a8463f2cac4))
+* **security:** redact sensitive data in log output (CodeQL cleartext-logging) ([#3200](https://github.com/forkwright/aletheia/issues/3200)) ([42bd197](https://github.com/forkwright/aletheia/commit/42bd19795a7e973d7ac768a9b551cf86e5c682d7))
+* **security:** validate paths before filesystem operations ([#3203](https://github.com/forkwright/aletheia/issues/3203)) ([b34264e](https://github.com/forkwright/aletheia/commit/b34264e90153769016c052c689b4f9727d4a34a3))
+* surface silent failures in hermeneus, agora, nous, and pylon ([#3311](https://github.com/forkwright/aletheia/issues/3311)) ([49cfc4b](https://github.com/forkwright/aletheia/commit/49cfc4b56588bca4d8720d465751383c393311bd))
+* systemd readiness probe and OpenAPI version tracking ([#3302](https://github.com/forkwright/aletheia/issues/3302)) ([f946568](https://github.com/forkwright/aletheia/commit/f94656857cf13c1206046ccd39c6323bffe2c248))
+* token refresh error handling, restart backoff reset, atomic deploy ([#3262](https://github.com/forkwright/aletheia/issues/3262)) ([42ff625](https://github.com/forkwright/aletheia/commit/42ff62500281df91813d6d349af02402a72176ab))
+* zombie actor cleanup and stale architecture docs ([#3248](https://github.com/forkwright/aletheia/issues/3248), [#3244](https://github.com/forkwright/aletheia/issues/3244)) ([#3299](https://github.com/forkwright/aletheia/issues/3299)) ([57489ae](https://github.com/forkwright/aletheia/commit/57489aeff24c9e8e81b18e8df30f2c27b9ace836))
+
+
+### Documentation
+
+* wave 7 constants completion audit ([#2306](https://github.com/forkwright/aletheia/issues/2306)) ([#3134](https://github.com/forkwright/aletheia/issues/3134)) ([1f8f93e](https://github.com/forkwright/aletheia/commit/1f8f93e0b1ff73bf7929116593aed736aff383e5))
+
 ## [0.17.0](https://github.com/forkwright/aletheia/compare/v0.16.0...v0.17.0) (2026-04-13)
 
 
