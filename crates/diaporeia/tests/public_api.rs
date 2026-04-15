@@ -572,7 +572,7 @@ async fn router_allows_unauthenticated_requests_in_none_mode() {
 
     // WHY: auth_mode = "none" injects anonymous claims and passes through.
     // Without an `Accept: text/event-stream` header, the downstream MCP
-    // service returns 406 Not Acceptable for GET requests. The 406 proves the
+    // service returns 400 Bad Request for GET requests. The 400 proves the
     // middleware passed the request through — a 401 would indicate rejection.
     let response = router
         .oneshot(
@@ -587,9 +587,9 @@ async fn router_allows_unauthenticated_requests_in_none_mode() {
 
     assert_eq!(
         response.status(),
-        StatusCode::NOT_ACCEPTABLE,
+        StatusCode::BAD_REQUEST,
         "auth_mode=none must pass the request through to the MCP service, \
-         which returns 406 for GET without an event-stream Accept header"
+         which returns 400 for GET without an event-stream Accept header"
     );
 }
 
@@ -673,7 +673,7 @@ async fn router_auth_rejection_precedes_method_handling() {
 #[tokio::test(flavor = "multi_thread")]
 async fn router_valid_token_passes_auth_layer_and_reaches_mcp_service() {
     // WHY: a validly-signed Bearer token must clear the auth middleware and
-    // reach the downstream MCP service. The service then rejects with 406
+    // reach the downstream MCP service. The service then rejects with 400
     // (missing Accept: text/event-stream + application/json) — proving the
     // request got past auth but failed at protocol negotiation.
     let (state, jwt, _tmp) = StateBuilder::new().auth_mode("token").build();
@@ -694,9 +694,9 @@ async fn router_valid_token_passes_auth_layer_and_reaches_mcp_service() {
 
     assert_eq!(
         response.status(),
-        StatusCode::NOT_ACCEPTABLE,
+        StatusCode::BAD_REQUEST,
         "valid Bearer token must clear auth and reach the MCP service, \
-         which rejects empty POSTs with 406 for missing Accept header"
+         which rejects empty POSTs with 400 for missing Accept header"
     );
 }
 
@@ -766,7 +766,7 @@ async fn router_in_none_mode_ignores_authorization_header_when_present() {
     // entirely and inject anonymous claims, regardless of what the client
     // sends in the Authorization header. A malformed Bearer value would fail
     // in token mode but must be ignored here — the request still reaches the
-    // downstream service, which returns 406 for a GET without the expected
+    // downstream service, which returns 400 for a GET without the expected
     // event-stream Accept header.
     let (state, _jwt, _tmp) = StateBuilder::new().auth_mode("none").build();
     let router = streamable_http_router(state);
@@ -785,8 +785,8 @@ async fn router_in_none_mode_ignores_authorization_header_when_present() {
 
     assert_eq!(
         response.status(),
-        StatusCode::NOT_ACCEPTABLE,
+        StatusCode::BAD_REQUEST,
         "auth_mode=none must ignore Authorization and pass through to the \
-         MCP service (which returns 406 for GET without Accept: text/event-stream)"
+         MCP service (which returns 400 for GET without Accept: text/event-stream)"
     );
 }

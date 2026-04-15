@@ -7,7 +7,10 @@ use snafu::prelude::*;
 use tracing::{info, warn};
 
 use koina::system::{Environment, RealSystem};
+#[cfg(not(feature = "mcp"))]
 use pylon::router::build_router;
+#[cfg(feature = "mcp")]
+use pylon::router::build_router_with;
 use taxis::loader::load_config;
 use taxis::oikos::Oikos;
 
@@ -91,7 +94,9 @@ pub(crate) async fn run(args: Args) -> Result<()> {
         });
         let mcp_router = diaporeia::transport::streamable_http_router(diaporeia_state);
         info!("diaporeia MCP server mounted at /mcp");
-        build_router(runtime.state.clone(), &security).merge(mcp_router)
+        // WHY: merge MCP routes BEFORE pylon's middleware layers so they get
+        // the full security stack (rate limiting, CSRF, metrics) (#3226).
+        build_router_with(runtime.state.clone(), &security, Some(mcp_router))
     };
 
     #[cfg(not(feature = "mcp"))]
