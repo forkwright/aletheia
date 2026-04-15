@@ -40,6 +40,9 @@ jiff = { workspace = true }
 # Error handling
 snafu = { workspace = true }
 
+# Secret redaction in client-visible error messages
+regex = { workspace = true }
+
 # Observability
 tracing = { workspace = true }
 
