@@ -345,6 +345,7 @@ async fn run_extraction(
                     }
                     Err(e) => {
                         warn!(nous_id = %nous_id, error = %e, "extraction persist failed");
+                        crate::metrics::record_background_failure(nous_id, "extraction_persist");
                     }
                 }
             }
@@ -361,6 +362,7 @@ async fn run_extraction(
         }
         Err(e) => {
             warn!(nous_id = %nous_id, error = %e, "extraction failed");
+            crate::metrics::record_background_failure(nous_id, "extraction");
         }
     }
 }
@@ -501,6 +503,7 @@ async fn run_skill_extraction(
                 error = %e,
                 "skill extraction failed"
             );
+            crate::metrics::record_background_failure(nous_id, "skill_extraction");
         }
     }
 }
@@ -514,6 +517,13 @@ async fn run_background_distillation(
     config: crate::distillation::DistillTriggerConfig,
 ) {
     let Some(provider) = providers.find_provider(&config.model) else {
+        warn!(
+            nous_id = %nous_id,
+            session_id = %session_id,
+            model = %config.model,
+            "distillation aborted: no provider for configured model"
+        );
+        crate::metrics::record_background_failure(&nous_id, "distillation");
         return;
     };
 
@@ -521,13 +531,20 @@ async fn run_background_distillation(
     let (history, session) = {
         let s = store.lock().await;
         let Ok(Some(session)) = s.find_session_by_id(&session_id) else {
+            warn!(
+                nous_id = %nous_id,
+                session_id = %session_id,
+                "distillation aborted: session not found"
+            );
+            crate::metrics::record_background_failure(&nous_id, "distillation");
             return;
         };
         match s.get_history(&session_id, None) {
             Ok(h) if !h.is_empty() => (h, session),
             Ok(_) => return,
             Err(e) => {
-                warn!(error = %e, "failed to load history for distillation");
+                warn!(nous_id = %nous_id, error = %e, "failed to load history for distillation");
+                crate::metrics::record_background_failure(&nous_id, "distillation");
                 return;
             }
         }
@@ -554,14 +571,16 @@ async fn run_background_distillation(
     {
         Ok(r) => r,
         Err(e) => {
-            warn!(error = %e, "distillation LLM call failed");
+            warn!(nous_id = %nous_id, session_id = %session_id, error = %e, "distillation LLM call failed");
+            crate::metrics::record_background_failure(&nous_id, "distillation");
             return;
         }
     };
 
     let s = store.lock().await;
     if let Err(e) = crate::distillation::apply_distillation(&s, &session_id, &result, &history) {
-        warn!(error = %e, "failed to apply distillation");
+        warn!(nous_id = %nous_id, session_id = %session_id, error = %e, "failed to apply distillation");
+        crate::metrics::record_background_failure(&nous_id, "distillation");
         return;
     }
 

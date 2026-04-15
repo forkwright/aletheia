@@ -77,13 +77,13 @@ use koina::http::CONTENT_TYPE_JSON;
 )]
 pub(crate) struct ApiDoc;
 
-/// Override the hardcoded OpenAPI `info.version` with the crate version
+/// Override the hardcoded `OpenAPI` `info.version` with the crate version
 /// from `Cargo.toml` so the spec tracks releases automatically.
 struct VersionFromCrate;
 
 impl utoipa::Modify for VersionFromCrate {
     fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
-        openapi.info.version = env!("CARGO_PKG_VERSION").to_owned();
+        env!("CARGO_PKG_VERSION").clone_into(&mut openapi.info.version);
     }
 }
 
