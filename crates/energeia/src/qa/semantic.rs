@@ -51,6 +51,7 @@ const SEMANTIC_KEYWORDS: &[&str] = &[
 /// - Contains semantic keyword → `CriterionType::Semantic`
 /// - If both match, mechanical takes precedence (cheaper to verify)
 /// - Default (no keyword match) → `CriterionType::Semantic`
+#[must_use]
 pub fn classify_criteria(criteria: &[String]) -> Vec<(String, CriterionType)> {
     criteria
         .iter()
@@ -138,6 +139,7 @@ const OUTPUT_SCHEMA: &str = r#"{
 /// The prompt includes the task description, numbered criteria, the PR diff
 /// (truncated at 100K chars to stay within context limits), few-shot examples,
 /// and the expected output schema.
+#[must_use]
 pub fn build_qa_prompt(
     description: &str,
     criteria: &[(String, CriterionType)],
@@ -217,6 +219,7 @@ struct QaCriterionResult {
 ///
 /// This function is infallible: unparseable responses produce criteria marked
 /// as failed with explanatory evidence.
+#[must_use]
 pub fn parse_qa_response(raw: &str, criteria: &[(String, CriterionType)]) -> Vec<CriterionResult> {
     // NOTE: Try direct JSON parse.
     if let Ok(response) = serde_json::from_str::<QaResponse>(raw) {

@@ -350,7 +350,7 @@ pub fn compute_frontier(dag: &PromptDag) -> Vec<Vec<u32>> {
             .collect();
 
         if group.is_empty() {
-            // SAFETY: No progress means a cycle exists. Break rather than loop
+            // INVARIANT: No progress means a cycle exists. Break rather than loop
             // forever — validate() should have caught this beforehand.
             break;
         }
