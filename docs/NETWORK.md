@@ -86,6 +86,19 @@ These components make **no network calls**:
 
 ---
 
+## Anthropic data sovereignty (defaults)
+
+The `hermeneus` crate owns the Anthropic client boundary. Every outbound
+request is scrubbed before it leaves the process:
+
+| Control | Default | Issue | Behaviour |
+|---------|---------|-------|-----------|
+| Training opt-out header | Always on | #3406 | `anthropic-disable-training: true` and `anthropic-training-opt-out: true` are sent on every request. Not configurable — sovereignty default. |
+| Prompt cache markers | Disabled | #3410 | No `cache_control` markers on any block. Operator system prompts, tool definitions, and conversation history never enter Anthropic's prompt cache. Opt in via `[anthropic] promptCacheMode = "ephemeral"` if the cost tradeoff is acceptable. |
+| CC attribution fingerprint | Stripped | #3409 | The 3-char fingerprint slot in the attribution block is pinned to `000`; the upstream CC algorithm would otherwise hash operator message content into it. |
+| `X-Claude-Code-Session-Id` | Randomized per request | #3409 | Fresh UUID on every call so Anthropic cannot correlate requests to a persistent operator session. Upstream CC sends a stable per-process UUID. |
+| `User-Agent`, `anthropic-beta`, `anthropic-version`, `x-app` | Preserved | — | Required for OAuth tier access; values are static and do not carry operator identity. |
+
 ## No telemetry
 
 Aletheia makes zero unsolicited outbound network connections. There is no:

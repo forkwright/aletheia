@@ -11,9 +11,9 @@ pub use agents::{
     ModelSpec, NousDefinition, RecallSettings, RecallWeights,
 };
 pub use behavior::{
-    ApiLimitsConfig, CapacityConfig, DaemonBehaviorConfig, KnowledgeConfig, MessagingConfig,
-    NousBehaviorConfig, ProviderBehaviorConfig, RetrySettings, TimeoutsConfig, ToolLimitsConfig,
-    TuningConfig,
+    AnthropicConfig, ApiLimitsConfig, CapacityConfig, DaemonBehaviorConfig, KnowledgeConfig,
+    MessagingConfig, NousBehaviorConfig, PromptCacheMode, ProviderBehaviorConfig, RetrySettings,
+    TimeoutsConfig, ToolLimitsConfig, TuningConfig,
 };
 pub use gateway::{
     BodyLimitConfig, CorsConfig, CsrfConfig, GatewayAuthConfig, GatewayConfig,
@@ -128,6 +128,13 @@ pub struct AletheiaConfig {
     /// global kill switch and evidence thresholds let operators enable and
     /// tune the feedback loop incrementally.
     pub tuning: TuningConfig,
+    /// Anthropic-specific sovereignty and privacy settings (#3410, #3406, #3409).
+    ///
+    /// WHY configurable: prompt caching stores operator system prompts on
+    /// Anthropic servers. The default (`disabled`) is sovereignty-first;
+    /// operators who accept the tradeoff may opt in to reduce per-turn token
+    /// cost.
+    pub anthropic: AnthropicConfig,
 }
 
 /// Sandbox enforcement level for tool execution.

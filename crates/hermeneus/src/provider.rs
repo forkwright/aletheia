@@ -77,6 +77,34 @@ pub struct ModelPricing {
     pub output_cost_per_mtok: f64,
 }
 
+/// Controls whether Anthropic prompt-cache markers (`cache_control`) are
+/// emitted on outgoing requests.
+///
+/// Anthropic's prompt cache stores marked content on their servers for up
+/// to 5 minutes (`Ephemeral`) or 1 hour (`Extended`) so that repeated
+/// requests can reuse it. Disabling the cache keeps the operator system
+/// prompt, tool definitions, and conversation history off Anthropic's
+/// caching infrastructure at the cost of higher per-turn input token spend.
+///
+/// Sovereignty default: [`PromptCacheMode::Disabled`]. Operators who
+/// accept the tradeoff may opt in via `aletheia.toml`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+#[non_exhaustive]
+pub enum PromptCacheMode {
+    /// No `cache_control` markers emitted. Operator content never enters
+    /// Anthropic's prompt cache. Default for sovereignty-first deployments.
+    #[default]
+    Disabled,
+    /// Standard 5-minute ephemeral cache. `cache_control: {"type": "ephemeral"}`
+    /// on system prompt, tools, and recent conversation turns.
+    Ephemeral,
+    /// Extended 1-hour cache. Currently behaves like [`Ephemeral`](Self::Ephemeral)
+    /// since the wire format for extended TTL is provider-specific and not
+    /// yet wired through. Reserved for future use.
+    Extended,
+}
+
 /// Configuration for provider initialization.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ProviderConfig {
@@ -99,6 +127,11 @@ pub struct ProviderConfig {
     /// using API keys).
     #[serde(default)]
     pub cc_mimicry: Option<bool>,
+    /// Prompt cache policy. Defaults to [`PromptCacheMode::Disabled`] —
+    /// no `cache_control` markers are emitted and operator content never
+    /// enters Anthropic's cache infrastructure (#3410).
+    #[serde(default)]
+    pub prompt_cache_mode: PromptCacheMode,
 }
 
 impl Default for ProviderConfig {
@@ -158,6 +191,7 @@ impl Default for ProviderConfig {
             max_retries: Some(3),
             pricing,
             cc_mimicry: None,
+            prompt_cache_mode: PromptCacheMode::Disabled,
         }
     }
 }
