@@ -11,51 +11,69 @@ pub const MAX_CONTENT_LENGTH: usize = 102_400;
 
 /// Bi-temporal validity and recording timestamps for a fact.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[expect(missing_docs, reason = "temporal fields are self-documenting by name")]
 pub struct FactTemporal {
+    /// When this fact became true in the world (domain validity time).
     pub valid_from: jiff::Timestamp,
+    /// When this fact ceased to be true in the world (domain validity time).
+    ///
+    /// Use [`far_future`](crate::knowledge::far_future) for facts that are
+    /// currently valid.
     pub valid_to: jiff::Timestamp,
+    /// When the system learned about this fact (system recording time).
+    ///
+    /// This is distinct from `valid_from`/`valid_to`, which describe when the
+    /// fact was true in the domain, not when we recorded it.
     pub recorded_at: jiff::Timestamp,
 }
 
 /// Provenance: where a fact came from and how trustworthy it is.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[expect(
-    missing_docs,
-    reason = "provenance fields are self-documenting by name"
-)]
 pub struct FactProvenance {
+    /// Normalized confidence score in `[0.0, 1.0]`.
     pub confidence: f64,
+    /// Epistemic confidence tier — how the fact was established.
+    ///
+    /// Tier reflects the epistemic basis (e.g. verified against ground truth,
+    /// inferred from context, assumed, or derived from training outcomes).
     pub tier: EpistemicTier,
+    /// Session that extracted or produced this fact, if known.
     pub source_session_id: Option<String>,
+    /// Base FSRS stability in hours before the tier multiplier is applied.
     pub stability_hours: f64,
 }
 
 /// Lifecycle state for supersession and intentional forgetting.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[expect(missing_docs, reason = "lifecycle fields are self-documenting by name")]
 pub struct FactLifecycle {
+    /// ID of the fact that replaced this one, if any.
     pub superseded_by: Option<FactId>,
+    /// Whether this fact has been intentionally forgotten.
     pub is_forgotten: bool,
+    /// When the fact was forgotten, if it has been.
     pub forgotten_at: Option<jiff::Timestamp>,
+    /// Why the fact was forgotten, if applicable.
     pub forget_reason: Option<ForgetReason>,
 }
 
 /// Access-tracking counters for FSRS decay.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[expect(missing_docs, reason = "access fields are self-documenting by name")]
 pub struct FactAccess {
+    /// Number of times this fact has been recalled.
     pub access_count: u32,
+    /// Timestamp of the most recent recall, if any.
     pub last_accessed_at: Option<jiff::Timestamp>,
 }
 
 /// A memory fact extracted from conversation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[expect(missing_docs, reason = "fact fields are self-documenting by name")]
 pub struct Fact {
+    /// Stable identifier for this fact.
     pub id: FactId,
+    /// Agent (nous) that owns this fact.
     pub nous_id: String,
+    /// Classification determining base decay behavior.
     pub fact_type: String,
+    /// Human-readable fact statement.
     pub content: String,
 
     /// Memory sharing scope for team memory.
@@ -106,7 +124,15 @@ impl EpistemicTier {
         }
     }
 
-    /// FSRS stability multiplier: verified facts decay 2× slower than inferred.
+    /// FSRS stability multiplier applied to base stability.
+    ///
+    /// | Tier | Multiplier | Why |
+    /// |------|------------|-----|
+    /// | `Verified` | 2.0 | Ground-truth-checked facts deserve slower decay. |
+    /// | `Inferred` | 1.0 | Baseline for reasoned-but-unverified facts. |
+    /// | `Assumed` | 0.5 | Unchecked assumptions decay faster to limit risk. |
+    /// | `Training` | 4.0 | Training data is a permanent record of session outcomes; |
+    /// | | | it persists indefinitely and is not subject to normal memory decay. |
     #[must_use]
     pub fn stability_multiplier(self) -> f64 {
         match self {
