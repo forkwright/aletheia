@@ -13,7 +13,8 @@ Shell: [standards/SHELL.md](standards/SHELL.md)
 
 ## Structure
 
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): crate workspace, module map, dependency graph, trait boundaries.
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): crate workspace, module map, dependency graph, trait boundaries.  
+[docs/ARCHITECTURE-QUICK.md](docs/ARCHITECTURE-QUICK.md): one-page crate reference for cold-start.
 
 ### Config
 
