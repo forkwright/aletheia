@@ -149,24 +149,27 @@ impl From<Intent> for IntentRaw {
 impl Intent {
     /// Create a new intent.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if `source == IntentSource::Nous` and `conviction_tier` is not
-    /// [`ConvictionTier::Suggestion`]. The nous may only record suggestions —
+    /// Returns [`IntentError`] if `source == IntentSource::Nous` and `conviction_tier`
+    /// is not [`ConvictionTier::Suggestion`]. The nous may only record suggestions —
     /// directives and preferences are operator-only.
-    #[must_use]
     pub fn new(
         description: String,
         conviction_tier: ConvictionTier,
         source: IntentSource,
         expires_at: Option<jiff::Timestamp>,
-    ) -> Self {
-        assert!(
-            !(source == IntentSource::Nous && conviction_tier != ConvictionTier::Suggestion),
-            "nous may only add Suggestion-tier intents; \
-             Directive and Preference are operator-only"
-        );
-        Self {
+    ) -> std::result::Result<Self, IntentError> {
+        if source == IntentSource::Nous && conviction_tier != ConvictionTier::Suggestion {
+            return Err(IntentError {
+                message: format!(
+                    "nous attempted {conviction_tier:?} tier, \
+                     but nous may only add Suggestion-tier intents; \
+                     Directive and Preference are operator-only"
+                ),
+            });
+        }
+        Ok(Self {
             id: Ulid::new(),
             description,
             conviction_tier,
@@ -174,7 +177,7 @@ impl Intent {
             created_at: jiff::Timestamp::now(),
             expires_at,
             resolved: false,
-        }
+        })
     }
 
     /// Return `true` if the intent is active: not resolved and not expired.
@@ -389,6 +392,7 @@ mod tests {
             IntentSource::Operator,
             None,
         )
+        .unwrap()
     }
 
     fn operator_preference(desc: &str) -> Intent {
@@ -398,6 +402,7 @@ mod tests {
             IntentSource::Operator,
             None,
         )
+        .unwrap()
     }
 
     fn nous_suggestion(desc: &str) -> Intent {
@@ -407,6 +412,7 @@ mod tests {
             IntentSource::Nous,
             None,
         )
+        .unwrap()
     }
 
     // --- IntentStore CRUD ---
@@ -495,7 +501,8 @@ mod tests {
             ConvictionTier::Suggestion,
             IntentSource::Operator,
             Some(past),
-        );
+        )
+        .unwrap();
         // Force past expiry — new() uses now() so we patch after construction
         intent.expires_at = Some(past);
         store.add_intent(intent).unwrap();
@@ -515,7 +522,8 @@ mod tests {
             ConvictionTier::Preference,
             IntentSource::Operator,
             Some(future),
-        );
+        )
+        .unwrap();
         store.add_intent(intent).unwrap();
 
         let active = store.active_intents().unwrap();
@@ -534,7 +542,8 @@ mod tests {
             ConvictionTier::Suggestion,
             IntentSource::Operator,
             Some(past),
-        );
+        )
+        .unwrap();
         expired.expires_at = Some(past);
         store.add_intent(expired).unwrap();
         store
@@ -620,24 +629,38 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "nous may only add Suggestion-tier intents")]
     fn nous_cannot_add_directive() {
-        let _ = Intent::new(
+        let result = Intent::new(
             "override operator".into(),
             ConvictionTier::Directive,
             IntentSource::Nous,
             None,
         );
+        assert!(result.is_err(), "nous Directive should be rejected");
+        let err = result.unwrap_err();
+        assert!(
+            err.to_string().contains("Directive"),
+            "error should name the attempted tier, got: {err}"
+        );
+        assert!(
+            err.to_string().contains("nous"),
+            "error should name the author, got: {err}"
+        );
     }
 
     #[test]
-    #[should_panic(expected = "nous may only add Suggestion-tier intents")]
     fn nous_cannot_add_preference() {
-        let _ = Intent::new(
+        let result = Intent::new(
             "prefer X over Y".into(),
             ConvictionTier::Preference,
             IntentSource::Nous,
             None,
+        );
+        assert!(result.is_err(), "nous Preference should be rejected");
+        let err = result.unwrap_err();
+        assert!(
+            err.to_string().contains("Preference"),
+            "error should name the attempted tier, got: {err}"
         );
     }
 
