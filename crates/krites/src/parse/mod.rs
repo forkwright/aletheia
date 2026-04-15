@@ -1,4 +1,19 @@
-//! AST for the datalog query language.
+//! Datalog query language parser.
+//!
+//! Transforms Datalog source text into an AST of [`DatalogScript`] variants.
+//! The parser uses a pest PEG grammar (`src/datalog.pest`) for lexing and
+//! structural analysis, then converts pest pairs into typed AST nodes.
+//!
+//! # Architecture
+//!
+//! - [`parse_script`] is the public entry point.
+//! - [`expr`] handles expression parsing via Pratt precedence.
+//! - [`query`] handles rule, atom, and program parsing.
+//! - [`imperative`] handles `%if`/`%loop`/`%return` blocks.
+//! - [`sys`] handles system commands (`:compact`, `:explain`, index ops, etc.).
+//! - [`fts`] handles full-text search query parsing.
+//! - [`schema`] handles relation schema definitions.
+//! - [`error`] defines the structured [`ParseError`](error::ParseError) type.
 #![expect(
     clippy::needless_return,
     clippy::pedantic,
@@ -44,60 +59,80 @@ pub(crate) type Pairs<'a> = pest::iterators::Pairs<'a, Rule>;
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum DatalogScript {
+    /// A single query program.
     Single(InputProgram),
+    /// An imperative script with control flow.
     Imperative(ImperativeProgram),
+    /// A system command (`:compact`, `:explain`, etc.).
     Sys(SysOp),
 }
 
+/// A query program with an optional storage destination.
 #[derive(Debug)]
 pub struct ImperativeStmtClause {
+    /// The parsed query program.
     pub prog: InputProgram,
+    /// Optional name to store results into a temporary relation.
     pub store_as: Option<CompactString>,
 }
 
+/// A system operation with an optional storage destination.
 #[derive(Debug)]
 pub struct ImperativeSysop {
+    /// The parsed system operation.
     pub sysop: SysOp,
+    /// Optional name to store results into a temporary relation.
     pub store_as: Option<CompactString>,
 }
 
+/// An imperative statement within a `%`-prefixed control block.
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum ImperativeStmt {
+    /// Exit the nearest (or named) enclosing loop.
     Break {
         target: Option<CompactString>,
         span: SourceSpan,
     },
+    /// Skip to the next iteration of the nearest (or named) enclosing loop.
     Continue {
         target: Option<CompactString>,
         span: SourceSpan,
     },
+    /// Return results from an imperative block.
     Return {
         returns: Vec<Either<ImperativeStmtClause, CompactString>>,
     },
+    /// Execute a query program.
     Program {
         prog: ImperativeStmtClause,
     },
+    /// Execute a system operation.
     SysOp {
         sysop: ImperativeSysop,
     },
+    /// Execute a query, suppressing any errors.
     IgnoreErrorProgram {
         prog: ImperativeStmtClause,
     },
+    /// Conditional branch.
     If {
         condition: ImperativeCondition,
         then_branch: ImperativeProgram,
         else_branch: ImperativeProgram,
         negated: bool,
     },
+    /// Infinite loop with optional label.
     Loop {
         label: Option<CompactString>,
         body: ImperativeProgram,
     },
+    /// Swap two temporary relations.
     TempSwap {
         left: CompactString,
         right: CompactString,
     },
+    /// Debug-print a temporary relation.
     TempDebug {
         temp: CompactString,
     },
@@ -109,6 +144,7 @@ pub(crate) type ImperativeCondition = Either<CompactString, ImperativeStmtClause
 pub type ImperativeProgram = Vec<ImperativeStmt>;
 
 impl ImperativeStmt {
+    /// Collect relation names that require write locks for this statement.
     pub(crate) fn needs_write_locks(&self, collector: &mut BTreeSet<CompactString>) {
         match self {
             ImperativeStmt::Program { prog, .. }
@@ -151,55 +187,59 @@ impl ImperativeStmt {
             | ImperativeStmt::Break { .. }
             | ImperativeStmt::Continue { .. }
             | ImperativeStmt::TempSwap { .. } => {}
-            ImperativeStmt::SysOp { sysop } => match &sysop.sysop {
-                SysOp::RemoveRelation(rels) => {
-                    for rel in rels {
-                        collector.insert(rel.name.clone());
-                    }
-                }
-                SysOp::RenameRelation(renames) => {
-                    for (old, new) in renames {
-                        collector.insert(old.name.clone());
-                        collector.insert(new.name.clone());
-                    }
-                }
-                SysOp::CreateIndex(symb, subs, _) => {
-                    collector.insert(symb.name.clone());
-                    collector.insert(CompactString::from(format!("{}:{}", symb.name, subs.name)));
-                }
-                SysOp::CreateVectorIndex(m) => {
-                    collector.insert(m.base_relation.clone());
-                    collector.insert(CompactString::from(format!(
-                        "{}:{}",
-                        m.base_relation, m.index_name
-                    )));
-                }
-                SysOp::CreateFtsIndex(m) => {
-                    collector.insert(m.base_relation.clone());
-                    collector.insert(CompactString::from(format!(
-                        "{}:{}",
-                        m.base_relation, m.index_name
-                    )));
-                }
-                SysOp::CreateMinHashLshIndex(m) => {
-                    collector.insert(m.base_relation.clone());
-                    collector.insert(CompactString::from(format!(
-                        "{}:{}",
-                        m.base_relation, m.index_name
-                    )));
-                }
-                SysOp::RemoveIndex(rel, idx) => {
-                    collector.insert(CompactString::from(format!("{}:{}", rel.name, idx.name)));
-                }
-                _ => {
-                    // NOTE: other system operations don't require relation locks
-                }
-            },
+            ImperativeStmt::SysOp { sysop } => collect_sysop_write_locks(&sysop.sysop, collector),
+        }
+    }
+}
+
+/// Collect write locks needed by a system operation into `collector`.
+fn collect_sysop_write_locks(sysop: &SysOp, collector: &mut BTreeSet<CompactString>) {
+    /// Insert both the base relation and the composite `relation:index` key.
+    fn insert_index_lock(
+        collector: &mut BTreeSet<CompactString>,
+        base: &CompactString,
+        index: &CompactString,
+    ) {
+        collector.insert(base.clone());
+        collector.insert(CompactString::from(format!("{base}:{index}")));
+    }
+
+    match sysop {
+        SysOp::RemoveRelation(rels) => {
+            for rel in rels {
+                collector.insert(rel.name.clone());
+            }
+        }
+        SysOp::RenameRelation(renames) => {
+            for (old, new) in renames {
+                collector.insert(old.name.clone());
+                collector.insert(new.name.clone());
+            }
+        }
+        SysOp::CreateIndex(symb, subs, _) => {
+            insert_index_lock(collector, &symb.name, &subs.name);
+        }
+        SysOp::CreateVectorIndex(m) => {
+            insert_index_lock(collector, &m.base_relation, &m.index_name);
+        }
+        SysOp::CreateFtsIndex(m) => {
+            insert_index_lock(collector, &m.base_relation, &m.index_name);
+        }
+        SysOp::CreateMinHashLshIndex(m) => {
+            insert_index_lock(collector, &m.base_relation, &m.index_name);
+        }
+        SysOp::RemoveIndex(rel, idx) => {
+            collector.insert(CompactString::from(format!("{}:{}", rel.name, idx.name)));
+        }
+        _ => {
+            // NOTE: other system operations don't require relation locks
         }
     }
 }
 
 impl DatalogScript {
+    /// Extract the single program from a script, or error if it contains
+    /// an imperative block or system command.
     pub(crate) fn get_single_program(self) -> Result<InputProgram> {
         match self {
             DatalogScript::Single(s) => Ok(s),
@@ -214,7 +254,10 @@ impl DatalogScript {
     }
 }
 
-/// Span of the element in the source script, with starting and ending positions.
+/// Byte-offset span within the source script.
+///
+/// `SourceSpan(start, length)` where `start` is the byte offset from the
+/// beginning of the source and `length` is the number of bytes covered.
 #[derive(Eq, PartialEq, Debug, serde::Serialize, serde::Deserialize, Copy, Clone, Default)]
 pub struct SourceSpan(pub usize, pub usize);
 
@@ -225,6 +268,8 @@ impl Display for SourceSpan {
 }
 
 impl SourceSpan {
+    /// Merge two spans into the smallest span that covers both.
+    #[must_use]
     pub(crate) fn merge(self, other: Self) -> Self {
         let s1 = self.0;
         let e1 = self.0 + self.1;
@@ -240,6 +285,31 @@ impl SourceSpan {
 #[snafu(display("The query parser has encountered unexpected input / end of input at {span}"))]
 pub(crate) struct ParseError {
     pub(crate) span: SourceSpan,
+}
+
+/// Convert a pest `InputLocation` to a [`SourceSpan`].
+#[must_use]
+pub(crate) fn input_location_to_span(loc: InputLocation) -> SourceSpan {
+    match loc {
+        InputLocation::Pos(p) => SourceSpan(p, 0),
+        InputLocation::Span((start, end)) => SourceSpan(start, end - start),
+    }
+}
+
+/// Build an `UnexpectedRule` error for a grammar rule that should not appear
+/// in the given parser context.
+pub(crate) fn unexpected_rule_error(
+    grammar_rule: &Rule,
+    span: SourceSpan,
+    context: &'static str,
+) -> crate::error::InternalError {
+    error::UnexpectedRuleSnafu {
+        rule: format!("{grammar_rule:?}"),
+        span,
+        context,
+    }
+    .build()
+    .into()
 }
 
 /// Parse a text script into the datalog AST.
@@ -260,13 +330,11 @@ pub fn parse_script(
 ) -> Result<DatalogScript> {
     let parsed = DatalogParser::parse(Rule::script, src)
         .map_err(|err| {
-            let span = match err.location {
-                InputLocation::Pos(p) => SourceSpan(p, 0),
-                InputLocation::Span((start, end)) => SourceSpan(start, end - start),
-            };
+            let message = err.to_string();
+            let span = input_location_to_span(err.location);
             error::SyntaxSnafu {
                 span: span.to_string(),
-                message: err.to_string(),
+                message,
             }
             .build()
         })?
@@ -277,6 +345,7 @@ pub fn parse_script(
             }
             .build()
         })?;
+    let span = parsed.extract_span();
     Ok(match parsed.as_rule() {
         Rule::query_script => {
             let q = parse_query(parsed.into_inner(), param_pool, fixed_rules, cur_vld)?;
@@ -286,7 +355,6 @@ pub fn parse_script(
             let p = parse_imperative_block(parsed, param_pool, fixed_rules, cur_vld)?;
             DatalogScript::Imperative(p)
         }
-
         Rule::sys_script => DatalogScript::Sys(parse_sys(
             parsed.into_inner(),
             param_pool,
@@ -294,16 +362,14 @@ pub fn parse_script(
             cur_vld,
         )?),
         r => {
-            return Err(error::InvalidQuerySnafu {
-                message: format!("unexpected script type {:?} in parser", r),
-            }
-            .build()
-            .into());
+            return Err(unexpected_rule_error(&r, span, "parse_script"));
         }
     })
 }
 
+/// Extract a [`SourceSpan`] from a pest parse element.
 trait ExtractSpan {
+    /// Return the byte-offset span of this element within the source.
     fn extract_span(&self) -> SourceSpan;
 }
 

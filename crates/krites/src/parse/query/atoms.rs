@@ -1,5 +1,7 @@
-//! Rule and atom parsing: rules, disjunctions, atoms, applications.
-//! Datalog query parsing.
+//! Rule and atom parsing: rule heads, body atoms, disjunctions, and relation applications.
+//!
+//! Each function in this module converts a pest pair into a typed AST node
+//! from [`crate::data::program`].
 #![expect(
     clippy::indexing_slicing,
     clippy::pedantic,
@@ -28,6 +30,7 @@ use crate::parse::{ExtractSpan, Pair, Rule};
 
 use super::fixed_rules::expr2vld_spec;
 
+/// Parse a Horn-clause rule into its name and [`InputInlineRule`] representation.
 pub(crate) fn parse_rule(
     src: Pair<'_>,
     param_pool: &BTreeMap<String, DataValue>,
@@ -79,6 +82,7 @@ pub(crate) fn parse_rule(
     ))
 }
 
+/// Parse a disjunction (`atom1 or atom2 or ...`) into an [`InputAtom::Disjunction`].
 fn parse_disjunction(
     pair: Pair<'_>,
     param_pool: &BTreeMap<String, DataValue>,
@@ -105,6 +109,7 @@ fn parse_disjunction(
     })
 }
 
+/// Parse a single atom from a rule body, dispatching on the pest rule type.
 fn parse_atom(
     src: Pair<'_>,
     param_pool: &BTreeMap<String, DataValue>,
@@ -169,6 +174,7 @@ fn parse_atom(
     })
 }
 
+/// Parse a unification atom (`var = expr`).
 fn parse_unify_atom(
     src: Pair<'_>,
     param_pool: &BTreeMap<String, DataValue>,
@@ -206,6 +212,7 @@ fn parse_unify_atom(
     })
 }
 
+/// Parse a multi-unification atom (`var in expr`).
 fn parse_unify_multi_atom(
     src: Pair<'_>,
     param_pool: &BTreeMap<String, DataValue>,
@@ -249,6 +256,7 @@ fn parse_unify_multi_atom(
     })
 }
 
+/// Parse a rule application atom (`name[args...]`).
 fn parse_rule_apply_atom(
     src: Pair<'_>,
     param_pool: &BTreeMap<String, DataValue>,
@@ -281,6 +289,7 @@ fn parse_rule_apply_atom(
     })
 }
 
+/// Parse a stored relation application atom (`*name[args...] @ validity`).
 fn parse_relation_apply_atom(
     src: Pair<'_>,
     param_pool: &BTreeMap<String, DataValue>,
@@ -330,6 +339,7 @@ fn parse_relation_apply_atom(
     })
 }
 
+/// Parse a search (index) application atom (`~relation:index{bindings...}`).
 fn parse_search_apply_atom(
     src: Pair<'_>,
     param_pool: &BTreeMap<String, DataValue>,
@@ -381,6 +391,7 @@ fn parse_search_apply_atom(
     })
 }
 
+/// Parse a named-field relation application atom (`*name{field: expr, ...}`).
 fn parse_relation_named_apply_atom(
     src: Pair<'_>,
     param_pool: &BTreeMap<String, DataValue>,
@@ -435,6 +446,7 @@ fn parse_relation_named_apply_atom(
     })
 }
 
+/// Extract a `name: expr` argument pair from a named application.
 fn extract_named_apply_arg(
     pair: Pair<'_>,
     param_pool: &BTreeMap<String, DataValue>,
@@ -457,6 +469,8 @@ fn extract_named_apply_arg(
     Ok((name, arg))
 }
 
+/// Parse a rule head: `name[var1, aggr(var2), ...]` into the rule name,
+/// binding variables, and optional aggregations.
 pub(crate) fn parse_rule_head(
     src: Pair<'_>,
     param_pool: &BTreeMap<String, DataValue>,
@@ -482,6 +496,7 @@ pub(crate) fn parse_rule_head(
     Ok((Symbol::new(name.as_str(), name.extract_span()), args, aggrs))
 }
 
+/// Parse a single rule head argument: either a plain variable or `aggr(var, args...)`.
 fn parse_rule_head_arg(
     src: Pair<'_>,
     param_pool: &BTreeMap<String, DataValue>,
