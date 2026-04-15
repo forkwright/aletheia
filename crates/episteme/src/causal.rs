@@ -244,6 +244,11 @@ impl CausalStore {
 /// Each entry is (`keyword`, `relation_type`, `confidence`). The keyword
 /// is matched case-insensitively against the combined session text.
 /// Confidence reflects the extraction heuristic quality for that cue.
+///
+/// WHY not in taxis config: these are domain knowledge (linguistic patterns),
+/// not behavioral tuning. The mapping from word to relation type is structural,
+/// not something an operator would adjust per-deployment. If language-specific
+/// packs are added later, this table should move to a domain pack.
 const CAUSAL_CUES: &[(&str, CausalRelationType, f64)] = &[
     ("because", CausalRelationType::Caused, 0.6),
     ("caused by", CausalRelationType::Caused, 0.75),

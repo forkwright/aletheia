@@ -10,9 +10,13 @@ use snafu::Snafu;
 )]
 pub enum ExtractionError {
     /// The LLM response could not be parsed as valid extraction JSON.
-    #[snafu(display("failed to parse extraction response"))]
+    ///
+    /// Includes a truncated snippet of the raw response for debugging.
+    #[snafu(display("failed to parse extraction response: {response_snippet}"))]
     ParseResponse {
         source: serde_json::Error,
+        /// First 500 characters of the raw LLM response that failed to parse.
+        response_snippet: String,
         #[snafu(implicit)]
         location: snafu::Location,
     },
