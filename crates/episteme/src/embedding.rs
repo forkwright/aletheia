@@ -454,17 +454,36 @@ impl Default for EmbeddingConfig {
 ///
 /// Every `embed` call returns an error so callers that require embeddings (recall, search)
 /// degrade gracefully. Basic conversation continues unaffected (#1451).
+///
+/// The sentinel model name [`DegradedEmbeddingProvider::MODEL_NAME`] is used
+/// by health checks to report `"degraded: no-embeddings"` without a downcast
+/// (see [`is_degraded_provider`]).
 #[derive(Debug)]
 pub struct DegradedEmbeddingProvider {
     dim: usize,
 }
 
 impl DegradedEmbeddingProvider {
+    /// Sentinel model name returned by [`EmbeddingProvider::model_name`].
+    pub const MODEL_NAME: &'static str = "degraded-embedding";
+
     /// Create a degraded provider with the given (expected) dimension.
     #[must_use]
     pub fn new(dim: usize) -> Self {
         Self { dim }
     }
+}
+
+/// Returns `true` if `provider` is the sentinel [`DegradedEmbeddingProvider`].
+///
+/// WHY (#3380): health checks and `/api/health` need a stable way to detect
+/// that the server started in embedding-degraded mode (BM25-only recall)
+/// without a downcast. Uses [`DegradedEmbeddingProvider::MODEL_NAME`] as the
+/// check — any provider returning that name from `model_name()` is treated
+/// as degraded.
+#[must_use]
+pub fn is_degraded_provider(provider: &dyn EmbeddingProvider) -> bool {
+    provider.model_name() == DegradedEmbeddingProvider::MODEL_NAME
 }
 
 // Trait implementations for MockEmbeddingProvider and DegradedEmbeddingProvider

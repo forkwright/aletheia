@@ -104,8 +104,15 @@ pub(super) async fn run_recall_stage(
     );
     let start = Instant::now();
     let recall_timeout_secs = pipeline_config.stage_budget.recall_secs;
-    let is_mock_embedding =
-        embedding_provider.is_some_and(|ep| ep.model_name() == "mock-embedding");
+    // WHY (#3380): BM25-only fallback applies to both:
+    //   - "mock-embedding"     (hash-based, would yield meaningless vector recall)
+    //   - "degraded-embedding" (real provider failed to load at startup — the
+    //                           server runs in degraded mode rather than crashing)
+    // Treat both the same way at the pipeline level: skip vector recall, keep BM25.
+    let bm25_only = embedding_provider.is_some_and(|ep| {
+        let name = ep.model_name();
+        name == "mock-embedding" || name == mneme::embedding::DegradedEmbeddingProvider::MODEL_NAME
+    });
     #[expect(
         clippy::cast_sign_loss,
         clippy::as_conversions,
@@ -113,11 +120,14 @@ pub(super) async fn run_recall_stage(
     )]
     let budget = ctx.remaining_tokens.max(0) as u64; // kanon:ignore RUST/as-cast
 
-    // NOTE: BM25-only fallback when mock embedding provider is in use.
-    // Vector recall would produce meaningless results from hash-based embeddings.
-    if is_mock_embedding {
+    // NOTE: BM25-only fallback when embeddings are unavailable (mock or degraded).
+    // Vector recall would produce meaningless (mock) or failing (degraded) results.
+    if bm25_only {
         if let Some(ts) = text_search {
-            debug!("mock embedding provider — using BM25-only recall");
+            debug!(
+                provider = embedding_provider.map_or("none", EmbeddingProvider::model_name),
+                "embeddings unavailable — using BM25-only recall"
+            );
             let recall_stage = crate::recall::RecallStage::new(config.recall.clone());
             let result = recall_stage.run_bm25(content, &config.id, ts, budget);
             apply_recall_result(result, ctx, &span);

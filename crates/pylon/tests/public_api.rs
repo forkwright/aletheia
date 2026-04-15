@@ -189,6 +189,7 @@ impl TestEnvBuilder {
             shutdown: CancellationToken::new(),
             #[cfg(feature = "knowledge-store")]
             knowledge_store: None,
+            embedding_provider: None,
         });
 
         TestEnv { state, _tmp: tmp }

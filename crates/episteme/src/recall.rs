@@ -197,6 +197,18 @@ impl RecallEngine {
     /// Properties:
     /// - R(0) = 1.0 for any stability
     /// - R(S) ≈ 0.9 (by design of FSRS 19/81 constant)
+    /// - Output ∈ [0.0, 1.0] for any finite input (including negative or NaN
+    ///   `age_hours`, which are clamped to 0 — see below).
+    ///
+    /// # Clock-jump handling (#3392)
+    ///
+    /// If `age_hours` is negative (system clock jumped backward; e.g. NTP
+    /// correction after suspend/resume) or NaN, it is clamped to `0.0` so the
+    /// formula returns `1.0` ("just now"). WHY: a negative age would
+    /// previously flow through the arithmetic and, combined with cross-agent
+    /// multipliers downstream, could inflate recall scores. Clamping is
+    /// strictly safer than propagating an error here — ranking must never
+    /// crash a recall pipeline.
     ///
     /// # Complexity
     ///
@@ -210,6 +222,7 @@ impl RecallEngine {
         tier: EpistemicTier,
         access_count: u32,
     ) -> f64 {
+        let age_hours = crate::decay::sanitize_age_hours(age_hours);
         if age_hours <= 0.0 {
             return 1.0;
         }

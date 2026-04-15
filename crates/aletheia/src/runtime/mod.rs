@@ -535,7 +535,7 @@ impl RuntimeBuilder {
             Arc::clone(&provider_registry),
             Arc::clone(&tool_registry),
             Arc::clone(&self.oikos),
-            Some(embedding_provider),
+            Some(Arc::clone(&embedding_provider)),
             vector_search,
             Some(Arc::clone(&session_store)),
             #[cfg(feature = "recall")]
@@ -724,6 +724,7 @@ impl RuntimeBuilder {
             shutdown: shutdown_token.clone(),
             #[cfg(feature = "recall")]
             knowledge_store,
+            embedding_provider: Some(Arc::clone(&embedding_provider)),
         });
 
         Ok(Runtime {

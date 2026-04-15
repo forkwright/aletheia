@@ -78,6 +78,6 @@ impl EmbeddingProvider for DegradedEmbeddingProvider {
     }
 
     fn model_name(&self) -> &'static str {
-        "degraded-embedding"
+        DegradedEmbeddingProvider::MODEL_NAME
     }
 }

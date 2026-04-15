@@ -56,6 +56,7 @@ pub async fn check(State(state): State<HealthState>) -> impl IntoResponse {
         let provider_check = check_provider_availability(&state);
         let credential_check =
             check_credential_validity(&state, clock_skew_leeway, expiry_warning_threshold);
+        let embedding_check = check_embedding_provider(&state);
 
         vec![
             store_check,
@@ -65,6 +66,7 @@ pub async fn check(State(state): State<HealthState>) -> impl IntoResponse {
             config_check,
             credential_check,
             storage_check,
+            embedding_check,
         ]
     })
     .await
@@ -224,6 +226,36 @@ fn check_provider_reachability(state: &HealthState) -> HealthCheck {
                 status: "fail",
                 message: Some("all providers are down or unreachable".to_owned()),
             }
+        }
+    }
+}
+
+/// Check embedding provider status. Reports `"warn"` with
+/// `"degraded: no-embeddings"` when the real provider failed to load at
+/// startup and the server is running BM25-only (#3380).
+fn check_embedding_provider(state: &HealthState) -> HealthCheck {
+    let Some(provider) = state.embedding_provider.as_ref() else {
+        return HealthCheck {
+            name: "embedding_provider",
+            status: "warn",
+            message: Some("no embedding provider configured".to_owned()),
+        };
+    };
+    if mneme::embedding::is_degraded_provider(provider.as_ref()) {
+        HealthCheck {
+            name: "embedding_provider",
+            status: "warn",
+            message: Some(
+                "degraded: no-embeddings (embedding model failed to load at startup — \
+                 recall falls back to BM25)"
+                    .to_owned(),
+            ),
+        }
+    } else {
+        HealthCheck {
+            name: "embedding_provider",
+            status: "pass",
+            message: None,
         }
     }
 }
@@ -587,6 +619,8 @@ mod tests {
             let _: std::time::Instant = state.start_time;
             let _: &Arc<Oikos> = &state.oikos;
             let _: &Arc<tokio::sync::RwLock<AletheiaConfig>> = &state.config;
+            let _: &Option<Arc<dyn mneme::embedding::EmbeddingProvider>> =
+                &state.embedding_provider;
         }
         // The function above proves all required fields exist and have correct types.
         // If this compiles, HealthState has all the fields health handlers need.
