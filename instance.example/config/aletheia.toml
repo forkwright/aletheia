@@ -114,6 +114,7 @@ workspace = "nous/main"
 # [credential]
 # source = "auto"
 # claudeCodeCredentials = "~/.claude/.credentials.json"  # override default path
+# refreshThresholdSecs = 3600  # refresh token when less than N seconds remain
 
 # --- Cost tracking ---
 # [pricing."claude-sonnet-4-6"]

@@ -226,6 +226,9 @@ pub struct KnowledgeConfig {
     /// Maximum length for context summaries. Default: 100.
     /// Mirrors `episteme::instinct::MAX_CONTEXT_SUMMARY_LEN`.
     pub instinct_max_context_summary_len: usize,
+    /// Maximum byte length for fact content strings. Default: 102400 (100 KiB).
+    /// Mirrors `eidos::knowledge::fact::MAX_CONTENT_LENGTH`.
+    pub max_content_length: usize,
     /// Default maximum entries returned by a single side-query. Default: 5.
     /// Mirrors `episteme::side_query::DEFAULT_MAX_RESULTS`.
     pub side_query_max_results: usize,
@@ -248,6 +251,7 @@ impl Default for KnowledgeConfig {
             decay_max_reinforcement_bonus: 1.0,
             decay_cross_agent_bonus_per_agent: 0.15,
             decay_max_cross_agent_multiplier: 1.75,
+            max_content_length: 102_400,
             extraction_confidence_threshold: 0.3,
             extraction_min_fact_length: 10,
             extraction_max_fact_length: 500,
