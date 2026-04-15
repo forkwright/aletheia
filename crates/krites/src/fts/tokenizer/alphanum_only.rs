@@ -1,9 +1,8 @@
 //! Filter that removes non-alphanumeric tokens.
 use super::{BoxTokenStream, Token, TokenFilter, TokenStream};
 
-/// `TokenFilter` that removes all tokens that contain non
-/// ascii alphanumeric characters.
-#[derive(Clone)]
+/// Removes tokens containing any non-ASCII-alphanumeric characters.
+#[derive(Debug, Clone)]
 pub(crate) struct AlphaNumOnlyFilter;
 
 pub(crate) struct AlphaNumOnlyFilterStream<'a> {

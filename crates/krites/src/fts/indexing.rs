@@ -129,10 +129,27 @@ struct LiteralStats {
 
 /// Compute BM25 relevance score.
 ///
+/// Implements the Okapi BM25 ranking function (Robertson & Zaragoza, 2009):
+///
+/// ```text
+/// score(D, Q) = booster * IDF(q) * (tf * (k1 + 1)) / (tf + k1 * (1 - b + b * dl / avgdl))
+/// ```
+///
+/// where:
+/// - `IDF(q) = ln((N - df + 0.5) / (df + 0.5) + 1)` (smoothed inverse document frequency)
+/// - `tf`    = term frequency in document D
+/// - `df`    = number of documents containing the term
+/// - `N`     = total document count
+/// - `dl`    = document length (token count)
+/// - `avgdl` = average document length across the corpus
+/// - `k1`    = term frequency saturation parameter (default 1.2)
+/// - `b`     = length normalization parameter (default 0.75)
+///
+/// Returns 0.0 when any of tf, df, or N is zero (no meaningful score).
+///
 /// # Complexity
 ///
-/// O(1) arithmetic operations. Uses the standard BM25 formula with
-/// configurable k1 and b parameters.
+/// O(1) arithmetic operations.
 #[expect(clippy::too_many_arguments, reason = "BM25 formula requires all statistical parameters")]
 pub(crate) fn bm25_compute_score(
     tf: usize,
@@ -144,10 +161,7 @@ pub(crate) fn bm25_compute_score(
     k1: f64,
     b: f64,
 ) -> f64 {
-    if n == 0 || df == 0 {
-        return 0.0;
-    }
-    if tf == 0 {
+    if n == 0 || df == 0 || tf == 0 {
         return 0.0;
     }
     #[expect(
@@ -169,8 +183,12 @@ pub(crate) fn bm25_compute_score(
     )]
     let n = n as f64;
     let dl = f64::from(dl);
+
+    // IDF: smoothed inverse document frequency
     let idf = ((n - df + 0.5) / (df + 0.5) + 1.0).ln();
+    // Normalized TF: saturates with k1, penalizes long documents via b
     let normalized_tf = (tf * (k1 + 1.0)) / (tf + k1 * (1.0 - b + b * dl / avgdl.max(1.0)));
+
     idf * normalized_tf * booster
 }
 
@@ -442,6 +460,11 @@ impl SessionTx<'_> {
             }
         })
     }
+    /// Compute TF or TF-IDF score (non-BM25 scoring modes).
+    ///
+    /// - **TF mode**: `score = tf * booster`
+    /// - **TF-IDF mode**: `score = tf * IDF * booster`
+    ///   where `IDF = ln(1 + (N - df + 0.5) / (df + 0.5))`
     fn fts_compute_score(
         tf: usize,
         n_found_docs: usize,

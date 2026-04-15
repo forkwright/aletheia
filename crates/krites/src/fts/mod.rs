@@ -4,24 +4,19 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
 use compact_str::CompactString;
-use sha2::digest::FixedOutput;
-use sha2::{Digest, Sha256};
 
-use crate::data::memcmp::MemCmpEncoder;
 use crate::data::value::DataValue;
 use crate::error::InternalResult as Result;
-use crate::fts::error::TokenizationFailedSnafu;
-use crate::fts::tokenizer::{
-    AlphaNumOnlyFilter, AsciiFoldingFilter, BoxTokenFilter, Language, LowerCaser, NgramTokenizer,
-    RawTokenizer, RemoveLongFilter, SimpleTokenizer, SplitCompoundWords, Stemmer, StopWordFilter,
-    TextAnalyzer, Tokenizer, WhitespaceTokenizer,
-};
+use crate::fts::tokenizer::TextAnalyzer;
 
 pub(crate) mod ast;
+mod config;
 pub(crate) mod error;
 pub(crate) mod indexing;
 pub(crate) mod tokenizer;
 
+/// Manifest describing an FTS index: which relation it belongs to, the
+/// text extractor expression, and the tokenizer + filter pipeline.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct FtsIndexManifest {
     pub(crate) base_relation: CompactString,
@@ -32,316 +27,21 @@ pub(crate) struct FtsIndexManifest {
 }
 
 /// Configuration for a tokenizer or token filter, including its name and arguments.
+///
+/// The `name` selects which tokenizer or filter to instantiate (e.g. `"Simple"`,
+/// `"Stemmer"`, `"Stopwords"`). The `args` carry filter-specific parameters
+/// (language codes, length limits, word lists, etc.).
 #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct TokenizerConfig {
     pub name: CompactString,
     pub args: Vec<DataValue>,
 }
 
-impl TokenizerConfig {
-    pub(crate) fn config_hash(&self, filters: &[Self]) -> impl AsRef<[u8]> {
-        let mut hasher = Sha256::new();
-        hasher.update(self.name.as_bytes());
-        let mut args_vec = vec![];
-        for arg in &self.args {
-            args_vec.encode_datavalue(arg);
-        }
-        hasher.update(&args_vec);
-        for filter in filters {
-            hasher.update(filter.name.as_bytes());
-            args_vec.clear();
-            for arg in &filter.args {
-                args_vec.encode_datavalue(arg);
-            }
-            hasher.update(&args_vec);
-        }
-        hasher.finalize_fixed()
-    }
-    #[expect(
-        clippy::result_large_err,
-        reason = "FTS error carries structured tokenization context"
-    )]
-    pub(crate) fn build(&self, filters: &[Self]) -> Result<TextAnalyzer> {
-        let tokenizer = self.construct_tokenizer()?;
-        let token_filters = filters
-            .iter()
-            .map(Self::construct_token_filter)
-            .collect::<Result<Vec<_>>>()?;
-        Ok(TextAnalyzer {
-            tokenizer,
-            token_filters,
-        })
-    }
-    #[expect(
-        clippy::as_conversions,
-        clippy::result_large_err,
-        reason = "CompactString-to-str cast for match; FTS error carries structured tokenization context"
-    )]
-    pub(crate) fn construct_tokenizer(&self) -> Result<Box<dyn Tokenizer>> {
-        Ok(match &self.name as &str {
-            "Raw" => Box::new(RawTokenizer),
-            "Simple" => Box::new(SimpleTokenizer),
-            "Whitespace" => Box::new(WhitespaceTokenizer),
-            "NGram" => {
-                let min_gram = self
-                    .args
-                    .first()
-                    .unwrap_or(&DataValue::from(1))
-                    .get_int()
-                    .ok_or_else(|| {
-                        crate::error::InternalError::from(
-                            TokenizationFailedSnafu {
-                                message: "First argument `min_gram` must be an integer".to_string(),
-                            }
-                            .build(),
-                        )
-                    })?;
-                let max_gram = self
-                    .args
-                    .get(1)
-                    .unwrap_or(&DataValue::from(min_gram))
-                    .get_int()
-                    .ok_or_else(|| {
-                        crate::error::InternalError::from(
-                            TokenizationFailedSnafu {
-                                message: "Second argument `max_gram` must be an integer"
-                                    .to_string(),
-                            }
-                            .build(),
-                        )
-                    })?;
-                let prefix_only = self
-                    .args
-                    .get(2)
-                    .unwrap_or(&DataValue::Bool(false))
-                    .get_bool()
-                    .ok_or_else(|| {
-                        crate::error::InternalError::from(
-                            TokenizationFailedSnafu {
-                                message: "Third argument `prefix_only` must be a boolean"
-                                    .to_string(),
-                            }
-                            .build(),
-                        )
-                    })?;
-                if min_gram < 1 {
-                    return Err(TokenizationFailedSnafu {
-                        message: "min_gram must be >= 1".to_string(),
-                    }
-                    .build()
-                    .into());
-                }
-                if max_gram < min_gram {
-                    return Err(TokenizationFailedSnafu {
-                        message: "max_gram must be >= min_gram".to_string(),
-                    }
-                    .build()
-                    .into());
-                }
-                // INVARIANT: min_gram >= 1 and max_gram >= min_gram checked above.
-                Box::new(NgramTokenizer::new(
-                    usize::try_from(min_gram).unwrap_or(usize::MAX),
-                    usize::try_from(max_gram).unwrap_or(usize::MAX),
-                    prefix_only,
-                ))
-            }
-            _ => {
-                return Err(TokenizationFailedSnafu {
-                    message: format!("Unknown tokenizer: {}", self.name),
-                }
-                .build()
-                .into());
-            }
-        })
-    }
-    #[expect(
-        clippy::as_conversions,
-        clippy::result_large_err,
-        clippy::too_many_lines,
-        reason = "CompactString-to-str cast for match; FTS error carries structured tokenization context; filter dispatch covers all supported filters"
-    )]
-    pub(crate) fn construct_token_filter(&self) -> Result<BoxTokenFilter> {
-        Ok(match &self.name as &str {
-            "AlphaNumOnly" => AlphaNumOnlyFilter.into(),
-            "AsciiFolding" => AsciiFoldingFilter.into(),
-            "LowerCase" | "Lowercase" => LowerCaser.into(),
-            "RemoveLong" => {
-                let min_length_i64 = self
-                    .args
-                    .first()
-                    .ok_or_else(|| {
-                        crate::error::InternalError::from(
-                            TokenizationFailedSnafu {
-                                message: "Missing first argument `min_length`".to_string(),
-                            }
-                            .build(),
-                        )
-                    })?
-                    .get_int()
-                    .ok_or_else(|| {
-                        crate::error::InternalError::from(
-                            TokenizationFailedSnafu {
-                                message: "First argument `min_length` must be an integer"
-                                    .to_string(),
-                            }
-                            .build(),
-                        )
-                    })?;
-                let min_length = usize::try_from(min_length_i64).map_err(|_e| {
-                    crate::error::InternalError::from(
-                        TokenizationFailedSnafu {
-                            message: "First argument `min_length` must be a non-negative integer"
-                                .to_string(),
-                        }
-                        .build(),
-                    )
-                })?;
-                RemoveLongFilter::limit(min_length).into()
-            }
-            "SplitCompoundWords" => {
-                let mut list_values = Vec::new();
-                match self.args.first().ok_or_else(|| {
-                    crate::error::InternalError::from(
-                        TokenizationFailedSnafu {
-                            message: "Missing first argument `compound_words_list`".to_string(),
-                        }
-                        .build(),
-                    )
-                })? {
-                    DataValue::List(l) => {
-                        for v in l {
-                            list_values.push(
-                                v.get_str()
-                                    .ok_or_else(|| {
-                                        crate::error::InternalError::from(TokenizationFailedSnafu { message: "First argument `compound_words_list` must be a list of strings".to_string() }.build())
-                                    })?,
-                            );
-                        }
-                    }
-                    _ => {
-                        return Err(TokenizationFailedSnafu {
-                            message:
-                                "First argument `compound_words_list` must be a list of strings"
-                                    .to_string(),
-                        }
-                        .build()
-                        .into());
-                    }
-                }
-                SplitCompoundWords::from_dictionary(list_values)
-                    .map_err(|e| {
-                        crate::error::InternalError::from(
-                            TokenizationFailedSnafu {
-                                message: format!("Failed to load dictionary: {e}"),
-                            }
-                            .build(),
-                        )
-                    })?
-                    .into()
-            }
-            "Stemmer" => {
-                let language = match self
-                    .args
-                    .first()
-                    .ok_or_else(|| {
-                        crate::error::InternalError::from(
-                            TokenizationFailedSnafu {
-                                message: "Missing first argument `language` to Stemmer".to_string(),
-                            }
-                            .build(),
-                        )
-                    })?
-                    .get_str()
-                    .ok_or_else(|| {
-                        crate::error::InternalError::from(
-                            TokenizationFailedSnafu {
-                                message: "First argument `language` to Stemmer must be a string"
-                                    .to_string(),
-                            }
-                            .build(),
-                        )
-                    })?
-                    .to_lowercase()
-                    .as_str()
-                {
-                    "arabic" => Language::Arabic,
-                    "danish" => Language::Danish,
-                    "dutch" => Language::Dutch,
-                    "english" => Language::English,
-                    "finnish" => Language::Finnish,
-                    "french" => Language::French,
-                    "german" => Language::German,
-                    "greek" => Language::Greek,
-                    "hungarian" => Language::Hungarian,
-                    "italian" => Language::Italian,
-                    "norwegian" => Language::Norwegian,
-                    "portuguese" => Language::Portuguese,
-                    "romanian" => Language::Romanian,
-                    "russian" => Language::Russian,
-                    "spanish" => Language::Spanish,
-                    "swedish" => Language::Swedish,
-                    "tamil" => Language::Tamil,
-                    "turkish" => Language::Turkish,
-                    lang => {
-                        return Err(TokenizationFailedSnafu {
-                            message: format!("Unsupported language: {lang}"),
-                        }
-                        .build()
-                        .into());
-                    }
-                };
-                Stemmer::new(language).into()
-            }
-            "Stopwords" => {
-                match self.args.first().ok_or_else(|| {
-                    crate::error::InternalError::from(
-                        TokenizationFailedSnafu {
-                            message:
-                                "Filter Stopwords requires language name or a list of stopwords"
-                                    .to_string(),
-                        }
-                        .build(),
-                    )
-                })? {
-                    DataValue::Str(name) => StopWordFilter::for_lang(name)?.into(),
-                    DataValue::List(l) => {
-                        let mut stopwords = Vec::new();
-                        for v in l {
-                            stopwords.push(
-                                v.get_str()
-                                    .ok_or_else(|| {
-                                        crate::error::InternalError::from(TokenizationFailedSnafu {
-                                            message: "First argument `stopwords` must be a list of strings"
-                                                .to_string(),
-                                        }.build())
-                                    })?
-                                    .to_string(),
-                            );
-                        }
-                        StopWordFilter::new(stopwords).into()
-                    }
-                    _ => {
-                        return Err(TokenizationFailedSnafu {
-                            message:
-                                "Filter Stopwords requires language name or a list of stopwords"
-                                    .to_string(),
-                        }
-                        .build()
-                        .into());
-                    }
-                }
-            }
-            _ => {
-                return Err(TokenizationFailedSnafu {
-                    message: format!("Unknown token filter: {:?}", self.name),
-                }
-                .build()
-                .into());
-            }
-        })
-    }
-}
-
+/// Two-level cache for built [`TextAnalyzer`] pipelines.
+///
+/// First checks by index name (fast path for repeated queries against the same
+/// index), then falls back to a content-addressed hash of the tokenizer + filter
+/// config (deduplicates structurally identical pipelines with different names).
 #[derive(Default)]
 pub(crate) struct TokenizerCache {
     pub(crate) named_cache: RwLock<HashMap<CompactString, Arc<TextAnalyzer>>>,

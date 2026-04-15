@@ -1,4 +1,7 @@
 //! N-gram tokenizer.
+//!
+//! Splits input text into overlapping character n-grams of configurable size.
+//! Supports both full n-gram generation and prefix-only mode.
 use super::{Token, TokenStream, Tokenizer};
 use crate::fts::tokenizer::BoxTokenStream;
 
@@ -30,72 +33,28 @@ use crate::fts::tokenizer::BoxTokenStream;
 /// | Position | 0   | 0   | 0     | 0     |
 /// | Offsets  | 0,3 | 0,4 | 0,5   | 0,6   |
 ///
-/// # Example
-///
-/// ```text
-/// use tantivy::tokenizer::*;
-///
-/// let tokenizer = NgramTokenizer::new(2, 3, false);
-/// let mut stream = tokenizer.token_stream("hello");
-/// {
-///     let token = stream.next()?;
-///     assert_eq!(token.text, "he");
-///     assert_eq!(token.offset_from, 0);
-///     assert_eq!(token.offset_to, 2);
-/// }
-/// {
-///   let token = stream.next()?;
-///     assert_eq!(token.text, "hel");
-///     assert_eq!(token.offset_from, 0);
-///     assert_eq!(token.offset_to, 3);
-/// }
-/// {
-///   let token = stream.next()?;
-///     assert_eq!(token.text, "el");
-///     assert_eq!(token.offset_from, 1);
-///     assert_eq!(token.offset_to, 3);
-/// }
-/// {
-///   let token = stream.next()?;
-///     assert_eq!(token.text, "ell");
-///     assert_eq!(token.offset_from, 1);
-///     assert_eq!(token.offset_to, 4);
-/// }
-/// {
-///   let token = stream.next()?;
-///     assert_eq!(token.text, "ll");
-///     assert_eq!(token.offset_from, 2);
-///     assert_eq!(token.offset_to, 4);
-/// }
-/// {
-///   let token = stream.next()?;
-///     assert_eq!(token.text, "llo");
-///     assert_eq!(token.offset_from, 2);
-///     assert_eq!(token.offset_to, 5);
-/// }
-/// {
-///   let token = stream.next()?;
-///   assert_eq!(token.text, "lo");
-///   assert_eq!(token.offset_from, 3);
-///   assert_eq!(token.offset_to, 5);
-/// }
-/// assert!(stream.next().is_none());
-/// ```
-#[derive(Clone)]
+/// For `"hello"` with `min_gram=2, max_gram=3, prefix_only=false`, the output
+/// is: `he, hel, el, ell, ll, llo, lo`.
+#[derive(Debug, Clone)]
 pub(crate) struct NgramTokenizer {
-    /// min size of the n-gram
+    /// Minimum n-gram character length (inclusive).
     min_gram: usize,
-    /// max size of the n-gram
+    /// Maximum n-gram character length (inclusive).
     max_gram: usize,
-    /// if true, will only parse the leading edge of the input
+    /// When true, only emit n-grams anchored at position 0.
     prefix_only: bool,
 }
 
 impl NgramTokenizer {
-    /// Configures a new Ngram tokenizer
+    /// Creates a new n-gram tokenizer.
+    ///
+    /// # Preconditions
+    ///
+    /// `min_gram >= 1` and `max_gram >= min_gram` — validated by the caller
+    /// in `TokenizerConfig::construct_tokenizer` before reaching this point.
     pub(crate) fn new(min_gram: usize, max_gram: usize, prefix_only: bool) -> NgramTokenizer {
-        assert!(min_gram > 0, "min_gram must be greater than 0");
-        assert!(
+        debug_assert!(min_gram > 0, "min_gram must be greater than 0");
+        debug_assert!(
             min_gram <= max_gram,
             "min_gram must not be greater than max_gram"
         );
@@ -107,7 +66,7 @@ impl NgramTokenizer {
     }
 }
 
-/// `TokenStream` associate to the [`NgramTokenizer`].
+/// Token stream for [`NgramTokenizer`].
 pub(crate) struct NgramTokenStream<'a> {
     /// parameters
     ngram_charidx_iterator: StutteringIterator<CodepointFrontiers<'a>>,
@@ -190,7 +149,7 @@ where
         min_gram: usize,
         max_gram: usize,
     ) -> StutteringIterator<T> {
-        assert!(min_gram > 0, "min_gram must be greater than 0");
+        debug_assert!(min_gram > 0, "min_gram must be greater than 0");
         let memory: Vec<usize> = (&mut underlying).take(max_gram + 1).collect();
         if memory.len() <= min_gram {
             StutteringIterator {

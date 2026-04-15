@@ -10,7 +10,9 @@ use super::{BoxTokenStream, Token, TokenFilter, TokenStream};
 use crate::error::InternalResult as Result;
 use crate::fts::error::TokenizationFailedSnafu;
 
-/// `TokenFilter` that removes stop words from a token stream
+/// Removes stop words (common low-signal words) from the token stream.
+///
+/// Supports 58 languages via built-in word lists, or a custom word set.
 #[derive(Clone)]
 pub(crate) struct StopWordFilter {
     words: Arc<FxHashSet<String>>,

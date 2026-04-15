@@ -13,8 +13,8 @@ impl TokenFilter for LowerCaser {
     }
 }
 
-/// Token filter that lowercase terms.
-#[derive(Clone)]
+/// Lowercases all token text (ASCII fast-path, full Unicode fallback).
+#[derive(Debug, Clone)]
 pub(crate) struct LowerCaser;
 
 pub(crate) struct LowerCaserTokenStream<'a> {

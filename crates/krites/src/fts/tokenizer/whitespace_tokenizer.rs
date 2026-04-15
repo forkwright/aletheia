@@ -3,8 +3,8 @@ use std::str::CharIndices;
 
 use super::{BoxTokenStream, Token, TokenStream, Tokenizer};
 
-/// Tokenize the text by splitting on whitespaces.
-#[derive(Clone)]
+/// Splits on ASCII whitespace, preserving punctuation within tokens.
+#[derive(Debug, Clone)]
 pub(crate) struct WhitespaceTokenizer;
 
 pub(crate) struct WhitespaceTokenStream<'a> {

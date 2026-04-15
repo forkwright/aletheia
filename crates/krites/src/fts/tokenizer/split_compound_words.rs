@@ -1,8 +1,16 @@
 //! Compound word splitting filter.
+//!
+//! Uses an Aho-Corasick automaton to split compound words into their
+//! dictionary constituents (e.g. "foobar" -> "foo" + "bar").
 use aho_corasick::{AhoCorasick, AhoCorasickBuilder, MatchKind};
 
 use super::{BoxTokenStream, Token, TokenFilter, TokenStream};
 use crate::error::InternalResult as Result;
+
+/// Splits compound words using a dictionary-backed Aho-Corasick automaton.
+///
+/// Only splits when the *entire* token is covered by contiguous dictionary
+/// matches starting from position 0. Unrecognized tokens pass through unchanged.
 #[derive(Clone)]
 pub(crate) struct SplitCompoundWords {
     dict: AhoCorasick,
