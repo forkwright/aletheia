@@ -229,7 +229,7 @@ const PROTECTED_FILES: &[&str] = &[
 const PROTECTED_EXTENSIONS: &[&str] = &["key", "pem", "p12", "pfx"];
 
 /// Filename prefixes (case-sensitive) that identify credential files.
-const PROTECTED_PREFIXES: &[&str] = &["id_rsa", "id_ed25519"];
+const PROTECTED_PREFIXES: &[&str] = &["id_rsa", "id_ed25519"]; // pii-allow: SSH filename constants guarding access, not key material
 
 /// Filename patterns matched with `starts_with` (case-insensitive).
 const PROTECTED_DOT_PREFIXES: &[&str] = &[".env"];

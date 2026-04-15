@@ -1,13 +1,154 @@
-# PII detection patterns - one extended regex per line
+# PII detection patterns — one extended regex per line.
+#
+# The scanner in scripts/scan-pii.sh consumes this file and invokes ripgrep
+# once per pattern. Blank lines and lines beginning with `#` are ignored.
+# Patterns use ripgrep's PCRE2 engine so lookaround is available; avoid
+# backreferences or recursive patterns that PCRE2 rejects in JIT mode.
+#
+# False-positive handling: patterns err on the side of recall. Operators
+# override false positives via the `scripts/scan-pii.sh` allowlist (see
+# PII_ALLOWLIST_PATHS) or a per-line `pii-allow: <reason>` trailing marker
+# placed after any comment leader on the matching source line (e.g.
+# `// pii-allow: ...` in Rust, `# pii-allow: ...` in Python/shell).
+#
+# ---------------------------------------------------------------------------
+# Project-specific synthetic-data markers (kept from the original list).
+# These catch accidental leakage of local-dev fixtures into shared code.
+# CLAUDE.md mandates synthetic identities (alice, bob, acme.corp,
+# 192.168.1.100) — the scanner reinforces that boundary.
+# ---------------------------------------------------------------------------
+
 alice\.johnson
-[A-Za-z]{3,}ample\b
 acme-corp
-Springfield
+\bSpringfield\b
 Baby #[0-9]
-Widget
-due [A-Z][a-z]+ 20[0-9]{2}
-192\.168\.0\.
-\+1[0-9]{10}
+\bdue [A-Z][a-z]+ 20[0-9]{2}\b
 acme-workshop
 Acme Workshop LLC
-[A-Z][a-z]+.s birthday
+[A-Z][a-z]+'s birthday
+
+# Operator LAN (menos homelab, 192.168.0.0/24). Synthetic tests should use
+# 192.168.1.x or RFC 5737 documentation subnets 192.0.2.0/24, 198.51.100.0/24.
+# The pattern matches .16-.255 so the bare prefix in inline comments or URL
+# examples (e.g. "192.168.0.") does not trip it; only real hosts match.
+\b192\.168\.0\.(?:1[6-9]|2[0-9]|3[0-9]|[4-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\b
+
+# ---------------------------------------------------------------------------
+# Contact identifiers
+# ---------------------------------------------------------------------------
+
+# Email — RFC 5322-lite. Local-part allows common punctuation; TLD is 2-24
+# ASCII letters to cover .co, .museum, .technology etc. without matching
+# arbitrary whitespace-separated tokens.
+# False positives: docstrings mentioning `foo@bar.baz` examples, git commit
+# trailers (`Signed-off-by: Name <addr@host>`). Excluded TLDs/hosts:
+# example.{com,org,net}, *.test, *.invalid, *.localhost, *.local, *.internal,
+# *.lan, *.corp, *.example, and the synthetic brand prefix `acme.`.
+[A-Za-z0-9._%+-]+@(?:(?!example\.(?:com|org|net)\b)(?!.*\.(?:test|invalid|localhost|local|internal|lan|corp|example)\b)(?!acme\.)[A-Za-z0-9-]+\.)+[A-Za-z]{2,24}\b
+
+# US phone — E.164 +1 and common dashed/parenthesized forms.
+# False positives: version strings like `+1.2.3-rc`, ISBNs. The leading
+# `\+1` branch covers E.164 (10 digits after +1); the dashed branch requires
+# valid area-code grouping (NXX-NXX-XXXX, first digit 2-9).
+\+1[0-9]{10}
+\(?[2-9][0-9]{2}\)?[-. ][2-9][0-9]{2}[-. ][0-9]{4}
+
+# ---------------------------------------------------------------------------
+# Government / financial identifiers
+# ---------------------------------------------------------------------------
+
+# US Social Security Number — XXX-XX-XXXX. Excludes known-invalid area codes
+# 000, 666, 900-999 to cut false-positive rate slightly. UUID segments look
+# like 8-4-4-4-12 and will not match this 3-2-4 shape.
+# False positives: phone extensions, part numbers. Real SSNs in code are
+# almost always a true positive; tolerate the noise.
+\b(?!000|666|9[0-9]{2})[0-9]{3}-[0-9]{2}-[0-9]{4}\b
+
+# Credit card — 13-19 digit PANs in common 4-4-4-4 groupings or unbroken.
+# Scanner applies a Luhn check in a post-filter; this regex is the candidate
+# gate. Matches Visa/Mastercard/Amex/Discover shapes plus generic 16-digit.
+# False positives: long numeric IDs, timestamps concatenated with counters.
+# The Luhn filter eliminates most of these.
+\b(?:4[0-9]{3}|5[1-5][0-9]{2}|3[47][0-9]{2}|6(?:011|5[0-9]{2}))[- ]?[0-9]{4}[- ]?[0-9]{4}[- ]?[0-9]{3,4}\b
+
+# ---------------------------------------------------------------------------
+# API keys and tokens
+# ---------------------------------------------------------------------------
+
+# AWS access key IDs — AKIA (long-term) and ASIA (temporary STS).
+# False positives: near-zero; the prefix + 16 base-32 shape is distinctive.
+\bAKIA[0-9A-Z]{16}\b
+\bASIA[0-9A-Z]{16}\b
+
+# Anthropic API key — `sk-ant-` prefix plus an opaque tail. Matches both
+# admin (`sk-ant-admin01-`) and standard (`sk-ant-api03-`) variants.
+\bsk-ant-[A-Za-z0-9_-]{32,}\b
+
+# OpenAI API key — `sk-` prefix. Constrained to >=32 chars after the prefix
+# to avoid matching `sk-test` placeholders.
+# False positives: documentation snippets that use `sk-XXXXXXXX...` with
+# literal X characters will match. Use `sk-REDACTED` style instead.
+\bsk-[A-Za-z0-9]{32,}\b
+
+# GitHub tokens — personal (ghp_), OAuth (gho_), server (ghs_), refresh
+# (ghr_), user-to-server (ghu_), app (ghi_ / github_pat_). Fine-grained PATs
+# start with `github_pat_`.
+\bgh[opsru]_[A-Za-z0-9]{36,}\b
+\bgithub_pat_[A-Za-z0-9_]{22,}\b
+
+# Slack tokens — xoxb (bot), xoxa (workspace), xoxp (user), xoxr (refresh),
+# xoxs (legacy), xoxe (variant).
+\bxox[abprse]-[A-Za-z0-9-]{10,}\b
+
+# Google API key — `AIza` prefix + 35 base64url chars.
+\bAIza[0-9A-Za-z_-]{35}\b
+
+# Google OAuth access tokens (`ya29.*`). Refresh tokens (`1//*`) are noisier
+# and omitted here; the generic JWT and connection-string rules catch most
+# leakage paths.
+\bya29\.[0-9A-Za-z_-]{20,}\b
+
+# Stripe keys — live and test, secret and publishable. Restricted keys
+# (rk_live_, rk_test_) also match via the character class.
+\b(?:sk|pk|rk)_(?:live|test)_[0-9A-Za-z]{24,}\b
+
+# Generic JWT — three base64url segments separated by dots, leading `eyJ`
+# (the base64 encoding of `{"`, the opening of every JWT header).
+# False positives: minified JS or base64-encoded protobuf occasionally
+# looks like JWT shape. Acceptable noise.
+\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b
+
+# ---------------------------------------------------------------------------
+# Cryptographic material
+# ---------------------------------------------------------------------------
+
+# PEM private key headers — RSA, EC, DSA, OPENSSH, PGP, or generic.
+# A match here is always a true positive worth investigating.
+-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY-----
+
+# SSH private-key filename convention: `id_rsa`, `id_ed25519`, etc. Matches
+# only when the token appears as a filename-like path component.
+# False positives: code that guards against these filenames (e.g. path
+# blocklists) will match — override per-line with `pii-allow:`.
+(?:^|[/\s"'=])id_(?:rsa|dsa|ecdsa|ed25519)(?:$|[\s"':])
+
+# ---------------------------------------------------------------------------
+# Connection strings
+# ---------------------------------------------------------------------------
+
+# user:password@host embedded credentials for common protocols. Excludes
+# literal `pass` or `password` placeholders so illustrative examples don't
+# trip the scanner.
+# False positives: example URLs in docs. Prefer `user:REDACTED@host` in
+# examples so the match is obviously a placeholder.
+\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|amqp|amqps|ftp|https?)://[A-Za-z0-9._%+-]+:(?!pass(?:word)?@)[^\s:@/"']{3,}@[A-Za-z0-9.-]+
+
+# ---------------------------------------------------------------------------
+# Environment variable naming convention (documented, not scanned)
+# ---------------------------------------------------------------------------
+# The following suffixes, when used on env-var names, MUST carry secret
+# values: _SECRET, _PASSWORD, _PASSWD, _TOKEN, _KEY, _APIKEY, _PRIVATE_KEY.
+# We do NOT scan for these — the names themselves are not PII — but any
+# commit that hard-codes a value next to such a variable almost certainly
+# warrants a redaction. Convention lives here so operators making override
+# decisions know the shape of the problem.

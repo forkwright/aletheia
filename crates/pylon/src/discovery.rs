@@ -184,7 +184,7 @@ mod tests {
 
     #[test]
     fn host_from_bind_specific() {
-        assert_eq!(host_from_bind("192.168.0.18:18789"), "192.168.0.18");
+        assert_eq!(host_from_bind("192.168.0.18:18789"), "192.168.0.18"); // pii-allow: regression fixture for LAN-bind parsing
     }
 
     #[test]
