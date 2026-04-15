@@ -275,7 +275,7 @@ mod tests {
                         || u.starts_with("NEAR")
                 };
                 prop_assume!(!conflicts_with_kw(&word));
-                parse_fts_query(&word).unwrap_or_else(|_| unreachable!());
+                parse_fts_query(&word).unwrap_or_else(|_| unreachable!("INVARIANT: non-keyword alphanumeric word always parses"));
             }
 
             /// AND/OR combinations of alphanumeric words must always parse without error.
@@ -298,7 +298,7 @@ mod tests {
                 };
                 prop_assume!(!conflicts_with_kw(&lhs) && !conflicts_with_kw(&rhs));
                 let query = format!("{lhs} {op} {rhs}");
-                parse_fts_query(&query).unwrap_or_else(|_| unreachable!());
+                parse_fts_query(&query).unwrap_or_else(|_| unreachable!("INVARIANT: non-keyword AND/OR query always parses"));
             }
         }
     }

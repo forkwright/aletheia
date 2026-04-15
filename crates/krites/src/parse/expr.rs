@@ -492,7 +492,7 @@ fn build_term(pair: Pair<'_>, param_pool: &BTreeMap<String, DataValue>) -> Resul
 pub(crate) fn parse_int(s: &str, radix: u32) -> i64 {
     // WHY: get(2..) skips "0x"/"0o"/"0b" prefix; grammar guarantees valid integer format.
     i64::from_str_radix(&s.get(2..).unwrap_or("").replace('_', ""), radix)
-        .unwrap_or_else(|_| unreachable!())
+        .unwrap_or_else(|_| unreachable!("INVARIANT: grammar guarantees valid integer format after prefix"))
 }
 
 pub(crate) fn parse_string(pair: Pair<'_>) -> Result<CompactString> {

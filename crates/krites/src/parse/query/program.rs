@@ -302,7 +302,7 @@ fn extend_head_from_params(head: &mut Vec<Symbol>, param_list: Pair<'_>) {
             head.push(Symbol::new(
                 s.as_str()
                     .strip_prefix('$')
-                    .unwrap_or_else(|| unreachable!()),
+                    .unwrap_or_else(|| unreachable!("INVARIANT: pest param rule requires leading '$', strip_prefix always succeeds")),
                 Default::default(),
             ));
         }
@@ -430,7 +430,7 @@ fn collect_sort_option(pair: Pair<'_>, out_opts: &mut QueryOutOptions) {
                 Rule::sort_asc => dir = SortDir::Asc,
                 Rule::sort_desc => dir = SortDir::Dsc,
                 // INVARIANT: grammar guarantees sort_option only contains sort_asc or sort_desc.
-                _ => unreachable!(),
+                _ => unreachable!("INVARIANT: grammar guarantees sort_option only contains out_arg, sort_asc, or sort_desc"),
             }
         }
         out_opts.sorters.push((Symbol::new(var, span), dir));

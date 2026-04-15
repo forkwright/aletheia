@@ -271,7 +271,7 @@ impl Num {
                 let i = order_decode_i64(iu);
                 (Num::Int(i), remaining)
             }
-            _ => unreachable!(),
+            _ => unreachable!("INVARIANT: Num key tag is always IS_FLOAT, IS_NEG_INT, IS_POS_INT, or IS_APPROX_INT"),
         }
     }
 }
@@ -325,7 +325,7 @@ impl DataValue {
                 // UTF-8 validity is guaranteed by the encoding invariant.
                 let s = unsafe { String::from_utf8_unchecked(bytes) };
                 // INVARIANT: regex source was serialized from a valid Regex
-                let rx = Regex::from_str(&s).unwrap_or_else(|_| unreachable!());
+                let rx = Regex::from_str(&s).unwrap_or_else(|_| unreachable!("INVARIANT: regex source was serialized from a valid Regex"));
                 (DataValue::Regex(RegexWrapper(rx)), remaining)
             }
             LIST_TAG => {
@@ -400,10 +400,10 @@ impl DataValue {
                         }
                         (DataValue::Vec(Vector::F64(res_arr)), rest)
                     }
-                    _ => unreachable!(),
+                    _ => unreachable!("INVARIANT: vector type tag is always VEC_F32 or VEC_F64"),
                 }
             }
-            _ => unreachable!("{:?}", bs),
+            _ => unreachable!("INVARIANT: encoded key tag is always a known DataValue variant: {:?}", bs),
         }
     }
 }
