@@ -103,7 +103,7 @@ fn build_http_client() -> Result<Client> {
     // SSE parser's idle detection handles actual stall recovery.
     Client::builder()
         .connect_timeout(Duration::from_secs(10))
-        .timeout(Duration::from_secs(60))
+        .timeout(Duration::from_mins(1))
         .build()
         .map_err(|e| {
             error::ProviderInitSnafu {
@@ -749,7 +749,11 @@ impl AnthropicProvider {
                 headers.insert("idempotency-key", val);
             }
 
-            // codequality:ignore -- HTTPS enforced by constructor (from_config / with_credential_provider)
+            // SAFETY: cleartext transmission is impossible here. Both constructors
+            // (`from_config` and `with_credential_provider`) reject non-HTTPS base
+            // URLs unless the target is loopback (localhost / 127.0.0.1). The
+            // `base_url` field is immutable after construction, so by the time we
+            // reach this request the scheme has already been validated.
             let response = match self
                 .client
                 .post(format!("{}/v1/messages", self.base_url))

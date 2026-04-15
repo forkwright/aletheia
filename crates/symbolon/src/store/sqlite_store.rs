@@ -354,6 +354,8 @@ fn get_schema_version(conn: &Connection) -> Result<u32> {
         .context(error::DatabaseSnafu)?;
 
     if !table_exists {
+        // SAFETY(CodeQL hard-coded-credentials): this is a schema version sentinel
+        // (0 = fresh database, apply all DDL), not a cryptographic key or secret.
         return Ok(0);
     }
 
