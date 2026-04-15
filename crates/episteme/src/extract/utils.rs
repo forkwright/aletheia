@@ -1,10 +1,25 @@
 /// Strip markdown code fences from an LLM response.
+///
+/// If the response starts with a code fence but the closing fence is missing,
+/// the opening fence marker is still stripped and a warning is logged. Without
+/// this, the fence marker would be included in the JSON string, causing a parse
+/// error with no clear root cause.
 pub(super) fn strip_code_fences(s: &str) -> &str {
     let trimmed = s.trim();
     if let Some(rest) = trimmed.strip_prefix("```json") {
-        rest.strip_suffix("```").unwrap_or(rest).trim()
+        if let Some(stripped) = rest.strip_suffix("```") {
+            stripped.trim()
+        } else {
+            tracing::warn!("LLM response has opening ```json fence but no closing ```, stripping opening fence only");
+            rest.trim()
+        }
     } else if let Some(rest) = trimmed.strip_prefix("```") {
-        rest.strip_suffix("```").unwrap_or(rest).trim()
+        if let Some(stripped) = rest.strip_suffix("```") {
+            stripped.trim()
+        } else {
+            tracing::warn!("LLM response has opening ``` fence but no closing ```, stripping opening fence only");
+            rest.trim()
+        }
     } else {
         trimmed
     }

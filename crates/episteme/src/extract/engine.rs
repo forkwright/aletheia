@@ -5,7 +5,7 @@
         reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
     )
 )]
-use snafu::ResultExt;
+use snafu::IntoError;
 use tracing::instrument;
 
 #[cfg(feature = "mneme-engine")]
@@ -119,7 +119,8 @@ Rules:
 
     /// Parse a JSON extraction response from the LLM.
     ///
-    /// Strips markdown code fences if present.
+    /// Strips markdown code fences if present. On parse failure, includes the
+    /// first 500 characters of the raw response for debugging.
     #[instrument(skip(self, response))]
     #[expect(
         clippy::unused_self,
@@ -127,7 +128,12 @@ Rules:
     )]
     pub(crate) fn parse_response(&self, response: &str) -> Result<Extraction, ExtractionError> {
         let trimmed = strip_code_fences(response);
-        serde_json::from_str(trimmed).context(ParseResponseSnafu)
+        serde_json::from_str(trimmed).map_err(|source| {
+            // WHY: include response text so operators can diagnose malformed LLM output
+            // without correlating with provider logs.
+            let response_snippet: String = response.chars().take(500).collect();
+            ParseResponseSnafu { response_snippet }.into_error(source)
+        })
     }
 
     /// Run extraction end-to-end: build prompt, call provider, parse response.
@@ -207,10 +213,38 @@ Rules:
         let boost = turn_type.confidence_boost() + correction.confidence_boost;
         let mut filtered_count = 0;
 
+        // WHY: check for LLM confidence inflation before filtering individual facts,
+        // so the warning fires even if some facts are later filtered for other reasons.
+        let confidence_tuples: Vec<(f64,)> =
+            extraction.facts.iter().map(|f| (f.confidence,)).collect();
+        if refinement::has_confidence_inflation(&confidence_tuples) {
+            tracing::warn!(
+                total_facts = extraction.facts.len(),
+                "confidence inflation detected: >80% of extracted facts have confidence >= 0.95"
+            );
+        }
+
         extraction.facts = extraction
             .facts
             .into_iter()
             .filter_map(|mut fact| {
+                // WHY: reject facts with empty triple fields before any other processing —
+                // a fact with no subject, predicate, or object has zero semantic value.
+                if !refinement::validate_triple_fields(
+                    &fact.subject,
+                    &fact.predicate,
+                    &fact.object,
+                ) {
+                    filtered_count += 1;
+                    tracing::debug!(
+                        subject = %fact.subject,
+                        predicate = %fact.predicate,
+                        object = %fact.object,
+                        "fact rejected: empty subject, predicate, or object"
+                    );
+                    return None;
+                }
+
                 let fact_content = format!("{} {} {}", fact.subject, fact.predicate, fact.object);
                 let classified_type = refinement::classify_fact(&fact_content);
                 fact.fact_type = Some(classified_type.as_str().to_owned());
@@ -313,6 +347,14 @@ Rules:
         };
 
         for entity in entities {
+            // WHY: reject entities with empty names — they cannot be referenced or queried.
+            if entity.name.trim().is_empty() {
+                tracing::debug!(
+                    entity_type = %entity.entity_type,
+                    "entity rejected: empty name"
+                );
+                continue;
+            }
             let id = crate::id::EntityId::new(slugify(&entity.name)).map_err(|e| {
                 PersistSnafu {
                     message: e.to_string(),
@@ -410,6 +452,21 @@ Rules:
         }
 
         for (i, fact) in facts.iter().enumerate() {
+            // WHY: guard against empty triple fields reaching the knowledge store —
+            // the extraction pipeline should have caught these, but persist is the
+            // last line of defense.
+            if fact.subject.trim().is_empty()
+                || fact.predicate.trim().is_empty()
+                || fact.object.trim().is_empty()
+            {
+                tracing::debug!(
+                    subject = %fact.subject,
+                    predicate = %fact.predicate,
+                    object = %fact.object,
+                    "fact skipped during persist: empty subject, predicate, or object"
+                );
+                continue;
+            }
             let content = format!("{} {} {}", fact.subject, fact.predicate, fact.object);
             let id = crate::id::FactId::new(format!(
                 "{}-{}-{i}",

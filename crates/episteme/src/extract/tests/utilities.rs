@@ -125,12 +125,52 @@ fn parse_response_truncated_json() {
     let truncated = r#"{"entities": [{"name": "Alice""#;
     let result = engine.parse_response(truncated);
     assert!(result.is_err(), "truncated JSON must return error");
+    let err = result.expect_err("truncated JSON should produce parse error");
     assert!(
-        matches!(
-            result.expect_err("truncated JSON should produce parse error"),
-            ExtractionError::ParseResponse { .. }
-        ),
+        matches!(&err, ExtractionError::ParseResponse { .. }),
         "truncated JSON should yield ParseResponse error variant"
+    );
+    // #3305: parse error must include response snippet for debugging
+    let err_msg = err.to_string();
+    assert!(
+        err_msg.contains("Alice"),
+        "parse error should include the raw response snippet: {err_msg}"
+    );
+}
+
+#[test]
+fn parse_response_error_snippet_truncated_at_500_chars() {
+    let engine = ExtractionEngine::new(ExtractionConfig::default());
+    // WHY: use ASCII to guarantee exact 500-char truncation (no multi-byte boundary issues).
+    let long_response = "x".repeat(1000);
+    let result = engine.parse_response(&long_response);
+    assert!(result.is_err(), "non-JSON string must return error");
+    let err = result.expect_err("non-JSON string should produce parse error");
+    if let ExtractionError::ParseResponse {
+        response_snippet, ..
+    } = &err
+    {
+        assert_eq!(
+            response_snippet.len(),
+            500,
+            "response snippet should be truncated to 500 chars for ASCII input"
+        );
+    } else {
+        panic!("expected ParseResponse variant");
+    }
+}
+
+#[test]
+fn parse_response_error_snippet_short_response_included_fully() {
+    let engine = ExtractionEngine::new(ExtractionConfig::default());
+    let short = "not json at all";
+    let result = engine.parse_response(short);
+    assert!(result.is_err(), "non-JSON string must return error");
+    let err = result.expect_err("non-JSON string should produce parse error");
+    let err_msg = err.to_string();
+    assert!(
+        err_msg.contains("not json at all"),
+        "short responses should be included fully in error: {err_msg}"
     );
 }
 
@@ -416,6 +456,99 @@ fn slugify_nfc_normalization_preserves_ascii() {
         utils::slugify("Data Processor"),
         "data-processor",
         "plain ASCII should not be altered by NFC normalization"
+    );
+}
+
+#[cfg(feature = "mneme-engine")]
+#[test]
+fn persist_skips_empty_entity_name() {
+    let store = crate::knowledge_store::KnowledgeStore::open_mem()
+        .expect("in-memory knowledge store should open successfully");
+    let engine = ExtractionEngine::new(ExtractionConfig::default());
+
+    let extraction = Extraction {
+        entities: vec![
+            ExtractedEntity {
+                name: String::new(),
+                entity_type: "person".to_owned(),
+                description: "No name".to_owned(),
+            },
+            ExtractedEntity {
+                name: "   ".to_owned(),
+                entity_type: "person".to_owned(),
+                description: "Whitespace name".to_owned(),
+            },
+            ExtractedEntity {
+                name: "ValidEntity".to_owned(),
+                entity_type: "concept".to_owned(),
+                description: "Has a real name".to_owned(),
+            },
+        ],
+        relationships: vec![],
+        facts: vec![],
+    };
+
+    let result = engine
+        .persist(&extraction, &store, "session:test", "syn")
+        .expect("persist should succeed, skipping empty-name entities");
+    assert_eq!(
+        result.entities_inserted, 1,
+        "only the entity with a valid name should be inserted"
+    );
+}
+
+#[cfg(feature = "mneme-engine")]
+#[test]
+fn persist_skips_empty_fact_fields() {
+    let store = crate::knowledge_store::KnowledgeStore::open_mem()
+        .expect("in-memory knowledge store should open successfully");
+    let engine = ExtractionEngine::new(ExtractionConfig::default());
+
+    let extraction = Extraction {
+        entities: vec![],
+        relationships: vec![],
+        facts: vec![
+            ExtractedFact {
+                subject: String::new(),
+                predicate: "uses".to_owned(),
+                object: "Rust".to_owned(),
+                confidence: 0.9,
+                is_correction: false,
+                fact_type: None,
+            },
+            ExtractedFact {
+                subject: "Alice".to_owned(),
+                predicate: "   ".to_owned(),
+                object: "Rust".to_owned(),
+                confidence: 0.9,
+                is_correction: false,
+                fact_type: None,
+            },
+            ExtractedFact {
+                subject: "Alice".to_owned(),
+                predicate: "uses".to_owned(),
+                object: String::new(),
+                confidence: 0.9,
+                is_correction: false,
+                fact_type: None,
+            },
+            ExtractedFact {
+                subject: "Alice".to_owned(),
+                predicate: "uses".to_owned(),
+                object: "Rust".to_owned(),
+                confidence: 0.9,
+                is_correction: false,
+                fact_type: None,
+            },
+        ],
+    };
+
+    let result = engine
+        .persist(&extraction, &store, "session:test", "syn")
+        .expect("persist should succeed, skipping facts with empty fields");
+    assert_eq!(
+        result.facts_inserted, 1,
+        "only the fact with all non-empty fields should be inserted"
     );
 }
 

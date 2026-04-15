@@ -434,6 +434,8 @@ pub enum FilterReason {
     Trivial,
     /// Duplicate of an earlier fact in the same batch.
     Duplicate,
+    /// One or more triple fields (subject, predicate, object) are empty or whitespace-only.
+    EmptyField,
 }
 
 impl std::fmt::Display for FilterReason {
@@ -444,6 +446,7 @@ impl std::fmt::Display for FilterReason {
             Self::TooLong => f.write_str("too_long"),
             Self::Trivial => f.write_str("trivial"),
             Self::Duplicate => f.write_str("duplicate"),
+            Self::EmptyField => f.write_str("empty_field"),
         }
     }
 }
@@ -502,6 +505,30 @@ pub(crate) fn filter_fact(content: &str, confidence: f64) -> FilterResult {
         passed: true,
         reason: None,
     }
+}
+
+/// Validate that all triple fields (subject, predicate, object) are non-empty.
+///
+/// Returns `true` if all fields contain at least one non-whitespace character.
+/// Empty or whitespace-only fields have no semantic value and must be rejected
+/// before insertion into the knowledge store.
+#[must_use]
+pub(crate) fn validate_triple_fields(subject: &str, predicate: &str, object: &str) -> bool {
+    !subject.trim().is_empty() && !predicate.trim().is_empty() && !object.trim().is_empty()
+}
+
+/// Check a batch of facts for confidence inflation.
+///
+/// Returns `true` if more than 80% of facts have confidence >= 0.95,
+/// which indicates the LLM is over-assigning high confidence scores.
+#[must_use]
+pub(crate) fn has_confidence_inflation(facts: &[(f64,)]) -> bool {
+    if facts.is_empty() {
+        return false;
+    }
+    let high_count = facts.iter().filter(|(c,)| *c >= 0.95).count();
+    // WHY: integer multiply avoids float division for threshold comparison.
+    high_count * 100 > facts.len() * 80
 }
 
 const TRIVIAL_PATTERNS: &[&str] = &[

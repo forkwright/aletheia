@@ -235,6 +235,27 @@ pub struct KnowledgeConfig {
     /// Default maximum cache entries for side-query. Default: 64.
     /// Mirrors `episteme::side_query::DEFAULT_CACHE_CAPACITY`.
     pub side_query_cache_capacity: usize,
+    /// Decay score below which a skill is flagged for review. Default: 0.3.
+    /// Mirrors `episteme::skill::decay::NEEDS_REVIEW_THRESHOLD`.
+    pub skill_decay_needs_review_threshold: f64,
+    /// Decay score below which a skill is auto-retired. Default: 0.08.
+    /// Mirrors `episteme::skill::decay::RETIRE_THRESHOLD`.
+    pub skill_decay_retire_threshold: f64,
+    /// Days of inactivity before decay reaches review threshold (low-usage skills). Default: 28.
+    /// Mirrors `episteme::skill::decay::DEFAULT_STALE_DAYS`.
+    pub skill_decay_stale_days: u32,
+    /// Usage count above which a skill decays slower. Default: 10.
+    /// Mirrors `episteme::skill::decay::HIGH_USAGE_THRESHOLD`.
+    pub skill_decay_high_usage_threshold: u32,
+    /// Multiplier applied to decay half-life for high-usage skills. Default: 3.0.
+    /// Mirrors `episteme::skill::decay::HIGH_USAGE_DECAY_FACTOR`.
+    pub skill_decay_high_usage_factor: f64,
+    /// Surprise threshold (nats) for episode boundary detection. Default: 2.0.
+    /// Mirrors `episteme::surprise::DEFAULT_THRESHOLD`.
+    pub surprise_threshold: f64,
+    /// EMA alpha for surprise baseline adaptation. Default: 0.3.
+    /// Mirrors `episteme::surprise::DEFAULT_EMA_ALPHA`.
+    pub surprise_ema_alpha: f64,
 }
 
 impl Default for KnowledgeConfig {
@@ -257,6 +278,13 @@ impl Default for KnowledgeConfig {
             side_query_max_results: 5,
             side_query_cache_ttl_secs: 300,
             side_query_cache_capacity: 64,
+            skill_decay_needs_review_threshold: 0.3,
+            skill_decay_retire_threshold: 0.08,
+            skill_decay_stale_days: 28,
+            skill_decay_high_usage_threshold: 10,
+            skill_decay_high_usage_factor: 3.0,
+            surprise_threshold: 2.0,
+            surprise_ema_alpha: 0.3,
         }
     }
 }
