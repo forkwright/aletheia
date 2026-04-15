@@ -180,7 +180,8 @@ fn run_query_and_print(
     use std::collections::BTreeMap;
     match store.run_query(script, BTreeMap::new()) {
         Ok(result) => {
-            print_table(&result.headers, &result.rows);
+            let rendered = result.rows_as_strings();
+            print_table(&result.headers, &rendered);
         }
         Err(e) => {
             eprintln!("Error: {e}");
@@ -191,14 +192,14 @@ fn run_query_and_print(
 /// Print rows as a plain ASCII table with column headers.
 ///
 /// WHY: No external pretty-print dependency. The table is functional for
-/// debugging; polish is secondary. Each cell is formatted via
-/// [`mneme::engine::DataValue`]'s `Display` impl.
+/// debugging; polish is secondary. Rows are pre-formatted as strings by
+/// [`QueryResult::rows_as_strings`].
 #[cfg(feature = "recall")]
 #[expect(
     clippy::indexing_slicing,
     reason = "bounds are verified: i < widths.len() checked before index, and header enumeration is bounded"
 )]
-fn print_table(headers: &[String], rows: &[Vec<mneme::engine::DataValue>]) {
+fn print_table(headers: &[String], rows: &[Vec<String>]) {
     if headers.is_empty() && rows.is_empty() {
         println!("(no results)");
         return;
@@ -208,21 +209,15 @@ fn print_table(headers: &[String], rows: &[Vec<mneme::engine::DataValue>]) {
     let ncols = headers.len();
     let mut widths: Vec<usize> = headers.iter().map(String::len).collect();
 
-    let rendered: Vec<Vec<String>> = rows
-        .iter()
-        .map(|row| {
-            row.iter()
-                .enumerate()
-                .map(|(i, v)| {
-                    let s = format_value(v);
-                    if i < widths.len() && s.len() > widths[i] {
-                        widths[i] = s.len();
-                    }
-                    s
-                })
-                .collect()
-        })
-        .collect();
+    // WHY: compute widths by side-effect during iteration; this is intentionally
+    // not inspect() because we need mutable access to widths via the closure.
+    for row in rows {
+        for (i, s) in row.iter().enumerate() {
+            if i < widths.len() && s.len() > widths[i] {
+                widths[i] = s.len();
+            }
+        }
+    }
 
     // Ensure widths covers all columns that may appear in rows but not headers.
     let max_row_cols = rows.iter().map(Vec::len).max().unwrap_or(0);
@@ -252,7 +247,7 @@ fn print_table(headers: &[String], rows: &[Vec<mneme::engine::DataValue>]) {
     }
 
     // Data rows.
-    for row in &rendered {
+    for row in rows {
         let cells: String = row
             .iter()
             .enumerate()
@@ -270,31 +265,3 @@ fn print_table(headers: &[String], rows: &[Vec<mneme::engine::DataValue>]) {
     println!();
 }
 
-/// Format a single [`DataValue`] for display.
-///
-/// WHY: Delegates to the engine's own `Display` impl so new variant additions
-/// never cause a compile error here. `Str` values are stripped of engine-style
-/// quoting (the `Display` impl wraps strings in `"..."`) to improve readability
-/// in table cells.
-#[cfg(feature = "recall")]
-fn format_value(v: &mneme::engine::DataValue) -> String {
-    use mneme::engine::DataValue;
-    match v {
-        // WHY: engine Display wraps Str in `"..."` quotes; strip them for
-        // cleaner table output.
-        DataValue::Str(s) => s.to_string(),
-        // WHY: Num has a public get_int(); use it to avoid decimal points on
-        // integer values, which the engine Display also does.
-        DataValue::Num(n) => {
-            if let Some(i) = n.get_int() {
-                format!("{i}")
-            } else {
-                // WHY: fall back to engine Display for floats — it handles
-                // NaN/Inf correctly.
-                format!("{v}")
-            }
-        }
-        // All other variants: use the engine's Display impl as source of truth.
-        _ => format!("{v}"),
-    }
-}

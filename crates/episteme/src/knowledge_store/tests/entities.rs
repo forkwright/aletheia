@@ -17,7 +17,7 @@ fn insert_entity_and_query_neighborhood() {
     let rows = store
         .entity_neighborhood(&crate::id::EntityId::new("e1").expect("valid test id"))
         .expect("neighborhood");
-    assert!(rows.rows.is_empty());
+    assert!(rows.is_empty());
 }
 
 #[test]
@@ -35,7 +35,7 @@ fn insert_entity_with_aliases() {
             std::collections::BTreeMap::new(),
         )
         .expect("raw query");
-    assert_eq!(rows.rows.len(), 1);
+    assert_eq!(rows.row_count(), 1);
 }
 
 #[test]
@@ -55,7 +55,7 @@ fn insert_relationship_and_retrieve_neighborhood() {
         .entity_neighborhood(&crate::id::EntityId::new("e1").expect("valid test id"))
         .expect("neighborhood");
     assert!(
-        !rows.rows.is_empty(),
+        !rows.is_empty(),
         "neighborhood should contain the relationship"
     );
 }
@@ -76,7 +76,7 @@ fn insert_relationship_bidirectional_neighborhood() {
     let from_e1 = store
         .entity_neighborhood(&crate::id::EntityId::new("e1").expect("valid test id"))
         .expect("e1 neighborhood");
-    assert!(!from_e1.rows.is_empty());
+    assert!(!from_e1.is_empty());
 
     let _from_e2 = store
         .entity_neighborhood(&crate::id::EntityId::new("e2").expect("valid test id"))
@@ -107,9 +107,9 @@ fn entity_neighborhood_2hop() {
         .entity_neighborhood(&crate::id::EntityId::new("e1").expect("valid test id"))
         .expect("2-hop neighborhood");
     assert!(
-        rows.rows.len() >= 2,
+        rows.row_count() >= 2,
         "2-hop neighborhood should find at least 2 results, got {}",
-        rows.rows.len()
+        rows.row_count()
     );
 }
 
@@ -119,7 +119,7 @@ fn entity_neighborhood_nonexistent_entity() {
     let rows = store
         .entity_neighborhood(&crate::id::EntityId::new("nonexistent").expect("valid test id"))
         .expect("neighborhood of missing entity should succeed");
-    assert!(rows.rows.is_empty());
+    assert!(rows.is_empty());
 }
 
 #[test]
@@ -137,7 +137,7 @@ fn insert_duplicate_entity_name_upserts() {
             std::collections::BTreeMap::new(),
         )
         .expect("raw query");
-    assert_eq!(rows.rows.len(), 1);
+    assert_eq!(rows.row_count(), 1);
 }
 
 #[test]
@@ -156,7 +156,7 @@ fn insert_different_entities_same_name() {
             std::collections::BTreeMap::new(),
         )
         .expect("raw query");
-    assert_eq!(rows.rows.len(), 2);
+    assert_eq!(rows.row_count(), 2);
 }
 
 #[test]
@@ -247,7 +247,7 @@ fn concurrent_entity_inserts() {
             std::collections::BTreeMap::new(),
         )
         .expect("count entities");
-    assert_eq!(rows.rows.len(), 1);
+    assert_eq!(rows.row_count(), 1);
 }
 
 #[test]
@@ -258,5 +258,5 @@ fn insert_entity_unicode() {
     let rows = store
         .entity_neighborhood(&crate::id::EntityId::new("eu1").expect("valid test id"))
         .expect("neighborhood query");
-    assert!(rows.rows.is_empty() || !rows.rows.is_empty());
+    assert!(rows.is_empty() || !rows.is_empty());
 }

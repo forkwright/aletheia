@@ -679,7 +679,7 @@ mod tests {
                     std::collections::BTreeMap::new(),
                 )
                 .expect("query failed");
-            assert_eq!(result.rows.len(), 1, "expected one ops_turns row");
+            assert_eq!(result.row_count(), 1, "expected one ops_turns row");
         }
 
         #[test]
@@ -706,7 +706,7 @@ mod tests {
                     std::collections::BTreeMap::new(),
                 )
                 .expect("query failed");
-            assert_eq!(result.rows.len(), 1, "expected one ops_tools row");
+            assert_eq!(result.row_count(), 1, "expected one ops_tools row");
         }
 
         #[test]
@@ -732,7 +732,7 @@ mod tests {
                     std::collections::BTreeMap::new(),
                 )
                 .expect("query failed");
-            assert_eq!(result.rows.len(), 1, "expected one ops_errors row");
+            assert_eq!(result.row_count(), 1, "expected one ops_errors row");
         }
     }
 }

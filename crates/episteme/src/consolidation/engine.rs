@@ -79,9 +79,9 @@ impl KnowledgeStore {
             })?;
 
         let mut candidates = Vec::new();
-        for row in &result.rows {
-            let entity_id_str = row.first().and_then(|v| v.get_str()).unwrap_or_default();
-            let fact_count = i64_as_usize(row.get(1).and_then(DataValue::get_int).unwrap_or(0));
+        for i in 0..result.row_count() {
+            let entity_id_str = result.get_string(i, "entity_id").unwrap_or_default();
+            let fact_count = i64_as_usize(result.get_i64(i, "fact_count").unwrap_or(0));
             let entity_id = EntityId::new(entity_id_str).map_err(|e| {
                 StoreSnafu {
                     message: e.to_string(),
@@ -144,9 +144,9 @@ impl KnowledgeStore {
             })?;
 
         let mut candidates = Vec::new();
-        for row in &result.rows {
-            let cluster_id = row.first().and_then(DataValue::get_int).unwrap_or(-1);
-            let fact_count = i64_as_usize(row.get(1).and_then(DataValue::get_int).unwrap_or(0));
+        for i in 0..result.row_count() {
+            let cluster_id = result.get_i64(i, "cluster_id").unwrap_or(-1);
+            let fact_count = i64_as_usize(result.get_i64(i, "fact_count").unwrap_or(0));
 
             let facts = self
                 .gather_cluster_facts(nous_id, cluster_id, &cutoff)
@@ -478,15 +478,12 @@ impl KnowledgeStore {
             .build()
         })?;
 
-        if let Some(row) = result.rows.first() {
-            Ok(Some(
-                row.first()
-                    .and_then(|v| v.get_str())
-                    .unwrap_or_default()
-                    .to_owned(),
-            ))
-        } else {
+        if result.is_empty() {
             Ok(None)
+        } else {
+            Ok(Some(
+                result.get_string(0, "consolidated_at").unwrap_or_default(),
+            ))
         }
     }
 

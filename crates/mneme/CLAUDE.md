@@ -2,6 +2,16 @@
 
 Curated facade re-exporting from four decomposed sub-crates. ~270 lines of glue code.
 
+## Facade justification (#3243)
+
+Decision: **keep mneme**. Evaluated per STANDARDS.md "Everything must earn its place."
+
+1. **API stability**: 7+ downstream crates (nous, pylon, aletheia, melete, daemon, diaporeia, integration-tests) import from `mneme`. If sub-crates are reorganized, downstream `use` statements do not change.
+2. **Feature gating**: mneme gates krites behind `mneme-engine`. Without the facade, every consuming crate would duplicate this feature gate.
+3. **Import ergonomics**: single `mneme::` prefix replaces four crate prefixes.
+
+**Alarm threshold**: if `lib.rs` exceeds 500 lines, the facade is accreting logic that belongs in a sub-crate. Audit and extract.
+
 ## Architecture
 
 Mneme was decomposed into eidos, graphe, episteme, and krites. This crate re-exports only the types that downstream consumers actually import, not entire modules. Internal types remain accessible through the sub-crates directly.

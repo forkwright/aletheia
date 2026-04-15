@@ -580,7 +580,7 @@ impl NousActor {
     /// returns an empty vec so the pipeline is never blocked by intent load failures.
     pub(crate) fn resolve_intent_sections(&self) -> Vec<BootstrapSection> {
         use crate::bootstrap::{BootstrapSection, SectionPriority};
-        use crate::budget::{CharEstimator, TokenEstimator as _};
+        use crate::budget::CharEstimator;
         use dianoia::intent::IntentStore;
         use tracing::warn;
 

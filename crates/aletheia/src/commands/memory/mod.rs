@@ -307,12 +307,8 @@ fn count_relation(
     let result = store
         .run_query(&script, BTreeMap::new())
         .whatever_context("query failed")?;
-    let count = result
-        .rows
-        .first()
-        .and_then(|r| r.first())
-        .and_then(mneme::engine::DataValue::get_int)
-        .unwrap_or(0);
+    let col = result.headers.first().map_or("count(k)", String::as_str);
+    let count = result.get_i64(0, col).unwrap_or(0);
     Ok(usize::try_from(count).unwrap_or(0))
 }
 
@@ -331,10 +327,8 @@ fn find_orphaned_entities(
     let result = store
         .run_query(script, BTreeMap::new())
         .whatever_context("orphan query failed")?;
-    Ok(result
-        .rows
-        .iter()
-        .filter_map(|r| r.first().and_then(|v| v.get_str()).map(String::from))
+    Ok((0..result.row_count())
+        .filter_map(|i| result.get_string(i, "id"))
         .collect())
 }
 
@@ -355,13 +349,11 @@ fn find_dangling_edges(
     let result = store
         .run_query(script, BTreeMap::new())
         .whatever_context("dangling edge query failed")?;
-    Ok(result
-        .rows
-        .iter()
-        .map(|r| {
-            let src = r.first().and_then(|v| v.get_str()).unwrap_or("?");
-            let dst = r.get(1).and_then(|v| v.get_str()).unwrap_or("?");
-            let rel = r.get(2).and_then(|v| v.get_str()).unwrap_or("?");
+    Ok((0..result.row_count())
+        .map(|i| {
+            let src = result.get_string(i, "src").unwrap_or_else(|| "?".to_owned());
+            let dst = result.get_string(i, "dst").unwrap_or_else(|| "?".to_owned());
+            let rel = result.get_string(i, "relation").unwrap_or_else(|| "?".to_owned());
             format!("{src} --[{rel}]--> {dst}")
         })
         .collect())
@@ -381,10 +373,8 @@ fn find_orphaned_embeddings(
     let result = store
         .run_query(script, BTreeMap::new())
         .whatever_context("orphaned embedding query failed")?;
-    Ok(result
-        .rows
-        .iter()
-        .filter_map(|r| r.first().and_then(|v| v.get_str()).map(String::from))
+    Ok((0..result.row_count())
+        .filter_map(|i| result.get_string(i, "id"))
         .collect())
 }
 
@@ -703,15 +693,11 @@ fn find_entity_cooccurrence(
     let result = store
         .run_query(&script, BTreeMap::new())
         .whatever_context("co-occurrence query failed")?;
-    Ok(result
-        .rows
-        .iter()
-        .filter_map(|r| {
-            let a = r.first().and_then(|v| v.get_str())?.to_owned();
-            let b = r.get(1).and_then(|v| v.get_str())?.to_owned();
-            let cnt = r
-                .get(2)
-                .and_then(mneme::engine::DataValue::get_int)?;
+    Ok((0..result.row_count())
+        .filter_map(|i| {
+            let a = result.get_string(i, "name_a")?;
+            let b = result.get_string(i, "name_b")?;
+            let cnt = result.get_i64(i, "cnt")?;
             Some((a, b, cnt))
         })
         .collect())
@@ -735,14 +721,10 @@ fn find_relationship_chains(
     let result = store
         .run_query(&script, BTreeMap::new())
         .whatever_context("relationship chain query failed")?;
-    Ok(result
-        .rows
-        .iter()
-        .filter_map(|r| {
-            let rel = r.first().and_then(|v| v.get_str())?.to_owned();
-            let cnt = r
-                .get(1)
-                .and_then(mneme::engine::DataValue::get_int)?;
+    Ok((0..result.row_count())
+        .filter_map(|i| {
+            let rel = result.get_string(i, "relation")?;
+            let cnt = result.get_i64(i, "count(src)")?;
             Some((rel, cnt))
         })
         .collect())
@@ -773,14 +755,10 @@ fn find_hub_entities(
     let result = store
         .run_query(&script, BTreeMap::new())
         .whatever_context("hub entity query failed")?;
-    Ok(result
-        .rows
-        .iter()
-        .filter_map(|r| {
-            let name = r.first().and_then(|v| v.get_str())?.to_owned();
-            let total = r
-                .get(1)
-                .and_then(mneme::engine::DataValue::get_int)?;
+    Ok((0..result.row_count())
+        .filter_map(|i| {
+            let name = result.get_string(i, "name")?;
+            let total = result.get_i64(i, "total")?;
             Some((name, total))
         })
         .collect())

@@ -575,12 +575,8 @@ fn build_graph_check_report(
         let result = store
             .run_query(&script, BTreeMap::new())
             .map_err(|e| format!("query failed: {e}"))?;
-        let count = result
-            .rows
-            .first()
-            .and_then(|r| r.first())
-            .and_then(mneme::engine::DataValue::get_int)
-            .unwrap_or(0);
+        let col = result.headers.first().map_or("count(k)", String::as_str);
+        let count = result.get_i64(0, col).unwrap_or(0);
         Ok(usize::try_from(count).unwrap_or(0))
     }
 
@@ -597,7 +593,7 @@ fn build_graph_check_report(
         let result = store
             .run_query(script, BTreeMap::new())
             .map_err(|e| format!("orphan query failed: {e}"))?;
-        Ok(result.rows.len())
+        Ok(result.row_count())
     }
 
     fn count_dangling_edges(
@@ -615,7 +611,7 @@ fn build_graph_check_report(
         let result = store
             .run_query(script, BTreeMap::new())
             .map_err(|e| format!("dangling edge query failed: {e}"))?;
-        Ok(result.rows.len())
+        Ok(result.row_count())
     }
 
     let fact_count = count_relation(store, "facts")?;
