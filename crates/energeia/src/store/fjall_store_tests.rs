@@ -1,0 +1,404 @@
+#![expect(clippy::unwrap_used, reason = "test assertions")]
+#![expect(
+    clippy::indexing_slicing,
+    reason = "test assertions on known-length collections"
+)]
+#![expect(clippy::float_cmp, reason = "test assertions on exact float values")]
+
+use super::*;
+use tempfile::TempDir;
+
+fn setup_test_store() -> (TempDir, EnergeiaStore) {
+    let temp_dir = TempDir::new().unwrap();
+    let db = fjall::Database::builder(temp_dir.path()).open().unwrap();
+    let store = EnergeiaStore::new(&db).unwrap();
+    (temp_dir, store)
+}
+
+fn sample_dispatch_spec() -> DispatchSpec {
+    DispatchSpec {
+        prompt_numbers: vec![1, 2, 3],
+        project: "acme".to_owned(),
+        dag_ref: None,
+        max_parallel: Some(2),
+    }
+}
+
+// -----------------------------------------------------------------------
+// Dispatch tests
+// -----------------------------------------------------------------------
+
+#[test]
+fn create_and_get_dispatch() {
+    let (_dir, store) = setup_test_store();
+    let spec = sample_dispatch_spec();
+
+    let id = store.create_dispatch("acme", &spec).unwrap();
+    let record = store.get_dispatch(&id).unwrap().unwrap();
+
+    assert_eq!(record.project, "acme");
+    assert_eq!(record.status, DispatchStatus::Running);
+    assert_eq!(record.total_cost_usd, 0.0);
+    assert!(record.finished_at.is_none());
+}
+
+#[test]
+fn get_nonexistent_dispatch_returns_none() {
+    let (_dir, store) = setup_test_store();
+    let id = DispatchId::new("01NONEXISTENT");
+    assert!(store.get_dispatch(&id).unwrap().is_none());
+}
+
+#[test]
+fn finish_dispatch_aggregates_sessions() {
+    let (_dir, store) = setup_test_store();
+    let spec = sample_dispatch_spec();
+    let dispatch_id = store.create_dispatch("acme", &spec).unwrap();
+
+    let sess1 = store.create_session(&dispatch_id, 1).unwrap();
+    let sess2 = store.create_session(&dispatch_id, 2).unwrap();
+
+    store
+        .update_session(
+            &sess1,
+            SessionUpdate {
+                status: Some(SessionStatus::Success),
+                cost_usd: Some(1.50),
+                num_turns: Some(10),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    store
+        .update_session(
+            &sess2,
+            SessionUpdate {
+                status: Some(SessionStatus::Success),
+                cost_usd: Some(2.25),
+                num_turns: Some(8),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+    store
+        .finish_dispatch(&dispatch_id, DispatchStatus::Completed)
+        .unwrap();
+
+    let record = store.get_dispatch(&dispatch_id).unwrap().unwrap();
+    assert_eq!(record.status, DispatchStatus::Completed);
+    assert!(record.finished_at.is_some());
+    assert!((record.total_cost_usd - 3.75).abs() < 0.01);
+    assert_eq!(record.total_sessions, 2);
+}
+
+#[test]
+fn finish_nonexistent_dispatch_returns_not_found() {
+    let (_dir, store) = setup_test_store();
+    let id = DispatchId::new("01NONEXISTENT");
+    let result = store.finish_dispatch(&id, DispatchStatus::Failed);
+    assert!(result.is_err());
+}
+
+// -----------------------------------------------------------------------
+// Session tests
+// -----------------------------------------------------------------------
+
+#[test]
+fn create_and_list_sessions() {
+    let (_dir, store) = setup_test_store();
+    let spec = sample_dispatch_spec();
+    let dispatch_id = store.create_dispatch("acme", &spec).unwrap();
+
+    store.create_session(&dispatch_id, 1).unwrap();
+    store.create_session(&dispatch_id, 2).unwrap();
+    store.create_session(&dispatch_id, 3).unwrap();
+
+    let sessions = store.list_sessions_for_dispatch(&dispatch_id).unwrap();
+    assert_eq!(sessions.len(), 3);
+    assert_eq!(sessions[0].prompt_number, 1);
+    assert_eq!(sessions[1].prompt_number, 2);
+    assert_eq!(sessions[2].prompt_number, 3);
+}
+
+#[test]
+fn sessions_isolated_between_dispatches() {
+    let (_dir, store) = setup_test_store();
+    let spec = sample_dispatch_spec();
+
+    let d1 = store.create_dispatch("project-a", &spec).unwrap();
+    let d2 = store.create_dispatch("project-b", &spec).unwrap();
+
+    store.create_session(&d1, 1).unwrap();
+    store.create_session(&d1, 2).unwrap();
+    store.create_session(&d2, 1).unwrap();
+
+    assert_eq!(store.list_sessions_for_dispatch(&d1).unwrap().len(), 2);
+    assert_eq!(store.list_sessions_for_dispatch(&d2).unwrap().len(), 1);
+}
+
+#[test]
+fn update_session_partial() {
+    let (_dir, store) = setup_test_store();
+    let spec = sample_dispatch_spec();
+    let dispatch_id = store.create_dispatch("acme", &spec).unwrap();
+    let session_id = store.create_session(&dispatch_id, 1).unwrap();
+
+    store
+        .update_session(
+            &session_id,
+            SessionUpdate {
+                status: Some(SessionStatus::Success),
+                cost_usd: Some(0.42),
+                pr_url: Some("https://github.com/acme/repo/pull/7".to_owned()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+    let sessions = store.list_sessions_for_dispatch(&dispatch_id).unwrap();
+    let session = &sessions[0];
+    assert_eq!(session.status, SessionStatus::Success);
+    assert_eq!(session.cost_usd, 0.42);
+    assert_eq!(
+        session.pr_url.as_deref(),
+        Some("https://github.com/acme/repo/pull/7")
+    );
+    assert_eq!(session.num_turns, 0);
+}
+
+#[test]
+fn update_nonexistent_session_returns_not_found() {
+    let (_dir, store) = setup_test_store();
+    let id = SessionId::new("01NONEXISTENT");
+    let result = store.update_session(&id, SessionUpdate::default());
+    assert!(result.is_err());
+}
+
+// -----------------------------------------------------------------------
+// Lesson tests
+// -----------------------------------------------------------------------
+
+#[test]
+fn add_and_query_lessons() {
+    let (_dir, store) = setup_test_store();
+
+    store
+        .add_lesson(&NewLesson {
+            source: "steward".to_owned(),
+            category: "testing".to_owned(),
+            lesson: "Always check clippy".to_owned(),
+            evidence: None,
+            project: Some("acme".to_owned()),
+            prompt_number: Some(1),
+        })
+        .unwrap();
+
+    store
+        .add_lesson(&NewLesson {
+            source: "qa".to_owned(),
+            category: "style".to_owned(),
+            lesson: "Use snafu not thiserror".to_owned(),
+            evidence: Some("RUST.md".to_owned()),
+            project: Some("acme".to_owned()),
+            prompt_number: None,
+        })
+        .unwrap();
+
+    let all = store.query_lessons(None, None, None, 100).unwrap();
+    assert_eq!(all.len(), 2);
+
+    let by_source = store
+        .query_lessons(Some("steward"), None, None, 100)
+        .unwrap();
+    assert_eq!(by_source.len(), 1);
+    assert_eq!(by_source[0].lesson, "Always check clippy");
+
+    let by_category = store.query_lessons(None, Some("style"), None, 100).unwrap();
+    assert_eq!(by_category.len(), 1);
+
+    let by_project = store.query_lessons(None, None, Some("acme"), 100).unwrap();
+    assert_eq!(by_project.len(), 2);
+}
+
+#[test]
+fn query_lessons_respects_limit() {
+    let (_dir, store) = setup_test_store();
+    for i in 0..5 {
+        store
+            .add_lesson(&NewLesson {
+                source: "steward".to_owned(),
+                category: "testing".to_owned(),
+                lesson: format!("Lesson {i}"),
+                evidence: None,
+                project: None,
+                prompt_number: None,
+            })
+            .unwrap();
+    }
+    let results = store.query_lessons(None, None, None, 3).unwrap();
+    assert_eq!(results.len(), 3);
+}
+
+// -----------------------------------------------------------------------
+// Observation tests
+// -----------------------------------------------------------------------
+
+#[test]
+fn add_and_query_observations() {
+    let (_dir, store) = setup_test_store();
+
+    store
+        .add_observation(&NewObservation {
+            project: "acme".to_owned(),
+            source: "qa".to_owned(),
+            content: "Flaky test in auth module".to_owned(),
+            observation_type: "bug".to_owned(),
+            session_id: None,
+        })
+        .unwrap();
+
+    store
+        .add_observation(&NewObservation {
+            project: "other".to_owned(),
+            source: "steward".to_owned(),
+            content: "Missing docs".to_owned(),
+            observation_type: "doc_gap".to_owned(),
+            session_id: None,
+        })
+        .unwrap();
+
+    let all = store.query_observations(None, None, 100).unwrap();
+    assert_eq!(all.len(), 2);
+
+    let acme_only = store.query_observations(Some("acme"), None, 100).unwrap();
+    assert_eq!(acme_only.len(), 1);
+    assert_eq!(acme_only[0].content, "Flaky test in auth module");
+}
+
+#[test]
+fn query_observations_respects_limit() {
+    let (_dir, store) = setup_test_store();
+    for i in 0..5 {
+        store
+            .add_observation(&NewObservation {
+                project: "acme".to_owned(),
+                source: "qa".to_owned(),
+                content: format!("Observation {i}"),
+                observation_type: "idea".to_owned(),
+                session_id: None,
+            })
+            .unwrap();
+    }
+    let results = store.query_observations(None, None, 3).unwrap();
+    assert_eq!(results.len(), 3);
+}
+
+// -----------------------------------------------------------------------
+// CI Validation tests
+// -----------------------------------------------------------------------
+
+#[test]
+fn add_and_list_ci_validations() {
+    let (_dir, store) = setup_test_store();
+    let spec = sample_dispatch_spec();
+    let dispatch_id = store.create_dispatch("acme", &spec).unwrap();
+    let session_id = store.create_session(&dispatch_id, 1).unwrap();
+
+    store
+        .add_ci_validation(&session_id, "clippy", 42, CiValidationStatus::Pass, None)
+        .unwrap();
+
+    store
+        .add_ci_validation(
+            &session_id,
+            "tests",
+            42,
+            CiValidationStatus::Fail,
+            Some("3 tests failed".to_owned()),
+        )
+        .unwrap();
+
+    let validations =
+        queries::list_ci_validations_for_session(&store.keyspace, &session_id).unwrap();
+    assert_eq!(validations.len(), 2);
+}
+
+// -----------------------------------------------------------------------
+// Training data tests
+// -----------------------------------------------------------------------
+
+#[test]
+fn record_training_data_produces_fact() {
+    let (_dir, store) = setup_test_store();
+    let spec = sample_dispatch_spec();
+    let dispatch_id = store.create_dispatch("acme", &spec).unwrap();
+    let session_id = store.create_session(&dispatch_id, 1).unwrap();
+
+    let sessions = store.list_sessions_for_dispatch(&dispatch_id).unwrap();
+    let session = &sessions[0];
+
+    let outcome = SessionOutcome {
+        prompt_number: 1,
+        status: SessionStatus::Success,
+        session_id: Some("cc-sess-abc".to_owned()),
+        cost_usd: 0.42,
+        num_turns: 15,
+        duration_ms: 30_000,
+        resume_count: 0,
+        pr_url: Some("https://github.com/acme/repo/pull/42".to_owned()),
+        error: None,
+        model: Some("claude-3-5-sonnet".to_owned()),
+        blast_radius: vec!["crates/test/".to_owned()],
+    };
+
+    let fact = store.record_training_data(session, &outcome).unwrap();
+
+    assert_eq!(fact.fact_type, "training");
+    assert_eq!(fact.provenance.tier, EpistemicTier::Training);
+    assert_eq!(fact.provenance.confidence, 1.0);
+    assert!(fact.id.as_str().starts_with("training:"));
+    assert_eq!(
+        fact.id.as_str(),
+        format!("training:{}", session_id.as_str())
+    );
+
+    let data: SessionOutcomeData = serde_json::from_str(&fact.content).unwrap();
+    assert_eq!(data.prompt_number, 1);
+    assert_eq!(data.cost_usd, 0.42);
+}
+
+// -----------------------------------------------------------------------
+// Store construction tests
+// -----------------------------------------------------------------------
+
+#[test]
+fn from_keyspace_works() {
+    let temp_dir = TempDir::new().unwrap();
+    let db = fjall::Database::builder(temp_dir.path()).open().unwrap();
+    let ks = db
+        .keyspace("energeia", fjall::KeyspaceCreateOptions::default)
+        .unwrap();
+    let store = EnergeiaStore::from_keyspace(Arc::new(ks));
+
+    let spec = sample_dispatch_spec();
+    let id = store.create_dispatch("acme", &spec).unwrap();
+    assert!(store.get_dispatch(&id).unwrap().is_some());
+}
+
+#[test]
+fn debug_format() {
+    let temp_dir = TempDir::new().unwrap();
+    let db = fjall::Database::builder(temp_dir.path()).open().unwrap();
+    let store = EnergeiaStore::new(&db).unwrap();
+    let debug = format!("{store:?}");
+    assert!(debug.contains("energeia"));
+}
+
+#[test]
+fn store_is_send_sync() {
+    const _: fn() = || {
+        fn assert<T: Send + Sync>() {}
+        assert::<EnergeiaStore>();
+    };
+}
