@@ -1,4 +1,9 @@
 //! Core data types for the Datalog engine.
+//!
+//! This module defines the value representation ([`value::DataValue`]),
+//! expression evaluation ([`expr`]), scalar functions ([`functions`]),
+//! aggregation operators ([`aggr`]), relation metadata ([`relation`]),
+//! binary key encoding ([`memcmp`]), and the Datalog program AST ([`program`]).
 #![expect(clippy::wildcard_imports, reason = "error selectors and re-exports used pervasively across data module")]
 pub(crate) mod aggr;
 pub(crate) mod error;

@@ -1,10 +1,7 @@
-//! List, collection, set operations, and range functions.
+//! List construction, concatenation, get/set, and JSON merge functions.
 #![expect(clippy::as_conversions, reason = "numeric aggregation requires i64/usize/f64 casts — values are engine-internal")]
-#![expect(clippy::mutable_key_type, reason = "DataValue contains interior-mutable Regex; BTreeSet/Map usage is engine-internal")]
 #![expect(clippy::unnecessary_wraps, reason = "op_list and op_maybe_get return Result for API consistency with other builtins")]
 #![expect(clippy::redundant_else, reason = "else after early return keeps the fallback visually grouped")]
-#![expect(clippy::default_trait_access, reason = "BTreeMap::default() replaced by ::new() is more idiomatic")]
-use std::collections::BTreeSet;
 
 use itertools::Itertools;
 use serde_json::{Value, json};
@@ -16,6 +13,8 @@ use crate::data::value::{DataValue, JsonData};
 
 use super::arg;
 
+/// Deep-merge two JSON values: objects merge recursively, arrays concatenate,
+/// otherwise the second value wins.
 pub(crate) fn deep_merge_json(value1: JsonValue, value2: JsonValue) -> JsonValue {
     match (value1, value2) {
         (JsonValue::Object(mut obj1), JsonValue::Object(obj2)) => {
@@ -33,6 +32,10 @@ pub(crate) fn deep_merge_json(value1: JsonValue, value2: JsonValue) -> JsonValue
     }
 }
 
+/// Resolve a possibly-negative index against a total length.
+///
+/// Negative indices count from the end. Returns an error if out of bounds.
+/// `is_upper` controls whether `index == total` is valid (for exclusive upper bounds).
 pub(crate) fn get_index(mut i: i64, total: usize, is_upper: bool) -> Result<usize> {
     if i < 0 {
         #[expect(clippy::cast_possible_wrap, reason = "length fits i64")]
@@ -54,6 +57,7 @@ pub(crate) fn get_index(mut i: i64, total: usize, is_upper: bool) -> Result<usiz
     })
 }
 
+/// Convert a `serde_json` [`Value`] to a [`DataValue`], wrapping arrays and objects as JSON.
 pub(crate) fn json2val(res: Value) -> DataValue {
     use compact_str::CompactString;
     match res {
@@ -124,6 +128,7 @@ fn get_json_path_immutable_local<'a>(
     Ok(pointer)
 }
 
+/// Get element by index (list) or key/path (JSON). Used by `op_get` and `op_maybe_get`.
 pub(crate) fn get_impl(args: &[DataValue]) -> Result<DataValue> {
     match arg(args, 0)? {
         DataValue::List(l) => {
@@ -197,14 +202,16 @@ pub(crate) fn get_impl(args: &[DataValue]) -> Result<DataValue> {
     }
 }
 
+/// Construct a list from all arguments.
 pub(crate) fn op_list(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::List(args.to_vec()))
 }
 
+/// Concatenate strings, lists, or JSON objects.
 pub(crate) fn op_concat(args: &[DataValue]) -> Result<DataValue> {
     match arg(args, 0)? {
         DataValue::Str(_) => {
-            let mut ret: String = Default::default();
+            let mut ret = String::new();
             for arg in args {
                 if let DataValue::Str(s) = arg {
                     ret += s;
@@ -258,6 +265,7 @@ pub(crate) fn op_concat(args: &[DataValue]) -> Result<DataValue> {
     }
 }
 
+/// Append an element to the end of a list.
 pub(crate) fn op_append(args: &[DataValue]) -> Result<DataValue> {
     match arg(args, 0)? {
         DataValue::List(l) => {
@@ -278,6 +286,7 @@ pub(crate) fn op_append(args: &[DataValue]) -> Result<DataValue> {
     }
 }
 
+/// Prepend an element to the beginning of a list.
 pub(crate) fn op_prepend(args: &[DataValue]) -> Result<DataValue> {
     match arg(args, 0)? {
         DataValue::List(pl) => {
@@ -298,294 +307,7 @@ pub(crate) fn op_prepend(args: &[DataValue]) -> Result<DataValue> {
     }
 }
 
-pub(crate) fn op_union(args: &[DataValue]) -> Result<DataValue> {
-    let mut ret = BTreeSet::new();
-    for arg in args {
-        match arg {
-            DataValue::List(l) => {
-                ret.extend(l.iter().cloned());
-            }
-            DataValue::Set(s) => {
-                ret.extend(s.iter().cloned());
-            }
-            _ => {
-                return TypeMismatchSnafu {
-                    op: "union",
-                    expected: "lists",
-                }
-                .fail();
-            }
-        }
-    }
-    Ok(DataValue::List(ret.into_iter().collect()))
-}
-
-pub(crate) fn op_difference(args: &[DataValue]) -> Result<DataValue> {
-    let mut start: BTreeSet<_> = match arg(args, 0)? {
-        DataValue::List(l) => l.iter().cloned().collect(),
-        DataValue::Set(s) => s.iter().cloned().collect(),
-        _ => {
-            return TypeMismatchSnafu {
-                op: "difference",
-                expected: "lists",
-            }
-            .fail();
-        }
-    };
-    for arg in args.get(1..).unwrap_or_default() {
-        match arg {
-            DataValue::List(l) => {
-                for el in l {
-                    start.remove(el);
-                }
-            }
-            DataValue::Set(s) => {
-                for el in s {
-                    start.remove(el);
-                }
-            }
-            _ => {
-                return TypeMismatchSnafu {
-                    op: "difference",
-                    expected: "lists",
-                }
-                .fail();
-            }
-        }
-    }
-    Ok(DataValue::List(start.into_iter().collect()))
-}
-
-pub(crate) fn op_intersection(args: &[DataValue]) -> Result<DataValue> {
-    let mut start: BTreeSet<_> = match arg(args, 0)? {
-        DataValue::List(l) => l.iter().cloned().collect(),
-        DataValue::Set(s) => s.iter().cloned().collect(),
-        _ => {
-            return TypeMismatchSnafu {
-                op: "intersection",
-                expected: "lists",
-            }
-            .fail();
-        }
-    };
-    for arg in args.get(1..).unwrap_or_default() {
-        match arg {
-            DataValue::List(l) => {
-                let other: BTreeSet<_> = l.iter().cloned().collect();
-                start = start.intersection(&other).cloned().collect();
-            }
-            DataValue::Set(s) => start = start.intersection(s).cloned().collect(),
-            _ => {
-                return TypeMismatchSnafu {
-                    op: "intersection",
-                    expected: "lists",
-                }
-                .fail();
-            }
-        }
-    }
-    Ok(DataValue::List(start.into_iter().collect()))
-}
-
-pub(crate) fn op_length(args: &[DataValue]) -> Result<DataValue> {
-    Ok(DataValue::from(match arg(args, 0)? {
-        DataValue::Set(s) => {
-            #[expect(clippy::cast_possible_wrap, reason = "length fits i64")]
-            let len = s.len() as i64;
-            len
-        }
-        DataValue::List(l) => {
-            #[expect(clippy::cast_possible_wrap, reason = "length fits i64")]
-            let len = l.len() as i64;
-            len
-        }
-        DataValue::Str(s) => {
-            #[expect(clippy::cast_possible_wrap, reason = "length fits i64")]
-            let len = s.chars().count() as i64;
-            len
-        }
-        DataValue::Bytes(b) => {
-            #[expect(clippy::cast_possible_wrap, reason = "length fits i64")]
-            let len = b.len() as i64;
-            len
-        }
-        DataValue::Vec(v) => {
-            #[expect(clippy::cast_possible_wrap, reason = "length fits i64")]
-            let len = v.len() as i64;
-            len
-        }
-        _ => {
-            return TypeMismatchSnafu {
-                op: "length",
-                expected: "lists",
-            }
-            .fail();
-        }
-    }))
-}
-
-pub(crate) fn op_first(args: &[DataValue]) -> Result<DataValue> {
-    Ok(arg(args, 0)?
-        .get_slice()
-        .ok_or_else(|| {
-            TypeMismatchSnafu {
-                op: "first",
-                expected: "lists",
-            }
-            .build()
-        })?
-        .first()
-        .cloned()
-        .unwrap_or(DataValue::Null))
-}
-
-pub(crate) fn op_last(args: &[DataValue]) -> Result<DataValue> {
-    Ok(arg(args, 0)?
-        .get_slice()
-        .ok_or_else(|| {
-            TypeMismatchSnafu {
-                op: "last",
-                expected: "lists",
-            }
-            .build()
-        })?
-        .last()
-        .cloned()
-        .unwrap_or(DataValue::Null))
-}
-
-pub(crate) fn op_sorted(args: &[DataValue]) -> Result<DataValue> {
-    let mut a = arg(args, 0)?
-        .get_slice()
-        .ok_or_else(|| {
-            TypeMismatchSnafu {
-                op: "sort",
-                expected: "lists",
-            }
-            .build()
-        })?
-        .to_vec();
-    a.sort();
-    Ok(DataValue::List(a))
-}
-
-pub(crate) fn op_reverse(args: &[DataValue]) -> Result<DataValue> {
-    let mut a = arg(args, 0)?
-        .get_slice()
-        .ok_or_else(|| {
-            TypeMismatchSnafu {
-                op: "reverse",
-                expected: "lists",
-            }
-            .build()
-        })?
-        .to_vec();
-    a.reverse();
-    Ok(DataValue::List(a))
-}
-
-pub(crate) fn op_chunks(args: &[DataValue]) -> Result<DataValue> {
-    let a = arg(args, 0)?.get_slice().ok_or_else(|| {
-        TypeMismatchSnafu {
-            op: "chunks",
-            expected: "a list as first argument",
-        }
-        .build()
-    })?;
-    let n = arg(args, 1)?.get_int().ok_or_else(|| {
-        TypeMismatchSnafu {
-            op: "chunks",
-            expected: "an integer as second argument",
-        }
-        .build()
-    })?;
-    snafu::ensure!(
-        n > 0,
-        InvalidValueSnafu {
-            message: "second argument to 'chunks' must be positive"
-        }
-    );
-    let n = usize::try_from(n).map_err(|_e| {
-        InvalidValueSnafu {
-            message: "second argument to 'chunks' out of range",
-        }
-        .build()
-    })?;
-    let res = a
-        .chunks(n)
-        .map(|el| DataValue::List(el.to_vec()))
-        .collect_vec();
-    Ok(DataValue::List(res))
-}
-
-pub(crate) fn op_chunks_exact(args: &[DataValue]) -> Result<DataValue> {
-    let a = arg(args, 0)?.get_slice().ok_or_else(|| {
-        TypeMismatchSnafu {
-            op: "chunks_exact",
-            expected: "a list as first argument",
-        }
-        .build()
-    })?;
-    let n = arg(args, 1)?.get_int().ok_or_else(|| {
-        TypeMismatchSnafu {
-            op: "chunks_exact",
-            expected: "an integer as second argument",
-        }
-        .build()
-    })?;
-    snafu::ensure!(
-        n > 0,
-        InvalidValueSnafu {
-            message: "second argument to 'chunks_exact' must be positive"
-        }
-    );
-    let n = usize::try_from(n).map_err(|_e| {
-        InvalidValueSnafu {
-            message: "second argument to 'chunks_exact' out of range",
-        }
-        .build()
-    })?;
-    let res = a
-        .chunks_exact(n)
-        .map(|el| DataValue::List(el.to_vec()))
-        .collect_vec();
-    Ok(DataValue::List(res))
-}
-
-pub(crate) fn op_windows(args: &[DataValue]) -> Result<DataValue> {
-    let a = arg(args, 0)?.get_slice().ok_or_else(|| {
-        TypeMismatchSnafu {
-            op: "windows",
-            expected: "a list as first argument",
-        }
-        .build()
-    })?;
-    let n = arg(args, 1)?.get_int().ok_or_else(|| {
-        TypeMismatchSnafu {
-            op: "windows",
-            expected: "an integer as second argument",
-        }
-        .build()
-    })?;
-    snafu::ensure!(
-        n > 0,
-        InvalidValueSnafu {
-            message: "second argument to 'windows' must be positive"
-        }
-    );
-    let n = usize::try_from(n).map_err(|_e| {
-        InvalidValueSnafu {
-            message: "second argument to 'windows' out of range",
-        }
-        .build()
-    })?;
-    let res = a
-        .windows(n)
-        .map(|el| DataValue::List(el.to_vec()))
-        .collect_vec();
-    Ok(DataValue::List(res))
-}
-
+/// Get element with fallback default on error.
 pub(crate) fn op_get(args: &[DataValue]) -> Result<DataValue> {
     match get_impl(args) {
         Ok(res) => Ok(res),
@@ -599,132 +321,10 @@ pub(crate) fn op_get(args: &[DataValue]) -> Result<DataValue> {
     }
 }
 
+/// Get element, returning `Null` on any error (missing key, out of bounds, etc.).
 pub(crate) fn op_maybe_get(args: &[DataValue]) -> Result<DataValue> {
     match get_impl(args) {
         Ok(res) => Ok(res),
         Err(_) => Ok(DataValue::Null),
-    }
-}
-
-pub(crate) fn op_slice(args: &[DataValue]) -> Result<DataValue> {
-    let l = arg(args, 0)?.get_slice().ok_or_else(|| {
-        TypeMismatchSnafu {
-            op: "slice",
-            expected: "a list as first argument",
-        }
-        .build()
-    })?;
-    let m = arg(args, 1)?.get_int().ok_or_else(|| {
-        TypeMismatchSnafu {
-            op: "slice",
-            expected: "an integer as second argument",
-        }
-        .build()
-    })?;
-    let n = arg(args, 2)?.get_int().ok_or_else(|| {
-        TypeMismatchSnafu {
-            op: "slice",
-            expected: "an integer as third argument",
-        }
-        .build()
-    })?;
-    let m = get_index(m, l.len(), false)?;
-    let n = get_index(n, l.len(), true)?;
-    Ok(DataValue::List(
-        l.get(m..n)
-            .ok_or_else(|| {
-                IndexOutOfBoundsSnafu {
-                    index: i64::try_from(n).unwrap_or(i64::MAX),
-                }
-                .build()
-            })?
-            .to_vec(),
-    ))
-}
-
-pub(crate) fn op_int_range(args: &[DataValue]) -> Result<DataValue> {
-    let [start, end] = match args.len() {
-        1 => {
-            let end = arg(args, 0)?.get_int().ok_or_else(|| {
-                TypeMismatchSnafu {
-                    op: "int_range",
-                    expected: "an integer for end",
-                }
-                .build()
-            })?;
-            [0, end]
-        }
-        2 => {
-            let start = arg(args, 0)?.get_int().ok_or_else(|| {
-                TypeMismatchSnafu {
-                    op: "int_range",
-                    expected: "an integer for start",
-                }
-                .build()
-            })?;
-            let end = arg(args, 1)?.get_int().ok_or_else(|| {
-                TypeMismatchSnafu {
-                    op: "int_range",
-                    expected: "an integer for end",
-                }
-                .build()
-            })?;
-            [start, end]
-        }
-        3 => {
-            let start = arg(args, 0)?.get_int().ok_or_else(|| {
-                TypeMismatchSnafu {
-                    op: "int_range",
-                    expected: "an integer for start",
-                }
-                .build()
-            })?;
-            let end = arg(args, 1)?.get_int().ok_or_else(|| {
-                TypeMismatchSnafu {
-                    op: "int_range",
-                    expected: "an integer for end",
-                }
-                .build()
-            })?;
-            let step = arg(args, 2)?.get_int().ok_or_else(|| {
-                TypeMismatchSnafu {
-                    op: "int_range",
-                    expected: "an integer for step",
-                }
-                .build()
-            })?;
-            let mut current = start;
-            let mut result = vec![];
-            if step > 0 {
-                while current < end {
-                    result.push(DataValue::from(current));
-                    current += step;
-                }
-            } else {
-                while current > end {
-                    result.push(DataValue::from(current));
-                    current += step;
-                }
-            }
-            return Ok(DataValue::List(result));
-        }
-        _ => {
-            return TypeMismatchSnafu {
-                op: "int_range",
-                expected: "1 to 3 argument",
-            }
-            .fail();
-        }
-    };
-    Ok(DataValue::List((start..end).map(DataValue::from).collect()))
-}
-
-pub(crate) fn op_assert(args: &[DataValue]) -> Result<DataValue> {
-    match arg(args, 0)? {
-        DataValue::Bool(true) => Ok(DataValue::from(true)),
-        _ => AssertionFailedSnafu {
-            message: format!("{args:?}"),
-        }
-        .fail(),
     }
 }
