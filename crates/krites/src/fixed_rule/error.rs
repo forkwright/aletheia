@@ -1,6 +1,11 @@
 //! Error types for fixed rules (graph algorithms, utilities).
 use snafu::Snafu;
 
+/// Errors from graph algorithm execution within fixed rules.
+///
+/// Each variant captures the algorithm name and a descriptive message for
+/// diagnostics.  The `snafu::Location` is tracked automatically so errors
+/// carry the source-code location where they were constructed.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
 #[non_exhaustive]
@@ -30,3 +35,4 @@ pub(crate) enum FixedRuleError {
         location: snafu::Location,
     },
 }
+

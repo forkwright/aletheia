@@ -111,9 +111,9 @@ impl FixedRule for ReorderSort {
         let mut last = &DataValue::Bot;
         let take_plus_skip = take.saturating_add(skip);
         for val in &buffer {
-            // INVARIANT: `val` always has at least one element (sort key appended during construction)
-            // INVARIANT: `val` always has at least one element (sort key appended during construction)
-            let sorter = val.last().unwrap_or_else(|| panic!("sort buffer entries always have a sort key"));
+            // SAFETY: every entry in `buffer` has at least one element (the sort key
+            // is always appended during construction above).
+            let sorter = &val[val.len() - 1];
 
             if sorter == last {
                 count += 1;

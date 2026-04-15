@@ -1,4 +1,11 @@
-//! Triangle counting in graphs.
+//! Triangle counting and local clustering coefficients.
+//!
+//! For each node, counts the number of triangles it participates in and
+//! computes the local clustering coefficient (ratio of actual triangles to
+//! possible triangles given the node's degree).
+//!
+//! Reference: Watts, D.J., Strogatz, S.H. (1998). "Collective Dynamics of
+//! 'Small-World' Networks." *Nature*, 393(6684), 440--442.
 use std::collections::BTreeMap;
 
 use compact_str::CompactString;
@@ -15,6 +22,14 @@ use crate::parse::SourceSpan;
 use crate::runtime::db::Poison;
 use crate::runtime::temp_store::RegularTempStore;
 
+/// Local clustering coefficients and triangle counts.
+///
+/// **Complexity:** O(V * d^2) where V is vertices and d is average degree.
+/// For each node, checks all pairs of neighbours for triangle completion.
+/// Parallelised across nodes.
+///
+/// **When to use:** Measuring local graph density, identifying tightly
+/// connected neighbourhoods, or computing transitivity metrics.
 pub(crate) struct ClusteringCoefficients;
 
 #[expect(
@@ -27,12 +42,6 @@ pub(crate) struct ClusteringCoefficients;
     reason = "graph clustering coefficient indices are bounds-checked by the CSR node count"
 )]
 impl FixedRule for ClusteringCoefficients {
-    /// Run clustering coefficient and triangle counting.
-    ///
-    /// # Complexity
-    ///
-    /// O(V * d^2) where V is vertices and d is average degree. For each node,
-    /// checks all pairs of neighbors for triangle completion. Parallelized.
     fn run(
         &self,
         payload: FixedRulePayload<'_, '_>,
@@ -42,11 +51,11 @@ impl FixedRule for ClusteringCoefficients {
         let edges = payload.get_input(0)?;
         let (graph, indices, _) = edges.as_directed_graph(true)?;
         let coefficients = clustering_coefficients(&graph, poison)?;
-        for (idx, (cc, n_triangles, degree)) in coefficients.into_iter().enumerate() {
+        for (idx, (coefficient, triangle_count, degree)) in coefficients.into_iter().enumerate() {
             out.put(vec![
                 indices[idx].clone(),
-                DataValue::from(cc),
-                DataValue::from(n_triangles as i64),
+                DataValue::from(coefficient),
+                DataValue::from(triangle_count as i64),
                 DataValue::from(degree as i64),
             ]);
         }
@@ -64,6 +73,11 @@ impl FixedRule for ClusteringCoefficients {
     }
 }
 
+/// Compute local clustering coefficients and triangle counts per node.
+///
+/// **Complexity:** O(V * d^2) where d is average degree.  Uses parallel
+/// iteration over nodes.  For sparse graphs, this is much faster than
+/// O(V^3) matrix methods.
 #[expect(
     clippy::result_large_err,
     reason = "InternalError carries structured context — boxing deferred to avoid API churn"
@@ -74,40 +88,33 @@ impl FixedRule for ClusteringCoefficients {
 )]
 #[expect(
     clippy::as_conversions,
-    clippy::cast_possible_wrap,
-    reason = "triangle count and degree cast from usize to i64 — values are small graph metrics"
+    reason = "triangle count and degree cast to f64 — values are small graph metrics"
 )]
-/// Compute local clustering coefficients and triangle counts.
-///
-/// # Complexity
-///
-/// O(V * d^2) where d is average degree. Uses parallel iteration over nodes.
-/// For sparse graphs, this is much faster than O(V^3) matrix methods.
 fn clustering_coefficients(
     graph: &DirectedCsrGraph,
     poison: Poison,
 ) -> Result<Vec<(f64, usize, usize)>> {
-    let node_size = graph.node_count();
+    let node_count = graph.node_count();
 
-    (0..node_size)
+    (0..node_count)
         .into_par_iter()
         .map(|node_idx| -> Result<(f64, usize, usize)> {
-            let edges = graph.out_neighbors(node_idx).collect_vec();
-            let degree = edges.len();
+            let neighbors = graph.out_neighbors(node_idx).collect_vec();
+            let degree = neighbors.len();
             if degree < 2 {
                 Ok((0., 0, degree))
             } else {
-                let n_triangles = edges
+                let triangle_count = neighbors
                     .iter()
-                    .map(|e_src| {
-                        edges
+                    .map(|neighbor_a| {
+                        neighbors
                             .iter()
-                            .filter(|e_dst| {
-                                if e_src <= e_dst {
+                            .filter(|neighbor_b| {
+                                if neighbor_a <= neighbor_b {
                                     return false;
                                 }
-                                for nb in graph.out_neighbors(*e_src) {
-                                    if nb == **e_dst {
+                                for edge_target in graph.out_neighbors(*neighbor_a) {
+                                    if edge_target == **neighbor_b {
                                         return true;
                                     }
                                 }
@@ -120,9 +127,10 @@ fn clustering_coefficients(
                     clippy::cast_precision_loss,
                     reason = "i64 to f64: precision loss acceptable"
                 )]
-                let cc = 2. * n_triangles as f64 / ((degree as f64) * ((degree as f64) - 1.));
+                let coefficient =
+                    2. * triangle_count as f64 / ((degree as f64) * ((degree as f64) - 1.));
                 poison.check()?;
-                Ok((cc, n_triangles, degree))
+                Ok((coefficient, triangle_count, degree))
             }
         })
         .collect::<Result<_>>()

@@ -1,4 +1,12 @@
-//! Weighted shortest path (Dijkstra).
+//! Weighted shortest path via Dijkstra's algorithm.
+//!
+//! Finds shortest paths from one or more source nodes to optional target
+//! nodes in a weighted directed graph with non-negative edge weights.
+//! Supports both single-path and tie-keeping (all equal-cost paths) modes.
+//! Parallelised across starting nodes when count > 1.
+//!
+//! Reference: Dijkstra, E.W. (1959). "A Note on Two Problems in Connexion
+//! with Graphs." *Numerische Mathematik*, 1, 269--271.
 use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet};
 use std::iter;
@@ -20,6 +28,14 @@ use crate::parse::SourceSpan;
 use crate::runtime::db::Poison;
 use crate::runtime::temp_store::RegularTempStore;
 
+/// Dijkstra shortest path with optional parallelisation and tie-keeping.
+///
+/// **Complexity:** O(S * (E log V)) where S is starting nodes, E is edges,
+/// V is vertices.  Parallelised across starting nodes when count > 1.
+///
+/// **When to use:** Finding shortest weighted paths in graphs with
+/// non-negative edge weights.  For unweighted graphs, prefer
+/// `ShortestPathBFS`.
 pub(crate) struct ShortestPathDijkstra;
 
 #[expect(
@@ -43,29 +59,7 @@ pub(crate) struct ShortestPathDijkstra;
     clippy::semicolon_if_nothing_returned,
     reason = "trailing semicolons in match arms kept for consistency with surrounding style"
 )]
-#[expect(
-    clippy::cloned_instead_of_copied,
-    reason = "DataValue is not Copy — .cloned() is correct"
-)]
-#[expect(
-    clippy::if_not_else,
-    reason = "negative condition checks (not keep_ties, no termination) read better for the algorithm control flow"
-)]
-#[expect(
-    clippy::needless_pass_by_value,
-    reason = "FixedRule trait requires owned FixedRulePayload and Poison"
-)]
-#[expect(
-    clippy::float_cmp,
-    reason = "Dijkstra distance comparison uses exact f32 zero check — not accumulated floating-point"
-)]
 impl FixedRule for ShortestPathDijkstra {
-    /// Run Dijkstra's shortest path algorithm.
-    ///
-    /// # Complexity
-    ///
-    /// O(S * (E log V)) where S is starting nodes, E is edges, V is vertices.
-    /// Parallelized across starting nodes when count > 1.
     fn run(
         &self,
         payload: FixedRulePayload<'_, '_>,
@@ -83,7 +77,6 @@ impl FixedRule for ShortestPathDijkstra {
         let mut starting_nodes = BTreeSet::new();
         for tuple in starting.iter()? {
             let tuple = tuple?;
-            // SAFETY: `tuple` comes from `starting` input validated to have arity >= 1.
             let node = &tuple[0];
             if let Some(idx) = inv_indices.get(node) {
                 starting_nodes.insert(*idx);
@@ -91,41 +84,46 @@ impl FixedRule for ShortestPathDijkstra {
         }
         let termination_nodes = match termination {
             Err(_) => None,
-            Ok(t) => {
-                let mut tn = BTreeSet::new();
-                for tuple in t.iter()? {
+            Ok(termination_rel) => {
+                let mut targets = BTreeSet::new();
+                for tuple in termination_rel.iter()? {
                     let tuple = tuple?;
-                    // SAFETY: `tuple` comes from `termination` input validated to have arity >= 1.
                     let node = &tuple[0];
                     if let Some(idx) = inv_indices.get(node) {
-                        tn.insert(*idx);
+                        targets.insert(*idx);
                     }
                 }
-                Some(tn)
+                Some(targets)
             }
         };
 
         if starting_nodes.len() <= 1 {
             for start in starting_nodes {
-                let res = if let Some(tn) = &termination_nodes {
-                    if tn.len() == 1 {
-                        // INVARIANT: `tn.len() == 1` check above guarantees `.next()` succeeds
-                        let single = Some(*tn.iter().next().unwrap_or_else(|| panic!("tn verified len==1 above")));
+                let results = if let Some(targets) = &termination_nodes {
+                    if targets.len() == 1 {
+                        let single_target = targets.iter().next().copied();
                         if keep_ties {
-                            dijkstra_keep_ties(&graph, start, &single, &(), &(), poison.clone())?
+                            dijkstra_keep_ties(
+                                &graph,
+                                start,
+                                &single_target,
+                                &(),
+                                &(),
+                                poison.clone(),
+                            )?
                         } else {
-                            dijkstra(&graph, start, &single, &(), &())
+                            dijkstra(&graph, start, &single_target, &(), &())
                         }
                     } else if keep_ties {
-                        dijkstra_keep_ties(&graph, start, tn, &(), &(), poison.clone())?
+                        dijkstra_keep_ties(&graph, start, targets, &(), &(), poison.clone())?
                     } else {
-                        dijkstra(&graph, start, tn, &(), &())
+                        dijkstra(&graph, start, targets, &(), &())
                     }
                 } else {
                     dijkstra(&graph, start, &(), &(), &())
                 };
-                for (target, cost, path) in res {
-                    let t = vec![
+                for (target, cost, path) in results {
+                    let tuple = vec![
                         indices[start as usize].clone(),
                         indices[target as usize].clone(),
                         DataValue::from(f64::from(cost)),
@@ -135,37 +133,42 @@ impl FixedRule for ShortestPathDijkstra {
                                 .collect_vec(),
                         ),
                     ];
-                    out.put(t)
+                    out.put(tuple)
                 }
             }
         } else {
-            let it = starting_nodes.into_par_iter();
+            let parallel_iter = starting_nodes.into_par_iter();
 
-            let all_res: Vec<_> = it
+            let all_results: Vec<_> = parallel_iter
                 .map(|start| -> Result<(u32, Vec<(u32, f32, Vec<u32>)>)> {
                     Ok((
                         start,
-                        if let Some(tn) = &termination_nodes {
-                            if tn.len() == 1 {
-                                let single =
-                                    // INVARIANT: `tn.len() == 1` check above guarantees `.next()` succeeds
-                                    Some(*tn.iter().next().unwrap_or_else(|| panic!("tn verified len==1 above")));
+                        if let Some(targets) = &termination_nodes {
+                            if targets.len() == 1 {
+                                let single_target = targets.iter().next().copied();
                                 if keep_ties {
                                     dijkstra_keep_ties(
                                         &graph,
                                         start,
-                                        &single,
+                                        &single_target,
                                         &(),
                                         &(),
                                         poison.clone(),
                                     )?
                                 } else {
-                                    dijkstra(&graph, start, &single, &(), &())
+                                    dijkstra(&graph, start, &single_target, &(), &())
                                 }
                             } else if keep_ties {
-                                dijkstra_keep_ties(&graph, start, tn, &(), &(), poison.clone())?
+                                dijkstra_keep_ties(
+                                    &graph,
+                                    start,
+                                    targets,
+                                    &(),
+                                    &(),
+                                    poison.clone(),
+                                )?
                             } else {
-                                dijkstra(&graph, start, tn, &(), &())
+                                dijkstra(&graph, start, targets, &(), &())
                             }
                         } else {
                             dijkstra(&graph, start, &(), &(), &())
@@ -173,9 +176,9 @@ impl FixedRule for ShortestPathDijkstra {
                     ))
                 })
                 .collect::<Result<_>>()?;
-            for (start, res) in all_res {
-                for (target, cost, path) in res {
-                    let t = vec![
+            for (start, results) in all_results {
+                for (target, cost, path) in results {
+                    let tuple = vec![
                         indices[start as usize].clone(),
                         indices[target as usize].clone(),
                         DataValue::from(f64::from(cost)),
@@ -185,7 +188,7 @@ impl FixedRule for ShortestPathDijkstra {
                                 .collect_vec(),
                         ),
                     ];
-                    out.put(t)
+                    out.put(tuple)
                 }
             }
         }
@@ -203,22 +206,24 @@ impl FixedRule for ShortestPathDijkstra {
     }
 }
 
+/// Trait for edges that should be excluded from path search.
 pub(crate) trait ForbiddenEdge {
-    fn is_forbidden(&self, src: u32, dst: u32) -> bool;
+    fn is_forbidden(&self, source: u32, destination: u32) -> bool;
 }
 
 impl ForbiddenEdge for () {
-    fn is_forbidden(&self, _src: u32, _dst: u32) -> bool {
+    fn is_forbidden(&self, _source: u32, _destination: u32) -> bool {
         false
     }
 }
 
 impl ForbiddenEdge for BTreeSet<(u32, u32)> {
-    fn is_forbidden(&self, src: u32, dst: u32) -> bool {
-        self.contains(&(src, dst))
+    fn is_forbidden(&self, source: u32, destination: u32) -> bool {
+        self.contains(&(source, destination))
     }
 }
 
+/// Trait for nodes that should be excluded from path search.
 pub(crate) trait ForbiddenNode {
     fn is_forbidden(&self, node: u32) -> bool;
 }
@@ -235,10 +240,11 @@ impl ForbiddenNode for BTreeSet<u32> {
     }
 }
 
+/// Trait for tracking goal completion in shortest-path search.
 pub(crate) trait Goal {
     fn is_exhausted(&self) -> bool;
     fn visit(&mut self, node: u32);
-    fn iter(&self, total: u32) -> Box<dyn Iterator<Item = u32> + '_>;
+    fn iter(&self, total_nodes: u32) -> Box<dyn Iterator<Item = u32> + '_>;
 }
 
 impl Goal for () {
@@ -248,8 +254,8 @@ impl Goal for () {
 
     fn visit(&mut self, _node: u32) {}
 
-    fn iter(&self, total: u32) -> Box<dyn Iterator<Item = u32> + '_> {
-        Box::new(0..total)
+    fn iter(&self, total_nodes: u32) -> Box<dyn Iterator<Item = u32> + '_> {
+        Box::new(0..total_nodes)
     }
 }
 
@@ -259,16 +265,16 @@ impl Goal for Option<u32> {
     }
 
     fn visit(&mut self, node: u32) {
-        if let Some(u) = &self
-            && *u == node
+        if let Some(target) = &self
+            && *target == node
         {
             self.take();
         }
     }
 
-    fn iter(&self, _total: u32) -> Box<dyn Iterator<Item = u32> + '_> {
-        if let Some(u) = self {
-            Box::new(iter::once(*u))
+    fn iter(&self, _total_nodes: u32) -> Box<dyn Iterator<Item = u32> + '_> {
+        if let Some(target) = self {
+            Box::new(iter::once(*target))
         } else {
             Box::new(iter::empty())
         }
@@ -284,20 +290,24 @@ impl Goal for BTreeSet<u32> {
         self.remove(&node);
     }
 
-    fn iter(&self, _total: u32) -> Box<dyn Iterator<Item = u32> + '_> {
-        Box::new(self.iter().cloned())
+    fn iter(&self, _total_nodes: u32) -> Box<dyn Iterator<Item = u32> + '_> {
+        Box::new(self.iter().copied())
     }
 }
 
-/// Dijkstra shortest path with optional constraints.
+/// Standard Dijkstra shortest path with optional edge/node exclusions and goal
+/// tracking.
 ///
-/// # Complexity
-///
-/// O(E log V) using binary heap. Space: O(V) for distances and backpointers.
+/// **Complexity:** O(E log V) using a binary-heap priority queue.
+/// **Space:** O(V) for distances and backpointers.
 #[expect(
     clippy::as_conversions,
     clippy::indexing_slicing,
     reason = "graph Dijkstra indices are bounds-checked by the CSR node count and distance arrays"
+)]
+#[expect(
+    clippy::if_not_else,
+    reason = "!cost.is_finite() is the short-circuit case (no path) — checking it first reads better"
 )]
 pub(crate) fn dijkstra<FE: ForbiddenEdge, FN: ForbiddenNode, G: Goal + Clone>(
     edges: &DirectedCsrGraph<f32>,
@@ -308,32 +318,32 @@ pub(crate) fn dijkstra<FE: ForbiddenEdge, FN: ForbiddenNode, G: Goal + Clone>(
 ) -> Vec<(u32, f32, Vec<u32>)> {
     let graph_size = edges.node_count();
     let mut distance = vec![f32::INFINITY; graph_size as usize];
-    let mut pq = PriorityQueue::new();
+    let mut priority_queue = PriorityQueue::new();
     let mut back_pointers = vec![u32::MAX; graph_size as usize];
     distance[start as usize] = 0.;
-    pq.push(start, Reverse(OrderedFloat(0.)));
+    priority_queue.push(start, Reverse(OrderedFloat(0.)));
     let mut goals_remaining = goals.clone();
 
-    while let Some((node, Reverse(OrderedFloat(cost)))) = pq.pop() {
+    while let Some((node, Reverse(OrderedFloat(cost)))) = priority_queue.pop() {
         if cost > distance[node as usize] {
             continue;
         }
 
         for target in edges.out_neighbors_with_values(node) {
-            let nxt_node = target.target;
-            let path_weight = target.value;
+            let neighbor = target.target;
+            let edge_weight = target.value;
 
-            if forbidden_nodes.is_forbidden(nxt_node) {
+            if forbidden_nodes.is_forbidden(neighbor) {
                 continue;
             }
-            if forbidden_edges.is_forbidden(node, nxt_node) {
+            if forbidden_edges.is_forbidden(node, neighbor) {
                 continue;
             }
-            let nxt_cost = cost + path_weight;
-            if nxt_cost < distance[nxt_node as usize] {
-                pq.push_increase(nxt_node, Reverse(OrderedFloat(nxt_cost)));
-                distance[nxt_node as usize] = nxt_cost;
-                back_pointers[nxt_node as usize] = node;
+            let new_cost = cost + edge_weight;
+            if new_cost < distance[neighbor as usize] {
+                priority_queue.push_increase(neighbor, Reverse(OrderedFloat(new_cost)));
+                distance[neighbor as usize] = new_cost;
+                back_pointers[neighbor as usize] = node;
             }
         }
 
@@ -364,16 +374,18 @@ pub(crate) fn dijkstra<FE: ForbiddenEdge, FN: ForbiddenNode, G: Goal + Clone>(
         .collect_vec()
 }
 
-/// Dijkstra variant that keeps all ties (equal-cost paths).
+/// Dijkstra variant that keeps all tied (equal-cost) shortest paths.
 ///
-/// # Complexity
-///
-/// O(E log V + P) where P is the number of paths found. Can be exponential
-/// in worst case when many equal-cost paths exist.
+/// **Complexity:** O(E log V + P) where P is the number of paths found.
+/// Can be exponential in worst case when many equal-cost paths exist.
 #[expect(
     clippy::as_conversions,
     clippy::indexing_slicing,
     reason = "graph Dijkstra indices are bounds-checked by the CSR node count and distance arrays"
+)]
+#[expect(
+    clippy::result_large_err,
+    reason = "InternalError carries structured context — boxing deferred to avoid API churn"
 )]
 #[expect(
     clippy::float_cmp,
@@ -382,6 +394,14 @@ pub(crate) fn dijkstra<FE: ForbiddenEdge, FN: ForbiddenNode, G: Goal + Clone>(
 #[expect(
     clippy::semicolon_if_nothing_returned,
     reason = "trailing semicolons in if-blocks kept for consistency with surrounding style"
+)]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "Poison is lightweight and passed by value for ergonomic .check() calls"
+)]
+#[expect(
+    clippy::if_not_else,
+    reason = "!cost.is_finite() is the short-circuit case (no path) — checking it first reads better"
 )]
 pub(crate) fn dijkstra_keep_ties<FE: ForbiddenEdge, FN: ForbiddenNode, G: Goal + Clone>(
     edges: &DirectedCsrGraph<f32>,
@@ -392,36 +412,37 @@ pub(crate) fn dijkstra_keep_ties<FE: ForbiddenEdge, FN: ForbiddenNode, G: Goal +
     poison: Poison,
 ) -> Result<Vec<(u32, f32, Vec<u32>)>> {
     let mut distance = vec![f32::INFINITY; edges.node_count() as usize];
-    let mut pq = PriorityQueue::new();
-    let mut back_pointers: Vec<SmallVec<[u32; 1]>> = vec![smallvec![]; edges.node_count() as usize];
+    let mut priority_queue = PriorityQueue::new();
+    let mut back_pointers: Vec<SmallVec<[u32; 1]>> =
+        vec![smallvec![]; edges.node_count() as usize];
     distance[start as usize] = 0.;
-    pq.push(start, Reverse(OrderedFloat(0.)));
+    priority_queue.push(start, Reverse(OrderedFloat(0.)));
     let mut goals_remaining = goals.clone();
 
-    while let Some((node, Reverse(OrderedFloat(cost)))) = pq.pop() {
+    while let Some((node, Reverse(OrderedFloat(cost)))) = priority_queue.pop() {
         if cost > distance[node as usize] {
             continue;
         }
 
         for target in edges.out_neighbors_with_values(node) {
-            let nxt_node = target.target;
-            let path_weight = target.value;
+            let neighbor = target.target;
+            let edge_weight = target.value;
 
-            if forbidden_nodes.is_forbidden(nxt_node) {
+            if forbidden_nodes.is_forbidden(neighbor) {
                 continue;
             }
-            if forbidden_edges.is_forbidden(node, nxt_node) {
+            if forbidden_edges.is_forbidden(node, neighbor) {
                 continue;
             }
-            let nxt_cost = cost + path_weight;
-            if nxt_cost < distance[nxt_node as usize] {
-                pq.push_increase(nxt_node, Reverse(OrderedFloat(nxt_cost)));
-                distance[nxt_node as usize] = nxt_cost;
-                back_pointers[nxt_node as usize].clear();
-                back_pointers[nxt_node as usize].push(node);
-            } else if nxt_cost == distance[nxt_node as usize] {
-                pq.push_increase(nxt_node, Reverse(OrderedFloat(nxt_cost)));
-                back_pointers[nxt_node as usize].push(node);
+            let new_cost = cost + edge_weight;
+            if new_cost < distance[neighbor as usize] {
+                priority_queue.push_increase(neighbor, Reverse(OrderedFloat(new_cost)));
+                distance[neighbor as usize] = new_cost;
+                back_pointers[neighbor as usize].clear();
+                back_pointers[neighbor as usize].push(node);
+            } else if new_cost == distance[neighbor as usize] {
+                priority_queue.push_increase(neighbor, Reverse(OrderedFloat(new_cost)));
+                back_pointers[neighbor as usize].push(node);
             }
             poison.check()?;
         }
@@ -432,18 +453,18 @@ pub(crate) fn dijkstra_keep_ties<FE: ForbiddenEdge, FN: ForbiddenNode, G: Goal +
         }
     }
 
-    let ret = goals
+    let results = goals
         .iter(edges.node_count())
         .flat_map(|target| {
             let cost = distance[target as usize];
             if !cost.is_finite() {
                 vec![(target, cost, vec![])]
             } else {
-                struct CollectPath {
+                struct PathCollector {
                     collected: Vec<(u32, f32, Vec<u32>)>,
                 }
 
-                impl CollectPath {
+                impl PathCollector {
                     fn collect(
                         &mut self,
                         chain: &[u32],
@@ -452,28 +473,34 @@ pub(crate) fn dijkstra_keep_ties<FE: ForbiddenEdge, FN: ForbiddenNode, G: Goal +
                         cost: f32,
                         back_pointers: &[SmallVec<[u32; 1]>],
                     ) {
-                        // INVARIANT: `collect` is always called with non-empty `chain`
-                        // INVARIANT: `collect` is always called with non-empty `chain`
-                        let last = chain.last().unwrap_or_else(|| panic!("chain is non-empty by construction"));
-                        let prevs = &back_pointers[*last as usize];
-                        for nxt in prevs {
-                            let mut ret = chain.to_vec();
-                            ret.push(*nxt);
-                            if *nxt == start {
-                                ret.reverse();
-                                self.collected.push((target, cost, ret));
+                        // SAFETY: `collect` is always called with non-empty `chain`
+                        // (initial call passes `&[target]`).
+                        let last = chain[chain.len() - 1];
+                        let predecessors = &back_pointers[last as usize];
+                        for &predecessor in predecessors {
+                            let mut extended = chain.to_vec();
+                            extended.push(predecessor);
+                            if predecessor == start {
+                                extended.reverse();
+                                self.collected.push((target, cost, extended));
                             } else {
-                                self.collect(&ret, start, target, cost, back_pointers)
+                                self.collect(
+                                    &extended,
+                                    start,
+                                    target,
+                                    cost,
+                                    back_pointers,
+                                )
                             }
                         }
                     }
                 }
-                let mut cp = CollectPath { collected: vec![] };
-                cp.collect(&[target], start, target, cost, &back_pointers);
-                cp.collected
+                let mut collector = PathCollector { collected: vec![] };
+                collector.collect(&[target], start, target, cost, &back_pointers);
+                collector.collected
             }
         })
         .collect_vec();
 
-    Ok(ret)
+    Ok(results)
 }

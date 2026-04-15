@@ -1,4 +1,13 @@
-//! A* shortest path search.
+//! A* shortest-path search with heuristic guidance.
+//!
+//! Finds the shortest path between a single source-target pair using a
+//! user-provided heuristic function to guide exploration.  With an admissible
+//! (non-overestimating) heuristic, A* is optimal and typically explores far
+//! fewer nodes than Dijkstra.
+//!
+//! Reference: Hart, P.E., Nilsson, N.J., Raphael, B. (1968). "A Formal
+//! Basis for the Heuristic Determination of Minimum Cost Paths." *IEEE
+//! Transactions on Systems Science and Cybernetics*, 4(2), 100--107.
 use std::cmp::Reverse;
 use std::collections::BTreeMap;
 
@@ -19,15 +28,25 @@ use crate::parse::SourceSpan;
 use crate::runtime::db::Poison;
 use crate::runtime::temp_store::RegularTempStore;
 
+/// A* shortest-path search.
+///
+/// Requires four input relations (edges, nodes, starting, goals) and a
+/// `heuristic` expression option.  The heuristic is evaluated per candidate
+/// node and must return a non-negative numeric estimate of the remaining
+/// cost to the goal.
+///
+/// **Complexity:** O(E log V) worst case; with a good heuristic, explores
+/// significantly fewer nodes than Dijkstra.
+///
+/// **When to use:** Single-pair shortest path when a domain-specific
+/// heuristic is available (e.g., Euclidean distance for spatial graphs).
 pub(crate) struct ShortestPathAStar;
 
+#[expect(
+    clippy::indexing_slicing,
+    reason = "input tuple indices are bounds-checked by ensure_min_len and iter arity guarantees"
+)]
 impl FixedRule for ShortestPathAStar {
-    /// Run A* shortest path search.
-    ///
-    /// # Complexity
-    ///
-    /// O(E log V) in the worst case where E is edges and V is vertices.
-    /// With a good heuristic, explores significantly fewer nodes than Dijkstra.
     fn run(
         &self,
         payload: FixedRulePayload<'_, '_>,
@@ -49,7 +68,6 @@ impl FixedRule for ShortestPathAStar {
             for goal in goals.iter()? {
                 let goal = goal?;
                 let (cost, path) = astar(&start, &goal, edges, nodes, &heuristic, poison.clone())?;
-                // SAFETY: `start` and `goal` come from input relations validated to have arity >= 1.
                 out.put(vec![
                     start[0].clone(),
                     goal[0].clone(),
@@ -72,11 +90,10 @@ impl FixedRule for ShortestPathAStar {
     }
 }
 
-/// A* pathfinding with heuristic guidance.
+/// Core A* pathfinding loop.
 ///
-/// # Complexity
-///
-/// O(E log V) worst case. The priority queue operations dominate.
+/// **Complexity:** O(E log V) worst case.  The priority queue operations
+/// dominate.
 #[expect(
     clippy::indexing_slicing,
     reason = "graph A* indices are bounds-checked by the visited set and input arity validation"
@@ -109,17 +126,14 @@ fn astar(
     heuristic: &Expr,
     poison: Poison,
 ) -> Result<(f64, Vec<DataValue>)> {
-    // SAFETY: `starting` and `goal` come from input relations validated to have arity >= 1.
     let start_node = &starting[0];
-    // SAFETY: `goal` comes from input relation validated to have arity >= 1.
     let goal_node = &goal[0];
     let heuristic_bytecode = heuristic.compile()?;
     let mut stack = vec![];
     let mut eval_heuristic = |node: &Tuple| -> Result<f64> {
-        let mut v = node.clone();
-        v.extend_from_slice(goal);
-        let t = v;
-        let cost_val = eval_bytecode(&heuristic_bytecode, &t, &mut stack)?;
+        let mut combined = node.clone();
+        combined.extend_from_slice(goal);
+        let cost_val = eval_bytecode(&heuristic_bytecode, &combined, &mut stack)?;
         let cost = cost_val
             .get_float()
             .ok_or_else(|| BadExprValueError(cost_val, "a number is required".to_string()))?;
@@ -141,7 +155,7 @@ fn astar(
     while let Some((node, (Reverse(OrderedFloat(cost)), _))) = open_set.pop() {
         if node == *goal_node {
             let mut current = node;
-            let mut ret = vec![];
+            let mut route = vec![];
             while current != *start_node {
                 let prev = back_trace
                     .get(&current)
@@ -153,55 +167,57 @@ fn astar(
                         .build()
                     })?
                     .clone();
-                ret.push(current);
+                route.push(current);
                 current = prev;
             }
-            ret.push(current);
-            ret.reverse();
-            return Ok((cost, ret));
+            route.push(current);
+            route.reverse();
+            return Ok((cost, route));
         }
 
         for edge in edges.prefix_iter(&node)? {
             let edge = edge?;
-            // SAFETY: `edge` comes from `ensure_min_len(2)` so has at least 2 elements.
-            let edge_dst = &edge[1];
+            let edge_destination = &edge[1];
             let edge_cost = match edge.get(2) {
                 None => 1.,
                 Some(cost) => cost.get_float().ok_or_else(|| {
-                    BadExprValueError(edge_dst.clone(), "edge cost must be a number".to_string())
+                    BadExprValueError(
+                        edge_destination.clone(),
+                        "edge cost must be a number".to_string(),
+                    )
                 })?,
             };
             if edge_cost.is_nan() {
                 return Err(BadExprValueError(
-                    edge_dst.clone(),
+                    edge_destination.clone(),
                     "edge cost must be a number".to_string(),
                 )
                 .into());
             }
 
-            let cost_to_src = g_score.get(&node).cloned().unwrap_or(f64::INFINITY);
-            let tentative_cost_to_dst = cost_to_src + edge_cost;
-            let prev_cost_to_dst = g_score.get(edge_dst).cloned().unwrap_or(f64::INFINITY);
-            if tentative_cost_to_dst < prev_cost_to_dst {
-                back_trace.insert(edge_dst.clone(), node.clone());
-                g_score.insert(edge_dst.clone(), tentative_cost_to_dst);
+            let cost_to_source = g_score.get(&node).cloned().unwrap_or(f64::INFINITY);
+            let tentative_cost = cost_to_source + edge_cost;
+            let previous_cost = g_score.get(edge_destination).cloned().unwrap_or(f64::INFINITY);
+            if tentative_cost < previous_cost {
+                back_trace.insert(edge_destination.clone(), node.clone());
+                g_score.insert(edge_destination.clone(), tentative_cost);
 
-                let edge_dst_tuple = nodes.prefix_iter(edge_dst)?.next().ok_or_else(
+                let destination_tuple = nodes.prefix_iter(edge_destination)?.next().ok_or_else(
                     || -> crate::error::InternalError {
                         NodeNotFoundError {
-                            missing: edge_dst.clone(),
+                            missing: edge_destination.clone(),
                             span: nodes.span(),
                         }
                         .into()
                     },
                 )??;
 
-                let heuristic_cost = eval_heuristic(&edge_dst_tuple)?;
+                let heuristic_cost = eval_heuristic(&destination_tuple)?;
                 sub_priority += 1;
                 open_set.push_increase(
-                    edge_dst.clone(),
+                    edge_destination.clone(),
                     (
-                        Reverse(OrderedFloat(tentative_cost_to_dst + heuristic_cost)),
+                        Reverse(OrderedFloat(tentative_cost + heuristic_cost)),
                         sub_priority,
                     ),
                 );

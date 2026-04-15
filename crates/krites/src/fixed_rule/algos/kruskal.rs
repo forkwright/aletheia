@@ -1,4 +1,13 @@
-//! Minimum spanning tree (Kruskal).
+//! Minimum spanning forest via Kruskal's algorithm.
+//!
+//! Builds a minimum spanning forest by greedily adding the cheapest edge
+//! that does not form a cycle.  Uses a union-find (disjoint-set) data
+//! structure with path compression and union by size for near-constant-time
+//! connectivity queries.
+//!
+//! Reference: Kruskal, J.B. (1956). "On the Shortest Spanning Subtree of a
+//! Graph and the Traveling Salesman Problem." *Proceedings of the American
+//! Mathematical Society*, 7(1), 48--50.
 use std::cmp::Reverse;
 use std::collections::BTreeMap;
 
@@ -17,6 +26,14 @@ use crate::parse::SourceSpan;
 use crate::runtime::db::Poison;
 use crate::runtime::temp_store::RegularTempStore;
 
+/// Kruskal's minimum spanning forest.
+///
+/// **Complexity:** O(E log E) for sorting edges, plus O(E * alpha(V)) for
+/// union-find operations where alpha is the inverse Ackermann function
+/// (effectively constant).
+///
+/// **When to use:** Finding a minimum-cost spanning tree or forest.
+/// Preferred over Prim for sparse graphs.
 pub(crate) struct MinimumSpanningForestKruskal;
 
 #[expect(
@@ -25,12 +42,6 @@ pub(crate) struct MinimumSpanningForestKruskal;
     reason = "graph Kruskal indices are bounds-checked by the CSR node count"
 )]
 impl FixedRule for MinimumSpanningForestKruskal {
-    /// Run Kruskal's minimum spanning forest algorithm.
-    ///
-    /// # Complexity
-    ///
-    /// O(E log E) for sorting edges, plus O(E * α(V)) for union-find operations
-    /// where α is the inverse Ackermann function (effectively constant).
     fn run(
         &self,
         payload: FixedRulePayload<'_, '_>,
@@ -42,11 +53,11 @@ impl FixedRule for MinimumSpanningForestKruskal {
         if graph.node_count() == 0 {
             return Ok(());
         }
-        let msp = kruskal(&graph, poison)?;
-        for (src, dst, cost) in msp {
+        let mst_edges = kruskal(&graph, poison)?;
+        for (source, destination, cost) in mst_edges {
             out.put(vec![
-                indices[src as usize].clone(),
-                indices[dst as usize].clone(),
+                indices[source as usize].clone(),
+                indices[destination as usize].clone(),
                 DataValue::from(f64::from(cost)),
             ]);
         }
@@ -64,11 +75,10 @@ impl FixedRule for MinimumSpanningForestKruskal {
     }
 }
 
-/// Kruskal MST using union-find with path compression.
+/// Core Kruskal MST construction using union-find with path compression.
 ///
-/// # Complexity
-///
-/// O(E log E) dominated by sorting. Union-find operations are O(α(V)).
+/// **Complexity:** O(E log E) dominated by edge sorting via priority queue.
+/// Union-find operations are O(alpha(V)), effectively constant.
 #[expect(
     clippy::as_conversions,
     clippy::indexing_slicing,
@@ -83,25 +93,24 @@ impl FixedRule for MinimumSpanningForestKruskal {
     reason = "Poison is lightweight and passed by value for ergonomic .check() calls"
 )]
 fn kruskal(edges: &DirectedCsrGraph<f32>, poison: Poison) -> Result<Vec<(u32, u32, f32)>> {
-    let mut pq = PriorityQueue::new();
-    let mut uf = UnionFind::new(edges.node_count());
+    let mut priority_queue = PriorityQueue::new();
+    let mut union_find = UnionFind::new(edges.node_count());
     let mut mst = Vec::with_capacity((edges.node_count() - 1) as usize);
     for from in 0..edges.node_count() {
         for target in edges.out_neighbors_with_values(from) {
             let to = target.target;
             let cost = target.value;
-            pq.push((from, to), Reverse(OrderedFloat(cost)));
+            priority_queue.push((from, to), Reverse(OrderedFloat(cost)));
         }
     }
-    while let Some(((from, to), Reverse(OrderedFloat(cost)))) = pq.pop() {
-        if uf.connected(from, to) {
+    while let Some(((from, to), Reverse(OrderedFloat(cost)))) = priority_queue.pop() {
+        if union_find.connected(from, to) {
             continue;
         }
-        uf.union(from, to);
+        union_find.union(from, to);
 
         mst.push((from, to, cost));
-        // SAFETY: `szs` is initialized with `n` elements where `n >= 1`, so index 0 is always valid.
-        if uf.szs[0] == edges.node_count() {
+        if union_find.sizes[0] == edges.node_count() {
             break;
         }
         poison.check()?;
@@ -109,9 +118,13 @@ fn kruskal(edges: &DirectedCsrGraph<f32>, poison: Poison) -> Result<Vec<(u32, u3
     Ok(mst)
 }
 
+/// Disjoint-set (union-find) with path compression and union by size.
+///
+/// **Complexity per operation:** O(alpha(V)) amortised where alpha is the
+/// inverse Ackermann function.
 struct UnionFind {
-    ids: Vec<u32>,
-    szs: Vec<u32>,
+    parents: Vec<u32>,
+    sizes: Vec<u32>,
 }
 
 #[expect(
@@ -120,34 +133,35 @@ struct UnionFind {
     reason = "union-find parent/size arrays are indexed by node id which is always < node_count"
 )]
 impl UnionFind {
-    fn new(n: u32) -> Self {
+    fn new(node_count: u32) -> Self {
         Self {
-            ids: (0..n).collect_vec(),
-            szs: vec![1; n as usize],
+            parents: (0..node_count).collect_vec(),
+            sizes: vec![1; node_count as usize],
         }
     }
     fn union(&mut self, p: u32, q: u32) {
-        let root1 = self.find(p);
-        let root2 = self.find(q);
-        if root1 != root2 {
-            if self.szs[root1 as usize] < self.szs[root2 as usize] {
-                self.szs[root2 as usize] += self.szs[root1 as usize];
-                self.ids[root1 as usize] = root2;
+        let root_p = self.find(p);
+        let root_q = self.find(q);
+        if root_p != root_q {
+            if self.sizes[root_p as usize] < self.sizes[root_q as usize] {
+                self.sizes[root_q as usize] += self.sizes[root_p as usize];
+                self.parents[root_p as usize] = root_q;
             } else {
-                self.szs[root1 as usize] += self.szs[root2 as usize];
-                self.ids[root2 as usize] = root1;
+                self.sizes[root_p as usize] += self.sizes[root_q as usize];
+                self.parents[root_q as usize] = root_p;
             }
         }
     }
-    fn find(&mut self, mut p: u32) -> u32 {
-        let mut root = p;
-        while root != self.ids[root as usize] {
-            root = self.ids[root as usize];
+    fn find(&mut self, mut node: u32) -> u32 {
+        let mut root = node;
+        while root != self.parents[root as usize] {
+            root = self.parents[root as usize];
         }
-        while p != root {
-            let next = self.ids[p as usize];
-            self.ids[p as usize] = root;
-            p = next;
+        // Path compression
+        while node != root {
+            let next = self.parents[node as usize];
+            self.parents[node as usize] = root;
+            node = next;
         }
         root
     }

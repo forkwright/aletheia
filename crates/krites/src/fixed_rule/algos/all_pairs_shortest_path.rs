@@ -1,4 +1,18 @@
-//! All-pairs shortest path (Floyd-Warshall).
+//! Betweenness and closeness centrality via all-pairs shortest paths.
+//!
+//! **Betweenness centrality** measures how often a node lies on shortest paths
+//! between other nodes.  Uses a Brandes-style accumulation of dependency
+//! scores on top of Dijkstra's algorithm.
+//!
+//! Reference: Brandes, U. (2001). "A Faster Algorithm for Betweenness
+//! Centrality." *Journal of Mathematical Sociology*, 25(2), 163--177.
+//!
+//! **Closeness centrality** is the reciprocal of the mean shortest-path
+//! distance from a node to all reachable nodes, normalised by the square of
+//! the reachable-node count.
+//!
+//! Reference: Freeman, L.C. (1978). "Centrality in Social Networks:
+//! Conceptual Clarification." *Social Networks*, 1(3), 215--239.
 use std::cmp::Reverse;
 use std::collections::BTreeMap;
 
@@ -19,6 +33,17 @@ use crate::parse::SourceSpan;
 use crate::runtime::db::Poison;
 use crate::runtime::temp_store::RegularTempStore;
 
+/// Betweenness centrality via Brandes' algorithm.
+///
+/// Computes for each node the fraction of all shortest paths between other
+/// node pairs that pass through it.  Higher values indicate bridge or
+/// bottleneck nodes.
+///
+/// **Complexity:** O(V * (E log V)) — runs Dijkstra from every node and
+/// accumulates dependency scores.  Parallelised across starting nodes.
+///
+/// **When to use:** Identifying bottleneck or bridge nodes in weighted
+/// directed graphs.
 pub(crate) struct BetweennessCentrality;
 
 #[expect(
@@ -35,12 +60,6 @@ pub(crate) struct BetweennessCentrality;
     reason = "explicit .into_iter() clarifies ownership transfer of collected results"
 )]
 impl FixedRule for BetweennessCentrality {
-    /// Run betweenness centrality computation (Brandes algorithm variant).
-    ///
-    /// # Complexity
-    ///
-    /// O(V * (E log V)) where V is vertices, E is edges. Runs Dijkstra from each node
-    /// and accumulates dependency scores. Parallelized across starting nodes.
     fn run(
         &self,
         payload: FixedRulePayload<'_, '_>,
@@ -52,50 +71,53 @@ impl FixedRule for BetweennessCentrality {
 
         let (graph, indices, _inv_indices) = edges.as_directed_weighted_graph(undirected, false)?;
 
-        let n = graph.node_count();
-        if n == 0 {
+        let node_count = graph.node_count();
+        if node_count == 0 {
             return Ok(());
         }
 
-        let it = (0..n).into_par_iter();
+        let iterator = (0..node_count).into_par_iter();
 
-        let centrality_segs: Vec<_> = it
+        #[expect(
+            clippy::result_large_err,
+            reason = "InternalError carries structured context — boxing deferred to avoid API churn"
+        )]
+        let centrality_segments: Vec<_> = iterator
             .map(|start| -> Result<BTreeMap<u32, f32>> {
-                let res_for_start =
+                let paths_for_start =
                     dijkstra_keep_ties(&graph, start, &(), &(), &(), poison.clone())?;
-                let mut ret: BTreeMap<u32, f32> = Default::default();
-                let grouped = res_for_start.into_iter().chunk_by(|(n, _, _)| *n);
-                for (_, grp) in grouped.into_iter() {
-                    let grp = grp.collect_vec();
+                let mut accumulator: BTreeMap<u32, f32> = Default::default();
+                let grouped = paths_for_start.into_iter().chunk_by(|(target, _, _)| *target);
+                for (_, group) in grouped.into_iter() {
+                    let group = group.collect_vec();
                     #[expect(
                         clippy::cast_precision_loss,
                         reason = "path group count acceptable as approximate float"
                     )]
-                    let l = grp.len() as f32;
-                    for (_, _, path) in grp {
+                    let group_size = group.len() as f32;
+                    for (_, _, path) in group {
                         if path.len() < 3 {
                             continue;
                         }
                         for middle in path.iter().take(path.len() - 1).skip(1) {
-                            let entry = ret.entry(*middle).or_default();
-                            *entry += 1. / l;
+                            let entry = accumulator.entry(*middle).or_default();
+                            *entry += 1. / group_size;
                         }
                     }
                 }
-                Ok(ret)
+                Ok(accumulator)
             })
             .collect::<Result<_>>()?;
-        let mut centrality: Vec<f32> = vec![0.; n as usize];
-        for m in centrality_segs {
-            for (k, v) in m {
-                centrality[k as usize] += v;
+        let mut centrality: Vec<f32> = vec![0.; node_count as usize];
+        for segment in centrality_segments {
+            for (node_id, score) in segment {
+                centrality[node_id as usize] += score;
             }
         }
 
-        for (i, s) in centrality.into_iter().enumerate() {
-            // SAFETY: `indices` and `centrality` have the same length (both derived from graph node count).
-            let node = indices[i].clone();
-            out.put(vec![node, f64::from(s).into()]);
+        for (idx, score) in centrality.into_iter().enumerate() {
+            let node = indices[idx].clone();
+            out.put(vec![node, f64::from(score).into()]);
         }
 
         Ok(())
@@ -111,6 +133,17 @@ impl FixedRule for BetweennessCentrality {
     }
 }
 
+/// Closeness centrality (Wasserman-Faust normalisation).
+///
+/// For each node, computes the ratio of reachable-node-count squared to the
+/// product of total distance and (N-1).  Handles disconnected graphs by only
+/// summing over finite distances.
+///
+/// **Complexity:** O(V * (E log V)) — runs Dijkstra from every node.
+/// Parallelised across starting nodes.
+///
+/// **When to use:** Ranking nodes by how quickly information spreads from
+/// them through the network.
 pub(crate) struct ClosenessCentrality;
 
 #[expect(
@@ -123,12 +156,6 @@ pub(crate) struct ClosenessCentrality;
     reason = "OrderedFloat is Copy but clippy suggests .copied() inconsistently — .cloned() is clearer"
 )]
 impl FixedRule for ClosenessCentrality {
-    /// Run closeness centrality computation.
-    ///
-    /// # Complexity
-    ///
-    /// O(V * (E log V)) where V is vertices, E is edges. Runs Dijkstra from each node
-    /// to compute sum of distances. Parallelized across starting nodes.
     fn run(
         &self,
         payload: FixedRulePayload<'_, '_>,
@@ -140,30 +167,34 @@ impl FixedRule for ClosenessCentrality {
 
         let (graph, indices, _inv_indices) = edges.as_directed_weighted_graph(undirected, false)?;
 
-        let n = graph.node_count();
-        if n == 0 {
+        let node_count = graph.node_count();
+        if node_count == 0 {
             return Ok(());
         }
-        let it = (0..n).into_par_iter();
+        let iterator = (0..node_count).into_par_iter();
 
-        let res: Vec<_> = it
+        #[expect(
+            clippy::result_large_err,
+            reason = "InternalError carries structured context — boxing deferred to avoid API churn"
+        )]
+        let results: Vec<_> = iterator
             .map(|start| -> Result<f32> {
                 let distances = dijkstra_cost_only(&graph, start, poison.clone())?;
-                let total_dist: f32 = distances.iter().filter(|d| d.is_finite()).cloned().sum();
+                let total_distance: f32 = distances.iter().filter(|d| d.is_finite()).cloned().sum();
                 #[expect(
                     clippy::cast_precision_loss,
                     reason = "reachable node count acceptable as approximate float"
                 )]
-                let nc: f32 = distances.iter().filter(|d| d.is_finite()).count() as f32;
+                let reachable_count: f32 = distances.iter().filter(|d| d.is_finite()).count() as f32;
                 #[expect(
                     clippy::cast_precision_loss,
                     reason = "node count minus one acceptable as approximate float"
                 )]
-                let denom = (n - 1) as f32;
-                Ok(nc * nc / total_dist / denom)
+                let denominator = (node_count - 1) as f32;
+                Ok(reachable_count * reachable_count / total_distance / denominator)
             })
             .collect::<Result<_>>()?;
-        for (idx, centrality) in res.into_iter().enumerate() {
+        for (idx, centrality) in results.into_iter().enumerate() {
             out.put(vec![
                 indices[idx].clone(),
                 DataValue::from(f64::from(centrality)),
@@ -183,11 +214,16 @@ impl FixedRule for ClosenessCentrality {
     }
 }
 
-/// Dijkstra variant returning only distance costs (no paths).
+/// Single-source shortest-path distances via Dijkstra (cost-only, no paths).
 ///
-/// # Complexity
+/// Returns a distance vector where `distances[node]` is the shortest-path
+/// cost from `start` to `node`, or `f32::INFINITY` if unreachable.
 ///
-/// O(E log V) using binary heap. Space: O(V) for distance array.
+/// Reference: Dijkstra, E.W. (1959). "A Note on Two Problems in Connexion
+/// with Graphs." *Numerische Mathematik*, 1, 269--271.
+///
+/// **Complexity:** O(E log V) using a binary-heap priority queue.
+/// **Space:** O(V) for the distance array.
 #[expect(
     clippy::as_conversions,
     clippy::indexing_slicing,
@@ -207,25 +243,23 @@ pub(crate) fn dijkstra_cost_only(
     poison: Poison,
 ) -> Result<Vec<f32>> {
     let mut distance = vec![f32::INFINITY; edges.node_count() as usize];
-    let mut pq = PriorityQueue::new();
-    let mut back_pointers = vec![u32::MAX; edges.node_count() as usize];
+    let mut priority_queue = PriorityQueue::new();
     distance[start as usize] = 0.;
-    pq.push(start, Reverse(OrderedFloat(0.)));
+    priority_queue.push(start, Reverse(OrderedFloat(0.)));
 
-    while let Some((node, Reverse(OrderedFloat(cost)))) = pq.pop() {
+    while let Some((node, Reverse(OrderedFloat(cost)))) = priority_queue.pop() {
         if cost > distance[node as usize] {
             continue;
         }
 
         for target in edges.out_neighbors_with_values(node) {
-            let nxt_node = target.target;
-            let path_weight = target.value;
+            let neighbor = target.target;
+            let edge_weight = target.value;
 
-            let nxt_cost = cost + path_weight;
-            if nxt_cost < distance[nxt_node as usize] {
-                pq.push_increase(nxt_node, Reverse(OrderedFloat(nxt_cost)));
-                distance[nxt_node as usize] = nxt_cost;
-                back_pointers[nxt_node as usize] = node;
+            let new_cost = cost + edge_weight;
+            if new_cost < distance[neighbor as usize] {
+                priority_queue.push_increase(neighbor, Reverse(OrderedFloat(new_cost)));
+                distance[neighbor as usize] = new_cost;
             }
         }
         poison.check()?;

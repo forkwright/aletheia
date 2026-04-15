@@ -1,4 +1,10 @@
 //! `PageRank` fixed rule.
+//!
+//! Computes the `PageRank` score for every node in the graph using the
+//! power-iteration method on the CSR representation.
+//!
+//! Reference: Page, L. et al. (1999). "The `PageRank` Citation Ranking:
+//! Bringing Order to the Web." Stanford technical report.
 use std::collections::BTreeMap;
 
 use compact_str::CompactString;
@@ -13,6 +19,13 @@ use crate::parse::SourceSpan;
 use crate::runtime::db::Poison;
 use crate::runtime::temp_store::RegularTempStore;
 
+/// `PageRank` via power iteration.
+///
+/// **Complexity:** O(I * (V + E)) where I is iterations, V is vertices,
+/// E is edges.  Each iteration performs a full graph traversal.
+///
+/// **When to use:** Ranking nodes by importance based on link structure.
+/// Classic measure for citation networks, web graphs, and knowledge graphs.
 pub(crate) struct PageRank;
 
 #[expect(
@@ -25,12 +38,6 @@ pub(crate) struct PageRank;
     reason = "PageRank result indices are bounds-checked by the graph node count"
 )]
 impl FixedRule for PageRank {
-    /// Run `PageRank` on the input edge relation.
-    ///
-    /// # Complexity
-    ///
-    /// O(I * (V + E)) where I is iterations, V is vertices, E is edges.
-    /// Each iteration performs a full graph traversal.
     #[expect(
         unused_variables,
         reason = "poison is required by the FixedRule trait but PageRank does not poll for cancellation"
@@ -47,13 +54,13 @@ impl FixedRule for PageRank {
             clippy::cast_possible_truncation,
             reason = "intentional f64 to f32 reduction"
         )]
-        let theta = payload.unit_interval_option("theta", Some(0.85))? as f32;
+        let damping_factor = payload.unit_interval_option("theta", Some(0.85))? as f32;
         #[expect(
             clippy::cast_possible_truncation,
             reason = "intentional f64 to f32 reduction"
         )]
-        let epsilon = payload.unit_interval_option("epsilon", Some(0.0001))? as f32;
-        let iterations = payload.pos_integer_option("iterations", Some(10))?;
+        let tolerance = payload.unit_interval_option("epsilon", Some(0.0001))? as f32;
+        let max_iterations = payload.pos_integer_option("iterations", Some(10))?;
 
         let (graph, indices, _) = edges.as_directed_graph(undirected)?;
 
@@ -61,9 +68,9 @@ impl FixedRule for PageRank {
             return Ok(());
         }
 
-        let (ranks, _n_run, _) = page_rank(
+        let (ranks, _iterations_run, _final_error) = page_rank(
             &graph,
-            PageRankConfig::new(iterations, epsilon as f64, theta),
+            PageRankConfig::new(max_iterations, tolerance as f64, damping_factor),
         );
 
         for (idx, score) in ranks.iter().enumerate() {
