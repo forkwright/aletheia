@@ -19,7 +19,7 @@ impl RemoveLongFilter {
     }
 }
 
-impl<'a> RemoveLongFilterStream<'a> {
+impl RemoveLongFilterStream<'_> {
     fn predicate(&self, token: &Token) -> bool {
         token.text.len() < self.token_length_limit
     }
@@ -39,7 +39,7 @@ pub(crate) struct RemoveLongFilterStream<'a> {
     tail: BoxTokenStream<'a>,
 }
 
-impl<'a> TokenStream for RemoveLongFilterStream<'a> {
+impl TokenStream for RemoveLongFilterStream<'_> {
     fn advance(&mut self) -> bool {
         while self.tail.advance() {
             if self.predicate(self.tail.token()) {

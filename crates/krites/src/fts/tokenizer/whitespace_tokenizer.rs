@@ -23,7 +23,7 @@ impl Tokenizer for WhitespaceTokenizer {
     }
 }
 
-impl<'a> WhitespaceTokenStream<'a> {
+impl WhitespaceTokenStream<'_> {
     fn search_token_end(&mut self) -> usize {
         (&mut self.chars)
             .filter(|(_, c)| c.is_ascii_whitespace())
@@ -33,7 +33,7 @@ impl<'a> WhitespaceTokenStream<'a> {
     }
 }
 
-impl<'a> TokenStream for WhitespaceTokenStream<'a> {
+impl TokenStream for WhitespaceTokenStream<'_> {
     fn advance(&mut self) -> bool {
         self.token.text.clear();
         self.token.position = self.token.position.wrapping_add(1);

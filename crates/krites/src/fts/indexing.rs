@@ -35,6 +35,7 @@ impl FtsCache {
     /// # Complexity
     ///
     /// O(1) cached, or O(1) for the underlying range count operation.
+    #[expect(clippy::result_large_err, reason = "FTS error carries structured tokenization context")]
     fn get_n_for_relation(&mut self, rel: &RelationHandle, tx: &SessionTx<'_>) -> Result<usize> {
         Ok(match self.total_n_cache.entry(rel.name.clone()) {
             Entry::Vacant(v) => {
@@ -54,6 +55,12 @@ impl FtsCache {
     ///
     /// O(D) where D is documents with indexed terms. Scans term entries
     /// and computes unique document lengths.
+    #[expect(
+        clippy::indexing_slicing,
+        clippy::mutable_key_type,
+        clippy::result_large_err,
+        reason = "FTS index tuple layout is a known invariant; DataValue keys are structurally immutable; FTS error carries structured context"
+    )]
     fn get_avg_dl_for_relation(&mut self, idx: &RelationHandle, tx: &SessionTx<'_>) -> Result<f64> {
         Ok(match self.avg_dl_cache.entry(idx.name.clone()) {
             Entry::Occupied(o) => *o.get(),
@@ -96,6 +103,7 @@ impl FtsCache {
                     // INVARIANT: doc count is a usize representing indexed documents;
                     // precision loss at >2^53 documents is irrelevant for avg_dl.
                     #[expect(
+                        clippy::as_conversions,
                         clippy::cast_precision_loss,
                         reason = "doc count fits f64 in any realistic corpus"
                     )]
@@ -125,6 +133,7 @@ struct LiteralStats {
 ///
 /// O(1) arithmetic operations. Uses the standard BM25 formula with
 /// configurable k1 and b parameters.
+#[expect(clippy::too_many_arguments, reason = "BM25 formula requires all statistical parameters")]
 pub(crate) fn bm25_compute_score(
     tf: usize,
     df: usize,
@@ -142,18 +151,21 @@ pub(crate) fn bm25_compute_score(
         return 0.0;
     }
     #[expect(
+        clippy::as_conversions,
         clippy::cast_precision_loss,
-        reason = "i64 to f64: precision loss acceptable"
+        reason = "BM25 scoring operates in f64 — usize term/doc counts are small enough"
     )]
     let tf = tf as f64;
     #[expect(
+        clippy::as_conversions,
         clippy::cast_precision_loss,
-        reason = "i64 to f64: precision loss acceptable"
+        reason = "BM25 scoring operates in f64 — usize term/doc counts are small enough"
     )]
     let df = df as f64;
     #[expect(
+        clippy::as_conversions,
         clippy::cast_precision_loss,
-        reason = "i64 to f64: precision loss acceptable"
+        reason = "BM25 scoring operates in f64 — usize term/doc counts are small enough"
     )]
     let n = n as f64;
     let dl = f64::from(dl);
@@ -162,13 +174,19 @@ pub(crate) fn bm25_compute_score(
     idf * normalized_tf * booster
 }
 
-impl<'a> SessionTx<'a> {
+impl SessionTx<'_> {
     /// Search for a literal term in the FTS index.
     ///
     /// # Complexity
     ///
     /// O(log T + M) where T is unique terms, M is matching documents.
     /// Uses prefix scan for range queries.
+    #[expect(
+        clippy::as_conversions,
+        clippy::indexing_slicing,
+        clippy::result_large_err,
+        reason = "CompactString-to-str cast; FTS index tuple layout is a known invariant; FTS error carries structured context"
+    )]
     fn fts_search_literal(
         &self,
         literal: &FtsLiteral,
@@ -275,6 +293,12 @@ impl<'a> SessionTx<'a> {
     ///
     /// O(Q * (log T + D)) where Q is query terms, T is unique terms, D is docs.
     /// AND/OR/Near operations merge document sets with varying complexity.
+    #[expect(
+        clippy::mutable_key_type,
+        clippy::result_large_err,
+        clippy::too_many_lines,
+        reason = "DataValue keys are structurally immutable in FTS index lookups; FTS error carries structured context; search dispatches all AST node types"
+    )]
     fn fts_search_impl(
         &self,
         ast: &FtsExpr,
@@ -375,7 +399,7 @@ impl<'a> SessionTx<'a> {
                             Some(prev_pos) => {
                                 let mut inner_coll = FxHashSet::default();
                                 for p in prev_pos {
-                                    for pi in x.position_info.iter() {
+                                    for pi in &x.position_info {
                                         let cur = pi.position;
                                         if cur > p {
                                             if cur - p <= *distance {
@@ -426,21 +450,24 @@ impl<'a> SessionTx<'a> {
         config: &FtsSearch,
     ) -> f64 {
         #[expect(
+            clippy::as_conversions,
             clippy::cast_precision_loss,
-            reason = "i64 to f64: precision loss acceptable"
+            reason = "TF/TF-IDF scoring operates in f64 — usize counts are small enough"
         )]
         let tf = tf as f64;
         match config.score_kind {
             FtsScoreKind::Tf => tf * booster,
             FtsScoreKind::TfIdf | FtsScoreKind::Bm25 => {
                 #[expect(
+                    clippy::as_conversions,
                     clippy::cast_precision_loss,
-                    reason = "i64 to f64: precision loss acceptable"
+                    reason = "TF-IDF scoring operates in f64 — usize counts are small enough"
                 )]
                 let n_found_docs = n_found_docs as f64;
                 #[expect(
+                    clippy::as_conversions,
                     clippy::cast_precision_loss,
-                    reason = "i64 to f64: precision loss acceptable"
+                    reason = "TF-IDF scoring operates in f64 — usize counts are small enough"
                 )]
                 let idf = (1.0 + (n_total as f64 - n_found_docs + 0.5) / (n_found_docs + 0.5)).ln();
                 tf * idf * booster
@@ -453,6 +480,11 @@ impl<'a> SessionTx<'a> {
     ///
     /// O(tokenize + search + rank) = O(L + Q*(log T + D) + D log D) where
     /// L is query length, Q is terms, T is unique terms, D is matching docs.
+    #[expect(
+        clippy::ref_option,
+        clippy::result_large_err,
+        reason = "filter_code borrows caller's Option — changing to Option<&T> would alter call sites; FTS error carries structured context"
+    )]
     pub(crate) fn fts_search(
         &self,
         q: &str,
@@ -521,6 +553,11 @@ impl<'a> SessionTx<'a> {
     ///
     /// O(L) where L is the tokenized length of the document. Each unique term
     /// requires one index write (amortized O(1) with LSM).
+    #[expect(
+        clippy::indexing_slicing,
+        clippy::result_large_err,
+        reason = "FTS index tuple layout is a known invariant; FTS error carries structured context"
+    )]
     pub(crate) fn put_fts_index_item(
         &mut self,
         tuple: &[DataValue],
@@ -574,8 +611,8 @@ impl<'a> SessionTx<'a> {
             val[0] = DataValue::List(from);
             val[1] = DataValue::List(to);
             val[2] = DataValue::List(position);
-            let key_bytes = idx_handle.encode_key_for_store(&key, Default::default())?;
-            let val_bytes = idx_handle.encode_val_only_for_store(&val, Default::default())?;
+            let key_bytes = idx_handle.encode_key_for_store(&key, SourceSpan::default())?;
+            let val_bytes = idx_handle.encode_val_only_for_store(&val, SourceSpan::default())?;
             self.store_tx.put(&key_bytes, &val_bytes)?;
         }
         Ok(())
@@ -586,6 +623,11 @@ impl<'a> SessionTx<'a> {
     ///
     /// O(L) where L is the tokenized length. Deletes each term entry
     /// for the document (amortized O(1) per deletion with LSM).
+    #[expect(
+        clippy::indexing_slicing,
+        clippy::result_large_err,
+        reason = "FTS index tuple layout is a known invariant; FTS error carries structured context"
+    )]
     pub(crate) fn del_fts_index_item(
         &mut self,
         tuple: &[DataValue],
@@ -619,7 +661,7 @@ impl<'a> SessionTx<'a> {
         }
         for text in collector {
             key[0] = DataValue::Str(text);
-            let key_bytes = idx_handle.encode_key_for_store(&key, Default::default())?;
+            let key_bytes = idx_handle.encode_key_for_store(&key, SourceSpan::default())?;
             self.store_tx.del(&key_bytes)?;
         }
         Ok(())
