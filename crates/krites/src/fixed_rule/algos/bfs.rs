@@ -1,4 +1,11 @@
-//! Breadth-first search traversal.
+//! Breadth-first search traversal with condition filtering.
+//!
+//! Performs level-order graph traversal from one or more starting nodes,
+//! returning paths to nodes that satisfy a user-provided condition predicate.
+//! Stops early when the configured `limit` is reached.
+//!
+//! Reference: Cormen, T.H. et al. (2009). *Introduction to Algorithms*,
+//! 3rd ed., MIT Press, Section 22.2.
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use compact_str::CompactString;
@@ -13,6 +20,14 @@ use crate::parse::SourceSpan;
 use crate::runtime::db::Poison;
 use crate::runtime::temp_store::RegularTempStore;
 
+/// Breadth-first search with condition-based target discovery.
+///
+/// **Complexity:** O(V + E) where V is vertices reachable from starting
+/// nodes and E is edges traversed.  Stops early when `limit` matches are
+/// found.
+///
+/// **When to use:** Finding the closest nodes satisfying a predicate in an
+/// unweighted graph, or discovering all reachable nodes layer by layer.
 pub(crate) struct Bfs;
 
 #[expect(
@@ -28,12 +43,6 @@ pub(crate) struct Bfs;
     reason = "graph BFS indices are bounds-checked by the visited set"
 )]
 impl FixedRule for Bfs {
-    /// Run breadth-first search traversal.
-    ///
-    /// # Complexity
-    ///
-    /// O(V + E) where V is vertices reachable from starting nodes and E is
-    /// edges traversed. Stops early when limit is reached.
     fn run(
         &self,
         payload: FixedRulePayload<'_, '_>,
@@ -59,7 +68,6 @@ impl FixedRule for Bfs {
 
         'outer: for node_tuple in starting_nodes.iter()? {
             let node_tuple = node_tuple?;
-            // SAFETY: `node_tuple` comes from `starting_nodes` input validated to have arity >= 1.
             let starting_node = &node_tuple[0];
             if visited.contains(starting_node) {
                 continue;
@@ -72,7 +80,6 @@ impl FixedRule for Bfs {
             while let Some(candidate) = queue.pop_back() {
                 for edge in edges.prefix_iter(&candidate)? {
                     let edge = edge?;
-                    // SAFETY: `edge` comes from `ensure_min_len(2)` so has at least 2 elements.
                     let to_node = &edge[1];
                     if visited.contains(to_node) {
                         continue;
@@ -81,7 +88,7 @@ impl FixedRule for Bfs {
                     visited.insert(to_node.clone());
                     backtrace.insert(to_node.clone(), candidate.clone());
 
-                    let cand_tuple = if skip_query_nodes {
+                    let candidate_tuple = if skip_query_nodes {
                         vec![to_node.clone()]
                     } else {
                         nodes.prefix_iter(to_node)?.next().ok_or_else(
@@ -97,7 +104,7 @@ impl FixedRule for Bfs {
 
                     if eval_bytecode_pred(
                         &condition_bytecode,
-                        &cand_tuple,
+                        &candidate_tuple,
                         &mut stack,
                         condition_span,
                     )? {

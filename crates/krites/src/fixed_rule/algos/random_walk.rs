@@ -1,4 +1,11 @@
 //! Random walk over graphs.
+//!
+//! Performs one or more random walks from each starting node, optionally
+//! using a user-provided weight expression to bias edge selection.  Each
+//! walk records the sequence of visited nodes.
+//!
+//! Reference: Lovasz, L. (1993). "Random Walks on Graphs: A Survey."
+//! *Combinatorics, Paul Erdos is Eighty*, Vol. 2, 1--46.
 use std::collections::BTreeMap;
 
 use compact_str::CompactString;
@@ -16,6 +23,14 @@ use crate::parse::SourceSpan;
 use crate::runtime::db::Poison;
 use crate::runtime::temp_store::RegularTempStore;
 
+/// Random walk with optional weighted edge selection.
+///
+/// **Complexity:** O(S * I * (d + W)) where S is starting nodes, I is
+/// iterations, d is out-degree, W is weight evaluation cost.  Each step
+/// samples from outgoing edges.
+///
+/// **When to use:** Node embedding (DeepWalk/Node2Vec), graph sampling,
+/// or simulating diffusion processes.
 pub(crate) struct RandomWalk;
 
 #[expect(
@@ -31,12 +46,6 @@ pub(crate) struct RandomWalk;
     reason = "InternalError carries structured context — boxing deferred to avoid API churn"
 )]
 impl FixedRule for RandomWalk {
-    /// Run random walk over the graph.
-    ///
-    /// # Complexity
-    ///
-    /// O(S * I * (d + W)) where S is starting nodes, I is iterations, d is out-degree,
-    /// W is weight evaluation cost. Each step samples from outgoing edges.
     fn run(
         &self,
         payload: FixedRulePayload<'_, '_>,
@@ -62,11 +71,10 @@ impl FixedRule for RandomWalk {
         let maybe_weight_bytecode = maybe_weight_bytecode;
         let mut stack = vec![];
 
-        let mut counter = 0i64;
+        let mut walk_counter = 0i64;
         let mut rng = rand::rng();
         for start_node in starting.iter()? {
             let start_node = start_node?;
-            // SAFETY: `start_node` comes from `starting` input validated to have arity >= 1.
             let start_node_key = &start_node[0];
             let starting_tuple = nodes.prefix_iter(start_node_key)?.next().ok_or_else(
                 || -> crate::error::InternalError {
@@ -78,64 +86,69 @@ impl FixedRule for RandomWalk {
                 },
             )??;
             for _ in 0..iterations {
-                counter += 1;
+                walk_counter += 1;
                 let mut current_tuple = starting_tuple.clone();
                 let mut path = vec![start_node_key.clone()];
                 for _ in 0..steps {
-                    // SAFETY: `current_tuple` is obtained from `nodes.prefix_iter()` which yields
-                    // tuples with at least one element.
-                    let cur_node_key = &current_tuple[0];
-                    let candidate_steps: Vec<_> = edges.prefix_iter(cur_node_key)?.try_collect()?;
+                    let current_node_key = &current_tuple[0];
+                    let candidate_steps: Vec<_> =
+                        edges.prefix_iter(current_node_key)?.try_collect()?;
                     if candidate_steps.is_empty() {
                         break;
                     }
-                    let next_step = if let Some((weight_expr, _span)) = &maybe_weight_bytecode {
-                        let weights: Vec<_> = candidate_steps
-                            .iter()
-                            .map(|t| -> Result<f64> {
-                                let mut cand = current_tuple.clone();
-                                cand.extend_from_slice(t);
-                                Ok(match eval_bytecode(weight_expr, &cand, &mut stack)? {
-                                    DataValue::Num(n) => {
-                                        let f = n.get_float();
-                                        if f < 0. {
-                                            return Err(BadExprValueError(
-                                                DataValue::from(f),
+                    let next_step =
+                        if let Some((weight_bytecode, _span)) = &maybe_weight_bytecode {
+                            let weights: Vec<_> = candidate_steps
+                                .iter()
+                                .map(|tuple| -> Result<f64> {
+                                    let mut combined = current_tuple.clone();
+                                    combined.extend_from_slice(tuple);
+                                    Ok(
+                                        match eval_bytecode(weight_bytecode, &combined, &mut stack)?
+                                        {
+                                            DataValue::Num(n) => {
+                                                let f = n.get_float();
+                                                if f < 0. {
+                                                    return Err(BadExprValueError(
+                                                    DataValue::from(f),
+                                                    "'weight' must evaluate to a non-negative number"
+                                                        .to_string(),
+                                                )
+                                                    .into());
+                                                }
+                                                f
+                                            }
+                                            v => {
+                                                return Err(BadExprValueError(
+                                                v,
                                                 "'weight' must evaluate to a non-negative number"
                                                     .to_string(),
                                             )
-                                            .into());
-                                        }
-                                        f
-                                    }
-                                    v => {
-                                        return Err(BadExprValueError(
-                                            v,
-                                            "'weight' must evaluate to a non-negative number"
-                                                .to_string(),
-                                        )
-                                        .into());
-                                    }
+                                                .into());
+                                            }
+                                        },
+                                    )
                                 })
-                            })
-                            .try_collect()?;
-                        let dist = WeightedIndex::new(&weights).map_err(|e| {
-                            GraphAlgorithmSnafu {
-                                algorithm: "random_walk",
-                                message: format!("invalid edge weights: {e}"),
-                            }
-                            .build()
-                        })?;
-                        &candidate_steps[dist.sample(&mut rng)]
-                    } else {
-                        // INVARIANT: `candidate_steps` is checked non-empty before entering this branch
-                        // INVARIANT: `candidate_steps` is checked non-empty before entering this branch
-                        candidate_steps
-                            .choose(&mut rng)
-                            .unwrap_or_else(|| panic!("candidate_steps is non-empty"))
-                    };
-                    // SAFETY: `next_step` comes from `edges.prefix_iter()` which yields tuples
-                    // with at least 2 elements.
+                                .try_collect()?;
+                            let distribution =
+                                WeightedIndex::new(&weights).map_err(|err| {
+                                    GraphAlgorithmSnafu {
+                                        algorithm: "random_walk",
+                                        message: format!("invalid edge weights: {err}"),
+                                    }
+                                    .build()
+                                })?;
+                            &candidate_steps[distribution.sample(&mut rng)]
+                        } else {
+                            candidate_steps.choose(&mut rng).ok_or_else(|| {
+                                GraphAlgorithmSnafu {
+                                    algorithm: "random_walk",
+                                    message:
+                                        "candidate step set is unexpectedly empty after non-empty check",
+                                }
+                                .build()
+                            })?
+                        };
                     let next_node = &next_step[1];
                     path.push(next_node.clone());
                     current_tuple = nodes.prefix_iter(next_node)?.next().ok_or_else(
@@ -150,7 +163,7 @@ impl FixedRule for RandomWalk {
                     poison.check()?;
                 }
                 out.put(vec![
-                    DataValue::from(counter),
+                    DataValue::from(walk_counter),
                     start_node_key.clone(),
                     DataValue::List(path),
                 ]);

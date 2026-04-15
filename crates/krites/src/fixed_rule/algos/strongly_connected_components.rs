@@ -1,8 +1,11 @@
-//! Tarjan's strongly connected components.
-#![expect(
-    unused_imports,
-    reason = "algorithm may use additional imports depending on feature flags"
-)]
+//! Strongly connected components via Tarjan's algorithm.
+//!
+//! Finds all strongly connected components (SCCs) of a directed graph in a
+//! single DFS pass.  Also supports weakly connected components when the
+//! graph is treated as undirected.
+//!
+//! Reference: Tarjan, R.E. (1972). "Depth-First Search and Linear Graph
+//! Algorithms." *SIAM Journal on Computing*, 1(2), 146--160.
 
 use std::cmp::min;
 use std::collections::BTreeMap;
@@ -11,18 +14,26 @@ use compact_str::CompactString;
 use itertools::Itertools;
 
 use crate::data::expr::Expr;
-use crate::data::program::{MagicFixedRuleApply, MagicSymbol};
 use crate::data::symb::Symbol;
-use crate::data::tuple::Tuple;
 use crate::data::value::DataValue;
 use crate::error::InternalResult as Result;
 use crate::fixed_rule::csr::DirectedCsrGraph;
+use crate::fixed_rule::error::GraphAlgorithmSnafu;
 use crate::fixed_rule::{FixedRule, FixedRulePayload};
 use crate::parse::SourceSpan;
 use crate::runtime::db::Poison;
-use crate::runtime::temp_store::{EpochStore, RegularTempStore};
-use crate::runtime::transact::SessionTx;
+use crate::runtime::temp_store::RegularTempStore;
 
+/// Strongly (or weakly) connected components.
+///
+/// When `strong` is true, finds SCCs using Tarjan's algorithm on the
+/// directed graph.  When `strong` is false, finds weakly connected
+/// components by treating the graph as undirected.
+///
+/// **Complexity:** O(V + E) -- single DFS traversal.
+///
+/// **When to use:** Identifying cycles and mutual reachability in directed
+/// graphs, or partitioning undirected graphs into connected components.
 #[cfg(feature = "graph-algo")]
 pub(crate) struct StronglyConnectedComponent {
     strong: bool,
@@ -40,11 +51,6 @@ impl StronglyConnectedComponent {
     reason = "graph SCC group indices are small values cast between u32/i64 — guarded by graph size"
 )]
 impl FixedRule for StronglyConnectedComponent {
-    /// Run Tarjan's strongly connected components algorithm.
-    ///
-    /// # Complexity
-    ///
-    /// O(V + E) where V is vertices and E is edges. Single DFS traversal.
     fn run(
         &self,
         payload: FixedRulePayload<'_, '_>,
@@ -55,14 +61,20 @@ impl FixedRule for StronglyConnectedComponent {
 
         let (graph, indices, mut inv_indices) = edges.as_directed_graph(!self.strong)?;
 
-        let tarjan = TarjanSccG::new(graph).run(poison)?;
-        for (grp_id, cc) in tarjan.iter().enumerate() {
-            for idx in cc {
-                // INVARIANT: `idx` comes from graph traversal, all indices are within `indices` bounds
-                // INVARIANT: `idx` comes from graph traversal, all indices are within `indices` bounds
-                let val = indices.get(*idx as usize).unwrap_or_else(|| panic!("graph index must be valid"));
+        let tarjan = TarjanScc::new(graph).run(poison)?;
+        for (group_id, component) in tarjan.iter().enumerate() {
+            for idx in component {
+                let node_value = indices.get(*idx as usize).ok_or_else(|| {
+                    GraphAlgorithmSnafu {
+                        algorithm: "strongly_connected_components",
+                        message: format!(
+                            "graph traversal produced index {idx} beyond vertex array bounds"
+                        ),
+                    }
+                    .build()
+                })?;
                 #[expect(clippy::cast_possible_wrap, reason = "value fits i64")]
-                let tuple = vec![val.clone(), DataValue::from(grp_id as i64)];
+                let tuple = vec![node_value.clone(), DataValue::from(group_id as i64)];
                 out.put(tuple);
             }
         }
@@ -96,11 +108,19 @@ impl FixedRule for StronglyConnectedComponent {
     }
 }
 
-pub(crate) struct TarjanSccG {
+/// Tarjan's SCC algorithm state.
+///
+/// Maintains DFS discovery ids, low-link values, and the explicit stack
+/// needed for SCC identification.
+///
+/// **Note:** The `dfs()` method uses recursion.  For extremely deep graphs
+/// this may hit the system stack limit.  Production use on graphs with
+/// depth > ~10K should consider an iterative variant.
+pub(crate) struct TarjanScc {
     graph: DirectedCsrGraph,
-    id: u32,
-    ids: Vec<Option<u32>>,
-    low: Vec<u32>,
+    next_id: u32,
+    discovery_ids: Vec<Option<u32>>,
+    low_links: Vec<u32>,
     on_stack: Vec<bool>,
     stack: Vec<u32>,
 }
@@ -110,23 +130,22 @@ pub(crate) struct TarjanSccG {
     clippy::indexing_slicing,
     reason = "Tarjan SCC DFS indices are bounds-checked by the CSR node count and ids/low/on_stack arrays"
 )]
-impl TarjanSccG {
+impl TarjanScc {
     pub(crate) fn new(graph: DirectedCsrGraph) -> Self {
         let graph_size = graph.node_count();
         Self {
             graph,
-            id: 0,
-            ids: vec![None; graph_size as usize],
-            low: vec![0; graph_size as usize],
+            next_id: 0,
+            discovery_ids: vec![None; graph_size as usize],
+            low_links: vec![0; graph_size as usize],
             on_stack: vec![false; graph_size as usize],
             stack: vec![],
         }
     }
+
     /// Execute Tarjan's SCC algorithm.
     ///
-    /// # Complexity
-    ///
-    /// O(V + E) - linear time DFS-based algorithm.
+    /// **Complexity:** O(V + E) -- linear time DFS-based algorithm.
     #[expect(
         clippy::result_large_err,
         reason = "InternalError carries structured context — boxing deferred to avoid API churn"
@@ -136,45 +155,46 @@ impl TarjanSccG {
         reason = "Poison is lightweight and passed by value for ergonomic .check() calls"
     )]
     pub(crate) fn run(mut self, poison: Poison) -> Result<Vec<Vec<u32>>> {
-        for i in 0..self.graph.node_count() {
-            if self.ids[i as usize].is_none() {
-                self.dfs(i);
+        for node in 0..self.graph.node_count() {
+            if self.discovery_ids[node as usize].is_none() {
+                self.dfs(node);
                 poison.check()?;
             }
         }
 
-        let mut low_map: BTreeMap<u32, Vec<u32>> = BTreeMap::new();
-        for (idx, grp) in self.low.into_iter().enumerate() {
+        let mut low_link_map: BTreeMap<u32, Vec<u32>> = BTreeMap::new();
+        for (idx, group) in self.low_links.into_iter().enumerate() {
             #[expect(clippy::cast_possible_truncation, reason = "value fits u32")]
             let idx_u32 = idx as u32;
-            low_map.entry(grp).or_default().push(idx_u32);
+            low_link_map.entry(group).or_default().push(idx_u32);
         }
 
-        Ok(low_map.into_values().collect_vec())
+        Ok(low_link_map.into_values().collect_vec())
     }
-    /// Depth-first search for SCC discovery.
+
+    /// Recursive DFS for SCC discovery.
     ///
-    /// # Complexity
-    ///
-    /// O(1) per node plus O(E) total edge traversals across all DFS calls.
+    /// **Complexity:** O(1) per node plus O(E) total edge traversals across
+    /// all DFS calls.
     fn dfs(&mut self, at: u32) {
         self.stack.push(at);
         self.on_stack[at as usize] = true;
-        self.id += 1;
-        self.ids[at as usize] = Some(self.id);
-        self.low[at as usize] = self.id;
-        for to in self.graph.out_neighbors(at).collect_vec() {
-            if self.ids[to as usize].is_none() {
-                self.dfs(to);
+        self.next_id += 1;
+        self.discovery_ids[at as usize] = Some(self.next_id);
+        self.low_links[at as usize] = self.next_id;
+        for neighbor in self.graph.out_neighbors(at).collect_vec() {
+            if self.discovery_ids[neighbor as usize].is_none() {
+                self.dfs(neighbor);
             }
-            if self.on_stack[to as usize] {
-                self.low[at as usize] = min(self.low[at as usize], self.low[to as usize]);
+            if self.on_stack[neighbor as usize] {
+                self.low_links[at as usize] =
+                    min(self.low_links[at as usize], self.low_links[neighbor as usize]);
             }
         }
-        if self.ids[at as usize].unwrap_or(0) == self.low[at as usize] {
+        if self.discovery_ids[at as usize].unwrap_or(0) == self.low_links[at as usize] {
             while let Some(node) = self.stack.pop() {
                 self.on_stack[node as usize] = false;
-                self.low[node as usize] = self.ids[at as usize].unwrap_or(0);
+                self.low_links[node as usize] = self.discovery_ids[at as usize].unwrap_or(0);
                 if node == at {
                     break;
                 }
