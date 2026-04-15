@@ -107,12 +107,19 @@ pub enum Error {
 
 impl Error {
     /// Whether this error indicates a transient failure worth retrying
-    /// with a different model (429, 503, 529, timeout, connection reset).
+    /// with a different model (429, 503, 529, timeout, connection reset,
+    /// provider process unavailable).
     #[must_use]
     pub fn is_retryable(&self) -> bool {
         // kanon:ignore RUST/pub-visibility
         match self {
-            Error::RateLimited { .. }
+            // WHY: ProviderInit errors from subprocess providers (CC) indicate the
+            // provider binary is temporarily unavailable (crashed, auth expired,
+            // deleted). This is a transient condition — the binary may come back —
+            // so the execute stage should activate degraded-mode fallback instead
+            // of surfacing a hard error.
+            Error::ProviderInit { .. }
+            | Error::RateLimited { .. }
             | Error::ApiError {
                 status: 500..=599, ..
             } => true,
@@ -122,6 +129,8 @@ impl Error {
                     || msg.contains("connection")
                     || msg.contains("reset")
                     || msg.contains("broken pipe")
+                    || msg.contains("cc process exited")
+                    || msg.contains("cc subprocess")
             }
             _ => false,
         }
@@ -135,8 +144,10 @@ impl koina::error_class::Classifiable for Error {
     fn class(&self) -> koina::error_class::ErrorClass {
         use koina::error_class::ErrorClass;
         match self {
-            // Transient: safe to retry — rate limits + server errors (5xx)
+            // Transient: safe to retry — rate limits, server errors (5xx),
+            // and provider init failures (CC binary crashed/disappeared).
             Error::RateLimited { .. }
+            | Error::ProviderInit { .. }
             | Error::ApiError {
                 status: 500..=599, ..
             } => ErrorClass::Transient,
@@ -161,10 +172,6 @@ impl koina::error_class::Classifiable for Error {
             | Error::UnsupportedModel { .. }
             | Error::ApiError { .. }
             | Error::ParseResponse { .. } => ErrorClass::Permanent,
-
-            // Unknown: provider init failures may be transient (e.g. config
-            // not yet loaded) or permanent — escalate for operator visibility.
-            Error::ProviderInit { .. } => ErrorClass::Unknown,
         }
     }
 
@@ -208,7 +215,11 @@ impl koina::error_class::Classifiable for Error {
             } => ErrorAction::Surface {
                 user_message: format!("API error {status}: {message}"),
             },
-            Error::ParseResponse { .. } | Error::ProviderInit { .. } => ErrorAction::Escalate,
+            Error::ProviderInit { .. } => ErrorAction::Retry {
+                max_attempts: 3,
+                backoff_base_ms: 2_000,
+            },
+            Error::ParseResponse { .. } => ErrorAction::Escalate,
         }
     }
 }
@@ -291,6 +302,47 @@ mod tests {
         assert!(
             !err.is_retryable(),
             "non-transient ApiRequest should not be retryable"
+        );
+    }
+
+    #[test]
+    fn provider_init_is_retryable() {
+        // WHY: ProviderInit errors from CC subprocess (binary crashed, disappeared)
+        // are transient — the binary may come back. Degraded mode must activate.
+        let err = ProviderInitSnafu {
+            message: "failed to spawn claude CLI at /usr/bin/claude: No such file or directory",
+        }
+        .build();
+        assert!(
+            err.is_retryable(),
+            "ProviderInit should be retryable (transient provider unavailability)"
+        );
+    }
+
+    #[test]
+    fn api_request_cc_process_exit_is_retryable() {
+        // WHY: CC subprocess crash mid-turn produces an ApiRequest error with
+        // "CC process exited" in the message. Must be retryable so degraded
+        // mode activates instead of surfacing a hard 500.
+        let err = ApiRequestSnafu {
+            message: "CC process exited with exit status: 1: OAuth token rejected",
+        }
+        .build();
+        assert!(
+            err.is_retryable(),
+            "CC process exit should be retryable"
+        );
+    }
+
+    #[test]
+    fn api_request_cc_subprocess_timeout_is_retryable() {
+        let err = ApiRequestSnafu {
+            message: "CC subprocess timed out after 300s",
+        }
+        .build();
+        assert!(
+            err.is_retryable(),
+            "CC subprocess timeout should be retryable"
         );
     }
 }
