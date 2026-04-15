@@ -1,4 +1,13 @@
 //! Core database instance and session management.
+//!
+//! Contains the `Db<S>` type -- the engine's top-level handle parameterized
+//! over a storage backend. Manages running query tracking, fixed rule
+//! registration, relation locks, event callbacks, and provides the
+//! `NamedRows` result type for query output.
+//!
+//! Also defines `Poison` for cooperative query cancellation, `ScriptMutability`
+//! for read/write mode control, and `TransactionPayload` for multi-statement
+//! transaction channels.
 
 use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
@@ -127,7 +136,8 @@ impl IntoIterator for NamedRows {
 }
 
 impl NamedRows {
-    /// create a named rows with the given headers and rows
+    /// Create named rows with the given headers and rows.
+    #[must_use]
     pub fn new(headers: Vec<String>, rows: Vec<Tuple>) -> Self {
         Self {
             headers,
@@ -136,12 +146,14 @@ impl NamedRows {
         }
     }
 
-    /// If there are more named rows after the current one
+    /// If there are more named rows after the current one.
+    #[must_use]
     pub fn has_more(&self) -> bool {
         self.next.is_some()
     }
 
-    /// convert a chain of named rows to individual named rows
+    /// Convert a chain of named rows to individual named rows.
+    #[must_use]
     pub fn flatten(self) -> Vec<Self> {
         let mut collected = vec![];
         let mut current = self;
@@ -157,7 +169,8 @@ impl NamedRows {
         collected
     }
 
-    /// Convert to a JSON object
+    /// Convert to a JSON object.
+    #[must_use]
     pub fn into_json(self) -> JsonValue {
         let nxt = match self.next {
             None => json!(null),
@@ -261,6 +274,7 @@ impl NamedRows {
 
     /// Create a query and parameters to apply an operation (insert, put, delete, rm) to a stored
     /// relation with the named rows.
+    #[must_use]
     pub fn into_payload(self, relation: &str, op: &str) -> Payload {
         let cols_str = self.headers.join(", ");
         let query = format!("?[{cols_str}] <- $data :{op} {relation} {{ {cols_str} }}");

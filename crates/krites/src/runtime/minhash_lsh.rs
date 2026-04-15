@@ -1,4 +1,14 @@
 //! MinHash locality-sensitive hashing.
+//!
+//! Implements LSH-based approximate set similarity search using MinHash
+//! signatures. Each document is hashed into `num_perm` independent hash
+//! values, then banded into `n_bands` groups of `n_rows_in_band` hashes.
+//! Documents sharing a band are candidate duplicates (Jaccard similarity
+//! above the configured threshold).
+//!
+//! Optimal band/row parameters are found by minimizing a weighted sum of
+//! false-positive and false-negative probabilities using Simpson's rule
+//! numerical integration.
 
 use std::cmp::min;
 use std::hash::{Hash, Hasher};

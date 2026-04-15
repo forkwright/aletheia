@@ -1,4 +1,10 @@
 //! Schema and relation transact operations.
+//!
+//! Contains `SessionTx` -- a transaction handle that wraps a storage transaction
+//! and a temporary store transaction. All relation reads, writes, and schema
+//! mutations flow through `SessionTx`. The transaction is correctness-critical:
+//! errors during commit or init_storage can leave the database in an inconsistent
+//! state, so all fallible methods propagate errors rather than panicking.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, AtomicU64};
@@ -17,6 +23,11 @@ use crate::storage::StoreTx;
 use crate::storage::temp::TempTx;
 use crate::{CallbackOp, NamedRows};
 
+/// A transaction session binding a storage transaction and a temporary store.
+///
+/// Dropping without calling [`commit_tx`](Self::commit_tx) implicitly aborts.
+/// All schema mutations (create/destroy relations, set triggers, etc.) go
+/// through this handle.
 pub struct SessionTx<'a> {
     pub(crate) store_tx: Box<dyn StoreTx<'a> + 'a>,
     pub(crate) temp_store_tx: TempTx,

@@ -1,4 +1,13 @@
 //! Query execution methods for the Db engine.
+//!
+//! Entry points for running Datalog scripts against the database:
+//!
+//! - `run_script` / `run_script_read_only`: parse + execute a text payload
+//! - `run_script_ast`: execute a pre-parsed `DatalogScript`
+//! - `run_query`: core evaluation pipeline -- normalize, stratify, compile,
+//!   evaluate with semi-naive fixpoint, then apply sorting/limit/offset and
+//!   store results into relations if requested
+//! - `explain_compiled`: produce a query plan description for `::explain`
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::Ordering;

@@ -1,4 +1,10 @@
 //! Error types for the Datalog engine runtime.
+//!
+//! `RuntimeError` is the snafu-derived error enum for all runtime operations.
+//! Each variant carries structured context (names, messages) and an implicit
+//! `snafu::Location` for source-location tracking. At the crate boundary,
+//! these are wrapped into `InternalError::Runtime` and then converted to the
+//! public `Error` type.
 use snafu::Snafu;
 
 /// Structured error type for the engine runtime module.
