@@ -193,9 +193,11 @@ check_health() {
 smoke_test() {
     local binary_path="${1:-$BINARY_DST}"
     log "Running smoke test (check-config) against ${binary_path}..."
-    if "$binary_path" -r "$INSTANCE_ROOT" check-config; then
+    local smoke_output
+    if smoke_output=$("$binary_path" -r "$INSTANCE_ROOT" check-config 2>&1); then
         log "Smoke test passed"
     else
+        log_error "Smoke test output: ${smoke_output}"
         die "Smoke test failed — config is invalid, deploy aborted"
     fi
 }
@@ -420,6 +422,7 @@ fi
 if [[ "$DRY_RUN" == true ]]; then
     log "[dry-run] Would copy ${BINARY_SRC} to temp location, validate, then atomic move to ${BINARY_DST}"
     log "[dry-run] Would run smoke test (check-config) against temp binary"
+    log "[dry-run] Would preserve previous binary at ${BINARY_DST}.prev"
 else
     mkdir -p "$(dirname "$BINARY_DST")"
 
@@ -434,6 +437,12 @@ else
     if ! smoke_test "$BINARY_TMP"; then
         rm -f -- "$BINARY_TMP"
         die "Smoke test failed — production binary unchanged"
+    fi
+
+    # Preserve previous binary for manual rollback
+    if [[ -f "$BINARY_DST" ]]; then
+        cp -- "$BINARY_DST" "${BINARY_DST}.prev"
+        log "Previous binary preserved at ${BINARY_DST}.prev"
     fi
 
     # Atomic move to production location
