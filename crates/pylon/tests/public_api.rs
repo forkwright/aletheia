@@ -165,6 +165,10 @@ impl TestEnvBuilder {
             access_ttl: self.jwt_access_ttl.unwrap_or(Duration::from_secs(3600)),
             refresh_ttl: Duration::from_secs(86_400),
             issuer: "aletheia-test".to_owned(),
+            // WHY: explicit zero leeway so the short-TTL expiry test
+            // observes immediate expiry rather than the 30s default
+            // clock-skew tolerance.
+            clock_skew_leeway_secs: 0,
         }));
 
         let default_config = AletheiaConfig::default();
@@ -540,6 +544,7 @@ async fn jwt_wrong_issuer_is_rejected() {
         access_ttl: Duration::from_secs(3600),
         refresh_ttl: Duration::from_secs(86_400),
         issuer: "someone-else".to_owned(),
+        ..JwtConfig::default()
     });
     let token = wrong_manager
         .issue_access("test-user", Role::Operator, None)
@@ -559,6 +564,7 @@ async fn jwt_wrong_signing_key_is_rejected() {
         access_ttl: Duration::from_secs(3600),
         refresh_ttl: Duration::from_secs(86_400),
         issuer: "aletheia-test".to_owned(),
+        ..JwtConfig::default()
     });
     let token = wrong_manager
         .issue_access("test-user", Role::Operator, None)

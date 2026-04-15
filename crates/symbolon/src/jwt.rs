@@ -23,6 +23,15 @@ type HmacSha256 = Hmac<Sha256>;
 /// Base64url-encoded HS256 JWT header (constant, never changes).
 const HS256_HEADER_B64: &str = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9";
 
+/// Default clock skew leeway applied to JWT expiration checks.
+///
+/// WHY: clock drift between the issuer and validator (or NTP jumps on the
+/// validator) can immediately invalidate freshly issued tokens. 30s is
+/// small enough that truly expired tokens are rejected in practice while
+/// tolerating typical NTP drift. Mirrors the tolerance used by the OAuth
+/// credential chain and by `pylon::handlers::health`.
+pub const DEFAULT_CLOCK_SKEW_LEEWAY_SECS: u64 = 30;
+
 /// Configuration for JWT token management.
 pub struct JwtConfig {
     /// HMAC-SHA256 signing key.
@@ -33,6 +42,12 @@ pub struct JwtConfig {
     pub refresh_ttl: Duration,
     /// Issuer claim value.
     pub issuer: String,
+    /// Clock skew tolerance (seconds) applied when checking `exp`.
+    ///
+    /// A token whose `exp` lies up to `clock_skew_leeway_secs` seconds in
+    /// the past is still accepted. Default:
+    /// [`DEFAULT_CLOCK_SKEW_LEEWAY_SECS`] (30s).
+    pub clock_skew_leeway_secs: u64,
 }
 
 impl std::fmt::Debug for JwtConfig {
@@ -42,6 +57,7 @@ impl std::fmt::Debug for JwtConfig {
             .field("access_ttl", &self.access_ttl)
             .field("refresh_ttl", &self.refresh_ttl)
             .field("issuer", &self.issuer)
+            .field("clock_skew_leeway_secs", &self.clock_skew_leeway_secs)
             .finish()
     }
 }
@@ -57,6 +73,7 @@ impl Default for JwtConfig {
             access_ttl: Duration::from_hours(1),
             refresh_ttl: Duration::from_hours(7 * 24),
             issuer: "aletheia".to_owned(),
+            clock_skew_leeway_secs: DEFAULT_CLOCK_SKEW_LEEWAY_SECS,
         }
     }
 }
@@ -146,9 +163,10 @@ impl JwtManager {
     ///
     /// # Errors
     ///
-    /// Returns an error if the token's expiration time has passed.
-    /// Returns an error if the token is malformed, has an invalid
-    /// signature, or fails any other JWT validation check.
+    /// Returns an error if the token's expiration time has passed (after
+    /// applying the configured clock-skew leeway). Returns an error if the
+    /// token is malformed, has an invalid signature, or fails any other
+    /// JWT validation check.
     ///
     /// // WHY: Signature is verified BEFORE parsing claims to reject tampered
     /// // tokens early. This ordering prevents attackers from triggering JSON
@@ -223,7 +241,14 @@ impl JwtManager {
             .build());
         }
 
-        if claims.exp <= now_unix() {
+        // WHY: apply clock-skew leeway so NTP jumps or drift between the
+        // issuer and validator do not immediately invalidate fresh tokens.
+        // A token is still accepted if `now` is within `leeway` seconds past
+        // `exp`. Saturates to i64 to tolerate pathological leeway values
+        // configured through TOML without overflow. Fixes #3379.
+        let leeway = i64::try_from(self.config.clock_skew_leeway_secs).unwrap_or(i64::MAX);
+        let now = now_unix();
+        if claims.exp.saturating_add(leeway) <= now {
             return Err(error::ExpiredTokenSnafu.build());
         }
 
@@ -344,9 +369,10 @@ mod tests {
     fn hmac_manager() -> JwtManager {
         JwtManager::new(JwtConfig {
             signing_key: SecretString::from("test-secret-key-for-jwt".to_owned()),
-            access_ttl: Duration::from_secs(3600),
-            refresh_ttl: Duration::from_secs(86400),
+            access_ttl: Duration::from_hours(1),
+            refresh_ttl: Duration::from_hours(24),
             issuer: "aletheia-test".to_owned(),
+            clock_skew_leeway_secs: DEFAULT_CLOCK_SKEW_LEEWAY_SECS,
         })
     }
 
@@ -611,5 +637,94 @@ mod tests {
             mgr.validate("header.payload").is_err(),
             "two-segment token (no signature) must be rejected"
         );
+    }
+
+    /// A token whose `exp` lies within the 30s default leeway must still
+    /// validate — regression guard for #3379 (NTP jumps must not immediately
+    /// invalidate fresh tokens).
+    #[test]
+    fn token_within_clock_skew_leeway_is_accepted() {
+        let mgr = hmac_manager();
+        let now = now_unix();
+        let claims = Claims {
+            sub: "user-1".to_owned(),
+            role: Role::Operator,
+            nous_id: None,
+            iss: "aletheia-test".to_owned(),
+            iat: now - 3600,
+            // WHY: exp = now - 20s lies 20s in the past, within the 30s
+            // default leeway, so the token must still validate.
+            exp: now - 20,
+            jti: "within-leeway-jti".to_owned(),
+            kind: TokenKind::Access,
+        };
+        let token = mgr.encode_claims(&claims).unwrap();
+        let result = mgr.validate(&token);
+        assert!(
+            result.is_ok(),
+            "token expired 20s ago must be accepted within 30s leeway; got {result:?}"
+        );
+    }
+
+    /// A token whose `exp` lies beyond the configured leeway must be rejected.
+    #[test]
+    fn token_beyond_clock_skew_leeway_is_rejected() {
+        let mgr = hmac_manager();
+        let now = now_unix();
+        let claims = Claims {
+            sub: "user-1".to_owned(),
+            role: Role::Operator,
+            nous_id: None,
+            iss: "aletheia-test".to_owned(),
+            iat: now - 3600,
+            // WHY: exp = now - 45s lies outside the 30s default leeway,
+            // so the token must be rejected as expired.
+            exp: now - 45,
+            jti: "beyond-leeway-jti".to_owned(),
+            kind: TokenKind::Access,
+        };
+        let token = mgr.encode_claims(&claims).unwrap();
+        let result = mgr.validate(&token);
+        assert!(
+            result.is_err(),
+            "token expired 45s ago must be rejected (beyond 30s leeway)"
+        );
+    }
+
+    #[test]
+    fn zero_leeway_config_rejects_any_expired_token() {
+        // WHY: operators who explicitly set leeway to 0 must still be able
+        // to opt into strict expiry checking.
+        let mgr = JwtManager::new(JwtConfig {
+            signing_key: SecretString::from("test-secret-key-for-jwt".to_owned()),
+            access_ttl: Duration::from_hours(1),
+            refresh_ttl: Duration::from_hours(24),
+            issuer: "aletheia-test".to_owned(),
+            clock_skew_leeway_secs: 0,
+        });
+        let now = now_unix();
+        let claims = Claims {
+            sub: "user-1".to_owned(),
+            role: Role::Operator,
+            nous_id: None,
+            iss: "aletheia-test".to_owned(),
+            iat: now - 3600,
+            exp: now - 1,
+            jti: "zero-leeway-jti".to_owned(),
+            kind: TokenKind::Access,
+        };
+        let token = mgr.encode_claims(&claims).unwrap();
+        assert!(
+            mgr.validate(&token).is_err(),
+            "with zero leeway, any past exp must be rejected"
+        );
+    }
+
+    #[test]
+    fn default_config_has_thirty_second_leeway() {
+        // WHY: documentation (symbolon/CLAUDE.md) advertises 30s leeway.
+        // This test guards that claim against silent drift.
+        let config = JwtConfig::default();
+        assert_eq!(config.clock_skew_leeway_secs, 30);
     }
 }

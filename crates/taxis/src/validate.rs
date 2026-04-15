@@ -149,6 +149,7 @@ pub fn validate_section(section: &str, value: &Value) -> Result<(), ValidationEr
         "toolLimits" => validate_tool_limits(value, &mut errors),
         "messaging" => validate_messaging(value, &mut errors),
         "tuning" => validate_tuning(value, &mut errors),
+        "jwt" => validate_jwt(value, &mut errors),
         // NOTE: pass-through sections with no validation rules.
         "packs" | "pricing" | "sandbox" | "logging" | "mcp" | "localProvider" | "training"
         | "anthropic" => {}
@@ -349,6 +350,20 @@ fn validate_credential(value: &Value, errors: &mut Vec<String>) {
     {
         errors.push(format!(
             "credential.source must be \"auto\", \"api-key\", or \"claude-code\", got \"{source}\""
+        ));
+    }
+}
+
+fn validate_jwt(value: &Value, errors: &mut Vec<String>) {
+    // WHY: 0 is valid (strict expiry on tightly synchronized hosts); a 300s
+    // cap prevents misconfiguration that would hand out valid tokens long
+    // past their intended lifetime, weakening revocation guarantees.
+    const MAX_CLOCK_SKEW_LEEWAY_SECS: u64 = 300;
+    if let Some(val) = value.get("clockSkewLeewaySecs").and_then(Value::as_u64)
+        && val > MAX_CLOCK_SKEW_LEEWAY_SECS
+    {
+        errors.push(format!(
+            "jwt.clockSkewLeewaySecs must not exceed {MAX_CLOCK_SKEW_LEEWAY_SECS} seconds"
         ));
     }
 }
