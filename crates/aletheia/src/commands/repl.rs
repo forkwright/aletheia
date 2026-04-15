@@ -12,7 +12,9 @@ use crate::error::Result;
 
 #[derive(Debug, Clone, Args)]
 pub(crate) struct ReplArgs {
-    // instance_root is inherited from the top-level -r flag; nothing extra needed.
+    /// Server URL for lock detection
+    #[arg(long, default_value = "http://127.0.0.1:18789")]
+    pub url: String,
 }
 
 #[cfg(feature = "recall")]
@@ -32,10 +34,12 @@ Datalog examples:
 
 /// Run the interactive Datalog REPL.
 ///
-/// WHY: Synchronous stdin loop — async is unnecessary here and would add
-/// complexity. The knowledge store holds an exclusive fjall lock, so the
-/// server must be stopped before starting the REPL.
-pub(crate) fn run(instance_root: Option<&PathBuf>, _args: &ReplArgs) -> Result<()> {
+/// WHY: the guard check is async (HTTP health probe), but the REPL loop itself
+/// is synchronous stdin I/O. We check for a running server first, then drop
+/// into the blocking loop.
+pub(crate) async fn run(instance_root: Option<&PathBuf>, args: &ReplArgs) -> Result<()> {
+    super::agent_io::guard_knowledge_lock(&args.url).await?;
+
     #[cfg(feature = "recall")]
     {
         run_repl(instance_root)

@@ -80,6 +80,9 @@ pub(crate) struct ExportSkillsArgs {
     /// Filter by domain tags (comma-separated)
     #[arg(short, long)]
     pub domain: Option<String>,
+    /// Server URL for lock detection
+    #[arg(long, default_value = "http://127.0.0.1:18789")]
+    pub url: String,
 }
 
 #[derive(Debug, Clone, Args)]
@@ -513,10 +516,11 @@ pub(crate) fn seed_skills(args: &SeedSkillsArgs) -> Result<()> {
 ///
 /// Reads skill facts from an in-process `KnowledgeStore`, converts them to
 /// `SkillContent`, and writes `.claude/skills/<slug>/SKILL.md` files.
-pub(crate) fn export_skills(
+pub(crate) async fn export_skills(
     instance_root: Option<&PathBuf>,
     args: &ExportSkillsArgs,
 ) -> Result<()> {
+    guard_knowledge_lock(&args.url).await?;
     #[cfg(feature = "recall")]
     {
         use mneme::knowledge_store::KnowledgeStore;
@@ -781,7 +785,7 @@ fn generate_simple_embedding(text: &str) -> Vec<f32> {
 ///
 /// Returns an error with a helpful message if the server is reachable,
 /// preventing a confusing `FjallError::Locked` crash.
-async fn guard_knowledge_lock(url: &str) -> Result<()> {
+pub(crate) async fn guard_knowledge_lock(url: &str) -> Result<()> {
     let endpoint = format!("{url}/api/health");
     if let Ok(resp) = reqwest::get(&endpoint).await
         && (resp.status().is_success() || resp.status().as_u16() == 503)
