@@ -121,7 +121,7 @@ impl SpawnService for SpawnServiceImpl {
             history_budget_ratio: 0.6,
             extraction: None,
             stage_budget: StageBudget::default(),
-            training: mneme::training::TrainingConfig::default(),
+            training: crate::training::TrainingConfig::default(),
         };
 
         let providers = Arc::clone(&self.providers);

@@ -4051,15 +4051,11 @@ dependencies = [
  "eidos",
  "episteme",
  "graphe",
- "jiff",
  "krites",
  "proptest",
- "serde",
  "serde_json",
- "snafu",
  "tempfile",
  "tokio",
- "tracing",
  "tracing-subscriber",
 ]
 
@@ -4190,6 +4186,7 @@ version = "0.17.0"
 dependencies = [
  "criterion",
  "dianoia",
+ "eidos",
  "hermeneus",
  "indexmap 2.13.1",
  "jiff",
