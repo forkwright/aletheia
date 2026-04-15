@@ -120,9 +120,12 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
         taxis::config::NousBehaviorConfig::default(),
     );
     let nous_config = NousConfig::default();
+    // WHY: Test/dev server: validation failure for the default nous config
+    // is a startup error, not a recoverable condition.
     nous_manager
         .spawn(nous_config, PipelineConfig::default())
-        .await;
+        .await
+        .expect("default nous spawn");
 
     let aletheia_config = taxis::loader::load_config(&oikos).unwrap_or_else(|e| {
         tracing::warn!("failed to load config, using defaults: {e}");

@@ -7,7 +7,7 @@ use snafu::prelude::*;
 use tokio::sync::Mutex;
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
-use tracing::{Instrument, info, warn};
+use tracing::{Instrument, error, info, warn};
 
 use agora::types::ChannelProvider;
 use hermeneus::provider::ProviderRegistry;
@@ -586,7 +586,7 @@ impl RuntimeBuilder {
                     hooks: nous::config::HookConfig::default(),
                     behavior: resolved.behavior,
                 };
-                nous_manager
+                if let Err(e) = nous_manager
                     .spawn(
                         nous_config,
                         PipelineConfig {
@@ -595,7 +595,14 @@ impl RuntimeBuilder {
                             ..PipelineConfig::default()
                         },
                     )
-                    .await;
+                    .await
+                {
+                    error!(
+                        agent = %agent_def.id,
+                        error = %e,
+                        "failed to spawn agent — skipping"
+                    );
+                }
             }
             info!(count = nous_manager.count(), "nous actors spawned");
         }

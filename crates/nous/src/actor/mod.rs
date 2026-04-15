@@ -9,7 +9,7 @@ use tokio::sync::Mutex;
 use tokio::sync::mpsc;
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, error, info, instrument, warn};
+use tracing::{debug, info, instrument, warn};
 
 use hermeneus::provider::ProviderRegistry;
 use mneme::embedding::EmbeddingProvider;
@@ -31,7 +31,7 @@ mod background;
 mod spawn;
 mod turn;
 
-pub(crate) use spawn::spawn;
+pub(crate) use spawn::{spawn, validate_workspace};
 
 /// Default bounded channel capacity for the actor inbox.
 pub const DEFAULT_INBOX_CAPACITY: usize = 32;
@@ -243,10 +243,9 @@ impl NousActor {
         reason = "actor run loop: sequential select! branches; splitting would obscure the event-driven structure"
     )]
     pub async fn run(mut self) {
-        if let Err(e) = spawn::validate_workspace(&self.services.oikos, &self.id).await {
-            error!(error = %e, "workspace validation failed, shutting down");
-            return;
-        }
+        // NOTE: Workspace validation (SOUL.md, directory existence) is performed
+        // by NousManager::spawn_inner before the actor is created, preventing
+        // zombie ActorEntry creation on validation failure (#3248).
 
         self.runtime.started_at = Instant::now();
         info!(lifecycle = %self.channel.status, "actor started");
