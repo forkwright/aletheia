@@ -5,9 +5,32 @@
 //! sub-crates: graphe (session persistence), episteme (knowledge pipeline),
 //! eidos (types), and krites (Datalog engine).
 //!
-//! Only types that downstream consumers (nous, pylon, aletheia, diaporeia,
-//! integration-tests) actually import are surfaced here. Internal types remain
-//! accessible through the sub-crates directly.
+//! Only types that downstream consumers (nous, pylon, aletheia, melete, daemon,
+//! diaporeia, integration-tests) actually import are surfaced here. Internal
+//! types remain accessible through the sub-crates directly.
+//!
+//! # Why this crate exists (facade justification)
+//!
+//! Mneme is a pure re-export layer with no logic of its own (~270 lines).
+//! It earns its place through three concrete benefits:
+//!
+//! 1. **API stability**: 7+ downstream crates import from `mneme` instead of
+//!    from `eidos`/`graphe`/`episteme`/`krites` directly. If sub-crates are
+//!    reorganized (as happened in Phase 03), downstream `use` statements do
+//!    not change.
+//!
+//! 2. **Feature gating**: mneme gates `krites` behind the `mneme-engine`
+//!    feature flag. Without the facade, every consuming crate would need to
+//!    duplicate this feature gate in its own `Cargo.toml`.
+//!
+//! 3. **Import ergonomics**: a single `mneme::` prefix replaces four crate
+//!    prefixes, reducing cognitive overhead for contributors who do not need
+//!    to know about the internal decomposition.
+//!
+//! **Alarm threshold**: if this file exceeds 500 lines, the facade is accreting
+//! logic that belongs in a sub-crate. Audit and extract.
+//!
+//! Evaluated per STANDARDS.md "Everything must earn its place" in issue #3243.
 
 // ── Types (eidos) ──────────────────────────────────────────────────────────
 

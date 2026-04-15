@@ -126,7 +126,7 @@ proptest! {
         let merged_rows = store
             .run_query(r"?[id] := *entities{id}, id = $id", check_params)
             .expect("check merged gone");
-        prop_assert!(merged_rows.rows.is_empty(), "merged entity must be gone");
+        prop_assert!(merged_rows.is_empty(), "merged entity must be gone");
 
         let mut canon_params = BTreeMap::new();
         canon_params.insert(
@@ -136,7 +136,7 @@ proptest! {
         let canon_rows = store
             .run_query(r"?[id] := *entities{id}, id = $id", canon_params)
             .expect("check canonical exists");
-        prop_assert_eq!(canon_rows.rows.len(), 1, "canonical entity must survive");
+        prop_assert_eq!(canon_rows.row_count(), 1, "canonical entity must survive");
 
         let mut ref_params = BTreeMap::new();
         ref_params.insert(
@@ -150,7 +150,7 @@ proptest! {
             )
             .expect("check no orphan edges");
         prop_assert!(
-            orphan_rows.rows.is_empty(),
+            orphan_rows.is_empty(),
             "no relationship should reference the merged-from entity"
         );
 

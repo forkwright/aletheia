@@ -146,7 +146,7 @@ fn query_result_does_not_expose_named_rows_type() {
     let result: QueryResult = store
         .run_query("?[x] := x = 99", BTreeMap::new())
         .expect("simple query");
-    assert_eq!(result.rows.len(), 1, "one result row expected");
+    assert_eq!(result.row_count(), 1, "one result row expected");
     assert!(
         !result.headers.is_empty(),
         "headers should be populated in query result"
@@ -160,7 +160,7 @@ fn query_result_from_run_script_read_only() {
         .run_script_read_only("?[x] := x = 42", BTreeMap::new())
         .expect("read-only query should succeed");
     assert_eq!(
-        result.rows.len(),
+        result.row_count(),
         1,
         "read-only query should return one row"
     );

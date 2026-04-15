@@ -107,7 +107,7 @@ use mneme::knowledge_store::KnowledgeStore;
 #[cfg(any(feature = "knowledge-store", test))]
 use crate::bootstrap::{BootstrapSection, SectionPriority};
 #[cfg(any(feature = "knowledge-store", test))]
-use crate::budget::{CharEstimator, TokenEstimator as _};
+use crate::budget::CharEstimator;
 
 
 /// Resolves relevant skills from mneme and converts them to bootstrap sections.

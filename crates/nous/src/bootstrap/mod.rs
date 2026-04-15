@@ -26,7 +26,7 @@ use taxis::oikos::Oikos;
 use thesauros::loader::PackSection;
 use thesauros::manifest::Priority as PackPriority;
 
-use crate::budget::{CharEstimator, TokenBudget, TokenEstimator};
+use crate::budget::{CharEstimator, TokenBudget};
 use crate::error::{self, Result};
 
 /// Priority level for bootstrap sections.
@@ -217,15 +217,15 @@ const DEFAULT_OUTPUT_STYLE: &str = "\
 ///
 /// Resolves files through the three-tier cascade (`nous/{id}/` → `shared/` → `theke/`),
 /// reads contents, estimates tokens, and packs sections in priority order.
-pub struct BootstrapAssembler<'a, E: TokenEstimator = CharEstimator> {
+pub struct BootstrapAssembler<'a> {
     oikos: &'a Oikos,
-    estimator: E,
+    estimator: CharEstimator,
     /// Minimum tokens remaining before attempting truncation (below this, just drop).
     /// Default read from [`taxis::config::AgentBehaviorDefaults::bootstrap_min_truncation_budget`].
     min_truncation_budget: u64,
 }
 
-impl<'a> BootstrapAssembler<'a, CharEstimator> {
+impl<'a> BootstrapAssembler<'a> {
     /// Create an assembler with the default character-based estimator.
     #[must_use]
     pub fn new(oikos: &'a Oikos) -> Self {
@@ -249,20 +249,6 @@ impl<'a> BootstrapAssembler<'a, CharEstimator> {
         Self {
             oikos,
             estimator: CharEstimator::new(chars_per_token),
-            min_truncation_budget,
-        }
-    }
-}
-
-impl<'a, E: TokenEstimator> BootstrapAssembler<'a, E> {
-    /// Create an assembler with a custom token estimator.
-    #[must_use]
-    pub fn with_estimator(oikos: &'a Oikos, estimator: E) -> Self {
-        let min_truncation_budget =
-            taxis::config::AgentBehaviorDefaults::default().bootstrap_min_truncation_budget;
-        Self {
-            oikos,
-            estimator,
             min_truncation_budget,
         }
     }
@@ -838,9 +824,9 @@ fn score_keywords(text: &str, keywords: &[&str]) -> usize {
 /// Maps thesauros [`PackSection`] values to [`BootstrapSection`] values,
 /// computing token estimates for each section's content. Section names
 /// are prefixed with the pack name for traceability.
-pub fn pack_sections_to_bootstrap<E: TokenEstimator>(
+pub fn pack_sections_to_bootstrap(
     sections: &[&PackSection],
-    estimator: &E,
+    estimator: &CharEstimator,
 ) -> Vec<BootstrapSection> {
     sections
         .iter()

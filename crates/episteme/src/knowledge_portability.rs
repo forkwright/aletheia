@@ -1,11 +1,4 @@
 //! Knowledge graph export/import for agent portability.
-#![cfg_attr(
-    feature = "mneme-engine",
-    expect(
-        clippy::indexing_slicing,
-        reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-    )
-)]
 
 #[cfg(feature = "mneme-engine")]
 use snafu::ResultExt;
@@ -64,15 +57,14 @@ fn query_all_entities(
     let rows = store.run_query(script, BTreeMap::new())?;
 
     let mut entities = Vec::new();
-    for row in &rows.rows {
-        if row.len() < 6 {
+    for i in 0..rows.row_count() {
+        let Some(id_str) = rows.get_string(i, "id") else {
             continue;
-        }
-        let id = crate::id::EntityId::new(row[0].get_str().unwrap_or_default())
-            .context(crate::error::InvalidIdSnafu)?;
-        let name = row[1].get_str().unwrap_or_default().to_owned();
-        let entity_type = row[2].get_str().unwrap_or_default().to_owned();
-        let aliases_str = row[3].get_str().unwrap_or_default();
+        };
+        let id = crate::id::EntityId::new(&id_str).context(crate::error::InvalidIdSnafu)?;
+        let name = rows.get_string(i, "name").unwrap_or_default();
+        let entity_type = rows.get_string(i, "entity_type").unwrap_or_default();
+        let aliases_str = rows.get_string(i, "aliases").unwrap_or_default();
         let aliases = if aliases_str.is_empty() {
             vec![]
         } else {
@@ -81,10 +73,12 @@ fn query_all_entities(
                 .map(|s: &str| s.trim().to_owned())
                 .collect()
         };
-        let created_at = crate::knowledge::parse_timestamp(row[4].get_str().unwrap_or_default())
-            .unwrap_or_else(jiff::Timestamp::now);
-        let updated_at = crate::knowledge::parse_timestamp(row[5].get_str().unwrap_or_default())
-            .unwrap_or_else(jiff::Timestamp::now);
+        let created_at =
+            crate::knowledge::parse_timestamp(&rows.get_string(i, "created_at").unwrap_or_default())
+                .unwrap_or_else(jiff::Timestamp::now);
+        let updated_at =
+            crate::knowledge::parse_timestamp(&rows.get_string(i, "updated_at").unwrap_or_default())
+                .unwrap_or_else(jiff::Timestamp::now);
 
         entities.push(crate::knowledge::Entity {
             id,
@@ -109,18 +103,20 @@ fn query_all_relationships(
     let rows = store.run_query(script, BTreeMap::new())?;
 
     let mut relationships = Vec::new();
-    for row in &rows.rows {
-        if row.len() < 5 {
+    for i in 0..rows.row_count() {
+        let Some(src_str) = rows.get_string(i, "src") else {
             continue;
-        }
-        let src = crate::id::EntityId::new(row[0].get_str().unwrap_or_default())
-            .context(crate::error::InvalidIdSnafu)?;
-        let dst = crate::id::EntityId::new(row[1].get_str().unwrap_or_default())
-            .context(crate::error::InvalidIdSnafu)?;
-        let relation = row[2].get_str().unwrap_or_default().to_owned();
-        let weight = row[3].get_float().unwrap_or(0.0);
-        let created_at = crate::knowledge::parse_timestamp(row[4].get_str().unwrap_or_default())
-            .unwrap_or_else(jiff::Timestamp::now);
+        };
+        let src = crate::id::EntityId::new(&src_str).context(crate::error::InvalidIdSnafu)?;
+        let Some(dst_str) = rows.get_string(i, "dst") else {
+            continue;
+        };
+        let dst = crate::id::EntityId::new(&dst_str).context(crate::error::InvalidIdSnafu)?;
+        let relation = rows.get_string(i, "relation").unwrap_or_default();
+        let weight = rows.get_f64(i, "weight").unwrap_or(0.0);
+        let created_at =
+            crate::knowledge::parse_timestamp(&rows.get_string(i, "created_at").unwrap_or_default())
+                .unwrap_or_else(jiff::Timestamp::now);
 
         relationships.push(crate::knowledge::Relationship {
             src,

@@ -321,7 +321,7 @@ fn persist_round_trip() {
         .entity_neighborhood(&crate::id::EntityId::new("dr-chen").expect("valid test id"))
         .expect("entity neighborhood query for dr-chen should succeed");
     assert!(
-        !neighborhood.rows.is_empty(),
+        !neighborhood.is_empty(),
         "dr-chen entity should be reachable in the graph"
     );
 
