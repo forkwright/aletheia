@@ -197,7 +197,7 @@ Key log lines to watch:
 
 ## Metrics to capture
 
-Record the following for each run and add to the Results table below:
+Record the following for each run and add to the Results table:
 
 | Metric | Description |
 |---|---|
@@ -273,7 +273,7 @@ Per-category breakdown (Hindsight / GPT-4 + mem):
 
 ## Results
 
-*Not yet collected — see Prerequisites above.*
+*Not yet collected — see [Prerequisites](#prerequisites).*
 
 When results are available, record them here:
 
@@ -293,7 +293,7 @@ When results are available, record them here:
 
 ## Analysis guidance
 
-When results land, compare against the SOTA table above and analyze:
+When results land, compare against the [Published SOTA baselines](#published-sota-baselines) table and analyze:
 
 **Strengths to look for:**
 - `single-session-user` and `single-session-assistant` EM above 70%: basic

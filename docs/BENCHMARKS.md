@@ -112,7 +112,7 @@ cargo bench -p aletheia-symbolon --bench jwt -- --quick
    ```
 
 5. Verify with `cargo bench -p aletheia-<crate> --bench <name> -- --quick`.
-6. Add a row to the coverage table above.
+6. Add a row to the Coverage table.
 
 ## Baselines and regressions
 

@@ -255,7 +255,7 @@ const RESTART_PREFIXES: &[&str] = &[
 
 ### Match status: ✅ CONSISTENT
 
-All fields marked as **Cold** in this document match the `RESTART_PREFIXES` in `reload.rs`:
+All fields marked as **Cold** in HOT-RELOAD.md match the `RESTART_PREFIXES` in `reload.rs`:
 
 | Prefix in Code | Document Status | Notes |
 |----------------|-----------------|-------|
