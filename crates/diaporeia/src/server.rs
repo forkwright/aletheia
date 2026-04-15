@@ -75,6 +75,7 @@ impl rmcp::handler::server::ServerHandler for DiaporeiaServer {
         _params: Option<rmcp::model::PaginatedRequestParams>,
         _context: rmcp::service::RequestContext<rmcp::RoleServer>,
     ) -> Result<ListResourceTemplatesResult, rmcp::ErrorData> {
+        self.rate_limiter.check(Tier::Cheap)?;
         let mut templates: Vec<ResourceTemplate> = resources::nous::resource_templates();
         templates.extend(resources::config::resource_templates());
         Ok(ListResourceTemplatesResult {
@@ -89,6 +90,7 @@ impl rmcp::handler::server::ServerHandler for DiaporeiaServer {
         _params: Option<rmcp::model::PaginatedRequestParams>,
         _context: rmcp::service::RequestContext<rmcp::RoleServer>,
     ) -> Result<ListResourcesResult, rmcp::ErrorData> {
+        self.rate_limiter.check(Tier::Cheap)?;
         // NOTE: static resources only: dynamic listing deferred
         Ok(ListResourcesResult {
             resources: vec![],

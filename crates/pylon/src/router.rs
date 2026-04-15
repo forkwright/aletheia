@@ -34,7 +34,30 @@ use crate::state::AppState;
     reason = "router construction requires assembling all routes and ordered middleware layers; extraction would obscure the stack ordering"
 )]
 pub fn build_router(state: Arc<AppState>, security: &SecurityConfig) -> Router {
+    build_router_with(state, security, None)
+}
+
+/// Build the Axum router with all routes, middleware, and optional extra routes.
+///
+/// Extra routes (e.g. diaporeia's MCP router) are merged BEFORE middleware
+/// layers are applied. This ensures global layers (rate limiting, CSRF,
+/// metrics, error enrichment, etc.) wrap all routes including external ones.
+// NOTE(#940): 130+ lines: route and middleware layer assembly where ordering matters.
+// Extraction would obscure the middleware stack ordering that is critical for correctness.
+#[expect(
+    clippy::too_many_lines,
+    reason = "router construction requires assembling all routes and ordered middleware layers; extraction would obscure the stack ordering"
+)]
+pub fn build_router_with(
+    state: Arc<AppState>,
+    security: &SecurityConfig,
+    extra: Option<Router>,
+) -> Router {
     crate::metrics::init();
+
+    // WHY: Extract shutdown token before state is moved into the router.
+    // The user_rate_limiter cleanup task needs it after .with_state() consumes the Arc.
+    let shutdown = state.shutdown.clone();
 
     let v1 = Router::new()
         .route(
@@ -106,9 +129,22 @@ pub fn build_router(state: Arc<AppState>, security: &SecurityConfig) -> Router {
 
     router = router.fallback(fallback_handler);
 
+    // WHY: Bind state before merging extra routes. This converts
+    // Router<Arc<AppState>> to Router<()> so the extra Router<()> from
+    // diaporeia can be merged. All subsequent middleware layers are
+    // tower-level (not Axum state extractors), so they work on Router<()>.
+    let mut router = router.with_state(state);
+
+    // WHY: Extra routes are merged BEFORE middleware layers so they benefit from
+    // the same global protections (rate limiting, CSRF, compression, tracing,
+    // metrics, error enrichment) as pylon's own routes (#3226).
+    if let Some(extra) = extra {
+        router = router.merge(extra);
+    }
+
     if security.rate_limit.per_user.enabled {
         let user_limiter = Arc::new(UserRateLimiter::new(security.rate_limit.per_user.clone()));
-        spawn_stale_cleanup(Arc::clone(&user_limiter), state.shutdown.clone());
+        spawn_stale_cleanup(Arc::clone(&user_limiter), shutdown.clone());
         router = router
             .layer(axum::middleware::from_fn(per_user_rate_limit))
             .layer(axum::Extension(user_limiter));
@@ -178,9 +214,7 @@ pub fn build_router(state: Arc<AppState>, security: &SecurityConfig) -> Router {
     router = router.layer(build_cors_layer(security));
 
     // WARNING: Outermost layer: must wrap all other layers so headers apply to every response.
-    router = apply_security_headers(router, security);
-
-    router.with_state(state)
+    apply_security_headers(router, security)
 }
 
 /// Fallback handler for unmatched routes.
@@ -264,10 +298,7 @@ fn build_cors_layer(security: &SecurityConfig) -> CorsLayer {
 }
 
 /// Apply standard security response headers.
-fn apply_security_headers(
-    router: Router<Arc<AppState>>,
-    security: &SecurityConfig,
-) -> Router<Arc<AppState>> {
+fn apply_security_headers(router: Router, security: &SecurityConfig) -> Router {
     let mut r = router
         .layer(SetResponseHeaderLayer::overriding(
             HeaderName::from_static("x-frame-options"),
