@@ -61,20 +61,43 @@ pub type Result<T> = std::result::Result<T, Error>; // kanon:ignore RUST/pub-vis
 
 /// Error from store operations (`NoteStore` / `BlackboardStore` adapters).
 ///
-/// Uses a message string so implementations can convert any underlying error
-/// without introducing crate-level type dependencies on adapters.
+/// WHY: Structured variants preserve failure mode (not-found vs conflict vs I/O)
+/// so callers can pattern-match on specific failures without string-parsing.
+/// Decoupled from backend types to avoid circular dependencies. Closes #3286.
+///
+/// Variant names are prefixed with `Store` to avoid snafu context-selector
+/// collisions with `PlanningAdapterError` variants in the same module.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
 #[non_exhaustive]
 #[expect(
     missing_docs,
-    reason = "snafu error variant fields (message) are self-documenting via display format"
+    reason = "snafu error variant fields (entity, id, context, source, message) are self-documenting via display format"
 )]
 pub enum StoreError {
     // kanon:ignore RUST/pub-visibility
-    /// A store operation failed.
-    #[snafu(display("{message}"))]
-    Store { message: String },
+    /// The requested entity was not found.
+    #[snafu(display("{entity} not found: {id}"))]
+    StoreNotFound { entity: String, id: String },
+
+    /// A conflicting entry already exists.
+    #[snafu(display("{entity} conflict: {id}"))]
+    StoreConflict { entity: String, id: String },
+
+    /// An I/O error occurred during a store operation.
+    #[snafu(display("store I/O error: {context}"))]
+    StoreIo {
+        context: String,
+        source: std::io::Error,
+    },
+
+    /// Serialization or deserialization failed.
+    #[snafu(display("store serialization error"))]
+    StoreSerialization { source: serde_json::Error },
+
+    /// A backend-specific error that doesn't fit other variants.
+    #[snafu(display("store backend error: {message}"))]
+    Backend { message: String },
 }
 
 /// Typed errors for `PlanningService` adapter implementations.
