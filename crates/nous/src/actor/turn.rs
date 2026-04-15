@@ -40,6 +40,16 @@ impl NousActor {
         self.channel.status = NousLifecycle::Active;
         self.active_session = Some(session_key.to_owned());
         self.runtime.active_turn.store(true, Ordering::Release);
+        // WHY: record when the turn started so the health check can detect turns
+        // stuck longer than `stuck_turn_timeout_secs`, even when active_turn is
+        // true. Uses millis-since-started_at to avoid wrapping issues. (#3254)
+        #[expect(
+            clippy::cast_possible_truncation,
+            clippy::as_conversions,
+            reason = "u128→u64: actor uptime in ms won't exceed u64::MAX"
+        )]
+        let elapsed_ms = self.runtime.started_at.elapsed().as_millis() as u64; // kanon:ignore RUST/as-cast
+        self.runtime.turn_started_at_ms.store(elapsed_ms, Ordering::Release);
     }
 
     /// Finalize turn: update session tokens, check drift, spawn side-effects, reset state.
@@ -73,6 +83,7 @@ impl NousActor {
             self.channel.status = NousLifecycle::Idle;
         }
         self.runtime.active_turn.store(false, Ordering::Release);
+        self.runtime.turn_started_at_ms.store(0, Ordering::Release);
     }
 
     /// Extract quality metrics from a turn result and feed them to the

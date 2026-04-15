@@ -1,7 +1,7 @@
 //! Actor spawning and workspace validation.
 
 use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, AtomicU64};
 
 use tokio::sync::Mutex;
 use tokio::sync::mpsc;
@@ -52,12 +52,13 @@ pub(crate) fn spawn(
     cross_rx: Option<mpsc::Receiver<CrossNousEnvelope>>,
     cancel: CancellationToken,
     nous_behavior: taxis::config::NousBehaviorConfig,
-) -> (NousHandle, tokio::task::JoinHandle<()>, Arc<AtomicBool>) {
+) -> (NousHandle, tokio::task::JoinHandle<()>, Arc<AtomicBool>, Arc<AtomicU64>) {
     let (tx, rx) = mpsc::channel(DEFAULT_INBOX_CAPACITY);
     let id = config.id.to_string();
     let handle = NousHandle::new(id.clone(), tx);
 
     let active_turn = Arc::new(AtomicBool::new(false));
+    let turn_started_at_ms = Arc::new(AtomicU64::new(0));
 
     let actor = NousActor::new(
         id.clone(),
@@ -77,13 +78,14 @@ pub(crate) fn spawn(
         tool_services,
         extra_bootstrap,
         Arc::clone(&active_turn),
+        Arc::clone(&turn_started_at_ms),
         nous_behavior,
     );
 
     let span = tracing::info_span!("nous_actor", nous.id = %id);
     let join_handle = tokio::spawn(async move { actor.run().await }.instrument(span));
 
-    (handle, join_handle, active_turn)
+    (handle, join_handle, active_turn, turn_started_at_ms)
 }
 
 /// Parameters for daemon-initiated child agent spawning.
@@ -124,7 +126,7 @@ pub struct DaemonSpawnParams {
 /// parent's runtime services. This public function wraps the internal `spawn`
 /// with a parameter struct and cancellation token from the coordinator.
 ///
-/// Returns the same triple as internal spawn: `(NousHandle, JoinHandle, active_turn)`.
+/// Returns the same tuple as internal spawn: `(NousHandle, JoinHandle, active_turn, turn_started_at_ms)`.
 #[expect(
     dead_code,
     reason = "daemon coordinator wiring not yet connected; public API for child agent spawning"
@@ -132,7 +134,7 @@ pub struct DaemonSpawnParams {
 pub fn spawn_for_daemon(
     params: DaemonSpawnParams,
     cancel: CancellationToken,
-) -> (NousHandle, tokio::task::JoinHandle<()>, Arc<AtomicBool>) {
+) -> (NousHandle, tokio::task::JoinHandle<()>, Arc<AtomicBool>, Arc<AtomicU64>) {
     spawn(
         params.config,
         params.pipeline_config,

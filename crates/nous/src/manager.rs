@@ -4,7 +4,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 // WHY: lock held only during synchronous .take() on Option<JoinHandle>: no await while locked
 use std::sync::Mutex; // kanon:ignore RUST/std-mutex-in-async
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Duration;
 
 use tokio::sync::Mutex as TokioMutex;
@@ -50,6 +50,10 @@ struct ActorEntry {
     /// Readable without queuing through the inbox: used by `check_health` to
     /// distinguish a busy (healthy) actor from an unresponsive (dead) one.
     active_turn: Arc<AtomicBool>,
+    /// Monotonic timestamp (millis since actor start) when the current turn began.
+    /// 0 when idle. Used by `check_health` to detect stuck turns that have been
+    /// active longer than `stuck_turn_timeout_secs`. (#3254)
+    turn_started_at_ms: Arc<AtomicU64>,
 }
 
 
@@ -208,7 +212,7 @@ impl NousManager {
         };
 
         let child_cancel = self.cancel.child_token();
-        let (handle, join_handle, active_turn) = actor::spawn(
+        let (handle, join_handle, active_turn, turn_started_at_ms) = actor::spawn(
             config.clone(),
             pipeline_config.clone(),
             Arc::clone(&self.providers),
@@ -239,6 +243,7 @@ impl NousManager {
                 last_start: std::time::Instant::now(),
                 last_restart: None,
                 active_turn,
+                turn_started_at_ms,
             },
         );
         Ok(handle)
@@ -279,12 +284,47 @@ impl NousManager {
     pub async fn check_health(&self) -> BTreeMap<String, ActorHealth> {
         let mut results = BTreeMap::new();
         let ping_timeout = Duration::from_secs(self.nous_behavior.manager_ping_timeout_secs);
+        let stuck_timeout_ms = self.nous_behavior.stuck_turn_timeout_secs * 1_000;
         for (id, entry) in &self.actors {
             let ping_result = entry.handle.ping(ping_timeout).await;
+            let is_active = entry.active_turn.load(Ordering::Acquire);
             // WHY: An actor processing a long turn cannot dequeue Ping messages
             // until the turn completes. Treat active_turn=true as a liveness
             // signal so busy actors are not incorrectly declared dead.
-            let alive = ping_result.is_ok() || entry.active_turn.load(Ordering::Acquire);
+            // However, if the turn has been active longer than `stuck_turn_timeout_secs`,
+            // the actor is considered stuck and NOT alive. This prevents a hung
+            // pipeline from masking a dead actor indefinitely. (#3254)
+            let alive = if ping_result.is_ok() {
+                true
+            } else if is_active {
+                let turn_start = entry.turn_started_at_ms.load(Ordering::Acquire);
+                if turn_start == 0 {
+                    // active_turn is true but timestamp is 0: inconsistent state.
+                    // Treat as alive to avoid false restarts.
+                    true
+                } else {
+                    #[expect(
+                        clippy::cast_possible_truncation,
+                        clippy::as_conversions,
+                        reason = "u128→u64: actor uptime in ms won't exceed u64::MAX"
+                    )]
+                    let now_ms = entry.last_start.elapsed().as_millis() as u64; // kanon:ignore RUST/as-cast
+                    let turn_duration_ms = now_ms.saturating_sub(turn_start);
+                    if turn_duration_ms > stuck_timeout_ms {
+                        warn!(
+                            nous_id = %id,
+                            turn_duration_secs = turn_duration_ms / 1_000,
+                            stuck_turn_timeout_secs = self.nous_behavior.stuck_turn_timeout_secs,
+                            "turn exceeded stuck timeout — declaring actor dead despite active_turn flag"
+                        );
+                        false
+                    } else {
+                        true
+                    }
+                }
+            } else {
+                false
+            };
 
             let (panic_count, uptime) = if let Ok(status) = entry.handle.status().await {
                 (status.panic_count, status.uptime)

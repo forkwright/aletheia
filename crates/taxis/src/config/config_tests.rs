@@ -852,6 +852,8 @@ fn deployment_defaults_match_original_constants() {
     assert_eq!(nb.manager_health_interval_secs, 30, "manager_health_interval_secs");
     // nous::manager::DEFAULT_PING_TIMEOUT = 5s
     assert_eq!(nb.manager_ping_timeout_secs, 5, "manager_ping_timeout_secs");
+    // nous::manager: stuck turn detection timeout = 600s
+    assert_eq!(nb.stuck_turn_timeout_secs, 600, "stuck_turn_timeout_secs");
     // nous::pipeline::DEFAULT_LOOP_WINDOW = 50
     assert_eq!(nb.loop_detection_window, 50, "loop_detection_window");
     // nous::pipeline::CYCLE_DETECTION_MAX_LEN = 10

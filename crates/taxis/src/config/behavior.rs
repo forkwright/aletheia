@@ -145,6 +145,13 @@ pub struct NousBehaviorConfig {
     /// Timeout in seconds for health-ping responses. Default: 5.
     /// Mirrors `nous::manager::DEFAULT_PING_TIMEOUT`.
     pub manager_ping_timeout_secs: u64,
+    /// Maximum seconds a turn may be active before the health check considers
+    /// the actor stuck. An `active_turn` flag alone cannot distinguish a legitimately
+    /// busy actor from one hung on an infinite loop or deadlock. Default: 600 (10 min).
+    /// WHY: Without a timeout, a stuck `active_turn` flag prevents the health check
+    /// from ever restarting the actor, making a single hung pipeline permanently
+    /// block all subsequent messages. (#3254)
+    pub stuck_turn_timeout_secs: u64,
     /// Number of recent tool calls scanned for loop detection. Default: 50.
     /// Mirrors `nous::pipeline::DEFAULT_LOOP_WINDOW`.
     pub loop_detection_window: usize,
@@ -173,6 +180,7 @@ impl Default for NousBehaviorConfig {
             manager_restart_decay_window_secs: 3_600,
             manager_health_interval_secs: 30,
             manager_ping_timeout_secs: 5,
+            stuck_turn_timeout_secs: 600,
             loop_detection_window: 50,
             cycle_detection_max_len: 10,
             self_audit_event_threshold: 50,
