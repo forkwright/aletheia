@@ -1,4 +1,12 @@
-//! Dependency graph analysis for stratification.
+//! Dependency graph algorithms for stratification.
+//!
+//! Provides three key algorithms:
+//! - **Tarjan SCC**: finds strongly connected components in the rule dependency
+//!   graph. Rules in the same SCC are mutually recursive and must share a stratum.
+//! - **Reachability**: determines which rules are reachable from the entry point,
+//!   allowing dead-rule elimination.
+//! - **Generalized Kahn's**: topological sort with "poisoned" edges that force
+//!   stratum boundaries. Produces a greedy stratification.
 #![expect(
     clippy::cloned_instead_of_copied,
     clippy::indexing_slicing,
