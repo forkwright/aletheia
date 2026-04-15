@@ -844,7 +844,7 @@ pub(crate) async fn run_pipeline(
             oikos.root(),
             &pipeline_config.training,
         ) {
-            Ok(capture) => {
+            Ok(mut capture) => {
                 capture.maybe_capture(mneme::training::CaptureInput {
                     session_id: &input.session.id,
                     nous_id: &config.id,

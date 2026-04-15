@@ -13,15 +13,26 @@ pub struct TrainingConfig {
     pub enabled: bool,
     /// Directory path for training data output, relative to the instance root.
     ///
-    /// The JSONL file `conversations.jsonl` is written inside this directory.
+    /// Shard JSONL files and `manifest.json` are written inside this directory.
     pub path: String,
+    /// Maximum shard file size in bytes before rotation (default: 50 MB).
+    ///
+    /// WHY: bounding shard size limits the blast radius of corruption to a
+    /// single shard rather than the entire training corpus. 50 MB holds
+    /// roughly 20K–30K conversation turns — enough for efficient batch reads
+    /// but small enough that a corrupted shard is recoverable.
+    pub max_shard_bytes: u64,
 }
+
+/// Default shard rotation threshold: 50 MB.
+const DEFAULT_MAX_SHARD_BYTES: u64 = 50 * 1024 * 1024;
 
 impl Default for TrainingConfig {
     fn default() -> Self {
         Self {
             enabled: false,
             path: "data/training".to_owned(),
+            max_shard_bytes: DEFAULT_MAX_SHARD_BYTES,
         }
     }
 }
@@ -71,6 +82,7 @@ mod tests {
         let config = TrainingConfig::default();
         assert!(!config.enabled);
         assert_eq!(config.path, "data/training");
+        assert_eq!(config.max_shard_bytes, 50 * 1024 * 1024);
     }
 
     #[test]
