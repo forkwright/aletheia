@@ -54,7 +54,7 @@ fn spawn_test_actor() -> (NousHandle, tokio::task::JoinHandle<()>, tempfile::Tem
     let config = test_config();
     let pipeline_config = PipelineConfig::default();
 
-    let (handle, join, _active_turn) = spawn(
+    let (handle, join, _active_turn, _turn_started_at_ms) = spawn(
         config,
         pipeline_config,
         providers,
@@ -357,7 +357,7 @@ fn spawn_panicking_actor() -> (NousHandle, tokio::task::JoinHandle<()>, tempfile
     let config = test_config();
     let pipeline_config = PipelineConfig::default();
 
-    let (handle, join, _active_turn) = spawn(
+    let (handle, join, _active_turn, _turn_started_at_ms) = spawn(
         config,
         pipeline_config,
         providers,
@@ -529,7 +529,7 @@ fn spawn_test_actor_with_store(
     let config = test_config();
     let pipeline_config = PipelineConfig::default();
 
-    let (handle, join, _active_turn) = spawn(
+    let (handle, join, _active_turn, _turn_started_at_ms) = spawn(
         config,
         pipeline_config,
         providers,
@@ -567,6 +567,7 @@ fn make_test_actor(
     let config = test_config();
     let (tx, rx) = mpsc::channel(DEFAULT_INBOX_CAPACITY);
     let active_turn = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let turn_started_at_ms = Arc::new(std::sync::atomic::AtomicU64::new(0));
     let actor = NousActor::new(
         "test-agent".to_owned(),
         config,
@@ -585,6 +586,7 @@ fn make_test_actor(
         None,
         Vec::new(),
         active_turn,
+        turn_started_at_ms,
         taxis::config::NousBehaviorConfig::default(),
     );
     (actor, tx, dir)

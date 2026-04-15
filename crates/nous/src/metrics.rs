@@ -68,6 +68,28 @@ static BACKGROUND_TASK_FAILURES_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|
     .expect("metric registration") // kanon:ignore RUST/expect
 });
 
+static TOOL_FAILURES_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
+    register_int_counter_vec!(
+        Opts::new(
+            "aletheia_tool_failures_total",
+            "Total tool execution failures by tool name"
+        ),
+        &["nous_id", "tool_name"]
+    )
+    .expect("metric registration") // kanon:ignore RUST/expect
+});
+
+static STREAM_EVENTS_DROPPED_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
+    register_int_counter_vec!(
+        Opts::new(
+            "aletheia_stream_events_dropped_total",
+            "Total streaming events dropped due to full channel or disconnected receiver"
+        ),
+        &["nous_id", "reason"]
+    )
+    .expect("metric registration") // kanon:ignore RUST/expect
+});
+
 static CACHE_CREATION_TOKENS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
     register_int_counter_vec!(
         Opts::new(
@@ -94,6 +116,8 @@ pub(crate) fn init() {
     LazyLock::force(&CACHE_READ_TOKENS_TOTAL);
     LazyLock::force(&CACHE_CREATION_TOKENS_TOTAL);
     LazyLock::force(&BACKGROUND_TASK_FAILURES_TOTAL);
+    LazyLock::force(&TOOL_FAILURES_TOTAL);
+    LazyLock::force(&STREAM_EVENTS_DROPPED_TOTAL);
 }
 
 /// Record a completed pipeline stage.
@@ -112,6 +136,26 @@ pub(crate) fn record_turn(nous_id: &str) {
 pub(crate) fn record_error(nous_id: &str, stage: &str, error_type: &str) {
     PIPELINE_ERRORS_TOTAL
         .with_label_values(&[nous_id, stage, error_type])
+        .inc();
+}
+
+/// Record a tool execution failure.
+///
+/// WHY: Tool failures at warn level need a metrics counter so operators can
+/// set alerts on systematic tool problems. Closes #3284.
+pub(crate) fn record_tool_failure(nous_id: &str, tool_name: &str) {
+    TOOL_FAILURES_TOTAL
+        .with_label_values(&[nous_id, tool_name])
+        .inc();
+}
+
+/// Record a dropped streaming event.
+///
+/// WHY: Silently dropped streaming events are invisible contract violations.
+/// This counter surfaces the drop rate for alerting. Closes #3285.
+pub(crate) fn record_stream_event_dropped(nous_id: &str, reason: &str) {
+    STREAM_EVENTS_DROPPED_TOTAL
+        .with_label_values(&[nous_id, reason])
         .inc();
 }
 

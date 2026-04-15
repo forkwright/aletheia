@@ -3,7 +3,7 @@
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
-use tracing::debug;
+use tracing::{debug, warn};
 
 use tokio::sync::mpsc;
 
@@ -262,10 +262,23 @@ pub(super) async fn dispatch_tools(
 
         let content = truncate_tool_result(content, max_tool_result_bytes);
 
-        debug!(
-            tool = tool_name.as_str(),
-            duration_ms, is_error, "tool executed"
-        );
+        // WHY: tool failures must be visible at production log levels so operators
+        // can detect systematic tool problems (DNS, permissions, etc.) without
+        // enabling debug-level tracing. (#3284)
+        if is_error {
+            warn!(
+                tool = tool_name.as_str(),
+                tool_id = tool_id.as_str(),
+                duration_ms,
+                "tool execution failed"
+            );
+            crate::metrics::record_tool_failure(tool_ctx.nous_id.as_ref(), tool_name);
+        } else {
+            debug!(
+                tool = tool_name.as_str(),
+                duration_ms, "tool executed"
+            );
+        }
 
         all_tool_calls.push(ToolCall {
             id: tool_id.clone(),
@@ -312,6 +325,10 @@ pub(super) async fn dispatch_tools(
     clippy::too_many_arguments,
     reason = "streaming dispatch inherently needs context, detector, channel, and limit"
 )]
+#[expect(
+    clippy::too_many_lines,
+    reason = "streaming dispatch: sequential tool execution with error handling and event logging; splitting would scatter the per-tool lifecycle"
+)]
 pub(super) async fn dispatch_tools_streaming(
     tool_uses: &[(String, String, serde_json::Value)],
     tools: &ToolRegistry,
@@ -333,11 +350,37 @@ pub(super) async fn dispatch_tools_streaming(
             .build()
         })?;
 
-        let _ = stream_tx.try_send(TurnStreamEvent::ToolStart {
+        // WHY: distinguish buffer-full (performance problem, warn) from receiver-
+        // disconnected (expected client close, debug). Silent drops violate the
+        // streaming observability contract. (#3285)
+        if let Err(e) = stream_tx.try_send(TurnStreamEvent::ToolStart {
             tool_id: tool_id.clone(),
             tool_name: tool_name.clone(),
             input: tool_input.clone(),
-        });
+        }) {
+            match e {
+                tokio::sync::mpsc::error::TrySendError::Full(_) => {
+                    warn!(
+                        tool = tool_name.as_str(),
+                        "streaming event dropped: channel buffer full — client cannot keep up"
+                    );
+                    crate::metrics::record_stream_event_dropped(
+                        tool_ctx.nous_id.as_ref(),
+                        "buffer_full",
+                    );
+                }
+                tokio::sync::mpsc::error::TrySendError::Closed(_) => {
+                    debug!(
+                        tool = tool_name.as_str(),
+                        "streaming event dropped: receiver disconnected"
+                    );
+                    crate::metrics::record_stream_event_dropped(
+                        tool_ctx.nous_id.as_ref(),
+                        "disconnected",
+                    );
+                }
+            }
+        }
 
         let start = std::time::Instant::now();
         let result = tools
@@ -366,18 +409,51 @@ pub(super) async fn dispatch_tools_streaming(
         let content = truncate_tool_result(content, max_tool_result_bytes);
         let result_summary = content.text_summary();
 
-        debug!(
-            tool = tool_name.as_str(),
-            duration_ms, is_error, "tool executed"
-        );
+        if is_error {
+            warn!(
+                tool = tool_name.as_str(),
+                tool_id = tool_id.as_str(),
+                duration_ms,
+                "tool execution failed"
+            );
+            crate::metrics::record_tool_failure(tool_ctx.nous_id.as_ref(), tool_name);
+        } else {
+            debug!(
+                tool = tool_name.as_str(),
+                duration_ms, "tool executed"
+            );
+        }
 
-        let _ = stream_tx.try_send(TurnStreamEvent::ToolResult {
+        if let Err(e) = stream_tx.try_send(TurnStreamEvent::ToolResult {
             tool_id: tool_id.clone(),
             tool_name: tool_name.clone(),
             result: result_summary.clone(),
             is_error,
             duration_ms,
-        });
+        }) {
+            match e {
+                tokio::sync::mpsc::error::TrySendError::Full(_) => {
+                    warn!(
+                        tool = tool_name.as_str(),
+                        "streaming result dropped: channel buffer full — client cannot keep up"
+                    );
+                    crate::metrics::record_stream_event_dropped(
+                        tool_ctx.nous_id.as_ref(),
+                        "buffer_full",
+                    );
+                }
+                tokio::sync::mpsc::error::TrySendError::Closed(_) => {
+                    debug!(
+                        tool = tool_name.as_str(),
+                        "streaming result dropped: receiver disconnected"
+                    );
+                    crate::metrics::record_stream_event_dropped(
+                        tool_ctx.nous_id.as_ref(),
+                        "disconnected",
+                    );
+                }
+            }
+        }
 
         all_tool_calls.push(ToolCall {
             id: tool_id.clone(),

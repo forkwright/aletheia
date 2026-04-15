@@ -96,18 +96,26 @@ impl NousActor {
             return;
         }
 
+        let cancel = self.channel.cancel.child_token();
         self.runtime.background_tasks.spawn(
             async move {
-                run_extraction(
-                    &config,
-                    providers,
-                    &nous_id,
-                    &user,
-                    &assistant,
-                    #[cfg(feature = "knowledge-store")]
-                    knowledge_store.as_ref(),
-                )
-                .await;
+                // WHY: background tasks respect the actor's cancellation token so
+                // they exit promptly during shutdown instead of running until the
+                // drain timeout expires. (#3256)
+                tokio::select! {
+                    () = cancel.cancelled() => {
+                        info!(nous_id = %nous_id, task_type = "extraction", "background task cancelled during shutdown");
+                    }
+                    () = run_extraction(
+                        &config,
+                        providers,
+                        &nous_id,
+                        &user,
+                        &assistant,
+                        #[cfg(feature = "knowledge-store")]
+                        knowledge_store.as_ref(),
+                    ) => {}
+                }
             }
             .instrument(span),
         );
@@ -192,19 +200,24 @@ impl NousActor {
             return;
         }
 
+        let cancel = self.channel.cancel.child_token();
         self.runtime.background_tasks.spawn(
             async move {
-                run_skill_extraction(
-                    &model,
-                    providers,
-                    &nous_id,
-                    &candidate_id,
-                    &tool_calls,
-                    &tracker,
-                    #[cfg(feature = "knowledge-store")]
-                    knowledge_store.as_ref(),
-                )
-                .await;
+                tokio::select! {
+                    () = cancel.cancelled() => {
+                        info!(nous_id = %nous_id, task_type = "skill_extraction", "background task cancelled during shutdown");
+                    }
+                    () = run_skill_extraction(
+                        &model,
+                        providers,
+                        &nous_id,
+                        &candidate_id,
+                        &tool_calls,
+                        &tracker,
+                        #[cfg(feature = "knowledge-store")]
+                        knowledge_store.as_ref(),
+                    ) => {}
+                }
             }
             .instrument(span),
         );
@@ -285,12 +298,18 @@ impl NousActor {
         }
 
         let flag = Arc::clone(&self.runtime.distillation_in_progress);
+        let cancel = self.channel.cancel.child_token();
         self.runtime.background_tasks.spawn(
             async move {
                 // WHY: drop guard ensures the flag is cleared even if the task panics,
                 // preventing distillation from being permanently blocked (#2155)
                 let _guard = DistillationFlagGuard(Arc::clone(&flag));
-                run_background_distillation(store, providers, session_id, nous_id, config).await;
+                tokio::select! {
+                    () = cancel.cancelled() => {
+                        info!(nous_id = %nous_id, task_type = "distillation", "background task cancelled during shutdown");
+                    }
+                    () = run_background_distillation(store, providers, session_id, nous_id.clone(), config) => {}
+                }
                 // NOTE: guard Drop handles flag.store(false) for both normal and panic paths
             }
             .instrument(span),
