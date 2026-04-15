@@ -263,6 +263,14 @@ impl_from_error!(hermeneus::error::Error, |err| {
         message: format!("provider auth failed: {message}"),
     }
     .build(),
+    // WHY: ProviderInit errors from subprocess providers (CC binary crashed,
+    // disappeared, auth expired) are transient — the server is alive but the
+    // LLM provider is temporarily unavailable. 503 is the correct HTTP status
+    // so clients know to retry, and the health endpoint reports degraded.
+    ProviderInit { message, .. } => ServiceUnavailableSnafu {
+        message: format!("provider unavailable: {message}"),
+    }
+    .build(),
     ApiError { status: 429, .. } => RateLimitedSnafu {
         retry_after_secs: 0_u64,
     }
@@ -283,6 +291,16 @@ impl_from_error!(nous::error::Error, |err| {
         ..
     } => ServiceUnavailableSnafu {
         message: format!("pipeline stage '{stage}' timed out after {timeout_secs}s"),
+    }
+    .build(),
+    // WHY: PipelineStage errors from execute with "unavailable" indicate the
+    // provider is Down (circuit breaker open). This is a transient condition:
+    // 503 tells the client the server is alive but the LLM is temporarily down.
+    PipelineStage { stage, message, .. } if stage == "execute" && message.contains("unavailable") => {
+        ServiceUnavailableSnafu { message }.build()
+    }
+    ServiceDegraded { nous_id, panic_count, .. } => ServiceUnavailableSnafu {
+        message: format!("agent '{nous_id}' is degraded after {panic_count} panics"),
     }
     .build(),
     Llm { source, .. } => Self::from(source),
@@ -513,6 +531,66 @@ mod tests {
         let api_err = ApiError::from(mneme_err);
         let response = api_err.into_response();
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn provider_init_maps_to_503() {
+        // WHY: ProviderInit errors from CC subprocess (binary crashed,
+        // disappeared) are transient — 503 tells clients the server is
+        // alive but the LLM provider is temporarily unavailable.
+        let hermeneus_err = hermeneus::error::Error::ProviderInit {
+            message: "failed to spawn claude CLI at /usr/bin/claude: No such file or directory"
+                .to_owned(),
+            location: snafu::location!(),
+        };
+        let api_err = ApiError::from(hermeneus_err);
+        let response = api_err.into_response();
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    }
+
+    #[test]
+    fn provider_init_via_nous_llm_maps_to_503() {
+        // WHY: When a ProviderInit error propagates through nous::Error::Llm,
+        // it must still map to 503, not 500.
+        let hermeneus_err = hermeneus::error::Error::ProviderInit {
+            message: "failed to spawn claude CLI".to_owned(),
+            location: snafu::location!(),
+        };
+        let nous_err = nous::error::Error::Llm {
+            source: hermeneus_err,
+            location: snafu::location!(),
+        };
+        let api_err = ApiError::from(nous_err);
+        let response = api_err.into_response();
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    }
+
+    #[test]
+    fn pipeline_stage_provider_unavailable_maps_to_503() {
+        // WHY: When resolve_provider_checked returns "provider is currently
+        // unavailable" (circuit breaker open), the response must be 503.
+        let nous_err = nous::error::Error::PipelineStage {
+            stage: "execute".to_owned(),
+            message: "provider 'cc' is currently unavailable".to_owned(),
+            location: snafu::location!(),
+        };
+        let api_err = ApiError::from(nous_err);
+        let response = api_err.into_response();
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    }
+
+    #[test]
+    fn service_degraded_maps_to_503() {
+        // WHY: When the nous actor is in degraded mode after panics,
+        // subsequent turn requests should get 503, not 500.
+        let nous_err = nous::error::Error::ServiceDegraded {
+            nous_id: "syn".to_owned(),
+            panic_count: 5,
+            location: snafu::location!(),
+        };
+        let api_err = ApiError::from(nous_err);
+        let response = api_err.into_response();
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
     }
 
     #[test]

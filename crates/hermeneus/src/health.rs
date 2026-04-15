@@ -190,7 +190,13 @@ impl ProviderHealthTracker {
                     },
                 };
             }
-            Error::ApiRequest { .. }
+            // WHY: ProviderInit errors (e.g. CC binary disappeared, spawn failed)
+            // indicate the provider process is unavailable. They must follow the
+            // same degradation path as ApiRequest errors so the health tracker
+            // transitions to Degraded/Down and subsequent requests get a clear
+            // 503 instead of repeated spawn failures.
+            Error::ProviderInit { .. }
+            | Error::ApiRequest { .. }
             | Error::ApiError {
                 status: 500..=599, ..
             } => {
@@ -420,6 +426,46 @@ mod tests {
         t.record_error(&api_request_error());
         t.record_error(&api_request_error());
         assert!(t.check_available().is_err());
+    }
+
+    #[test]
+    fn provider_init_error_transitions_to_degraded() {
+        // WHY: ProviderInit errors (CC binary crashed, disappeared) must
+        // update health state so the circuit breaker activates and
+        // subsequent requests get a clear 503 instead of repeated spawn failures.
+        let t = tracker(5, 60_000);
+        let err = crate::error::ProviderInitSnafu {
+            message: "failed to spawn claude CLI",
+        }
+        .build();
+        t.record_error(&err);
+        match t.health() {
+            ProviderHealth::Degraded {
+                consecutive_errors, ..
+            } => assert_eq!(consecutive_errors, 1),
+            other => panic!("expected Degraded after ProviderInit error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn provider_init_errors_transition_to_down_at_threshold() {
+        // WHY: Repeated ProviderInit errors (CC binary remains unavailable)
+        // must eventually transition to Down so resolve_provider_checked
+        // rejects requests early with a clear error.
+        let t = tracker(3, 60_000);
+        let err = crate::error::ProviderInitSnafu {
+            message: "failed to spawn claude CLI",
+        }
+        .build();
+        for _ in 0..3 {
+            t.record_error(&err);
+        }
+        match t.health() {
+            ProviderHealth::Down { reason, .. } => {
+                assert_eq!(reason, DownReason::ConsecutiveFailures);
+            }
+            other => panic!("expected Down after threshold ProviderInit errors, got {other:?}"),
+        }
     }
 
     #[test]
