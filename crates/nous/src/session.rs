@@ -63,6 +63,10 @@ impl SessionState {
     pub fn next_turn(&mut self) -> u64 {
         self.turn += 1;
         self.turn_id = Ulid::new();
+        // WHY: update last_accessed so LRU eviction correctly keeps active sessions
+        // over idle ones. Without this, eviction is effectively creation-time ordering
+        // because Instant::now() is only set in new(). (#3253)
+        self.last_accessed = Instant::now();
         self.turn
     }
 

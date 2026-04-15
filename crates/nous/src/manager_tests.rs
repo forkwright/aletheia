@@ -365,11 +365,16 @@ async fn check_health_busy_actor_reports_alive() {
     mgr.spawn(syn_config(), PipelineConfig::default()).await.expect("spawn");
 
     // NOTE: Simulate: actor is mid-turn (flag set) but its inbox is closed (ping fails).
-    mgr.actors
-        .get("syn")
-        .expect("actor registered")
-        .active_turn
-        .store(true, std::sync::atomic::Ordering::Release);
+    let entry = mgr.actors.get("syn").expect("actor registered");
+    entry.active_turn.store(true, std::sync::atomic::Ordering::Release);
+    // WHY: set a recent turn_started_at_ms so stuck-turn detection doesn't trigger
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::as_conversions,
+        reason = "u128→u64: test uptime in ms won't exceed u64::MAX"
+    )]
+    let now_ms = entry.last_start.elapsed().as_millis() as u64; // kanon:ignore RUST/as-cast
+    entry.turn_started_at_ms.store(now_ms, std::sync::atomic::Ordering::Release);
 
     let handle = mgr.actors.get("syn").expect("entry").handle.clone();
     handle.shutdown().await.expect("shutdown sent");

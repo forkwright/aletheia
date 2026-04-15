@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, AtomicU64};
 use std::time::{Duration, Instant};
 
 use tokio::sync::Mutex;
@@ -90,6 +90,11 @@ pub(crate) struct ActorRuntime {
     /// distinguish a busy actor from an unresponsive one without queuing
     /// through the inbox.
     active_turn: Arc<AtomicBool>,
+    /// Monotonic timestamp (millis since `started_at`) when the current turn began.
+    /// 0 when idle. Shared with the manager so the health check can detect stuck
+    /// turns (active for longer than `stuck_turn_timeout_secs`) even when
+    /// `active_turn` is true, preventing the flag from masking a hung pipeline. (#3254)
+    turn_started_at_ms: Arc<AtomicU64>,
     /// Guards against concurrent distillation when two turns finish close together.
     /// WHY: Background distillation is async; a second turn can finish while the
     /// first turn's distillation task is still running, triggering a duplicate.
@@ -159,6 +164,7 @@ impl NousActor {
         tool_services: Option<Arc<ToolServices>>,
         extra_bootstrap: Vec<BootstrapSection>,
         active_turn: Arc<AtomicBool>,
+        turn_started_at_ms: Arc<AtomicU64>,
         nous_behavior: taxis::config::NousBehaviorConfig,
     ) -> Self {
         #[cfg(feature = "knowledge-store")]
@@ -209,6 +215,7 @@ impl NousActor {
             runtime: ActorRuntime {
                 background_tasks: JoinSet::new(),
                 active_turn,
+                turn_started_at_ms,
                 distillation_in_progress: Arc::new(AtomicBool::new(false)),
                 pipeline_panic_count: 0,
                 pipeline_panic_timestamps: Vec::new(),
