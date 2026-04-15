@@ -200,7 +200,8 @@ regex = { version = "1", default-features = false, features = ["std", "perf", "u
 # Database
 rusqlite = { version = "0.38", features = ["bundled"] }
 
-# FFI
+# FFI / System
+libc = { version = "0.2", default-features = false }
 rustix = { version = "1", default-features = false, features = [
     "fs",
     "mm",

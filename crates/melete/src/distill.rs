@@ -628,12 +628,16 @@ fn extract_summary_text(content: &[hermeneus::types::ContentBlock]) -> String {
 
 /// Parse a distillation summary into structured memory items.
 ///
-/// Extracts key decisions, corrections, and task context from the markdown
-/// sections of the summary, populating a [`MemoryFlush`] for the caller to
-/// persist to long-term storage.
+/// Extracts all 7 standard section types from the markdown summary,
+/// populating a [`MemoryFlush`] for the caller to persist to long-term
+/// storage. Key Decisions and Corrections get their own dedicated fields;
+/// all other sections (Summary, Task Context, Completed Work, Current State,
+/// Open Threads) are stored as facts to prevent information loss across
+/// distillation boundaries.
 fn parse_summary_to_flush(summary: &str, timestamp: &str) -> MemoryFlush {
     let mut decisions: Vec<FlushItem> = Vec::new();
     let mut corrections: Vec<FlushItem> = Vec::new();
+    let mut facts: Vec<FlushItem> = Vec::new();
     let mut task_state: Option<String> = None;
     let mut current_section = "";
     let mut section_lines: Vec<&str> = Vec::new();
@@ -646,6 +650,7 @@ fn parse_summary_to_flush(summary: &str, timestamp: &str) -> MemoryFlush {
                 timestamp,
                 &mut decisions,
                 &mut corrections,
+                &mut facts,
                 &mut task_state,
             );
             current_section = heading.trim();
@@ -660,24 +665,42 @@ fn parse_summary_to_flush(summary: &str, timestamp: &str) -> MemoryFlush {
         timestamp,
         &mut decisions,
         &mut corrections,
+        &mut facts,
         &mut task_state,
     );
 
     MemoryFlush {
         decisions,
         corrections,
-        facts: vec![],
+        facts,
         task_state,
     }
 }
 
+/// Extract bullet items from section content lines.
+///
+/// Strips leading `-` markers and trims whitespace. Skips empty lines.
+fn extract_bullet_items<'a>(content: &[&'a str]) -> Vec<&'a str> {
+    content
+        .iter()
+        .copied()
+        .map(|l| l.trim_start_matches('-').trim())
+        .filter(|l| !l.is_empty())
+        .collect()
+}
+
 /// Process one markdown section of a distillation summary into flush items.
+///
+/// WHY: All 7 standard sections are extracted. Previously only 3 were handled,
+/// permanently losing Completed Work, Current State, Open Threads, and Summary
+/// across distillation boundaries.
 fn collect_flush_section(
     section: &str,
     lines: &[&str],
     timestamp: &str,
     decisions: &mut Vec<FlushItem>,
     corrections: &mut Vec<FlushItem>,
+    facts: &mut Vec<FlushItem>,
     task_state: &mut Option<String>,
 ) {
     let content: Vec<&str> = lines
@@ -690,34 +713,69 @@ fn collect_flush_section(
     }
     match section {
         "Key Decisions" => {
-            for &line in &content {
-                let text = line.trim_start_matches('-').trim();
-                if !text.is_empty() {
-                    decisions.push(FlushItem {
-                        content: text.to_owned(),
-                        timestamp: timestamp.to_owned(),
-                        source: FlushSource::Extracted,
-                    });
-                }
+            for text in extract_bullet_items(&content) {
+                decisions.push(FlushItem {
+                    content: text.to_owned(),
+                    timestamp: timestamp.to_owned(),
+                    source: FlushSource::Extracted,
+                });
             }
         }
         "Corrections" => {
-            for &line in &content {
-                let text = line.trim_start_matches('-').trim();
-                if !text.is_empty() {
-                    corrections.push(FlushItem {
-                        content: text.to_owned(),
-                        timestamp: timestamp.to_owned(),
-                        source: FlushSource::Extracted,
-                    });
-                }
+            for text in extract_bullet_items(&content) {
+                corrections.push(FlushItem {
+                    content: text.to_owned(),
+                    timestamp: timestamp.to_owned(),
+                    source: FlushSource::Extracted,
+                });
             }
         }
         "Task Context" => {
             *task_state = Some(content.join("\n"));
         }
+        "Summary" => {
+            // WHY: The one-sentence overview is a high-level fact for recall.
+            let text = content.join(" ");
+            facts.push(FlushItem {
+                content: format!("[Summary] {text}"),
+                timestamp: timestamp.to_owned(),
+                source: FlushSource::Extracted,
+            });
+        }
+        "Completed Work" => {
+            // WHY: Each completed work item becomes a fact so future sessions
+            // know what was already done without re-discovering from narrative.
+            for text in extract_bullet_items(&content) {
+                facts.push(FlushItem {
+                    content: format!("[Completed] {text}"),
+                    timestamp: timestamp.to_owned(),
+                    source: FlushSource::Extracted,
+                });
+            }
+        }
+        "Current State" => {
+            // WHY: Task status snapshot persists as a fact so future sessions
+            // can resume without rediscovering where things stand.
+            let text = content.join("\n");
+            facts.push(FlushItem {
+                content: format!("[State] {text}"),
+                timestamp: timestamp.to_owned(),
+                source: FlushSource::Extracted,
+            });
+        }
+        "Open Threads" => {
+            // WHY: Unfinished items persist as facts so future sessions can
+            // resume them instead of losing deferred work.
+            for text in extract_bullet_items(&content) {
+                facts.push(FlushItem {
+                    content: format!("[Open] {text}"),
+                    timestamp: timestamp.to_owned(),
+                    source: FlushSource::Extracted,
+                });
+            }
+        }
         _ => {
-            // NOTE: unrecognized sections are not extracted
+            // NOTE: unrecognized/custom sections are not extracted
         }
     }
 }

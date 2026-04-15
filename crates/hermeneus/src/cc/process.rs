@@ -16,6 +16,26 @@ use crate::error::{self, Result};
 
 use super::parse::{self, CcEvent};
 
+/// Maximum total bytes of collected stream deltas before aborting.
+///
+/// WHY: Unbounded delta collection is an OOM risk if CC outputs unexpectedly
+/// large content (e.g., tool dumps a huge file, runaway LLM response).
+/// 10 MB is generous for any legitimate completion while preventing OOM.
+const MAX_OUTPUT_BYTES: usize = 10 * 1024 * 1024; // 10 MB
+
+/// Maximum total number of stream delta lines before aborting.
+///
+/// WHY: Secondary guard alongside byte limit. A runaway subprocess could
+/// emit many small lines that individually pass no single-line check.
+const MAX_OUTPUT_LINES: usize = 100_000;
+
+/// Maximum length of a system prompt passed to the CC subprocess.
+///
+/// WHY: The system prompt is passed as a command-line argument. An
+/// excessively large prompt could exhaust argument space or cause the
+/// subprocess to consume excessive memory during parsing.
+const MAX_SYSTEM_PROMPT_BYTES: usize = 100 * 1024; // 100 KB
+
 /// Extract the OAuth access token from the raw JSON content of a CC credentials file.
 ///
 /// Separated from I/O so it can be unit-tested without touching the real filesystem
@@ -127,6 +147,15 @@ pub(crate) async fn run_completion(
         .env_remove("CLAUDE_CODE_OAUTH_TOKEN");
 
     if let Some(sys) = system_prompt {
+        if sys.len() > MAX_SYSTEM_PROMPT_BYTES {
+            return Err(error::ApiRequestSnafu {
+                message: format!(
+                    "system prompt exceeds maximum size ({} bytes > {MAX_SYSTEM_PROMPT_BYTES} byte limit)",
+                    sys.len(),
+                ),
+            }
+            .build());
+        }
         cmd.arg("--system-prompt").arg(sys);
     }
 
@@ -234,6 +263,7 @@ where
     let mut lines = reader.lines();
 
     let mut stream_deltas = Vec::new();
+    let mut total_bytes: usize = 0;
     let mut result_text = String::new();
     let mut is_error = false;
     let mut usage = None;
@@ -255,6 +285,23 @@ where
         match event {
             CcEvent::Assistant { message } => {
                 if !message.text.is_empty() {
+                    total_bytes = total_bytes.saturating_add(message.text.len());
+                    if total_bytes > MAX_OUTPUT_BYTES {
+                        return Err(error::ApiRequestSnafu {
+                            message: format!(
+                                "CC subprocess output exceeds {MAX_OUTPUT_BYTES} byte limit (collected {total_bytes} bytes)"
+                            ),
+                        }
+                        .build());
+                    }
+                    if stream_deltas.len() >= MAX_OUTPUT_LINES {
+                        return Err(error::ApiRequestSnafu {
+                            message: format!(
+                                "CC subprocess output exceeds {MAX_OUTPUT_LINES} line limit"
+                            ),
+                        }
+                        .build());
+                    }
                     stream_deltas.push(message.text);
                 }
             }
@@ -349,6 +396,15 @@ pub(crate) async fn run_streaming(
     }
 
     if let Some(sys) = system_prompt {
+        if sys.len() > MAX_SYSTEM_PROMPT_BYTES {
+            return Err(error::ApiRequestSnafu {
+                message: format!(
+                    "system prompt exceeds maximum size ({} bytes > {MAX_SYSTEM_PROMPT_BYTES} byte limit)",
+                    sys.len(),
+                ),
+            }
+            .build());
+        }
         cmd.arg("--system-prompt").arg(sys);
     }
 
@@ -426,6 +482,7 @@ where
     let mut lines = reader.lines();
 
     let mut stream_deltas = Vec::new();
+    let mut total_bytes: usize = 0;
     let mut result_text = String::new();
     let mut is_error = false;
     let mut usage = None;
@@ -447,6 +504,23 @@ where
         match event {
             CcEvent::Assistant { message } => {
                 if !message.text.is_empty() {
+                    total_bytes = total_bytes.saturating_add(message.text.len());
+                    if total_bytes > MAX_OUTPUT_BYTES {
+                        return Err(error::ApiRequestSnafu {
+                            message: format!(
+                                "CC subprocess output exceeds {MAX_OUTPUT_BYTES} byte limit (collected {total_bytes} bytes)"
+                            ),
+                        }
+                        .build());
+                    }
+                    if stream_deltas.len() >= MAX_OUTPUT_LINES {
+                        return Err(error::ApiRequestSnafu {
+                            message: format!(
+                                "CC subprocess output exceeds {MAX_OUTPUT_LINES} line limit"
+                            ),
+                        }
+                        .build());
+                    }
                     on_delta(&message.text);
                     stream_deltas.push(message.text);
                 }
