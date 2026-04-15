@@ -582,9 +582,11 @@ pub async fn stream_turn(
             Ok(data) => Ok(Event::default().event(event.event_type()).data(data)),
             Err(e) => {
                 warn!(error = %e, "failed to serialize SSE event");
+                // WHY: Use the WebchatEvent::Error shape so the fallback event has the
+                // same structure as all other error events in the stream (#3160).
                 Ok(Event::default()
                     .event("error")
-                    .data(r#"{"message":"serialization failed"}"#))
+                    .data(r#"{"type":"error","message":"serialization failed"}"#))
             }
         }),
         _guard: AbortOnDrop(stream_turn_handle),
@@ -649,9 +651,11 @@ fn sse_event_to_axum(event: SseEvent) -> Result<Event, Infallible> {
         Ok(data) => Ok(Event::default().event(event.event_type()).data(data)),
         Err(e) => {
             warn!(error = %e, "failed to serialize SSE event");
+            // WHY: Use the SseEvent::Error variant so the fallback event has the same
+            // shape as all other error events in the stream (#3160).
             Ok(Event::default()
                 .event("error")
-                .data(r#"{"message":"serialization failed"}"#))
+                .data(r#"{"type":"error","code":"serialization_error","message":"serialization failed"}"#))
         }
     }
 }
