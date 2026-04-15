@@ -1,6 +1,6 @@
-# Dependency Budget
+# Dependency budget
 
-## Current State (as of 2026-03-19, v0.13.0)
+## Current state (as of 2026-03-19, v0.13.0)
 
 | Metric | Count |
 |--------|-------|
@@ -13,7 +13,7 @@ The 1714-line `cargo tree --depth 1` output includes all workspace crates' own
 direct dependencies; the 657 external packages figure (from `cargo metadata`)
 is the authoritative count of third-party crates pulled in transitively.
 
-## Target Budget
+## Target budget
 
 | Metric | Budget |
 |--------|--------|

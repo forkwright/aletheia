@@ -1,4 +1,4 @@
-# Hot Reload Classification
+# Hot reload classification
 
 This document classifies all `AletheiaConfig` fields as either **Hot** (safe to apply via SIGHUP without restart) or **Cold** (requires process restart to take effect).
 
@@ -24,7 +24,7 @@ This document classifies all `AletheiaConfig` fields as either **Hot** (safe to 
 
 ---
 
-## Detailed Classification
+## Detailed classification
 
 ### Gateway (`gateway`)
 
@@ -220,7 +220,7 @@ This document classifies all `AletheiaConfig` fields as either **Hot** (safe to 
 | `mcp.rateLimit.messageRequestsPerMinute` | Hot | Limit read per-MCP-request |
 | `mcp.rateLimit.readRequestsPerMinute` | Hot | Limit read per-MCP-request |
 
-### Local Provider (`localProvider`)
+### Local provider (`localProvider`)
 
 | Config path | Hot/Cold | Reason |
 |-------------|----------|--------|
@@ -237,7 +237,7 @@ This document classifies all `AletheiaConfig` fields as either **Hot** (safe to 
 
 ---
 
-## Verification Against `RESTART_PREFIXES`
+## Verification against `RESTART_PREFIXES`
 
 The `crates/taxis/src/reload.rs` file defines the following `RESTART_PREFIXES`:
 
@@ -253,7 +253,7 @@ const RESTART_PREFIXES: &[&str] = &[
 ];
 ```
 
-### Match Status: ✅ CONSISTENT
+### Match status: ✅ CONSISTENT
 
 All fields marked as **Cold** in this document match the `RESTART_PREFIXES` in `reload.rs`:
 
@@ -267,19 +267,19 @@ All fields marked as **Cold** in this document match the `RESTART_PREFIXES` in `
 | `gateway.bodyLimit` | Cold ✅ | Axum body limit |
 | `channels` | Cold ✅ | Channel transport lifecycle |
 
-### Cold Field Detail: `gateway.csrf`
+### Cold field detail: `gateway.csrf`
 
 **Note:** The `RESTART_PREFIXES` includes `gateway.csrf` as a cold prefix, meaning the **entire** CSRF config subtree requires restart. While `gateway.csrf.headerName` and `gateway.csrf.headerValue` are evaluated per-request, the middleware layer that performs CSRF checking is initialized at startup with the `enabled` flag. Therefore, the entire subtree is classified as Cold for consistency.
 
-### Cold Field Detail: `channels`
+### Cold field detail: `channels`
 
 **Note:** The `channels` prefix covers the entire messaging transport configuration. Signal accounts and their connection parameters are established at server startup. Changes to any channel settings require a restart to re-initialize the transport connections.
 
 ---
 
-## Guidelines for Operators
+## Guidelines for operators
 
-### Safe to Change via SIGHUP (Hot Reload)
+### Safe to change via SIGHUP (hot reload)
 
 - **Agent settings**: Model selection, token budgets, thinking settings, tool iterations, recall parameters
 - **Rate limiting**: All gateway and MCP rate limit settings
@@ -287,7 +287,7 @@ All fields marked as **Cold** in this document match the `RESTART_PREFIXES` in `
 - **Sandbox policies**: Enforcement mode, egress rules, path allowances
 - **Logging**: Log levels, retention, redaction settings
 
-### Requires Process Restart (Cold Changes)
+### Requires process restart (cold changes)
 
 - **Network binding**: Port, bind address, TLS certificates
 - **Authentication mode**: Switching between token/none/JWT modes

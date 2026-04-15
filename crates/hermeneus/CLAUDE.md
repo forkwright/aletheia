@@ -67,7 +67,7 @@ Used by: nous, pylon, organon, melete
 
 _No `#[instrument]` spans in this crate. Span creation is delegated to callers (typically via `tracing::info_span!` in parent crates)._
 
-### Log Events
+### Log events
 
 | Level | Event | When |
 |-------|-------|------|

@@ -10,17 +10,17 @@ assignees: ''
 
 A clear description of the bug.
 
-## Steps to Reproduce
+## Steps to reproduce
 
 1.
 2.
 3.
 
-## Expected Behavior
+## Expected behavior
 
 What should happen.
 
-## Actual Behavior
+## Actual behavior
 
 What happens instead. Include error messages or logs if available.
 
@@ -31,6 +31,6 @@ What happens instead. Include error messages or logs if available.
 - **Aletheia version/commit:**
 - **Relevant services:** (e.g., Qdrant, Neo4j, signal-cli)
 
-## Additional Context
+## Additional context
 
 Relevant logs, screenshots, or configuration (redact credentials).

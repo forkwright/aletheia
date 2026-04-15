@@ -1,4 +1,4 @@
-# Protocol Buffers
+# Protocol buffers
 
 > Standards for proto3 schema design, wire compatibility, gRPC service patterns, JSON mapping, and Rust codegen. Applies to all `.proto` files and generated code.
 

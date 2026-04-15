@@ -125,6 +125,7 @@ Don't write three paragraphs when a table says it better. Don't make a bullet li
 
 - **Sentence case** for document headers: "Error handling patterns" not "Error Handling Patterns"
 - Exception: `UPPER_SNAKE` for canonical doc filenames (STANDARDS.md, ARCHITECTURE.md)
+- Exception: Keep a Changelog category headers (`Added`, `Changed`, `Fixed`, etc.) in `CHANGELOG.md`
 - Headers describe content, not categories: "Sessions persist across restarts" not "Session Persistence Feature"
 - No trailing punctuation on headers
 - **One H1 per page.** The page title.
