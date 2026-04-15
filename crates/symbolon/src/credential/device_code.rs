@@ -397,7 +397,7 @@ pub async fn device_code_login(provider: &DeviceOAuthProvider) -> Result<Credent
     .await?;
 
     // SAFETY: logging success status, not the token value
-    info!("successfully obtained access token via device flow");
+    info!("successfully obtained access token via device flow"); // kanon:ignore SECURITY/credential-logging -- logs success message, not the token
     eprintln!("\n✓ Authentication successful!\n");
 
     // Step 4: Build credential file
@@ -481,7 +481,7 @@ where
     .await?;
 
     // SAFETY: logging success status, not the token value
-    info!("successfully obtained access token via device flow");
+    info!("successfully obtained access token via device flow"); // kanon:ignore SECURITY/credential-logging -- logs success message, not the token
 
     // Step 4: Build credential file
     let expires_at = token_response

@@ -88,7 +88,7 @@ pub async fn mcp_auth(
         }
         Err(_err) => {
             // SAFETY: logging rejection status, not the token value
-            warn!("MCP request rejected: invalid Bearer token");
+            warn!("MCP request rejected: invalid Bearer token"); // kanon:ignore SECURITY/credential-logging -- logs rejection event, not the token
             unauthorized()
         }
     }

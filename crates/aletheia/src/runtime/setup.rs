@@ -73,16 +73,16 @@ pub(super) fn build_provider_registry(config: &AletheiaConfig, oikos: &Oikos) ->
         if cred.has_refresh_token() {
             if let Some(refreshing) = RefreshingCredentialProvider::new(cred_file.clone()) {
                 // SAFETY: logging file path, not credential value
-                info!(path = %cred_file.display(), "credential file found (OAuth auto-refresh)");
+                info!(path = %cred_file.display(), "credential file found (OAuth auto-refresh)"); // kanon:ignore SECURITY/credential-logging -- logs file path, not credential value
                 chain.push(Box::new(refreshing));
             } else {
                 // SAFETY: logging file path, not credential value
-                info!(path = %cred_file.display(), "credential file found (static)");
+                info!(path = %cred_file.display(), "credential file found (static)"); // kanon:ignore SECURITY/credential-logging -- logs file path, not credential value
                 chain.push(Box::new(FileCredentialProvider::new(cred_file.clone())));
             }
         } else {
             // SAFETY: logging file path, not credential value
-            info!(path = %cred_file.display(), "credential file found (static API key)");
+            info!(path = %cred_file.display(), "credential file found (static API key)"); // kanon:ignore SECURITY/credential-logging -- logs file path, not credential value
             chain.push(Box::new(FileCredentialProvider::new(cred_file.clone())));
         }
     }
@@ -111,7 +111,7 @@ pub(super) fn build_provider_registry(config: &AletheiaConfig, oikos: &Oikos) ->
     let resolved_source = credential_chain.get_credential().map(|c| c.source);
     if let Some(ref source) = resolved_source {
         // SAFETY: logging credential source name (e.g. "oauth", "api-key"), not credential value
-        info!(source = %source, "credential resolved");
+        info!(source = %source, "credential resolved"); // kanon:ignore SECURITY/credential-logging -- logs source type string, not the secret
     } else {
         warn!(
             "no credential found -- server will start in degraded mode (no LLM)\n  \
@@ -139,7 +139,7 @@ pub(super) fn build_provider_registry(config: &AletheiaConfig, oikos: &Oikos) ->
             Ok(provider) => {
                 registry.register(Box::new(provider));
                 // SAFETY: logging provider registration status, not credential value
-                info!("CC subprocess provider registered (OAuth credential detected)");
+                info!("CC subprocess provider registered (OAuth credential detected)"); // kanon:ignore SECURITY/credential-logging -- logs provider registration, no secret
             }
             Err(e) => {
                 tracing::debug!(error = %e, "CC provider unavailable, falling back to direct API");

@@ -123,4 +123,3 @@ crates/theatron/desktop/target/
 # === SBOM artifacts (generated during build) ===
 bom.cdx.json
 *.cdx.json
-.kanon-lint-ignore
