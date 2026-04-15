@@ -14,7 +14,7 @@ use organon::registry::ToolRegistry;
 use organon::types::ToolContext;
 use taxis::oikos::Oikos;
 
-use crate::bootstrap::{BootstrapSection, TaskHint};
+use crate::bootstrap::{BootstrapFileCache, BootstrapSection, TaskHint};
 use crate::compact::CompactConfig;
 use crate::config::{NousConfig, PipelineConfig};
 use crate::error;
@@ -26,9 +26,13 @@ use crate::stream::TurnStreamEvent;
 use super::events::{StageCompleted, StageError, StageSkipped, StageTimeout};
 use super::{
     GuardResult, PipelineContext, PipelineInput, PipelineMessage, TurnResult,
-    assemble_context_conditional, check_guard,
+    assemble_context_conditional_with_cache, check_guard,
 };
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "context stage forwards pipeline dependencies plus optional bootstrap cache"
+)]
 pub(super) async fn run_context_stage(
     oikos: &Oikos,
     config: &NousConfig,
@@ -36,6 +40,7 @@ pub(super) async fn run_context_stage(
     ctx: &mut PipelineContext,
     extra_bootstrap: Vec<BootstrapSection>,
     task_hint: TaskHint,
+    bootstrap_cache: Option<&BootstrapFileCache>,
     emitter: &EventEmitter,
 ) -> error::Result<()> {
     let span = info_span!(
@@ -45,13 +50,14 @@ pub(super) async fn run_context_stage(
         status = tracing::field::Empty
     );
     let start = Instant::now();
-    assemble_context_conditional(
+    assemble_context_conditional_with_cache(
         oikos,
         config,
         pipeline_config,
         ctx,
         extra_bootstrap,
         task_hint,
+        bootstrap_cache,
     )
     .instrument(span.clone())
     .await

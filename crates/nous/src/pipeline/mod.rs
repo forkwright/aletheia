@@ -653,6 +653,35 @@ pub async fn assemble_context_conditional(
     extra_sections: Vec<BootstrapSection>,
     task_hint: TaskHint,
 ) -> crate::error::Result<()> {
+    assemble_context_conditional_with_cache(
+        oikos,
+        nous_config,
+        pipeline_config,
+        ctx,
+        extra_sections,
+        task_hint,
+        None,
+    )
+    .await
+}
+
+/// Variant of [`assemble_context_conditional`] that accepts a shared
+/// [`BootstrapFileCache`].
+///
+/// When `cache` is `Some`, workspace file reads are served from the cache when
+/// they are fresh (mtime unchanged and within TTL), eliminating redundant disk
+/// reads across pipeline turns (#3388). When `None`, behaviour matches the
+/// legacy path that re-reads every file every turn.
+#[instrument(skip_all, fields(nous_id = %nous_config.id, ?task_hint))]
+pub async fn assemble_context_conditional_with_cache(
+    oikos: &Oikos,
+    nous_config: &NousConfig,
+    pipeline_config: &PipelineConfig,
+    ctx: &mut PipelineContext,
+    extra_sections: Vec<BootstrapSection>,
+    task_hint: TaskHint,
+    cache: Option<&crate::bootstrap::BootstrapFileCache>,
+) -> crate::error::Result<()> {
     let mut budget = TokenBudget::new(
         u64::from(nous_config.generation.context_window),
         pipeline_config.history_budget_ratio,
@@ -660,7 +689,10 @@ pub async fn assemble_context_conditional(
         u64::from(nous_config.generation.bootstrap_max_tokens),
     );
 
-    let assembler = BootstrapAssembler::new(oikos);
+    let mut assembler = BootstrapAssembler::new(oikos);
+    if let Some(cache) = cache {
+        assembler = assembler.with_cache(cache);
+    }
     let result = assembler
         .assemble_conditional(&nous_config.id, &mut budget, extra_sections, task_hint)
         .await?;
@@ -733,6 +765,7 @@ pub(crate) async fn run_pipeline(
     stream_tx: Option<&mpsc::Sender<TurnStreamEvent>>,
     emitter: Option<&EventEmitter>,
     hooks: Option<&HookRegistry>,
+    bootstrap_cache: Option<&crate::bootstrap::BootstrapFileCache>,
 ) -> error::Result<TurnResult> {
     let default_emitter = EventEmitter::new();
     let emitter = emitter.unwrap_or(&default_emitter);
@@ -770,6 +803,7 @@ pub(crate) async fn run_pipeline(
             &mut ctx,
             extra_bootstrap,
             task_hint,
+            bootstrap_cache,
             emitter,
         )
         .await?;
