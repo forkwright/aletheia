@@ -3,16 +3,44 @@
 //! Source: stopwords-iso project (MIT license).
 
 #[rustfmt::skip]
+#[expect(
+    clippy::needless_raw_string_hashes,
+    clippy::unicode_not_nfc,
+    reason = "stopword data imported verbatim from stopwords-iso — preserving source encoding"
+)]
 mod af_da;
 #[rustfmt::skip]
+#[expect(
+    clippy::needless_raw_string_hashes,
+    reason = "stopword data imported verbatim from stopwords-iso"
+)]
 mod nl_de;
 #[rustfmt::skip]
+#[expect(
+    clippy::needless_raw_string_hashes,
+    clippy::unicode_not_nfc,
+    reason = "stopword data imported verbatim from stopwords-iso — preserving source encoding"
+)]
 mod el_ja;
 #[rustfmt::skip]
+#[expect(
+    clippy::needless_raw_string_hashes,
+    clippy::unicode_not_nfc,
+    reason = "stopword data imported verbatim from stopwords-iso — preserving source encoding"
+)]
 mod ko_ro;
 #[rustfmt::skip]
+#[expect(
+    clippy::needless_raw_string_hashes,
+    reason = "stopword data imported verbatim from stopwords-iso"
+)]
 mod ru_ur;
 #[rustfmt::skip]
+#[expect(
+    clippy::needless_raw_string_hashes,
+    clippy::unicode_not_nfc,
+    reason = "stopword data imported verbatim from stopwords-iso — preserving source encoding"
+)]
 mod vi_zu;
 
 pub(crate) use af_da::AF;

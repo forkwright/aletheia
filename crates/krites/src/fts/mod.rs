@@ -57,17 +57,26 @@ impl TokenizerConfig {
         }
         hasher.finalize_fixed()
     }
+    #[expect(
+        clippy::result_large_err,
+        reason = "FTS error carries structured tokenization context"
+    )]
     pub(crate) fn build(&self, filters: &[Self]) -> Result<TextAnalyzer> {
         let tokenizer = self.construct_tokenizer()?;
         let token_filters = filters
             .iter()
-            .map(|filter| filter.construct_token_filter())
+            .map(Self::construct_token_filter)
             .collect::<Result<Vec<_>>>()?;
         Ok(TextAnalyzer {
             tokenizer,
             token_filters,
         })
     }
+    #[expect(
+        clippy::as_conversions,
+        clippy::result_large_err,
+        reason = "CompactString-to-str cast for match; FTS error carries structured tokenization context"
+    )]
     pub(crate) fn construct_tokenizer(&self) -> Result<Box<dyn Tokenizer>> {
         Ok(match &self.name as &str {
             "Raw" => Box::new(RawTokenizer),
@@ -145,6 +154,12 @@ impl TokenizerConfig {
             }
         })
     }
+    #[expect(
+        clippy::as_conversions,
+        clippy::result_large_err,
+        clippy::too_many_lines,
+        reason = "CompactString-to-str cast for match; FTS error carries structured tokenization context; filter dispatch covers all supported filters"
+    )]
     pub(crate) fn construct_token_filter(&self) -> Result<BoxTokenFilter> {
         Ok(match &self.name as &str {
             "AlphaNumOnly" => AlphaNumOnlyFilter.into(),
@@ -217,7 +232,7 @@ impl TokenizerConfig {
                     .map_err(|e| {
                         crate::error::InternalError::from(
                             TokenizationFailedSnafu {
-                                message: format!("Failed to load dictionary: {}", e),
+                                message: format!("Failed to load dictionary: {e}"),
                             }
                             .build(),
                         )
@@ -269,7 +284,7 @@ impl TokenizerConfig {
                     "turkish" => Language::Turkish,
                     lang => {
                         return Err(TokenizationFailedSnafu {
-                            message: format!("Unsupported language: {}", lang),
+                            message: format!("Unsupported language: {lang}"),
                         }
                         .build()
                         .into());
@@ -334,6 +349,7 @@ pub(crate) struct TokenizerCache {
 }
 
 impl TokenizerCache {
+    #[expect(clippy::result_large_err, reason = "FTS error carries structured tokenization context")]
     pub(crate) fn get(
         &self,
         tokenizer_name: &str,
@@ -341,25 +357,25 @@ impl TokenizerCache {
         filters: &[TokenizerConfig],
     ) -> Result<Arc<TextAnalyzer>> {
         {
-            let idx_cache = self.named_cache.read().unwrap_or_else(|e| e.into_inner());
+            let idx_cache = self.named_cache.read().unwrap_or_else(std::sync::PoisonError::into_inner);
             if let Some(analyzer) = idx_cache.get(tokenizer_name) {
                 return Ok(analyzer.clone());
             }
         }
         let hash = tokenizer.config_hash(filters);
         {
-            let hashed_cache = self.hashed_cache.read().unwrap_or_else(|e| e.into_inner());
+            let hashed_cache = self.hashed_cache.read().unwrap_or_else(std::sync::PoisonError::into_inner);
             if let Some(analyzer) = hashed_cache.get(hash.as_ref()) {
-                let mut idx_cache = self.named_cache.write().unwrap_or_else(|e| e.into_inner());
+                let mut idx_cache = self.named_cache.write().unwrap_or_else(std::sync::PoisonError::into_inner);
                 idx_cache.insert(tokenizer_name.into(), analyzer.clone());
                 return Ok(analyzer.clone());
             }
         }
         {
             let analyzer = Arc::new(tokenizer.build(filters)?);
-            let mut hashed_cache = self.hashed_cache.write().unwrap_or_else(|e| e.into_inner());
+            let mut hashed_cache = self.hashed_cache.write().unwrap_or_else(std::sync::PoisonError::into_inner);
             hashed_cache.insert(hash.as_ref().to_vec(), analyzer.clone());
-            let mut idx_cache = self.named_cache.write().unwrap_or_else(|e| e.into_inner());
+            let mut idx_cache = self.named_cache.write().unwrap_or_else(std::sync::PoisonError::into_inner);
             idx_cache.insert(tokenizer_name.into(), analyzer.clone());
             Ok(analyzer)
         }

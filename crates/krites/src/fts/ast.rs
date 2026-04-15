@@ -24,7 +24,7 @@ impl FtsLiteral {
                 value: CompactString::from(&t.text),
                 is_prefix: false,
                 booster: self.booster,
-            })
+            });
         }
     }
 }
@@ -53,6 +53,7 @@ impl FtsExpr {
         match self {
             FtsExpr::Literal(l) => l.booster == 0. || l.value.is_empty(),
             FtsExpr::Near(FtsNear { literals, .. }) => literals.is_empty(),
+            #[expect(clippy::match_same_arms, reason = "FTS AST variants listed separately for clarity")]
             FtsExpr::And(v) => v.is_empty(),
             FtsExpr::Or(v) => v.is_empty(),
             FtsExpr::Not(lhs, _) => lhs.is_empty(),
@@ -68,7 +69,7 @@ impl FtsExpr {
                         FtsExpr::And(es) => flattened.extend(es),
                         e => {
                             if !e.is_empty() {
-                                flattened.push(e)
+                                flattened.push(e);
                             }
                         }
                     }
@@ -89,7 +90,7 @@ impl FtsExpr {
                         FtsExpr::Or(es) => flattened.extend(es),
                         e => {
                             if !e.is_empty() {
-                                flattened.push(e)
+                                flattened.push(e);
                             }
                         }
                     }

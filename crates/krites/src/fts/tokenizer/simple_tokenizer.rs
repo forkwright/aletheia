@@ -23,7 +23,7 @@ impl Tokenizer for SimpleTokenizer {
     }
 }
 
-impl<'a> SimpleTokenStream<'a> {
+impl SimpleTokenStream<'_> {
     fn search_token_end(&mut self) -> usize {
         (&mut self.chars)
             .filter(|(_, c)| !c.is_alphanumeric())
@@ -33,7 +33,7 @@ impl<'a> SimpleTokenStream<'a> {
     }
 }
 
-impl<'a> TokenStream for SimpleTokenStream<'a> {
+impl TokenStream for SimpleTokenStream<'_> {
     fn advance(&mut self) -> bool {
         self.token.text.clear();
         self.token.position = self.token.position.wrapping_add(1);

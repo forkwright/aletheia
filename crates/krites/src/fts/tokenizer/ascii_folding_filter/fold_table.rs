@@ -3,8 +3,11 @@
 //! Maps Unicode characters to their ASCII equivalents where one exists.
 //! Dispatches to sub-tables by character category.
 
+#[expect(clippy::too_many_lines, reason = "generated Unicode folding table — one match arm per codepoint")]
 mod fold_digits_symbols;
+#[expect(clippy::too_many_lines, reason = "generated Unicode folding table — one match arm per codepoint")]
 mod fold_letters_a_m;
+#[expect(clippy::too_many_lines, reason = "generated Unicode folding table — one match arm per codepoint")]
 mod fold_letters_n_z;
 
 use fold_digits_symbols::fold_digit_or_symbol;

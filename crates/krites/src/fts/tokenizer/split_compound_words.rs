@@ -14,6 +14,7 @@ impl SplitCompoundWords {
     /// The dictionary will be used to construct an [`AhoCorasick`] automaton
     /// with reasonable defaults. See [`from_automaton`][Self::from_automaton] if
     /// more control over its construction is required.
+    #[expect(clippy::result_large_err, reason = "FTS error carries structured tokenization context")]
     pub(crate) fn from_dictionary<I, P>(dict: I) -> Result<Self>
     where
         I: IntoIterator<Item = P>,
@@ -63,7 +64,7 @@ struct SplitCompoundWordsTokenStream<'a> {
     parts: Vec<Token>,
 }
 
-impl<'a> SplitCompoundWordsTokenStream<'a> {
+impl SplitCompoundWordsTokenStream<'_> {
     fn split(&mut self) {
         let token = self.tail.token();
         let mut text = token.text.as_str();
@@ -94,7 +95,7 @@ impl<'a> SplitCompoundWordsTokenStream<'a> {
     }
 }
 
-impl<'a> TokenStream for SplitCompoundWordsTokenStream<'a> {
+impl TokenStream for SplitCompoundWordsTokenStream<'_> {
     fn advance(&mut self) -> bool {
         self.parts.pop();
 
