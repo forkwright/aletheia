@@ -4,5 +4,6 @@ mod exprs;
 mod functions;
 mod json;
 mod memcmp;
+mod proptest_memcmp;
 mod validity;
 mod values;
