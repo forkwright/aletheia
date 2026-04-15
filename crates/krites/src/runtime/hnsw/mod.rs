@@ -1,7 +1,25 @@
-//! Hierarchical Navigable Small World vector index.
+//! Hierarchical Navigable Small World (HNSW) vector index.
+//!
+//! Implements the HNSW algorithm for approximate nearest-neighbor search on
+//! high-dimensional vectors. The index is stored as a multi-layer navigable
+//! small-world graph where upper layers provide logarithmic skip-connections
+//! and the bottom layer forms a Delaunay-like proximity graph.
+//!
+//! ## Module layout
+//!
+//! - [`types`]: Core types (`HnswIndexManifest`, `VectorCache`, `CompoundKey`)
+//! - [`graph`]: Graph traversal — level search, neighbor selection, connection pruning
+//! - [`put`]: Vector insertion into the graph
+//! - [`remove`]: Vector removal and edge cleanup
+//! - [`search`]: KNN search entry point
+//! - [`adaptive`]: Exact vs. approximate search strategy selection
+//! - [`visited_pool`]: Lock-free visited-set pool for search traversal
+//! - [`atomic_save`]: Crash-safe persistence (write-fsync-rename)
+//! - [`mmap_storage`]: Memory-mapped dense vector storage
 
 pub(crate) mod adaptive;
 pub(crate) mod atomic_save;
+mod graph;
 pub(crate) mod mmap_storage;
 mod put;
 mod remove;

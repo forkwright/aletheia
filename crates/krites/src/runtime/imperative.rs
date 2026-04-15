@@ -1,4 +1,9 @@
 //! Imperative script execution.
+//!
+//! Evaluates imperative Datalog programs: sequences of statements with
+//! if/else branches, loops (with break/continue), return, temp-swap, and
+//! nested query execution. Each imperative program runs inside a single
+//! transaction with poison-based cancellation support.
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::Ordering;
 

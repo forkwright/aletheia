@@ -129,7 +129,7 @@ impl Renderer for PdfRenderer {
         "pdf"
     }
 
-    #[allow(clippy::too_many_lines)]
+    #[expect(clippy::too_many_lines, reason = "PDF page layout is inherently sequential; splitting would scatter related rendering logic")]
     fn render(&self, doc: &Document) -> Result<Vec<u8>, Self::Error> {
         let font = Font::new(
             self.font_data.clone().into(),
@@ -294,7 +294,6 @@ fn heading_font_size(level: u8) -> f32 {
 ///
 /// The y cursor on entry points to the top of where the first line should start.
 /// Each line advances by `font_size * LEADING`.
-#[allow(clippy::too_many_arguments)]
 fn draw_wrapped(
     surface: &mut krilla::surface::Surface<'_>,
     font: &Font,
@@ -310,7 +309,7 @@ fn draw_wrapped(
     let char_w_approx = font_size * 0.55;
     // WHY: safe cast — max_width and char_w_approx are positive finite f32 values
     // produced from compile-time page constants; the ratio fits comfortably in usize.
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss, clippy::as_conversions)]
+    #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss, clippy::as_conversions, reason = "max_width and char_w_approx are positive finite f32 from page constants; ratio fits in usize")]
     let chars_per_line = (max_width / char_w_approx).max(1.0) as usize;
 
     let line_h = font_size * LEADING;

@@ -1,4 +1,10 @@
 //! Callback-based relation triggers.
+//!
+//! Allows external consumers to subscribe to mutation events on stored
+//! relations via crossbeam channels. When a transaction commits changes
+//! to a watched relation, the `CallbackCollector` accumulates
+//! `(op, new_rows, old_rows)` triples which are dispatched to registered
+//! senders after commit.
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Display, Formatter};
 
@@ -27,7 +33,8 @@ impl Display for CallbackOp {
 }
 
 impl CallbackOp {
-    /// Get the string representation
+    /// Get the string representation.
+    #[must_use]
     pub fn as_str(&self) -> &'static str {
         match self {
             CallbackOp::Put => "Put",

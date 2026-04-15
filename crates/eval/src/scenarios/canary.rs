@@ -29,7 +29,7 @@ impl EvalProvider for CanaryProvider {
 
     // WHY: trait signature is `fn name(&self) -> &str`. CompositeProvider
     // returns a borrowed self.name field, so the trait cannot use 'static.
-    #[allow(
+    #[expect(
         clippy::unnecessary_literal_bound,
         reason = "trait signature returns &str (borrowed), not &'static str"
     )]
