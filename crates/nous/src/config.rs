@@ -258,7 +258,7 @@ pub struct PipelineConfig {
     pub stage_budget: StageBudget,
     /// Training data capture configuration.
     #[serde(default)]
-    pub training: mneme::training::TrainingConfig,
+    pub training: crate::training::TrainingConfig,
 }
 
 impl Default for PipelineConfig {
@@ -267,7 +267,7 @@ impl Default for PipelineConfig {
             history_budget_ratio: 0.6,
             extraction: None,
             stage_budget: StageBudget::default(),
-            training: mneme::training::TrainingConfig::default(),
+            training: crate::training::TrainingConfig::default(),
         }
     }
 }

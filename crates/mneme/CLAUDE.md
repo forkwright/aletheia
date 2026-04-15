@@ -29,6 +29,7 @@ Only types with downstream consumers are surfaced. Modules not listed here (admi
 | `episteme` | `recall` | `FactorScores`, `RecallEngine`, `RecallWeights`, `ScoredResult` | always |
 | `episteme` | `skill` | `SkillContent`, `export_skills_to_cc`, `parse_skill_md`, `scan_skill_dir` | always |
 | `episteme` | `skills` | `CandidateTracker`, `PendingSkill`, `SkillExtractor`, `ToolCallRecord`, `TrackResult` + `extract` submodule | always |
+| `eidos` | `training` | `TrainingConfig`, `TrainingRecord`, `TRAINING_RECORD_SCHEMA_VERSION` | always |
 | `krites` | `engine` | (full crate alias) | `mneme-engine` |
 
 ## Feature flags
@@ -42,6 +43,10 @@ Only types with downstream consumers are surfaced. Modules not listed here (admi
 | `embed-candle` | no | Local ML embeddings via candle |
 | `hnsw_rs` | no | Alternative HNSW vector index backend |
 | `test-support` | no | MockEmbeddingProvider and test helpers |
+
+## Training capture
+
+Training capture logic (`TrainingCapture`, `CaptureInput`, `CaptureStopReason`, quality gate) lives in `nous::training`, not here. Mneme re-exports only the shared types (`TrainingConfig`, `TrainingRecord`) from eidos. Training is a pipeline tap (side-effect observer on the turn loop), not a memory operation.
 
 ## Where to make changes
 

@@ -124,10 +124,23 @@ pub mod types {
     };
 }
 
-// ── Training data capture ─────────────────────────────────────────────
+// ── Training data types (eidos) ───────────────────────────────────────
+//
+// Training capture *logic* (the JSONL writer, quality gate, and
+// `TrainingCapture` struct) lives in `nous::training` — it is a pipeline
+// tap, not a memory operation. Mneme re-exports only the shared types
+// that the configuration layer needs.
 
-/// Training data capture: append-only JSONL writer for conversation turns.
-pub mod training;
+/// Training data types re-exported from eidos.
+///
+/// # Facade surface
+///
+/// [`TrainingConfig`](training::TrainingConfig),
+/// [`TrainingRecord`](training::TrainingRecord),
+/// [`TRAINING_RECORD_SCHEMA_VERSION`](training::TRAINING_RECORD_SCHEMA_VERSION)
+pub mod training {
+    pub use eidos::training::{TrainingConfig, TrainingRecord, TRAINING_RECORD_SCHEMA_VERSION};
+}
 
 // ── Knowledge pipeline (episteme) ──────────────────────────────────────────
 

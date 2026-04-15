@@ -62,6 +62,13 @@ pub(crate) mod skills;
 pub mod spawn_svc;
 /// Real-time streaming events for the turn pipeline.
 pub mod stream;
+/// Training data capture: append-only JSONL writer for conversation turns.
+///
+/// Pipeline tap that observes the turn loop and writes qualifying turns
+/// as JSON Lines for downstream fine-tuning. Types (`TrainingConfig`,
+/// `TrainingRecord`) live in eidos; capture logic lives here because it
+/// is a pipeline concern, not a memory operation.
+pub mod training;
 /// Task registry with progress streaming, cooperative cancellation, and GC.
 pub mod tasks;
 /// Self-tuning feedback loop: evidence-based parameter change proposals.
