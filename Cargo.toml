@@ -225,7 +225,7 @@ wiremock = { version = "0.6", default-features = false }
 # WHY: criterion provides statistical microbenchmarks with regression detection.
 # Used in `benches/` per crate. `default-features = false` strips rayon/plotters
 # (HTML reports) — we don't need plotting for CI-only runs and it cuts ~150 deps.
-criterion = { version = "0.7", default-features = false, features = ["cargo_bench_support"] }
+criterion = { version = "0.8", default-features = false, features = ["cargo_bench_support"] }
 # WHY: loom provides permutation-testing for concurrent code under `#[cfg(loom)]`.
 # Only used by the manual `unsafe impl Sync` sites in krites (#2864, #3066).
 # Invoked as `RUSTFLAGS="--cfg loom" cargo test -p krites --release loom_tests`.
