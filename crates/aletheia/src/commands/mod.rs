@@ -98,7 +98,7 @@ pub(crate) async fn dispatch(cmd: Command, instance_root: Option<&PathBuf>) -> R
         Command::Import(a) => agent_io::import_agent(instance_root, &a).map_err(Into::into),
         Command::SeedSkills(a) => agent_io::seed_skills(&a).map_err(Into::into),
         Command::ExportSkills(a) => {
-            agent_io::export_skills(instance_root, &a).map_err(Into::into)
+            agent_io::export_skills(instance_root, &a).await.map_err(Into::into)
         }
         Command::ReviewSkills(a) => {
             agent_io::review_skills(instance_root, &a).await.map_err(Into::into)
@@ -113,7 +113,7 @@ pub(crate) async fn dispatch(cmd: Command, instance_root: Option<&PathBuf>) -> R
         Command::CheckConfig => check_config::run(instance_root).map_err(Into::into),
         Command::Config { action } => config::run(&action, instance_root).map_err(Into::into),
         Command::AddNous(a) => add_nous::run(instance_root, &a).await.map_err(Into::into),
-        Command::Repl(a) => repl::run(instance_root, &a).map_err(Into::into),
+        Command::Repl(a) => repl::run(instance_root, &a).await.map_err(Into::into),
         // NOTE: Serve is intercepted in main() before dispatch is called.
         // This arm exists only for match exhaustiveness.
         #[expect(
