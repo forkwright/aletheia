@@ -64,4 +64,4 @@ Mneme itself has no logic. All changes go to the sub-crates:
 ## Dependencies
 
 Uses: eidos, graphe, episteme, krites
-Used by: nous, pylon, melete, aletheia (binary)
+Used by: nous, pylon, aletheia, diaporeia, integration-tests
