@@ -31,7 +31,7 @@ use tokio::runtime::Handle;
 use tokio::sync::Mutex;
 
 use mneme::store::SessionStore;
-use organon::error::{StoreError, StoreSnafu};
+use organon::error::{BackendSnafu, StoreError};
 use organon::types::{BlackboardEntry, BlackboardStore, NoteEntry, NoteStore};
 
 /// Acquire the store lock from a synchronous trait method inside an async context.
@@ -56,7 +56,7 @@ where
 }
 
 fn store_err(e: impl std::fmt::Display) -> StoreError {
-    StoreSnafu {
+    BackendSnafu {
         message: e.to_string(),
     }
     .build()
