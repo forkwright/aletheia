@@ -28,7 +28,6 @@ const VALID_SECTIONS: &[&str] = &[
 
 /// Response wrapper for config section update metadata.
 #[derive(serde::Serialize, ToSchema)]
-#[serde(rename_all = "camelCase")]
 pub struct ConfigUpdateResponse {
     /// Name of the config section that was updated.
     pub section: String,
@@ -40,7 +39,6 @@ pub struct ConfigUpdateResponse {
 
 /// Response wrapper for full config reload.
 #[derive(serde::Serialize, ToSchema)]
-#[serde(rename_all = "camelCase")]
 pub struct ConfigReloadResponse {
     /// Number of hot-reloadable values that were updated.
     pub hot_reloaded: usize,
@@ -354,7 +352,7 @@ mod tests {
     }
 
     #[test]
-    fn config_update_response_serializes_camel_case() {
+    fn config_update_response_serializes_snake_case() {
         let resp = ConfigUpdateResponse {
             section: "agents".to_owned(),
             config: json!({"list": []}),
@@ -362,7 +360,7 @@ mod tests {
         };
         let json = serde_json::to_value(&resp).unwrap();
         assert_eq!(json["section"], "agents");
-        assert!(json.get("restartRequired").is_some());
-        assert!(json["restartRequired"].as_array().unwrap().len() == 1);
+        assert!(json.get("restart_required").is_some());
+        assert!(json["restart_required"].as_array().unwrap().len() == 1);
     }
 }

@@ -9,8 +9,8 @@ use crate::state::KnowledgeState;
 #[cfg(feature = "knowledge-store")]
 use super::SimilarFact;
 use super::{
-    FactsQuery, SearchQuery, SearchResponse, SearchResult, TimelineEvent, TimelineResponse,
-    default_order, default_sort,
+    FactsQuery, SearchQuery, SearchResponse, SearchResult, TimelineEvent, TimelineQuery,
+    TimelineResponse, default_order, default_sort,
 };
 
 /// GET /api/v1/knowledge/search
@@ -115,9 +115,11 @@ pub async fn search(
     path = "/api/v1/knowledge/timeline",
     params(
         ("nous_id" = Option<String>, Query, description = "Filter by agent ID"),
+        ("limit" = Option<usize>, Query, description = "Maximum events (default: 100, max: 1000)"),
+        ("offset" = Option<usize>, Query, description = "Pagination offset"),
     ),
     responses(
-        (status = 200, description = "Fact activity timeline in chronological order"),
+        (status = 200, description = "Fact activity timeline with total count"),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = []))
@@ -129,8 +131,11 @@ pub async fn search(
 /// side effects beyond not returning a response.
 pub async fn timeline(
     State(state): State<KnowledgeState>,
-    Query(query): Query<FactsQuery>,
+    Query(mut query): Query<TimelineQuery>,
 ) -> Result<Json<TimelineResponse>, ApiError> {
+    let max_facts_limit = state.config.read().await.api_limits.max_facts_limit;
+    query.limit = query.limit.min(max_facts_limit);
+
     // WHY: Pass the caller-supplied nous_id so get_stored_facts can query the store.
     // The previous call to get_all_facts hardcoded nous_id: None, causing the store
     // to return empty even when facts were persisted under a specific agent (Bug #1252).
@@ -179,7 +184,18 @@ pub async fn timeline(
     }
 
     events.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
-    Ok(Json(TimelineResponse { events }))
+    let total = events.len();
+
+    let start = query.offset.min(events.len());
+    let end = (start + query.limit).min(events.len());
+    // start and end are both bounded by events.len() via .min()
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "start and end are bounded by events.len() via .min()"
+    )]
+    let events = events[start..end].to_vec();
+
+    Ok(Json(TimelineResponse { events, total }))
 }
 
 pub(super) fn get_stored_facts(
