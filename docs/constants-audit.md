@@ -250,7 +250,7 @@ Research depth ALL variant array, handoff filenames (`.continue-here.json`, `.co
 
 Scaffold template content (SOUL, IDENTITY, AGENTS, etc.), single-agent sandbox TOML template, binary name, REPL banner/help text, academic API constants.
 
-### agora — 8 constants (all parameterized, see above)
+### agora — 8 constants (all parameterized, see the Summary section)
 
 ### poiesis/text — 9 constants (all invariant)
 

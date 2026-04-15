@@ -73,7 +73,7 @@ Each audit summary record includes category scores (see [Training data output](#
 
 **Gate** means a repo scoring below the minimum on a gated category blocks the next release. Non-gated categories are tracked and trended but do not block.
 
-**How scores map to grades.** Scores derive from the violation density (violations per 1K lines) and severity distribution within each category. The grading function lives in basanos and is the single source of truth. Do not hardcode grade thresholds in this document — reference the implementation.
+**How scores map to grades.** Scores derive from the violation density (violations per 1K lines) and severity distribution within each category. The grading function lives in basanos and is the single source of truth. Do not hardcode grade thresholds in QA.md — reference the implementation.
 
 WHY: Hardcoded thresholds in prose diverge from the code that actually computes them. The table above defines policy (what the minimums are); the code defines mechanics (how a score becomes a grade).
 

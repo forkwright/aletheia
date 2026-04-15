@@ -56,7 +56,7 @@ fjall declares `#![deny(unsafe_code)]` in `src/lib.rs`. The codebase contains fi
 
 - `src/lib.rs:74` -- the `#![deny(unsafe_code)]` lint gate itself
 - `src/meta_keyspace.rs:177` -- `#[expect(unsafe_code, clippy::indexing_slicing)]` with one `unsafe` block calling `Slice::builder_unzeroed`. This is uninitialized buffer allocation with a known size; the pattern is a standard optimization for buffer-building in I/O code.
-- `src/journal/entry.rs:199` -- `#[warn(unsafe_code)]` with one `unsafe { Slice::builder_unzeroed(value_len) }` call. Same pattern as above.
+- `src/journal/entry.rs:199` -- `#[warn(unsafe_code)]` with one `unsafe { Slice::builder_unzeroed(value_len) }` call. Same pattern as the `src/meta_keyspace.rs` entry.
 
 All three `unsafe` call sites are `Slice::builder_unzeroed`, an uninitialized-allocation helper from `byteview`. The scope is narrow, the rationale is I/O performance, and all three are annotated with lint attributes.
 
