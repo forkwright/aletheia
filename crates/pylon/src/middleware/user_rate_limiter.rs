@@ -16,6 +16,17 @@ use crate::error::{ErrorBody, ErrorResponse};
 
 use super::rate_limiter::{RateLimiter, extract_client_key};
 
+/// Rate limit quota snapshot for a single bucket.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct RateLimitQuota {
+    /// Total requests allowed per window (bucket capacity).
+    pub(crate) limit: u64,
+    /// Requests remaining in the current window.
+    pub(crate) remaining: u64,
+    /// Seconds until the bucket fully refills.
+    pub(crate) reset_secs: u64,
+}
+
 /// Endpoint category for applying differentiated rate limits.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
@@ -99,6 +110,54 @@ impl TokenBucket {
             Err(retry_after)
         }
     }
+
+    /// Return quota information without consuming a token.
+    ///
+    /// Returns `(limit, remaining, reset_secs)` where:
+    /// - `limit` is the bucket capacity (burst)
+    /// - `remaining` is the number of tokens available (floor)
+    /// - `reset_secs` is seconds until the bucket fully refills
+    pub(super) fn quota(&self, now: Instant) -> RateLimitQuota {
+        let elapsed = now.duration_since(self.last_fill).as_secs_f64();
+        let current = (self.tokens + elapsed * self.fill_rate).min(self.capacity);
+
+        // SAFETY: capacity and current are non-negative f64; casting to u64 is safe.
+        #[expect(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            clippy::as_conversions,
+            reason = "f64→u64: floor of non-negative f64 fits in u64"
+        )]
+        let remaining = current.floor() as u64;
+
+        #[expect(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            clippy::as_conversions,
+            reason = "f64→u64: capacity is non-negative and small"
+        )]
+        let limit = self.capacity as u64;
+
+        // WHY: seconds until the bucket refills from current level to capacity.
+        let deficit = self.capacity - current;
+        #[expect(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            clippy::as_conversions,
+            reason = "f64→u64: ceil of positive f64 ratio fits in u64"
+        )]
+        let reset_secs = if deficit > 0.0 && self.fill_rate > 0.0 {
+            (deficit / self.fill_rate).ceil() as u64
+        } else {
+            0
+        };
+
+        RateLimitQuota {
+            limit,
+            remaining,
+            reset_secs,
+        }
+    }
 }
 
 /// Per-user rate limit state across endpoint categories.
@@ -174,6 +233,27 @@ impl UserRateLimiter {
         };
 
         bucket.try_acquire(now).err()
+    }
+
+    /// Return the rate limit quota for a user in the given category.
+    ///
+    /// This reads the current bucket state without consuming a token.
+    /// Returns `None` if the user has no existing bucket (first request).
+    pub(crate) fn quota(&self, user: &str, category: EndpointCategory) -> Option<RateLimitQuota> {
+        let now = Instant::now();
+        let state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+        let buckets = state.get(user)?;
+        let bucket = match category {
+            EndpointCategory::General => &buckets.general,
+            EndpointCategory::Llm => &buckets.llm,
+            EndpointCategory::Tool => &buckets.tool,
+        };
+
+        Some(bucket.quota(now))
     }
 
     /// Check the per-IP rate limit ceiling.
@@ -301,6 +381,10 @@ fn extract_user_key(request: &Request, trust_proxy: bool) -> String {
 /// bearer tokens (#3228). Returns 429 with `Retry-After` header when the
 /// client has exceeded the configured limit for the endpoint category.
 ///
+/// On successful responses, injects standard rate limit headers
+/// (`RateLimit-Limit`, `RateLimit-Remaining`, `RateLimit-Reset`) so
+/// consumers can self-throttle (#3268).
+///
 /// # Cancel safety
 ///
 /// Cancel-safe. Axum middleware; cancellation drops the future with no
@@ -344,7 +428,46 @@ pub async fn per_user_rate_limit(request: Request, next: Next) -> Response {
         return rate_limit_response(retry_after_secs, category);
     }
 
-    next.run(request).await
+    let mut response = next.run(request).await;
+
+    // WHY(#3268): Inject IETF rate limit headers on all responses so
+    // consumers can monitor quota and self-throttle before hitting 429.
+    if let Some(quota) = limiter.quota(&user, category) {
+        inject_rate_limit_headers(response.headers_mut(), &quota);
+    }
+
+    response
+}
+
+/// Inject standard rate limit headers into a response.
+///
+/// IETF draft-ietf-httpapi-ratelimit-headers:
+/// - `RateLimit-Limit`: total requests allowed per window
+/// - `RateLimit-Remaining`: requests remaining in current window
+/// - `RateLimit-Reset`: seconds until window resets
+pub(crate) fn inject_rate_limit_headers(
+    headers: &mut axum::http::HeaderMap,
+    quota: &RateLimitQuota,
+) {
+    // WHY: HeaderName::from_static requires lowercase; these are standard draft headers.
+    if let Ok(v) = axum::http::HeaderValue::from_str(&quota.limit.to_string()) {
+        headers.insert(
+            axum::http::HeaderName::from_static("ratelimit-limit"),
+            v,
+        );
+    }
+    if let Ok(v) = axum::http::HeaderValue::from_str(&quota.remaining.to_string()) {
+        headers.insert(
+            axum::http::HeaderName::from_static("ratelimit-remaining"),
+            v,
+        );
+    }
+    if let Ok(v) = axum::http::HeaderValue::from_str(&quota.reset_secs.to_string()) {
+        headers.insert(
+            axum::http::HeaderName::from_static("ratelimit-reset"),
+            v,
+        );
+    }
 }
 
 /// Build a 429 Too Many Requests response with `Retry-After` header.

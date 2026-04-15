@@ -76,6 +76,7 @@ use koina::http::CONTENT_TYPE_JSON;
         crate::handlers::config::ConfigReloadResponse,
         crate::error::ErrorResponse,
         crate::error::ErrorBody,
+        crate::error::FieldError,
         crate::stream::SseEvent,
         crate::stream::UsageData,
     )),

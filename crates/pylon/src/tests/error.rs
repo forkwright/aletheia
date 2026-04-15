@@ -119,10 +119,14 @@ fn api_error_service_unavailable_status_code() {
 fn api_error_validation_failed_status_code() {
     use axum::response::IntoResponse;
 
-    use crate::error::ApiError;
+    use crate::error::{ApiError, FieldError};
 
     let err = ApiError::ValidationFailed {
-        errors: vec!["field required".to_owned()],
+        errors: vec![FieldError {
+            field: "name".to_owned(),
+            code: "required".to_owned(),
+            message: "must not be empty".to_owned(),
+        }],
         location: snafu::location!(),
     };
     let response = err.into_response();
@@ -153,13 +157,24 @@ fn api_error_rate_limited_includes_details() {
 }
 
 #[test]
-fn api_error_validation_failed_includes_errors() {
+fn api_error_validation_failed_includes_structured_errors() {
     use axum::response::IntoResponse;
 
-    use crate::error::ApiError;
+    use crate::error::{ApiError, FieldError};
 
     let err = ApiError::ValidationFailed {
-        errors: vec!["field1 required".to_owned(), "field2 invalid".to_owned()],
+        errors: vec![
+            FieldError {
+                field: "nous_id".to_owned(),
+                code: "required".to_owned(),
+                message: "must not be empty".to_owned(),
+            },
+            FieldError {
+                field: "session_key".to_owned(),
+                code: "too_long".to_owned(),
+                message: "exceeds maximum length".to_owned(),
+            },
+        ],
         location: snafu::location!(),
     };
     let response = err.into_response();
@@ -174,6 +189,10 @@ fn api_error_validation_failed_includes_errors() {
     });
     let errors = body["error"]["details"]["errors"].as_array().unwrap();
     assert_eq!(errors.len(), 2);
+    assert_eq!(errors[0]["field"], "nous_id");
+    assert_eq!(errors[0]["code"], "required");
+    assert_eq!(errors[1]["field"], "session_key");
+    assert_eq!(errors[1]["code"], "too_long");
 }
 
 #[test]

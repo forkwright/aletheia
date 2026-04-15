@@ -3,7 +3,7 @@
 use axum::Json;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use snafu::Snafu;
 use utoipa::ToSchema;
 
@@ -27,6 +27,21 @@ pub struct ErrorBody {
     /// Optional structured details (e.g. retry timing, validation errors).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub details: Option<serde_json::Value>,
+}
+
+/// A single field-level validation error (#3275).
+///
+/// Machine-readable: consumers match on `field` + `code` without parsing
+/// the English `message`.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct FieldError {
+    /// Request body or query parameter field name (e.g. `"nous_id"`).
+    pub field: String,
+    /// Stable machine-readable error code (e.g. `"required"`, `"range"`,
+    /// `"format"`, `"too_long"`).
+    pub code: String,
+    /// Human-readable description of the error.
+    pub message: String,
 }
 
 /// HTTP API errors, each mapped to an appropriate status code via [`IntoResponse`].
@@ -109,10 +124,10 @@ pub enum ApiError {
         location: snafu::Location,
     },
 
-    /// Config validation failed (422).
+    /// Validation failed with field-level errors (422).
     #[snafu(display("validation failed"))]
     ValidationFailed {
-        errors: Vec<String>,
+        errors: Vec<FieldError>,
         #[snafu(implicit)]
         location: snafu::Location,
     },
@@ -153,11 +168,17 @@ impl IntoResponse for ApiError {
             Self::ServiceUnavailable { .. } => {
                 (StatusCode::SERVICE_UNAVAILABLE, "service_unavailable", None)
             }
-            Self::ValidationFailed { errors, .. } => (
-                StatusCode::UNPROCESSABLE_ENTITY,
-                "validation_failed",
-                Some(serde_json::json!({ "errors": errors })),
-            ),
+            Self::ValidationFailed { errors, .. } => {
+                // WHY(#3275): serialize structured field errors so consumers
+                // can match on field + code without parsing English messages.
+                let errors_json = serde_json::to_value(errors)
+                    .unwrap_or_else(|_| serde_json::json!([]));
+                (
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    "validation_failed",
+                    Some(serde_json::json!({ "errors": errors_json })),
+                )
+            }
             Self::NotImplemented { .. } => (StatusCode::NOT_IMPLEMENTED, "not_implemented", None),
         };
 
@@ -516,10 +537,17 @@ impl From<axum::extract::rejection::JsonRejection> for ApiError {
         match err {
             // WHY: Missing/mistyped fields return 422 (same status as Axum's default)
             // to preserve backward compatibility while wrapping in the error envelope.
-            JsonRejection::JsonDataError(_) => Self::ValidationFailed {
-                errors: vec![err.to_string()],
-                location: snafu::location!(),
-            },
+            // WHY(#3275): Map Axum's JSON data errors to structured field errors.
+            // The error message contains the field path from serde, which we
+            // extract when possible.
+            JsonRejection::JsonDataError(_) => {
+                let msg = err.to_string();
+                let field_error = parse_json_data_error(&msg);
+                Self::ValidationFailed {
+                    errors: vec![field_error],
+                    location: snafu::location!(),
+                }
+            }
             JsonRejection::MissingJsonContentType(_) => BadRequestSnafu {
                 message: "expected Content-Type: application/json",
             }
@@ -536,6 +564,51 @@ impl From<axum::extract::rejection::JsonRejection> for ApiError {
             .build(),
         }
     }
+}
+
+/// Parse a serde/axum JSON data error message into a structured `FieldError`.
+///
+/// Axum's `JsonDataError` messages typically look like:
+/// - `"missing field `content` at line 1 column 2"`
+/// - `"invalid type: string ..., expected u32 at line 1 column 5: at field `limit`"`
+///
+/// We extract the field name when present, otherwise use `"_body"` as a
+/// catch-all indicating the error applies to the request body as a whole.
+fn parse_json_data_error(msg: &str) -> FieldError {
+    // WHY: serde error messages include the field name in backtick-delimited
+    // segments. We try two patterns: "missing field `X`" and "at field `X`".
+    let field = extract_backtick_field(msg, "missing field")
+        .or_else(|| extract_backtick_field(msg, "at field"))
+        .or_else(|| extract_backtick_field(msg, "unknown field"))
+        .unwrap_or("_body");
+
+    let code = if msg.contains("missing field") {
+        "required"
+    } else if msg.contains("invalid type") {
+        "format"
+    } else if msg.contains("unknown field") {
+        "unknown_field"
+    } else {
+        "invalid"
+    };
+
+    FieldError {
+        field: field.to_owned(),
+        code: code.to_owned(),
+        message: msg.to_owned(),
+    }
+}
+
+/// Extract a field name from a serde error message after a given prefix.
+///
+/// Looks for the pattern: prefix followed by a backtick-delimited field name.
+fn extract_backtick_field<'a>(msg: &'a str, prefix: &str) -> Option<&'a str> {
+    let pos = msg.find(prefix)?;
+    let after = msg.get(pos + prefix.len()..)?;
+    let start = after.find('`')? + 1;
+    let rest = after.get(start..)?;
+    let end = rest.find('`')?;
+    rest.get(..end)
 }
 
 /// WHY: Axum's `Query` extractor returns `QueryRejection` for malformed query
@@ -866,9 +939,13 @@ mod tests {
     }
 
     #[test]
-    fn validation_failed_returns_422_with_envelope() {
+    fn validation_failed_returns_422_with_structured_errors() {
         let api_err = ApiError::ValidationFailed {
-            errors: vec!["missing field `content`".to_owned()],
+            errors: vec![FieldError {
+                field: "content".to_owned(),
+                code: "required".to_owned(),
+                message: "must not be empty".to_owned(),
+            }],
             location: snafu::location!(),
         };
         let response = api_err.into_response();
@@ -883,6 +960,10 @@ mod tests {
             .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["error"]["code"], "validation_failed");
-        assert!(json["error"]["details"]["errors"].is_array());
+        let errors = json["error"]["details"]["errors"].as_array().unwrap();
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0]["field"], "content");
+        assert_eq!(errors[0]["code"], "required");
+        assert_eq!(errors[0]["message"], "must not be empty");
     }
 }
