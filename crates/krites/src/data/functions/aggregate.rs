@@ -1,4 +1,9 @@
 //! List, collection, set operations, and range functions.
+#![expect(clippy::as_conversions, reason = "numeric aggregation requires i64/usize/f64 casts — values are engine-internal")]
+#![expect(clippy::mutable_key_type, reason = "DataValue contains interior-mutable Regex; BTreeSet/Map usage is engine-internal")]
+#![expect(clippy::unnecessary_wraps, reason = "op_list and op_maybe_get return Result for API consistency with other builtins")]
+#![expect(clippy::redundant_else, reason = "else after early return keeps the fallback visually grouped")]
+#![expect(clippy::default_trait_access, reason = "BTreeMap::default() replaced by ::new() is more idiomatic")]
 use std::collections::BTreeSet;
 
 use itertools::Itertools;

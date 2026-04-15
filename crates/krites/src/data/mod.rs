@@ -1,4 +1,5 @@
 //! Core data types for the Datalog engine.
+#![expect(clippy::wildcard_imports, reason = "error selectors and re-exports used pervasively across data module")]
 pub(crate) mod aggr;
 pub(crate) mod error;
 pub(crate) mod expr;

@@ -1,4 +1,9 @@
 //! UUID, timestamp, validity, and random number functions.
+#![expect(clippy::as_conversions, reason = "temporal functions require i64/f64 casts for Unix timestamps")]
+#![expect(clippy::unnecessary_wraps, reason = "temporal functions return Result for API consistency with other builtins")]
+#![expect(clippy::cast_lossless, reason = "uuid timestamp subsec is u32 — cast_lossless wants From but as is clearer in context")]
+#![expect(clippy::single_match_else, reason = "timezone branch reads better as if-let for the happy path")]
+#![expect(clippy::cloned_instead_of_copied, reason = "DataValue is not Copy — .cloned() is correct")]
 
 use std::cmp::Reverse;
 use std::time::{SystemTime, UNIX_EPOCH};

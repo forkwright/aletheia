@@ -1,4 +1,7 @@
 //! Tuple encoding and decoding.
+#![expect(clippy::explicit_iter_loop, reason = "explicit .iter() is idiomatic in tuple processing")]
+#![expect(clippy::indexing_slicing, reason = "tuple indices validated by caller contract")]
+#![expect(clippy::manual_let_else, reason = "if-let pattern is clearer for the fallback logic")]
 
 use std::cmp::Reverse;
 
