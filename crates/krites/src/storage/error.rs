@@ -6,6 +6,10 @@ use snafu::Snafu;
 #[snafu(visibility(pub(crate)))]
 #[non_exhaustive]
 pub enum StorageError {
+    #[expect(
+        clippy::doc_markdown,
+        reason = "API method names in doc comment are readable without backticks"
+    )]
     /// A storage backend operation failed (e.g., begin_write, open_table, commit).
     #[snafu(display("transaction failed ({backend}): {message}"))]
     TransactionFailed {

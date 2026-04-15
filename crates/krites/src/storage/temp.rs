@@ -22,6 +22,10 @@ impl<'s> Storage<'s> for TempStorage {
         "temp"
     }
 
+    #[expect(
+        clippy::default_trait_access,
+        reason = "BTreeMap::default in TempTx construction"
+    )]
     fn transact(&'s self, _write: bool) -> Result<Self::Tx> {
         Ok(TempTx {
             store: Default::default(),
@@ -83,6 +87,10 @@ impl<'s> StoreTx<'s> for TempTx {
         Ok(())
     }
 
+    #[expect(
+        clippy::result_large_err,
+        reason = "engine Error size is inherited from InternalError"
+    )]
     fn range_scan_tuple<'a>(
         &'a self,
         lower: &[u8],
@@ -116,6 +124,10 @@ impl<'s> StoreTx<'s> for TempTx {
         )
     }
 
+    #[expect(
+        clippy::result_large_err,
+        reason = "engine Error size is inherited from InternalError"
+    )]
     fn range_scan<'a>(
         &'a self,
         lower: &[u8],

@@ -24,6 +24,10 @@ type Result<T> = StorageResult<T>;
 /// Create a database backed by memory.
 /// This is the fastest storage, but non-persistent.
 /// Supports concurrent readers but only a single writer.
+#[expect(
+    clippy::result_large_err,
+    reason = "engine Error size is inherited from InternalError"
+)]
 pub fn new_mem_db() -> crate::error::InternalResult<crate::DbCore<MemStorage>> {
     let ret = crate::DbCore::new(MemStorage::default())?;
     ret.initialize()?;
@@ -43,6 +47,11 @@ impl<'s> Storage<'s> for MemStorage {
         "mem"
     }
 
+    #[expect(
+        clippy::redundant_closure_for_method_calls,
+        clippy::default_trait_access,
+        reason = "explicit closure and Default::default are kept for readability"
+    )]
     fn transact(&'s self, write: bool) -> Result<Self::Tx> {
         Ok(if write {
             let wtr = self.store.write().unwrap_or_else(|e| e.into_inner());
@@ -57,6 +66,10 @@ impl<'s> Storage<'s> for MemStorage {
         Ok(())
     }
 
+    #[expect(
+        clippy::redundant_closure_for_method_calls,
+        reason = "poison error into_inner is explicit for readability"
+    )]
     fn batch_put<'a>(
         &'a self,
         data: Box<dyn Iterator<Item = Result<(Vec<u8>, Vec<u8>)>> + 'a>,
@@ -122,6 +135,10 @@ impl<'s> StoreTx<'s> for MemTx<'s> {
         }
     }
 
+    #[expect(
+        clippy::explicit_iter_loop,
+        reason = "explicit .iter() call is kept for clarity"
+    )]
     fn del_range_from_persisted(&mut self, lower: &[u8], upper: &[u8]) -> Result<()> {
         match self {
             MemTx::Reader(_) => Err(WriteInReadTransactionSnafu.build()),
@@ -169,6 +186,10 @@ impl<'s> StoreTx<'s> for MemTx<'s> {
         }
     }
 
+    #[expect(
+        clippy::result_large_err,
+        reason = "engine Error size is inherited from InternalError"
+    )]
     fn range_scan_tuple<'a>(
         &'a self,
         lower: &[u8],
@@ -221,6 +242,10 @@ impl<'s> StoreTx<'s> for MemTx<'s> {
         }
     }
 
+    #[expect(
+        clippy::result_large_err,
+        reason = "engine Error size is inherited from InternalError"
+    )]
     fn range_scan<'a>(
         &'a self,
         lower: &[u8],
@@ -277,6 +302,12 @@ where
     T: Iterator<Item = (&'a Vec<u8>, &'a Vec<u8>)>,
 {
     #[inline]
+    #[expect(
+        clippy::result_large_err,
+        clippy::unnecessary_wraps,
+        clippy::semicolon_if_nothing_returned,
+        reason = "uniform Result return and statement style are kept for code consistency"
+    )]
     fn fill_cache(&mut self) -> InternalResult<()> {
         if self.change_cache.is_none()
             && let Some(kmv) = self.change_iter.next()
@@ -294,6 +325,11 @@ where
     }
 
     #[inline]
+    #[expect(
+        clippy::result_large_err,
+        clippy::needless_continue,
+        reason = "engine Error size is inherited; continue explicitly skips deleted entries"
+    )]
     fn next_inner(&mut self) -> InternalResult<Option<(Vec<u8>, Vec<u8>)>> {
         let corrupted = || {
             crate::error::InternalError::from(
@@ -362,6 +398,12 @@ struct CacheIter<'a> {
 
 impl CacheIter<'_> {
     #[inline]
+    #[expect(
+        clippy::result_large_err,
+        clippy::unnecessary_wraps,
+        clippy::semicolon_if_nothing_returned,
+        reason = "uniform Result return and statement style are kept for code consistency"
+    )]
     fn fill_cache(&mut self) -> InternalResult<()> {
         if self.change_cache.is_none()
             && let Some(kmv) = self.change_iter.next()
@@ -379,6 +421,11 @@ impl CacheIter<'_> {
     }
 
     #[inline]
+    #[expect(
+        clippy::result_large_err,
+        clippy::needless_continue,
+        reason = "engine Error size is inherited; continue explicitly skips deleted entries"
+    )]
     fn next_inner(&mut self) -> InternalResult<Option<Tuple>> {
         let corrupted = || {
             crate::error::InternalError::from(
@@ -434,6 +481,10 @@ impl Iterator for CacheIter<'_> {
     }
 }
 
+#[expect(
+    clippy::doc_markdown,
+    reason = "bare GitHub URL in doc comment is readable as-is"
+)]
 /// Keep an eye on https://github.com/rust-lang/rust/issues/49638
 pub(crate) struct SkipIterator<'a> {
     pub(crate) inner: &'a BTreeMap<Vec<u8>, Vec<u8>>,
@@ -443,6 +494,10 @@ pub(crate) struct SkipIterator<'a> {
     pub(crate) size_hint: Option<usize>,
 }
 
+#[expect(
+    clippy::elidable_lifetime_names,
+    reason = "explicit lifetime matches the struct definition"
+)]
 impl<'a> Iterator for SkipIterator<'a> {
     type Item = Tuple;
 
@@ -479,6 +534,10 @@ struct SkipDualIterator<'a> {
     next_bound: Vec<u8>,
 }
 
+#[expect(
+    clippy::elidable_lifetime_names,
+    reason = "explicit lifetime matches the struct definition"
+)]
 impl<'a> Iterator for SkipDualIterator<'a> {
     type Item = Tuple;
 

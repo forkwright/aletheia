@@ -14,6 +14,10 @@ pub(crate) mod fjall_backend;
 pub(crate) mod mem;
 pub(crate) mod temp;
 
+#[expect(
+    dead_code,
+    reason = "trait contract used by concrete storage backends"
+)]
 /// Swappable storage trait for the mneme engine.
 pub trait Storage<'s>: Send + Sync + Clone {
     /// The associated transaction type used by this engine
@@ -32,6 +36,10 @@ pub trait Storage<'s>: Send + Sync + Clone {
     /// Put multiple key-value pairs into the database.
     /// No duplicate data will be sent, and the order data come in is strictly ascending.
     /// There will be no other access to the database while this function is running.
+    #[expect(
+        clippy::type_complexity,
+        reason = "boxed iterator type is required for heterogeneous storage backends"
+    )]
     fn batch_put<'a>(
         &'a self,
         data: Box<dyn Iterator<Item = StorageResult<(Vec<u8>, Vec<u8>)>> + 'a>,
@@ -128,6 +136,10 @@ pub trait StoreTx<'s>: Sync {
     /// `lower` is inclusive whereas `upper` is exclusive.
     ///
     /// Iterator items use [`InternalResult`] for compatibility with engine-internal callers.
+    #[expect(
+        clippy::type_complexity,
+        reason = "boxed iterator type is required for heterogeneous storage backends"
+    )]
     fn range_scan<'a>(
         &'a self,
         lower: &[u8],
