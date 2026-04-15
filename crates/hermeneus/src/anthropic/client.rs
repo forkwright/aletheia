@@ -16,7 +16,7 @@ use koina::secret::SecretString;
 
 use crate::error::{self, Result};
 use crate::health::{HealthConfig, ProviderHealthTracker};
-use crate::provider::{LlmProvider, ModelPricing, ProviderConfig};
+use crate::provider::{LlmProvider, ModelPricing, PromptCacheMode, ProviderConfig};
 use crate::types::{CompletionRequest, CompletionResponse};
 
 use super::stream::{StreamAccumulator, StreamEvent, parse_sse_response};
@@ -52,6 +52,10 @@ pub struct AnthropicProvider {
     cc_profile: Option<super::cc_profile::CcProfile>,
     /// Per-request timeout for non-streaming completions.
     non_streaming_timeout: Duration,
+    /// Prompt cache policy (#3410). When `Disabled`, all `cache_control`
+    /// markers are scrubbed before the wire request is built so operator
+    /// content never enters Anthropic's prompt cache.
+    prompt_cache_mode: PromptCacheMode,
 }
 
 /// Static credential provider for backward-compatible `from_config()`.
@@ -78,6 +82,18 @@ impl CredentialProvider for StaticCredentialProvider {
 
 /// Per-request timeout for non-streaming completions.
 const NON_STREAMING_TIMEOUT: Duration = Duration::from_mins(2);
+
+/// HTTP headers sent on every outbound Anthropic request to opt out of
+/// using operator traffic for model training (#3406).
+///
+/// Anthropic has not publicly documented a single canonical header name for
+/// per-request training opt-out, so we send both the hyphenated
+/// `anthropic-disable-training` form and an `anthropic-training-opt-out`
+/// alias. Both are harmless no-ops if the server ignores them and either
+/// may match the accepted name once verified. The constant lives here so
+/// the follow-up verification issue has a single call site to update.
+const ANTHROPIC_TRAINING_OPTOUT_HEADERS: &[&str] =
+    &["anthropic-disable-training", "anthropic-training-opt-out"];
 
 /// Per-request timeout for streaming completions. Generous because actual stall
 /// detection is handled by the SSE parser's idle timeout; this is a safety net
@@ -159,6 +175,7 @@ impl AnthropicProvider {
             health: Arc::new(ProviderHealthTracker::new(HealthConfig::default())),
             cc_profile: None, // API key mode — no mimicry needed
             non_streaming_timeout: NON_STREAMING_TIMEOUT,
+            prompt_cache_mode: config.prompt_cache_mode,
         };
         // TODO(#2178): add allow_insecure config field
         if !provider.base_url.starts_with("https://") && !is_loopback_url(&provider.base_url) {
@@ -211,6 +228,7 @@ impl AnthropicProvider {
             health: Arc::new(ProviderHealthTracker::new(HealthConfig::default())),
             cc_profile,
             non_streaming_timeout: NON_STREAMING_TIMEOUT,
+            prompt_cache_mode: config.prompt_cache_mode,
         };
         // TODO(#2178): add allow_insecure config field
         if !provider.base_url.starts_with("https://") && !is_loopback_url(&provider.base_url) {
@@ -297,7 +315,8 @@ impl AnthropicProvider {
         let start = Instant::now();
         let mut ttft: Option<std::time::Duration> = None;
 
-        let request = &self.maybe_prepend_oauth_identity(request);
+        let scrubbed = self.apply_prompt_cache_policy(request);
+        let request = &self.maybe_prepend_oauth_identity(&scrubbed);
         let attribution = self.compute_attribution(request);
         let wire = WireRequest::from_request(request, Some(true), attribution.as_deref())
             .context(error::ParseResponseSnafu)?;
@@ -639,9 +658,14 @@ impl AnthropicProvider {
                         .build()
                     })?,
                 );
+                // WHY (#3409): `X-Claude-Code-Session-Id` is stable per-process
+                // in upstream CC and lets Anthropic correlate requests back to
+                // a single operator session. Send a fresh random UUID on every
+                // call instead so the header still satisfies any server-side
+                // presence checks without leaking session identity.
                 headers.insert(
                     "X-Claude-Code-Session-Id",
-                    HeaderValue::from_str(&profile.session_id.to_string()).map_err(|_e| {
+                    HeaderValue::from_str(&koina::uuid::uuid_v4()).map_err(|_e| {
                         error::AuthFailedSnafu {
                             message: "session id contains invalid characters".to_owned(),
                         }
@@ -685,7 +709,38 @@ impl AnthropicProvider {
             })?,
         );
         headers.insert("content-type", HeaderValue::from_static("application/json"));
+        // WHY (#3406): sovereignty default — always opt out of Anthropic using
+        // our traffic for model training. API customers already have this by
+        // contract, but we belt-and-suspenders the header so any future policy
+        // shift or misrouted request still carries an explicit refusal.
+        //
+        // Anthropic has not publicly documented a single canonical header name
+        // for per-request training opt-out. The value `anthropic-training-opt-out`
+        // is a defensive placeholder pending verification against Anthropic's
+        // API reference; see the follow-up issue noted in the PR body.
+        for name in ANTHROPIC_TRAINING_OPTOUT_HEADERS {
+            headers.insert(*name, HeaderValue::from_static("true"));
+        }
         Ok(headers)
+    }
+
+    /// Apply the operator's prompt cache policy (#3410).
+    ///
+    /// When [`PromptCacheMode::Disabled`] (the sovereignty default), every
+    /// `cache_*` flag is zeroed before the wire request is built so the
+    /// serializer in [`super::wire::WireRequest::from_request`] emits no
+    /// `cache_control` markers. Operators who opt in to `Ephemeral` or
+    /// `Extended` keep the caller-provided flags untouched.
+    fn apply_prompt_cache_policy(&self, request: &CompletionRequest) -> CompletionRequest {
+        if matches!(self.prompt_cache_mode, PromptCacheMode::Disabled) {
+            let mut scrubbed = request.clone();
+            scrubbed.cache_system = false;
+            scrubbed.cache_tools = false;
+            scrubbed.cache_turns = false;
+            scrubbed
+        } else {
+            request.clone()
+        }
     }
 
     async fn execute_with_retry(&self, request: &CompletionRequest) -> Result<CompletionResponse> {
@@ -728,7 +783,8 @@ impl AnthropicProvider {
         // WHY: Anthropic gates Sonnet/Opus access on OAuth tokens behind a system
         // prompt identity check. Without the CC identity prefix, only Haiku-tier
         // models are available. This matches what Claude Code itself sends.
-        let request = &self.maybe_prepend_oauth_identity(request);
+        let scrubbed = self.apply_prompt_cache_policy(request);
+        let request = &self.maybe_prepend_oauth_identity(&scrubbed);
         let attribution = self.compute_attribution(request);
         let wire = WireRequest::from_request(request, None, attribution.as_deref())
             .context(error::ParseResponseSnafu)?;

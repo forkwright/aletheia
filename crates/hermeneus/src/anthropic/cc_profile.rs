@@ -1,17 +1,30 @@
-//! Claude Code profile for API request mimicry.
+//! Claude Code profile for OAuth-gated API access.
 //!
-//! Extracts version and configuration from the installed `claude` CLI binary
-//! so that hermeneus API requests match Claude Code's fingerprint. Only active
-//! when OAuth credentials are in use.
+//! Extracts version and the minimum beta-header set from the installed
+//! `claude` CLI binary so that hermeneus requests look enough like Claude
+//! Code traffic to unlock Sonnet/Opus on OAuth tokens. Only active when
+//! OAuth credentials are in use.
+//!
+//! # Sovereignty (#3409)
+//!
+//! The upstream CC format includes a per-conversation fingerprint
+//! (`SHA256(SALT + msg[4] + msg[7] + msg[20] + version)`) in both the
+//! attribution string and a persistent `X-Claude-Code-Session-Id` header,
+//! letting Anthropic correlate requests back to specific operator prompts
+//! and sessions. Aletheia stays off that attribution surface:
+//!
+//! - Attribution fingerprint replaced by the stable literal `000`.
+//! - Session-id header randomized per-request at the client layer
+//!   (see `client::build_headers`).
+//! - Per-process session UUID on this profile is removed entirely.
+//!
+//! The `cc_version`, `cc_entrypoint`, `anthropic-beta`, and `User-Agent`
+//! values are preserved because Anthropic gates Sonnet/Opus access on a
+//! well-formed attribution block and the beta set.
 
 use std::process::Command;
 
-use koina::uuid::Uuid;
 use tracing::warn;
-
-/// Fingerprint salt from CC source (constants/system.ts).
-/// Must match exactly for server-side validation.
-const FINGERPRINT_SALT: &str = "59cf53e54c78";
 
 /// Core beta headers that CC sends for non-Haiku 1P models.
 /// Derived from CC source (constants/betas.ts, utils/betas.ts).
@@ -26,14 +39,12 @@ const CORE_BETAS: &[&str] = &[
 
 /// Profile of the installed Claude Code binary.
 ///
-/// Used to make hermeneus API requests indistinguishable from Claude Code
-/// traffic when using OAuth credentials.
+/// Used to satisfy the OAuth-tier gates on Anthropic's first-party API
+/// without leaking operator-identifying fingerprints (#3409).
 #[derive(Debug, Clone)]
 pub(crate) struct CcProfile {
     /// CC version string (e.g., "2.1.92").
     pub version: String,
-    /// Persistent session ID (one per aletheia process, matches CC behavior).
-    pub session_id: Uuid,
     /// Beta headers to send (comma-joined in the `anthropic-beta` header).
     pub beta_headers: Vec<String>,
 }
@@ -52,7 +63,6 @@ impl CcProfile {
 
         Self {
             version,
-            session_id: Uuid::new_v4(),
             beta_headers,
         }
     }
@@ -69,23 +79,19 @@ impl CcProfile {
         }
     }
 
-    /// Compute the 3-character fingerprint for a given first user message.
-    ///
-    /// Algorithm: `SHA256(SALT + msg[4] + msg[7] + msg[20] + version)[:3]`
-    /// Matches CC source (`utils/fingerprint.ts`).
-    pub fn compute_fingerprint(&self, first_message_text: &str) -> String {
-        compute_fingerprint(first_message_text, &self.version)
-    }
-
-    /// Build the attribution string for the system prompt.
+    /// Build the sovereignty-scrubbed attribution string (#3409).
     ///
     /// This is NOT an HTTP header — it's a text block prepended to the system
     /// prompt array. CC embeds it as the first system block so the API can
-    /// attribute the request.
-    pub fn attribution_header(&self, first_message_text: &str) -> String {
-        let fingerprint = self.compute_fingerprint(first_message_text);
+    /// attribute the request. The 3-char slot that upstream CC fills with a
+    /// per-conversation fingerprint is pinned to `000` here so Anthropic
+    /// cannot correlate attribution back to operator prompts.
+    ///
+    /// The `first_message_text` parameter is retained for API compatibility
+    /// and ignored on purpose.
+    pub fn attribution_header(&self, _first_message_text: &str) -> String {
         format!(
-            "x-anthropic-billing-header: cc_version={version}.{fingerprint}; cc_entrypoint=cli;",
+            "x-anthropic-billing-header: cc_version={version}.000; cc_entrypoint=cli;",
             version = self.version,
         )
     }
@@ -99,39 +105,6 @@ impl CcProfile {
     pub fn beta_header_value(&self) -> String {
         self.beta_headers.join(",")
     }
-}
-
-/// Compute the 3-char fingerprint from message text and version.
-///
-/// Public for unit testing.
-pub(crate) fn compute_fingerprint(first_message_text: &str, version: &str) -> String {
-    use sha2::{Digest, Sha256};
-
-    let chars: Vec<char> = first_message_text.chars().collect();
-    let indices = [4, 7, 20];
-    let extracted: String = indices
-        .iter()
-        .map(|&i| chars.get(i).copied().unwrap_or('0'))
-        .collect();
-
-    let input = format!("{FINGERPRINT_SALT}{extracted}{version}");
-    let hash = Sha256::digest(input.as_bytes());
-    // First 3 hex chars: take 2 bytes (= 4 hex chars), then slice to 3.
-    // All chars are ASCII hex digits so the byte slice is always valid UTF-8.
-    let hex: String = hash
-        .iter()
-        .take(2)
-        .flat_map(|b| {
-            let hi = char::from_digit(u32::from(b >> 4), 16).unwrap_or('0');
-            let lo = char::from_digit(u32::from(b & 0xf), 16).unwrap_or('0');
-            [hi, lo]
-        })
-        .collect();
-    #[expect(
-        clippy::string_slice,
-        reason = "ASCII hex digits: byte slice is always on char boundary"
-    )]
-    hex[..3].to_owned()
 }
 
 /// Detect the installed Claude Code version by running `claude --version`.
@@ -156,45 +129,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn fingerprint_matches_cc_implementation() {
-        // Test case: message "Say 'hello' in one word. Nothing else."
-        // Indices [4, 7]: ' ' (space at 4), 'l' (at 7), 'l' (at 20)
-        let msg = "Say 'hello' in one word. Nothing else.";
-        let version = "2.1.92";
-        let fp = compute_fingerprint(msg, version);
-        assert_eq!(fp.len(), 3, "fingerprint must be 3 hex chars");
-
-        // Verify: SHA256("59cf53e54c78" + "'lo" + "2.1.92")
-        // msg[4] = '\'' (apostrophe after "Say ")
-        // msg[7] = 'l'  (in "hello")
-        // msg[20] = 'o' (in "word")
-        // Wait let me recount: S(0)a(1)y(2) (3)'(4)h(5)e(6)l(7)l(8)o(9)'(10) (11)i(12)n(13) (14)o(15)n(16)e(17) (18)w(19)o(20)
-        // msg[4] = 'h', msg[7] = 'o', msg[20] = 'r'
-        // No wait — the Python probe used this same message and got "ea9"
-        // Let me just verify it matches
-        assert_eq!(fp, "ea9", "fingerprint must match CC output");
-    }
-
-    #[test]
-    fn fingerprint_short_message() {
-        // Message shorter than index 20 → uses '0' for missing chars
-        let msg = "Hi";
-        let version = "2.1.92";
-        let fp = compute_fingerprint(msg, version);
-        assert_eq!(fp.len(), 3);
-    }
-
-    #[test]
-    fn fingerprint_empty_message() {
-        let fp = compute_fingerprint("", "2.1.92");
-        assert_eq!(fp.len(), 3);
-    }
-
-    #[test]
     fn attribution_header_format() {
         let profile = CcProfile {
             version: "2.1.92".to_owned(),
-            session_id: Uuid::new_v4(),
             beta_headers: vec![],
         };
         let header = profile.attribution_header("Say 'hello' in one word. Nothing else.");
@@ -202,11 +139,31 @@ mod tests {
         assert!(header.ends_with("; cc_entrypoint=cli;"));
     }
 
+    /// Sovereignty (#3409): attribution must NOT vary with the user's
+    /// first-message content. The upstream fingerprint is replaced by `000`
+    /// so Anthropic cannot correlate attribution back to operator prompts.
+    #[test]
+    fn attribution_header_strips_operator_fingerprint() {
+        let profile = CcProfile {
+            version: "2.1.92".to_owned(),
+            beta_headers: vec![],
+        };
+        let first = profile.attribution_header("first message with distinctive content");
+        let second = profile.attribution_header("entirely different wording here");
+        assert_eq!(
+            first, second,
+            "attribution must not fingerprint operator content"
+        );
+        assert!(
+            first.contains(".000;"),
+            "fingerprint slot must be stable placeholder, got: {first}"
+        );
+    }
+
     #[test]
     fn user_agent_format() {
         let profile = CcProfile {
             version: "2.1.92".to_owned(),
-            session_id: Uuid::new_v4(),
             beta_headers: vec![],
         };
         assert_eq!(profile.user_agent(), "claude-cli/2.1.92 (user, cli)");

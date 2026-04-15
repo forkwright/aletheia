@@ -341,6 +341,53 @@ impl Default for ProviderBehaviorConfig {
     }
 }
 
+/// Anthropic-specific sovereignty and privacy settings.
+///
+/// Mirrors the operator-facing controls at the hermeneus (Anthropic client)
+/// boundary. Defaults are sovereignty-first: nothing is cached on Anthropic
+/// servers unless the operator explicitly opts in.
+///
+/// Issues: #3406, #3410, #3409.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+pub struct AnthropicConfig {
+    /// Prompt cache policy (#3410).
+    ///
+    /// Controls whether outgoing requests carry `cache_control` markers that
+    /// let Anthropic store operator system prompts, tool definitions, and
+    /// recent conversation turns on their side for reuse. `"disabled"` (the
+    /// default) strips every marker so operator content never enters the
+    /// Anthropic prompt cache; `"ephemeral"` opts in to the standard 5-minute
+    /// cache; `"extended"` reserves the slot for the 1-hour cache wire format
+    /// and currently behaves the same as `"ephemeral"`.
+    ///
+    /// Tradeoff: enabling caching lowers per-turn token spend at the cost of
+    /// storing the operator's system prompt on Anthropic infrastructure for
+    /// the cache lifetime.
+    pub prompt_cache_mode: PromptCacheMode,
+}
+
+/// Prompt cache policy for the Anthropic provider.
+///
+/// Mirrors `hermeneus::provider::PromptCacheMode` so the taxis config layer
+/// does not depend on hermeneus; the runtime wiring in `crates/aletheia`
+/// converts between the two.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+#[non_exhaustive]
+pub enum PromptCacheMode {
+    /// No `cache_control` markers emitted — operator content never enters
+    /// Anthropic's prompt cache. Sovereignty default.
+    #[default]
+    Disabled,
+    /// Standard 5-minute ephemeral cache.
+    Ephemeral,
+    /// Extended 1-hour cache (reserved; behaves like `Ephemeral` until the
+    /// wire format for extended TTL is plumbed through).
+    Extended,
+}
+
 /// Pylon API request size and idempotency cache limits.
 ///
 /// All defaults match the current hardcoded constants in the `pylon` crate.
