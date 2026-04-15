@@ -1,8 +1,5 @@
 //! Core value type for the Datalog engine.
-#![expect(unsafe_code, reason = "DataValue layout requires unsafe for Ord impl and raw pointer access")]
 #![expect(clippy::as_conversions, reason = "DataValue numeric conversions require i64/f64/pointer casts")]
-#![expect(clippy::ptr_as_ptr, reason = "DataValue union layout requires raw pointer casts for zero-copy access")]
-#![expect(clippy::unsafe_derive_deserialize, reason = "DataValue derives Deserialize with manual Ord — unsafe is audited")]
 #![expect(clippy::semicolon_if_nothing_returned, reason = "hash/display impls — semicolon not needed before closing brace")]
 #![expect(clippy::explicit_iter_loop, reason = "explicit .iter() in DataValue collection processing")]
 #![expect(clippy::needless_continue, reason = "explicit continue in sort comparison arms aids readability")]
@@ -162,6 +159,10 @@ impl From<(i64, bool)> for Validity {
 /// `Regex`, `Set`, `Validity`, and `Bot` are engine-internal: they never appear
 /// in user-facing query results. `Bot` is the bottom sentinel used as the
 /// upper-bound key in range scans.
+#[expect(
+    clippy::unsafe_derive_deserialize,
+    reason = "DataValue has no unsafe code; clippy false positive from Vector serde impl in same module"
+)]
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, serde::Deserialize, serde::Serialize, Hash)]
 #[non_exhaustive]
 pub enum DataValue {
@@ -270,23 +271,13 @@ impl serde::Serialize for Vector {
             Vector::F32(a) => {
                 state.serialize_element(&0u8)?;
                 let arr = a.as_slice().unwrap_or(&[]);
-                let len = std::mem::size_of_val(arr);
-                let ptr = arr.as_ptr() as *const u8;
-                // SAFETY: `ptr` comes from a valid &[f32] allocation. Reinterpreting as
-                // &[u8] is safe because u8 has alignment 1 (always satisfied) and `len`
-                // is exactly `size_of_val(arr)`: the true byte length of the slice.
-                let bytes = unsafe { std::slice::from_raw_parts(ptr, len) };
+                let bytes: &[u8] = bytemuck::cast_slice(arr);
                 state.serialize_element(&VecBytes(bytes))?;
             }
             Vector::F64(a) => {
                 state.serialize_element(&1u8)?;
                 let arr = a.as_slice().unwrap_or(&[]);
-                let len = std::mem::size_of_val(arr);
-                let ptr = arr.as_ptr() as *const u8;
-                // SAFETY: `ptr` comes from a valid &[f64] allocation. Reinterpreting as
-                // &[u8] is safe because u8 has alignment 1 (always satisfied) and `len`
-                // is exactly `size_of_val(arr)`: the true byte length of the slice.
-                let bytes = unsafe { std::slice::from_raw_parts(ptr, len) };
+                let bytes: &[u8] = bytemuck::cast_slice(arr);
                 state.serialize_element(&VecBytes(bytes))?;
             }
         }
@@ -323,34 +314,14 @@ impl<'de> Visitor<'de> for VectorVisitor {
             .ok_or_else(|| serde::de::Error::invalid_length(1, &self))?;
         match tag {
             0u8 => {
-                let len = bytes.len() / std::mem::size_of::<f32>();
-                let mut v = vec![];
-                v.reserve_exact(len);
-                let ptr = v.as_mut_ptr() as *mut u8;
-                // SAFETY: `v` has capacity for `len` f32 values, which is exactly
-                // `bytes.len()` bytes. `copy_nonoverlapping` writes into the reserved
-                // (but not yet initialized) capacity. After the copy every element is
-                // initialised, so `set_len(len)` is sound.
-                unsafe {
-                    std::ptr::copy_nonoverlapping(bytes.as_ptr(), ptr, bytes.len());
-                    v.set_len(len);
-                }
-                Ok(Vector::F32(Array1::from(v)))
+                let floats: &[f32] = bytemuck::try_cast_slice(bytes)
+                    .map_err(|e| serde::de::Error::custom(format!("f32 cast: {e}")))?;
+                Ok(Vector::F32(Array1::from(floats.to_vec())))
             }
             1u8 => {
-                let len = bytes.len() / std::mem::size_of::<f64>();
-                let mut v = vec![];
-                v.reserve_exact(len);
-                let ptr = v.as_mut_ptr() as *mut u8;
-                // SAFETY: `v` has capacity for `len` f64 values, which is exactly
-                // `bytes.len()` bytes. `copy_nonoverlapping` writes into the reserved
-                // (but not yet initialized) capacity. After the copy every element is
-                // initialised, so `set_len(len)` is sound.
-                unsafe {
-                    std::ptr::copy_nonoverlapping(bytes.as_ptr(), ptr, bytes.len());
-                    v.set_len(len);
-                }
-                Ok(Vector::F64(Array1::from(v)))
+                let floats: &[f64] = bytemuck::try_cast_slice(bytes)
+                    .map_err(|e| serde::de::Error::custom(format!("f64 cast: {e}")))?;
+                Ok(Vector::F64(Array1::from(floats.to_vec())))
             }
             _ => Err(serde::de::Error::invalid_value(
                 serde::de::Unexpected::Unsigned(u64::from(tag)),

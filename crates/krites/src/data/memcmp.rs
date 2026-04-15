@@ -1,5 +1,5 @@
 //! Memory-comparable encoding for composite keys.
-#![expect(unsafe_code, reason = "memcmp decoding uses ptr::read for zero-copy numeric deserialization")]
+#![expect(unsafe_code, reason = "memcmp decoding uses from_utf8_unchecked for strings known to be valid UTF-8 from encoding")]
 #![expect(clippy::indexing_slicing, reason = "memcmp encoding indices are structurally bounded by length prefix parsing")]
 #![expect(clippy::as_conversions, reason = "binary encoding requires byte-level numeric casts")]
 #![expect(clippy::unreadable_literal, reason = "bit flag constants (0b00010000) are clearer without separators")]
