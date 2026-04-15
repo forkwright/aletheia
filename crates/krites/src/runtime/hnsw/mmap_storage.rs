@@ -29,14 +29,12 @@ use crate::error::InternalResult as Result;
 use crate::runtime::error::InvalidOperationSnafu;
 
 /// Borrow the raw fd from a `std::fs::File` as a `rustix::fd::BorrowedFd`.
-///
-/// # Safety
-///
-/// The returned `BorrowedFd` must not outlive the `File`.
 #[cfg(unix)]
 fn borrow_fd(file: &File) -> rustix::fd::BorrowedFd<'_> {
     use std::os::unix::io::AsRawFd;
-    // SAFETY: the file is open and we borrow for the lifetime of `file`.
+    // SAFETY: `file` is an open `std::fs::File`, so `as_raw_fd()` returns a
+    // valid fd. The returned `BorrowedFd` borrows `file` (via the `'_` lifetime
+    // tied to the function parameter), preventing use-after-close.
     unsafe { rustix::fd::BorrowedFd::borrow_raw(file.as_raw_fd()) }
 }
 
@@ -378,13 +376,9 @@ impl MmapVectorStorage {
         let stride = self.dim * std::mem::size_of::<f32>();
         let offset = index * stride;
         let bytes = &self.as_bytes()[offset..offset + stride];
-        // SAFETY: stride is always a multiple of 4 (dim * sizeof(f32)).
-        // File data is written from f32 slices so alignment is preserved.
-        let (prefix, floats, suffix) = unsafe { bytes.align_to::<f32>() };
-        debug_assert!(
-            prefix.is_empty() && suffix.is_empty(),
-            "vector data must be f32-aligned"
-        );
+        // bytemuck verifies alignment and size at runtime; mmap data written
+        // from f32 slices is always properly aligned.
+        let floats: &[f32] = bytemuck::cast_slice(bytes);
         Some(floats)
     }
 
@@ -409,9 +403,7 @@ impl MmapVectorStorage {
         }
 
         let stride = self.dim * std::mem::size_of::<f32>();
-        // SAFETY: f32 slice → u8 slice of same memory, stride = dim * 4.
-        let bytes: &[u8] =
-            unsafe { std::slice::from_raw_parts(vector.as_ptr().cast::<u8>(), stride) };
+        let bytes: &[u8] = bytemuck::cast_slice(vector);
 
         #[cfg(unix)]
         {

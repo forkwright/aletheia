@@ -1,9 +1,5 @@
 //! Relation metadata and schema definitions.
-#![expect(unsafe_code, reason = "relation accessors use ptr::read for zero-copy column type deserialization")]
 #![expect(clippy::as_conversions, reason = "relation metadata requires numeric casts for column indices")]
-#![expect(clippy::cast_ptr_alignment, reason = "relation byte buffers are allocator-aligned; deserialization requires reinterpret casts")]
-#![expect(clippy::ptr_as_ptr, reason = "relation byte deserialization requires pointer type casts")]
-#![expect(clippy::unsafe_derive_deserialize, reason = "NullableColType derives Deserialize with unsafe accessors — audited")]
 #![expect(clippy::too_many_lines, reason = "ensure_compatible handles all DataValue variant combinations")]
 #![expect(clippy::uninlined_format_args, reason = "format args style is consistent within relation coercion code")]
 #![expect(clippy::semicolon_if_nothing_returned, reason = "Display write calls — semicolon not needed")]
@@ -11,7 +7,6 @@
 #![expect(clippy::redundant_else, reason = "else after return keeps error path visually grouped with the check")]
 use std::cmp::Reverse;
 use std::fmt::{Display, Formatter};
-use std::mem;
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
@@ -304,68 +299,20 @@ impl NullableColType {
                     let bytes = STANDARD.decode(s).map_err(|_| make_err())?;
                     match eltype {
                         VecElementType::F32 => {
-                            let f32_count = bytes.len() / mem::size_of::<f32>();
-                            if f32_count != *len {
+                            let floats: &[f32] =
+                                bytemuck::try_cast_slice(&bytes).map_err(|_| make_err())?;
+                            if floats.len() != *len {
                                 return Err(make_err());
                             }
-                            debug_assert_eq!(
-                                bytes.as_ptr().addr() % mem::align_of::<f32>(),
-                                0,
-                                "Vec<u8> buffer must be aligned for f32 reinterpretation"
-                            );
-                            // SAFETY: `bytes` is a Vec<u8> produced by base64-decoding a
-                            // serialised f32 vector. Three invariants hold:
-                            // (1) Alignment: the global allocator guarantees the buffer is
-                            //     aligned to at least max_align_t (≥ 16 B), which is larger
-                            //     than align_of::<f32>() (4 B); the debug_assert above
-                            //     verifies this at runtime in debug builds.
-                            // (2) Length: the length check above ensures `f32_count == *len`,
-                            //     so the pointer covers exactly `f32_count` initialised f32
-                            //     elements within the live `bytes` allocation.
-                            // (3) Lifetime: `arr` is immediately converted to an owned array
-                            //     via `to_owned()` before `bytes` is dropped, so the view
-                            //     never outlives the backing buffer.
-                            // Violating any of these would cause UB: misaligned read,
-                            // out-of-bounds access, or dangling pointer respectively.
-                            let arr = unsafe {
-                                ndarray::ArrayView1::from_shape_ptr(
-                                    ndarray::Dim([f32_count]),
-                                    bytes.as_ptr() as *const f32,
-                                )
-                            };
-                            DataValue::Vec(Vector::F32(arr.to_owned()))
+                            DataValue::Vec(Vector::F32(ndarray::Array1::from(floats.to_vec())))
                         }
                         VecElementType::F64 => {
-                            let f64_count = bytes.len() / mem::size_of::<f64>();
-                            if f64_count != *len {
+                            let floats: &[f64] =
+                                bytemuck::try_cast_slice(&bytes).map_err(|_| make_err())?;
+                            if floats.len() != *len {
                                 return Err(make_err());
                             }
-                            debug_assert_eq!(
-                                bytes.as_ptr().addr() % mem::align_of::<f64>(),
-                                0,
-                                "Vec<u8> buffer must be aligned for f64 reinterpretation"
-                            );
-                            // SAFETY: `bytes` is a Vec<u8> produced by base64-decoding a
-                            // serialised f64 vector. Three invariants hold:
-                            // (1) Alignment: the global allocator guarantees the buffer is
-                            //     aligned to at least max_align_t (≥ 16 B), which is larger
-                            //     than align_of::<f64>() (8 B); the debug_assert above
-                            //     verifies this at runtime in debug builds.
-                            // (2) Length: the length check above ensures `f64_count == *len`,
-                            //     so the pointer covers exactly `f64_count` initialised f64
-                            //     elements within the live `bytes` allocation.
-                            // (3) Lifetime: `arr` is immediately converted to an owned array
-                            //     via `to_owned()` before `bytes` is dropped, so the view
-                            //     never outlives the backing buffer.
-                            // Violating any of these would cause UB: misaligned read,
-                            // out-of-bounds access, or dangling pointer respectively.
-                            let arr = unsafe {
-                                ndarray::ArrayView1::from_shape_ptr(
-                                    ndarray::Dim([f64_count]),
-                                    bytes.as_ptr() as *const f64,
-                                )
-                            };
-                            DataValue::Vec(Vector::F64(arr.to_owned()))
+                            DataValue::Vec(Vector::F64(ndarray::Array1::from(floats.to_vec())))
                         }
                     }
                 }
@@ -501,7 +448,7 @@ impl NullableColType {
                     let mut arr = Vec::with_capacity(l.len());
                     for el in l {
                         let coerced = self.coerce(el, cur_vld)?;
-                        arr.push(JsonValue::try_from(coerced).unwrap_or(JsonValue::Null));
+                        arr.push(JsonValue::from(coerced));
                     }
                     arr.into()
                 }
@@ -509,7 +456,7 @@ impl NullableColType {
                     let mut arr = Vec::with_capacity(l.len());
                     for el in l {
                         let coerced = self.coerce(el, cur_vld)?;
-                        arr.push(JsonValue::try_from(coerced).unwrap_or(JsonValue::Null));
+                        arr.push(JsonValue::from(coerced));
                     }
                     arr.into()
                 }
