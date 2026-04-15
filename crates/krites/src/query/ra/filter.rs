@@ -1,8 +1,12 @@
+//! Predicate filter operator.
+//!
+//! Applies compiled bytecode predicates to each tuple from the parent,
+//! passing through only those that satisfy all filters.
 #![expect(
     clippy::explicit_iter_loop,
     clippy::iter_not_returning_iterator,
     clippy::result_large_err,
-    reason = "engine-internal filter RA — iter returns TupleIter (boxed trait), not Self::Iterator"
+    reason = "engine-internal filter RA -- iter returns TupleIter (boxed trait), not Self::Iterator"
 )]
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -18,6 +22,14 @@ use crate::runtime::transact::SessionTx;
 
 use super::{RelAlgebra, eliminate_from_tuple, get_eliminate_indices};
 
+/// Filter operator: applies predicate expressions to parent tuples.
+///
+/// Filters are compiled to bytecode at plan compilation time and evaluated
+/// per-tuple at iteration time. Multiple filters are AND-combined.
+///
+/// # Complexity
+///
+/// O(P * F) where P is parent tuples and F is filter count.
 pub(crate) struct FilteredRA {
     pub(crate) parent: Box<RelAlgebra>,
     pub(crate) filters: Vec<Expr>,

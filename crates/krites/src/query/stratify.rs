@@ -1,4 +1,17 @@
 //! Datalog program stratification.
+//!
+//! Splits a Datalog program into ordered strata such that:
+//! 1. No stratum contains a negation cycle (verified via Tarjan SCC).
+//! 2. Negated or aggregated dependencies are evaluated in earlier strata.
+//! 3. Rules within the same SCC (mutually recursive) share a stratum.
+//!
+//! Uses a generalized Kahn's algorithm where "poisoned" edges (negation,
+//! non-meet aggregation, fixed rules) force stratum boundaries. The result
+//! is a topological ordering that is also a valid stratification.
+//!
+//! Meet-aggregation rules (lattice operations like min/max) are special-cased:
+//! they can appear in the same stratum as their recursive dependencies because
+//! meet operations are monotonic and converge under fixpoint iteration.
 #![expect(
     clippy::cloned_instead_of_copied,
     clippy::default_trait_access,

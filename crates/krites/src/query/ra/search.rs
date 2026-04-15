@@ -1,10 +1,17 @@
+//! Index-based search operators: HNSW, FTS, and LSH.
+//!
+//! These operators perform approximate or exact searches using specialized
+//! index structures attached to stored relations:
+//! - **HNSW**: approximate nearest neighbor via hierarchical navigable small world graph
+//! - **FTS**: full-text search with BM25 scoring
+//! - **LSH**: locality-sensitive hashing for fuzzy text matching
 #![expect(
     clippy::default_trait_access,
     clippy::indexing_slicing,
     clippy::iter_not_returning_iterator,
     clippy::result_large_err,
     clippy::wildcard_imports,
-    reason = "engine-internal search RA — indexing on bind_idx validated during compilation"
+    reason = "engine-internal search RA -- indexing on bind_idx validated during compilation"
 )]
 
 use std::collections::BTreeMap;
@@ -26,6 +33,10 @@ use crate::runtime::minhash_lsh::LshSearch;
 use crate::runtime::temp_store::EpochStore;
 use crate::runtime::transact::SessionTx;
 
+/// HNSW approximate nearest neighbor search operator.
+///
+/// For each parent tuple, extracts the query vector from the bound variable
+/// and performs a k-NN search on the HNSW index. Returns (key, distance) pairs.
 #[derive(Debug)]
 pub(crate) struct HnswSearchRA {
     pub(crate) parent: Box<RelAlgebra>,
@@ -57,18 +68,6 @@ impl HnswSearchRA {
     ///
     /// O(P * log N * ef) where P is parent tuples, N is index size, ef is beam width.
     /// Each parent tuple triggers one HNSW search.
-    /// Iterate over full-text search results.
-    ///
-    /// # Complexity
-    ///
-    /// O(P * (T + D)) where P is parent tuples, T is tokenization cost,
-    /// D is matching documents. BM25 scoring adds O(D log D) for ranking.
-    /// Iterate over LSH (locality-sensitive hashing) search results.
-    ///
-    /// # Complexity
-    ///
-    /// O(P * b) where P is parent tuples and b is number of hash bands.
-    /// Each band requires a prefix scan of the LSH index.
     pub(crate) fn iter<'a>(
         &'a self,
         tx: &'a SessionTx<'_>,
@@ -117,6 +116,10 @@ impl HnswSearchRA {
     }
 }
 
+/// Full-text search operator with BM25 scoring.
+///
+/// Tokenizes the query string, scores matching documents using BM25,
+/// and returns results ranked by relevance.
 #[derive(Debug)]
 pub(crate) struct FtsSearchRA {
     pub(crate) parent: Box<RelAlgebra>,
@@ -142,6 +145,13 @@ impl FtsSearchRA {
         }
         Ok(())
     }
+
+    /// Iterate over full-text search results.
+    ///
+    /// # Complexity
+    ///
+    /// O(P * (T + D)) where P is parent tuples, T is tokenization cost,
+    /// D is matching documents. BM25 scoring adds O(D log D) for ranking.
     pub(crate) fn iter<'a>(
         &'a self,
         tx: &'a SessionTx<'_>,
@@ -228,6 +238,10 @@ impl FtsSearchRA {
     }
 }
 
+/// Locality-sensitive hashing search operator.
+///
+/// Uses `MinHash` signatures and banded LSH to find approximately similar
+/// text documents. Similarity is based on token overlap (Jaccard-like).
 #[derive(Debug)]
 pub(crate) struct LshSearchRA {
     pub(crate) parent: Box<RelAlgebra>,
@@ -253,6 +267,13 @@ impl LshSearchRA {
         }
         Ok(())
     }
+
+    /// Iterate over LSH (locality-sensitive hashing) search results.
+    ///
+    /// # Complexity
+    ///
+    /// O(P * b) where P is parent tuples and b is number of hash bands.
+    /// Each band requires a prefix scan of the LSH index.
     pub(crate) fn iter<'a>(
         &'a self,
         tx: &'a SessionTx<'_>,

@@ -1,8 +1,13 @@
+//! Column reordering operator.
+//!
+//! Permutes columns of the parent relation to match the expected output
+//! order. Inserted by the compiler when a rule head's variable order
+//! differs from the relation's binding order.
 #![expect(
     clippy::indexing_slicing,
     clippy::iter_not_returning_iterator,
     clippy::result_large_err,
-    reason = "engine-internal reorder RA — indexing validated by old_order_indices lookup"
+    reason = "engine-internal reorder RA -- indexing validated by old_order_indices lookup"
 )]
 
 use std::collections::BTreeMap;
@@ -17,6 +22,11 @@ use crate::error::InternalResult as Result;
 use crate::runtime::temp_store::EpochStore;
 use crate::runtime::transact::SessionTx;
 
+/// Column reordering (permutation) operator.
+///
+/// # Complexity
+///
+/// O(P * C) where P is parent tuples and C is column count.
 #[derive(Debug)]
 pub(crate) struct ReorderRA {
     pub(crate) relation: Box<RelAlgebra>,
