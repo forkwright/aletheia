@@ -52,7 +52,13 @@ pub(crate) enum SseEvent {
 
     /// An error occurred during the turn.
     #[serde(rename = "error")]
-    Error { code: String, message: String },
+    Error {
+        code: String,
+        message: String,
+        /// Per-request correlation ID for cross-system error tracing.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
+    },
 }
 
 /// Token usage summary sent with `message_complete`.
@@ -124,7 +130,12 @@ pub(crate) enum WebchatEvent {
     #[serde(rename = "turn_complete")]
     TurnComplete { outcome: TurnOutcome },
     #[serde(rename = "error")]
-    Error { message: String },
+    Error {
+        message: String,
+        /// Per-request correlation ID for cross-system error tracing.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
+    },
 }
 
 impl WebchatEvent {

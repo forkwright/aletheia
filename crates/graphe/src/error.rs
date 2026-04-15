@@ -305,5 +305,77 @@ pub enum Error {
     },
 }
 
+impl Error {
+    /// Whether this error is a `SQLite` UNIQUE constraint violation.
+    ///
+    /// Uses the typed `rusqlite::ErrorCode::ConstraintViolation` rather than
+    /// string matching on the error message, which is fragile across `SQLite`
+    /// versions and rusqlite wrappers (#3282).
+    #[cfg(feature = "sqlite")]
+    #[must_use]
+    pub fn is_unique_constraint_violation(&self) -> bool {
+        match self {
+            Self::Database { source, .. } => matches!(
+                source,
+                rusqlite::Error::SqliteFailure(
+                    rusqlite::ffi::Error {
+                        code: rusqlite::ErrorCode::ConstraintViolation,
+                        extended_code: 2067, // SQLITE_CONSTRAINT_UNIQUE
+                    },
+                    _,
+                )
+            ),
+            _ => false,
+        }
+    }
+}
+
 /// Result alias using mneme's [`Error`] type.
 pub type Result<T> = std::result::Result<T, Error>;
+
+#[cfg(test)]
+#[cfg(feature = "sqlite")]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unique_constraint_violation_detected() {
+        let sqlite_err = rusqlite::Error::SqliteFailure(
+            rusqlite::ffi::Error {
+                code: rusqlite::ErrorCode::ConstraintViolation,
+                extended_code: 2067,
+            },
+            Some("UNIQUE constraint failed: sessions.nous_id, sessions.session_key".to_owned()),
+        );
+        let err = Error::Database {
+            source: sqlite_err,
+            location: snafu::location!(),
+        };
+        assert!(err.is_unique_constraint_violation());
+    }
+
+    #[test]
+    fn non_unique_constraint_not_detected() {
+        let sqlite_err = rusqlite::Error::SqliteFailure(
+            rusqlite::ffi::Error {
+                code: rusqlite::ErrorCode::DatabaseBusy,
+                extended_code: 5,
+            },
+            Some("database is locked".to_owned()),
+        );
+        let err = Error::Database {
+            source: sqlite_err,
+            location: snafu::location!(),
+        };
+        assert!(!err.is_unique_constraint_violation());
+    }
+
+    #[test]
+    fn non_database_error_not_detected() {
+        let err = Error::SessionNotFound {
+            id: "test".to_owned(),
+            location: snafu::location!(),
+        };
+        assert!(!err.is_unique_constraint_violation());
+    }
+}

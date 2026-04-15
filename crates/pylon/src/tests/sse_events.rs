@@ -56,6 +56,7 @@ fn sse_event_type_error() {
     let event = crate::stream::SseEvent::Error {
         code: "test".to_owned(),
         message: "err".to_owned(),
+        request_id: None,
     };
     assert_eq!(event.event_type(), "error");
 }
@@ -91,11 +92,24 @@ fn sse_event_error_serialization() {
     let event = crate::stream::SseEvent::Error {
         code: "turn_failed".to_owned(),
         message: "provider error".to_owned(),
+        request_id: Some("req-123".to_owned()),
     };
     let json = serde_json::to_value(&event).unwrap();
     assert_eq!(json["type"], "error");
     assert_eq!(json["code"], "turn_failed");
     assert_eq!(json["message"], "provider error");
+    assert_eq!(json["request_id"], "req-123");
+}
+
+#[test]
+fn sse_event_error_omits_request_id_when_none() {
+    let event = crate::stream::SseEvent::Error {
+        code: "test".to_owned(),
+        message: "err".to_owned(),
+        request_id: None,
+    };
+    let json = serde_json::to_value(&event).unwrap();
+    assert!(json.get("request_id").is_none(), "request_id should be omitted when None");
 }
 
 #[test]
@@ -168,6 +182,7 @@ fn tui_event_turn_complete_type() {
 fn tui_event_error_type() {
     let event = crate::stream::WebchatEvent::Error {
         message: "fail".to_owned(),
+        request_id: None,
     };
     assert_eq!(event.event_type(), "error");
 }
