@@ -1,4 +1,10 @@
 //! Schema definition parsing.
+#![expect(
+    clippy::as_conversions,
+    clippy::pedantic,
+    clippy::result_large_err,
+    reason = "Schema parser — CompactString-to-str coercion via as, InternalError is the crate-wide Result type"
+)]
 
 use std::collections::BTreeSet;
 

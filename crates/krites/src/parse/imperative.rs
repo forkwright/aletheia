@@ -1,4 +1,10 @@
 //! Imperative script parsing.
+#![expect(
+    clippy::pedantic,
+    clippy::result_large_err,
+    reason = "Imperative block parser — InternalError is the crate-wide Result type, pedantic style deferred"
+)]
+
 use std::collections::BTreeMap;
 use std::sync::Arc;
 

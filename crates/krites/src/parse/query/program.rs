@@ -1,5 +1,10 @@
 //! Query program parsing and construction.
 //! Datalog query parsing.
+#![expect(
+    clippy::pedantic,
+    clippy::result_large_err,
+    reason = "Query program parser — InternalError is the crate-wide Result type, pedantic style deferred"
+)]
 
 use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;

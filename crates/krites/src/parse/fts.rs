@@ -1,4 +1,10 @@
 //! Full-text search clause parsing.
+#![expect(
+    clippy::as_conversions,
+    clippy::pedantic,
+    clippy::result_large_err,
+    reason = "FTS query parser — numeric cast for boost weight, InternalError is the crate-wide Result type"
+)]
 
 use std::sync::LazyLock;
 

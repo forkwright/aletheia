@@ -1,5 +1,12 @@
 //! Rule and atom parsing: rules, disjunctions, atoms, applications.
 //! Datalog query parsing.
+#![expect(
+    clippy::indexing_slicing,
+    clippy::pedantic,
+    clippy::result_large_err,
+    clippy::type_complexity,
+    reason = "Atom parser — indexing into structurally-known pest pairs, aggregate return tuples, InternalError is the crate-wide Result type"
+)]
 
 use std::collections::BTreeMap;
 
