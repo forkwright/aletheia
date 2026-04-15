@@ -1,9 +1,13 @@
 #![deny(missing_docs)]
 //! aletheia-mneme: session store and memory engine
 //!
-//! Mneme (Μνήμη): "memory." Thin facade that re-exports from the extracted
+//! Mneme (Μνήμη): "memory." Curated facade that re-exports from the extracted
 //! sub-crates: graphe (session persistence), episteme (knowledge pipeline),
 //! eidos (types), and krites (Datalog engine).
+//!
+//! Only types that downstream consumers (nous, pylon, aletheia, melete, daemon,
+//! diaporeia, integration-tests) actually import are surfaced here. Internal
+//! types remain accessible through the sub-crates directly.
 
 // ── Types (eidos) ──────────────────────────────────────────────────────────
 
@@ -39,38 +43,86 @@ pub use krites as engine;
 // ── Session persistence (graphe) ───────────────────────────────────────────
 
 /// Database backup and JSON export for session data.
+///
+/// # Facade surface
+///
+/// [`BackupManager`](backup::BackupManager)
 #[cfg(feature = "sqlite")]
-pub use graphe::backup;
+pub mod backup {
+    pub use graphe::backup::BackupManager;
+}
+
 /// Mneme-specific error types and result alias.
-pub use graphe::error;
+///
+/// # Facade surface
+///
+/// [`Error`](error::Error)
+pub mod error {
+    pub use graphe::error::Error;
+}
+
 /// Agent export: build an `AgentFile` from session store and workspace.
+///
+/// # Facade surface
+///
+/// [`ExportOptions`](export::ExportOptions),
+/// [`export_agent`](export::export_agent)
 #[cfg(feature = "sqlite")]
-pub use graphe::export;
+pub mod export {
+    pub use graphe::export::{ExportOptions, export_agent};
+}
+
 /// Agent import: restore an agent from a portable `AgentFile`.
+///
+/// # Facade surface
+///
+/// [`ImportOptions`](import::ImportOptions),
+/// [`import_agent`](import::import_agent)
 #[cfg(feature = "sqlite")]
-pub use graphe::import;
-/// Versioned `SQLite` schema migration runner.
-#[cfg(feature = "sqlite")]
-pub use graphe::migration;
+pub mod import {
+    pub use graphe::import::{ImportOptions, import_agent};
+}
+
 /// Agent portability schema: `AgentFile` format for cross-runtime export/import.
+///
+/// # Facade surface
+///
+/// [`AgentFile`](portability::AgentFile)
 #[cfg(feature = "sqlite")]
-pub use graphe::portability;
-/// `SQLite` corruption detection, read-only fallback, and auto-repair.
-#[cfg(feature = "sqlite")]
-pub use graphe::recovery;
-/// Session retention policies and automated cleanup of old data.
-#[cfg(feature = "sqlite")]
-pub use graphe::retention;
-/// `SQLite` schema DDL constants.
-#[cfg(feature = "sqlite")]
-pub use graphe::schema;
+pub mod portability {
+    pub use graphe::portability::AgentFile;
+}
+
 /// Session store — fjall (default) or `SQLite` backend.
 ///
 /// Both backends expose the same `SessionStore` API.
+///
+/// # Facade surface
+///
+/// [`SessionStore`](store::SessionStore)
 #[cfg(any(feature = "fjall", feature = "sqlite"))]
-pub use graphe::store;
+pub mod store {
+    pub use graphe::store::SessionStore;
+}
+
 /// Core types for sessions, messages, usage records, and agent notes.
-pub use graphe::types;
+///
+/// # Facade surface
+///
+/// [`Message`](types::Message),
+/// [`Role`](types::Role),
+/// [`Session`](types::Session),
+/// [`SessionMetrics`](types::SessionMetrics),
+/// [`SessionOrigin`](types::SessionOrigin),
+/// [`SessionStatus`](types::SessionStatus),
+/// [`SessionType`](types::SessionType),
+/// [`UsageRecord`](types::UsageRecord)
+pub mod types {
+    pub use graphe::types::{
+        Message, Role, Session, SessionMetrics, SessionOrigin, SessionStatus, SessionType,
+        UsageRecord,
+    };
+}
 
 // ── Training data capture ─────────────────────────────────────────────
 
@@ -79,37 +131,144 @@ pub mod training;
 
 // ── Knowledge pipeline (episteme) ──────────────────────────────────────────
 
-/// Memory admission control: structured decision gate for knowledge graph insertion.
-pub use episteme::admission;
-/// Conflict detection pipeline for fact insertion.
-pub use episteme::conflict;
 /// LLM-driven fact consolidation for knowledge maintenance.
-pub use episteme::consolidation;
-/// Multi-factor temporal decay with lifecycle stages and graduated pruning.
-pub use episteme::decay;
+///
+/// # Facade surface
+///
+/// [`ConsolidationConfig`](consolidation::ConsolidationConfig)
+pub mod consolidation {
+    pub use episteme::consolidation::ConsolidationConfig;
+}
+
 /// Embedding provider trait and implementations (candle, mock).
-pub use episteme::embedding;
+///
+/// # Facade surface
+///
+/// [`EmbeddingProvider`](embedding::EmbeddingProvider),
+/// [`MockEmbeddingProvider`](embedding::MockEmbeddingProvider),
+/// [`DegradedEmbeddingProvider`](embedding::DegradedEmbeddingProvider),
+/// [`EmbeddingConfig`](embedding::EmbeddingConfig),
+/// [`create_provider`](embedding::create_provider)
+pub mod embedding {
+    pub use episteme::embedding::{
+        DegradedEmbeddingProvider, EmbeddingConfig, EmbeddingProvider, create_provider,
+    };
+
+    #[cfg(any(test, feature = "test-support"))]
+    pub use episteme::embedding::MockEmbeddingProvider;
+}
+
 /// Embedding evaluation gate: Recall@K and MRR for model upgrade checks.
-pub use episteme::embedding_eval;
+///
+/// # Facade surface
+///
+/// [`EvalDataset`](embedding_eval::EvalDataset),
+/// [`EvalRunResult`](embedding_eval::EvalRunResult),
+/// [`compare_models`](embedding_eval::compare_models)
+pub mod embedding_eval {
+    pub use episteme::embedding_eval::{EvalDataset, EvalRunResult, compare_models};
+}
+
 /// LLM-driven knowledge extraction pipeline (entities, relationships, facts).
-pub use episteme::extract;
+///
+/// # Facade surface
+///
+/// [`ConversationMessage`](extract::ConversationMessage),
+/// [`ExtractionConfig`](extract::ExtractionConfig),
+/// [`ExtractionEngine`](extract::ExtractionEngine),
+/// [`ExtractionError`](extract::ExtractionError),
+/// [`ExtractionProvider`](extract::ExtractionProvider),
+/// [`LlmCallSnafu`](extract::LlmCallSnafu)
+pub mod extract {
+    pub use episteme::extract::{
+        ConversationMessage, ExtractionConfig, ExtractionEngine, ExtractionError,
+        ExtractionProvider, LlmCallSnafu,
+    };
+}
+
 /// Instinct system: behavioral memory from tool usage patterns.
-pub use episteme::instinct;
-/// Knowledge graph export/import for agent portability.
-pub use episteme::knowledge_portability;
+///
+/// # Facade surface
+///
+/// [`DEFAULT_MAX_CONTEXT_SUMMARY_LEN`](instinct::DEFAULT_MAX_CONTEXT_SUMMARY_LEN),
+/// [`DEFAULT_MAX_PARAM_VALUE_LEN`](instinct::DEFAULT_MAX_PARAM_VALUE_LEN),
+/// [`ToolObservation`](instinct::ToolObservation),
+/// [`ToolOutcome`](instinct::ToolOutcome),
+/// [`sanitize_parameters`](instinct::sanitize_parameters),
+/// [`truncate_context_summary`](instinct::truncate_context_summary)
+pub mod instinct {
+    pub use episteme::instinct::{
+        DEFAULT_MAX_CONTEXT_SUMMARY_LEN, DEFAULT_MAX_PARAM_VALUE_LEN, ToolObservation,
+        ToolOutcome, sanitize_parameters, truncate_context_summary,
+    };
+}
+
 /// `CozoDB`-backed knowledge store for graph traversal and vector search.
-pub use episteme::knowledge_store;
-/// Typed Datalog query builder for compile-time schema validation.
+///
+/// # Facade surface
+///
+/// [`HybridQuery`](knowledge_store::HybridQuery),
+/// [`KnowledgeConfig`](knowledge_store::KnowledgeConfig),
+/// [`KnowledgeStore`](knowledge_store::KnowledgeStore)
 #[cfg(feature = "mneme-engine")]
-pub use episteme::query;
+pub mod knowledge_store {
+    pub use episteme::knowledge_store::{HybridQuery, KnowledgeConfig, KnowledgeStore};
+}
+
 /// 6-factor recall scoring engine for knowledge retrieval ranking.
-pub use episteme::recall;
+///
+/// # Facade surface
+///
+/// [`FactorScores`](recall::FactorScores),
+/// [`RecallEngine`](recall::RecallEngine),
+/// [`RecallWeights`](recall::RecallWeights),
+/// [`ScoredResult`](recall::ScoredResult)
+pub mod recall {
+    pub use episteme::recall::{FactorScores, RecallEngine, RecallWeights, ScoredResult};
+}
+
 /// Skill storage helpers and SKILL.md parser.
-pub use episteme::skill;
+///
+/// # Facade surface
+///
+/// [`SkillContent`](skill::SkillContent),
+/// [`export_skills_to_cc`](skill::export_skills_to_cc),
+/// [`parse_skill_md`](skill::parse_skill_md),
+/// [`scan_skill_dir`](skill::scan_skill_dir)
+pub mod skill {
+    pub use episteme::skill::{SkillContent, export_skills_to_cc, parse_skill_md, scan_skill_dir};
+}
+
 /// Skill auto-capture: heuristic filter, signature hashing, and candidate tracking.
-pub use episteme::skills;
-/// Relationship type normalization and validation for knowledge graph extraction.
-pub use episteme::vocab;
+///
+/// # Facade surface
+///
+/// [`CandidateTracker`](skills::CandidateTracker),
+/// [`PendingSkill`](skills::PendingSkill),
+/// [`SkillExtractor`](skills::SkillExtractor),
+/// [`ToolCallRecord`](skills::ToolCallRecord),
+/// [`TrackResult`](skills::TrackResult)
+///
+/// Also re-exports the `extract` submodule for skill extraction provider types.
+pub mod skills {
+    pub use episteme::skills::{
+        CandidateTracker, PendingSkill, SkillExtractor, ToolCallRecord, TrackResult,
+    };
+
+    /// Skill extraction provider types.
+    ///
+    /// # Facade surface
+    ///
+    /// [`LlmCallSnafu`](extract::LlmCallSnafu),
+    /// [`PendingSkill`](extract::PendingSkill),
+    /// [`SkillExtractionError`](extract::SkillExtractionError),
+    /// [`SkillExtractionProvider`](extract::SkillExtractionProvider)
+    pub mod extract {
+        pub use episteme::skills::extract::{
+            LlmCallSnafu, PendingSkill, SkillExtractionError, SkillExtractionProvider,
+        };
+    }
+}
 
 /// Verify that `mneme-engine` and `sqlite` features coexist without `SQLite`
 /// link conflicts.
