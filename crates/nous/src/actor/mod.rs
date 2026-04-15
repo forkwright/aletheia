@@ -367,7 +367,7 @@ impl NousActor {
                 // dropping this branch before it resolves has no side effects.
                 () = self.channel.cancel.cancelled() => {
                     // SAFETY: "token" here is a CancellationToken (shutdown coordination), not a credential
-                    info!("cancellation token fired, draining and stopping");
+                    info!("cancellation token fired, draining and stopping"); // kanon:ignore SECURITY/credential-logging -- "token" means CancellationToken, not API token
                     break;
                 }
             }

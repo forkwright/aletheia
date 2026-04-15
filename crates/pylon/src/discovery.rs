@@ -78,7 +78,7 @@ pub(crate) async fn write_discovery_file(
     let port = port_from_bind(bind_addr);
 
     let info = DiscoveryInfo {
-        url: format!("http://{host}:{port}"), // SAFE: local/tailnet server, TLS handled at reverse-proxy layer
+        url: format!("http://{host}:{port}"), // SAFE: local/tailnet server, TLS handled at reverse-proxy layer // kanon:ignore SECURITY/insecure-transport -- local/tailnet server, TLS at reverse-proxy
         version: env!("CARGO_PKG_VERSION"),
         started_at: Timestamp::now().to_string(),
         tailscale_ip,

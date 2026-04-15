@@ -98,14 +98,14 @@ impl CredentialFile {
             // WHY: encrypted files must be decrypted before JSON parsing.
             let key = load_or_create_key(path)
                 // SAFETY: logging file path and error kind, not credential value
-                .map_err(|e| tracing::warn!(error = %e, path = %path.display(), "failed to load encryption key"))
+                .map_err(|e| tracing::warn!(error = %e, path = %path.display(), "failed to load encryption key")) // kanon:ignore SECURITY/credential-logging -- logs error on decrypt failure, not the credential
                 .ok()?;
             let plaintext = decrypt(&key, encoded.trim_end())
                 // SAFETY: logging file path and error kind, not credential value
-                .map_err(|e| tracing::warn!(error = %e, path = %path.display(), "failed to decrypt credential file"))
+                .map_err(|e| tracing::warn!(error = %e, path = %path.display(), "failed to decrypt credential file")) // kanon:ignore SECURITY/credential-logging -- logs error on decrypt failure, not the credential
                 .ok()?;
             String::from_utf8(plaintext)
-                .map_err(|e| tracing::warn!(error = %e, "decrypted credential is not valid UTF-8"))
+                .map_err(|e| tracing::warn!(error = %e, "decrypted credential is not valid UTF-8")) // kanon:ignore SECURITY/credential-logging -- logs UTF-8 error, not the credential
                 .ok()?
         } else {
             contents
