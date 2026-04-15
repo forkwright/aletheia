@@ -21,7 +21,7 @@ Mneme was decomposed into eidos, graphe, episteme, and krites. This crate re-exp
 |---------|---------|---------|
 | `sqlite` | yes | SQLite session store (graphe backend) |
 | `graph-algo` | yes | Graph algorithms in episteme + krites |
-| `mneme-engine` | no | Datalog engine (krites) + typed query builder |
+| `mneme-engine` | yes | Datalog engine (krites) + typed query builder |
 | `storage-fjall` | no | Fjall LSM-tree backend (requires mneme-engine) |
 | `embed-candle` | no | Local ML embeddings via candle |
 | `hnsw_rs` | no | Alternative HNSW vector index backend |
