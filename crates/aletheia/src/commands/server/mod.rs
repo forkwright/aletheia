@@ -153,7 +153,7 @@ pub(crate) async fn run(args: Args) -> Result<()> {
         .with_graceful_shutdown(async move {
             shutdown_signal().await;
             // SAFETY: "token" here is a CancellationToken (shutdown coordination), not a credential
-            info!("signal received -- cancelling shutdown token");
+            info!("signal received -- cancelling shutdown token"); // kanon:ignore SECURITY/credential-logging -- logs signal event, not a credential
             token_for_signal.cancel();
         })
         .await

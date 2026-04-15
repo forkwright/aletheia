@@ -718,7 +718,7 @@ pub async fn pkce_login(provider: &OAuthProvider) -> Result<CredentialFile> {
     let token_response = exchange_code(&client, provider, &code, &pkce.verifier, port).await?;
 
     // SAFETY: logging success status, not the token value
-    info!("successfully obtained access token");
+    info!("successfully obtained access token"); // kanon:ignore SECURITY/credential-logging -- logs success status, not the token
 
     // Build credential file
     let expires_at = token_response

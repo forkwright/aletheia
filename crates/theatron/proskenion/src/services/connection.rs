@@ -99,7 +99,7 @@ impl PylonClient {
             let value = format!("Bearer {token}");
             // SAFETY: log only the error kind, not the token value.
             let header_value = HeaderValue::from_str(&value).map_err(|_| {
-                tracing::debug!("auth token contains invalid header characters");
+                tracing::debug!("auth token contains invalid header characters"); // kanon:ignore SECURITY/credential-logging -- logs "invalid header characters" debug, not the token
                 ConnectionError::InvalidToken
             })?;
             headers.insert(AUTHORIZATION, header_value);

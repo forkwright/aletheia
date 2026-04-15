@@ -1,0 +1,10 @@
+# Rules to skip for specific paths
+# Format: RULE/name:path/glob
+#
+# Every entry requires a tracking issue. No blanket category ignores.
+
+# WHY(#3169): 850 packages in workspace with vendored krites; threshold is 600
+MANIFEST/dep-count:Cargo.lock
+
+# WHY(#3169): XML namespace URI inside raw string literal, not a network endpoint
+SECURITY/insecure-transport:crates/poiesis/text/src/odt.rs

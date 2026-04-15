@@ -255,7 +255,7 @@ fn try_reload_from_file(
         return;
     };
     // SAFETY: logging reload event, not credential value
-    info!("credential file changed externally while circuit open, reloading");
+    info!("credential file changed externally while circuit open, reloading"); // kanon:ignore SECURITY/credential-logging -- logs reload event, not credential value
     if let Ok(mut guard) = state.write() {
         *guard = Some(RefreshState {
             current_token: file_cred.token,
@@ -337,11 +337,11 @@ fn persist_refresh_success(
             }
             crate::metrics::record_token_refresh(true);
             // SAFETY: logging expiry duration, not the token value
-            info!(expires_in_secs = expires_in, "OAuth token refreshed");
+            info!(expires_in_secs = expires_in, "OAuth token refreshed"); // kanon:ignore SECURITY/credential-logging -- logs expiry duration, not the token
         }
         Err(e) => {
             // SAFETY: logging write-failure error, not the token value
-            error!(error = %e, "failed to write refreshed credential file, keeping previous in-memory token");
+            error!(error = %e, "failed to write refreshed credential file, keeping previous in-memory token"); // kanon:ignore SECURITY/credential-logging -- logs write-failure error, not the token
             crate::metrics::record_credential_write_failure();
             crate::metrics::record_token_refresh(true);
         }
@@ -388,7 +388,7 @@ async fn refresh_loop(
             biased;
             () = shutdown.cancelled() => {
                 // SAFETY: logging shutdown event, not credential value
-                info!("credential refresh loop shutting down");
+                info!("credential refresh loop shutting down"); // kanon:ignore SECURITY/credential-logging -- logs shutdown event, not credential value
                 break;
             }
             () = tokio::time::sleep(check_interval) => {}
@@ -455,7 +455,7 @@ async fn refresh_loop(
                 circuit_breaker.record_failure();
                 crate::metrics::record_token_refresh(false);
                 // SAFETY: logging retry status, not the token value
-                warn!("OAuth token refresh failed, will retry next cycle");
+                warn!("OAuth token refresh failed, will retry next cycle"); // kanon:ignore SECURITY/credential-logging -- logs retry status, not the token
             }
         }
     }
