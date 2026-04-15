@@ -18,6 +18,12 @@ use crate::runtime::temp_store::RegularTempStore;
 
 pub(crate) struct MinimumSpanningTreePrim;
 
+#[expect(
+    clippy::as_conversions,
+    clippy::cast_lossless,
+    clippy::indexing_slicing,
+    reason = "graph Prim MST indices are bounds-checked by the CSR adjacency structure and visited set"
+)]
 impl FixedRule for MinimumSpanningTreePrim {
     /// Run Prim's minimum spanning tree algorithm.
     ///
@@ -83,6 +89,19 @@ impl FixedRule for MinimumSpanningTreePrim {
 ///
 /// O(E log V) where E is edges and V is vertices. Each edge may be pushed
 /// to the heap once, and each vertex is extracted once.
+#[expect(
+    clippy::as_conversions,
+    clippy::indexing_slicing,
+    reason = "Prim MST indices are bounds-checked by the visited array and CSR node count"
+)]
+#[expect(
+    clippy::result_large_err,
+    reason = "InternalError carries structured context — boxing deferred to avoid API churn"
+)]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "Poison is lightweight and passed by value for ergonomic .check() calls"
+)]
 fn prim(
     graph: &DirectedCsrGraph<f32>,
     starting: u32,

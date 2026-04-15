@@ -18,6 +18,18 @@ use crate::runtime::temp_store::RegularTempStore;
 
 pub(crate) struct RandomWalk;
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "random walk setup, weighted/unweighted branching, and output generation kept together for clarity"
+)]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "graph random walk indices are bounds-checked by the CSR adjacency structure and node existence"
+)]
+#[expect(
+    clippy::result_large_err,
+    reason = "InternalError carries structured context — boxing deferred to avoid API churn"
+)]
 impl FixedRule for RandomWalk {
     /// Run random walk over the graph.
     ///

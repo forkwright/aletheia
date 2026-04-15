@@ -22,6 +22,11 @@ use crate::runtime::temp_store::RegularTempStore;
 
 pub(crate) struct KCore;
 
+#[expect(
+    clippy::as_conversions,
+    clippy::indexing_slicing,
+    reason = "graph k-core peeling indices are bounds-checked by the node count and degree arrays"
+)]
 impl FixedRule for KCore {
     /// Run k-core decomposition algorithm.
     ///

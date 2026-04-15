@@ -15,6 +15,14 @@ use crate::runtime::temp_store::RegularTempStore;
 
 pub(crate) struct TopSort;
 
+#[expect(
+    clippy::as_conversions,
+    reason = "graph topological sort indices are small values cast between u32/i64 — guarded by graph size"
+)]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "graph topological sort indices are bounds-checked by the CSR node count"
+)]
 impl FixedRule for TopSort {
     /// Run topological sort (Kahn's algorithm).
     ///
@@ -61,6 +69,20 @@ impl FixedRule for TopSort {
 /// # Complexity
 ///
 /// O(V + E) where V is vertices and E is edges.
+#[expect(
+    clippy::as_conversions,
+    clippy::cast_possible_truncation,
+    clippy::indexing_slicing,
+    reason = "Kahn's algorithm indices are bounds-checked by the CSR node count and in-degree arrays"
+)]
+#[expect(
+    clippy::result_large_err,
+    reason = "InternalError carries structured context — boxing deferred to avoid API churn"
+)]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "Poison is lightweight and passed by value for ergonomic .check() calls"
+)]
 pub(crate) fn kahn_g(graph: &DirectedCsrGraph, poison: Poison) -> Result<Vec<u32>> {
     let graph_size = graph.node_count();
     let mut in_degree = vec![0; graph_size as usize];

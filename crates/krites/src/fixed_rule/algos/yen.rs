@@ -18,6 +18,20 @@ use crate::runtime::temp_store::RegularTempStore;
 
 pub(crate) struct KShortestPathYen;
 
+#[expect(
+    clippy::as_conversions,
+    clippy::cast_lossless,
+    clippy::indexing_slicing,
+    reason = "graph Yen's k-shortest path indices are bounds-checked by the CSR adjacency structure"
+)]
+#[expect(
+    clippy::type_complexity,
+    reason = "Yen's parallel results contain source, target, and path list together"
+)]
+#[expect(
+    clippy::semicolon_if_nothing_returned,
+    reason = "trailing semicolons in output blocks kept for consistency with surrounding style"
+)]
 impl FixedRule for KShortestPathYen {
     /// Run Yen's k-shortest paths algorithm.
     ///
@@ -130,6 +144,20 @@ impl FixedRule for KShortestPathYen {
 ///
 /// O(K * N * (E log V)) where K is paths, N is path length, E is edges, V is vertices.
 /// For each of K paths, explores up to N spur nodes with Dijkstra.
+#[expect(
+    clippy::as_conversions,
+    clippy::cast_lossless,
+    clippy::indexing_slicing,
+    reason = "Yen's algorithm indices are bounds-checked by path length and candidate list"
+)]
+#[expect(
+    clippy::many_single_char_names,
+    reason = "k, i, j match the standard Yen's algorithm notation"
+)]
+#[expect(
+    clippy::range_plus_one,
+    reason = "0..spur_node + 1 matches the algorithm description of including the spur node"
+)]
 fn k_shortest_path_yen(
     k: usize,
     edges: &DirectedCsrGraph<f32>,

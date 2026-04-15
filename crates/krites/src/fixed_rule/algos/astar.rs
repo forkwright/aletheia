@@ -77,6 +77,30 @@ impl FixedRule for ShortestPathAStar {
 /// # Complexity
 ///
 /// O(E log V) worst case. The priority queue operations dominate.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "graph A* indices are bounds-checked by the visited set and input arity validation"
+)]
+#[expect(
+    clippy::result_large_err,
+    reason = "InternalError carries structured context — boxing deferred to avoid API churn"
+)]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "Poison is lightweight and passed by value for ergonomic .check() calls"
+)]
+#[expect(
+    clippy::mutable_key_type,
+    reason = "DataValue implements Hash via canonical byte representation — safe as BTreeMap key"
+)]
+#[expect(
+    clippy::default_trait_access,
+    reason = "Default::default() is idiomatic for type-inferred collection initialization"
+)]
+#[expect(
+    clippy::cloned_instead_of_copied,
+    reason = "OrderedFloat<f64> is Copy but .cloned() matches surrounding pattern"
+)]
 fn astar(
     starting: &Tuple,
     goal: &Tuple,

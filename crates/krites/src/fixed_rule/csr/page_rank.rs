@@ -1,4 +1,4 @@
-//! PageRank over CSR graphs.
+//! `PageRank` over CSR graphs.
 
 use super::DirectedCsrGraph;
 
@@ -19,6 +19,11 @@ impl PageRankConfig {
     }
 }
 
+#[expect(
+    clippy::as_conversions,
+    clippy::indexing_slicing,
+    reason = "PageRank score array indices are bounds-checked by the graph node count"
+)]
 pub(crate) fn page_rank(
     graph: &DirectedCsrGraph,
     config: PageRankConfig,

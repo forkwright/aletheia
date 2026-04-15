@@ -47,16 +47,6 @@ pub(crate) type DbInstance = crate::runtime::db::Db<crate::storage::mem::MemStor
     reason = "krites engine internal — unsafe for DataValue layout, numeric casts and indexing are engine-internal invariants"
 )]
 pub(crate) mod data;
-#[expect(
-    private_interfaces,
-    clippy::as_conversions,
-    clippy::indexing_slicing,
-    clippy::mutable_key_type,
-    clippy::pedantic,
-    clippy::result_large_err,
-    clippy::type_complexity,
-    reason = "krites engine internal — graph algorithm casts and indexing are engine-internal invariants"
-)]
 pub(crate) mod fixed_rule;
 pub(crate) mod fts;
 pub(crate) mod parse;

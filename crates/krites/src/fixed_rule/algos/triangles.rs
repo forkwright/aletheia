@@ -17,6 +17,15 @@ use crate::runtime::temp_store::RegularTempStore;
 
 pub(crate) struct ClusteringCoefficients;
 
+#[expect(
+    clippy::as_conversions,
+    clippy::cast_possible_wrap,
+    reason = "graph triangle count and degree cast from usize to i64 — values are small graph metrics"
+)]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "graph clustering coefficient indices are bounds-checked by the CSR node count"
+)]
 impl FixedRule for ClusteringCoefficients {
     /// Run clustering coefficient and triangle counting.
     ///
@@ -55,6 +64,19 @@ impl FixedRule for ClusteringCoefficients {
     }
 }
 
+#[expect(
+    clippy::result_large_err,
+    reason = "InternalError carries structured context — boxing deferred to avoid API churn"
+)]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "Poison is lightweight and passed by value for ergonomic .check() calls"
+)]
+#[expect(
+    clippy::as_conversions,
+    clippy::cast_possible_wrap,
+    reason = "triangle count and degree cast from usize to i64 — values are small graph metrics"
+)]
 /// Compute local clustering coefficients and triangle counts.
 ///
 /// # Complexity
