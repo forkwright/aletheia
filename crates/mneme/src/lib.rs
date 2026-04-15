@@ -5,9 +5,9 @@
 //! sub-crates: graphe (session persistence), episteme (knowledge pipeline),
 //! eidos (types), and krites (Datalog engine).
 //!
-//! Only types that downstream consumers (nous, pylon, aletheia, melete, daemon,
-//! diaporeia, integration-tests) actually import are surfaced here. Internal
-//! types remain accessible through the sub-crates directly.
+//! Only types that downstream consumers (nous, pylon, aletheia, diaporeia,
+//! integration-tests) actually import are surfaced here. Internal types remain
+//! accessible through the sub-crates directly.
 
 // ── Types (eidos) ──────────────────────────────────────────────────────────
 
