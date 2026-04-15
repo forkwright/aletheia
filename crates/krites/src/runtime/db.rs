@@ -166,7 +166,11 @@ impl NamedRows {
         let rows = self
             .rows
             .into_iter()
-            .map(|row| row.into_iter().map(JsonValue::from).collect::<JsonValue>())
+            .map(|row| {
+                row.into_iter()
+                    .map(|v| JsonValue::try_from(v).unwrap_or(JsonValue::Null))
+                    .collect::<JsonValue>()
+            })
             .collect::<JsonValue>();
         json!({
             "headers": self.headers,

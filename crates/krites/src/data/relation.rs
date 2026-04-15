@@ -22,6 +22,7 @@ use serde_json::json;
 
 use super::error::*;
 use crate::data::expr::Expr;
+use crate::data::json::JsonValue;
 use crate::data::value::Num;
 use crate::data::value::{DataValue, JsonData, UuidWrapper, Validity, ValidityTs, Vector};
 
@@ -499,14 +500,16 @@ impl NullableColType {
                 DataValue::List(l) => {
                     let mut arr = Vec::with_capacity(l.len());
                     for el in l {
-                        arr.push(self.coerce(el, cur_vld)?);
+                        let coerced = self.coerce(el, cur_vld)?;
+                        arr.push(JsonValue::try_from(coerced).unwrap_or(JsonValue::Null));
                     }
                     arr.into()
                 }
                 DataValue::Set(l) => {
                     let mut arr = Vec::with_capacity(l.len());
                     for el in l {
-                        arr.push(self.coerce(el, cur_vld)?);
+                        let coerced = self.coerce(el, cur_vld)?;
+                        arr.push(JsonValue::try_from(coerced).unwrap_or(JsonValue::Null));
                     }
                     arr.into()
                 }
