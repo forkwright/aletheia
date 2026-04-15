@@ -130,13 +130,13 @@ pub(crate) struct RefreshResponse {
     pub(crate) project_id: String,
 }
 
-/// `GET /api/planning/projects/{project_id}/verification`
+/// `GET /api/v1/planning/projects/{project_id}/verification`
 ///
 /// Returns the current verification state for a project. Returns 501
 /// until the dianoia verification engine is wired into pylon (#2034).
 #[utoipa::path(
     get,
-    path = "/api/planning/projects/{project_id}/verification",
+    path = "/api/v1/planning/projects/{project_id}/verification",
     params(
         ("project_id" = String, Path, description = "Project identifier"),
     ),
@@ -162,13 +162,13 @@ pub(crate) async fn get_verification(
     )
 }
 
-/// `POST /api/planning/projects/{project_id}/verification/refresh`
+/// `POST /api/v1/planning/projects/{project_id}/verification/refresh`
 ///
 /// Triggers a re-verification of the project. Returns 501 until the
 /// dianoia verification engine is wired into pylon (#2034).
 #[utoipa::path(
     post,
-    path = "/api/planning/projects/{project_id}/verification/refresh",
+    path = "/api/v1/planning/projects/{project_id}/verification/refresh",
     params(
         ("project_id" = String, Path, description = "Project identifier"),
     ),
@@ -212,11 +212,11 @@ mod tests {
     fn planning_router() -> Router {
         Router::new()
             .route(
-                "/api/planning/projects/{project_id}/verification",
+                "/api/v1/planning/projects/{project_id}/verification",
                 get(get_verification),
             )
             .route(
-                "/api/planning/projects/{project_id}/verification/refresh",
+                "/api/v1/planning/projects/{project_id}/verification/refresh",
                 post(refresh_verification),
             )
     }
@@ -227,7 +227,7 @@ mod tests {
         let response = app
             .oneshot(
                 Request::builder()
-                    .uri("/api/planning/projects/proj-123/verification")
+                    .uri("/api/v1/planning/projects/proj-123/verification")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -250,7 +250,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/api/planning/projects/proj-456/verification/refresh")
+                    .uri("/api/v1/planning/projects/proj-456/verification/refresh")
                     .body(Body::empty())
                     .unwrap(),
             )

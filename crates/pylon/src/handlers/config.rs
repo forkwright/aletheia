@@ -10,7 +10,7 @@ use utoipa::ToSchema;
 
 use symbolon::types::Role;
 
-use crate::error::ApiError;
+use crate::error::{ApiError, FieldError};
 use crate::extract::{Claims, require_role};
 use crate::state::ConfigState;
 
@@ -141,7 +141,15 @@ pub async fn reload_config(
         match e {
             taxis::reload::ReloadError::Validation { source, .. } => {
                 ApiError::ValidationFailed {
-                    errors: source.errors,
+                    errors: source
+                        .errors
+                        .into_iter()
+                        .map(|msg| FieldError {
+                            field: "_config".to_owned(),
+                            code: "invalid".to_owned(),
+                            message: msg,
+                        })
+                        .collect(),
                     location: snafu::location!(),
                 }
             }
@@ -213,7 +221,15 @@ pub async fn update_section(
 
     if let Err(err) = taxis::validate::validate_section(&section, &body) {
         return Err(ApiError::ValidationFailed {
-            errors: err.errors,
+            errors: err
+                .errors
+                .into_iter()
+                .map(|msg| FieldError {
+                    field: section.clone(),
+                    code: "invalid".to_owned(),
+                    message: msg,
+                })
+                .collect(),
             location: snafu::location!(),
         });
     }
@@ -238,7 +254,11 @@ pub async fn update_section(
         serde_json::from_value(config_value).map_err(|e| {
             tracing::error!(error = %e, section = %section, "config deserialization failed after merge");
             ApiError::ValidationFailed {
-                errors: vec!["Invalid configuration format".to_owned()],
+                errors: vec![FieldError {
+                    field: section.clone(),
+                    code: "format".to_owned(),
+                    message: "Invalid configuration format".to_owned(),
+                }],
                 location: snafu::location!(),
             }
         })?;

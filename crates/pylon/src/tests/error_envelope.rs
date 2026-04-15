@@ -29,7 +29,7 @@ fn assert_error_envelope(body: &serde_json::Value, expected_code: &str) {
 }
 
 #[tokio::test]
-async fn create_session_empty_nous_id_returns_400_with_envelope() {
+async fn create_session_empty_nous_id_returns_422_with_envelope() {
     let (app, _dir) = app().await;
     let req = authed_request(
         "POST",
@@ -45,22 +45,22 @@ async fn create_session_empty_nous_id_returns_400_with_envelope() {
         .expect("request to POST /sessions should succeed");
     assert_eq!(
         resp.status(),
-        StatusCode::BAD_REQUEST,
-        "empty nous_id should return 400"
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "empty nous_id should return 422"
     );
     let body = body_json(resp).await;
-    assert_error_envelope(&body, "bad_request");
+    assert_error_envelope(&body, "validation_failed");
+    let errors = body["error"]["details"]["errors"]
+        .as_array()
+        .expect("details.errors should be an array");
     assert!(
-        body["error"]["message"]
-            .as_str()
-            .expect("error message should be a string")
-            .contains("nous_id"),
-        "message should mention nous_id"
+        errors.iter().any(|e| e["field"] == "nous_id" && e["code"] == "required"),
+        "errors should contain a required error for nous_id"
     );
 }
 
 #[tokio::test]
-async fn create_session_empty_session_key_returns_400_with_envelope() {
+async fn create_session_empty_session_key_returns_422_with_envelope() {
     let (app, _dir) = app().await;
     let req = authed_request(
         "POST",
@@ -76,17 +76,17 @@ async fn create_session_empty_session_key_returns_400_with_envelope() {
         .expect("request to POST /sessions should succeed");
     assert_eq!(
         resp.status(),
-        StatusCode::BAD_REQUEST,
-        "empty session_key should return 400"
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "empty session_key should return 422"
     );
     let body = body_json(resp).await;
-    assert_error_envelope(&body, "bad_request");
+    assert_error_envelope(&body, "validation_failed");
+    let errors = body["error"]["details"]["errors"]
+        .as_array()
+        .expect("details.errors should be an array");
     assert!(
-        body["error"]["message"]
-            .as_str()
-            .expect("error message should be a string")
-            .contains("session_key"),
-        "message should mention session_key"
+        errors.iter().any(|e| e["field"] == "session_key" && e["code"] == "required"),
+        "errors should contain a required error for session_key"
     );
 }
 
@@ -136,7 +136,7 @@ async fn rename_nonexistent_session_returns_404_with_envelope() {
 }
 
 #[tokio::test]
-async fn rename_session_empty_name_returns_400_with_envelope() {
+async fn rename_session_empty_name_returns_422_with_envelope() {
     let (router, _dir) = app().await;
     let created = create_test_session(&router).await;
     let id = created["id"]
@@ -155,17 +155,17 @@ async fn rename_session_empty_name_returns_400_with_envelope() {
         .expect("request to PUT /sessions/.../name should succeed");
     assert_eq!(
         resp.status(),
-        StatusCode::BAD_REQUEST,
-        "empty name should return 400"
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "empty name should return 422"
     );
     let body = body_json(resp).await;
-    assert_error_envelope(&body, "bad_request");
+    assert_error_envelope(&body, "validation_failed");
+    let errors = body["error"]["details"]["errors"]
+        .as_array()
+        .expect("details.errors should be an array");
     assert!(
-        body["error"]["message"]
-            .as_str()
-            .expect("error message should be a string")
-            .contains("name"),
-        "message should mention name"
+        errors.iter().any(|e| e["field"] == "name" && e["code"] == "required"),
+        "errors should contain a required error for name"
     );
 }
 
@@ -686,13 +686,13 @@ async fn all_error_codes_include_request_id_in_envelope() {
         .expect("POST /sessions request should succeed");
     assert_eq!(
         resp.status(),
-        StatusCode::BAD_REQUEST,
-        "empty nous_id should return 400"
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "empty nous_id should return 422"
     );
     let body = body_json(resp).await;
     assert!(
         body["error"]["request_id"].is_string(),
-        "400 error must include request_id"
+        "422 error must include request_id"
     );
 
     let resp = router

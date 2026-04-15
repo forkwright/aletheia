@@ -521,7 +521,7 @@ async fn history_messages_have_expected_fields() {
 }
 
 #[tokio::test]
-async fn create_session_empty_nous_id_returns_400() {
+async fn create_session_empty_nous_id_returns_422() {
     let (app, _dir) = app().await;
     let req = authed_request(
         "POST",
@@ -533,13 +533,15 @@ async fn create_session_empty_nous_id_returns_400() {
     );
     let resp = app.oneshot(req).await.unwrap();
 
-    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
     let body = body_json(resp).await;
-    assert_eq!(body["error"]["code"], "bad_request");
+    assert_eq!(body["error"]["code"], "validation_failed");
+    let errors = body["error"]["details"]["errors"].as_array().unwrap();
+    assert!(errors.iter().any(|e| e["field"] == "nous_id" && e["code"] == "required"));
 }
 
 #[tokio::test]
-async fn create_session_empty_session_key_returns_400() {
+async fn create_session_empty_session_key_returns_422() {
     let (app, _dir) = app().await;
     let req = authed_request(
         "POST",
@@ -551,13 +553,15 @@ async fn create_session_empty_session_key_returns_400() {
     );
     let resp = app.oneshot(req).await.unwrap();
 
-    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
     let body = body_json(resp).await;
-    assert_eq!(body["error"]["code"], "bad_request");
+    assert_eq!(body["error"]["code"], "validation_failed");
+    let errors = body["error"]["details"]["errors"].as_array().unwrap();
+    assert!(errors.iter().any(|e| e["field"] == "session_key" && e["code"] == "required"));
 }
 
 #[tokio::test]
-async fn create_session_oversized_nous_id_returns_400() {
+async fn create_session_oversized_nous_id_returns_422() {
     let (app, _dir) = app().await;
     let oversized_nous_id = "a".repeat(300);
     let req = authed_request(
@@ -570,14 +574,15 @@ async fn create_session_oversized_nous_id_returns_400() {
     );
     let resp = app.oneshot(req).await.unwrap();
 
-    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
     let body = body_json(resp).await;
-    assert_eq!(body["error"]["code"], "bad_request");
-    assert!(body["error"]["message"].as_str().unwrap().contains("maximum length"));
+    assert_eq!(body["error"]["code"], "validation_failed");
+    let errors = body["error"]["details"]["errors"].as_array().unwrap();
+    assert!(errors.iter().any(|e| e["field"] == "nous_id" && e["code"] == "too_long"));
 }
 
 #[tokio::test]
-async fn create_session_oversized_session_key_returns_400() {
+async fn create_session_oversized_session_key_returns_422() {
     let (app, _dir) = app().await;
     let oversized_session_key = "b".repeat(300);
     let req = authed_request(
@@ -590,14 +595,15 @@ async fn create_session_oversized_session_key_returns_400() {
     );
     let resp = app.oneshot(req).await.unwrap();
 
-    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
     let body = body_json(resp).await;
-    assert_eq!(body["error"]["code"], "bad_request");
-    assert!(body["error"]["message"].as_str().unwrap().contains("maximum length"));
+    assert_eq!(body["error"]["code"], "validation_failed");
+    let errors = body["error"]["details"]["errors"].as_array().unwrap();
+    assert!(errors.iter().any(|e| e["field"] == "session_key" && e["code"] == "too_long"));
 }
 
 #[tokio::test]
-async fn rename_session_empty_name_returns_400() {
+async fn rename_session_empty_name_returns_422() {
     let (router, _dir) = app().await;
     let created = create_test_session(&router).await;
     let id = created["id"].as_str().unwrap();
@@ -609,13 +615,15 @@ async fn rename_session_empty_name_returns_400() {
     );
     let resp = router.clone().oneshot(req).await.unwrap();
 
-    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
     let body = body_json(resp).await;
-    assert_eq!(body["error"]["code"], "bad_request");
+    assert_eq!(body["error"]["code"], "validation_failed");
+    let errors = body["error"]["details"]["errors"].as_array().unwrap();
+    assert!(errors.iter().any(|e| e["field"] == "name" && e["code"] == "required"));
 }
 
 #[tokio::test]
-async fn rename_session_oversized_name_returns_400() {
+async fn rename_session_oversized_name_returns_422() {
     let (router, _dir) = app().await;
     let created = create_test_session(&router).await;
     let id = created["id"].as_str().unwrap();
@@ -628,10 +636,11 @@ async fn rename_session_oversized_name_returns_400() {
     );
     let resp = router.clone().oneshot(req).await.unwrap();
 
-    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
     let body = body_json(resp).await;
-    assert_eq!(body["error"]["code"], "bad_request");
-    assert!(body["error"]["message"].as_str().unwrap().contains("maximum length"));
+    assert_eq!(body["error"]["code"], "validation_failed");
+    let errors = body["error"]["details"]["errors"].as_array().unwrap();
+    assert!(errors.iter().any(|e| e["field"] == "name" && e["code"] == "too_long"));
 }
 
 #[tokio::test]

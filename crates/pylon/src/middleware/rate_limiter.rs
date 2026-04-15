@@ -71,6 +71,38 @@ impl RateLimiter {
             None
         }
     }
+
+    /// Return the rate limit quota for a client without consuming a request.
+    ///
+    /// Returns `None` if the client has no existing window (first request).
+    pub(crate) fn quota(&self, client: &str) -> Option<super::user_rate_limiter::RateLimitQuota> {
+        let now = Instant::now();
+        let state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+        let (window_start, count) = state.get(client)?;
+        let elapsed = now.duration_since(*window_start);
+
+        if elapsed >= self.window {
+            // Window has expired; next request starts a new window.
+            return Some(super::user_rate_limiter::RateLimitQuota {
+                limit: u64::from(self.max_requests),
+                remaining: u64::from(self.max_requests),
+                reset_secs: 0,
+            });
+        }
+
+        let remaining_time = self.window.saturating_sub(elapsed);
+        let remaining_requests = self.max_requests.saturating_sub(*count);
+
+        Some(super::user_rate_limiter::RateLimitQuota {
+            limit: u64::from(self.max_requests),
+            remaining: u64::from(remaining_requests),
+            reset_secs: remaining_time.as_secs() + 1,
+        })
+    }
 }
 
 /// Extract the best available client identifier for rate limiting.
@@ -122,7 +154,8 @@ pub(super) fn extract_client_key(request: &Request, trust_proxy: bool) -> String
 ///
 /// Reads the `Arc<RateLimiter>` from request extensions (installed by
 /// `build_router`). Returns 429 Too Many Requests with a `Retry-After` header
-/// when the client has exceeded the configured limit.
+/// when the client has exceeded the configured limit. On success, injects
+/// standard rate limit headers (#3268).
 ///
 /// # Cancel safety
 ///
@@ -156,5 +189,14 @@ pub async fn rate_limit(request: Request, next: Next) -> Response {
         return response;
     }
 
-    next.run(request).await
+    let mut response = next.run(request).await;
+
+    // WHY(#3268): When per-user rate limiting is not enabled (auth disabled),
+    // inject rate limit headers from the per-IP limiter so clients still get
+    // quota information.
+    if let Some(quota) = limiter.quota(&client) {
+        super::user_rate_limiter::inject_rate_limit_headers(response.headers_mut(), &quota);
+    }
+
+    response
 }
