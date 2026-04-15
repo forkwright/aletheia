@@ -1,19 +1,35 @@
 # mneme
 
-Thin facade re-exporting from four decomposed sub-crates. 264 lines of glue code.
+Curated facade re-exporting from four decomposed sub-crates. ~270 lines of glue code.
 
 ## Architecture
 
-Mneme was decomposed into eidos, graphe, episteme, and krites. This crate re-exports their public APIs so downstream consumers (nous, pylon, melete) depend on `mneme` without knowing about the decomposition.
+Mneme was decomposed into eidos, graphe, episteme, and krites. This crate re-exports only the types that downstream consumers actually import, not entire modules. Internal types remain accessible through the sub-crates directly.
 
 ## Re-exports
 
-| Source crate | Re-exported modules | Feature gate |
-|--------------|---------------------|--------------|
-| `eidos` | `id`, `knowledge` | always |
-| `graphe` | `backup`, `error`, `export`, `import`, `migration`, `portability`, `recovery`, `retention`, `schema`, `store`, `types` | `sqlite` (default) for most |
-| `episteme` | `conflict`, `consolidation`, `embedding`, `extract`, `hnsw_index`, `instinct`, `knowledge_portability`, `knowledge_store`, `query`, `recall`, `skill`, `skills`, `vocab` | `hnsw_rs` for hnsw_index, `mneme-engine` for query |
-| `krites` | `engine` | `mneme-engine` |
+Only types with downstream consumers are surfaced. Modules not listed here (admission, conflict, decay, vocab, knowledge_portability, query, migration, recovery, retention, schema) are internal to episteme/graphe and not re-exported.
+
+| Source crate | Re-exported modules | Key types | Feature gate |
+|--------------|---------------------|-----------|--------------|
+| `eidos` | `id`, `knowledge` | (full modules) | always |
+| `graphe` | `backup` | `BackupManager` | `sqlite` |
+| `graphe` | `error` | `Error` | always |
+| `graphe` | `export` | `ExportOptions`, `export_agent` | `sqlite` |
+| `graphe` | `import` | `ImportOptions`, `import_agent` | `sqlite` |
+| `graphe` | `portability` | `AgentFile` | `sqlite` |
+| `graphe` | `store` | `SessionStore` | `sqlite` or `fjall` |
+| `graphe` | `types` | `Message`, `Role`, `Session`, `SessionMetrics`, `SessionOrigin`, `SessionStatus`, `SessionType`, `UsageRecord` | always |
+| `episteme` | `consolidation` | `ConsolidationConfig` | always |
+| `episteme` | `embedding` | `EmbeddingProvider`, `DegradedEmbeddingProvider`, `EmbeddingConfig`, `create_provider`, `MockEmbeddingProvider` (test-support) | always |
+| `episteme` | `embedding_eval` | `EvalDataset`, `EvalRunResult`, `compare_models` | always |
+| `episteme` | `extract` | `ConversationMessage`, `ExtractionConfig`, `ExtractionEngine`, `ExtractionError`, `ExtractionProvider`, `LlmCallSnafu` | always |
+| `episteme` | `instinct` | `ToolObservation`, `ToolOutcome`, `sanitize_parameters`, `truncate_context_summary`, constants | always |
+| `episteme` | `knowledge_store` | `HybridQuery`, `KnowledgeConfig`, `KnowledgeStore` | always |
+| `episteme` | `recall` | `FactorScores`, `RecallEngine`, `RecallWeights`, `ScoredResult` | always |
+| `episteme` | `skill` | `SkillContent`, `export_skills_to_cc`, `parse_skill_md`, `scan_skill_dir` | always |
+| `episteme` | `skills` | `CandidateTracker`, `PendingSkill`, `SkillExtractor`, `ToolCallRecord`, `TrackResult` + `extract` submodule | always |
+| `krites` | `engine` | (full crate alias) | `mneme-engine` |
 
 ## Feature flags
 
