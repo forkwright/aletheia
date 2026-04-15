@@ -123,7 +123,7 @@ In a second terminal:
 aletheia health
 ```
 
-Expected output: status `healthy` with your agent listed. If you see `degraded`, your API key wasn't found -- see Troubleshooting below.
+Expected output: status `healthy` with your agent listed. If you see `degraded`, your API key wasn't found -- see [Troubleshooting](#troubleshooting).
 
 ```bash
 aletheia status
@@ -154,7 +154,7 @@ curl -s http://localhost:18789/api/v1/sessions \
   -H "X-Requested-With: aletheia" \
   -d '{"nous_id": "pronoea"}' | jq .
 
-# Send a message (replace SESSION_ID with the id from above)
+# Send a message (replace SESSION_ID with the id from the session creation response)
 curl -N http://localhost:18789/api/v1/sessions/SESSION_ID/messages \
   -H "Content-Type: application/json" \
   -H "X-Requested-With: aletheia" \

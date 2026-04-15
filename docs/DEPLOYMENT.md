@@ -284,7 +284,7 @@ id = "main"
 default = true
 ```
 
-> **Manual alternative:** Steps 1–3 above apply to both first-time manual setups and adding agents to an existing instance. If you used the init wizard, only step 3 may be needed to add additional agents.
+> **Manual alternative:** Steps 1–3 in [Manual: add an additional agent](#manual-add-an-additional-agent) apply to both first-time manual setups and adding agents to an existing instance. If you used the init wizard, only step 3 may be needed to add additional agents.
 
 ---
 
