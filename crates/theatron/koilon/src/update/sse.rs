@@ -70,24 +70,39 @@ pub(crate) fn handle_sse_disconnected(app: &mut App) {
     }
 }
 
-/// Called on each tick to detect prolonged disconnection and surface an error.
+/// Called on each tick to detect prolonged disconnection and force reconnection.
+///
+/// WHY: A stalled SSE connection could persist indefinitely, leaving the agent
+/// appearing active but actually stuck. After `RECONNECT_TIMEOUT` we tear down
+/// the old connection and establish a new one rather than only showing a banner.
 pub(crate) fn check_sse_reconnect_timeout(app: &mut App) {
     if app.connection.sse_connected {
         return;
     }
-    if let Some(disconnected_at) = app.connection.sse_disconnected_at
-        && disconnected_at.elapsed() >= RECONNECT_TIMEOUT
-        && app
-            .viewport
-            .error_toast
-            .as_ref()
-            .map(|t| !t.message.starts_with("Server unreachable"))
-            .unwrap_or(true)
-    {
-        app.viewport.error_toast = Some(ErrorToast::new(
-            "Server unreachable after 5 minutes. Check: journalctl --user -eu aletheia".to_string(),
-        ));
+    let Some(disconnected_at) = app.connection.sse_disconnected_at else {
+        return;
+    };
+    let stall_duration = disconnected_at.elapsed();
+    if stall_duration < RECONNECT_TIMEOUT {
+        return;
     }
+    // Prevent re-triggering every tick: only fire once per disconnect cycle.
+    // Clearing the timestamp means we won't enter this branch again until a
+    // fresh SseDisconnected event sets a new timestamp.
+    app.connection.sse_disconnected_at = None;
+
+    let stall_secs = stall_duration.as_secs();
+    tracing::warn!(stall_secs, "SSE stalled for {stall_secs}s — forcing reconnect");
+
+    // Replace the SSE connection with a fresh one.
+    app.restore_sse(Some(crate::api::sse::SseConnection::connect(
+        app.client.raw_client().clone(),
+        &app.config.url,
+    )));
+
+    app.viewport.error_toast = Some(ErrorToast::new(
+        format!("Connection stalled for {stall_secs}s — reconnecting..."),
+    ));
 }
 
 #[tracing::instrument(skip_all, fields(turn_count = active_turns.len()))]
@@ -243,6 +258,7 @@ pub(crate) fn check_distill_auto_dismiss(app: &mut App) {
 
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions may panic on failure")]
+#[expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]
 #[expect(
     clippy::indexing_slicing,
     reason = "test assertions use direct indexing for clarity"
@@ -302,6 +318,28 @@ mod tests {
         app.connection.sse_disconnected_at = None;
         check_sse_reconnect_timeout(&mut app);
         assert!(app.viewport.error_toast.is_none());
+    }
+
+    #[tokio::test]
+    async fn check_timeout_forces_reconnect_after_threshold() {
+        let mut app = test_app();
+        app.connection.sse_connected = false;
+        // Set disconnected_at to well past the threshold
+        app.connection.sse_disconnected_at =
+            Some(std::time::Instant::now() - RECONNECT_TIMEOUT - std::time::Duration::from_secs(1));
+        check_sse_reconnect_timeout(&mut app);
+        // Should show a reconnecting toast
+        assert!(app.viewport.error_toast.is_some());
+        let msg = &app.viewport.error_toast.as_ref().unwrap().message;
+        assert!(
+            msg.contains("reconnecting"),
+            "toast should mention reconnecting, got: {msg}"
+        );
+        // Disconnect timestamp should be cleared to prevent re-triggering
+        assert!(app.connection.sse_disconnected_at.is_none());
+        // SSE connection re-established: verify via take_sse which extracts the
+        // private field through the public API.
+        assert!(app.take_sse().is_some(), "SSE connection should be re-established");
     }
 
     #[test]
