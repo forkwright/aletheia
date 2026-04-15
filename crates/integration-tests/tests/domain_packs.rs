@@ -180,7 +180,7 @@ priority = "important"
         },
         ..NousConfig::default()
     };
-    let handle = manager.spawn(config, PipelineConfig::default()).await;
+    let handle = manager.spawn(config, PipelineConfig::default()).await.expect("spawn");
 
     handle.send_turn("main", "Hello").await.expect("turn");
 

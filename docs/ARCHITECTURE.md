@@ -188,13 +188,6 @@ Imports flow downward only. Lower-layer crates must not depend on higher layers.
 | `ChannelProvider` | agora | Send/receive on a messaging channel |
 | `LlmProvider` | hermeneus | LLM API calls |
 
-### Planned crates
-
-| Crate | Domain | Milestone |
-|-------|--------|-----------|
-| `prostheke` | WASM plugin host (wasmtime) | M5 |
-| `autarkeia` | Agent export/import | M5 |
-
 ---
 
 ## Adding components

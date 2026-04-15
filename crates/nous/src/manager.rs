@@ -140,6 +140,7 @@ impl NousManager {
     /// Spawn a new nous actor and return its handle.
     ///
     /// If an actor with the same id already exists, the old actor is shut down first.
+    /// Returns an error if workspace validation fails (e.g., missing SOUL.md).
     ///
     /// # Cancel safety
     ///
@@ -150,7 +151,7 @@ impl NousManager {
         &mut self,
         config: NousConfig,
         pipeline_config: PipelineConfig,
-    ) -> NousHandle {
+    ) -> crate::error::Result<NousHandle> {
         let id = config.id.to_string();
 
         if let Some(old) = self.actors.remove(&id) {
@@ -170,12 +171,20 @@ impl NousManager {
     }
 
     /// Internal spawn that does not check for existing actors.
+    ///
+    /// Validates the workspace before creating the actor. Returns an error if
+    /// validation fails (e.g., missing SOUL.md), preventing zombie entries (#3248).
     async fn spawn_inner(
         &mut self,
         config: NousConfig,
         pipeline_config: PipelineConfig,
-    ) -> NousHandle {
+    ) -> crate::error::Result<NousHandle> {
         let id = config.id.to_string();
+
+        // WHY: Validate before creating the actor so a validation failure (e.g.,
+        // missing SOUL.md) never produces a zombie ActorEntry that delays restart
+        // for the full health-check backoff cycle (#3248).
+        actor::validate_workspace(&self.oikos, &id).await?;
 
         let extra_bootstrap = {
             let estimator = CharEstimator::new(u64::from(config.generation.chars_per_token));
@@ -232,7 +241,7 @@ impl NousManager {
                 active_turn,
             },
         );
-        handle
+        Ok(handle)
     }
 
     /// Look up a handle by nous id.
@@ -426,23 +435,33 @@ impl NousManager {
             }
         }
 
-        let handle = self
+        match self
             .spawn_inner(config.clone(), pipeline_config.clone())
-            .await;
+            .await
+        {
+            Ok(handle) => {
+                if let Some(entry) = self.actors.get_mut(id) {
+                    entry.restart_count = restart_count + 1;
+                    entry.last_restart = Some(std::time::Instant::now());
+                    entry.consecutive_misses = 0;
+                }
 
-        if let Some(entry) = self.actors.get_mut(id) {
-            entry.restart_count = restart_count + 1;
-            entry.last_restart = Some(std::time::Instant::now());
-            entry.consecutive_misses = 0;
+                info!(
+                    nous_id = %id,
+                    restart_count = prev_restart_count + 1,
+                    "actor restarted successfully"
+                );
+
+                drop(handle);
+            }
+            Err(e) => {
+                error!(
+                    nous_id = %id,
+                    error = %e,
+                    "failed to restart actor — workspace validation failed"
+                );
+            }
         }
-
-        info!(
-            nous_id = %id,
-            restart_count = prev_restart_count + 1,
-            "actor restarted successfully"
-        );
-
-        drop(handle);
     }
 
     /// Spawn a background task that runs `health_cycle` on an interval.
