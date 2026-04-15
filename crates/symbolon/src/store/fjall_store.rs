@@ -28,9 +28,7 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use fjall::{KeyspaceCreateOptions, SingleWriterTxDatabase};
-use jiff::Zoned;
 use serde::{Deserialize, Serialize};
-use snafu::IntoError as _;
 use tracing::{info, instrument, warn};
 
 use crate::error::{self, Result};
@@ -67,7 +65,7 @@ struct ApiKeyEntry {
 
 /// ISO 8601 timestamp string for "now".
 fn now_iso() -> String {
-    Zoned::now().strftime("%Y-%m-%dT%H:%M:%S%.3fZ").to_string()
+    koina::fjall::now_iso()
 }
 
 fn decode_role(role_str: &str) -> Role {
@@ -86,23 +84,18 @@ fn storage_err(message: impl Into<String>) -> crate::error::Error {
 
 // ── AuthStore ─────────────────────────────────────────────────────────────────
 
+/// Partitions used by the symbolon auth store.
+const PARTITIONS: &[&str] = &["users", "api_keys", "revoked_tokens"];
+
 /// Auth store backed by `fjall` (pure-Rust LSM-tree).
 ///
 /// Open with [`AuthStore::open`] for persistent storage or
 /// [`AuthStore::open_in_memory`] for ephemeral storage (test-only).
 pub(crate) struct AuthStore {
     db: Arc<SingleWriterTxDatabase>,
-    /// Shared write mutex.
-    ///
-    /// WHY: `SingleWriterTxDatabase` serialises writers internally, but the
-    /// symbolon API takes `&self` for all write methods (matching the `SQLite`
-    /// backend where `Connection` uses interior mutability). We use a `Mutex<()>`
-    /// so only one write runs at a time, matching that serial contract.
+    /// Shared write mutex — see [`koina::fjall::FjallDb::write_lock`].
     write_lock: Mutex<()>,
     /// Kept alive to auto-delete the temp directory when the store is dropped.
-    ///
-    /// WHY: the leading `_` suppresses `dead_code` — this field is only needed
-    /// for its `Drop` side effect (deleting the temp directory).
     _temp_dir: Option<tempfile::TempDir>,
 }
 
@@ -111,18 +104,9 @@ impl AuthStore {
     #[instrument(skip(path))]
     pub(crate) fn open(path: &Path) -> Result<Self> {
         info!(path = %path.display(), "Opening fjall auth store");
-        std::fs::create_dir_all(path).map_err(|e| {
-            error::IoSnafu {
-                path: path.to_path_buf(),
-            }
-            .into_error(e)
-        })?;
-
-        let db = SingleWriterTxDatabase::builder(path)
-            .open()
-            .map_err(|e| storage_err(format!("fjall open: {e}")))?;
-
-        Self::init(db, None)
+        let fdb = koina::fjall::FjallDb::open(path, PARTITIONS)
+            .map_err(|e| storage_err(e.to_string()))?;
+        Ok(Self::from_fjall_db(fdb))
     }
 
     /// Open an ephemeral auth store backed by a `TempDir` (for testing).
@@ -130,31 +114,17 @@ impl AuthStore {
     /// The directory and all data are deleted when the returned store is dropped.
     #[instrument]
     pub(crate) fn open_in_memory() -> Result<Self> {
-        let dir = tempfile::TempDir::new().map_err(|e| {
-            error::IoSnafu {
-                path: std::path::PathBuf::from("<tempdir>"),
-            }
-            .into_error(e)
-        })?;
-
-        let db = SingleWriterTxDatabase::builder(dir.path())
-            .open()
-            .map_err(|e| storage_err(format!("fjall open temp: {e}")))?;
-
-        Self::init(db, Some(dir))
+        let fdb = koina::fjall::FjallDb::open_temp(PARTITIONS)
+            .map_err(|e| storage_err(e.to_string()))?;
+        Ok(Self::from_fjall_db(fdb))
     }
 
-    fn init(db: SingleWriterTxDatabase, temp_dir: Option<tempfile::TempDir>) -> Result<Self> {
-        // Open all partitions eagerly so they exist before any read/write.
-        for name in &["users", "api_keys", "revoked_tokens"] {
-            db.keyspace(name, KeyspaceCreateOptions::default)
-                .map_err(|e| storage_err(format!("fjall open partition {name}: {e}")))?;
+    fn from_fjall_db(fdb: koina::fjall::FjallDb) -> Self {
+        Self {
+            db: Arc::new(fdb.db),
+            write_lock: fdb.write_lock,
+            _temp_dir: fdb._temp_dir,
         }
-        Ok(Self {
-            db: Arc::new(db),
-            write_lock: Mutex::new(()),
-            _temp_dir: temp_dir,
-        })
     }
 
     // ── Partition helpers ─────────────────────────────────────────────────────

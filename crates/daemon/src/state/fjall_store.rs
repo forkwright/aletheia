@@ -13,10 +13,13 @@
 use std::path::Path;
 
 use fjall::{KeyspaceCreateOptions, Readable as _, SingleWriterTxDatabase};
-use snafu::{IntoError as _, ResultExt as _};
+use snafu::ResultExt as _;
 
 use crate::error::{self, Result};
 use crate::state::TaskState;
+
+/// Partition name for task state records.
+const PARTITION: &str = "ops:tasks";
 
 /// Fjall-backed store for task execution state.
 ///
@@ -25,9 +28,6 @@ use crate::state::TaskState;
 pub(crate) struct TaskStateStore {
     db: SingleWriterTxDatabase,
 }
-
-/// Partition name for task state records.
-const PARTITION: &str = "ops:tasks";
 
 #[cfg_attr(
     not(test),
@@ -46,30 +46,14 @@ impl TaskStateStore {
     /// Returns `Storage` if the fjall keyspace cannot be opened or the
     /// `ops:tasks` partition cannot be initialised.
     pub(crate) fn open(path: &Path) -> Result<Self> {
-        std::fs::create_dir_all(path).map_err(|e| {
-            crate::error::MaintenanceIoSnafu {
-                context: format!("creating task-state directory: {}", path.display()),
-            }
-            .into_error(e)
-        })?;
-
-        let db = SingleWriterTxDatabase::builder(path).open().map_err(|e| {
+        let fdb = koina::fjall::FjallDb::open(path, &[PARTITION]).map_err(|e| {
             error::StorageSnafu {
-                message: format!("fjall open task-state store: {e}"),
+                message: e.to_string(),
             }
             .build()
         })?;
 
-        // Eagerly open the partition so it exists before any read/write.
-        db.keyspace(PARTITION, KeyspaceCreateOptions::default)
-            .map_err(|e| {
-                error::StorageSnafu {
-                    message: format!("fjall open partition {PARTITION}: {e}"),
-                }
-                .build()
-            })?;
-
-        Ok(Self { db })
+        Ok(Self { db: fdb.db })
     }
 
     /// Load all persisted task states.

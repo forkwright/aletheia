@@ -14,7 +14,7 @@ workspace = true
 # WHY: fjall is the new default backend -- pure Rust, zero C dependency.
 # sqlite is preserved for backward compatibility during the Wave 4 migration window.
 default = ["fjall"]
-fjall = ["dep:fjall"]
+fjall = ["dep:fjall", "koina/fjall"]
 sqlite = ["dep:rusqlite"]
 # WHY: gates anomaly detection (prosoche memory consistency checks) on the
 # heavy CozoDB-backed KnowledgeStore from episteme. Not all daemon users need it.
