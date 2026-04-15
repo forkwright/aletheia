@@ -5,9 +5,12 @@
 //! file in a partial-write state visible to readers.
 //!
 //! The pattern: write → fsync → rename.
-#![expect(
-    dead_code,
-    reason = "infrastructure for future HNSW persistence integration"
+#![cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "infrastructure for future HNSW persistence integration; exercised by this module's own tests"
+    )
 )]
 use std::fs::File;
 use std::io::Write;
