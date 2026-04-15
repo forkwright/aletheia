@@ -93,6 +93,10 @@ pub enum ServerError {
 /// until the OS delivers a shutdown signal; dropping it at that point skips the
 /// SIGHUP-handler drain and `shutdown_readonly` call, which may leave actor tasks
 /// running until the runtime exits.
+#[expect(
+    clippy::expect_used,
+    reason = "startup-time invariants: default nous spawn and signal handlers are not recoverable errors"
+)]
 pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
     let oikos = Oikos::from_root(&config.instance_path);
     oikos.validate().context(ValidationSnafu)?;
