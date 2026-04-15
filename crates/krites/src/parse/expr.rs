@@ -1,4 +1,12 @@
 //! Expression parsing from Datalog source.
+#![expect(
+    clippy::as_conversions,
+    clippy::indexing_slicing,
+    clippy::needless_return,
+    clippy::pedantic,
+    clippy::result_large_err,
+    reason = "Datalog expression parser — numeric casts for Unicode escapes, indexing into pest pairs by structural position, InternalError is the crate-wide Result type"
+)]
 
 use std::collections::BTreeMap;
 use std::sync::LazyLock;

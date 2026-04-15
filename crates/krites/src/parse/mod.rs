@@ -1,4 +1,10 @@
 //! AST for the datalog query language.
+#![expect(
+    clippy::needless_return,
+    clippy::pedantic,
+    clippy::result_large_err,
+    reason = "Datalog parser top-level — InternalError is the crate-wide Result type, pedantic style deferred"
+)]
 
 use std::cmp::{max, min};
 use std::collections::{BTreeMap, BTreeSet};
