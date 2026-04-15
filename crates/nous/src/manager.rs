@@ -297,6 +297,10 @@ impl NousManager {
 
     /// Run one health-check cycle: ping all actors, track misses, restart dead ones.
     ///
+    /// Also proactively decays `restart_count` for actors that have been stable
+    /// longer than `manager_restart_decay_window_secs`, so the next crash after
+    /// a long period of uptime starts from a fresh backoff.
+    ///
     /// Call this periodically from a background task.
     ///
     /// # Cancel safety
@@ -307,11 +311,29 @@ impl NousManager {
     /// poller task that never races with a cancellation signal).
     pub async fn health_cycle(&mut self) {
         let health = self.check_health().await;
+        let restart_decay_window =
+            Duration::from_secs(self.nous_behavior.manager_restart_decay_window_secs);
 
         let mut to_restart: Vec<String> = Vec::new();
 
         for (id, actor_health) in &health {
             if let Some(entry) = self.actors.get_mut(id) {
+                // WHY: proactively decay restart_count during stable operation so
+                // that a crash after long uptime starts from a fresh backoff, not
+                // the penalty accumulated from prior rapid-fire failures.
+                if entry.restart_count > 0 {
+                    let stable_since = entry.last_restart.unwrap_or(entry.last_start);
+                    if stable_since.elapsed() >= restart_decay_window {
+                        debug!(
+                            nous_id = %id,
+                            old_restart_count = entry.restart_count,
+                            "restart_count decayed to 0 after stable operation"
+                        );
+                        entry.restart_count = 0;
+                        entry.last_restart = None;
+                    }
+                }
+
                 if actor_health.alive {
                     entry.consecutive_misses = 0;
                 } else {

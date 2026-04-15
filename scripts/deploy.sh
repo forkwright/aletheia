@@ -157,9 +157,15 @@ check_health() {
     while (( elapsed < HEALTH_TIMEOUT )); do
         if health_response=$(curl -sf --max-time 5 "$HEALTH_URL" 2>/dev/null); then
             local status
-            status=$(echo "$health_response" | jq -r '.status // empty' 2>/dev/null) || true  # NOTE: intentional - failure is non-fatal here
+            if ! status=$(echo "$health_response" | jq -r '.status // empty' 2>&1); then
+                log_warn "jq failed parsing health status: ${status}"
+                status=""
+            fi
             local version
-            version=$(echo "$health_response" | jq -r '.version // empty' 2>/dev/null) || true  # NOTE: intentional - failure is non-fatal here
+            if ! version=$(echo "$health_response" | jq -r '.version // empty' 2>&1); then
+                log_warn "jq failed parsing health version: ${version}"
+                version=""
+            fi
 
             # Post-deploy requires "healthy". Rollback passes "allow_degraded"
             # because partial recovery is better than a crash loop.
@@ -219,8 +225,12 @@ do_rollback() {
         systemctl --user stop "$SERVICE"
     fi
 
-    # Restore binary
-    cp -- "$backup" "$BINARY_DST"
+    # Restore binary (atomic: write to temp on same filesystem, then rename)
+    local rollback_tmp
+    rollback_tmp=$(mktemp -p "$(dirname "$BINARY_DST")" aletheia.rollback.XXXXXXXXXX) \
+        || die "Failed to create temp file for rollback (mktemp failed)"
+    cp -- "$backup" "$rollback_tmp"
+    mv -- "$rollback_tmp" "$BINARY_DST"
     log "Restored binary from $backup"
 
     # Restart service
@@ -252,14 +262,15 @@ refresh_token() {
         return 0
     fi
 
-    local token
-    if ! token=$(jq -r '.claudeAiOauth.accessToken // empty' "$cred_file" 2>/dev/null); then
-        log_warn "token refresh failed: jq returned empty"
+    local token jq_err
+    if ! jq_err=$(jq -r '.claudeAiOauth.accessToken // empty' "$cred_file" 2>&1); then
+        log_warn "token refresh failed: jq error: ${jq_err}"
         return 1
     fi
+    token="$jq_err"
 
     if [[ -z "$token" ]]; then
-        log_warn "token refresh failed: jq returned empty"
+        log_warn "token refresh failed: accessToken field is empty or missing"
         return 1
     fi
 
@@ -316,7 +327,12 @@ download_binary() {
             --output "$tmp_bin" \
             --clobber 2>/dev/null; then
             chmod +x -- "$tmp_bin"
-            cp -- "$tmp_bin" "$BINARY_SRC"
+            # Atomic: write to temp on same filesystem, then rename
+            local gh_tmp
+            gh_tmp=$(mktemp -p "$(dirname "$BINARY_SRC")" aletheia.dl.XXXXXXXXXX) \
+                || { log "WARNING: mktemp failed for gh download"; return 1; }
+            cp -- "$tmp_bin" "$gh_tmp"
+            mv -- "$gh_tmp" "$BINARY_SRC"
             log "Downloaded binary via gh: ${BINARY_SRC}"
             return 0
         fi
@@ -326,7 +342,12 @@ download_binary() {
     local url="https://github.com/${repo}/releases/download/${version}/${asset_name}"
     if curl -fsSL --max-time 120 --output "$tmp_bin" -- "$url" 2>/dev/null; then
         chmod +x -- "$tmp_bin"
-        cp -- "$tmp_bin" "$BINARY_SRC"
+        # Atomic: write to temp on same filesystem, then rename
+        local curl_tmp
+        curl_tmp=$(mktemp -p "$(dirname "$BINARY_SRC")" aletheia.dl.XXXXXXXXXX) \
+            || { log "WARNING: mktemp failed for curl download"; return 1; }
+        cp -- "$tmp_bin" "$curl_tmp"
+        mv -- "$curl_tmp" "$BINARY_SRC"
         log "Downloaded binary via curl: ${BINARY_SRC}"
         return 0
     fi
