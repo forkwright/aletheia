@@ -18,10 +18,18 @@ use crate::data::tuple::TupleIter;
 use crate::data::value::DataValue;
 use crate::error::InternalResult as Result;
 #[cfg(feature = "graph-algo")]
+#[expect(
+    clippy::wildcard_imports,
+    reason = "graph algorithm registry re-exports all algo types for registration"
+)]
 use crate::fixed_rule::algos::*;
 #[cfg(feature = "graph-algo")]
 use crate::fixed_rule::csr::{CsrBuilder, DirectedCsrGraph};
 use crate::fixed_rule::error::InvalidInputSnafu;
+#[expect(
+    clippy::wildcard_imports,
+    reason = "utility rule registry re-exports all utility types for registration"
+)]
 use crate::fixed_rule::utilities::*;
 use crate::parse::SourceSpan;
 use crate::runtime::db::Poison;
@@ -54,6 +62,18 @@ pub struct FixedRuleInputRelation<'a, 'b> {
     tx: &'a SessionTx<'b>,
 }
 
+#[expect(
+    clippy::elidable_lifetime_names,
+    reason = "explicit lifetimes clarify the borrow relationship between input relation and session"
+)]
+#[expect(
+    private_interfaces,
+    reason = "pub trait methods return crate-internal InternalError and DirectedCsrGraph — consumed within crate boundary"
+)]
+#[expect(
+    clippy::result_large_err,
+    reason = "InternalError carries structured context — boxing deferred to avoid API churn"
+)]
 impl<'a, 'b> FixedRuleInputRelation<'a, 'b> {
     /// The arity of the input relation.
     ///
@@ -92,6 +112,10 @@ impl<'a, 'b> FixedRuleInputRelation<'a, 'b> {
     ///
     /// Returns an error if the requested rule cannot be found in the temporary
     /// stores or if accessing a stored relation fails.
+    #[expect(
+        clippy::iter_not_returning_iterator,
+        reason = "returns boxed TupleIter which is an iterator — name matches Datalog semantics"
+    )]
     pub fn iter(&self) -> Result<TupleIter<'a>> {
         Ok(match &self.arg_manifest {
             MagicFixedRuleRuleArg::InMem { name, .. } => {
@@ -160,6 +184,22 @@ impl<'a, 'b> FixedRuleInputRelation<'a, 'b> {
     /// Returns an error if iteration fails or if the relation cannot be
     /// interpreted as edges (tuples must have at least two elements).
     #[cfg(feature = "graph-algo")]
+    #[expect(
+        clippy::mutable_key_type,
+        reason = "DataValue implements Hash via canonical byte representation — safe as BTreeMap key"
+    )]
+    #[expect(
+        clippy::default_trait_access,
+        reason = "Default::default() is idiomatic for type-inferred BTreeMap initialization"
+    )]
+    #[expect(
+        clippy::manual_let_else,
+        reason = "match on tuple.next() sets error state and returns None — not a simple let-else pattern"
+    )]
+    #[expect(
+        clippy::as_conversions,
+        reason = "vertex index u32 cast is guarded by graph size — vertex count fits u32"
+    )]
     pub fn as_directed_graph(
         &self,
         undirected: bool,
@@ -249,6 +289,39 @@ impl<'a, 'b> FixedRuleInputRelation<'a, 'b> {
     /// as edges, if edge weights are not finite numbers, or if negative weights
     /// are provided when `allow_negative_weights` is `false`.
     #[cfg(feature = "graph-algo")]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "weighted graph construction requires inline error handling for edge weight validation"
+    )]
+    #[expect(
+        clippy::mutable_key_type,
+        reason = "DataValue implements Hash via canonical byte representation — safe as BTreeMap key"
+    )]
+    #[expect(
+        clippy::default_trait_access,
+        reason = "Default::default() is idiomatic for type-inferred BTreeMap initialization"
+    )]
+    #[expect(
+        clippy::type_complexity,
+        reason = "graph construction returns vertex list, inverse map, and CSR graph together"
+    )]
+    #[expect(
+        clippy::as_conversions,
+        clippy::cast_possible_truncation,
+        reason = "vertex index u32 cast and f64-to-f32 edge weight cast — graph algorithms use f32 precision"
+    )]
+    #[expect(
+        clippy::map_unwrap_or,
+        reason = "map().unwrap_or_else() reads more clearly for Option<span> fallback chains"
+    )]
+    #[expect(
+        clippy::single_match_else,
+        reason = "match on Option<float> has distinct Some/None error paths that read better than if-let"
+    )]
+    #[expect(
+        clippy::manual_let_else,
+        reason = "match on tuple.next() sets error state and returns None — not a simple let-else pattern"
+    )]
     pub fn as_directed_weighted_graph(
         &self,
         undirected: bool,
@@ -331,7 +404,7 @@ impl<'a, 'b> FixedRuleInputRelation<'a, 'b> {
                                     .into(),
                                 );
                                 return None;
-                            };
+                            }
 
                             if f < 0. && !allow_negative_weights {
                                 error = Some(
@@ -390,6 +463,14 @@ impl<'a, 'b> FixedRuleInputRelation<'a, 'b> {
     }
 }
 
+#[expect(
+    private_interfaces,
+    reason = "pub trait methods return crate-internal InternalError — consumed within crate boundary"
+)]
+#[expect(
+    clippy::result_large_err,
+    reason = "InternalError carries structured context — boxing deferred to avoid API churn"
+)]
 impl<'a, 'b> FixedRulePayload<'a, 'b> {
     /// Get the total number of input relations.
     pub fn inputs_count(&self) -> usize {
@@ -526,6 +607,12 @@ impl<'a, 'b> FixedRulePayload<'a, 'b> {
     ///
     /// Returns an error if the option is not found and no default is provided,
     /// or if the option value is not a positive integer.
+    #[expect(
+        clippy::as_conversions,
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "usize-to-i64 and i64-to-usize casts are guarded by the positivity check above"
+    )]
     pub fn pos_integer_option(&self, name: &str, default: Option<usize>) -> Result<usize> {
         #[expect(clippy::cast_possible_wrap, reason = "value fits i64")]
         let i = self.integer_option(name, default.map(|i| i as i64))?;
@@ -546,6 +633,12 @@ impl<'a, 'b> FixedRulePayload<'a, 'b> {
     ///
     /// Returns an error if the option is not found and no default is provided,
     /// or if the option value is negative.
+    #[expect(
+        clippy::as_conversions,
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "usize-to-i64 and i64-to-usize casts are guarded by the non-negativity check above"
+    )]
     pub fn non_neg_integer_option(&self, name: &str, default: Option<usize>) -> Result<usize> {
         #[expect(clippy::cast_possible_wrap, reason = "value fits i64")]
         let i = self.integer_option(name, default.map(|i| i as i64))?;
@@ -643,6 +736,14 @@ impl<'a, 'b> FixedRulePayload<'a, 'b> {
 }
 
 /// Trait for an implementation of an algorithm or a utility
+#[expect(
+    private_interfaces,
+    reason = "pub trait methods return crate-internal InternalError — consumed within crate boundary"
+)]
+#[expect(
+    clippy::result_large_err,
+    reason = "InternalError carries structured context — boxing deferred to avoid API churn"
+)]
 pub trait FixedRule: Send + Sync {
     /// Called to initialize the options given.
     /// Will always be called once, before anything else.
@@ -847,6 +948,10 @@ impl std::fmt::Display for BadExprValueError {
 
 impl std::error::Error for BadExprValueError {}
 
+#[expect(
+    clippy::result_large_err,
+    reason = "InternalError carries structured context — boxing deferred to avoid API churn"
+)]
 impl MagicFixedRuleRuleArg {
     pub(crate) fn arity(
         &self,

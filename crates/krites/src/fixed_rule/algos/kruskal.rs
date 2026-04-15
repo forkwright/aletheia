@@ -19,6 +19,11 @@ use crate::runtime::temp_store::RegularTempStore;
 
 pub(crate) struct MinimumSpanningForestKruskal;
 
+#[expect(
+    clippy::as_conversions,
+    clippy::indexing_slicing,
+    reason = "graph Kruskal indices are bounds-checked by the CSR node count"
+)]
 impl FixedRule for MinimumSpanningForestKruskal {
     /// Run Kruskal's minimum spanning forest algorithm.
     ///
@@ -64,6 +69,19 @@ impl FixedRule for MinimumSpanningForestKruskal {
 /// # Complexity
 ///
 /// O(E log E) dominated by sorting. Union-find operations are O(α(V)).
+#[expect(
+    clippy::as_conversions,
+    clippy::indexing_slicing,
+    reason = "Kruskal union-find indices are bounds-checked by the node count and parent arrays"
+)]
+#[expect(
+    clippy::result_large_err,
+    reason = "InternalError carries structured context — boxing deferred to avoid API churn"
+)]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "Poison is lightweight and passed by value for ergonomic .check() calls"
+)]
 fn kruskal(edges: &DirectedCsrGraph<f32>, poison: Poison) -> Result<Vec<(u32, u32, f32)>> {
     let mut pq = PriorityQueue::new();
     let mut uf = UnionFind::new(edges.node_count());
@@ -96,6 +114,11 @@ struct UnionFind {
     szs: Vec<u32>,
 }
 
+#[expect(
+    clippy::as_conversions,
+    clippy::indexing_slicing,
+    reason = "union-find parent/size arrays are indexed by node id which is always < node_count"
+)]
 impl UnionFind {
     fn new(n: u32) -> Self {
         Self {

@@ -21,6 +21,19 @@ use crate::runtime::temp_store::RegularTempStore;
 
 pub(crate) struct BetweennessCentrality;
 
+#[expect(
+    clippy::as_conversions,
+    clippy::indexing_slicing,
+    reason = "graph BFS/Dijkstra indices are bounds-checked by the CSR adjacency structure"
+)]
+#[expect(
+    clippy::default_trait_access,
+    reason = "Default::default() is idiomatic for type-inferred HashMap initialization"
+)]
+#[expect(
+    clippy::explicit_into_iter_loop,
+    reason = "explicit .into_iter() clarifies ownership transfer of collected results"
+)]
 impl FixedRule for BetweennessCentrality {
     /// Run betweenness centrality computation (Brandes algorithm variant).
     ///
@@ -100,6 +113,15 @@ impl FixedRule for BetweennessCentrality {
 
 pub(crate) struct ClosenessCentrality;
 
+#[expect(
+    clippy::as_conversions,
+    clippy::indexing_slicing,
+    reason = "graph Dijkstra indices are bounds-checked by the CSR adjacency structure"
+)]
+#[expect(
+    clippy::cloned_instead_of_copied,
+    reason = "OrderedFloat is Copy but clippy suggests .copied() inconsistently — .cloned() is clearer"
+)]
 impl FixedRule for ClosenessCentrality {
     /// Run closeness centrality computation.
     ///
@@ -166,6 +188,19 @@ impl FixedRule for ClosenessCentrality {
 /// # Complexity
 ///
 /// O(E log V) using binary heap. Space: O(V) for distance array.
+#[expect(
+    clippy::as_conversions,
+    clippy::indexing_slicing,
+    reason = "graph Dijkstra indices are bounds-checked by the visited set and CSR adjacency structure"
+)]
+#[expect(
+    clippy::result_large_err,
+    reason = "InternalError carries structured context — boxing deferred to avoid API churn"
+)]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "Poison is lightweight and passed by value for ergonomic .check() calls"
+)]
 pub(crate) fn dijkstra_cost_only(
     edges: &DirectedCsrGraph<f32>,
     start: u32,

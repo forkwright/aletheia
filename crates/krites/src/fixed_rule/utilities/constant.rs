@@ -15,6 +15,22 @@ use crate::runtime::db::Poison;
 use crate::runtime::temp_store::RegularTempStore;
 pub(crate) struct Constant;
 
+#[expect(
+    clippy::default_trait_access,
+    reason = "Default::default() is idiomatic for SourceSpan::default() in error construction"
+)]
+#[expect(
+    clippy::semicolon_if_nothing_returned,
+    reason = "trailing semicolons in output blocks kept for consistency with surrounding style"
+)]
+#[expect(
+    clippy::manual_let_else,
+    reason = "match on eval_to_const with error construction reads better than let-else"
+)]
+#[expect(
+    clippy::unnecessary_semicolon,
+    reason = "trailing semicolons in if-let blocks kept for consistency with surrounding style"
+)]
 impl FixedRule for Constant {
     fn run(
         &self,

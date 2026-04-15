@@ -35,6 +35,10 @@ impl StronglyConnectedComponent {
 }
 
 #[cfg(feature = "graph-algo")]
+#[expect(
+    clippy::as_conversions,
+    reason = "graph SCC group indices are small values cast between u32/i64 — guarded by graph size"
+)]
 impl FixedRule for StronglyConnectedComponent {
     /// Run Tarjan's strongly connected components algorithm.
     ///
@@ -101,6 +105,11 @@ pub(crate) struct TarjanSccG {
     stack: Vec<u32>,
 }
 
+#[expect(
+    clippy::as_conversions,
+    clippy::indexing_slicing,
+    reason = "Tarjan SCC DFS indices are bounds-checked by the CSR node count and ids/low/on_stack arrays"
+)]
 impl TarjanSccG {
     pub(crate) fn new(graph: DirectedCsrGraph) -> Self {
         let graph_size = graph.node_count();
@@ -118,6 +127,14 @@ impl TarjanSccG {
     /// # Complexity
     ///
     /// O(V + E) - linear time DFS-based algorithm.
+    #[expect(
+        clippy::result_large_err,
+        reason = "InternalError carries structured context — boxing deferred to avoid API churn"
+    )]
+    #[expect(
+        clippy::needless_pass_by_value,
+        reason = "Poison is lightweight and passed by value for ergonomic .check() calls"
+    )]
     pub(crate) fn run(mut self, poison: Poison) -> Result<Vec<Vec<u32>>> {
         for i in 0..self.graph.node_count() {
             if self.ids[i as usize].is_none() {
