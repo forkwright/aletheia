@@ -7,54 +7,9 @@
 )]
 
 use std::collections::BTreeMap;
-use std::sync::Arc;
 
-use super::super::super::*;
-use crate::knowledge::{
-    EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactTemporal,
-};
-
-const DIM: usize = 4;
-
-fn make_store() -> Arc<KnowledgeStore> {
-    KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim: DIM, ..Default::default() }).expect("open_mem")
-}
-
-fn test_ts(s: &str) -> jiff::Timestamp {
-    crate::knowledge::parse_timestamp(s).expect("valid test timestamp in test helper")
-}
-
-fn make_fact(id: &str, nous_id: &str, content: &str) -> Fact {
-    Fact {
-        id: crate::id::FactId::new(id).expect("valid test id"),
-        nous_id: nous_id.to_owned(),
-        content: content.to_owned(),
-        fact_type: String::new(),
-        temporal: FactTemporal {
-            valid_from: test_ts("2026-01-01"),
-            valid_to: crate::knowledge::far_future(),
-            recorded_at: test_ts("2026-03-01T00:00:00Z"),
-        },
-        provenance: FactProvenance {
-            confidence: 0.9,
-            tier: EpistemicTier::Inferred,
-            source_session_id: None,
-            stability_hours: 720.0,
-        },
-        lifecycle: FactLifecycle {
-            superseded_by: None,
-            is_forgotten: false,
-            forgotten_at: None,
-            forget_reason: None,
-        },
-        access: FactAccess {
-            access_count: 0,
-            last_accessed_at: None,
-        },
-        scope: None,
-    }
-}
-
+use crate::knowledge_store::QueryResult;
+use crate::test_fixtures::{make_fact, make_store};
 #[test]
 fn query_facts_excludes_expired() {
     let store = make_store();

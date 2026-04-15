@@ -1,12 +1,8 @@
 #![expect(clippy::expect_used, reason = "test assertions")]
 #![expect(clippy::unwrap_used, reason = "test assertions")]
 
-use super::SessionStore;
+use crate::test_fixtures::test_store;
 use crate::types::{Role, SessionStatus};
-
-fn test_store() -> SessionStore {
-    SessionStore::open_in_memory().expect("open fjall in-memory store")
-}
 
 #[test]
 fn create_and_find_session() {

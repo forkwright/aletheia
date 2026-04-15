@@ -1,11 +1,7 @@
 //! Tests for blackboard CRUD and expiry.
 #![expect(clippy::expect_used, reason = "test assertions")]
-use super::super::SessionStore;
+use crate::test_fixtures::test_store;
 use crate::types::Role;
-
-fn test_store() -> SessionStore {
-    SessionStore::open_in_memory().expect("open in-memory store")
-}
 
 #[test]
 fn blackboard_crud() {

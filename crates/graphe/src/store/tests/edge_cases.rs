@@ -4,12 +4,8 @@
     clippy::indexing_slicing,
     reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
 )]
-use super::super::SessionStore;
+use crate::test_fixtures::test_store;
 use crate::types::Role;
-
-fn test_store() -> SessionStore {
-    SessionStore::open_in_memory().expect("open in-memory store")
-}
 
 #[test]
 fn history_empty_session() {
