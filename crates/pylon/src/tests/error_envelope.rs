@@ -204,7 +204,7 @@ async fn archive_post_nonexistent_session_returns_404_with_envelope() {
 }
 
 #[tokio::test]
-async fn get_archived_session_returns_200_with_status() {
+async fn get_archived_session_returns_404() {
     let (router, _dir) = app().await;
     let created = create_test_session(&router).await;
     let id = created["id"]
@@ -222,6 +222,7 @@ async fn get_archived_session_returns_200_with_status() {
         "archive via DELETE should return 204"
     );
 
+    // WHY: archived sessions must not be visible via normal GET (#3196).
     let resp = router
         .clone()
         .oneshot(authed_get(&format!("/api/v1/sessions/{id}")))
@@ -229,12 +230,11 @@ async fn get_archived_session_returns_200_with_status() {
         .expect("GET /sessions/{id} request should succeed");
     assert_eq!(
         resp.status(),
-        StatusCode::OK,
-        "archived session should be retrievable via GET"
+        StatusCode::NOT_FOUND,
+        "archived session should not be retrievable via GET"
     );
     let body = body_json(resp).await;
-    assert_eq!(body["id"], id);
-    assert_eq!(body["status"], "archived");
+    assert_error_envelope(&body, "session_not_found");
 }
 
 #[tokio::test]

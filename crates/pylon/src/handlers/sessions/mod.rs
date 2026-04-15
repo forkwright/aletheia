@@ -211,6 +211,12 @@ pub async fn get_session(
     Path(id): Path<String>,
 ) -> Result<Json<SessionResponse>, ApiError> {
     let session = find_session(&state, &id).await?;
+    // WHY: archived sessions must not be visible via normal GET (#3196).
+    // The unarchive endpoint uses `find_session` directly (any status),
+    // so this filter only affects the read path.
+    if session.status == SessionStatus::Archived {
+        return Err(SessionNotFoundSnafu { id: id.clone() }.build());
+    }
     Ok(Json(SessionResponse::from_mneme(&session)))
 }
 
