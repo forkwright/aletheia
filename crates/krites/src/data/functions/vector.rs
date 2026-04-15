@@ -1,4 +1,9 @@
 //! Vector creation and distance operations.
+#![expect(unsafe_code, reason = "base64-decoded vectors require unsafe reinterpret via ArrayView1::from_shape_ptr")]
+#![expect(clippy::as_conversions, reason = "vector operations require pointer and numeric casts — engine-internal")]
+#![expect(clippy::cast_ptr_alignment, reason = "global allocator guarantees alignment; debug_assert verifies")]
+#![expect(clippy::ptr_as_ptr, reason = "pointer casts required for byte-to-float reinterpretation")]
+#![expect(clippy::too_many_lines, reason = "op_vec handles multiple input types and vector element types")]
 use std::mem;
 
 use base64::Engine;

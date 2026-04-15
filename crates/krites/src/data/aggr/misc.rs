@@ -1,4 +1,5 @@
 //! Miscellaneous aggregation operators: path, choice, bitwise.
+#![expect(clippy::assigning_clones, reason = "aggregation accumulators clone into existing storage — clone_from not always applicable")]
 use super::super::error::*;
 
 type Result<T> = DataResult<T>;
@@ -124,7 +125,7 @@ impl NormalAggrObj for AggrBitAnd {
         match value {
             DataValue::Bytes(bs) => {
                 if self.res.is_empty() {
-                    self.res = bs.to_vec();
+                    self.res = bs.clone();
                 } else {
                     snafu::ensure!(
                         self.res.len() == bs.len(),
@@ -195,7 +196,7 @@ impl NormalAggrObj for AggrBitOr {
         match value {
             DataValue::Bytes(bs) => {
                 if self.res.is_empty() {
-                    self.res = bs.to_vec();
+                    self.res = bs.clone();
                 } else {
                     snafu::ensure!(
                         self.res.len() == bs.len(),
@@ -266,7 +267,7 @@ impl NormalAggrObj for AggrBitXor {
         match value {
             DataValue::Bytes(bs) => {
                 if self.res.is_empty() {
-                    self.res = bs.to_vec();
+                    self.res = bs.clone();
                 } else {
                     snafu::ensure!(
                         self.res.len() == bs.len(),

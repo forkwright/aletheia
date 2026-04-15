@@ -1,4 +1,5 @@
 //! Boolean and collection aggregation operators.
+#![expect(clippy::mutable_key_type, reason = "DataValue contains interior-mutable Regex; BTreeSet/Map usage is engine-internal")]
 use std::collections::{BTreeMap, BTreeSet};
 
 use rand::prelude::*;
@@ -248,7 +249,7 @@ impl NormalAggrObj for AggrIntersection {
                         .collect();
                     *accum = new;
                 } else {
-                    self.accum = Some(v.iter().cloned().collect())
+                    self.accum = Some(v.iter().cloned().collect());
                 }
             }
             v => {
@@ -373,6 +374,7 @@ impl NormalAggrObj for AggrChoiceRand {
     fn set(&mut self, value: &DataValue) -> Result<()> {
         self.count += 1;
         #[expect(
+            clippy::as_conversions,
             clippy::cast_precision_loss,
             reason = "i64 to f64: precision loss acceptable"
         )]

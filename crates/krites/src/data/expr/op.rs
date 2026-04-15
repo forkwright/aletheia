@@ -1,4 +1,8 @@
 //! Op and ValueRange types.
+#![expect(clippy::indexing_slicing, reason = "operator evaluation indices are validated by arity checks")]
+#![expect(clippy::result_large_err, reason = "engine InternalError carries structured context — boxing deferred")]
+#![expect(clippy::too_many_lines, reason = "op_to_static maps all builtin operator names — one match arm per op")]
+#![expect(clippy::doc_markdown, reason = "Op and ValueRange are type names in module-level documentation")]
 use std::cmp::{max, min};
 use std::fmt::{Debug, Formatter};
 
@@ -102,7 +106,7 @@ impl<'de> serde::Deserialize<'de> for &'static Op {
 
 struct OpVisitor;
 
-impl<'de> Visitor<'de> for OpVisitor {
+impl Visitor<'_> for OpVisitor {
     type Value = &'static Op;
 
     fn expecting(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {

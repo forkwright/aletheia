@@ -1,4 +1,10 @@
 //! Type checking, conversion, and JSON operation functions.
+#![expect(clippy::as_conversions, reason = "type conversion functions require numeric casts")]
+#![expect(clippy::match_same_arms, reason = "type-check functions intentionally list variants for completeness")]
+#![expect(clippy::indexing_slicing, reason = "json_object pair[0]/pair[1] bounded by chunks_exact(2) iteration")]
+#![expect(clippy::implicit_clone, reason = "val2str().into() is clearer than restructuring the conversion")]
+#![expect(clippy::unnested_or_patterns, reason = "separate DataValue::Num variants are clearer for type dispatch")]
+#![expect(clippy::bool_to_int_with_if, reason = "conditional zero/one is clearer than i64::from(bool) in to_int context")]
 
 use std::str::FromStr;
 

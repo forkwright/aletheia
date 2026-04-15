@@ -1,4 +1,6 @@
 //! Expression evaluation and representation.
+#![expect(clippy::result_large_err, reason = "engine InternalError carries structured context — boxing deferred")]
+#![expect(clippy::indexing_slicing, reason = "expression binding indices are validated by arity checks")]
 
 use std::fmt::Debug;
 
@@ -76,7 +78,7 @@ pub fn eval_bytecode_pred(
         DataValue::Bool(b) => Ok(b),
         v => Err(TypeMismatchSnafu {
             op: "predicate evaluation".to_string(),
-            expected: format!("a boolean value, got {:?}", v),
+            expected: format!("a boolean value, got {v:?}"),
         }
         .build()
         .into()),
@@ -141,7 +143,7 @@ pub fn eval_bytecode(
                     InternalError::from(
                         TypeMismatchSnafu {
                             op: "predicate evaluation".to_string(),
-                            expected: format!("a boolean value, got {:?}", val),
+                            expected: format!("a boolean value, got {val:?}"),
                         }
                         .build(),
                     )

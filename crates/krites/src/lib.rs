@@ -36,16 +36,6 @@ pub(crate) use crate::storage::{Storage, StoreTx};
 #[cfg(test)]
 pub(crate) type DbInstance = crate::runtime::db::Db<crate::storage::mem::MemStorage>;
 
-#[expect(
-    unsafe_code,
-    private_interfaces,
-    clippy::as_conversions,
-    clippy::indexing_slicing,
-    clippy::mutable_key_type,
-    clippy::pedantic,
-    clippy::result_large_err,
-    reason = "krites engine internal — unsafe for DataValue layout, numeric casts and indexing are engine-internal invariants"
-)]
 pub(crate) mod data;
 pub(crate) mod fixed_rule;
 pub(crate) mod fts;

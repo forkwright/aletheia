@@ -1,3 +1,5 @@
+#![expect(clippy::result_large_err, reason = "engine InternalError carries structured context — boxing deferred")]
+#![expect(clippy::missing_fields_in_debug, reason = "MagicFixedRuleApply Debug omits large fields for readability")]
 use std::collections::BTreeMap;
 use std::fmt::{Debug, Display, Formatter};
 use std::sync::Arc;

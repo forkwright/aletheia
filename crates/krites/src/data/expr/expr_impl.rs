@@ -1,4 +1,11 @@
 //! Expr type and all its implementations.
+#![expect(clippy::result_large_err, reason = "engine InternalError carries structured context — boxing deferred")]
+#![expect(clippy::indexing_slicing, reason = "expression evaluator indices are structurally validated by arity checks")]
+#![expect(clippy::explicit_iter_loop, reason = "explicit .iter() calls are idiomatic in expression evaluator match arms")]
+#![expect(clippy::uninlined_format_args, reason = "format args style is consistent within expression evaluation code")]
+#![expect(clippy::match_same_arms, reason = "expression type variants intentionally list each case for clarity")]
+#![expect(clippy::if_not_else, reason = "negative condition reads better for the dispatch control flow")]
+#![expect(clippy::doc_markdown, reason = "DataValue type names in doc comments are engine-internal terminology")]
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Debug, Display, Formatter};
 use std::mem;
@@ -194,7 +201,7 @@ impl Expr {
                         .build(),
                     )
                 })?;
-                *tuple_pos = Some(found_idx)
+                *tuple_pos = Some(found_idx);
             }
             // NOTE: constants have no variable bindings to process
             Expr::Const { .. } => {}
@@ -253,6 +260,7 @@ impl Expr {
     /// Returns an error if the expression contains unevaluated bindings
     /// or if partial evaluation fails.
     #[must_use = "returns the evaluated constant or an error"]
+    #[expect(private_interfaces, reason = "DataError is pub(crate) but eval_to_const is only used within the crate")]
     pub fn eval_to_const(mut self) -> Result<DataValue> {
         self.partial_eval()?;
         match self {
