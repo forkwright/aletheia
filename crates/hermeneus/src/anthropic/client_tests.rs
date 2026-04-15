@@ -26,6 +26,7 @@ fn test_config_with(base_url: &str) -> ProviderConfig {
         max_retries: Some(0),
         pricing: HashMap::new(),
         cc_mimicry: None,
+        prompt_cache_mode: crate::provider::PromptCacheMode::Disabled,
     }
 }
 
@@ -128,6 +129,105 @@ async fn complete_success() {
         response.usage.input_tokens, 10,
         "input tokens should match wire response"
     );
+}
+
+/// #3406: every outbound request must carry a training opt-out header.
+/// Sovereignty default — not configurable.
+#[tokio::test]
+async fn request_carries_training_optout_header() {
+    use wiremock::matchers::header_exists;
+
+    let server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/v1/messages"))
+        .and(header_exists("anthropic-disable-training"))
+        .and(header_exists("anthropic-training-opt-out"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(valid_wire_response_json()))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let config = test_config_with(&server.uri());
+    let provider = AnthropicProvider::from_config(&config).expect("valid config");
+    provider
+        .complete(&test_request())
+        .await
+        .expect("complete ok");
+}
+
+/// #3410: when `prompt_cache_mode` = `Disabled` (default), the serialized
+/// request body must contain no `cache_control` markers regardless of
+/// what the caller put on the `CompletionRequest`.
+#[tokio::test]
+async fn disabled_prompt_cache_strips_cache_control_markers() {
+    use wiremock::matchers::body_string_contains;
+
+    let server = MockServer::start().await;
+
+    // Any request that slips a `cache_control` marker through fails to
+    // match and causes the mock's .expect(1) check to fire.
+    Mock::given(method("POST"))
+        .and(path("/v1/messages"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(valid_wire_response_json()))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    // Negative mock: if the body ever contains cache_control we would
+    // route to this 500 responder instead.
+    Mock::given(method("POST"))
+        .and(path("/v1/messages"))
+        .and(body_string_contains("cache_control"))
+        .respond_with(ResponseTemplate::new(500))
+        .expect(0)
+        .mount(&server)
+        .await;
+
+    let config = test_config_with(&server.uri());
+    assert_eq!(
+        config.prompt_cache_mode,
+        crate::provider::PromptCacheMode::Disabled,
+        "test fixture default must be Disabled"
+    );
+    let provider = AnthropicProvider::from_config(&config).expect("valid config");
+
+    // Caller sets every cache flag; provider must scrub them.
+    let mut req = test_request();
+    req.cache_system = true;
+    req.cache_tools = true;
+    req.cache_turns = true;
+
+    provider.complete(&req).await.expect("complete ok");
+}
+
+/// #3410: when `prompt_cache_mode` = `Ephemeral`, caller-provided cache
+/// flags are honored and `cache_control` markers appear in the wire body.
+#[tokio::test]
+async fn ephemeral_prompt_cache_preserves_cache_control_markers() {
+    use wiremock::matchers::body_string_contains;
+
+    let server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/v1/messages"))
+        .and(body_string_contains("cache_control"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(valid_wire_response_json()))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let mut config = test_config_with(&server.uri());
+    config.prompt_cache_mode = crate::provider::PromptCacheMode::Ephemeral;
+    let provider = AnthropicProvider::from_config(&config).expect("valid config");
+
+    let mut req = test_request();
+    // system: field with cache_system = true triggers the array form with
+    // cache_control on the block.
+    req.system = Some("operator system prompt".to_owned());
+    req.cache_system = true;
+
+    provider.complete(&req).await.expect("complete ok");
 }
 
 #[tokio::test]
@@ -479,7 +579,7 @@ fn backoff_delay_respects_retry_after() {
     let delay = backoff_delay(1, Some(&err));
     assert_eq!(
         delay,
-        Duration::from_millis(5000),
+        Duration::from_secs(5),
         "should use retry-after from rate limit error"
     );
 }

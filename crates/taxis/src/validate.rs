@@ -150,7 +150,8 @@ pub fn validate_section(section: &str, value: &Value) -> Result<(), ValidationEr
         "messaging" => validate_messaging(value, &mut errors),
         "tuning" => validate_tuning(value, &mut errors),
         // NOTE: pass-through sections with no validation rules.
-        "packs" | "pricing" | "sandbox" | "logging" | "mcp" | "localProvider" | "training" => {}
+        "packs" | "pricing" | "sandbox" | "logging" | "mcp" | "localProvider" | "training"
+        | "anthropic" => {}
         _ => errors.push(format!("unknown config section: {section}")),
     }
 

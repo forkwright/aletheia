@@ -121,6 +121,23 @@ workspace = "nous/main"
 # claudeCodeCredentials = "~/.claude/.credentials.json"  # override default path
 # refreshThresholdSecs = 3600  # refresh token when less than N seconds remain
 
+# --- Anthropic sovereignty controls (#3406, #3410, #3409) ---
+# Operator-facing privacy settings for the Anthropic client boundary.
+# All defaults are sovereignty-first: no operator content is cached on
+# Anthropic servers, every request carries a training opt-out header,
+# and CC mimicry headers are stripped of operator-identifying fingerprints.
+# [anthropic]
+# promptCacheMode = "disabled"  # disabled | ephemeral | extended
+#   disabled  (default) — no `cache_control` markers on outgoing requests.
+#                         Operator system prompts, tool definitions, and
+#                         conversation turns never enter Anthropic's prompt
+#                         cache. Costs more per turn but leaks no context.
+#   ephemeral           — standard 5-minute cache. Operator system prompt
+#                         is stored on Anthropic servers for up to 5 min
+#                         between requests. Cheaper per turn.
+#   extended            — reserved for the 1-hour cache (currently behaves
+#                         the same as `ephemeral`).
+
 # --- Cost tracking ---
 # [pricing."claude-sonnet-4-6"]
 # inputCostPerMtok = 3.0
