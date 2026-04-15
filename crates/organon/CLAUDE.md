@@ -1,6 +1,6 @@
 # organon
 
-Tool registry, executors, and sandbox. 16K lines. 38 built-in tools.
+Tool registry, executors, and sandbox. 16K lines. 49 built-in tools.
 
 ## Read first
 
@@ -22,21 +22,25 @@ Tool registry, executors, and sandbox. 16K lines. 38 built-in tools.
 | `SandboxConfig` | `sandbox/mod.rs` | Landlock + seccomp + egress policy |
 | `ProcessGuard` | `process_guard.rs` | RAII child process wrapper, `pub(crate)` (prevents orphans/zombies) |
 
-## Built-in tools (38)
+## Built-in tools (49)
 
 | Category | Tools |
 |----------|-------|
 | Workspace | read, write, edit, exec |
-| Filesystem | grep, find, ls |
+| Filesystem (navigation) | grep, find, ls |
+| Filesystem (mutation) | mkdir, mv, cp, rm |
+| Git | git_status, git_log, git_diff, git_branch, git_checkout |
 | View File | view_file |
 | Memory | memory_search, memory_correct, memory_retract, memory_forget, memory_audit, note, blackboard, datalog_query |
 | Communication | message, sessions_send, sessions_ask |
 | Agent | sessions_spawn, sessions_dispatch |
 | Enable Tool | enable_tool |
 | Planning | plan_create, plan_research, plan_requirements, plan_roadmap, plan_discuss, plan_execute, plan_verify, plan_status, plan_step_complete, plan_step_fail, plan_verify_criteria |
-| Research | web_fetch |
+| Research | web_fetch, http_request, web_search |
 | Triage | issue_scan, issue_triage, issue_approve |
 | Computer Use | computer_use (feature-gated: `computer-use`) |
+
+`web_search` requires `BRAVE_SEARCH_API_KEY` at runtime (Brave Search API). `http_request` and `web_search` are lazy (activate via `enable_tool`). Git operations are read-only or non-destructive by design — no commit, push, reset, rebase, or `--force` checkout; destructive Git work still goes through `exec` under operator review.
 
 ## Patterns
 

@@ -18,18 +18,26 @@ pub mod enable_tool;
 pub mod energeia;
 /// Filesystem navigation tools (grep, find, ls).
 pub mod filesystem;
+/// Filesystem mutation tools (mkdir, mv, cp, rm).
+pub mod fs_ops;
+/// Git read-only and non-destructive operations (status, log, diff, branch, checkout).
+pub mod git_ops;
+/// Generic HTTP client (POST/PUT/DELETE/PATCH with headers + body).
+pub mod http_client;
 /// Knowledge graph and session memory tools (remember, recall).
 pub mod memory;
 /// Parameter registry query tool (discover tunable parameters).
 pub mod parameters;
 /// Planning project management tools (create, status, execute, verify).
 pub mod planning;
-/// Web research tools (web_fetch). Web search uses Anthropic server-side tools.
+/// Web research tools (web_fetch).
 pub mod research;
 /// Issue triage tools (scan, score, stage, approve).
 pub mod triage;
 /// File viewing with multimodal support (images, PDFs, text).
 pub mod view_file;
+/// Web search via Brave Search API (requires BRAVE_SEARCH_API_KEY).
+pub mod web_search;
 /// File and shell workspace tools (read, write, edit, exec).
 pub mod workspace;
 
@@ -64,11 +72,15 @@ pub fn register_all_with_sandbox(
     memory::register(registry)?;
     communication::register(registry)?;
     filesystem::register(registry)?;
+    fs_ops::register(registry)?;
+    git_ops::register(registry)?;
+    http_client::register(registry)?;
     view_file::register(registry)?;
     agent::register(registry)?;
     enable_tool::register(registry)?;
     planning::register(registry)?;
     research::register(registry)?;
+    web_search::register(registry)?;
     triage::register(registry)?;
     parameters::register(registry)?;
     #[cfg(feature = "energeia")]
