@@ -16,7 +16,7 @@ use tracing::info_span;
 
 use koina::http::{API_HEALTH, API_V1};
 
-use crate::error::ApiError;
+use crate::error::{ApiError, ErrorBody, ErrorResponse};
 use crate::handlers::{config, health, knowledge, metrics, nous, planning, sessions};
 use crate::middleware::{
     CsrfState, RateLimiter, RequestId, UserRateLimiter, enrich_error_response, inject_request_id,
@@ -194,12 +194,14 @@ async fn fallback_handler(uri: axum::http::Uri) -> Response {
         let suggestion = path.replacen("/api/", "/api/v1/", 1);
         return (
             StatusCode::GONE,
-            axum::Json(serde_json::json!({
-                "error": {
-                    "code": "api_version_required",
-                    "message": format!("This endpoint has moved. Use {suggestion} instead."),
-                }
-            })),
+            axum::Json(ErrorResponse {
+                error: ErrorBody {
+                    code: "api_version_required".to_owned(),
+                    message: format!("This endpoint has moved. Use {suggestion} instead."),
+                    request_id: None,
+                    details: None,
+                },
+            }),
         )
             .into_response();
     }
@@ -299,6 +301,8 @@ fn apply_security_headers(
 }
 
 #[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
     use crate::security::{CorsConfig, CsrfConfig, RateLimitConfig, TlsConfig};
@@ -315,15 +319,33 @@ mod tests {
 
     #[tokio::test]
     async fn fallback_handler_returns_gone_for_old_nous_path() {
-        #[expect(clippy::expect_used, reason = "test assertion")]
         let uri: axum::http::Uri = "/api/nous/syn".parse().expect("parse URI");
         let response = fallback_handler(uri).await;
         assert_eq!(response.status(), axum::http::StatusCode::GONE);
     }
 
     #[tokio::test]
+    async fn fallback_gone_response_uses_error_envelope() {
+        let uri: axum::http::Uri = "/api/nous/syn".parse().expect("parse URI");
+        let response = fallback_handler(uri).await;
+        assert_eq!(response.status(), axum::http::StatusCode::GONE);
+        let bytes = axum::body::to_bytes(response.into_body(), 64 * 1024)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert!(json["error"].is_object(), "response must have error object");
+        assert_eq!(json["error"]["code"], "api_version_required");
+        assert!(
+            json["error"]["message"]
+                .as_str()
+                .expect("message should be a string")
+                .contains("/api/v1/"),
+            "message should contain migration hint"
+        );
+    }
+
+    #[tokio::test]
     async fn fallback_handler_returns_404_for_unknown_path() {
-        #[expect(clippy::expect_used, reason = "test assertion")]
         let uri: axum::http::Uri = "/api/unknown".parse().expect("parse URI");
         let response = fallback_handler(uri).await;
         assert_eq!(response.status(), axum::http::StatusCode::NOT_FOUND);

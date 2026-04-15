@@ -107,7 +107,13 @@ pub async fn inject_request_id(mut request: Request, next: Next) -> Response {
     next.run(request).await
 }
 
-/// Middleware that enriches 4xx/5xx JSON error responses with `request_id`.
+/// Middleware that normalizes error responses into the `ErrorResponse` JSON
+/// envelope and injects `request_id`.
+///
+/// WHY: Some error paths (e.g. Axum's built-in `Json` extractor rejection)
+/// produce plain-text error bodies instead of the `ErrorResponse` envelope.
+/// This middleware catches those responses and wraps them so all API errors
+/// have a consistent `{error: {code, message}}` shape (#3160).
 ///
 /// Must be placed inside the compression layer so the body is uncompressed.
 ///
@@ -137,14 +143,36 @@ pub async fn enrich_error_response(request: Request, next: Next) -> Response {
         .and_then(|v| v.to_str().ok())
         .is_some_and(|ct| ct.contains(CONTENT_TYPE_JSON));
 
-    if !is_json {
-        return response;
-    }
-
     let (parts, body) = response.into_parts();
     let Ok(bytes) = axum::body::to_bytes(body, 64 * 1024).await else {
         return Response::from_parts(parts, Body::empty());
     };
+
+    // WHY: Non-JSON error responses (e.g. Axum extractor rejections) are wrapped
+    // in the ErrorResponse envelope so clients see a uniform JSON error shape.
+    // The original plain-text message is preserved as the error message (#3160).
+    if !is_json {
+        let text_body = String::from_utf8_lossy(&bytes);
+        let code = error_code_from_status(parts.status);
+        let envelope = ErrorResponse {
+            error: ErrorBody {
+                code: code.to_owned(),
+                message: text_body.into_owned(),
+                request_id: Some(rid),
+                details: None,
+            },
+        };
+        let new_bytes = serde_json::to_vec(&envelope).unwrap_or_else(|e| {
+            warn!(error = %e, "failed to serialize error envelope for plain-text response");
+            bytes.to_vec()
+        });
+        let mut response = Response::from_parts(parts, Body::from(new_bytes));
+        response.headers_mut().insert(
+            axum::http::header::CONTENT_TYPE,
+            axum::http::HeaderValue::from_static(CONTENT_TYPE_JSON),
+        );
+        return response;
+    }
 
     let Ok(mut json) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
         return Response::from_parts(parts, Body::from(bytes));
@@ -160,6 +188,29 @@ pub async fn enrich_error_response(request: Request, next: Next) -> Response {
     }
 
     Response::from_parts(parts, Body::from(bytes))
+}
+
+/// Map an HTTP status code to a machine-readable error code string.
+///
+/// Used by the error-wrapping middleware to generate an error code for
+/// plain-text error responses that lack a structured code field.
+fn error_code_from_status(status: StatusCode) -> &'static str {
+    match status {
+        StatusCode::BAD_REQUEST => "bad_request",
+        StatusCode::UNAUTHORIZED => "unauthorized",
+        StatusCode::FORBIDDEN => "forbidden",
+        StatusCode::NOT_FOUND => "not_found",
+        StatusCode::METHOD_NOT_ALLOWED => "method_not_allowed",
+        StatusCode::CONFLICT => "conflict",
+        StatusCode::GONE => "gone",
+        StatusCode::UNPROCESSABLE_ENTITY => "validation_failed",
+        StatusCode::TOO_MANY_REQUESTS => "rate_limited",
+        StatusCode::INTERNAL_SERVER_ERROR => "internal_error",
+        StatusCode::NOT_IMPLEMENTED => "not_implemented",
+        StatusCode::SERVICE_UNAVAILABLE => "service_unavailable",
+        _ if status.is_client_error() => "client_error",
+        _ => "internal_error",
+    }
 }
 
 /// Middleware that records HTTP request metrics (count + duration).

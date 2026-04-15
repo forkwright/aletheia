@@ -315,6 +315,63 @@ impl From<tokio::task::JoinError> for ApiError {
     }
 }
 
+/// WHY: Axum's `Json` extractor returns `JsonRejection` for malformed or
+/// missing request bodies. Without this impl, those rejections bypass
+/// `ApiError` and produce plain-text error responses instead of the
+/// `ErrorResponse` JSON envelope (#3160).
+impl From<axum::extract::rejection::JsonRejection> for ApiError {
+    fn from(err: axum::extract::rejection::JsonRejection) -> Self {
+        use axum::extract::rejection::JsonRejection;
+        match err {
+            // WHY: Missing/mistyped fields return 422 (same status as Axum's default)
+            // to preserve backward compatibility while wrapping in the error envelope.
+            JsonRejection::JsonDataError(_) => Self::ValidationFailed {
+                errors: vec![err.to_string()],
+                location: snafu::location!(),
+            },
+            JsonRejection::MissingJsonContentType(_) => BadRequestSnafu {
+                message: "expected Content-Type: application/json",
+            }
+            .build(),
+            JsonRejection::BytesRejection(_) => BadRequestSnafu {
+                message: "failed to read request body",
+            }
+            .build(),
+            // WHY: JsonSyntaxError and future unknown variants all map to bad_request
+            // with the original error message preserved.
+            _ => BadRequestSnafu {
+                message: err.to_string(),
+            }
+            .build(),
+        }
+    }
+}
+
+/// WHY: Axum's `Query` extractor returns `QueryRejection` for malformed query
+/// strings. Without this impl, those rejections bypass `ApiError` and produce
+/// plain-text error responses instead of the `ErrorResponse` JSON envelope (#3160).
+impl From<axum::extract::rejection::QueryRejection> for ApiError {
+    fn from(err: axum::extract::rejection::QueryRejection) -> Self {
+        BadRequestSnafu {
+            message: err.to_string(),
+        }
+        .build()
+    }
+}
+
+/// WHY: Axum's `Path` extractor returns `PathRejection` for invalid path
+/// parameters. Without this impl, those rejections bypass `ApiError` and
+/// produce plain-text error responses instead of the `ErrorResponse` JSON
+/// envelope (#3160).
+impl From<axum::extract::rejection::PathRejection> for ApiError {
+    fn from(err: axum::extract::rejection::PathRejection) -> Self {
+        BadRequestSnafu {
+            message: err.to_string(),
+        }
+        .build()
+    }
+}
+
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 #[expect(clippy::expect_used, reason = "test assertions")]
@@ -602,5 +659,39 @@ mod tests {
         let api_err = ApiError::from(mneme_err);
         let response = api_err.into_response();
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn json_syntax_error_maps_to_400_with_envelope() {
+        // Simulate a JSON syntax error rejection
+        let api_err = ApiError::BadRequest {
+            message: "expected value at line 1 column 1".to_owned(),
+            location: snafu::location!(),
+        };
+        let response = api_err.into_response();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let msg = body_message(response);
+        assert!(msg.contains("expected value"));
+    }
+
+    #[test]
+    fn validation_failed_returns_422_with_envelope() {
+        let api_err = ApiError::ValidationFailed {
+            errors: vec!["missing field `content`".to_owned()],
+            location: snafu::location!(),
+        };
+        let response = api_err.into_response();
+        assert_eq!(
+            response.status(),
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "validation failures should return 422"
+        );
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let body = rt
+            .block_on(axum::body::to_bytes(response.into_body(), 64 * 1024))
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["error"]["code"], "validation_failed");
+        assert!(json["error"]["details"]["errors"].is_array());
     }
 }
