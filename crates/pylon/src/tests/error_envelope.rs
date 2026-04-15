@@ -489,7 +489,7 @@ async fn get_nonexistent_fact_returns_404_with_envelope() {
 }
 
 #[tokio::test]
-async fn send_message_missing_content_field_returns_422() {
+async fn send_message_missing_content_field_returns_422_with_envelope() {
     let (router, _dir) = app().await;
     let created = create_test_session(&router).await;
     let id = created["id"]
@@ -507,15 +507,18 @@ async fn send_message_missing_content_field_returns_422() {
         .await
         .expect("POST /sessions/{id}/messages request should succeed");
     // WHY: Axum's Json extractor returns 422 for missing required fields.
+    // The enrich_error_response middleware wraps it in the ErrorResponse envelope (#3160).
     assert_eq!(
         resp.status(),
         StatusCode::UNPROCESSABLE_ENTITY,
         "missing content field should return 422"
     );
+    let body = body_json(resp).await;
+    assert_error_envelope(&body, "validation_failed");
 }
 
 #[tokio::test]
-async fn stream_turn_missing_agent_id_returns_422() {
+async fn stream_turn_missing_agent_id_returns_422_with_envelope() {
     let (app, _dir) = app().await;
     let req = authed_request(
         "POST",
@@ -529,11 +532,14 @@ async fn stream_turn_missing_agent_id_returns_422() {
         .await
         .expect("POST /sessions/stream request should succeed");
     // WHY: Axum's Json extractor returns 422 for missing required fields.
+    // The enrich_error_response middleware wraps it in the ErrorResponse envelope (#3160).
     assert_eq!(
         resp.status(),
         StatusCode::UNPROCESSABLE_ENTITY,
         "missing agentId field should return 422"
     );
+    let body = body_json(resp).await;
+    assert_error_envelope(&body, "validation_failed");
 }
 
 #[tokio::test]
