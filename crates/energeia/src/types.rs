@@ -175,9 +175,17 @@ pub struct QaResult {
     pub cost_usd: f64,
     /// Timestamp when the evaluation completed.
     pub evaluated_at: Timestamp,
+    /// Whether semantic (LLM-based) evaluation was included in this result.
+    ///
+    /// When `false`, the verdict reflects mechanical checks only and the
+    /// operator should be aware that semantic criteria were not evaluated.
+    pub semantic_evaluated: bool,
 }
 
 /// Raw deserialization type for [`QaResult`].
+///
+/// The `semantic_evaluated` field defaults to `false` for backward
+/// compatibility with serialized results that predate this field.
 #[derive(Debug, Clone, Deserialize)]
 struct QaResultRaw {
     prompt_number: u32,
@@ -187,6 +195,8 @@ struct QaResultRaw {
     mechanical_issues: Vec<MechanicalIssue>,
     cost_usd: f64,
     evaluated_at: Timestamp,
+    #[serde(default)]
+    semantic_evaluated: bool,
 }
 
 impl From<QaResultRaw> for QaResult {
@@ -199,6 +209,7 @@ impl From<QaResultRaw> for QaResult {
             mechanical_issues: raw.mechanical_issues,
             cost_usd: raw.cost_usd,
             evaluated_at: raw.evaluated_at,
+            semantic_evaluated: raw.semantic_evaluated,
         }
     }
 }
@@ -217,6 +228,7 @@ impl QaResult {
         mechanical_issues: Vec<MechanicalIssue>,
         cost_usd: f64,
         evaluated_at: Timestamp,
+        semantic_evaluated: bool,
     ) -> Self {
         Self {
             prompt_number,
@@ -226,6 +238,7 @@ impl QaResult {
             mechanical_issues,
             cost_usd,
             evaluated_at,
+            semantic_evaluated,
         }
     }
 }
@@ -397,10 +410,12 @@ mod tests {
             mechanical_issues: vec![],
             cost_usd: 0.03,
             evaluated_at: Timestamp::now(),
+            semantic_evaluated: true,
         };
         let json = serde_json::to_string(&result).unwrap();
         let deserialized: QaResult = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.verdict, QaVerdict::Pass);
+        assert!(deserialized.semantic_evaluated);
         assert_eq!(deserialized.criteria_results.len(), 1);
     }
 

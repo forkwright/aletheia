@@ -23,6 +23,51 @@ pub(crate) fn deserialize_value<T: serde::de::DeserializeOwned>(value: &[u8]) ->
     })
 }
 
+// ---------------------------------------------------------------------------
+// Generic prefix scan
+// ---------------------------------------------------------------------------
+
+/// Scan a fjall keyspace by prefix, deserializing each value and collecting
+/// results that pass an optional filter.
+///
+/// # Arguments
+///
+/// * `keyspace` — the fjall keyspace to scan
+/// * `prefix` — key prefix bytes to scan
+/// * `context` — human-readable context for error messages (e.g. "session prefix scan")
+/// * `limit` — maximum number of results to return (`usize::MAX` for no limit)
+/// * `filter` — predicate applied after deserialization; returning `false` skips the record
+#[cfg(feature = "storage-fjall")]
+fn prefix_scan<T: serde::de::DeserializeOwned>(
+    keyspace: &fjall::Keyspace,
+    prefix: &[u8],
+    context: &str,
+    limit: usize,
+    filter: impl Fn(&T) -> bool,
+) -> Result<Vec<T>> {
+    let mut results = Vec::new();
+    for guard in keyspace.prefix(prefix) {
+        if results.len() >= limit {
+            break;
+        }
+        let (_key, value) = guard.into_inner().map_err(|e| {
+            error::StoreSnafu {
+                message: format!("{context}: {e}"),
+            }
+            .build()
+        })?;
+        let record = deserialize_value::<T>(&value)?;
+        if filter(&record) {
+            results.push(record);
+        }
+    }
+    Ok(results)
+}
+
+// ---------------------------------------------------------------------------
+// Query functions
+// ---------------------------------------------------------------------------
+
 /// Collect all sessions for a given dispatch via prefix scan.
 #[cfg(feature = "storage-fjall")]
 pub(crate) fn list_sessions_for_dispatch(
@@ -30,17 +75,7 @@ pub(crate) fn list_sessions_for_dispatch(
     dispatch_id: &crate::store::records::DispatchId,
 ) -> Result<Vec<SessionRecord>> {
     let prefix = schema::session_prefix_for_dispatch(dispatch_id);
-    let mut results = Vec::new();
-    for guard in keyspace.prefix(prefix.as_bytes()) {
-        let (_key, value) = guard.into_inner().map_err(|e| {
-            error::StoreSnafu {
-                message: format!("session prefix scan: {e}"),
-            }
-            .build()
-        })?;
-        results.push(deserialize_value::<SessionRecord>(&value)?);
-    }
-    Ok(results)
+    prefix_scan(keyspace, prefix.as_bytes(), "session prefix scan", usize::MAX, |_: &SessionRecord| true)
 }
 
 /// Query lessons with optional source filter, returning up to `limit` results.
@@ -63,29 +98,15 @@ pub(crate) fn query_lessons(
         None => schema::lesson_prefix().as_bytes(),
     };
 
-    let mut results = Vec::new();
-    for guard in keyspace.prefix(prefix_bytes) {
-        if results.len() >= limit {
-            break;
-        }
-        let (_key, value) = guard.into_inner().map_err(|e| {
-            error::StoreSnafu {
-                message: format!("lesson prefix scan: {e}"),
-            }
-            .build()
-        })?;
-        let record = deserialize_value::<LessonRecord>(&value)?;
-
+    prefix_scan(keyspace, prefix_bytes, "lesson prefix scan", limit, |record: &LessonRecord| {
         if category.is_some_and(|cat| record.category != cat) {
-            continue;
+            return false;
         }
         if project.is_some_and(|proj| record.project.as_deref() != Some(proj)) {
-            continue;
+            return false;
         }
-
-        results.push(record);
-    }
-    Ok(results)
+        true
+    })
 }
 
 /// Query observations with optional project filter and day window.
@@ -113,30 +134,15 @@ pub(crate) fn query_observations(
         cutoff.as_millisecond()
     });
 
-    let mut results = Vec::new();
-    for guard in keyspace.prefix(prefix_bytes) {
-        if results.len() >= limit {
-            break;
-        }
-        let (_key, value) = guard.into_inner().map_err(|e| {
-            error::StoreSnafu {
-                message: format!("observation prefix scan: {e}"),
-            }
-            .build()
-        })?;
-        let record = deserialize_value::<ObservationRecord>(&value)?;
-
+    prefix_scan(keyspace, prefix_bytes, "observation prefix scan", limit, |record: &ObservationRecord| {
         if cutoff_ms.is_some_and(|cutoff| record.created_at.as_millisecond() < cutoff) {
-            continue;
+            return false;
         }
-
         if project.is_some_and(|proj| record.project != proj) {
-            continue;
+            return false;
         }
-
-        results.push(record);
-    }
-    Ok(results)
+        true
+    })
 }
 
 /// Collect all dispatch records via prefix scan.
@@ -149,20 +155,7 @@ pub(crate) fn list_dispatches(
     limit: usize,
 ) -> Result<Vec<crate::store::records::DispatchRecord>> {
     let prefix_bytes = schema::dispatch_prefix().as_bytes();
-    let mut results = Vec::new();
-    for guard in keyspace.prefix(prefix_bytes) {
-        if results.len() >= limit {
-            break;
-        }
-        let (_key, value) = guard.into_inner().map_err(|e| {
-            error::StoreSnafu {
-                message: format!("dispatch prefix scan: {e}"),
-            }
-            .build()
-        })?;
-        results.push(deserialize_value::<DispatchRecord>(&value)?);
-    }
-    Ok(results)
+    prefix_scan(keyspace, prefix_bytes, "dispatch prefix scan", limit, |_: &DispatchRecord| true)
 }
 
 /// Collect all session records across all dispatches via prefix scan.
@@ -175,20 +168,7 @@ pub(crate) fn list_all_sessions(
     limit: usize,
 ) -> Result<Vec<SessionRecord>> {
     let prefix_bytes = schema::session_prefix().as_bytes();
-    let mut results = Vec::new();
-    for guard in keyspace.prefix(prefix_bytes) {
-        if results.len() >= limit {
-            break;
-        }
-        let (_key, value) = guard.into_inner().map_err(|e| {
-            error::StoreSnafu {
-                message: format!("session prefix scan: {e}"),
-            }
-            .build()
-        })?;
-        results.push(deserialize_value::<SessionRecord>(&value)?);
-    }
-    Ok(results)
+    prefix_scan(keyspace, prefix_bytes, "session prefix scan", limit, |_: &SessionRecord| true)
 }
 
 /// Collect all CI validation records across all sessions via prefix scan.
@@ -200,20 +180,7 @@ pub(crate) fn list_all_ci_validations(
     limit: usize,
 ) -> Result<Vec<CiValidationRecord>> {
     let prefix_bytes = schema::ci_validation_prefix().as_bytes();
-    let mut results = Vec::new();
-    for guard in keyspace.prefix(prefix_bytes) {
-        if results.len() >= limit {
-            break;
-        }
-        let (_key, value) = guard.into_inner().map_err(|e| {
-            error::StoreSnafu {
-                message: format!("ci_validation prefix scan: {e}"),
-            }
-            .build()
-        })?;
-        results.push(deserialize_value::<CiValidationRecord>(&value)?);
-    }
-    Ok(results)
+    prefix_scan(keyspace, prefix_bytes, "ci_validation prefix scan", limit, |_: &CiValidationRecord| true)
 }
 
 /// Collect CI validations for a given session via prefix scan.
@@ -223,15 +190,5 @@ pub(crate) fn list_ci_validations_for_session(
     session_id: &crate::store::records::SessionId,
 ) -> Result<Vec<CiValidationRecord>> {
     let prefix = schema::ci_validation_prefix_for_session(session_id);
-    let mut results = Vec::new();
-    for guard in keyspace.prefix(prefix.as_bytes()) {
-        let (_key, value) = guard.into_inner().map_err(|e| {
-            error::StoreSnafu {
-                message: format!("ci_validation prefix scan: {e}"),
-            }
-            .build()
-        })?;
-        results.push(deserialize_value::<CiValidationRecord>(&value)?);
-    }
-    Ok(results)
+    prefix_scan(keyspace, prefix.as_bytes(), "ci_validation prefix scan", usize::MAX, |_: &CiValidationRecord| true)
 }

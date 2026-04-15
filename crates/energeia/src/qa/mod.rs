@@ -4,17 +4,23 @@
 //! 1. Run mechanical pre-screening (blast radius, anti-patterns)
 //! 2. Classify acceptance criteria (mechanical vs semantic)
 //! 3. Auto-pass mechanical criteria if no mechanical issues found
-//! 4. Run LLM evaluation on semantic criteria via hermeneus
+//! 4. Run LLM evaluation on semantic criteria via hermeneus (when provider available)
 //! 5. Determine verdict: Pass / Partial / Fail
 //! 6. Capture training data as a lesson
 //! 7. If Partial/Fail, generate corrective prompt
 //!
 //! The [`QaGate`] trait separates mechanical pre-screening (fast, no LLM cost)
 //! from semantic evaluation (uses hermeneus for LLM-based assessment).
+//!
+//! When no LLM provider is available, [`run_qa`] degrades gracefully to
+//! mechanical-only evaluation and sets `semantic_evaluated = false` on the
+//! result so the operator knows the gate is incomplete.
 
 use std::future::Future;
 use std::pin::Pin;
 
+use hermeneus::provider::LlmProvider;
+use hermeneus::types::{CompletionRequest, Content, ContentBlock, Message, Role};
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 
@@ -130,17 +136,26 @@ impl PromptSpec {
 /// * `diff` - The unified diff of the PR
 /// * `prompt` - The prompt specification with criteria and blast radius
 /// * `pr_number` - The pull request number
+/// * `llm` - Optional LLM provider for semantic evaluation. When `None`,
+///   semantic criteria are skipped with a warning and the verdict reflects
+///   mechanical checks only.
 ///
-/// # LLM evaluation
+/// # Semantic evaluation
 ///
-/// Semantic criteria evaluation requires hermeneus, which is currently disabled
-/// due to compilation errors. When hermeneus is unavailable, semantic criteria
-/// are marked as failed with explanatory evidence. The mechanical checks, verdict
-/// logic, and corrective generation all work without hermeneus.
-pub fn run_qa(diff: &str, prompt: &PromptSpec, pr_number: u64) -> QaResult {
+/// When an LLM provider is supplied, semantic criteria are evaluated via
+/// hermeneus. When unavailable (`None`), the verdict indicates that
+/// semantic evaluation was not included so the operator knows the gate
+/// is mechanical-only.
+pub async fn run_qa(
+    diff: &str,
+    prompt: &PromptSpec,
+    pr_number: u64,
+    llm: Option<&dyn LlmProvider>,
+) -> QaResult {
     tracing::info!(
         prompt_number = prompt.prompt_number,
         pr_number,
+        semantic_eval = llm.is_some(),
         "starting QA evaluation"
     );
 
@@ -180,42 +195,14 @@ pub fn run_qa(diff: &str, prompt: &PromptSpec, pr_number: u64) -> QaResult {
         .cloned()
         .collect();
 
-    let (semantic_results, cost_usd) =
-        if verdict::has_critical_mechanical_issues(&mechanical_issues) {
-            tracing::info!("skipping LLM evaluation due to critical mechanical issues");
-            let results = semantic_criteria
-                .iter()
-                .map(|(text, ct)| CriterionResult {
-                    criterion: text.clone(),
-                    classification: *ct,
-                    passed: false,
-                    evidence: "skipped: critical mechanical issues prevent evaluation".to_owned(),
-                })
-                .collect();
-            (results, 0.0)
-        } else if semantic_criteria.is_empty() {
-            (Vec::new(), 0.0)
-        } else {
-            // WHY: hermeneus is temporarily disabled due to compilation errors.
-            // Build the evaluation prompt so the infrastructure is ready, but
-            // mark criteria as unevaluated until hermeneus is restored.
-            let _qa_prompt =
-                semantic::build_qa_prompt(&prompt.description, &semantic_criteria, diff);
-
-            tracing::warn!("hermeneus unavailable — semantic criteria marked as unevaluated");
-
-            let results = semantic_criteria
-                .iter()
-                .map(|(text, ct)| CriterionResult {
-                    criterion: text.clone(),
-                    classification: *ct,
-                    passed: false,
-                    evidence: "LLM evaluation unavailable — hermeneus pending compilation fix"
-                        .to_owned(),
-                })
-                .collect();
-            (results, 0.0)
-        };
+    let (semantic_results, cost_usd, semantic_evaluated) = evaluate_semantic_criteria(
+        &semantic_criteria,
+        &mechanical_issues,
+        &prompt.description,
+        diff,
+        llm,
+    )
+    .await;
 
     // NOTE: Step 5 — combine results and determine verdict.
     let mut all_results = mechanical_results;
@@ -231,15 +218,105 @@ pub fn run_qa(diff: &str, prompt: &PromptSpec, pr_number: u64) -> QaResult {
         mechanical_issues,
         cost_usd,
         evaluated_at: Timestamp::now(),
+        semantic_evaluated,
     };
 
     tracing::info!(
         verdict = %qa_result.verdict,
         cost_usd = qa_result.cost_usd,
+        semantic_evaluated = qa_result.semantic_evaluated,
         "QA evaluation complete"
     );
 
     qa_result
+}
+
+/// Evaluate semantic criteria via LLM or degrade gracefully.
+///
+/// Returns `(results, cost_usd, semantic_evaluated)`.
+async fn evaluate_semantic_criteria(
+    criteria: &[(String, CriterionType)],
+    mechanical_issues: &[MechanicalIssue],
+    description: &str,
+    diff: &str,
+    llm: Option<&dyn LlmProvider>,
+) -> (Vec<CriterionResult>, f64, bool) {
+    if verdict::has_critical_mechanical_issues(mechanical_issues) {
+        tracing::info!("skipping LLM evaluation due to critical mechanical issues");
+        let results = criteria
+            .iter()
+            .map(|(text, ct)| CriterionResult {
+                criterion: text.clone(),
+                classification: *ct,
+                passed: false,
+                evidence: "skipped: critical mechanical issues prevent evaluation".to_owned(),
+            })
+            .collect();
+        return (results, 0.0, false);
+    }
+
+    if criteria.is_empty() {
+        return (Vec::new(), 0.0, true);
+    }
+
+    let Some(provider) = llm else {
+        tracing::warn!("no LLM provider — semantic criteria skipped (mechanical-only gate)");
+        let results = criteria
+            .iter()
+            .map(|(text, ct)| CriterionResult {
+                criterion: text.clone(),
+                classification: *ct,
+                passed: false,
+                evidence: "no LLM provider available — semantic evaluation skipped".to_owned(),
+            })
+            .collect();
+        return (results, 0.0, false);
+    };
+
+    // NOTE: Build the QA prompt and send it to the LLM via hermeneus.
+    let qa_prompt_text = semantic::build_qa_prompt(description, criteria, diff);
+
+    let request = CompletionRequest {
+        model: String::new(), // WHY: empty string lets the provider use its default model
+        messages: vec![Message {
+            role: Role::User,
+            content: Content::Text(qa_prompt_text),
+        }],
+        ..CompletionRequest::default()
+    };
+
+    match provider.complete(&request).await {
+        Ok(response) => {
+            let response_text: String = response
+                .content
+                .iter()
+                .filter_map(|block| match block {
+                    ContentBlock::Text { text, .. } => Some(text.as_str()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+                .join("");
+            let results = semantic::parse_qa_response(&response_text, criteria);
+            // WHY: Cost estimation requires model pricing data which lives in
+            // hermeneus::models. The provider returns raw token counts; callers
+            // with pricing context can compute cost from response.usage. We
+            // report 0.0 here and let the orchestrator handle cost attribution.
+            (results, 0.0, true)
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "LLM evaluation failed — semantic criteria marked as unevaluated");
+            let results = criteria
+                .iter()
+                .map(|(text, ct)| CriterionResult {
+                    criterion: text.clone(),
+                    classification: *ct,
+                    passed: false,
+                    evidence: format!("LLM evaluation failed: {e}"),
+                })
+                .collect();
+            (results, 0.0, false)
+        }
+    }
 }
 
 /// Record a QA evaluation result as a lesson in the store.
@@ -320,8 +397,8 @@ mod tests {
         assert_eq!(deserialized.blast_radius.len(), 1);
     }
 
-    #[test]
-    fn run_qa_all_mechanical_pass() {
+    #[tokio::test]
+    async fn run_qa_all_mechanical_pass() {
         let prompt = PromptSpec {
             prompt_number: 1,
             description: "add endpoint".to_owned(),
@@ -333,17 +410,18 @@ mod tests {
         };
         let diff = "+++ b/src/lib.rs\n@@ -1 +1,2 @@\n+pub fn foo() {}\n";
 
-        let result = run_qa(diff, &prompt, 42);
+        let result = run_qa(diff, &prompt, 42, None).await;
 
-        // NOTE: No mechanical issues → mechanical criteria auto-pass.
-        // But hermeneus is unavailable, so there should be no semantic criteria
-        // to fail (these are all mechanical keywords).
+        // NOTE: No mechanical issues, all criteria are mechanical keywords
+        // so they auto-pass. semantic_evaluated is true because there are no
+        // semantic criteria to evaluate (vacuously complete).
         assert_eq!(result.verdict, QaVerdict::Pass);
         assert!(result.mechanical_issues.is_empty());
+        assert!(result.semantic_evaluated);
     }
 
-    #[test]
-    fn run_qa_blast_radius_violation_fails() {
+    #[tokio::test]
+    async fn run_qa_blast_radius_violation_fails() {
         let prompt = PromptSpec {
             prompt_number: 1,
             description: "scoped change".to_owned(),
@@ -352,14 +430,14 @@ mod tests {
         };
         let diff = "+++ b/src/outside/file.rs\n@@ -1 +1,2 @@\n+new line\n";
 
-        let result = run_qa(diff, &prompt, 42);
+        let result = run_qa(diff, &prompt, 42, None).await;
 
         assert_eq!(result.verdict, QaVerdict::Fail);
         assert!(!result.mechanical_issues.is_empty());
     }
 
-    #[test]
-    fn run_qa_captures_anti_patterns() {
+    #[tokio::test]
+    async fn run_qa_captures_anti_patterns() {
         let prompt = PromptSpec {
             prompt_number: 1,
             description: "test".to_owned(),
@@ -368,7 +446,7 @@ mod tests {
         };
         let diff = "+++ b/src/lib.rs\n@@ -1 +1,2 @@\n+    let x = foo.unwrap();\n";
 
-        let result = run_qa(diff, &prompt, 42);
+        let result = run_qa(diff, &prompt, 42, None).await;
 
         assert!(
             result
@@ -378,8 +456,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn run_qa_skips_llm_on_mechanical_failure() {
+    #[tokio::test]
+    async fn run_qa_skips_llm_on_mechanical_failure() {
         let prompt = PromptSpec {
             prompt_number: 1,
             description: "test".to_owned(),
@@ -388,14 +466,34 @@ mod tests {
         };
         let diff = "+++ b/src/outside/file.rs\n@@ -1 +1,2 @@\n+new line\n";
 
-        let result = run_qa(diff, &prompt, 42);
+        let result = run_qa(diff, &prompt, 42, None).await;
 
-        // WHY: Blast radius violation → skip LLM → semantic criteria skipped.
+        // WHY: Blast radius violation -> skip LLM -> semantic criteria skipped.
         assert_eq!(result.verdict, QaVerdict::Fail);
         assert!(result.cost_usd < f64::EPSILON);
+        assert!(!result.semantic_evaluated);
         assert!(result.criteria_results.iter().any(|cr| {
             cr.evidence
                 .contains("critical mechanical issues prevent evaluation")
+        }));
+    }
+
+    #[tokio::test]
+    async fn run_qa_indicates_no_semantic_eval_without_llm() {
+        let prompt = PromptSpec {
+            prompt_number: 1,
+            description: "test".to_owned(),
+            acceptance_criteria: vec!["Implements feature correctly".to_owned()],
+            blast_radius: vec![],
+        };
+        let diff = "+++ b/src/lib.rs\n@@ -1 +1,2 @@\n+pub fn foo() {}\n";
+
+        let result = run_qa(diff, &prompt, 42, None).await;
+
+        // WHY: No LLM provider -> semantic criteria fail with clear evidence.
+        assert!(!result.semantic_evaluated);
+        assert!(result.criteria_results.iter().any(|cr| {
+            cr.evidence.contains("no LLM provider available")
         }));
     }
 }

@@ -44,5 +44,5 @@ Dispatch orchestration: actualization of plans into execution. Absorbs kanon's p
 
 ## Dependencies
 
-Uses: koina, eidos, jiff, serde, snafu, tokio (hermeneus pending compilation fix)
+Uses: koina, eidos, hermeneus, jiff, serde, snafu, tokio
 Used by: aletheia (binary, behind `energeia` feature flag)

@@ -127,6 +127,7 @@ mod tests {
             mechanical_issues: vec![],
             cost_usd: 0.03,
             evaluated_at: Timestamp::now(),
+            semantic_evaluated: true,
         }
     }
 
