@@ -917,7 +917,12 @@ impl ApiClient {
         } else {
             format!("{} {}", status.as_u16(), reason)
         };
-        ServerSnafu { operation, message }.fail()
+        ServerSnafu {
+            operation,
+            status: status.as_u16(),
+            message,
+        }
+        .fail()
     }
 
     /// The shared HTTP client, pre-configured with auth and default headers.

@@ -22,10 +22,12 @@ pub enum ApiError {
     },
 
     /// Non-2xx HTTP response. Message is extracted from the server body when possible.
-    #[snafu(display("{operation}: {message}"))]
+    #[snafu(display("{operation}: {status} {message}"))]
     Server {
         /// Which API call failed.
         operation: &'static str,
+        /// HTTP status code from the response.
+        status: u16,
         /// Human-readable error from the server.
         message: String,
     },

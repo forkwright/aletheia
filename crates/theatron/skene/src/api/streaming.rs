@@ -15,6 +15,11 @@ use crate::events::StreamEvent;
 use crate::id::{NousId, PlanId, SessionId, ToolId, TurnId};
 use crate::sse::SseStream;
 
+/// If no streaming event is received within this window, the connection is
+/// treated as hung. Matches the SSE connection's `READ_TIMEOUT` in `sse.rs`
+/// for a consistent timeout policy across both connection types.
+const READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(45);
+
 /// Streams a turn response from POST /api/v1/sessions/stream.
 /// Returns a channel that yields parsed `StreamEvents`.
 ///
@@ -86,7 +91,26 @@ pub fn stream_message(
 
             let mut es = SseStream::new(resp.bytes_stream());
 
-            while let Some(event) = es.next().await {
+            loop {
+                let maybe_event = tokio::time::timeout(READ_TIMEOUT, es.next()).await;
+                let event = match maybe_event {
+                    Ok(Some(event)) => event,
+                    Ok(None) => break,
+                    Err(_elapsed) => {
+                        // WHY: No event received within READ_TIMEOUT. A healthy
+                        // server sends data more frequently than this window, so
+                        // silence here indicates a hung or dropped connection.
+                        tracing::warn!(
+                            timeout_secs = READ_TIMEOUT.as_secs(),
+                            "stream read timeout — treating as error"
+                        );
+                        let _ = tx
+                            .send(StreamEvent::Error("stream timeout".to_string()))
+                            .await;
+                        break;
+                    }
+                };
+
                 if let Some(parsed) = parse_stream_event(&event.event, &event.data) {
                     let is_terminal = matches!(
                         &parsed,
