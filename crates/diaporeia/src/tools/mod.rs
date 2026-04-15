@@ -15,15 +15,20 @@ use koina::http::BEARER_PREFIX;
 use koina::id::SessionId;
 use symbolon::types::Role;
 
-use crate::error::{NousNotFoundSnafu, PipelineSnafu, SerializationSnafu, SessionStoreSnafu};
+use crate::error::{
+    NousNotFoundSnafu, PipelineSnafu, SerializationSnafu, SessionStoreSnafu, UnauthorizedSnafu,
+};
 use crate::rate_limit::Tier;
 use crate::server::DiaporeiaServer;
 
 /// Extract role from request context by validating the Bearer token.
 ///
-/// Returns `None` if auth info is unavailable or token is invalid.
+/// When a `JwtManager` is available, validates the signature before
+/// extracting claims (closes the payload-only decode bypass from #3337).
 /// In single-operator mode (`auth.mode = "none"`), returns the configured
 /// `none_role` (defaults to admin).
+///
+/// Returns `None` only when auth info is unavailable or the token is invalid.
 async fn extract_role(
     server: &DiaporeiaServer,
     context: &RequestContext<rmcp::RoleServer>,
@@ -50,14 +55,22 @@ async fn extract_role(
 
     let token = header.strip_prefix(BEARER_PREFIX)?;
 
+    // WHY(#3337): When jwt_manager is available, validate the signature
+    // instead of just decoding the payload. This prevents role spoofing
+    // on direct MCP connections that bypass the gateway.
+    if let Some(ref jwt) = server.state.jwt_manager {
+        return jwt.validate(token).ok().map(|claims| claims.role);
+    }
+
+    // Fallback: decode-only when no jwt_manager (should not happen when
+    // auth_mode != "none", but handle gracefully).
     parse_role_from_token(token)
 }
 
 /// Parse role from a JWT token payload without signature verification.
 ///
-/// This is a best-effort parse to extract the role claim. Full validation
-/// is handled at the gateway layer; by the time the request reaches the
-/// MCP tool, the token has already been validated.
+/// Only used as a fallback when no `JwtManager` is available. Prefer
+/// signature-verified extraction via `extract_role`.
 fn parse_role_from_token(token: &str) -> Option<Role> {
     let mut parts = token.split('.');
     let _header = parts.next()?;
@@ -95,6 +108,43 @@ async fn is_operator_or_above(
     }
 }
 
+/// Require at least the given role, returning an MCP error if insufficient.
+///
+/// Used by tools and resources that need RBAC enforcement beyond the
+/// operator-or-above check (e.g. session creation, config access).
+async fn require_role(
+    server: &DiaporeiaServer,
+    context: &RequestContext<rmcp::RoleServer>,
+    minimum: Role,
+    operation: &str,
+) -> Result<(), rmcp::ErrorData> {
+    let role = extract_role(server, context).await;
+    match role {
+        Some(r) if r >= minimum => Ok(()),
+        Some(r) => {
+            tracing::warn!(
+                caller_role = %r,
+                required_role = %minimum,
+                operation,
+                "MCP RBAC denied",
+            );
+            Err(UnauthorizedSnafu {
+                message: format!("{operation} requires {minimum} role or above"),
+            }
+            .build()
+            .into())
+        }
+        None => {
+            tracing::warn!(operation, "MCP RBAC denied: no role resolved");
+            Err(UnauthorizedSnafu {
+                message: format!("{operation} requires {minimum} role or above"),
+            }
+            .build()
+            .into())
+        }
+    }
+}
+
 /// Register all tools on the server via the `#[tool_router]` macro.
 ///
 /// This generates the `DiaporeiaServer::tool_router()` associated function
@@ -102,12 +152,16 @@ async fn is_operator_or_above(
 #[tool_router(vis = "pub(crate)")]
 impl DiaporeiaServer {
     /// Create a new session for a nous agent. Returns session metadata as JSON.
+    ///
+    /// Requires `Operator` role or above (#3337).
     #[tool(description = "Create a new session for a nous agent")]
     async fn session_create(
         &self,
         Parameters(params): Parameters<params::SessionCreateParams>,
+        context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Expensive)?;
+        require_role(self, &context, Role::Operator, "session_create").await?;
         let session_key = params.session_key.as_deref().unwrap_or("main");
         // WHY: SessionId (UUID v4) is the canonical format. ULID here caused
         // 'invalid SessionId' when nous parsed the stored ID back (#2349).
@@ -176,12 +230,32 @@ impl DiaporeiaServer {
     ///
     /// Uses streaming execution so long-running turns emit events progressively
     /// instead of blocking until the full turn completes (avoids transport timeout).
-    #[tool(description = "Send a message to a nous agent session and get the response")]
+    ///
+    /// # Streaming limitation (#3251)
+    ///
+    /// The MCP protocol's `tools/call` is a request-response RPC: the client
+    /// sends one request and receives one response. There is no MCP-level
+    /// primitive for streaming partial tool results back to the caller.
+    ///
+    /// Internally, `send_turn_streaming` is used so the nous actor pipeline
+    /// does not block on long turns (preventing transport timeout). However,
+    /// stream events are drained and discarded because MCP has no server-push
+    /// channel for tool execution. The client sees only the final result.
+    ///
+    /// To get token-level streaming, use the HTTP API's SSE endpoint at
+    /// `POST /api/v1/sessions/{id}/messages` instead.
+    ///
+    /// Requires `Operator` role or above (#3337).
+    #[tool(description = "Send a message to a nous agent session and get the response. \
+        Note: response is not streamed — the full result is returned after the turn completes. \
+        For streaming, use the HTTP SSE endpoint.")]
     async fn session_message(
         &self,
         Parameters(params): Parameters<params::SessionMessageParams>,
+        context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Expensive)?;
+        require_role(self, &context, Role::Operator, "session_message").await?;
         let handle = self
             .state
             .nous_manager
@@ -405,12 +479,16 @@ impl DiaporeiaServer {
     }
 
     /// Semantic search across the knowledge graph.
+    ///
+    /// Requires `Operator` role or above (#3337).
     #[tool(description = "Semantic search across the knowledge graph")]
     async fn knowledge_search(
         &self,
         Parameters(_params): Parameters<params::KnowledgeSearchParams>,
+        context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Expensive)?;
+        require_role(self, &context, Role::Operator, "knowledge_search").await?;
         Ok(CallToolResult::success(vec![rmcp::model::Content::text(
             "Knowledge search is not available in this configuration. \
              The server must be built with the 'recall' feature enabled \
@@ -420,9 +498,15 @@ impl DiaporeiaServer {
     }
 
     /// Get the runtime configuration with sensitive fields redacted.
+    ///
+    /// Requires `Operator` role or above (#3337).
     #[tool(description = "Get the runtime configuration with sensitive fields redacted")]
-    async fn config_get(&self) -> Result<CallToolResult, rmcp::ErrorData> {
+    async fn config_get(
+        &self,
+        context: RequestContext<rmcp::RoleServer>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Cheap)?;
+        require_role(self, &context, Role::Operator, "config_get").await?;
         let config = self.state.config.read().await;
 
         let redacted = serde_json::json!({
