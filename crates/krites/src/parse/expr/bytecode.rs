@@ -66,16 +66,10 @@ fn compile_cond_bytecode(
     let mut return_jump_pos = vec![];
     for (cond, val) in clauses {
         expr2bytecode(cond, collector)?;
-        collector.push(Bytecode::JumpIfFalse {
-            jump_to: 0,
-            span,
-        });
+        collector.push(Bytecode::JumpIfFalse { jump_to: 0, span });
         let false_jump_amend_pos = collector.len() - 1;
         expr2bytecode(val, collector)?;
-        collector.push(Bytecode::Goto {
-            jump_to: 0,
-            span,
-        });
+        collector.push(Bytecode::Goto { jump_to: 0, span });
         return_jump_pos.push(collector.len() - 1);
         // SAFETY: `false_jump_amend_pos` is `collector.len() - 1` from above,
         // so it is always a valid index.

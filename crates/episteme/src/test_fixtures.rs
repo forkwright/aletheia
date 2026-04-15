@@ -16,6 +16,9 @@ pub(crate) const DIM: usize = 4;
 
 /// Open an in-memory `KnowledgeStore` with test defaults.
 pub(crate) fn make_store() -> Arc<KnowledgeStore> {
-    KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim: DIM, ..Default::default() })
-        .expect("open in-memory knowledge store for test")
+    KnowledgeStore::open_mem_with_config(KnowledgeConfig {
+        dim: DIM,
+        ..Default::default()
+    })
+    .expect("open in-memory knowledge store for test")
 }

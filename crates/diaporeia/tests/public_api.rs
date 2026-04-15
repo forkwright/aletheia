@@ -193,7 +193,10 @@ fn mcp_claims_is_clone_debug_send_sync() {
 
     // Debug formatting must surface the subject so tracing logs are useful.
     let debug = format!("{original:?}");
-    assert!(debug.contains("bob"), "Debug output must contain subject: {debug}");
+    assert!(
+        debug.contains("bob"),
+        "Debug output must contain subject: {debug}"
+    );
 }
 
 #[test]

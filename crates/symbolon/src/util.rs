@@ -22,7 +22,8 @@ pub(crate) fn days_to_date(days_since_epoch: u64) -> (u64, u64, u64) {
 const BASE64_CHARS: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
 /// URL-safe base64 character set (with `-` and `_`).
-const BASE64URL_CHARS: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+const BASE64URL_CHARS: &[u8; 64] =
+    b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 
 /// Encode bytes to standard base64 (with `+`, `/`, and `=` padding).
 pub(crate) fn base64_encode(input: &[u8]) -> String {

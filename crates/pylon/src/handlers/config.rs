@@ -139,20 +139,18 @@ pub async fn reload_config(
     let outcome = taxis::reload::prepare_reload(&state.oikos, &current).map_err(|e| {
         tracing::error!(error = %e, "config reload failed");
         match e {
-            taxis::reload::ReloadError::Validation { source, .. } => {
-                ApiError::ValidationFailed {
-                    errors: source
-                        .errors
-                        .into_iter()
-                        .map(|msg| FieldError {
-                            field: "_config".to_owned(),
-                            code: "invalid".to_owned(),
-                            message: msg,
-                        })
-                        .collect(),
-                    location: snafu::location!(),
-                }
-            }
+            taxis::reload::ReloadError::Validation { source, .. } => ApiError::ValidationFailed {
+                errors: source
+                    .errors
+                    .into_iter()
+                    .map(|msg| FieldError {
+                        field: "_config".to_owned(),
+                        code: "invalid".to_owned(),
+                        message: msg,
+                    })
+                    .collect(),
+                location: snafu::location!(),
+            },
             other => ApiError::Internal {
                 message: other.to_string(),
                 location: snafu::location!(),
@@ -263,11 +261,9 @@ pub async fn update_section(
             }
         })?;
 
-    taxis::loader::write_config(&state.oikos, &new_config).map_err(|e| {
-        ApiError::Internal {
-            message: format!("failed to write config: {e}"),
-            location: snafu::location!(),
-        }
+    taxis::loader::write_config(&state.oikos, &new_config).map_err(|e| ApiError::Internal {
+        message: format!("failed to write config: {e}"),
+        location: snafu::location!(),
     })?;
 
     let restart_required: Vec<String> = taxis::reload::restart_prefixes()

@@ -550,15 +550,13 @@ impl ProsocheCheck for SessionContinuityCheck {
             clippy::cast_precision_loss,
             reason = "usize→f64: turn counts are far below f64 precision limits"
         )]
-        let carry_rate =
-            ctx.session_continuity.context_carry_turns as f64 / total as f64; // kanon:ignore RUST/as-cast
+        let carry_rate = ctx.session_continuity.context_carry_turns as f64 / total as f64; // kanon:ignore RUST/as-cast
         #[expect(
             clippy::as_conversions,
             clippy::cast_precision_loss,
             reason = "usize→f64: turn counts are far below f64 precision limits"
         )]
-        let restatement_rate =
-            ctx.session_continuity.restatement_count as f64 / total as f64; // kanon:ignore RUST/as-cast
+        let restatement_rate = ctx.session_continuity.restatement_count as f64 / total as f64; // kanon:ignore RUST/as-cast
 
         let carry_status = if carry_rate < CONTINUITY_CARRY_FAIL_THRESHOLD {
             CheckStatus::Fail

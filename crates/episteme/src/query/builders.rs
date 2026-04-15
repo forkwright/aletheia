@@ -54,14 +54,20 @@ impl QueryBuilder {
     }
 
     /// Append a raw Datalog line (escape hatch for complex queries).
-    #[cfg_attr(not(test), expect(dead_code, reason = "Datalog query builder for knowledge store"))]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "Datalog query builder for knowledge store")
+    )]
     pub(crate) fn raw(mut self, line: &str) -> Self {
         self.lines.push(line.to_owned());
         self
     }
 
     /// Bind a named parameter.
-    #[cfg_attr(not(test), expect(dead_code, reason = "Datalog query builder for knowledge store"))]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "Datalog query builder for knowledge store")
+    )]
     pub(crate) fn param(mut self, name: &str, value: DataValue) -> Self {
         self.params.insert(name.to_owned(), value);
         self
@@ -69,7 +75,10 @@ impl QueryBuilder {
 
     /// Consume the builder, producing `(script, params)`.
     #[must_use]
-    #[cfg_attr(not(test), expect(dead_code, reason = "Datalog query builder for knowledge store"))]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "Datalog query builder for knowledge store")
+    )]
     pub(crate) fn build(self) -> (String, BTreeMap<String, DataValue>) {
         (self.lines.join("\n"), self.params)
     }

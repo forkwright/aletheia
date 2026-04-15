@@ -125,7 +125,11 @@ pub(crate) fn compute_decay(config: &DecayConfig, factors: &DecayFactors) -> Dec
     let recency = score_recency(factors.age_hours, effective_stability);
     let frequency = score_frequency(factors.access_count);
     let confidence = score_confidence(factors.tier);
-    let reinforcement = score_reinforcement(factors.reinforcement_count, config.reinforcement_boost, config.max_reinforcement_bonus);
+    let reinforcement = score_reinforcement(
+        factors.reinforcement_count,
+        config.reinforcement_boost,
+        config.max_reinforcement_bonus,
+    );
 
     let total_weight = config.total_weight();
     let weighted = if total_weight > 0.0 {
@@ -138,7 +142,11 @@ pub(crate) fn compute_decay(config: &DecayConfig, factors: &DecayFactors) -> Dec
         recency
     };
 
-    let cross_agent_mult = cross_agent_multiplier(factors.distinct_agent_count, config.cross_agent_bonus_per_agent, config.max_cross_agent_multiplier);
+    let cross_agent_mult = cross_agent_multiplier(
+        factors.distinct_agent_count,
+        config.cross_agent_bonus_per_agent,
+        config.max_cross_agent_multiplier,
+    );
     let score = (weighted * cross_agent_mult).clamp(0.0, 1.0);
 
     DecayResult {
@@ -189,7 +197,11 @@ fn score_confidence(tier: EpistemicTier) -> f64 {
 ///
 /// Each reinforcement event adds a fixed boost, capped at `max_reinforcement_bonus`.
 #[must_use]
-fn score_reinforcement(reinforcement_count: u32, reinforcement_boost: f64, max_reinforcement_bonus: f64) -> f64 {
+fn score_reinforcement(
+    reinforcement_count: u32,
+    reinforcement_boost: f64,
+    max_reinforcement_bonus: f64,
+) -> f64 {
     let bonus = f64::from(reinforcement_count) * reinforcement_boost;
     bonus.min(max_reinforcement_bonus)
 }
@@ -200,7 +212,11 @@ fn score_reinforcement(reinforcement_count: u32, reinforcement_boost: f64, max_r
 /// relevant and decay slower. Each additional agent beyond the first adds
 /// a bonus multiplier.
 #[must_use]
-pub(crate) fn cross_agent_multiplier(distinct_agent_count: u32, bonus_per_agent: f64, max_multiplier: f64) -> f64 {
+pub(crate) fn cross_agent_multiplier(
+    distinct_agent_count: u32,
+    bonus_per_agent: f64,
+    max_multiplier: f64,
+) -> f64 {
     if distinct_agent_count <= 1 {
         return 1.0;
     }
@@ -372,19 +388,39 @@ mod tests {
     #[test]
     fn cross_agent_multiplier_bounds() {
         assert!(
-            (cross_agent_multiplier(0, DEFAULT_CROSS_AGENT_BONUS_PER_AGENT, DEFAULT_MAX_CROSS_AGENT_MULTIPLIER) - 1.0).abs() < f64::EPSILON,
+            (cross_agent_multiplier(
+                0,
+                DEFAULT_CROSS_AGENT_BONUS_PER_AGENT,
+                DEFAULT_MAX_CROSS_AGENT_MULTIPLIER
+            ) - 1.0)
+                .abs()
+                < f64::EPSILON,
             "zero agents should give 1.0 multiplier"
         );
         assert!(
-            (cross_agent_multiplier(1, DEFAULT_CROSS_AGENT_BONUS_PER_AGENT, DEFAULT_MAX_CROSS_AGENT_MULTIPLIER) - 1.0).abs() < f64::EPSILON,
+            (cross_agent_multiplier(
+                1,
+                DEFAULT_CROSS_AGENT_BONUS_PER_AGENT,
+                DEFAULT_MAX_CROSS_AGENT_MULTIPLIER
+            ) - 1.0)
+                .abs()
+                < f64::EPSILON,
             "single agent should give 1.0 multiplier"
         );
-        let two = cross_agent_multiplier(2, DEFAULT_CROSS_AGENT_BONUS_PER_AGENT, DEFAULT_MAX_CROSS_AGENT_MULTIPLIER);
+        let two = cross_agent_multiplier(
+            2,
+            DEFAULT_CROSS_AGENT_BONUS_PER_AGENT,
+            DEFAULT_MAX_CROSS_AGENT_MULTIPLIER,
+        );
         assert!(
             (two - 1.15).abs() < f64::EPSILON,
             "two agents should give 1.15, got {two}"
         );
-        let capped = cross_agent_multiplier(100, DEFAULT_CROSS_AGENT_BONUS_PER_AGENT, DEFAULT_MAX_CROSS_AGENT_MULTIPLIER);
+        let capped = cross_agent_multiplier(
+            100,
+            DEFAULT_CROSS_AGENT_BONUS_PER_AGENT,
+            DEFAULT_MAX_CROSS_AGENT_MULTIPLIER,
+        );
         assert!(
             (capped - DEFAULT_MAX_CROSS_AGENT_MULTIPLIER).abs() < f64::EPSILON,
             "should cap at {DEFAULT_MAX_CROSS_AGENT_MULTIPLIER}, got {capped}"
@@ -600,7 +636,11 @@ mod tests {
 
     #[test]
     fn score_reinforcement_caps() {
-        let capped = score_reinforcement(100, DEFAULT_REINFORCEMENT_BOOST, DEFAULT_MAX_REINFORCEMENT_BONUS);
+        let capped = score_reinforcement(
+            100,
+            DEFAULT_REINFORCEMENT_BOOST,
+            DEFAULT_MAX_REINFORCEMENT_BONUS,
+        );
         assert!(
             (capped - DEFAULT_MAX_REINFORCEMENT_BONUS).abs() < f64::EPSILON,
             "reinforcement should cap at {DEFAULT_MAX_REINFORCEMENT_BONUS}, got {capped}"

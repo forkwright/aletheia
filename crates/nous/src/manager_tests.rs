@@ -77,7 +77,10 @@ async fn spawn_returns_handle() {
     let (_dir, oikos) = make_oikos();
     let mut mgr = make_manager(oikos);
 
-    let handle = mgr.spawn(syn_config(), PipelineConfig::default()).await.expect("spawn");
+    let handle = mgr
+        .spawn(syn_config(), PipelineConfig::default())
+        .await
+        .expect("spawn");
     assert_eq!(handle.id(), "syn", "spawned handle should have syn id");
     assert_eq!(mgr.count(), 1, "manager should have one actor after spawn");
 
@@ -89,7 +92,9 @@ async fn get_finds_spawned_actor() {
     let (_dir, oikos) = make_oikos();
     let mut mgr = make_manager(oikos);
 
-    mgr.spawn(syn_config(), PipelineConfig::default()).await.expect("spawn");
+    mgr.spawn(syn_config(), PipelineConfig::default())
+        .await
+        .expect("spawn");
 
     let handle = mgr.get("syn").expect("found");
     assert_eq!(handle.id(), "syn", "retrieved handle should have syn id");
@@ -112,7 +117,9 @@ async fn get_config_returns_stored_config() {
     let (_dir, oikos) = make_oikos();
     let mut mgr = make_manager(oikos);
 
-    mgr.spawn(syn_config(), PipelineConfig::default()).await.expect("spawn");
+    mgr.spawn(syn_config(), PipelineConfig::default())
+        .await
+        .expect("spawn");
 
     let config = mgr.get_config("syn").expect("config");
     assert_eq!(config.id.as_ref(), "syn", "config id should match");
@@ -139,9 +146,12 @@ async fn configs_returns_all() {
     let (_dir, oikos) = make_oikos();
     let mut mgr = make_manager(oikos);
 
-    mgr.spawn(syn_config(), PipelineConfig::default()).await.expect("spawn");
+    mgr.spawn(syn_config(), PipelineConfig::default())
+        .await
+        .expect("spawn");
     mgr.spawn(demiurge_config(), PipelineConfig::default())
-        .await.expect("spawn");
+        .await
+        .expect("spawn");
 
     let configs = mgr.configs();
     assert_eq!(configs.len(), 2, "should have two configs");
@@ -158,9 +168,12 @@ async fn list_returns_all_statuses() {
     let (_dir, oikos) = make_oikos();
     let mut mgr = make_manager(oikos);
 
-    mgr.spawn(syn_config(), PipelineConfig::default()).await.expect("spawn");
+    mgr.spawn(syn_config(), PipelineConfig::default())
+        .await
+        .expect("spawn");
     mgr.spawn(demiurge_config(), PipelineConfig::default())
-        .await.expect("spawn");
+        .await
+        .expect("spawn");
 
     let statuses = mgr.list().await;
     assert_eq!(statuses.len(), 2, "should list two actors");
@@ -180,10 +193,14 @@ async fn shutdown_all_stops_all_actors() {
     let (_dir, oikos) = make_oikos();
     let mut mgr = make_manager(oikos);
 
-    let handle1 = mgr.spawn(syn_config(), PipelineConfig::default()).await.expect("spawn");
+    let handle1 = mgr
+        .spawn(syn_config(), PipelineConfig::default())
+        .await
+        .expect("spawn");
     let handle2 = mgr
         .spawn(demiurge_config(), PipelineConfig::default())
-        .await.expect("spawn");
+        .await
+        .expect("spawn");
 
     mgr.shutdown_all().await;
 
@@ -207,9 +224,12 @@ async fn spawn_multiple_actors() {
     let (_dir, oikos) = make_oikos();
     let mut mgr = make_manager(oikos);
 
-    mgr.spawn(syn_config(), PipelineConfig::default()).await.expect("spawn");
+    mgr.spawn(syn_config(), PipelineConfig::default())
+        .await
+        .expect("spawn");
     mgr.spawn(demiurge_config(), PipelineConfig::default())
-        .await.expect("spawn");
+        .await
+        .expect("spawn");
 
     assert_eq!(mgr.count(), 2, "manager should have two actors");
 
@@ -229,8 +249,14 @@ async fn spawn_replaces_existing_actor() {
     let (_dir, oikos) = make_oikos();
     let mut mgr = make_manager(oikos);
 
-    let old_handle = mgr.spawn(syn_config(), PipelineConfig::default()).await.expect("spawn");
-    let new_handle = mgr.spawn(syn_config(), PipelineConfig::default()).await.expect("spawn");
+    let old_handle = mgr
+        .spawn(syn_config(), PipelineConfig::default())
+        .await
+        .expect("spawn");
+    let new_handle = mgr
+        .spawn(syn_config(), PipelineConfig::default())
+        .await
+        .expect("spawn");
 
     assert_eq!(mgr.count(), 1, "re-spawn should replace, not add");
 
@@ -250,7 +276,10 @@ async fn manager_turn_through_handle() {
     let (_dir, oikos) = make_oikos();
     let mut mgr = make_manager(oikos);
 
-    let handle = mgr.spawn(syn_config(), PipelineConfig::default()).await.expect("spawn");
+    let handle = mgr
+        .spawn(syn_config(), PipelineConfig::default())
+        .await
+        .expect("spawn");
     let result = handle.send_turn("main", "Hello").await.expect("turn");
     assert_eq!(result.content, "Hello!", "turn should return mock response");
 
@@ -263,10 +292,14 @@ async fn drain_stops_all_actors() {
     let (_dir, oikos) = make_oikos();
     let mut mgr = make_manager(oikos);
 
-    let handle1 = mgr.spawn(syn_config(), PipelineConfig::default()).await.expect("spawn");
+    let handle1 = mgr
+        .spawn(syn_config(), PipelineConfig::default())
+        .await
+        .expect("spawn");
     let handle2 = mgr
         .spawn(demiurge_config(), PipelineConfig::default())
-        .await.expect("spawn");
+        .await
+        .expect("spawn");
 
     // WHY: drain() takes &self: no mutable access needed.
     mgr.drain(Duration::from_secs(5)).await;
@@ -287,7 +320,10 @@ async fn cancel_token_propagates_to_actors() {
     let (_dir, oikos) = make_oikos();
     let mut mgr = make_manager(oikos);
 
-    let handle = mgr.spawn(syn_config(), PipelineConfig::default()).await.expect("spawn");
+    let handle = mgr
+        .spawn(syn_config(), PipelineConfig::default())
+        .await
+        .expect("spawn");
 
     // WHY: Cancel via manager's root token directly (as drain() would do internally).
     mgr.cancel.cancel();
@@ -311,9 +347,12 @@ async fn drain_timeout_does_not_panic() {
     let (_dir, oikos) = make_oikos();
     let mut mgr = make_manager(oikos);
 
-    mgr.spawn(syn_config(), PipelineConfig::default()).await.expect("spawn");
+    mgr.spawn(syn_config(), PipelineConfig::default())
+        .await
+        .expect("spawn");
     mgr.spawn(demiurge_config(), PipelineConfig::default())
-        .await.expect("spawn");
+        .await
+        .expect("spawn");
 
     // NOTE: 1-nanosecond timeout: drain will warn but must not panic.
     mgr.drain(Duration::from_nanos(1)).await;
@@ -324,7 +363,9 @@ async fn check_health_reports_alive_actors() {
     let (_dir, oikos) = make_oikos();
     let mut mgr = make_manager(oikos);
 
-    mgr.spawn(syn_config(), PipelineConfig::default()).await.expect("spawn");
+    mgr.spawn(syn_config(), PipelineConfig::default())
+        .await
+        .expect("spawn");
 
     let health = mgr.check_health().await;
     assert_eq!(health.len(), 1, "health map should have one entry");
@@ -343,7 +384,10 @@ async fn check_health_detects_dead_actor() {
     let (_dir, oikos) = make_oikos();
     let mut mgr = make_manager(oikos);
 
-    let handle = mgr.spawn(syn_config(), PipelineConfig::default()).await.expect("spawn");
+    let handle = mgr
+        .spawn(syn_config(), PipelineConfig::default())
+        .await
+        .expect("spawn");
 
     handle.shutdown().await.expect("shutdown");
     // kanon:ignore TESTING/sleep-in-test reason = "waiting for actor task to fully stop before health check; real async shutdown cannot use pause+advance"
@@ -362,11 +406,15 @@ async fn check_health_busy_actor_reports_alive() {
     let (_dir, oikos) = make_oikos();
     let mut mgr = make_manager(oikos);
 
-    mgr.spawn(syn_config(), PipelineConfig::default()).await.expect("spawn");
+    mgr.spawn(syn_config(), PipelineConfig::default())
+        .await
+        .expect("spawn");
 
     // NOTE: Simulate: actor is mid-turn (flag set) but its inbox is closed (ping fails).
     let entry = mgr.actors.get("syn").expect("actor registered");
-    entry.active_turn.store(true, std::sync::atomic::Ordering::Release);
+    entry
+        .active_turn
+        .store(true, std::sync::atomic::Ordering::Release);
     // WHY: set a recent turn_started_at_ms so stuck-turn detection doesn't trigger
     #[expect(
         clippy::cast_possible_truncation,
@@ -374,7 +422,9 @@ async fn check_health_busy_actor_reports_alive() {
         reason = "u128→u64: test uptime in ms won't exceed u64::MAX"
     )]
     let now_ms = entry.last_start.elapsed().as_millis() as u64; // kanon:ignore RUST/as-cast
-    entry.turn_started_at_ms.store(now_ms, std::sync::atomic::Ordering::Release);
+    entry
+        .turn_started_at_ms
+        .store(now_ms, std::sync::atomic::Ordering::Release);
 
     let handle = mgr.actors.get("syn").expect("entry").handle.clone();
     handle.shutdown().await.expect("shutdown sent");

@@ -7,14 +7,13 @@ mod maintenance;
 mod resolved;
 
 pub use agents::{
-    AgentBehaviorDefaults, AgentDefaults, AgentModelDefaults, AgentsConfig,
-    CachingConfig, ModelSpec, NousDefinition, RecallSettings,
-    RecallWeights,
+    AgentBehaviorDefaults, AgentDefaults, AgentModelDefaults, AgentsConfig, CachingConfig,
+    ModelSpec, NousDefinition, RecallSettings, RecallWeights,
 };
 pub use behavior::{
-    ApiLimitsConfig, CapacityConfig, DaemonBehaviorConfig, KnowledgeConfig,
-    MessagingConfig, NousBehaviorConfig, ProviderBehaviorConfig, RetrySettings,
-    TimeoutsConfig, ToolLimitsConfig, TuningConfig,
+    ApiLimitsConfig, CapacityConfig, DaemonBehaviorConfig, KnowledgeConfig, MessagingConfig,
+    NousBehaviorConfig, ProviderBehaviorConfig, RetrySettings, TimeoutsConfig, ToolLimitsConfig,
+    TuningConfig,
 };
 pub use gateway::{
     BodyLimitConfig, CorsConfig, CsrfConfig, GatewayAuthConfig, GatewayConfig,
@@ -204,8 +203,6 @@ fn default_session_pattern() -> String {
     "{source}".to_owned()
 }
 
-
-
 /// Embedding provider configuration for recall pipeline.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -283,7 +280,6 @@ impl Default for SignalAccountConfig {
         }
     }
 }
-
 
 #[cfg(test)]
 #[path = "config_tests.rs"]

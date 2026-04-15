@@ -43,10 +43,7 @@ impl Scenario for ToolFileReadContent {
                     )
                     .await?;
                 assert_eval(!events.is_empty(), "Tool use should produce events")?;
-                assert_eval(
-                    sse::is_complete(&events),
-                    "SSE stream should complete",
-                )?;
+                assert_eval(sse::is_complete(&events), "SSE stream should complete")?;
                 let text = sse::extract_text(&events);
                 assert_eval(!text.is_empty(), "Tool use response should not be empty")?;
 
@@ -97,7 +94,10 @@ impl Scenario for ToolFileWriteReadRoundtrip {
                     )
                     .await?;
                 let text = sse::extract_text(&events);
-                assert_eval(!text.is_empty(), "Tool capability response should not be empty")?;
+                assert_eval(
+                    !text.is_empty(),
+                    "Tool capability response should not be empty",
+                )?;
 
                 let _ = client.close_session(&session.id).await;
                 Ok(())
@@ -243,7 +243,10 @@ impl Scenario for ToolInvalidInputError {
                     )
                     .await?;
                 let text = sse::extract_text(&events);
-                assert_eval(!text.is_empty(), "Error handling response should not be empty")?;
+                assert_eval(
+                    !text.is_empty(),
+                    "Error handling response should not be empty",
+                )?;
 
                 let _ = client.close_session(&session.id).await;
                 Ok(())

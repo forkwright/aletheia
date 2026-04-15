@@ -33,10 +33,7 @@ pub struct EvidenceResult {
 /// * `values` — Ordered metric observations (oldest first).
 /// * `significance_threshold` — Delta must exceed this many standard deviations.
 #[must_use]
-pub fn validate_evidence(
-    values: &[f64],
-    significance_threshold: f64,
-) -> Option<EvidenceResult> {
+pub fn validate_evidence(values: &[f64], significance_threshold: f64) -> Option<EvidenceResult> {
     if values.len() < 2 {
         return None;
     }
@@ -157,7 +154,10 @@ mod tests {
         // Very high noise with small difference
         let values = [0.49, 0.51, 0.48, 0.52, 0.50, 0.51, 0.49, 0.50, 0.51, 0.50];
         let result = validate_evidence(&values, 1.5).unwrap();
-        assert!(!result.is_significant, "tiny delta should not be significant");
+        assert!(
+            !result.is_significant,
+            "tiny delta should not be significant"
+        );
     }
 
     #[test]
@@ -172,7 +172,10 @@ mod tests {
         // Declining signal
         let values = [0.9, 0.9, 0.9, 0.9, 0.9, 0.1, 0.1, 0.1, 0.1, 0.1];
         let result = validate_evidence(&values, 0.5).unwrap();
-        assert!(result.delta < 0.0, "declining signal should have negative delta");
+        assert!(
+            result.delta < 0.0,
+            "declining signal should have negative delta"
+        );
         assert!(result.is_significant);
     }
 

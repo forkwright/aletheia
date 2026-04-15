@@ -24,7 +24,11 @@ use crate::commands::session_export::SessionExportArgs;
 use crate::commands::tls;
 
 #[derive(Debug, Parser)]
-#[command(name = "aletheia", about = "Cognitive agent runtime. Run with no subcommand to start the HTTP server.", version)]
+#[command(
+    name = "aletheia",
+    about = "Cognitive agent runtime. Run with no subcommand to start the HTTP server.",
+    version
+)]
 pub(crate) struct Cli {
     /// Path to instance root directory
     #[arg(short = 'r', long)]

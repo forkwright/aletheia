@@ -223,9 +223,7 @@ pub(super) fn get_stored_facts(
     Vec::new()
 }
 
-pub(super) fn get_stored_entities(
-    state: &KnowledgeState,
-) -> Vec<mneme::knowledge::Entity> {
+pub(super) fn get_stored_entities(state: &KnowledgeState) -> Vec<mneme::knowledge::Entity> {
     #[cfg(feature = "knowledge-store")]
     if let Some(ref store) = state.knowledge_store {
         match store.list_entities() {

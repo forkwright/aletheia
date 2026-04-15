@@ -65,7 +65,10 @@ static BACKGROUND_TASK_FAILURES_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|
     .expect("metric registration")
 });
 
-#[cfg_attr(not(test), expect(dead_code, reason = "metric init called from server startup"))]
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "metric init called from server startup")
+)]
 /// Force-initialize all lazy metric statics.
 pub(crate) fn init() {
     LazyLock::force(&WATCHDOG_RESTARTS_TOTAL);
@@ -118,26 +121,38 @@ mod tests {
         // Verify metrics are registered by accessing them
         let _ = WATCHDOG_RESTARTS_TOTAL.with_label_values(&["test"]).get();
         let _ = WATCHDOG_HUNG_PROCESSES.get();
-        let _ = CRON_EXECUTIONS_TOTAL.with_label_values(&["test", "ok"]).get();
-        let _ = CRON_DURATION_SECONDS.with_label_values(&["test"]).get_sample_count();
-        let _ = BACKGROUND_TASK_FAILURES_TOTAL.with_label_values(&["test", "self_prompt"]).get();
+        let _ = CRON_EXECUTIONS_TOTAL
+            .with_label_values(&["test", "ok"])
+            .get();
+        let _ = CRON_DURATION_SECONDS
+            .with_label_values(&["test"])
+            .get_sample_count();
+        let _ = BACKGROUND_TASK_FAILURES_TOTAL
+            .with_label_values(&["test", "self_prompt"])
+            .get();
     }
 
     #[test]
     fn record_watchdog_restart_increments_counter() {
         let process_id = "test-restart-process";
-        let before = WATCHDOG_RESTARTS_TOTAL.with_label_values(&[process_id]).get();
+        let before = WATCHDOG_RESTARTS_TOTAL
+            .with_label_values(&[process_id])
+            .get();
 
         record_watchdog_restart(process_id);
         assert_eq!(
-            WATCHDOG_RESTARTS_TOTAL.with_label_values(&[process_id]).get(),
+            WATCHDOG_RESTARTS_TOTAL
+                .with_label_values(&[process_id])
+                .get(),
             before + 1,
             "restart counter should increment by 1"
         );
 
         record_watchdog_restart(process_id);
         assert_eq!(
-            WATCHDOG_RESTARTS_TOTAL.with_label_values(&[process_id]).get(),
+            WATCHDOG_RESTARTS_TOTAL
+                .with_label_values(&[process_id])
+                .get(),
             before + 2,
             "restart counter should be cumulative"
         );
@@ -147,11 +162,7 @@ mod tests {
     fn set_hung_processes_updates_gauge() {
         // Test setting various values
         set_hung_processes(5);
-        assert_eq!(
-            WATCHDOG_HUNG_PROCESSES.get(),
-            5,
-            "gauge should be set to 5"
-        );
+        assert_eq!(WATCHDOG_HUNG_PROCESSES.get(), 5, "gauge should be set to 5");
 
         set_hung_processes(3);
         assert_eq!(
@@ -171,8 +182,12 @@ mod tests {
     #[test]
     fn record_cron_execution_records_success_and_failure() {
         let task_name = "test-cron-task";
-        let ok_before = CRON_EXECUTIONS_TOTAL.with_label_values(&[task_name, "ok"]).get();
-        let error_before = CRON_EXECUTIONS_TOTAL.with_label_values(&[task_name, "error"]).get();
+        let ok_before = CRON_EXECUTIONS_TOTAL
+            .with_label_values(&[task_name, "ok"])
+            .get();
+        let error_before = CRON_EXECUTIONS_TOTAL
+            .with_label_values(&[task_name, "error"])
+            .get();
         let hist_before = CRON_DURATION_SECONDS
             .with_label_values(&[task_name])
             .get_sample_count();
@@ -180,12 +195,16 @@ mod tests {
         // Record successful execution
         record_cron_execution(task_name, 1.5, true);
         assert_eq!(
-            CRON_EXECUTIONS_TOTAL.with_label_values(&[task_name, "ok"]).get(),
+            CRON_EXECUTIONS_TOTAL
+                .with_label_values(&[task_name, "ok"])
+                .get(),
             ok_before + 1,
             "ok counter should increment for success=true"
         );
         assert_eq!(
-            CRON_EXECUTIONS_TOTAL.with_label_values(&[task_name, "error"]).get(),
+            CRON_EXECUTIONS_TOTAL
+                .with_label_values(&[task_name, "error"])
+                .get(),
             error_before,
             "error counter should not change for success=true"
         );
@@ -193,12 +212,16 @@ mod tests {
         // Record failed execution
         record_cron_execution(task_name, 0.5, false);
         assert_eq!(
-            CRON_EXECUTIONS_TOTAL.with_label_values(&[task_name, "ok"]).get(),
+            CRON_EXECUTIONS_TOTAL
+                .with_label_values(&[task_name, "ok"])
+                .get(),
             ok_before + 1,
             "ok counter should be unchanged after error"
         );
         assert_eq!(
-            CRON_EXECUTIONS_TOTAL.with_label_values(&[task_name, "error"]).get(),
+            CRON_EXECUTIONS_TOTAL
+                .with_label_values(&[task_name, "error"])
+                .get(),
             error_before + 1,
             "error counter should increment for success=false"
         );

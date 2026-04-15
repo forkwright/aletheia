@@ -31,13 +31,8 @@ impl QaGate for AlwaysPassQaGate {
         prompt: &'a QaPromptSpec,
         pr_number: u64,
         _diff: &'a str,
-    ) -> Pin<
-        Box<
-            dyn std::future::Future<Output = energeia::error::Result<QaResult>>
-                + Send
-                + 'a,
-        >,
-    > {
+    ) -> Pin<Box<dyn std::future::Future<Output = energeia::error::Result<QaResult>> + Send + 'a>>
+    {
         Box::pin(async move {
             Ok(QaResult::new(
                 prompt.prompt_number,

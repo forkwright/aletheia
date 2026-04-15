@@ -46,16 +46,17 @@ mod tests {
     fn builtin_provider_returns_scenarios() {
         let provider = BuiltinProvider;
         let scenarios = provider.provide();
-        assert!(!scenarios.is_empty(), "builtin provider should return scenarios");
+        assert!(
+            !scenarios.is_empty(),
+            "builtin provider should return scenarios"
+        );
         assert_eq!(provider.name(), "builtin");
     }
 
     #[test]
     fn composite_provider_combines() {
-        let composite = CompositeProvider::new(vec![
-            Box::new(BuiltinProvider),
-            Box::new(BuiltinProvider),
-        ]);
+        let composite =
+            CompositeProvider::new(vec![Box::new(BuiltinProvider), Box::new(BuiltinProvider)]);
         let scenarios = composite.provide();
         let single = BuiltinProvider.provide().len();
         assert_eq!(scenarios.len(), single * 2);

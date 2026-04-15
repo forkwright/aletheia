@@ -62,7 +62,11 @@ fn aggregation_creates_pattern_from_successful_calls() {
         })
         .collect();
 
-    let patterns = aggregate_observations(&observations, DEFAULT_MIN_OBSERVATIONS, DEFAULT_MIN_SUCCESS_RATE);
+    let patterns = aggregate_observations(
+        &observations,
+        DEFAULT_MIN_OBSERVATIONS,
+        DEFAULT_MIN_SUCCESS_RATE,
+    );
     assert_eq!(
         patterns.len(),
         1,
@@ -103,7 +107,11 @@ fn aggregation_no_pattern_below_minimum_observations() {
         })
         .collect();
 
-    let patterns = aggregate_observations(&observations, DEFAULT_MIN_OBSERVATIONS, DEFAULT_MIN_SUCCESS_RATE);
+    let patterns = aggregate_observations(
+        &observations,
+        DEFAULT_MIN_OBSERVATIONS,
+        DEFAULT_MIN_SUCCESS_RATE,
+    );
     assert!(
         patterns.is_empty(),
         "3 observations should not produce a pattern (minimum is 5)"
@@ -133,7 +141,11 @@ fn aggregation_no_pattern_below_success_rate() {
         ));
     }
 
-    let patterns = aggregate_observations(&observations, DEFAULT_MIN_OBSERVATIONS, DEFAULT_MIN_SUCCESS_RATE);
+    let patterns = aggregate_observations(
+        &observations,
+        DEFAULT_MIN_OBSERVATIONS,
+        DEFAULT_MIN_SUCCESS_RATE,
+    );
     assert!(
         patterns.is_empty(),
         "40% success rate should not produce a pattern (minimum is 80%)"
@@ -377,7 +389,11 @@ fn aggregation_separates_tools() {
         ));
     }
 
-    let patterns = aggregate_observations(&observations, DEFAULT_MIN_OBSERVATIONS, DEFAULT_MIN_SUCCESS_RATE);
+    let patterns = aggregate_observations(
+        &observations,
+        DEFAULT_MIN_OBSERVATIONS,
+        DEFAULT_MIN_SUCCESS_RATE,
+    );
     assert_eq!(patterns.len(), 2, "should have separate patterns per tool");
     let names: Vec<_> = patterns.iter().map(|p| p.tool_name.as_str()).collect();
     assert!(names.contains(&"grep"), "grep pattern should be present");
@@ -469,7 +485,11 @@ fn observations_different_context_categories_aggregate_separately() {
             observed_at: ts(&format!("2026-03-{:02}T12:00:00Z", i + 1)),
         });
     }
-    let patterns = aggregate_observations(&observations, DEFAULT_MIN_OBSERVATIONS, DEFAULT_MIN_SUCCESS_RATE);
+    let patterns = aggregate_observations(
+        &observations,
+        DEFAULT_MIN_OBSERVATIONS,
+        DEFAULT_MIN_SUCCESS_RATE,
+    );
     let custom: Vec<_> = patterns
         .iter()
         .filter(|p| p.tool_name == "custom_tool")

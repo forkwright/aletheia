@@ -29,9 +29,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use hermeneus::complexity::{ComplexityInput, score_complexity};
-use hermeneus::concurrency::{
-    AdaptiveConcurrencyLimiter, ConcurrencyConfig, RequestOutcome,
-};
+use hermeneus::concurrency::{AdaptiveConcurrencyLimiter, ConcurrencyConfig, RequestOutcome};
 use hermeneus::types::{StopReason, ToolResultType, Usage};
 
 /// Baseline: sum two `u64` fields inside a `Copy` struct. Establishes the
@@ -129,8 +127,7 @@ fn score_complexity_short(c: &mut Criterion) {
 /// closer to the realistic cost of routing a typical assistant turn.
 fn score_complexity_long(c: &mut Criterion) {
     let input = ComplexityInput {
-        message_text:
-            "Please analyze the architecture of this service, then implement a refactor \
+        message_text: "Please analyze the architecture of this service, then implement a refactor \
              that migrates the session store to the new backend. Review the diff \
              and investigate any failing tests. After that, commit and push.",
         tool_count: 12,
@@ -179,10 +176,7 @@ fn concurrency_acquire_release(c: &mut Criterion) {
         b.iter(|| {
             rt.block_on(async {
                 let permit = limiter.acquire().await;
-                permit.finish_with_latency(
-                    RequestOutcome::Neutral,
-                    Duration::from_millis(1),
-                );
+                permit.finish_with_latency(RequestOutcome::Neutral, Duration::from_millis(1));
             });
             black_box(&limiter);
         });

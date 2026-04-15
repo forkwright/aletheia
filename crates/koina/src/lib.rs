@@ -7,9 +7,6 @@
 
 /// Setup-time cleanup registration via RAII guards ([`cleanup::CleanupGuard`], [`cleanup::CleanupRegistry`]).
 pub mod cleanup;
-/// Shared fjall storage helpers: database open, temp stores, timestamp formatting.
-#[cfg(feature = "fjall")]
-pub mod fjall;
 /// Credential provider trait for dynamic API key resolution.
 pub mod credential;
 /// Shared configuration defaults (token budgets, timeouts, iteration limits).
@@ -22,6 +19,9 @@ pub mod error;
 pub mod error_class;
 /// Internal event system coupling metrics and structured logs.
 pub mod event;
+/// Shared fjall storage helpers: database open, temp stores, timestamp formatting.
+#[cfg(feature = "fjall")]
+pub mod fjall;
 /// Restricted filesystem helpers for writing sensitive files.
 pub mod fs;
 /// Shared HTTP constants (content types, auth prefix, API paths).

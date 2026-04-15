@@ -84,7 +84,10 @@ fn agent_options_builder_chaining() {
         .permission_mode("plan");
 
     assert_eq!(opts.model, Some("claude-sonnet-4-20250514".to_owned()));
-    assert_eq!(opts.system_prompt, Some("You are a helpful coding assistant".to_owned()));
+    assert_eq!(
+        opts.system_prompt,
+        Some("You are a helpful coding assistant".to_owned())
+    );
     assert_eq!(opts.cwd, Some("/tmp/project".to_owned()));
     assert_eq!(opts.max_turns, Some(100));
     assert_eq!(opts.permission_mode, Some("plan".to_owned()));
@@ -109,7 +112,10 @@ fn agent_options_serde_roundtrip() {
     let json = serde_json::to_string(&opts).expect("serialize");
     let deserialized: AgentOptions = serde_json::from_str(&json).expect("deserialize");
 
-    assert_eq!(deserialized.model, Some("claude-opus-4-20250514".to_owned()));
+    assert_eq!(
+        deserialized.model,
+        Some("claude-opus-4-20250514".to_owned())
+    );
     assert_eq!(deserialized.max_turns, Some(50));
     assert!(deserialized.system_prompt.is_none());
 }
@@ -198,7 +204,10 @@ fn orchestrator_config_serde_roundtrip() {
     assert_eq!(deserialized.max_concurrent, 6);
     assert_eq!(deserialized.default_budget_usd, Some(25.0));
     assert_eq!(deserialized.max_duration, Some(Duration::from_secs(1800)));
-    assert_eq!(deserialized.session_idle_timeout, Some(Duration::from_secs(600)));
+    assert_eq!(
+        deserialized.session_idle_timeout,
+        Some(Duration::from_secs(600))
+    );
 }
 
 #[test]
@@ -228,7 +237,9 @@ fn cost_ledger_record_and_query_single() {
 
     ledger.record("crates/foo/", 1.50, 10, "claude-3-5-sonnet");
 
-    let cost = ledger.query("crates/foo/").expect("should find cost record");
+    let cost = ledger
+        .query("crates/foo/")
+        .expect("should find cost record");
     assert_eq!(cost.blast_radius, "crates/foo/");
     assert!((cost.total_cost_usd - 1.50).abs() < 0.001);
     assert_eq!(cost.total_turns, 10);
@@ -243,7 +254,9 @@ fn cost_ledger_record_accumulates() {
     ledger.record("crates/foo/", 2.00, 20, "claude-3-5-sonnet");
     ledger.record("crates/foo/", 0.50, 5, "claude-3-haiku");
 
-    let cost = ledger.query("crates/foo/").expect("should find cost record");
+    let cost = ledger
+        .query("crates/foo/")
+        .expect("should find cost record");
     assert!((cost.total_cost_usd - 3.50).abs() < 0.001);
     assert_eq!(cost.total_turns, 35);
     assert_eq!(cost.session_count, 3);
@@ -365,8 +378,16 @@ fn cost_ledger_cost_by_model_accumulation() {
 
     // By model: claude-opus = 2.50, claude-sonnet = 1.50
     assert_eq!(cost.cost_by_model.len(), 2);
-    let opus_cost = cost.cost_by_model.get("claude-opus").copied().unwrap_or(0.0);
-    let sonnet_cost = cost.cost_by_model.get("claude-sonnet").copied().unwrap_or(0.0);
+    let opus_cost = cost
+        .cost_by_model
+        .get("claude-opus")
+        .copied()
+        .unwrap_or(0.0);
+    let sonnet_cost = cost
+        .cost_by_model
+        .get("claude-sonnet")
+        .copied()
+        .unwrap_or(0.0);
     assert!((opus_cost - 2.50).abs() < 0.001);
     assert!((sonnet_cost - 1.50).abs() < 0.001);
 }
@@ -511,10 +532,7 @@ fn mechanical_issue_kind_display() {
         MechanicalIssueKind::BlastRadiusViolation.to_string(),
         "blast_radius_violation"
     );
-    assert_eq!(
-        MechanicalIssueKind::AntiPattern.to_string(),
-        "anti_pattern"
-    );
+    assert_eq!(MechanicalIssueKind::AntiPattern.to_string(), "anti_pattern");
     assert_eq!(
         MechanicalIssueKind::LintViolation.to_string(),
         "lint_violation"
@@ -540,9 +558,7 @@ fn session_event_serde_roundtrip() {
     };
     let json = serde_json::to_string(&event).expect("serialize");
     let deserialized: SessionEvent = serde_json::from_str(&json).expect("deserialize");
-    assert!(
-        matches!(deserialized, SessionEvent::ToolUse { name, .. } if name == "read_file")
-    );
+    assert!(matches!(deserialized, SessionEvent::ToolUse { name, .. } if name == "read_file"));
 }
 
 #[test]
@@ -562,7 +578,10 @@ fn session_event_variants_serde() {
     let event = SessionEvent::TurnComplete { turn: 5 };
     let json = serde_json::to_string(&event).expect("serialize");
     let deserialized: SessionEvent = serde_json::from_str(&json).expect("deserialize");
-    assert!(matches!(deserialized, SessionEvent::TurnComplete { turn: 5 }));
+    assert!(matches!(
+        deserialized,
+        SessionEvent::TurnComplete { turn: 5 }
+    ));
 
     // Test Error variant
     let event = SessionEvent::Error {
@@ -798,8 +817,12 @@ fn agent_options_equality() {
 
 #[test]
 fn orchestrator_config_equality() {
-    let config1 = OrchestratorConfig::new().max_concurrent(8).default_budget_usd(10.0);
-    let config2 = OrchestratorConfig::new().max_concurrent(8).default_budget_usd(10.0);
+    let config1 = OrchestratorConfig::new()
+        .max_concurrent(8)
+        .default_budget_usd(10.0);
+    let config2 = OrchestratorConfig::new()
+        .max_concurrent(8)
+        .default_budget_usd(10.0);
     let config3 = OrchestratorConfig::new().max_concurrent(4);
 
     assert_eq!(config1.max_concurrent, config2.max_concurrent);

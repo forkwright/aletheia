@@ -1,6 +1,12 @@
 //! Collection, set, range, and assertion functions.
-#![expect(clippy::as_conversions, reason = "collection functions require i64/usize casts — engine-internal")]
-#![expect(clippy::mutable_key_type, reason = "DataValue contains interior-mutable Regex; BTreeSet usage is engine-internal")]
+#![expect(
+    clippy::as_conversions,
+    reason = "collection functions require i64/usize casts — engine-internal"
+)]
+#![expect(
+    clippy::mutable_key_type,
+    reason = "DataValue contains interior-mutable Regex; BTreeSet usage is engine-internal"
+)]
 use std::collections::BTreeSet;
 
 use itertools::Itertools;

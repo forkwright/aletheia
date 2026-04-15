@@ -80,7 +80,8 @@ impl PlanningService for FilesystemPlanningService {
         let project_id = project_id.to_owned();
         Box::pin(async move {
             tokio::task::spawn_blocking(move || {
-                let _span = tracing::info_span!("planning_load_project", project_id = %project_id).entered();
+                let _span = tracing::info_span!("planning_load_project", project_id = %project_id)
+                    .entered();
                 let ws_path = root.join(&project_id);
                 let ws = ProjectWorkspace::open(&ws_path).map_err(|e| {
                     WorkspaceSnafu {
@@ -424,13 +425,14 @@ fn find_plan_mut<'a>(
     phase_id: &str,
     plan_id: &str,
 ) -> Result<&'a mut dianoia::plan::Plan, PlanningAdapterError> {
-    let phase_ulid: koina::ulid::Ulid = phase_id.parse().map_err(|e: koina::ulid::DecodeError| {
-        InvalidIdSnafu {
-            kind: "phase_id".to_owned(),
-            message: e.to_string(),
-        }
-        .build()
-    })?;
+    let phase_ulid: koina::ulid::Ulid =
+        phase_id.parse().map_err(|e: koina::ulid::DecodeError| {
+            InvalidIdSnafu {
+                kind: "phase_id".to_owned(),
+                message: e.to_string(),
+            }
+            .build()
+        })?;
     let plan_ulid: koina::ulid::Ulid = plan_id.parse().map_err(|e: koina::ulid::DecodeError| {
         InvalidIdSnafu {
             kind: "plan_id".to_owned(),

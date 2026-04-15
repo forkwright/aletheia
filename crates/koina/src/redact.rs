@@ -14,20 +14,19 @@ use regex::Regex;
 // fire `unfulfilled_lint_expectations` on every invocation of this macro.
 macro_rules! static_regex {
     ($name:ident, $pattern:expr) => {
-        #[allow(clippy::expect_used, reason = "macro-generated static regex requires expect() for compilation failure")]
-        static $name: LazyLock<Regex> = LazyLock::new(||
-            Regex::new($pattern).expect("static regex must compile")
-        );
+        #[allow(
+            clippy::expect_used,
+            reason = "macro-generated static regex requires expect() for compilation failure"
+        )]
+        static $name: LazyLock<Regex> =
+            LazyLock::new(|| Regex::new($pattern).expect("static regex must compile"));
     };
 }
 
 static_regex!(RE_ANTHROPIC_KEY, r"sk-ant-api03-[A-Za-z0-9_-]+");
 static_regex!(RE_SK_KEY, r"sk-[A-Za-z0-9_-]{20,}");
 static_regex!(RE_BEARER, r"Bearer [A-Za-z0-9._-]+");
-static_regex!(
-    RE_JWT,
-    r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+"
-);
+static_regex!(RE_JWT, r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+");
 static_regex!(
     RE_SECRETS,
     r"(?i)(password|secret|api_key|apikey)\s*[:=]\s*\S+"

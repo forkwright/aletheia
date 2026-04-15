@@ -140,9 +140,7 @@ pub(crate) fn extract_follow_up(output: &str) -> Option<String> {
     }
 
     // Terminate at the next `##` heading or end of string.
-    let end = body
-        .find("\n## ")
-        .unwrap_or(body.len());
+    let end = body.find("\n## ").unwrap_or(body.len());
 
     // `end <= body.len()` by construction (find returns Some(pos<len) or unwrap_or(body.len())).
     let content = body.get(..end)?.trim();
@@ -213,7 +211,10 @@ mod tests {
     #[test]
     fn default_config_disabled() {
         let config = SelfPromptConfig::default();
-        assert!(!config.enabled, "self-prompting must be disabled by default");
+        assert!(
+            !config.enabled,
+            "self-prompting must be disabled by default"
+        );
         assert_eq!(config.max_per_hour, 1);
     }
 
@@ -376,10 +377,12 @@ mod tests {
             .expect("should not error");
         // NOTE: NoopBridge returns success=false, but the dispatch itself succeeds.
         assert!(result.success);
-        assert!(result
-            .output
-            .expect("has output")
-            .contains("self-prompt dispatched"));
+        assert!(
+            result
+                .output
+                .expect("has output")
+                .contains("self-prompt dispatched")
+        );
     }
 
     // -- Session key constant test --

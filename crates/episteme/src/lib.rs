@@ -33,10 +33,10 @@ pub mod decay;
 pub(crate) mod dedup;
 /// Embedding provider trait and implementations (candle, mock).
 pub mod embedding;
-/// Evidence-gap tracking for iterative retrieval (MemR3-inspired).
-pub mod evidence_gap;
 /// Embedding evaluation gate: Recall@K and MRR for model upgrade checks.
 pub mod embedding_eval;
+/// Evidence-gap tracking for iterative retrieval (MemR3-inspired).
+pub mod evidence_gap;
 /// LLM-driven knowledge extraction pipeline (entities, relationships, facts).
 pub mod extract;
 /// Graph-enhanced recall scoring: PageRank boost, community proximity, supersession chains.
@@ -60,6 +60,8 @@ pub mod query;
 pub(crate) mod query_rewrite;
 /// 6-factor recall scoring engine for knowledge retrieval ranking.
 pub mod recall;
+/// Steward rule proposal generation from observed tool-usage patterns.
+pub mod rule_proposals;
 /// Side-query memory relevance selector with LRU caching and already-surfaced tracking.
 pub mod side_query;
 /// Skill storage helpers and SKILL.md parser.
@@ -70,14 +72,12 @@ pub mod skills;
 pub mod staleness;
 /// Ecological succession: domain volatility tracking and adaptive decay rates.
 pub(crate) mod succession;
+/// Bayesian surprise for episode boundary detection (EM-LLM, arXiv 2407.09450).
+pub mod surprise;
 /// Structured tracing subscriber that captures operational events as Datalog facts.
 pub mod trace_ingest;
 /// Relationship type normalization and validation for knowledge graph extraction.
 pub mod vocab;
-/// Steward rule proposal generation from observed tool-usage patterns.
-pub mod rule_proposals;
-/// Bayesian surprise for episode boundary detection (EM-LLM, arXiv 2407.09450).
-pub mod surprise;
 
 /// Shared test fixtures for knowledge store tests (DRY helpers).
 #[cfg(all(test, feature = "mneme-engine"))]

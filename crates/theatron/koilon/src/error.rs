@@ -11,9 +11,7 @@ use snafu::prelude::*;
 pub enum Error {
     /// API transport or authentication error from the HTTP client.
     #[snafu(context(false))]
-    Api {
-        source: skene::api::ApiError,
-    },
+    Api { source: skene::api::ApiError },
 
     /// Token is required but was not supplied.
     #[snafu(display("{message}"))]

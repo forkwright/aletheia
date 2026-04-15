@@ -409,7 +409,8 @@ async fn refresh_loop(
             continue;
         }
 
-        let Some((mut refresh_token_value, subscription_type, expires_at_ms)) = plan_refresh(&state)
+        let Some((mut refresh_token_value, subscription_type, expires_at_ms)) =
+            plan_refresh(&state)
         else {
             continue;
         };

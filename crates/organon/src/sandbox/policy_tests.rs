@@ -201,8 +201,7 @@ fn landlock_blocks_symlink_escape() {
 
     // Symlink resolution should be blocked
     assert!(
-        !output.status.success()
-            || !String::from_utf8_lossy(&output.stdout).contains("escaped"),
+        !output.status.success() || !String::from_utf8_lossy(&output.stdout).contains("escaped"),
         "symlink escape should be blocked: {stderr}"
     );
 }

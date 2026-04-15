@@ -100,10 +100,8 @@ impl ToolExecutor for DokimasiaExecutor {
             // prompt spec loading (with real acceptance criteria) requires file
             // I/O outside the tool's scope. Callers can add criteria via a future
             // schema extension. Mechanical checks run against the empty diff.
-            let qa_prompt = energeia::qa::PromptSpec::new(
-                prompt_number,
-                format!("Prompt #{prompt_number}"),
-            );
+            let qa_prompt =
+                energeia::qa::PromptSpec::new(prompt_number, format!("Prompt #{prompt_number}"));
 
             // WHY: Diff is empty because fetching the PR diff requires GitHub API
             // access which is outside this tool's scope. Callers may pass a diff
@@ -191,16 +189,15 @@ impl ToolExecutor for DiorthosisExecutor {
             // dokimasia) so callers can chain dokimasia -> diorthosis without a
             // persistent QA result store. A future store extension will support opaque
             // IDs for server-side lookup.
-            let qa_result: energeia::types::QaResult =
-                match serde_json::from_str(qa_result_id) {
-                    Ok(r) => r,
-                    Err(_) => {
-                        return Ok(ToolResult::error(
-                            "diorthosis: qa_result_id must be a JSON-encoded QaResult \
+            let qa_result: energeia::types::QaResult = match serde_json::from_str(qa_result_id) {
+                Ok(r) => r,
+                Err(_) => {
+                    return Ok(ToolResult::error(
+                        "diorthosis: qa_result_id must be a JSON-encoded QaResult \
                             (copy the JSON output from a dokimasia call)",
-                        ));
-                    }
-                };
+                    ));
+                }
+            };
 
             let original = energeia::qa::PromptSpec::new(
                 original_prompt_number,

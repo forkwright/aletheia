@@ -860,8 +860,7 @@ async fn self_prompt_queued_when_enabled_with_follow_up() {
         enabled: true,
         max_per_hour: 3,
     };
-    let mut runner =
-        TaskRunner::with_bridge("test-nous", token, bridge).with_self_prompt(config);
+    let mut runner = TaskRunner::with_bridge("test-nous", token, bridge).with_self_prompt(config);
     runner.register(make_echo_task("test-task"));
 
     let result = ExecutionResult {
@@ -885,8 +884,7 @@ async fn self_prompt_rate_limited_after_max() {
         enabled: true,
         max_per_hour: 1,
     };
-    let mut runner =
-        TaskRunner::with_bridge("test-nous", token, bridge).with_self_prompt(config);
+    let mut runner = TaskRunner::with_bridge("test-nous", token, bridge).with_self_prompt(config);
     runner.register(make_echo_task("test-task"));
 
     let result = ExecutionResult {
@@ -917,8 +915,7 @@ fn self_prompt_no_follow_up_no_dispatch() {
         enabled: true,
         max_per_hour: 5,
     };
-    let mut runner =
-        TaskRunner::with_bridge("test-nous", token, bridge).with_self_prompt(config);
+    let mut runner = TaskRunner::with_bridge("test-nous", token, bridge).with_self_prompt(config);
     runner.register(make_echo_task("test-task"));
 
     let result = ExecutionResult {
@@ -1004,10 +1001,12 @@ async fn builtin_prosoche_without_bridge_returns_failure() {
     assert!(result.is_ok());
     let exec_result = result.unwrap();
     assert!(!exec_result.success);
-    assert!(exec_result
-        .output
-        .unwrap_or_default()
-        .contains("no bridge configured"));
+    assert!(
+        exec_result
+            .output
+            .unwrap_or_default()
+            .contains("no bridge configured")
+    );
 }
 
 /// Error path: probe audit without bridge returns failure result.
@@ -1026,10 +1025,12 @@ async fn probe_audit_without_bridge_returns_failure() {
     assert!(result.is_ok());
     let exec_result = result.unwrap();
     assert!(!exec_result.success);
-    assert!(exec_result
-        .output
-        .unwrap_or_default()
-        .contains("no bridge configured"));
+    assert!(
+        exec_result
+            .output
+            .unwrap_or_default()
+            .contains("no bridge configured")
+    );
 }
 
 /// Error path: self-audit without bridge returns failure result.
@@ -1048,10 +1049,12 @@ async fn self_audit_without_bridge_returns_failure() {
     assert!(result.is_ok());
     let exec_result = result.unwrap();
     assert!(!exec_result.success);
-    assert!(exec_result
-        .output
-        .unwrap_or_default()
-        .contains("no bridge configured"));
+    assert!(
+        exec_result
+            .output
+            .unwrap_or_default()
+            .contains("no bridge configured")
+    );
 }
 
 /// Error path: knowledge maintenance without executor returns not implemented.
@@ -1070,10 +1073,12 @@ async fn knowledge_task_without_executor_returns_not_implemented() {
     assert!(result.is_ok());
     let exec_result = result.unwrap();
     assert!(!exec_result.success);
-    assert!(exec_result
-        .output
-        .unwrap_or_default()
-        .contains("NOT_IMPLEMENTED"));
+    assert!(
+        exec_result
+            .output
+            .unwrap_or_default()
+            .contains("NOT_IMPLEMENTED")
+    );
 }
 
 /// Error path: cron expression parsing returns descriptive error.

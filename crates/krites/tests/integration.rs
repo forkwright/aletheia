@@ -13,10 +13,7 @@
 //! - Parameterized queries
 #![expect(clippy::expect_used, reason = "test assertions")]
 #![expect(clippy::unwrap_used, reason = "test assertions")]
-#![expect(
-    clippy::indexing_slicing,
-    reason = "test data with known structure"
-)]
+#![expect(clippy::indexing_slicing, reason = "test data with known structure")]
 
 use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
@@ -128,10 +125,7 @@ fn relation_create_insert_query_pipeline() {
     .expect("updating Bob should succeed");
 
     let result = db
-        .run_read_only(
-            "?[dept] := *employees{id: 2, dept}",
-            BTreeMap::new(),
-        )
+        .run_read_only("?[dept] := *employees{id: 2, dept}", BTreeMap::new())
         .expect("querying updated Bob should succeed");
     assert_eq!(result.rows[0][0], DataValue::from("Engineering"));
 
@@ -538,10 +532,7 @@ fn export_import_preserves_data() {
         .expect("import should succeed");
 
     let result = db2
-        .run_read_only(
-            "?[key, val] := *data{key, val} :order key",
-            BTreeMap::new(),
-        )
+        .run_read_only("?[key, val] := *data{key, val} :order key", BTreeMap::new())
         .expect("querying imported data should succeed");
     assert_eq!(result.rows.len(), 3);
     assert_eq!(result.rows[0][0], DataValue::from("a"));
@@ -653,16 +644,16 @@ fn cache_with_mutations_tracks_separately() {
         .with_cache(NonZeroUsize::new(16).unwrap());
 
     // Run same query in different mutability modes
-    let _ = db.run("?[x] := x = 1", BTreeMap::new(), ScriptMutability::Immutable);
+    let _ = db.run(
+        "?[x] := x = 1",
+        BTreeMap::new(),
+        ScriptMutability::Immutable,
+    );
     let _ = db.run("?[x] := x = 1", BTreeMap::new(), ScriptMutability::Mutable);
 
     let stats = db.cache_stats().unwrap();
     // The cache tracks by normalized query string, not by mutability
-    assert_eq!(
-        stats.hits + stats.misses,
-        2,
-        "both runs should be tracked"
-    );
+    assert_eq!(stats.hits + stats.misses, 2, "both runs should be tracked");
 }
 
 // ── Callback notifications ──────────────────────────────────────────────────
@@ -743,7 +734,10 @@ fn named_rows_headers_match_query_columns() {
     let db = Db::open_mem().expect("in-memory db creation should succeed");
 
     let result = db
-        .run_read_only("?[alpha, beta, gamma] := alpha = 1, beta = 2, gamma = 3", BTreeMap::new())
+        .run_read_only(
+            "?[alpha, beta, gamma] := alpha = 1, beta = 2, gamma = 3",
+            BTreeMap::new(),
+        )
         .expect("named column query should succeed");
 
     assert_eq!(result.headers, vec!["alpha", "beta", "gamma"]);
@@ -781,7 +775,10 @@ fn vector_l2_distance_self_is_zero() {
         .expect("L2 self-distance query should succeed");
 
     let dist = result.rows[0][0].get_float().unwrap();
-    assert!(dist.abs() < 1e-9, "L2 distance to self should be 0, got {dist}");
+    assert!(
+        dist.abs() < 1e-9,
+        "L2 distance to self should be 0, got {dist}"
+    );
 }
 
 #[test]
@@ -835,11 +832,7 @@ fn list_relations_includes_created_relation() {
         .run_read_only("::relations", BTreeMap::new())
         .expect("listing relations should succeed");
 
-    let relation_names: Vec<&str> = result
-        .rows
-        .iter()
-        .filter_map(|r| r[0].get_str())
-        .collect();
+    let relation_names: Vec<&str> = result.rows.iter().filter_map(|r| r[0].get_str()).collect();
 
     assert!(
         relation_names.contains(&"my_relation"),

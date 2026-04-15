@@ -41,8 +41,8 @@ const MAX_SYSTEM_PROMPT_BYTES: usize = 100 * 1024; // 100 KB
 /// Separated from I/O so it can be unit-tested without touching the real filesystem
 /// or the process environment.
 fn parse_oauth_token_from_json(content: &str) -> std::io::Result<String> {
-    let parsed: serde_json::Value = serde_json::from_str(content)
-        .map_err(|e| std::io::Error::other(e.to_string()))?;
+    let parsed: serde_json::Value =
+        serde_json::from_str(content).map_err(|e| std::io::Error::other(e.to_string()))?;
     // WHY: serde_json::Value::get returns None on missing keys (vs the
     // panic from indexing), so this is the safe form of
     // `parsed["claudeAiOauth"]["accessToken"]`.
@@ -241,10 +241,7 @@ pub(crate) async fn run_completion(
             );
             let _ = child.kill().await;
             Err(error::ApiRequestSnafu {
-                message: format!(
-                    "CC subprocess timed out after {}s",
-                    timeout.as_secs()
-                ),
+                message: format!("CC subprocess timed out after {}s", timeout.as_secs()),
             }
             .build())
         }
@@ -439,8 +436,7 @@ pub(crate) async fn run_streaming(
         .build()
     })?;
 
-    let result =
-        tokio::time::timeout(timeout, read_stream_with_callback(stdout, on_delta)).await;
+    let result = tokio::time::timeout(timeout, read_stream_with_callback(stdout, on_delta)).await;
 
     match result {
         Ok(Ok(output)) => {
@@ -458,10 +454,7 @@ pub(crate) async fn run_streaming(
             );
             let _ = child.kill().await;
             Err(error::ApiRequestSnafu {
-                message: format!(
-                    "CC subprocess timed out after {}s",
-                    timeout.as_secs()
-                ),
+                message: format!("CC subprocess timed out after {}s", timeout.as_secs()),
             }
             .build())
         }

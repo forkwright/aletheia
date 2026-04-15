@@ -382,7 +382,10 @@ impl Default for AggrLatestBy {
 }
 
 impl NormalAggrObj for AggrLatestBy {
-    #[expect(clippy::indexing_slicing, reason = "l.len() == 2 validated by ensure! above")]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "l.len() == 2 validated by ensure! above"
+    )]
     fn set(&mut self, value: &DataValue) -> Result<()> {
         match value {
             DataValue::List(l) => {
@@ -427,7 +430,10 @@ impl Default for AggrSmallestBy {
 }
 
 impl NormalAggrObj for AggrSmallestBy {
-    #[expect(clippy::indexing_slicing, reason = "l.len() == 2 validated by ensure! above")]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "l.len() == 2 validated by ensure! above"
+    )]
     fn set(&mut self, value: &DataValue) -> Result<()> {
         match value {
             DataValue::List(l) => {
@@ -472,7 +478,10 @@ impl Default for AggrMinCost {
 }
 
 impl NormalAggrObj for AggrMinCost {
-    #[expect(clippy::indexing_slicing, reason = "l.len() == 2 validated by ensure! above")]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "l.len() == 2 validated by ensure! above"
+    )]
     fn set(&mut self, value: &DataValue) -> Result<()> {
         match value {
             DataValue::List(l) => {

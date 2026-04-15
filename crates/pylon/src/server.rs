@@ -45,9 +45,7 @@ pub struct ServerConfig {
 pub enum ServerError {
     /// Failed to open or initialize the session store.
     #[snafu(display("failed to open session store: {source}"))]
-    SessionStore {
-        source: mneme::error::Error,
-    },
+    SessionStore { source: mneme::error::Error },
 
     /// TCP listener failed to bind to the configured address.
     #[snafu(display("failed to bind to {addr}: {source}"))]
@@ -70,15 +68,11 @@ pub enum ServerError {
 
     /// Instance directory layout validation failed.
     #[snafu(display("instance layout invalid: {source}"))]
-    Validation {
-        source: taxis::error::Error,
-    },
+    Validation { source: taxis::error::Error },
 
     /// Default nous agent failed to spawn during startup.
     #[snafu(display("default nous spawn failed: {source}"))]
-    NousSpawn {
-        source: nous::error::Error,
-    },
+    NousSpawn { source: nous::error::Error },
 }
 
 /// Start the HTTP gateway and block until shutdown.

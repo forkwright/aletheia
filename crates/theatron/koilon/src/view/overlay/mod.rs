@@ -136,7 +136,8 @@ fn render_help(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
         )));
         lines.push(Line::raw(""));
         for kb in bindings {
-            let key_span = Span::styled(format!("  {:<HELP_KEY_COLUMN_WIDTH$}", kb.keys), key_style);
+            let key_span =
+                Span::styled(format!("  {:<HELP_KEY_COLUMN_WIDTH$}", kb.keys), key_style);
             // Truncate description if too long, with ellipsis
             let desc = if kb.description.len() > desc_max_width && desc_max_width > 3 {
                 format!("{}...", &kb.description[..desc_max_width.saturating_sub(3)])

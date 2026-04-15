@@ -35,9 +35,7 @@ use nous::manager::NousManager;
 use organon::registry::ToolRegistry;
 use pylon::idempotency::IdempotencyCache;
 use pylon::router::build_router;
-use pylon::security::{
-    CorsConfig, CsrfConfig, RateLimitConfig, SecurityConfig, TlsConfig,
-};
+use pylon::security::{CorsConfig, CsrfConfig, RateLimitConfig, SecurityConfig, TlsConfig};
 use pylon::state::AppState;
 use symbolon::jwt::{JwtConfig, JwtManager};
 use symbolon::types::{Claims, Role, TokenKind};
@@ -252,7 +250,10 @@ async fn build_router_produces_router_with_health_endpoint() {
     let body = read_body_json(response).await;
     assert!(body["status"].is_string(), "health body lacks status");
     assert!(body["version"].is_string(), "health body lacks version");
-    assert!(body["uptime_seconds"].is_u64(), "uptime_seconds must be u64");
+    assert!(
+        body["uptime_seconds"].is_u64(),
+        "uptime_seconds must be u64"
+    );
     assert!(body["checks"].is_array(), "checks must be an array");
     assert!(
         !body["checks"].as_array().expect("checks array").is_empty(),
@@ -892,9 +893,7 @@ async fn raw_get(
     let mut stream = tokio::net::TcpStream::connect(addr)
         .await
         .expect("connect tcp");
-    let mut request = format!(
-        "GET {path} HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\n"
-    );
+    let mut request = format!("GET {path} HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\n");
     if let Some(value) = authorization {
         request.push_str("Authorization: ");
         request.push_str(value);

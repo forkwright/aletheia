@@ -10,12 +10,16 @@ use super::*;
 /// Returns the script path. The caller is responsible for cleanup (or letting
 /// the OS reclaim the temp dir on process exit).
 fn write_script(name: &str, body: &str) -> PathBuf {
-    let path = std::env::temp_dir().join(format!("hermeneus_test_{name}_{}.sh", std::process::id()));
+    let path =
+        std::env::temp_dir().join(format!("hermeneus_test_{name}_{}.sh", std::process::id()));
     let script = format!("#!/bin/sh\n{body}\n");
     // WHY: Open, write, fsync, close, then set permissions. Without fsync
     // the kernel may not have finished writing page cache to disk when we
     // exec the script, producing ETXTBSY (errno 26) on Linux.
-    #[expect(clippy::disallowed_methods, reason = "test helper writes temp scripts, async not needed")]
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "test helper writes temp scripts, async not needed"
+    )]
     {
         use std::io::Write;
         let mut f = fs::File::create(&path).unwrap();
@@ -60,9 +64,8 @@ async fn read_stream_assistant_then_result() {
 async fn read_stream_result_only() {
     // WHY: CC can emit a result event with no preceding assistant deltas
     // (e.g. when the response is short and CC batches it into the result).
-    let buf = stream_buf(&[
-        r#"{"type":"result","subtype":"success","result":"ok","is_error":false}"#,
-    ]);
+    let buf =
+        stream_buf(&[r#"{"type":"result","subtype":"success","result":"ok","is_error":false}"#]);
     let output = read_stream(buf.as_slice()).await.unwrap();
     assert_eq!(output.result_text, "ok");
     assert!(output.stream_deltas.is_empty());
@@ -148,7 +151,10 @@ async fn read_stream_with_callback_skips_empty_text() {
     let _ = read_stream_with_callback(buf.as_slice(), &mut on_delta)
         .await
         .unwrap();
-    assert_eq!(count, 1, "callback should fire once for the non-empty delta");
+    assert_eq!(
+        count, 1,
+        "callback should fire once for the non-empty delta"
+    );
 }
 
 #[tokio::test]
@@ -208,7 +214,10 @@ fn parse_oauth_token_fails_on_malformed_json() {
     // WHY: Malformed credentials (e.g. truncated write) must return an
     // error, not panic. The caller silently skips OAuth injection on error.
     let err = parse_oauth_token_from_json("not-json{{{").unwrap_err();
-    assert!(!err.to_string().is_empty(), "error message must not be empty");
+    assert!(
+        !err.to_string().is_empty(),
+        "error message must not be empty"
+    );
 }
 
 #[test]

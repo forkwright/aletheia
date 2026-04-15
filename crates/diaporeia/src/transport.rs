@@ -33,10 +33,10 @@ pub fn streamable_http_router(state: Arc<DiaporeiaState>) -> axum::Router {
         // runtime (integration tests). If the lock is held, default to
         // "localhost" which is the safe default — the warning is about
         // network exposure, so false-safe is acceptable.
-        let bind = state.config.try_read().map_or_else(
-            |_| "localhost".to_owned(),
-            |cfg| cfg.gateway.bind.clone(),
-        );
+        let bind = state
+            .config
+            .try_read()
+            .map_or_else(|_| "localhost".to_owned(), |cfg| cfg.gateway.bind.clone());
         let is_loopback = bind == "localhost" || bind == "127.0.0.1" || bind == "::1";
 
         if is_loopback {

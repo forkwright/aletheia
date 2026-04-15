@@ -42,7 +42,10 @@ impl TaskRunner {
     }
 
     /// Set the `last_run` timestamp for a task by ID (for catch-up testing/persistence).
-    #[cfg_attr(not(test), expect(dead_code, reason = "daemon task runner configuration"))]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "daemon task runner configuration")
+    )]
     pub(crate) fn set_last_run(&mut self, task_id: &str, last_run: jiff::Timestamp) {
         if let Some(task) = self.tasks.iter_mut().find(|t| t.def.id == task_id) {
             task.last_run = Some(last_run);

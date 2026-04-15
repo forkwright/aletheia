@@ -243,7 +243,10 @@ impl Scenario for KnowledgeMetaCategorization {
                     )
                     .await?;
                 let text = sse::extract_text(&events);
-                assert_eval(!text.is_empty(), "Meta-knowledge response should not be empty")?;
+                assert_eval(
+                    !text.is_empty(),
+                    "Meta-knowledge response should not be empty",
+                )?;
 
                 let _ = client.close_session(&session.id).await;
                 Ok(())

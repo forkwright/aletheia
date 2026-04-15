@@ -269,13 +269,8 @@ pub(crate) fn evaluate_model(
     let mut rr_sum = 0.0_f64;
 
     for eq in &dataset.queries {
-        let outcome = score_one_query(
-            provider,
-            eq,
-            corpus,
-            &corpus_vecs,
-            [eff_k, eff_k5, eff_k10],
-        )?;
+        let outcome =
+            score_one_query(provider, eq, corpus, &corpus_vecs, [eff_k, eff_k5, eff_k10])?;
         if outcome.hit_k {
             hit_count_k += 1;
         }
@@ -454,7 +449,10 @@ fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
 
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
-#[expect(clippy::indexing_slicing, reason = "test assertions on collections with known length")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test assertions on collections with known length"
+)]
 mod tests {
     use super::*;
     use crate::embedding::MockEmbeddingProvider;
@@ -467,7 +465,10 @@ mod tests {
         vec![
             ("id-alice".into(), "alice prefers tea over coffee".into()),
             ("id-bob".into(), "bob enjoys cycling on weekends".into()),
-            ("id-carol".into(), "carol studies distributed systems".into()),
+            (
+                "id-carol".into(),
+                "carol studies distributed systems".into(),
+            ),
         ]
     }
 
@@ -497,11 +498,13 @@ mod tests {
 
     #[test]
     fn parse_skips_blank_lines() {
-        let ds = EvalDataset::from_jsonl_str(
-            "\n{\"query\":\"x\",\"relevant_ids\":[\"y\"]}\n\n",
-        )
-        .expect("blank lines should be skipped");
-        assert_eq!(ds.len(), 1, "parse skips blank lines: values should be equal");
+        let ds = EvalDataset::from_jsonl_str("\n{\"query\":\"x\",\"relevant_ids\":[\"y\"]}\n\n")
+            .expect("blank lines should be skipped");
+        assert_eq!(
+            ds.len(),
+            1,
+            "parse skips blank lines: values should be equal"
+        );
     }
 
     #[test]
@@ -537,8 +540,7 @@ mod tests {
     fn evaluate_empty_corpus_errors() {
         let provider = mock();
         let dataset = simple_dataset();
-        let err = evaluate_model(&provider, &dataset, &[], 5)
-            .expect_err("empty corpus must error");
+        let err = evaluate_model(&provider, &dataset, &[], 5).expect_err("empty corpus must error");
         assert!(
             matches!(err, EvalError::EmptyCorpus { .. }),
             "expected EmptyCorpus, got {err:?}"
@@ -550,8 +552,8 @@ mod tests {
         let provider = mock();
         let corpus = simple_corpus();
         let dataset = EvalDataset { queries: vec![] };
-        let err = evaluate_model(&provider, &dataset, &corpus, 5)
-            .expect_err("empty dataset must error");
+        let err =
+            evaluate_model(&provider, &dataset, &corpus, 5).expect_err("empty dataset must error");
         assert!(
             matches!(err, EvalError::EmptyDataset { .. }),
             "expected EmptyDataset, got {err:?}"
@@ -566,10 +568,7 @@ mod tests {
         let run = compare_models(&provider, None, &dataset, &corpus, 3)
             .expect("compare_models with no candidate must succeed");
         assert!(run.passed, "no candidate always passes");
-        assert!(
-            run.candidate.is_none(),
-            "no candidate means None in result"
-        );
+        assert!(run.candidate.is_none(), "no candidate means None in result");
     }
 
     #[test]
@@ -590,14 +589,11 @@ mod tests {
         let provider = mock();
         let corpus = simple_corpus();
         let dataset = simple_dataset();
-        let metrics = evaluate_model(&provider, &dataset, &corpus, 2)
-            .expect("evaluate_model must succeed");
+        let metrics =
+            evaluate_model(&provider, &dataset, &corpus, 2).expect("evaluate_model must succeed");
         for qr in &metrics.per_query {
             assert!(!qr.query.is_empty(), "query must not be empty");
-            assert!(
-                qr.top_k_ids.len() <= 2,
-                "top_k_ids capped at k=2"
-            );
+            assert!(qr.top_k_ids.len() <= 2, "top_k_ids capped at k=2");
             assert!(
                 qr.reciprocal_rank >= 0.0 && qr.reciprocal_rank <= 1.0,
                 "rr must be in [0,1]"
@@ -627,11 +623,17 @@ mod tests {
         let a = vec![1.0_f32, 0.0];
         let b = vec![0.0_f32, 1.0];
         let sim = cosine_similarity(&a, &b);
-        assert!((sim - 0.0).abs() < 1e-6, "orthogonal unit vectors => similarity 0");
+        assert!(
+            (sim - 0.0).abs() < 1e-6,
+            "orthogonal unit vectors => similarity 0"
+        );
 
         let c = vec![1.0_f32, 0.0];
         let same = cosine_similarity(&a, &c);
-        assert!((same - 1.0).abs() < 1e-6, "identical unit vectors => similarity 1");
+        assert!(
+            (same - 1.0).abs() < 1e-6,
+            "identical unit vectors => similarity 1"
+        );
     }
 
     #[test]

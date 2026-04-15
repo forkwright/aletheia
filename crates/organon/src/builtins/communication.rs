@@ -16,13 +16,22 @@ use crate::types::{
 };
 
 /// Fallback default; runtime reads `ctx.tool_config.message_max_len`.
-#[expect(dead_code, reason = "retained as documentation of the default value; runtime reads from ToolLimitsConfig")]
+#[expect(
+    dead_code,
+    reason = "retained as documentation of the default value; runtime reads from ToolLimitsConfig"
+)]
 pub(crate) const MESSAGE_MAX_LEN: usize = 4000;
 /// Fallback default; runtime reads `ctx.tool_config.inter_session_max_message_len`.
-#[expect(dead_code, reason = "retained as documentation of the default value; runtime reads from ToolLimitsConfig")]
+#[expect(
+    dead_code,
+    reason = "retained as documentation of the default value; runtime reads from ToolLimitsConfig"
+)]
 pub(crate) const INTER_SESSION_MAX_MESSAGE_LEN: usize = 100_000;
 /// Fallback default; runtime reads `ctx.tool_config.inter_session_max_timeout_secs`.
-#[expect(dead_code, reason = "retained as documentation of the default value; runtime reads from ToolLimitsConfig")]
+#[expect(
+    dead_code,
+    reason = "retained as documentation of the default value; runtime reads from ToolLimitsConfig"
+)]
 pub(crate) const INTER_SESSION_MAX_TIMEOUT_SECS: u64 = 300;
 
 struct MessageExecutor;
@@ -584,18 +593,15 @@ mod tests {
         let calls = messenger_ref.send_calls.lock().unwrap();
         assert_eq!(calls.len(), 1, "expected calls.len() to equal 1");
         assert_eq!(
-            calls[0].0,
-            "+1234567890",
+            calls[0].0, "+1234567890",
             "expected calls[0].0 to equal \"+1234567890\""
         );
         assert_eq!(
-            calls[0].1,
-            "hello world",
+            calls[0].1, "hello world",
             "expected calls[0].1 to equal \"hello world\""
         );
         assert_eq!(
-            calls[0].2,
-            "test-agent",
+            calls[0].2, "test-agent",
             "expected calls[0].2 to equal \"test-agent\""
         );
     }
@@ -634,23 +640,13 @@ mod tests {
         let calls = cross_ref.send_calls.lock().unwrap();
         assert_eq!(calls.len(), 1, "expected calls.len() to equal 1");
         assert_eq!(
-            calls[0].0,
-            "test-agent",
+            calls[0].0, "test-agent",
             "expected calls[0].0 to equal \"test-agent\""
         );
+        assert_eq!(calls[0].1, "syn", "expected calls[0].1 to equal \"syn\"");
+        assert_eq!(calls[0].2, "main", "expected calls[0].2 to equal \"main\"");
         assert_eq!(
-            calls[0].1,
-            "syn",
-            "expected calls[0].1 to equal \"syn\""
-        );
-        assert_eq!(
-            calls[0].2,
-            "main",
-            "expected calls[0].2 to equal \"main\""
-        );
-        assert_eq!(
-            calls[0].3,
-            "do the thing",
+            calls[0].3, "do the thing",
             "expected calls[0].3 to equal \"do the thing\""
         );
     }
@@ -684,8 +680,7 @@ mod tests {
 
         let calls = cross_ref.send_calls.lock().unwrap();
         assert_eq!(
-            calls[0].2,
-            "custom",
+            calls[0].2, "custom",
             "expected calls[0].2 to equal \"custom\""
         );
     }

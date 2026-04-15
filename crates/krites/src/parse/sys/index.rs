@@ -12,6 +12,7 @@ use std::collections::BTreeMap;
 
 use compact_str::CompactString;
 
+use crate::Expr;
 use crate::data::relation::VecElementType;
 use crate::data::symb::Symbol;
 use crate::data::value::DataValue;
@@ -20,7 +21,6 @@ use crate::fts::TokenizerConfig;
 use crate::parse::error::InvalidQuerySnafu;
 use crate::parse::expr::build_expr;
 use crate::parse::{ExtractSpan, Pair};
-use crate::Expr;
 
 use super::{FtsIndexConfig, HnswDistance, HnswIndexConfig, MinHashLshConfig, SysOp};
 
@@ -148,8 +148,7 @@ fn parse_tokenizer_value(
             args: vec![],
         }),
         _ => Err(InvalidQuerySnafu {
-            message:
-                "Tokenizer must be a symbol or a call for an existing tokenizer".to_string(),
+            message: "Tokenizer must be a symbol or a call for an existing tokenizer".to_string(),
         }
         .build()
         .into()),
@@ -193,7 +192,9 @@ fn parse_filter_list(
                     }
                     _ => {
                         return Err(InvalidQuerySnafu {
-                            message: "Tokenizer must be a symbol or a call for an existing tokenizer".to_string(),
+                            message:
+                                "Tokenizer must be a symbol or a call for an existing tokenizer"
+                                    .to_string(),
                         }
                         .build()
                         .into());

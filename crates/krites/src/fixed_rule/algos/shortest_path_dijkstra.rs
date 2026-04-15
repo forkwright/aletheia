@@ -413,8 +413,7 @@ pub(crate) fn dijkstra_keep_ties<FE: ForbiddenEdge, FN: ForbiddenNode, G: Goal +
 ) -> Result<Vec<(u32, f32, Vec<u32>)>> {
     let mut distance = vec![f32::INFINITY; edges.node_count() as usize];
     let mut priority_queue = PriorityQueue::new();
-    let mut back_pointers: Vec<SmallVec<[u32; 1]>> =
-        vec![smallvec![]; edges.node_count() as usize];
+    let mut back_pointers: Vec<SmallVec<[u32; 1]>> = vec![smallvec![]; edges.node_count() as usize];
     distance[start as usize] = 0.;
     priority_queue.push(start, Reverse(OrderedFloat(0.)));
     let mut goals_remaining = goals.clone();
@@ -484,13 +483,7 @@ pub(crate) fn dijkstra_keep_ties<FE: ForbiddenEdge, FN: ForbiddenNode, G: Goal +
                                 extended.reverse();
                                 self.collected.push((target, cost, extended));
                             } else {
-                                self.collect(
-                                    &extended,
-                                    start,
-                                    target,
-                                    cost,
-                                    back_pointers,
-                                )
+                                self.collect(&extended, start, target, cost, back_pointers)
                             }
                         }
                     }

@@ -58,7 +58,10 @@ static EMBEDDING_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
     .expect("metric registration")
 });
 
-#[cfg_attr(not(test), expect(dead_code, reason = "metric init called from server startup"))]
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "metric init called from server startup")
+)]
 /// Force-initialize all lazy metric statics.
 pub(crate) fn init() {
     LazyLock::force(&KNOWLEDGE_FACTS_TOTAL);
@@ -74,7 +77,10 @@ pub(crate) fn record_fact_inserted(nous_id: &str) {
 }
 
 /// Record a knowledge extraction operation.
-#[cfg_attr(not(test), expect(dead_code, reason = "metric recording called from extraction pipeline"))]
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "metric recording called from extraction pipeline")
+)]
 pub(crate) fn record_extraction(nous_id: &str, success: bool) {
     let status = if success { "ok" } else { "error" };
     KNOWLEDGE_EXTRACTIONS_TOTAL
@@ -90,7 +96,10 @@ pub(crate) fn record_recall_duration(nous_id: &str, duration_secs: f64) {
 }
 
 /// Record embedding computation duration.
-#[cfg_attr(not(test), expect(dead_code, reason = "metric recording called from embedding pipeline"))]
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "metric recording called from embedding pipeline")
+)]
 pub(crate) fn record_embedding_duration(provider: &str, duration_secs: f64) {
     EMBEDDING_DURATION_SECONDS
         .with_label_values(&[provider])
@@ -108,9 +117,10 @@ mod tests {
             if family.name() == name {
                 for metric in family.get_metric() {
                     let labels = metric.get_label();
-                    let matches = label_values.iter().enumerate().all(|(i, expected)| {
-                        labels.get(i).is_some_and(|l| l.value() == *expected)
-                    });
+                    let matches = label_values
+                        .iter()
+                        .enumerate()
+                        .all(|(i, expected)| labels.get(i).is_some_and(|l| l.value() == *expected));
                     if matches {
                         #[expect(
                             clippy::as_conversions,
@@ -139,9 +149,10 @@ mod tests {
             if family.name() == name {
                 for metric in family.get_metric() {
                     let labels = metric.get_label();
-                    let matches = label_values.iter().enumerate().all(|(i, expected)| {
-                        labels.get(i).is_some_and(|l| l.value() == *expected)
-                    });
+                    let matches = label_values
+                        .iter()
+                        .enumerate()
+                        .all(|(i, expected)| labels.get(i).is_some_and(|l| l.value() == *expected));
                     if matches {
                         return metric.get_histogram().sample_count();
                     }
@@ -166,8 +177,10 @@ mod tests {
         record_embedding_duration("init-test-provider", 0.001);
 
         let families = prometheus::default_registry().gather();
-        let metric_names: std::collections::HashSet<_> =
-            families.iter().map(prometheus::proto::MetricFamily::name).collect();
+        let metric_names: std::collections::HashSet<_> = families
+            .iter()
+            .map(prometheus::proto::MetricFamily::name)
+            .collect();
         assert!(metric_names.contains("aletheia_knowledge_facts_total"));
         assert!(metric_names.contains("aletheia_knowledge_extractions_total"));
         assert!(metric_names.contains("aletheia_recall_duration_seconds"));
@@ -186,18 +199,15 @@ mod tests {
     #[test]
     fn record_extraction_increments_counters() {
         let nous_id = "test-nous-extraction";
-        let before_ok =
-            read_counter("aletheia_knowledge_extractions_total", &[nous_id, "ok"]);
+        let before_ok = read_counter("aletheia_knowledge_extractions_total", &[nous_id, "ok"]);
         let before_error =
             read_counter("aletheia_knowledge_extractions_total", &[nous_id, "error"]);
 
         record_extraction(nous_id, true);
         record_extraction(nous_id, false);
 
-        let after_ok =
-            read_counter("aletheia_knowledge_extractions_total", &[nous_id, "ok"]);
-        let after_error =
-            read_counter("aletheia_knowledge_extractions_total", &[nous_id, "error"]);
+        let after_ok = read_counter("aletheia_knowledge_extractions_total", &[nous_id, "ok"]);
+        let after_error = read_counter("aletheia_knowledge_extractions_total", &[nous_id, "error"]);
 
         assert_eq!(after_ok, before_ok + 1);
         assert_eq!(after_error, before_error + 1);
@@ -215,11 +225,9 @@ mod tests {
     #[test]
     fn record_embedding_duration_records_observation() {
         let provider = "candle";
-        let before =
-            read_histogram_count("aletheia_embedding_duration_seconds", &[provider]);
+        let before = read_histogram_count("aletheia_embedding_duration_seconds", &[provider]);
         record_embedding_duration(provider, 0.1);
-        let after =
-            read_histogram_count("aletheia_embedding_duration_seconds", &[provider]);
+        let after = read_histogram_count("aletheia_embedding_duration_seconds", &[provider]);
         assert_eq!(after, before + 1);
     }
 }

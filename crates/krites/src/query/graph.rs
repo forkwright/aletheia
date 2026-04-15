@@ -122,7 +122,9 @@ pub(crate) fn generalized_kahn(
             break;
         }
         // INVARIANT: the `safe_pending.is_empty()` check above guarantees at least one element
-        let removed = safe_pending.pop().unwrap_or_else(|| panic!("safe_pending verified non-empty above"));
+        let removed = safe_pending
+            .pop()
+            .unwrap_or_else(|| panic!("safe_pending verified non-empty above"));
         current_stratum.push(removed);
         if let Some(edges) = graph.get(&removed) {
             for (nxt, poisoned) in edges {
@@ -205,7 +207,8 @@ impl<'a> TarjanScc<'a> {
                 // SAFETY: `node` was pushed from valid indices within this function.
                 self.on_stack[node] = false;
                 // INVARIANT: `self.ids[at]` was set to `Some(self.id)` at the top of this function
-                self.low[node] = self.ids[at].unwrap_or_else(|| panic!("ids[at] set earlier in dfs"));
+                self.low[node] =
+                    self.ids[at].unwrap_or_else(|| panic!("ids[at] set earlier in dfs"));
                 if node == at {
                     break;
                 }

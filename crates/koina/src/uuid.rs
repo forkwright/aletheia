@@ -66,7 +66,10 @@ impl Uuid {
                     // SAFETY: `to_digit(16)` returns 0-15, which always fits in u8.
                     // This is an infallible conversion, but `try_into()` is used
                     // for type safety and to satisfy clippy::as_conversions.
-                    #[expect(clippy::expect_used, reason = "infallible: hex digit 0-15 always fits in u8")]
+                    #[expect(
+                        clippy::expect_used,
+                        reason = "infallible: hex digit 0-15 always fits in u8"
+                    )]
                     let nibble: u8 = c
                         .to_digit(16)
                         .ok_or(UuidParseError)?

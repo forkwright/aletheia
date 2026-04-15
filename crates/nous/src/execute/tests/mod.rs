@@ -10,9 +10,7 @@ use hermeneus::test_utils::MockProvider;
 use hermeneus::types::{CompletionResponse, ContentBlock, StopReason, Usage};
 use koina::id::{NousId, SessionId, ToolName};
 use organon::registry::{ToolExecutor, ToolRegistry};
-use organon::types::{
-    InputSchema, ToolCategory, ToolContext, ToolDef, ToolInput, ToolResult,
-};
+use organon::types::{InputSchema, ToolCategory, ToolContext, ToolDef, ToolInput, ToolResult};
 
 use super::*;
 use crate::config::NousConfig;
@@ -27,8 +25,7 @@ impl ToolExecutor for EchoExecutor {
         &'a self,
         input: &'a ToolInput,
         _ctx: &'a ToolContext,
-    ) -> Pin<Box<dyn Future<Output = organon::error::Result<ToolResult>> + Send + 'a>>
-    {
+    ) -> Pin<Box<dyn Future<Output = organon::error::Result<ToolResult>> + Send + 'a>> {
         Box::pin(async {
             Ok(ToolResult::text(format!(
                 "executed: {}",
@@ -45,8 +42,7 @@ impl ToolExecutor for ErrorExecutor {
         &'a self,
         _input: &'a ToolInput,
         _ctx: &'a ToolContext,
-    ) -> Pin<Box<dyn Future<Output = organon::error::Result<ToolResult>> + Send + 'a>>
-    {
+    ) -> Pin<Box<dyn Future<Output = organon::error::Result<ToolResult>> + Send + 'a>> {
         Box::pin(async { Ok(ToolResult::error("tool failed")) })
     }
 }

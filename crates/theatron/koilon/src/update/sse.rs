@@ -92,7 +92,10 @@ pub(crate) fn check_sse_reconnect_timeout(app: &mut App) {
     app.connection.sse_disconnected_at = None;
 
     let stall_secs = stall_duration.as_secs();
-    tracing::warn!(stall_secs, "SSE stalled for {stall_secs}s — forcing reconnect");
+    tracing::warn!(
+        stall_secs,
+        "SSE stalled for {stall_secs}s — forcing reconnect"
+    );
 
     // Replace the SSE connection with a fresh one.
     app.restore_sse(Some(crate::api::sse::SseConnection::connect(
@@ -100,9 +103,9 @@ pub(crate) fn check_sse_reconnect_timeout(app: &mut App) {
         &app.config.url,
     )));
 
-    app.viewport.error_toast = Some(ErrorToast::new(
-        format!("Connection stalled for {stall_secs}s — reconnecting..."),
-    ));
+    app.viewport.error_toast = Some(ErrorToast::new(format!(
+        "Connection stalled for {stall_secs}s — reconnecting..."
+    )));
 }
 
 #[tracing::instrument(skip_all, fields(turn_count = active_turns.len()))]
@@ -339,7 +342,10 @@ mod tests {
         assert!(app.connection.sse_disconnected_at.is_none());
         // SSE connection re-established: verify via take_sse which extracts the
         // private field through the public API.
-        assert!(app.take_sse().is_some(), "SSE connection should be re-established");
+        assert!(
+            app.take_sse().is_some(),
+            "SSE connection should be re-established"
+        );
     }
 
     #[test]

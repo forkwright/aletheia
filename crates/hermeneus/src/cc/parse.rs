@@ -17,16 +17,17 @@ use crate::types::{CompletionResponse, ContentBlock, StopReason, Usage};
 pub(crate) enum CcEvent {
     /// Incremental assistant message (streaming text).
     #[serde(rename = "assistant")]
-    Assistant {
-        message: AssistantMessage,
-    },
+    Assistant { message: AssistantMessage },
 
     /// Final result event with usage and cost.
     #[serde(rename = "result")]
     Result {
         #[cfg_attr(
             not(test),
-            expect(dead_code, reason = "deserialized for completeness; not consumed by provider")
+            expect(
+                dead_code,
+                reason = "deserialized for completeness; not consumed by provider"
+            )
         )]
         subtype: String,
         result: String,
@@ -72,7 +73,10 @@ pub(crate) struct AssistantMessage {
     #[serde(rename = "type")]
     #[cfg_attr(
         not(test),
-        expect(dead_code, reason = "deserialized for completeness; only `text` is consumed")
+        expect(
+            dead_code,
+            reason = "deserialized for completeness; only `text` is consumed"
+        )
     )]
     pub message_type: String,
     /// The text content.
@@ -237,9 +241,14 @@ mod tests {
             cache_read_input_tokens: 10,
             cache_creation_input_tokens: 5,
         };
-        let resp =
-            result_to_response("Hello", false, Some(&usage), "claude-sonnet-4-20250514", Some("sess_1"))
-                .unwrap();
+        let resp = result_to_response(
+            "Hello",
+            false,
+            Some(&usage),
+            "claude-sonnet-4-20250514",
+            Some("sess_1"),
+        )
+        .unwrap();
         assert_eq!(resp.id, "sess_1");
         assert_eq!(resp.model, "claude-sonnet-4-20250514");
         assert_eq!(resp.stop_reason, StopReason::EndTurn);

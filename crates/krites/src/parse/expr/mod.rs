@@ -148,9 +148,15 @@ fn build_expr_infix(lhs: Result<Expr>, op: Pair<'_>, rhs: Result<Expr>) -> Resul
             .into());
         }
     };
-    #[expect(clippy::indexing_slicing, reason = "index bounds validated — vec has exactly 2 elements")]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "index bounds validated — vec has exactly 2 elements"
+    )]
     let start = args[0].span().0;
-    #[expect(clippy::indexing_slicing, reason = "index bounds validated — vec has exactly 2 elements")]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "index bounds validated — vec has exactly 2 elements"
+    )]
     let end = args[1].span().0 + args[1].span().1;
     let length = end - start;
     Ok(Expr::Apply {

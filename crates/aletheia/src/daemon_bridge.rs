@@ -24,8 +24,7 @@ impl DaemonBridge for NousDaemonBridge {
         nous_id: &str,
         session_key: &str,
         prompt: &str,
-    ) -> Pin<Box<dyn Future<Output = oikonomos::error::Result<ExecutionResult>> + Send + '_>>
-    {
+    ) -> Pin<Box<dyn Future<Output = oikonomos::error::Result<ExecutionResult>> + Send + '_>> {
         let nous_id = nous_id.to_owned();
         let session_key = session_key.to_owned();
         let prompt = prompt.to_owned();

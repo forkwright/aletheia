@@ -1,11 +1,32 @@
 //! Memory-comparable encoding for composite keys.
-#![expect(unsafe_code, reason = "memcmp decoding uses from_utf8_unchecked for strings known to be valid UTF-8 from encoding")]
-#![expect(clippy::indexing_slicing, reason = "memcmp encoding indices are structurally bounded by length prefix parsing")]
-#![expect(clippy::as_conversions, reason = "binary encoding requires byte-level numeric casts")]
-#![expect(clippy::unreadable_literal, reason = "bit flag constants (0b00010000) are clearer without separators")]
-#![expect(clippy::too_many_lines, reason = "memcmp decode_tuple is inherently large — one arm per DataValue variant")]
-#![expect(clippy::mutable_key_type, reason = "DataValue contains interior-mutable Regex; BTreeSet usage is engine-internal")]
-#![expect(clippy::semicolon_if_nothing_returned, reason = "encode_bytes write calls — semicolon style consistent")]
+#![expect(
+    unsafe_code,
+    reason = "memcmp decoding uses from_utf8_unchecked for strings known to be valid UTF-8 from encoding"
+)]
+#![expect(
+    clippy::indexing_slicing,
+    reason = "memcmp encoding indices are structurally bounded by length prefix parsing"
+)]
+#![expect(
+    clippy::as_conversions,
+    reason = "binary encoding requires byte-level numeric casts"
+)]
+#![expect(
+    clippy::unreadable_literal,
+    reason = "bit flag constants (0b00010000) are clearer without separators"
+)]
+#![expect(
+    clippy::too_many_lines,
+    reason = "memcmp decode_tuple is inherently large — one arm per DataValue variant"
+)]
+#![expect(
+    clippy::mutable_key_type,
+    reason = "DataValue contains interior-mutable Regex; BTreeSet usage is engine-internal"
+)]
+#![expect(
+    clippy::semicolon_if_nothing_returned,
+    reason = "encode_bytes write calls — semicolon style consistent"
+)]
 
 use std::cmp::Reverse;
 use std::collections::BTreeSet;
@@ -271,7 +292,9 @@ impl Num {
                 let i = order_decode_i64(iu);
                 (Num::Int(i), remaining)
             }
-            _ => unreachable!("INVARIANT: Num key tag is always IS_FLOAT, IS_NEG_INT, IS_POS_INT, or IS_APPROX_INT"),
+            _ => unreachable!(
+                "INVARIANT: Num key tag is always IS_FLOAT, IS_NEG_INT, IS_POS_INT, or IS_APPROX_INT"
+            ),
         }
     }
 }
@@ -325,7 +348,9 @@ impl DataValue {
                 // UTF-8 validity is guaranteed by the encoding invariant.
                 let s = unsafe { String::from_utf8_unchecked(bytes) };
                 // INVARIANT: regex source was serialized from a valid Regex
-                let rx = Regex::from_str(&s).unwrap_or_else(|_| unreachable!("INVARIANT: regex source was serialized from a valid Regex"));
+                let rx = Regex::from_str(&s).unwrap_or_else(|_| {
+                    unreachable!("INVARIANT: regex source was serialized from a valid Regex")
+                });
                 (DataValue::Regex(RegexWrapper(rx)), remaining)
             }
             LIST_TAG => {
@@ -403,7 +428,10 @@ impl DataValue {
                     _ => unreachable!("INVARIANT: vector type tag is always VEC_F32 or VEC_F64"),
                 }
             }
-            _ => unreachable!("INVARIANT: encoded key tag is always a known DataValue variant: {:?}", bs),
+            _ => unreachable!(
+                "INVARIANT: encoded key tag is always a known DataValue variant: {:?}",
+                bs
+            ),
         }
     }
 }

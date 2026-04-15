@@ -109,7 +109,10 @@ fn sse_event_error_omits_request_id_when_none() {
         request_id: None,
     };
     let json = serde_json::to_value(&event).unwrap();
-    assert!(json.get("request_id").is_none(), "request_id should be omitted when None");
+    assert!(
+        json.get("request_id").is_none(),
+        "request_id should be omitted when None"
+    );
 }
 
 #[test]

@@ -394,7 +394,10 @@ fn parse_callback_request(reader: &mut BufReader<&TcpStream>) -> Result<Option<C
     // Extract query string
     let query_start = path.find('?');
     // INVARIANT: i is from find('?'), so i+1 is a valid byte boundary
-    #[expect(clippy::string_slice, reason = "i from find('?'), i+1 is valid boundary")]
+    #[expect(
+        clippy::string_slice,
+        reason = "i from find('?'), i+1 is valid boundary"
+    )]
     let query = query_start.map_or("", |i| &path[i + 1..]);
 
     // Parse query parameters
@@ -405,7 +408,10 @@ fn parse_callback_request(reader: &mut BufReader<&TcpStream>) -> Result<Option<C
             // SAFETY: eq_pos from find('='), always a valid byte boundary
             #[expect(clippy::string_slice, reason = "eq_pos from find('='), valid boundary")]
             let key = &pair[..eq_pos];
-            #[expect(clippy::string_slice, reason = "eq_pos from find('='), eq_pos+1 is valid")]
+            #[expect(
+                clippy::string_slice,
+                reason = "eq_pos from find('='), eq_pos+1 is valid"
+            )]
             let value = url_decode(&pair[eq_pos + 1..]).unwrap_or_default();
 
             match key {
@@ -519,9 +525,7 @@ fn handle_callback_connection(
     expected_state: &str,
 ) -> Result<CallbackData> {
     // Set blocking mode on the listener so accept() blocks until a connection arrives.
-    listener
-        .set_nonblocking(false)
-        .context(SetBlockingSnafu)?;
+    listener.set_nonblocking(false).context(SetBlockingSnafu)?;
 
     let (stream, addr) = listener.accept().context(AcceptConnectionSnafu)?;
     info!(addr = %addr, "received OAuth callback");

@@ -23,25 +23,38 @@ fn create_and_find_session() {
 #[test]
 fn find_session_returns_none_for_missing() {
     let store = test_store();
-    let found = store.find_session("syn", "nonexistent").expect("find session");
+    let found = store
+        .find_session("syn", "nonexistent")
+        .expect("find session");
     assert!(found.is_none());
 }
 
 #[test]
 fn create_session_unique_constraint() {
     let store = test_store();
-    store.create_session("ses-1", "syn", "main", None, None).expect("first create");
+    store
+        .create_session("ses-1", "syn", "main", None, None)
+        .expect("first create");
     let result = store.create_session("ses-2", "syn", "main", None, None);
-    assert!(result.is_err(), "duplicate (nous_id, session_key) must fail");
+    assert!(
+        result.is_err(),
+        "duplicate (nous_id, session_key) must fail"
+    );
 }
 
 #[test]
 fn append_and_retrieve_messages() {
     let store = test_store();
-    store.create_session("ses-1", "syn", "main", None, None).expect("create");
+    store
+        .create_session("ses-1", "syn", "main", None, None)
+        .expect("create");
 
-    let seq1 = store.append_message("ses-1", Role::User, "hello", None, None, 10).expect("append");
-    let seq2 = store.append_message("ses-1", Role::Assistant, "hi there", None, None, 15).expect("append");
+    let seq1 = store
+        .append_message("ses-1", Role::User, "hello", None, None, 10)
+        .expect("append");
+    let seq2 = store
+        .append_message("ses-1", Role::Assistant, "hi there", None, None, 15)
+        .expect("append");
 
     assert_eq!(seq1, 1);
     assert_eq!(seq2, 2);
@@ -55,9 +68,15 @@ fn append_and_retrieve_messages() {
 #[test]
 fn message_updates_session_counts() {
     let store = test_store();
-    store.create_session("ses-1", "syn", "main", None, None).expect("create");
-    store.append_message("ses-1", Role::User, "hello", None, None, 100).expect("append");
-    store.append_message("ses-1", Role::Assistant, "world", None, None, 200).expect("append");
+    store
+        .create_session("ses-1", "syn", "main", None, None)
+        .expect("create");
+    store
+        .append_message("ses-1", Role::User, "hello", None, None, 100)
+        .expect("append");
+    store
+        .append_message("ses-1", Role::Assistant, "world", None, None, 200)
+        .expect("append");
 
     let session = store.find_session_by_id("ses-1").expect("query").unwrap();
     assert_eq!(session.metrics.message_count, 2);
@@ -67,9 +86,15 @@ fn message_updates_session_counts() {
 #[test]
 fn list_sessions_by_nous_id() {
     let store = test_store();
-    store.create_session("ses-a", "agent-x", "main", None, None).expect("create a");
-    store.create_session("ses-b", "agent-x", "secondary", None, None).expect("create b");
-    store.create_session("ses-c", "agent-y", "main", None, None).expect("create c");
+    store
+        .create_session("ses-a", "agent-x", "main", None, None)
+        .expect("create a");
+    store
+        .create_session("ses-b", "agent-x", "secondary", None, None)
+        .expect("create b");
+    store
+        .create_session("ses-c", "agent-y", "main", None, None)
+        .expect("create c");
 
     let agent_x = store.list_sessions(Some("agent-x")).expect("list");
     assert_eq!(agent_x.len(), 2);
@@ -80,8 +105,12 @@ fn list_sessions_by_nous_id() {
 #[test]
 fn update_session_status() {
     let store = test_store();
-    store.create_session("ses-1", "syn", "main", None, None).expect("create");
-    store.update_session_status("ses-1", SessionStatus::Archived).expect("update status");
+    store
+        .create_session("ses-1", "syn", "main", None, None)
+        .expect("create");
+    store
+        .update_session_status("ses-1", SessionStatus::Archived)
+        .expect("update status");
     let session = store.find_session_by_id("ses-1").expect("query").unwrap();
     assert_eq!(session.status, SessionStatus::Archived);
 }
@@ -89,25 +118,42 @@ fn update_session_status() {
 #[test]
 fn find_or_create_reactivates_archived() {
     let store = test_store();
-    store.create_session("ses-1", "syn", "main", None, None).expect("create");
-    store.update_session_status("ses-1", SessionStatus::Archived).expect("archive");
+    store
+        .create_session("ses-1", "syn", "main", None, None)
+        .expect("create");
+    store
+        .update_session_status("ses-1", SessionStatus::Archived)
+        .expect("archive");
 
     let session = store
         .find_or_create_session("ses-new", "syn", "main", None, None)
         .expect("find_or_create");
-    assert_eq!(session.id, "ses-1", "should return existing, not create new");
+    assert_eq!(
+        session.id, "ses-1",
+        "should return existing, not create new"
+    );
     assert_eq!(session.status, SessionStatus::Active);
 }
 
 #[test]
 fn distillation_marks_and_recalculates() {
     let store = test_store();
-    store.create_session("ses-1", "syn", "main", None, None).expect("create");
-    store.append_message("ses-1", Role::User, "old 1", None, None, 100).expect("append");
-    store.append_message("ses-1", Role::User, "old 2", None, None, 150).expect("append");
-    store.append_message("ses-1", Role::User, "keep this", None, None, 50).expect("append");
+    store
+        .create_session("ses-1", "syn", "main", None, None)
+        .expect("create");
+    store
+        .append_message("ses-1", Role::User, "old 1", None, None, 100)
+        .expect("append");
+    store
+        .append_message("ses-1", Role::User, "old 2", None, None, 150)
+        .expect("append");
+    store
+        .append_message("ses-1", Role::User, "keep this", None, None, 50)
+        .expect("append");
 
-    store.mark_messages_distilled("ses-1", &[1, 2]).expect("distill");
+    store
+        .mark_messages_distilled("ses-1", &[1, 2])
+        .expect("distill");
 
     let history = store.get_history("ses-1", None).expect("history");
     assert_eq!(history.len(), 1);
@@ -121,13 +167,25 @@ fn distillation_marks_and_recalculates() {
 #[test]
 fn insert_distillation_summary() {
     let store = test_store();
-    store.create_session("ses-1", "syn", "main", None, None).expect("create");
-    store.append_message("ses-1", Role::User, "msg1", None, None, 100).expect("append");
-    store.append_message("ses-1", Role::Assistant, "msg2", None, None, 200).expect("append");
-    store.append_message("ses-1", Role::User, "msg3", None, None, 50).expect("append");
+    store
+        .create_session("ses-1", "syn", "main", None, None)
+        .expect("create");
+    store
+        .append_message("ses-1", Role::User, "msg1", None, None, 100)
+        .expect("append");
+    store
+        .append_message("ses-1", Role::Assistant, "msg2", None, None, 200)
+        .expect("append");
+    store
+        .append_message("ses-1", Role::User, "msg3", None, None, 50)
+        .expect("append");
 
-    store.mark_messages_distilled("ses-1", &[1, 2]).expect("distill");
-    store.insert_distillation_summary("ses-1", "[Distillation #1]\n\nSummary").expect("summary");
+    store
+        .mark_messages_distilled("ses-1", &[1, 2])
+        .expect("distill");
+    store
+        .insert_distillation_summary("ses-1", "[Distillation #1]\n\nSummary")
+        .expect("summary");
 
     let history = store.get_history("ses-1", None).expect("history");
     assert_eq!(history.len(), 2, "summary + undistilled msg3");
@@ -139,12 +197,16 @@ fn insert_distillation_summary() {
 #[test]
 fn blackboard_crud() {
     let store = test_store();
-    store.blackboard_write("goal", "finish M0b", "syn", 3600).expect("write");
+    store
+        .blackboard_write("goal", "finish M0b", "syn", 3600)
+        .expect("write");
     let entry = store.blackboard_read("goal").expect("read").unwrap();
     assert_eq!(entry.value, "finish M0b");
     assert_eq!(entry.author_nous_id, "syn");
 
-    store.blackboard_write("goal", "updated goal", "syn", 3600).expect("overwrite");
+    store
+        .blackboard_write("goal", "updated goal", "syn", 3600)
+        .expect("overwrite");
     let updated = store.blackboard_read("goal").expect("read").unwrap();
     assert_eq!(updated.value, "updated goal");
 
@@ -156,9 +218,15 @@ fn blackboard_crud() {
 #[test]
 fn notes_crud() {
     let store = test_store();
-    store.create_session("ses-1", "syn", "main", None, None).expect("create");
-    store.add_note("ses-1", "syn", "task", "do something").expect("add note");
-    store.add_note("ses-1", "syn", "context", "background").expect("add note");
+    store
+        .create_session("ses-1", "syn", "main", None, None)
+        .expect("create");
+    store
+        .add_note("ses-1", "syn", "task", "do something")
+        .expect("add note");
+    store
+        .add_note("ses-1", "syn", "context", "background")
+        .expect("add note");
 
     let notes = store.get_notes("ses-1").expect("get notes");
     assert_eq!(notes.len(), 2);
@@ -173,13 +241,22 @@ fn notes_crud() {
 #[test]
 fn delete_session_removes_all_data() {
     let store = test_store();
-    store.create_session("ses-1", "syn", "main", None, None).expect("create");
-    store.append_message("ses-1", Role::User, "hi", None, None, 10).expect("append");
+    store
+        .create_session("ses-1", "syn", "main", None, None)
+        .expect("create");
+    store
+        .append_message("ses-1", Role::User, "hi", None, None, 10)
+        .expect("append");
 
     let deleted = store.delete_session("ses-1").expect("delete");
     assert!(deleted);
     assert!(store.find_session_by_id("ses-1").expect("query").is_none());
-    assert!(store.get_history("ses-1", None).expect("history").is_empty());
+    assert!(
+        store
+            .get_history("ses-1", None)
+            .expect("history")
+            .is_empty()
+    );
 }
 
 #[test]

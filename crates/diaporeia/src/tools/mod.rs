@@ -87,9 +87,11 @@ fn parse_role_from_token(token: &str) -> Option<Role> {
 
 /// Base64 decode with URL-safe alphabet and no padding.
 fn base64_decode_urlsafe(input: &str) -> Result<Vec<u8>, base64::DecodeError> {
-    use base64::{alphabet, engine::GeneralPurpose, Engine};
-    let engine =
-        GeneralPurpose::new(&alphabet::URL_SAFE, base64::engine::GeneralPurposeConfig::new());
+    use base64::{Engine, alphabet, engine::GeneralPurpose};
+    let engine = GeneralPurpose::new(
+        &alphabet::URL_SAFE,
+        base64::engine::GeneralPurposeConfig::new(),
+    );
     engine.decode(input.trim_end_matches('='))
 }
 
@@ -246,9 +248,11 @@ impl DiaporeiaServer {
     /// `POST /api/v1/sessions/{id}/messages` instead.
     ///
     /// Requires `Operator` role or above (#3337).
-    #[tool(description = "Send a message to a nous agent session and get the response. \
+    #[tool(
+        description = "Send a message to a nous agent session and get the response. \
         Note: response is not streamed — the full result is returned after the turn completes. \
-        For streaming, use the HTTP SSE endpoint.")]
+        For streaming, use the HTTP SSE endpoint."
+    )]
     async fn session_message(
         &self,
         Parameters(params): Parameters<params::SessionMessageParams>,
@@ -274,9 +278,7 @@ impl DiaporeiaServer {
 
         // Drain stream events in background so the channel doesn't back-pressure
         // the actor. MCP doesn't support server-push, so events are discarded.
-        let drain = tokio::spawn(async move {
-            while stream_rx.recv().await.is_some() {}
-        });
+        let drain = tokio::spawn(async move { while stream_rx.recv().await.is_some() {} });
 
         let result = handle
             .send_turn_streaming(&params.session_key, &params.content, stream_tx)

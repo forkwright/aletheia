@@ -179,7 +179,10 @@ where
 {
     type Item = (usize, usize);
 
-    #[expect(clippy::indexing_slicing, reason = "cursor is bounded by memory.len() via modular arithmetic")]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "cursor is bounded by memory.len() via modular arithmetic"
+    )]
     fn next(&mut self) -> Option<(usize, usize)> {
         if self.gram_len > self.max_gram {
             self.gram_len = self.min_gram;
@@ -224,7 +227,10 @@ impl<'a> CodepointFrontiers<'a> {
 impl Iterator for CodepointFrontiers<'_> {
     type Item = usize;
 
-    #[expect(clippy::indexing_slicing, reason = "is_empty() guard ensures index 0 is valid")]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "is_empty() guard ensures index 0 is valid"
+    )]
     fn next(&mut self) -> Option<usize> {
         self.next_el.inspect(|&offset| {
             if self.s.is_empty() {

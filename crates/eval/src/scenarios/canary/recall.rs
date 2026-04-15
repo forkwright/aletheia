@@ -150,7 +150,10 @@ impl Scenario for RecallConflictDetection {
                     )
                     .await?;
                 let events = client
-                    .send_message(&session.id, "What is the capital of France? Is there any conflict in what I told you?")
+                    .send_message(
+                        &session.id,
+                        "What is the capital of France? Is there any conflict in what I told you?",
+                    )
                     .await?;
                 let text = sse::extract_text(&events);
                 validate_response(&self.meta(), &text)?;
@@ -233,7 +236,9 @@ impl Scenario for RecallEmptyKnowledgeGraceful {
             requires_auth: true,
             requires_nous: true,
             expected_contains: None,
-            expected_pattern: Some(r"(?i)(don't know|not sure|no information|haven't been told|unclear)"),
+            expected_pattern: Some(
+                r"(?i)(don't know|not sure|no information|haven't been told|unclear)",
+            ),
         }
     }
 

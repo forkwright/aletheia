@@ -59,8 +59,12 @@ pub(crate) async fn run(args: BenchmarkArgs) -> Result<()> {
     match args.action {
         BenchmarkAction::List => {
             println!("Available benchmarks:\n");
-            println!("  longmemeval   LongMemEval (arxiv 2410.10813) — 500 questions, 5 memory abilities");
-            println!("  locomo        LoCoMo (arxiv 2402.17753) — 50 conversations, ~200 QA each\n");
+            println!(
+                "  longmemeval   LongMemEval (arxiv 2410.10813) — 500 questions, 5 memory abilities"
+            );
+            println!(
+                "  locomo        LoCoMo (arxiv 2402.17753) — 50 conversations, ~200 QA each\n"
+            );
             println!("{}", dokimion::benchmarks::download_instructions());
             Ok(())
         }
@@ -118,17 +122,11 @@ fn print_report_human(report: &BenchmarkReport, nous_id: &str, timeout: u64) {
         println!("{header}");
     }
     println!("{}", "\u{2550}".repeat(header.len()));
-    println!(
-        "Questions: {} | Timeout: {timeout}s\n",
-        report.total
-    );
+    println!("Questions: {} | Timeout: {timeout}s\n", report.total);
 
     // Table header
     println!("Results:");
-    println!(
-        "  {:<30} {:>6} {:>6}",
-        "Category", "EM%", "F1%"
-    );
+    println!("  {:<30} {:>6} {:>6}", "Category", "EM%", "F1%");
     println!("  {}", "\u{2500}".repeat(44));
 
     // Per-category rows
@@ -160,7 +158,10 @@ fn print_report_human(report: &BenchmarkReport, nous_id: &str, timeout: u64) {
             format!("{overall_f1:.1}").green().bold()
         );
     } else {
-        println!("  {:<30} {:>5.1}  {:>5.1}", "Overall", overall_em, overall_f1);
+        println!(
+            "  {:<30} {:>5.1}  {:>5.1}",
+            "Overall", overall_em, overall_f1
+        );
     }
 }
 

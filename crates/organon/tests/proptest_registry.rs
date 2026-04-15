@@ -14,11 +14,11 @@
     reason = "proptest: ToolName::new() with controlled inputs; expect message documents constraint"
 )]
 
+use indexmap::IndexMap;
 use koina::id::ToolName;
 use organon::registry::ToolRegistry;
 use organon::testing::{MockToolExecutor, make_test_context, make_tool_input};
 use organon::types::{InputSchema, Reversibility, ToolCategory, ToolDef};
-use indexmap::IndexMap;
 use proptest::prelude::*;
 
 fn valid_tool_name() -> impl Strategy<Value = String> {

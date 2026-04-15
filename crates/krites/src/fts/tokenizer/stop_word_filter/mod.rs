@@ -22,7 +22,10 @@ impl StopWordFilter {
     /// Creates a new [`StopWordFilter`] for the given ISO 639-1 language code.
     ///
     /// Supports 58 languages from the [stopwords-iso](https://github.com/stopwords-iso/stopwords-iso/) project.
-    #[expect(clippy::result_large_err, reason = "FTS error carries structured tokenization context")]
+    #[expect(
+        clippy::result_large_err,
+        reason = "FTS error carries structured tokenization context"
+    )]
     pub(crate) fn for_lang(language: &str) -> Result<Self> {
         let words = match language {
             "af" => stopwords::AF,

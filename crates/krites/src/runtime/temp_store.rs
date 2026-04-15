@@ -133,7 +133,8 @@ impl MeetAggrStore {
                             source: crate::runtime::error::InvalidOperationSnafu {
                                 op: "meet_put",
                                 reason: "aggregation missing meet_op".to_string(),
-                            }.build(),
+                            }
+                            .build(),
                         }
                     })?;
                     changed |= op.update(&mut prev_aggr[i], &val_part[i])?;
@@ -174,8 +175,9 @@ impl MeetAggrStore {
                     match ret
                         .partial_cmp(&upper as &[DataValue])
                         // INVARIANT: well-formed tuples always have comparable DataValue types
-                        .unwrap_or_else(|| unreachable!("incomparable DataValue types in tuple range scan"))
-                    {
+                        .unwrap_or_else(|| {
+                            unreachable!("incomparable DataValue types in tuple range scan")
+                        }) {
                         Ordering::Less => Some(ret),
                         Ordering::Equal => {
                             if upper_inclusive {
@@ -216,7 +218,8 @@ impl MeetAggrStore {
                                     source: crate::runtime::error::InvalidOperationSnafu {
                                         op: "merge_in",
                                         reason: "aggregation missing meet_op".to_string(),
-                                    }.build(),
+                                    }
+                                    .build(),
                                 }
                             })?;
                             changed |= op.update(&mut target[i], &v[i])?;
@@ -305,7 +308,8 @@ impl EpochStore {
                     source: crate::runtime::error::InvalidOperationSnafu {
                         op: "epoch_merge",
                         reason: "mismatched TempStore variants".to_string(),
-                    }.build(),
+                    }
+                    .build(),
                 });
             }
         }

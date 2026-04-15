@@ -118,7 +118,10 @@ impl AgentSdkEngine {
         args.extend(["--output-format".to_owned(), "stream-json".to_owned()]);
         args.push("--verbose".to_owned());
 
-        let model = options.model.as_deref().unwrap_or(&self.config.default_model);
+        let model = options
+            .model
+            .as_deref()
+            .unwrap_or(&self.config.default_model);
         args.extend(["--model".to_owned(), model.to_owned()]);
 
         // WHY: Apply permission mode based on config (if not skipped).
@@ -212,7 +215,10 @@ impl DispatchEngine for AgentSdkEngine {
 
             tracing::debug!(
                 prompt_len = spec.prompt.len(),
-                model = options.model.as_deref().unwrap_or(&self.config.default_model),
+                model = options
+                    .model
+                    .as_deref()
+                    .unwrap_or(&self.config.default_model),
                 "spawning agent SDK session"
             );
 

@@ -318,8 +318,7 @@ impl ToolExecutor for ExternalToolExecutor {
         &'a self,
         input: &'a ToolInput,
         _ctx: &'a ToolContext,
-    ) -> Pin<Box<dyn Future<Output = organon::error::Result<ToolResult>> + Send + 'a>>
-    {
+    ) -> Pin<Box<dyn Future<Output = organon::error::Result<ToolResult>> + Send + 'a>> {
         Box::pin(async move {
             let payload = serde_json::json!({
                 "tool": self.name,

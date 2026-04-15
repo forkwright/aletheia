@@ -10,9 +10,7 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use hermeneus::provider::{LlmProvider, ProviderRegistry};
-use hermeneus::types::{
-    CompletionRequest, CompletionResponse, ContentBlock, StopReason, Usage,
-};
+use hermeneus::types::{CompletionRequest, CompletionResponse, ContentBlock, StopReason, Usage};
 use koina::id::ToolName;
 use nous::config::{NousConfig, PipelineConfig};
 use nous::manager::NousManager;
@@ -180,7 +178,10 @@ priority = "important"
         },
         ..NousConfig::default()
     };
-    let handle = manager.spawn(config, PipelineConfig::default()).await.expect("spawn");
+    let handle = manager
+        .spawn(config, PipelineConfig::default())
+        .await
+        .expect("spawn");
 
     handle.send_turn("main", "Hello").await.expect("turn");
 

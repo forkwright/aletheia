@@ -35,7 +35,10 @@ impl FtsCache {
     /// # Complexity
     ///
     /// O(1) cached, or O(1) for the underlying range count operation.
-    #[expect(clippy::result_large_err, reason = "FTS error carries structured tokenization context")]
+    #[expect(
+        clippy::result_large_err,
+        reason = "FTS error carries structured tokenization context"
+    )]
     fn get_n_for_relation(&mut self, rel: &RelationHandle, tx: &SessionTx<'_>) -> Result<usize> {
         Ok(match self.total_n_cache.entry(rel.name.clone()) {
             Entry::Vacant(v) => {
@@ -150,7 +153,10 @@ struct LiteralStats {
 /// # Complexity
 ///
 /// O(1) arithmetic operations.
-#[expect(clippy::too_many_arguments, reason = "BM25 formula requires all statistical parameters")]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "BM25 formula requires all statistical parameters"
+)]
 pub(crate) fn bm25_compute_score(
     tf: usize,
     df: usize,
@@ -286,14 +292,14 @@ impl SessionTx<'_> {
                         )
                     })?;
                     let position = u32::try_from(raw_pos).map_err(|_e| {
-                            crate::error::InternalError::from(
-                                InvalidOperationSnafu {
-                                    op: "fts_search",
-                                    reason: "token position does not fit in u32",
-                                }
-                                .build(),
-                            )
-                        })?;
+                        crate::error::InternalError::from(
+                            InvalidOperationSnafu {
+                                op: "fts_search",
+                                reason: "token position does not fit in u32",
+                            }
+                            .build(),
+                        )
+                    })?;
                     Ok(PositionInfo { position })
                 })
                 .collect::<Result<Vec<_>>>()?;

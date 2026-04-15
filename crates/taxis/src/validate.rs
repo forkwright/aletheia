@@ -381,14 +381,10 @@ fn validate_capacity(value: &Value, errors: &mut Vec<String>) {
     // no more than 2M to prevent nonsensical configurations.
     if let Some(val) = value.get("opusContextTokens").and_then(Value::as_u64) {
         if val < 200_000 {
-            errors.push(
-                "capacity.opusContextTokens must be at least 200 000 tokens".to_owned(),
-            );
+            errors.push("capacity.opusContextTokens must be at least 200 000 tokens".to_owned());
         }
         if val > 2_000_000 {
-            errors.push(
-                "capacity.opusContextTokens must not exceed 2 000 000 tokens".to_owned(),
-            );
+            errors.push("capacity.opusContextTokens must not exceed 2 000 000 tokens".to_owned());
         }
     }
 }
@@ -425,9 +421,7 @@ fn validate_retry(value: &Value, errors: &mut Vec<String>) {
     if let (Some(b), Some(m)) = (base, max)
         && m < b
     {
-        errors.push(
-            "retry.backoffMaxMs must be greater than or equal to backoffBaseMs".to_owned(),
-        );
+        errors.push("retry.backoffMaxMs must be greater than or equal to backoffBaseMs".to_owned());
     }
 }
 
@@ -501,13 +495,7 @@ fn validate_nous_behavior(value: &Value, errors: &mut Vec<String>) {
 
 fn validate_knowledge(value: &Value, errors: &mut Vec<String>) {
     check_range_u64(value, "conflictMaxLlmCallsPerFact", 1, 20, errors);
-    check_range_f64(
-        value,
-        "conflictIntraBatchDedupThreshold",
-        0.5,
-        1.0,
-        errors,
-    );
+    check_range_f64(value, "conflictIntraBatchDedupThreshold", 0.5, 1.0, errors);
     check_range_f64(
         value,
         "conflictCandidateDistanceThreshold",
@@ -525,12 +513,8 @@ fn validate_knowledge(value: &Value, errors: &mut Vec<String>) {
     check_range_u64(value, "extractionMaxFactLength", 10, 10_000, errors);
 
     // INVARIANT: min length must be less than max length.
-    let min_len = value
-        .get("extractionMinFactLength")
-        .and_then(Value::as_u64);
-    let max_len = value
-        .get("extractionMaxFactLength")
-        .and_then(Value::as_u64);
+    let min_len = value.get("extractionMinFactLength").and_then(Value::as_u64);
+    let max_len = value.get("extractionMaxFactLength").and_then(Value::as_u64);
     if let (Some(min), Some(max)) = (min_len, max_len)
         && min > max
     {
@@ -544,23 +528,13 @@ fn validate_provider_behavior(value: &Value, errors: &mut Vec<String>) {
     check_range_u64(value, "nonStreamingTimeoutSecs", 10, 600, errors);
     check_range_u64(value, "sseDefaultRetryMs", 100, 60_000, errors);
     check_range_f64(value, "concurrencyEwmaAlpha", 0.0, 1.0, errors);
-    check_range_f64(
-        value,
-        "concurrencyLatencyThresholdSecs",
-        1.0,
-        300.0,
-        errors,
-    );
+    check_range_f64(value, "concurrencyLatencyThresholdSecs", 1.0, 300.0, errors);
     check_range_u64(value, "complexityLowThreshold", 0, 100, errors);
     check_range_u64(value, "complexityHighThreshold", 0, 100, errors);
 
     // INVARIANT: low threshold must be <= high threshold.
-    let low = value
-        .get("complexityLowThreshold")
-        .and_then(Value::as_u64);
-    let high = value
-        .get("complexityHighThreshold")
-        .and_then(Value::as_u64);
+    let low = value.get("complexityLowThreshold").and_then(Value::as_u64);
+    let high = value.get("complexityHighThreshold").and_then(Value::as_u64);
     if let (Some(l), Some(h)) = (low, high)
         && l > h
     {
@@ -584,12 +558,8 @@ fn validate_api_limits(value: &Value, errors: &mut Vec<String>) {
     check_range_u64(value, "idempotencyMaxKeyLength", 1, 1024, errors);
 
     // INVARIANT: default history limit must be <= max history limit.
-    let default_limit = value
-        .get("defaultHistoryLimit")
-        .and_then(Value::as_u64);
-    let max_limit = value
-        .get("maxHistoryLimit")
-        .and_then(Value::as_u64);
+    let default_limit = value.get("defaultHistoryLimit").and_then(Value::as_u64);
+    let max_limit = value.get("maxHistoryLimit").and_then(Value::as_u64);
     if let (Some(d), Some(m)) = (default_limit, max_limit)
         && d > m
     {
@@ -607,9 +577,7 @@ fn validate_daemon_behavior(value: &Value, errors: &mut Vec<String>) {
     check_range_u64(value, "runnerOutputBriefTailLines", 1, 100, errors);
 
     // INVARIANT: backoff base must be <= backoff cap.
-    let base = value
-        .get("watchdogBackoffBaseSecs")
-        .and_then(Value::as_u64);
+    let base = value.get("watchdogBackoffBaseSecs").and_then(Value::as_u64);
     let cap = value.get("watchdogBackoffCapSecs").and_then(Value::as_u64);
     if let (Some(b), Some(c)) = (base, cap)
         && b > c

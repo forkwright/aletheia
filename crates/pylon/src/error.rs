@@ -171,8 +171,8 @@ impl IntoResponse for ApiError {
             Self::ValidationFailed { errors, .. } => {
                 // WHY(#3275): serialize structured field errors so consumers
                 // can match on field + code without parsing English messages.
-                let errors_json = serde_json::to_value(errors)
-                    .unwrap_or_else(|_| serde_json::json!([]));
+                let errors_json =
+                    serde_json::to_value(errors).unwrap_or_else(|_| serde_json::json!([]));
                 (
                     StatusCode::UNPROCESSABLE_ENTITY,
                     "validation_failed",

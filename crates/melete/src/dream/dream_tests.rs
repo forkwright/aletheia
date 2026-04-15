@@ -41,11 +41,7 @@ impl TranscriptSource for MockTranscriptSource {
         &self,
         _since: jiff::Timestamp,
     ) -> std::result::Result<Vec<SessionTranscript>, std::io::Error> {
-        Ok(self
-            .transcripts
-            .lock()
-            .unwrap()
-            .clone())
+        Ok(self.transcripts.lock().unwrap().clone())
     }
 }
 

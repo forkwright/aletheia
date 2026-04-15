@@ -243,7 +243,10 @@ fn write_config_creates_file_with_mode_0600() {
         let mode = meta.permissions().mode() & 0o777;
         // WHY: closes #1710 -- config file may contain signing keys and must
         // be 0600 so only the owning user can read it.
-        assert_eq!(mode, 0o600, "aletheia.toml mode should be 0600, got {mode:o}");
+        assert_eq!(
+            mode, 0o600,
+            "aletheia.toml mode should be 0600, got {mode:o}"
+        );
         Ok(())
     });
 }

@@ -104,17 +104,11 @@ pub enum ImperativeStmt {
         returns: Vec<Either<ImperativeStmtClause, CompactString>>,
     },
     /// Execute a query program.
-    Program {
-        prog: ImperativeStmtClause,
-    },
+    Program { prog: ImperativeStmtClause },
     /// Execute a system operation.
-    SysOp {
-        sysop: ImperativeSysop,
-    },
+    SysOp { sysop: ImperativeSysop },
     /// Execute a query, suppressing any errors.
-    IgnoreErrorProgram {
-        prog: ImperativeStmtClause,
-    },
+    IgnoreErrorProgram { prog: ImperativeStmtClause },
     /// Conditional branch.
     If {
         condition: ImperativeCondition,
@@ -133,9 +127,7 @@ pub enum ImperativeStmt {
         right: CompactString,
     },
     /// Debug-print a temporary relation.
-    TempDebug {
-        temp: CompactString,
-    },
+    TempDebug { temp: CompactString },
 }
 
 pub(crate) type ImperativeCondition = Either<CompactString, ImperativeStmtClause>;

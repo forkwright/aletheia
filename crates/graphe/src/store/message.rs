@@ -101,7 +101,10 @@ impl SessionStore {
         };
 
         let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| &**p).collect();
-        let mut stmt = self.conn.prepare_cached(&sql).context(error::DatabaseSnafu)?;
+        let mut stmt = self
+            .conn
+            .prepare_cached(&sql)
+            .context(error::DatabaseSnafu)?;
         let rows = stmt
             .query_map(&*param_refs, map_message)
             .context(error::DatabaseSnafu)?;

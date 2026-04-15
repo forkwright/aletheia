@@ -75,7 +75,13 @@ pub(crate) fn list_sessions_for_dispatch(
     dispatch_id: &crate::store::records::DispatchId,
 ) -> Result<Vec<SessionRecord>> {
     let prefix = schema::session_prefix_for_dispatch(dispatch_id);
-    prefix_scan(keyspace, prefix.as_bytes(), "session prefix scan", usize::MAX, |_: &SessionRecord| true)
+    prefix_scan(
+        keyspace,
+        prefix.as_bytes(),
+        "session prefix scan",
+        usize::MAX,
+        |_: &SessionRecord| true,
+    )
 }
 
 /// Query lessons with optional source filter, returning up to `limit` results.
@@ -98,15 +104,21 @@ pub(crate) fn query_lessons(
         None => schema::lesson_prefix().as_bytes(),
     };
 
-    prefix_scan(keyspace, prefix_bytes, "lesson prefix scan", limit, |record: &LessonRecord| {
-        if category.is_some_and(|cat| record.category != cat) {
-            return false;
-        }
-        if project.is_some_and(|proj| record.project.as_deref() != Some(proj)) {
-            return false;
-        }
-        true
-    })
+    prefix_scan(
+        keyspace,
+        prefix_bytes,
+        "lesson prefix scan",
+        limit,
+        |record: &LessonRecord| {
+            if category.is_some_and(|cat| record.category != cat) {
+                return false;
+            }
+            if project.is_some_and(|proj| record.project.as_deref() != Some(proj)) {
+                return false;
+            }
+            true
+        },
+    )
 }
 
 /// Query observations with optional project filter and day window.
@@ -134,15 +146,21 @@ pub(crate) fn query_observations(
         cutoff.as_millisecond()
     });
 
-    prefix_scan(keyspace, prefix_bytes, "observation prefix scan", limit, |record: &ObservationRecord| {
-        if cutoff_ms.is_some_and(|cutoff| record.created_at.as_millisecond() < cutoff) {
-            return false;
-        }
-        if project.is_some_and(|proj| record.project != proj) {
-            return false;
-        }
-        true
-    })
+    prefix_scan(
+        keyspace,
+        prefix_bytes,
+        "observation prefix scan",
+        limit,
+        |record: &ObservationRecord| {
+            if cutoff_ms.is_some_and(|cutoff| record.created_at.as_millisecond() < cutoff) {
+                return false;
+            }
+            if project.is_some_and(|proj| record.project != proj) {
+                return false;
+            }
+            true
+        },
+    )
 }
 
 /// Collect all dispatch records via prefix scan.
@@ -155,7 +173,13 @@ pub(crate) fn list_dispatches(
     limit: usize,
 ) -> Result<Vec<crate::store::records::DispatchRecord>> {
     let prefix_bytes = schema::dispatch_prefix().as_bytes();
-    prefix_scan(keyspace, prefix_bytes, "dispatch prefix scan", limit, |_: &DispatchRecord| true)
+    prefix_scan(
+        keyspace,
+        prefix_bytes,
+        "dispatch prefix scan",
+        limit,
+        |_: &DispatchRecord| true,
+    )
 }
 
 /// Collect all session records across all dispatches via prefix scan.
@@ -168,7 +192,13 @@ pub(crate) fn list_all_sessions(
     limit: usize,
 ) -> Result<Vec<SessionRecord>> {
     let prefix_bytes = schema::session_prefix().as_bytes();
-    prefix_scan(keyspace, prefix_bytes, "session prefix scan", limit, |_: &SessionRecord| true)
+    prefix_scan(
+        keyspace,
+        prefix_bytes,
+        "session prefix scan",
+        limit,
+        |_: &SessionRecord| true,
+    )
 }
 
 /// Collect all CI validation records across all sessions via prefix scan.
@@ -180,7 +210,13 @@ pub(crate) fn list_all_ci_validations(
     limit: usize,
 ) -> Result<Vec<CiValidationRecord>> {
     let prefix_bytes = schema::ci_validation_prefix().as_bytes();
-    prefix_scan(keyspace, prefix_bytes, "ci_validation prefix scan", limit, |_: &CiValidationRecord| true)
+    prefix_scan(
+        keyspace,
+        prefix_bytes,
+        "ci_validation prefix scan",
+        limit,
+        |_: &CiValidationRecord| true,
+    )
 }
 
 /// Collect CI validations for a given session via prefix scan.
@@ -190,5 +226,11 @@ pub(crate) fn list_ci_validations_for_session(
     session_id: &crate::store::records::SessionId,
 ) -> Result<Vec<CiValidationRecord>> {
     let prefix = schema::ci_validation_prefix_for_session(session_id);
-    prefix_scan(keyspace, prefix.as_bytes(), "ci_validation prefix scan", usize::MAX, |_: &CiValidationRecord| true)
+    prefix_scan(
+        keyspace,
+        prefix.as_bytes(),
+        "ci_validation prefix scan",
+        usize::MAX,
+        |_: &CiValidationRecord| true,
+    )
 }

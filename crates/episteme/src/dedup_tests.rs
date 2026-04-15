@@ -200,8 +200,7 @@ fn embedding_similarity_triggers_candidate() {
         ),
     ];
     let embed_fn = |a: &EntityId, b: &EntityId| -> f64 {
-        if (a.as_str() == "e1" && b.as_str() == "e2")
-            || (a.as_str() == "e2" && b.as_str() == "e1")
+        if (a.as_str() == "e1" && b.as_str() == "e2") || (a.as_str() == "e2" && b.as_str() == "e1")
         {
             0.95
         } else {
@@ -221,8 +220,7 @@ fn classify_auto_merge_and_review() {
         entity("e3", "Alicia Test", "person", vec![], 1, "2026-01-03"),
     ];
     let high_embed = |a: &EntityId, b: &EntityId| -> f64 {
-        if (a.as_str() == "e1" && b.as_str() == "e2")
-            || (a.as_str() == "e2" && b.as_str() == "e1")
+        if (a.as_str() == "e1" && b.as_str() == "e2") || (a.as_str() == "e2" && b.as_str() == "e1")
         {
             0.95
         } else {

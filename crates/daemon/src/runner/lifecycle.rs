@@ -7,8 +7,10 @@ use tracing::Instrument;
 use crate::execution::execute_action;
 use crate::schedule::Schedule;
 
+use super::systemd::{
+    sd_notify_ready, sd_notify_stopping, sd_notify_watchdog, sd_watchdog_interval,
+};
 use super::{InFlightTask, TaskRunner};
-use super::systemd::{sd_notify_ready, sd_notify_stopping, sd_notify_watchdog, sd_watchdog_interval};
 
 impl TaskRunner {
     /// Run the event loop. Checks for due tasks every second, executes them.

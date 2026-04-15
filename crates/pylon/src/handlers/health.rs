@@ -2,11 +2,11 @@
 
 use std::time::Duration;
 
-use koina::system::{Environment, RealSystem};
 use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
+use koina::system::{Environment, RealSystem};
 use serde::Serialize;
 use utoipa::ToSchema;
 
@@ -118,7 +118,10 @@ async fn timed_check(
         Err(_elapsed) => HealthCheck {
             name,
             status: "timeout",
-            message: Some(format!("{name} check timed out after {}s", CHECK_TIMEOUT.as_secs())),
+            message: Some(format!(
+                "{name} check timed out after {}s",
+                CHECK_TIMEOUT.as_secs()
+            )),
         },
     }
 }
@@ -189,9 +192,10 @@ fn check_provider_reachability(state: &HealthState) -> HealthCheck {
     }
 
     // Check if any provider is healthy (Up status)
-    let any_healthy = providers
-        .iter()
-        .any(|p| state.provider_registry.provider_health(p.name()) == Some(hermeneus::health::ProviderHealth::Up));
+    let any_healthy = providers.iter().any(|p| {
+        state.provider_registry.provider_health(p.name())
+            == Some(hermeneus::health::ProviderHealth::Up)
+    });
 
     if any_healthy {
         HealthCheck {
@@ -398,13 +402,15 @@ fn check_credential_validity(
     }
 
     // Check if CC provider handles auth (Claude Code credentials)
-    let cc_credentials = symbolon::credential::claude_code_default_path()
-        .is_some_and(|p| p.exists());
+    let cc_credentials =
+        symbolon::credential::claude_code_default_path().is_some_and(|p| p.exists());
     if cc_credentials {
         HealthCheck {
             name: "credential_validity",
             status: "pass",
-            message: Some("Claude Code credentials available (CC provider handles auth)".to_owned()),
+            message: Some(
+                "Claude Code credentials available (CC provider handles auth)".to_owned(),
+            ),
         }
     } else {
         HealthCheck {
@@ -568,12 +574,12 @@ mod tests {
             reason = "compile-time shape assertion: proves field types via unused local fn"
         )]
         fn assert_health_state_fields(state: &HealthState) {
-            use std::sync::Arc;
-            use mneme::store::SessionStore;
             use hermeneus::provider::ProviderRegistry;
+            use mneme::store::SessionStore;
             use nous::manager::NousManager;
-            use taxis::oikos::Oikos;
+            use std::sync::Arc;
             use taxis::config::AletheiaConfig;
+            use taxis::oikos::Oikos;
 
             let _: &Arc<tokio::sync::Mutex<SessionStore>> = &state.session_store;
             let _: &Arc<ProviderRegistry> = &state.provider_registry;
@@ -717,7 +723,10 @@ mod tests {
         ];
         // WHY: "timeout" is treated as "fail" for aggregate status because
         // a timed-out check means we cannot confirm the subsystem is healthy.
-        let status = if checks.iter().any(|c| c.status == "fail" || c.status == "timeout") {
+        let status = if checks
+            .iter()
+            .any(|c| c.status == "fail" || c.status == "timeout")
+        {
             "unhealthy"
         } else if checks.iter().any(|c| c.status == "warn") {
             "degraded"

@@ -504,7 +504,10 @@ fn delete_session_removes_session_and_messages() {
         .execute("DELETE FROM messages WHERE session_id = 'ses-1'", [])
         .expect("delete messages");
     let deleted = store.delete_session("ses-1").expect("delete session");
-    assert!(deleted, "delete_session should return true for existing session");
+    assert!(
+        deleted,
+        "delete_session should return true for existing session"
+    );
 
     // Verify session is gone
     let session = store.find_session_by_id("ses-1").expect("query succeeds");
@@ -514,7 +517,9 @@ fn delete_session_removes_session_and_messages() {
 #[test]
 fn delete_session_returns_false_for_nonexistent() {
     let store = test_store();
-    let deleted = store.delete_session("nonexistent-session").expect("delete session");
+    let deleted = store
+        .delete_session("nonexistent-session")
+        .expect("delete session");
     assert!(
         !deleted,
         "delete_session should return false for non-existent session"
@@ -540,7 +545,10 @@ fn get_history_filtered_with_before_seq() {
         .expect("get history filtered");
     assert_eq!(history.len(), 3, "should return 3 messages before seq 4");
     assert_eq!(history[0].content, "msg 1", "first message should be msg 1");
-    assert_eq!(history[1].content, "msg 2", "second message should be msg 2");
+    assert_eq!(
+        history[1].content, "msg 2",
+        "second message should be msg 2"
+    );
     assert_eq!(history[2].content, "msg 3", "third message should be msg 3");
 
     // Get history before seq 4 with limit 2
@@ -548,7 +556,10 @@ fn get_history_filtered_with_before_seq() {
         .get_history_filtered("ses-1", Some(2), Some(4))
         .expect("get history filtered with limit");
     assert_eq!(history.len(), 2, "should return 2 messages with limit");
-    assert_eq!(history[0].content, "msg 2", "first should be msg 2 (most recent 2 before 4)");
+    assert_eq!(
+        history[0].content, "msg 2",
+        "first should be msg 2 (most recent 2 before 4)"
+    );
     assert_eq!(history[1].content, "msg 3", "second should be msg 3");
 }
 
@@ -580,7 +591,10 @@ fn distillation_summary_operations() {
     let summary = store
         .get_distillation_summary("ses-1")
         .expect("get distillation summary");
-    assert_eq!(summary, None, "new session should have no distillation summary");
+    assert_eq!(
+        summary, None,
+        "new session should have no distillation summary"
+    );
 
     // Add some messages and mark some as distilled
     store
@@ -615,10 +629,21 @@ fn distillation_summary_operations() {
     // Verify distilled messages are deleted and summary is added
     // History contains: seq=0 (summary) and seq=3 (undistilled message)
     let history = store.get_history("ses-1", None).expect("get history");
-    assert_eq!(history.len(), 2, "summary + undistilled message should remain");
-    assert_eq!(history[0].role, Role::System, "first message should be system summary");
+    assert_eq!(
+        history.len(),
+        2,
+        "summary + undistilled message should remain"
+    );
+    assert_eq!(
+        history[0].role,
+        Role::System,
+        "first message should be system summary"
+    );
     assert_eq!(history[0].content, "Summary of distilled messages");
-    assert_eq!(history[1].content, "keep this", "second message should be undistilled");
+    assert_eq!(
+        history[1].content, "keep this",
+        "second message should be undistilled"
+    );
 
     // Verify session metrics are updated (summary + 1 message)
     let session = store
@@ -761,26 +786,43 @@ fn usage_exists_for_turn_detects_duplicates() {
 fn create_session_with_parent_and_model() {
     let store = test_store();
     let session = store
-        .create_session("ses-1", "alice", "main", Some("parent-123"), Some("claude-opus-4"))
+        .create_session(
+            "ses-1",
+            "alice",
+            "main",
+            Some("parent-123"),
+            Some("claude-opus-4"),
+        )
         .expect("create session with parent and model");
 
     assert_eq!(session.id, "ses-1");
-    assert_eq!(session.origin.parent_session_id, Some("parent-123".to_owned()));
+    assert_eq!(
+        session.origin.parent_session_id,
+        Some("parent-123".to_owned())
+    );
     assert_eq!(session.model, Some("claude-opus-4".to_owned()));
 
     let found = store
         .find_session_by_id("ses-1")
         .expect("find session")
         .expect("session should exist");
-    assert_eq!(found.origin.parent_session_id, Some("parent-123".to_owned()));
+    assert_eq!(
+        found.origin.parent_session_id,
+        Some("parent-123".to_owned())
+    );
     assert_eq!(found.model, Some("claude-opus-4".to_owned()));
 }
 
 #[test]
 fn find_session_by_id_not_found() {
     let store = test_store();
-    let result = store.find_session_by_id("nonexistent-id").expect("query succeeds");
-    assert!(result.is_none(), "find_session_by_id should return None for non-existent ID");
+    let result = store
+        .find_session_by_id("nonexistent-id")
+        .expect("query succeeds");
+    assert!(
+        result.is_none(),
+        "find_session_by_id should return None for non-existent ID"
+    );
 }
 
 #[test]
@@ -793,7 +835,10 @@ fn list_sessions_returns_empty_for_nonexistent_nous() {
 
     // List sessions for bob (who has no sessions)
     let sessions = store.list_sessions(Some("bob")).expect("list sessions");
-    assert!(sessions.is_empty(), "should return empty vec for nous with no sessions");
+    assert!(
+        sessions.is_empty(),
+        "should return empty vec for nous with no sessions"
+    );
 }
 
 #[test]
@@ -895,11 +940,19 @@ fn find_session_only_returns_active() {
 
     // Should not find archived session
     let found = store.find_session("alice", "main").expect("find session");
-    assert!(found.is_none(), "should not find archived session with find_session");
+    assert!(
+        found.is_none(),
+        "should not find archived session with find_session"
+    );
 
     // But find_session_by_id should still find it
-    let found = store.find_session_by_id("ses-1").expect("find session by id");
-    assert!(found.is_some(), "find_session_by_id should find archived session");
+    let found = store
+        .find_session_by_id("ses-1")
+        .expect("find session by id");
+    assert!(
+        found.is_some(),
+        "find_session_by_id should find archived session"
+    );
 }
 
 #[test]
@@ -921,7 +974,11 @@ fn find_or_create_with_archived_session_reactivates() {
         .find_or_create_session("ses-new", "bob", "main", None, None)
         .expect("find or create session");
     assert_eq!(session.id, "ses-1", "should return same session");
-    assert_eq!(session.status, SessionStatus::Active, "should reactivate archived session");
+    assert_eq!(
+        session.status,
+        SessionStatus::Active,
+        "should reactivate archived session"
+    );
 }
 
 #[test]
@@ -944,17 +1001,25 @@ fn multiple_sessions_same_nous_different_keys() {
     assert_eq!(s3.session_type, SessionType::Ephemeral);
 
     // List all sessions for acme.corp
-    let sessions = store.list_sessions(Some("acme.corp")).expect("list sessions");
+    let sessions = store
+        .list_sessions(Some("acme.corp"))
+        .expect("list sessions");
     assert_eq!(sessions.len(), 3, "should have 3 sessions");
 
     // Find each session by its key
-    let found1 = store.find_session("acme.corp", "main").expect("find session");
+    let found1 = store
+        .find_session("acme.corp", "main")
+        .expect("find session");
     assert_eq!(found1.unwrap().id, "ses-1");
 
-    let found2 = store.find_session("acme.corp", "secondary").expect("find session");
+    let found2 = store
+        .find_session("acme.corp", "secondary")
+        .expect("find session");
     assert_eq!(found2.unwrap().id, "ses-2");
 
-    let found3 = store.find_session("acme.corp", "ephemeral:task1").expect("find session");
+    let found3 = store
+        .find_session("acme.corp", "ephemeral:task1")
+        .expect("find session");
     assert_eq!(found3.unwrap().id, "ses-3");
 }
 
@@ -1034,10 +1099,18 @@ fn session_notes_with_valid_categories() {
     let notes = store.get_notes("ses-1").expect("get notes");
     assert_eq!(notes.len(), 4);
 
-    store.delete_note(note_decision).expect("delete decision note");
-    store.delete_note(note_preference).expect("delete preference note");
-    store.delete_note(note_correction).expect("delete correction note");
-    store.delete_note(note_context).expect("delete context note");
+    store
+        .delete_note(note_decision)
+        .expect("delete decision note");
+    store
+        .delete_note(note_preference)
+        .expect("delete preference note");
+    store
+        .delete_note(note_correction)
+        .expect("delete correction note");
+    store
+        .delete_note(note_context)
+        .expect("delete context note");
 
     let notes = store.get_notes("ses-1").expect("get notes");
     assert!(notes.is_empty(), "all notes should be deleted");
@@ -1069,7 +1142,10 @@ fn list_sessions_ordering_by_updated_at() {
     // List should be ordered by updated_at DESC (most recent first)
     let sessions = store.list_sessions(Some("alice")).expect("list sessions");
     assert_eq!(sessions.len(), 3);
-    assert_eq!(sessions[0].id, "ses-1", "most recently updated should be first");
+    assert_eq!(
+        sessions[0].id, "ses-1",
+        "most recently updated should be first"
+    );
     assert_eq!(sessions[1].id, "ses-3");
     assert_eq!(sessions[2].id, "ses-2");
 }

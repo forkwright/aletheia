@@ -2,9 +2,7 @@
 
 use std::time::Duration;
 
-use crate::schedule::{
-    BuiltinTask, Schedule, TaskAction, TaskDef, apply_jitter,
-};
+use crate::schedule::{BuiltinTask, Schedule, TaskAction, TaskDef, apply_jitter};
 
 use super::{RegisteredTask, TaskRunner};
 

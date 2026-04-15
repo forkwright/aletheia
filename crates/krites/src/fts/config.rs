@@ -6,13 +6,13 @@ use sha2::{Digest, Sha256};
 use crate::data::memcmp::MemCmpEncoder;
 use crate::data::value::DataValue;
 use crate::error::InternalResult as Result;
+use crate::fts::TokenizerConfig;
 use crate::fts::error::TokenizationFailedSnafu;
 use crate::fts::tokenizer::{
     AlphaNumOnlyFilter, AsciiFoldingFilter, BoxTokenFilter, Language, LowerCaser, NgramTokenizer,
     RawTokenizer, RemoveLongFilter, SimpleTokenizer, SplitCompoundWords, Stemmer, StopWordFilter,
     TextAnalyzer, Tokenizer, WhitespaceTokenizer,
 };
-use crate::fts::TokenizerConfig;
 
 impl TokenizerConfig {
     /// Compute a content-addressed hash of this tokenizer + filter chain.

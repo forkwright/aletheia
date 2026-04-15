@@ -1,7 +1,16 @@
 //! InputAtom Debug, Display, span, and Unification.
-#![expect(clippy::result_large_err, reason = "engine InternalError carries structured context — boxing deferred")]
-#![expect(clippy::explicit_iter_loop, reason = "explicit .iter() is idiomatic in search atom processing")]
-#![expect(clippy::doc_markdown, reason = "InputAtom is a type name in module-level documentation")]
+#![expect(
+    clippy::result_large_err,
+    reason = "engine InternalError carries structured context — boxing deferred"
+)]
+#![expect(
+    clippy::explicit_iter_loop,
+    reason = "explicit .iter() is idiomatic in search atom processing"
+)]
+#![expect(
+    clippy::doc_markdown,
+    reason = "InputAtom is a type name in module-level documentation"
+)]
 use std::collections::BTreeSet;
 use std::fmt::{Debug, Display, Formatter};
 

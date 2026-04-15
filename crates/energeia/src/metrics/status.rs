@@ -184,9 +184,7 @@ fn build_project_summaries(
             acc.completed += 1;
         }
 
-        let session_count = sessions_by_dispatch
-            .get(d.id.as_str())
-            .map_or(0, Vec::len);
+        let session_count = sessions_by_dispatch.get(d.id.as_str()).map_or(0, Vec::len);
 
         acc.sessions += u64::try_from(session_count).unwrap_or(u64::MAX);
     }

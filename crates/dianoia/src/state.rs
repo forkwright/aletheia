@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use snafu::ensure;
 
 use crate::error::{self, GateBlockedSnafu, Result};
-use crate::gate::{evaluate_gate, GateResult, PhaseGate};
+use crate::gate::{GateResult, PhaseGate, evaluate_gate};
 
 /// Project lifecycle states.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -159,9 +159,7 @@ impl ProjectState {
     pub fn transition_gated(self, t: Transition, gate: Option<&PhaseGate>) -> Result<Self> {
         let is_advance = matches!(
             &t,
-            Transition::StartExecution
-                | Transition::StartVerification
-                | Transition::Complete
+            Transition::StartExecution | Transition::StartVerification | Transition::Complete
         );
 
         if is_advance
@@ -180,10 +178,7 @@ impl ProjectState {
 
     /// List valid transitions from this state.
     #[must_use]
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "WIP: project state machine")
-    )]
+    #[cfg_attr(not(test), expect(dead_code, reason = "WIP: project state machine"))]
     pub(crate) fn valid_transitions(&self) -> Vec<Transition> {
         match self {
             Self::Created => vec![
@@ -236,10 +231,7 @@ impl ProjectState {
 
     /// Whether work can happen in this state.
     #[must_use]
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "WIP: planning orchestration")
-    )]
+    #[cfg_attr(not(test), expect(dead_code, reason = "WIP: planning orchestration"))]
     pub(crate) fn is_active(&self) -> bool {
         !self.is_terminal() && !matches!(self, Self::Paused { .. })
     }

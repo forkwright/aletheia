@@ -291,7 +291,8 @@ fn import_fact(
     let valid_from = parse_timestamp(&record.created_at).unwrap_or(now);
 
     let fact = Fact {
-        id: FactId::new(&fact_id).expect("fact_id is `migrated-{hash}` which is non-empty and under MAX_ID_LEN"),
+        id: FactId::new(&fact_id)
+            .expect("fact_id is `migrated-{hash}` which is non-empty and under MAX_ID_LEN"),
         nous_id: agent_id.to_owned(),
         content: record.content.clone(),
         fact_type: String::new(),

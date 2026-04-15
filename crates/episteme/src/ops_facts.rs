@@ -68,7 +68,10 @@ impl OpsFactExtractor {
     /// # Errors
     ///
     /// Returns an error if fact ID generation fails (should not happen in practice).
-    pub fn extract(snapshot: &OpsSnapshot, min_tool_calls: u64) -> Result<Vec<OpsFact>, ExtractError> {
+    pub fn extract(
+        snapshot: &OpsSnapshot,
+        min_tool_calls: u64,
+    ) -> Result<Vec<OpsFact>, ExtractError> {
         let now = jiff::Timestamp::now();
         let mut facts = Vec::with_capacity(4);
 
@@ -230,7 +233,8 @@ mod tests {
             task_sample_count: 5,
         };
 
-        let facts = OpsFactExtractor::extract(&snapshot, DEFAULT_MIN_TOOL_CALLS).expect("extraction should succeed");
+        let facts = OpsFactExtractor::extract(&snapshot, DEFAULT_MIN_TOOL_CALLS)
+            .expect("extraction should succeed");
         assert_eq!(facts.len(), 4, "full snapshot should produce 4 facts");
 
         for ops_fact in &facts {
@@ -257,7 +261,8 @@ mod tests {
             task_sample_count: 0,
         };
 
-        let facts = OpsFactExtractor::extract(&snapshot, DEFAULT_MIN_TOOL_CALLS).expect("extraction should succeed");
+        let facts = OpsFactExtractor::extract(&snapshot, DEFAULT_MIN_TOOL_CALLS)
+            .expect("extraction should succeed");
         // sessions + errors = 2 (no tool rate, no latency)
         assert_eq!(
             facts.len(),
@@ -273,7 +278,8 @@ mod tests {
             ..Default::default()
         };
 
-        let facts = OpsFactExtractor::extract(&snapshot, DEFAULT_MIN_TOOL_CALLS).expect("extraction should succeed");
+        let facts = OpsFactExtractor::extract(&snapshot, DEFAULT_MIN_TOOL_CALLS)
+            .expect("extraction should succeed");
         // sessions + errors = 2
         assert_eq!(
             facts.len(),
@@ -294,7 +300,8 @@ mod tests {
             task_sample_count: 10,
         };
 
-        let facts = OpsFactExtractor::extract(&snapshot, DEFAULT_MIN_TOOL_CALLS).expect("extraction should succeed");
+        let facts = OpsFactExtractor::extract(&snapshot, DEFAULT_MIN_TOOL_CALLS)
+            .expect("extraction should succeed");
         let contents: Vec<&str> = facts.iter().map(|f| f.fact.content.as_str()).collect();
 
         assert!(

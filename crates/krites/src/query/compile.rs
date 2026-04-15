@@ -613,9 +613,12 @@ impl<'a> SessionTx<'a> {
                 .difference(&cur_ret_set)
                 .next()
                 .ok_or_else(|| {
-                    crate::error::InternalError::from(CompilationFailedSnafu {
-                        message: "no unbound symbols found despite set mismatch",
-                    }.build())
+                    crate::error::InternalError::from(
+                        CompilationFailedSnafu {
+                            message: "no unbound symbols found despite set mismatch",
+                        }
+                        .build(),
+                    )
                 })?;
             return Err(UnboundVariableSnafu {
                 message: format!("symbol '{unbound}' in rule head is unbound"),

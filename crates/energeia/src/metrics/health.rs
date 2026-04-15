@@ -333,13 +333,11 @@ fn qa_false_positive_rate(
     let ci_fail_count = sessions_with_pr
         .iter()
         .filter(|s| {
-            ci_by_session
-                .get(s.id.as_str())
-                .is_some_and(|validations| {
-                    validations
-                        .iter()
-                        .any(|v| v.status == CiValidationStatus::Fail)
-                })
+            ci_by_session.get(s.id.as_str()).is_some_and(|validations| {
+                validations
+                    .iter()
+                    .any(|v| v.status == CiValidationStatus::Fail)
+            })
         })
         .count();
 

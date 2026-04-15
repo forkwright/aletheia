@@ -164,8 +164,8 @@ mod tests {
 
     #[test]
     fn parses_sample_dataset() {
-        let dataset = LongMemEvalDataset::from_bytes(SAMPLE_JSON.as_bytes())
-            .expect("valid sample JSON");
+        let dataset =
+            LongMemEvalDataset::from_bytes(SAMPLE_JSON.as_bytes()).expect("valid sample JSON");
         assert_eq!(dataset.len(), 2);
         assert!(!dataset.is_empty());
         assert_eq!(dataset.name(), "LongMemEval");
@@ -173,8 +173,8 @@ mod tests {
 
     #[test]
     fn questions_preserve_metadata() {
-        let dataset = LongMemEvalDataset::from_bytes(SAMPLE_JSON.as_bytes())
-            .expect("valid sample JSON");
+        let dataset =
+            LongMemEvalDataset::from_bytes(SAMPLE_JSON.as_bytes()).expect("valid sample JSON");
         let questions: Vec<_> = dataset.questions().collect();
         assert_eq!(questions.len(), 2);
 
@@ -190,20 +190,24 @@ mod tests {
 
     #[test]
     fn answer_alternatives_included() {
-        let dataset = LongMemEvalDataset::from_bytes(SAMPLE_JSON.as_bytes())
-            .expect("valid sample JSON");
+        let dataset =
+            LongMemEvalDataset::from_bytes(SAMPLE_JSON.as_bytes()).expect("valid sample JSON");
         let questions: Vec<_> = dataset.questions().collect();
         let q2 = &questions[1];
         assert_eq!(
             q2.expected_answers,
-            vec!["2024".to_owned(), "year 2024".to_owned(), "2024-01".to_owned()]
+            vec![
+                "2024".to_owned(),
+                "year 2024".to_owned(),
+                "2024-01".to_owned()
+            ]
         );
     }
 
     #[test]
     fn multi_session_preserved() {
-        let dataset = LongMemEvalDataset::from_bytes(SAMPLE_JSON.as_bytes())
-            .expect("valid sample JSON");
+        let dataset =
+            LongMemEvalDataset::from_bytes(SAMPLE_JSON.as_bytes()).expect("valid sample JSON");
         let questions: Vec<_> = dataset.questions().collect();
         let q2 = &questions[1];
         assert_eq!(q2.sessions.len(), 2, "should have 2 sessions");
@@ -231,8 +235,7 @@ mod tests {
             "answer": "yes",
             "haystack_sessions": []
         }]"#;
-        let dataset = LongMemEvalDataset::from_bytes(json.as_bytes())
-            .expect("valid JSON");
+        let dataset = LongMemEvalDataset::from_bytes(json.as_bytes()).expect("valid JSON");
         let questions: Vec<_> = dataset.questions().collect();
         assert_eq!(questions[0].category, "unknown");
     }

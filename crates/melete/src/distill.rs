@@ -446,7 +446,8 @@ impl DistillEngine {
                 r
             }
             Ok(Err(e)) => {
-                self.lock_retry_state().record_failure(self.config.max_backoff_turns);
+                self.lock_retry_state()
+                    .record_failure(self.config.max_backoff_turns);
                 record_outcome(nous_id, &distill_start, false, 0, 0);
                 return Err(e).context(LlmCallSnafu);
             }
@@ -459,7 +460,8 @@ impl DistillEngine {
                     "unknown panic".to_owned()
                 };
                 tracing::error!(nous_id, panic_message = %msg, "LLM provider panicked during distillation");
-                self.lock_retry_state().record_failure(self.config.max_backoff_turns);
+                self.lock_retry_state()
+                    .record_failure(self.config.max_backoff_turns);
                 record_outcome(nous_id, &distill_start, false, 0, 0);
                 return LlmPanicSnafu { message: msg }.fail();
             }
@@ -467,7 +469,8 @@ impl DistillEngine {
 
         let summary = extract_summary_text(&response.content);
         if summary.is_empty() {
-            self.lock_retry_state().record_failure(self.config.max_backoff_turns);
+            self.lock_retry_state()
+                .record_failure(self.config.max_backoff_turns);
             record_outcome(nous_id, &distill_start, false, 0, 0);
             return EmptySummarySnafu.fail();
         }

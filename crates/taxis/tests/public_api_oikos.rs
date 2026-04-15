@@ -80,10 +80,7 @@ fn oikos_data_subpaths_are_under_data_directory() {
 fn oikos_log_subpaths_are_under_logs_directory() {
     let oikos = Oikos::from_root("/srv/instance");
     assert_eq!(oikos.logs(), PathBuf::from("/srv/instance/logs"));
-    assert_eq!(
-        oikos.traces(),
-        PathBuf::from("/srv/instance/logs/traces")
-    );
+    assert_eq!(oikos.traces(), PathBuf::from("/srv/instance/logs/traces"));
     assert_eq!(
         oikos.trace_archive(),
         PathBuf::from("/srv/instance/logs/traces/archive")
@@ -275,7 +272,10 @@ fn cascade_discover_returns_files_from_all_three_tiers() {
 
     let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
     assert!(names.contains(&"nous-only.md"), "missing nous: {names:?}");
-    assert!(names.contains(&"shared-only.md"), "missing shared: {names:?}");
+    assert!(
+        names.contains(&"shared-only.md"),
+        "missing shared: {names:?}"
+    );
     assert!(names.contains(&"theke-only.md"), "missing theke: {names:?}");
 }
 
@@ -314,7 +314,11 @@ fn cascade_resolve_returns_none_for_missing_file() {
 fn cascade_resolve_all_returns_entries_most_specific_first() {
     let (_dir, oikos) = seed_cascade_tiers();
     let entries = cascade::resolve_all(&oikos, "syn", "shadowed.md", Some("tools"));
-    assert_eq!(entries.len(), 2, "shadowed should resolve in 2 tiers: {entries:?}");
+    assert_eq!(
+        entries.len(),
+        2,
+        "shadowed should resolve in 2 tiers: {entries:?}"
+    );
     assert_eq!(entries[0].tier, Tier::Nous, "first entry is most specific");
     assert_eq!(entries[1].tier, Tier::Shared, "second entry is shared");
 }

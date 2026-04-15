@@ -57,9 +57,7 @@ pub(crate) fn run(args: &DesktopArgs) -> anyhow::Result<()> {
 
     if !status.success() {
         let code = status.code().unwrap_or(1);
-        return Err(anyhow::anyhow!(
-            "`{BINARY_NAME}` exited with status {code}"
-        ));
+        return Err(anyhow::anyhow!("`{BINARY_NAME}` exited with status {code}"));
     }
 
     Ok(())

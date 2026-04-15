@@ -95,11 +95,7 @@ impl StalenessChecker {
     /// The caller is responsible for fetching `source_content` from the fact's
     /// `source_uri`. Pass `None` if the source is unreachable.
     #[must_use]
-    pub fn check(
-        &self,
-        fact: &SourceLinkedFact,
-        source_content: Option<&str>,
-    ) -> StalenessResult {
+    pub fn check(&self, fact: &SourceLinkedFact, source_content: Option<&str>) -> StalenessResult {
         let Some(source) = source_content else {
             return StalenessResult {
                 fact_id: fact.fact_id.clone(),
@@ -255,8 +251,8 @@ const STOP_WORDS: &[&str] = &[
     "the", "and", "for", "are", "but", "not", "you", "all", "can", "had", "was", "one", "our",
     "out", "has", "his", "how", "its", "may", "new", "now", "old", "see", "way", "who", "did",
     "get", "let", "say", "she", "too", "use", "will", "with", "this", "that", "from", "have",
-    "been", "some", "they", "were", "what", "when", "your", "each", "make", "like", "into",
-    "just", "over", "such", "than", "them", "then", "also", "more", "should",
+    "been", "some", "they", "were", "what", "when", "your", "each", "make", "like", "into", "just",
+    "over", "such", "than", "them", "then", "also", "more", "should",
 ];
 
 /// Tokenize text into lowercase words, excluding stop words and short tokens.
@@ -346,7 +342,10 @@ mod tests {
         let checks = vec![
             (
                 make_fact("f1", "Rust uses ownership for memory safety", "url1"),
-                Some("Rust's ownership system ensures memory safety without garbage collection".to_owned()),
+                Some(
+                    "Rust's ownership system ensures memory safety without garbage collection"
+                        .to_owned(),
+                ),
             ),
             (
                 make_fact("f2", "Python is statically typed", "url2"),

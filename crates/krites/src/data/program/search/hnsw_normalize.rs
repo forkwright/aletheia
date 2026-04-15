@@ -1,8 +1,20 @@
 //! SearchInput normalize_hnsw and normalize implementations.
-#![expect(clippy::result_large_err, reason = "engine InternalError carries structured context — boxing deferred")]
-#![expect(clippy::too_many_lines, reason = "HNSW normalization handles multiple index configurations")]
-#![expect(clippy::semicolon_if_nothing_returned, reason = "push calls in normalization — semicolon not needed before continue")]
-#![expect(clippy::doc_markdown, reason = "SearchInput and HNSW are type/algorithm names in module documentation")]
+#![expect(
+    clippy::result_large_err,
+    reason = "engine InternalError carries structured context — boxing deferred"
+)]
+#![expect(
+    clippy::too_many_lines,
+    reason = "HNSW normalization handles multiple index configurations"
+)]
+#![expect(
+    clippy::semicolon_if_nothing_returned,
+    reason = "push calls in normalization — semicolon not needed before continue"
+)]
+#![expect(
+    clippy::doc_markdown,
+    reason = "SearchInput and HNSW are type/algorithm names in module documentation"
+)]
 use std::collections::BTreeSet;
 
 use crate::data::error::*;

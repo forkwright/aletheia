@@ -30,24 +30,26 @@ use taxis::oikos::Oikos;
 
 use crate::error::Result;
 
-#[expect(clippy::too_many_lines, reason = "service wiring function — splitting would scatter related provider setup logic")]
+#[expect(
+    clippy::too_many_lines,
+    reason = "service wiring function — splitting would scatter related provider setup logic"
+)]
 pub(super) fn build_provider_registry(config: &AletheiaConfig, oikos: &Oikos) -> ProviderRegistry {
     let mut registry = ProviderRegistry::new();
 
-    let pricing: std::collections::HashMap<String, hermeneus::provider::ModelPricing> =
-        config
-            .pricing
-            .iter()
-            .map(|(model, p)| {
-                (
-                    model.clone(),
-                    hermeneus::provider::ModelPricing {
-                        input_cost_per_mtok: p.input_cost_per_mtok,
-                        output_cost_per_mtok: p.output_cost_per_mtok,
-                    },
-                )
-            })
-            .collect();
+    let pricing: std::collections::HashMap<String, hermeneus::provider::ModelPricing> = config
+        .pricing
+        .iter()
+        .map(|(model, p)| {
+            (
+                model.clone(),
+                hermeneus::provider::ModelPricing {
+                    input_cost_per_mtok: p.input_cost_per_mtok,
+                    output_cost_per_mtok: p.output_cost_per_mtok,
+                },
+            )
+        })
+        .collect();
 
     let cred_source = config.credential.source.as_str();
     let cred_file = oikos.credentials().join("anthropic.json");
@@ -186,12 +188,8 @@ pub(super) fn build_tool_registry(
         extra_write_paths: sandbox_settings.extra_write_paths.clone(),
         extra_exec_paths: sandbox_settings.extra_exec_paths.clone(),
         egress: match sandbox_settings.egress {
-            taxis::config::EgressPolicy::Deny => {
-                organon::sandbox::EgressPolicy::Deny
-            }
-            taxis::config::EgressPolicy::Allowlist => {
-                organon::sandbox::EgressPolicy::Allowlist
-            }
+            taxis::config::EgressPolicy::Deny => organon::sandbox::EgressPolicy::Deny,
+            taxis::config::EgressPolicy::Allowlist => organon::sandbox::EgressPolicy::Allowlist,
             _ => organon::sandbox::EgressPolicy::Allow,
         },
         egress_allowlist: sandbox_settings.egress_allowlist.clone(),

@@ -31,10 +31,10 @@
 //! Datasets must be downloaded separately — see [`download_instructions`].
 //! The harness does not commit dataset files to the repo.
 
-/// Dataset loader + question iterator for the `LongMemEval` benchmark.
-pub mod longmemeval;
 /// Dataset loader + question iterator for the `LoCoMo` benchmark.
 pub mod locomo;
+/// Dataset loader + question iterator for the `LongMemEval` benchmark.
+pub mod longmemeval;
 /// Benchmark scoring (exact match, F1, contains).
 pub mod metrics;
 /// Live benchmark runner: executes a benchmark against an aletheia instance.
@@ -229,9 +229,7 @@ pub async fn load_longmemeval(
 ///
 /// Returns an error if the file cannot be read or the JSON is not in the
 /// expected `LoCoMo` format.
-pub async fn load_locomo(
-    path: impl AsRef<Path> + Send,
-) -> std::io::Result<locomo::LocomoDataset> {
+pub async fn load_locomo(path: impl AsRef<Path> + Send) -> std::io::Result<locomo::LocomoDataset> {
     locomo::LocomoDataset::from_path(path).await
 }
 

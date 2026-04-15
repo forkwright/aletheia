@@ -35,7 +35,8 @@ pub(crate) fn observation_from_tool_call(
     };
 
     let sanitized_params = sanitize_parameters(&tool_call.input, DEFAULT_MAX_PARAM_VALUE_LEN);
-    let truncated_summary = truncate_context_summary(context_summary, DEFAULT_MAX_CONTEXT_SUMMARY_LEN);
+    let truncated_summary =
+        truncate_context_summary(context_summary, DEFAULT_MAX_CONTEXT_SUMMARY_LEN);
 
     ToolObservation {
         tool_name: tool_call.name.clone(),

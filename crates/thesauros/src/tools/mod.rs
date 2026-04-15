@@ -7,6 +7,7 @@ use std::pin::Pin;
 use std::process::{Command, Stdio};
 use std::time::Duration;
 
+use indexmap::IndexMap;
 use koina::defaults::MAX_OUTPUT_BYTES;
 use koina::id::ToolName;
 use organon::process_guard::ProcessGuard;
@@ -15,7 +16,6 @@ use organon::types::{
     InputSchema, PropertyDef, PropertyType, ToolCategory, ToolContext, ToolDef, ToolInput,
     ToolResult,
 };
-use indexmap::IndexMap;
 use tracing::info;
 
 use crate::error;
@@ -38,8 +38,7 @@ impl ToolExecutor for ShellToolExecutor {
         &'a self,
         input: &'a ToolInput,
         _ctx: &'a ToolContext,
-    ) -> Pin<Box<dyn Future<Output = organon::error::Result<ToolResult>> + Send + 'a>>
-    {
+    ) -> Pin<Box<dyn Future<Output = organon::error::Result<ToolResult>> + Send + 'a>> {
         Box::pin(async {
             let json_input = serde_json::to_string(&input.arguments).unwrap_or_else(|e| {
                 tracing::debug!("failed to serialize tool arguments: {e}");

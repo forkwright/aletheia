@@ -49,7 +49,11 @@ fn aggregation_with_empty_parameters_does_not_panic() {
             observed_at: ts(&format!("2026-03-{:02}T10:00:00Z", i + 1)),
         })
         .collect();
-    let patterns = aggregate_observations(&observations, DEFAULT_MIN_OBSERVATIONS, DEFAULT_MIN_SUCCESS_RATE);
+    let patterns = aggregate_observations(
+        &observations,
+        DEFAULT_MIN_OBSERVATIONS,
+        DEFAULT_MIN_SUCCESS_RATE,
+    );
     assert_eq!(
         patterns.len(),
         1,
@@ -69,7 +73,11 @@ fn four_successful_calls_does_not_trigger_pattern() {
             )
         })
         .collect();
-    let patterns = aggregate_observations(&observations, DEFAULT_MIN_OBSERVATIONS, DEFAULT_MIN_SUCCESS_RATE);
+    let patterns = aggregate_observations(
+        &observations,
+        DEFAULT_MIN_OBSERVATIONS,
+        DEFAULT_MIN_SUCCESS_RATE,
+    );
     assert!(
         patterns.is_empty(),
         "4 observations is below the minimum threshold of {DEFAULT_MIN_OBSERVATIONS}"
@@ -88,7 +96,11 @@ fn five_successful_calls_at_threshold_triggers_pattern() {
             )
         })
         .collect();
-    let patterns = aggregate_observations(&observations, DEFAULT_MIN_OBSERVATIONS, DEFAULT_MIN_SUCCESS_RATE);
+    let patterns = aggregate_observations(
+        &observations,
+        DEFAULT_MIN_OBSERVATIONS,
+        DEFAULT_MIN_SUCCESS_RATE,
+    );
     assert_eq!(
         patterns.len(),
         1,
@@ -122,7 +134,11 @@ fn ten_calls_below_80_percent_success_rate_does_not_trigger() {
             &format!("2026-03-{:02}T11:00:00Z", i + 1),
         ));
     }
-    let patterns = aggregate_observations(&observations, DEFAULT_MIN_OBSERVATIONS, DEFAULT_MIN_SUCCESS_RATE);
+    let patterns = aggregate_observations(
+        &observations,
+        DEFAULT_MIN_OBSERVATIONS,
+        DEFAULT_MIN_SUCCESS_RATE,
+    );
     assert!(
         patterns.is_empty(),
         "70% success rate should not trigger a pattern (minimum is {:.0}%)",
@@ -152,7 +168,11 @@ fn ten_calls_at_80_percent_success_rate_boundary_triggers_pattern() {
             &format!("2026-03-{:02}T11:00:00Z", i + 1),
         ));
     }
-    let patterns = aggregate_observations(&observations, DEFAULT_MIN_OBSERVATIONS, DEFAULT_MIN_SUCCESS_RATE);
+    let patterns = aggregate_observations(
+        &observations,
+        DEFAULT_MIN_OBSERVATIONS,
+        DEFAULT_MIN_SUCCESS_RATE,
+    );
     assert_eq!(
         patterns.len(),
         1,
@@ -271,7 +291,11 @@ fn different_nous_observations_aggregate_together_without_filter() {
         nous_id: "nous-bob".to_owned(),
         observed_at: ts(&format!("2026-03-{:02}T11:00:00Z", i + 1)),
     }));
-    let all = aggregate_observations(&observations, DEFAULT_MIN_OBSERVATIONS, DEFAULT_MIN_SUCCESS_RATE);
+    let all = aggregate_observations(
+        &observations,
+        DEFAULT_MIN_OBSERVATIONS,
+        DEFAULT_MIN_SUCCESS_RATE,
+    );
     assert_eq!(
         all.len(),
         1,
@@ -283,7 +307,8 @@ fn different_nous_observations_aggregate_together_without_filter() {
         .filter(|o| o.nous_id == "nous-alice")
         .cloned()
         .collect();
-    let alice_patterns = aggregate_observations(&alice, DEFAULT_MIN_OBSERVATIONS, DEFAULT_MIN_SUCCESS_RATE);
+    let alice_patterns =
+        aggregate_observations(&alice, DEFAULT_MIN_OBSERVATIONS, DEFAULT_MIN_SUCCESS_RATE);
     assert!(
         alice_patterns.is_empty(),
         "3 observations below threshold when filtered per-nous"
@@ -311,7 +336,11 @@ fn two_tools_identical_parameters_produce_separate_patterns() {
             observed_at: ts(&format!("2026-03-{:02}T11:00:00Z", i + 1)),
         });
     }
-    let patterns = aggregate_observations(&observations, DEFAULT_MIN_OBSERVATIONS, DEFAULT_MIN_SUCCESS_RATE);
+    let patterns = aggregate_observations(
+        &observations,
+        DEFAULT_MIN_OBSERVATIONS,
+        DEFAULT_MIN_SUCCESS_RATE,
+    );
     assert_eq!(
         patterns.len(),
         2,
@@ -348,7 +377,11 @@ fn tool_name_matching_is_case_sensitive() {
             &format!("2026-03-{:02}T11:00:00Z", i + 1),
         ));
     }
-    let patterns = aggregate_observations(&observations, DEFAULT_MIN_OBSERVATIONS, DEFAULT_MIN_SUCCESS_RATE);
+    let patterns = aggregate_observations(
+        &observations,
+        DEFAULT_MIN_OBSERVATIONS,
+        DEFAULT_MIN_SUCCESS_RATE,
+    );
     assert_eq!(
         patterns.len(),
         2,

@@ -100,9 +100,10 @@ impl Renderer for XlsxRenderer {
                     // Data rows
                     for row in &table.rows {
                         for (col, cell) in row.iter().enumerate() {
-                            let col_u16 = u16::try_from(col).map_err(|e| XlsxRendererError::Xlsx {
-                                message: format!("column index {col} exceeds u16 max: {e}"),
-                            })?;
+                            let col_u16 =
+                                u16::try_from(col).map_err(|e| XlsxRendererError::Xlsx {
+                                    message: format!("column index {col} exceeds u16 max: {e}"),
+                                })?;
                             worksheet
                                 .write(current_row, col_u16, cell.plain_text().as_str())
                                 .map_err(XlsxRendererError::from)?;
@@ -138,9 +139,7 @@ impl Renderer for XlsxRenderer {
             }
         }
 
-        workbook
-            .save_to_buffer()
-            .map_err(XlsxRendererError::from)
+        workbook.save_to_buffer().map_err(XlsxRendererError::from)
     }
 }
 
@@ -182,12 +181,20 @@ mod tests {
                     headers: vec!["Name".to_owned(), "Score".to_owned()],
                     rows: vec![
                         vec![
-                            RichText { spans: vec![Span::Plain("Alice".to_owned())] },
-                            RichText { spans: vec![Span::Plain("95".to_owned())] },
+                            RichText {
+                                spans: vec![Span::Plain("Alice".to_owned())],
+                            },
+                            RichText {
+                                spans: vec![Span::Plain("95".to_owned())],
+                            },
                         ],
                         vec![
-                            RichText { spans: vec![Span::Plain("Bob".to_owned())] },
-                            RichText { spans: vec![Span::Plain("87".to_owned())] },
+                            RichText {
+                                spans: vec![Span::Plain("Bob".to_owned())],
+                            },
+                            RichText {
+                                spans: vec![Span::Plain("87".to_owned())],
+                            },
                         ],
                     ],
                 }),
@@ -205,7 +212,10 @@ mod tests {
 
     #[test]
     #[expect(clippy::expect_used, reason = "test assertion")]
-    #[expect(clippy::indexing_slicing, reason = "test assertions on known-good data")]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "test assertions on known-good data"
+    )]
     fn xlsx_starts_with_pk_magic() {
         // WHY: XLSX is a ZIP archive; valid files start with PK (0x50 0x4B).
         let r = XlsxRenderer::new();

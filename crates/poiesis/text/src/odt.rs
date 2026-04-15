@@ -13,7 +13,7 @@
 use std::fmt::Write as FmtWrite;
 use std::io::Write as IoWrite;
 
-use poiesis_core::{Block, Document, RichText, Renderer, Span};
+use poiesis_core::{Block, Document, Renderer, RichText, Span};
 use snafu::Snafu;
 use zip::ZipWriter;
 use zip::write::SimpleFileOptions;
@@ -63,8 +63,7 @@ impl Renderer for OdtRenderer {
         // `mimetype` MUST be the first entry and MUST NOT be compressed.
         zip.start_file(
             "mimetype",
-            SimpleFileOptions::default()
-                .compression_method(zip::CompressionMethod::Stored),
+            SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored),
         )
         .map_err(|e| OdtError::Zip {
             message: e.to_string(),
@@ -95,9 +94,10 @@ fn write_entry(
         .map_err(|e| OdtError::Zip {
             message: e.to_string(),
         })?;
-    zip.write_all(content.as_bytes()).map_err(|e| OdtError::Zip {
-        message: e.to_string(),
-    })
+    zip.write_all(content.as_bytes())
+        .map_err(|e| OdtError::Zip {
+            message: e.to_string(),
+        })
 }
 
 fn build_manifest() -> String {
@@ -237,16 +237,11 @@ fn render_block(block: &Block, out: &mut String) {
                     xml_escape(header)
                 );
             }
-            out.push_str(
-                "          </table:table-row>\n        </table:table-header-rows>\n",
-            );
+            out.push_str("          </table:table-row>\n        </table:table-header-rows>\n");
             for row in &table.rows {
                 out.push_str("        <table:table-row>\n");
                 for col_idx in 0..col_count {
-                    let cell_text = row
-                        .get(col_idx)
-                        .map(render_rich_text)
-                        .unwrap_or_default();
+                    let cell_text = row.get(col_idx).map(render_rich_text).unwrap_or_default();
                     let _ = writeln!(
                         out,
                         "          <table:table-cell><text:p>{cell_text}</text:p></table:table-cell>"
@@ -349,8 +344,12 @@ mod tests {
                 Block::Table(Table {
                     headers: vec!["A".to_owned(), "B".to_owned()],
                     rows: vec![vec![
-                        RichText { spans: vec![Span::Plain("x".to_owned())] },
-                        RichText { spans: vec![Span::Plain("y".to_owned())] },
+                        RichText {
+                            spans: vec![Span::Plain("x".to_owned())],
+                        },
+                        RichText {
+                            spans: vec![Span::Plain("y".to_owned())],
+                        },
                     ]],
                 }),
             ],
@@ -366,7 +365,11 @@ mod tests {
     }
 
     #[test]
-    #[expect(clippy::expect_used, clippy::indexing_slicing, reason = "test assertions on known-good data")]
+    #[expect(
+        clippy::expect_used,
+        clippy::indexing_slicing,
+        reason = "test assertions on known-good data"
+    )]
     fn odt_starts_with_pk_magic() {
         // WHY: ZIP files start with PK (0x50 0x4B).
         let r = OdtRenderer::new();
@@ -376,6 +379,9 @@ mod tests {
 
     #[test]
     fn xml_escape_handles_all_chars() {
-        assert_eq!(xml_escape("a&b<c>d\"e'f"), "a&amp;b&lt;c&gt;d&quot;e&apos;f");
+        assert_eq!(
+            xml_escape("a&b<c>d\"e'f"),
+            "a&amp;b&lt;c&gt;d&quot;e&apos;f"
+        );
     }
 }

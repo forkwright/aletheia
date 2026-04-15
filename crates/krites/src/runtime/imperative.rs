@@ -147,15 +147,15 @@ impl<'s, S: Storage<'s>> Db<S> {
             nr.next = current;
             current = Some(Box::new(nr))
         }
-        Ok(ControlCode::Termination(
-            *current.ok_or_else(|| crate::error::InternalError::Runtime {
+        Ok(ControlCode::Termination(*current.ok_or_else(|| {
+            crate::error::InternalError::Runtime {
                 source: crate::runtime::error::InvalidOperationSnafu {
                     op: "collect_return_rows",
                     reason: "non-empty returns produced no result".to_string(),
                 }
                 .build(),
-            })?,
-        ))
+            }
+        })?))
     }
 
     fn execute_ignore_error_program(

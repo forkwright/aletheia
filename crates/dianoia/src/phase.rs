@@ -1,7 +1,7 @@
 //! Phase types within a project.
 
-use serde::{Deserialize, Serialize};
 use koina::ulid::Ulid;
+use serde::{Deserialize, Serialize};
 
 use crate::plan::{Plan, PlanState};
 
@@ -88,10 +88,7 @@ impl Phase {
     }
 
     /// Add an executable plan to this phase.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "WIP: planning phase lifecycle")
-    )]
+    #[cfg_attr(not(test), expect(dead_code, reason = "WIP: planning phase lifecycle"))]
     pub(crate) fn add_plan(&mut self, plan: Plan) {
         self.plans.push(plan);
     }
@@ -104,10 +101,7 @@ impl Phase {
 
     /// Percentage of plans in a terminal state (complete, skipped, failed, stuck).
     #[must_use]
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "WIP: planning phase lifecycle")
-    )]
+    #[cfg_attr(not(test), expect(dead_code, reason = "WIP: planning phase lifecycle"))]
     pub(crate) fn completion_percentage(&self) -> f64 {
         if self.plans.is_empty() {
             return 0.0;

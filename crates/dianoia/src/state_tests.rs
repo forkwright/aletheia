@@ -445,8 +445,8 @@ fn project_state_serde_roundtrip() {
         ProjectState::Complete,
         ProjectState::Abandoned,
     ] {
-        let json = serde_json::to_string(&state)
-            .expect("serializing ProjectState to JSON should succeed");
+        let json =
+            serde_json::to_string(&state).expect("serializing ProjectState to JSON should succeed");
         let back: ProjectState = serde_json::from_str(&json)
             .expect("deserializing ProjectState from JSON should succeed");
         assert_eq!(back, state, "roundtrip failed for {state:?}");
@@ -458,10 +458,10 @@ fn paused_state_serde_roundtrip_preserves_previous() {
     let paused = ProjectState::Paused {
         previous: Box::new(ProjectState::Executing),
     };
-    let json = serde_json::to_string(&paused)
-        .expect("serializing Paused state to JSON should succeed");
-    let back: ProjectState = serde_json::from_str(&json)
-        .expect("deserializing Paused state from JSON should succeed");
+    let json =
+        serde_json::to_string(&paused).expect("serializing Paused state to JSON should succeed");
+    let back: ProjectState =
+        serde_json::from_str(&json).expect("deserializing Paused state from JSON should succeed");
     assert_eq!(
         back,
         ProjectState::Paused {
@@ -550,9 +550,11 @@ fn gated_advance_blocked_when_gate_fails() {
         vec![GateCondition::Custom("acceptance_criteria_defined".into())],
     );
     // Gate not satisfied — transition must be rejected.
-    let result = ProjectState::Planning
-        .transition_gated(Transition::StartExecution, Some(&gate));
-    assert!(result.is_err(), "StartExecution should be blocked by an unsatisfied gate");
+    let result = ProjectState::Planning.transition_gated(Transition::StartExecution, Some(&gate));
+    assert!(
+        result.is_err(),
+        "StartExecution should be blocked by an unsatisfied gate"
+    );
 }
 
 #[test]
@@ -563,59 +565,69 @@ fn gated_advance_allowed_when_gate_passes() {
         vec![GateCondition::Custom("acceptance_criteria_defined".into())],
     );
     gate.mark_satisfied("acceptance_criteria_defined");
-    let result = ProjectState::Planning
-        .transition_gated(Transition::StartExecution, Some(&gate));
-    assert!(result.is_ok(), "StartExecution should succeed when gate is satisfied");
-    assert_eq!(result.expect("gated transition should succeed"), ProjectState::Executing);
+    let result = ProjectState::Planning.transition_gated(Transition::StartExecution, Some(&gate));
+    assert!(
+        result.is_ok(),
+        "StartExecution should succeed when gate is satisfied"
+    );
+    assert_eq!(
+        result.expect("gated transition should succeed"),
+        ProjectState::Executing
+    );
 }
 
 #[test]
 fn gated_transition_with_no_gate_passes_through() {
     // No gate supplied — behaves identically to plain transition().
-    let result = ProjectState::Executing
-        .transition_gated(Transition::StartVerification, None);
-    assert!(result.is_ok(), "StartVerification with no gate should succeed");
-    assert_eq!(result.expect("ungated transition should succeed"), ProjectState::Verifying);
+    let result = ProjectState::Executing.transition_gated(Transition::StartVerification, None);
+    assert!(
+        result.is_ok(),
+        "StartVerification with no gate should succeed"
+    );
+    assert_eq!(
+        result.expect("ungated transition should succeed"),
+        ProjectState::Verifying
+    );
 }
 
 #[test]
 fn non_advance_transition_bypasses_gate() {
     use crate::gate::{GateCondition, PhaseGate};
     // Gate is unsatisfied but Abandon is not an advance transition.
-    let gate = PhaseGate::new(
-        ProjectState::Executing,
-        vec![GateCondition::TestsPassing],
-    );
-    let result = ProjectState::Executing
-        .transition_gated(Transition::Abandon, Some(&gate));
+    let gate = PhaseGate::new(ProjectState::Executing, vec![GateCondition::TestsPassing]);
+    let result = ProjectState::Executing.transition_gated(Transition::Abandon, Some(&gate));
     assert!(result.is_ok(), "Abandon should bypass an unsatisfied gate");
-    assert_eq!(result.expect("Abandon should succeed"), ProjectState::Abandoned);
+    assert_eq!(
+        result.expect("Abandon should succeed"),
+        ProjectState::Abandoned
+    );
 }
 
 #[test]
 fn complete_transition_blocked_by_unsatisfied_verifying_gate() {
     use crate::gate::{GateCondition, PhaseGate};
-    let gate = PhaseGate::new(
-        ProjectState::Verifying,
-        vec![GateCondition::ReviewApproved],
+    let gate = PhaseGate::new(ProjectState::Verifying, vec![GateCondition::ReviewApproved]);
+    let result = ProjectState::Verifying.transition_gated(Transition::Complete, Some(&gate));
+    assert!(
+        result.is_err(),
+        "Complete should be blocked when review is not approved"
     );
-    let result = ProjectState::Verifying
-        .transition_gated(Transition::Complete, Some(&gate));
-    assert!(result.is_err(), "Complete should be blocked when review is not approved");
 }
 
 #[test]
 fn complete_transition_allowed_when_review_approved() {
     use crate::gate::{GateCondition, PhaseGate};
-    let mut gate = PhaseGate::new(
-        ProjectState::Verifying,
-        vec![GateCondition::ReviewApproved],
-    );
+    let mut gate = PhaseGate::new(ProjectState::Verifying, vec![GateCondition::ReviewApproved]);
     gate.mark_satisfied("review_approved");
-    let result = ProjectState::Verifying
-        .transition_gated(Transition::Complete, Some(&gate));
-    assert!(result.is_ok(), "Complete should succeed when review is approved");
-    assert_eq!(result.expect("gated Complete should succeed"), ProjectState::Complete);
+    let result = ProjectState::Verifying.transition_gated(Transition::Complete, Some(&gate));
+    assert!(
+        result.is_ok(),
+        "Complete should succeed when review is approved"
+    );
+    assert_eq!(
+        result.expect("gated Complete should succeed"),
+        ProjectState::Complete
+    );
 }
 
 #[test]

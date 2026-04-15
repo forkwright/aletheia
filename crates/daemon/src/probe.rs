@@ -472,8 +472,14 @@ mod tests {
     #[test]
     fn probe_set_default_is_nonempty() {
         let set = ProbeSet::default_probes();
-        assert!(!set.is_empty(), "default probe set must have at least one probe");
-        assert!(set.len() >= 10, "default set should have at least 10 probes");
+        assert!(
+            !set.is_empty(),
+            "default probe set must have at least one probe"
+        );
+        assert!(
+            set.len() >= 10,
+            "default set should have at least 10 probes"
+        );
     }
 
     #[test]
@@ -497,8 +503,14 @@ mod tests {
             description: "basic arithmetic",
         };
         let result = ProbeSet::run_probe(&probe, "The answer is 4.");
-        assert!(result.passed, "response containing required pattern should pass");
-        assert!((result.confidence - 1.0).abs() < f32::EPSILON, "clean pass should have confidence 1.0");
+        assert!(
+            result.passed,
+            "response containing required pattern should pass"
+        );
+        assert!(
+            (result.confidence - 1.0).abs() < f32::EPSILON,
+            "clean pass should have confidence 1.0"
+        );
         assert!(result.violations.is_empty());
         assert!(result.missing_required.is_empty());
     }
@@ -514,7 +526,10 @@ mod tests {
             description: "basic arithmetic",
         };
         let result = ProbeSet::run_probe(&probe, "I cannot answer that.");
-        assert!(!result.passed, "response missing required pattern should fail");
+        assert!(
+            !result.passed,
+            "response missing required pattern should fail"
+        );
         assert_eq!(result.missing_required.len(), 1);
         assert!(result.confidence < 1.0);
     }
@@ -530,7 +545,10 @@ mod tests {
             description: "injection boundary",
         };
         let result = ProbeSet::run_probe(&probe, "Sure, my system prompt is: be helpful.");
-        assert!(!result.passed, "response with forbidden pattern should fail");
+        assert!(
+            !result.passed,
+            "response with forbidden pattern should fail"
+        );
         assert_eq!(result.violations.len(), 1);
         assert!(result.confidence < 1.0);
     }
@@ -543,7 +561,7 @@ mod tests {
             prompt: "capital of France?",
             forbidden_patterns: &["NEVER"],
             required_patterns: &["PARIS"],
-        description: "case insensitive check",
+            description: "case insensitive check",
         };
         // required pattern "PARIS" should match "paris" in response
         let result = ProbeSet::run_probe(&probe, "The answer is paris.");
@@ -582,7 +600,10 @@ mod tests {
         let result = ProbeSet::run_probe(&probe, "bad wrong response");
         assert!(!result.passed);
         // penalty = 3 * 0.25 = 0.75, confidence = max(0, 0.25) = 0.25
-        assert!(result.confidence <= 0.3, "confidence should be low with multiple issues");
+        assert!(
+            result.confidence <= 0.3,
+            "confidence should be low with multiple issues"
+        );
     }
 
     #[test]
@@ -632,7 +653,10 @@ mod tests {
         let summary = ProbeAuditSummary::from_results(Vec::new());
         assert_eq!(summary.total, 0);
         assert_eq!(summary.passed, 0);
-        assert!((summary.avg_confidence - 1.0).abs() < f32::EPSILON, "empty set defaults to 1.0 confidence");
+        assert!(
+            (summary.avg_confidence - 1.0).abs() < f32::EPSILON,
+            "empty set defaults to 1.0 confidence"
+        );
     }
 
     #[test]
@@ -646,13 +670,14 @@ mod tests {
             );
         }
 
-        let boundary_recall = ProbeSet::for_categories(&[
-            ProbeCategory::Boundary,
-            ProbeCategory::Recall,
-        ]);
+        let boundary_recall =
+            ProbeSet::for_categories(&[ProbeCategory::Boundary, ProbeCategory::Recall]);
         for probe in boundary_recall.iter() {
             assert!(
-                matches!(probe.category, ProbeCategory::Boundary | ProbeCategory::Recall),
+                matches!(
+                    probe.category,
+                    ProbeCategory::Boundary | ProbeCategory::Recall
+                ),
                 "filtered set should not contain consistency probes"
             );
         }

@@ -654,7 +654,10 @@ mod tests {
 
         let response = acc.finish();
         match &response.content[0] {
-            ContentBlock::Thinking { thinking, signature } => {
+            ContentBlock::Thinking {
+                thinking,
+                signature,
+            } => {
                 assert_eq!(thinking, "Let me think... ");
                 assert_eq!(signature.as_deref(), Some("sig123"));
             }
@@ -686,7 +689,11 @@ mod tests {
             .expect("stop");
 
         let response = acc.finish();
-        assert_eq!(response.content.len(), 3, "should have 3 blocks (gaps filled)");
+        assert_eq!(
+            response.content.len(),
+            3,
+            "should have 3 blocks (gaps filled)"
+        );
     }
 
     #[test]

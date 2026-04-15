@@ -28,10 +28,7 @@ impl KnowledgeMaintenanceExecutor for KnowledgeMaintenanceAdapter {
     ///
     /// Updates confidence scores in place for each fact. Facts whose decay score
     /// has dropped more than 10% below their current confidence are updated.
-    fn refresh_decay_scores(
-        &self,
-        nous_id: &str,
-    ) -> oikonomos::error::Result<MaintenanceReport> {
+    fn refresh_decay_scores(&self, nous_id: &str) -> oikonomos::error::Result<MaintenanceReport> {
         let now = jiff::Timestamp::now();
         let now_str = mneme::knowledge::format_timestamp(&now);
 
@@ -105,10 +102,7 @@ impl KnowledgeMaintenanceExecutor for KnowledgeMaintenanceAdapter {
     }
 
     /// Deduplicates entities by delegating to `KnowledgeStore::run_entity_dedup`.
-    fn deduplicate_entities(
-        &self,
-        nous_id: &str,
-    ) -> oikonomos::error::Result<MaintenanceReport> {
+    fn deduplicate_entities(&self, nous_id: &str) -> oikonomos::error::Result<MaintenanceReport> {
         let records = self.store.run_entity_dedup(nous_id).map_err(|e| {
             oikonomos::error::TaskFailedSnafu {
                 task_id: "entity-dedup".to_owned(),
@@ -147,10 +141,7 @@ impl KnowledgeMaintenanceExecutor for KnowledgeMaintenanceAdapter {
     ///
     /// Cannot actually embed without an `EmbeddingProvider`, so this reports
     /// the count of current facts and notes that embedding refresh is not yet wired.
-    fn refresh_embeddings(
-        &self,
-        nous_id: &str,
-    ) -> oikonomos::error::Result<MaintenanceReport> {
+    fn refresh_embeddings(&self, nous_id: &str) -> oikonomos::error::Result<MaintenanceReport> {
         let now = jiff::Timestamp::now();
         let now_str = mneme::knowledge::format_timestamp(&now);
         let facts = self
@@ -179,10 +170,7 @@ impl KnowledgeMaintenanceExecutor for KnowledgeMaintenanceAdapter {
         })
     }
 
-    fn garbage_collect(
-        &self,
-        _nous_id: &str,
-    ) -> oikonomos::error::Result<MaintenanceReport> {
+    fn garbage_collect(&self, _nous_id: &str) -> oikonomos::error::Result<MaintenanceReport> {
         Ok(MaintenanceReport {
             detail: Some(
                 "NOT_IMPLEMENTED: garbage collection of orphaned nodes/expired edges not yet wired"
@@ -192,10 +180,7 @@ impl KnowledgeMaintenanceExecutor for KnowledgeMaintenanceAdapter {
         })
     }
 
-    fn maintain_indexes(
-        &self,
-        _nous_id: &str,
-    ) -> oikonomos::error::Result<MaintenanceReport> {
+    fn maintain_indexes(&self, _nous_id: &str) -> oikonomos::error::Result<MaintenanceReport> {
         Ok(MaintenanceReport {
             detail: Some("NOT_IMPLEMENTED: index rebuild/optimization not yet wired".to_owned()),
             ..Default::default()
@@ -209,10 +194,7 @@ impl KnowledgeMaintenanceExecutor for KnowledgeMaintenanceAdapter {
         })
     }
 
-    fn run_skill_decay(
-        &self,
-        nous_id: &str,
-    ) -> oikonomos::error::Result<MaintenanceReport> {
+    fn run_skill_decay(&self, nous_id: &str) -> oikonomos::error::Result<MaintenanceReport> {
         let (active, needs_review, retired) = self.store.run_skill_decay(nous_id).map_err(|e| {
             oikonomos::error::TaskFailedSnafu {
                 task_id: "skill-decay".to_owned(),

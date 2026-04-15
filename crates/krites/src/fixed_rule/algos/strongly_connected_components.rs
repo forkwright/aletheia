@@ -187,8 +187,10 @@ impl TarjanScc {
                 self.dfs(neighbor);
             }
             if self.on_stack[neighbor as usize] {
-                self.low_links[at as usize] =
-                    min(self.low_links[at as usize], self.low_links[neighbor as usize]);
+                self.low_links[at as usize] = min(
+                    self.low_links[at as usize],
+                    self.low_links[neighbor as usize],
+                );
             }
         }
         if self.discovery_ids[at as usize].unwrap_or(0) == self.low_links[at as usize] {

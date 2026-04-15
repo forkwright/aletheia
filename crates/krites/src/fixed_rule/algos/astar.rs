@@ -197,7 +197,10 @@ fn astar(
 
             let cost_to_source = g_score.get(&node).cloned().unwrap_or(f64::INFINITY);
             let tentative_cost = cost_to_source + edge_cost;
-            let previous_cost = g_score.get(edge_destination).cloned().unwrap_or(f64::INFINITY);
+            let previous_cost = g_score
+                .get(edge_destination)
+                .cloned()
+                .unwrap_or(f64::INFINITY);
             if tentative_cost < previous_cost {
                 back_trace.insert(edge_destination.clone(), node.clone());
                 g_score.insert(edge_destination.clone(), tentative_cost);
