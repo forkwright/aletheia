@@ -28,7 +28,13 @@ pub(crate) async fn map_error_response(
         .and_then(|v| v.to_str().ok())
         .map(str::to_owned);
 
-    let body = response.text().await.unwrap_or_default();
+    let body = match response.text().await {
+        Ok(text) => text,
+        Err(e) => {
+            warn!(error = %e, "failed to read error response body");
+            String::new()
+        }
+    };
 
     warn!(
         status,
