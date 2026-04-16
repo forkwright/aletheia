@@ -27,6 +27,7 @@ fn test_config_with(base_url: &str) -> ProviderConfig {
         pricing: HashMap::new(),
         cc_mimicry: None,
         prompt_cache_mode: crate::provider::PromptCacheMode::Disabled,
+        deployment_target: crate::provider::DeploymentTarget::Cloud,
     }
 }
 

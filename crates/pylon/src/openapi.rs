@@ -47,6 +47,7 @@ use koina::http::CONTENT_TYPE_JSON;
         crate::handlers::knowledge::forget_fact,
         crate::handlers::knowledge::restore_fact,
         crate::handlers::knowledge::update_confidence,
+        crate::handlers::knowledge::update_sensitivity,
         crate::handlers::knowledge::list_entities,
         crate::handlers::knowledge::entity_relationships,
         crate::handlers::knowledge::search,

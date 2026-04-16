@@ -497,6 +497,7 @@ mod tests {
                 access_count,
                 last_accessed_at: None,
             },
+            sensitivity: mneme::knowledge::FactSensitivity::Public,
             scope: None,
         }
     }
