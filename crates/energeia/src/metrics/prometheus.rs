@@ -1,119 +1,132 @@
 //! Prometheus metric definitions for energeia dispatch orchestration.
 //!
-//! Call [`init`] once at startup to force-register all metrics with the global
-//! prometheus registry. The pylon `/metrics` endpoint will then expose them.
-//!
-//! Recording functions are called at dispatch/session/QA event boundaries.
-
-#![expect(
-    clippy::expect_used,
-    reason = "metric registration is infallible at startup"
-)]
+//! Metrics are registered against a shared [`koina::metrics::MetricsRegistry`]
+//! via [`register`]. Recording functions operate on global `LazyLock` families
+//! that share `Arc`-internal state with the registered copies.
 
 use std::sync::LazyLock;
+use std::sync::atomic::AtomicU64;
 
-use prometheus::{
-    CounterVec, HistogramOpts, HistogramVec, IntCounterVec, Opts, register_counter_vec,
-    register_histogram_vec, register_int_counter_vec,
-};
-
-// ---------------------------------------------------------------------------
-// Metric statics
-// ---------------------------------------------------------------------------
-
-static DISPATCHES_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
-    register_int_counter_vec!(
-        Opts::new("energeia_dispatches_total", "Total dispatch runs completed"),
-        &["project", "status"]
-    )
-    .expect("metric registration")
-});
-
-static SESSIONS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
-    register_int_counter_vec!(
-        Opts::new("energeia_sessions_total", "Total agent sessions dispatched"),
-        &["project", "status"]
-    )
-    .expect("metric registration")
-});
-
-/// Float counter: USD is not integer-valued.
-static COST_USD_TOTAL: LazyLock<CounterVec> = LazyLock::new(|| {
-    register_counter_vec!(
-        Opts::new(
-            "energeia_cost_usd_total",
-            "Cumulative LLM cost in USD by project, model, and blast radius"
-        ),
-        &["project", "model", "blast_radius"]
-    )
-    .expect("metric registration")
-});
-
-/// Counter for total turns by blast radius and model.
-static TURNS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
-    register_int_counter_vec!(
-        Opts::new(
-            "energeia_turns_total",
-            "Total LLM turns by project, model, and blast radius"
-        ),
-        &["project", "model", "blast_radius"]
-    )
-    .expect("metric registration")
-});
-
-static SESSION_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
-    register_histogram_vec!(
-        HistogramOpts::new(
-            "energeia_session_duration_seconds",
-            "Agent session wall-clock duration in seconds"
-        )
-        // WHY: sessions range from <1 minute (infra failure) to several hours
-        // (complex implementation prompts). Buckets cover this full range.
-        .buckets(vec![
-            60.0, 300.0, 900.0, 1_800.0, 3_600.0, 7_200.0, 14_400.0, 28_800.0,
-        ]),
-        &["project"]
-    )
-    .expect("metric registration")
-});
-
-static QA_VERDICTS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
-    register_int_counter_vec!(
-        Opts::new(
-            "energeia_qa_verdicts_total",
-            "Total QA evaluation verdicts by project and verdict"
-        ),
-        &["project", "verdict"]
-    )
-    .expect("metric registration")
-});
+use prometheus_client::encoding::EncodeLabelSet;
+use prometheus_client::metrics::counter::Counter;
+use prometheus_client::metrics::family::Family;
+use prometheus_client::metrics::histogram::Histogram;
+use prometheus_client::registry::Registry;
 
 // ---------------------------------------------------------------------------
-// Initialization
+// Label sets
 // ---------------------------------------------------------------------------
 
-/// Force-initialize all energeia metric statics.
-///
-/// Must be called once at server startup so metrics appear in `/metrics` even
-/// before any dispatch events occur. Safe to call multiple times.
-pub fn init() {
-    LazyLock::force(&DISPATCHES_TOTAL);
-    LazyLock::force(&SESSIONS_TOTAL);
-    LazyLock::force(&COST_USD_TOTAL);
-    LazyLock::force(&TURNS_TOTAL);
-    LazyLock::force(&SESSION_DURATION_SECONDS);
-    LazyLock::force(&QA_VERDICTS_TOTAL);
+#[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
+struct ProjectStatusLabels {
+    project: String,
+    status: String,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
+struct ProjectModelRadiusLabels {
+    project: String,
+    model: String,
+    blast_radius: String,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
+struct ProjectLabels {
+    project: String,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
+struct ProjectVerdictLabels {
+    project: String,
+    verdict: String,
 }
 
 // ---------------------------------------------------------------------------
-// Recording functions
+// Metric families
+// ---------------------------------------------------------------------------
+
+static DISPATCHES_TOTAL: LazyLock<Family<ProjectStatusLabels, Counter>> =
+    LazyLock::new(Family::default);
+
+static SESSIONS_TOTAL: LazyLock<Family<ProjectStatusLabels, Counter>> =
+    LazyLock::new(Family::default);
+
+/// Float counter: USD is not integer-valued.
+static COST_USD_TOTAL: LazyLock<Family<ProjectModelRadiusLabels, Counter<f64, AtomicU64>>> =
+    LazyLock::new(Family::default);
+
+/// Counter for total turns by blast radius and model.
+static TURNS_TOTAL: LazyLock<Family<ProjectModelRadiusLabels, Counter>> =
+    LazyLock::new(Family::default);
+
+fn session_duration_histogram() -> Histogram {
+    // WHY: sessions range from <1 minute (infra failure) to several hours
+    // (complex implementation prompts). Buckets cover this full range.
+    Histogram::new([
+        60.0, 300.0, 900.0, 1_800.0, 3_600.0, 7_200.0, 14_400.0, 28_800.0,
+    ])
+}
+
+type ProjectHistogramFamily = Family<ProjectLabels, Histogram, fn() -> Histogram>;
+
+static SESSION_DURATION_SECONDS: LazyLock<ProjectHistogramFamily> =
+    LazyLock::new(|| Family::new_with_constructor(session_duration_histogram));
+
+static QA_VERDICTS_TOTAL: LazyLock<Family<ProjectVerdictLabels, Counter>> =
+    LazyLock::new(Family::default);
+
+// ---------------------------------------------------------------------------
+// Registration
+// ---------------------------------------------------------------------------
+
+/// Register this crate's metrics with the shared registry.
+pub fn register(registry: &mut Registry) {
+    registry.register(
+        "energeia_dispatches",
+        "Total dispatch runs completed",
+        DISPATCHES_TOTAL.clone(),
+    );
+    registry.register(
+        "energeia_sessions",
+        "Total agent sessions dispatched",
+        SESSIONS_TOTAL.clone(),
+    );
+    registry.register(
+        "energeia_cost_usd",
+        "Cumulative LLM cost in USD by project, model, and blast radius",
+        COST_USD_TOTAL.clone(),
+    );
+    registry.register(
+        "energeia_turns",
+        "Total LLM turns by project, model, and blast radius",
+        TURNS_TOTAL.clone(),
+    );
+    registry.register(
+        "energeia_session_duration_seconds",
+        "Agent session wall-clock duration in seconds",
+        SESSION_DURATION_SECONDS.clone(),
+    );
+    registry.register(
+        "energeia_qa_verdicts",
+        "Total QA evaluation verdicts by project and verdict",
+        QA_VERDICTS_TOTAL.clone(),
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Recording
 // ---------------------------------------------------------------------------
 
 /// Record a completed dispatch run.
 ///
 /// Call once per dispatch when it finishes (Completed or Failed).
 pub fn record_dispatch(project: &str, status: &str) {
-    DISPATCHES_TOTAL.with_label_values(&[project, status]).inc();
+    DISPATCHES_TOTAL
+        .get_or_create(&ProjectStatusLabels {
+            project: project.to_owned(),
+            status: status.to_owned(),
+        })
+        .inc();
 }
 
 /// Record a completed agent session.
@@ -130,7 +143,12 @@ pub fn record_session(
     model: &str,
     blast_radius: &str,
 ) {
-    SESSIONS_TOTAL.with_label_values(&[project, status]).inc();
+    SESSIONS_TOTAL
+        .get_or_create(&ProjectStatusLabels {
+            project: project.to_owned(),
+            status: status.to_owned(),
+        })
+        .inc();
 
     #[expect(
         clippy::cast_precision_loss,
@@ -139,12 +157,18 @@ pub fn record_session(
     )]
     let duration_secs = duration_ms as f64 / 1_000.0;
     SESSION_DURATION_SECONDS
-        .with_label_values(&[project])
+        .get_or_create(&ProjectLabels {
+            project: project.to_owned(),
+        })
         .observe(duration_secs);
 
     if cost_usd > 0.0 {
         COST_USD_TOTAL
-            .with_label_values(&[project, model, blast_radius])
+            .get_or_create(&ProjectModelRadiusLabels {
+                project: project.to_owned(),
+                model: model.to_owned(),
+                blast_radius: blast_radius.to_owned(),
+            })
             .inc_by(cost_usd);
     }
 
@@ -156,7 +180,11 @@ pub fn record_session(
 /// Call this to update the `energeia_turns_total` metric.
 pub fn record_turns(project: &str, turns: u32, model: &str, blast_radius: &str) {
     TURNS_TOTAL
-        .with_label_values(&[project, model, blast_radius])
+        .get_or_create(&ProjectModelRadiusLabels {
+            project: project.to_owned(),
+            model: model.to_owned(),
+            blast_radius: blast_radius.to_owned(),
+        })
         .inc_by(u64::from(turns));
 }
 
@@ -165,7 +193,10 @@ pub fn record_turns(project: &str, turns: u32, model: &str, blast_radius: &str) 
 /// `verdict` should be one of `"pass"`, `"partial"`, or `"fail"`.
 pub fn record_qa_verdict(project: &str, verdict: &str) {
     QA_VERDICTS_TOTAL
-        .with_label_values(&[project, verdict])
+        .get_or_create(&ProjectVerdictLabels {
+            project: project.to_owned(),
+            verdict: verdict.to_owned(),
+        })
         .inc();
 }
 
@@ -175,80 +206,101 @@ pub fn record_qa_verdict(project: &str, verdict: &str) {
 
 #[cfg(test)]
 mod tests {
+    use koina::metrics::MetricsRegistry;
+
     use super::*;
 
-    #[test]
-    fn init_is_idempotent() {
-        init();
-        init(); // second call must not panic
+    fn fresh_registry() -> MetricsRegistry {
+        let r = MetricsRegistry::new();
+        r.with_registry(register);
+        r
+    }
+
+    fn encode(r: &MetricsRegistry) -> String {
+        let mut buf = String::new();
+        #[expect(clippy::unwrap_used, reason = "encoding into String is infallible")]
+        r.encode(&mut buf).unwrap();
+        buf
     }
 
     #[test]
-    fn record_dispatch_increments_counter() {
-        init();
-        record_dispatch("acme", "completed");
-        record_dispatch("acme", "completed");
-        let count = DISPATCHES_TOTAL
-            .with_label_values(&["acme", "completed"])
-            .get();
-        assert!(count >= 2, "counter should be >= 2 after two increments");
+    fn register_and_record_dispatch() {
+        let r = fresh_registry();
+        record_dispatch("_test_acme", "completed");
+        record_dispatch("_test_acme", "completed");
+        let out = encode(&r);
+        assert!(
+            out.contains(
+                "energeia_dispatches_total{project=\"_test_acme\",status=\"completed\"} 2"
+            ),
+            "got: {out}"
+        );
     }
 
     #[test]
-    fn record_session_increments_counter_and_histogram() {
-        init();
+    fn register_and_record_session_with_cost() {
+        let r = fresh_registry();
         record_session(
-            "acme",
+            "_test_acme",
             "success",
             0.50,
             30_000,
             "claude-3-5-sonnet",
             "crates/foo/",
         );
-        let count = SESSIONS_TOTAL.with_label_values(&["acme", "success"]).get();
-        assert!(count >= 1);
+        let out = encode(&r);
+        assert!(
+            out.contains("energeia_sessions_total{project=\"_test_acme\",status=\"success\"} 1"),
+            "got: {out}"
+        );
     }
 
     #[test]
-    fn record_session_zero_cost_skips_cost_counter() {
-        init();
-        // Capture cost before
-        let before = COST_USD_TOTAL
-            .with_label_values(&["nocost-project", "claude-3-5-sonnet", "crates/foo/"])
-            .get();
+    fn register_and_record_session_zero_cost_skips_cost_counter() {
+        let r = fresh_registry();
         record_session(
-            "nocost-project",
+            "_test_nocost",
             "failed",
             0.0,
             5_000,
             "claude-3-5-sonnet",
             "crates/foo/",
         );
-        let after = COST_USD_TOTAL
-            .with_label_values(&["nocost-project", "claude-3-5-sonnet", "crates/foo/"])
-            .get();
-        // Float comparison: should be unchanged
+        let out = encode(&r);
+        // WHY: record_session still records the session count and duration
+        // histogram for zero-cost failed runs (useful for debugging infra
+        // failures); only the cost counter is skipped.
         assert!(
-            (after - before).abs() < 1e-10,
-            "zero-cost session must not increment cost counter"
+            !out.contains("energeia_cost_usd_total{project=\"_test_nocost\""),
+            "cost sample should be skipped for zero-cost session; got: {out}"
+        );
+        assert!(
+            out.contains("energeia_sessions_total{project=\"_test_nocost\",status=\"failed\"} 1"),
+            "expected session counter to still record; got: {out}"
         );
     }
 
     #[test]
-    fn record_turns_increments_counter() {
-        init();
-        record_turns("acme", 15, "claude-3-5-sonnet", "crates/foo/");
-        let count = TURNS_TOTAL
-            .with_label_values(&["acme", "claude-3-5-sonnet", "crates/foo/"])
-            .get();
-        assert!(count >= 15);
+    fn register_and_record_turns() {
+        let r = fresh_registry();
+        record_turns("_test_turns", 15, "claude-3-5-sonnet", "crates/foo/");
+        let out = encode(&r);
+        assert!(
+            out.contains(
+                "energeia_turns_total{project=\"_test_turns\",model=\"claude-3-5-sonnet\",blast_radius=\"crates/foo/\"} 15"
+            ),
+            "got: {out}"
+        );
     }
 
     #[test]
-    fn record_qa_verdict_increments_counter() {
-        init();
-        record_qa_verdict("acme", "pass");
-        let count = QA_VERDICTS_TOTAL.with_label_values(&["acme", "pass"]).get();
-        assert!(count >= 1);
+    fn register_and_record_qa_verdict() {
+        let r = fresh_registry();
+        record_qa_verdict("_test_qa", "pass");
+        let out = encode(&r);
+        assert!(
+            out.contains("energeia_qa_verdicts_total{project=\"_test_qa\",verdict=\"pass\"} 1"),
+            "got: {out}"
+        );
     }
 }

@@ -20,8 +20,9 @@
 //! let cost   = service.cost_report(7)?;      // last 7 days
 //! let status = service.status_dashboard()?;  // current snapshot
 //!
-//! // Initialize prometheus metrics at startup:
-//! energeia::metrics::prometheus::init();
+//! // Register prometheus metrics against a shared registry at startup:
+//! let metrics_registry = koina::metrics::MetricsRegistry::new();
+//! metrics_registry.with_registry(energeia::metrics::prometheus::register);
 //! ```
 
 pub mod cost;

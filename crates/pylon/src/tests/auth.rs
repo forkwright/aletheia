@@ -147,6 +147,7 @@ async fn app_auth_disabled() -> (axum::Router, tempfile::TempDir) {
         knowledge_store: None,
         embedding_provider: state.embedding_provider.clone(),
         turn_buffer_registry: Arc::clone(&state.turn_buffer_registry),
+        metrics_registry: state.metrics_registry.clone(),
     });
     (build_router(state, &test_security_config()), dir)
 }

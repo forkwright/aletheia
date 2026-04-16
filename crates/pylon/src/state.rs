@@ -8,6 +8,7 @@ use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
 use hermeneus::provider::ProviderRegistry;
+use koina::metrics::MetricsRegistry;
 use mneme::embedding::EmbeddingProvider;
 #[cfg(feature = "knowledge-store")]
 use mneme::knowledge_store::KnowledgeStore;
@@ -66,6 +67,11 @@ pub struct AppState {
     /// Shared between streaming handlers (which record events) and the
     /// reconnect handler (which replays them).
     pub turn_buffer_registry: Arc<TurnBufferRegistry>,
+    /// Shared Prometheus metrics registry.
+    ///
+    /// Crates register their metric families here at startup; the `/metrics`
+    /// handler holds this to encode scrapes.
+    pub metrics_registry: MetricsRegistry,
 }
 
 impl AppState {
@@ -123,6 +129,8 @@ pub struct MetricsState {
     pub session_store: Arc<Mutex<SessionStore>>,
     /// Server start instant for uptime calculation.
     pub start_time: std::time::Instant,
+    /// Shared Prometheus metrics registry for encoding scrapes.
+    pub metrics_registry: MetricsRegistry,
 }
 
 impl FromRef<Arc<AppState>> for MetricsState {
@@ -130,6 +138,7 @@ impl FromRef<Arc<AppState>> for MetricsState {
         Self {
             session_store: Arc::clone(&state.session_store),
             start_time: state.start_time,
+            metrics_registry: state.metrics_registry.clone(),
         }
     }
 }

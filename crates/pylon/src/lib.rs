@@ -12,7 +12,7 @@ pub mod handlers;
 /// Idempotency-key cache for deduplicating message sends on retry.
 pub mod idempotency;
 /// Prometheus metrics collection and exposure.
-pub(crate) mod metrics;
+pub mod metrics;
 /// Custom Axum middleware layers (CSRF protection, request ID, error enrichment, HTTP metrics).
 pub mod middleware;
 /// OpenAPI specification generation via utoipa.

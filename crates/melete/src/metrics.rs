@@ -1,166 +1,150 @@
 //! Prometheus metric definitions for the distillation engine.
-
-#![expect(
-    clippy::expect_used,
-    reason = "metric registration is infallible at startup"
-)]
+//!
+//! Metrics are registered against a shared [`koina::metrics::MetricsRegistry`]
+//! via [`register`]. Recording functions operate on global `LazyLock` families
+//! that share `Arc`-internal state with the registered copies.
 
 use std::sync::LazyLock;
 
-use prometheus::{
-    HistogramOpts, HistogramVec, IntCounterVec, Opts, register_histogram_vec,
-    register_int_counter_vec,
-};
+use prometheus_client::encoding::EncodeLabelSet;
+use prometheus_client::metrics::counter::Counter;
+use prometheus_client::metrics::family::Family;
+use prometheus_client::metrics::histogram::Histogram;
+use prometheus_client::registry::Registry;
 
-static DISTILLATION_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
-    register_int_counter_vec!(
-        Opts::new(
-            "aletheia_distillation_total",
-            "Total distillation operations"
-        ),
-        &["nous_id", "status"]
-    )
-    .expect("metric registration")
-});
+// ---------------------------------------------------------------------------
+// Label sets
+// ---------------------------------------------------------------------------
 
-static DISTILLATION_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
-    register_histogram_vec!(
-        HistogramOpts::new(
-            "aletheia_distillation_duration_seconds",
-            "Distillation duration in seconds"
-        )
-        .buckets(vec![1.0, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0]),
-        &["nous_id"]
-    )
-    .expect("metric registration")
-});
-
-static TOKENS_SAVED_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
-    register_int_counter_vec!(
-        Opts::new(
-            "aletheia_tokens_saved_total",
-            "Total tokens saved by distillation"
-        ),
-        &["nous_id"]
-    )
-    .expect("metric registration")
-});
-
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "called from server startup, not from within the crate"
-    )
-)]
-/// Force-initialize all lazy metric statics.
-pub(crate) fn init() {
-    LazyLock::force(&DISTILLATION_TOTAL);
-    LazyLock::force(&DISTILLATION_DURATION_SECONDS);
-    LazyLock::force(&TOKENS_SAVED_TOTAL);
+#[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
+struct NousStatusLabels {
+    nous_id: String,
+    status: String,
 }
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
+struct NousLabels {
+    nous_id: String,
+}
+
+// ---------------------------------------------------------------------------
+// Metric families
+// ---------------------------------------------------------------------------
+
+static DISTILLATION_TOTAL: LazyLock<Family<NousStatusLabels, Counter>> =
+    LazyLock::new(Family::default);
+
+fn distillation_duration_histogram() -> Histogram {
+    Histogram::new([1.0, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0])
+}
+
+type NousHistogramFamily = Family<NousLabels, Histogram, fn() -> Histogram>;
+
+static DISTILLATION_DURATION_SECONDS: LazyLock<NousHistogramFamily> =
+    LazyLock::new(|| Family::new_with_constructor(distillation_duration_histogram));
+
+static TOKENS_SAVED_TOTAL: LazyLock<Family<NousLabels, Counter>> = LazyLock::new(Family::default);
+
+// ---------------------------------------------------------------------------
+// Registration
+// ---------------------------------------------------------------------------
+
+/// Register this crate's metrics with the shared registry.
+pub fn register(registry: &mut Registry) {
+    registry.register(
+        "aletheia_distillation",
+        "Total distillation operations",
+        DISTILLATION_TOTAL.clone(),
+    );
+    registry.register(
+        "aletheia_distillation_duration_seconds",
+        "Distillation duration in seconds",
+        DISTILLATION_DURATION_SECONDS.clone(),
+    );
+    registry.register(
+        "aletheia_tokens_saved",
+        "Total tokens saved by distillation",
+        TOKENS_SAVED_TOTAL.clone(),
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Recording
+// ---------------------------------------------------------------------------
 
 /// Record a completed distillation operation.
 pub(crate) fn record_distillation(nous_id: &str, duration_secs: f64, success: bool) {
     let status = if success { "ok" } else { "error" };
     DISTILLATION_TOTAL
-        .with_label_values(&[nous_id, status])
+        .get_or_create(&NousStatusLabels {
+            nous_id: nous_id.to_owned(),
+            status: status.to_owned(),
+        })
         .inc();
     DISTILLATION_DURATION_SECONDS
-        .with_label_values(&[nous_id])
+        .get_or_create(&NousLabels {
+            nous_id: nous_id.to_owned(),
+        })
         .observe(duration_secs);
 }
 
 /// Record tokens saved by a distillation pass.
 pub(crate) fn record_tokens_saved(nous_id: &str, tokens: u64) {
     TOKENS_SAVED_TOTAL
-        .with_label_values(&[nous_id])
+        .get_or_create(&NousLabels {
+            nous_id: nous_id.to_owned(),
+        })
         .inc_by(tokens);
 }
 
 #[cfg(test)]
 mod tests {
+    use koina::metrics::MetricsRegistry;
+
     use super::*;
 
-    #[test]
-    fn init_registers_all_metrics() {
-        init();
-        // Verify metrics are registered by accessing them
-        let _ = DISTILLATION_TOTAL.with_label_values(&["test", "ok"]).get();
-        let _ = DISTILLATION_DURATION_SECONDS
-            .with_label_values(&["test"])
-            .get_sample_count();
-        let _ = TOKENS_SAVED_TOTAL.with_label_values(&["test"]).get();
+    fn fresh_registry() -> MetricsRegistry {
+        let r = MetricsRegistry::new();
+        r.with_registry(register);
+        r
+    }
+
+    fn encode(r: &MetricsRegistry) -> String {
+        let mut buf = String::new();
+        #[expect(clippy::unwrap_used, reason = "encoding into String is infallible")]
+        r.encode(&mut buf).unwrap();
+        buf
     }
 
     #[test]
-    fn record_distillation_records_success_and_failure() {
-        let nous_id = "test-nous-distillation";
-        let ok_before = DISTILLATION_TOTAL.with_label_values(&[nous_id, "ok"]).get();
-        let error_before = DISTILLATION_TOTAL
-            .with_label_values(&[nous_id, "error"])
-            .get();
-        let hist_before = DISTILLATION_DURATION_SECONDS
-            .with_label_values(&[nous_id])
-            .get_sample_count();
-
-        // Record successful distillation
-        record_distillation(nous_id, 5.0, true);
-        assert_eq!(
-            DISTILLATION_TOTAL.with_label_values(&[nous_id, "ok"]).get(),
-            ok_before + 1,
-            "ok counter should increment for success=true"
+    fn register_and_record_distillation_success_and_failure() {
+        let r = fresh_registry();
+        record_distillation("_test_nous", 5.0, true);
+        record_distillation("_test_nous", 2.0, false);
+        let out = encode(&r);
+        assert!(
+            out.contains("aletheia_distillation_total{nous_id=\"_test_nous\",status=\"ok\"} 1"),
+            "got: {out}"
         );
-        assert_eq!(
-            DISTILLATION_TOTAL
-                .with_label_values(&[nous_id, "error"])
-                .get(),
-            error_before,
-            "error counter should not change for success=true"
+        assert!(
+            out.contains("aletheia_distillation_total{nous_id=\"_test_nous\",status=\"error\"} 1"),
+            "got: {out}"
         );
-
-        // Record failed distillation
-        record_distillation(nous_id, 2.0, false);
-        assert_eq!(
-            DISTILLATION_TOTAL.with_label_values(&[nous_id, "ok"]).get(),
-            ok_before + 1,
-            "ok counter should be unchanged after error"
-        );
-        assert_eq!(
-            DISTILLATION_TOTAL
-                .with_label_values(&[nous_id, "error"])
-                .get(),
-            error_before + 1,
-            "error counter should increment for success=false"
-        );
-
-        // Verify histogram has 2 samples
-        assert_eq!(
-            DISTILLATION_DURATION_SECONDS
-                .with_label_values(&[nous_id])
-                .get_sample_count(),
-            hist_before + 2,
-            "histogram should have 2 samples"
+        assert!(
+            out.contains("aletheia_distillation_duration_seconds_count{nous_id=\"_test_nous\"} 2"),
+            "got: {out}"
         );
     }
 
     #[test]
-    fn record_tokens_saved_increments_counter() {
-        let nous_id = "test-nous-tokens";
-        let before = TOKENS_SAVED_TOTAL.with_label_values(&[nous_id]).get();
-
-        record_tokens_saved(nous_id, 1000);
-        assert_eq!(
-            TOKENS_SAVED_TOTAL.with_label_values(&[nous_id]).get(),
-            before + 1000,
-            "tokens saved counter should increase by 1000"
-        );
-
-        record_tokens_saved(nous_id, 500);
-        assert_eq!(
-            TOKENS_SAVED_TOTAL.with_label_values(&[nous_id]).get(),
-            before + 1500,
-            "tokens saved counter should accumulate (1000 + 500 = 1500)"
+    fn register_and_record_tokens_saved() {
+        let r = fresh_registry();
+        record_tokens_saved("_test_nous_tokens", 1000);
+        record_tokens_saved("_test_nous_tokens", 500);
+        let out = encode(&r);
+        assert!(
+            out.contains("aletheia_tokens_saved_total{nous_id=\"_test_nous_tokens\"} 1500"),
+            "got: {out}"
         );
     }
 }

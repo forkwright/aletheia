@@ -1,89 +1,137 @@
 //! Prometheus metric definitions for planning and project orchestration.
-
-#![expect(
-    clippy::expect_used,
-    reason = "metric registration is infallible at startup"
-)]
+//!
+//! Metrics are registered against a shared [`koina::metrics::MetricsRegistry`]
+//! via [`register`]. Recording functions operate on global `LazyLock` families
+//! that share `Arc`-internal state with the registered copies.
 
 use std::sync::LazyLock;
 
-use prometheus::{IntCounterVec, Opts, register_int_counter_vec};
+use prometheus_client::encoding::EncodeLabelSet;
+use prometheus_client::metrics::counter::Counter;
+use prometheus_client::metrics::family::Family;
+use prometheus_client::registry::Registry;
 
-static PHASE_TRANSITIONS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
-    register_int_counter_vec!(
-        Opts::new(
-            "aletheia_phase_transitions_total",
-            "Total project state transitions"
-        ),
-        &["from", "to"]
-    )
-    .expect("metric registration")
-});
+// ---------------------------------------------------------------------------
+// Label sets
+// ---------------------------------------------------------------------------
 
-static STUCK_DETECTIONS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
-    register_int_counter_vec!(
-        Opts::new(
-            "aletheia_stuck_detections_total",
-            "Total stuck pattern detections"
-        ),
-        &["pattern"]
-    )
-    .expect("metric registration")
-});
+#[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
+struct PhaseTransitionLabels {
+    from: String,
+    to: String,
+}
 
-/// Record a project state transition.
-pub(crate) fn record_phase_transition(from: &str, to: &str) {
-    PHASE_TRANSITIONS_TOTAL.with_label_values(&[from, to]).inc();
+#[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
+struct StuckPatternLabels {
+    pattern: String,
+}
+
+// ---------------------------------------------------------------------------
+// Metric families
+// ---------------------------------------------------------------------------
+
+static PHASE_TRANSITIONS_TOTAL: LazyLock<Family<PhaseTransitionLabels, Counter>> =
+    LazyLock::new(Family::default);
+
+static STUCK_DETECTIONS_TOTAL: LazyLock<Family<StuckPatternLabels, Counter>> =
+    LazyLock::new(Family::default);
+
+// ---------------------------------------------------------------------------
+// Registration
+// ---------------------------------------------------------------------------
+
+/// Register this crate's metrics with the shared registry.
+pub fn register(registry: &mut Registry) {
+    registry.register(
+        "aletheia_phase_transitions",
+        "Total project state transitions",
+        PHASE_TRANSITIONS_TOTAL.clone(),
+    );
+    registry.register(
+        "aletheia_stuck_detections",
+        "Total stuck pattern detections",
+        STUCK_DETECTIONS_TOTAL.clone(),
+    );
 }
 
 /// Force-initialize all lazy metric statics.
+///
+/// Primarily a compatibility shim for the binary crate's startup; prefer
+/// [`register`] which installs the families into a shared registry.
 pub fn init() {
     LazyLock::force(&PHASE_TRANSITIONS_TOTAL);
     LazyLock::force(&STUCK_DETECTIONS_TOTAL);
 }
 
+// ---------------------------------------------------------------------------
+// Recording
+// ---------------------------------------------------------------------------
+
+/// Record a project state transition.
+pub(crate) fn record_phase_transition(from: &str, to: &str) {
+    PHASE_TRANSITIONS_TOTAL
+        .get_or_create(&PhaseTransitionLabels {
+            from: from.to_owned(),
+            to: to.to_owned(),
+        })
+        .inc();
+}
+
 /// Record a stuck pattern detection.
 pub(crate) fn record_stuck_detection(pattern: &str) {
-    STUCK_DETECTIONS_TOTAL.with_label_values(&[pattern]).inc();
+    STUCK_DETECTIONS_TOTAL
+        .get_or_create(&StuckPatternLabels {
+            pattern: pattern.to_owned(),
+        })
+        .inc();
 }
 
 #[cfg(test)]
 mod tests {
+    use koina::metrics::MetricsRegistry;
+
     use super::*;
+
+    fn fresh_registry() -> MetricsRegistry {
+        let r = MetricsRegistry::new();
+        r.with_registry(register);
+        r
+    }
+
+    fn encode(r: &MetricsRegistry) -> String {
+        let mut buf = String::new();
+        #[expect(clippy::unwrap_used, reason = "encoding into String is infallible")]
+        r.encode(&mut buf).unwrap();
+        buf
+    }
 
     #[test]
     fn init_initializes_metrics() {
         // Verify init() completes without panic and metrics are accessible
         init();
-        // After init, metrics should be recordable without panic
         record_phase_transition("planning", "executing");
-        let metric = &*PHASE_TRANSITIONS_TOTAL;
-        // Just verify we can read the metric (actual value depends on test order)
-        let _count = metric.with_label_values(&["planning", "executing"]).get();
     }
 
     #[test]
-    fn record_phase_transition_increments_counter() {
-        // WHY: use unique labels that no real transition produces, so concurrent
-        // test threads running state-machine transitions don't inflate the count.
-        let metric = &*PHASE_TRANSITIONS_TOTAL;
-        let initial = metric.with_label_values(&["_test_from", "_test_to"]).get();
-
+    fn register_and_record_phase_transition() {
+        let r = fresh_registry();
         record_phase_transition("_test_from", "_test_to");
-
-        let after = metric.with_label_values(&["_test_from", "_test_to"]).get();
-        assert_eq!(after, initial + 1, "counter should increment by 1");
+        record_phase_transition("_test_from", "_test_to");
+        let out = encode(&r);
+        assert!(
+            out.contains("aletheia_phase_transitions_total{from=\"_test_from\",to=\"_test_to\"} 2"),
+            "got: {out}"
+        );
     }
 
     #[test]
-    fn record_stuck_detection_increments_counter() {
-        // Get initial count
-        let metric = &*STUCK_DETECTIONS_TOTAL;
-        let initial = metric.with_label_values(&["repeated_error"]).get();
-
-        record_stuck_detection("repeated_error");
-
-        let after = metric.with_label_values(&["repeated_error"]).get();
-        assert_eq!(after, initial + 1, "counter should increment by 1");
+    fn register_and_record_stuck_detection() {
+        let r = fresh_registry();
+        record_stuck_detection("_test_repeated_error");
+        let out = encode(&r);
+        assert!(
+            out.contains("aletheia_stuck_detections_total{pattern=\"_test_repeated_error\"} 1"),
+            "got: {out}"
+        );
     }
 }

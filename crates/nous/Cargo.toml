@@ -30,7 +30,7 @@ organon = { path = "../organon" }
 taxis = { path = "../taxis" }
 thesauros = { path = "../thesauros" }
 jiff = { workspace = true }
-prometheus = { workspace = true }
+prometheus-client = { workspace = true }
 regex = { workspace = true }
 rusqlite = { workspace = true }
 serde = { workspace = true }
