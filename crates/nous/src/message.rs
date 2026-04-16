@@ -130,7 +130,7 @@ mod tests {
             session_count: 3,
             active_session: None,
             panic_count: 0,
-            uptime: Duration::from_secs(60),
+            uptime: Duration::from_mins(1),
         };
         assert_eq!(status.id, "syn");
         assert_eq!(status.lifecycle, NousLifecycle::Idle);
@@ -182,7 +182,7 @@ mod tests {
         let health = ActorHealth {
             alive: true,
             panic_count: 2,
-            uptime: Duration::from_secs(120),
+            uptime: Duration::from_mins(2),
         };
         assert!(health.alive);
         assert_eq!(health.panic_count, 2);

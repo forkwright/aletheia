@@ -1,10 +1,10 @@
 //! Property tests for graph algorithm fixed rules.
 //!
 //! Generates random graphs and verifies structural invariants:
-//! - PageRank: scores sum to ~1.0 on connected graphs
+//! - `PageRank`: scores sum to ~1.0 on connected graphs
 //! - BFS: all reachable nodes visited
 //! - Shortest path: triangle inequality holds
-//! - TopSort: ordering respects all edges
+//! - `TopSort`: ordering respects all edges
 #![cfg(test)]
 #![expect(clippy::expect_used, reason = "test assertions")]
 #![expect(clippy::indexing_slicing, reason = "test data with known structure")]
@@ -22,7 +22,7 @@ use crate::data::value::DataValue;
 
 /// Generate a bidirectional edge list string for a connected graph with `n` nodes.
 /// Ensures strong connectivity by chaining 0<->1<->2<->...->n-1, then adds random edges.
-/// Bidirectional edges are necessary for PageRank score conservation and BFS
+/// Bidirectional edges are necessary for `PageRank` score conservation and BFS
 /// reachability from any start node.
 fn connected_graph_edges(n: usize, extra_edges: &[(usize, usize)]) -> String {
     let mut edges = Vec::new();

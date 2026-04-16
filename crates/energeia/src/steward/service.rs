@@ -116,7 +116,7 @@ mod tests {
     #[test]
     fn steward_config_new_defaults() {
         let config = StewardConfig::new("acme/repo".to_string());
-        assert_eq!(config.interval, Duration::from_secs(300));
+        assert_eq!(config.interval, Duration::from_mins(5));
         assert!(!config.once);
         assert!(!config.dry_run);
         assert_eq!(config.project, "acme/repo");
@@ -146,7 +146,7 @@ mod tests {
     #[tokio::test]
     async fn run_cancellation_exits() {
         let config = StewardConfig {
-            interval: Duration::from_secs(3600), // Long interval
+            interval: Duration::from_hours(1), // Long interval
             ..StewardConfig::new("acme/repo".to_string())
         };
         let cancel = CancellationToken::new();

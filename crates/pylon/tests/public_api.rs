@@ -162,8 +162,8 @@ impl TestEnvBuilder {
 
         let jwt_manager = Arc::new(JwtManager::new(JwtConfig {
             signing_key: SecretString::from("test-secret-key-for-jwt".to_owned()),
-            access_ttl: self.jwt_access_ttl.unwrap_or(Duration::from_secs(3600)),
-            refresh_ttl: Duration::from_secs(86_400),
+            access_ttl: self.jwt_access_ttl.unwrap_or(Duration::from_hours(1)),
+            refresh_ttl: Duration::from_hours(24),
             issuer: "aletheia-test".to_owned(),
             // WHY: explicit zero leeway so the short-TTL expiry test
             // observes immediate expiry rather than the 30s default
@@ -542,8 +542,8 @@ async fn jwt_wrong_issuer_is_rejected() {
     let env = TestEnv::new().await;
     let wrong_manager = JwtManager::new(JwtConfig {
         signing_key: SecretString::from("test-secret-key-for-jwt".to_owned()),
-        access_ttl: Duration::from_secs(3600),
-        refresh_ttl: Duration::from_secs(86_400),
+        access_ttl: Duration::from_hours(1),
+        refresh_ttl: Duration::from_hours(24),
         issuer: "someone-else".to_owned(),
         ..JwtConfig::default()
     });
@@ -562,8 +562,8 @@ async fn jwt_wrong_signing_key_is_rejected() {
     let env = TestEnv::new().await;
     let wrong_manager = JwtManager::new(JwtConfig {
         signing_key: SecretString::from("a-different-signing-key".to_owned()),
-        access_ttl: Duration::from_secs(3600),
-        refresh_ttl: Duration::from_secs(86_400),
+        access_ttl: Duration::from_hours(1),
+        refresh_ttl: Duration::from_hours(24),
         issuer: "aletheia-test".to_owned(),
         ..JwtConfig::default()
     });

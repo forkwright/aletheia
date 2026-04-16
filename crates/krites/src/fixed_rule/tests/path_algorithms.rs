@@ -10,13 +10,13 @@ fn test_shortest_path_dijkstra_when_path_exists_returns_correct_cost() {
     let db = DbInstance::default();
     let res = db
         .run_default(
-            r#"
+            r"
 edges[src, dst, cost] <- [[0, 1, 1.0], [0, 2, 4.0], [1, 2, 1.0],
                        [1, 3, 5.0], [2, 3, 1.0], [3, 4, 2.0]]
 start[] <- [[0]]
 ?[from, to, cost, path] <~ ShortestPathDijkstra(edges[], start[])
 :order to
-"#,
+",
         )
         .expect("Dijkstra query should execute successfully")
         .rows;
@@ -49,12 +49,12 @@ fn test_shortest_path_dijkstra_when_disconnected_returns_no_path() {
     let db = DbInstance::default();
     let res = db
         .run_default(
-            r#"
+            r"
 edges[src, dst, cost] <- [[0, 1, 1.0]]
 start[] <- [[0]]
 end[]   <- [[2]]
 ?[from, to, cost, path] <~ ShortestPathDijkstra(edges[], start[], end[])
-"#,
+",
         )
         .expect("Dijkstra disconnected query should execute successfully")
         .rows;
@@ -74,12 +74,12 @@ fn test_shortest_path_dijkstra_when_start_equals_end_cost_is_zero() {
     let db = DbInstance::default();
     let res = db
         .run_default(
-            r#"
+            r"
 edges[src, dst, cost] <- [[0, 1, 1.0], [1, 2, 1.0]]
 start[] <- [[0]]
 end[]   <- [[0]]
 ?[from, to, cost, path] <~ ShortestPathDijkstra(edges[], start[], end[])
-"#,
+",
         )
         .expect("Dijkstra self-loop query should execute successfully")
         .rows;
@@ -103,11 +103,11 @@ fn test_shortest_path_dijkstra_when_multiple_starts_covers_all_targets() {
     let db = DbInstance::default();
     let res = db
         .run_default(
-            r#"
+            r"
 edges[src, dst, cost] <- [[0, 1, 1.0], [2, 3, 1.0]]
 start[] <- [[0], [2]]
 ?[from, to, cost, path] <~ ShortestPathDijkstra(edges[], start[])
-"#,
+",
         )
         .expect("Dijkstra multi-start query should execute successfully")
         .rows;
@@ -124,12 +124,12 @@ fn test_betweenness_centrality_when_path_graph_interior_nodes_are_higher() {
     let db = DbInstance::default();
     let res = db
         .run_default(
-            r#"
+            r"
 edges[src, dst, cost] <- [[0, 1, 1.0], [0, 2, 4.0], [1, 2, 1.0],
                        [1, 3, 5.0], [2, 3, 1.0], [3, 4, 2.0]]
 ?[node, bc] <~ BetweennessCentrality(edges[])
 :order node
-"#,
+",
         )
         .expect("BetweennessCentrality query should execute successfully")
         .rows;
@@ -159,11 +159,11 @@ fn test_betweenness_centrality_when_star_graph_center_is_highest() {
     let db = DbInstance::default();
     let res = db
         .run_default(
-            r#"
+            r"
 edges[src, dst, cost] <- [[0, 1, 1.0], [0, 2, 1.0], [0, 3, 1.0], [0, 4, 1.0]]
 ?[node, bc] <~ BetweennessCentrality(edges[], undirected: true)
 :order -bc
-"#,
+",
         )
         .expect("BetweennessCentrality star query should execute successfully")
         .rows;
@@ -185,10 +185,10 @@ fn test_betweenness_centrality_when_single_edge_returns_zero_betweenness() {
     let db = DbInstance::default();
     let res = db
         .run_default(
-            r#"
+            r"
 edges[src, dst, cost] <- [[0, 1, 1.0]]
 ?[node, bc] <~ BetweennessCentrality(edges[])
-"#,
+",
         )
         .expect("BetweennessCentrality single-edge query should execute successfully")
         .rows;
@@ -216,12 +216,12 @@ fn test_closeness_centrality_when_path_graph_all_scores_non_negative() {
     let db = DbInstance::default();
     let res = db
         .run_default(
-            r#"
+            r"
 edges[src, dst, cost] <- [[0, 1, 1.0], [0, 2, 4.0], [1, 2, 1.0],
                        [1, 3, 5.0], [2, 3, 1.0], [3, 4, 2.0]]
 ?[node, cc] <~ ClosenessCentrality(edges[])
 :order node
-"#,
+",
         )
         .expect("ClosenessCentrality query should execute successfully")
         .rows;
@@ -242,10 +242,10 @@ fn test_closeness_centrality_when_single_edge_returns_non_negative() {
     let db = DbInstance::default();
     let res = db
         .run_default(
-            r#"
+            r"
 edges[src, dst, cost] <- [[0, 1, 1.0]]
 ?[node, cc] <~ ClosenessCentrality(edges[])
-"#,
+",
         )
         .expect("ClosenessCentrality single-edge query should execute successfully")
         .rows;
@@ -268,14 +268,14 @@ fn test_astar_when_zero_heuristic_equals_dijkstra_cost() {
     let db = DbInstance::default();
     let res = db
         .run_default(
-            r#"
+            r"
 edges[src, dst, cost] <- [[0, 1, 1.0], [0, 2, 4.0], [1, 2, 1.0],
                        [1, 3, 5.0], [2, 3, 1.0], [3, 4, 2.0]]
 nodes[n] <- [[0], [1], [2], [3], [4]]
 start[] <- [[0]]
 goal[] <- [[4]]
 ?[from, to, cost, path] <~ ShortestPathAStar(edges[], nodes[n], start[], goal[], heuristic: 0)
-"#,
+",
         )
         .expect("A* query should execute successfully")
         .rows;
@@ -302,13 +302,13 @@ fn test_astar_when_no_path_returns_infinity() {
     let db = DbInstance::default();
     let res = db
         .run_default(
-            r#"
+            r"
 edges[src, dst, cost] <- [[0, 1, 1.0]]
 nodes[n] <- [[0], [1], [2]]
 start[] <- [[0]]
 goal[] <- [[2]]
 ?[from, to, cost, path] <~ ShortestPathAStar(edges[], nodes[n], start[], goal[], heuristic: 0)
-"#,
+",
         )
         .expect("A* no-path query should execute successfully")
         .rows;
@@ -331,13 +331,13 @@ fn test_astar_when_direct_edge_returns_edge_weight() {
     let db = DbInstance::default();
     let res = db
         .run_default(
-            r#"
+            r"
 edges[src, dst, cost] <- [[0, 1, 3.5]]
 nodes[n] <- [[0], [1]]
 start[] <- [[0]]
 goal[] <- [[1]]
 ?[from, to, cost, path] <~ ShortestPathAStar(edges[], nodes[n], start[], goal[], heuristic: 0)
-"#,
+",
         )
         .expect("A* direct-edge query should execute successfully")
         .rows;
@@ -368,12 +368,12 @@ fn test_bfs_when_linear_chain_finds_target_at_depth_4() {
     let db = DbInstance::default();
     let res = db
         .run_default(
-            r#"
+            r"
 edges[src, dst] <- [[0, 1], [1, 2], [2, 3], [3, 4]]
 nodes[n] <- [[0], [1], [2], [3], [4]]
 start[] <- [[0]]
 ?[from, to, path] <~ BFS(edges[], nodes[n], start[], condition: n == 4, limit: 1)
-"#,
+",
         )
         .expect("BFS query should execute successfully")
         .rows;
@@ -396,12 +396,12 @@ fn test_bfs_when_condition_never_true_returns_empty() {
     let db = DbInstance::default();
     let res = db
         .run_default(
-            r#"
+            r"
 edges[src, dst] <- [[0, 1], [1, 2]]
 nodes[n] <- [[0], [1], [2]]
 start[] <- [[0]]
 ?[from, to, path] <~ BFS(edges[], nodes[n], start[], condition: n == 99, limit: 1)
-"#,
+",
         )
         .expect("BFS no-match query should execute successfully")
         .rows;
@@ -415,12 +415,12 @@ fn test_dfs_when_linear_chain_finds_target() {
     let db = DbInstance::default();
     let res = db
         .run_default(
-            r#"
+            r"
 edges[src, dst] <- [[0, 1], [1, 2], [2, 3], [3, 4]]
 nodes[n] <- [[0], [1], [2], [3], [4]]
 start[] <- [[0]]
 ?[from, to, path] <~ DFS(edges[], nodes[n], start[], condition: n == 4, limit: 1)
-"#,
+",
         )
         .expect("DFS query should execute successfully")
         .rows;
@@ -445,12 +445,12 @@ fn test_dfs_when_target_unreachable_returns_empty() {
     let db = DbInstance::default();
     let res = db
         .run_default(
-            r#"
+            r"
 edges[src, dst] <- [[0, 1]]
 nodes[n] <- [[0], [1], [2]]
 start[] <- [[0]]
 ?[from, to, path] <~ DFS(edges[], nodes[n], start[], condition: n == 2, limit: 1)
-"#,
+",
         )
         .expect("DFS unreachable-target query should execute successfully")
         .rows;

@@ -57,7 +57,7 @@ The headless binary accepts all the same CLI flags and API endpoints. The `aleth
 
 ### Shell completions
 
-See [SHELL-COMPLETIONS.md](SHELL-COMPLETIONS.md) for setting up tab-completion in bash, zsh, and fish.
+Run `aletheia completions bash|zsh|fish` to generate shell completions.
 
 ---
 
@@ -455,7 +455,7 @@ aletheia maintenance run all                    # run everything
 
 ## Troubleshooting
 
-See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for common issues and fixes.
+See [RUNBOOK.md](RUNBOOK.md) for operational procedures and troubleshooting.
 
 ---
 

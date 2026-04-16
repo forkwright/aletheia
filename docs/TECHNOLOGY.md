@@ -92,3 +92,18 @@ Lean dependency count. See `Cargo.toml` workspace members and `[workspace.depend
 | **daemon** | koina, taxis, nous, mneme, cron, notify, arc-swap |
 | **melete** | koina, taxis, mneme, hermeneus, nous |
 | **tui** | ratatui, crossterm, reqwest, tokio |
+
+---
+
+## Dependency budget
+
+Target: under 700 external packages in lockfile, under 55 direct deps on the aletheia binary. Run `cargo metadata --format-version 1 | jq '[.packages[] | select(.source != null)] | length'` for the current count.
+
+Before adding a dependency: check if the functionality exists in an existing dep, prefer crates already in the lockfile (zero marginal cost), gate heavy crates behind optional features.
+
+## Build profiling
+
+```bash
+cargo build --release --timings
+# Output: target/cargo-timings/cargo-timing.html
+```

@@ -245,7 +245,7 @@ mod tests {
     #[test]
     fn random_level_distribution_is_non_empty_over_many_samples() {
         let m = 20;
-        let mult = 1. / (m as f64).ln();
+        let mult = 1. / f64::from(m).ln();
         let mut rng = rand::rng();
         let mut collected = BTreeMap::new();
         for _ in 0..10000 {
@@ -261,7 +261,7 @@ mod tests {
     fn hnsw_cache_eviction() {
         let mut cache = VectorCache::new(HnswDistance::L2, 10);
         for i in 0..20u8 {
-            let key = (vec![DataValue::from(i as i64)], 0, -1);
+            let key = (vec![DataValue::from(i64::from(i))], 0, -1);
             let vec = Vector::F64(ndarray::Array1::zeros(4));
             cache.insert(key, vec);
         }
@@ -272,19 +272,19 @@ mod tests {
     fn hnsw_cache_retains_recent() {
         let mut cache = VectorCache::new(HnswDistance::L2, 5);
         for i in 0..10u8 {
-            let key = (vec![DataValue::from(i as i64)], 0, -1);
+            let key = (vec![DataValue::from(i64::from(i))], 0, -1);
             let vec = Vector::F64(ndarray::Array1::zeros(4));
             cache.insert(key, vec);
         }
         for i in 5..10u8 {
-            let key = (vec![DataValue::from(i as i64)], 0, -1);
+            let key = (vec![DataValue::from(i64::from(i))], 0, -1);
             assert!(
                 cache.cache.contains(&key),
                 "recent key {i} should be in cache"
             );
         }
         for i in 0..5u8 {
-            let key = (vec![DataValue::from(i as i64)], 0, -1);
+            let key = (vec![DataValue::from(i64::from(i))], 0, -1);
             assert!(!cache.cache.contains(&key), "old key {i} should be evicted");
         }
     }
@@ -326,7 +326,7 @@ mod tests {
         db.run_default(":create vectors { id: Int => vec: <F32; 4> }")
             .unwrap();
         db.run_default(
-            r#"::hnsw create vectors:idx {
+            r"::hnsw create vectors:idx {
                 dim: 4,
                 m: 16,
                 dtype: F32,
@@ -335,7 +335,7 @@ mod tests {
                 ef_construction: 50,
                 extend_candidates: false,
                 keep_pruned_connections: false,
-            }"#,
+            }",
         )
         .unwrap();
         for i in 0..20 {
@@ -346,7 +346,7 @@ mod tests {
             .unwrap();
         }
         let res = db.run_default(
-            r#"?[id, dist] := ~vectors:idx{id | query: vec([5.0, 5.0, 5.0, 5.0]), k: 3, ef: 50, bind_distance: dist}"#,
+            r"?[id, dist] := ~vectors:idx{id | query: vec([5.0, 5.0, 5.0, 5.0]), k: 3, ef: 50, bind_distance: dist}",
         ).unwrap();
         assert!(!res.rows.is_empty(), "search should return results");
         assert!(res.rows.len() <= 3, "should return at most k=3 results");
@@ -365,7 +365,7 @@ mod tests {
         db.run_default(":create vectors { id: Int => vec: <F32; 4> }")
             .unwrap();
         db.run_default(
-            r#"::hnsw create vectors:idx {
+            r"::hnsw create vectors:idx {
                 dim: 4,
                 m: 16,
                 dtype: F32,
@@ -374,11 +374,11 @@ mod tests {
                 ef_construction: 50,
                 extend_candidates: false,
                 keep_pruned_connections: false,
-            }"#,
+            }",
         )
         .unwrap();
         let res = db.run_default(
-            r#"?[id, dist] := ~vectors:idx{id | query: vec([1.0, 2.0, 3.0, 4.0]), k: 5, ef: 50, bind_distance: dist}"#,
+            r"?[id, dist] := ~vectors:idx{id | query: vec([1.0, 2.0, 3.0, 4.0]), k: 5, ef: 50, bind_distance: dist}",
         ).unwrap();
         assert!(
             res.rows.is_empty(),
@@ -392,7 +392,7 @@ mod tests {
         db.run_default(":create vectors { id: Int => vec: <F32; 4> }")
             .unwrap();
         db.run_default(
-            r#"::hnsw create vectors:idx {
+            r"::hnsw create vectors:idx {
                 dim: 4,
                 m: 16,
                 dtype: F32,
@@ -401,7 +401,7 @@ mod tests {
                 ef_construction: 50,
                 extend_candidates: false,
                 keep_pruned_connections: false,
-            }"#,
+            }",
         )
         .unwrap();
         for i in 0..10 {
@@ -413,7 +413,7 @@ mod tests {
         }
         db.run_default("?[id] <- [[5]] :rm vectors {}").unwrap();
         let res = db.run_default(
-            r#"?[id, dist] := ~vectors:idx{id | query: vec([5.0, 5.0, 5.0, 5.0]), k: 3, ef: 50, bind_distance: dist}"#,
+            r"?[id, dist] := ~vectors:idx{id | query: vec([5.0, 5.0, 5.0, 5.0]), k: 3, ef: 50, bind_distance: dist}",
         ).unwrap();
         #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
         let ids: Vec<i64> = res.rows.iter().filter_map(|r| r[0].get_int()).collect();
@@ -429,7 +429,7 @@ mod tests {
         db.run_default(":create vectors { id: Int => vec: <F32; 4> }")
             .unwrap();
         db.run_default(
-            r#"::hnsw create vectors:idx {
+            r"::hnsw create vectors:idx {
                 dim: 4,
                 m: 16,
                 dtype: F32,
@@ -438,7 +438,7 @@ mod tests {
                 ef_construction: 50,
                 extend_candidates: false,
                 keep_pruned_connections: false,
-            }"#,
+            }",
         )
         .unwrap();
         for i in 0..50 {
@@ -449,7 +449,7 @@ mod tests {
             .unwrap();
         }
         let res = db.run_default(
-            r#"?[id, dist] := ~vectors:idx{id | query: vec([25.0, 0.0, 0.0, 0.0]), k: 10, ef: 50, bind_distance: dist} :order dist"#,
+            r"?[id, dist] := ~vectors:idx{id | query: vec([25.0, 0.0, 0.0, 0.0]), k: 10, ef: 50, bind_distance: dist} :order dist",
         ).unwrap();
         #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
         let distances: Vec<f64> = res.rows.iter().filter_map(|r| r[1].get_float()).collect();

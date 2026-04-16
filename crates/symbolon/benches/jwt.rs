@@ -20,8 +20,8 @@ use symbolon::types::Role;
 fn make_manager() -> JwtManager {
     JwtManager::new(JwtConfig {
         signing_key: SecretString::from("bench-signing-key-with-enough-bytes".to_owned()),
-        access_ttl: Duration::from_secs(3600),
-        refresh_ttl: Duration::from_secs(86400),
+        access_ttl: Duration::from_hours(1),
+        refresh_ttl: Duration::from_hours(24),
         issuer: "bench".to_owned(),
         ..JwtConfig::default()
     })

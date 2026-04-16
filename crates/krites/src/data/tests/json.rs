@@ -27,9 +27,9 @@ fn special_float_json_serialization() {
     let dv_neg_infinity = DataValue::from(f64::NEG_INFINITY);
     let dv_nan = DataValue::from(f64::NAN);
 
-    let jv_infinity = JsonValue::try_from(dv_infinity).expect("non-Bot converts");
-    let jv_neg_infinity = JsonValue::try_from(dv_neg_infinity).expect("non-Bot converts");
-    let jv_nan = JsonValue::try_from(dv_nan).expect("non-Bot converts");
+    let jv_infinity = JsonValue::from(dv_infinity);
+    let jv_neg_infinity = JsonValue::from(dv_neg_infinity);
+    let jv_nan = JsonValue::from(dv_nan);
 
     // JsonValue serializes special floats as string constants
     assert_eq!(

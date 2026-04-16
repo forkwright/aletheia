@@ -684,7 +684,7 @@ mod tests {
     fn strange_case() {
         let db = DbInstance::default();
 
-        let query = r#"
+        let query = r"
             x[A] := A = 1
             y[A, A] := A = 1
             y[A, B] := A = 0, B = 1, x[B]
@@ -692,7 +692,7 @@ mod tests {
             ?[C] := y[A, _], y[C, A]
 
             :disable_magic_rewrite true
-        "#;
+        ";
 
         let res = db
             .run_default(query)

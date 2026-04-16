@@ -499,7 +499,7 @@ mod tests {
 
     #[test]
     fn is_stale_returns_true_for_old_mtime() {
-        let old = std::time::SystemTime::now() - std::time::Duration::from_secs(7_200);
+        let old = std::time::SystemTime::now() - std::time::Duration::from_hours(2);
         assert!(
             is_stale(Some(&old), DEFAULT_STALE_THRESHOLD_SECS),
             "2-hour-old mtime should be stale with 1h threshold"

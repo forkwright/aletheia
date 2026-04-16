@@ -273,7 +273,7 @@ mod tests {
 
         let handle = tokio::spawn(
             async {
-                tokio::time::sleep(std::time::Duration::from_secs(300)).await;
+                tokio::time::sleep(std::time::Duration::from_mins(5)).await;
             }
             .instrument(tracing::info_span!("test_sleep_task")),
         );
@@ -297,7 +297,7 @@ mod tests {
 
         let handle = tokio::spawn(
             async move {
-                tokio::time::sleep(std::time::Duration::from_secs(300)).await;
+                tokio::time::sleep(std::time::Duration::from_mins(5)).await;
                 finished_clone.store(true, std::sync::atomic::Ordering::Relaxed);
             }
             .instrument(tracing::info_span!("test_sleep_task")),
@@ -327,7 +327,7 @@ mod tests {
 
         let handle = tokio::spawn(
             async {
-                tokio::time::sleep(std::time::Duration::from_secs(300)).await;
+                tokio::time::sleep(std::time::Duration::from_mins(5)).await;
             }
             .instrument(tracing::info_span!("test_sleep_task")),
         );

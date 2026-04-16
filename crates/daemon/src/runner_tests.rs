@@ -14,7 +14,7 @@ fn make_echo_task(id: &str) -> TaskDef {
         id: id.to_owned(),
         name: format!("Test task {id}"),
         nous_id: "test-nous".to_owned(),
-        schedule: Schedule::Interval(Duration::from_secs(60)),
+        schedule: Schedule::Interval(Duration::from_mins(1)),
         action: TaskAction::Command("echo hello".to_owned()),
         enabled: true,
         ..TaskDef::default()
@@ -90,7 +90,7 @@ async fn successful_command_resets_failures() {
         id: "echo-task".to_owned(),
         name: "Echo task".to_owned(),
         nous_id: "test-nous".to_owned(),
-        schedule: Schedule::Interval(Duration::from_secs(60)),
+        schedule: Schedule::Interval(Duration::from_mins(1)),
         action: TaskAction::Command("echo ok".to_owned()),
         enabled: true,
         ..TaskDef::default()
@@ -115,7 +115,7 @@ async fn builtin_prosoche_executes() {
         id: "prosoche".to_owned(),
         name: "Prosoche check".to_owned(),
         nous_id: "test-nous".to_owned(),
-        schedule: Schedule::Interval(Duration::from_secs(60)),
+        schedule: Schedule::Interval(Duration::from_mins(1)),
         action: TaskAction::Builtin(BuiltinTask::Prosoche),
         enabled: true,
         catch_up: false,
@@ -296,7 +296,7 @@ async fn disabled_task_not_in_tick() {
         id: "disabled-task".to_owned(),
         name: "Disabled".to_owned(),
         nous_id: "test-nous".to_owned(),
-        schedule: Schedule::Interval(Duration::from_secs(60)),
+        schedule: Schedule::Interval(Duration::from_mins(1)),
         action: TaskAction::Command("echo should-not-run".to_owned()),
         enabled: false,
         ..TaskDef::default()
@@ -467,7 +467,7 @@ async fn hung_task_cancelled_after_2x_timeout() {
         id: "hung-task".to_owned(),
         name: "Hung task".to_owned(),
         nous_id: "test-nous".to_owned(),
-        schedule: Schedule::Interval(Duration::from_secs(60)),
+        schedule: Schedule::Interval(Duration::from_mins(1)),
         action: TaskAction::Command("echo ok".to_owned()),
         timeout: Duration::from_millis(50),
         enabled: true,
@@ -479,7 +479,7 @@ async fn hung_task_cancelled_after_2x_timeout() {
     let handle = tokio::spawn(
         async {
             // kanon:ignore TESTING/sleep-in-test reason = "simulates a hung task; the runner cancels the handle before the sleep elapses"
-            tokio::time::sleep(Duration::from_secs(60)).await;
+            tokio::time::sleep(Duration::from_mins(1)).await;
             Ok(ExecutionResult {
                 success: true,
                 output: None,
@@ -619,7 +619,7 @@ async fn in_flight_reported_in_status() {
     let handle = tokio::spawn(
         async {
             // kanon:ignore TESTING/sleep-in-test reason = "simulates an in-flight task; handle is aborted before sleep elapses"
-            tokio::time::sleep(Duration::from_secs(60)).await;
+            tokio::time::sleep(Duration::from_mins(1)).await;
             Ok(ExecutionResult {
                 success: true,
                 output: None,
@@ -632,7 +632,7 @@ async fn in_flight_reported_in_status() {
         InFlightTask {
             handle,
             started_at: Instant::now(),
-            timeout: Duration::from_secs(300),
+            timeout: Duration::from_mins(5),
             warned: false,
         },
     );
@@ -740,7 +740,7 @@ fn register_task_with_jitter_shifts_next_run() {
         id: "jittered-task".to_owned(),
         name: "Jittered".to_owned(),
         nous_id: "test-nous".to_owned(),
-        schedule: Schedule::Interval(Duration::from_secs(3600)),
+        schedule: Schedule::Interval(Duration::from_hours(1)),
         action: TaskAction::Command("echo hello".to_owned()),
         enabled: true,
         jitter: Some(jiff::SignedDuration::from_secs(600)),
@@ -970,7 +970,7 @@ async fn failing_command_records_consecutive_failures() {
         id: "failing-command".to_owned(),
         name: "Failing command".to_owned(),
         nous_id: "test-nous".to_owned(),
-        schedule: Schedule::Interval(Duration::from_secs(60)),
+        schedule: Schedule::Interval(Duration::from_mins(1)),
         action: TaskAction::Command("exit 42".to_owned()),
         enabled: true,
         ..TaskDef::default()

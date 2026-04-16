@@ -163,7 +163,7 @@ fn test_group_count() {
             DataValue::List(vec![DataValue::from(2.), DataValue::from(1)]),
             DataValue::List(vec![DataValue::from(3.), DataValue::from(3)]),
         ])
-    )
+    );
 }
 
 #[test]
@@ -350,7 +350,7 @@ fn test_variance() {
     assert_eq!(
         variance_aggr.get().expect("test assertion"),
         DataValue::from(0.5)
-    )
+    );
 }
 
 #[test]

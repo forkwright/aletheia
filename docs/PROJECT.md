@@ -24,18 +24,7 @@ See [TECHNOLOGY.md](TECHNOLOGY.md) for technology decisions, dependency policy, 
 
 ## Milestones
 
-| Milestone | Summary | Status |
-|-----------|---------|--------|
-| M0a | Oikos migration: instance structure, tool resolution, config cascade | Done |
-| M0b | Foundation crates: koina errors, taxis config, newtypes, tracing | Done |
-| M1 | Memory + LLM client: Anthropic streaming, embedded Datalog engine, hybrid recall, embeddings | Done |
-| M2 | Agent core: tool registry, nous pipeline, bootstrap assembly, execute stage | Done |
-| M3 | Gateway + auth + channels: pylon HTTP, symbolon JWT, agora Signal, end-to-end wiring | Done |
-| M4 | Multi-nous + background: NousActor, daemon, dianoia planning, cross-nous sessions | Done |
-| M5 | Plugins + portability: WASM plugins, agent export/import, skills pipeline | In progress |
-| M6 | Platform extensions: composable ops, A2A interop, eBPF sensing, NixOS module | Backlog |
-
-See `Cargo.toml` workspace members for current crate inventory.
+Planning and milestones tracked in the [kanon project roadmap](https://github.com/forkwright/kanon/blob/main/projects/aletheia/ROADMAP.md).
 
 ## Interfaces
 

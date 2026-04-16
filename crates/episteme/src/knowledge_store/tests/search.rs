@@ -195,7 +195,7 @@ mod correctness {
     use crate::knowledge::{EmbeddedChunk, ForgetReason};
     use crate::test_fixtures::{make_store, test_ts};
 
-    /// Shorthand: build a fact with a fixed nous_id for correctness tests.
+    /// Shorthand: build a fact with a fixed `nous_id` for correctness tests.
     fn fact(id: &str, content: &str) -> crate::knowledge::Fact {
         crate::test_fixtures::make_fact(id, "test-nous", content)
     }

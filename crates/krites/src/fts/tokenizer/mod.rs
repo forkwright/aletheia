@@ -49,19 +49,16 @@ pub(crate) mod tests {
     pub(crate) fn assert_token(token: &Token, position: usize, text: &str, from: usize, to: usize) {
         assert_eq!(
             token.position, position,
-            "expected position {} but {:?}",
-            position, token
+            "expected position {position} but {token:?}"
         );
-        assert_eq!(token.text, text, "expected text {} but {:?}", text, token);
+        assert_eq!(token.text, text, "expected text {text} but {token:?}");
         assert_eq!(
             token.offset_from, from,
-            "expected offset_from {} but {:?}",
-            from, token
+            "expected offset_from {from} but {token:?}"
         );
         assert_eq!(
             token.offset_to, to,
-            "expected offset_to {} but {:?}",
-            to, token
+            "expected offset_to {to} but {token:?}"
         );
     }
 }

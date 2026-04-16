@@ -116,7 +116,7 @@ async fn cache_clear_empties_entries() {
         .assemble_conditional("test", &mut default_budget(), Vec::new(), TaskHint::General)
         .await
         .expect("assembly should succeed");
-    assert!(cache.len() >= 1, "cache should hold at least SOUL.md");
+    assert!(!cache.is_empty(), "cache should hold at least SOUL.md");
 
     cache.clear();
     assert_eq!(cache.len(), 0, "clear must empty the cache");

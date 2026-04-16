@@ -323,7 +323,7 @@ mod tests {
         let db = DbInstance::default();
         let _res = db
             .run_default(
-                r#"
+                r"
         x[a] <- [[1], [2]]
         w[a] := a in [2]
         w[a] := w[b], a = b + 1, a < 10
@@ -333,7 +333,7 @@ mod tests {
         z[count(a)] := y[b], a = b + 1
         ?[a] := z[a]
         ?[a] := w[a]
-        "#,
+        ",
             )
             .unwrap_or_else(|e| panic!("stratified query test must succeed: {e}"))
             .rows;

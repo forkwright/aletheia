@@ -330,7 +330,7 @@ The default workspace build has no system library dependencies. If you're buildi
 
 - [CONFIGURATION.md](CONFIGURATION.md) -- full config reference (models, auth, TLS, rate limiting, sandboxing)
 - [DEPLOYMENT.md](DEPLOYMENT.md) -- production setup, TLS, headless build
-- [TROUBLESHOOTING.md](TROUBLESHOOTING.md) -- extended issue reference
+- [RUNBOOK.md](RUNBOOK.md) -- operational procedures and troubleshooting
 - [WORKSPACE_FILES.md](WORKSPACE_FILES.md) -- agent workspace files (SOUL.md, GOALS.md, etc.)
 - [ARCHITECTURE.md](ARCHITECTURE.md) -- system architecture and extension points
-- [SHELL-COMPLETIONS.md](SHELL-COMPLETIONS.md) -- tab completion for bash, zsh, fish
+- Shell completions: run `aletheia completions bash|zsh|fish` to generate

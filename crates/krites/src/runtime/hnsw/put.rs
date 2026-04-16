@@ -604,7 +604,7 @@ mod tests {
         db.run_default(":create vectors { id: Int => vec: <F32; 4> }")
             .unwrap();
         db.run_default(
-            r#"::hnsw create vectors:idx {
+            r"::hnsw create vectors:idx {
                 dim: 4,
                 m: 16,
                 dtype: F32,
@@ -613,7 +613,7 @@ mod tests {
                 ef_construction: 50,
                 extend_candidates: false,
                 keep_pruned_connections: false,
-            }"#,
+            }",
         )
         .unwrap();
         db
@@ -683,7 +683,7 @@ mod tests {
             .unwrap();
         let res = db
             .run_default(
-                r#"?[id, dist] := ~vectors:idx{id | query: vec([9.0, 9.0, 9.0, 9.0]), k: 1, ef: 50, bind_distance: dist}"#,
+                r"?[id, dist] := ~vectors:idx{id | query: vec([9.0, 9.0, 9.0, 9.0]), k: 1, ef: 50, bind_distance: dist}",
             )
             .unwrap();
         assert_eq!(res.rows.len(), 1);
@@ -700,7 +700,7 @@ mod tests {
         let db = setup_db();
         let res = db
             .run_default(
-                r#"?[id, dist] := ~vectors:idx{id | query: vec([1.0, 2.0, 3.0, 4.0]), k: 5, ef: 50, bind_distance: dist}"#,
+                r"?[id, dist] := ~vectors:idx{id | query: vec([1.0, 2.0, 3.0, 4.0]), k: 5, ef: 50, bind_distance: dist}",
             )
             .unwrap();
         assert!(res.rows.is_empty(), "empty index must return no results");
@@ -722,7 +722,7 @@ mod tests {
         }
         let res = db
             .run_default(
-                r#"?[id, dist] := ~vectors:idx{id | query: vec([25.0, 0.0, 0.0, 0.0]), k: 5, ef: 50, bind_distance: dist} :order dist"#,
+                r"?[id, dist] := ~vectors:idx{id | query: vec([25.0, 0.0, 0.0, 0.0]), k: 5, ef: 50, bind_distance: dist} :order dist",
             )
             .unwrap();
         assert!(!res.rows.is_empty(), "search should return results");
@@ -739,7 +739,7 @@ mod tests {
         insert_vectors(&db, 30);
         let res = db
             .run_default(
-                r#"?[id, dist] := ~vectors:idx{id | query: vec([15.0, 15.0, 15.0, 15.0]), k: 10, ef: 50, bind_distance: dist} :order dist"#,
+                r"?[id, dist] := ~vectors:idx{id | query: vec([15.0, 15.0, 15.0, 15.0]), k: 10, ef: 50, bind_distance: dist} :order dist",
             )
             .unwrap();
         assert!(
@@ -763,7 +763,7 @@ mod tests {
         insert_vectors(&db, 20);
         let res = db
             .run_default(
-                r#"?[id] := ~vectors:idx{id | query: vec([10.0, 10.0, 10.0, 10.0]), k: 1, ef: 1, bind_distance: _dist}"#,
+                r"?[id] := ~vectors:idx{id | query: vec([10.0, 10.0, 10.0, 10.0]), k: 1, ef: 1, bind_distance: _dist}",
             )
             .unwrap();
         assert!(
@@ -778,7 +778,7 @@ mod tests {
         insert_vectors(&db, 100);
         let res = db
             .run_default(
-                r#"?[id, dist] := ~vectors:idx{id | query: vec([50.0, 50.0, 50.0, 50.0]), k: 5, ef: 50, bind_distance: dist}"#,
+                r"?[id, dist] := ~vectors:idx{id | query: vec([50.0, 50.0, 50.0, 50.0]), k: 5, ef: 50, bind_distance: dist}",
             )
             .unwrap();
         assert!(
@@ -818,7 +818,7 @@ mod tests {
 
         let search = db
             .run_default(
-                r#"?[id] := ~vectors:idx{id | query: vec([5.0, 5.0, 5.0, 5.0]), k: 10, ef: 50, bind_distance: _dist}"#,
+                r"?[id] := ~vectors:idx{id | query: vec([5.0, 5.0, 5.0, 5.0]), k: 10, ef: 50, bind_distance: _dist}",
             )
             .unwrap();
         let ids: Vec<i64> = search.rows.iter().filter_map(|r| r[0].get_int()).collect();
@@ -834,7 +834,7 @@ mod tests {
         insert_vectors(&db, 20);
         db.run_default("::hnsw drop vectors:idx").unwrap();
         db.run_default(
-            r#"::hnsw create vectors:idx {
+            r"::hnsw create vectors:idx {
                 dim: 4,
                 m: 16,
                 dtype: F32,
@@ -843,12 +843,12 @@ mod tests {
                 ef_construction: 50,
                 extend_candidates: false,
                 keep_pruned_connections: false,
-            }"#,
+            }",
         )
         .unwrap();
         let res = db
             .run_default(
-                r#"?[id, dist] := ~vectors:idx{id | query: vec([10.0, 10.0, 10.0, 10.0]), k: 3, ef: 50, bind_distance: dist}"#,
+                r"?[id, dist] := ~vectors:idx{id | query: vec([10.0, 10.0, 10.0, 10.0]), k: 3, ef: 50, bind_distance: dist}",
             )
             .unwrap();
         assert!(

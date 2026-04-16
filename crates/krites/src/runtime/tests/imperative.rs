@@ -112,30 +112,30 @@ fn returning() {
         4,
         "todo returning row should have 4 columns including generated id"
     );
-    for title in res.headers.iter() {
-        print!("{} ", title);
+    for title in &res.headers {
+        print!("{title} ");
     }
     println!();
     for row in res.into_json()["rows"]
         .as_array()
         .expect("returning rows should be a JSON array")
     {
-        println!("{}", row);
+        println!("{row}");
     }
 }
 
 #[test]
 fn parser_corner_case() {
     let db = DbInstance::default();
-    db.run_default(r#"?[x] := x = 1 or x = 2"#)
+    db.run_default(r"?[x] := x = 1 or x = 2")
         .expect("'or' keyword query should parse correctly");
-    db.run_default(r#"?[C] := C = 1  orx[C] := C = 1"#)
+    db.run_default(r"?[C] := C = 1  orx[C] := C = 1")
         .expect("'orx' relation name adjacent to 'or' should parse correctly");
-    db.run_default(r#"?[C] := C = true, C  inx[C] := C = 1"#)
+    db.run_default(r"?[C] := C = true, C  inx[C] := C = 1")
         .expect("'inx' relation name adjacent to 'in' should parse correctly");
-    db.run_default(r#"?[k] := k in int_range(300)"#)
+    db.run_default(r"?[k] := k in int_range(300)")
         .expect("'in' with int_range should parse correctly");
-    db.run_default(r#"ywcc[a] <- [[1]] noto[A] := ywcc[A] ?[A] := noto[A]"#)
+    db.run_default(r"ywcc[a] <- [[1]] noto[A] := ywcc[A] ?[A] := noto[A]")
         .expect("'noto' relation name adjacent to 'not' should parse correctly");
 }
 
@@ -144,10 +144,10 @@ fn as_store_in_imperative_script() {
     let db = DbInstance::default();
     let res = db
         .run_default(
-            r#"
+            r"
     { ?[x, y, z] <- [[1, 2, 3], [4, 5, 6]] } as _store
     { ?[x, y, z] := *_store{x, y, z} }
-    "#,
+    ",
         )
         .expect("as-store in imperative script should succeed");
     assert_eq!(
@@ -157,7 +157,7 @@ fn as_store_in_imperative_script() {
     );
     let res = db
         .run_default(
-            r#"
+            r"
     {
         ?[y] <- [[1], [2], [3]]
         :create a {x default rand_uuid_v1() => y}
@@ -166,7 +166,7 @@ fn as_store_in_imperative_script() {
     {
         ?[x] := *_last{_kind: 'inserted', x}
     }
-    "#,
+    ",
         )
         .expect("as-store with :returning and UUID default should succeed");
     assert_eq!(
@@ -178,15 +178,15 @@ fn as_store_in_imperative_script() {
         .as_array()
         .expect("as-store result rows should be a JSON array")
     {
-        println!("{}", row);
+        println!("{row}");
     }
     assert!(
         db.run_default(
-            r#"
+            r"
     {
         ?[x, x] := x = 1
     } as _last
-    "#
+    "
         )
         .is_err(),
         "duplicate variable in query head should fail"
@@ -194,7 +194,7 @@ fn as_store_in_imperative_script() {
 
     let res = db
         .run_default(
-            r#"
+            r"
     {
         x[y] <- [[1], [2], [3]]
         ?[sum(y)] := x[y]
@@ -202,7 +202,7 @@ fn as_store_in_imperative_script() {
     {
         ?[sum_y] := *_last{sum_y}
     }
-    "#,
+    ",
         )
         .expect("as-store with aggregate should succeed");
     assert_eq!(
@@ -214,7 +214,7 @@ fn as_store_in_imperative_script() {
         .as_array()
         .expect("as-store aggregate result should be a JSON array")
     {
-        println!("{}", row);
+        println!("{row}");
     }
 }
 
@@ -270,7 +270,7 @@ fn update_shall_work() {
 
 #[test]
 fn sysop_in_imperatives() {
-    let script = r#"
+    let script = r"
     {
             :create cm_src {
                 aid: String =>
@@ -326,7 +326,7 @@ fn sysop_in_imperatives() {
             }
         }
         {::relations}
-    "#;
+    ";
     let db = DbInstance::default();
     db.run_default(script)
         .expect("complex sysop-in-imperatives script should succeed");
@@ -470,7 +470,7 @@ fn hnsw_index() {
     )
     .expect("creating beliefs relation should succeed");
     db.run_default(
-        r#"
+        r"
         ::hnsw create beliefs:embedding_space {
             dim: 768,
             m: 50,
@@ -481,14 +481,14 @@ fn hnsw_index() {
             extend_candidates: false,
             keep_pruned_connections: false,
         }
-    "#,
+    ",
     )
     .expect("creating HNSW index on beliefs should succeed");
     db.run_default(r#"
         ?[belief_id, character_id, belief, belief_embedding, details_embedding] <- [[rand_uuid_v1(), rand_uuid_v1(), "test", rand_vec(768), rand_vec(768)]]
         :put beliefs {}
     "#).expect("inserting belief row should succeed");
-    let res = db.run_default(r#"
+    let res = db.run_default(r"
             ?[belief, valence, dist, character_id, vector] := ~beliefs:embedding_space{ belief, valence, character_id |
                 query: rand_vec(768),
                 k: 100,
@@ -500,7 +500,7 @@ fn hnsw_index() {
 
             :order -valence
             :order dist
-    "#).expect("HNSW KNN query on beliefs should succeed");
+    ").expect("HNSW KNN query on beliefs should succeed");
     println!("{}", res.into_json()["rows"][0][4]);
 }
 
@@ -508,23 +508,23 @@ fn hnsw_index() {
 fn fts_drop() {
     let db = DbInstance::default();
     db.run_default(
-        r#"
+        r"
             :create entity {name}
-        "#,
+        ",
     )
     .expect("creating entity relation should succeed");
     db.run_default(
-        r#"
+        r"
         ::fts create entity:fts_index { extractor: name,
             tokenizer: Simple, filters: [Lowercase]
         }
-    "#,
+    ",
     )
     .expect("creating FTS index on entity should succeed");
     db.run_default(
-        r#"
+        r"
         ::fts drop entity:fts_index
-    "#,
+    ",
     )
     .expect("dropping FTS index should succeed");
 }

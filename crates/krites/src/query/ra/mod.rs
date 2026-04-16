@@ -766,10 +766,10 @@ mod tests {
         let db = DbInstance::default();
         let res = db
             .run_default(
-                r#"
+                r"
         data[a, b] <- [[1, 2], [1, 3], [2, 3]]
         ?[x] := a = 3, data[x, a]
-        "#,
+        ",
             )
             .unwrap_or_else(|e| panic!("materialized join test query must succeed: {e}"))
             .rows;

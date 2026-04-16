@@ -195,7 +195,7 @@ fn test_unicode_normalize() {
             .expect("test assertion"),
         DataValue::Str("abc".into()),
         "normalizing pure ASCII under NFC should be a no-op"
-    )
+    );
 }
 
 #[test]
@@ -231,7 +231,7 @@ fn test_sort_reverse() {
             DataValue::from(2.0),
         ]),
         "reverse should reverse the list order"
-    )
+    );
 }
 
 #[test]
@@ -394,7 +394,7 @@ fn test_chunks() {
             ]),
         ]),
         "windows of size 3 from 5 elements should produce 3 overlapping windows"
-    )
+    );
 }
 
 #[test]
@@ -489,7 +489,7 @@ fn test_chars() {
             .expect("test assertion"),
         DataValue::Str("abc".into()),
         "chars then from_substrings should round-trip the string"
-    )
+    );
 }
 
 #[test]
@@ -501,7 +501,7 @@ fn test_encode_decode() {
         .expect("test assertion"),
         DataValue::Bytes([1, 2, 3].into()),
         "base64 encode then decode should round-trip the bytes"
-    )
+    );
 }
 
 #[test]

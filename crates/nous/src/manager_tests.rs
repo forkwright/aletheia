@@ -561,12 +561,12 @@ fn backoff_calculation() {
     );
     assert_eq!(
         super::calculate_backoff(4, max_secs),
-        Duration::from_secs(300),
+        Duration::from_mins(5),
         "attempt 4 should clamp to 300s"
     );
     assert_eq!(
         super::calculate_backoff(10, max_secs),
-        Duration::from_secs(300),
+        Duration::from_mins(5),
         "attempt 10 should clamp to 300s"
     );
 }

@@ -731,9 +731,7 @@ fn test_all_foldings_numbers_and_symbols() {
             assert_eq!(
                 folding_using_raw_tokenizer_helper(c),
                 folded,
-                "testing that character \"{}\" becomes \"{}\"",
-                c,
-                folded
+                "testing that character \"{c}\" becomes \"{folded}\""
             );
         }
     }

@@ -13,7 +13,7 @@ fn temporal_validity_ranges_assert_retract_and_query_correctly() {
     let _ = std::fs::remove_file(path);
     let _ = std::fs::remove_dir_all(path);
     let db_kind = env::var("MNEME_TEST_DB_ENGINE").unwrap_or("mem".to_string());
-    println!("Using {} engine", db_kind);
+    println!("Using {db_kind} engine");
     let db = DbInstance::default();
 
     db.run_default(":create vld {a, v: Validity => d}")
@@ -21,29 +21,29 @@ fn temporal_validity_ranges_assert_retract_and_query_correctly() {
 
     assert!(
         db.run_default(
-            r#"
+            r"
     ?[a, v, d] <- [[1, [9223372036854775807, true], null]]
     :put vld {a, v => d}
-    "#,
+    ",
         )
         .is_err()
     );
 
     assert!(
         db.run_default(
-            r#"
+            r"
     ?[a, v, d] <- [[1, [-9223372036854775808, true], null]]
     :put vld {a, v => d}
-    "#,
+    ",
         )
         .is_err()
     );
 
     db.run_default(
-        r#"
+        r"
     ?[a, v, d] <- [[1, [0, true], 0]]
     :put vld {a, v => d}
-    "#,
+    ",
     )
     .expect("test assertion");
 
@@ -59,19 +59,19 @@ fn temporal_validity_ranges_assert_retract_and_query_correctly() {
 
     let res = db
         .run_default(
-            r#"
+            r"
         ?[a, v, d] := *vld{a, v, d}
-    "#,
+    ",
         )
         .expect("test assertion")
         .rows;
     assert_eq!(res.len(), 1);
 
     db.run_default(
-        r#"
+        r"
     ?[a, v, d] <- [[1, [1, false], 1]]
     :put vld {a, v => d}
-    "#,
+    ",
     )
     .expect("test assertion");
 
@@ -87,9 +87,9 @@ fn temporal_validity_ranges_assert_retract_and_query_correctly() {
 
     let res = db
         .run_default(
-            r#"
+            r"
         ?[a, v, d] := *vld{a, v, d}
-    "#,
+    ",
         )
         .expect("test assertion")
         .rows;
@@ -116,9 +116,9 @@ fn temporal_validity_ranges_assert_retract_and_query_correctly() {
 
     let res = db
         .run_default(
-            r#"
+            r"
         ?[a, v, d] := *vld{a, v, d}
-    "#,
+    ",
         )
         .expect("test assertion")
         .rows;
@@ -144,18 +144,18 @@ fn temporal_validity_ranges_assert_retract_and_query_correctly() {
 
     let res = db
         .run_default(
-            r#"
+            r"
         ?[a, v, d] := *vld{a, v, d}
-    "#,
+    ",
         )
         .expect("test assertion")
         .rows;
     assert_eq!(res.len(), 4);
     db.run_default(
-        r#"
+        r"
     ?[a, v, d] <- [[1, [9223372036854775806, true], null]]
     :put vld {a, v => d}
-    "#,
+    ",
     )
     .expect("test assertion");
 
@@ -182,9 +182,9 @@ fn temporal_validity_ranges_assert_retract_and_query_correctly() {
 
     let res = db
         .run_default(
-            r#"
+            r"
         ?[a, v, d] := *vld{a, v, d}
-    "#,
+    ",
         )
         .expect("test assertion")
         .rows;

@@ -1,0 +1,249 @@
+# Observability reference — metrics, spans, log events by crate
+# Consolidated from per-crate CLAUDE.md Observability sections
+# Update this file when adding metrics/spans to any crate.
+
+# --- hermeneus (LLM client) ---
+
+[[metric]]
+crate = "hermeneus"
+name = "aletheia_llm_tokens_total"
+type = "counter"
+labels = ["provider", "direction"]
+description = "Total tokens consumed (input/output)"
+
+[[metric]]
+crate = "hermeneus"
+name = "aletheia_llm_cost_total"
+type = "counter"
+labels = ["provider"]
+description = "Total cost in USD"
+
+[[metric]]
+crate = "hermeneus"
+name = "aletheia_llm_requests_total"
+type = "counter"
+labels = ["provider", "status"]
+description = "Total API requests (ok/error)"
+
+[[metric]]
+crate = "hermeneus"
+name = "aletheia_llm_request_duration_seconds"
+type = "histogram"
+labels = ["model", "status"]
+description = "Request latency (0.1s-120s buckets)"
+
+[[metric]]
+crate = "hermeneus"
+name = "aletheia_llm_ttft_seconds"
+type = "histogram"
+labels = ["model", "status"]
+description = "Time to first token for streaming"
+
+[[metric]]
+crate = "hermeneus"
+name = "aletheia_llm_circuit_breaker_transitions_total"
+type = "counter"
+labels = ["provider", "from", "to"]
+description = "Circuit breaker state changes"
+
+[[metric]]
+crate = "hermeneus"
+name = "aletheia_llm_concurrency_limit"
+type = "gauge"
+labels = ["provider"]
+description = "Current adaptive concurrency limit"
+
+[[metric]]
+crate = "hermeneus"
+name = "aletheia_llm_concurrency_in_flight"
+type = "gauge"
+labels = ["provider"]
+description = "In-flight request count"
+
+# --- nous (agent runtime) ---
+
+[[metric]]
+crate = "nous"
+name = "aletheia_pipeline_turns_total"
+type = "counter"
+labels = ["nous_id"]
+description = "Total pipeline turns processed"
+
+[[metric]]
+crate = "nous"
+name = "aletheia_pipeline_stage_duration_seconds"
+type = "histogram"
+labels = ["nous_id", "stage"]
+description = "Pipeline stage duration (0.001s-60s buckets)"
+
+[[metric]]
+crate = "nous"
+name = "aletheia_pipeline_errors_total"
+type = "counter"
+labels = ["nous_id", "stage", "error_type"]
+description = "Pipeline errors by stage"
+
+[[metric]]
+crate = "nous"
+name = "aletheia_cache_read_tokens_total"
+type = "counter"
+labels = ["nous_id"]
+description = "Tokens read from prompt cache (hits)"
+
+[[metric]]
+crate = "nous"
+name = "aletheia_cache_creation_tokens_total"
+type = "counter"
+labels = ["nous_id"]
+description = "Tokens written to prompt cache (misses)"
+
+# --- graphe (session store) ---
+
+[[metric]]
+crate = "graphe"
+name = "aletheia_sessions_total"
+type = "counter"
+labels = ["nous_id", "session_type"]
+description = "Sessions created (primary/background/ephemeral)"
+
+[[metric]]
+crate = "graphe"
+name = "aletheia_backup_duration_seconds"
+type = "histogram"
+labels = ["status"]
+description = "Database backup duration (0.1s-300s buckets)"
+
+# --- daemon (background tasks) ---
+
+[[metric]]
+crate = "daemon"
+name = "aletheia_watchdog_restarts_total"
+type = "counter"
+labels = ["process_id"]
+description = "Watchdog-initiated process restarts"
+
+[[metric]]
+crate = "daemon"
+name = "aletheia_cron_executions_total"
+type = "counter"
+labels = ["task_name", "status"]
+description = "Cron task executions (ok/error)"
+
+[[metric]]
+crate = "daemon"
+name = "aletheia_cron_duration_seconds"
+type = "histogram"
+labels = ["task_name"]
+description = "Cron task duration (0.1s-600s buckets)"
+
+# --- episteme (knowledge pipeline) ---
+
+[[metric]]
+crate = "episteme"
+name = "aletheia_knowledge_facts_total"
+type = "counter"
+labels = ["nous_id"]
+description = "Facts inserted into knowledge store"
+
+[[metric]]
+crate = "episteme"
+name = "aletheia_knowledge_extractions_total"
+type = "counter"
+labels = ["nous_id", "status"]
+description = "Knowledge extraction operations (ok/error)"
+
+[[metric]]
+crate = "episteme"
+name = "aletheia_recall_duration_seconds"
+type = "histogram"
+labels = ["nous_id"]
+description = "Knowledge recall latency (0.001s-5s buckets)"
+
+[[metric]]
+crate = "episteme"
+name = "aletheia_embedding_duration_seconds"
+type = "histogram"
+labels = ["provider"]
+description = "Embedding computation latency"
+
+# --- pylon (HTTP gateway) ---
+
+[[metric]]
+crate = "pylon"
+name = "aletheia_http_requests_total"
+type = "counter"
+labels = ["method", "path", "status"]
+description = "Total HTTP requests (path normalized)"
+
+[[metric]]
+crate = "pylon"
+name = "aletheia_http_request_duration_seconds"
+type = "histogram"
+labels = ["method", "path"]
+description = "Request latency (0.005s-10s buckets)"
+
+[[metric]]
+crate = "pylon"
+name = "aletheia_active_sessions"
+type = "gauge"
+description = "Active session count"
+
+[[metric]]
+crate = "pylon"
+name = "aletheia_uptime_seconds"
+type = "gauge"
+description = "Server uptime"
+
+# --- Key spans (across crates) ---
+
+[[span]]
+crate = "nous"
+name = "nous_actor"
+location = "actor/spawn.rs"
+fields = ["nous.id"]
+
+[[span]]
+crate = "nous"
+name = "pipeline::run"
+location = "pipeline/mod.rs"
+fields = ["nous_id", "session_id", "task_hint"]
+
+[[span]]
+crate = "nous"
+name = "execute_turn"
+location = "execute/mod.rs"
+fields = ["nous_id", "session_id"]
+
+[[span]]
+crate = "nous"
+name = "recall"
+location = "recall/mod.rs"
+fields = ["nous_id"]
+
+[[span]]
+crate = "pylon"
+name = "session_send_streaming"
+location = "handlers/sessions/streaming.rs"
+fields = ["agent_id"]
+
+[[span]]
+crate = "episteme"
+name = "RecallEngine::recall"
+location = "recall.rs"
+
+[[span]]
+crate = "episteme"
+name = "ExtractionEngine::extract"
+location = "extract/engine.rs"
+fields = ["msg_count", "turn_type"]
+
+[[span]]
+crate = "graphe"
+name = "SessionStore::open"
+location = "store/mod.rs"
+
+[[span]]
+crate = "graphe"
+name = "BackupManager::backup"
+location = "backup.rs"
+fields = ["backup_dir"]
