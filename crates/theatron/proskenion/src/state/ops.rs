@@ -507,4 +507,228 @@ mod tests {
         assert_eq!(Trend::Down.indicator(), "\u{25bc}");
         assert_eq!(Trend::Stable.indicator(), "\u{2014}");
     }
+
+    #[test]
+    fn trend_colors() {
+        // WHY: Up = error (failures rising = bad), Down = success.
+        assert_eq!(Trend::Up.color(), "var(--status-error)");
+        assert_eq!(Trend::Down.color(), "var(--status-success)");
+        assert_eq!(Trend::Stable.color(), "var(--text-secondary)");
+    }
+
+    #[test]
+    fn health_tier_dot_color() {
+        assert_eq!(HealthTier::Healthy.dot_color(), "var(--status-success)");
+        assert_eq!(HealthTier::Degraded.dot_color(), "var(--status-warning)");
+        assert_eq!(HealthTier::Error.dot_color(), "var(--status-error)");
+    }
+
+    #[test]
+    fn health_tier_label() {
+        assert_eq!(HealthTier::Healthy.label(), "healthy");
+        assert_eq!(HealthTier::Degraded.label(), "degraded");
+        assert_eq!(HealthTier::Error.label(), "error");
+    }
+
+    #[test]
+    fn health_tier_default_healthy() {
+        assert_eq!(HealthTier::default(), HealthTier::Healthy);
+    }
+
+    #[test]
+    fn job_result_dot_color() {
+        assert_eq!(JobResult::Unknown.dot_color(), "var(--text-muted)");
+        assert_eq!(JobResult::Success.dot_color(), "var(--status-success)");
+        assert_eq!(JobResult::Failure.dot_color(), "var(--status-error)");
+    }
+
+    #[test]
+    fn job_result_default_unknown() {
+        assert_eq!(JobResult::default(), JobResult::Unknown);
+    }
+
+    #[test]
+    fn task_status_dot_color() {
+        assert_eq!(TaskStatus::Running.dot_color(), "var(--status-success)");
+        assert_eq!(TaskStatus::Stopped.dot_color(), "var(--text-muted)");
+        assert_eq!(TaskStatus::Failed.dot_color(), "var(--status-error)");
+    }
+
+    #[test]
+    fn task_status_label() {
+        assert_eq!(TaskStatus::Running.label(), "running");
+        assert_eq!(TaskStatus::Stopped.label(), "stopped");
+        assert_eq!(TaskStatus::Failed.label(), "failed");
+    }
+
+    #[test]
+    fn task_status_default_running() {
+        assert_eq!(TaskStatus::default(), TaskStatus::Running);
+    }
+
+    #[test]
+    fn agent_status_store_set_health() {
+        let mut store = AgentStatusStore::new();
+        store.load(vec![sample_card("syn")]);
+        store.set_health(&nid("syn"), HealthTier::Error);
+        assert_eq!(
+            store.cards.get(&nid("syn")).map(|c| c.health),
+            Some(HealthTier::Error)
+        );
+    }
+
+    #[test]
+    fn agent_status_store_set_last_activity() {
+        let mut store = AgentStatusStore::new();
+        store.load(vec![sample_card("syn")]);
+        store.set_last_activity(&nid("syn"), "2024-01-01T00:00:00Z".to_string());
+        assert_eq!(
+            store
+                .cards
+                .get(&nid("syn"))
+                .and_then(|c| c.last_activity.as_deref()),
+            Some("2024-01-01T00:00:00Z"),
+        );
+    }
+
+    #[test]
+    fn agent_status_store_load_replaces_existing() {
+        let mut store = AgentStatusStore::new();
+        store.load(vec![sample_card("a"), sample_card("b")]);
+        store.load(vec![sample_card("c")]);
+        assert_eq!(store.ordered().len(), 1);
+        assert_eq!(store.ordered()[0].name, "c");
+    }
+
+    #[test]
+    fn service_health_store_default_empty() {
+        let s = ServiceHealthStore::new();
+        assert!(s.cron_jobs.is_empty());
+        assert!(s.daemon_tasks.is_empty());
+        assert_eq!(s.failure_count, 0);
+        assert_eq!(s.failure_trend, Trend::Stable);
+    }
+
+    #[test]
+    fn toggle_store_flip_unknown_agent_returns_none() {
+        let mut store = ToggleStore::new();
+        assert_eq!(store.flip_agent(&nid("ghost")), None);
+    }
+
+    #[test]
+    fn toggle_store_flip_tool_optimistic() {
+        let mut store = ToggleStore::new();
+        store.tool_toggles.push(ToolToggle {
+            agent_id: nid("syn"),
+            tool_name: "read".to_string(),
+            enabled: false,
+            pending: false,
+        });
+        let prev = store.flip_tool(&nid("syn"), "read");
+        assert_eq!(prev, Some(false));
+        let t = &store.tool_toggles[0];
+        assert!(t.enabled);
+        assert!(t.pending);
+    }
+
+    #[test]
+    fn toggle_store_flip_tool_unknown_returns_none() {
+        let mut store = ToggleStore::new();
+        assert_eq!(store.flip_tool(&nid("ghost"), "read"), None);
+    }
+
+    #[test]
+    fn toggle_store_resolve_tool_success_keeps_state() {
+        let mut store = ToggleStore::new();
+        store.tool_toggles.push(ToolToggle {
+            agent_id: nid("syn"),
+            tool_name: "read".to_string(),
+            enabled: true,
+            pending: true,
+        });
+        store.resolve_tool(&nid("syn"), "read", true, false);
+        let t = &store.tool_toggles[0];
+        assert!(t.enabled, "success keeps optimistic state");
+        assert!(!t.pending, "pending must be cleared");
+    }
+
+    #[test]
+    fn toggle_store_resolve_tool_failure_rolls_back() {
+        let mut store = ToggleStore::new();
+        store.tool_toggles.push(ToolToggle {
+            agent_id: nid("syn"),
+            tool_name: "read".to_string(),
+            enabled: true,
+            pending: true,
+        });
+        store.resolve_tool(&nid("syn"), "read", false, false);
+        let t = &store.tool_toggles[0];
+        assert!(!t.enabled, "failure restores prev state");
+        assert!(!t.pending);
+    }
+
+    #[test]
+    fn toggle_store_flip_feature_optimistic() {
+        let mut store = ToggleStore::new();
+        store.feature_flags.push(FeatureFlag {
+            key: "experimental".to_string(),
+            description: "Beta features".to_string(),
+            enabled: false,
+            pending: false,
+        });
+        let prev = store.flip_feature("experimental");
+        assert_eq!(prev, Some(false));
+        let f = &store.feature_flags[0];
+        assert!(f.enabled);
+        assert!(f.pending);
+    }
+
+    #[test]
+    fn toggle_store_flip_unknown_feature_returns_none() {
+        let mut store = ToggleStore::new();
+        assert_eq!(store.flip_feature("nope"), None);
+    }
+
+    #[test]
+    fn toggle_store_resolve_feature_failure_rolls_back() {
+        let mut store = ToggleStore::new();
+        store.feature_flags.push(FeatureFlag {
+            key: "k".to_string(),
+            description: String::new(),
+            enabled: true,
+            pending: true,
+        });
+        store.resolve_feature("k", false, false);
+        assert!(!store.feature_flags[0].enabled);
+        assert!(!store.feature_flags[0].pending);
+    }
+
+    #[test]
+    fn toggle_store_resolve_feature_success_keeps_state() {
+        let mut store = ToggleStore::new();
+        store.feature_flags.push(FeatureFlag {
+            key: "k".to_string(),
+            description: String::new(),
+            enabled: true,
+            pending: true,
+        });
+        store.resolve_feature("k", true, false);
+        assert!(store.feature_flags[0].enabled);
+        assert!(!store.feature_flags[0].pending);
+    }
+
+    #[test]
+    fn toggle_store_resolve_unknown_id_no_panic() {
+        let mut store = ToggleStore::new();
+        // Should not panic when id is missing.
+        store.resolve_agent(&nid("ghost"), true, false);
+        store.resolve_tool(&nid("ghost"), "missing", true, false);
+        store.resolve_feature("missing", true, false);
+    }
+
+    #[test]
+    fn toggle_store_tools_for_agent_empty_when_none_match() {
+        let store = ToggleStore::new();
+        assert!(store.tools_for_agent(&nid("syn")).is_empty());
+    }
 }
