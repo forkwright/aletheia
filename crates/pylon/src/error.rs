@@ -289,31 +289,6 @@ impl_from_error!(mneme::error::Error, |err| {
         message: err.to_string(),
     }
     .build(),
-    // WHY: database and storage errors are transient infrastructure failures.
-    // 503 tells clients the server is alive but the store is temporarily
-    // unavailable, so they know to retry.
-    Database { .. }
-    | DatabaseDegraded { .. }
-    | DatabaseCorrupt { .. } => {
-        tracing::error!(error = %err, "mneme storage error");
-        ServiceUnavailableSnafu {
-            message: format!("storage error: {err}"),
-        }
-        .build()
-    }
-    Migration { .. } | ChecksumMismatch { .. } | SchemaTooNew { .. } => {
-        tracing::error!(error = %err, "mneme schema error");
-        InternalSnafu {
-            message: format!("schema error: {err}"),
-        }
-        .build()
-    }
-    UnsupportedVersion { .. } | UnsafePath { .. } | InvalidBackupPath { .. } | BackupPathTraversal { .. } => {
-        BadRequestSnafu {
-            message: err.to_string(),
-        }
-        .build()
-    }
     EngineInit { .. } | EngineQuery { .. } | SchemaVersion { .. } | Conversion { .. } => {
         tracing::error!(error = %err, "mneme engine error");
         InternalSnafu {

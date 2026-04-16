@@ -171,119 +171,26 @@ pub(crate) struct InitArgs {
     pub model: Option<String>,
 }
 
-use mneme::store::SessionStore;
-use taxis::config::resolve_nous;
-use taxis::loader::load_config;
 use taxis::oikos::Oikos;
 
-pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -> Result<()> {
-    let nous_id = &args.nous_id;
-    let oikos = match instance_root {
-        Some(root) => Oikos::from_root(root),
-        None => Oikos::discover(),
-    };
-    let config = load_config(&oikos).whatever_context("failed to load config")?;
-
-    let agent_known = config.agents.list.iter().any(|a| a.id == nous_id.as_str());
-    let workspace_path = oikos.nous_dir(nous_id);
-    if !agent_known && !workspace_path.exists() {
-        whatever!(
-            "agent '{}' not found (no config entry and no workspace at {})",
-            nous_id,
-            workspace_path.display()
-        );
-    }
-
-    let resolved = resolve_nous(&config, nous_id);
-
-    let db_path = oikos.sessions_db();
-    let store = SessionStore::open(&db_path).with_whatever_context(|_| {
-        format!("failed to open session store at {}", db_path.display())
-    })?;
-
-    let workspace_path = oikos.nous_dir(nous_id);
-
-    let agent_config = config
-        .agents
-        .list
-        .iter()
-        .find(|a| a.id == nous_id.as_str())
-        .map_or(serde_json::Value::Null, |a| {
-            serde_json::to_value(a).unwrap_or_else(|e| {
-                tracing::warn!(error = %e, "failed to serialize agent config");
-                serde_json::Value::Null
-            })
-        });
-
-    let opts = mneme::export::ExportOptions {
-        max_messages_per_session: args.max_messages,
-        include_archived: args.archived,
-    };
-    let agent_file = mneme::export::export_agent(
-        nous_id,
-        resolved.name.as_deref(),
-        Some(&resolved.model.primary),
-        agent_config,
-        &store,
-        &workspace_path,
-        &opts,
-    )
-    .whatever_context("export failed")?;
-
-    let output_path = args.output.clone().unwrap_or_else(|| {
-        let date = jiff::Timestamp::now().strftime("%Y-%m-%d").to_string();
-        PathBuf::from(format!("{nous_id}-{date}.agent.json"))
-    });
-
-    if output_path.exists() && !args.force {
-        whatever!(
-            "output file already exists: {}\nUse --force to overwrite.",
-            output_path.display()
-        );
-    }
-
-    let json = if args.compact {
-        serde_json::to_string(&agent_file).whatever_context("failed to serialize agent")?
-    } else {
-        serde_json::to_string_pretty(&agent_file).whatever_context("failed to serialize agent")?
-    };
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "aletheia CLI commands use synchronous filesystem operations for agent export writes"
-    )]
-    std::fs::write(&output_path, &json)
-        .with_whatever_context(|_| format!("failed to write {}", output_path.display()))?;
-    // WHY: restrict agent export to owner-only (0600) — contains session history and workspace data
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&output_path, std::fs::Permissions::from_mode(0o600))
-            .with_whatever_context(|_| {
-                format!("failed to set permissions on {}", output_path.display())
-            })?;
-    }
-
-    println!("Exported to: {}", output_path.display());
-    println!("Size: {} bytes", json.len());
-    println!(
-        "Sessions: {}, Workspace: {} text / {} binary",
-        agent_file.sessions.len(),
-        agent_file.workspace.files.len(),
-        agent_file.workspace.binary_files.len()
+pub(crate) fn export_agent(_instance_root: Option<&PathBuf>, _args: &ExportArgs) -> Result<()> {
+    // WHY: the SQLite export pipeline was removed alongside rusqlite (#3446).
+    // A fjall-backed agent export/import round trip needs to be re-implemented
+    // against the new session store before this subcommand returns.
+    whatever!(
+        "export is temporarily unavailable: the agent-file export pipeline is being reimplemented on the fjall backend (#3446)"
     );
-
-    Ok(())
 }
 
-pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -> Result<()> {
-    let json = std::fs::read_to_string(&args.file)
-        .with_whatever_context(|_| format!("failed to read {}", args.file.display()))?;
-    let agent_file: mneme::portability::AgentFile =
-        serde_json::from_str(&json).whatever_context("failed to parse agent file")?;
-
-    let nous_id = args.target_id.as_deref().unwrap_or(&agent_file.nous.id);
-
+pub(crate) fn import_agent(_instance_root: Option<&PathBuf>, args: &ImportArgs) -> Result<()> {
     if args.dry_run {
+        let json = std::fs::read_to_string(&args.file)
+            .with_whatever_context(|_| format!("failed to read {}", args.file.display()))?;
+        let agent_file: mneme::portability::AgentFile =
+            serde_json::from_str(&json).whatever_context("failed to parse agent file")?;
+
+        let nous_id = args.target_id.as_deref().unwrap_or(&agent_file.nous.id);
+
         println!("Dry run — no changes will be made\n");
         println!(
             "Agent: {} ({})",
@@ -310,42 +217,13 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
         return Ok(());
     }
 
-    let oikos = match instance_root {
-        Some(root) => Oikos::from_root(root),
-        None => Oikos::discover(),
-    };
-
-    let db_path = oikos.sessions_db();
-    if let Some(parent) = db_path.parent() {
-        std::fs::create_dir_all(parent)
-            .with_whatever_context(|_| format!("failed to create data dir {}", parent.display()))?;
-    }
-    let store = SessionStore::open(&db_path).with_whatever_context(|_| {
-        format!("failed to open session store at {}", db_path.display())
-    })?;
-
-    let workspace_path = oikos.nous_dir(nous_id);
-    std::fs::create_dir_all(&workspace_path).with_whatever_context(|_| {
-        format!("failed to create workspace {}", workspace_path.display())
-    })?;
-
-    let opts = mneme::import::ImportOptions {
-        skip_sessions: args.skip_sessions,
-        skip_workspace: args.skip_workspace,
-        target_nous_id: args.target_id.clone(),
-        force: args.force,
-    };
-    let id_gen = || koina::ulid::Ulid::new().to_string();
-    let result = mneme::import::import_agent(&agent_file, &store, &workspace_path, &id_gen, &opts)
-        .whatever_context("import failed")?;
-
-    println!("Imported agent: {}", result.nous_id);
-    println!("Files restored: {}", result.files_restored);
-    println!("Sessions: {}", result.sessions_imported);
-    println!("Messages: {}", result.messages_imported);
-    println!("Notes: {}", result.notes_imported);
-
-    Ok(())
+    // WHY: the SQLite import pipeline was removed alongside rusqlite (#3446).
+    // Dry-run still parses and reports the AgentFile shape; the actual write
+    // path needs to be reimplemented against the fjall backend.
+    whatever!(
+        "import is temporarily unavailable: the agent-file import pipeline is being reimplemented on the fjall backend (#3446). \
+         Use --dry-run to validate the file format."
+    );
 }
 
 #[expect(

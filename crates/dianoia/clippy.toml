@@ -27,6 +27,3 @@ path = "reqwest::Client"
 reason = "dianoia must not perform HTTP calls; use trait-based providers"
 
 # Database access belongs in mneme
-[[disallowed-types]]
-path = "rusqlite::Connection"
-reason = "dianoia must not access SQLite directly; persistence belongs in mneme"

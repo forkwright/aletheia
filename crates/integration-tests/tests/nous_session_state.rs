@@ -1,7 +1,6 @@
 //! Cross-crate tests for nous `SessionState` with mneme store.
 
 #![expect(clippy::expect_used, reason = "test assertions")]
-#![cfg(feature = "sqlite-tests")]
 
 use mneme::store::SessionStore;
 use mneme::types::Role;

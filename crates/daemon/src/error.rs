@@ -55,7 +55,6 @@ pub enum Error {
     },
 
     /// Storage backend error (fjall task-state store).
-    #[cfg(feature = "fjall")]
     #[snafu(display("task-state storage error: {message}"))]
     Storage {
         message: String,
@@ -64,7 +63,6 @@ pub enum Error {
     },
 
     /// JSON serialization/deserialization error within stored task state.
-    #[cfg(feature = "fjall")]
     #[snafu(display("task-state JSON error: {source}"))]
     StoredJson {
         source: serde_json::Error,

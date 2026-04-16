@@ -244,20 +244,9 @@ pub(crate) async fn run(args: Args) -> Result<()> {
 
     runtime.state.nous_manager.drain(shutdown_timeout).await;
 
-    // FIXME(#1723): Flush the SQLite session-store WAL explicitly.
-    match runtime.state.session_store.try_lock() {
-        Ok(store) => {
-            if let Err(e) = store.checkpoint_wal() {
-                warn!(error = %e, "SQLite WAL checkpoint on shutdown failed");
-            } else {
-                info!("SQLite WAL checkpoint complete");
-            }
-        }
-        Err(_) => {
-            warn!("session store lock held at shutdown, WAL checkpoint skipped");
-        }
-    }
-
+    // WHY: fjall's LSM-tree flushes synchronously on write-tx commit and
+    // closes cleanly on Drop — no explicit checkpoint is needed. The SQLite
+    // WAL checkpoint that lived here was removed alongside rusqlite (#3446).
     drop(runtime);
 
     info!("shutdown complete");

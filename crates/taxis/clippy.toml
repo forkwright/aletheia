@@ -27,6 +27,3 @@ path = "reqwest::Client"
 reason = "taxis must not perform HTTP calls; config is file-based"
 
 # Config is not database-backed
-[[disallowed-types]]
-path = "rusqlite::Connection"
-reason = "taxis must not access SQLite; config is file-based"

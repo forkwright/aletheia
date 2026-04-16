@@ -11,8 +11,7 @@ rust-version.workspace = true
 workspace = true
 
 [features]
-default = ["sqlite-tests", "knowledge-store"]
-sqlite-tests = ["mneme/sqlite"]
+default = ["knowledge-store"]
 engine-tests = ["mneme/mneme-engine"]
 knowledge-store = ["nous/knowledge-store", "pylon/knowledge-store"]
 # Test tiers (see docs/test-tiers.md)

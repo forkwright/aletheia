@@ -22,6 +22,3 @@ path = "std::fs::File::open"
 reason = "use tokio::fs::File::open for async or abstract behind a trait for testability"
 
 # TUI is a stateless client; direct DB access would couple it to the backend
-[[disallowed-types]]
-path = "rusqlite::Connection"
-reason = "theatron-tui must not access SQLite; all data flows through the Aletheia HTTP API"

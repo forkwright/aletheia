@@ -36,7 +36,6 @@ Cross-crate integration test suite exercising multi-crate pipelines end-to-end. 
 
 | Feature | Default | Purpose |
 |---------|---------|---------|
-| `sqlite-tests` | yes | Tests requiring SessionStore (SQLite) |
 | `engine-tests` | no | Tests requiring CozoDB Datalog engine |
 | `knowledge-store` | yes | Knowledge store feature propagation to nous/pylon |
 

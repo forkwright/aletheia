@@ -220,31 +220,31 @@ mod knowledge_store_tests {
     use super::*;
 
     /// Helper: create a test fact with the given id string.
-    fn make_fact(id: &str, content: &str) -> aletheia_episteme::knowledge::Fact {
-        aletheia_episteme::knowledge::Fact {
-            id: aletheia_episteme::id::FactId::new(id).expect("valid id"),
+    fn make_fact(id: &str, content: &str) -> episteme::knowledge::Fact {
+        episteme::knowledge::Fact {
+            id: episteme::id::FactId::new(id).expect("valid id"),
             nous_id: "test-nous".to_owned(),
             fact_type: "observation".to_owned(),
             content: content.to_owned(),
             scope: None,
-            temporal: aletheia_episteme::knowledge::FactTemporal {
+            temporal: episteme::knowledge::FactTemporal {
                 valid_from: jiff::Timestamp::now(),
                 valid_to: jiff::Timestamp::from_second(253_402_207_200).expect("far future"),
                 recorded_at: jiff::Timestamp::now(),
             },
-            provenance: aletheia_episteme::knowledge::FactProvenance {
+            provenance: episteme::knowledge::FactProvenance {
                 confidence: 0.9,
-                tier: aletheia_episteme::knowledge::EpistemicTier::Verified,
+                tier: episteme::knowledge::EpistemicTier::Verified,
                 source_session_id: None,
                 stability_hours: 720.0,
             },
-            lifecycle: aletheia_episteme::knowledge::FactLifecycle {
+            lifecycle: episteme::knowledge::FactLifecycle {
                 superseded_by: None,
                 is_forgotten: false,
                 forgotten_at: None,
                 forget_reason: None,
             },
-            access: aletheia_episteme::knowledge::FactAccess {
+            access: episteme::knowledge::FactAccess {
                 access_count: 0,
                 last_accessed_at: None,
             },
@@ -253,14 +253,14 @@ mod knowledge_store_tests {
 
     /// Helper: insert a `fact_entities` row via raw Datalog.
     fn insert_fact_entity_raw(
-        store: &aletheia_episteme::knowledge_store::KnowledgeStore,
+        store: &episteme::knowledge_store::KnowledgeStore,
         fact_id: &str,
         entity_id: &str,
     ) {
-        use aletheia_episteme::engine::DataValue;
+        use episteme::engine::DataValue;
         use std::collections::BTreeMap;
 
-        let now = aletheia_episteme::knowledge::format_timestamp(&jiff::Timestamp::now());
+        let now = episteme::knowledge::format_timestamp(&jiff::Timestamp::now());
         let mut params = BTreeMap::new();
         params.insert("fact_id".to_owned(), DataValue::Str(fact_id.into()));
         params.insert("entity_id".to_owned(), DataValue::Str(entity_id.into()));
@@ -304,8 +304,7 @@ mod knowledge_store_tests {
 
     #[test]
     fn consistency_check_empty_store() {
-        let store =
-            aletheia_episteme::knowledge_store::KnowledgeStore::open_mem().expect("open_mem");
+        let store = episteme::knowledge_store::KnowledgeStore::open_mem().expect("open_mem");
         let checker = MultiPathConsistencyCheck::new(15);
         let items = checker.check(&store).expect("check");
         assert!(items.is_empty(), "empty store should produce no anomalies");
@@ -314,8 +313,7 @@ mod knowledge_store_tests {
     #[test]
     fn consistency_check_orphaned_facts() {
         // Insert facts without entity links — they should be flagged as orphaned.
-        let store =
-            aletheia_episteme::knowledge_store::KnowledgeStore::open_mem().expect("open_mem");
+        let store = episteme::knowledge_store::KnowledgeStore::open_mem().expect("open_mem");
 
         let fact = make_fact("fact-orphan-001", "Rust is a systems programming language");
         store.insert_fact(&fact).expect("insert fact");
@@ -339,14 +337,13 @@ mod knowledge_store_tests {
     #[test]
     fn consistency_check_linked_facts_no_anomaly() {
         // Insert a fact WITH entity links — no anomaly should be flagged.
-        let store =
-            aletheia_episteme::knowledge_store::KnowledgeStore::open_mem().expect("open_mem");
+        let store = episteme::knowledge_store::KnowledgeStore::open_mem().expect("open_mem");
 
         let fact = make_fact("fact-linked-001", "Cody prefers Rust over Go");
         store.insert_fact(&fact).expect("insert fact");
 
-        let entity = aletheia_episteme::knowledge::Entity {
-            id: aletheia_episteme::id::EntityId::new("entity-cody-001").expect("valid"),
+        let entity = episteme::knowledge::Entity {
+            id: episteme::id::EntityId::new("entity-cody-001").expect("valid"),
             name: "Cody".to_owned(),
             entity_type: "person".to_owned(),
             aliases: Vec::new(),
@@ -368,11 +365,10 @@ mod knowledge_store_tests {
     #[test]
     fn consistency_check_dangling_reference() {
         // Insert a fact_entities entry pointing to a non-existent fact.
-        let store =
-            aletheia_episteme::knowledge_store::KnowledgeStore::open_mem().expect("open_mem");
+        let store = episteme::knowledge_store::KnowledgeStore::open_mem().expect("open_mem");
 
-        let entity = aletheia_episteme::knowledge::Entity {
-            id: aletheia_episteme::id::EntityId::new("entity-ghost-001").expect("valid"),
+        let entity = episteme::knowledge::Entity {
+            id: episteme::id::EntityId::new("entity-ghost-001").expect("valid"),
             name: "Ghost".to_owned(),
             entity_type: "concept".to_owned(),
             aliases: Vec::new(),
@@ -402,8 +398,7 @@ mod knowledge_store_tests {
 
     #[tokio::test]
     async fn prosoche_with_knowledge_store_runs_consistency_check() {
-        let store =
-            aletheia_episteme::knowledge_store::KnowledgeStore::open_mem().expect("open_mem");
+        let store = episteme::knowledge_store::KnowledgeStore::open_mem().expect("open_mem");
 
         // Insert an orphaned fact (no entity link).
         let fact = make_fact("fact-prosoche-001", "test content");
