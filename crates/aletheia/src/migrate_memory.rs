@@ -318,7 +318,7 @@ fn import_fact(
             access_count: 0,
             last_accessed_at: None,
         },
-            sensitivity: mneme::knowledge::FactSensitivity::Public,
+        sensitivity: mneme::knowledge::FactSensitivity::Public,
     };
     knowledgedb
         .insert_fact(&fact)

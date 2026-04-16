@@ -55,7 +55,7 @@ fn make_fact(id: &str, nous_id: &str, content: &str, confidence: f64, tier: Epis
             access_count: 0,
             last_accessed_at: None,
         },
-            sensitivity: mneme::knowledge::FactSensitivity::Public,
+        sensitivity: mneme::knowledge::FactSensitivity::Public,
     }
 }
 
@@ -133,7 +133,7 @@ fn fact_round_trip() {
             access_count: 0,
             last_accessed_at: None,
         },
-            sensitivity: mneme::knowledge::FactSensitivity::Public,
+        sensitivity: mneme::knowledge::FactSensitivity::Public,
     };
 
     store.insert_fact(&fact).expect("insert");

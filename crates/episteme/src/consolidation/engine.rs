@@ -305,7 +305,7 @@ impl KnowledgeStore {
                     access_count: 0,
                     last_accessed_at: None,
                 },
-            sensitivity: crate::knowledge::FactSensitivity::Public,
+                sensitivity: crate::knowledge::FactSensitivity::Public,
             };
             self.insert_fact(&fact).map_err(|e| {
                 StoreSnafu {

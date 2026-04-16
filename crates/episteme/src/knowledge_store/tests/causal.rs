@@ -41,7 +41,7 @@ fn make_fact(id: &str, content: &str) -> Fact {
             access_count: 0,
             last_accessed_at: None,
         },
-            sensitivity: crate::knowledge::FactSensitivity::Public,
+        sensitivity: crate::knowledge::FactSensitivity::Public,
         scope: None,
     }
 }

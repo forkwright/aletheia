@@ -24,7 +24,7 @@ fn rank_sorts_by_score_descending() {
                 ..FactorScores::default()
             },
             score: 0.0,
-        sensitivity: crate::knowledge::FactSensitivity::Public,
+            sensitivity: crate::knowledge::FactSensitivity::Public,
         },
         ScoredResult {
             content: "high".to_owned(),
@@ -39,7 +39,7 @@ fn rank_sorts_by_score_descending() {
                 ..FactorScores::default()
             },
             score: 0.0,
-        sensitivity: crate::knowledge::FactSensitivity::Public,
+            sensitivity: crate::knowledge::FactSensitivity::Public,
         },
         ScoredResult {
             content: "mid".to_owned(),
@@ -52,7 +52,7 @@ fn rank_sorts_by_score_descending() {
                 ..FactorScores::default()
             },
             score: 0.0,
-        sensitivity: crate::knowledge::FactSensitivity::Public,
+            sensitivity: crate::knowledge::FactSensitivity::Public,
         },
     ];
 
@@ -221,7 +221,7 @@ fn rank_single_element() {
             ..FactorScores::default()
         },
         score: 0.0,
-    sensitivity: crate::knowledge::FactSensitivity::Public,
+        sensitivity: crate::knowledge::FactSensitivity::Public,
     }];
     let ranked = e.rank(single);
     assert_eq!(
@@ -380,7 +380,7 @@ fn verified_tier_scores_higher_than_inferred_in_ranking() {
                 access_frequency: 0.3,
             },
             score: 0.0,
-        sensitivity: crate::knowledge::FactSensitivity::Public,
+            sensitivity: crate::knowledge::FactSensitivity::Public,
         },
         ScoredResult {
             content: "verified fact".to_owned(),
@@ -396,7 +396,7 @@ fn verified_tier_scores_higher_than_inferred_in_ranking() {
                 access_frequency: 0.3,
             },
             score: 0.0,
-        sensitivity: crate::knowledge::FactSensitivity::Public,
+            sensitivity: crate::knowledge::FactSensitivity::Public,
         },
     ];
 
@@ -475,7 +475,7 @@ fn rank_deterministic() {
                     ..FactorScores::default()
                 },
                 score: 0.0,
-            sensitivity: crate::knowledge::FactSensitivity::Public,
+                sensitivity: crate::knowledge::FactSensitivity::Public,
             },
             ScoredResult {
                 content: "beta".to_owned(),
@@ -488,7 +488,7 @@ fn rank_deterministic() {
                     ..FactorScores::default()
                 },
                 score: 0.0,
-            sensitivity: crate::knowledge::FactSensitivity::Public,
+                sensitivity: crate::knowledge::FactSensitivity::Public,
             },
         ]
     };
