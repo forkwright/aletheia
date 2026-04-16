@@ -56,9 +56,6 @@ pub(crate) mod tests {
             token.offset_from, from,
             "expected offset_from {from} but {token:?}"
         );
-        assert_eq!(
-            token.offset_to, to,
-            "expected offset_to {to} but {token:?}"
-        );
+        assert_eq!(token.offset_to, to, "expected offset_to {to} but {token:?}");
     }
 }
