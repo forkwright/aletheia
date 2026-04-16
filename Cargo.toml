@@ -140,6 +140,7 @@ zeroize = { version = "1", default-features = false, features = ["std"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 tracing-appender = { version = "0.2", default-features = false }
+tracing-test = "0.2"
 
 # Metrics
 prometheus = { version = "0.14", features = ["process"] }

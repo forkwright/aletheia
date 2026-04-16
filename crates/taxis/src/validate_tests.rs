@@ -140,13 +140,78 @@ fn rejects_invalid_auth_mode() {
 
 #[test]
 fn accepts_valid_auth_modes() {
-    for mode in &["none", "token", "jwt"] {
+    for mode in &["token", "jwt"] {
         let section = json!({ "auth": { "mode": mode } });
         assert!(
             validate_section("gateway", &section).is_ok(),
             "mode '{mode}' should be valid"
         );
     }
+}
+
+/// Serialises tests that mutate `ALETHEIA_ALLOW_AUTH_NONE`. Cargo runs tests
+/// within a binary in parallel threads, and `std::env` is process-wide, so
+/// without a mutex the opt-in gate flips under another test's feet.
+static AUTH_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// `auth.mode = "none"` is rejected by default: disabling authentication
+/// must be an explicit opt-in so a config PUT cannot silently remove access
+/// control. (#3383)
+#[test]
+fn auth_mode_none_env_gate() {
+    let _guard = AUTH_ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+    #[expect(
+        unsafe_code,
+        reason = "std::env::{set_var,remove_var} require unsafe in edition 2024; serialised via AUTH_ENV_LOCK"
+    )]
+    // SAFETY: `AUTH_ENV_LOCK` serialises all tests in this module that mutate
+    // ALLOW_AUTH_NONE_ENV; no other test in the crate touches this var.
+    unsafe {
+        std::env::remove_var(crate::validate::ALLOW_AUTH_NONE_ENV);
+    }
+
+    // Without opt-in: reject, and point the operator at the env var.
+    let section = json!({ "auth": { "mode": "none" } });
+    let rejected = validate_section("gateway", &section);
+    assert!(
+        rejected.is_err(),
+        "auth_mode = none must be rejected without env opt-in"
+    );
+    let err = rejected.unwrap_err();
+    assert!(
+        err.errors
+            .iter()
+            .any(|e| e.contains(crate::validate::ALLOW_AUTH_NONE_ENV)),
+        "error should mention the env-var opt-in: {err:?}"
+    );
+
+    // With opt-in: accept.
+    #[expect(
+        unsafe_code,
+        reason = "std::env::set_var requires unsafe in edition 2024; serialised via AUTH_ENV_LOCK"
+    )]
+    // SAFETY: `AUTH_ENV_LOCK` held for the duration of this test.
+    unsafe {
+        std::env::set_var(crate::validate::ALLOW_AUTH_NONE_ENV, "1");
+    }
+    let accepted = validate_section("gateway", &section);
+
+    #[expect(
+        unsafe_code,
+        reason = "std::env::remove_var requires unsafe in edition 2024; serialised via AUTH_ENV_LOCK"
+    )]
+    // SAFETY: Cleanup so later tests see an unset var.
+    unsafe {
+        std::env::remove_var(crate::validate::ALLOW_AUTH_NONE_ENV);
+    }
+
+    assert!(
+        accepted.is_ok(),
+        "auth_mode = none must be accepted with env opt-in: {accepted:?}"
+    );
 }
 
 #[test]
@@ -643,6 +708,41 @@ fn validate_startup_passes_with_complete_layout() {
             .iter()
             .all(|e| !e.contains("required instance directory")),
         "no subdirectory errors should be present when layout is complete: {err:?}"
+    );
+}
+
+// --- Auth-disabled startup warning (#3383) ---
+
+/// When `gateway.auth.mode = "none"`, `warn_if_auth_disabled` must emit a
+/// single `warn!` event prefixed `SECURITY: auth disabled` so operators see
+/// the disabled state in every log aggregator.
+#[test]
+#[tracing_test::traced_test]
+fn warn_if_auth_disabled_emits_security_warning() {
+    let mut config = AletheiaConfig::default();
+    config.gateway.auth.mode = "none".to_owned();
+
+    crate::validate::warn_if_auth_disabled(&config);
+
+    assert!(
+        logs_contain("SECURITY: auth disabled"),
+        "warn should carry the SECURITY prefix so log aggregators surface it"
+    );
+    assert!(
+        logs_contain("WARN"),
+        "warning must be at warn level, not info"
+    );
+}
+
+/// When `gateway.auth.mode != "none"`, no warning is emitted.
+#[test]
+#[tracing_test::traced_test]
+fn warn_if_auth_disabled_silent_when_auth_enabled() {
+    let config = AletheiaConfig::default(); // default: mode = "token"
+    crate::validate::warn_if_auth_disabled(&config);
+    assert!(
+        !logs_contain("SECURITY: auth disabled"),
+        "no warning should fire when auth is enabled"
     );
 }
 

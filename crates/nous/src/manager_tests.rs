@@ -450,6 +450,92 @@ async fn check_health_busy_actor_reports_alive() {
     );
 }
 
+/// `shutdown_all` must honour `shutdown_timeout_secs`: an actor whose task
+/// outlives the timeout is aborted via `JoinHandle::abort` and `shutdown_all`
+/// returns within `timeout + slack`. (#3382)
+#[tokio::test]
+async fn shutdown_all_timeout_aborts_stuck_actor() {
+    let (_dir, oikos) = make_oikos();
+    let mut mgr = make_manager(oikos);
+
+    // Spawn a real actor so the manager sees a normal ActorEntry.
+    mgr.spawn(syn_config(), PipelineConfig::default())
+        .await
+        .expect("spawn");
+
+    // Swap the actor's join handle for a task that sleeps far longer than
+    // the shutdown budget. This simulates an actor blocked on a long-running
+    // turn: its run loop cannot observe the Shutdown message or cancel token
+    // until the sleep returns.
+    let blocking_join: JoinHandle<()> = tokio::spawn(async {
+        // WHY: 1 hour sleep stands in for a stuck turn; if the shutdown
+        // timeout path fails to abort it the test hangs for an hour.
+        tokio::time::sleep(Duration::from_hours(1)).await;
+    });
+    let blocking_abort = blocking_join.abort_handle();
+    {
+        let entry = mgr.actors.get("syn").expect("actor registered");
+        let mut guard = entry
+            .join
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        // Drop the real join handle; we don't need it for this test — the
+        // real actor is still alive, which is fine: it stops when the manager
+        // drops at end of test.
+        if let Some(original) = guard.take() {
+            original.abort();
+        }
+        *guard = Some(blocking_join);
+    }
+
+    let timeout = Duration::from_millis(250);
+    let started = std::time::Instant::now();
+    mgr.shutdown_all_with_timeout(timeout).await;
+    let elapsed = started.elapsed();
+
+    // Hard upper bound: must not take longer than timeout + 2s slack. Task
+    // scheduling + teardown adds a small amount over the raw timeout, but a
+    // failure to abort would leave the test hanging for 3600s.
+    assert!(
+        elapsed < timeout + Duration::from_secs(2),
+        "shutdown_all took {elapsed:?}, expected < {:?}",
+        timeout + Duration::from_secs(2)
+    );
+    // The stuck task must have been aborted.
+    assert!(
+        blocking_abort.is_finished(),
+        "stuck actor task should have been aborted by shutdown timeout"
+    );
+    assert_eq!(
+        mgr.count(),
+        0,
+        "manager should have zero actors after shutdown"
+    );
+}
+
+/// `shutdown_all` with a normal actor (no stuck turn) completes well within
+/// the configured budget and does not abort the task. Regression guard
+/// against the timeout path accidentally aborting healthy shutdowns. (#3382)
+#[tokio::test]
+async fn shutdown_all_completes_cleanly_under_budget() {
+    let (_dir, oikos) = make_oikos();
+    let mut mgr = make_manager(oikos);
+
+    mgr.spawn(syn_config(), PipelineConfig::default())
+        .await
+        .expect("spawn");
+
+    let started = std::time::Instant::now();
+    mgr.shutdown_all_with_timeout(Duration::from_secs(5)).await;
+    let elapsed = started.elapsed();
+
+    assert!(
+        elapsed < Duration::from_secs(5),
+        "healthy shutdown took {elapsed:?}, expected well under 5s budget"
+    );
+    assert_eq!(mgr.count(), 0, "manager should be empty after shutdown");
+}
+
 #[test]
 fn backoff_calculation() {
     let max_secs = taxis::config::NousBehaviorConfig::default().manager_max_restart_backoff_secs;

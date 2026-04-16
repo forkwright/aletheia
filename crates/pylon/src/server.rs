@@ -135,6 +135,11 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
         AletheiaConfig::default()
     });
 
+    // WHY: Emit a loud warning when authentication is disabled so operators
+    // see the consequence in every log aggregator, not just buried in the
+    // gateway config. (#3383)
+    taxis::validate::warn_if_auth_disabled(&aletheia_config);
+
     #[cfg(feature = "knowledge-store")]
     let knowledge_store = nous_manager.knowledge_store().cloned();
 

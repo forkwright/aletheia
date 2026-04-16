@@ -243,16 +243,31 @@ fn validate_agents(value: &Value, errors: &mut Vec<String>) {
 
 const VALID_AUTH_MODES: &[&str] = &["none", "token", "jwt"];
 
+/// Environment variable operators must set to `1` in order to accept a config
+/// write that sets `gateway.auth.mode = "none"`.
+///
+/// WHY: Disabling authentication removes all access control from the HTTP API.
+/// Requiring an explicit opt-in prevents a remote PUT /api/v1/config/gateway
+/// from silently turning off auth. (#3383)
+pub const ALLOW_AUTH_NONE_ENV: &str = "ALETHEIA_ALLOW_AUTH_NONE";
+
 fn validate_gateway(value: &Value, errors: &mut Vec<String>) {
     check_port(value, "port", "port", errors);
 
     if let Some(auth) = value.get("auth")
         && let Some(mode) = auth.get("mode").and_then(Value::as_str)
-        && !VALID_AUTH_MODES.contains(&mode)
     {
-        errors.push(format!(
-            "gateway.auth.mode '{mode}' is invalid; must be one of: none, token, jwt"
-        ));
+        if !VALID_AUTH_MODES.contains(&mode) {
+            errors.push(format!(
+                "gateway.auth.mode '{mode}' is invalid; must be one of: none, token, jwt"
+            ));
+        } else if mode == "none" && !auth_none_opt_in_enabled() {
+            errors.push(format!(
+                "gateway.auth.mode = \"none\" disables all authentication and is \
+                 rejected by default; set the environment variable {ALLOW_AUTH_NONE_ENV}=1 \
+                 on the server process to opt in (intended for local dev only)"
+            ));
+        }
     }
 
     if let Some(cors) = value.get("cors") {
@@ -261,6 +276,33 @@ fn validate_gateway(value: &Value, errors: &mut Vec<String>) {
 
     if let Some(body_limit) = value.get("bodyLimit") {
         check_positive_u64(body_limit, "maxBytes", errors);
+    }
+}
+
+/// Return `true` when the operator has set `ALETHEIA_ALLOW_AUTH_NONE=1`.
+///
+/// This is the single gate that permits writing `auth_mode = "none"` through
+/// the config API. Reading a TOML file at startup with `auth_mode = "none"` is
+/// accepted regardless (operators have filesystem-level control of the file),
+/// but a loud warning is emitted via [`warn_if_auth_disabled`].
+#[must_use]
+pub fn auth_none_opt_in_enabled() -> bool {
+    std::env::var(ALLOW_AUTH_NONE_ENV).is_ok_and(|v| v == "1")
+}
+
+/// Emit a loud startup warning when authentication is disabled.
+///
+/// Called after the initial config load. Emits a single `warn!` event with the
+/// prefix `SECURITY: auth disabled` so operators running with `auth_mode = "none"`
+/// — even intentionally — see the consequence in every log aggregator. (#3383)
+pub fn warn_if_auth_disabled(config: &AletheiaConfig) {
+    if config.gateway.auth.mode == "none" {
+        tracing::warn!(
+            auth_mode = "none",
+            "SECURITY: auth disabled — all endpoints are unauthenticated; \
+             requests are served as role '{}'",
+            config.gateway.auth.none_role,
+        );
     }
 }
 
@@ -507,6 +549,7 @@ fn validate_nous_behavior(value: &Value, errors: &mut Vec<String>) {
     check_range_u64(value, "managerMaxRestartBackoffSecs", 1, 86_400, errors);
     check_range_u64(value, "managerRestartDrainTimeoutSecs", 1, 600, errors);
     check_range_u64(value, "managerRestartDecayWindowSecs", 60, 86_400, errors);
+    check_range_u64(value, "shutdownTimeoutSecs", 1, 3600, errors);
 }
 
 fn validate_knowledge(value: &Value, errors: &mut Vec<String>) {
