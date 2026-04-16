@@ -395,6 +395,7 @@ fn sse_event_message_complete_serializes_correctly() {
             input_tokens: 100,
             output_tokens: 200,
         },
+        request_id: Some("req-456".to_owned()),
     };
     let result = sse_event_to_axum_with_id((3, event)).expect("infallible");
     drop(result);
