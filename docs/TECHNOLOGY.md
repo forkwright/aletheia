@@ -20,7 +20,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for module boundaries, [PROJECT.md](PROJE
 | Memory | Direct (no abstraction) | KnowledgeStore (embedded engine) | ~50 LOC replaces the library |
 | Sessions | rusqlite + bundled | better-sqlite3 | WAL mode, no native addon |
 | Encryption | XChaCha20Poly1305 | None (plaintext) | Planned: per-message encryption at rest. Not yet implemented. |
-| Config | figment + serde + validator | Zod | figment handles oikos cascade natively (TOML + env + CLI, hierarchical merge). By Rocket author. |
+| Config | toml + serde_json + serde | Zod | Owned cascade loader in taxis: deep-merge on serde_json::Value (defaults → TOML → env). ~80 lines, no proc-macro parser combinator overhead. |
 | IDs | ulid + uuid | uuid | ulid for time-sorted data (sessions, messages, memories) - lexicographic sort = natural ordering. uuid v4 for non-temporal. |
 | Errors | snafu + anyhow | AletheiaError hierarchy | snafu for library/mid-level enums (context wrapping, Location-based virtual stack traces, multiple variants from same source type - GreptimeDB pattern). anyhow for application entry. |
 | Logging | tracing + Langfuse | tslog | Spans, layers, OpenTelemetry. Langfuse for LLM-specific traces. |
@@ -80,7 +80,7 @@ Lean dependency count. See `Cargo.toml` workspace members and `[workspace.depend
 | Crate | Key Dependencies |
 |-------|-----------------|
 | **koina** | snafu, tracing, tracing-subscriber |
-| **taxis** | koina, figment, serde, serde_json, snafu, tracing |
+| **taxis** | koina, serde, serde_json, toml, snafu, tracing, chacha20poly1305, base64 |
 | **mneme** | koina, snafu, serde, tracing, ulid, rusqlite (sqlite), candle-core/nn/transformers (embed-candle), jiff, hnsw_rs, fjall |
 | **hermeneus** | koina, taxis, reqwest, serde_json, tokio |
 | **organon** | koina, taxis, hermeneus, tokio, gix, extrasafe, chromiumoxide |

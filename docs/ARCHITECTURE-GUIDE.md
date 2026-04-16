@@ -75,7 +75,7 @@ Crates are organized in layers. Lower layers know nothing about higher layers.
 
 ### Low (depends on koina)
 
-- **taxis**: configuration and paths. Loads the YAML config cascade (figment), resolves the oikos instance directory structure.
+- **taxis**: configuration and paths. Loads the TOML config cascade (owned loader: defaults → TOML → env), resolves the oikos instance directory structure.
 - **hermeneus**: LLM provider abstraction. The Anthropic streaming client lives here. Handles retries, cost tracking, model routing.
 - **symbolon**: authentication: JWT tokens, bearer validation, RBAC. Depends on koina; uses its own SQLite for token storage.
 - **mneme**: memory engine. SQLite session store, embedded Datalog engine for knowledge graphs and vector search, candle for local embeddings, LLM-driven fact extraction.

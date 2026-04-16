@@ -143,23 +143,10 @@ skip = [
     # (See also windows-sys 0.59 skip above — same dep chain.)
     { name = "rustix", version = "=0.38.44" },
 
-    # WHY: toml 0.8 (figment dependency) uses serde_spanned 0.6; toml 1.x uses 1.x.
-    # Same root cause as the toml/toml_datetime skips below.
-    { name = "serde_spanned", version = "=0.6.9" },
-
     # WHY: various transitive deps have not yet migrated to thiserror v2.
     # Blocked until upstream crates release versions using thiserror 2.x.
     { name = "thiserror", version = "=1.0.69" },
     { name = "thiserror-impl", version = "=1.0.69" },
-
-    # WHY: figment 0.10 (config cascade library in taxis) pins toml 0.8.
-    # Workspace and taxis proper use toml 1.x. Blocked until figment uses toml 1.0+.
-    { name = "toml", version = "=0.8.23" },
-    { name = "toml_datetime", version = "=0.6.11" },
-
-    # WHY: toml_edit pins winnow 0.7.
-    # Canonical: winnow 1.0 (toml 1.x). Blocked until toml_edit updates.
-    { name = "winnow", version = "=0.7.15" },
 ]
 
 [sources]

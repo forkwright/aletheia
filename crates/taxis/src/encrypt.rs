@@ -56,10 +56,6 @@ pub fn primary_key_path() -> Option<PathBuf> {
 ///
 /// Returns an error if the file exists but cannot be read or contains
 /// invalid hex data.
-#[expect(
-    clippy::result_large_err,
-    reason = "taxis Error is inherently large due to PathBuf fields"
-)]
 #[must_use]
 #[expect(
     clippy::double_must_use,
@@ -77,10 +73,6 @@ pub fn load_primary_key(path: &Path) -> Result<Option<[u8; KEY_LEN]>> {
     parse_hex_key(hex, path)
 }
 
-#[expect(
-    clippy::result_large_err,
-    reason = "taxis Error is inherently large due to PathBuf fields"
-)]
 fn parse_hex_key(hex: &str, path: &Path) -> Result<Option<[u8; KEY_LEN]>> {
     if hex.len() != KEY_LEN * 2 {
         return Err(error::InvalidPrimaryKeySnafu {
@@ -155,10 +147,6 @@ fn to_hex(bytes: &[u8]) -> String {
 ///
 /// Returns an error if the file already exists, the directory cannot be
 /// created, or the file cannot be written.
-#[expect(
-    clippy::result_large_err,
-    reason = "taxis Error is inherently large due to PathBuf fields"
-)]
 #[must_use]
 #[expect(
     clippy::double_must_use,
@@ -196,10 +184,6 @@ pub(crate) fn is_encrypted(value: &str) -> bool {
 /// # Errors
 ///
 /// Returns an error if encryption fails.
-#[expect(
-    clippy::result_large_err,
-    reason = "taxis Error is inherently large due to PathBuf fields"
-)]
 #[must_use]
 #[expect(
     clippy::double_must_use,
@@ -231,10 +215,6 @@ pub(crate) fn encrypt_value(plaintext: &str, primary_key: &[u8; KEY_LEN]) -> Res
 /// ChaCha20-Poly1305 tag length in bytes.
 const TAG_LEN: usize = 16;
 
-#[expect(
-    clippy::result_large_err,
-    reason = "taxis Error is inherently large due to PathBuf fields"
-)]
 pub(crate) fn decrypt_value(encrypted: &str, primary_key: &[u8; KEY_LEN]) -> Result<String> {
     let encoded = encrypted
         .strip_prefix(ENCRYPTED_PREFIX)
@@ -285,10 +265,6 @@ fn build_decrypt_error(reason: &str) -> error::Error {
 /// # Errors
 ///
 /// Returns an error if the file cannot be read/written or encryption fails.
-#[expect(
-    clippy::result_large_err,
-    reason = "taxis Error is inherently large due to PathBuf fields"
-)]
 #[must_use]
 #[expect(
     clippy::double_must_use,
@@ -380,10 +356,6 @@ pub(crate) fn decrypt_toml_values(value: &mut toml::Value, primary_key: Option<&
 /// # Errors
 ///
 /// Returns an error if any encryption operation fails.
-#[expect(
-    clippy::result_large_err,
-    reason = "taxis Error is inherently large due to PathBuf fields"
-)]
 pub(crate) fn encrypt_sensitive_values(
     value: &mut toml::Value,
     primary_key: &[u8; KEY_LEN],
@@ -393,10 +365,6 @@ pub(crate) fn encrypt_sensitive_values(
     Ok(count)
 }
 
-#[expect(
-    clippy::result_large_err,
-    reason = "taxis Error is inherently large due to PathBuf fields"
-)]
 fn encrypt_recursive(
     value: &mut toml::Value,
     primary_key: &[u8; KEY_LEN],

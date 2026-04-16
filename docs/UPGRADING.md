@@ -44,7 +44,7 @@ cargo build --release
 
 ## Config compatibility
 
-The config system uses figment with `serde(default)` on all structs. New config fields added in newer versions automatically get their compiled defaults; no manual migration needed for minor versions.
+The config system uses an owned TOML loader with `serde(default)` on all structs. New config fields added in newer versions automatically get their compiled defaults; no manual migration needed for minor versions.
 
 Both `snake_case` and `camelCase` field names work via serde's `rename_all = "camelCase"`.
 

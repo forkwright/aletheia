@@ -18,7 +18,7 @@ Shell: [standards/SHELL.md](standards/SHELL.md)
 
 ### Config
 
-- **Rust crates:** `instance.example/config/aletheia.toml` (figment cascade: defaults → TOML → env vars)
+- **Rust crates:** `instance.example/config/aletheia.toml` (TOML cascade: defaults → TOML → env vars)
 
 ## Commands
 
@@ -40,7 +40,7 @@ Test tiers: [docs/test-tiers.md](docs/test-tiers.md)
 - **IDs:** Newtypes for all domain IDs (`AgentId`, `SessionId`, `NousId`)
 - **Time:** `jiff` for time, `ulid` for IDs, `compact_str` for small strings
 - **Async:** Tokio actor model (`NousActor` pattern)
-- **Config:** figment TOML cascade in `taxis`
+- **Config:** TOML cascade in `taxis` (owned loader, no figment)
 - **Lints:** `#[expect(lint, reason = "...")]` over `#[allow]`; every suppression justified
 - **Visibility:** `pub(crate)` by default; `pub` only for cross-crate API surface
 - **Naming:** Greek names per [standards/GNOMON.md](standards/GNOMON.md), registry at [docs/lexicon.md](docs/lexicon.md)

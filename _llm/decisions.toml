@@ -50,8 +50,8 @@ why = "Zero C deps, embedded, WAL"
 
 [[decision]]
 area = "config"
-choice = "figment + serde"
-why = "Oikos cascade: TOML + env + CLI, hierarchical merge"
+choice = "owned toml + serde_json merge + env overlay"
+why = "Oikos cascade: defaults (serde_json::Value) → TOML → env with __ splitting. Cut 6 transitive deps including pear proc-macro combinator; ~80 lines replaced figment's 27-line surface."
 
 [[decision]]
 area = "ids"

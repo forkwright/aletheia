@@ -338,8 +338,8 @@ collection coherent; ordered structure. Aristotle used *taxis* for the organizat
 distinguishes a well-ordered army from a mob. In rhetoric, it refers to the arrangement of
 arguments.
 
-**In this codebase.** The configuration loading and path resolution crate. Implements a
-figment cascade (defaults → TOML → environment variables), resolves the `Oikos` instance
+**In this codebase.** The configuration loading and path resolution crate. Implements an
+owned TOML cascade (defaults → TOML → environment variables), resolves the `Oikos` instance
 directory layout, and exposes `AletheiaConfig` to the rest of the system.
 
 **Crate.** `taxis` (low layer) - config and path resolution.
