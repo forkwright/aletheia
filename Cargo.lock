@@ -4244,6 +4244,7 @@ dependencies = [
  "organon",
  "prometheus",
  "proptest",
+ "regex",
  "rusqlite",
  "serde",
  "serde_json",

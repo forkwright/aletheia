@@ -884,6 +884,63 @@ pub(crate) async fn run_pipeline(
                         episteme::extract::refinement::detect_correction(&input.content);
                     let fact_type = episteme::extract::refinement::classify_fact(&input.content);
 
+                    // Tool outcomes: one entry per tool call with
+                    // success/error classification and timing. Feeds
+                    // the DPO/ORPO reward signal (#3417).
+                    let tool_outcomes = if result.tool_calls.is_empty() {
+                        None
+                    } else {
+                        Some(
+                            result
+                                .tool_calls
+                                .iter()
+                                .map(|tc| crate::training::ToolOutcome {
+                                    name: tc.name.clone(),
+                                    success: !tc.is_error,
+                                    duration_ms: tc.duration_ms,
+                                    // WHY: tool results are free-form
+                                    // strings. Extract a short stable
+                                    // label by taking the first
+                                    // whitespace-separated token (capped
+                                    // at 32 chars) so downstream training
+                                    // jobs can bucket errors without
+                                    // parsing prose. Full result text is
+                                    // never stored here — it would defeat
+                                    // the PII filter's purpose.
+                                    error_kind: if tc.is_error {
+                                        tc.result.as_ref().map(|r| {
+                                            let first = r
+                                                .split_whitespace()
+                                                .next()
+                                                .unwrap_or("error")
+                                                .trim_end_matches(':');
+                                            first.chars().take(32).collect::<String>()
+                                        })
+                                    } else {
+                                        None
+                                    },
+                                })
+                                .collect(),
+                        )
+                    };
+
+                    // Recall signals: project the stage aggregate into
+                    // the training schema (#3418). Per-fact entries are
+                    // left empty because the injected `recall_section`
+                    // is not structured at the pipeline boundary today.
+                    let recall_signals = ctx.recall_result.as_ref().map(|r| {
+                        let candidates_found =
+                            u32::try_from(r.candidates_found).unwrap_or(u32::MAX);
+                        let results_injected =
+                            u32::try_from(r.results_injected).unwrap_or(u32::MAX);
+                        crate::training::RecallSignals {
+                            candidates_found,
+                            results_injected,
+                            tokens_consumed: r.tokens_consumed,
+                            facts: Vec::new(),
+                        }
+                    });
+
                     capture.maybe_capture(crate::training::CaptureInput {
                         session_id: &input.session.id,
                         nous_id: &config.id,
@@ -896,7 +953,8 @@ pub(crate) async fn run_pipeline(
                         turn_type: Some(turn_classification.to_string()),
                         is_correction: Some(correction_signal.is_correction),
                         fact_types: Some(vec![fact_type.to_string()]),
-                        quality_score: None,
+                        tool_outcomes,
+                        recall_signals,
                     });
                 }
                 Err(e) => {

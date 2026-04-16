@@ -21,7 +21,24 @@ fn good_input() -> CaptureInput<'static> {
         turn_type: None,
         is_correction: None,
         fact_types: None,
-        quality_score: None,
+        tool_outcomes: None,
+        recall_signals: None,
+    }
+}
+
+/// Build a default `TrainingConfig` with PII filtering disabled.
+///
+/// WHY disabled: most of these tests use literal strings like "Hello"
+/// that never match any PII pattern, but a few use values that could
+/// trip the redactor. Disabling keeps assertions focused on shard /
+/// manifest behaviour. Dedicated PII tests below exercise the filter
+/// explicitly.
+fn test_config_no_pii(path: &str, max_shard_bytes: u64) -> TrainingConfig {
+    TrainingConfig {
+        enabled: true,
+        path: path.to_owned(),
+        max_shard_bytes,
+        pii_filter_enabled: false,
     }
 }
 
@@ -31,16 +48,13 @@ fn training_config_defaults() {
     assert!(!config.enabled);
     assert_eq!(config.path, "data/training");
     assert_eq!(config.max_shard_bytes, 50 * 1024 * 1024);
+    assert!(config.pii_filter_enabled);
 }
 
 #[test]
 fn training_capture_writes_jsonl() {
     let dir = tempfile::tempdir().expect("tempdir");
-    let config = TrainingConfig {
-        enabled: true,
-        path: "training".to_owned(),
-        max_shard_bytes: 50 * 1024 * 1024,
-    };
+    let config = test_config_no_pii("training", 50 * 1024 * 1024);
     let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
     let record = TrainingRecord {
@@ -56,6 +70,9 @@ fn training_capture_writes_jsonl() {
         is_correction: Some(false),
         fact_types: None,
         quality_score: Some(0.9),
+        tool_outcomes: None,
+        recall_signals: None,
+        pii_redacted: false,
     };
     capture.write_record(&record).expect("write");
 
@@ -77,11 +94,7 @@ fn training_capture_writes_jsonl() {
 #[test]
 fn training_capture_appends() {
     let dir = tempfile::tempdir().expect("tempdir");
-    let config = TrainingConfig {
-        enabled: true,
-        path: "training".to_owned(),
-        max_shard_bytes: 50 * 1024 * 1024,
-    };
+    let config = test_config_no_pii("training", 50 * 1024 * 1024);
     let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
     for i in 0..3 {
@@ -98,6 +111,9 @@ fn training_capture_appends() {
             is_correction: None,
             fact_types: None,
             quality_score: None,
+            tool_outcomes: None,
+            recall_signals: None,
+            pii_redacted: false,
         };
         capture.write_record(&record).expect("write");
     }
@@ -117,12 +133,8 @@ fn training_capture_appends() {
 #[test]
 fn shard_rotation_on_size_limit() {
     let dir = tempfile::tempdir().expect("tempdir");
-    let config = TrainingConfig {
-        enabled: true,
-        path: "training".to_owned(),
-        // Tiny limit to force rotation after ~1 record
-        max_shard_bytes: 100,
-    };
+    // Tiny limit to force rotation after ~1 record
+    let config = test_config_no_pii("training", 100);
     let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
     // Write enough records to trigger rotation
@@ -140,6 +152,9 @@ fn shard_rotation_on_size_limit() {
             is_correction: None,
             fact_types: None,
             quality_score: None,
+            tool_outcomes: None,
+            recall_signals: None,
+            pii_redacted: false,
         };
         capture.write_record(&record).expect("write");
     }
@@ -174,13 +189,21 @@ fn legacy_conversations_jsonl_adopted() {
     // Write a legacy file with 2 records
     let legacy_path = training_dir.join("conversations.jsonl");
     let record_json = r#"{"session_id":"old-1","nous_id":"syn","user_message":"hi","assistant_response":"hello","model":"test","tokens":10,"timestamp":"1970-01-01T00:00:00Z"}"#;
-    fs::write(&legacy_path, format!("{record_json}\n{record_json}\n")).expect("write legacy");
+    {
+        use std::io::Write;
+        // WHY OpenOptions over fs::write: `std::fs::write` is disallowed
+        // by project lint config in favour of explicit create-truncate.
+        let mut f = std::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(&legacy_path)
+            .expect("open legacy");
+        f.write_all(format!("{record_json}\n{record_json}\n").as_bytes())
+            .expect("write legacy");
+    }
 
-    let config = TrainingConfig {
-        enabled: true,
-        path: "training".to_owned(),
-        max_shard_bytes: 50 * 1024 * 1024,
-    };
+    let config = test_config_no_pii("training", 50 * 1024 * 1024);
     let capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
     // Manifest should include the legacy file
@@ -202,11 +225,7 @@ fn legacy_conversations_jsonl_adopted() {
 #[test]
 fn manifest_persisted_atomically() {
     let dir = tempfile::tempdir().expect("tempdir");
-    let config = TrainingConfig {
-        enabled: true,
-        path: "training".to_owned(),
-        max_shard_bytes: 50 * 1024 * 1024,
-    };
+    let config = test_config_no_pii("training", 50 * 1024 * 1024);
     let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
     capture.maybe_capture(good_input());
@@ -226,11 +245,7 @@ fn manifest_persisted_atomically() {
 #[test]
 fn quality_gate_rejects_empty_response() {
     let dir = tempfile::tempdir().expect("tempdir");
-    let config = TrainingConfig {
-        enabled: true,
-        path: "training".to_owned(),
-        max_shard_bytes: 50 * 1024 * 1024,
-    };
+    let config = test_config_no_pii("training", 50 * 1024 * 1024);
     let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
     let captured = capture.maybe_capture(CaptureInput {
@@ -243,11 +258,7 @@ fn quality_gate_rejects_empty_response() {
 #[test]
 fn quality_gate_rejects_whitespace_only_response() {
     let dir = tempfile::tempdir().expect("tempdir");
-    let config = TrainingConfig {
-        enabled: true,
-        path: "training".to_owned(),
-        max_shard_bytes: 50 * 1024 * 1024,
-    };
+    let config = test_config_no_pii("training", 50 * 1024 * 1024);
     let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
     for ws in ["  ", "\n", "\t\n  ", "   \n\n   "] {
@@ -267,11 +278,7 @@ fn quality_gate_rejects_whitespace_only_response() {
 #[test]
 fn quality_gate_rejects_max_tokens_stop_reason() {
     let dir = tempfile::tempdir().expect("tempdir");
-    let config = TrainingConfig {
-        enabled: true,
-        path: "training".to_owned(),
-        max_shard_bytes: 50 * 1024 * 1024,
-    };
+    let config = test_config_no_pii("training", 50 * 1024 * 1024);
     let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
     let captured = capture.maybe_capture(CaptureInput {
@@ -284,11 +291,7 @@ fn quality_gate_rejects_max_tokens_stop_reason() {
 #[test]
 fn quality_gate_rejects_degraded_stop_reason() {
     let dir = tempfile::tempdir().expect("tempdir");
-    let config = TrainingConfig {
-        enabled: true,
-        path: "training".to_owned(),
-        max_shard_bytes: 50 * 1024 * 1024,
-    };
+    let config = test_config_no_pii("training", 50 * 1024 * 1024);
     let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
     let captured = capture.maybe_capture(CaptureInput {
@@ -301,11 +304,7 @@ fn quality_gate_rejects_degraded_stop_reason() {
 #[test]
 fn quality_gate_rejects_unknown_stop_reason() {
     let dir = tempfile::tempdir().expect("tempdir");
-    let config = TrainingConfig {
-        enabled: true,
-        path: "training".to_owned(),
-        max_shard_bytes: 50 * 1024 * 1024,
-    };
+    let config = test_config_no_pii("training", 50 * 1024 * 1024);
     let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
     let captured = capture.maybe_capture(CaptureInput {
@@ -320,11 +319,7 @@ fn quality_gate_rejects_unknown_stop_reason() {
 #[test]
 fn quality_gate_rejects_tool_use_only_turn() {
     let dir = tempfile::tempdir().expect("tempdir");
-    let config = TrainingConfig {
-        enabled: true,
-        path: "training".to_owned(),
-        max_shard_bytes: 50 * 1024 * 1024,
-    };
+    let config = test_config_no_pii("training", 50 * 1024 * 1024);
     let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
     let captured = capture.maybe_capture(CaptureInput {
@@ -342,11 +337,7 @@ fn quality_gate_rejects_tool_use_only_turn() {
 #[test]
 fn quality_gate_accepts_tool_use_with_end_turn() {
     let dir = tempfile::tempdir().expect("tempdir");
-    let config = TrainingConfig {
-        enabled: true,
-        path: "training".to_owned(),
-        max_shard_bytes: 50 * 1024 * 1024,
-    };
+    let config = test_config_no_pii("training", 50 * 1024 * 1024);
     let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
     // Turn that used tools but ended with text (end_turn)
@@ -367,11 +358,7 @@ fn quality_gate_accepts_tool_use_with_end_turn() {
 #[test]
 fn quality_gate_accepts_good_response() {
     let dir = tempfile::tempdir().expect("tempdir");
-    let config = TrainingConfig {
-        enabled: true,
-        path: "training".to_owned(),
-        max_shard_bytes: 50 * 1024 * 1024,
-    };
+    let config = test_config_no_pii("training", 50 * 1024 * 1024);
     let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
     let captured = capture.maybe_capture(good_input());
@@ -384,11 +371,7 @@ fn quality_gate_accepts_good_response() {
 #[test]
 fn quality_gate_accepts_stop_sequence() {
     let dir = tempfile::tempdir().expect("tempdir");
-    let config = TrainingConfig {
-        enabled: true,
-        path: "training".to_owned(),
-        max_shard_bytes: 50 * 1024 * 1024,
-    };
+    let config = test_config_no_pii("training", 50 * 1024 * 1024);
     let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
     let captured = capture.maybe_capture(CaptureInput {
@@ -403,18 +386,13 @@ fn quality_gate_accepts_stop_sequence() {
 #[test]
 fn capture_preserves_episteme_labels() {
     let dir = tempfile::tempdir().expect("tempdir");
-    let config = TrainingConfig {
-        enabled: true,
-        path: "training".to_owned(),
-        max_shard_bytes: 50 * 1024 * 1024,
-    };
+    let config = test_config_no_pii("training", 50 * 1024 * 1024);
     let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
     let captured = capture.maybe_capture(CaptureInput {
         turn_type: Some("correction".to_owned()),
         is_correction: Some(true),
         fact_types: Some(vec!["preference".to_owned(), "identity".to_owned()]),
-        quality_score: Some(0.95),
         ..good_input()
     });
     assert!(captured);
@@ -428,7 +406,189 @@ fn capture_preserves_episteme_labels() {
         parsed.fact_types,
         Some(vec!["preference".to_owned(), "identity".to_owned()])
     );
-    assert_eq!(parsed.quality_score, Some(0.95));
+    // quality_score is now computed; a correction turn supplies a
+    // signal (is_correction) so a score must be present.
+    assert!(parsed.quality_score.is_some());
+}
+
+// -- Quality score computation ------------------------------------------------
+
+#[test]
+fn quality_score_computed_from_tool_success() {
+    let input = CaptureInput {
+        tool_outcomes: Some(vec![
+            ToolOutcome {
+                name: "file_read".to_owned(),
+                success: true,
+                duration_ms: 10,
+                error_kind: None,
+            },
+            ToolOutcome {
+                name: "file_write".to_owned(),
+                success: true,
+                duration_ms: 5,
+                error_kind: None,
+            },
+        ]),
+        ..good_input()
+    };
+    let score = input.compute_quality_score().expect("some score");
+    // All tools succeeded → tool component contributes 0.40. Stop
+    // reason EndTurn contributes 0.10. Substance for "Hi there!"
+    // contributes a small amount (~0.0045 at 9 chars / 400).
+    assert!((0.50..=0.60).contains(&score), "score = {score}");
+}
+
+#[test]
+fn quality_score_penalises_tool_failure() {
+    let success_input = CaptureInput {
+        tool_outcomes: Some(vec![ToolOutcome {
+            name: "shell".to_owned(),
+            success: true,
+            duration_ms: 10,
+            error_kind: None,
+        }]),
+        ..good_input()
+    };
+    let failure_input = CaptureInput {
+        tool_outcomes: Some(vec![ToolOutcome {
+            name: "shell".to_owned(),
+            success: false,
+            duration_ms: 10,
+            error_kind: Some("timeout".to_owned()),
+        }]),
+        ..good_input()
+    };
+    let s = success_input.compute_quality_score().expect("some");
+    let f = failure_input.compute_quality_score().expect("some");
+    assert!(s > f, "success ({s}) should score above failure ({f})");
+}
+
+#[test]
+fn quality_score_none_when_no_signals() {
+    // Trivial text with no signals at all → None.
+    let input = CaptureInput {
+        assistant_response: "ok",
+        ..good_input()
+    };
+    assert!(input.compute_quality_score().is_none());
+}
+
+#[test]
+fn quality_score_rewards_recall_reference() {
+    let base_recall = RecallSignals {
+        candidates_found: 3,
+        results_injected: 2,
+        tokens_consumed: 50,
+        facts: vec![
+            RecalledFact {
+                source_id: "f1".to_owned(),
+                source_type: "fact".to_owned(),
+                score: 0.9,
+                was_referenced: true,
+            },
+            RecalledFact {
+                source_id: "f2".to_owned(),
+                source_type: "fact".to_owned(),
+                score: 0.8,
+                was_referenced: true,
+            },
+        ],
+    };
+    let mut unref = base_recall.clone();
+    for f in &mut unref.facts {
+        f.was_referenced = false;
+    }
+
+    let referenced = CaptureInput {
+        recall_signals: Some(base_recall),
+        ..good_input()
+    };
+    let unreferenced = CaptureInput {
+        recall_signals: Some(unref),
+        ..good_input()
+    };
+    let r = referenced.compute_quality_score().expect("some");
+    let u = unreferenced.compute_quality_score().expect("some");
+    assert!(r > u, "referenced ({r}) should exceed unreferenced ({u})");
+}
+
+// -- PII redaction --------------------------------------------------------
+
+#[test]
+fn pii_filter_redacts_user_message_when_enabled() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let config = TrainingConfig {
+        enabled: true,
+        path: "training".to_owned(),
+        max_shard_bytes: 50 * 1024 * 1024,
+        pii_filter_enabled: true,
+    };
+    let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
+
+    let captured = capture.maybe_capture(CaptureInput {
+        user_message: "my email is leaky@example.com please help",
+        assistant_response: "Sure, I'll help.",
+        ..good_input()
+    });
+    assert!(captured);
+
+    let content = std::fs::read_to_string(capture.file_path()).expect("read");
+    let parsed: TrainingRecord =
+        serde_json::from_str(content.lines().next().expect("line")).expect("parse");
+    assert!(!parsed.user_message.contains("leaky@example.com"));
+    assert!(parsed.user_message.contains("[REDACTED:email]"));
+    assert!(parsed.pii_redacted);
+}
+
+#[test]
+fn pii_filter_preserves_clean_content() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let config = TrainingConfig {
+        enabled: true,
+        path: "training".to_owned(),
+        max_shard_bytes: 50 * 1024 * 1024,
+        pii_filter_enabled: true,
+    };
+    let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
+
+    let captured = capture.maybe_capture(CaptureInput {
+        user_message: "tell me a joke",
+        assistant_response: "Why did the Rust compiler cross the road? To borrow check.",
+        ..good_input()
+    });
+    assert!(captured);
+
+    let content = std::fs::read_to_string(capture.file_path()).expect("read");
+    let parsed: TrainingRecord =
+        serde_json::from_str(content.lines().next().expect("line")).expect("parse");
+    assert!(!parsed.pii_redacted);
+    assert_eq!(parsed.user_message, "tell me a joke");
+}
+
+#[test]
+fn pii_filter_disabled_passes_through() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let config = TrainingConfig {
+        enabled: true,
+        path: "training".to_owned(),
+        max_shard_bytes: 50 * 1024 * 1024,
+        pii_filter_enabled: false,
+    };
+    let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
+
+    let captured = capture.maybe_capture(CaptureInput {
+        user_message: "contact: risky@example.com",
+        ..good_input()
+    });
+    assert!(captured);
+
+    let content = std::fs::read_to_string(capture.file_path()).expect("read");
+    let parsed: TrainingRecord =
+        serde_json::from_str(content.lines().next().expect("line")).expect("parse");
+    // With the filter disabled, content passes through unchanged.
+    assert!(parsed.user_message.contains("risky@example.com"));
+    assert!(!parsed.pii_redacted);
 }
 
 // -- CaptureStopReason parsing ------------------------------------------------
@@ -482,6 +642,9 @@ fn training_record_serde_roundtrip() {
         is_correction: None,
         fact_types: Some(vec!["skill".to_owned()]),
         quality_score: None,
+        tool_outcomes: None,
+        recall_signals: None,
+        pii_redacted: false,
     };
 
     let json = serde_json::to_string(&record).expect("serialize");
