@@ -19,9 +19,9 @@ use std::collections::HashMap;
 
 use matrix_sdk_base::ruma;
 use matrix_sdk_base::ruma::UserId;
+use matrix_sdk_crypto::DeviceData;
 use matrix_sdk_crypto::store::types::Changes;
 use matrix_sdk_crypto::store::{CryptoStore as _, MemoryStore};
-use matrix_sdk_crypto::DeviceData;
 use tracing::warn;
 
 /// Serialisable view of the subset of `CryptoStore` state we mirror to fjall.
@@ -95,8 +95,7 @@ impl Snapshot {
             .iter()
             .filter_map(|(u, &dirty)| ruma::UserId::parse(u).ok().map(|uid| (uid, dirty)))
             .collect();
-        let borrowed: Vec<(&UserId, bool)> =
-            owned.iter().map(|(u, d)| (u.as_ref(), *d)).collect();
+        let borrowed: Vec<(&UserId, bool)> = owned.iter().map(|(u, d)| (u.as_ref(), *d)).collect();
         if let Err(e) = inner.save_tracked_users(&borrowed).await {
             warn!(error = ?e, "save_tracked_users failed during snapshot restore");
         }

@@ -9,15 +9,15 @@
 pub(crate) mod error;
 /// Unified channel listener that merges inbound messages from all providers into a single stream.
 pub mod listener;
+/// Matrix channel provider (feature-gated, issue #3557).
+#[cfg(feature = "matrix")]
+pub mod matrix;
 /// Prometheus metric definitions for channel messaging.
 pub mod metrics;
 /// Channel registry: the single source of truth for available channel providers.
 pub mod registry;
 /// Message routing: resolves inbound messages to the appropriate nous agent.
 pub mod router;
-/// Matrix channel provider (feature-gated, issue #3557).
-#[cfg(feature = "matrix")]
-pub mod matrix;
 /// Signal channel provider backed by the signal-cli JSON-RPC daemon.
 pub mod semeion;
 /// Core types for the channel abstraction layer (capabilities, send/receive, provider trait).

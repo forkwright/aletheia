@@ -43,23 +43,23 @@ use std::sync::Arc;
 // honouring the external trait signature overrides that policy here.
 use async_trait::async_trait; // kanon:ignore RUST/banned-crate:async_trait -- required by matrix_sdk_crypto::store::CryptoStore trait signature
 use fjall::{KeyspaceCreateOptions, Readable as _, SingleWriterTxDatabase};
+use matrix_sdk_base::cross_process_lock::CrossProcessLockGeneration;
+use matrix_sdk_base::ruma::{
+    DeviceId, OwnedDeviceId, RoomId, TransactionId, UserId, events::secret::request::SecretName,
+};
+use matrix_sdk_crypto::olm::OlmMessageHash;
 use matrix_sdk_crypto::store::types::{
     BackupKeys, Changes, DehydratedDeviceKey, PendingChanges, RoomKeyCounts, RoomKeyWithheldEntry,
     RoomSettings, StoredRoomKeyBundleData, TrackedUser,
 };
 use matrix_sdk_crypto::store::{CryptoStore, CryptoStoreError, MemoryStore};
 use matrix_sdk_crypto::{
+    Account, DeviceData, GossipRequest, GossippedSecret, SecretInfo, UserIdentityData,
     olm::{
         InboundGroupSession, OutboundGroupSession, PrivateCrossSigningIdentity, SenderDataType,
         Session,
     },
     vodozemac::Curve25519PublicKey,
-    Account, DeviceData, GossipRequest, GossippedSecret, SecretInfo, UserIdentityData,
-};
-use matrix_sdk_crypto::olm::OlmMessageHash;
-use matrix_sdk_base::cross_process_lock::CrossProcessLockGeneration;
-use matrix_sdk_base::ruma::{
-    events::secret::request::SecretName, DeviceId, OwnedDeviceId, RoomId, TransactionId, UserId,
 };
 use tokio::sync::Mutex;
 use tracing::debug;
@@ -117,13 +117,12 @@ impl FjallCryptoStore {
     /// `MemoryStore::save_changes`, which is an async trait method.
     pub async fn open(path: &Path, agent_id: &str) -> Result<Self> {
         let agent_path = path.join(agent_id);
-        let fdb = koina::fjall::FjallDb::open(&agent_path, &[SNAPSHOT_PARTITION])
-            .map_err(|e| {
-                StoreSnafu {
-                    message: e.to_string(),
-                }
-                .build()
-            })?;
+        let fdb = koina::fjall::FjallDb::open(&agent_path, &[SNAPSHOT_PARTITION]).map_err(|e| {
+            StoreSnafu {
+                message: e.to_string(),
+            }
+            .build()
+        })?;
         let store = Self {
             inner: MemoryStore::new(),
             db: Arc::new(fdb.db),
@@ -138,21 +137,19 @@ impl FjallCryptoStore {
     /// Open an ephemeral in-memory store whose fjall backing lives in a
     /// tempdir that is deleted on drop. Intended for tests.
     pub fn open_temp(agent_id: &str) -> Result<Self> {
-        let dir = tempfile::TempDir::new()
-            .map_err(|source| {
-                StoreSnafu {
-                    message: format!("temp dir: {source}"),
-                }
-                .build()
-            })?;
+        let dir = tempfile::TempDir::new().map_err(|source| {
+            StoreSnafu {
+                message: format!("temp dir: {source}"),
+            }
+            .build()
+        })?;
         let agent_path = dir.path().join(agent_id);
-        let fdb = koina::fjall::FjallDb::open(&agent_path, &[SNAPSHOT_PARTITION])
-            .map_err(|e| {
-                StoreSnafu {
-                    message: e.to_string(),
-                }
-                .build()
-            })?;
+        let fdb = koina::fjall::FjallDb::open(&agent_path, &[SNAPSHOT_PARTITION]).map_err(|e| {
+            StoreSnafu {
+                message: e.to_string(),
+            }
+            .build()
+        })?;
         Ok(Self {
             inner: MemoryStore::new(),
             db: Arc::new(fdb.db),
@@ -178,14 +175,12 @@ impl FjallCryptoStore {
     async fn load_snapshot_from_fjall(&self) -> Result<()> {
         let partition = self.partition(SNAPSHOT_PARTITION)?;
         let snap = self.db.read_tx();
-        let raw = snap
-            .get(&partition, SNAPSHOT_KEY.as_bytes())
-            .map_err(|e| {
-                StoreSnafu {
-                    message: format!("read snapshot: {e}"),
-                }
-                .build()
-            })?;
+        let raw = snap.get(&partition, SNAPSHOT_KEY.as_bytes()).map_err(|e| {
+            StoreSnafu {
+                message: format!("read snapshot: {e}"),
+            }
+            .build()
+        })?;
         let Some(bytes) = raw else {
             debug!("no crypto snapshot on disk yet");
             return Ok(());
@@ -213,13 +208,12 @@ impl FjallCryptoStore {
     async fn persist(&self) -> Result<()> {
         let _persist_guard = self.persist_lock.lock().await;
         let snapshot = Snapshot::capture(&self.inner).await;
-        let bytes = rmp_serde::to_vec(&snapshot)
-            .map_err(|e| {
-                CodecSnafu {
-                    message: format!("encode: {e}"),
-                }
-                .build()
-            })?;
+        let bytes = rmp_serde::to_vec(&snapshot).map_err(|e| {
+            CodecSnafu {
+                message: format!("encode: {e}"),
+            }
+            .build()
+        })?;
         let partition = self.partition(SNAPSHOT_PARTITION)?;
         let _write_guard = self
             .fjall_write_lock
@@ -540,10 +534,7 @@ impl CryptoStore for FjallCryptoStore {
             .map_err(|e| store_err("get_unsent_secrets", e))
     }
 
-    async fn delete_outgoing_secret_requests(
-        &self,
-        request_id: &TransactionId,
-    ) -> Result<()> {
+    async fn delete_outgoing_secret_requests(&self, request_id: &TransactionId) -> Result<()> {
         self.inner
             .delete_outgoing_secret_requests(request_id)
             .await
