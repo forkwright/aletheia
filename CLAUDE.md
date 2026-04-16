@@ -4,6 +4,8 @@ Build the system you'd trust to run without you.
 
 Project conventions for AI coding agents working on this codebase.
 
+See also [AGENTS.md](AGENTS.md) for a cross-tool quick-reference (build commands, crate selection flowchart, common mistakes).
+
 ## Standards
 
 Universal: [standards/STANDARDS.md](standards/STANDARDS.md)
