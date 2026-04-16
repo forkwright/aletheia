@@ -1,8 +1,7 @@
 # WHY: Run the full Rust gate on every PR — format, type check, clippy (zero
 # warnings), and the workspace test suite. These are the commands CLAUDE.md
-# lists under "Before submitting"; until this workflow existed, nothing on CI
-# enforced them. Scoped to ubuntu-latest for now; macOS lives behind issue
-# #3390 and slots in as another matrix entry when unblocked.
+# lists under "Before submitting"; ubuntu and macOS run in parallel via the
+# matrix defined in check-clippy-test.
 name: CI
 
 on:
@@ -42,10 +41,19 @@ jobs:
         run: cargo fmt --all -- --check
 
   check-clippy-test:
-    # WHY: single job on ubuntu runs check, clippy, and test sharing one
-    # target/ cache. Splitting them across jobs would rebuild the workspace
-    # 3× and burn ~30 min of runner time per PR. Structure is a matrix so
-    # macOS (#3390) slots in when unblocked without restructuring.
+    # WHY: single job per OS runs check, clippy, and test sharing one target/
+    # cache. Splitting them across jobs would rebuild the workspace 3× per
+    # matrix entry. ubuntu and macos run in parallel — fail-fast: false so a
+    # macOS failure doesn't cancel the Linux job.
+    #
+    # macOS notes (#3390):
+    # - rusqlite uses the `bundled` feature (statically compiles sqlite3) so
+    #   no libsqlite3-dev system dep is needed.
+    # - landlock + seccompiler are Linux-only deps declared under
+    #   [target.'cfg(target_os = "linux")'.dependencies] in organon/Cargo.toml
+    #   so they are simply absent on macOS — no feature flag needed.
+    # - All sandbox/systemd tests are already gated with
+    #   #[cfg(target_os = "linux")] or #[cfg(unix)] in source.
     name: ${{ matrix.name }} (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
@@ -55,6 +63,9 @@ jobs:
         include:
           - name: check + clippy + test
             os: ubuntu-latest
+            features: test-core
+          - name: check + clippy + test
+            os: macos-latest
             features: test-core
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
