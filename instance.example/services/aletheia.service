@@ -32,6 +32,42 @@ RestartSec=5
 StandardOutput=journal
 StandardError=journal
 
+# Resource limits: the gateway keeps many open connections (SSE streams,
+# outbound HTTP pools, database clients). 65536 file descriptors gives
+# headroom without being unbounded.
+LimitNOFILE=65536
+
+# Memory capping: MemoryHigh starts throttling at 6G; MemoryMax is the
+# OOM kill hard ceiling at 8G. This prevents a runaway actor or leak
+# from starving the rest of the host.
+MemoryHigh=6G
+MemoryMax=8G
+
+# Hardening: mount /usr, /boot and /etc read-only and disallow any
+# writes outside explicitly allowed paths. Aletheia only needs to
+# mutate its storage directory and instance config dir.
+ProtectSystem=strict
+ReadWritePaths=/storage/aletheia /home/ck/aletheia/instance
+
+# Hardening: make /home and /root read-only. The service still needs
+# to read its binary under ~/.local/bin and env file under ~/aletheia.
+ProtectHome=read-only
+
+# Hardening: isolate temporary files so the unit cannot see or affect
+# the global /tmp or /var/tmp.
+PrivateTmp=true
+
+# Hardening: prevent the service or any child from gaining new
+# privileges (setuid, capabilities, etc.).
+NoNewPrivileges=true
+
+# Hardening: block creation of setuid/setgid files.
+RestrictSUIDSGID=true
+
+# Hardening: restrict allowed syscalls to the curated @system-service
+# set. This reduces kernel attack surface for a network-facing service.
+SystemCallFilter=@system-service
+
 [Install]
 WantedBy=default.target
 
