@@ -80,9 +80,14 @@ pub(crate) fn record_session_created(nous_id: &str, session_type: &str) {
 
 /// Record a backup operation duration.
 ///
-/// Only compiled when the `sqlite` feature is enabled — the only call site
-/// (`backup::create_backup`) lives behind that feature gate.
-
+/// Currently unused: the only call site (`backup::create_backup`) was removed
+/// along with rusqlite in #3446. Retained — together with `BACKUP_DURATION_SECONDS`
+/// and its registration — so fjall-based backup work can re-attach to the same
+/// metric name without a schema migration.
+#[expect(
+    dead_code,
+    reason = "reserved for fjall backup work; call site removed in #3446"
+)]
 pub(crate) fn record_backup_duration(duration_secs: f64, success: bool) {
     let status = if success { "ok" } else { "error" };
     BACKUP_DURATION_SECONDS
