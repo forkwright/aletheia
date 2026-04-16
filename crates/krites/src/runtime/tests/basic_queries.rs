@@ -92,16 +92,16 @@ fn when_layered_rules_define_sum_aggregation_combines_correctly() {
     let db = DbInstance::default();
     let res = db
         .run_default(
-            r#"
+            r"
         y[a] := a in [1,2,3]
         x[sum(a)] := y[a]
         x[sum(a)] := a in [4,5,6]
         ?[sum(a)] := x[a]
-        "#,
+        ",
         )
         .expect("layered sum query should succeed")
         .rows;
-    assert_eq!(res[0][0], DataValue::from(21.), "sum of 1..=6 should be 21")
+    assert_eq!(res[0][0], DataValue::from(21.), "sum of 1..=6 should be 21");
 }
 
 #[test]
@@ -109,7 +109,7 @@ fn when_filter_conditions_applied_only_matching_rows_returned() {
     let _ = tracing_subscriber::fmt().with_test_writer().try_init();
     let db = DbInstance::default();
     db.run_default(
-        r#"
+        r"
         {
             ?[code] <- [['a'],['b'],['c']]
             :create airport {code}
@@ -118,16 +118,16 @@ fn when_filter_conditions_applied_only_matching_rows_returned() {
             ?[fr, to, dist] <- [['a', 'b', 1.1], ['a', 'c', 0.5], ['b', 'c', 9.1]]
             :create route {fr, to => dist}
         }
-        "#,
+        ",
     )
     .expect("test setup of airports and routes should succeed");
     debug!("real test begins");
     let res = db
         .run_default(
-            r#"
+            r"
         r[code, dist] := *airport{code}, *route{fr: code, dist};
         ?[dist] := r['a', dist], dist > 0.5, dist <= 1.1;
-        "#,
+        ",
         )
         .expect("filtered route query should succeed")
         .rows;
@@ -135,7 +135,7 @@ fn when_filter_conditions_applied_only_matching_rows_returned() {
         res[0][0],
         DataValue::from(1.1),
         "only route with dist 1.1 should pass the filter"
-    )
+    );
 }
 
 #[test]
@@ -144,13 +144,13 @@ fn when_recursive_grandparent_rule_applied_finds_correct_ancestor() {
     let db = DbInstance::default();
     let res = db
         .run_default(
-            r#"
+            r"
 parent[] <- [['joseph', 'jakob'],
              ['jakob', 'isaac'],
              ['isaac', 'abraham']]
 grandparent[gcld, gp] := parent[gcld, p], parent[p, gp]
 ?[who] := grandparent[who, 'abraham']
-        "#,
+        ",
         )
         .expect("grandparent query should succeed")
         .rows;
@@ -158,7 +158,7 @@ grandparent[gcld, gp] := parent[gcld, p], parent[p, gp]
         res[0][0],
         DataValue::from("jakob"),
         "jakob should be the grandchild of abraham"
-    )
+    );
 }
 
 #[test]
@@ -166,17 +166,17 @@ fn default_columns() {
     let db = DbInstance::default();
 
     db.run_default(
-        r#"
+        r"
             :create status {uid: String, ts default now() => quitted: Bool, mood: String}
-            "#,
+            ",
     )
     .expect("creating status relation with default columns should succeed");
 
     db.run_default(
-        r#"
+        r"
         ?[uid, quitted, mood] <- [['z', true, 'x']]
             :put status {uid => quitted, mood}
-        "#,
+        ",
     )
     .expect("inserting row into status should succeed");
 }
@@ -212,19 +212,19 @@ fn rm_does_not_need_all_keys() {
 fn strict_checks_for_fixed_rules_args() {
     let db = DbInstance::default();
     let res = db.run_default(
-        r#"
+        r"
             r[] <- [[1, 2]]
             ?[] <~ PageRank(r[_, _])
-        "#,
+        ",
     );
     assert!(res.is_ok(), "PageRank with wildcard binding should succeed");
 
     let db = DbInstance::default();
     let res = db.run_default(
-        r#"
+        r"
             r[] <- [[1, 2]]
             ?[] <~ PageRank(r[a, b])
-        "#,
+        ",
     );
     assert!(
         res.is_ok(),
@@ -233,10 +233,10 @@ fn strict_checks_for_fixed_rules_args() {
 
     let db = DbInstance::default();
     let res = db.run_default(
-        r#"
+        r"
             r[] <- [[1, 2]]
             ?[] <~ PageRank(r[a, a])
-        "#,
+        ",
     );
     assert!(
         res.is_err(),
@@ -249,12 +249,12 @@ fn do_not_unify_underscore() {
     let db = DbInstance::default();
     let res = db
         .run_default(
-            r#"
+            r"
         r1[] <- [[1, 'a'], [2, 'b']]
         r2[] <- [[2, 'B'], [3, 'C']]
 
         ?[l1, l2] := r1[_ , l1], r2[_ , l2]
-        "#,
+        ",
         )
         .expect("cross product with underscore binding should succeed")
         .rows;
@@ -265,17 +265,17 @@ fn do_not_unify_underscore() {
     );
 
     let res = db.run_default(
-        r#"
+        r"
         ?[_] := _ = 1
-        "#,
+        ",
     );
     assert!(res.is_err(), "binding underscore in query head should fail");
 
     let res = db
         .run_default(
-            r#"
+            r"
         ?[x] := x = 1, _ = 1, _ = 2
-        "#,
+        ",
         )
         .expect("using underscore in body (not head) should succeed")
         .rows;
@@ -295,12 +295,12 @@ fn returning_relations() {
     let db = DbInstance::default();
     let res = db
         .run_default(
-            r#"
+            r"
         {:create _xxz {a}}
         {?[a] := a in [5,4,1,2,3] :put _xxz {a}}
         {?[a] := *_xxz[a], a % 2 == 0 :rm _xxz {a}}
         {?[a] := *_xxz[b], a = b * 2}
-        "#,
+        ",
         )
         .expect("imperative returning relations script should succeed");
     assert_eq!(
@@ -309,9 +309,9 @@ fn returning_relations() {
         "doubled odd values 1,3,5 should be 2,6,10"
     );
     let res = db.run_default(
-        r#"
+        r"
         {?[a] := *_xxz[b], a = b * 2}
-        "#,
+        ",
     );
     assert!(
         res.is_err(),

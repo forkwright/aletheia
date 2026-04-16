@@ -83,7 +83,7 @@ mod tests {
     fn default_config_disabled() {
         let config = CronEvolutionConfig::default();
         assert!(!config.enabled);
-        assert_eq!(config.interval, Duration::from_secs(24 * 3600));
+        assert_eq!(config.interval, Duration::from_hours(24));
     }
 
     #[tokio::test]

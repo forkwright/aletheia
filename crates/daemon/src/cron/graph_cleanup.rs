@@ -82,7 +82,7 @@ mod tests {
     fn default_config_disabled() {
         let config = CronGraphCleanupConfig::default();
         assert!(!config.enabled);
-        assert_eq!(config.interval, Duration::from_secs(7 * 24 * 3600));
+        assert_eq!(config.interval, Duration::from_hours(168));
     }
 
     #[tokio::test]

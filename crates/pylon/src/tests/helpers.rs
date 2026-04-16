@@ -37,8 +37,8 @@ pub(super) fn test_security_config() -> SecurityConfig {
 pub(super) fn test_jwt_manager() -> Arc<JwtManager> {
     Arc::new(JwtManager::new(JwtConfig {
         signing_key: SecretString::from("test-secret-key-for-jwt".to_owned()),
-        access_ttl: std::time::Duration::from_secs(3600),
-        refresh_ttl: std::time::Duration::from_secs(86400),
+        access_ttl: std::time::Duration::from_hours(1),
+        refresh_ttl: std::time::Duration::from_hours(24),
         issuer: "aletheia-test".to_owned(),
         ..JwtConfig::default()
     }))

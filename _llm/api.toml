@@ -1,0 +1,161 @@
+# CLI and API reference — moved from CLAUDE.md
+# Canonical sources: `aletheia --help`, `GET /api/docs/openapi.json`
+
+[cli]
+note = "Run `aletheia --help` for current flags. Run `aletheia <subcommand> --help` for details."
+
+[[cli.command]]
+name = "(none)"
+description = "Start the server"
+
+[[cli.command]]
+name = "health"
+description = "HTTP health check against a running instance"
+
+[[cli.command]]
+name = "status"
+description = "System status dashboard"
+
+[[cli.command]]
+name = "backup"
+description = "Database backup management (--list, --prune, --export-json)"
+
+[[cli.command]]
+name = "maintenance"
+description = "Show/run maintenance tasks (trace-rotation, drift-detection, db-monitor)"
+
+[[cli.command]]
+name = "tls generate"
+description = "Generate self-signed TLS certificates"
+
+[[cli.command]]
+name = "credential"
+description = "Show credential status or force-refresh OAuth token"
+
+[[cli.command]]
+name = "eval"
+description = "Run behavioral evaluation scenarios"
+
+[[cli.command]]
+name = "session-export"
+description = "Export session as Markdown or JSON"
+
+[[cli.command]]
+name = "export / import"
+description = "Export/import agent as .agent.json"
+
+[[cli.command]]
+name = "tui"
+description = "Launch terminal dashboard (requires tui feature)"
+
+[[cli.command]]
+name = "seed-skills / export-skills / review-skills"
+description = "Skill lifecycle: seed from SKILL.md, export to Claude Code, review auto-extracted"
+
+[[cli.command]]
+name = "migrate-memory"
+description = "Migrate memories from Qdrant into embedded knowledge store"
+
+[[cli.command]]
+name = "add-nous"
+description = "Scaffold a new nous agent directory"
+
+[[cli.command]]
+name = "init"
+description = "Initialize a new instance"
+
+[[cli.command]]
+name = "config"
+description = "init-key, encrypt, check-config"
+
+[[cli.command]]
+name = "memory"
+description = "check, consolidate, sample, dedup, patterns"
+
+[[cli.command]]
+name = "completions"
+description = "Generate shell completions (bash, zsh, fish)"
+
+# ---
+
+[api]
+note = "Full spec at GET /api/docs/openapi.json. Base: http://localhost:18789"
+
+[[api.endpoint]]
+method = "GET"
+path = "/api/health"
+purpose = "Liveness and readiness"
+
+[[api.endpoint]]
+method = "GET"
+path = "/api/docs/openapi.json"
+purpose = "OpenAPI spec"
+
+[[api.endpoint]]
+method = "GET"
+path = "/metrics"
+purpose = "Prometheus metrics"
+
+# Sessions
+[[api.endpoint]]
+method = "GET/POST"
+path = "/api/v1/sessions"
+purpose = "List or create sessions"
+
+[[api.endpoint]]
+method = "POST"
+path = "/api/v1/sessions/{id}/messages"
+purpose = "Send message, SSE stream response"
+
+[[api.endpoint]]
+method = "GET"
+path = "/api/v1/sessions/{id}/history"
+purpose = "Conversation history"
+
+[[api.endpoint]]
+method = "POST"
+path = "/api/v1/sessions/stream"
+purpose = "Stream a turn (TUI webchat protocol)"
+
+[[api.endpoint]]
+method = "GET"
+path = "/api/v1/events"
+purpose = "Global SSE event channel"
+
+# Agents
+[[api.endpoint]]
+method = "GET"
+path = "/api/v1/nous"
+purpose = "List registered agents"
+
+[[api.endpoint]]
+method = "GET"
+path = "/api/v1/nous/{id}"
+purpose = "Agent status and config"
+
+# Config
+[[api.endpoint]]
+method = "GET/PUT"
+path = "/api/v1/config/{section}"
+purpose = "Read or update config section"
+
+# Knowledge
+[[api.endpoint]]
+method = "GET"
+path = "/api/v1/knowledge/facts"
+purpose = "List facts (filterable)"
+
+[[api.endpoint]]
+method = "GET"
+path = "/api/v1/knowledge/search"
+purpose = "Full-text search"
+
+[[api.endpoint]]
+method = "GET"
+path = "/api/v1/knowledge/entities"
+purpose = "List entities and relationships"
+
+[[api.endpoint]]
+method = "GET"
+path = "/api/v1/knowledge/timeline"
+purpose = "Fact activity timeline"

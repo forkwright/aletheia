@@ -1,0 +1,115 @@
+# Technology decisions — compressed from docs/TECHNOLOGY.md
+# Canonical source: docs/TECHNOLOGY.md
+
+[[decision]]
+area = "language"
+choice = "Rust"
+replaces = "TypeScript + Python"
+why = "No GC, single binary, true concurrency"
+
+[[decision]]
+area = "async"
+choice = "Tokio"
+replaces = "Node.js event loop"
+why = "Real threads, Axum built on it"
+
+[[decision]]
+area = "http-server"
+choice = "Axum"
+replaces = "Hono"
+why = "SSE built-in, cleaner middleware"
+
+[[decision]]
+area = "http-client"
+choice = "reqwest"
+why = "Async, connection pooling, rustls"
+
+[[decision]]
+area = "llm-client"
+choice = "Own client (~600 LOC)"
+replaces = "@anthropic-ai/sdk"
+why = "Stable API, reqwest + SSE, adaptive thinking"
+
+[[decision]]
+area = "knowledge-store"
+choice = "Embedded Datalog+HNSW (krites)"
+replaces = "Qdrant + Neo4j"
+why = "Rust-native, zero external services, vectors + graph + relations in one engine"
+
+[[decision]]
+area = "embeddings"
+choice = "candle (pure Rust)"
+replaces = "fastembed-rs (ONNX)"
+why = "No C++ deps. Feature-gated embed-candle"
+
+[[decision]]
+area = "sessions"
+choice = "fjall (pure Rust LSM)"
+replaces = "SQLite"
+why = "Zero C deps, embedded, WAL"
+
+[[decision]]
+area = "config"
+choice = "figment + serde"
+why = "Oikos cascade: TOML + env + CLI, hierarchical merge"
+
+[[decision]]
+area = "ids"
+choice = "ulid + uuid v4 (owned)"
+why = "ulid for time-sorted, uuid v4 for non-temporal"
+
+[[decision]]
+area = "errors"
+choice = "snafu"
+replaces = "thiserror"
+why = "Location-based stack traces, context wrapping, multiple variants from same source"
+
+[[decision]]
+area = "logging"
+choice = "tracing"
+why = "Structured spans, layers, OpenTelemetry compatible"
+
+[[decision]]
+area = "hashing"
+choice = "blake3 + foldhash"
+why = "blake3 for content (dedup), foldhash for HashMap keys"
+
+[[decision]]
+area = "hot-reload"
+choice = "arc-swap + notify"
+why = "Zero-downtime config swap, file watching"
+
+[[decision]]
+area = "concurrent-maps"
+choice = "papaya"
+replaces = "DashMap"
+why = "Lock-free, better scaling under contention"
+
+[[decision]]
+area = "seccomp"
+choice = "extrasafe"
+why = "Declarative syscall filtering for sandboxed tools"
+
+[[decision]]
+area = "plugins"
+choice = "WASM (wasmtime)"
+replaces = "Dynamic JS import()"
+why = "Sandboxed, portable, any-language"
+
+[[decision]]
+area = "tui"
+choice = "ratatui + crossterm"
+replaces = "Svelte 5 web UI"
+why = "Terminal-native, zero web dependencies"
+
+[[decision]]
+area = "tls"
+choice = "rustls"
+replaces = "openssl-sys"
+why = "Pure Rust, no C++"
+
+[[decision]]
+area = "crypto"
+choice = "RustCrypto (hmac, sha2, aes-gcm, chacha20poly1305)"
+replaces = "ring (direct)"
+why = "Pure Rust, ring only transitive via rustls"

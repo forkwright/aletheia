@@ -1,0 +1,101 @@
+# Turn pipeline — end-to-end message flow across crates
+# No canonical doc exists for this yet; this IS the source.
+
+# A "turn" is one user message -> agent response cycle.
+# The pipeline runs inside a NousActor (one per agent, tokio task).
+
+[[step]]
+order = 1
+name = "HTTP accept"
+crate = "pylon"
+entry = "handlers/sessions/streaming.rs"
+does = "Validates JWT, checks idempotency cache, extracts session ID"
+output = "Spawns SSE stream task"
+
+[[step]]
+order = 2
+name = "Message dispatch"
+crate = "aletheia"
+entry = "dispatch.rs"
+does = "Routes inbound message to the correct NousActor via agora channel registry"
+output = "Message delivered to actor mailbox"
+
+[[step]]
+order = 3
+name = "Turn start"
+crate = "nous"
+entry = "actor/mod.rs -> execute/mod.rs"
+does = "Acquires turn lock, increments TurnId, begins pipeline"
+output = "TurnContext with session, history, config"
+
+[[step]]
+order = 4
+name = "Bootstrap assembly"
+crate = "nous"
+entry = "bootstrap/mod.rs"
+does = "Assembles system prompt from SOUL.md, USER.md, domain packs, tool descriptions, active session context"
+output = "System message with token budget"
+
+[[step]]
+order = 5
+name = "Recall"
+crate = "episteme"
+entry = "recall.rs"
+does = "6-factor scoring: vector similarity, temporal decay (FSRS), epistemic tier, graph proximity, access frequency, nous-relevance"
+output = "Ranked facts injected into context"
+
+[[step]]
+order = 6
+name = "History truncation"
+crate = "nous"
+entry = "execute/history.rs"
+does = "Fits conversation history within token budget, preserves verbatim tail"
+output = "Truncated message array"
+
+[[step]]
+order = 7
+name = "LLM call"
+crate = "hermeneus"
+entry = "client.rs"
+does = "Streams completion from provider (Anthropic, OpenAI-compatible, local). Retries with backoff. Health tracking per provider."
+output = "Stream of text deltas + tool_use blocks"
+
+[[step]]
+order = 8
+name = "Tool dispatch"
+crate = "organon"
+entry = "executor.rs"
+does = "Executes tool calls in sandbox (extrasafe seccomp on Linux). Parallel where safe."
+output = "ToolResult per tool call"
+
+[[step]]
+order = 9
+name = "Loop or finalize"
+crate = "nous"
+entry = "execute/mod.rs"
+does = "If tool results pending: loop back to step 7 with tool results. If stop_reason=end_turn: finalize."
+output = "Decision: continue or finalize"
+
+[[step]]
+order = 10
+name = "Observation extraction"
+crate = "episteme"
+entry = "observation.rs"
+does = "Extracts facts, corrections, decisions from the turn for knowledge store persistence"
+output = "Observations queued for async processing"
+
+[[step]]
+order = 11
+name = "Distillation check"
+crate = "melete"
+entry = "distill.rs"
+does = "If context approaching token limit: LLM-driven summarization of older messages. Memory flush extracts critical context before compression."
+output = "Compressed history + flush items persisted to knowledge store"
+
+[[step]]
+order = 12
+name = "SSE response"
+crate = "pylon"
+entry = "handlers/sessions/streaming.rs"
+does = "Streams SseEvent (TextDelta, ToolUse, ToolResult, Done) to HTTP client"
+output = "Client receives streamed response"

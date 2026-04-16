@@ -543,8 +543,8 @@ async fn router_rejects_token_signed_with_wrong_key() {
     // the core auth invariant.
     let foreign_jwt = JwtManager::new(JwtConfig {
         signing_key: SecretString::from("a-different-signing-key-never-shared".to_owned()),
-        access_ttl: Duration::from_secs(3600),
-        refresh_ttl: Duration::from_secs(86400),
+        access_ttl: Duration::from_hours(1),
+        refresh_ttl: Duration::from_hours(24),
         issuer: "rogue-issuer".to_owned(),
         ..JwtConfig::default()
     });

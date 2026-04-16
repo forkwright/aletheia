@@ -638,7 +638,7 @@ mod tests {
         provider.add_account("+1111111111".to_owned(), signal_client, true);
 
         let token = CancellationToken::new();
-        let (rx, handles) = provider.listen(Some(Duration::from_secs(60)), token.clone());
+        let (rx, handles) = provider.listen(Some(Duration::from_mins(1)), token.clone());
         assert_eq!(handles.len(), 1);
 
         token.cancel();
@@ -677,7 +677,7 @@ mod tests {
         provider.add_account("+2222222222".to_owned(), client_b, false);
 
         let token = CancellationToken::new();
-        let (rx, handles) = provider.listen(Some(Duration::from_secs(60)), token.clone());
+        let (rx, handles) = provider.listen(Some(Duration::from_mins(1)), token.clone());
         // WHY: only the auto_start=true account should have a poll task.
         assert_eq!(handles.len(), 1);
 

@@ -4,7 +4,7 @@
 
 Privacy-first distributed cognition. N agents + 1 human operator. Each agent has character, memory, and domain expertise. They persist understanding across sessions, coordinate through shared infrastructure, and evolve through use. Runs on commodity hardware with no cloud dependencies beyond your LLM API key.
 
-Rust workspace with 23 crates. TUI client.
+Rust workspace. TUI client.
 
 ## Getting Started
 
@@ -18,6 +18,7 @@ Rust workspace with 23 crates. TUI client.
 - [PROJECT](docs/PROJECT.md): Project plan, milestones, dependency policy, crate-to-module mapping
 - [TECHNOLOGY](docs/TECHNOLOGY.md): Technology decisions, dependency rationale, pinning policy
 - [gnomon](docs/gnomon.md): Naming philosophy and the gnomon system
+- [_llm/](_llm/README.md): compressed reference for AI agents (TOML format)
 
 ## Standards
 
@@ -39,7 +40,7 @@ Rust workspace with 23 crates. TUI client.
 ## Key Directories
 
 - `crates/`: Rust workspace (koina, taxis, mneme, hermeneus, organon, nous, pylon, etc.)
-- `crates/theatron/tui/`: Terminal UI client (workspace member)
+- `crates/theatron/koilon/`: Terminal UI client (workspace member)
 - `instance.example/nous/_template/`: Template agent workspace (SOUL.md, USER.md, AGENTS.md)
 - `instance.example/config/`: Example gateway config
 - `standards/`: Coding standards for AI agents

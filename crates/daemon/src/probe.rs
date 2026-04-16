@@ -712,7 +712,7 @@ mod tests {
     fn probe_audit_config_default() {
         let cfg = ProbeAuditConfig::default();
         assert!(cfg.enabled);
-        assert_eq!(cfg.interval, Duration::from_secs(6 * 3600));
+        assert_eq!(cfg.interval, Duration::from_hours(6));
         assert_eq!(cfg.categories.len(), 3);
     }
 

@@ -161,7 +161,7 @@ fn orchestrator_config_defaults() {
     assert!(config.default_budget_usd.is_none());
     assert!(config.default_budget_turns.is_none());
     assert!(config.max_duration.is_none());
-    assert_eq!(config.session_idle_timeout, Some(Duration::from_secs(600)));
+    assert_eq!(config.session_idle_timeout, Some(Duration::from_mins(10)));
     assert_eq!(config.max_corrective_retries, 1);
 }
 
@@ -179,15 +179,15 @@ fn orchestrator_config_builder_chaining() {
         .max_concurrent(8)
         .default_budget_usd(50.0)
         .default_budget_turns(1000)
-        .max_duration(Duration::from_secs(3600))
-        .session_idle_timeout(Duration::from_secs(300))
+        .max_duration(Duration::from_hours(1))
+        .session_idle_timeout(Duration::from_mins(5))
         .max_corrective_retries(3);
 
     assert_eq!(config.max_concurrent, 8);
     assert_eq!(config.default_budget_usd, Some(50.0));
     assert_eq!(config.default_budget_turns, Some(1000));
-    assert_eq!(config.max_duration, Some(Duration::from_secs(3600)));
-    assert_eq!(config.session_idle_timeout, Some(Duration::from_secs(300)));
+    assert_eq!(config.max_duration, Some(Duration::from_hours(1)));
+    assert_eq!(config.session_idle_timeout, Some(Duration::from_mins(5)));
     assert_eq!(config.max_corrective_retries, 3);
 }
 
@@ -196,17 +196,17 @@ fn orchestrator_config_serde_roundtrip() {
     let config = OrchestratorConfig::new()
         .max_concurrent(6)
         .default_budget_usd(25.0)
-        .max_duration(Duration::from_secs(1800));
+        .max_duration(Duration::from_mins(30));
 
     let json = serde_json::to_string(&config).expect("serialize");
     let deserialized: OrchestratorConfig = serde_json::from_str(&json).expect("deserialize");
 
     assert_eq!(deserialized.max_concurrent, 6);
     assert_eq!(deserialized.default_budget_usd, Some(25.0));
-    assert_eq!(deserialized.max_duration, Some(Duration::from_secs(1800)));
+    assert_eq!(deserialized.max_duration, Some(Duration::from_mins(30)));
     assert_eq!(
         deserialized.session_idle_timeout,
-        Some(Duration::from_secs(600))
+        Some(Duration::from_mins(10))
     );
 }
 

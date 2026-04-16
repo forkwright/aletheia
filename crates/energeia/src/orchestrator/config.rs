@@ -165,7 +165,7 @@ mod tests {
         assert!(config.default_budget_usd.is_none());
         assert!(config.default_budget_turns.is_none());
         assert!(config.max_duration.is_none());
-        assert_eq!(config.session_idle_timeout, Some(Duration::from_secs(600)));
+        assert_eq!(config.session_idle_timeout, Some(Duration::from_mins(10)));
         assert_eq!(config.max_corrective_retries, 1);
     }
 
@@ -175,15 +175,15 @@ mod tests {
             .max_concurrent(8)
             .default_budget_usd(25.0)
             .default_budget_turns(500)
-            .max_duration(Duration::from_secs(3600))
-            .session_idle_timeout(Duration::from_secs(300))
+            .max_duration(Duration::from_hours(1))
+            .session_idle_timeout(Duration::from_mins(5))
             .max_corrective_retries(2);
 
         assert_eq!(config.max_concurrent, 8);
         assert_eq!(config.default_budget_usd, Some(25.0));
         assert_eq!(config.default_budget_turns, Some(500));
-        assert_eq!(config.max_duration, Some(Duration::from_secs(3600)));
-        assert_eq!(config.session_idle_timeout, Some(Duration::from_secs(300)));
+        assert_eq!(config.max_duration, Some(Duration::from_hours(1)));
+        assert_eq!(config.session_idle_timeout, Some(Duration::from_mins(5)));
         assert_eq!(config.max_corrective_retries, 2);
     }
 
@@ -192,14 +192,14 @@ mod tests {
         let config = OrchestratorConfig::new()
             .max_concurrent(6)
             .default_budget_usd(10.0)
-            .max_duration(Duration::from_secs(1800));
+            .max_duration(Duration::from_mins(30));
 
         let json = serde_json::to_string(&config).expect("serialize");
         let back: OrchestratorConfig = serde_json::from_str(&json).expect("deserialize");
 
         assert_eq!(back.max_concurrent, 6);
         assert_eq!(back.default_budget_usd, Some(10.0));
-        assert_eq!(back.max_duration, Some(Duration::from_secs(1800)));
+        assert_eq!(back.max_duration, Some(Duration::from_mins(30)));
     }
 
     #[test]

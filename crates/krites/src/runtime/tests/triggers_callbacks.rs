@@ -26,7 +26,7 @@ fn when_trigger_set_on_put_reverse_relation_synced() {
     db.run_default(":create friends.rev {to: Int, fr: Int => data: Any}")
         .expect("creating friends.rev relation should succeed");
     db.run_default(
-        r#"
+        r"
         ::set_triggers friends
 
         on put {
@@ -39,7 +39,7 @@ fn when_trigger_set_on_put_reverse_relation_synced() {
 
             :rm friends.rev{ to, fr }
         }
-        "#,
+        ",
     )
     .expect("setting triggers on friends should succeed");
     db.run_default(r"?[fr, to, data] <- [[1,2,3]] :put friends {fr, to => data}")
@@ -345,7 +345,7 @@ fn when_custom_fixed_rule_registered_executes_with_correct_output() {
                     sum += d;
                 }
                 sum *= mult;
-                out.put(vec![DataValue::from(sum)])
+                out.put(vec![DataValue::from(sum)]);
             }
             Ok(())
         }
@@ -355,10 +355,10 @@ fn when_custom_fixed_rule_registered_executes_with_correct_output() {
         .expect("registering custom SumCols rule should succeed");
     let res = db
         .run_default(
-            r#"
+            r"
         rel[] <- [[1,2,3,4],[5,6,7,8]]
         ?[x] <~ SumCols(rel[], mult: 100)
-    "#,
+    ",
         )
         .expect("running custom SumCols rule should succeed");
     assert_eq!(
@@ -436,7 +436,7 @@ fn when_short_index_created_on_single_column_query_planner_uses_it() {
         .as_array()
         .expect("explain rows should be a JSON array")
     {
-        println!("{}", row);
+        println!("{row}");
     }
 
     let joins = expl["rows"]
@@ -545,10 +545,10 @@ fn when_vector_column_stored_roundtrip_returns_float_values() {
         "rand_vec(5) should produce a vector of length 5"
     );
     let res = db
-        .run_default(r#"
+        .run_default(r"
             val[v] <- [[vec([1,2,3,4,5,6,7,8])]]
             ?[x,y,z] := val[v], x=l2_dist(v, v), y=cos_dist(v, v), nv = l2_normalize(v), z=ip_dist(nv, nv)
-        "#)
+        ")
         .expect("vector distance and normalize query should succeed");
     println!("{}", res.into_json());
 }

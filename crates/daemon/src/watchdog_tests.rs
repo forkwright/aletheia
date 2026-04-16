@@ -71,7 +71,7 @@ impl ProcessHandle for MockProcess {
 #[test]
 fn watchdog_config_default_values() {
     let config = WatchdogConfig::default();
-    assert_eq!(config.heartbeat_timeout, Duration::from_secs(60));
+    assert_eq!(config.heartbeat_timeout, Duration::from_mins(1));
     assert_eq!(config.check_interval, Duration::from_secs(10));
     assert_eq!(config.max_restarts, 5);
 }
@@ -209,7 +209,7 @@ async fn backoff_prevents_immediate_retry() {
     // Set up: hung with backoff in the future.
     wd.processes.get_mut("agent-1").unwrap().state = ProcessState::Hung;
     wd.processes.get_mut("agent-1").unwrap().backoff_until =
-        Some(Instant::now() + Duration::from_secs(300));
+        Some(Instant::now() + Duration::from_mins(5));
 
     wd.check_processes().await;
 

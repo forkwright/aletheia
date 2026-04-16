@@ -256,15 +256,15 @@ fn cron_config_default_all_tasks_disabled() {
     let cfg = CronConfig::default();
 
     assert!(!cfg.evolution.enabled);
-    assert_eq!(cfg.evolution.interval, Duration::from_secs(24 * 3600));
+    assert_eq!(cfg.evolution.interval, Duration::from_hours(24));
 
     assert!(!cfg.reflection.enabled);
-    assert_eq!(cfg.reflection.interval, Duration::from_secs(24 * 3600));
+    assert_eq!(cfg.reflection.interval, Duration::from_hours(24));
 
     assert!(!cfg.graph_cleanup.enabled);
     assert_eq!(
         cfg.graph_cleanup.interval,
-        Duration::from_secs(7 * 24 * 3600),
+        Duration::from_hours(168),
         "graph cleanup defaults to a weekly cadence"
     );
 
@@ -669,11 +669,11 @@ fn task_runner_status_returns_all_registered_tasks() {
     let mut runner = make_runner("test-nous");
     runner.register(builtin_probe_task(
         "a",
-        Schedule::Interval(Duration::from_secs(60)),
+        Schedule::Interval(Duration::from_mins(1)),
     ));
     runner.register(builtin_probe_task(
         "b",
-        Schedule::Interval(Duration::from_secs(120)),
+        Schedule::Interval(Duration::from_mins(2)),
     ));
     runner.register(builtin_probe_task(
         "c",
@@ -711,7 +711,7 @@ fn task_runner_with_maintenance_and_output_mode_chains() {
 fn probe_audit_config_default_enabled_with_all_categories() {
     let cfg = ProbeAuditConfig::default();
     assert!(cfg.enabled);
-    assert_eq!(cfg.interval, Duration::from_secs(6 * 3_600));
+    assert_eq!(cfg.interval, Duration::from_hours(6));
     assert_eq!(
         cfg.categories.len(),
         3,
@@ -1168,10 +1168,10 @@ fn schedule_serde_roundtrips_cron_interval_once_startup() {
     assert!(matches!(back, Schedule::Cron(expr) if expr == "0 0 4 * * *"));
 
     // Interval
-    let interval = Schedule::Interval(Duration::from_secs(120));
+    let interval = Schedule::Interval(Duration::from_mins(2));
     let back: Schedule = serde_json::from_str(&serde_json::to_string(&interval).unwrap()).unwrap();
     assert!(
-        matches!(back, Schedule::Interval(d) if d == Duration::from_secs(120)),
+        matches!(back, Schedule::Interval(d) if d == Duration::from_mins(2)),
         "Interval must round-trip"
     );
 

@@ -1,4 +1,4 @@
-//! Connectivity and misc tests: SCC, CC, TopSort, Clustering, KSP, Louvain, KCore.
+//! Connectivity and misc tests: SCC, CC, `TopSort`, Clustering, KSP, Louvain, `KCore`.
 #![cfg(test)]
 #![expect(clippy::expect_used, reason = "test assertions")]
 use crate::DbInstance;
@@ -10,13 +10,13 @@ fn test_scc_when_two_disjoint_cycles_returns_two_components() {
     let db = DbInstance::default();
     let res = db
         .run_default(
-            r#"
+            r"
 edges[src, dst] <- [[0, 1], [1, 2], [2, 0],
                 [3, 4], [4, 5], [5, 3],
                 [2, 3]]
 ?[node, component] <~ StronglyConnectedComponents(edges[])
 :order node
-"#,
+",
         )
         .expect("SCC two-cycles query should execute successfully")
         .rows;
@@ -41,11 +41,11 @@ fn test_scc_when_dag_each_node_is_its_own_component() {
     let db = DbInstance::default();
     let res = db
         .run_default(
-            r#"
+            r"
 edges[src, dst] <- [[0, 1], [1, 2], [2, 3]]
 ?[node, component] <~ StronglyConnectedComponents(edges[])
 :order node
-"#,
+",
         )
         .expect("SCC DAG query should execute successfully")
         .rows;
@@ -63,10 +63,10 @@ fn test_scc_when_single_self_loop_returns_one_component() {
     let db = DbInstance::default();
     let res = db
         .run_default(
-            r#"
+            r"
 edges[src, dst] <- [[0, 0]]
 ?[node, component] <~ StronglyConnectedComponents(edges[])
-"#,
+",
         )
         .expect("SCC self-loop query should execute successfully")
         .rows;
@@ -80,12 +80,12 @@ fn test_connected_components_when_two_triangles_returns_two_components() {
     let db = DbInstance::default();
     let res = db
         .run_default(
-            r#"
+            r"
 edges[src, dst] <- [[0, 1], [1, 2], [2, 0],
                 [3, 4], [4, 5], [5, 3]]
 ?[node, component] <~ ConnectedComponents(edges[])
 :order node
-"#,
+",
         )
         .expect("ConnectedComponents two-triangles query should execute successfully")
         .rows;
@@ -130,10 +130,10 @@ fn test_connected_components_when_single_chain_all_nodes_same_label() {
     let db = DbInstance::default();
     let res = db
         .run_default(
-            r#"
+            r"
 edges[src, dst] <- [[0, 1], [1, 2], [2, 3], [3, 4]]
 ?[node, component] <~ ConnectedComponents(edges[])
-"#,
+",
         )
         .expect("ConnectedComponents single-chain query should execute successfully")
         .rows;
@@ -150,10 +150,10 @@ fn test_connected_components_when_directed_star_returns_single_component() {
     let db = DbInstance::default();
     let res = db
         .run_default(
-            r#"
+            r"
 edges[src, dst] <- [[0, 1], [0, 2], [0, 3]]
 ?[node, component] <~ ConnectedComponents(edges[])
-"#,
+",
         )
         .expect("ConnectedComponents directed-star query should execute successfully")
         .rows;
@@ -170,11 +170,11 @@ fn test_top_sort_when_dag_ordering_respects_all_edges() {
     let db = DbInstance::default();
     let res = db
         .run_default(
-            r#"
+            r"
 edges[src, dst] <- [[0, 1], [0, 2], [1, 3], [2, 3], [3, 4]]
 ?[idx, node] <~ TopSort(edges[])
 :order idx
-"#,
+",
         )
         .expect("TopSort DAG query should execute successfully")
         .rows;
@@ -205,11 +205,11 @@ fn test_top_sort_when_linear_chain_returns_natural_order() {
     let db = DbInstance::default();
     let res = db
         .run_default(
-            r#"
+            r"
 edges[src, dst] <- [[0, 1], [1, 2], [2, 3]]
 ?[idx, node] <~ TopSort(edges[])
 :order idx
-"#,
+",
         )
         .expect("TopSort linear-chain query should execute successfully")
         .rows;
@@ -222,17 +222,17 @@ edges[src, dst] <- [[0, 1], [1, 2], [2, 3]]
     assert_eq!(nodes, vec![0, 1, 2, 3], "Linear chain order is 0,1,2,3");
 }
 
-/// A single directed edge 0→1: TopSort returns both nodes in order 0, 1.
+/// A single directed edge 0→1: `TopSort` returns both nodes in order 0, 1.
 #[test]
 fn test_top_sort_when_single_edge_returns_two_nodes_in_order() {
     let db = DbInstance::default();
     let res = db
         .run_default(
-            r#"
+            r"
 edges[src, dst] <- [[0, 1]]
 ?[idx, node] <~ TopSort(edges[])
 :order idx
-"#,
+",
         )
         .expect("TopSort single-edge query should execute successfully")
         .rows;
@@ -251,11 +251,11 @@ fn test_clustering_coefficients_when_triangle_each_node_has_one_triangle() {
     let db = DbInstance::default();
     let res = db
         .run_default(
-            r#"
+            r"
 edges[src, dst] <- [[0, 1], [1, 2], [0, 2], [2, 3]]
 ?[node, cc, triangles, degree] <~ ClusteringCoefficients(edges[])
 :order node
-"#,
+",
         )
         .expect("ClusteringCoefficients triangle query should execute successfully")
         .rows;
@@ -286,11 +286,11 @@ fn test_clustering_coefficients_when_k4_every_node_has_cc_one() {
     let db = DbInstance::default();
     let res = db
         .run_default(
-            r#"
+            r"
 edges[src, dst] <- [[0,1],[0,2],[0,3],[1,2],[1,3],[2,3]]
 ?[node, cc, triangles, degree] <~ ClusteringCoefficients(edges[])
 :order node
-"#,
+",
         )
         .expect("ClusteringCoefficients K4 query should execute successfully")
         .rows;
@@ -317,10 +317,10 @@ fn test_clustering_coefficients_when_single_edge_no_triangles() {
     let db = DbInstance::default();
     let res = db
         .run_default(
-            r#"
+            r"
 edges[src, dst] <- [[0, 1]]
 ?[node, cc, triangles, degree] <~ ClusteringCoefficients(edges[])
-"#,
+",
         )
         .expect("ClusteringCoefficients single-edge query should execute successfully")
         .rows;
@@ -341,14 +341,14 @@ fn test_yen_when_two_paths_returns_both_in_cost_order() {
     let db = DbInstance::default();
     let res = db
         .run_default(
-            r#"
+            r"
 edges[src, dst, cost] <- [[0, 1, 1.0], [1, 3, 1.0],
                        [0, 2, 2.0], [2, 3, 2.0]]
 start[] <- [[0]]
 goal[] <- [[3]]
 ?[from, to, cost, path] <~ KShortestPathYen(edges[], start[], goal[], k: 2)
 :order cost
-"#,
+",
         )
         .expect("KShortestPathYen query should execute successfully")
         .rows;
@@ -372,12 +372,12 @@ fn test_yen_when_fewer_paths_than_k_returns_all_available() {
     let db = DbInstance::default();
     let res = db
         .run_default(
-            r#"
+            r"
 edges[src, dst, cost] <- [[0, 1, 1.0], [1, 2, 1.0]]
 start[] <- [[0]]
 goal[] <- [[2]]
 ?[from, to, cost, path] <~ KShortestPathYen(edges[], start[], goal[], k: 3)
-"#,
+",
         )
         .expect("KShortestPathYen fewer-paths query should execute successfully")
         .rows;
@@ -391,12 +391,12 @@ fn test_louvain_when_two_triangles_all_nodes_labeled() {
     let db = DbInstance::default();
     let res = db
         .run_default(
-            r#"
+            r"
 edges[src, dst, w] <- [[0, 1, 1.0], [1, 2, 1.0], [2, 0, 1.0],
                     [3, 4, 1.0], [4, 5, 1.0], [5, 3, 1.0],
                     [2, 3, 0.1]]
 ?[label, node] <~ CommunityDetectionLouvain(edges[], undirected: true, max_iter: 20)
-"#,
+",
         )
         .expect("Louvain two-triangles query should execute successfully")
         .rows;
@@ -410,10 +410,10 @@ fn test_louvain_when_single_edge_both_nodes_labeled() {
     let db = DbInstance::default();
     let res = db
         .run_default(
-            r#"
+            r"
 edges[src, dst, w] <- [[0, 1, 1.0]]
 ?[label, node] <~ CommunityDetectionLouvain(edges[], undirected: true)
-"#,
+",
         )
         .expect("Louvain single-edge query should execute successfully")
         .rows;
@@ -427,14 +427,14 @@ fn test_shortest_path_bfs_when_known_path_returns_three_nodes() {
     let db = DbInstance::default();
     let res = db
         .run_default(
-            r#"
+            r"
 love[loving, loved] <- [['alice', 'eve'], ['bob', 'alice'], ['eve', 'alice'],
                      ['eve', 'bob'], ['eve', 'charlie'], ['charlie', 'eve'],
                      ['david', 'george'], ['george', 'george']]
 start[] <- [['alice']]
 end[] <- [['bob']]
 ?[fr, to, path] <~ ShortestPathBFS(love[], start[], end[])
-"#,
+",
         )
         .expect("ShortestPathBFS social-graph query should execute successfully")
         .rows;
@@ -454,12 +454,12 @@ fn test_shortest_path_bfs_when_disconnected_returns_null() {
     let db = DbInstance::default();
     let res = db
         .run_default(
-            r#"
+            r"
 love[loving, loved] <- [['alice', 'eve'], ['david', 'george']]
 start[] <- [['alice']]
 end[] <- [['george']]
 ?[fr, to, path] <~ ShortestPathBFS(love[], start[], end[])
-"#,
+",
         )
         .expect("ShortestPathBFS disconnected query should execute successfully")
         .rows;
@@ -472,12 +472,12 @@ fn test_shortest_path_bfs_when_direct_edge_path_has_two_nodes() {
     let db = DbInstance::default();
     let res = db
         .run_default(
-            r#"
+            r"
 edges[src, dst] <- [[0, 1]]
 start[] <- [[0]]
 end[]   <- [[1]]
 ?[fr, to, path] <~ ShortestPathBFS(edges[], start[], end[])
-"#,
+",
         )
         .expect("ShortestPathBFS direct-edge query should execute successfully")
         .rows;
@@ -501,11 +501,11 @@ fn test_kcore_when_clique_plus_pendant_assigns_correct_cores() {
     let db = DbInstance::default();
     let res = db
         .run_default(
-            r#"
+            r"
 edges[src, dst] <- [[0,1],[0,2],[0,3],[1,2],[1,3],[2,3],[0,4]]
 ?[node, k] <~ KCore(edges[])
 :order node
-"#,
+",
         )
         .expect("KCore clique-plus-pendant query should execute successfully")
         .rows;
@@ -533,11 +533,11 @@ fn test_kcore_when_path_graph_all_nodes_are_1core() {
     let db = DbInstance::default();
     let res = db
         .run_default(
-            r#"
+            r"
 edges[src, dst] <- [[0, 1], [1, 2], [2, 3], [3, 4]]
 ?[node, k] <~ KCore(edges[])
 :order node
-"#,
+",
         )
         .expect("KCore path-graph query should execute successfully")
         .rows;
@@ -556,11 +556,11 @@ fn test_kcore_when_single_edge_both_nodes_are_1core() {
     let db = DbInstance::default();
     let res = db
         .run_default(
-            r#"
+            r"
 edges[src, dst] <- [[0, 1]]
 ?[node, k] <~ KCore(edges[])
 :order node
-"#,
+",
         )
         .expect("KCore single-edge query should execute successfully")
         .rows;
@@ -581,10 +581,10 @@ fn test_kcore_when_empty_edges_returns_no_rows() {
     let db = DbInstance::default();
     let res = db
         .run_default(
-            r#"
+            r"
 edges[src, dst] <- []
 ?[node, k] <~ KCore(edges[])
-"#,
+",
         )
         .expect("KCore empty-graph query should execute successfully")
         .rows;
@@ -599,11 +599,11 @@ fn test_kcore_when_disconnected_graph_assigns_per_component_cores() {
     let db = DbInstance::default();
     let res = db
         .run_default(
-            r#"
+            r"
 edges[src, dst] <- [[0,1],[1,2],[0,2],  [3,4]]
 ?[node, k] <~ KCore(edges[])
 :order node
-"#,
+",
         )
         .expect("KCore disconnected-graph query should execute successfully")
         .rows;

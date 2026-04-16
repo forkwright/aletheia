@@ -763,7 +763,7 @@ fn test_pack_bits() {
         op_pack_bits(&[DataValue::List(vec![DataValue::from(true)])]).expect("test assertion"),
         DataValue::Bytes([0b10000000].into()),
         "packing [true] should set the MSB"
-    )
+    );
 }
 
 #[test]
@@ -777,5 +777,5 @@ fn test_unpack_bits() {
                 .collect()
         ),
         "unpacking alternating bits should produce alternating bool list"
-    )
+    );
 }

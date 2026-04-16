@@ -541,10 +541,10 @@ mod tests {
         });
         let db = new_krites_fjall(temp_dir.path())?;
         db.run_script(
-            r#"
+            r"
             {:create plain {k: Int => v}}
             {:create tt_test {k: Int, vld: Validity => v}}
-            "#,
+            ",
             Default::default(),
             ScriptMutability::Mutable,
         )?;

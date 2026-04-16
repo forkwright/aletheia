@@ -419,7 +419,7 @@ mod tests {
 
     #[test]
     fn schedule_debug_format() {
-        let schedule = Schedule::Interval(Duration::from_secs(60));
+        let schedule = Schedule::Interval(Duration::from_mins(1));
         let debug_str = format!("{schedule:?}");
         assert!(
             debug_str.contains("Interval"),
@@ -452,15 +452,15 @@ mod tests {
     #[test]
     fn backoff_delay_values() {
         assert_eq!(backoff_delay(0), Duration::ZERO);
-        assert_eq!(backoff_delay(1), Duration::from_secs(60));
-        assert_eq!(backoff_delay(2), Duration::from_secs(300));
-        assert_eq!(backoff_delay(3), Duration::from_secs(900));
-        assert_eq!(backoff_delay(10), Duration::from_secs(900));
+        assert_eq!(backoff_delay(1), Duration::from_mins(1));
+        assert_eq!(backoff_delay(2), Duration::from_mins(5));
+        assert_eq!(backoff_delay(3), Duration::from_mins(15));
+        assert_eq!(backoff_delay(10), Duration::from_mins(15));
     }
 
     #[test]
     fn missed_since_non_cron_returns_false() {
-        let schedule = Schedule::Interval(Duration::from_secs(60));
+        let schedule = Schedule::Interval(Duration::from_mins(1));
         let last_run = jiff::Timestamp::now()
             .checked_sub(jiff::SignedDuration::from_hours(1))
             .unwrap();
@@ -490,7 +490,7 @@ mod tests {
     #[test]
     fn task_def_default() {
         let def = TaskDef::default();
-        assert_eq!(def.timeout, Duration::from_secs(300));
+        assert_eq!(def.timeout, Duration::from_mins(5));
         assert!(def.catch_up);
         assert!(def.enabled);
         assert!(def.jitter.is_none(), "default jitter should be None");

@@ -260,8 +260,8 @@ impl TestHarness {
 
         let jwt_manager = Arc::new(JwtManager::new(JwtConfig {
             signing_key: SecretString::from("test-secret-key-for-jwt".to_owned()),
-            access_ttl: Duration::from_secs(3600),
-            refresh_ttl: Duration::from_secs(86400),
+            access_ttl: Duration::from_hours(1),
+            refresh_ttl: Duration::from_hours(24),
             issuer: "aletheia-test".to_owned(),
             ..JwtConfig::default()
         }));
@@ -284,6 +284,7 @@ impl TestHarness {
             shutdown: CancellationToken::new(),
             #[cfg(feature = "knowledge-store")]
             knowledge_store: None,
+            embedding_provider: None,
         });
 
         Self {

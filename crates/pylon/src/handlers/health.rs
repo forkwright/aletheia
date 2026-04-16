@@ -773,7 +773,7 @@ mod tests {
     #[tokio::test]
     async fn timed_check_returns_timeout_on_slow_future() {
         let check = timed_check("slow_check", async {
-            tokio::time::sleep(Duration::from_secs(60)).await;
+            tokio::time::sleep(Duration::from_mins(1)).await;
             HealthCheck {
                 name: "slow_check",
                 status: "pass",

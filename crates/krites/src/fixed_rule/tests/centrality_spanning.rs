@@ -1,4 +1,4 @@
-//! Centrality and spanning tree tests: DegreeCentrality, MST, LabelProp, PageRank, RandomWalk.
+//! Centrality and spanning tree tests: `DegreeCentrality`, MST, `LabelProp`, `PageRank`, `RandomWalk`.
 #![cfg(test)]
 #![expect(clippy::expect_used, reason = "test assertions")]
 use crate::DbInstance;
@@ -10,7 +10,7 @@ fn test_degree_centrality_when_triangle_plus_tail_hub_has_highest_degree() {
     let db = DbInstance::default();
     let res = db
         .run_default(
-            r#"
+            r"
 edges[src, dst] <- [[0, 1], [1, 0],
                 [1, 2], [2, 1],
                 [2, 0], [0, 2],
@@ -18,7 +18,7 @@ edges[src, dst] <- [[0, 1], [1, 0],
                 [3, 4], [4, 3]]
 ?[node, total, out_deg, in_deg] <~ DegreeCentrality(edges[])
 :order node
-"#,
+",
         )
         .expect("DegreeCentrality query should execute successfully")
         .rows;
@@ -41,11 +41,11 @@ fn test_degree_centrality_when_directed_star_hub_has_zero_in_degree() {
     let db = DbInstance::default();
     let res = db
         .run_default(
-            r#"
+            r"
 edges[src, dst] <- [[0, 1], [0, 2], [0, 3]]
 ?[node, total, out_deg, in_deg] <~ DegreeCentrality(edges[])
 :order node
-"#,
+",
         )
         .expect("DegreeCentrality star query should execute successfully")
         .rows;
@@ -76,12 +76,12 @@ fn test_degree_centrality_when_isolated_node_included_has_zero_degree() {
     let db = DbInstance::default();
     let res = db
         .run_default(
-            r#"
+            r"
 edges[src, dst] <- [[0, 1]]
 isolated[n]    <- [[5]]
 ?[node, total, out_deg, in_deg] <~ DegreeCentrality(edges[], isolated[])
 :order node
-"#,
+",
         )
         .expect("DegreeCentrality isolated-node query should execute successfully")
         .rows;
@@ -119,11 +119,11 @@ fn test_kruskal_when_connected_graph_returns_n_minus_1_edges() {
     let db = DbInstance::default();
     let res = db
         .run_default(
-            r#"
+            r"
 edges[src, dst, cost] <- [[0, 1, 1.0], [1, 2, 2.0], [0, 2, 5.0],
                        [2, 3, 3.0], [3, 4, 1.0]]
 ?[src, dst, cost] <~ MinimumSpanningForestKruskal(edges[])
-"#,
+",
         )
         .expect("Kruskal MST query should execute successfully")
         .rows;
@@ -145,11 +145,11 @@ fn test_kruskal_when_disconnected_graph_returns_spanning_forest() {
     let db = DbInstance::default();
     let res = db
         .run_default(
-            r#"
+            r"
 edges[src, dst, cost] <- [[0, 1, 1.0], [1, 2, 2.0],
                        [3, 4, 5.0]]
 ?[src, dst, cost] <~ MinimumSpanningForestKruskal(edges[])
-"#,
+",
         )
         .expect("Kruskal spanning forest query should execute successfully")
         .rows;
@@ -163,10 +163,10 @@ fn test_kruskal_when_triangle_picks_two_cheapest_edges() {
     let db = DbInstance::default();
     let res = db
         .run_default(
-            r#"
+            r"
 edges[src, dst, cost] <- [[0, 1, 1.0], [1, 2, 2.0], [0, 2, 3.0]]
 ?[src, dst, cost] <~ MinimumSpanningForestKruskal(edges[])
-"#,
+",
         )
         .expect("Kruskal triangle query should execute successfully")
         .rows;
@@ -188,11 +188,11 @@ fn test_prim_when_connected_graph_returns_same_cost_as_kruskal() {
     let db = DbInstance::default();
     let res = db
         .run_default(
-            r#"
+            r"
 edges[src, dst, cost] <- [[0, 1, 1.0], [1, 2, 2.0], [0, 2, 5.0],
                        [2, 3, 3.0], [3, 4, 1.0]]
 ?[src, dst, cost] <~ MinimumSpanningTreePrim(edges[])
-"#,
+",
         )
         .expect("Prim MST query should execute successfully")
         .rows;
@@ -214,11 +214,11 @@ fn test_prim_when_start_node_specified_returns_valid_spanning_tree() {
     let db = DbInstance::default();
     let res = db
         .run_default(
-            r#"
+            r"
 edges[src, dst, cost] <- [[0, 1, 1.0], [1, 2, 2.0], [2, 3, 3.0]]
 start[] <- [[2]]
 ?[src, dst, cost] <~ MinimumSpanningTreePrim(edges[], start[])
-"#,
+",
         )
         .expect("Prim MST with start node query should execute successfully")
         .rows;
@@ -232,12 +232,12 @@ fn test_label_propagation_when_two_clusters_all_nodes_labeled() {
     let db = DbInstance::default();
     let res = db
         .run_default(
-            r#"
+            r"
 edges[src, dst] <- [[0, 1], [1, 2], [2, 0],
                 [3, 4], [4, 5], [5, 3],
                 [2, 3]]
 ?[label, node] <~ LabelPropagation(edges[], undirected: true, max_iter: 50)
-"#,
+",
         )
         .expect("LabelPropagation two-cluster query should execute successfully")
         .rows;
@@ -251,10 +251,10 @@ fn test_label_propagation_when_single_edge_returns_two_labels() {
     let db = DbInstance::default();
     let res = db
         .run_default(
-            r#"
+            r"
 edges[src, dst] <- [[0, 1]]
 ?[label, node] <~ LabelPropagation(edges[], undirected: true)
-"#,
+",
         )
         .expect("LabelPropagation single-edge query should execute successfully")
         .rows;
@@ -268,10 +268,10 @@ fn test_label_propagation_when_disconnected_graph_all_nodes_labeled() {
     let db = DbInstance::default();
     let res = db
         .run_default(
-            r#"
+            r"
 edges[src, dst] <- [[0, 1], [2, 3]]
 ?[label, node] <~ LabelPropagation(edges[], undirected: true)
-"#,
+",
         )
         .expect("LabelPropagation disconnected-graph query should execute successfully")
         .rows;
@@ -285,11 +285,11 @@ fn test_pagerank_when_star_graph_sink_has_highest_rank() {
     let db = DbInstance::default();
     let res = db
         .run_default(
-            r#"
+            r"
 edges[src, dst] <- [[0, 4], [1, 4], [2, 4], [3, 4]]
 ?[node, rank] <~ PageRank(edges[], iterations: 20)
 :order -rank
-"#,
+",
         )
         .expect("PageRank star query should execute successfully")
         .rows;
@@ -302,16 +302,16 @@ edges[src, dst] <- [[0, 4], [1, 4], [2, 4], [3, 4]]
     );
 }
 
-/// PageRank on a symmetric cycle should assign approximately uniform rank.
+/// `PageRank` on a symmetric cycle should assign approximately uniform rank.
 #[test]
 fn test_pagerank_when_cycle_scores_are_approximately_uniform() {
     let db = DbInstance::default();
     let res = db
         .run_default(
-            r#"
+            r"
 edges[src, dst] <- [[0, 1], [1, 2], [2, 3], [3, 0]]
 ?[node, rank] <~ PageRank(edges[], iterations: 100)
-"#,
+",
         )
         .expect("PageRank cycle query should execute successfully")
         .rows;
@@ -334,16 +334,16 @@ edges[src, dst] <- [[0, 1], [1, 2], [2, 3], [3, 0]]
     }
 }
 
-/// PageRank returns no results for an empty edge relation.
+/// `PageRank` returns no results for an empty edge relation.
 #[test]
 fn test_pagerank_when_empty_edges_returns_no_rows() {
     let db = DbInstance::default();
     let res = db
         .run_default(
-            r#"
+            r"
 edges[src, dst] <- []
 ?[node, rank] <~ PageRank(edges[])
-"#,
+",
         )
         .expect("PageRank empty-graph query should execute successfully")
         .rows;
@@ -357,12 +357,12 @@ fn test_random_walk_when_cycle_graph_path_has_expected_length() {
     let db = DbInstance::default();
     let res = db
         .run_default(
-            r#"
+            r"
 edges[src, dst] <- [[0, 1], [1, 2], [2, 3], [3, 0]]
 nodes[n] <- [[0], [1], [2], [3]]
 start[] <- [[0]]
 ?[walk_id, start_node, path] <~ RandomWalk(edges[], nodes[n], start[], steps: 5, iterations: 1)
-"#,
+",
         )
         .expect("RandomWalk cycle query should execute successfully")
         .rows;
@@ -385,12 +385,12 @@ fn test_random_walk_when_multiple_iterations_returns_multiple_rows() {
     let db = DbInstance::default();
     let res = db
         .run_default(
-            r#"
+            r"
 edges[src, dst] <- [[0, 1], [1, 2], [2, 0]]
 nodes[n] <- [[0], [1], [2]]
 start[] <- [[0]]
 ?[walk_id, start_node, path] <~ RandomWalk(edges[], nodes[n], start[], steps: 3, iterations: 5)
-"#,
+",
         )
         .expect("RandomWalk multi-iteration query should execute successfully")
         .rows;
@@ -404,12 +404,12 @@ fn test_random_walk_when_dead_end_path_is_shorter_than_max_steps() {
     let db = DbInstance::default();
     let res = db
         .run_default(
-            r#"
+            r"
 edges[src, dst] <- [[0, 1]]
 nodes[n] <- [[0], [1]]
 start[] <- [[1]]
 ?[walk_id, start_node, path] <~ RandomWalk(edges[], nodes[n], start[], steps: 10, iterations: 1)
-"#,
+",
         )
         .expect("RandomWalk dead-end query should execute successfully")
         .rows;

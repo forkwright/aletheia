@@ -454,7 +454,7 @@ mod tests {
         assert!(result.is_err(), "A -> B -> A should be detected as a cycle");
         let err = result.unwrap_err().to_string();
         assert!(
-            err.contains("A") && err.contains("B"),
+            err.contains('A') && err.contains('B'),
             "error should name plans in cycle, got: {err}"
         );
     }

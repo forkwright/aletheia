@@ -131,7 +131,7 @@ mod tests {
             .max_turns(50)
             .permission_mode("plan")
             .add_dir("/tmp/shared")
-            .idle_timeout(Duration::from_secs(300));
+            .idle_timeout(Duration::from_mins(5));
 
         assert_eq!(
             config.options.model.as_deref(),
@@ -145,7 +145,7 @@ mod tests {
             config.additional_dirs.first(),
             Some(&PathBuf::from("/tmp/shared"))
         );
-        assert_eq!(config.idle_timeout, Some(Duration::from_secs(300)));
+        assert_eq!(config.idle_timeout, Some(Duration::from_mins(5)));
     }
 
     #[test]

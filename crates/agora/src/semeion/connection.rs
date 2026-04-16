@@ -125,9 +125,9 @@ mod tests {
         assert_eq!(reconnect_delay(3), Duration::from_secs(8));
         assert_eq!(reconnect_delay(4), Duration::from_secs(16));
         assert_eq!(reconnect_delay(5), Duration::from_secs(32));
-        assert_eq!(reconnect_delay(6), Duration::from_secs(60));
-        assert_eq!(reconnect_delay(7), Duration::from_secs(60));
-        assert_eq!(reconnect_delay(100), Duration::from_secs(60));
+        assert_eq!(reconnect_delay(6), Duration::from_mins(1));
+        assert_eq!(reconnect_delay(7), Duration::from_mins(1));
+        assert_eq!(reconnect_delay(100), Duration::from_mins(1));
     }
 
     #[test]
@@ -252,6 +252,6 @@ mod tests {
 
     #[test]
     fn reconnect_delay_u32_max_caps_at_sixty_seconds() {
-        assert_eq!(reconnect_delay(u32::MAX), Duration::from_secs(60));
+        assert_eq!(reconnect_delay(u32::MAX), Duration::from_mins(1));
     }
 }

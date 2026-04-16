@@ -313,7 +313,7 @@ mod tests {
         let strategy = BackoffStrategy::Exponential {
             base: Duration::from_secs(2),
             factor: 2,
-            max_delay: Duration::from_secs(300),
+            max_delay: Duration::from_mins(5),
         };
         assert_eq!(
             strategy.delay_for_attempt(0),
@@ -342,11 +342,11 @@ mod tests {
         let strategy = BackoffStrategy::Exponential {
             base: Duration::from_secs(2),
             factor: 2,
-            max_delay: Duration::from_secs(300),
+            max_delay: Duration::from_mins(5),
         };
         assert_eq!(
             strategy.delay_for_attempt(20),
-            Duration::from_secs(300),
+            Duration::from_mins(5),
             "delay should be capped at max_delay"
         );
     }

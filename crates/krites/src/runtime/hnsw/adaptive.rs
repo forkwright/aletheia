@@ -232,7 +232,7 @@ mod tests {
         db.run_default(":create vectors { id: Int => vec: <F32; 4> }")
             .unwrap();
         db.run_default(
-            r#"::hnsw create vectors:idx {
+            r"::hnsw create vectors:idx {
                 dim: 4,
                 m: 16,
                 dtype: F32,
@@ -241,7 +241,7 @@ mod tests {
                 ef_construction: 50,
                 extend_candidates: false,
                 keep_pruned_connections: false,
-            }"#,
+            }",
         )
         .unwrap();
         // Insert 10 vectors (well below any threshold).
@@ -255,7 +255,7 @@ mod tests {
         // Normal HNSW search for comparison.
         let res = db
             .run_default(
-                r#"?[id, dist] := ~vectors:idx{id | query: vec([5.0, 5.0, 5.0, 5.0]), k: 3, ef: 50, bind_distance: dist}"#,
+                r"?[id, dist] := ~vectors:idx{id | query: vec([5.0, 5.0, 5.0, 5.0]), k: 3, ef: 50, bind_distance: dist}",
             )
             .unwrap();
         assert!(!res.rows.is_empty(), "HNSW search should return results");

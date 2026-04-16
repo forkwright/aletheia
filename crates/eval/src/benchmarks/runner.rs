@@ -229,7 +229,7 @@ mod tests {
         let config = BenchmarkRunnerConfig::default();
         assert_eq!(config.nous_id, "benchmark");
         assert_eq!(config.session_key_prefix, "bench");
-        assert_eq!(config.question_timeout, Duration::from_secs(120));
+        assert_eq!(config.question_timeout, Duration::from_mins(2));
         assert!(config.max_questions.is_none());
         assert!(config.close_between_questions);
     }

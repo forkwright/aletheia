@@ -53,7 +53,7 @@ fn utf8() {
     let c = char::from_u32(0x10FFFF).expect("test assertion");
     let mut s = String::new();
     s.push(c);
-    println!("{}", s);
+    println!("{s}");
     println!(
         "{:b} {:b} {:b} {:b}",
         s.as_bytes()[0],
@@ -87,11 +87,11 @@ fn display_datavalues() {
     // List formatting with mixed content including special characters
     let list = DataValue::List(vec![
         DataValue::from(false),
-        DataValue::from(r###"abc"你"好'啊👌"###),
+        DataValue::from(r#"abc"你"好'啊👌"#),
         DataValue::from(f64::NEG_INFINITY),
     ]);
     assert_eq!(
-        format!("{}", list),
+        format!("{list}"),
         r#"[false, "abc\"你\"好'啊👌", to_float("NEG_INF")]"#
     );
 }

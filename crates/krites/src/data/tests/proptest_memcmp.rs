@@ -1,6 +1,6 @@
-//! Property tests for DataValue memcmp and serde serialization round-trips.
+//! Property tests for `DataValue` memcmp and serde serialization round-trips.
 //!
-//! Generates random DataValue variants, serializes with memcmp encoding,
+//! Generates random `DataValue` variants, serializes with memcmp encoding,
 //! deserializes, and verifies equality. Also tests rmp-serde round-trips
 //! and sort-order preservation.
 #![expect(clippy::expect_used, reason = "test assertions")]
@@ -45,7 +45,7 @@ fn arb_vector() -> impl Strategy<Value = Vector> {
     prop_oneof![arb_vector_f32(8), arb_vector_f64(8),]
 }
 
-/// Leaf DataValue strategy -- no recursive List/Set.
+/// Leaf `DataValue` strategy -- no recursive List/Set.
 fn arb_datavalue_leaf() -> impl Strategy<Value = DataValue> {
     prop_oneof![
         Just(DataValue::Null),
@@ -66,12 +66,12 @@ fn arb_json_datavalue() -> impl Strategy<Value = DataValue> {
         Just(serde_json::Value::Null),
         any::<bool>().prop_map(serde_json::Value::Bool),
         (-1000i64..1000i64).prop_map(|n| serde_json::Value::Number(n.into())),
-        "[a-z]{0,8}".prop_map(|s| serde_json::Value::String(s)),
+        "[a-z]{0,8}".prop_map(serde_json::Value::String),
     ]
     .prop_map(|j| DataValue::Json(JsonData(j)))
 }
 
-/// Full DataValue strategy with 1-level nesting.
+/// Full `DataValue` strategy with 1-level nesting.
 fn arb_datavalue() -> impl Strategy<Value = DataValue> {
     arb_datavalue_leaf().prop_recursive(1, 16, 4, |inner| {
         prop_oneof![

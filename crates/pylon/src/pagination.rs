@@ -95,7 +95,7 @@ mod tests {
     #[test]
     fn from_vec_no_cursor_first_page() {
         let items: Vec<String> = (0..10).map(|i| format!("item-{i}")).collect();
-        let resp = PaginatedResponse::from_vec(items, 3, None, |s| s.clone(), Some(10));
+        let resp = PaginatedResponse::from_vec(items, 3, None, std::clone::Clone::clone, Some(10));
         assert_eq!(resp.items.len(), 3);
         assert!(resp.has_more);
         assert_eq!(resp.next_cursor.as_deref(), Some("item-2"));
@@ -105,7 +105,7 @@ mod tests {
     #[test]
     fn from_vec_with_cursor_skips_past_it() {
         let items: Vec<String> = (0..10).map(|i| format!("item-{i}")).collect();
-        let resp = PaginatedResponse::from_vec(items, 3, Some("item-2"), |s| s.clone(), Some(10));
+        let resp = PaginatedResponse::from_vec(items, 3, Some("item-2"), std::clone::Clone::clone, Some(10));
         assert_eq!(resp.items.len(), 3);
         assert_eq!(resp.items[0], "item-3");
         assert!(resp.has_more);
@@ -115,7 +115,7 @@ mod tests {
     #[test]
     fn from_vec_last_page_no_more() {
         let items: Vec<String> = (0..5).map(|i| format!("item-{i}")).collect();
-        let resp = PaginatedResponse::from_vec(items, 10, None, |s| s.clone(), Some(5));
+        let resp = PaginatedResponse::from_vec(items, 10, None, std::clone::Clone::clone, Some(5));
         assert_eq!(resp.items.len(), 5);
         assert!(!resp.has_more);
         assert!(resp.next_cursor.is_none());
@@ -124,7 +124,7 @@ mod tests {
     #[test]
     fn from_vec_cursor_not_found_returns_all() {
         let items: Vec<String> = (0..3).map(|i| format!("item-{i}")).collect();
-        let resp = PaginatedResponse::from_vec(items, 10, Some("nonexistent"), |s| s.clone(), None);
+        let resp = PaginatedResponse::from_vec(items, 10, Some("nonexistent"), std::clone::Clone::clone, None);
         assert_eq!(resp.items.len(), 3);
         assert!(!resp.has_more);
     }
@@ -132,7 +132,7 @@ mod tests {
     #[test]
     fn from_vec_empty_input() {
         let items: Vec<String> = Vec::new();
-        let resp = PaginatedResponse::from_vec(items, 10, None, |s| s.clone(), Some(0));
+        let resp = PaginatedResponse::from_vec(items, 10, None, std::clone::Clone::clone, Some(0));
         assert!(resp.items.is_empty());
         assert!(!resp.has_more);
         assert!(resp.next_cursor.is_none());

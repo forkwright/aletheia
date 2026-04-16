@@ -168,7 +168,7 @@ fn when_fts_index_created_text_search_finds_matching_rows() {
         .as_array()
         .expect("FTS index rows should be a JSON array")
     {
-        println!("{}", row);
+        println!("{row}");
     }
     println!("query");
     let res = db
@@ -178,14 +178,14 @@ fn when_fts_index_created_text_search_finds_matching_rows() {
         .as_array()
         .expect("FTS search results should be a JSON array")
     {
-        println!("{}", row);
+        println!("{row}");
     }
 }
 
 #[test]
 fn when_lsh_index_created_exact_match_found_across_thresholds() {
     for i in 1..10 {
-        let f = i as f64 / 10.;
+        let f = f64::from(i) / 10.;
         let db = DbInstance::default();
         db.run_default(r":create a {k: String => v: String}")
             .expect("creating LSH base relation should succeed");
@@ -210,7 +210,7 @@ fn when_lsh_index_created_exact_match_found_across_thresholds() {
 #[test]
 fn when_lsh_index_on_text_field_exact_match_found_across_thresholds() {
     for i in 1..10 {
-        let f = i as f64 / 10.;
+        let f = f64::from(i) / 10.;
         let db = DbInstance::default();
         db.run_default(r":create text {id: String,  => text: String, url: String? default null, dt: Float default now(), dup_for: String? default null }")
             .expect("creating text relation should succeed");
@@ -288,7 +288,7 @@ fn filtering() {
 #[test]
 fn when_lsh_row_deleted_similarity_search_returns_empty() {
     for i in 1..10 {
-        let f = i as f64 / 10.;
+        let f = f64::from(i) / 10.;
         let db = DbInstance::default();
         db.run_default(r":create a {k: String => v: String}")
             .expect("creating LSH base relation should succeed");
@@ -341,7 +341,7 @@ fn when_lsh_index_built_similarity_search_returns_matching_results() {
         .as_array()
         .expect("LSH columns result should be a JSON array")
     {
-        println!("{}", row);
+        println!("{row}");
     }
     let _res = db
         .run_default(
@@ -372,7 +372,7 @@ fn when_lsh_index_built_similarity_search_returns_matching_results() {
         .as_array()
         .expect("LSH search results should be a JSON array")
     {
-        println!("{}", row);
+        println!("{row}");
     }
     let res = db
         .run_default("::indices a")
@@ -381,7 +381,7 @@ fn when_lsh_index_built_similarity_search_returns_matching_results() {
         .as_array()
         .expect("indices result should be a JSON array")
     {
-        println!("{}", row);
+        println!("{row}");
     }
     db.run_default(r"::lsh drop a:lsh")
         .expect("dropping LSH index should succeed");
@@ -447,7 +447,7 @@ fn tokenizers() {
 fn multi_index_vec() {
     let db = DbInstance::default();
     db.run_default(
-        r#"
+        r"
         :create product {
             id
             =>
@@ -457,18 +457,18 @@ fn multi_index_vec() {
             name_vec: <F32; 1>,
             description_vec: <F32; 1>
         }
-        "#,
+        ",
     )
     .expect("creating product relation with multiple vector columns should succeed");
     db.run_default(
-        r#"
+        r"
         ::hnsw create product:semantic{
             fields: [name_vec, description_vec],
             dim: 1,
             ef: 16,
             m: 32,
         }
-        "#,
+        ",
     )
     .expect("creating HNSW index over multiple vector fields should succeed");
     db.run_default(
@@ -485,7 +485,7 @@ fn multi_index_vec() {
         .as_array()
         .expect("indices result should be a JSON array")
     {
-        println!("{}", row);
+        println!("{row}");
     }
 }
 

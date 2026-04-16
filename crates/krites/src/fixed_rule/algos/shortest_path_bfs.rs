@@ -161,7 +161,7 @@ mod tests {
         let db = DbInstance::default();
         let res = db
             .run_default(
-                r#"
+                r"
         love[loving, loved] <- [['alice', 'eve'],
                                 ['bob', 'alice'],
                                 ['eve', 'alice'],
@@ -173,14 +173,14 @@ mod tests {
         start[] <- [['alice']]
         end[] <- [['bob']]
         ?[fr, to, path] <~ ShortestPathBFS(love[], start[], end[])
-        "#,
+        ",
             )
             .unwrap()
             .rows;
         assert_eq!(res[0][2].get_slice().unwrap().len(), 3);
         let res = db
             .run_default(
-                r#"
+                r"
         love[loving, loved] <- [['alice', 'eve'],
                                 ['bob', 'alice'],
                                 ['eve', 'alice'],
@@ -192,7 +192,7 @@ mod tests {
         start[] <- [['alice']]
         end[] <- [['george']]
         ?[fr, to, path] <~ ShortestPathBFS(love[], start[], end[])
-        "#,
+        ",
             )
             .unwrap()
             .rows;
