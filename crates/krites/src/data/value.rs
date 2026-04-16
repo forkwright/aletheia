@@ -335,14 +335,17 @@ impl<'de> Visitor<'de> for VectorVisitor {
             .ok_or_else(|| serde::de::Error::invalid_length(1, &self))?;
         match tag {
             0u8 => {
-                let floats: &[f32] = bytemuck::try_cast_slice(bytes)
+                // WHY: bytemuck::try_cast_slice requires f32 alignment (4 bytes), but
+                // msgpack binary payloads are not guaranteed to be aligned within the
+                // stream buffer. Fall back to per-element copy on alignment failure.
+                let floats = cast_bytes_to_f32_vec(bytes)
                     .map_err(|e| serde::de::Error::custom(format!("f32 cast: {e}")))?;
-                Ok(Vector::F32(Array1::from(floats.to_vec())))
+                Ok(Vector::F32(Array1::from(floats)))
             }
             1u8 => {
-                let floats: &[f64] = bytemuck::try_cast_slice(bytes)
+                let floats = cast_bytes_to_f64_vec(bytes)
                     .map_err(|e| serde::de::Error::custom(format!("f64 cast: {e}")))?;
-                Ok(Vector::F64(Array1::from(floats.to_vec())))
+                Ok(Vector::F64(Array1::from(floats)))
             }
             _ => Err(serde::de::Error::invalid_value(
                 serde::de::Unexpected::Unsigned(u64::from(tag)),
@@ -350,6 +353,58 @@ impl<'de> Visitor<'de> for VectorVisitor {
             )),
         }
     }
+}
+
+/// Decode raw bytes into a `Vec<f32>`, tolerating unaligned input.
+///
+/// Tries a zero-copy `bytemuck::try_cast_slice` first. If that fails due to
+/// alignment (common when bytes are borrowed from a msgpack stream), falls back
+/// to copying each 4-byte chunk via `f32::from_le_bytes`.
+fn cast_bytes_to_f32_vec(bytes: &[u8]) -> std::result::Result<Vec<f32>, String> {
+    if !bytes.len().is_multiple_of(std::mem::size_of::<f32>()) {
+        return Err(format!(
+            "byte length {} is not a multiple of 4",
+            bytes.len()
+        ));
+    }
+    // Fast path: aligned data can be zero-copy cast.
+    if let Ok(floats) = bytemuck::try_cast_slice(bytes) {
+        return Ok(floats.to_vec());
+    }
+    // Slow path: copy 4 bytes at a time to satisfy alignment.
+    Ok(bytes
+        .chunks_exact(std::mem::size_of::<f32>())
+        .map(|chunk| {
+            let arr: [u8; 4] = chunk
+                .try_into()
+                .unwrap_or_else(|_| unreachable!("chunks_exact guarantees 4 bytes"));
+            f32::from_le_bytes(arr)
+        })
+        .collect())
+}
+
+/// Decode raw bytes into a `Vec<f64>`, tolerating unaligned input.
+///
+/// Same strategy as [`cast_bytes_to_f32_vec`] but for 8-byte doubles.
+fn cast_bytes_to_f64_vec(bytes: &[u8]) -> std::result::Result<Vec<f64>, String> {
+    if !bytes.len().is_multiple_of(std::mem::size_of::<f64>()) {
+        return Err(format!(
+            "byte length {} is not a multiple of 8",
+            bytes.len()
+        ));
+    }
+    if let Ok(floats) = bytemuck::try_cast_slice(bytes) {
+        return Ok(floats.to_vec());
+    }
+    Ok(bytes
+        .chunks_exact(std::mem::size_of::<f64>())
+        .map(|chunk| {
+            let arr: [u8; 8] = chunk
+                .try_into()
+                .unwrap_or_else(|_| unreachable!("chunks_exact guarantees 8 bytes"));
+            f64::from_le_bytes(arr)
+        })
+        .collect())
 }
 
 impl Vector {
