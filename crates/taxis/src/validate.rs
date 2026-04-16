@@ -150,6 +150,7 @@ pub fn validate_section(section: &str, value: &Value) -> Result<(), ValidationEr
         "messaging" => validate_messaging(value, &mut errors),
         "tuning" => validate_tuning(value, &mut errors),
         "jwt" => validate_jwt(value, &mut errors),
+        "providers" => validate_providers(value, &mut errors),
         // NOTE: pass-through sections with no validation rules.
         "packs" | "pricing" | "sandbox" | "logging" | "mcp" | "localProvider" | "training"
         | "anthropic" => {}
@@ -679,6 +680,69 @@ fn validate_tuning(value: &Value, errors: &mut Vec<String>) {
         errors.push(format!(
             "tuning.significanceThreshold must be between 0.1 and 10.0, got {threshold}"
         ));
+    }
+}
+
+/// Validate the [`LlmProviderConfig`](crate::config::LlmProviderConfig) list
+/// (#3424, #3414).
+///
+/// Rejects entries with empty names, unknown provider kinds, OpenAI-compatible
+/// entries missing a base URL, or duplicate provider names.
+fn validate_providers(value: &Value, errors: &mut Vec<String>) {
+    let Some(entries) = value.as_array() else {
+        // WHY: missing or empty provider list is a valid config — the
+        // legacy single-Anthropic path remains the default.
+        return;
+    };
+
+    let mut seen_names: std::collections::HashSet<&str> = std::collections::HashSet::new();
+    for (i, entry) in entries.iter().enumerate() {
+        match entry.get("name").and_then(Value::as_str) {
+            None | Some("") => {
+                errors.push(format!("providers[{i}].name must not be empty"));
+            }
+            Some(name) => {
+                if !seen_names.insert(name) {
+                    errors.push(format!(
+                        "providers[{i}].name '{name}' is duplicated (names must be unique)"
+                    ));
+                }
+            }
+        }
+
+        match entry.get("providerType").and_then(Value::as_str) {
+            None | Some("") => {
+                errors.push(format!(
+                    "providers[{i}].providerType must be one of: anthropic, openai-compatible, claude-code"
+                ));
+            }
+            Some(kind) => {
+                if !matches!(kind, "anthropic" | "openai-compatible" | "claude-code") {
+                    errors.push(format!(
+                        "providers[{i}].providerType '{kind}' is not recognized (expected one of: anthropic, openai-compatible, claude-code)"
+                    ));
+                }
+                // OpenAI-compatible requires baseUrl.
+                if kind == "openai-compatible"
+                    && entry
+                        .get("baseUrl")
+                        .and_then(Value::as_str)
+                        .is_none_or(str::is_empty)
+                {
+                    errors.push(format!(
+                        "providers[{i}].baseUrl is required for providerType = openai-compatible"
+                    ));
+                }
+            }
+        }
+
+        if let Some(target) = entry.get("deploymentTarget").and_then(Value::as_str)
+            && !matches!(target, "cloud" | "localhosted" | "embedded")
+        {
+            errors.push(format!(
+                "providers[{i}].deploymentTarget '{target}' is not recognized (expected one of: cloud, localhosted, embedded)"
+            ));
+        }
     }
 }
 

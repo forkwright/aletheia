@@ -17,7 +17,10 @@ pub use jwt::JwtSettings;
 pub use knowledge::KnowledgeConfig;
 pub use messaging::MessagingConfig;
 pub use nous::NousBehaviorConfig;
-pub use provider::{AnthropicConfig, PromptCacheMode, ProviderBehaviorConfig};
+pub use provider::{
+    AnthropicConfig, DeploymentTarget, LlmProviderConfig, PromptCacheMode, ProviderBehaviorConfig,
+    ProviderKind,
+};
 pub use timeouts::{CapacityConfig, RetrySettings, TimeoutsConfig};
 pub use tools::ToolLimitsConfig;
 pub use tuning::TuningConfig;

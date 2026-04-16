@@ -25,6 +25,10 @@ pub mod concurrency;
 pub mod error;
 /// Model fallback chain: retries alternative models on transient failures.
 pub mod fallback;
+/// OpenAI Chat Completions-compatible HTTP client. Bridges aletheia to any
+/// endpoint that speaks the OpenAI wire format: local llama.cpp / ollama /
+/// vllm for air-gapped operation, plus OpenAI and other cloud alternatives.
+pub mod openai;
 /// Provider health state machine (Up / Degraded / Down) with automatic recovery.
 pub mod health;
 /// Prometheus metrics for LLM request counts, latency, and token usage.

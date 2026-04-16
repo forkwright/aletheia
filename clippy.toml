@@ -2,6 +2,20 @@
 
 too-many-arguments-threshold = 10
 
+# WHY: brand names and acronyms that appear unquoted in rustdoc. Merged with
+# clippy's built-in list (Anthropic, Rust, etc. are already known).
+doc-valid-idents = [
+    "OpenAI",
+    "llama.cpp",
+    "vLLM",
+    "vllm",
+    "Ollama",
+    "ollama",
+    "SSE",
+    "HTTP",
+    "HTTPS",
+]
+
 [[disallowed-methods]]
 path = "std::process::exit"
 reason = "use snafu errors and propagate; exit() bypasses destructors"
