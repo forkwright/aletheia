@@ -30,7 +30,7 @@ koina = { path = "../koina" }
 krites = { path = "../krites", optional = true }
 jiff = { workspace = true, features = ["serde"] }
 parking_lot = "0.12"
-prometheus = { workspace = true }
+prometheus-client = { workspace = true }
 rand = { workspace = true }
 regex = { workspace = true }
 serde = { workspace = true }

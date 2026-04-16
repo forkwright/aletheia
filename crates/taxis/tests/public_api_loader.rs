@@ -91,10 +91,7 @@ fn load_config_parses_camel_case_keys() {
     let root = seed_instance(&jail);
     // WHY: taxis uses #[serde(rename_all = "camelCase")] everywhere;
     // TOML keys must be camelCase even though Rust fields are snake_case.
-    write_toml(
-        root,
-        "[embedding]\nprovider = \"mock\"\ndimension = 512\n",
-    );
+    write_toml(root, "[embedding]\nprovider = \"mock\"\ndimension = 512\n");
 
     let oikos = Oikos::from_root(root);
     let config = load_config(&oikos).unwrap();
@@ -109,10 +106,7 @@ fn load_config_rejects_encrypted_value_when_primary_key_is_missing() {
     // WHY: the loader must never silently pass an encrypted value
     // through as plaintext. Closes a class of "silent crypto failure"
     // bugs where the server starts with enc: strings in memory.
-    write_toml(
-        &root,
-        "[gateway.auth]\nsigningKey = \"enc:dGVzdA==\"\n",
-    );
+    write_toml(&root, "[gateway.auth]\nsigningKey = \"enc:dGVzdA==\"\n");
     jail.set_env("ALETHEIA_PRIMARY_KEY", "/nonexistent/path-missing-key.key");
 
     let oikos = Oikos::from_root(&root);
@@ -150,10 +144,7 @@ fn interpolate_substitutes_env_var_value_when_set() {
     let mut jail = EnvJail::new();
     let root = seed_instance(&jail).to_path_buf();
     jail.set_env("_TAXIS_TEST_SET_PORT_B", "7777");
-    write_toml(
-        &root,
-        "[gateway]\nport = ${_TAXIS_TEST_SET_PORT_B:-1111}\n",
-    );
+    write_toml(&root, "[gateway]\nport = ${_TAXIS_TEST_SET_PORT_B:-1111}\n");
 
     let oikos = Oikos::from_root(&root);
     let config = load_config(&oikos).unwrap();

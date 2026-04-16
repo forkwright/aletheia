@@ -19,7 +19,7 @@ hermeneus = { path = "../hermeneus" }
 koina = { path = "../koina" }
 fd-lock = { workspace = true }
 futures = { workspace = true }
-prometheus = { workspace = true }
+prometheus-client = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 snafu = { workspace = true }

@@ -407,23 +407,21 @@ async fn knowledge_task_with_executor_returns_report() {
     assert!(output.contains("2 modified"));
 }
 
-// --- prometheus counter helpers ---
+// --- cron execution counter helpers ---
 
 #[test]
-fn read_prometheus_counter_unknown_metric_returns_zero() {
-    // WHY: read_prometheus_counter must return 0 (not panic, not error)
-    // for an unknown metric so callers can build snapshots without
-    // pre-checking metric registration.
-    let value = read_prometheus_counter("test_unknown_metric_xyz_does_not_exist");
-    assert_eq!(value, 0);
-}
+fn cron_execution_counters_increment_on_record() {
+    // WHY: ops_fact_extraction reads daemon's shadow cron counters to build
+    // OpsSnapshot; verify the read helpers reflect record_cron_execution
+    // calls and split ok/error correctly.
+    let ok_before = crate::metrics::cron_executions_ok();
+    let err_before = crate::metrics::cron_executions_error();
+    let total_before = crate::metrics::cron_executions_total();
 
-#[test]
-fn read_prometheus_counter_with_label_unknown_returns_zero() {
-    let value = read_prometheus_counter_with_label(
-        "test_unknown_metric_xyz_does_not_exist",
-        "status",
-        "ok",
-    );
-    assert_eq!(value, 0);
+    crate::metrics::record_cron_execution("_test_ops_fact_success", 0.1, true);
+    crate::metrics::record_cron_execution("_test_ops_fact_failure", 0.2, false);
+
+    assert_eq!(crate::metrics::cron_executions_ok(), ok_before + 1);
+    assert_eq!(crate::metrics::cron_executions_error(), err_before + 1);
+    assert_eq!(crate::metrics::cron_executions_total(), total_before + 2);
 }

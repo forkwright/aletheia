@@ -55,6 +55,13 @@ agora = { path = "../agora" }
 dokimion = { path = "../eval" }
 thesauros = { path = "../thesauros" }
 koilon = { path = "../theatron/koilon", optional = true }
+# WHY: direct deps needed to wire per-crate metric registration at startup.
+# The binary is the only assembly point that imports every metrics-emitting
+# crate, so `register_all_metrics` lives here (prometheus-client has no
+# process-wide global registry).
+melete = { path = "../melete" }
+graphe = { path = "../graphe", default-features = false }
+episteme = { path = "../episteme", default-features = false }
 
 tokio = { workspace = true }
 tokio-util = { workspace = true }

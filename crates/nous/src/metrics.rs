@@ -1,141 +1,169 @@
 //! Prometheus metric definitions for the agent pipeline.
-
-// WHY: registration panics only on duplicate name (programmer error), so .expect() is appropriate in LazyLock
-#![expect(
-    clippy::expect_used,
-    reason = "metric registration is infallible at startup"
-)]
+//!
+//! Metrics are registered against a shared [`koina::metrics::MetricsRegistry`]
+//! via [`register`]. Recording functions operate on global `LazyLock` families
+//! that share `Arc`-internal state with the registered copies.
 
 use std::sync::LazyLock;
 
-use prometheus::{
-    HistogramOpts, HistogramVec, IntCounterVec, Opts, register_histogram_vec,
-    register_int_counter_vec,
-};
+use prometheus_client::encoding::EncodeLabelSet;
+use prometheus_client::metrics::counter::Counter;
+use prometheus_client::metrics::family::Family;
+use prometheus_client::metrics::histogram::Histogram;
+use prometheus_client::registry::Registry;
 
-static PIPELINE_TURNS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
-    register_int_counter_vec!(
-        Opts::new(
-            "aletheia_pipeline_turns_total",
-            "Total pipeline turns processed"
-        ),
-        &["nous_id"]
-    )
-    .expect("metric registration") // kanon:ignore RUST/expect
-});
+// ---------------------------------------------------------------------------
+// Label sets
+// ---------------------------------------------------------------------------
 
-static PIPELINE_STAGE_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
-    register_histogram_vec!(
-        HistogramOpts::new(
-            "aletheia_pipeline_stage_duration_seconds",
-            "Pipeline stage duration in seconds"
-        )
-        .buckets(vec![
-            0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 30.0, 60.0
-        ]),
-        &["nous_id", "stage"]
-    )
-    .expect("metric registration") // kanon:ignore RUST/expect
-});
-
-static PIPELINE_ERRORS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
-    register_int_counter_vec!(
-        Opts::new("aletheia_pipeline_errors_total", "Total pipeline errors"),
-        &["nous_id", "stage", "error_type"]
-    )
-    .expect("metric registration") // kanon:ignore RUST/expect
-});
-
-static CACHE_READ_TOKENS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
-    register_int_counter_vec!(
-        Opts::new(
-            "aletheia_cache_read_tokens_total",
-            "Total tokens read from prompt cache (cache hits)"
-        ),
-        &["nous_id"]
-    )
-    .expect("metric registration") // kanon:ignore RUST/expect
-});
-
-static BACKGROUND_TASK_FAILURES_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
-    register_int_counter_vec!(
-        Opts::new(
-            "aletheia_background_task_failures_total",
-            "Total background task failures (extraction, distillation, skill analysis)"
-        ),
-        &["nous_id", "task_type"]
-    )
-    .expect("metric registration") // kanon:ignore RUST/expect
-});
-
-static TOOL_FAILURES_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
-    register_int_counter_vec!(
-        Opts::new(
-            "aletheia_tool_failures_total",
-            "Total tool execution failures by tool name"
-        ),
-        &["nous_id", "tool_name"]
-    )
-    .expect("metric registration") // kanon:ignore RUST/expect
-});
-
-static STREAM_EVENTS_DROPPED_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
-    register_int_counter_vec!(
-        Opts::new(
-            "aletheia_stream_events_dropped_total",
-            "Total streaming events dropped due to full channel or disconnected receiver"
-        ),
-        &["nous_id", "reason"]
-    )
-    .expect("metric registration") // kanon:ignore RUST/expect
-});
-
-static CACHE_CREATION_TOKENS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
-    register_int_counter_vec!(
-        Opts::new(
-            "aletheia_cache_creation_tokens_total",
-            "Total tokens written to prompt cache (cache misses)"
-        ),
-        &["nous_id"]
-    )
-    .expect("metric registration") // kanon:ignore RUST/expect
-});
-
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "startup pre-registration, not yet wired into server boot sequence"
-    )
-)]
-/// Force-initialize all lazy metric statics.
-pub(crate) fn init() {
-    LazyLock::force(&PIPELINE_TURNS_TOTAL);
-    LazyLock::force(&PIPELINE_STAGE_DURATION_SECONDS);
-    LazyLock::force(&PIPELINE_ERRORS_TOTAL);
-    LazyLock::force(&CACHE_READ_TOKENS_TOTAL);
-    LazyLock::force(&CACHE_CREATION_TOKENS_TOTAL);
-    LazyLock::force(&BACKGROUND_TASK_FAILURES_TOTAL);
-    LazyLock::force(&TOOL_FAILURES_TOTAL);
-    LazyLock::force(&STREAM_EVENTS_DROPPED_TOTAL);
+#[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
+struct NousLabels {
+    nous_id: String,
 }
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
+struct NousStageLabels {
+    nous_id: String,
+    stage: String,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
+struct PipelineErrorLabels {
+    nous_id: String,
+    stage: String,
+    error_type: String,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
+struct NousTaskTypeLabels {
+    nous_id: String,
+    task_type: String,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
+struct NousToolLabels {
+    nous_id: String,
+    tool_name: String,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
+struct NousReasonLabels {
+    nous_id: String,
+    reason: String,
+}
+
+// ---------------------------------------------------------------------------
+// Metric families
+// ---------------------------------------------------------------------------
+
+static PIPELINE_TURNS_TOTAL: LazyLock<Family<NousLabels, Counter>> = LazyLock::new(Family::default);
+
+fn pipeline_stage_histogram() -> Histogram {
+    Histogram::new([0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 30.0, 60.0])
+}
+
+type NousStageHistogramFamily = Family<NousStageLabels, Histogram, fn() -> Histogram>;
+
+static PIPELINE_STAGE_DURATION_SECONDS: LazyLock<NousStageHistogramFamily> =
+    LazyLock::new(|| Family::new_with_constructor(pipeline_stage_histogram));
+
+static PIPELINE_ERRORS_TOTAL: LazyLock<Family<PipelineErrorLabels, Counter>> =
+    LazyLock::new(Family::default);
+
+static CACHE_READ_TOKENS_TOTAL: LazyLock<Family<NousLabels, Counter>> =
+    LazyLock::new(Family::default);
+
+static BACKGROUND_TASK_FAILURES_TOTAL: LazyLock<Family<NousTaskTypeLabels, Counter>> =
+    LazyLock::new(Family::default);
+
+static TOOL_FAILURES_TOTAL: LazyLock<Family<NousToolLabels, Counter>> =
+    LazyLock::new(Family::default);
+
+static STREAM_EVENTS_DROPPED_TOTAL: LazyLock<Family<NousReasonLabels, Counter>> =
+    LazyLock::new(Family::default);
+
+static CACHE_CREATION_TOKENS_TOTAL: LazyLock<Family<NousLabels, Counter>> =
+    LazyLock::new(Family::default);
+
+// ---------------------------------------------------------------------------
+// Registration
+// ---------------------------------------------------------------------------
+
+/// Register this crate's metrics with the shared registry.
+pub fn register(registry: &mut Registry) {
+    registry.register(
+        "aletheia_pipeline_turns",
+        "Total pipeline turns processed",
+        PIPELINE_TURNS_TOTAL.clone(),
+    );
+    registry.register(
+        "aletheia_pipeline_stage_duration_seconds",
+        "Pipeline stage duration in seconds",
+        PIPELINE_STAGE_DURATION_SECONDS.clone(),
+    );
+    registry.register(
+        "aletheia_pipeline_errors",
+        "Total pipeline errors",
+        PIPELINE_ERRORS_TOTAL.clone(),
+    );
+    registry.register(
+        "aletheia_cache_read_tokens",
+        "Total tokens read from prompt cache (cache hits)",
+        CACHE_READ_TOKENS_TOTAL.clone(),
+    );
+    registry.register(
+        "aletheia_cache_creation_tokens",
+        "Total tokens written to prompt cache (cache misses)",
+        CACHE_CREATION_TOKENS_TOTAL.clone(),
+    );
+    registry.register(
+        "aletheia_nous_background_task_failures",
+        "Total background task failures (extraction, distillation, skill analysis)",
+        BACKGROUND_TASK_FAILURES_TOTAL.clone(),
+    );
+    registry.register(
+        "aletheia_tool_failures",
+        "Total tool execution failures by tool name",
+        TOOL_FAILURES_TOTAL.clone(),
+    );
+    registry.register(
+        "aletheia_stream_events_dropped",
+        "Total streaming events dropped due to full channel or disconnected receiver",
+        STREAM_EVENTS_DROPPED_TOTAL.clone(),
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Recording
+// ---------------------------------------------------------------------------
 
 /// Record a completed pipeline stage.
 pub(crate) fn record_stage(nous_id: &str, stage: &str, duration_secs: f64) {
     PIPELINE_STAGE_DURATION_SECONDS
-        .with_label_values(&[nous_id, stage])
+        .get_or_create(&NousStageLabels {
+            nous_id: nous_id.to_owned(),
+            stage: stage.to_owned(),
+        })
         .observe(duration_secs);
 }
 
 /// Record a completed turn.
 pub(crate) fn record_turn(nous_id: &str) {
-    PIPELINE_TURNS_TOTAL.with_label_values(&[nous_id]).inc(); // kanon:ignore RUST/indexing-slicing
+    PIPELINE_TURNS_TOTAL
+        .get_or_create(&NousLabels {
+            nous_id: nous_id.to_owned(),
+        })
+        .inc();
 }
 
 /// Record a pipeline error.
 pub(crate) fn record_error(nous_id: &str, stage: &str, error_type: &str) {
     PIPELINE_ERRORS_TOTAL
-        .with_label_values(&[nous_id, stage, error_type])
+        .get_or_create(&PipelineErrorLabels {
+            nous_id: nous_id.to_owned(),
+            stage: stage.to_owned(),
+            error_type: error_type.to_owned(),
+        })
         .inc();
 }
 
@@ -145,7 +173,10 @@ pub(crate) fn record_error(nous_id: &str, stage: &str, error_type: &str) {
 /// set alerts on systematic tool problems. Closes #3284.
 pub(crate) fn record_tool_failure(nous_id: &str, tool_name: &str) {
     TOOL_FAILURES_TOTAL
-        .with_label_values(&[nous_id, tool_name])
+        .get_or_create(&NousToolLabels {
+            nous_id: nous_id.to_owned(),
+            tool_name: tool_name.to_owned(),
+        })
         .inc();
 }
 
@@ -155,7 +186,10 @@ pub(crate) fn record_tool_failure(nous_id: &str, tool_name: &str) {
 /// This counter surfaces the drop rate for alerting. Closes #3285.
 pub(crate) fn record_stream_event_dropped(nous_id: &str, reason: &str) {
     STREAM_EVENTS_DROPPED_TOTAL
-        .with_label_values(&[nous_id, reason])
+        .get_or_create(&NousReasonLabels {
+            nous_id: nous_id.to_owned(),
+            reason: reason.to_owned(),
+        })
         .inc();
 }
 
@@ -165,7 +199,10 @@ pub(crate) fn record_stream_event_dropped(nous_id: &str, reason: &str) {
 /// This counter surfaces the failure rate for alerting. Closes #2724.
 pub(crate) fn record_background_failure(nous_id: &str, task_type: &str) {
     BACKGROUND_TASK_FAILURES_TOTAL
-        .with_label_values(&[nous_id, task_type])
+        .get_or_create(&NousTaskTypeLabels {
+            nous_id: nous_id.to_owned(),
+            task_type: task_type.to_owned(),
+        })
         .inc();
 }
 
@@ -188,190 +225,115 @@ pub(crate) fn record_cache_usage(
     cache_creation_tokens: u64,
 ) {
     CACHE_READ_TOKENS_TOTAL
-        .with_label_values(&[nous_id])
+        .get_or_create(&NousLabels {
+            nous_id: nous_id.to_owned(),
+        })
         .inc_by(cache_read_tokens);
     CACHE_CREATION_TOKENS_TOTAL
-        .with_label_values(&[nous_id])
+        .get_or_create(&NousLabels {
+            nous_id: nous_id.to_owned(),
+        })
         .inc_by(cache_creation_tokens);
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::indexing_slicing,
-    reason = "prometheus desc() returns a non-empty slice for registered metrics; indexing [0] is safe by contract"
-)]
 mod tests {
-    use prometheus::core::Collector;
+    use koina::metrics::MetricsRegistry;
 
     use super::*;
 
+    fn fresh_registry() -> MetricsRegistry {
+        let r = MetricsRegistry::new();
+        r.with_registry(register);
+        r
+    }
+
+    fn encode(r: &MetricsRegistry) -> String {
+        let mut buf = String::new();
+        #[expect(clippy::unwrap_used, reason = "encoding into String is infallible")]
+        r.encode(&mut buf).unwrap();
+        buf
+    }
+
     #[test]
-    fn init_registers_all_metrics() {
-        init();
-        // Verify all metrics are registered by accessing their metadata
-        assert_eq!(
-            PIPELINE_TURNS_TOTAL.desc()[0].fq_name,
-            "aletheia_pipeline_turns_total"
-        );
-        assert_eq!(
-            PIPELINE_STAGE_DURATION_SECONDS.desc()[0].fq_name,
-            "aletheia_pipeline_stage_duration_seconds"
-        );
-        assert_eq!(
-            PIPELINE_ERRORS_TOTAL.desc()[0].fq_name,
-            "aletheia_pipeline_errors_total"
-        );
-        assert_eq!(
-            CACHE_READ_TOKENS_TOTAL.desc()[0].fq_name,
-            "aletheia_cache_read_tokens_total"
-        );
-        assert_eq!(
-            CACHE_CREATION_TOKENS_TOTAL.desc()[0].fq_name,
-            "aletheia_cache_creation_tokens_total"
-        );
+    fn register_exposes_all_metrics() {
+        let r = fresh_registry();
+        record_stage("n1", "context", 0.001);
+        record_turn("n1");
+        record_error("n1", "execute", "timeout");
+        record_cache_usage("n1", 5, 5);
+        record_background_failure("n1", "extract");
+        record_tool_failure("n1", "read");
+        record_stream_event_dropped("n1", "full");
+
+        let out = encode(&r);
+        for metric in [
+            "aletheia_pipeline_turns_total",
+            "aletheia_pipeline_stage_duration_seconds_count",
+            "aletheia_pipeline_errors_total",
+            "aletheia_cache_read_tokens_total",
+            "aletheia_cache_creation_tokens_total",
+            "aletheia_nous_background_task_failures_total",
+            "aletheia_tool_failures_total",
+            "aletheia_stream_events_dropped_total",
+        ] {
+            assert!(out.contains(metric), "missing `{metric}` in: {out}");
+        }
     }
 
     #[test]
     fn record_stage_increments_histogram_count() {
-        let agent = "test-record-stage";
-        let before = PIPELINE_STAGE_DURATION_SECONDS
-            .with_label_values(&[agent, "context"])
-            .get_sample_count();
-        record_stage(agent, "context", 0.001);
-        record_stage(agent, "context", 0.002);
-        let after = PIPELINE_STAGE_DURATION_SECONDS
-            .with_label_values(&[agent, "context"])
-            .get_sample_count();
-        assert_eq!(after - before, 2, "expected 2 samples to be recorded");
+        let r = fresh_registry();
+        record_stage("agent-a", "context", 0.001);
+        record_stage("agent-a", "context", 0.002);
+        let out = encode(&r);
+        assert!(
+            out.contains(
+                "aletheia_pipeline_stage_duration_seconds_count{nous_id=\"agent-a\",stage=\"context\"} 2"
+            ),
+            "got: {out}"
+        );
     }
 
     #[test]
     fn record_turn_increments_counter() {
-        let agent = "test-record-turn";
-        let before = PIPELINE_TURNS_TOTAL.with_label_values(&[agent]).get();
-        record_turn(agent);
-        record_turn(agent);
-        record_turn(agent);
-        let after = PIPELINE_TURNS_TOTAL.with_label_values(&[agent]).get();
-        assert_eq!(after - before, 3, "expected counter to increment by 3");
+        let r = fresh_registry();
+        record_turn("agent-b");
+        record_turn("agent-b");
+        record_turn("agent-b");
+        let out = encode(&r);
+        assert!(
+            out.contains("aletheia_pipeline_turns_total{nous_id=\"agent-b\"} 3"),
+            "got: {out}"
+        );
     }
 
     #[test]
     fn record_error_increments_counter() {
-        let agent = "test-record-error";
-        let error_type = "test_error";
-        let before = PIPELINE_ERRORS_TOTAL
-            .with_label_values(&[agent, "execute", error_type])
-            .get();
-        record_error(agent, "execute", error_type);
-        let after = PIPELINE_ERRORS_TOTAL
-            .with_label_values(&[agent, "execute", error_type])
-            .get();
-        assert_eq!(
-            after - before,
-            1,
-            "expected error counter to increment by 1"
+        let r = fresh_registry();
+        record_error("agent-c", "execute", "test_error");
+        let out = encode(&r);
+        assert!(
+            out.contains(
+                "aletheia_pipeline_errors_total{nous_id=\"agent-c\",stage=\"execute\",error_type=\"test_error\"} 1"
+            ),
+            "got: {out}"
         );
     }
 
     #[test]
-    fn record_multiple_stages_different_agents() {
-        for agent in ["syn", "demiurge", "analyst"] {
-            let before = PIPELINE_STAGE_DURATION_SECONDS
-                .with_label_values(&[agent, "context"])
-                .get_sample_count();
-            record_stage(agent, "context", 0.01);
-            let after = PIPELINE_STAGE_DURATION_SECONDS
-                .with_label_values(&[agent, "context"])
-                .get_sample_count();
-            assert_eq!(
-                after - before,
-                1,
-                "expected one sample recorded for {agent}"
-            );
-            record_turn(agent);
-        }
-        // Verify each agent has exactly one turn recorded
-        for agent in ["syn", "demiurge", "analyst"] {
-            let turns = PIPELINE_TURNS_TOTAL.with_label_values(&[agent]).get();
-            assert!(turns >= 1, "expected at least one turn for {agent}");
-        }
-    }
-
-    #[test]
-    fn record_cache_usage_increments_counters() {
-        let agent = "test-cache-usage";
-        let read_before = CACHE_READ_TOKENS_TOTAL.with_label_values(&[agent]).get();
-        let creation_before = CACHE_CREATION_TOKENS_TOTAL
-            .with_label_values(&[agent])
-            .get();
-        record_cache_usage(agent, 1500, 500);
-        let read_after = CACHE_READ_TOKENS_TOTAL.with_label_values(&[agent]).get();
-        let creation_after = CACHE_CREATION_TOKENS_TOTAL
-            .with_label_values(&[agent])
-            .get();
-        assert_eq!(
-            read_after - read_before,
-            1500,
-            "expected read tokens to increase by 1500"
+    fn record_cache_usage_accumulates() {
+        let r = fresh_registry();
+        record_cache_usage("agent-d", 1500, 500);
+        record_cache_usage("agent-d", 0, 1000);
+        let out = encode(&r);
+        assert!(
+            out.contains("aletheia_cache_read_tokens_total{nous_id=\"agent-d\"} 1500"),
+            "got: {out}"
         );
-        assert_eq!(
-            creation_after - creation_before,
-            500,
-            "expected creation tokens to increase by 500"
+        assert!(
+            out.contains("aletheia_cache_creation_tokens_total{nous_id=\"agent-d\"} 1500"),
+            "got: {out}"
         );
-    }
-
-    #[test]
-    fn record_cache_usage_zero_values() {
-        // WHY: first request has no cache to read from; all tokens are creation
-        let cold_agent = "cold-start-agent";
-        let creation_before = CACHE_CREATION_TOKENS_TOTAL
-            .with_label_values(&[cold_agent])
-            .get();
-        record_cache_usage(cold_agent, 0, 2000);
-        let creation_after = CACHE_CREATION_TOKENS_TOTAL
-            .with_label_values(&[cold_agent])
-            .get();
-        assert_eq!(
-            creation_after - creation_before,
-            2000,
-            "expected 2000 creation tokens for cold start"
-        );
-
-        // WHY: fully cached request reads everything, creates nothing
-        let warm_agent = "warm-agent";
-        let read_before = CACHE_READ_TOKENS_TOTAL
-            .with_label_values(&[warm_agent])
-            .get();
-        record_cache_usage(warm_agent, 3000, 0);
-        let read_after = CACHE_READ_TOKENS_TOTAL
-            .with_label_values(&[warm_agent])
-            .get();
-        assert_eq!(
-            read_after - read_before,
-            3000,
-            "expected 3000 read tokens for warm agent"
-        );
-    }
-
-    #[test]
-    fn record_cache_usage_multiple_agents() {
-        let agents = ["parent-agent", "child-fork-1", "child-fork-2"];
-        let before_counts: Vec<_> = agents
-            .iter()
-            .map(|agent| CACHE_READ_TOKENS_TOTAL.with_label_values(&[agent]).get())
-            .collect();
-        for agent in agents {
-            record_cache_usage(agent, 1000, 200);
-        }
-        for (i, agent) in agents.iter().enumerate() {
-            let after = CACHE_READ_TOKENS_TOTAL.with_label_values(&[agent]).get();
-            assert_eq!(
-                after - before_counts[i],
-                1000,
-                "expected 1000 read tokens for {agent}"
-            );
-        }
     }
 }

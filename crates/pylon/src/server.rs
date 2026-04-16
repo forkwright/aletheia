@@ -141,6 +141,12 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
 
     let (config_tx, _config_rx) = tokio::sync::watch::channel(aletheia_config.clone());
 
+    // WHY: pylon's standalone server only registers its own metric families.
+    // The aletheia binary uses `register_all_metrics` to register every
+    // metrics-emitting crate's families against the shared registry.
+    let metrics_registry = koina::metrics::MetricsRegistry::new();
+    metrics_registry.with_registry(crate::metrics::register);
+
     let state = Arc::new(AppState {
         session_store: Arc::clone(&session_store),
         nous_manager: Arc::new(nous_manager),
@@ -161,6 +167,7 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
         // aletheia binary owns the embedding pipeline. Health reports "warn".
         embedding_provider: None,
         turn_buffer_registry: Arc::new(crate::turn_buffer::TurnBufferRegistry::new()),
+        metrics_registry,
     });
 
     #[cfg(unix)]

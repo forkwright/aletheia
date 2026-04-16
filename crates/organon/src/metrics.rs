@@ -1,154 +1,132 @@
 //! Prometheus metric definitions for the tool system.
+//!
+//! Metrics are registered against a shared [`koina::metrics::MetricsRegistry`]
+//! via [`register`]. Recording functions operate on global `LazyLock` families
+//! that share `Arc`-internal state with the registered copies.
 
 use std::sync::LazyLock;
 
-use prometheus::{
-    HistogramOpts, HistogramVec, IntCounterVec, Opts, register_histogram_vec,
-    register_int_counter_vec,
-};
+use prometheus_client::encoding::EncodeLabelSet;
+use prometheus_client::metrics::counter::Counter;
+use prometheus_client::metrics::family::Family;
+use prometheus_client::metrics::histogram::Histogram;
+use prometheus_client::registry::Registry;
 
-static TOOL_INVOCATIONS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
-    #[expect(
-        clippy::expect_used,
-        reason = "metric registration fails only on name/label collision, a startup-time programming error"
-    )]
-    register_int_counter_vec!(
-        Opts::new("aletheia_tool_invocations_total", "Total tool invocations"),
-        &["tool_name", "status"]
-    )
-    .expect(
-        "metric registration fails only on name/label collision, a startup-time programming error",
-    ) // kanon:ignore RUST/expect
-});
+// ---------------------------------------------------------------------------
+// Label sets
+// ---------------------------------------------------------------------------
 
-static TOOL_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
-    #[expect(
-        clippy::expect_used,
-        reason = "metric registration fails only on name/label collision, a startup-time programming error"
-    )]
-    register_histogram_vec!(
-        HistogramOpts::new(
-            "aletheia_tool_duration_seconds",
-            "Tool execution duration in seconds"
-        )
-        .buckets(vec![
-            0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 10.0, 30.0, 60.0, 120.0
-        ]),
-        &["tool_name"]
-    )
-    .expect(
-        "metric registration fails only on name/label collision, a startup-time programming error",
-    ) // kanon:ignore RUST/expect
-});
-
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "metric init called from server startup")
-)]
-/// Force-initialize all lazy metric statics.
-pub(crate) fn init() {
-    LazyLock::force(&TOOL_INVOCATIONS_TOTAL);
-    LazyLock::force(&TOOL_DURATION_SECONDS);
+#[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
+struct ToolInvocationLabels {
+    tool_name: String,
+    status: String,
 }
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
+struct ToolLabels {
+    tool_name: String,
+}
+
+// ---------------------------------------------------------------------------
+// Metric families
+// ---------------------------------------------------------------------------
+
+static TOOL_INVOCATIONS_TOTAL: LazyLock<Family<ToolInvocationLabels, Counter>> =
+    LazyLock::new(Family::default);
+
+fn tool_duration_histogram() -> Histogram {
+    Histogram::new([0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 10.0, 30.0, 60.0, 120.0])
+}
+
+type ToolHistogramFamily = Family<ToolLabels, Histogram, fn() -> Histogram>;
+
+static TOOL_DURATION_SECONDS: LazyLock<ToolHistogramFamily> =
+    LazyLock::new(|| Family::new_with_constructor(tool_duration_histogram));
+
+// ---------------------------------------------------------------------------
+// Registration
+// ---------------------------------------------------------------------------
+
+/// Register this crate's metrics with the shared registry.
+pub fn register(registry: &mut Registry) {
+    registry.register(
+        "aletheia_tool_invocations",
+        "Total tool invocations",
+        TOOL_INVOCATIONS_TOTAL.clone(),
+    );
+    registry.register(
+        "aletheia_tool_duration_seconds",
+        "Tool execution duration in seconds",
+        TOOL_DURATION_SECONDS.clone(),
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Recording
+// ---------------------------------------------------------------------------
 
 /// Record a tool invocation.
 pub(crate) fn record_invocation(tool_name: &str, duration_secs: f64, success: bool) {
     let status = if success { "ok" } else { "error" };
     TOOL_INVOCATIONS_TOTAL
-        .with_label_values(&[tool_name, status])
+        .get_or_create(&ToolInvocationLabels {
+            tool_name: tool_name.to_owned(),
+            status: status.to_owned(),
+        })
         .inc();
     TOOL_DURATION_SECONDS
-        .with_label_values(&[tool_name]) // kanon:ignore RUST/indexing-slicing
+        .get_or_create(&ToolLabels {
+            tool_name: tool_name.to_owned(),
+        })
         .observe(duration_secs);
 }
 
 #[cfg(test)]
 mod tests {
+    use koina::metrics::MetricsRegistry;
+
     use super::*;
 
-    #[test]
-    fn init_registers_all_metrics() {
-        init();
-        // Verify metrics are registered by accessing them
-        let _ = TOOL_INVOCATIONS_TOTAL
-            .with_label_values(&["test", "ok"])
-            .get();
-        let _ = TOOL_DURATION_SECONDS
-            .with_label_values(&["test"])
-            .get_sample_count();
+    fn fresh_registry() -> MetricsRegistry {
+        let r = MetricsRegistry::new();
+        r.with_registry(register);
+        r
+    }
+
+    fn encode(r: &MetricsRegistry) -> String {
+        let mut buf = String::new();
+        #[expect(clippy::unwrap_used, reason = "encoding into String is infallible")]
+        r.encode(&mut buf).unwrap();
+        buf
     }
 
     #[test]
-    fn record_invocation_records_success() {
-        let tool_name = "test-tool-success";
-        let ok_before = TOOL_INVOCATIONS_TOTAL
-            .with_label_values(&[tool_name, "ok"])
-            .get();
-        let error_before = TOOL_INVOCATIONS_TOTAL
-            .with_label_values(&[tool_name, "error"])
-            .get();
-        let hist_before = TOOL_DURATION_SECONDS
-            .with_label_values(&[tool_name])
-            .get_sample_count();
-
-        record_invocation(tool_name, 0.05, true);
-        assert_eq!(
-            TOOL_INVOCATIONS_TOTAL
-                .with_label_values(&[tool_name, "ok"])
-                .get(),
-            ok_before + 1,
-            "ok counter should increment for success=true"
+    fn register_and_record_invocation_success() {
+        let r = fresh_registry();
+        record_invocation("_test_tool_ok", 0.05, true);
+        let out = encode(&r);
+        assert!(
+            out.contains(
+                "aletheia_tool_invocations_total{tool_name=\"_test_tool_ok\",status=\"ok\"} 1"
+            ),
+            "got: {out}"
         );
-        assert_eq!(
-            TOOL_INVOCATIONS_TOTAL
-                .with_label_values(&[tool_name, "error"])
-                .get(),
-            error_before,
-            "error counter should not change for success=true"
-        );
-        assert_eq!(
-            TOOL_DURATION_SECONDS
-                .with_label_values(&[tool_name])
-                .get_sample_count(),
-            hist_before + 1,
-            "histogram should have 1 sample"
+        assert!(
+            out.contains("aletheia_tool_duration_seconds_count{tool_name=\"_test_tool_ok\"} 1"),
+            "got: {out}"
         );
     }
 
     #[test]
-    fn record_invocation_records_failure() {
-        let tool_name = "test-tool-failure";
-        let ok_before = TOOL_INVOCATIONS_TOTAL
-            .with_label_values(&[tool_name, "ok"])
-            .get();
-        let error_before = TOOL_INVOCATIONS_TOTAL
-            .with_label_values(&[tool_name, "error"])
-            .get();
-        let hist_before = TOOL_DURATION_SECONDS
-            .with_label_values(&[tool_name])
-            .get_sample_count();
-
-        record_invocation(tool_name, 0.01, false);
-        assert_eq!(
-            TOOL_INVOCATIONS_TOTAL
-                .with_label_values(&[tool_name, "ok"])
-                .get(),
-            ok_before,
-            "ok counter should not change for success=false"
-        );
-        assert_eq!(
-            TOOL_INVOCATIONS_TOTAL
-                .with_label_values(&[tool_name, "error"])
-                .get(),
-            error_before + 1,
-            "error counter should increment for success=false"
-        );
-        assert_eq!(
-            TOOL_DURATION_SECONDS
-                .with_label_values(&[tool_name])
-                .get_sample_count(),
-            hist_before + 1,
-            "histogram should have 1 sample"
+    fn register_and_record_invocation_failure() {
+        let r = fresh_registry();
+        record_invocation("_test_tool_err", 0.01, false);
+        let out = encode(&r);
+        assert!(
+            out.contains(
+                "aletheia_tool_invocations_total{tool_name=\"_test_tool_err\",status=\"error\"} 1"
+            ),
+            "got: {out}"
         );
     }
 }

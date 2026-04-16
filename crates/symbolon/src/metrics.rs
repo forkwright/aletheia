@@ -1,67 +1,89 @@
 //! Prometheus metric definitions for authentication and authorization.
-
-#![expect(
-    clippy::expect_used,
-    reason = "metric registration is infallible at startup"
-)]
+//!
+//! Metrics are registered against a shared [`koina::metrics::MetricsRegistry`]
+//! via [`register`]. Recording functions operate on global `LazyLock` families
+//! that share `Arc`-internal state with the registered copies.
 
 use std::sync::LazyLock;
 
-use prometheus::{IntCounterVec, Opts, register_int_counter_vec};
+use prometheus_client::encoding::EncodeLabelSet;
+use prometheus_client::metrics::counter::Counter;
+use prometheus_client::metrics::family::Family;
+use prometheus_client::registry::Registry;
 
-static AUTH_ATTEMPTS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
-    register_int_counter_vec!(
-        Opts::new(
-            "aletheia_auth_attempts_total",
-            "Total authentication attempts"
-        ),
-        &["method", "status"]
-    )
-    .expect("metric registration")
-});
+// ---------------------------------------------------------------------------
+// Label sets
+// ---------------------------------------------------------------------------
 
-static TOKEN_REFRESHES_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
-    register_int_counter_vec!(
-        Opts::new(
-            "aletheia_token_refreshes_total",
-            "Total token refresh operations"
-        ),
-        &["status"]
-    )
-    .expect("metric registration")
-});
-
-static CREDENTIAL_WRITE_FAILURES_TOTAL: LazyLock<prometheus::IntCounter> = LazyLock::new(|| {
-    prometheus::register_int_counter!(
-        "aletheia_credential_write_failures_total",
-        "Total credential file write failures"
-    )
-    .expect("metric registration")
-});
-
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "metric init called from server startup")
-)]
-/// Force-initialize all lazy metric statics.
-pub(crate) fn init() {
-    LazyLock::force(&AUTH_ATTEMPTS_TOTAL);
-    LazyLock::force(&TOKEN_REFRESHES_TOTAL);
-    LazyLock::force(&CREDENTIAL_WRITE_FAILURES_TOTAL);
+#[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
+struct AuthAttemptLabels {
+    method: String,
+    status: String,
 }
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
+struct TokenRefreshLabels {
+    status: String,
+}
+
+// ---------------------------------------------------------------------------
+// Metric families
+// ---------------------------------------------------------------------------
+
+static AUTH_ATTEMPTS_TOTAL: LazyLock<Family<AuthAttemptLabels, Counter>> =
+    LazyLock::new(Family::default);
+
+static TOKEN_REFRESHES_TOTAL: LazyLock<Family<TokenRefreshLabels, Counter>> =
+    LazyLock::new(Family::default);
+
+static CREDENTIAL_WRITE_FAILURES_TOTAL: LazyLock<Counter> = LazyLock::new(Counter::default);
+
+// ---------------------------------------------------------------------------
+// Registration
+// ---------------------------------------------------------------------------
+
+/// Register this crate's metrics with the shared registry.
+pub fn register(registry: &mut Registry) {
+    registry.register(
+        "aletheia_auth_attempts",
+        "Total authentication attempts",
+        AUTH_ATTEMPTS_TOTAL.clone(),
+    );
+    registry.register(
+        "aletheia_token_refreshes",
+        "Total token refresh operations",
+        TOKEN_REFRESHES_TOTAL.clone(),
+    );
+    registry.register(
+        "aletheia_credential_write_failures",
+        "Total credential file write failures",
+        CREDENTIAL_WRITE_FAILURES_TOTAL.clone(),
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Recording
+// ---------------------------------------------------------------------------
 
 /// Record an authentication attempt.
 pub(crate) fn record_auth_attempt(method: &str, success: bool) {
     let status = if success { "ok" } else { "error" };
     AUTH_ATTEMPTS_TOTAL
-        .with_label_values(&[method, status])
+        .get_or_create(&AuthAttemptLabels {
+            method: method.to_owned(),
+            status: status.to_owned(),
+        })
         .inc();
 }
 
 /// Record a token refresh operation.
 pub(crate) fn record_token_refresh(success: bool) {
     let status = if success { "ok" } else { "error" };
-    TOKEN_REFRESHES_TOTAL.with_label_values(&[status]).inc();
+    TOKEN_REFRESHES_TOTAL
+        .get_or_create(&TokenRefreshLabels {
+            status: status.to_owned(),
+        })
+        .inc();
 }
 
 /// Record a credential file write failure.
@@ -71,92 +93,60 @@ pub(crate) fn record_credential_write_failure() {
 
 #[cfg(test)]
 mod tests {
+    use koina::metrics::MetricsRegistry;
+
     use super::*;
 
-    #[test]
-    fn init_registers_all_metrics() {
-        init();
-        // Verify metrics are registered by accessing them
-        let _ = AUTH_ATTEMPTS_TOTAL.with_label_values(&["test", "ok"]).get();
-        let _ = TOKEN_REFRESHES_TOTAL.with_label_values(&["ok"]).get();
-        let _ = CREDENTIAL_WRITE_FAILURES_TOTAL.get();
+    fn fresh_registry() -> MetricsRegistry {
+        let r = MetricsRegistry::new();
+        r.with_registry(register);
+        r
+    }
+
+    fn encode(r: &MetricsRegistry) -> String {
+        let mut buf = String::new();
+        #[expect(clippy::unwrap_used, reason = "encoding into String is infallible")]
+        r.encode(&mut buf).unwrap();
+        buf
     }
 
     #[test]
-    fn record_auth_attempt_increments_counter() {
-        let method = "test-auth-method";
-        let ok_before = AUTH_ATTEMPTS_TOTAL.with_label_values(&[method, "ok"]).get();
-        let error_before = AUTH_ATTEMPTS_TOTAL
-            .with_label_values(&[method, "error"])
-            .get();
-
-        record_auth_attempt(method, true);
-        assert_eq!(
-            AUTH_ATTEMPTS_TOTAL.with_label_values(&[method, "ok"]).get(),
-            ok_before + 1,
-            "ok counter should increment by 1"
+    fn register_and_record_auth_attempt() {
+        let r = fresh_registry();
+        record_auth_attempt("_test_method", true);
+        record_auth_attempt("_test_method", false);
+        let out = encode(&r);
+        assert!(
+            out.contains("aletheia_auth_attempts_total{method=\"_test_method\",status=\"ok\"} 1"),
+            "got: {out}"
         );
-        assert_eq!(
-            AUTH_ATTEMPTS_TOTAL
-                .with_label_values(&[method, "error"])
-                .get(),
-            error_before,
-            "error counter should not change for successful auth"
-        );
-
-        record_auth_attempt(method, false);
-        assert_eq!(
-            AUTH_ATTEMPTS_TOTAL.with_label_values(&[method, "ok"]).get(),
-            ok_before + 1,
-            "ok counter should be unchanged"
-        );
-        assert_eq!(
-            AUTH_ATTEMPTS_TOTAL
-                .with_label_values(&[method, "error"])
-                .get(),
-            error_before + 1,
-            "error counter should increment by 1"
+        assert!(
+            out.contains(
+                "aletheia_auth_attempts_total{method=\"_test_method\",status=\"error\"} 1"
+            ),
+            "got: {out}"
         );
     }
 
     #[test]
-    fn record_token_refresh_increments_counter() {
-        let ok_before = TOKEN_REFRESHES_TOTAL.with_label_values(&["ok"]).get();
-        let error_before = TOKEN_REFRESHES_TOTAL.with_label_values(&["error"]).get();
-
+    fn register_and_record_token_refresh() {
+        let r = fresh_registry();
         record_token_refresh(true);
-        assert_eq!(
-            TOKEN_REFRESHES_TOTAL.with_label_values(&["ok"]).get(),
-            ok_before + 1,
-            "ok counter should increment by 1"
-        );
-        assert_eq!(
-            TOKEN_REFRESHES_TOTAL.with_label_values(&["error"]).get(),
-            error_before,
-            "error counter should not change for successful refresh"
-        );
-
-        record_token_refresh(false);
-        assert_eq!(
-            TOKEN_REFRESHES_TOTAL.with_label_values(&["ok"]).get(),
-            ok_before + 1,
-            "ok counter should be unchanged"
-        );
-        assert_eq!(
-            TOKEN_REFRESHES_TOTAL.with_label_values(&["error"]).get(),
-            error_before + 1,
-            "error counter should increment by 1"
+        let out = encode(&r);
+        assert!(
+            out.contains("aletheia_token_refreshes_total{status=\"ok\"} 1"),
+            "got: {out}"
         );
     }
 
     #[test]
-    fn record_credential_write_failure_increments_counter() {
-        let before = CREDENTIAL_WRITE_FAILURES_TOTAL.get();
+    fn register_and_record_credential_write_failure() {
+        let r = fresh_registry();
         record_credential_write_failure();
-        assert_eq!(
-            CREDENTIAL_WRITE_FAILURES_TOTAL.get(),
-            before + 1,
-            "credential write failure counter should increment by 1"
+        let out = encode(&r);
+        assert!(
+            out.contains("aletheia_credential_write_failures_total 1"),
+            "got: {out}"
         );
     }
 }

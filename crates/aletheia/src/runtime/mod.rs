@@ -284,8 +284,10 @@ impl RuntimeBuilder {
             info!("startup validation passed");
         }
 
-        // Initialize dianoia metrics (planning/project orchestration)
-        dianoia::metrics::init();
+        // NOTE: per-crate metrics are registered with the shared
+        // `MetricsRegistry` below via [`register_all_metrics`] during AppState
+        // construction. No global init required — the registry is installed in
+        // AppState and exposed on the /metrics endpoint.
 
         // JWT key resolution
         let jwt_key: Option<SecretString> =
@@ -715,6 +717,13 @@ impl RuntimeBuilder {
         #[cfg(feature = "recall")]
         let knowledge_store = nous_manager.knowledge_store().cloned();
 
+        // WHY: prometheus-client has no process-wide global registry — every
+        // metrics-emitting crate registers its families against a single
+        // shared Registry created here. Pylon's /metrics handler encodes the
+        // same registry on every scrape.
+        let metrics_registry = koina::metrics::MetricsRegistry::new();
+        register_all_metrics(&metrics_registry);
+
         let (config_tx, _config_rx) = tokio::sync::watch::channel(aletheia_config.clone());
         let state = Arc::new(AppState {
             session_store,
@@ -738,6 +747,7 @@ impl RuntimeBuilder {
             knowledge_store,
             embedding_provider: Some(Arc::clone(&embedding_provider)),
             turn_buffer_registry: Arc::new(pylon::turn_buffer::TurnBufferRegistry::new()),
+            metrics_registry,
         });
 
         Ok(Runtime {
@@ -762,3 +772,28 @@ use setup::{
     LazyEmbeddingProvider, build_provider_registry, build_signal_provider, build_tool_registry,
     start_inbound_dispatch,
 };
+
+/// Register every metrics-emitting crate's families with the shared registry.
+///
+/// WHY: `prometheus-client` has no process-wide global registry, so each
+/// crate exposes a `register(&mut Registry)` function that installs its
+/// metric families. This binary is the only assembly point that imports
+/// them all, so wiring lives here (not in pylon, which doesn't depend on
+/// every metrics-emitting crate).
+fn register_all_metrics(registry: &koina::metrics::MetricsRegistry) {
+    registry.with_registry(|r| {
+        agora::metrics::register(r);
+        dianoia::metrics::register(r);
+        episteme::metrics::register(r);
+        graphe::metrics::register(r);
+        hermeneus::metrics::register(r);
+        melete::metrics::register(r);
+        nous::metrics::register(r);
+        oikonomos::metrics::register(r);
+        organon::metrics::register(r);
+        pylon::metrics::register(r);
+        symbolon::metrics::register(r);
+        #[cfg(feature = "energeia")]
+        energeia::metrics::prometheus::register(r);
+    });
+}
