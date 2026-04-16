@@ -1,5 +1,9 @@
 #![expect(clippy::expect_used, reason = "test assertions")]
 #![expect(clippy::unwrap_used, reason = "test assertions")]
+#![expect(
+    clippy::indexing_slicing,
+    reason = "test assertions on Vecs with asserted length"
+)]
 
 use crate::test_fixtures::test_store;
 use crate::types::{Role, SessionStatus};

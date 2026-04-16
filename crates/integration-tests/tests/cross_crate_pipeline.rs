@@ -7,7 +7,6 @@
 //! multi-response mock providers for tool-use round trips and recall injection.
 
 #![expect(clippy::expect_used, reason = "test assertions")]
-#![cfg(feature = "sqlite-tests")]
 #![expect(
     clippy::indexing_slicing,
     reason = "integration tests: index-based assertions on known-length slices"
@@ -257,7 +256,7 @@ impl TestHarness {
         nous_manager
             .spawn(nous_config, PipelineConfig::default())
             .await
-            .expect("spawn");
+            .expect("spawn nous");
 
         let jwt_manager = Arc::new(JwtManager::new(JwtConfig {
             signing_key: SecretString::from("test-secret-key-for-jwt".to_owned()),

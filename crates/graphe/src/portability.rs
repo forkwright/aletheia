@@ -12,6 +12,10 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
 /// Agent file format version.
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "reference value for TS/Rust wire compatibility")
+)]
 pub(crate) const AGENT_FILE_VERSION: u32 = 1;
 
 /// Portable agent file: wire-compatible with the TypeScript `AgentFile` format.

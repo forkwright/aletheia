@@ -1,15 +1,56 @@
 //! Per-agent per-domain competence tracking with rolling statistics.
+//!
+//! Persisted in a fjall keyspace. One row per (agent, domain) tracks the
+//! rolling score; a separate outcome log enables windowed statistics.
+//!
+//! # Key schema
+//!
+//! All keys are UTF-8 strings. Values are JSON-encoded domain structs.
+//!
+//! | Partition   | Key pattern                                         | Value                  |
+//! |-------------|-----------------------------------------------------|------------------------|
+//! | `domains`   | `{nous_id}:{domain}`                                | JSON `DomainScore`     |
+//! | `outcomes`  | `{nous_id}:{domain}:{recorded_at}:{seq_padded_20}`  | JSON `OutcomeRecord`   |
+//! | `counters`  | `{nous_id}:{domain}`                                | big-endian `u64`       |
+//!
+//! Outcome keys embed `recorded_at` (ISO 8601, lexicographic-sortable) plus a
+//! zero-padded sequence so insertion order is stable under concurrent writes
+//! at the same timestamp.
 
+use std::path::Path;
+use std::sync::{Arc, Mutex};
+
+use fjall::{KeyspaceCreateOptions, SingleWriterTxDatabase};
 use jiff::Timestamp;
-#[expect(
-    clippy::disallowed_types,
-    reason = "competence tracker owns its own isolated SQLite file; not part of the shared SessionStore pipeline"
-)]
-use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
-use snafu::ResultExt as _;
 
 use crate::error;
+
+/// Width for zero-padded sequence numbers.
+const SEQ_WIDTH: usize = 20;
+
+/// Partitions used by the competence tracker.
+const PARTITIONS: &[&str] = &["domains", "outcomes", "counters"];
+
+/// Format a u64 as a zero-padded key component so lexicographic ordering
+/// matches numeric ordering.
+fn pad_u64(v: u64) -> String {
+    format!("{v:0>SEQ_WIDTH$}")
+}
+
+/// Decode a big-endian u64 from 8 bytes.
+fn decode_u64(bytes: &[u8]) -> u64 {
+    let arr: [u8; 8] = bytes
+        .get(..8)
+        .and_then(|s| s.try_into().ok())
+        .unwrap_or([0u8; 8]);
+    u64::from_be_bytes(arr)
+}
+
+/// Encode a u64 as big-endian bytes.
+fn encode_u64(v: u64) -> [u8; 8] {
+    v.to_be_bytes()
+}
 
 /// Per-agent competence scoring configuration.
 ///
@@ -144,13 +185,20 @@ pub struct EscalationRecommendation {
     pub should_escalate: bool,
 }
 
-/// Tracks agent competence per domain with `SQLite` persistence.
-#[expect(
-    clippy::disallowed_types,
-    reason = "competence tracker owns its own isolated SQLite file; not part of the shared SessionStore pipeline"
-)]
+/// An outcome entry: the per-outcome log row used for rolling statistics.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct OutcomeRecord {
+    outcome: String,
+    recorded_at: String,
+}
+
+/// Tracks agent competence per domain with fjall persistence.
 pub struct CompetenceTracker {
-    conn: Connection,
+    db: Arc<SingleWriterTxDatabase>,
+    /// Shared write mutex — serializes writers.
+    write_lock: Mutex<()>,
+    /// Kept alive to auto-delete the temp directory when the store is dropped.
+    _temp_dir: Option<tempfile::TempDir>,
     config: CompetenceConfig,
 }
 
@@ -160,71 +208,162 @@ impl CompetenceTracker {
     /// # Errors
     ///
     /// Returns `CompetenceStore` if the database cannot be opened or initialized.
-    #[expect(
-        clippy::disallowed_types,
-        reason = "competence tracker owns its own isolated SQLite file; not part of the shared SessionStore pipeline"
-    )]
-    pub fn open(path: &std::path::Path, config: CompetenceConfig) -> error::Result<Self> {
-        let conn = Connection::open(path).context(error::CompetenceStoreSnafu {
-            message: "failed to open competence database",
+    pub fn open(path: &Path, config: CompetenceConfig) -> error::Result<Self> {
+        let fdb = koina::fjall::FjallDb::open(path, PARTITIONS).map_err(|e| {
+            error::CompetenceStoreSnafu {
+                message: format!("failed to open competence database: {e}"),
+            }
+            .build()
         })?;
-        Self::init(conn, config)
+        Ok(Self::from_fjall_db(fdb, config))
     }
 
     /// Open an in-memory competence tracker (for testing).
     ///
+    /// The directory and all data are deleted when the returned tracker is
+    /// dropped.
+    ///
     /// # Errors
     ///
     /// Returns `CompetenceStore` if the schema cannot be created.
-    #[expect(
-        clippy::disallowed_types,
-        reason = "competence tracker owns its own isolated SQLite file; not part of the shared SessionStore pipeline"
-    )]
     pub fn open_in_memory() -> error::Result<Self> {
-        let conn = Connection::open_in_memory().context(error::CompetenceStoreSnafu {
-            message: "failed to open in-memory competence database",
+        let fdb = koina::fjall::FjallDb::open_temp(PARTITIONS).map_err(|e| {
+            error::CompetenceStoreSnafu {
+                message: format!("failed to open in-memory competence database: {e}"),
+            }
+            .build()
         })?;
-        Self::init(conn, CompetenceConfig::default())
+        Ok(Self::from_fjall_db(fdb, CompetenceConfig::default()))
     }
 
-    #[expect(
-        clippy::disallowed_types,
-        reason = "competence tracker owns its own isolated SQLite file; not part of the shared SessionStore pipeline"
-    )]
-    fn init(conn: Connection, config: CompetenceConfig) -> error::Result<Self> {
-        conn.execute_batch(
-            "PRAGMA journal_mode = WAL;
-             PRAGMA foreign_keys = ON;
+    fn from_fjall_db(fdb: koina::fjall::FjallDb, config: CompetenceConfig) -> Self {
+        Self {
+            db: Arc::new(fdb.db),
+            write_lock: fdb.write_lock,
+            _temp_dir: fdb._temp_dir,
+            config,
+        }
+    }
 
-             CREATE TABLE IF NOT EXISTS competence_domains (
-                 nous_id    TEXT NOT NULL,
-                 domain     TEXT NOT NULL,
-                 score      REAL NOT NULL DEFAULT 0.5,
-                 successes  INTEGER NOT NULL DEFAULT 0,
-                 partials   INTEGER NOT NULL DEFAULT 0,
-                 failures   INTEGER NOT NULL DEFAULT 0,
-                 corrections   INTEGER NOT NULL DEFAULT 0,
-                 disagreements INTEGER NOT NULL DEFAULT 0,
-                 updated_at TEXT NOT NULL,
-                 PRIMARY KEY (nous_id, domain)
-             );
+    fn partition(&self, name: &str) -> error::Result<fjall::SingleWriterTxKeyspace> {
+        self.db
+            .keyspace(name, KeyspaceCreateOptions::default)
+            .map_err(|e| {
+                error::CompetenceStoreSnafu {
+                    message: format!("fjall partition {name}: {e}"),
+                }
+                .build()
+            })
+    }
 
-             CREATE TABLE IF NOT EXISTS competence_outcomes (
-                 id         INTEGER PRIMARY KEY AUTOINCREMENT,
-                 nous_id    TEXT NOT NULL,
-                 domain     TEXT NOT NULL,
-                 outcome    TEXT NOT NULL,
-                 recorded_at TEXT NOT NULL
-             );
+    fn domain_key(nous_id: &str, domain: &str) -> String {
+        format!("{nous_id}:{domain}")
+    }
 
-             CREATE INDEX IF NOT EXISTS idx_outcomes_agent_domain
-                 ON competence_outcomes (nous_id, domain, recorded_at);",
-        )
-        .context(error::CompetenceStoreSnafu {
-            message: "failed to initialize competence schema",
+    fn outcome_key(nous_id: &str, domain: &str, recorded_at: &str, seq: u64) -> String {
+        format!("{nous_id}:{domain}:{recorded_at}:{}", pad_u64(seq))
+    }
+
+    fn counter_key(nous_id: &str, domain: &str) -> String {
+        format!("{nous_id}:{domain}")
+    }
+
+    fn read_domain(
+        &self,
+        domains: &fjall::SingleWriterTxKeyspace,
+        nous_id: &str,
+        domain: &str,
+    ) -> error::Result<Option<DomainScore>> {
+        use fjall::Readable;
+        let snap = self.db.read_tx();
+        let key = Self::domain_key(nous_id, domain);
+        let Some(bytes) = snap.get(domains, key.as_bytes()).map_err(|e| {
+            error::CompetenceStoreSnafu {
+                message: format!("fjall domain read: {e}"),
+            }
+            .build()
+        })?
+        else {
+            return Ok(None);
+        };
+        let ds: DomainScore = serde_json::from_slice(&bytes).map_err(|e| {
+            error::CompetenceStoreSnafu {
+                message: format!("domain json decode: {e}"),
+            }
+            .build()
         })?;
+        Ok(Some(ds))
+    }
 
-        Ok(Self { conn, config })
+    fn ensure_domain_record(
+        &self,
+        tx: &mut fjall::SingleWriterWriteTx<'_>,
+        domains: &fjall::SingleWriterTxKeyspace,
+        nous_id: &str,
+        domain: &str,
+        now: &str,
+    ) -> error::Result<DomainScore> {
+        use fjall::Readable;
+        let key = Self::domain_key(nous_id, domain);
+        if let Some(bytes) = tx.get(domains, key.as_bytes()).unwrap_or(None) {
+            let ds: DomainScore = serde_json::from_slice(&bytes).map_err(|e| {
+                error::CompetenceStoreSnafu {
+                    message: format!("domain json decode: {e}"),
+                }
+                .build()
+            })?;
+            return Ok(ds);
+        }
+        let ds = DomainScore {
+            domain: domain.to_owned(),
+            score: self.config.default_score,
+            successes: 0,
+            partials: 0,
+            failures: 0,
+            corrections: 0,
+            disagreements: 0,
+            updated_at: now.to_owned(),
+        };
+        let data = serde_json::to_vec(&ds).map_err(|e| {
+            error::CompetenceStoreSnafu {
+                message: format!("domain json encode: {e}"),
+            }
+            .build()
+        })?;
+        tx.insert(domains, key.as_str(), data.as_slice());
+        Ok(ds)
+    }
+
+    fn write_domain(
+        tx: &mut fjall::SingleWriterWriteTx<'_>,
+        domains: &fjall::SingleWriterTxKeyspace,
+        nous_id: &str,
+        ds: &DomainScore,
+    ) -> error::Result<()> {
+        let key = Self::domain_key(nous_id, &ds.domain);
+        let data = serde_json::to_vec(ds).map_err(|e| {
+            error::CompetenceStoreSnafu {
+                message: format!("domain json encode: {e}"),
+            }
+            .build()
+        })?;
+        tx.insert(domains, key.as_str(), data.as_slice());
+        Ok(())
+    }
+
+    fn next_outcome_seq(
+        tx: &mut fjall::SingleWriterWriteTx<'_>,
+        counters: &fjall::SingleWriterTxKeyspace,
+        nous_id: &str,
+        domain: &str,
+    ) -> u64 {
+        use fjall::Readable;
+        let key = Self::counter_key(nous_id, domain);
+        let current = tx
+            .get(counters, key.as_bytes())
+            .unwrap_or(None)
+            .map_or(0, |b| decode_u64(&b));
+        current + 1
     }
 
     /// Record a task outcome for an agent in a domain.
@@ -240,61 +379,68 @@ impl CompetenceTracker {
     ) -> error::Result<()> {
         let now = Timestamp::now().to_string();
 
-        let tx = self
-            .conn
-            .unchecked_transaction()
-            .context(error::CompetenceStoreSnafu {
-                message: "failed to begin transaction",
-            })?;
+        let _guard = self
+            .write_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
 
-        tx.execute(
-            "INSERT INTO competence_outcomes (nous_id, domain, outcome, recorded_at)
-             VALUES (?1, ?2, ?3, ?4)",
-            params![nous_id, domain, outcome.as_str(), now],
-        )
-        .context(error::CompetenceStoreSnafu {
-            message: "failed to insert outcome",
-        })?;
+        let domains = self.partition("domains")?;
+        let outcomes = self.partition("outcomes")?;
+        let counters = self.partition("counters")?;
 
-        Self::ensure_domain(&tx, nous_id, domain, &now, self.config.default_score)?;
+        let mut tx = self.db.write_tx();
 
+        // Ensure the domain row exists (initialized with default score).
+        let mut ds = self.ensure_domain_record(&mut tx, &domains, nous_id, domain, &now)?;
+
+        // Apply score delta.
         let score_delta = match outcome {
             TaskOutcome::Success => self.config.success_bonus,
             TaskOutcome::Partial => 0.0,
             TaskOutcome::Failure => -self.config.correction_penalty,
         };
-        let counter_field = match outcome {
-            TaskOutcome::Success => "successes",
-            TaskOutcome::Partial => "partials",
-            TaskOutcome::Failure => "failures",
-        };
-        let min_score = self.config.min_score;
-        let max_score = self.config.max_score;
+        ds.score = (ds.score + score_delta)
+            .max(self.config.min_score)
+            .min(self.config.max_score);
+        match outcome {
+            TaskOutcome::Success => ds.successes += 1,
+            TaskOutcome::Partial => ds.partials += 1,
+            TaskOutcome::Failure => ds.failures += 1,
+        }
+        ds.updated_at.clone_from(&now);
 
         tracing::debug!(
             score_delta,
-            min_score,
-            max_score,
-            counter_field,
+            min_score = self.config.min_score,
+            max_score = self.config.max_score,
+            ?outcome,
             "competence record_outcome"
         );
 
-        tx.execute(
-            &format!(
-                "UPDATE competence_domains
-                 SET score = MAX({min_score}, MIN({max_score}, score + ?1)),
-                     {counter_field} = {counter_field} + 1,
-                     updated_at = ?2
-                 WHERE nous_id = ?3 AND domain = ?4"
-            ),
-            params![score_delta, now, nous_id, domain],
-        )
-        .context(error::CompetenceStoreSnafu {
-            message: "failed to update domain score",
-        })?;
+        Self::write_domain(&mut tx, &domains, nous_id, &ds)?;
 
-        tx.commit().context(error::CompetenceStoreSnafu {
-            message: "failed to commit outcome",
+        // Append outcome log entry.
+        let seq = Self::next_outcome_seq(&mut tx, &counters, nous_id, domain);
+        let rec = OutcomeRecord {
+            outcome: outcome.as_str().to_owned(),
+            recorded_at: now.clone(),
+        };
+        let rec_data = serde_json::to_vec(&rec).map_err(|e| {
+            error::CompetenceStoreSnafu {
+                message: format!("outcome json encode: {e}"),
+            }
+            .build()
+        })?;
+        let outcome_key = Self::outcome_key(nous_id, domain, &now, seq);
+        tx.insert(&outcomes, outcome_key.as_str(), rec_data.as_slice());
+        let counter_key = Self::counter_key(nous_id, domain);
+        tx.insert(&counters, counter_key.as_str(), encode_u64(seq));
+
+        tx.commit().map_err(|e| {
+            error::CompetenceStoreSnafu {
+                message: format!("fjall commit record_outcome: {e}"),
+            }
+            .build()
         })?;
 
         Ok(())
@@ -307,33 +453,35 @@ impl CompetenceTracker {
     /// Returns `CompetenceStore` on database write failure.
     pub fn record_correction(&self, nous_id: &str, domain: &str) -> error::Result<()> {
         let now = Timestamp::now().to_string();
-        Self::ensure_domain(&self.conn, nous_id, domain, &now, self.config.default_score)?;
 
-        let correction_penalty = self.config.correction_penalty;
-        let min_score = self.config.min_score;
+        let _guard = self
+            .write_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+        let domains = self.partition("domains")?;
+
+        let mut tx = self.db.write_tx();
+        let mut ds = self.ensure_domain_record(&mut tx, &domains, nous_id, domain, &now)?;
+        ds.score = (ds.score - self.config.correction_penalty).max(self.config.min_score);
+        ds.corrections += 1;
+        ds.updated_at.clone_from(&now);
 
         tracing::debug!(
-            correction_penalty,
-            min_score,
+            correction_penalty = self.config.correction_penalty,
+            min_score = self.config.min_score,
             nous_id,
             domain,
             "competence record_correction"
         );
 
-        self.conn
-            .execute(
-                &format!(
-                    "UPDATE competence_domains
-                 SET score = MAX({min_score}, score - ?1),
-                     corrections = corrections + 1,
-                     updated_at = ?2
-                 WHERE nous_id = ?3 AND domain = ?4"
-                ),
-                params![correction_penalty, now, nous_id, domain],
-            )
-            .context(error::CompetenceStoreSnafu {
-                message: "failed to record correction",
-            })?;
+        Self::write_domain(&mut tx, &domains, nous_id, &ds)?;
+        tx.commit().map_err(|e| {
+            error::CompetenceStoreSnafu {
+                message: format!("fjall commit record_correction: {e}"),
+            }
+            .build()
+        })?;
         Ok(())
     }
 
@@ -344,33 +492,35 @@ impl CompetenceTracker {
     /// Returns `CompetenceStore` on database write failure.
     pub fn record_disagreement(&self, nous_id: &str, domain: &str) -> error::Result<()> {
         let now = Timestamp::now().to_string();
-        Self::ensure_domain(&self.conn, nous_id, domain, &now, self.config.default_score)?;
 
-        let disagreement_penalty = self.config.disagreement_penalty;
-        let min_score = self.config.min_score;
+        let _guard = self
+            .write_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+        let domains = self.partition("domains")?;
+
+        let mut tx = self.db.write_tx();
+        let mut ds = self.ensure_domain_record(&mut tx, &domains, nous_id, domain, &now)?;
+        ds.score = (ds.score - self.config.disagreement_penalty).max(self.config.min_score);
+        ds.disagreements += 1;
+        ds.updated_at.clone_from(&now);
 
         tracing::debug!(
-            disagreement_penalty,
-            min_score,
+            disagreement_penalty = self.config.disagreement_penalty,
+            min_score = self.config.min_score,
             nous_id,
             domain,
             "competence record_disagreement"
         );
 
-        self.conn
-            .execute(
-                &format!(
-                    "UPDATE competence_domains
-                 SET score = MAX({min_score}, score - ?1),
-                     disagreements = disagreements + 1,
-                     updated_at = ?2
-                 WHERE nous_id = ?3 AND domain = ?4"
-                ),
-                params![disagreement_penalty, now, nous_id, domain],
-            )
-            .context(error::CompetenceStoreSnafu {
-                message: "failed to record disagreement",
-            })?;
+        Self::write_domain(&mut tx, &domains, nous_id, &ds)?;
+        tx.commit().map_err(|e| {
+            error::CompetenceStoreSnafu {
+                message: format!("fjall commit record_disagreement: {e}"),
+            }
+            .build()
+        })?;
         Ok(())
     }
 
@@ -382,21 +532,10 @@ impl CompetenceTracker {
     ///
     /// Returns `CompetenceStore` on database read failure.
     pub fn score(&self, nous_id: &str, domain: &str) -> error::Result<f64> {
-        let result: Option<f64> = self
-            .conn
-            .prepare_cached(
-                "SELECT score FROM competence_domains WHERE nous_id = ?1 AND domain = ?2",
-            )
-            .context(error::CompetenceStoreSnafu {
-                message: "failed to prepare score query",
-            })?
-            .query_row(params![nous_id, domain], |row| row.get(0))
-            .optional()
-            .context(error::CompetenceStoreSnafu {
-                message: "failed to query score",
-            })?;
-
-        Ok(result.unwrap_or(self.config.default_score))
+        let domains = self.partition("domains")?;
+        Ok(self
+            .read_domain(&domains, nous_id, domain)?
+            .map_or(self.config.default_score, |ds| ds.score))
     }
 
     /// Get full competence data for an agent across all domains.
@@ -405,39 +544,24 @@ impl CompetenceTracker {
     ///
     /// Returns `CompetenceStore` on database read failure.
     pub fn agent_competence(&self, nous_id: &str) -> error::Result<AgentCompetence> {
-        let mut stmt = self
-            .conn
-            .prepare_cached(
-                "SELECT domain, score, successes, partials, failures,
-                        corrections, disagreements, updated_at
-                 FROM competence_domains
-                 WHERE nous_id = ?1
-                 ORDER BY domain",
-            )
-            .context(error::CompetenceStoreSnafu {
-                message: "failed to prepare agent competence query",
-            })?;
+        use fjall::Readable;
 
-        let domains: Vec<DomainScore> = stmt
-            .query_map(params![nous_id], |row| {
-                Ok(DomainScore {
-                    domain: row.get(0)?,
-                    score: row.get(1)?,
-                    successes: row.get(2)?,
-                    partials: row.get(3)?,
-                    failures: row.get(4)?,
-                    corrections: row.get(5)?,
-                    disagreements: row.get(6)?,
-                    updated_at: row.get(7)?,
-                })
-            })
-            .context(error::CompetenceStoreSnafu {
-                message: "failed to query agent competence",
-            })?
-            .collect::<std::result::Result<Vec<_>, _>>()
-            .context(error::CompetenceStoreSnafu {
-                message: "failed to collect domain scores",
-            })?;
+        let domains_part = self.partition("domains")?;
+        let snap = self.db.read_tx();
+        let prefix = format!("{nous_id}:");
+        let upper = format!("{nous_id};\x00");
+
+        let mut domains: Vec<DomainScore> = Vec::new();
+        for guard in snap.range(&domains_part, prefix.as_str()..upper.as_str()) {
+            if let Ok((_k, v)) = guard.into_inner()
+                && let Ok(ds) = serde_json::from_slice::<DomainScore>(&v)
+            {
+                domains.push(ds);
+            }
+        }
+
+        // Sort by domain name to match SQL ORDER BY domain.
+        domains.sort_by(|a, b| a.domain.cmp(&b.domain));
 
         let overall_score = if domains.is_empty() {
             self.config.default_score
@@ -471,37 +595,46 @@ impl CompetenceTracker {
         domain: &str,
         window_size: u32,
     ) -> error::Result<RollingStats> {
-        let mut stmt = self
-            .conn
-            .prepare_cached(
-                "SELECT outcome FROM competence_outcomes
-                 WHERE nous_id = ?1 AND domain = ?2
-                 ORDER BY recorded_at DESC
-                 LIMIT ?3",
-            )
-            .context(error::CompetenceStoreSnafu {
-                message: "failed to prepare rolling stats query",
-            })?;
+        use fjall::Readable;
 
-        let outcomes: Vec<String> = stmt
-            .query_map(params![nous_id, domain, window_size], |row| row.get(0))
-            .context(error::CompetenceStoreSnafu {
-                message: "failed to query rolling outcomes",
-            })?
-            .collect::<std::result::Result<Vec<_>, _>>()
-            .context(error::CompetenceStoreSnafu {
-                message: "failed to collect rolling outcomes",
-            })?;
+        let outcomes_part = self.partition("outcomes")?;
+        let snap = self.db.read_tx();
+        let prefix = format!("{nous_id}:{domain}:");
+        let upper = format!("{nous_id}:{domain};\x00");
+
+        // Collect all outcomes for this (nous, domain) in key order (ascending by
+        // recorded_at then seq).
+        let mut outcome_strs: Vec<String> = Vec::new();
+        for guard in snap.range(&outcomes_part, prefix.as_str()..upper.as_str()) {
+            if let Ok((_k, v)) = guard.into_inner()
+                && let Ok(rec) = serde_json::from_slice::<OutcomeRecord>(&v)
+            {
+                outcome_strs.push(rec.outcome);
+            }
+        }
+
+        // Window = last N outcomes (most recent).
+        let limit = usize::try_from(window_size).unwrap_or(usize::MAX);
+        let windowed: Vec<&str> = if outcome_strs.len() > limit {
+            let start = outcome_strs.len() - limit;
+            outcome_strs
+                .iter()
+                .skip(start)
+                .map(String::as_str)
+                .collect()
+        } else {
+            outcome_strs.iter().map(String::as_str).collect()
+        };
 
         let mut stats = RollingStats {
             window_size,
-            total: u32::try_from(outcomes.len()).unwrap_or(u32::MAX),
+            total: u32::try_from(windowed.len()).unwrap_or(u32::MAX),
             successes: 0,
             partials: 0,
             failures: 0,
         };
 
-        for outcome_str in &outcomes {
+        for outcome_str in &windowed {
             match TaskOutcome::from_str(outcome_str) {
                 Some(TaskOutcome::Success) => stats.successes += 1,
                 Some(TaskOutcome::Partial) => stats.partials += 1,
@@ -515,8 +648,8 @@ impl CompetenceTracker {
 
     /// Check whether an agent should escalate to a higher-tier model for a domain.
     ///
-    /// Escalation is recommended when the failure rate exceeds 30% with at
-    /// least 5 recorded outcomes.
+    /// Escalation is recommended when the failure rate exceeds the configured
+    /// threshold with at least the minimum number of recorded outcomes.
     ///
     /// # Errors
     ///
@@ -556,29 +689,6 @@ impl CompetenceTracker {
             should_escalate,
         })
     }
-
-    #[expect(
-        clippy::disallowed_types,
-        reason = "competence tracker owns its own isolated SQLite file; not part of the shared SessionStore pipeline"
-    )]
-    fn ensure_domain(
-        conn: &Connection,
-        nous_id: &str,
-        domain: &str,
-        now: &str,
-        default_score: f64,
-    ) -> error::Result<()> {
-        conn.execute(
-            "INSERT OR IGNORE INTO competence_domains
-                 (nous_id, domain, score, successes, partials, failures, corrections, disagreements, updated_at)
-             VALUES (?1, ?2, ?3, 0, 0, 0, 0, 0, ?4)",
-            params![nous_id, domain, default_score, now],
-        )
-        .context(error::CompetenceStoreSnafu {
-            message: "failed to ensure domain row",
-        })?;
-        Ok(())
-    }
 }
 
 /// Rolling outcome statistics within a configurable window.
@@ -615,9 +725,6 @@ impl RollingStats {
         f64::from(self.successes) / f64::from(self.total)
     }
 }
-
-// WHY: rusqlite::OptionalExtension is needed for query_row().optional()
-use rusqlite::OptionalExtension as _;
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]

@@ -25,4 +25,4 @@ mod sandbox;
 /// Core types (actions, results, diff regions).
 mod types;
 
-pub(crate) use executor::register;
+pub use executor::register;

@@ -1,7 +1,6 @@
 //! Integration tests: run eval scenarios against a real TCP-bound pylon instance.
 
 #![expect(clippy::expect_used, reason = "test assertions")]
-#![cfg(feature = "sqlite-tests")]
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -87,7 +86,7 @@ async fn start_test_server() -> (String, String, tempfile::TempDir) {
     nous_manager
         .spawn(nous_config, PipelineConfig::default())
         .await
-        .expect("spawn");
+        .expect("spawn nous");
 
     let jwt_manager = Arc::new(JwtManager::new(JwtConfig {
         signing_key: SecretString::from("test-secret-key-for-jwt".to_owned()),

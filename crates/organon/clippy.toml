@@ -22,6 +22,3 @@ path = "std::fs::File::open"
 reason = "use tokio::fs::File::open for async or abstract behind a trait for testability"
 
 # Tool results flow through the actor model; direct DB access bypasses the abstraction
-[[disallowed-types]]
-path = "rusqlite::Connection"
-reason = "organon must not access SQLite directly; tool results flow through the nous actor"

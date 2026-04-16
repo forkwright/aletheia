@@ -18,17 +18,14 @@ Mneme was decomposed into eidos, graphe, episteme, and krites. This crate re-exp
 
 ## Re-exports
 
-Only types with downstream consumers are surfaced. Modules not listed here (admission, conflict, decay, vocab, knowledge_portability, query, migration, recovery, retention, schema) are internal to episteme/graphe and not re-exported.
+Only types with downstream consumers are surfaced. Modules not listed here (admission, conflict, decay, vocab, knowledge_portability, query) are internal to episteme/graphe and not re-exported.
 
 | Source crate | Re-exported modules | Key types | Feature gate |
 |--------------|---------------------|-----------|--------------|
 | `eidos` | `id`, `knowledge` | (full modules) | always |
-| `graphe` | `backup` | `BackupManager` | `sqlite` |
 | `graphe` | `error` | `Error` | always |
-| `graphe` | `export` | `ExportOptions`, `export_agent` | `sqlite` |
-| `graphe` | `import` | `ImportOptions`, `import_agent` | `sqlite` |
-| `graphe` | `portability` | `AgentFile` | `sqlite` |
-| `graphe` | `store` | `SessionStore` | `sqlite` or `fjall` |
+| `graphe` | `portability` | `AgentFile` | always |
+| `graphe` | `store` | `SessionStore` | always |
 | `graphe` | `types` | `Message`, `Role`, `Session`, `SessionMetrics`, `SessionOrigin`, `SessionStatus`, `SessionType`, `UsageRecord` | always |
 | `episteme` | `consolidation` | `ConsolidationConfig` | always |
 | `episteme` | `embedding` | `EmbeddingProvider`, `DegradedEmbeddingProvider`, `EmbeddingConfig`, `create_provider`, `MockEmbeddingProvider` (test-support) | always |
@@ -46,12 +43,10 @@ Only types with downstream consumers are surfaced. Modules not listed here (admi
 
 | Feature | Default | Purpose |
 |---------|---------|---------|
-| `sqlite` | yes | SQLite session store (graphe backend) |
 | `graph-algo` | yes | Graph algorithms in episteme + krites |
 | `mneme-engine` | yes | Datalog engine (krites) + typed query builder |
-| `storage-fjall` | no | Fjall LSM-tree backend (requires mneme-engine) |
+| `storage-fjall` | no | Fjall LSM-tree backend for the knowledge store (requires mneme-engine) |
 | `embed-candle` | no | Local ML embeddings via candle |
-| `hnsw_rs` | no | Alternative HNSW vector index backend |
 | `test-support` | no | MockEmbeddingProvider and test helpers |
 
 ## Training capture
@@ -64,7 +59,7 @@ Mneme itself has no logic. All changes go to the sub-crates:
 
 | Task | Sub-crate |
 |------|-----------|
-| Add session/message field | `graphe` (types, schema, migration, store) |
+| Add session/message field | `graphe` (types, store) |
 | Add knowledge type | `eidos` (knowledge module) |
 | Add extraction/recall logic | `episteme` |
 | Add Datalog query builder | `episteme` (query module, requires mneme-engine) |

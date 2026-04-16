@@ -16,7 +16,7 @@ pub struct ProsocheCheck {
     db_paths: Vec<PathBuf>,
     /// Optional knowledge store for memory consistency checks.
     #[cfg(feature = "knowledge-store")]
-    knowledge_store: Option<Arc<aletheia_episteme::knowledge_store::KnowledgeStore>>,
+    knowledge_store: Option<Arc<episteme::knowledge_store::KnowledgeStore>>,
 }
 
 impl std::fmt::Debug for ProsocheCheck {
@@ -180,7 +180,7 @@ impl ProsocheCheck {
     )]
     pub(crate) fn with_knowledge_store(
         mut self,
-        store: Arc<aletheia_episteme::knowledge_store::KnowledgeStore>,
+        store: Arc<episteme::knowledge_store::KnowledgeStore>,
     ) -> Self {
         self.knowledge_store = Some(store);
         self
@@ -432,8 +432,8 @@ pub(crate) trait ConsistencyCheck: Send + Sync {
     /// Returns attention items for each anomaly found.
     fn check(
         &self,
-        store: &aletheia_episteme::knowledge_store::KnowledgeStore,
-    ) -> Result<Vec<AttentionItem>, aletheia_episteme::error::Error>;
+        store: &episteme::knowledge_store::KnowledgeStore,
+    ) -> Result<Vec<AttentionItem>, episteme::error::Error>;
 }
 
 /// Multi-path consistency check: compares direct Datalog fact queries against
@@ -463,8 +463,8 @@ impl MultiPathConsistencyCheck {
 impl ConsistencyCheck for MultiPathConsistencyCheck {
     fn check(
         &self,
-        store: &aletheia_episteme::knowledge_store::KnowledgeStore,
-    ) -> Result<Vec<AttentionItem>, aletheia_episteme::error::Error> {
+        store: &episteme::knowledge_store::KnowledgeStore,
+    ) -> Result<Vec<AttentionItem>, episteme::error::Error> {
         let mut items = Vec::new();
 
         // Path 1: Direct Datalog query -- sample recent facts.
@@ -523,9 +523,9 @@ impl ConsistencyCheck for MultiPathConsistencyCheck {
 /// Returns the subset of `fact_ids` that are present in the `fact_entities` relation.
 #[cfg(feature = "knowledge-store")]
 fn query_entity_linked_fact_ids(
-    store: &aletheia_episteme::knowledge_store::KnowledgeStore,
+    store: &episteme::knowledge_store::KnowledgeStore,
     fact_ids: &[&str],
-) -> Result<std::collections::HashSet<String>, aletheia_episteme::error::Error> {
+) -> Result<std::collections::HashSet<String>, episteme::error::Error> {
     use std::collections::BTreeMap;
 
     if fact_ids.is_empty() {
@@ -547,11 +547,9 @@ fn query_entity_linked_fact_ids(
     let result = store.run_query(&script, BTreeMap::new())?;
 
     let mut linked = std::collections::HashSet::new();
-    for row in &result.rows {
-        if let Some(val) = row.first()
-            && let Some(s) = val.get_str()
-        {
-            linked.insert(s.to_owned());
+    for i in 0..result.row_count() {
+        if let Some(s) = result.get_string(i, "fact_id") {
+            linked.insert(s);
         }
     }
 
@@ -564,9 +562,9 @@ fn query_entity_linked_fact_ids(
 /// the `facts` relation. Returns the fact IDs that are dangling references.
 #[cfg(feature = "knowledge-store")]
 fn query_dangling_fact_entity_refs(
-    store: &aletheia_episteme::knowledge_store::KnowledgeStore,
+    store: &episteme::knowledge_store::KnowledgeStore,
     limit: usize,
-) -> Result<Vec<String>, aletheia_episteme::error::Error> {
+) -> Result<Vec<String>, episteme::error::Error> {
     use std::collections::BTreeMap;
 
     // WHY: Two-pass in Rust because CozoDB negation (`not`) requires all key
@@ -581,17 +579,15 @@ fn query_dangling_fact_entity_refs(
     let mut params1 = BTreeMap::new();
     params1.insert(
         "limit".to_owned(),
-        aletheia_episteme::engine::DataValue::from(limit_i64),
+        episteme::engine::DataValue::from(limit_i64),
     );
     let fe_result = store.run_query(
         "?[fact_id] := *fact_entities{fact_id, entity_id} :limit $limit",
         params1,
     )?;
 
-    let fe_ids: std::collections::HashSet<String> = fe_result
-        .rows
-        .iter()
-        .filter_map(|row| row.first().and_then(|v| v.get_str()).map(str::to_owned))
+    let fe_ids: std::collections::HashSet<String> = (0..fe_result.row_count())
+        .filter_map(|i| fe_result.get_string(i, "fact_id"))
         .collect();
 
     if fe_ids.is_empty() {
@@ -609,10 +605,8 @@ fn query_dangling_fact_entity_refs(
     );
     let existing_result = store.run_query(&script, BTreeMap::new())?;
 
-    let existing_ids: std::collections::HashSet<String> = existing_result
-        .rows
-        .iter()
-        .filter_map(|row| row.first().and_then(|v| v.get_str()).map(str::to_owned))
+    let existing_ids: std::collections::HashSet<String> = (0..existing_result.row_count())
+        .filter_map(|i| existing_result.get_string(i, "id"))
         .collect();
 
     // Step 3: Difference = dangling references.

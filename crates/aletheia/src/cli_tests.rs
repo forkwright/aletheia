@@ -363,15 +363,9 @@ fn init_instance_root_alias_accepted() {
 fn backup_default_parses() {
     let cli = Cli::parse_from(["aletheia", "backup"]);
     match cli.command {
-        Some(Command::Backup(BackupArgs {
-            list,
-            prune,
-            export_json,
-            ..
-        })) => {
+        Some(Command::Backup(BackupArgs { list, prune, .. })) => {
             assert!(!list, "list flag should default to false");
             assert!(!prune, "prune flag should default to false");
-            assert!(!export_json, "export_json flag should default to false");
         }
         _ => panic!("expected Backup command"),
     }
@@ -407,15 +401,6 @@ fn backup_prune_with_keep_parses() {
             assert_eq!(args.keep, 3, "keep count should be set");
             assert!(args.yes, "yes flag should be set");
         }
-        _ => panic!("expected Backup command"),
-    }
-}
-
-#[test]
-fn backup_export_json_flag_parses() {
-    let cli = Cli::parse_from(["aletheia", "backup", "--export-json"]);
-    match cli.command {
-        Some(Command::Backup(args)) => assert!(args.export_json, "export_json flag should be set"),
         _ => panic!("expected Backup command"),
     }
 }

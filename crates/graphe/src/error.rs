@@ -1,8 +1,8 @@
-//! Mneme-specific errors.
+//! Graphe-specific errors.
 
 use snafu::Snafu;
 
-/// Errors from mneme store operations.
+/// Errors from graphe store operations.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
 #[non_exhaustive]
@@ -11,34 +11,6 @@ use snafu::Snafu;
     reason = "snafu error variant fields (source, location, path, detail) are self-documenting via display format"
 )]
 pub enum Error {
-    /// `SQLite` operation failed.
-    #[cfg(feature = "sqlite")]
-    #[snafu(display("database error: {source}"))]
-    Database {
-        source: rusqlite::Error,
-        #[snafu(implicit)]
-        location: snafu::Location,
-    },
-
-    /// Database is in degraded (read-only) mode due to corruption.
-    #[cfg(feature = "sqlite")]
-    #[snafu(display("database is degraded (read-only): write rejected for {}", path.display()))]
-    DatabaseDegraded {
-        path: std::path::PathBuf,
-        #[snafu(implicit)]
-        location: snafu::Location,
-    },
-
-    /// Database corruption detected via integrity check or error code.
-    #[cfg(feature = "sqlite")]
-    #[snafu(display("database corruption detected at {}: {detail}", path.display()))]
-    DatabaseCorrupt {
-        path: std::path::PathBuf,
-        detail: String,
-        #[snafu(implicit)]
-        location: snafu::Location,
-    },
-
     /// Session not found.
     #[snafu(display("session not found: {id}"))]
     SessionNotFound {
@@ -55,7 +27,7 @@ pub enum Error {
         location: snafu::Location,
     },
 
-    /// Storage backend error (fjall or other non-SQLite backend).
+    /// Storage backend error (fjall LSM-tree).
     #[snafu(display("storage error: {message}"))]
     Storage {
         message: String,
@@ -71,72 +43,11 @@ pub enum Error {
         location: snafu::Location,
     },
 
-    /// Schema migration failed.
-    #[cfg(feature = "sqlite")]
-    #[snafu(display("migration to v{version} failed: {source}"))]
-    Migration {
-        version: u32,
-        source: rusqlite::Error,
-        #[snafu(implicit)]
-        location: snafu::Location,
-    },
-
-    /// Migration SQL checksum mismatch -- applied SQL differs from recorded checksum.
-    #[cfg(feature = "sqlite")]
-    #[snafu(display(
-        "migration v{version} checksum mismatch: recorded {found}, computed {expected} \
-         (migration SQL may have been modified after application)"
-    ))]
-    ChecksumMismatch {
-        version: u32,
-        expected: String,
-        found: String,
-        #[snafu(implicit)]
-        location: snafu::Location,
-    },
-
     /// Filesystem I/O error (archive, backup, or store open).
     #[snafu(display("I/O error at {}: {source}", path.display()))]
     Io {
         path: std::path::PathBuf,
         source: std::io::Error,
-        #[snafu(implicit)]
-        location: snafu::Location,
-    },
-
-    /// Agent file version is not supported.
-    #[cfg(feature = "sqlite")]
-    #[snafu(display("unsupported agent file version: {version}"))]
-    UnsupportedVersion {
-        version: u32,
-        #[snafu(implicit)]
-        location: snafu::Location,
-    },
-
-    /// Workspace file path contains unsafe traversal.
-    #[cfg(feature = "sqlite")]
-    #[snafu(display("unsafe path in agent file: {}", path.display()))]
-    UnsafePath {
-        path: std::path::PathBuf,
-        #[snafu(implicit)]
-        location: snafu::Location,
-    },
-
-    /// Backup path contains characters unsafe for SQL interpolation.
-    #[cfg(feature = "sqlite")]
-    #[snafu(display("invalid backup path: {}", path.display()))]
-    InvalidBackupPath {
-        path: std::path::PathBuf,
-        #[snafu(implicit)]
-        location: snafu::Location,
-    },
-
-    /// Backup path escapes the expected backup directory via traversal.
-    #[cfg(feature = "sqlite")]
-    #[snafu(display("backup path traversal: {} is outside {}", path.display(), allowed_dir.display()))]
-    BackupPathTraversal {
-        path: std::path::PathBuf,
-        allowed_dir: std::path::PathBuf,
         #[snafu(implicit)]
         location: snafu::Location,
     },
@@ -174,18 +85,6 @@ pub enum Error {
     SchemaVersion {
         expected: i64,
         found: i64,
-        #[snafu(implicit)]
-        location: snafu::Location,
-    },
-
-    /// Database schema is newer than this binary supports.
-    #[cfg(feature = "sqlite")]
-    #[snafu(display(
-        "Database schema version {current} is newer than this binary supports (max {max}). Upgrade the binary or restore from backup."
-    ))]
-    SchemaTooNew {
-        current: u32,
-        max: u32,
         #[snafu(implicit)]
         location: snafu::Location,
     },
@@ -306,72 +205,49 @@ pub enum Error {
 }
 
 impl Error {
-    /// Whether this error is a `SQLite` UNIQUE constraint violation.
+    /// Whether this error represents a UNIQUE constraint violation
+    /// (duplicate session key).
     ///
-    /// Uses the typed `rusqlite::ErrorCode::ConstraintViolation` rather than
-    /// string matching on the error message, which is fragile across `SQLite`
-    /// versions and rusqlite wrappers (#3282).
-    #[cfg(feature = "sqlite")]
+    /// The fjall backend emits [`Error::Storage`] with a message prefix
+    /// `"UNIQUE constraint failed"` when the `(nous_id, session_key)`
+    /// index already contains an entry.
     #[must_use]
     pub fn is_unique_constraint_violation(&self) -> bool {
-        match self {
-            Self::Database { source, .. } => matches!(
-                source,
-                rusqlite::Error::SqliteFailure(
-                    rusqlite::ffi::Error {
-                        code: rusqlite::ErrorCode::ConstraintViolation,
-                        extended_code: 2067, // SQLITE_CONSTRAINT_UNIQUE
-                    },
-                    _,
-                )
-            ),
-            _ => false,
-        }
+        matches!(
+            self,
+            Self::Storage { message, .. }
+                if message.starts_with("UNIQUE constraint failed")
+        )
     }
 }
 
-/// Result alias using mneme's [`Error`] type.
+/// Result alias using graphe's [`Error`] type.
 pub type Result<T> = std::result::Result<T, Error>;
 
 #[cfg(test)]
-#[cfg(feature = "sqlite")]
 mod tests {
     use super::*;
 
     #[test]
     fn unique_constraint_violation_detected() {
-        let sqlite_err = rusqlite::Error::SqliteFailure(
-            rusqlite::ffi::Error {
-                code: rusqlite::ErrorCode::ConstraintViolation,
-                extended_code: 2067,
-            },
-            Some("UNIQUE constraint failed: sessions.nous_id, sessions.session_key".to_owned()),
-        );
-        let err = Error::Database {
-            source: sqlite_err,
+        let err = Error::Storage {
+            message: "UNIQUE constraint failed: session (syn, main) already exists".to_owned(),
             location: snafu::location!(),
         };
         assert!(err.is_unique_constraint_violation());
     }
 
     #[test]
-    fn non_unique_constraint_not_detected() {
-        let sqlite_err = rusqlite::Error::SqliteFailure(
-            rusqlite::ffi::Error {
-                code: rusqlite::ErrorCode::DatabaseBusy,
-                extended_code: 5,
-            },
-            Some("database is locked".to_owned()),
-        );
-        let err = Error::Database {
-            source: sqlite_err,
+    fn non_unique_storage_error_not_detected() {
+        let err = Error::Storage {
+            message: "disk full".to_owned(),
             location: snafu::location!(),
         };
         assert!(!err.is_unique_constraint_violation());
     }
 
     #[test]
-    fn non_database_error_not_detected() {
+    fn non_storage_error_not_detected() {
         let err = Error::SessionNotFound {
             id: "test".to_owned(),
             location: snafu::location!(),

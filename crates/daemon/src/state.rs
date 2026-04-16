@@ -1,11 +1,7 @@
 //! Task-state persistence for daemon: scheduled task execution state across restarts.
 //!
-//! Selects a backend at compile time via feature flags:
+//! Pure-Rust LSM-tree storage via the `fjall` crate.
 //!
-//! - `fjall` (default): pure-Rust LSM-tree store via `fjall`. Zero C deps.
-//! - `sqlite`: single-writer SQLite via `rusqlite`.
-//!
-//! Both backends expose the same [`TaskStateStore`] type with identical methods.
 //! Also provides workspace-level daemon configuration and single-instance locking.
 
 use std::path::{Path, PathBuf};
@@ -29,21 +25,8 @@ pub struct TaskState {
     pub consecutive_failures: u32,
 }
 
-// -- Fjall backend -----------------------------------------------------------
-// WHY: when both fjall and sqlite are active (workspace feature unification),
-// prefer sqlite so TaskStateStore is unambiguous and fjall helpers are not dead
-// code. Fjall module only compiles when sqlite is absent.
-
-#[cfg(all(feature = "fjall", not(feature = "sqlite")))]
 mod fjall_store;
-#[cfg(all(feature = "fjall", not(feature = "sqlite")))]
 pub(crate) use fjall_store::TaskStateStore;
-
-// -- SQLite backend ----------------------------------------------------------
-#[cfg(feature = "sqlite")]
-mod sqlite_store;
-#[cfg(feature = "sqlite")]
-pub(crate) use sqlite_store::TaskStateStore;
 
 // -- Workspace config and locking (shared across backends) -------------------
 

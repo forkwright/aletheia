@@ -1,6 +1,5 @@
 //! Symbolon-specific errors.
 
-#[cfg(not(feature = "sqlite"))]
 use std::path::PathBuf;
 
 use snafu::Snafu;
@@ -37,15 +36,6 @@ pub enum Error {
     PermissionDenied {
         action: String,
         role: String,
-        #[snafu(implicit)]
-        location: snafu::Location,
-    },
-
-    /// `SQLite` operation failed.
-    #[cfg(feature = "sqlite")]
-    #[snafu(display("database error: {source}"))]
-    Database {
-        source: rusqlite::Error,
         #[snafu(implicit)]
         location: snafu::Location,
     },
@@ -109,19 +99,9 @@ pub enum Error {
         location: snafu::Location,
     },
 
-    /// Auth database schema version table is corrupted or unreadable.
-    #[cfg(feature = "sqlite")]
-    #[snafu(display("auth database schema is corrupted: {source}"))]
-    SchemaCorrupted {
-        source: rusqlite::Error,
-        #[snafu(implicit)]
-        location: snafu::Location,
-    },
-
     /// Storage backend operation failed.
     ///
     /// Used by the fjall backend for LSM-tree and JSON encoding errors.
-    #[cfg(not(feature = "sqlite"))]
     #[snafu(display("storage error: {message}"))]
     Storage {
         message: String,
@@ -132,7 +112,6 @@ pub enum Error {
     /// Filesystem I/O error.
     ///
     /// Used by the fjall backend when creating the store directory.
-    #[cfg(not(feature = "sqlite"))]
     #[snafu(display("I/O error at {}: {source}", path.display()))]
     Io {
         path: PathBuf,

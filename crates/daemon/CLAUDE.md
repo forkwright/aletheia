@@ -26,7 +26,7 @@ Per-nous background task runner: cron scheduling, maintenance services, prosoche
 | `TraceRotator` | `maintenance/trace_rotation.rs` | Rotate and gzip-compress old trace files |
 | `DriftDetector` | `maintenance/drift_detection.rs` | Compare live instance against template for config drift |
 | `DbMonitor` | `maintenance/db_monitor.rs` | Database file size monitoring with warning/alert thresholds |
-| `TaskStateStore` | `state.rs` | SQLite-backed persistence for task execution state across restarts |
+| `TaskStateStore` | `state.rs` | fjall-backed persistence for task execution state across restarts |
 
 ## Patterns
 
@@ -49,5 +49,5 @@ Per-nous background task runner: cron scheduling, maintenance services, prosoche
 
 ## Dependencies
 
-Uses: koina, chrono, cron, jiff, rusqlite, tokio, snafu, tracing
+Uses: koina, chrono, cron, jiff, fjall, tokio, snafu, tracing
 Used by: aletheia (binary)

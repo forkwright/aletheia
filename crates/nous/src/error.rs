@@ -233,19 +233,17 @@ pub enum Error {
     },
 
     /// Competence store error.
-    #[snafu(display("competence store error: {message}: {source}"))]
+    #[snafu(display("competence store error: {message}"))]
     CompetenceStore {
         message: String,
-        source: rusqlite::Error,
         #[snafu(implicit)]
         location: snafu::Location,
     },
 
     /// Uncertainty store error.
-    #[snafu(display("uncertainty store error: {message}: {source}"))]
+    #[snafu(display("uncertainty store error: {message}"))]
     UncertaintyStore {
         message: String,
-        source: rusqlite::Error,
         #[snafu(implicit)]
         location: snafu::Location,
     },

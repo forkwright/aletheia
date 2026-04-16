@@ -1,12 +1,27 @@
 //! Uncertainty quantification: calibration of agent confidence estimates.
+//!
+//! Persisted in a fjall keyspace. Calibration points are kept per-agent and
+//! pruned to a configured maximum window size per agent.
+//!
+//! # Key schema
+//!
+//! All keys are UTF-8 strings. Values are JSON-encoded [`CalibrationPoint`]s.
+//!
+//! | Partition      | Key pattern                                         | Value                    |
+//! |----------------|-----------------------------------------------------|--------------------------|
+//! | `points`       | `{nous_id}:{recorded_at}:{seq_padded_20}`           | JSON `CalibrationPoint`  |
+//! | `counters`     | `{nous_id}`                                         | big-endian `u64`         |
+//!
+//! `recorded_at` (ISO 8601 lexicographic-sortable) + zero-padded sequence keeps
+//! insertion order stable for pruning. `counters` provides a per-agent
+//! monotonic sequence so concurrent records at the same timestamp don't
+//! collide.
 
-#[expect(
-    clippy::disallowed_types,
-    reason = "uncertainty tracker owns its own isolated SQLite file; not part of the shared SessionStore pipeline"
-)]
-use rusqlite::{Connection, params};
+use std::path::Path;
+use std::sync::{Arc, Mutex};
+
+use fjall::{KeyspaceCreateOptions, SingleWriterTxDatabase};
 use serde::{Deserialize, Serialize};
-use snafu::ResultExt as _;
 
 use crate::error;
 
@@ -15,6 +30,32 @@ const NUM_BINS: usize = 10;
 
 /// Bin width for calibration curve.
 const BIN_WIDTH: f64 = 0.1;
+
+/// Width for zero-padded sequence numbers.
+const SEQ_WIDTH: usize = 20;
+
+/// Partitions used by the uncertainty tracker.
+const PARTITIONS: &[&str] = &["points", "counters"];
+
+/// Format a u64 as a zero-padded key component so lexicographic ordering
+/// matches numeric ordering.
+fn pad_u64(v: u64) -> String {
+    format!("{v:0>SEQ_WIDTH$}")
+}
+
+/// Decode a big-endian u64 from 8 bytes.
+fn decode_u64(bytes: &[u8]) -> u64 {
+    let arr: [u8; 8] = bytes
+        .get(..8)
+        .and_then(|s| s.try_into().ok())
+        .unwrap_or([0u8; 8]);
+    u64::from_be_bytes(arr)
+}
+
+/// Encode a u64 as big-endian bytes.
+fn encode_u64(v: u64) -> [u8; 8] {
+    v.to_be_bytes()
+}
 
 /// A single calibration bin showing predicted vs actual accuracy.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -59,14 +100,24 @@ pub struct CalibrationSummary {
     pub overconfidence_patterns: Vec<OverconfidencePattern>,
 }
 
+/// A single confidence prediction and its outcome.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct CalibrationPoint {
+    nous_id: String,
+    domain: String,
+    stated_confidence: f64,
+    was_correct: bool,
+    recorded_at: String,
+}
+
 /// Tracks agent confidence predictions vs actual outcomes.
-#[expect(
-    clippy::disallowed_types,
-    reason = "uncertainty tracker owns its own isolated SQLite file; not part of the shared SessionStore pipeline"
-)]
 pub(crate) struct UncertaintyTracker {
-    conn: Connection,
-    /// Maximum stored calibration points before oldest entries are pruned.
+    db: Arc<SingleWriterTxDatabase>,
+    /// Shared write mutex.
+    write_lock: Mutex<()>,
+    /// Kept alive to auto-delete the temp directory when the store is dropped.
+    _temp_dir: Option<tempfile::TempDir>,
+    /// Maximum stored calibration points per agent before oldest entries are pruned.
     max_calibration_points: u32,
 }
 
@@ -77,33 +128,27 @@ impl UncertaintyTracker {
     ///
     /// Returns `UncertaintyStore` if the database cannot be opened or initialized.
     #[expect(
-        clippy::disallowed_types,
-        reason = "uncertainty tracker owns its own isolated SQLite file; not part of the shared SessionStore pipeline"
-    )]
-    #[expect(
         dead_code,
         reason = "WIP: uncertainty calibration for agent confidence tracking — no callers yet, including tests"
     )]
-    pub(crate) fn open(path: &std::path::Path) -> error::Result<Self> {
-        let conn = Connection::open(path).context(error::UncertaintyStoreSnafu {
-            message: "failed to open uncertainty database",
+    pub(crate) fn open(path: &Path) -> error::Result<Self> {
+        let fdb = koina::fjall::FjallDb::open(path, PARTITIONS).map_err(|e| {
+            error::UncertaintyStoreSnafu {
+                message: format!("failed to open uncertainty database: {e}"),
+            }
+            .build()
         })?;
-        let max_calibration_points = u32::try_from(
-            taxis::config::AgentBehaviorDefaults::default().uncertainty_max_calibration_points,
-        )
-        .unwrap_or(1_000);
-        Self::init(conn, max_calibration_points)
+        Ok(Self::from_fjall_db(fdb, Self::default_max_points()))
     }
 
     /// Open an in-memory uncertainty tracker (for testing).
     ///
+    /// The directory and all data are deleted when the returned tracker is
+    /// dropped.
+    ///
     /// # Errors
     ///
     /// Returns `UncertaintyStore` if the schema cannot be created.
-    #[expect(
-        clippy::disallowed_types,
-        reason = "uncertainty tracker owns its own isolated SQLite file; not part of the shared SessionStore pipeline"
-    )]
     #[cfg_attr(
         not(test),
         expect(
@@ -112,48 +157,63 @@ impl UncertaintyTracker {
         )
     )]
     pub(crate) fn open_in_memory() -> error::Result<Self> {
-        let conn = Connection::open_in_memory().context(error::UncertaintyStoreSnafu {
-            message: "failed to open in-memory uncertainty database",
+        let fdb = koina::fjall::FjallDb::open_temp(PARTITIONS).map_err(|e| {
+            error::UncertaintyStoreSnafu {
+                message: format!("failed to open in-memory uncertainty database: {e}"),
+            }
+            .build()
         })?;
-        let max_calibration_points = u32::try_from(
-            taxis::config::AgentBehaviorDefaults::default().uncertainty_max_calibration_points,
-        )
-        .unwrap_or(1_000);
-        Self::init(conn, max_calibration_points)
+        Ok(Self::from_fjall_db(fdb, Self::default_max_points()))
     }
 
-    #[expect(
-        clippy::disallowed_types,
-        reason = "uncertainty tracker owns its own isolated SQLite file; not part of the shared SessionStore pipeline"
-    )]
-    fn init(conn: Connection, max_calibration_points: u32) -> error::Result<Self> {
-        conn.execute_batch(
-            "PRAGMA journal_mode = WAL;
-             PRAGMA foreign_keys = ON;
-
-             CREATE TABLE IF NOT EXISTS calibration_points (
-                 id                 INTEGER PRIMARY KEY AUTOINCREMENT,
-                 nous_id            TEXT NOT NULL,
-                 domain             TEXT NOT NULL,
-                 stated_confidence  REAL NOT NULL,
-                 was_correct        INTEGER NOT NULL,
-                 recorded_at        TEXT NOT NULL
-             );
-
-             CREATE INDEX IF NOT EXISTS idx_calibration_agent
-                 ON calibration_points (nous_id, recorded_at);
-
-             CREATE INDEX IF NOT EXISTS idx_calibration_domain
-                 ON calibration_points (nous_id, domain);",
+    fn default_max_points() -> u32 {
+        u32::try_from(
+            taxis::config::AgentBehaviorDefaults::default().uncertainty_max_calibration_points,
         )
-        .context(error::UncertaintyStoreSnafu {
-            message: "failed to initialize uncertainty schema",
-        })?;
+        .unwrap_or(1_000)
+    }
 
-        Ok(Self {
-            conn,
+    fn from_fjall_db(fdb: koina::fjall::FjallDb, max_calibration_points: u32) -> Self {
+        Self {
+            db: Arc::new(fdb.db),
+            write_lock: fdb.write_lock,
+            _temp_dir: fdb._temp_dir,
             max_calibration_points,
-        })
+        }
+    }
+
+    fn partition(&self, name: &str) -> error::Result<fjall::SingleWriterTxKeyspace> {
+        self.db
+            .keyspace(name, KeyspaceCreateOptions::default)
+            .map_err(|e| {
+                error::UncertaintyStoreSnafu {
+                    message: format!("fjall partition {name}: {e}"),
+                }
+                .build()
+            })
+    }
+
+    fn next_seq(
+        &self,
+        counters: &fjall::SingleWriterTxKeyspace,
+        nous_id: &str,
+    ) -> error::Result<u64> {
+        use fjall::Readable;
+        let snap = self.db.read_tx();
+        let current = snap
+            .get(counters, nous_id.as_bytes())
+            .map_err(|e| {
+                error::UncertaintyStoreSnafu {
+                    message: format!("fjall counter read: {e}"),
+                }
+                .build()
+            })?
+            .map_or(0, |b| decode_u64(&b));
+        Ok(current + 1)
+    }
+
+    fn point_key(nous_id: &str, recorded_at: &str, seq: u64) -> String {
+        format!("{nous_id}:{recorded_at}:{}", pad_u64(seq))
     }
 
     /// Record a confidence prediction and its actual outcome.
@@ -180,16 +240,42 @@ impl UncertaintyTracker {
         let clamped = stated_confidence.clamp(0.0, 1.0);
         let now = jiff::Timestamp::now().to_string();
 
-        self.conn
-            .execute(
-                "INSERT INTO calibration_points
-                     (nous_id, domain, stated_confidence, was_correct, recorded_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5)",
-                params![nous_id, domain, clamped, i32::from(was_correct), now],
-            )
-            .context(error::UncertaintyStoreSnafu {
-                message: "failed to insert calibration point",
+        {
+            let _guard = self
+                .write_lock
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+            let points = self.partition("points")?;
+            let counters = self.partition("counters")?;
+
+            let seq = self.next_seq(&counters, nous_id)?;
+
+            let point = CalibrationPoint {
+                nous_id: nous_id.to_owned(),
+                domain: domain.to_owned(),
+                stated_confidence: clamped,
+                was_correct,
+                recorded_at: now.clone(),
+            };
+            let data = serde_json::to_vec(&point).map_err(|e| {
+                error::UncertaintyStoreSnafu {
+                    message: format!("serialize calibration point: {e}"),
+                }
+                .build()
             })?;
+            let key = Self::point_key(nous_id, &now, seq);
+
+            let mut tx = self.db.write_tx();
+            tx.insert(&points, key.as_str(), data.as_slice());
+            tx.insert(&counters, nous_id, encode_u64(seq));
+            tx.commit().map_err(|e| {
+                error::UncertaintyStoreSnafu {
+                    message: format!("fjall commit record: {e}"),
+                }
+                .build()
+            })?;
+        }
 
         self.prune_old_points(nous_id)?;
 
@@ -262,51 +348,41 @@ impl UncertaintyTracker {
         &self,
         nous_id: &str,
     ) -> error::Result<Vec<OverconfidencePattern>> {
-        let mut stmt = self
-            .conn
-            .prepare_cached(
-                "SELECT domain,
-                        AVG(stated_confidence) as avg_conf,
-                        AVG(was_correct) as actual_rate,
-                        COUNT(*) as cnt
-                 FROM calibration_points
-                 WHERE nous_id = ?1
-                 GROUP BY domain
-                 HAVING cnt >= 5",
-            )
-            .context(error::UncertaintyStoreSnafu {
-                message: "failed to prepare overconfidence query",
-            })?;
+        let points = self.load_points_with_domains(Some(nous_id))?;
 
-        let patterns: Vec<OverconfidencePattern> = stmt
-            .query_map(params![nous_id], |row| {
-                let domain: String = row.get(0)?;
-                let avg_confidence: f64 = row.get(1)?;
-                let actual_rate: f64 = row.get(2)?;
-                let sample_count: u32 = row.get(3)?;
+        // Aggregate per domain.
+        let mut per_domain: std::collections::BTreeMap<String, (f64, u32, u32)> =
+            std::collections::BTreeMap::new();
+        for point in &points {
+            let entry = per_domain
+                .entry(point.domain.clone())
+                .or_insert((0.0, 0, 0));
+            entry.0 += point.stated_confidence;
+            entry.1 += u32::from(point.was_correct);
+            entry.2 += 1;
+        }
+
+        let patterns: Vec<OverconfidencePattern> = per_domain
+            .into_iter()
+            .filter_map(|(domain, (conf_sum, correct_count, total))| {
+                if total < 5 {
+                    return None;
+                }
+                let avg_confidence = conf_sum / f64::from(total);
+                let actual_rate = f64::from(correct_count) / f64::from(total);
                 let gap = avg_confidence - actual_rate;
-
-                Ok(OverconfidencePattern {
+                Some(OverconfidencePattern {
                     domain,
                     avg_confidence,
                     actual_rate,
                     overconfidence_gap: gap,
-                    sample_count,
+                    sample_count: total,
                 })
             })
-            .context(error::UncertaintyStoreSnafu {
-                message: "failed to query overconfidence patterns",
-            })?
-            .collect::<std::result::Result<Vec<_>, _>>()
-            .context(error::UncertaintyStoreSnafu {
-                message: "failed to collect overconfidence patterns",
-            })?;
-
-        // WHY: only flag domains with a meaningful overconfidence gap (>0.15)
-        Ok(patterns
-            .into_iter()
             .filter(|p| p.overconfidence_gap > 0.15)
-            .collect())
+            .collect();
+
+        Ok(patterns)
     }
 
     /// Get a full calibration summary for an agent.
@@ -337,73 +413,110 @@ impl UncertaintyTracker {
         })
     }
 
-    fn load_points(&self, nous_id: Option<&str>) -> error::Result<Vec<(f64, bool)>> {
-        if let Some(id) = nous_id {
-            let mut stmt = self
-                .conn
-                .prepare_cached(
-                    "SELECT stated_confidence, was_correct
-                     FROM calibration_points
-                     WHERE nous_id = ?1
-                     ORDER BY recorded_at DESC
-                     LIMIT ?2",
-                )
-                .context(error::UncertaintyStoreSnafu {
-                    message: "failed to prepare points query",
-                })?;
+    fn load_points_with_domains(
+        &self,
+        nous_id: Option<&str>,
+    ) -> error::Result<Vec<CalibrationPoint>> {
+        use fjall::Readable;
 
-            stmt.query_map(params![id, self.max_calibration_points], |row| {
-                Ok((row.get::<_, f64>(0)?, row.get::<_, bool>(1)?))
-            })
-            .context(error::UncertaintyStoreSnafu {
-                message: "failed to query calibration points",
-            })?
-            .collect::<std::result::Result<Vec<_>, _>>()
-            .context(error::UncertaintyStoreSnafu {
-                message: "failed to collect calibration points",
-            })
-        } else {
-            let mut stmt = self
-                .conn
-                .prepare_cached(
-                    "SELECT stated_confidence, was_correct
-                     FROM calibration_points
-                     ORDER BY recorded_at DESC
-                     LIMIT ?1",
-                )
-                .context(error::UncertaintyStoreSnafu {
-                    message: "failed to prepare global points query",
-                })?;
+        let points_part = self.partition("points")?;
+        let snap = self.db.read_tx();
 
-            stmt.query_map(params![self.max_calibration_points], |row| {
-                Ok((row.get::<_, f64>(0)?, row.get::<_, bool>(1)?))
-            })
-            .context(error::UncertaintyStoreSnafu {
-                message: "failed to query global calibration points",
-            })?
-            .collect::<std::result::Result<Vec<_>, _>>()
-            .context(error::UncertaintyStoreSnafu {
-                message: "failed to collect global calibration points",
-            })
+        // Collect all points matching the filter, sorted by key (which orders
+        // by nous_id then recorded_at then seq — lexicographic).
+        let mut raw: Vec<(Vec<u8>, CalibrationPoint)> = Vec::new();
+        let iter: Box<dyn Iterator<Item = _>> = match nous_id {
+            Some(id) => {
+                let prefix = format!("{id}:");
+                let upper = format!("{id};\x00");
+                Box::new(snap.range(&points_part, prefix..upper))
+            }
+            None => Box::new(snap.range::<&str, _>(&points_part, ..)),
+        };
+
+        for guard in iter {
+            if let Ok((k, v)) = guard.into_inner()
+                && let Ok(point) = serde_json::from_slice::<CalibrationPoint>(&v)
+            {
+                raw.push((k.to_vec(), point));
+            }
         }
+
+        // Sort by key (ascending: oldest first); limit keeps the most recent.
+        raw.sort_by(|a, b| a.0.cmp(&b.0));
+
+        // Apply per-agent limit.
+        let limit = usize::try_from(self.max_calibration_points).unwrap_or(usize::MAX);
+        let mut points: Vec<CalibrationPoint> = if nous_id.is_some() {
+            if raw.len() > limit {
+                let start = raw.len() - limit;
+                raw.split_off(start).into_iter().map(|(_, p)| p).collect()
+            } else {
+                raw.into_iter().map(|(_, p)| p).collect()
+            }
+        } else {
+            // For the "all agents" view, apply the same cap to keep bounded work.
+            if raw.len() > limit {
+                let start = raw.len() - limit;
+                raw.split_off(start).into_iter().map(|(_, p)| p).collect()
+            } else {
+                raw.into_iter().map(|(_, p)| p).collect()
+            }
+        };
+
+        // Return most-recent-first to match the SQL `ORDER BY recorded_at DESC` contract.
+        points.reverse();
+        Ok(points)
+    }
+
+    fn load_points(&self, nous_id: Option<&str>) -> error::Result<Vec<(f64, bool)>> {
+        let points = self.load_points_with_domains(nous_id)?;
+        Ok(points
+            .into_iter()
+            .map(|p| (p.stated_confidence, p.was_correct))
+            .collect())
     }
 
     fn prune_old_points(&self, nous_id: &str) -> error::Result<()> {
-        self.conn
-            .execute(
-                "DELETE FROM calibration_points
-                 WHERE nous_id = ?1
-                   AND id NOT IN (
-                       SELECT id FROM calibration_points
-                       WHERE nous_id = ?1
-                       ORDER BY recorded_at DESC
-                       LIMIT ?2
-                   )",
-                params![nous_id, self.max_calibration_points],
-            )
-            .context(error::UncertaintyStoreSnafu {
-                message: "failed to prune old calibration points",
-            })?;
+        use fjall::Readable;
+
+        let _guard = self
+            .write_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+        let points_part = self.partition("points")?;
+        let prefix = format!("{nous_id}:");
+        let upper = format!("{nous_id};\x00");
+
+        let snap = self.db.read_tx();
+        let mut keys: Vec<Vec<u8>> = Vec::new();
+        for guard in snap.range(&points_part, prefix.as_str()..upper.as_str()) {
+            if let Ok((k, _)) = guard.into_inner() {
+                keys.push(k.to_vec());
+            }
+        }
+        drop(snap);
+
+        keys.sort();
+
+        let limit = usize::try_from(self.max_calibration_points).unwrap_or(usize::MAX);
+        if keys.len() <= limit {
+            return Ok(());
+        }
+        let to_remove = keys.len() - limit;
+
+        let mut tx = self.db.write_tx();
+        for key in keys.iter().take(to_remove) {
+            tx.remove(&points_part, key.as_slice());
+        }
+        tx.commit().map_err(|e| {
+            error::UncertaintyStoreSnafu {
+                message: format!("fjall prune: {e}"),
+            }
+            .build()
+        })?;
+
         Ok(())
     }
 }

@@ -1022,11 +1022,7 @@ impl SessionStore {
         let distilled_keys: Vec<Vec<u8>> = tx
             .range(&messages_part, prefix.as_str()..upper.as_str())
             .filter_map(|g| g.into_inner().ok())
-            .filter(|(_k, v)| {
-                serde_json::from_slice::<Message>(v)
-                    .map(|m| m.is_distilled)
-                    .unwrap_or(false)
-            })
+            .filter(|(_k, v)| serde_json::from_slice::<Message>(v).is_ok_and(|m| m.is_distilled))
             .map(|(k, _v)| k.to_vec())
             .collect();
         for key in &distilled_keys {
@@ -1438,9 +1434,7 @@ impl SessionStore {
             .range::<&str, _>(&bb_part, ..)
             .filter_map(|g| g.into_inner().ok())
             .filter(|(_k, v)| {
-                serde_json::from_slice::<BlackboardRow>(v)
-                    .map(|r| is_expired(&r))
-                    .unwrap_or(false)
+                serde_json::from_slice::<BlackboardRow>(v).is_ok_and(|r| is_expired(&r))
             })
             .map(|(k, _v)| k.to_vec())
             .collect();

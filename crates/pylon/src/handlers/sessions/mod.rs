@@ -566,11 +566,10 @@ pub(crate) async fn resolve_session(
     Ok(session.id)
 }
 
-/// Returns `true` when a mneme error is a `SQLite` UNIQUE constraint violation.
+/// Returns `true` when a mneme error indicates a duplicate session-key
+/// (the fjall backend's equivalent of a UNIQUE constraint violation).
 ///
-/// WHY: Uses the typed `rusqlite::ErrorCode::ConstraintViolation` via
-/// `mneme::error::Error::is_unique_constraint_violation()` instead of
-/// string matching on the error message, which is fragile (#3282).
+/// Delegates to [`graphe::error::Error::is_unique_constraint_violation`].
 fn is_unique_constraint_violation(err: &mneme::error::Error) -> bool {
     err.is_unique_constraint_violation()
 }

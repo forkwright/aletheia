@@ -22,6 +22,3 @@ path = "std::fs::File::open"
 reason = "use tokio::fs::File::open for async or abstract behind a trait for testability"
 
 # Persistence is mneme's responsibility; agora is a message-routing layer
-[[disallowed-types]]
-path = "rusqlite::Connection"
-reason = "agora must not access SQLite directly; persistence belongs in mneme"

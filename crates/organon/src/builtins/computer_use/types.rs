@@ -146,8 +146,9 @@ mod tests {
             frame_base64: None,
         };
 
-        let json = serde_json::to_string(&result).unwrap_or_default();
-        let roundtrip: ActionResult = serde_json::from_str(&json).unwrap_or_default();
+        let json = serde_json::to_string(&result).expect("serialize ActionResult");
+        let roundtrip: ActionResult =
+            serde_json::from_str(&json).expect("deserialize ActionResult");
         assert_eq!(roundtrip.success, result.success);
         assert_eq!(roundtrip.action, result.action);
         assert!(
@@ -178,8 +179,9 @@ mod tests {
         ];
 
         for action in &actions {
-            let json = serde_json::to_string(action).unwrap_or_default();
-            let roundtrip: ComputerAction = serde_json::from_str(&json).unwrap_or_default();
+            let json = serde_json::to_string(action).expect("serialize ComputerAction");
+            let roundtrip: ComputerAction =
+                serde_json::from_str(&json).expect("deserialize ComputerAction");
             assert_eq!(
                 action.to_string(),
                 roundtrip.to_string(),

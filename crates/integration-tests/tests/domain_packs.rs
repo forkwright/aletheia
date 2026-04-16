@@ -338,7 +338,7 @@ domains = ["healthcare"]
     let analyst_handle = analyst_manager
         .spawn(analyst_config, PipelineConfig::default())
         .await
-        .expect("spawn");
+        .expect("spawn analyst");
     analyst_handle
         .send_turn("main", "Hello")
         .await
@@ -376,7 +376,7 @@ domains = ["healthcare"]
     let hermes_handle = hermes_manager
         .spawn(hermes_config, PipelineConfig::default())
         .await
-        .expect("spawn");
+        .expect("spawn hermes");
     hermes_handle
         .send_turn("main", "Hello")
         .await
