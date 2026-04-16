@@ -2,7 +2,7 @@
 
 **File:** `instance/config/aletheia.toml`
 
-Loaded by the `taxis` crate using figment with a three-layer cascade:
+Loaded by the `taxis` crate using an owned TOML loader with a three-layer cascade:
 
 1. Compiled defaults (`AletheiaConfig::default()`)
 2. TOML file (if present)

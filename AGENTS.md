@@ -20,7 +20,7 @@ Desktop crate (`proskenion`) excluded from workspace — build standalone:
 - **IDs:** Newtypes (`AgentId`, `SessionId`, `NousId`). `ulid` for generation.
 - **Time:** `jiff`. **Strings:** `compact_str` for small strings.
 - **Async:** Tokio actor model (`NousActor` pattern).
-- **Config:** figment TOML cascade in `taxis`.
+- **Config:** TOML cascade in `taxis` (owned loader, no figment).
 - **Lints:** `#[expect(lint, reason = "...")]` not `#[allow]`.
 - **Visibility:** `pub(crate)` default. `pub` only for cross-crate API.
 - **Naming:** Greek names per `docs/lexicon.md`. No barrel files.

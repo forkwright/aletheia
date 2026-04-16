@@ -16,7 +16,7 @@ pub mod encrypt;
 pub mod error;
 /// Environment variable interpolation for TOML configuration strings.
 pub mod interpolate;
-/// Figment-based configuration loader with TOML file and environment variable cascade.
+/// Configuration loader with TOML file and environment variable cascade.
 pub mod loader;
 /// Instance directory structure and path resolution for all Aletheia subsystems.
 pub mod oikos;
@@ -28,6 +28,9 @@ pub mod redact;
 pub mod registry;
 /// Hot-reload classification: restart vs live update.
 pub mod reload;
+/// Test-only helpers (EnvJail) for unit + integration tests.
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_support;
 /// Config section validation.
 pub mod validate;
 /// Config-time validation of agent workspace directory structure.
