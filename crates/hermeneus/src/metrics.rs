@@ -1,173 +1,166 @@
 //! Prometheus metric definitions for LLM providers.
+//!
+//! Metrics are registered against a shared [`koina::metrics::MetricsRegistry`]
+//! via [`register`] at startup. Recording functions operate on global
+//! `LazyLock` families that share `Arc`-internal state with the registered
+//! copies — recording is cheap and lock-free after registration.
 
 use std::sync::LazyLock;
+use std::sync::atomic::AtomicU64;
 
-use prometheus::{
-    CounterVec, HistogramOpts, HistogramVec, IntCounterVec, IntGaugeVec, Opts,
-    register_counter_vec, register_histogram_vec, register_int_counter_vec, register_int_gauge_vec,
-};
+use prometheus_client::encoding::EncodeLabelSet;
+use prometheus_client::metrics::counter::Counter;
+use prometheus_client::metrics::family::Family;
+use prometheus_client::metrics::gauge::Gauge;
+use prometheus_client::metrics::histogram::Histogram;
+use prometheus_client::registry::Registry;
 
-static LLM_TOKENS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
-    #[expect(
-        clippy::expect_used,
-        reason = "metric registration fails only on name/label collision, a startup-time programming error that must not be silently ignored"
-    )]
-    register_int_counter_vec!(
-        Opts::new("aletheia_llm_tokens_total", "Total LLM tokens consumed"),
-        &["provider", "direction"]
-    )
-    .expect("metric registration fails only on name/label collision, a startup-time programming error that must not be silently ignored") // kanon:ignore RUST/expect
-});
+// ---------------------------------------------------------------------------
+// Label sets
+// ---------------------------------------------------------------------------
 
-static LLM_COST_TOTAL: LazyLock<CounterVec> = LazyLock::new(|| {
-    #[expect(
-        clippy::expect_used,
-        reason = "metric registration fails only on name/label collision, a startup-time programming error that must not be silently ignored"
-    )]
-    register_counter_vec!(
-        Opts::new("aletheia_llm_cost_total", "Total LLM cost in USD"),
-        &["provider"]
-    )
-    .expect("metric registration fails only on name/label collision, a startup-time programming error that must not be silently ignored") // kanon:ignore RUST/expect
-});
-
-static LLM_REQUESTS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
-    #[expect(
-        clippy::expect_used,
-        reason = "metric registration fails only on name/label collision, a startup-time programming error that must not be silently ignored"
-    )]
-    register_int_counter_vec!(
-        Opts::new("aletheia_llm_requests_total", "Total LLM API requests"),
-        &["provider", "status"]
-    )
-    .expect("metric registration fails only on name/label collision, a startup-time programming error that must not be silently ignored") // kanon:ignore RUST/expect
-});
-
-static LLM_CACHE_TOKENS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
-    #[expect(
-        clippy::expect_used,
-        reason = "metric registration fails only on name/label collision, a startup-time programming error that must not be silently ignored"
-    )]
-    register_int_counter_vec!(
-        Opts::new(
-            "aletheia_llm_cache_tokens_total",
-            "Total LLM cache tokens (read and written)"
-        ),
-        &["provider", "direction"]
-    )
-    .expect("metric registration fails only on name/label collision, a startup-time programming error that must not be silently ignored") // kanon:ignore RUST/expect
-});
-
-static LLM_REQUEST_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
-    #[expect(
-        clippy::expect_used,
-        reason = "metric registration fails only on name/label collision, a startup-time programming error that must not be silently ignored"
-    )]
-    register_histogram_vec!(
-        HistogramOpts::new(
-            "aletheia_llm_request_duration_seconds",
-            "LLM request duration in seconds"
-        )
-        .buckets(vec![0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0, 120.0]),
-        &["model", "status"]
-    )
-    .expect("metric registration fails only on name/label collision, a startup-time programming error that must not be silently ignored") // kanon:ignore RUST/expect
-});
-
-static LLM_TTFT_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
-    #[expect(
-        clippy::expect_used,
-        reason = "metric registration fails only on name/label collision, a startup-time programming error that must not be silently ignored"
-    )]
-    register_histogram_vec!(
-        HistogramOpts::new(
-            "aletheia_llm_ttft_seconds",
-            "LLM time to first token in seconds (streaming only)"
-        )
-        .buckets(vec![0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0]),
-        &["model", "status"]
-    )
-    .expect("metric registration fails only on name/label collision, a startup-time programming error that must not be silently ignored") // kanon:ignore RUST/expect
-});
-
-static LLM_CIRCUIT_BREAKER_TRANSITIONS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
-    #[expect(
-        clippy::expect_used,
-        reason = "metric registration fails only on name/label collision, a startup-time programming error that must not be silently ignored"
-    )]
-    register_int_counter_vec!(
-        Opts::new(
-            "aletheia_llm_circuit_breaker_transitions_total",
-            "Circuit breaker state transitions per provider"
-        ),
-        &["provider", "from", "to"]
-    )
-    .expect("metric registration fails only on name/label collision, a startup-time programming error that must not be silently ignored") // kanon:ignore RUST/expect
-});
-
-static LLM_CONCURRENCY_LIMIT: LazyLock<IntGaugeVec> = LazyLock::new(|| {
-    #[expect(
-        clippy::expect_used,
-        reason = "metric registration fails only on name/label collision, a startup-time programming error that must not be silently ignored"
-    )]
-    register_int_gauge_vec!(
-        Opts::new(
-            "aletheia_llm_concurrency_limit",
-            "Current adaptive concurrency limit per provider"
-        ),
-        &["provider"]
-    )
-    .expect("metric registration fails only on name/label collision, a startup-time programming error that must not be silently ignored") // kanon:ignore RUST/expect
-});
-
-static LLM_CONCURRENCY_LATENCY_EWMA: LazyLock<prometheus::GaugeVec> = LazyLock::new(|| {
-    #[expect(
-        clippy::expect_used,
-        reason = "metric registration fails only on name/label collision, a startup-time programming error that must not be silently ignored"
-    )]
-    prometheus::register_gauge_vec!(
-        Opts::new(
-            "aletheia_llm_concurrency_latency_ewma_seconds",
-            "EWMA of LLM response latency used by the adaptive concurrency limiter"
-        ),
-        &["provider"]
-    )
-    .expect("metric registration fails only on name/label collision, a startup-time programming error that must not be silently ignored") // kanon:ignore RUST/expect
-});
-
-static LLM_CONCURRENCY_IN_FLIGHT: LazyLock<IntGaugeVec> = LazyLock::new(|| {
-    #[expect(
-        clippy::expect_used,
-        reason = "metric registration fails only on name/label collision, a startup-time programming error that must not be silently ignored"
-    )]
-    register_int_gauge_vec!(
-        Opts::new(
-            "aletheia_llm_concurrency_in_flight",
-            "Number of in-flight LLM requests per provider"
-        ),
-        &["provider"]
-    )
-    .expect("metric registration fails only on name/label collision, a startup-time programming error that must not be silently ignored") // kanon:ignore RUST/expect
-});
-
-/// Force-initialize all lazy metric statics.
-pub fn init() {
-    // kanon:ignore RUST/pub-visibility
-    LazyLock::force(&LLM_TOKENS_TOTAL);
-    LazyLock::force(&LLM_COST_TOTAL);
-    LazyLock::force(&LLM_REQUESTS_TOTAL);
-    LazyLock::force(&LLM_CACHE_TOKENS_TOTAL);
-    LazyLock::force(&LLM_REQUEST_DURATION_SECONDS);
-    LazyLock::force(&LLM_TTFT_SECONDS);
-    LazyLock::force(&LLM_CIRCUIT_BREAKER_TRANSITIONS_TOTAL);
-    LazyLock::force(&LLM_CONCURRENCY_LIMIT);
-    LazyLock::force(&LLM_CONCURRENCY_LATENCY_EWMA);
-    LazyLock::force(&LLM_CONCURRENCY_IN_FLIGHT);
+#[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
+struct ProviderDirectionLabels {
+    provider: String,
+    direction: String,
 }
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
+struct ProviderLabels {
+    provider: String,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
+struct ProviderStatusLabels {
+    provider: String,
+    status: String,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
+struct ModelStatusLabels {
+    model: String,
+    status: String,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
+struct CircuitTransitionLabels {
+    provider: String,
+    from: String,
+    to: String,
+}
+
+// ---------------------------------------------------------------------------
+// Metric families
+// ---------------------------------------------------------------------------
+
+static LLM_TOKENS_TOTAL: LazyLock<Family<ProviderDirectionLabels, Counter>> =
+    LazyLock::new(Family::default);
+
+static LLM_COST_TOTAL: LazyLock<Family<ProviderLabels, Counter<f64, AtomicU64>>> =
+    LazyLock::new(Family::default);
+
+static LLM_REQUESTS_TOTAL: LazyLock<Family<ProviderStatusLabels, Counter>> =
+    LazyLock::new(Family::default);
+
+static LLM_CACHE_TOKENS_TOTAL: LazyLock<Family<ProviderDirectionLabels, Counter>> =
+    LazyLock::new(Family::default);
+
+fn request_duration_histogram() -> Histogram {
+    Histogram::new([0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0, 120.0])
+}
+
+type ModelStatusHistogramFamily = Family<ModelStatusLabels, Histogram, fn() -> Histogram>;
+
+static LLM_REQUEST_DURATION_SECONDS: LazyLock<ModelStatusHistogramFamily> =
+    LazyLock::new(|| Family::new_with_constructor(request_duration_histogram));
+
+fn ttft_histogram() -> Histogram {
+    Histogram::new([0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0])
+}
+
+static LLM_TTFT_SECONDS: LazyLock<ModelStatusHistogramFamily> =
+    LazyLock::new(|| Family::new_with_constructor(ttft_histogram));
+
+static LLM_CIRCUIT_BREAKER_TRANSITIONS_TOTAL: LazyLock<Family<CircuitTransitionLabels, Counter>> =
+    LazyLock::new(Family::default);
+
+static LLM_CONCURRENCY_LIMIT: LazyLock<Family<ProviderLabels, Gauge>> =
+    LazyLock::new(Family::default);
+
+static LLM_CONCURRENCY_LATENCY_EWMA: LazyLock<Family<ProviderLabels, Gauge<f64, AtomicU64>>> =
+    LazyLock::new(Family::default);
+
+static LLM_CONCURRENCY_IN_FLIGHT: LazyLock<Family<ProviderLabels, Gauge>> =
+    LazyLock::new(Family::default);
+
+// ---------------------------------------------------------------------------
+// Registration
+// ---------------------------------------------------------------------------
+
+/// Register this crate's metrics with the shared registry.
+///
+/// Called once at startup. Counter names registered here drop the `_total`
+/// suffix because `prometheus-client` appends it automatically during
+/// exposition — register `aletheia_llm_tokens`, not `aletheia_llm_tokens_total`.
+pub fn register(registry: &mut Registry) {
+    registry.register(
+        "aletheia_llm_tokens",
+        "Total LLM tokens consumed",
+        LLM_TOKENS_TOTAL.clone(),
+    );
+    registry.register(
+        "aletheia_llm_cost_usd",
+        "Total LLM cost in USD",
+        LLM_COST_TOTAL.clone(),
+    );
+    registry.register(
+        "aletheia_llm_requests",
+        "Total LLM API requests",
+        LLM_REQUESTS_TOTAL.clone(),
+    );
+    registry.register(
+        "aletheia_llm_cache_tokens",
+        "Total LLM cache tokens (read and written)",
+        LLM_CACHE_TOKENS_TOTAL.clone(),
+    );
+    registry.register(
+        "aletheia_llm_request_duration_seconds",
+        "LLM request duration in seconds",
+        LLM_REQUEST_DURATION_SECONDS.clone(),
+    );
+    registry.register(
+        "aletheia_llm_ttft_seconds",
+        "LLM time to first token in seconds (streaming only)",
+        LLM_TTFT_SECONDS.clone(),
+    );
+    registry.register(
+        "aletheia_llm_circuit_breaker_transitions",
+        "Circuit breaker state transitions per provider",
+        LLM_CIRCUIT_BREAKER_TRANSITIONS_TOTAL.clone(),
+    );
+    registry.register(
+        "aletheia_llm_concurrency_limit",
+        "Current adaptive concurrency limit per provider",
+        LLM_CONCURRENCY_LIMIT.clone(),
+    );
+    registry.register(
+        "aletheia_llm_concurrency_latency_ewma_seconds",
+        "EWMA of LLM response latency used by the adaptive concurrency limiter",
+        LLM_CONCURRENCY_LATENCY_EWMA.clone(),
+    );
+    registry.register(
+        "aletheia_llm_concurrency_in_flight",
+        "Number of in-flight LLM requests per provider",
+        LLM_CONCURRENCY_IN_FLIGHT.clone(),
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Recording
+// ---------------------------------------------------------------------------
 
 /// Record a completed LLM API call.
 pub fn record_completion(
-    // kanon:ignore RUST/pub-visibility
     provider: &str,
     input_tokens: u64,
     output_tokens: u64,
@@ -176,48 +169,68 @@ pub fn record_completion(
 ) {
     let status = if success { "ok" } else { "error" };
     LLM_REQUESTS_TOTAL
-        .with_label_values(&[provider, status])
+        .get_or_create(&ProviderStatusLabels {
+            provider: provider.to_owned(),
+            status: status.to_owned(),
+        })
         .inc();
     LLM_TOKENS_TOTAL
-        .with_label_values(&[provider, "input"])
+        .get_or_create(&ProviderDirectionLabels {
+            provider: provider.to_owned(),
+            direction: "input".to_owned(),
+        })
         .inc_by(input_tokens);
     LLM_TOKENS_TOTAL
-        .with_label_values(&[provider, "output"])
+        .get_or_create(&ProviderDirectionLabels {
+            provider: provider.to_owned(),
+            direction: "output".to_owned(),
+        })
         .inc_by(output_tokens);
     if cost_usd > 0.0 {
         LLM_COST_TOTAL
-            .with_label_values(&[provider]) // kanon:ignore RUST/indexing-slicing
+            .get_or_create(&ProviderLabels {
+                provider: provider.to_owned(),
+            })
             .inc_by(cost_usd);
     }
 }
 
 /// Record LLM request latency.
 pub fn record_latency(model: &str, status: &str, duration_secs: f64) {
-    // kanon:ignore RUST/pub-visibility
     LLM_REQUEST_DURATION_SECONDS
-        .with_label_values(&[model, status])
+        .get_or_create(&ModelStatusLabels {
+            model: model.to_owned(),
+            status: status.to_owned(),
+        })
         .observe(duration_secs);
 }
 
 /// Record time to first token (streaming only).
 pub fn record_ttft(model: &str, status: &str, duration_secs: f64) {
-    // kanon:ignore RUST/pub-visibility
     LLM_TTFT_SECONDS
-        .with_label_values(&[model, status])
+        .get_or_create(&ModelStatusLabels {
+            model: model.to_owned(),
+            status: status.to_owned(),
+        })
         .observe(duration_secs);
 }
 
 /// Record cache token usage from a completed LLM API call.
 pub fn record_cache_tokens(provider: &str, cache_read_tokens: u64, cache_write_tokens: u64) {
-    // kanon:ignore RUST/pub-visibility
     if cache_read_tokens > 0 {
         LLM_CACHE_TOKENS_TOTAL
-            .with_label_values(&[provider, "read"])
+            .get_or_create(&ProviderDirectionLabels {
+                provider: provider.to_owned(),
+                direction: "read".to_owned(),
+            })
             .inc_by(cache_read_tokens);
     }
     if cache_write_tokens > 0 {
         LLM_CACHE_TOKENS_TOTAL
-            .with_label_values(&[provider, "write"])
+            .get_or_create(&ProviderDirectionLabels {
+                provider: provider.to_owned(),
+                direction: "write".to_owned(),
+            })
             .inc_by(cache_write_tokens);
     }
 }
@@ -227,336 +240,168 @@ pub fn record_cache_tokens(provider: &str, cache_read_tokens: u64, cache_write_t
 /// `from` and `to` are lowercase state names: `closed`, `open`, `half_open`.
 pub(crate) fn record_circuit_transition(provider: &str, from: &str, to: &str) {
     LLM_CIRCUIT_BREAKER_TRANSITIONS_TOTAL
-        .with_label_values(&[provider, from, to])
+        .get_or_create(&CircuitTransitionLabels {
+            provider: provider.to_owned(),
+            from: from.to_owned(),
+            to: to.to_owned(),
+        })
         .inc();
 }
 
 /// Set the current adaptive concurrency limit for a provider.
 pub(crate) fn set_concurrency_limit(provider: &str, limit: u32) {
     LLM_CONCURRENCY_LIMIT
-        .with_label_values(&[provider]) // kanon:ignore RUST/indexing-slicing
+        .get_or_create(&ProviderLabels {
+            provider: provider.to_owned(),
+        })
         .set(i64::from(limit));
 }
 
 /// Set the current EWMA latency estimate for a provider.
 pub(crate) fn set_concurrency_latency_ewma(provider: &str, ewma_secs: f64) {
     LLM_CONCURRENCY_LATENCY_EWMA
-        .with_label_values(&[provider]) // kanon:ignore RUST/indexing-slicing
+        .get_or_create(&ProviderLabels {
+            provider: provider.to_owned(),
+        })
         .set(ewma_secs);
 }
 
 /// Set the current in-flight request count for a provider.
 pub(crate) fn set_concurrency_in_flight(provider: &str, in_flight: u32) {
     LLM_CONCURRENCY_IN_FLIGHT
-        .with_label_values(&[provider]) // kanon:ignore RUST/indexing-slicing
+        .get_or_create(&ProviderLabels {
+            provider: provider.to_owned(),
+        })
         .set(i64::from(in_flight));
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::as_conversions,
-    clippy::cast_possible_truncation,
-    clippy::cast_sign_loss,
-    reason = "prometheus counter values are known non-negative small integers in tests"
-)]
 mod tests {
+    use koina::metrics::MetricsRegistry;
+
     use super::*;
 
-    /// Read a Prometheus counter value by metric name and label values.
-    fn read_counter(name: &str, label_names: &[&str], label_values: &[&str]) -> u64 {
-        let families = prometheus::default_registry().gather();
-        for family in &families {
-            if family.name() == name {
-                for metric in family.get_metric() {
-                    let labels = metric.get_label();
-                    // Match labels by name->value
-                    let label_map: std::collections::HashMap<_, _> =
-                        labels.iter().map(|l| (l.name(), l.value())).collect();
-                    let matches =
-                        label_names
-                            .iter()
-                            .zip(label_values.iter())
-                            .all(|(name, expected)| {
-                                label_map.get(name).is_some_and(|v| *v == *expected)
-                            });
-                    if matches && labels.len() == label_values.len() {
-                        return metric.get_counter().value() as u64;
-                    }
-                }
-            }
-        }
-        0
+    /// Set up a fresh registry with this crate's metrics registered.
+    fn fresh_registry() -> MetricsRegistry {
+        let r = MetricsRegistry::new();
+        r.with_registry(register);
+        r
     }
 
-    /// Read a Prometheus float counter value by metric name and label values.
-    fn read_float_counter(name: &str, label_names: &[&str], label_values: &[&str]) -> f64 {
-        let families = prometheus::default_registry().gather();
-        for family in &families {
-            if family.name() == name {
-                for metric in family.get_metric() {
-                    let labels = metric.get_label();
-                    let label_map: std::collections::HashMap<_, _> =
-                        labels.iter().map(|l| (l.name(), l.value())).collect();
-                    let matches =
-                        label_names
-                            .iter()
-                            .zip(label_values.iter())
-                            .all(|(name, expected)| {
-                                label_map.get(name).is_some_and(|v| *v == *expected)
-                            });
-                    if matches && labels.len() == label_values.len() {
-                        return metric.get_counter().value();
-                    }
-                }
-            }
-        }
-        0.0
-    }
-
-    /// Read a Prometheus histogram count by metric name and label values.
-    fn read_histogram_count(name: &str, label_names: &[&str], label_values: &[&str]) -> u64 {
-        let families = prometheus::default_registry().gather();
-        for family in &families {
-            if family.name() == name {
-                for metric in family.get_metric() {
-                    let labels = metric.get_label();
-                    let label_map: std::collections::HashMap<_, _> =
-                        labels.iter().map(|l| (l.name(), l.value())).collect();
-                    let matches =
-                        label_names
-                            .iter()
-                            .zip(label_values.iter())
-                            .all(|(name, expected)| {
-                                label_map.get(name).is_some_and(|v| *v == *expected)
-                            });
-                    if matches && labels.len() == label_values.len() {
-                        return metric.get_histogram().sample_count();
-                    }
-                }
-            }
-        }
-        0
+    fn encode(r: &MetricsRegistry) -> String {
+        let mut buf = String::new();
+        #[expect(clippy::unwrap_used, reason = "encoding into String is infallible")]
+        r.encode(&mut buf).unwrap();
+        buf
     }
 
     #[test]
-    fn init_registers_all_metrics() {
-        // Initialize metrics - this forces all LazyLock statics to register
-        init();
-
-        // Record values on metrics to ensure they appear in gather()
+    fn register_exposes_all_metric_families() {
+        let r = fresh_registry();
+        // Emit at least one sample per family so the encoder includes it.
         record_completion("test-init", 1, 1, 0.001, true);
         record_cache_tokens("test-init", 1, 1);
         record_latency("test-init", "ok", 0.1);
         record_ttft("test-init", "ok", 0.1);
-        // Set concurrency metrics so they appear in the registry
         set_concurrency_limit("test-init", 10);
         set_concurrency_latency_ewma("test-init", 0.5);
         set_concurrency_in_flight("test-init", 5);
+        record_circuit_transition("test-init", "closed", "open");
 
-        let families = prometheus::default_registry().gather();
-        let metric_names: std::collections::HashSet<_> = families
-            .iter()
-            .map(prometheus::proto::MetricFamily::name)
-            .collect();
-
-        // Core metrics that are always registered after recording
-        assert!(
-            metric_names.contains("aletheia_llm_tokens_total"),
-            "tokens metric should be registered"
-        );
-        assert!(
-            metric_names.contains("aletheia_llm_cost_total"),
-            "cost metric should be registered"
-        );
-        assert!(
-            metric_names.contains("aletheia_llm_requests_total"),
-            "requests metric should be registered"
-        );
-        assert!(
-            metric_names.contains("aletheia_llm_cache_tokens_total"),
-            "cache tokens metric should be registered"
-        );
-        assert!(
-            metric_names.contains("aletheia_llm_request_duration_seconds"),
-            "request duration metric should be registered"
-        );
-        assert!(
-            metric_names.contains("aletheia_llm_ttft_seconds"),
-            "ttft metric should be registered"
-        );
-        // Concurrency metrics registered after setting values
-        assert!(
-            metric_names.contains("aletheia_llm_concurrency_limit"),
-            "concurrency limit metric should be registered"
-        );
-        assert!(
-            metric_names.contains("aletheia_llm_concurrency_latency_ewma_seconds"),
-            "concurrency latency metric should be registered"
-        );
-        assert!(
-            metric_names.contains("aletheia_llm_concurrency_in_flight"),
-            "concurrency in-flight metric should be registered"
-        );
-    }
-
-    #[test]
-    fn record_completion_success_updates_all_metrics() {
-        // Use a unique provider name to avoid test interference
-        let provider = "test-completion-success";
-        let before_requests = read_counter(
-            "aletheia_llm_requests_total",
-            &["provider", "status"],
-            &[provider, "ok"],
-        );
-        let before_tokens_in = read_counter(
+        let out = encode(&r);
+        for fragment in [
             "aletheia_llm_tokens_total",
-            &["provider", "direction"],
-            &[provider, "input"],
-        );
-        let before_tokens_out = read_counter(
-            "aletheia_llm_tokens_total",
-            &["provider", "direction"],
-            &[provider, "output"],
-        );
-        let before_cost = read_float_counter("aletheia_llm_cost_total", &["provider"], &[provider]);
-
-        record_completion(provider, 100, 50, 0.001, true);
-
-        assert_eq!(
-            read_counter(
-                "aletheia_llm_requests_total",
-                &["provider", "status"],
-                &[provider, "ok"]
-            ),
-            before_requests + 1,
-            "request counter should increment"
-        );
-        assert_eq!(
-            read_counter(
-                "aletheia_llm_tokens_total",
-                &["provider", "direction"],
-                &[provider, "input"]
-            ),
-            before_tokens_in + 100,
-            "input token counter should increment by 100"
-        );
-        assert_eq!(
-            read_counter(
-                "aletheia_llm_tokens_total",
-                &["provider", "direction"],
-                &[provider, "output"]
-            ),
-            before_tokens_out + 50,
-            "output token counter should increment by 50"
-        );
-        let after_cost = read_float_counter("aletheia_llm_cost_total", &["provider"], &[provider]);
-        assert!(
-            after_cost > before_cost,
-            "cost counter should increase (before: {before_cost}, after: {after_cost})"
-        );
-    }
-
-    #[test]
-    fn record_completion_failure_updates_error_metrics() {
-        let provider = "test-completion-failure";
-        let before = read_counter(
+            "aletheia_llm_cost_usd_total",
             "aletheia_llm_requests_total",
-            &["provider", "status"],
-            &[provider, "error"],
-        );
-
-        record_completion(provider, 0, 0, 0.0, false);
-
-        assert_eq!(
-            read_counter(
-                "aletheia_llm_requests_total",
-                &["provider", "status"],
-                &[provider, "error"]
-            ),
-            before + 1,
-            "error request counter should increment"
-        );
-    }
-
-    #[test]
-    fn record_latency_records_observation() {
-        let model = "test-model-latency";
-        let status = "ok";
-        let before = read_histogram_count(
+            "aletheia_llm_cache_tokens_total",
             "aletheia_llm_request_duration_seconds",
-            &["model", "status"],
-            &[model, status],
-        );
-
-        record_latency(model, status, 1.5);
-
-        assert_eq!(
-            read_histogram_count(
-                "aletheia_llm_request_duration_seconds",
-                &["model", "status"],
-                &[model, status]
-            ),
-            before + 1,
-            "latency histogram should have one more observation"
-        );
-    }
-
-    #[test]
-    fn record_ttft_records_observation() {
-        let model = "test-model-ttft";
-        let status = "ok";
-        let before = read_histogram_count(
             "aletheia_llm_ttft_seconds",
-            &["model", "status"],
-            &[model, status],
+            "aletheia_llm_circuit_breaker_transitions_total",
+            "aletheia_llm_concurrency_limit",
+            "aletheia_llm_concurrency_latency_ewma_seconds",
+            "aletheia_llm_concurrency_in_flight",
+        ] {
+            assert!(out.contains(fragment), "missing `{fragment}` in: {out}");
+        }
+    }
+
+    #[test]
+    fn record_completion_success_increments_counters() {
+        let r = fresh_registry();
+        record_completion("success-test", 100, 50, 0.01, true);
+        let out = encode(&r);
+        assert!(
+            out.contains("aletheia_llm_requests_total{provider=\"success-test\",status=\"ok\"} 1"),
+            "got: {out}"
         );
-
-        record_ttft(model, status, 0.25);
-
-        assert_eq!(
-            read_histogram_count(
-                "aletheia_llm_ttft_seconds",
-                &["model", "status"],
-                &[model, status]
+        assert!(
+            out.contains(
+                "aletheia_llm_tokens_total{provider=\"success-test\",direction=\"input\"} 100"
             ),
-            before + 1,
-            "ttft histogram should have one more observation"
+            "got: {out}"
+        );
+        assert!(
+            out.contains(
+                "aletheia_llm_tokens_total{provider=\"success-test\",direction=\"output\"} 50"
+            ),
+            "got: {out}"
         );
     }
 
     #[test]
-    fn record_cache_tokens_increments_counters() {
-        let provider = "test-cache-tokens";
-        let before_read = read_counter(
-            "aletheia_llm_cache_tokens_total",
-            &["provider", "direction"],
-            &[provider, "read"],
+    fn record_completion_failure_increments_error() {
+        let r = fresh_registry();
+        record_completion("fail-test", 0, 0, 0.0, false);
+        let out = encode(&r);
+        assert!(
+            out.contains("aletheia_llm_requests_total{provider=\"fail-test\",status=\"error\"} 1"),
+            "got: {out}"
         );
-        let before_write = read_counter(
-            "aletheia_llm_cache_tokens_total",
-            &["provider", "direction"],
-            &[provider, "write"],
-        );
+    }
 
-        record_cache_tokens(provider, 1000, 500);
-
-        assert_eq!(
-            read_counter(
-                "aletheia_llm_cache_tokens_total",
-                &["provider", "direction"],
-                &[provider, "read"]
-            ),
-            before_read + 1000,
-            "read cache token counter should increment by 1000"
+    #[test]
+    fn record_latency_emits_histogram() {
+        let r = fresh_registry();
+        record_latency("latency-test", "ok", 1.5);
+        let out = encode(&r);
+        assert!(
+            out.contains("aletheia_llm_request_duration_seconds_count"),
+            "got: {out}"
         );
-        assert_eq!(
-            read_counter(
-                "aletheia_llm_cache_tokens_total",
-                &["provider", "direction"],
-                &[provider, "write"]
+    }
+
+    #[test]
+    fn record_ttft_emits_histogram() {
+        let r = fresh_registry();
+        record_ttft("ttft-test", "ok", 0.25);
+        let out = encode(&r);
+        assert!(
+            out.contains("aletheia_llm_ttft_seconds_count"),
+            "got: {out}"
+        );
+    }
+
+    #[test]
+    fn record_cache_tokens_skips_zero() {
+        let r = fresh_registry();
+        record_cache_tokens("cache-test", 0, 0);
+        let out = encode(&r);
+        // No sample emitted; family registered but empty.
+        assert!(!out.contains("cache-test"), "got: {out}");
+
+        record_cache_tokens("cache-test", 1000, 500);
+        let out2 = encode(&r);
+        assert!(
+            out2.contains(
+                "aletheia_llm_cache_tokens_total{provider=\"cache-test\",direction=\"read\"} 1000"
             ),
-            before_write + 500,
-            "write cache token counter should increment by 500"
+            "got: {out2}"
+        );
+        assert!(
+            out2.contains(
+                "aletheia_llm_cache_tokens_total{provider=\"cache-test\",direction=\"write\"} 500"
+            ),
+            "got: {out2}"
         );
     }
 }

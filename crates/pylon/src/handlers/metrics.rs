@@ -3,14 +3,19 @@
 use axum::extract::State;
 use axum::http::header::CONTENT_TYPE;
 use axum::response::IntoResponse;
-use prometheus::{Encoder, TextEncoder};
 
 use crate::state::MetricsState;
 
-/// Prometheus content type for the metrics endpoint.
-pub(crate) const METRICS_CONTENT_TYPE: &str = "text/plain; version=0.0.4; charset=utf-8";
+/// `OpenMetrics` text content type for the metrics endpoint.
+///
+/// WHY: `prometheus-client` emits `OpenMetrics` text format, which Prometheus
+/// scrapers accept natively. The content type advertises the `OpenMetrics`
+/// version so compatible scrapers parse it as `OpenMetrics` (with unit and
+/// UNIT lines) rather than plain Prometheus text 0.0.4.
+pub(crate) const METRICS_CONTENT_TYPE: &str =
+    "application/openmetrics-text; version=1.0.0; charset=utf-8";
 
-/// GET /metrics: Prometheus text-format metrics exposition.
+/// GET /metrics: Prometheus/OpenMetrics text-format metrics exposition.
 ///
 /// # Cancel safety
 ///
@@ -20,10 +25,13 @@ pub(crate) const METRICS_CONTENT_TYPE: &str = "text/plain; version=0.0.4; charse
     get,
     path = "/metrics",
     responses(
-        (status = 200, description = "Prometheus text-format metrics", content_type = "text/plain"),
+        (status = 200, description = "OpenMetrics text-format metrics", content_type = "application/openmetrics-text"),
     ),
 )]
-#[expect(clippy::expect_used, reason = "Prometheus text encoding is infallible")]
+#[expect(
+    clippy::expect_used,
+    reason = "writing into a String never fails; the fmt::Error branch is unreachable"
+)]
 pub async fn expose(State(state): State<MetricsState>) -> impl IntoResponse {
     let uptime = state.start_time.elapsed().as_secs_f64();
 
@@ -40,12 +48,11 @@ pub async fn expose(State(state): State<MetricsState>) -> impl IntoResponse {
 
     crate::metrics::update_system_gauges(uptime, session_count);
 
-    let encoder = TextEncoder::new();
-    let metric_families = prometheus::gather();
-    let mut buffer = Vec::new();
-    encoder
-        .encode(&metric_families, &mut buffer)
-        .expect("prometheus encoding");
+    let mut buffer = String::new();
+    state
+        .metrics_registry
+        .encode(&mut buffer)
+        .expect("encoding into a String is infallible");
 
     ([(CONTENT_TYPE, METRICS_CONTENT_TYPE)], buffer)
 }
@@ -53,33 +60,23 @@ pub async fn expose(State(state): State<MetricsState>) -> impl IntoResponse {
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
-    use prometheus::{Encoder, TextEncoder};
+    use koina::metrics::MetricsRegistry;
 
     use super::*;
 
     #[test]
-    fn content_type_is_prometheus_text_format() {
-        assert!(METRICS_CONTENT_TYPE.starts_with("text/plain"));
-        assert!(METRICS_CONTENT_TYPE.contains("version=0.0.4"));
+    fn content_type_is_openmetrics_text_format() {
+        assert!(METRICS_CONTENT_TYPE.starts_with("application/openmetrics-text"));
+        assert!(METRICS_CONTENT_TYPE.contains("version=1.0.0"));
         assert!(METRICS_CONTENT_TYPE.contains("charset=utf-8"));
     }
 
     #[test]
-    fn text_encoder_produces_valid_utf8() {
-        let encoder = TextEncoder::new();
-        let families = prometheus::gather();
-        let mut buf = Vec::new();
-        encoder.encode(&families, &mut buf).unwrap();
-        // NOTE: Prometheus text format mandates UTF-8.
-        assert!(std::str::from_utf8(&buf).is_ok());
-    }
-
-    #[test]
-    fn text_encoder_content_type_is_text_plain() {
-        let encoder = TextEncoder::new();
-        // NOTE: prometheus TextEncoder declares "text/plain; version=0.0.4";
-        // we append charset=utf-8 to our served header.
-        assert!(encoder.format_type().starts_with("text/plain"));
-        assert!(encoder.format_type().contains("version=0.0.4"));
+    fn empty_registry_encodes_without_error() {
+        let registry = MetricsRegistry::new();
+        let mut buffer = String::new();
+        registry.encode(&mut buffer).unwrap();
+        // NOTE: OpenMetrics text format mandates UTF-8.
+        assert!(buffer.is_char_boundary(0));
     }
 }

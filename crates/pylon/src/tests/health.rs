@@ -93,9 +93,12 @@ async fn metrics_returns_200_with_prometheus_content_type() {
         .unwrap()
         .to_str()
         .unwrap();
+    // WHY: prometheus-client emits OpenMetrics text format natively. Prometheus
+    // scrapers accept this format directly, so the content-type advertises
+    // OpenMetrics rather than the legacy text/plain.
     assert!(
-        content_type.contains("text/plain"),
-        "expected text/plain content type, got: {content_type}"
+        content_type.contains("application/openmetrics-text"),
+        "expected openmetrics-text content type, got: {content_type}"
     );
 }
 

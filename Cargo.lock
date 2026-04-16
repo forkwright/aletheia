@@ -50,7 +50,7 @@ dependencies = [
  "indexmap 2.14.0",
  "koina",
  "organon",
- "prometheus",
+ "prometheus-client",
  "reqwest 0.13.2",
  "serde",
  "serde_json",
@@ -111,11 +111,14 @@ dependencies = [
  "diaporeia",
  "dokimion",
  "energeia",
+ "episteme",
+ "graphe",
  "hermeneus",
  "indexmap 2.14.0",
  "jiff",
  "koilon",
  "koina",
+ "melete",
  "mneme",
  "nous",
  "oikonomos",
@@ -1478,7 +1481,7 @@ dependencies = [
  "futures-core",
  "mio",
  "parking_lot",
- "rustix 1.1.4",
+ "rustix",
  "signal-hook",
  "signal-hook-mio",
  "winapi",
@@ -1779,7 +1782,7 @@ version = "0.19.0"
 dependencies = [
  "jiff",
  "koina",
- "prometheus",
+ "prometheus-client",
  "serde",
  "serde_json",
  "snafu",
@@ -1911,6 +1914,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "dtoa"
+version = "1.0.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4c3cf4824e2d5f025c7b531afcb2325364084a16806f6d47fbc1f5fbd9960590"
+
+[[package]]
 name = "dunce"
 version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1979,7 +1988,7 @@ dependencies = [
  "jiff",
  "koina",
  "parking_lot",
- "prometheus",
+ "prometheus-client",
  "regex",
  "rmp-serde",
  "serde",
@@ -2051,7 +2060,7 @@ dependencies = [
  "koina",
  "krites",
  "parking_lot",
- "prometheus",
+ "prometheus-client",
  "proptest",
  "rand 0.9.4",
  "regex",
@@ -2192,7 +2201,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0ce92ff622d6dadf7349484f42c93271a0d49b7cc4d466a936405bacbe10aa78"
 dependencies = [
  "cfg-if",
- "rustix 1.1.4",
+ "rustix",
  "windows-sys 0.59.0",
 ]
 
@@ -2617,7 +2626,7 @@ version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1bd49230192a3797a9a4d6abe9b3eed6f7fa4c8a8a4947977c6f80025f92cbd8"
 dependencies = [
- "rustix 1.1.4",
+ "rustix",
  "windows-link",
 ]
 
@@ -2710,7 +2719,7 @@ dependencies = [
  "fjall",
  "jiff",
  "koina",
- "prometheus",
+ "prometheus-client",
  "proptest",
  "rusqlite",
  "serde",
@@ -2821,7 +2830,7 @@ dependencies = [
  "criterion",
  "jiff",
  "koina",
- "prometheus",
+ "prometheus-client",
  "proptest",
  "rand 0.9.4",
  "regex",
@@ -3561,9 +3570,10 @@ dependencies = [
  "criterion",
  "fjall",
  "jiff",
+ "prometheus-client",
  "rand 0.9.4",
  "regex",
- "rustix 1.1.4",
+ "rustix",
  "serde",
  "serde_json",
  "snafu",
@@ -3663,7 +3673,7 @@ dependencies = [
  "rmp-serde",
  "rust-stemmers",
  "rustc-hash",
- "rustix 1.1.4",
+ "rustix",
  "serde",
  "serde_bytes",
  "serde_json",
@@ -3771,12 +3781,6 @@ name = "linked-hash-map"
 version = "0.5.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0717cef1bc8b636c6e1c1bbdefc09e6322da8a9321966e8928ef80d20f7f770f"
-
-[[package]]
-name = "linux-raw-sys"
-version = "0.4.15"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d26c52dbd32dccf2d10cac7725f8eae5296885fb5703b261f7d0a0739ec807ab"
 
 [[package]]
 name = "linux-raw-sys"
@@ -3970,7 +3974,7 @@ dependencies = [
  "jiff",
  "koina",
  "libc",
- "prometheus",
+ "prometheus-client",
  "serde",
  "serde_json",
  "snafu",
@@ -4205,7 +4209,7 @@ dependencies = [
  "melete",
  "mneme",
  "organon",
- "prometheus",
+ "prometheus-client",
  "proptest",
  "regex",
  "rusqlite",
@@ -4398,9 +4402,9 @@ dependencies = [
  "jiff",
  "koina",
  "notify",
- "prometheus",
+ "prometheus-client",
  "rusqlite",
- "rustix 1.1.4",
+ "rustix",
  "serde",
  "serde_json",
  "snafu",
@@ -4510,10 +4514,10 @@ dependencies = [
  "jiff",
  "koina",
  "landlock",
- "prometheus",
+ "prometheus-client",
  "proptest",
  "reqwest 0.13.2",
- "rustix 1.1.4",
+ "rustix",
  "rustls",
  "seccompiler",
  "serde",
@@ -5038,42 +5042,26 @@ dependencies = [
 ]
 
 [[package]]
-name = "procfs"
-version = "0.17.0"
+name = "prometheus-client"
+version = "0.24.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cc5b72d8145275d844d4b5f6d4e1eef00c8cd889edb6035c21675d1bb1f45c9f"
+checksum = "cca3d75b4566b9a29fe1ed623587fb058e826eb329a0be4b7c4da1ebb2d7a6ca"
 dependencies = [
- "bitflags 2.11.0",
- "hex",
- "procfs-core",
- "rustix 0.38.44",
-]
-
-[[package]]
-name = "procfs-core"
-version = "0.17.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "239df02d8349b06fc07398a3a1697b06418223b1c7725085e801e7c0fc6a12ec"
-dependencies = [
- "bitflags 2.11.0",
- "hex",
-]
-
-[[package]]
-name = "prometheus"
-version = "0.14.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3ca5326d8d0b950a9acd87e6a3f94745394f62e4dae1b1ee22b2bc0c394af43a"
-dependencies = [
- "cfg-if",
- "fnv",
- "lazy_static",
- "libc",
- "memchr",
+ "dtoa",
+ "itoa",
  "parking_lot",
- "procfs",
- "protobuf",
- "thiserror 2.0.18",
+ "prometheus-client-derive-encode",
+]
+
+[[package]]
+name = "prometheus-client-derive-encode"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9adf1691c04c0a5ff46ff8f262b58beb07b0dbb61f96f9f54f6cbd82106ed87f"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
 ]
 
 [[package]]
@@ -5125,26 +5113,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "52c2c1bf36ddb1a1c396b3601a3cec27c2462e45f07c386894ec3ccf5332bd16"
 dependencies = [
  "prost",
-]
-
-[[package]]
-name = "protobuf"
-version = "3.7.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d65a1d4ddae7d8b5de68153b48f6aa3bba8cb002b243dbdbc55a5afbc98f99f4"
-dependencies = [
- "once_cell",
- "protobuf-support",
- "thiserror 1.0.69",
-]
-
-[[package]]
-name = "protobuf-support"
-version = "3.7.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3e36c2f31e0a47f9280fb347ef5e461ffcd2c52dd520d8e216b52f93b0b0d7d6"
-dependencies = [
- "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -5263,7 +5231,7 @@ dependencies = [
  "mneme",
  "nous",
  "organon",
- "prometheus",
+ "prometheus-client",
  "rand 0.9.4",
  "regex",
  "reqwest 0.13.2",
@@ -6063,19 +6031,6 @@ dependencies = [
 
 [[package]]
 name = "rustix"
-version = "0.38.44"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fdb5bc1ae2baa591800df16c9ca78619bf65c0488b41b96ccec5d11220d8c154"
-dependencies = [
- "bitflags 2.11.0",
- "errno",
- "libc",
- "linux-raw-sys 0.4.15",
- "windows-sys 0.59.0",
-]
-
-[[package]]
-name = "rustix"
 version = "1.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6fe4565b9518b83ef4f91bb47ce29620ca828bd32cb7e408f0062e9930ba190"
@@ -6083,7 +6038,7 @@ dependencies = [
  "bitflags 2.11.0",
  "errno",
  "libc",
- "linux-raw-sys 0.12.1",
+ "linux-raw-sys",
  "windows-sys 0.61.2",
 ]
 
@@ -6841,11 +6796,11 @@ dependencies = [
  "jiff",
  "keyring",
  "koina",
- "prometheus",
+ "prometheus-client",
  "rand 0.9.4",
  "reqwest 0.13.2",
  "rusqlite",
- "rustix 1.1.4",
+ "rustix",
  "serde",
  "serde_json",
  "sha2 0.11.0",
@@ -6970,7 +6925,7 @@ dependencies = [
  "fastrand",
  "getrandom 0.4.2",
  "once_cell",
- "rustix 1.1.4",
+ "rustix",
  "windows-sys 0.61.2",
 ]
 
@@ -8654,7 +8609,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9993aa5be5a26815fe2c3eacfc1fde061fc1a1f094bf1ad2a18bf9c495dd7414"
 dependencies = [
  "gethostname",
- "rustix 1.1.4",
+ "rustix",
  "x11rb-protocol",
 ]
 

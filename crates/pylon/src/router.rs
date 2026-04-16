@@ -47,7 +47,11 @@ pub fn build_router_with(
     security: &SecurityConfig,
     extra: Option<Router>,
 ) -> Router {
-    crate::metrics::init();
+    // WHY: the binary crate's `register_all_metrics` registers every
+    // metrics-emitting crate's families against the shared registry before
+    // AppState is constructed, so router construction no longer needs to
+    // re-register pylon's metrics. Tests that build a state without running
+    // through the full binary should call `crate::metrics::init(registry)`.
 
     // WHY: Extract shutdown token before state is moved into the router.
     // The user_rate_limiter cleanup task needs it after .with_state() consumes the Arc.

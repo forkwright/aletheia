@@ -59,10 +59,6 @@ skip = [
     # Blocked until ring releases a version using windows-sys 0.61.
     { name = "windows-sys", version = "=0.52.0" },
 
-    # WHY: rustix 0.38 (via procfs/prometheus) pins windows-sys 0.59.
-    # Blocked until prometheus migrates to procfs with rustix 1.x.
-    { name = "windows-sys", version = "=0.59.0" },
-
     # WHY: arboard 3.6 (via theatron-tui) pins windows-sys 0.60.
     # Blocked until arboard releases a version using windows-sys 0.61.
     { name = "windows-sys", version = "=0.60.2" },
@@ -120,10 +116,6 @@ skip = [
     # Blocked until dashmap migrates to hashbrown 0.16.
     { name = "hashbrown", version = "=0.14.5" },
 
-    # WHY: rustix 0.38 (via procfs/prometheus client) pins linux-raw-sys 0.4.
-    # Canonical: linux-raw-sys 0.12 (rustix 1.x). Same blocker as rustix skip below.
-    { name = "linux-raw-sys", version = "=0.4.15" },
-
     # WHY: getrandom 0.3 chain uses r-efi 5.x; getrandom 0.4 uses r-efi 6.x.
     # Eliminated once getrandom 0.3 skip entry above takes effect.
     { name = "r-efi", version = "=5.3.0" },
@@ -138,10 +130,16 @@ skip = [
     { name = "rand_core", version = "=0.6.4" },
     { name = "rand_core", version = "=0.9.5" },
 
+<<<<<<< HEAD
     # WHY: procfs (prometheus metrics client) pins rustix 0.38.
     # Blocked until prometheus/procfs upgrades to rustix 1.x.
     # (See also windows-sys 0.59 skip above — same dep chain.)
     { name = "rustix", version = "=0.38.44" },
+=======
+    # WHY: toml 0.8 (figment dependency) uses serde_spanned 0.6; toml 1.x uses 1.x.
+    # Same root cause as the toml/toml_datetime skips below.
+    { name = "serde_spanned", version = "=0.6.9" },
+>>>>>>> 3a90f5307 (refactor: migrate from prometheus to prometheus-client (drops protobuf) (#3444))
 
     # WHY: various transitive deps have not yet migrated to thiserror v2.
     # Blocked until upstream crates release versions using thiserror 2.x.

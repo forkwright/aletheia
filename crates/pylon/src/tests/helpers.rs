@@ -146,6 +146,11 @@ bind = "localhost"
     let default_config = taxis::config::AletheiaConfig::default();
     let (config_tx, _config_rx) = tokio::sync::watch::channel(default_config.clone());
 
+    // WHY: pylon's /metrics handler requires a registry; tests need pylon's
+    // own families registered to match production behaviour.
+    let metrics_registry = koina::metrics::MetricsRegistry::new();
+    crate::metrics::init(&metrics_registry);
+
     let state = Arc::new(AppState {
         session_store: Arc::clone(&session_store),
         nous_manager: Arc::new(nous_manager),
@@ -164,6 +169,7 @@ bind = "localhost"
         knowledge_store: None,
         embedding_provider: None,
         turn_buffer_registry: Arc::new(crate::turn_buffer::TurnBufferRegistry::new()),
+        metrics_registry,
     });
 
     (state, dir)

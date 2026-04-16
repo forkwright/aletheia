@@ -28,6 +28,8 @@ pub mod fs;
 pub mod http;
 /// Newtype wrappers for domain identifiers ([`id::NousId`], [`id::SessionId`], [`id::TurnId`], [`id::ToolName`]).
 pub mod id;
+/// Shared Prometheus metrics registry (prometheus-client wrapper).
+pub mod metrics;
 /// Multi-output pipeline stages via the OutputBuffer pattern.
 pub mod output_buffer;
 /// Sensitive value redaction for safe log output (API keys, tokens, passwords).

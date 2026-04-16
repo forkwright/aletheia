@@ -50,5 +50,5 @@ Planning and project orchestration: multi-phase state machine with workspace per
 
 ## Dependencies
 
-Uses: jiff, ulid, serde, serde_json, snafu, prometheus
+Uses: jiff, ulid, serde, serde_json, snafu, prometheus-client
 Used by: nous, aletheia (binary)

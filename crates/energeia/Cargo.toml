@@ -19,7 +19,7 @@ storage-fjall = ["dep:fjall"]
 koina = { path = "../koina" }
 eidos = { path = "../eidos" }
 hermeneus = { path = "../hermeneus" }
-prometheus = { workspace = true }
+prometheus-client = { workspace = true }
 regex = { workspace = true }
 fjall = { version = "3", optional = true }
 jiff = { workspace = true, features = ["serde"] }

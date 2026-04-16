@@ -143,7 +143,11 @@ tracing-appender = { version = "0.2", default-features = false }
 tracing-test = "0.2"
 
 # Metrics
-prometheus = { version = "0.14", features = ["process"] }
+# WHY: prometheus-client is the Prometheus team's official client. It drops the
+# protobuf dependency (vs. the `prometheus` crate's ~15 transitive deps) by
+# using OpenMetrics text format natively. Exposition remains compatible with
+# standard Prometheus scrapers — they already accept OpenMetrics text.
+prometheus-client = "0.24"
 
 # IDs
 uuid = { version = "1", default-features = false, features = ["v4", "serde"] }

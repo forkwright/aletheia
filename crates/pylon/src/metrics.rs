@@ -1,65 +1,107 @@
 //! Prometheus metric definitions for the HTTP gateway.
-
-#![expect(
-    clippy::expect_used,
-    reason = "metric registration is infallible at startup"
-)]
+//!
+//! Metrics are registered with a shared [`koina::metrics::MetricsRegistry`]
+//! via [`register`] at startup. Recording functions operate on global
+//! [`std::sync::LazyLock`] families backed by `Arc`-internal state, so they
+//! are cheap to call from middleware without locking the registry.
 
 use std::sync::LazyLock;
+use std::sync::atomic::AtomicU64;
 
-use prometheus::{
-    Gauge, HistogramOpts, HistogramVec, IntCounterVec, IntGauge, Opts, register_gauge,
-    register_histogram_vec, register_int_counter_vec, register_int_gauge,
-};
+use prometheus_client::encoding::EncodeLabelSet;
+use prometheus_client::metrics::counter::Counter;
+use prometheus_client::metrics::family::Family;
+use prometheus_client::metrics::gauge::Gauge;
+use prometheus_client::metrics::histogram::Histogram;
+use prometheus_client::registry::Registry;
 
-static HTTP_REQUESTS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
-    register_int_counter_vec!(
-        Opts::new("aletheia_http_requests_total", "Total HTTP requests"),
-        &["method", "path", "status"]
-    )
-    .expect("metric registration")
-});
+#[cfg(test)]
+use koina::metrics::MetricsRegistry;
 
-static HTTP_REQUEST_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
-    register_histogram_vec!(
-        HistogramOpts::new(
-            "aletheia_http_request_duration_seconds",
-            "HTTP request duration in seconds"
-        )
-        .buckets(vec![
-            0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0
-        ]),
-        &["method", "path"]
-    )
-    .expect("metric registration")
-});
+#[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
+pub(crate) struct HttpRequestLabels {
+    pub(crate) method: String,
+    pub(crate) path: String,
+    pub(crate) status: u16,
+}
 
-static ACTIVE_SESSIONS: LazyLock<IntGauge> = LazyLock::new(|| {
-    register_int_gauge!("aletheia_active_sessions", "Number of active sessions")
-        .expect("metric registration")
-});
+#[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
+pub(crate) struct HttpDurationLabels {
+    pub(crate) method: String,
+    pub(crate) path: String,
+}
 
-static UPTIME_SECONDS: LazyLock<Gauge> = LazyLock::new(|| {
-    register_gauge!("aletheia_uptime_seconds", "Server uptime in seconds")
-        .expect("metric registration")
-});
+static HTTP_REQUESTS_TOTAL: LazyLock<Family<HttpRequestLabels, Counter>> =
+    LazyLock::new(Family::default);
 
-/// Force-initialize all lazy metric statics so they register with the default prometheus registry.
-pub(crate) fn init() {
-    LazyLock::force(&HTTP_REQUESTS_TOTAL);
-    LazyLock::force(&HTTP_REQUEST_DURATION_SECONDS);
-    LazyLock::force(&ACTIVE_SESSIONS);
-    LazyLock::force(&UPTIME_SECONDS);
+// WHY: `Family<L, Histogram, fn() -> Histogram>` pins the constructor type
+// so we can use it in a LazyLock. The tuple form is needed because
+// `Histogram::new` takes an `IntoIterator` and we need a zero-arg constructor.
+fn http_duration_histogram() -> Histogram {
+    Histogram::new([
+        0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0,
+    ])
+}
+
+type HttpDurationFamily = Family<HttpDurationLabels, Histogram, fn() -> Histogram>;
+
+static HTTP_REQUEST_DURATION_SECONDS: LazyLock<HttpDurationFamily> =
+    LazyLock::new(|| Family::new_with_constructor(http_duration_histogram));
+
+static ACTIVE_SESSIONS: LazyLock<Gauge> = LazyLock::new(Gauge::default);
+static UPTIME_SECONDS: LazyLock<Gauge<f64, AtomicU64>> = LazyLock::new(Gauge::default);
+
+/// Register this crate's metrics with the shared registry.
+///
+/// Called once at startup from the binary crate's `register_all_metrics`.
+pub fn register(registry: &mut Registry) {
+    registry.register(
+        // WHY: `_total` is appended automatically by the encoder for counters.
+        "aletheia_http_requests",
+        "Total HTTP requests",
+        HTTP_REQUESTS_TOTAL.clone(),
+    );
+    registry.register(
+        "aletheia_http_request_duration_seconds",
+        "HTTP request duration in seconds",
+        HTTP_REQUEST_DURATION_SECONDS.clone(),
+    );
+    registry.register(
+        "aletheia_active_sessions",
+        "Number of active sessions",
+        ACTIVE_SESSIONS.clone(),
+    );
+    registry.register(
+        "aletheia_uptime_seconds",
+        "Server uptime in seconds",
+        UPTIME_SECONDS.clone(),
+    );
+}
+
+/// Register metrics on the shared wrapper.
+///
+/// Helper for test harnesses that build an `AppState` without running the
+/// binary's `register_all_metrics`. Production code uses the binary entry
+/// point (see `aletheia::runtime::register_all_metrics`).
+#[cfg(test)]
+pub(crate) fn init(registry: &MetricsRegistry) {
+    registry.with_registry(register);
 }
 
 /// Record an HTTP request metric.
 pub(crate) fn record_request(method: &str, path: &str, status: u16, duration_secs: f64) {
-    let status_str = status.to_string();
     HTTP_REQUESTS_TOTAL
-        .with_label_values(&[method, path, &status_str])
+        .get_or_create(&HttpRequestLabels {
+            method: method.to_owned(),
+            path: path.to_owned(),
+            status,
+        })
         .inc();
     HTTP_REQUEST_DURATION_SECONDS
-        .with_label_values(&[method, path])
+        .get_or_create(&HttpDurationLabels {
+            method: method.to_owned(),
+            path: path.to_owned(),
+        })
         .observe(duration_secs);
 }
 
@@ -134,5 +176,28 @@ mod tests {
     fn normalize_short_names_preserved() {
         assert_eq!(normalize_path("/api/nous/syn"), "/api/nous/syn");
         assert_eq!(normalize_path("/api/nous/syn/tools"), "/api/nous/syn/tools");
+    }
+
+    #[test]
+    fn register_and_encode_roundtrip() {
+        let registry = MetricsRegistry::new();
+        init(&registry);
+        record_request("GET", "/api/health", 200, 0.001);
+        update_system_gauges(10.0, 3);
+
+        let mut buffer = String::new();
+        registry.encode(&mut buffer).expect("encode");
+        assert!(
+            buffer.contains("aletheia_http_requests_total"),
+            "expected http counter; got: {buffer}"
+        );
+        assert!(
+            buffer.contains("aletheia_uptime_seconds"),
+            "expected uptime gauge; got: {buffer}"
+        );
+        assert!(
+            buffer.contains("aletheia_active_sessions"),
+            "expected sessions gauge; got: {buffer}"
+        );
     }
 }
