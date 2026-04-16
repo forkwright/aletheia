@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.20.0](https://github.com/forkwright/aletheia/compare/v0.19.0...v0.20.0) (2026-04-16)
+
+
+### Features
+
+* distributed tracing — propagate request_id from HTTP to nous + tools ([#3384](https://github.com/forkwright/aletheia/issues/3384)) ([#3543](https://github.com/forkwright/aletheia/issues/3543)) ([b704f7a](https://github.com/forkwright/aletheia/commit/b704f7aa1c6981494f60a571bf4afe7b31b84e94))
+* **systemd:** Type=notify + watchdog heartbeat + STOPPING signal ([#3470](https://github.com/forkwright/aletheia/issues/3470) [#3471](https://github.com/forkwright/aletheia/issues/3471) [#3473](https://github.com/forkwright/aletheia/issues/3473)) ([#3540](https://github.com/forkwright/aletheia/issues/3540)) ([7b35316](https://github.com/forkwright/aletheia/commit/7b35316fc5267325f333e068abc3b0f8e9b25131))
+* workspace topology metric + PR prompt ([#3501](https://github.com/forkwright/aletheia/issues/3501)) ([#3554](https://github.com/forkwright/aletheia/issues/3554)) ([45aa119](https://github.com/forkwright/aletheia/commit/45aa119dc02d70dd0eb996397e3076693418f75b))
+
+
+### Documentation
+
+* API versioning policy ([#3393](https://github.com/forkwright/aletheia/issues/3393)) ([#3553](https://github.com/forkwright/aletheia/issues/3553)) ([5c2034d](https://github.com/forkwright/aletheia/commit/5c2034d59d1fea123afc27192aef081862b5eaa5))
+* crate selection flowchart for agent cold-start ([#3352](https://github.com/forkwright/aletheia/issues/3352)) ([#3550](https://github.com/forkwright/aletheia/issues/3550)) ([df1cf13](https://github.com/forkwright/aletheia/commit/df1cf13db6c99f0b9dfe76700d5a0ee278c25308))
+* disaster recovery + RTO/RPO ([#3386](https://github.com/forkwright/aletheia/issues/3386)) ([#3552](https://github.com/forkwright/aletheia/issues/3552)) ([578bfe8](https://github.com/forkwright/aletheia/commit/578bfe8db6b0179f2b139b47c97222660f5b8422))
+* feature flag matrix ([#3353](https://github.com/forkwright/aletheia/issues/3353)) ([#3551](https://github.com/forkwright/aletheia/issues/3551)) ([7b30727](https://github.com/forkwright/aletheia/commit/7b307279384b35f4f375db3271a8d6c77554d9ce))
+
 ## [0.19.0](https://github.com/forkwright/aletheia/compare/v0.18.0...v0.19.0) (2026-04-16)
 
 
