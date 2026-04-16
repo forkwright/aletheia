@@ -186,8 +186,7 @@ fn show_record(log_dir: &Path, timestamp: &str) -> Result<()> {
             }
         };
         if rec.timestamp == target {
-            let out =
-                serde_json::to_string_pretty(&rec).whatever_context("serialize record")?;
+            let out = serde_json::to_string_pretty(&rec).whatever_context("serialize record")?;
             println!("{out}");
             return Ok(());
         }

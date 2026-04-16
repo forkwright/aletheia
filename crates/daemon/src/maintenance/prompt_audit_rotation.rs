@@ -77,10 +77,7 @@ impl PromptAuditRotator {
             std::time::Duration::from_secs(u64::from(self.config.retention_days) * 86_400);
 
         let dir = fs::read_dir(&self.config.log_dir).context(error::MaintenanceIoSnafu {
-            context: format!(
-                "reading prompt audit dir {}",
-                self.config.log_dir.display()
-            ),
+            context: format!("reading prompt audit dir {}", self.config.log_dir.display()),
         })?;
 
         let mut report = PromptAuditRetentionReport::default();

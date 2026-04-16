@@ -7,8 +7,8 @@ use snafu::prelude::*;
 
 use oikonomos::maintenance::{
     AutoDreamConfig, DbMonitor, DbMonitoringConfig, DriftDetectionConfig, DriftDetector,
-    FjallBackupConfig, MaintenanceConfig, ProposeRulesConfig, PromptAuditRetentionConfig,
-    PromptAuditRotator, TraceRotationConfig, TraceRotator,
+    FjallBackupConfig, MaintenanceConfig, PromptAuditRetentionConfig, PromptAuditRotator,
+    ProposeRulesConfig, TraceRotationConfig, TraceRotator,
 };
 use oikonomos::runner::TaskRunner;
 use taxis::loader::load_config;
