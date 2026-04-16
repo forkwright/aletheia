@@ -59,7 +59,7 @@ pub(crate) async fn run(args: Args) -> Result<()> {
 
     let oikos_arc = Arc::new(oikos);
 
-    let mut runtime = RuntimeBuilder::production(Arc::clone(&oikos_arc), config.clone())
+    let runtime = RuntimeBuilder::production(Arc::clone(&oikos_arc), config.clone())
         .build()
         .await?;
 
@@ -197,7 +197,8 @@ pub(crate) async fn run(args: Args) -> Result<()> {
     // 1. HTTP server has stopped accepting new requests (axum graceful_shutdown).
     // 2. Root token is cancelled: daemon tasks observe it and exit their loops.
     // 2a. Drain SIGHUP handler (observes shutdown token).
-    // 3. Wait for system daemon to finish in-flight maintenance work.
+    // 3. Close TaskTracker + wait with timeout: all tracked background tasks
+    //    (system daemon, per-agent daemon runners, lazy init) drain cleanly.
     // 4. Drain nous actors with a timeout, flushing fjall WAL and other state.
     // 5. Drop AppState (session store, registries).
 
@@ -224,10 +225,20 @@ pub(crate) async fn run(args: Args) -> Result<()> {
         }
     }
 
-    while let Some(result) = runtime.daemon_handles.join_next().await {
-        match result {
-            Ok(()) => {}
-            Err(e) => warn!(error = %e, "system daemon panicked during shutdown"),
+    // WHY: close() prevents new tasks from being spawned; wait() resolves
+    // when every tracked task has completed. The timeout ensures we don't
+    // hang indefinitely on a stuck daemon.
+    runtime.task_tracker.close();
+    tokio::select! {
+        () = runtime.task_tracker.wait() => {
+            info!("all tracked tasks drained");
+        }
+        () = tokio::time::sleep(shutdown_timeout) => {
+            warn!(
+                remaining = runtime.task_tracker.len(),
+                timeout_secs = shutdown_timeout.as_secs(),
+                "tracked task drain timed out"
+            );
         }
     }
 

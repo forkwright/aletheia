@@ -5,8 +5,8 @@ use std::time::Instant;
 
 use snafu::prelude::*;
 use tokio::sync::Mutex;
-use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
+use tokio_util::task::TaskTracker;
 use tracing::{Instrument, error, info, warn};
 
 use agora::types::ChannelProvider;
@@ -54,7 +54,10 @@ pub(crate) struct Runtime {
         reason = "accessible for callers that need direct NousManager access"
     )]
     pub nous_manager: Arc<NousManager>,
-    pub daemon_handles: JoinSet<()>,
+    /// Tracks all long-running background tasks (daemons, per-agent runners,
+    /// lazy init jobs). On shutdown: close the tracker, then `wait()` with a
+    /// timeout so every task gets a chance to drain cleanly.
+    pub task_tracker: TaskTracker,
     pub shutdown_token: CancellationToken,
 }
 
@@ -240,6 +243,7 @@ impl RuntimeBuilder {
     )]
     pub(crate) async fn build(self) -> Result<Runtime> {
         let shutdown_token = CancellationToken::new();
+        let task_tracker = TaskTracker::new();
 
         info!(root = %self.oikos.root().display(), "instance discovered");
 
@@ -389,7 +393,7 @@ impl RuntimeBuilder {
             let lazy = Arc::new(LazyEmbeddingProvider::new(self.config.embedding.clone()));
             // Spawn background init so the model loads without blocking startup.
             let lazy_clone = Arc::clone(&lazy);
-            tokio::spawn(async move {
+            task_tracker.spawn(async move {
                 lazy_clone.get().await;
             });
             lazy
@@ -622,9 +626,6 @@ impl RuntimeBuilder {
             info!(count = nous_manager.count(), "nous actors spawned");
         }
 
-        // Daemon handles collector
-        let mut daemon_handles: JoinSet<()> = JoinSet::new();
-
         if self.daemons {
             // System maintenance daemon
             let maintenance_config =
@@ -642,7 +643,7 @@ impl RuntimeBuilder {
             }
 
             daemon_runner.register_maintenance_tasks();
-            daemon_handles.spawn(
+            task_tracker.spawn(
                 async move {
                     daemon_runner.run().await;
                 }
@@ -694,7 +695,7 @@ impl RuntimeBuilder {
                     ..oikonomos::schedule::TaskDef::default()
                 });
                 let daemon_span = tracing::info_span!("daemon", nous.id = %agent_def.id);
-                tokio::spawn(
+                task_tracker.spawn(
                     async move {
                         runner.run().await;
                     }
@@ -742,7 +743,7 @@ impl RuntimeBuilder {
         Ok(Runtime {
             state,
             nous_manager,
-            daemon_handles,
+            task_tracker,
             shutdown_token,
         })
     }
