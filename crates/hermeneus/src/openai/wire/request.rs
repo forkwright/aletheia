@@ -93,10 +93,7 @@ impl<'a> ChatCompletionRequest<'a> {
     /// format cannot express and that would silently change behavior
     /// (currently: `server_tools` — the caller must route these through an
     /// Anthropic provider).
-    pub(crate) fn from_request(
-        req: &'a CompletionRequest,
-        stream: Option<bool>,
-    ) -> Result<Self> {
+    pub(crate) fn from_request(req: &'a CompletionRequest, stream: Option<bool>) -> Result<Self> {
         if !req.server_tools.is_empty() {
             return Err(error::ProviderInitSnafu {
                 message: "OpenAI-compatible providers do not support server-side tools \
@@ -174,10 +171,7 @@ impl<'a> ChatCompletionRequest<'a> {
 
         let stop: Vec<&str> = req.stop_sequences.iter().map(String::as_str).collect();
 
-        let user = req
-            .metadata
-            .as_ref()
-            .and_then(|m| m.user_id.as_deref());
+        let user = req.metadata.as_ref().and_then(|m| m.user_id.as_deref());
 
         Ok(Self {
             model: &req.model,
@@ -357,7 +351,10 @@ fn translate_tool_choice(choice: &ToolChoice) -> serde_json::Value {
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
-#[expect(clippy::indexing_slicing, reason = "test: indices asserted valid by construction")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test: indices asserted valid by construction"
+)]
 mod tests {
     use super::*;
     use crate::types::{

@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 /// A pull request representation for steward classification.
 ///
-/// WHY: Aletheia doesn't have a GitHub wrapper crate. This minimal struct
+/// WHY: Aletheia doesn't have a `GitHub` wrapper crate. This minimal struct
 /// carries the fields the steward needs for classification and merge decisions.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
@@ -21,7 +21,7 @@ pub struct PullRequest {
     pub head_sha: Option<String>,
     /// State of the PR (e.g., "open", "closed").
     pub state: Option<String>,
-    /// Mergeability status from GitHub API.
+    /// Mergeability status from `GitHub` API.
     pub mergeable: Option<String>,
     /// Body/description of the PR.
     pub body: Option<String>,
@@ -53,7 +53,7 @@ impl fmt::Display for MergeMethod {
     }
 }
 
-/// A GitHub issue for observation matching.
+/// A `GitHub` issue for observation matching.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Issue {
@@ -94,9 +94,9 @@ pub struct ClassifiedPr {
     pub merge_safe: bool,
 
     /// Whether a `Gate-Passed` trailer was found in any PR commit.
-    /// WHY: Local gate enforcement replaces the verify-gate GitHub Action.
+    /// WHY: Local gate enforcement replaces the verify-gate `GitHub` Action.
     /// When CI checks are absent (minutes exhausted), this field allows the
-    /// steward to treat the PR as green without depending on GitHub CI.
+    /// steward to treat the PR as green without depending on `GitHub` CI.
     pub has_gate_trailer: bool,
 
     /// Suppression findings detected in the PR diff.
@@ -377,7 +377,7 @@ pub struct CheckRun {
     pub name: String,
 
     /// Status of the check (e.g. "completed", `in_progress`, "queued").
-    /// WHY: GitHub API uses "status" not "state" for check-runs.
+    /// WHY: `GitHub` API uses "status" not "state" for check-runs.
     #[serde(default, alias = "state")]
     pub status: String,
 

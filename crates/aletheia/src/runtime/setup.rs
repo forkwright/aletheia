@@ -15,8 +15,8 @@ use agora::types::ChannelProvider;
 use hermeneus::anthropic::{AnthropicProvider, ProviderBehavior};
 use hermeneus::openai::{OpenAiProvider, OpenAiProviderConfig};
 use hermeneus::provider::{ProviderConfig, ProviderRegistry};
-use koina::secret::SecretString;
 use koina::credential::{CredentialProvider, CredentialSource};
+use koina::secret::SecretString;
 use mneme::embedding::{
     DegradedEmbeddingProvider, EmbeddingConfig, EmbeddingProvider, create_provider,
 };
@@ -210,24 +210,25 @@ fn register_declared_providers(registry: &mut ProviderRegistry, config: &Alethei
                     );
                     continue;
                 };
-                let api_key = entry
-                    .api_key_env
-                    .as_deref()
-                    .and_then(|name| match std::env::var(name) {
-                        Ok(v) if !v.is_empty() => Some(SecretString::from(v)),
-                        Ok(_) => None,
-                        Err(_) => {
-                            // WHY: missing env var is expected for loopback
-                            // llama.cpp / ollama (no auth required). Log at
-                            // debug, not warn.
-                            tracing::debug!(
-                                provider = %entry.name,
-                                env = name,
-                                "api_key_env unset for OpenAI-compatible provider"
-                            );
-                            None
-                        }
-                    });
+                let api_key =
+                    entry
+                        .api_key_env
+                        .as_deref()
+                        .and_then(|name| match std::env::var(name) {
+                            Ok(v) if !v.is_empty() => Some(SecretString::from(v)),
+                            Ok(_) => None,
+                            Err(_) => {
+                                // WHY: missing env var is expected for loopback
+                                // llama.cpp / ollama (no auth required). Log at
+                                // debug, not warn.
+                                tracing::debug!(
+                                    provider = %entry.name,
+                                    env = name,
+                                    "api_key_env unset for OpenAI-compatible provider"
+                                );
+                                None
+                            }
+                        });
                 let cfg = OpenAiProviderConfig {
                     name: entry.name.clone(),
                     base_url,

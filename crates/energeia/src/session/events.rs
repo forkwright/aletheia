@@ -131,7 +131,7 @@ pub(crate) async fn process_events(
 // PR URL extraction
 // ---------------------------------------------------------------------------
 
-/// Extract a GitHub pull request URL from text.
+/// Extract a `GitHub` pull request URL from text.
 ///
 /// Matches `https://github.com/{owner}/{repo}/pull/{number}` patterns.
 /// Returns the first match found.

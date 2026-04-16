@@ -121,9 +121,7 @@ impl OpenAiStreamAccumulator {
             self.model = model;
             // Emit a MessageStart so the accumulator contract matches the
             // Anthropic provider — downstream code expects one per stream.
-            on_event(StreamEvent::MessageStart {
-                usage: self.usage,
-            });
+            on_event(StreamEvent::MessageStart { usage: self.usage });
         }
 
         if let Some(usage) = chunk.usage {
@@ -158,13 +156,14 @@ impl OpenAiStreamAccumulator {
 
         // Tool-call deltas → buffered, partial_json emitted per increment.
         for tc in choice.delta.tool_calls {
-            let pending = self.tool_calls.entry(tc.index).or_insert_with(|| {
-                PendingToolCall {
+            let pending = self
+                .tool_calls
+                .entry(tc.index)
+                .or_insert_with(|| PendingToolCall {
                     id: String::new(),
                     name: String::new(),
                     arguments: String::new(),
-                }
-            });
+                });
             if let Some(id) = tc.id
                 && !id.is_empty()
             {
@@ -180,9 +179,7 @@ impl OpenAiStreamAccumulator {
                     && !args.is_empty()
                 {
                     pending.arguments.push_str(&args);
-                    on_event(StreamEvent::InputJsonDelta {
-                        partial_json: args,
-                    });
+                    on_event(StreamEvent::InputJsonDelta { partial_json: args });
                 }
             }
         }
@@ -231,10 +228,7 @@ impl OpenAiStreamAccumulator {
             });
         }
 
-        on_event(StreamEvent::MessageStop {
-            stop_reason,
-            usage,
-        });
+        on_event(StreamEvent::MessageStop { stop_reason, usage });
 
         CompletionResponse {
             id,
@@ -325,7 +319,10 @@ pub(crate) async fn parse_sse_response(
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
-#[expect(clippy::indexing_slicing, reason = "test: indices asserted valid by construction")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test: indices asserted valid by construction"
+)]
 mod tests {
     use super::*;
 

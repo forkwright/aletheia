@@ -139,13 +139,14 @@ impl OpenAiProvider {
         headers.insert("accept", HeaderValue::from_static("application/json"));
 
         if let Some(key) = &self.config.api_key {
-            let value =
-                HeaderValue::from_str(&format!("Bearer {}", key.expose_secret())).map_err(|_e| {
+            let value = HeaderValue::from_str(&format!("Bearer {}", key.expose_secret())).map_err(
+                |_e| {
                     error::AuthFailedSnafu {
                         message: "API key contains invalid header characters".to_owned(),
                     }
                     .build()
-                })?;
+                },
+            )?;
             headers.insert(reqwest::header::AUTHORIZATION, value);
         }
         Ok(headers)
@@ -194,7 +195,10 @@ impl OpenAiProvider {
             .build()
         })?;
 
-        let url = format!("{}/chat/completions", self.config.base_url.trim_end_matches('/'));
+        let url = format!(
+            "{}/chat/completions",
+            self.config.base_url.trim_end_matches('/')
+        );
 
         let mut last_error: Option<error::Error> = None;
 
@@ -233,13 +237,12 @@ impl OpenAiProvider {
                     }
                     .build()
                 })?;
-                let parsed: ChatCompletionResponse =
-                    serde_json::from_str(&text).map_err(|e| {
-                        error::ApiRequestSnafu {
-                            message: format!("failed to parse OpenAI response: {e}"),
-                        }
-                        .build()
-                    })?;
+                let parsed: ChatCompletionResponse = serde_json::from_str(&text).map_err(|e| {
+                    error::ApiRequestSnafu {
+                        message: format!("failed to parse OpenAI response: {e}"),
+                    }
+                    .build()
+                })?;
                 let resp = parsed
                     .into_response()
                     .map_err(|msg| error::ApiRequestSnafu { message: msg }.build())?;
@@ -262,22 +265,21 @@ impl OpenAiProvider {
                     0.0,
                     true,
                 );
-                crate::metrics::record_latency(
-                    &request.model,
-                    "ok",
-                    start.elapsed().as_secs_f64(),
-                );
+                crate::metrics::record_latency(&request.model, "ok", start.elapsed().as_secs_f64());
                 return Ok(resp);
             }
 
-            let err =
-                map_error_response(response, &request.model, self.credential_source()).await;
+            let err = map_error_response(response, &request.model, self.credential_source()).await;
             self.health.record_error(&err);
             if !err.is_retryable() {
                 tracing::Span::current().record("llm.retries", attempt);
                 tracing::Span::current().record(
                     "llm.status",
-                    if status == 401 { "auth_failed" } else { "error" },
+                    if status == 401 {
+                        "auth_failed"
+                    } else {
+                        "error"
+                    },
                 );
                 return Err(err);
             }
@@ -315,7 +317,10 @@ impl OpenAiProvider {
             }
             .build()
         })?;
-        let url = format!("{}/chat/completions", self.config.base_url.trim_end_matches('/'));
+        let url = format!(
+            "{}/chat/completions",
+            self.config.base_url.trim_end_matches('/')
+        );
         let headers = self.build_headers()?;
 
         let mut response = self
@@ -329,7 +334,9 @@ impl OpenAiProvider {
             .map_err(|e| map_request_error(&e))?;
 
         if !response.status().is_success() {
-            return Err(map_error_response(response, &request.model, self.credential_source()).await);
+            return Err(
+                map_error_response(response, &request.model, self.credential_source()).await,
+            );
         }
 
         let resp = parse_sse_response(&mut response, on_event).await?;

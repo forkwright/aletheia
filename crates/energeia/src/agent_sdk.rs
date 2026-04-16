@@ -25,7 +25,7 @@ pub struct AgentSdkConfig {
     pub skip_permissions: bool,
     /// Disable MCP plugin loading.
     pub disable_plugins: bool,
-    /// Optional OAuth token for API authentication.
+    /// Optional `OAuth` token for API authentication.
     pub oauth_token: Option<String>,
     /// Optional MCP server configurations.
     pub mcp_servers: Vec<McpServerConfig>,
@@ -58,7 +58,7 @@ pub struct McpServerConfig {
 
 /// Agent SDK-based dispatch engine.
 ///
-/// WHY: Provides native Agent SDK integration with OAuth, permissions, and
+/// WHY: Provides native Agent SDK integration with `OAuth`, permissions, and
 /// plugin support, replacing the subprocess-based `HttpEngine`.
 pub struct AgentSdkEngine {
     config: AgentSdkConfig,
@@ -71,7 +71,7 @@ impl AgentSdkEngine {
     /// # Errors
     ///
     /// Returns an error if the engine cannot be initialized (e.g., binary
-    /// lookup fails, OAuth token invalid, MCP server unavailable).
+    /// lookup fails, `OAuth` token invalid, MCP server unavailable).
     pub fn new(config: AgentSdkConfig) -> Result<Self> {
         // WHY: Verify the model identifier is valid during construction.
         if config.default_model.is_empty() {

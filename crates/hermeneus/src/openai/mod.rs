@@ -52,5 +52,8 @@ pub use client::{OpenAiProvider, OpenAiProviderConfig};
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 #[expect(clippy::expect_used, reason = "test assertions")]
-#[expect(clippy::indexing_slicing, reason = "test: indices asserted valid by construction")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test: indices asserted valid by construction"
+)]
 mod tests;

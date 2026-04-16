@@ -16,7 +16,7 @@ pub struct StewardConfig {
     pub once: bool,
     /// Dry-run mode: classify without executing actions.
     pub dry_run: bool,
-    /// GitHub project slug (owner/repo).
+    /// `GitHub` project slug (owner/repo).
     pub project: String,
     /// Required CI check names (empty = all checks matter).
     pub required_checks: Vec<String>,

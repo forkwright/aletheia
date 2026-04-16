@@ -118,7 +118,10 @@ mod tests {
         let body = r#"{"error":{"message":"Invalid API key","type":"invalid_request_error","code":"invalid_api_key"}}"#;
         let parsed: WireErrorResponse = serde_json::from_str(body).unwrap();
         assert_eq!(parsed.error.message, "Invalid API key");
-        assert_eq!(parsed.error.error_type.as_deref(), Some("invalid_request_error"));
+        assert_eq!(
+            parsed.error.error_type.as_deref(),
+            Some("invalid_request_error")
+        );
     }
 
     #[test]
