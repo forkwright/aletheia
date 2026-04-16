@@ -88,3 +88,84 @@ pub enum PromptCacheMode {
     /// wire format for extended TTL is plumbed through).
     Extended,
 }
+
+/// Where a provider's traffic terminates — used to classify data sensitivity
+/// and sovereignty posture for routing decisions (#3414, #3424).
+///
+/// The factsensitivity filter and air-gapped mode use this to decide whether
+/// a given turn may be sent to a given provider: cloud endpoints receive only
+/// the facts the operator has explicitly allowed to leave the machine, while
+/// locally-hosted and embedded providers are trusted with everything.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+#[non_exhaustive]
+pub enum DeploymentTarget {
+    /// Third-party cloud API (e.g., api.anthropic.com, api.openai.com).
+    /// Facts marked sensitive are filtered before the request is sent.
+    #[default]
+    Cloud,
+    /// Self-hosted endpoint reachable over the local network (e.g., a
+    /// colocated llama.cpp server on the same subnet). Trusted with
+    /// operator-sensitive content but not with personally-identifiable data.
+    LocalHosted,
+    /// Runs on the same machine as aletheia (loopback llama.cpp / ollama
+    /// / vllm). Trusted with every fact the operator would trust to disk.
+    Embedded,
+}
+
+/// Which concrete provider implementation to instantiate at startup.
+///
+/// Matches on this in `crates/aletheia/src/runtime/setup.rs` to pick between
+/// the Anthropic HTTP client, OpenAI-compatible HTTP client, or the CC
+/// subprocess adapter.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+#[non_exhaustive]
+pub enum ProviderKind {
+    /// Anthropic Messages API native client.
+    Anthropic,
+    /// `OpenAI` Chat Completions-compatible HTTP client. Works with
+    /// `OpenAI`, llama.cpp, ollama, vllm, and any other server exposing the
+    /// same wire format.
+    OpenAiCompatible,
+    /// Claude Code subprocess adapter (delegates to the `claude` CLI).
+    /// Requires the `cc-provider` feature flag on hermeneus.
+    ClaudeCode,
+}
+
+/// Per-provider configuration entry. One of these is produced for every
+/// `[[providers]]` table in `aletheia.toml`.
+///
+/// The full set of entries lives on `AletheiaConfig::providers`. At startup
+/// `build_provider_registry` iterates the vector and dispatches on
+/// [`kind`](Self::kind) to build the corresponding concrete provider.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LlmProviderConfig {
+    /// Operator-facing label for logs and diagnostics (e.g., `"local-qwen"`,
+    /// `"anthropic-cloud"`). Must be unique across the provider list.
+    pub name: String,
+    /// Which concrete provider implementation to instantiate.
+    #[serde(rename = "providerType")]
+    pub kind: ProviderKind,
+    /// HTTP base URL override. Required for OpenAI-compatible providers
+    /// (e.g., `http://127.0.0.1:8088/v1` for local llama.cpp). Optional for
+    /// Anthropic (defaults to `https://api.anthropic.com`). Ignored for
+    /// the Claude Code subprocess adapter.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_url: Option<String>,
+    /// Environment variable name holding the API key. Read at startup via
+    /// `std::env::var`. Optional for loopback / embedded providers that do
+    /// not require authentication.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub api_key_env: Option<String>,
+    /// Where this provider's traffic terminates. Drives the
+    /// factsensitivity filter (#3414) and air-gapped mode.
+    #[serde(default)]
+    pub deployment_target: DeploymentTarget,
+    /// Model identifiers this provider advertises support for. Used by the
+    /// provider registry for routing: the first provider in list order that
+    /// claims the requested model wins.
+    #[serde(default)]
+    pub models: Vec<String>,
+}

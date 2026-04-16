@@ -11,9 +11,10 @@ pub use agents::{
     ModelSpec, NousDefinition, RecallSettings, RecallWeights,
 };
 pub use behavior::{
-    AnthropicConfig, ApiLimitsConfig, CapacityConfig, DaemonBehaviorConfig, JwtSettings,
-    KnowledgeConfig, MessagingConfig, NousBehaviorConfig, PromptCacheMode, ProviderBehaviorConfig,
-    RetrySettings, TimeoutsConfig, ToolLimitsConfig, TuningConfig,
+    AnthropicConfig, ApiLimitsConfig, CapacityConfig, DaemonBehaviorConfig, DeploymentTarget,
+    JwtSettings, KnowledgeConfig, LlmProviderConfig, MessagingConfig, NousBehaviorConfig,
+    PromptCacheMode, ProviderBehaviorConfig, ProviderKind, RetrySettings, TimeoutsConfig,
+    ToolLimitsConfig, TuningConfig,
 };
 pub use gateway::{
     BodyLimitConfig, CorsConfig, CsrfConfig, GatewayAuthConfig, GatewayConfig,
@@ -142,6 +143,17 @@ pub struct AletheiaConfig {
     /// typical NTP drift; operators on tightly synchronized hosts may
     /// lower this, and those behind mis-synced proxies may raise it.
     pub jwt: JwtSettings,
+    /// LLM provider definitions (#3424, #3414).
+    ///
+    /// Ordered list of backends — the provider registry routes each request
+    /// to the first entry that claims the requested model. Empty by default
+    /// for backward compatibility: when empty, the runtime falls back to the
+    /// legacy single-Anthropic setup driven by [`Self::anthropic`] and the
+    /// top-level credential chain. Populate this to enable OpenAI-compatible
+    /// endpoints (local llama.cpp/ollama/vllm, other cloud APIs) or to
+    /// declare explicit deployment targets for the factsensitivity filter.
+    #[serde(default)]
+    pub providers: Vec<LlmProviderConfig>,
 }
 
 /// Sandbox enforcement level for tool execution.

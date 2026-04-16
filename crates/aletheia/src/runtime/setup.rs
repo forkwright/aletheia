@@ -13,7 +13,9 @@ use agora::semeion::SignalProvider;
 use agora::semeion::client::SignalClient;
 use agora::types::ChannelProvider;
 use hermeneus::anthropic::{AnthropicProvider, ProviderBehavior};
+use hermeneus::openai::{OpenAiProvider, OpenAiProviderConfig};
 use hermeneus::provider::{ProviderConfig, ProviderRegistry};
+use koina::secret::SecretString;
 use koina::credential::{CredentialProvider, CredentialSource};
 use mneme::embedding::{
     DegradedEmbeddingProvider, EmbeddingConfig, EmbeddingProvider, create_provider,
@@ -182,7 +184,102 @@ pub(super) fn build_provider_registry(config: &AletheiaConfig, oikos: &Oikos) ->
         Err(e) => warn!(error = %e, "failed to init anthropic provider"),
     }
 
+    register_declared_providers(&mut registry, config);
+
     registry
+}
+
+/// Iterate `config.providers` and register each entry with the provider
+/// registry (#3424, #3414).
+///
+/// Dispatches on `ProviderKind` to pick between Anthropic, OpenAI-compatible
+/// HTTP, and the CC subprocess adapter. Anthropic entries in the declarative
+/// list are skipped — the top-level credential chain already owns the
+/// Anthropic provider so we do not double-register. Empty list (the default)
+/// is a no-op, preserving legacy single-provider behavior.
+fn register_declared_providers(registry: &mut ProviderRegistry, config: &AletheiaConfig) {
+    use taxis::config::ProviderKind;
+
+    for entry in &config.providers {
+        match entry.kind {
+            ProviderKind::OpenAiCompatible => {
+                let Some(base_url) = entry.base_url.clone() else {
+                    warn!(
+                        provider = %entry.name,
+                        "OpenAI-compatible provider missing base_url — skipping"
+                    );
+                    continue;
+                };
+                let api_key = entry
+                    .api_key_env
+                    .as_deref()
+                    .and_then(|name| match std::env::var(name) {
+                        Ok(v) if !v.is_empty() => Some(SecretString::from(v)),
+                        Ok(_) => None,
+                        Err(_) => {
+                            // WHY: missing env var is expected for loopback
+                            // llama.cpp / ollama (no auth required). Log at
+                            // debug, not warn.
+                            tracing::debug!(
+                                provider = %entry.name,
+                                env = name,
+                                "api_key_env unset for OpenAI-compatible provider"
+                            );
+                            None
+                        }
+                    });
+                let cfg = OpenAiProviderConfig {
+                    name: entry.name.clone(),
+                    base_url,
+                    api_key,
+                    models: entry.models.clone(),
+                    ..OpenAiProviderConfig::default()
+                };
+                match OpenAiProvider::new(cfg) {
+                    Ok(provider) => {
+                        info!(
+                            provider = %entry.name,
+                            target = ?entry.deployment_target,
+                            models = ?entry.models,
+                            "OpenAI-compatible provider registered"
+                        );
+                        registry.register(Box::new(provider));
+                    }
+                    Err(e) => warn!(
+                        provider = %entry.name,
+                        error = %e,
+                        "failed to init OpenAI-compatible provider"
+                    ),
+                }
+            }
+            ProviderKind::Anthropic => {
+                // Already registered via the credential-chain path above.
+                tracing::debug!(
+                    provider = %entry.name,
+                    "declarative Anthropic entry skipped — provider already registered via credential chain"
+                );
+            }
+            ProviderKind::ClaudeCode => {
+                // WHY: declarative registration of the CC adapter would
+                // duplicate the `cred_source` check above, and the binary
+                // path is already resolved by `CcProvider::new`. The
+                // credential-chain branch above handles this case.
+                tracing::debug!(
+                    provider = %entry.name,
+                    "declarative ClaudeCode entry skipped — provider already registered via credential chain"
+                );
+            }
+            // WHY: ProviderKind is #[non_exhaustive] so future additions
+            // never accidentally break the build. Unknown variants fall
+            // through to a clear operator warning.
+            _ => {
+                warn!(
+                    provider = %entry.name,
+                    "unknown provider kind in config — skipping"
+                );
+            }
+        }
+    }
 }
 
 pub(super) fn build_tool_registry(

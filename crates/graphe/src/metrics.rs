@@ -68,7 +68,6 @@ pub fn register(registry: &mut Registry) {
 ///
 /// Compiled when either the `sqlite` or `fjall` feature is enabled — both
 /// store backends call this on successful session creation.
-
 pub(crate) fn record_session_created(nous_id: &str, session_type: &str) {
     SESSIONS_TOTAL
         .get_or_create(&SessionLabels {
@@ -80,9 +79,17 @@ pub(crate) fn record_session_created(nous_id: &str, session_type: &str) {
 
 /// Record a backup operation duration.
 ///
-/// Only compiled when the `sqlite` feature is enabled — the only call site
-/// (`backup::create_backup`) lives behind that feature gate.
-
+/// Kept for future backup integrations — the sole historical call site
+/// (`backup::create_backup`) was removed with the sqlite backend (#3446),
+/// but the metric family remains registered so a future backup task in any
+/// store backend can start emitting without another migration.
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "no current call site after sqlite backend removal (#3446); metric family stays registered for future backup integrations"
+    )
+)]
 pub(crate) fn record_backup_duration(duration_secs: f64, success: bool) {
     let status = if success { "ok" } else { "error" };
     BACKUP_DURATION_SECONDS
