@@ -134,6 +134,8 @@ pub enum BuiltinTask {
     ProposeRules,
     /// Periodic file-level backup of the fjall knowledge store.
     FjallBackup,
+    /// Prune prompt audit log daily files past the retention window (#3411).
+    PromptAuditRotation,
 }
 
 impl Schedule {

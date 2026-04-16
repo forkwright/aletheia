@@ -19,6 +19,7 @@ use crate::commands::eval_embeddings::EvalEmbeddingsArgs;
 use crate::commands::health::HealthArgs;
 use crate::commands::maintenance;
 use crate::commands::memory;
+use crate::commands::prompt_audit;
 use crate::commands::repl::ReplArgs;
 use crate::commands::session_export::SessionExportArgs;
 use crate::commands::tls;
@@ -70,6 +71,11 @@ pub(crate) enum Command {
     Maintenance {
         #[command(subcommand)]
         action: maintenance::Action,
+    },
+    /// Inspect the prompt audit log (outbound LLM requests)
+    PromptAudit {
+        #[command(subcommand)]
+        action: prompt_audit::Action,
     },
     /// Knowledge graph inspection and maintenance
     Memory {

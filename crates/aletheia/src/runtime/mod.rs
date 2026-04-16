@@ -548,6 +548,20 @@ impl RuntimeBuilder {
         #[cfg(feature = "recall")]
         let knowledge_store_for_daemon = knowledge_store.clone();
 
+        // WHY(#3411): shared prompt audit log written once per turn across
+        // all actors. Path defaults to `{instance}/logs/prompt-audit/` when
+        // the operator hasn't set an explicit `log_dir` in config.
+        let audit_log_dir = self
+            .config
+            .prompt_audit
+            .log_dir
+            .clone()
+            .unwrap_or_else(|| self.oikos.logs().join("prompt-audit"));
+        let audit_log = Arc::new(nous::audit::PromptAuditLog::new(
+            audit_log_dir,
+            self.config.prompt_audit.enabled,
+        ));
+
         let mut nous_manager = NousManager::new(
             Arc::clone(&provider_registry),
             Arc::clone(&tool_registry),
@@ -561,7 +575,8 @@ impl RuntimeBuilder {
             Some(Arc::clone(&cross_router)),
             Some(tool_services),
             self.config.nous_behavior.clone(),
-        );
+        )
+        .with_audit_log(Arc::clone(&audit_log));
 
         // Spawn nous actors
         {
@@ -630,8 +645,11 @@ impl RuntimeBuilder {
 
         if self.daemons {
             // System maintenance daemon
-            let maintenance_config =
-                maintenance::build_config(&self.oikos, &self.config.maintenance);
+            let maintenance_config = maintenance::build_config(
+                &self.oikos,
+                &self.config.maintenance,
+                &self.config.prompt_audit,
+            );
             let daemon_token = shutdown_token.child_token();
             let mut daemon_runner =
                 TaskRunner::new("system", daemon_token).with_maintenance(maintenance_config);

@@ -766,6 +766,7 @@ pub(crate) async fn run_pipeline(
     emitter: Option<&EventEmitter>,
     hooks: Option<&HookRegistry>,
     bootstrap_cache: Option<&crate::bootstrap::BootstrapFileCache>,
+    audit_log: Option<&crate::audit::PromptAuditLog>,
 ) -> error::Result<TurnResult> {
     let default_emitter = EventEmitter::new();
     let emitter = emitter.unwrap_or(&default_emitter);
@@ -846,6 +847,28 @@ pub(crate) async fn run_pipeline(
                 hook_registry.run_before_query(&mut query_ctx).await
             {
                 return Err(error::GuardRejectedSnafu { reason }.build());
+            }
+        }
+
+        // WHY(#3411): write one prompt audit record per pipeline turn, after
+        // hooks have finished mutating context but before execute hands the
+        // CompletionRequest to hermeneus. Writing here keeps the audit
+        // surface at one record per outbound request even though execute may
+        // loop with tool-use iterations — the system prompt, tool list, and
+        // fact set are determined by the pipeline, not the tool loop. Audit
+        // failures are logged and never propagate: the log is observational
+        // and must not block a turn.
+        if let Some(log) = audit_log {
+            let record = crate::audit::build_audit_record(
+                &ctx,
+                &input.session,
+                config,
+                providers,
+                tools,
+                tool_ctx,
+            );
+            if let Err(e) = log.log_request(&record) {
+                tracing::warn!(error = %e, "prompt audit log write failed — continuing turn");
             }
         }
 

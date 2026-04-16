@@ -39,6 +39,10 @@ pub struct RecallStageResult {
     pub tokens_consumed: u64,
     /// The formatted recall section (appended to system prompt).
     pub recall_section: Option<String>,
+    /// Source IDs of facts whose content was injected into the recall
+    /// section. Used by the prompt audit log (#3411) so operators can see
+    /// which stored facts were included in each outbound request.
+    pub fact_ids: Vec<String>,
 }
 
 impl RecallStageResult {
@@ -48,6 +52,7 @@ impl RecallStageResult {
             results_injected: 0,
             tokens_consumed: 0,
             recall_section: None,
+            fact_ids: Vec::new(),
         }
     }
 }
@@ -294,7 +299,8 @@ impl RecallStage {
         }
 
         let budget = remaining_budget.min(self.config.max_recall_tokens);
-        let (results_injected, section, tokens) = self.format_within_budget(&filtered, budget);
+        let (results_injected, section, tokens, fact_ids) =
+            self.format_within_budget(&filtered, budget);
 
         debug!(
             candidates_found,
@@ -312,6 +318,7 @@ impl RecallStage {
             } else {
                 Some(section)
             },
+            fact_ids,
         }
     }
 
@@ -360,11 +367,19 @@ impl RecallStage {
 
     /// Format results within the token budget.
     ///
+    /// Returns the included count, rendered section, total tokens consumed,
+    /// and the source IDs of the included facts (used by the prompt audit
+    /// log in #3411 to identify which facts were surfaced).
+    ///
     /// # Complexity
     ///
     /// O(n²) where n is the number of results, due to repeated token estimation
     /// for each incremental addition to the output.
-    fn format_within_budget(&self, results: &[ScoredResult], budget: u64) -> (usize, String, u64) {
+    fn format_within_budget(
+        &self,
+        results: &[ScoredResult],
+        budget: u64,
+    ) -> (usize, String, u64, Vec<String>) {
         let cpt = self.config.chars_per_token;
         let mut included = Vec::with_capacity(results.len());
 
@@ -379,12 +394,13 @@ impl RecallStage {
         }
 
         if included.is_empty() {
-            return (0, String::new(), 0);
+            return (0, String::new(), 0, Vec::new());
         }
 
         let section = format_section(&included);
         let tokens = estimate_tokens(&section, cpt);
-        (included.len(), section, tokens)
+        let fact_ids = included.iter().map(|r| r.source_id.clone()).collect();
+        (included.len(), section, tokens, fact_ids)
     }
 }
 

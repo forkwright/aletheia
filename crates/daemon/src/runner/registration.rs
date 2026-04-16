@@ -124,6 +124,19 @@ impl TaskRunner {
             );
         }
 
+        if config.prompt_audit.enabled {
+            // WHY: daily cadence matches the log's per-day filenames; pruning
+            // more often wastes IO. Fires at 02:00 UTC to avoid overlapping
+            // with trace rotation (03:00) and drift detection (04:00).
+            self.register_builtin(
+                "prompt-audit-rotation",
+                "Prompt audit log retention",
+                Schedule::Cron("0 0 2 * * *".to_owned()),
+                BuiltinTask::PromptAuditRotation,
+                true,
+            );
+        }
+
         self.register_cron_tasks(&config.cron);
     }
 

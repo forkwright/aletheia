@@ -386,6 +386,7 @@ impl NousActor {
         // WHY: share the bootstrap file cache across the spawned pipeline task
         // so cached workspace reads are reused turn-to-turn (#3388).
         let bootstrap_cache = Arc::clone(&self.services.bootstrap_cache);
+        let audit_log = self.services.audit_log.clone();
         tokio::spawn(
             async move {
                 #[cfg(feature = "knowledge-store")]
@@ -413,6 +414,7 @@ impl NousActor {
                             None,
                             Some(&hook_registry),
                             Some(bootstrap_cache.as_ref()),
+                            audit_log.as_deref(),
                         )
                         .await
                     }
@@ -434,6 +436,7 @@ impl NousActor {
                             None,
                             Some(&hook_registry),
                             Some(bootstrap_cache.as_ref()),
+                            audit_log.as_deref(),
                         )
                         .await
                     }
@@ -623,6 +626,7 @@ impl NousActor {
             None,
             Some(&hook_registry),
             Some(self.services.bootstrap_cache.as_ref()),
+            self.services.audit_log.as_deref(),
         )
         .await
     }

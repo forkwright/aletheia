@@ -68,6 +68,12 @@ pub(crate) struct ActorServices {
     /// // WHY: lives on the actor so entries survive across turns. A single
     /// // actor services one `nous_id`, so cache lifetime tracks actor lifetime.
     pub(crate) bootstrap_cache: Arc<BootstrapFileCache>,
+    /// Prompt audit log: one record per outbound LLM request (#3411).
+    ///
+    /// // WHY: shared across all actors so the per-day JSONL file handle is
+    /// // reused instead of re-opening per turn. `None` when the feature is
+    /// // disabled in taxis config.
+    pub(crate) audit_log: Option<Arc<crate::audit::PromptAuditLog>>,
 }
 
 /// Data stores for sessions, knowledge, and search.
@@ -171,6 +177,7 @@ impl NousActor {
         active_turn: Arc<AtomicBool>,
         turn_started_at_ms: Arc<AtomicU64>,
         nous_behavior: taxis::config::NousBehaviorConfig,
+        audit_log: Option<Arc<crate::audit::PromptAuditLog>>,
     ) -> Self {
         #[cfg(feature = "knowledge-store")]
         let skill_loader = knowledge_store
@@ -211,6 +218,7 @@ impl NousActor {
                 bootstrap_cache: Arc::new(BootstrapFileCache::with_ttl_secs(
                     nous_behavior.bootstrap_cache_ttl_secs,
                 )),
+                audit_log,
             },
             stores: ActorStores {
                 session_store,

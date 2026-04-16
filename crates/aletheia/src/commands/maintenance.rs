@@ -7,7 +7,8 @@ use snafu::prelude::*;
 
 use oikonomos::maintenance::{
     AutoDreamConfig, DbMonitor, DbMonitoringConfig, DriftDetectionConfig, DriftDetector,
-    FjallBackupConfig, MaintenanceConfig, ProposeRulesConfig, TraceRotationConfig, TraceRotator,
+    FjallBackupConfig, MaintenanceConfig, ProposeRulesConfig, PromptAuditRetentionConfig,
+    PromptAuditRotator, TraceRotationConfig, TraceRotator,
 };
 use oikonomos::runner::TaskRunner;
 use taxis::loader::load_config;
@@ -40,7 +41,7 @@ pub(crate) fn run(action: Action, instance_root: Option<&PathBuf>) -> Result<()>
         None => Oikos::discover(),
     };
     let config = load_config(&oikos).whatever_context("failed to load config")?;
-    let maint = build_config(&oikos, &config.maintenance);
+    let maint = build_config(&oikos, &config.maintenance, &config.prompt_audit);
 
     match action {
         Action::Status { json } => {
@@ -71,6 +72,7 @@ pub(crate) fn run(action: Action, instance_root: Option<&PathBuf>) -> Result<()>
                     "drift-detection",
                     "db-monitor",
                     "fjall-backup",
+                    "prompt-audit-rotation",
                 ]
             } else {
                 vec![task.as_str()]
@@ -147,6 +149,15 @@ fn run_task(name: &str, maint: &MaintenanceConfig, verbose: bool) -> Result<()> 
                 None => println!("fjall-backup: skipped (source directory not found)"),
             }
         }
+        "prompt-audit-rotation" => {
+            let report = PromptAuditRotator::new(maint.prompt_audit.clone())
+                .prune()
+                .whatever_context("prompt audit rotation failed")?;
+            println!(
+                "prompt-audit-rotation: {} files pruned, {} bytes freed",
+                report.files_pruned, report.bytes_freed
+            );
+        }
         "self-audit" => {
             use nous::self_audit::{AuditTrigger, CheckContext, SelfAuditor};
             let mut auditor = SelfAuditor::new();
@@ -167,7 +178,7 @@ fn run_task(name: &str, maint: &MaintenanceConfig, verbose: bool) -> Result<()> 
             }
         }
         other => whatever!(
-            "unknown task: {other}. Valid: trace-rotation, drift-detection, db-monitor, fjall-backup, self-audit, all"
+            "unknown task: {other}. Valid: trace-rotation, drift-detection, db-monitor, fjall-backup, prompt-audit-rotation, self-audit, all"
         ),
     }
     Ok(())
@@ -179,6 +190,7 @@ fn run_task(name: &str, maint: &MaintenanceConfig, verbose: bool) -> Result<()> 
 pub(crate) fn build_config(
     oikos: &Oikos,
     settings: &taxis::config::MaintenanceSettings,
+    prompt_audit: &taxis::config::PromptAuditSettings,
 ) -> MaintenanceConfig {
     MaintenanceConfig {
         trace_rotation: TraceRotationConfig {
@@ -219,6 +231,14 @@ pub(crate) fn build_config(
             retention_count: settings.backup.backup_retention_count,
         },
         propose_rules: ProposeRulesConfig::default(),
+        prompt_audit: PromptAuditRetentionConfig {
+            enabled: prompt_audit.enabled,
+            log_dir: prompt_audit
+                .log_dir
+                .clone()
+                .unwrap_or_else(|| oikos.logs().join("prompt-audit")),
+            retention_days: prompt_audit.retention_days,
+        },
         cron: oikonomos::cron::CronConfig {
             evolution: oikonomos::cron::CronEvolutionConfig {
                 enabled: settings.cron_tasks.evolution.enabled,

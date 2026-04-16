@@ -174,6 +174,7 @@ impl SpawnService for SpawnServiceImpl {
                     None,
                     ephemeral_cancel,
                     taxis::config::NousBehaviorConfig::default(),
+                    None,
                 );
 
                 info!(session_key = %session_key, "ephemeral actor started");
