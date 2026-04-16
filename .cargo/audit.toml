@@ -14,8 +14,4 @@ ignore = [
     "RUSTSEC-2025-0141",
     # paste unmaintained — transitive via tokenizers; no safe upgrade
     "RUSTSEC-2024-0436",
-    # rustls-pemfile unmaintained — transitive via tonic/qdrant-client; tracked in follow-up issue
-    "RUSTSEC-2025-0134",
-    # rand 0.8.5 unsound with custom logger using rand::rng() — transitive via tonic/qdrant-client; tracked in follow-up issue
-    "RUSTSEC-2026-0097",
 ]
