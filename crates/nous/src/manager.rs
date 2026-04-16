@@ -30,6 +30,16 @@ use crate::config::{NousConfig, PipelineConfig};
 use crate::handle::NousHandle;
 use crate::message::{ActorHealth, NousStatus};
 
+/// Result of waiting for a single actor task during `shutdown_all`.
+enum ShutdownOutcome {
+    /// Actor exited its run loop cleanly within the shutdown budget.
+    Clean,
+    /// Actor task panicked; the captured message is carried for logging.
+    Panicked(String),
+    /// Actor did not finish its current turn in time and was aborted.
+    TimedOut,
+}
+
 struct ActorEntry {
     handle: NousHandle,
     /// Wrapped in `Mutex<Option<_>>` so `shutdown_readonly` can take the handle
@@ -568,14 +578,35 @@ impl NousManager {
         statuses
     }
 
-    /// Gracefully shut down all actors.
+    /// Gracefully shut down all actors, bounded by `shutdown_timeout_secs`.
+    ///
+    /// Sends a `Shutdown` message to each actor and awaits their join handles
+    /// up to `nous_behavior.shutdown_timeout_secs`. Any actor still running
+    /// when the budget expires is aborted via [`JoinHandle::abort`] so the
+    /// process can exit. Per-actor shutdown durations are logged, and actors
+    /// that hit the timeout are logged at `warn!`. (#3382)
     ///
     /// # Cancel safety
     ///
     /// Not cancel-safe. If cancelled after draining actors but before joining
     /// them, actor tasks may be leaked. Only call from shutdown paths.
     pub async fn shutdown_all(&mut self) {
-        info!(count = self.actors.len(), "shutting down all actors");
+        let timeout = Duration::from_secs(self.nous_behavior.shutdown_timeout_secs);
+        self.shutdown_all_with_timeout(timeout).await;
+    }
+
+    /// Gracefully shut down all actors with an explicit timeout.
+    ///
+    /// Equivalent to [`Self::shutdown_all`] but takes the timeout as an
+    /// argument instead of reading it from `nous_behavior`. Useful for tests
+    /// and for callers that need a different budget (e.g. a fast-path shutdown
+    /// triggered by SIGKILL-like signals).
+    pub async fn shutdown_all_with_timeout(&mut self, timeout: Duration) {
+        info!(
+            count = self.actors.len(),
+            timeout_secs = timeout.as_secs(),
+            "shutting down all actors"
+        );
 
         if let Some(ref router) = self.router {
             for id in self.actors.keys() {
@@ -605,19 +636,68 @@ impl NousManager {
             }
         }
 
-        let mut join_set: JoinSet<(String, Result<(), tokio::task::JoinError>)> = JoinSet::new();
+        // WHY: wrap each join in a timed future so we can log per-actor
+        // shutdown duration and force-abort any actor that overruns the
+        // shared budget. The budget is shared across all actors: a single
+        // actor that takes `timeout` seconds exhausts the pool, and any
+        // actor not yet drained is aborted.
+        let shutdown_start = std::time::Instant::now();
+        let mut join_set: JoinSet<(String, Duration, ShutdownOutcome)> = JoinSet::new();
         for (id, join_opt) in joins {
             if let Some(join) = join_opt {
-                join_set.spawn(async move { (id, join.await) });
+                join_set.spawn(async move {
+                    let started = std::time::Instant::now();
+                    // WHY: `JoinHandle` supports `abort_handle` so the timed
+                    // branch can cancel the task if the join overruns.
+                    let abort = join.abort_handle();
+                    let join_result = tokio::time::timeout(timeout, join).await;
+                    let elapsed = started.elapsed();
+                    match join_result {
+                        Ok(Ok(())) => (id, elapsed, ShutdownOutcome::Clean),
+                        Ok(Err(e)) => (id, elapsed, ShutdownOutcome::Panicked(e.to_string())),
+                        Err(_) => {
+                            abort.abort();
+                            (id, elapsed, ShutdownOutcome::TimedOut)
+                        }
+                    }
+                });
             }
         }
         while let Some(result) = join_set.join_next().await {
-            if let Ok((id, Err(e))) = result {
-                warn!(nous_id = %id, error = %e, "actor task panicked");
+            match result {
+                Ok((id, elapsed, ShutdownOutcome::Clean)) => {
+                    debug!(
+                        nous_id = %id,
+                        shutdown_ms = u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX),
+                        "actor stopped cleanly"
+                    );
+                }
+                Ok((id, elapsed, ShutdownOutcome::Panicked(err))) => {
+                    warn!(
+                        nous_id = %id,
+                        shutdown_ms = u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX),
+                        error = %err,
+                        "actor task panicked"
+                    );
+                }
+                Ok((id, elapsed, ShutdownOutcome::TimedOut)) => {
+                    warn!(
+                        nous_id = %id,
+                        shutdown_ms = u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX),
+                        timeout_secs = timeout.as_secs(),
+                        "actor did not finish current turn within shutdown timeout — aborted"
+                    );
+                }
+                Err(e) => {
+                    warn!(error = %e, "shutdown tracker task failed");
+                }
             }
         }
 
-        info!("all actors stopped");
+        info!(
+            elapsed_ms = u64::try_from(shutdown_start.elapsed().as_millis()).unwrap_or(u64::MAX),
+            "all actors stopped"
+        );
     }
 
     /// Cancel all actors and wait for them to drain, bounded by a timeout.

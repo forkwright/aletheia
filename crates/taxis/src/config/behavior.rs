@@ -199,6 +199,14 @@ pub struct NousBehaviorConfig {
     /// // TTL is a backstop rather than the primary freshness mechanism.
     /// // Set to 0 to disable the cache.
     pub bootstrap_cache_ttl_secs: u64,
+    /// Maximum seconds `NousManager::shutdown_all` waits for actors to finish
+    /// their current turn before aborting their tasks. Default: 30.
+    ///
+    /// WHY: Without a timeout, a long-running turn (e.g. a stuck LLM call or
+    /// deadlocked tool) blocks graceful shutdown indefinitely. When the
+    /// timeout expires, remaining actor tasks are aborted via
+    /// `JoinHandle::abort()` so the process can exit. (#3382)
+    pub shutdown_timeout_secs: u64,
 }
 
 impl Default for NousBehaviorConfig {
@@ -223,6 +231,7 @@ impl Default for NousBehaviorConfig {
             cycle_detection_max_len: 10,
             self_audit_event_threshold: 50,
             bootstrap_cache_ttl_secs: 60,
+            shutdown_timeout_secs: 30,
         }
     }
 }
