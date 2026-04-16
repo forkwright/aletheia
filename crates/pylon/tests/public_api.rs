@@ -190,6 +190,7 @@ impl TestEnvBuilder {
             #[cfg(feature = "knowledge-store")]
             knowledge_store: None,
             embedding_provider: None,
+            turn_buffer_registry: Arc::new(pylon::turn_buffer::TurnBufferRegistry::new()),
         });
 
         TestEnv { state, _tmp: tmp }

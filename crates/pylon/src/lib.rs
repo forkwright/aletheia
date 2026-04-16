@@ -29,6 +29,8 @@ pub mod server;
 pub mod state;
 /// SSE event types for streaming agent responses to clients.
 pub mod stream;
+/// In-memory turn event buffer for SSE client recovery after connection drops.
+pub mod turn_buffer;
 
 #[cfg(test)]
 mod tests;

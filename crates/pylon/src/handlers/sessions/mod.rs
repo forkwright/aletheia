@@ -4,7 +4,7 @@
 pub(crate) mod streaming;
 pub(crate) mod types;
 
-pub use streaming::{events, send_message, stream_turn};
+pub use streaming::{events, reconnect_turn, send_message, stream_turn};
 
 use types::{
     CreateSessionRequest, HistoryMessage, HistoryParams, HistoryResponse, ListSessionsParams,

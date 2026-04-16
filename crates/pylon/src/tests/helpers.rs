@@ -163,6 +163,7 @@ bind = "localhost"
         #[cfg(feature = "knowledge-store")]
         knowledge_store: None,
         embedding_provider: None,
+        turn_buffer_registry: Arc::new(crate::turn_buffer::TurnBufferRegistry::new()),
     });
 
     (state, dir)
