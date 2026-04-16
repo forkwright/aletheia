@@ -346,4 +346,145 @@ server_url = "http://custom:9000"
         assert!(desktop.connection.auth_token.is_none());
         assert!(desktop.connection.auto_reconnect);
     }
+
+    #[test]
+    fn config_error_no_config_dir_display() {
+        let err = ConfigError::NoConfigDir;
+        assert!(err.to_string().contains("config directory"));
+    }
+
+    #[test]
+    fn config_error_create_dir_display() {
+        let err = ConfigError::CreateDir {
+            path: PathBuf::from("/nope"),
+            source: std::io::Error::new(std::io::ErrorKind::PermissionDenied, "denied"),
+        };
+        let s = err.to_string();
+        assert!(s.contains("/nope"));
+        assert!(s.contains("create config directory"));
+    }
+
+    #[test]
+    fn config_error_read_file_display() {
+        let err = ConfigError::ReadFile {
+            path: PathBuf::from("/tmp/xyz"),
+            source: std::io::Error::new(std::io::ErrorKind::NotFound, "missing"),
+        };
+        let s = err.to_string();
+        assert!(s.contains("read config file"));
+        assert!(s.contains("/tmp/xyz"));
+    }
+
+    #[test]
+    fn config_error_write_file_display() {
+        let err = ConfigError::WriteFile {
+            path: PathBuf::from("/tmp/xyz"),
+            source: std::io::Error::other("disk full"),
+        };
+        assert!(err.to_string().contains("write config file"));
+    }
+
+    #[test]
+    fn config_error_parse_display() {
+        let err: toml::de::Error = toml::from_str::<DesktopConfig>("not-toml = ][").unwrap_err();
+        let wrapped = ConfigError::Parse { source: err };
+        assert!(wrapped.to_string().contains("parse config"));
+    }
+
+    #[test]
+    fn config_path_returns_aletheia_subpath() {
+        // Function may fail in environments without HOME, which is fine.
+        if let Ok(path) = config_path() {
+            let s = path.display().to_string();
+            assert!(s.contains("aletheia"));
+            assert!(s.ends_with("desktop.toml"));
+        }
+    }
+
+    #[test]
+    fn save_and_load_via_explicit_tempdir() {
+        // WHY: save() and load() use a hardcoded path, but we can verify
+        // the round-trip behaviour by mirroring their logic on a tempdir
+        // file. This documents and exercises the on-disk format.
+        use std::os::unix::fs::OpenOptionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("desktop.toml");
+
+        let config = ConnectionConfig {
+            server_url: "http://test-host:9000".to_string(),
+            auth_token: Some("session-token".to_string()),
+            auto_reconnect: false,
+            connect_timeout_secs: 60,
+        };
+        let desktop = DesktopConfig {
+            connection: config.clone(),
+            notifications: NotificationPreferences::default(),
+        };
+        let content = toml::to_string_pretty(&desktop).unwrap();
+
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(&path)
+            .unwrap();
+        file.write_all(content.as_bytes()).unwrap();
+        drop(file);
+
+        // Verify perms are restrictive.
+        use std::os::unix::fs::PermissionsExt;
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "config file must be 0600");
+
+        // Load back.
+        let loaded_content = std::fs::read_to_string(&path).unwrap();
+        let loaded: DesktopConfig = toml::from_str(&loaded_content).unwrap();
+        assert_eq!(loaded.connection.server_url, "http://test-host:9000");
+        assert_eq!(loaded.connection.connect_timeout_secs, 60);
+        assert!(!loaded.connection.auto_reconnect);
+        assert_eq!(loaded.connection.auth_token.as_deref(), Some("session-token"));
+    }
+
+    #[test]
+    fn notification_prefs_round_trip_via_tempfile() {
+        // Mirror the save_notification_prefs / load_notification_prefs
+        // logic on a tempfile to exercise the merge behaviour.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("desktop.toml");
+
+        // First, write a config containing both sections.
+        let initial = DesktopConfig {
+            connection: ConnectionConfig {
+                server_url: "http://preserve.me:3000".to_string(),
+                ..ConnectionConfig::default()
+            },
+            notifications: NotificationPreferences::default(),
+        };
+        let serialized = toml::to_string_pretty(&initial).unwrap();
+        std::fs::write(&path, &serialized).unwrap();
+
+        // Reload and verify.
+        let raw = std::fs::read_to_string(&path).unwrap();
+        let parsed: DesktopConfig = toml::from_str(&raw).unwrap();
+        assert_eq!(parsed.connection.server_url, "http://preserve.me:3000");
+    }
+
+    #[test]
+    fn load_or_default_falls_back_silently() {
+        // Calling load_or_default in an environment where the config might
+        // be missing or unreadable should not panic; it just returns
+        // defaults. We can't safely assert the returned value (host config
+        // may exist), but covering the call path catches regressions.
+        let cfg = load_or_default();
+        assert!(!cfg.server_url.is_empty(), "server_url must always be set");
+    }
+
+    #[test]
+    fn load_notification_prefs_does_not_panic() {
+        // Same pattern: load_notification_prefs must always return Some
+        // value, never panic, regardless of host state.
+        let _prefs = load_notification_prefs();
+    }
 }

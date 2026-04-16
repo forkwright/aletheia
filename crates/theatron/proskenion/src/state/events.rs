@@ -255,4 +255,49 @@ mod tests {
         );
         assert!(!DistillationProgress::Complete.is_active());
     }
+
+    #[test]
+    fn sse_disconnected_to_connection_state() {
+        assert_eq!(
+            SseConnectionState::Disconnected.to_connection_state(),
+            ConnectionState::Disconnected
+        );
+    }
+
+    #[test]
+    fn event_state_default_matches_new() {
+        let s_new = EventState::new();
+        let s_default = EventState::default();
+        assert_eq!(s_new.connection, s_default.connection);
+        assert_eq!(s_new.active_turns.len(), s_default.active_turns.len());
+        assert_eq!(s_new.agent_statuses.len(), s_default.agent_statuses.len());
+    }
+
+    #[test]
+    fn streaming_state_default_empty() {
+        let s = StreamingState::default();
+        assert!(s.text.is_empty());
+        assert!(s.thinking.is_empty());
+        assert!(s.tool_calls.is_empty());
+        assert!(!s.is_streaming);
+        assert!(s.error.is_none());
+        assert!(s.turn_id.is_none());
+    }
+
+    #[test]
+    fn distillation_progress_partial_eq() {
+        assert_eq!(DistillationProgress::Complete, DistillationProgress::Complete);
+        assert_ne!(DistillationProgress::Started, DistillationProgress::Complete);
+        let a = DistillationProgress::Stage {
+            stage: "x".to_string(),
+        };
+        let b = DistillationProgress::Stage {
+            stage: "x".to_string(),
+        };
+        let c = DistillationProgress::Stage {
+            stage: "y".to_string(),
+        };
+        assert_eq!(a, b);
+        assert_ne!(a, c);
+    }
 }
