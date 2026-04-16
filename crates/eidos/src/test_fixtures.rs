@@ -9,8 +9,8 @@
 
 use crate::id::{EntityId, FactId};
 use crate::knowledge::{
-    Entity, EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactTemporal,
-    Relationship, far_future, parse_timestamp,
+    Entity, EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactSensitivity,
+    FactTemporal, Relationship, far_future, parse_timestamp,
 };
 
 /// Parse an ISO 8601 timestamp for test data. Panics on invalid input.
@@ -52,6 +52,7 @@ pub fn make_fact(id: &str, nous_id: &str, content: &str) -> Fact {
             access_count: 0,
             last_accessed_at: None,
         },
+            sensitivity: FactSensitivity::Public,
         scope: None,
     }
 }

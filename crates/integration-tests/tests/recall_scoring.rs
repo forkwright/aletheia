@@ -15,6 +15,7 @@ fn make_result(content: &str, nous_id: &str, factors: FactorScores) -> ScoredRes
         nous_id: nous_id.to_owned(),
         factors,
         score: 0.0,
+    sensitivity: mneme::knowledge::FactSensitivity::Public,
     }
 }
 

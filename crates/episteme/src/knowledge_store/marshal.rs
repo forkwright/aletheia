@@ -387,6 +387,7 @@ pub(super) fn rows_to_facts(
                 access_count,
                 last_accessed_at: crate::knowledge::parse_timestamp(&last_accessed_at),
             },
+            sensitivity: crate::knowledge::FactSensitivity::Public,
         });
     }
     Ok(out)
@@ -526,6 +527,7 @@ pub(super) fn rows_to_raw_facts(
                 access_count,
                 last_accessed_at: crate::knowledge::parse_timestamp(&last_accessed_at),
             },
+            sensitivity: crate::knowledge::FactSensitivity::Public,
         });
     }
     Ok(out)
@@ -592,6 +594,7 @@ pub(super) fn rows_to_facts_partial(
                 access_count: 0,
                 last_accessed_at: None,
             },
+            sensitivity: crate::knowledge::FactSensitivity::Public,
         });
     }
     Ok(out)
@@ -640,6 +643,10 @@ pub(super) fn rows_to_recall_results(
             distance,
             source_type,
             source_id,
+            // WHY (#3404, #3413): embeddings relation does not carry
+            // sensitivity; `search_vectors` hydrates it from the facts
+            // table before results reach the recall scorer.
+            sensitivity: crate::knowledge::FactSensitivity::Public,
         });
     }
     Ok(out)

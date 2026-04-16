@@ -754,6 +754,65 @@ impl KnowledgeStore {
             .context(crate::error::JoinSnafu)?
     }
 
+    /// Set the data-sovereignty sensitivity for a fact (#3404, #3413).
+    ///
+    /// Updates every temporal record for the given fact so recall sees a
+    /// consistent classification regardless of which snapshot is returned.
+    ///
+    /// Returns the updated fact. Errors if no fact with the given ID exists.
+    ///
+    /// # Note on persistence
+    ///
+    /// The current `facts` Datalog schema does not carry a sensitivity
+    /// column; this method round-trips the Rust-side [`Fact`] struct, so
+    /// the sensitivity survives for the in-memory flow through
+    /// [`read_facts_by_id`] → mutate → [`insert_fact`] but is not yet
+    /// persisted across restarts. A follow-up schema migration will lift
+    /// it to the store (tracked in #3413).
+    ///
+    /// [`Fact`]: crate::knowledge::Fact
+    /// [`read_facts_by_id`]: Self::read_facts_by_id
+    /// [`insert_fact`]: Self::insert_fact
+    #[instrument(skip(self))]
+    pub(crate) fn update_sensitivity(
+        &self,
+        fact_id: &crate::id::FactId,
+        sensitivity: crate::knowledge::FactSensitivity,
+    ) -> crate::error::Result<crate::knowledge::Fact> {
+        let existing = self.read_facts_by_id(fact_id.as_str())?;
+        if existing.is_empty() {
+            return Err(crate::error::FactNotFoundSnafu {
+                id: fact_id.as_str(),
+            }
+            .build());
+        }
+        for mut fact in existing {
+            fact.sensitivity = sensitivity;
+            self.insert_fact(&fact)?;
+        }
+        let updated = self.read_facts_by_id(fact_id.as_str())?;
+        updated.into_iter().next().ok_or_else(|| {
+            crate::error::FactNotFoundSnafu {
+                id: fact_id.as_str(),
+            }
+            .build()
+        })
+    }
+
+    /// Async `update_sensitivity`: wraps sync call in `spawn_blocking`.
+    #[instrument(skip(self))]
+    pub async fn update_sensitivity_async(
+        self: &std::sync::Arc<Self>,
+        fact_id: crate::id::FactId,
+        sensitivity: crate::knowledge::FactSensitivity,
+    ) -> crate::error::Result<crate::knowledge::Fact> {
+        use snafu::ResultExt;
+        let this = std::sync::Arc::clone(self);
+        tokio::task::spawn_blocking(move || this.update_sensitivity(&fact_id, sensitivity))
+            .await
+            .context(crate::error::JoinSnafu)?
+    }
+
     /// Async `insert_fact`: wraps sync call in `spawn_blocking`.
     #[instrument(skip(self, fact), fields(fact_id = %fact.id))]
     pub async fn insert_fact_async(

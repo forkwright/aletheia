@@ -94,8 +94,20 @@ pub(super) async fn run_recall_stage(
     embedding_provider: Option<&dyn EmbeddingProvider>,
     vector_search: Option<&dyn crate::recall::VectorSearch>,
     text_search: Option<&dyn crate::recall::TextSearch>,
+    providers: &ProviderRegistry,
     emitter: &EventEmitter,
 ) {
+    // WHY (#3404, #3413): resolve the active provider's deployment target
+    // so the sovereignty filter in `finalize_results` can drop facts whose
+    // sensitivity exceeds what the provider is allowed to receive. When no
+    // provider is registered for the configured model, default to `Cloud`
+    // (`Public`-only recall) rather than leaking `Internal` / `Confidential`
+    // facts.
+    let deployment_target = providers
+        .find_provider(&config.generation.model)
+        .map_or(hermeneus::provider::DeploymentTarget::Cloud, |p| {
+            p.deployment_target()
+        });
     let span = info_span!(
         "pipeline_stage",
         stage = "recall",
@@ -128,7 +140,8 @@ pub(super) async fn run_recall_stage(
                 provider = embedding_provider.map_or("none", EmbeddingProvider::model_name),
                 "embeddings unavailable — using BM25-only recall"
             );
-            let recall_stage = crate::recall::RecallStage::new(config.recall.clone());
+            let recall_stage = crate::recall::RecallStage::new(config.recall.clone())
+                .with_deployment_target(deployment_target);
             let result = recall_stage.run_bm25(content, &config.id, ts, budget);
             apply_recall_result(result, ctx, &span);
         } else {
@@ -140,7 +153,8 @@ pub(super) async fn run_recall_stage(
             });
         }
     } else if let (Some(ep), Some(vs)) = (embedding_provider, vector_search) {
-        let recall_stage = crate::recall::RecallStage::new(config.recall.clone());
+        let recall_stage = crate::recall::RecallStage::new(config.recall.clone())
+            .with_deployment_target(deployment_target);
 
         let recall_result_opt = if recall_timeout_secs > 0 {
             match tokio::time::timeout(

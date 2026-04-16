@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use eidos::id::FactId;
 use eidos::knowledge::{
-    EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactTemporal,
+    EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactSensitivity, FactTemporal,
 };
 
 use crate::error::{self, Result};
@@ -476,6 +476,7 @@ impl EnergeiaStore {
                 access_count: 0,
                 last_accessed_at: None,
             },
+            sensitivity: FactSensitivity::Public,
         };
 
         Ok(fact)
