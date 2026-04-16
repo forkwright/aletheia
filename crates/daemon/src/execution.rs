@@ -386,6 +386,32 @@ pub(crate) async fn execute_builtin(
                 )),
             })
         }
+        BuiltinTask::PromptAuditRotation => {
+            let config = maintenance
+                .map(|m| m.prompt_audit.clone())
+                .unwrap_or_default();
+            let report = tokio::task::spawn_blocking(move || {
+                let _span = tracing::info_span!("prompt_audit_rotation").entered();
+                crate::maintenance::PromptAuditRotator::new(config).prune()
+            })
+            .await
+            .context(error::BlockingJoinSnafu {
+                context: "prompt audit rotation",
+            })??;
+
+            tracing::info!(
+                files_pruned = report.files_pruned,
+                bytes_freed = report.bytes_freed,
+                "maintenance: prompt audit rotation complete"
+            );
+            Ok(ExecutionResult {
+                success: true,
+                output: Some(format!(
+                    "{} files pruned, {} bytes freed",
+                    report.files_pruned, report.bytes_freed
+                )),
+            })
+        }
         BuiltinTask::RetentionExecution => {
             let Some(executor) = retention_executor else {
                 tracing::info!("retention execution skipped — no executor configured");
@@ -560,7 +586,8 @@ async fn execute_knowledge_task(
             | BuiltinTask::LessonExtraction
             | BuiltinTask::SelfPrompt
             | BuiltinTask::ProposeRules
-            | BuiltinTask::FjallBackup => {
+            | BuiltinTask::FjallBackup
+            | BuiltinTask::PromptAuditRotation => {
                 unreachable!("non-knowledge task routed to execute_knowledge_task")
             }
         }?;

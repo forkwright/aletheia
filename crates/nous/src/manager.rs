@@ -89,6 +89,8 @@ pub struct NousManager {
     cancel: CancellationToken,
     /// Deployment-level behavioral configuration (health intervals, restart limits).
     nous_behavior: taxis::config::NousBehaviorConfig,
+    /// Prompt audit log shared across all actors (#3411).
+    audit_log: Option<Arc<crate::audit::PromptAuditLog>>,
 }
 
 impl NousManager {
@@ -129,7 +131,18 @@ impl NousManager {
             ready_rx,
             cancel: CancellationToken::new(),
             nous_behavior,
+            audit_log: None,
         }
+    }
+
+    /// Attach a prompt audit log to the manager (#3411).
+    ///
+    /// All subsequently spawned actors share this log handle. Call once at
+    /// startup before spawning any agents.
+    #[must_use]
+    pub fn with_audit_log(mut self, audit_log: Arc<crate::audit::PromptAuditLog>) -> Self {
+        self.audit_log = Some(audit_log);
+        self
     }
 
     /// Signal that all actors are spawned and the system is ready for inbound messages.
@@ -241,6 +254,7 @@ impl NousManager {
             cross_rx,
             child_cancel,
             self.nous_behavior.clone(),
+            self.audit_log.clone(),
         );
 
         info!(nous_id = %id, "actor spawned");

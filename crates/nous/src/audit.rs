@@ -1,0 +1,377 @@
+//! Prompt audit log: operator-visible record of every outbound LLM request.
+//!
+//! Append-only JSONL log at `{instance}/logs/prompt-audit/YYYY-MM-DD.jsonl`.
+//! Rotated daily based on the UTC calendar date of the record timestamp.
+//!
+//! # Sovereignty contract
+//!
+//! The operator owns this system and must be able to audit what it sends to
+//! external LLM providers. To keep the audit surface small and avoid turning
+//! the log into a second copy of user content, the record schema only stores:
+//!
+//! - Identifiers (nous/session/turn/request)
+//! - Provider + model
+//! - A **hash** of the system prompt (not the content)
+//! - The system prompt's byte length
+//! - Message count + token estimate
+//! - Fact IDs included via recall (not fact content)
+//! - Fact IDs filtered out by sensitivity policy (deferred to #3404)
+//! - Tool names (not tool inputs)
+//!
+//! Never logged: system prompt content, user message text, tool call
+//! arguments. The hash lets operators correlate audit records with a known
+//! prompt without storing the prompt itself.
+//!
+//! # Retention
+//!
+//! Daily files are pruned by
+//! `oikonomos::maintenance::prompt_audit_rotation::PromptAuditRotator`,
+//! configured via `taxis::config::PromptAuditSettings::retention_days`.
+
+use std::fs::{File, OpenOptions};
+use std::io::Write;
+use std::path::{Path, PathBuf};
+use std::sync::Mutex;
+
+use jiff::Timestamp;
+use jiff::civil::Date;
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+use snafu::{ResultExt, Snafu};
+use tracing::{debug, warn};
+
+/// Errors from prompt audit log operations.
+#[derive(Debug, Snafu)]
+#[snafu(visibility(pub(crate)))]
+#[non_exhaustive]
+#[expect(
+    missing_docs,
+    reason = "snafu error variant fields (source, path) are self-documenting via display format"
+)]
+pub enum PromptAuditError {
+    /// Failed to create the audit log directory.
+    #[snafu(display("failed to create prompt audit directory {}: {source}", path.display()))]
+    CreateDir {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+
+    /// Failed to open the daily JSONL file for appending.
+    #[snafu(display("failed to open prompt audit file {}: {source}", path.display()))]
+    OpenFile {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+
+    /// Failed to serialize a record to JSON.
+    #[snafu(display("failed to serialize prompt audit record: {source}"))]
+    Serialize { source: serde_json::Error },
+
+    /// Failed to write a record to the JSONL file.
+    #[snafu(display("failed to write prompt audit record to {}: {source}", path.display()))]
+    WriteRecord {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+}
+
+/// Result alias for prompt audit operations.
+pub type Result<T> = std::result::Result<T, PromptAuditError>;
+
+/// Deployment target classification for a request.
+///
+/// WHY(stub): #3404 will introduce a proper `DeploymentTarget` enum shared with
+/// eidos/hermeneus for the fact sensitivity recall filter. Until then, the
+/// audit log carries a simple string default of `"cloud"` so the schema is
+/// stable and the follow-up PR only has to swap the field type.
+pub type DeploymentTarget = String;
+
+/// Sensitivity classification of a fact that was filtered from recall.
+///
+/// WHY(stub): Same as [`DeploymentTarget`] — #3404 owns the canonical enum.
+/// The audit log keeps the field in the schema now so `PromptAuditRecord` is
+/// stable; the filtered-facts vector defaults to empty until the filter lands.
+pub type FactSensitivity = String;
+
+/// A single fact that was filtered out by the sensitivity policy.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FilteredFact {
+    /// Fact identifier from the knowledge store.
+    pub id: String,
+    /// Sensitivity tier that caused the filter to exclude the fact.
+    pub sensitivity: FactSensitivity,
+}
+
+/// One append-only audit record per outbound `CompletionRequest`.
+///
+/// See module docs for the sovereignty contract on what is and is not logged.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PromptAuditRecord {
+    /// When the request was assembled (UTC).
+    pub timestamp: Timestamp,
+    /// Nous agent identifier (e.g. `"syn"`).
+    pub nous_id: String,
+    /// Session identifier.
+    pub session_id: String,
+    /// Turn identifier (ULID). Stable across actor restarts for a given turn.
+    pub turn_id: String,
+    /// LLM provider name (`"anthropic"`, `"cc"`, etc.).
+    pub provider: String,
+    /// Deployment target (cloud/local/…). See [`DeploymentTarget`].
+    pub deployment_target: DeploymentTarget,
+    /// Model identifier passed to the provider.
+    pub model: String,
+    /// SHA-256 of the system prompt (hex). Empty string when no system prompt.
+    pub system_prompt_hash: String,
+    /// Byte length of the system prompt.
+    pub system_prompt_bytes: usize,
+    /// Number of conversation messages in the request.
+    pub message_count: usize,
+    /// Rough token count estimate for the request.
+    pub token_count_estimate: u32,
+    /// Fact IDs whose content was included in the recall section.
+    pub fact_ids_included: Vec<String>,
+    /// Facts excluded from recall by the sensitivity filter (#3404).
+    #[serde(default)]
+    pub fact_ids_filtered: Vec<FilteredFact>,
+    /// Names of tools exposed to the model for this request.
+    pub tool_names: Vec<String>,
+    /// Request identifier propagated from pylon middleware (#3384).
+    #[serde(default)]
+    pub request_id: Option<String>,
+}
+
+/// Compute the SHA-256 hex digest of a system prompt.
+///
+/// Returns the empty string for `None` so the JSON field stays a consistent
+/// string type across records.
+#[must_use]
+pub fn hash_system_prompt(prompt: Option<&str>) -> String {
+    match prompt {
+        Some(s) => {
+            let mut hasher = Sha256::new();
+            hasher.update(s.as_bytes());
+            let digest = hasher.finalize();
+            let mut out = String::with_capacity(digest.len() * 2);
+            for byte in &digest {
+                use std::fmt::Write;
+                // kanon:ignore RUST/expect — write! on String is infallible.
+                let _ = write!(out, "{byte:02x}");
+            }
+            out
+        }
+        None => String::new(),
+    }
+}
+
+/// Append-only prompt audit log with daily rotation.
+///
+/// # Threading
+///
+/// Cloneable by sharing the same `Arc<Mutex<...>>` via [`PromptAuditLog::clone`].
+/// Internal state is guarded by a `Mutex`; contention is negligible because
+/// each write is a serialize + append of a few KB.
+#[derive(Debug)]
+pub struct PromptAuditLog {
+    inner: Mutex<PromptAuditLogInner>,
+    /// Whether logging is active. When `false`, [`PromptAuditLog::log_request`]
+    /// is a no-op that does not touch the filesystem.
+    enabled: bool,
+    log_dir: PathBuf,
+}
+
+#[derive(Debug)]
+struct PromptAuditLogInner {
+    /// Currently open day file and its calendar date.
+    current: Option<(Date, File)>,
+}
+
+impl PromptAuditLog {
+    /// Create a new audit log writing to `log_dir`.
+    ///
+    /// The directory is created lazily on first write. `enabled = false`
+    /// returns a log handle that drops every record — useful for operators
+    /// who want to disable the feature via config without threading
+    /// `Option<PromptAuditLog>` through the pipeline.
+    #[must_use]
+    pub fn new(log_dir: PathBuf, enabled: bool) -> Self {
+        Self {
+            inner: Mutex::new(PromptAuditLogInner { current: None }),
+            enabled,
+            log_dir,
+        }
+    }
+
+    /// Return the log directory.
+    #[must_use]
+    pub fn log_dir(&self) -> &Path {
+        &self.log_dir
+    }
+
+    /// Return whether logging is active.
+    #[must_use]
+    pub fn enabled(&self) -> bool {
+        self.enabled
+    }
+
+    /// Append a record to today's JSONL file.
+    ///
+    /// Rotation happens on the calendar-date transition of `record.timestamp`.
+    /// A record at 23:59 on day N goes in `N.jsonl`; a record at 00:01 on
+    /// day N+1 goes in `N+1.jsonl` even if the previous file is still open.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the directory cannot be created, the file cannot
+    /// be opened, or the serialized line cannot be written. Callers in the
+    /// pipeline should log the error and continue; audit failure must not
+    /// break the turn.
+    pub fn log_request(&self, record: &PromptAuditRecord) -> Result<()> {
+        if !self.enabled {
+            return Ok(());
+        }
+
+        let record_date = record.timestamp.to_zoned(jiff::tz::TimeZone::UTC).date();
+        let json = serde_json::to_string(record).context(SerializeSnafu)?;
+
+        // WHY: a poisoned mutex means a panic occurred while holding the
+        // audit lock. Rather than propagate, recover the inner state and
+        // continue: the audit log is observational and must not block a
+        // turn. `.unwrap_or_else` with `into_inner` is the canonical
+        // non-panicking recovery pattern.
+        let mut inner = self.inner.lock().unwrap_or_else(|poisoned| {
+            warn!("prompt audit mutex poisoned; recovering inner state");
+            poisoned.into_inner()
+        });
+
+        let needs_rotation = match inner.current.as_ref() {
+            Some((d, _)) => *d != record_date,
+            None => true,
+        };
+
+        if needs_rotation {
+            if !self.log_dir.exists() {
+                std::fs::create_dir_all(&self.log_dir).context(CreateDirSnafu {
+                    path: self.log_dir.clone(),
+                })?;
+            }
+            let path = self.log_dir.join(format!("{record_date}.jsonl"));
+            let file = OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&path)
+                .context(OpenFileSnafu { path: path.clone() })?;
+            debug!(path = %path.display(), "rotated prompt audit log");
+            inner.current = Some((record_date, file));
+        }
+
+        // SAFETY: `needs_rotation` guarantees `current` is `Some` here.
+        #[expect(
+            clippy::expect_used,
+            reason = "current is Some: either it already was, or we just set it in the rotation branch above"
+        )]
+        let (_, file) = inner
+            .current
+            .as_mut()
+            .expect("current file populated above");
+
+        let path = self.log_dir.join(format!("{record_date}.jsonl"));
+        writeln!(file, "{json}").context(WriteRecordSnafu { path: path.clone() })?;
+        file.flush().context(WriteRecordSnafu { path })?;
+        Ok(())
+    }
+}
+
+/// Build a [`PromptAuditRecord`] from the assembled pipeline context.
+///
+/// Called once per pipeline turn, right before the execute stage hands the
+/// request to hermeneus. Never touches the system prompt content — the
+/// hash and length are the only signal that leave this function.
+///
+/// WHY(stub): `deployment_target` defaults to `"cloud"` and
+/// `fact_ids_filtered` is always empty until #3404 lands the `FactSensitivity`
+/// enum and recall-time filter. At that point this helper will read the
+/// filtered-facts list directly from `PipelineContext::recall_result`.
+pub(crate) fn build_audit_record(
+    ctx: &crate::pipeline::PipelineContext,
+    session: &crate::session::SessionState,
+    config: &crate::config::NousConfig,
+    providers: &hermeneus::provider::ProviderRegistry,
+    tools: &organon::registry::ToolRegistry,
+    tool_ctx: &organon::types::ToolContext,
+) -> PromptAuditRecord {
+    let system_prompt = ctx.system_prompt.as_deref();
+    let system_prompt_bytes = system_prompt.map_or(0, str::len);
+
+    // WHY: resolve provider from the configured model so the log reports the
+    // real route, not just the model alias. `"unknown"` keeps the log
+    // writeable when the provider is mid-reconfiguration.
+    let provider_name = providers
+        .find_provider(&config.generation.model)
+        .map_or_else(|| "unknown".to_owned(), |p| p.name().to_owned());
+
+    // WHY: tool name list mirrors the filter in execute::resolve_active_server_tools
+    // so the audit reflects what the model will actually see this turn.
+    let active_snapshot = tool_ctx
+        .active_tools
+        .read()
+        .map_or_else(|poisoned| poisoned.into_inner().clone(), |g| g.clone());
+    let mut tool_names: Vec<String> = tools
+        .to_hermeneus_tools_filtered(&active_snapshot)
+        .into_iter()
+        .map(|td| td.name)
+        .collect();
+    if let Some(allowlist) = &config.tool_allowlist {
+        tool_names.retain(|n| allowlist.iter().any(|a| a == n));
+    }
+
+    let fact_ids_included = ctx
+        .recall_result
+        .as_ref()
+        .map(|r| r.fact_ids.clone())
+        .unwrap_or_default();
+
+    // WHY: token estimate uses the same per-message estimate the pipeline
+    // already computed, plus the system-prompt byte length divided by a
+    // conservative chars-per-token heuristic. Matches the order-of-magnitude
+    // figure operators see in the tracing spans.
+    #[expect(
+        clippy::cast_sign_loss,
+        clippy::cast_possible_truncation,
+        clippy::as_conversions,
+        reason = "i64→u32: per-message token estimates are positive and fit in u32 for practical turns"
+    )]
+    let msg_tokens: u32 = ctx
+        .messages
+        .iter()
+        .map(|m| m.token_estimate.max(0) as u32)
+        .sum();
+    let cpt = usize::try_from(config.generation.chars_per_token.max(1)).unwrap_or(4);
+    let sys_tokens = u32::try_from(system_prompt_bytes / cpt).unwrap_or(u32::MAX);
+    let token_count_estimate = msg_tokens.saturating_add(sys_tokens);
+
+    PromptAuditRecord {
+        timestamp: Timestamp::now(),
+        nous_id: session.nous_id.clone(),
+        session_id: session.id.clone(),
+        turn_id: session.turn_id.to_string(),
+        provider: provider_name,
+        deployment_target: "cloud".to_owned(),
+        model: config.generation.model.clone(),
+        system_prompt_hash: hash_system_prompt(system_prompt),
+        system_prompt_bytes,
+        message_count: ctx.messages.len(),
+        token_count_estimate,
+        fact_ids_included,
+        // TODO(#3404): populate from sensitivity filter when it lands.
+        fact_ids_filtered: Vec::new(),
+        tool_names,
+        // TODO(#3384 follow-up): thread request_id from pylon middleware
+        // through PipelineInput once the extraction path reaches nous.
+        request_id: None,
+    }
+}
+
+#[cfg(test)]
+#[path = "audit_tests.rs"]
+mod tests;

@@ -52,6 +52,7 @@ pub(crate) fn spawn(
     cross_rx: Option<mpsc::Receiver<CrossNousEnvelope>>,
     cancel: CancellationToken,
     nous_behavior: taxis::config::NousBehaviorConfig,
+    audit_log: Option<Arc<crate::audit::PromptAuditLog>>,
 ) -> (
     NousHandle,
     tokio::task::JoinHandle<()>,
@@ -85,6 +86,7 @@ pub(crate) fn spawn(
         Arc::clone(&active_turn),
         Arc::clone(&turn_started_at_ms),
         nous_behavior,
+        audit_log,
     );
 
     let span = tracing::info_span!("nous_actor", nous.id = %id);
@@ -161,6 +163,7 @@ pub fn spawn_for_daemon(
         None, // WHY: daemon-spawned children don't use cross-nous messaging
         cancel,
         taxis::config::NousBehaviorConfig::default(),
+        None, // WHY: daemon child agents share the parent's audit log via binary crate wiring
     )
 }
 
