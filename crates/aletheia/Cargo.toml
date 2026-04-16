@@ -34,6 +34,10 @@ tui = ["dep:koilon"]
 cc-provider = ["hermeneus/cc-provider"]
 # Dispatch orchestration (kanon phronesis port). Default off for incremental development.
 energeia = ["dep:energeia"]
+# Matrix channel provider (conduwuit homeserver + fjall-backed CryptoStore). See
+# issue #3557. Off by default: pulls in matrix-sdk-base + matrix-sdk-crypto
+# (vodozemac) which add ~60s to cold compile times.
+matrix = ["agora/matrix"]
 # Test tiers (see docs/test-tiers.md)
 test-core = ["mneme/test-core", "nous/test-core", "pylon/test-core"]
 test-full = ["test-core", "mneme/test-full"]

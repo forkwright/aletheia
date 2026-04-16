@@ -415,6 +415,14 @@ impl RuntimeBuilder {
             None
         };
 
+        // Matrix provider (Phase 2 scaffold — feature-gated). See issue #3557.
+        #[cfg(feature = "matrix")]
+        let _matrix_provider = if self.tool_services {
+            build_matrix_provider(&self.config.channels.matrix, &self.oikos).await
+        } else {
+            None
+        };
+
         // Tool services
         let (cross_nous, messenger, note_store, blackboard_store, spawn, planning) = if self
             .tool_services
@@ -772,6 +780,8 @@ use setup::{
     LazyEmbeddingProvider, build_provider_registry, build_signal_provider, build_tool_registry,
     start_inbound_dispatch,
 };
+#[cfg(feature = "matrix")]
+use setup::build_matrix_provider;
 
 /// Register every metrics-emitting crate's families with the shared registry.
 ///

@@ -4,6 +4,7 @@ mod api;
 mod daemon;
 mod jwt;
 mod knowledge;
+mod matrix;
 mod messaging;
 mod nous;
 mod provider;
@@ -15,6 +16,7 @@ pub use api::ApiLimitsConfig;
 pub use daemon::DaemonBehaviorConfig;
 pub use jwt::JwtSettings;
 pub use knowledge::KnowledgeConfig;
+pub use matrix::{MatrixAccountConfig, MatrixConfig};
 pub use messaging::MessagingConfig;
 pub use nous::NousBehaviorConfig;
 pub use provider::{

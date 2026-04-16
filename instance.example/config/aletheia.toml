@@ -75,6 +75,19 @@ workspace = "nous/main"
 # httpHost = "localhost"
 # httpPort = 8080
 
+# --- Matrix channel (feature-gated: build with `--features matrix`) ---
+# See docs/DEPLOYMENT.md "Matrix (optional)" and issue #3557.
+# [channels.matrix]
+# enabled = true
+# homeserverUrl = "http://menos.lan:6167"
+# userId = "@syn:menos.lan"
+# deviceDisplayName = "menos-syn"
+# cryptoStorePath = "matrix-crypto"
+#
+# [[channels.matrix.accounts]]
+# nousId = "syn"
+# room = "!abcd1234:menos.lan"
+
 # --- Bindings (route messages to agents) ---
 # [[bindings]]
 # channel = "signal"
