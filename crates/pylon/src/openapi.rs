@@ -33,6 +33,7 @@ use koina::http::CONTENT_TYPE_JSON;
         crate::handlers::sessions::streaming::send_message,
         crate::handlers::sessions::streaming::stream_turn,
         crate::handlers::sessions::streaming::events,
+        crate::handlers::sessions::streaming::reconnect_turn,
         crate::handlers::sessions::history,
         crate::handlers::nous::list,
         crate::handlers::nous::get_status,

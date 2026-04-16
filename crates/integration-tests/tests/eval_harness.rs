@@ -119,6 +119,7 @@ async fn start_test_server() -> (String, String, tempfile::TempDir) {
         #[cfg(feature = "knowledge-store")]
         knowledge_store: None,
         embedding_provider: None,
+        turn_buffer_registry: Arc::new(pylon::turn_buffer::TurnBufferRegistry::new()),
     });
 
     let router = build_router(

@@ -736,6 +736,7 @@ impl RuntimeBuilder {
             #[cfg(feature = "recall")]
             knowledge_store,
             embedding_provider: Some(Arc::clone(&embedding_provider)),
+            turn_buffer_registry: Arc::new(pylon::turn_buffer::TurnBufferRegistry::new()),
         });
 
         Ok(Runtime {

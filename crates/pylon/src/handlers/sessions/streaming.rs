@@ -10,7 +10,7 @@ use axum::response::sse::{Event, KeepAlive, Sse};
 use tokio::sync::mpsc;
 use tokio_stream::StreamExt;
 use tokio_stream::wrappers::{IntervalStream, ReceiverStream};
-use tracing::{Instrument, instrument, warn};
+use tracing::{Instrument, debug, instrument, warn};
 
 use hermeneus::anthropic::StreamEvent as LlmStreamEvent;
 use nous::pipeline::TurnResult;
@@ -29,6 +29,7 @@ use crate::idempotency::LookupResult;
 use crate::middleware::RequestId;
 use crate::state::SessionsState;
 use crate::stream::{SseEvent, TurnOutcome, UsageData, WebchatEvent};
+use crate::turn_buffer::TurnBufferHandle;
 
 use super::types::{SendMessageRequest, StreamTurnRequest};
 use super::{find_session, resolve_session};
@@ -149,19 +150,25 @@ pub async fn send_message(
                 )]
                 let output_tokens = cached["output_tokens"].as_u64().unwrap_or(0);
 
-                let (tx, rx) = mpsc::channel::<SseEvent>(1);
+                // WHY(#3276): Use (seq, event) pair for type-compatibility with
+                // the normal streaming path. Idempotency replays use seq=0 since
+                // they are not recoverable turns.
+                let (tx, rx) = mpsc::channel::<(u64, SseEvent)>(1);
                 let _ = tx
-                    .send(SseEvent::MessageComplete {
-                        stop_reason,
-                        usage: UsageData {
-                            input_tokens,
-                            output_tokens,
+                    .send((
+                        0,
+                        SseEvent::MessageComplete {
+                            stop_reason,
+                            usage: UsageData {
+                                input_tokens,
+                                output_tokens,
+                            },
                         },
-                    })
+                    ))
                     .await;
                 drop(tx);
                 let stream = GuardedStream {
-                    inner: ReceiverStream::new(rx).map(sse_event_to_axum),
+                    inner: ReceiverStream::new(rx).map(sse_event_to_axum_with_id),
                     _guard: AbortOnDrop(tokio::spawn(
                         async {}.instrument(tracing::info_span!("idempotent_noop")),
                     )),
@@ -242,11 +249,21 @@ pub async fn send_message(
     }
 
     let session_key = session.session_key.clone();
-    let (tx, rx) = mpsc::channel::<SseEvent>(32);
+    // WHY(#3276): channel carries (seq, event) pairs so the stream mapper can
+    // set the SSE `id:` field for Last-Event-ID client recovery.
+    let (tx, rx) = mpsc::channel::<(u64, SseEvent)>(32);
     let sid = session_id.clone();
 
     let idem_key = idempotency_key.clone();
     let idem_cache = Arc::clone(&state.idempotency_cache);
+
+    // WHY(#3276): Create a turn buffer for this turn so events survive disconnection.
+    let turn_id = koina::ulid::Ulid::new().to_string();
+    let turn_buf = state
+        .turn_buffer_registry
+        .get_or_create(&session_id, &turn_id)
+        .await;
+    let buf_handle = TurnBufferHandle::new(turn_buf);
 
     let request_id_str = request_id.0.clone();
     let turn_span = tracing::info_span!(
@@ -255,18 +272,20 @@ pub async fn send_message(
         session.key = %session_key,
         nous.id = %session.nous_id,
         request_id = %request_id,
+        turn_id = %turn_id,
         idempotency_key = idempotency_key.as_deref().unwrap_or(""),
     );
     let shutdown_token = state.shutdown.child_token();
+    let buf_handle_task = buf_handle.clone();
     let turn_handle = tokio::spawn(
         async move {
             // WHY(#2113): Emit an immediate acknowledgment so the client never sees an empty
             // body, even if the turn fails before producing any content events.
-            let _ = tx
-                .send(SseEvent::MessageStart {
-                    status: "accepted".to_owned(),
-                })
-                .await;
+            let event = SseEvent::MessageStart {
+                status: "accepted".to_owned(),
+            };
+            let seq = record_sse_event(&buf_handle_task, &event).await;
+            let _ = tx.send((seq, event)).await;
 
             // WHY: cancel the in-flight turn when the server shuts down so Axum's graceful
             // shutdown can drain open SSE connections rather than hanging indefinitely (#1723).
@@ -280,12 +299,14 @@ pub async fn send_message(
                 r = turn_fut => r,
                 () = shutdown_token.cancelled() => {
                     tracing::info!("shutdown: cancelling in-flight SSE turn");
+                    buf_handle_task.mark_failed().await;
                     return;
                 }
             };
             match result {
                 Ok(result) => {
-                    emit_turn_result_events(&tx, &result).await;
+                    emit_turn_result_events_buffered(&tx, &buf_handle_task, &result).await;
+                    buf_handle_task.mark_completed().await;
 
                     // NOTE: Store the turn summary so cache-hit replays return real data.
                     if let Some(ref key) = idem_key {
@@ -309,24 +330,25 @@ pub async fn send_message(
                     }
 
                     let (err_code, err_message) = turn_error_info(&err);
-                    let _ = tx
-                        .send(SseEvent::Error {
-                            code: err_code,
-                            message: err_message,
-                            request_id: Some(request_id_str.clone()),
-                        })
-                        .await;
+                    let event = SseEvent::Error {
+                        code: err_code,
+                        message: err_message,
+                        request_id: Some(request_id_str.clone()),
+                    };
+                    let seq = record_sse_event(&buf_handle_task, &event).await;
+                    let _ = tx.send((seq, event)).await;
                     // WHY: Always send a completion marker so the client knows the
                     // stream is finished, even on error paths.
-                    let _ = tx
-                        .send(SseEvent::MessageComplete {
-                            stop_reason: "error".to_owned(),
-                            usage: UsageData {
-                                input_tokens: 0,
-                                output_tokens: 0,
-                            },
-                        })
-                        .await;
+                    let event = SseEvent::MessageComplete {
+                        stop_reason: "error".to_owned(),
+                        usage: UsageData {
+                            input_tokens: 0,
+                            output_tokens: 0,
+                        },
+                    };
+                    let seq = record_sse_event(&buf_handle_task, &event).await;
+                    let _ = tx.send((seq, event)).await;
+                    buf_handle_task.mark_failed().await;
                 }
             }
         }
@@ -336,7 +358,7 @@ pub async fn send_message(
     // WHY: Wrap the stream so the turn task is aborted when the client disconnects.
     // Without this, a disconnected client leaves the LLM inference running.
     let stream = GuardedStream {
-        inner: ReceiverStream::new(rx).map(sse_event_to_axum),
+        inner: ReceiverStream::new(rx).map(sse_event_to_axum_with_id),
         _guard: AbortOnDrop(turn_handle),
     };
 
@@ -454,16 +476,24 @@ pub async fn stream_turn(
 
     let webchat_request_id = request_id.0.clone();
     let turn_id = koina::ulid::Ulid::new().to_string();
-    let (webchat_tx, webchat_rx) = mpsc::channel::<WebchatEvent>(32);
+    // WHY(#3276): channel carries (seq, event) pairs for Last-Event-ID support.
+    let (webchat_tx, webchat_rx) = mpsc::channel::<(u64, WebchatEvent)>(32);
     let (nous_tx, mut nous_rx) = mpsc::channel::<TurnStreamEvent>(64);
 
-    let _ = webchat_tx
-        .send(WebchatEvent::MessageStart {
-            session_id: session_id.clone(),
-            nous_id: agent_id.clone(),
-            turn_id,
-        })
+    // WHY(#3276): Create a turn buffer so events survive client disconnection.
+    let turn_buf = state
+        .turn_buffer_registry
+        .get_or_create(&session_id, &turn_id)
         .await;
+    let buf_handle = TurnBufferHandle::new(turn_buf);
+
+    let start_event = WebchatEvent::MessageStart {
+        session_id: session_id.clone(),
+        nous_id: agent_id.clone(),
+        turn_id: turn_id.clone(),
+    };
+    let seq = record_webchat_event(&buf_handle, &start_event).await;
+    let _ = webchat_tx.send((seq, start_event)).await;
 
     let sid = session_id;
     let aid = agent_id;
@@ -474,12 +504,14 @@ pub async fn stream_turn(
         session.key = %session_key,
         nous.id = %aid,
         request_id = %request_id,
+        turn_id = %turn_id,
     );
 
     // WHY: Returns a JoinHandle so the turn task can wait for all deltas to drain
     // before emitting turn_complete (prevents the race where turn_complete
     // arrives at the TUI before the final text_delta events).
     let bridge_tx = webchat_tx.clone();
+    let bridge_buf = buf_handle.clone();
     let bridge_handle = tokio::spawn(
         async move {
             while let Some(event) = nous_rx.recv().await {
@@ -514,7 +546,8 @@ pub async fn stream_turn(
                     },
                     _ => continue,
                 };
-                if bridge_tx.send(webchat_event).await.is_err() {
+                let seq = record_webchat_event(&bridge_buf, &webchat_event).await;
+                if bridge_tx.send((seq, webchat_event)).await.is_err() {
                     break;
                 }
             }
@@ -523,6 +556,7 @@ pub async fn stream_turn(
     );
 
     let shutdown_token = state.shutdown.child_token();
+    let buf_handle_task = buf_handle.clone();
     let stream_turn_handle = tokio::spawn(
         async move {
             // WHY: cancel the in-flight turn when the server shuts down so Axum's graceful
@@ -538,6 +572,7 @@ pub async fn stream_turn(
                 r = turn_fut => r,
                 () = shutdown_token.cancelled() => {
                     tracing::info!("shutdown: cancelling in-flight streaming turn");
+                    buf_handle_task.mark_failed().await;
                     return;
                 }
             };
@@ -548,50 +583,52 @@ pub async fn stream_turn(
                     // seeing turn_complete before the final text_delta events.
                     let _ = bridge_handle.await;
 
-                    let _ = webchat_tx
-                        .send(WebchatEvent::MessageComplete {
-                            outcome: TurnOutcome {
-                                text: result.content.clone(),
-                                nous_id: aid,
-                                session_id: sid.clone(),
-                                model,
-                                tool_calls: result.tool_calls.len(),
-                                input_tokens: result.usage.input_tokens,
-                                output_tokens: result.usage.output_tokens,
-                                cache_read_tokens: result.usage.cache_read_tokens,
-                                cache_write_tokens: result.usage.cache_write_tokens,
-                            },
-                        })
-                        .await;
+                    let event = WebchatEvent::MessageComplete {
+                        outcome: TurnOutcome {
+                            text: result.content.clone(),
+                            nous_id: aid,
+                            session_id: sid.clone(),
+                            model,
+                            tool_calls: result.tool_calls.len(),
+                            input_tokens: result.usage.input_tokens,
+                            output_tokens: result.usage.output_tokens,
+                            cache_read_tokens: result.usage.cache_read_tokens,
+                            cache_write_tokens: result.usage.cache_write_tokens,
+                        },
+                    };
+                    let seq = record_webchat_event(&buf_handle_task, &event).await;
+                    let _ = webchat_tx.send((seq, event)).await;
+                    buf_handle_task.mark_completed().await;
                 }
                 Err(err) => {
                     // WHY: Log full error internally; span carries session/nous context (#844).
                     tracing::error!(error = %err, "streaming turn failed");
                     let _ = bridge_handle.await;
                     let (_, err_message) = turn_error_info(&err);
-                    let _ = webchat_tx
-                        .send(WebchatEvent::Error {
-                            message: err_message,
-                            request_id: Some(webchat_request_id.clone()),
-                        })
-                        .await;
+                    let event = WebchatEvent::Error {
+                        message: err_message,
+                        request_id: Some(webchat_request_id.clone()),
+                    };
+                    let seq = record_webchat_event(&buf_handle_task, &event).await;
+                    let _ = webchat_tx.send((seq, event)).await;
                     // WHY: Always send a completion marker so the TUI knows the stream
                     // is finished, even on error paths.
-                    let _ = webchat_tx
-                        .send(WebchatEvent::MessageComplete {
-                            outcome: TurnOutcome {
-                                text: String::new(),
-                                nous_id: aid,
-                                session_id: sid,
-                                model,
-                                tool_calls: 0,
-                                input_tokens: 0,
-                                output_tokens: 0,
-                                cache_read_tokens: 0,
-                                cache_write_tokens: 0,
-                            },
-                        })
-                        .await;
+                    let event = WebchatEvent::MessageComplete {
+                        outcome: TurnOutcome {
+                            text: String::new(),
+                            nous_id: aid,
+                            session_id: sid,
+                            model,
+                            tool_calls: 0,
+                            input_tokens: 0,
+                            output_tokens: 0,
+                            cache_read_tokens: 0,
+                            cache_write_tokens: 0,
+                        },
+                    };
+                    let seq = record_webchat_event(&buf_handle_task, &event).await;
+                    let _ = webchat_tx.send((seq, event)).await;
+                    buf_handle_task.mark_failed().await;
                 }
             }
         }
@@ -600,15 +637,21 @@ pub async fn stream_turn(
 
     // WHY: Abort streaming turn task when the client disconnects.
     let stream = GuardedStream {
-        inner: ReceiverStream::new(webchat_rx).map(|event| match serde_json::to_string(&event) {
-            Ok(data) => Ok(Event::default().event(event.event_type()).data(data)),
-            Err(e) => {
-                warn!(error = %e, "failed to serialize SSE event");
-                // WHY: Use the WebchatEvent::Error shape so the fallback event has the
-                // same structure as all other error events in the stream (#3160).
-                Ok(Event::default()
-                    .event("error")
-                    .data(r#"{"type":"error","message":"serialization failed"}"#))
+        inner: ReceiverStream::new(webchat_rx).map(|(seq, event)| {
+            match serde_json::to_string(&event) {
+                Ok(data) => Ok(Event::default()
+                    .event(event.event_type())
+                    .data(data)
+                    .id(seq.to_string())),
+                Err(e) => {
+                    warn!(error = %e, "failed to serialize SSE event");
+                    // WHY: Use the WebchatEvent::Error shape so the fallback event has the
+                    // same structure as all other error events in the stream (#3160).
+                    Ok(Event::default()
+                        .event("error")
+                        .data(r#"{"type":"error","message":"serialization failed"}"#)
+                        .id(seq.to_string()))
+                }
             }
         }),
         _guard: AbortOnDrop(stream_turn_handle),
@@ -656,28 +699,29 @@ pub async fn events(
     )
 }
 
-/// Convert an [`SseEvent`] into an Axum SSE [`Event`].
+/// Convert a `(seq, SseEvent)` pair into an Axum SSE [`Event`] with `id:` field.
 ///
-/// Used as a named function (not closure) so that both the idempotency-replay
-/// path and the normal streaming path produce the same `impl Stream` type.
+/// WHY(#3276): The SSE `id:` field enables `Last-Event-ID` on reconnection.
+/// The client's `EventSource` automatically sends `Last-Event-ID: N` when
+/// reconnecting, and the server replays events from `N+1` onward.
 #[expect(
     clippy::unnecessary_wraps,
     reason = "Result<_, Infallible> required by Stream<Item = Result<Event, Infallible>>"
 )]
-#[expect(
-    clippy::needless_pass_by_value,
-    reason = "owned value received from Stream::map"
-)]
-fn sse_event_to_axum(event: SseEvent) -> Result<Event, Infallible> {
+fn sse_event_to_axum_with_id((seq, event): (u64, SseEvent)) -> Result<Event, Infallible> {
     match serde_json::to_string(&event) {
-        Ok(data) => Ok(Event::default().event(event.event_type()).data(data)),
+        Ok(data) => Ok(Event::default()
+            .event(event.event_type())
+            .data(data)
+            .id(seq.to_string())),
         Err(e) => {
             warn!(error = %e, "failed to serialize SSE event");
-            // WHY: Use the SseEvent::Error variant so the fallback event has the same
-            // shape as all other error events in the stream (#3160).
-            Ok(Event::default().event("error").data(
-                r#"{"type":"error","code":"serialization_error","message":"serialization failed"}"#,
-            ))
+            Ok(Event::default()
+                .event("error")
+                .data(
+                    r#"{"type":"error","code":"serialization_error","message":"serialization failed"}"#,
+                )
+                .id(seq.to_string()))
         }
     }
 }
@@ -866,47 +910,177 @@ fn redact_secrets(msg: &str) -> String {
     SECRET_PATTERN.replace_all(msg, "[REDACTED]").into_owned()
 }
 
-/// Emit turn result as individual SSE events to a single client channel.
+/// Emit turn result as individual SSE events with buffer recording.
 ///
-/// Each SSE endpoint serves exactly one client: there is no multi-subscriber
-/// broadcast. Serialization happens once at the stream boundary (`ReceiverStream::map`).
-async fn emit_turn_result_events(tx: &mpsc::Sender<SseEvent>, result: &TurnResult) {
+/// WHY(#3276): Each event is recorded in the turn buffer before being sent
+/// to the client channel, so events survive client disconnection.
+async fn emit_turn_result_events_buffered(
+    tx: &mpsc::Sender<(u64, SseEvent)>,
+    buf: &TurnBufferHandle,
+    result: &TurnResult,
+) {
     if !result.content.is_empty() {
-        let _ = tx
-            .send(SseEvent::TextDelta {
-                text: result.content.clone(),
-            })
-            .await;
+        let event = SseEvent::TextDelta {
+            text: result.content.clone(),
+        };
+        let seq = record_sse_event(buf, &event).await;
+        let _ = tx.send((seq, event)).await;
     }
 
     for tc in &result.tool_calls {
-        let _ = tx
-            .send(SseEvent::ToolUse {
-                id: tc.id.clone(),
-                name: tc.name.clone(),
-                input: tc.input.clone(),
-            })
-            .await;
+        let event = SseEvent::ToolUse {
+            id: tc.id.clone(),
+            name: tc.name.clone(),
+            input: tc.input.clone(),
+        };
+        let seq = record_sse_event(buf, &event).await;
+        let _ = tx.send((seq, event)).await;
+
         if let Some(ref result_content) = tc.result {
-            let _ = tx
-                .send(SseEvent::ToolResult {
-                    tool_use_id: tc.id.clone(),
-                    content: result_content.clone(),
-                    is_error: tc.is_error,
-                })
-                .await;
+            let event = SseEvent::ToolResult {
+                tool_use_id: tc.id.clone(),
+                content: result_content.clone(),
+                is_error: tc.is_error,
+            };
+            let seq = record_sse_event(buf, &event).await;
+            let _ = tx.send((seq, event)).await;
         }
     }
 
-    let _ = tx
-        .send(SseEvent::MessageComplete {
-            stop_reason: result.stop_reason.clone(),
-            usage: UsageData {
-                input_tokens: result.usage.input_tokens,
-                output_tokens: result.usage.output_tokens,
-            },
-        })
-        .await;
+    let event = SseEvent::MessageComplete {
+        stop_reason: result.stop_reason.clone(),
+        usage: UsageData {
+            input_tokens: result.usage.input_tokens,
+            output_tokens: result.usage.output_tokens,
+        },
+    };
+    let seq = record_sse_event(buf, &event).await;
+    let _ = tx.send((seq, event)).await;
+}
+
+/// Record an [`SseEvent`] to the turn buffer. Returns the assigned sequence number.
+async fn record_sse_event(buf: &TurnBufferHandle, event: &SseEvent) -> u64 {
+    let event_type = event.event_type().to_owned();
+    let data = serde_json::to_string(event).unwrap_or_default();
+    buf.record(&event_type, &data).await
+}
+
+/// Record a [`WebchatEvent`] to the turn buffer. Returns the assigned sequence number.
+async fn record_webchat_event(buf: &TurnBufferHandle, event: &WebchatEvent) -> u64 {
+    let event_type = event.event_type().to_owned();
+    let data = serde_json::to_string(event).unwrap_or_default();
+    buf.record(&event_type, &data).await
+}
+
+/// Reconnect to a turn's SSE event stream.
+///
+/// Supports `Last-Event-ID` header for resuming from the last received event.
+/// If the turn is still running, replays missed events then streams live events.
+/// If the turn completed or failed, replays all events after `Last-Event-ID`.
+///
+/// Returns 404 if the turn buffer has expired or was never created.
+#[utoipa::path(
+    get,
+    path = "/api/v1/sessions/{session_id}/turns/{turn_id}/events",
+    params(
+        ("session_id" = String, Path, description = "Session ID"),
+        ("turn_id" = String, Path, description = "Turn ID (from message_start event)"),
+        ("Last-Event-ID" = Option<String>, Header, description = "Last received event sequence number for reconnection"),
+    ),
+    responses(
+        (status = 200, description = "SSE event stream (replay + live)", content_type = "text/event-stream"),
+        (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 404, description = "Turn not found or expired", body = crate::error::ErrorResponse),
+    ),
+    security(("bearer_auth" = []))
+)]
+/// # Cancel safety
+///
+/// Cancel-safe. Axum handler; cancellation drops the future with no
+/// side effects beyond not returning a response.
+#[instrument(skip(state, _claims, headers))]
+pub async fn reconnect_turn(
+    State(state): State<SessionsState>,
+    _claims: Claims,
+    headers: axum::http::HeaderMap,
+    axum::extract::Path((session_id, turn_id)): axum::extract::Path<(String, String)>,
+) -> Result<Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>>, ApiError> {
+    // WHY: Parse Last-Event-ID from the standard SSE reconnection header.
+    let last_event_id: u64 = headers
+        .get("last-event-id")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0);
+
+    debug!(
+        session_id = %session_id,
+        turn_id = %turn_id,
+        last_event_id,
+        "SSE reconnection request"
+    );
+
+    let buf = state
+        .turn_buffer_registry
+        .get(&session_id, &turn_id)
+        .await
+        .ok_or_else(|| {
+            crate::error::SessionNotFoundSnafu {
+                id: format!("{session_id}/turn/{turn_id}"),
+            }
+            .build()
+        })?;
+
+    let handle = TurnBufferHandle::new(buf);
+    let (tx, rx) = mpsc::channel::<Result<Event, Infallible>>(32);
+
+    tokio::spawn(async move {
+        // Phase 1: Replay buffered events after last_event_id.
+        let (events, state) = handle.events_after(last_event_id).await;
+        for event in events {
+            let sse_event = Event::default()
+                .event(event.event_type)
+                .data(event.data)
+                .id(event.seq.to_string());
+            if tx.send(Ok(sse_event)).await.is_err() {
+                return;
+            }
+        }
+
+        // Phase 2: If turn is still running, stream live events.
+        if state == crate::turn_buffer::TurnState::Running {
+            let notify = handle.notify_handle().await;
+            let mut last_seq = last_event_id;
+            // WHY: update last_seq to include events already replayed
+            let (replayed, _) = handle.events_after(0).await;
+            if let Some(last) = replayed.last() {
+                last_seq = last_seq.max(last.seq);
+            }
+
+            loop {
+                notify.notified().await;
+                let (new_events, new_state) = handle.events_after(last_seq).await;
+                for event in &new_events {
+                    let sse_event = Event::default()
+                        .event(event.event_type.clone())
+                        .data(event.data.clone())
+                        .id(event.seq.to_string());
+                    if tx.send(Ok(sse_event)).await.is_err() {
+                        return;
+                    }
+                    last_seq = event.seq;
+                }
+                if new_state != crate::turn_buffer::TurnState::Running {
+                    break;
+                }
+            }
+        }
+    });
+
+    Ok(Sse::new(ReceiverStream::new(rx)).keep_alive(
+        KeepAlive::new()
+            .interval(Duration::from_secs(15))
+            .text("ping"),
+    ))
 }
 
 #[cfg(test)]

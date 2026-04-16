@@ -19,6 +19,7 @@ use taxis::config::AletheiaConfig;
 use taxis::oikos::Oikos;
 
 use crate::idempotency::IdempotencyCache;
+use crate::turn_buffer::TurnBufferRegistry;
 
 /// Shared state for all Axum handlers, held behind `Arc` in the router.
 pub struct AppState {
@@ -60,6 +61,11 @@ pub struct AppState {
     /// `None` only when the pylon-only standalone server builds state without
     /// a configured embedding pipeline.
     pub embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
+    /// Per-turn event buffer registry for SSE client recovery (#3276).
+    ///
+    /// Shared between streaming handlers (which record events) and the
+    /// reconnect handler (which replays them).
+    pub turn_buffer_registry: Arc<TurnBufferRegistry>,
 }
 
 impl AppState {
@@ -182,6 +188,8 @@ pub struct SessionsState {
     pub idempotency_cache: Arc<IdempotencyCache>,
     /// Runtime configuration for API limit reads.
     pub config: Arc<tokio::sync::RwLock<AletheiaConfig>>,
+    /// Per-turn event buffer registry for SSE client recovery (#3276).
+    pub turn_buffer_registry: Arc<TurnBufferRegistry>,
 }
 
 impl FromRef<Arc<AppState>> for SessionsState {
@@ -193,6 +201,7 @@ impl FromRef<Arc<AppState>> for SessionsState {
             shutdown: state.shutdown.clone(),
             idempotency_cache: Arc::clone(&state.idempotency_cache),
             config: Arc::clone(&state.config),
+            turn_buffer_registry: Arc::clone(&state.turn_buffer_registry),
         }
     }
 }
