@@ -105,7 +105,13 @@ mod tests {
     #[test]
     fn from_vec_with_cursor_skips_past_it() {
         let items: Vec<String> = (0..10).map(|i| format!("item-{i}")).collect();
-        let resp = PaginatedResponse::from_vec(items, 3, Some("item-2"), std::clone::Clone::clone, Some(10));
+        let resp = PaginatedResponse::from_vec(
+            items,
+            3,
+            Some("item-2"),
+            std::clone::Clone::clone,
+            Some(10),
+        );
         assert_eq!(resp.items.len(), 3);
         assert_eq!(resp.items[0], "item-3");
         assert!(resp.has_more);
@@ -124,7 +130,13 @@ mod tests {
     #[test]
     fn from_vec_cursor_not_found_returns_all() {
         let items: Vec<String> = (0..3).map(|i| format!("item-{i}")).collect();
-        let resp = PaginatedResponse::from_vec(items, 10, Some("nonexistent"), std::clone::Clone::clone, None);
+        let resp = PaginatedResponse::from_vec(
+            items,
+            10,
+            Some("nonexistent"),
+            std::clone::Clone::clone,
+            None,
+        );
         assert_eq!(resp.items.len(), 3);
         assert!(!resp.has_more);
     }

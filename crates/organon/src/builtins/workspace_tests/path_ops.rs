@@ -488,3 +488,80 @@ async fn test_write_append_creates_file_when_absent() {
         "append mode should create the file with the provided content"
     );
 }
+
+/// WHY: Validates the fix for #3374 — the exec tool must clear the parent
+/// environment before spawning so API keys cannot be exfiltrated via prompt
+/// injection (e.g., `exec env | grep ANTHROPIC`).
+#[tokio::test]
+async fn exec_env_does_not_leak_api_keys() {
+    // Inject a fake API key into the parent environment for this test.
+    // SAFETY: this is single-threaded test code; the env var is removed
+    // in the assertion below regardless of outcome.
+    #[expect(
+        unsafe_code,
+        reason = "set_var requires unsafe in Rust 2024; test-only, single-threaded"
+    )]
+    unsafe {
+        std::env::set_var("ANTHROPIC_API_KEY", "sk-ant-test-secret-key-value");
+        std::env::set_var("ALETHEIA_TOKEN", "aletheia-test-secret-token");
+    }
+
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let ctx = test_ctx(dir.path());
+    let input = tool_input("exec", serde_json::json!({ "command": "env" }));
+    let result = ExecExecutor {
+        sandbox: crate::sandbox::SandboxConfig::disabled(),
+    }
+    .execute(&input, &ctx)
+    .await
+    .expect("execute");
+
+    // Clean up injected vars (best-effort; test failure is still valid).
+    #[expect(
+        unsafe_code,
+        reason = "remove_var requires unsafe in Rust 2024; test cleanup"
+    )]
+    unsafe {
+        std::env::remove_var("ANTHROPIC_API_KEY");
+        std::env::remove_var("ALETHEIA_TOKEN");
+    }
+
+    let output = result.content.text_summary();
+    assert!(
+        !output.contains("sk-ant-test-secret-key-value"),
+        "child process must not inherit ANTHROPIC_API_KEY from parent environment"
+    );
+    assert!(
+        !output.contains("aletheia-test-secret-token"),
+        "child process must not inherit ALETHEIA_TOKEN from parent environment"
+    );
+    assert!(
+        !output.contains("ANTHROPIC_API_KEY"),
+        "child process env must not contain the ANTHROPIC_API_KEY variable name"
+    );
+    assert!(
+        !output.contains("ALETHEIA_TOKEN"),
+        "child process env must not contain the ALETHEIA_TOKEN variable name"
+    );
+}
+
+/// Validates that the `SAFE_ENV_VARS` allowlist is effective -- PATH should be
+/// present in the child environment so basic commands work.
+#[tokio::test]
+async fn exec_env_preserves_safe_vars() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let ctx = test_ctx(dir.path());
+    let input = tool_input("exec", serde_json::json!({ "command": "env" }));
+    let result = ExecExecutor {
+        sandbox: crate::sandbox::SandboxConfig::disabled(),
+    }
+    .execute(&input, &ctx)
+    .await
+    .expect("execute");
+
+    let output = result.content.text_summary();
+    assert!(
+        output.contains("PATH="),
+        "child process should inherit PATH from the safe env allowlist"
+    );
+}
