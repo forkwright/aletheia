@@ -362,7 +362,7 @@ fn redact_strips_bearer_token() {
 }
 
 // ─────────────────────────────────────────────────────────
-// sse_event_to_axum — serialization
+// sse_event_to_axum_with_id — serialization
 // ─────────────────────────────────────────────────────────
 
 #[test]
@@ -370,7 +370,7 @@ fn sse_event_text_delta_serializes_correctly() {
     let event = SseEvent::TextDelta {
         text: "hello world".to_owned(),
     };
-    let result = sse_event_to_axum(event).expect("infallible");
+    let result = sse_event_to_axum_with_id((1, event)).expect("infallible");
     // We can't directly inspect axum::response::sse::Event fields, but we
     // can verify the conversion doesn't panic and produces *something*.
     drop(result);
@@ -383,7 +383,7 @@ fn sse_event_error_serializes_correctly() {
         message: "something broke".to_owned(),
         request_id: Some("req-abc".to_owned()),
     };
-    let result = sse_event_to_axum(event).expect("infallible");
+    let result = sse_event_to_axum_with_id((2, event)).expect("infallible");
     drop(result);
 }
 
@@ -396,6 +396,6 @@ fn sse_event_message_complete_serializes_correctly() {
             output_tokens: 200,
         },
     };
-    let result = sse_event_to_axum(event).expect("infallible");
+    let result = sse_event_to_axum_with_id((3, event)).expect("infallible");
     drop(result);
 }

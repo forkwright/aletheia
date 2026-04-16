@@ -164,6 +164,7 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
         // WHY: pylon's standalone server does not configure embeddings; the
         // aletheia binary owns the embedding pipeline. Health reports "warn".
         embedding_provider: None,
+        turn_buffer_registry: Arc::new(crate::turn_buffer::TurnBufferRegistry::new()),
     });
 
     #[cfg(unix)]

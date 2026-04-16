@@ -71,6 +71,11 @@ pub fn build_router_with(
         )
         .route("/sessions/{id}/name", axum::routing::put(sessions::rename))
         .route("/sessions/{id}/messages", post(sessions::send_message))
+        // WHY(#3276): reconnect to an in-flight or recently-completed turn's SSE stream.
+        .route(
+            "/sessions/{session_id}/turns/{turn_id}/events",
+            get(sessions::reconnect_turn),
+        )
         .route("/sessions/{id}/history", get(sessions::history))
         .route("/events", get(sessions::events))
         .route("/nous", get(nous::list))
@@ -122,6 +127,10 @@ pub fn build_router_with(
         .route("/metrics", get(metrics::expose));
 
     router = router.fallback(fallback_handler);
+
+    // WHY(#3276): Spawn turn buffer reaper to clean up expired turn buffers.
+    // Must happen before `with_state` consumes the Arc.
+    crate::turn_buffer::spawn_reaper(Arc::clone(&state.turn_buffer_registry), shutdown.clone());
 
     // WHY: Bind state before merging extra routes. This converts
     // Router<Arc<AppState>> to Router<()> so the extra Router<()> from
