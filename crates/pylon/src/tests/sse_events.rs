@@ -47,6 +47,7 @@ fn sse_event_type_message_complete() {
             input_tokens: 10,
             output_tokens: 5,
         },
+        request_id: None,
     };
     assert_eq!(event.event_type(), "message_complete");
 }
@@ -79,12 +80,14 @@ fn sse_event_message_complete_serialization() {
             input_tokens: 100,
             output_tokens: 50,
         },
+        request_id: Some("req-789".to_owned()),
     };
     let json = serde_json::to_value(&event).unwrap();
     assert_eq!(json["type"], "message_complete");
     assert_eq!(json["stop_reason"], "end_turn");
     assert_eq!(json["usage"]["input_tokens"], 100);
     assert_eq!(json["usage"]["output_tokens"], 50);
+    assert_eq!(json["request_id"], "req-789");
 }
 
 #[test]
@@ -121,6 +124,7 @@ fn tui_event_message_start_type() {
         session_id: "s1".to_owned(),
         nous_id: "syn".to_owned(),
         turn_id: "t1".to_owned(),
+        request_id: None,
     };
     assert_eq!(event.event_type(), "message_start");
 }
@@ -196,12 +200,14 @@ fn tui_event_message_start_serialization() {
         session_id: "s1".to_owned(),
         nous_id: "syn".to_owned(),
         turn_id: "t1".to_owned(),
+        request_id: Some("req-abc".to_owned()),
     };
     let json = serde_json::to_value(&event).unwrap();
     assert_eq!(json["type"], "message_start");
     assert_eq!(json["session_id"], "s1");
     assert_eq!(json["nous_id"], "syn");
     assert_eq!(json["turn_id"], "t1");
+    assert_eq!(json["request_id"], "req-abc");
 }
 
 #[test]

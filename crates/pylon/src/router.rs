@@ -361,6 +361,10 @@ fn apply_security_headers(router: Router, security: &SecurityConfig) -> Router {
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 #[expect(clippy::expect_used, reason = "test assertions")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test: serde_json::Value Index returns Null for absent keys, never panics"
+)]
 mod tests {
     use super::*;
     use crate::security::{CorsConfig, CsrfConfig, RateLimitConfig, TlsConfig};

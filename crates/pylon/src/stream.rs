@@ -10,7 +10,12 @@ use utoipa::ToSchema;
 pub(crate) enum SseEvent {
     /// Acknowledgment that the message was accepted and a turn is starting.
     #[serde(rename = "message_start")]
-    MessageStart { status: String },
+    MessageStart {
+        status: String,
+        /// Per-request correlation ID for distributed tracing across the pipeline.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
+    },
 
     /// Incremental text output from the assistant.
     #[serde(rename = "text_delta")]
@@ -48,6 +53,9 @@ pub(crate) enum SseEvent {
     MessageComplete {
         stop_reason: String,
         usage: UsageData,
+        /// Per-request correlation ID for distributed tracing across the pipeline.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
     },
 
     /// An error occurred during the turn.
@@ -101,6 +109,9 @@ pub(crate) enum WebchatEvent {
         session_id: String,
         nous_id: String,
         turn_id: String,
+        /// Per-request correlation ID for distributed tracing across the pipeline.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
     },
     /// Incremental extended-thinking output.
     #[serde(rename = "thinking_delta")]

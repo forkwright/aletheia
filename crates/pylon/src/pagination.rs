@@ -79,6 +79,10 @@ impl<T: Serialize> PaginatedResponse<T> {
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test: vec/JSON indices valid after asserting len or known structure"
+)]
 mod tests {
     use super::*;
 
