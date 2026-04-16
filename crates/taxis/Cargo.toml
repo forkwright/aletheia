@@ -32,3 +32,4 @@ koina = { path = "../koina", features = ["test-support"] }
 figment = { workspace = true, features = ["test"] }
 proptest = { workspace = true }
 tempfile = { workspace = true }
+tracing-test = { workspace = true }
