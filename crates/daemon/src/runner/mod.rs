@@ -34,7 +34,8 @@ mod lifecycle;
 mod output;
 mod persistence;
 mod registration;
-mod systemd;
+/// Systemd notify integration for daemon lifecycle signaling.
+pub mod systemd;
 mod tracking;
 pub(crate) use output::truncate_output;
 
