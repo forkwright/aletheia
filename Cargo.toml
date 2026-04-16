@@ -109,7 +109,7 @@ snafu = "0.8"
 # Serialization
 serde = { version = "1", default-features = false, features = ["derive", "std"] }
 serde_json = { version = "1", default-features = false, features = ["std"] }
-serde_yml = { version = "0.0.12", default-features = false }
+serde_yaml = { version = "0.9", default-features = false }
 toml = "1.1"
 
 # HTTP
