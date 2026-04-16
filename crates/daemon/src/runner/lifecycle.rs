@@ -7,9 +7,7 @@ use tracing::Instrument;
 use crate::execution::execute_action;
 use crate::schedule::Schedule;
 
-use super::systemd::{
-    sd_notify_ready, sd_notify_stopping, sd_notify_watchdog, sd_watchdog_interval,
-};
+use super::systemd::{sd_notify_watchdog, sd_watchdog_interval};
 use super::{InFlightTask, TaskRunner};
 
 impl TaskRunner {
@@ -31,9 +29,6 @@ impl TaskRunner {
         self.restore_state();
 
         self.check_missed_cron_catchup();
-
-        // WHY: send READY=1 to systemd after initialization is complete.
-        sd_notify_ready();
 
         let mut interval = tokio::time::interval(Duration::from_secs(1));
 
@@ -65,9 +60,6 @@ impl TaskRunner {
                 }
             }
         }
-
-        // WHY: send STOPPING=1 to systemd before cleanup.
-        sd_notify_stopping();
 
         // WHY: abort all in-flight tasks on shutdown to prevent leaked work
         // after the runner exits. Without this, spawned tasks continue running
