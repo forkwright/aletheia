@@ -38,7 +38,10 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 // Re-export types from eidos for convenience
-pub use eidos::training::{TRAINING_RECORD_SCHEMA_VERSION, TrainingConfig, TrainingRecord};
+pub use eidos::training::{
+    RecallSignals, RecalledFact, TRAINING_RECORD_SCHEMA_VERSION, ToolOutcome, TrainingConfig,
+    TrainingRecord,
+};
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 use snafu::{ResultExt, Snafu};
@@ -193,8 +196,132 @@ pub struct CaptureInput<'a> {
     pub is_correction: Option<bool>,
     /// Types of facts extracted from this turn.
     pub fact_types: Option<Vec<String>>,
-    /// Quality score for DPO/ORPO signal (0.0--1.0).
-    pub quality_score: Option<f32>,
+
+    // ── Behavioural signals (v3) ──────────────────────────────────────
+    /// Outcomes of tool calls made during the turn, in invocation order.
+    ///
+    /// `None` preserves "no tool calls were made" vs `Some(vec![])`
+    /// which means "tool call outcome capture was configured but
+    /// produced no entries" (should be unreachable in practice).
+    pub tool_outcomes: Option<Vec<ToolOutcome>>,
+
+    /// Recall stage signals (facts recalled, which were referenced).
+    ///
+    /// `None` means the recall stage was skipped or produced no result.
+    pub recall_signals: Option<RecallSignals>,
+}
+
+impl CaptureInput<'_> {
+    /// Compute the derived quality score for this turn.
+    ///
+    /// The score is a weighted combination of real signals, scaled to
+    /// `[0.0, 1.0]`:
+    ///
+    /// | Signal | Weight | Source |
+    /// |---|---|---|
+    /// | Tool call success rate | 0.40 | `tool_outcomes` — all success = 1.0, all failure = 0.0 |
+    /// | Recall utilization rate | 0.20 | fraction of injected recalled facts that were referenced in the output |
+    /// | Response substance (length-scaled, saturating at 400 chars) | 0.20 | `assistant_response` |
+    /// | Non-error stop reason | 0.10 | `stop_reason` — `EndTurn` / `StopSequence` = 1.0 |
+    /// | Correction penalty | 0.10 | `is_correction = Some(true)` → 0.0 else 1.0 |
+    ///
+    /// WHY this mix: these are the only DPO/ORPO-relevant signals
+    /// available without a judge model. Tool success is the strongest
+    /// signal because failed trajectories teach the wrong behaviour.
+    /// Recall utilization rewards turns that actually used injected
+    /// memory. Response substance avoids over-weighting short
+    /// acknowledgements. The correction penalty biases the corpus
+    /// away from turns the user had to rewrite.
+    ///
+    /// WHY return `Option<f32>`: when a turn lacks *any* signals
+    /// (no tool calls, no recall, trivial response) the score would
+    /// collapse to its length-and-stop-reason components and mislead
+    /// downstream preference learning. In that case returning `None`
+    /// lets the trainer skip the record rather than treat it as a
+    /// high-confidence label.
+    #[must_use]
+    pub fn compute_quality_score(&self) -> Option<f32> {
+        // WHY constants: clearly named weights make the formula auditable
+        // and easy to re-tune once RL training produces ground truth.
+        const W_TOOLS: f32 = 0.40;
+        const W_RECALL: f32 = 0.20;
+        const W_SUBSTANCE: f32 = 0.20;
+        const W_STOP: f32 = 0.10;
+        const W_CORRECTION: f32 = 0.10;
+        const SUBSTANCE_SATURATE_CHARS: f32 = 400.0;
+
+        let mut score = 0.0_f32;
+        let mut have_any_signal = false;
+
+        // Tool success rate.
+        if let Some(outcomes) = self.tool_outcomes.as_ref()
+            && !outcomes.is_empty()
+        {
+            have_any_signal = true;
+            let successes = outcomes.iter().filter(|o| o.success).count();
+            // WHY f32 cast: 0..=count fits, division is bounded.
+            #[expect(
+                clippy::cast_precision_loss,
+                clippy::as_conversions,
+                reason = "usize→f32: counts fit in f32 precision for realistic turn sizes"
+            )]
+            let rate = successes as f32 / outcomes.len() as f32; // kanon:ignore RUST/as-cast
+            score += W_TOOLS * rate;
+        }
+
+        // Recall utilization rate: referenced / injected.
+        if let Some(recall) = self.recall_signals.as_ref()
+            && recall.results_injected > 0
+        {
+            have_any_signal = true;
+            let referenced =
+                u32::try_from(recall.facts.iter().filter(|f| f.was_referenced).count())
+                    .unwrap_or(u32::MAX);
+            // WHY min: guard against a stale recall_signals where
+            // facts.len() > results_injected.
+            let denom = recall.results_injected.max(1);
+            #[expect(
+                clippy::cast_precision_loss,
+                clippy::as_conversions,
+                reason = "u32→f32: recall counts are small"
+            )]
+            let rate = (referenced.min(denom) as f32) / (denom as f32); // kanon:ignore RUST/as-cast
+            score += W_RECALL * rate;
+        }
+
+        // Response substance, saturating.
+        {
+            #[expect(
+                clippy::cast_precision_loss,
+                clippy::as_conversions,
+                reason = "usize→f32: char counts fit in f32 for any realistic response"
+            )]
+            let len = self.assistant_response.chars().count() as f32; // kanon:ignore RUST/as-cast
+            let substance = (len / SUBSTANCE_SATURATE_CHARS).min(1.0);
+            score += W_SUBSTANCE * substance;
+            // substance alone is not a "signal" — a short response can
+            // still be valid. We intentionally do NOT set
+            // have_any_signal here.
+        }
+
+        // Stop reason.
+        let stop_ok = matches!(
+            self.stop_reason,
+            CaptureStopReason::EndTurn | CaptureStopReason::StopSequence
+        );
+        score += W_STOP * if stop_ok { 1.0 } else { 0.0 };
+
+        // Correction penalty.
+        if let Some(is_corr) = self.is_correction {
+            have_any_signal = true;
+            score += W_CORRECTION * if is_corr { 0.0 } else { 1.0 };
+        }
+
+        if !have_any_signal {
+            return None;
+        }
+        Some(score.clamp(0.0, 1.0))
+    }
 }
 
 /// Manifest tracking shard files, record counts, and schema version range.
@@ -277,6 +404,8 @@ pub struct TrainingCapture {
     manifest: TrainingManifest,
     /// Maximum shard size before rotation.
     max_shard_bytes: u64,
+    /// Whether to apply PII redaction before writing each record.
+    pii_filter_enabled: bool,
 }
 
 impl TrainingCapture {
@@ -368,6 +497,7 @@ impl TrainingCapture {
             manifest_path,
             manifest,
             max_shard_bytes: config.max_shard_bytes,
+            pii_filter_enabled: config.pii_filter_enabled,
         })
     }
 
@@ -552,19 +682,51 @@ impl TrainingCapture {
             return false;
         }
 
+        // WHY compute quality before PII filtering: quality_score is
+        // derived from signals (tool outcomes, recall, stop reason,
+        // correction flag) not from text content, so redaction order
+        // is irrelevant. Computing it here keeps the borrow of
+        // `input` lifetimes clean before we move fields into the
+        // record below.
+        let quality_score = input.compute_quality_score();
+
+        // WHY apply PII redaction at write time: the filter is a
+        // training-time safeguard, not a commit-time scanner. Both
+        // `user_message` and `assistant_response` are scrubbed because
+        // either can contain pasted secrets — e.g. a user sharing a
+        // key for debugging, or the assistant echoing a key back.
+        let (user_message, assistant_response, pii_redacted) = if self.pii_filter_enabled {
+            let (u, u_changed) = pii::redact(input.user_message);
+            let (a, a_changed) = pii::redact(input.assistant_response);
+            // `pii_redacted = true` whenever the policy was applied
+            // AND at least one match was found. Callers reading the
+            // corpus can filter on this flag to find records that had
+            // sensitive content.
+            (u, a, u_changed || a_changed)
+        } else {
+            (
+                input.user_message.to_owned(),
+                input.assistant_response.to_owned(),
+                false,
+            )
+        };
+
         let record = TrainingRecord {
             schema_version: TRAINING_RECORD_SCHEMA_VERSION,
             session_id: input.session_id.to_owned(),
             nous_id: input.nous_id.to_owned(),
-            user_message: input.user_message.to_owned(),
-            assistant_response: input.assistant_response.to_owned(),
+            user_message,
+            assistant_response,
             model: input.model.to_owned(),
             tokens: input.tokens,
             timestamp: Timestamp::now(),
             turn_type: input.turn_type,
             is_correction: input.is_correction,
             fact_types: input.fact_types,
-            quality_score: input.quality_score,
+            quality_score,
+            tool_outcomes: input.tool_outcomes,
+            recall_signals: input.recall_signals,
+            pii_redacted,
         };
 
         match self.write_record(&record) {
@@ -597,6 +759,10 @@ impl TrainingCapture {
     }
 }
 
+pub mod pii;
+
+pub use pii::redact as redact_pii;
+
 #[cfg(test)]
-#[path = "training_tests.rs"]
+#[path = "../training_tests.rs"]
 mod training_tests;
