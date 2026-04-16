@@ -212,6 +212,19 @@ impl QueryResult {
         self.rows.is_empty()
     }
 
+    /// Read-only access to raw result rows.
+    ///
+    /// Prefer the typed accessors ([`get_string`](Self::get_string),
+    /// [`get_f64`](Self::get_f64), [`get_i64`](Self::get_i64),
+    /// [`get_bool`](Self::get_bool)) for ordinary usage. This accessor is
+    /// provided for callers that need to match on raw [`DataValue`](crate::engine::DataValue)
+    /// variants — for example, distinguishing `Null` from a missing column, or
+    /// inspecting values whose type depends on runtime state.
+    #[must_use]
+    pub fn rows(&self) -> &[Vec<crate::engine::DataValue>] {
+        &self.rows
+    }
+
     /// Look up column index by name.
     fn col_index(&self, col: &str) -> Option<usize> {
         self.headers.iter().position(|h| h == col)

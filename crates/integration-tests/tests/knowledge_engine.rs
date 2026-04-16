@@ -34,6 +34,7 @@ fn make_fact(id: &str, nous_id: &str, content: &str, confidence: f64, tier: Epis
         nous_id: nous_id.to_owned(),
         content: content.to_owned(),
         fact_type: String::new(),
+        scope: None,
         temporal: FactTemporal {
             valid_from: ts(TS_2026),
             valid_to: far_future(),
@@ -111,6 +112,7 @@ fn fact_round_trip() {
         nous_id: "syn".to_owned(),
         content: "The researcher published findings on memory consolidation".to_owned(),
         fact_type: String::new(),
+        scope: None,
         temporal: FactTemporal {
             valid_from: ts(TS_2026),
             valid_to: far_future(),
@@ -264,15 +266,15 @@ fn raw_query_escape_hatch() {
         .run_query("::relations", BTreeMap::new())
         .expect("relations");
     assert!(
-        rows.rows.len() >= 5,
+        rows.row_count() >= 5,
         "expected at least 5 relations, got {}",
-        rows.rows.len()
+        rows.row_count()
     );
 }
 
 // TEST-04, RETR-02, RETR-03: hybrid query fuses BM25 + vector + graph signals via RRF.
-#[test]
-fn hybrid_retrieval_end_to_end() {
+#[tokio::test]
+async fn hybrid_retrieval_end_to_end() {
     let dim = 8;
     let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig {
         dim,
@@ -332,13 +334,14 @@ fn hybrid_retrieval_end_to_end() {
         .expect("insert relationship");
 
     let results = store
-        .search_hybrid(&HybridQuery {
+        .search_hybrid_async(HybridQuery {
             text: "Rust programming".to_owned(),
             embedding: vec![0.9, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1],
             seed_entities: vec![EntityId::new("e-rust").expect("valid test id")],
             limit: 5,
             ef: 20,
         })
+        .await
         .expect("hybrid search");
 
     assert!(!results.is_empty(), "hybrid search must return results");
@@ -387,9 +390,9 @@ fn hnsw_connectivity_after_delete_reinsert_cycles() {
                 #[expect(clippy::as_conversions, reason = "test: d fits in u64")]
                 let offset = (d as u64 + 1) * 37;
                 #[expect(
-                    clippy::cast_possible_truncation,
+                    clippy::cast_precision_loss,
                     clippy::as_conversions,
-                    reason = "test: modular arithmetic result fits in f32"
+                    reason = "test: modular arithmetic result (0..256) fits in f32"
                 )]
                 let val = ((i * p + offset) % 256) as f32 / 255.0;
                 val

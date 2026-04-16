@@ -1,6 +1,7 @@
 //! Full lifecycle, correction, retraction, and audit integration tests.
 use super::*;
 
+#[test]
 fn full_knowledge_lifecycle() {
     let store = open_store();
     let nous = "test-agent";

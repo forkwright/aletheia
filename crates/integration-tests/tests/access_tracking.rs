@@ -40,6 +40,7 @@ fn make_fact(id: &str, nous_id: &str, content: &str) -> Fact {
         nous_id: nous_id.to_owned(),
         content: content.to_owned(),
         fact_type: "inference".to_owned(),
+        scope: None,
         temporal: FactTemporal {
             valid_from: ts(TS_2026),
             valid_to: far_future(),
@@ -147,11 +148,12 @@ fn triple_search_yields_access_count_3() {
     );
 }
 
-#[test]
-fn increment_access_empty_ids_is_noop() {
+#[tokio::test]
+async fn increment_access_empty_ids_is_noop() {
     let store = open_store(4);
     store
-        .increment_access(&[])
+        .increment_access_async(Vec::new())
+        .await
         .expect("empty increment should succeed");
 }
 
@@ -180,18 +182,16 @@ fn knowledge_graph_data_audit() {
     let entity_rows = store
         .run_query(
             "?[id, name, entity_type] := *entities{id, name, entity_type}",
-            Default::default(),
+            std::collections::BTreeMap::default(),
         )
-        .map(|r| r.rows.len())
-        .unwrap_or(0);
+        .map_or(0, |r| r.row_count());
 
     let rel_rows = store
         .run_query(
             "?[src, dst, relation] := *relationships{src, dst, relation}",
-            Default::default(),
+            std::collections::BTreeMap::default(),
         )
-        .map(|r| r.rows.len())
-        .unwrap_or(0);
+        .map_or(0, |r| r.row_count());
 
     println!("\n=== Knowledge Graph Data Audit ===");
     println!("Facts:         {}", facts.len());
