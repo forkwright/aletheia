@@ -106,6 +106,10 @@ pub(crate) struct CcOutput {
 ///
 /// # Errors
 /// Returns errors on spawn failure, timeout, or if CC reports an error result.
+#[expect(
+    clippy::too_many_lines,
+    reason = "sequential process lifecycle: spawn, feed stdin, wait, parse — splitting obscures the flow"
+)]
 #[tracing::instrument(skip_all)]
 pub(crate) async fn run_completion(
     cc_binary: &PathBuf,

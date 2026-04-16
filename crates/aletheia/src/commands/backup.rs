@@ -33,7 +33,7 @@ pub(crate) struct BackupArgs {
     /// Skip confirmation prompt when pruning
     #[arg(long)]
     pub yes: bool,
-    /// Operate on fjall knowledge store instead of SQLite session store
+    /// Operate on fjall knowledge store instead of `SQLite` session store
     #[arg(long)]
     pub fjall: bool,
 }
@@ -102,6 +102,10 @@ pub(crate) fn run(instance_root: Option<&PathBuf>, args: &BackupArgs) -> Result<
 }
 
 /// Handle fjall knowledge store backup operations.
+#[expect(
+    clippy::fn_params_excessive_bools,
+    reason = "1:1 pass-through of CLI flags from clap; grouping into a struct adds no clarity"
+)]
 fn run_fjall(
     oikos: &taxis::oikos::Oikos,
     list: bool,
