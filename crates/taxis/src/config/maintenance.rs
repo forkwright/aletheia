@@ -30,6 +30,8 @@ pub struct MaintenanceSettings {
     pub watchdog: WatchdogSettings,
     /// Periodic cron task settings (evolution, reflection, graph cleanup).
     pub cron_tasks: CronTaskSettings,
+    /// Fjall knowledge store backup settings.
+    pub backup: BackupSettings,
 }
 
 /// Trace file rotation settings.
@@ -435,6 +437,29 @@ impl Default for WatchdogSettings {
             heartbeat_timeout_secs: 60,
             check_interval_secs: 10,
             max_restarts: 5,
+        }
+    }
+}
+
+/// Fjall knowledge store periodic backup settings.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+pub struct BackupSettings {
+    /// Whether automatic fjall backups are enabled.
+    pub enabled: bool,
+    /// Hours between automatic backups.
+    pub backup_interval_hours: u64,
+    /// Maximum number of backup snapshots to retain.
+    pub backup_retention_count: usize,
+}
+
+impl Default for BackupSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            backup_interval_hours: 24,
+            backup_retention_count: 7,
         }
     }
 }

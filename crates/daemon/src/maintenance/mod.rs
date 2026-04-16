@@ -6,6 +6,8 @@ use koina::system::{Environment, RealSystem};
 pub(crate) mod db_monitor;
 /// Instance drift detection: compare a live instance against the example template.
 pub(crate) mod drift_detection;
+/// Fjall knowledge store file-level backup with timestamped snapshots.
+pub mod fjall_backup;
 /// Knowledge graph maintenance bridge trait and report types.
 pub(crate) mod knowledge;
 /// Data retention policy execution trait and summary types.
@@ -15,6 +17,7 @@ pub(crate) mod trace_rotation;
 
 pub use db_monitor::{DbInfo, DbMonitor, DbMonitoringConfig, DbSizeReport, DbStatus};
 pub use drift_detection::{DriftDetectionConfig, DriftDetector, DriftReport};
+pub use fjall_backup::{FjallBackup, FjallBackupConfig, FjallBackupReport};
 pub use knowledge::{
     AutoDreamConfig, KnowledgeMaintenanceConfig, KnowledgeMaintenanceExecutor, MaintenanceReport,
 };
@@ -58,6 +61,8 @@ pub struct MaintenanceConfig {
     pub retention: RetentionConfig,
     /// Knowledge graph maintenance settings.
     pub knowledge_maintenance: KnowledgeMaintenanceConfig,
+    /// Fjall knowledge store backup settings.
+    pub fjall_backup: FjallBackupConfig,
     /// Cron task configuration (evolution, reflection, graph cleanup).
     pub cron: crate::cron::CronConfig,
     /// Rule proposal generation from observed patterns.
