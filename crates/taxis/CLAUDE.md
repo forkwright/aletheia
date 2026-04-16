@@ -6,7 +6,7 @@ Configuration cascade and path resolution: TOML loading, oikos directory structu
 
 1. `src/config/mod.rs`: AletheiaConfig root struct and all nested config types
 2. `src/oikos.rs`: Oikos instance directory resolver (root, data, config, logs, nous, shared, theke)
-3. `src/loader.rs`: Figment-based TOML cascade: defaults -> file -> env vars, with interpolation and decryption
+3. `src/loader.rs`: TOML cascade (owned): defaults -> file -> env vars, with interpolation and decryption
 4. `src/cascade.rs`: Three-tier file discovery (nous/{id}/ -> shared/ -> theke/)
 5. `src/reload.rs`: Hot-reload classification (restart vs live update) and config diffing
 
@@ -29,8 +29,8 @@ Configuration cascade and path resolution: TOML loading, oikos directory structu
 
 ## Patterns
 
-- **Figment cascade**: Compiled defaults -> TOML file -> `ALETHEIA_*` env vars. Later wins.
-- **Env interpolation**: `${VAR:-default}` and `${VAR:?error}` syntax in TOML values, resolved before Figment.
+- **TOML cascade**: Compiled defaults -> TOML file -> `ALETHEIA_*` env vars. Later wins. Merge is a serde_json::Value deep merge; env overlay walks `ALETHEIA_*` with `__` separators.
+- **Env interpolation**: `${VAR:-default}` and `${VAR:?error}` syntax in TOML values, resolved before TOML parse.
 - **Encrypted values**: `enc:` prefix triggers AES-256-GCM decryption using `~/.config/aletheia/primary.key`.
 - **Three-tier cascade**: File lookup walks nous/{id}/ -> shared/ -> theke/. Most specific wins.
 - **Hot-reload**: Gateway port/bind/TLS/auth require restart. All other config paths are live-reloadable.
@@ -51,5 +51,5 @@ Configuration cascade and path resolution: TOML loading, oikos directory structu
 
 ## Dependencies
 
-Uses: koina, figment, serde, toml, ring
+Uses: koina, serde, serde_json, toml, chacha20poly1305, base64, rand
 Used by: nous, pylon, organon, diaporeia, agora, aletheia (binary)

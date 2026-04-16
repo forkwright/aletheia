@@ -827,6 +827,10 @@ fn new_sections_survive_serde_roundtrip() {
 // ─── Wave 0 (#2306): config schema for 190 behavioral constants ──────────────
 
 #[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "one assertion per pre-extraction constant; splitting would fragment the regression guard"
+)]
 fn deployment_defaults_match_original_constants() {
     let nb = NousBehaviorConfig::default();
     // nous::actor::DEGRADED_PANIC_THRESHOLD = 5
@@ -1070,6 +1074,10 @@ fn deployment_defaults_match_original_constants() {
 }
 
 #[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "one assertion per pre-extraction constant; splitting would fragment the regression guard"
+)]
 fn per_agent_defaults_match_original_constants() {
     let ab = AgentBehaviorDefaults::default();
 

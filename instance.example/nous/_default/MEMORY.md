@@ -9,7 +9,7 @@ Keep this file lean. Delete entries that are no longer relevant. Move entries th
 - Runtime: Aletheia v0.13.11 (self-hosted, single binary, Rust)
 - Source: https://github.com/forkwright/aletheia
 - Standing order: log bugs and improvements as issues on the repo
-- Config: instance/config/aletheia.toml (TOML, figment cascade)
+- Config: instance/config/aletheia.toml (TOML cascade: defaults → file → env)
 - CLI: `aletheia --help` for full reference
 
 ## Operator

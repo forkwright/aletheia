@@ -15,6 +15,12 @@ RUST/pub-visibility:src/reload.rs
 RUST/pub-visibility:src/validate.rs
 RUST/pub-visibility:src/workspace_schema.rs
 
+# WHY: test_support.rs is gated on `#[cfg(any(test, feature = "test-support"))]`
+# and exposes EnvJail to sibling integration-test binaries; its pub surface is
+# test-only and must stay pub so public_api_loader.rs can import it.
+RUST/pub-visibility:src/test_support.rs
+RUST/expect:src/test_support.rs
+
 # WHY: config_tests.rs files are test-only (included from #[cfg(test)] modules)
 # but lack their own #[cfg(test)] boundary, causing false positives for rules
 # that skip test code via the cfg(test) line marker.

@@ -13,7 +13,7 @@ used_by = ["every other crate"]
 [[crate]]
 name = "taxis"
 layer = "foundation"
-purpose = "Config cascade: TOML + env + CLI via figment"
+purpose = "Config cascade: TOML + env via owned loader (deep-merge on serde_json::Value)"
 depends = ["koina"]
 
 [[crate]]

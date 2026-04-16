@@ -1,7 +1,7 @@
 //! Taxis-specific errors.
 //!
 //! Covers instance root discovery, configuration file reading, and
-//! TOML/JSON/Figment parsing failures during the configuration cascade.
+//! TOML/JSON parsing failures during the configuration cascade.
 
 use std::path::PathBuf;
 
@@ -50,10 +50,27 @@ pub enum Error {
         location: snafu::Location,
     },
 
-    /// Figment configuration error.
-    #[snafu(display("configuration error: {source}"))]
-    Figment {
-        source: figment::Error,
+    /// TOML parse error during configuration loading.
+    #[snafu(display("failed to parse TOML config: {source}"))]
+    ParseToml {
+        source: toml::de::Error,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Configuration loading failed (cascade merge or deserialisation).
+    #[snafu(display("configuration load failed: {reason}: {source}"))]
+    ConfigLoad {
+        reason: String,
+        source: serde_json::Error,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Configuration loading failed with a free-form reason.
+    #[snafu(display("configuration load failed: {reason}"))]
+    Load {
+        reason: String,
         #[snafu(implicit)]
         location: snafu::Location,
     },

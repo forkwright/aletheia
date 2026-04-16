@@ -1,10 +1,17 @@
-//! Figment-based configuration loading with TOML cascade.
+//! Configuration loading with TOML cascade.
+//!
+//! Resolution order (later wins):
+//! 1. Compiled defaults ([`AletheiaConfig::default()`])
+//! 2. `{oikos.config()}/aletheia.toml` (if it exists), with env-var
+//!    interpolation (`${VAR:-default}`, `${VAR:?error}`) applied first,
+//!    then `enc:` values decrypted.
+//! 3. Environment variables: `ALETHEIA_*` (e.g. `ALETHEIA_GATEWAY__PORT=9000`),
+//!    with `__` splitting nested keys and lowercasing.
 
 use std::io::Write as _;
 use std::os::unix::fs::OpenOptionsExt as _;
 
-use figment::Figment;
-use figment::providers::{Env, Format, Serialized, Toml};
+use serde_json::Value as JsonValue;
 use snafu::ResultExt;
 use tracing::{error, warn};
 
@@ -13,7 +20,7 @@ use koina::system::{FileSystem, RealSystem};
 
 use crate::config::AletheiaConfig;
 use crate::encrypt;
-use crate::error::{FigmentSnafu, Result, SerializeTomlSnafu, WriteConfigSnafu};
+use crate::error::{ConfigLoadSnafu, LoadSnafu, Result, SerializeTomlSnafu, WriteConfigSnafu};
 use crate::interpolate;
 use crate::oikos::Oikos;
 
@@ -36,10 +43,6 @@ use crate::oikos::Oikos;
 ///
 /// Returns an error if the configuration cascade produces an invalid or
 /// unextractable result.
-#[expect(
-    clippy::result_large_err,
-    reason = "figment::Error is inherently large"
-)]
 #[must_use]
 #[expect(
     clippy::double_must_use,
@@ -59,10 +62,6 @@ pub fn load_config(oikos: &Oikos) -> Result<AletheiaConfig> {
 ///
 /// Returns an error if the TOML file cannot be read.
 /// Returns an error if the configuration cascade fails.
-#[expect(
-    clippy::result_large_err,
-    reason = "figment::Error is inherently large"
-)]
 #[must_use]
 #[expect(
     clippy::double_must_use,
@@ -72,8 +71,17 @@ pub fn load_config_with(oikos: &Oikos, fs: &impl FileSystem) -> Result<AletheiaC
     let toml_path = oikos.config().join("aletheia.toml");
     let yaml_path = oikos.config().join("aletheia.yaml");
 
-    let mut figment = Figment::new().merge(Serialized::defaults(AletheiaConfig::default()));
+    // Tier 1: compiled defaults serialized to a JSON value tree.
+    // WHY JSON: serde_json::Value is the canonical merge target — TOML deserialises
+    // cleanly into it, and the final AletheiaConfig deserialises back out of it.
+    let mut root = serde_json::to_value(AletheiaConfig::default()).map_err(|e| {
+        LoadSnafu {
+            reason: format!("serialize defaults: {e}"),
+        }
+        .build()
+    })?;
 
+    // Tier 2: TOML file (if present), interpolated + decrypted, then deep-merged.
     if fs.exists(&toml_path) {
         let bytes = fs
             .read_file(&toml_path)
@@ -83,7 +91,10 @@ pub fn load_config_with(oikos: &Oikos, fs: &impl FileSystem) -> Result<AletheiaC
         let toml_content = String::from_utf8_lossy(&bytes);
         let interpolated = interpolate::interpolate_env_vars(toml_content.as_ref())?;
         let decrypted_content = decrypt_toml_content(&interpolated)?;
-        figment = figment.merge(Toml::string(&decrypted_content));
+
+        let toml_json: JsonValue =
+            toml::from_str(&decrypted_content).context(crate::error::ParseTomlSnafu)?;
+        deep_merge(&mut root, toml_json);
     } else if fs.exists(&yaml_path) {
         warn!(
             "Found aletheia.yaml but not aletheia.toml -- run migration or rename. \
@@ -96,9 +107,107 @@ pub fn load_config_with(oikos: &Oikos, fs: &impl FileSystem) -> Result<AletheiaC
         );
     }
 
-    figment = figment.merge(Env::prefixed("ALETHEIA_").split("__"));
+    // Tier 3: environment variables, ALETHEIA_ prefix, `__` splitting nested keys.
+    apply_env_overlay(&mut root, "ALETHEIA_", "__");
 
-    figment.extract().context(FigmentSnafu)
+    serde_json::from_value::<AletheiaConfig>(root).context(ConfigLoadSnafu {
+        reason: "deserialize merged config",
+    })
+}
+
+/// Deep-merge `src` into `dst`. Objects merge by key; everything else replaces.
+fn deep_merge(dst: &mut JsonValue, src: JsonValue) {
+    match (dst, src) {
+        (JsonValue::Object(dst_map), JsonValue::Object(src_map)) => {
+            for (key, src_val) in src_map {
+                match dst_map.get_mut(&key) {
+                    Some(dst_val) => deep_merge(dst_val, src_val),
+                    None => {
+                        dst_map.insert(key, src_val);
+                    }
+                }
+            }
+        }
+        (dst_slot, src_val) => *dst_slot = src_val,
+    }
+}
+
+/// Walk `ALETHEIA_*` env vars and write each into `root`, splitting the name
+/// by `separator` to build the nested path. Keys are lowercased to match
+/// serde `rename_all = "camelCase"` output (which lowercases single words).
+///
+/// Values are parsed as: bool (`true`/`false`), integer, float (if containing
+/// `.`), otherwise string. This preserves the pre-#3447 figment autotyping
+/// contract so operators can keep writing `ALETHEIA_GATEWAY__PORT=9000` without quoting.
+fn apply_env_overlay(root: &mut JsonValue, prefix: &str, separator: &str) {
+    for (key, value) in std::env::vars() {
+        let Some(rest) = key.strip_prefix(prefix) else {
+            continue;
+        };
+        let path: Vec<String> = rest.split(separator).map(str::to_ascii_lowercase).collect();
+        if path.iter().any(String::is_empty) {
+            continue;
+        }
+        set_path(root, &path, parse_env_value(&value));
+    }
+}
+
+/// Parse an environment-variable string into a JSON scalar. Booleans, integers,
+/// floats (if containing `.`), else a string. Preserves the pre-#3447 figment
+/// autotyping contract.
+fn parse_env_value(raw: &str) -> JsonValue {
+    let trimmed = raw.trim();
+    if trimmed == "true" {
+        return JsonValue::Bool(true);
+    }
+    if trimmed == "false" {
+        return JsonValue::Bool(false);
+    }
+    if trimmed.contains('.')
+        && let Ok(f) = trimmed.parse::<f64>()
+        && let Some(n) = serde_json::Number::from_f64(f)
+    {
+        return JsonValue::Number(n);
+    }
+    if let Ok(u) = trimmed.parse::<u64>() {
+        return JsonValue::Number(serde_json::Number::from(u));
+    }
+    if let Ok(i) = trimmed.parse::<i64>() {
+        return JsonValue::Number(serde_json::Number::from(i));
+    }
+    JsonValue::String(raw.to_owned())
+}
+
+/// Drill into `root` following `path`, creating intermediate objects as needed,
+/// and set the leaf to `value`. If an intermediate slot is not an object
+/// (e.g. a previously set scalar), it is replaced with a fresh object so the
+/// env overlay always wins at the leaf.
+fn set_path(root: &mut JsonValue, path: &[String], value: JsonValue) {
+    if path.is_empty() {
+        return;
+    }
+    let mut cursor = root;
+    let last_idx = path.len() - 1;
+    for (i, segment) in path.iter().enumerate() {
+        if i == last_idx {
+            if !cursor.is_object() {
+                *cursor = JsonValue::Object(serde_json::Map::new());
+            }
+            if let Some(map) = cursor.as_object_mut() {
+                map.insert(segment.clone(), value);
+            }
+            return;
+        }
+        if !cursor.is_object() {
+            *cursor = JsonValue::Object(serde_json::Map::new());
+        }
+        let Some(map) = cursor.as_object_mut() else {
+            return;
+        };
+        cursor = map
+            .entry(segment.clone())
+            .or_insert_with(|| JsonValue::Object(serde_json::Map::new()));
+    }
 }
 
 /// Parse TOML content, decrypt any `enc:` values, and serialize back.
@@ -106,10 +215,6 @@ pub fn load_config_with(oikos: &Oikos, fs: &impl FileSystem) -> Result<AletheiaC
 /// Returns an error if encrypted values are found but the decryption key is
 /// missing. This prevents the server from silently starting with undecrypted
 /// `enc:` values in place of real secrets.
-#[expect(
-    clippy::result_large_err,
-    reason = "figment::Error is inherently large; boxing would require unsafe snafu workaround"
-)]
 fn decrypt_toml_content(content: &str) -> Result<String> {
     let mut value: toml::Value = match toml::from_str(content) {
         Ok(v) => v,
@@ -185,10 +290,6 @@ fn collect_encrypted_paths(value: &toml::Value, prefix: String, out: &mut Vec<St
 /// Returns an error if the config cannot be serialized to TOML.
 /// Returns an error if the config directory cannot be created or the
 /// file cannot be written.
-#[expect(
-    clippy::result_large_err,
-    reason = "figment::Error is inherently large"
-)]
 #[must_use]
 #[expect(
     clippy::double_must_use,
@@ -202,10 +303,6 @@ pub fn write_config(oikos: &Oikos, config: &AletheiaConfig) -> Result<()> {
 ///
 /// Config writes are essential (state preservation), so they always proceed.
 /// Warning and critical disk states emit tracing diagnostics.
-#[expect(
-    clippy::result_large_err,
-    reason = "figment::Error is inherently large"
-)]
 pub(crate) fn write_config_checked(
     oikos: &Oikos,
     config: &AletheiaConfig,
@@ -268,187 +365,164 @@ pub(crate) fn write_config_checked(
 
 #[cfg(test)]
 #[expect(
-    clippy::result_large_err,
-    reason = "figment::Jail closures return Box<dyn Error>; test error size doesn't matter"
+    clippy::expect_used,
+    reason = "test harness: seeding fixtures must panic loudly on setup failure"
 )]
 mod tests {
-    use super::*;
+    use koina::system::TestSystem;
 
-    // NOTE: All loader tests run inside figment::Jail to isolate env vars.
+    use super::*;
+    use crate::test_support::EnvJail;
 
     #[test]
     fn load_with_no_yaml_uses_defaults() {
-        figment::Jail::expect_with(|jail| {
-            let oikos = Oikos::from_root(jail.directory());
-            let config = load_config(&oikos).map_err(|e| e.to_string())?;
+        let jail = EnvJail::new();
+        let oikos = Oikos::from_root(jail.directory());
+        let config = load_config(&oikos).unwrap_or_else(|e| panic!("load: {e}"));
 
-            assert_eq!(
-                config.agents.defaults.model_defaults.context_tokens, 200_000,
-                "no-config default context tokens should be 200k"
-            );
-            assert_eq!(
-                config.gateway.port, 18789,
-                "no-config default port should be 18789"
-            );
-            assert_eq!(
-                config.agents.defaults.model_defaults.model.primary, "claude-sonnet-4-6",
-                "no-config default model should be sonnet"
-            );
-            Ok(())
-        });
+        assert_eq!(
+            config.agents.defaults.model_defaults.context_tokens, 200_000,
+            "no-config default context tokens should be 200k"
+        );
+        assert_eq!(
+            config.gateway.port, 18789,
+            "no-config default port should be 18789"
+        );
+        assert_eq!(
+            config.agents.defaults.model_defaults.model.primary, "claude-sonnet-4-6",
+            "no-config default model should be sonnet"
+        );
     }
 
     #[test]
     fn load_from_toml_file() {
-        figment::Jail::expect_with(|jail| {
-            std::fs::create_dir_all(jail.directory().join("config")).map_err(|e| e.to_string())?;
-            jail.create_file(
-                "config/aletheia.toml",
-                "[gateway]\nport = 9999\n\n[agents.defaults]\ncontextTokens = 100000\n",
-            )?;
+        let jail = EnvJail::new();
+        jail.create_file(
+            "config/aletheia.toml",
+            "[gateway]\nport = 9999\n\n[agents.defaults]\ncontextTokens = 100000\n",
+        );
 
-            let oikos = Oikos::from_root(jail.directory());
-            let config = load_config(&oikos).map_err(|e| e.to_string())?;
+        let oikos = Oikos::from_root(jail.directory());
+        let config = load_config(&oikos).unwrap_or_else(|e| panic!("load: {e}"));
 
-            assert_eq!(
-                config.gateway.port, 9999,
-                "toml port override should take effect"
-            );
-            assert_eq!(
-                config.agents.defaults.model_defaults.context_tokens, 100_000,
-                "toml context tokens override should take effect"
-            );
-            assert_eq!(
-                config.agents.defaults.model_defaults.model.primary, "claude-sonnet-4-6",
-                "unset model should use default"
-            );
-            Ok(())
-        });
+        assert_eq!(
+            config.gateway.port, 9999,
+            "toml port override should take effect"
+        );
+        assert_eq!(
+            config.agents.defaults.model_defaults.context_tokens, 100_000,
+            "toml context tokens override should take effect"
+        );
+        assert_eq!(
+            config.agents.defaults.model_defaults.model.primary, "claude-sonnet-4-6",
+            "unset model should use default"
+        );
     }
 
     #[test]
     fn env_overrides_toml() {
-        figment::Jail::expect_with(|jail| {
-            std::fs::create_dir_all(jail.directory().join("config")).map_err(|e| e.to_string())?;
-            jail.create_file("config/aletheia.toml", "[gateway]\nport = 9999\n")?;
-            jail.set_env("ALETHEIA_GATEWAY__PORT", "7777");
+        let mut jail = EnvJail::new();
+        jail.create_file("config/aletheia.toml", "[gateway]\nport = 9999\n");
+        jail.set_env("ALETHEIA_GATEWAY__PORT", "7777");
 
-            let oikos = Oikos::from_root(jail.directory());
-            let config = load_config(&oikos).map_err(|e| e.to_string())?;
+        let oikos = Oikos::from_root(jail.directory());
+        let config = load_config(&oikos).unwrap_or_else(|e| panic!("load: {e}"));
 
-            assert_eq!(
-                config.gateway.port, 7777,
-                "env var should override toml port"
-            );
-            Ok(())
-        });
+        assert_eq!(
+            config.gateway.port, 7777,
+            "env var should override toml port"
+        );
     }
 
     #[test]
     fn missing_dir_still_loads_defaults() {
-        figment::Jail::expect_with(|_jail| {
-            let oikos = Oikos::from_root("/nonexistent/path/that/does/not/exist");
-            let config = load_config(&oikos).map_err(|e| e.to_string())?;
+        let _jail = EnvJail::new();
+        let oikos = Oikos::from_root("/nonexistent/path/that/does/not/exist");
+        let config = load_config(&oikos).unwrap_or_else(|e| panic!("load: {e}"));
 
-            assert_eq!(
-                config.gateway.port, 18789,
-                "missing dir should fall back to default port"
-            );
-            assert_eq!(
-                config.agents.defaults.model_defaults.context_tokens, 200_000,
-                "missing dir should fall back to default context tokens"
-            );
-            Ok(())
-        });
+        assert_eq!(
+            config.gateway.port, 18789,
+            "missing dir should fall back to default port"
+        );
+        assert_eq!(
+            config.agents.defaults.model_defaults.context_tokens, 200_000,
+            "missing dir should fall back to default context tokens"
+        );
     }
 
     #[test]
     fn write_then_load_roundtrip() {
-        figment::Jail::expect_with(|jail| {
-            // NOTE: figment::Jail doesn't auto-create the config dir, so create it first.
-            std::fs::create_dir_all(jail.directory().join("config")).map_err(|e| e.to_string())?;
+        let jail = EnvJail::new();
+        // NOTE: EnvJail doesn't auto-create the config dir, so create it first.
+        std::fs::create_dir_all(jail.directory().join("config")).expect("create config dir");
 
-            let oikos = Oikos::from_root(jail.directory());
-            let mut config = AletheiaConfig::default();
-            config.gateway.port = 9876;
+        let oikos = Oikos::from_root(jail.directory());
+        let mut config = AletheiaConfig::default();
+        config.gateway.port = 9876;
 
-            write_config(&oikos, &config).map_err(|e| e.to_string())?;
-            let loaded = load_config(&oikos).map_err(|e| e.to_string())?;
+        write_config(&oikos, &config).unwrap_or_else(|e| panic!("write: {e}"));
+        let loaded = load_config(&oikos).unwrap_or_else(|e| panic!("load: {e}"));
 
-            assert_eq!(
-                loaded.gateway.port, 9876,
-                "written port should survive roundtrip"
-            );
-            assert_eq!(
-                loaded.agents.defaults.model_defaults.context_tokens, 200_000,
-                "default context tokens should survive roundtrip"
-            );
-            Ok(())
-        });
+        assert_eq!(
+            loaded.gateway.port, 9876,
+            "written port should survive roundtrip"
+        );
+        assert_eq!(
+            loaded.agents.defaults.model_defaults.context_tokens, 200_000,
+            "default context tokens should survive roundtrip"
+        );
     }
 
     // ── load_config_with (FileSystem trait) ──────────────────────────────
 
     #[test]
     fn load_config_with_uses_in_memory_toml() {
-        figment::Jail::expect_with(|jail| {
-            use koina::system::TestSystem;
+        let jail = EnvJail::new();
+        let oikos = Oikos::from_root(jail.directory());
+        let toml_path = oikos.config().join("aletheia.toml");
 
-            let oikos = Oikos::from_root(jail.directory());
-            let toml_path = oikos.config().join("aletheia.toml");
+        let mut fs = TestSystem::new();
+        fs.add_file(toml_path, b"[gateway]\nport = 4242\n");
 
-            let mut fs = TestSystem::new();
-            fs.add_file(toml_path, b"[gateway]\nport = 4242\n");
-
-            let config = load_config_with(&oikos, &fs).map_err(|e| e.to_string())?;
-            assert_eq!(
-                config.gateway.port, 4242,
-                "in-memory toml port should be loaded"
-            );
-            Ok(())
-        });
+        let config = load_config_with(&oikos, &fs).unwrap_or_else(|e| panic!("load: {e}"));
+        assert_eq!(
+            config.gateway.port, 4242,
+            "in-memory toml port should be loaded"
+        );
     }
 
     #[test]
     fn load_config_with_uses_defaults_when_no_toml() {
-        figment::Jail::expect_with(|_jail| {
-            use koina::system::TestSystem;
+        let _jail = EnvJail::new();
+        let oikos = Oikos::from_root("/nonexistent");
+        let fs = TestSystem::new(); // empty — no files
 
-            let oikos = Oikos::from_root("/nonexistent");
-            let fs = TestSystem::new(); // empty — no files
-
-            let config = load_config_with(&oikos, &fs).map_err(|e| e.to_string())?;
-            assert_eq!(
-                config.gateway.port, 18789,
-                "empty filesystem should use default port"
-            );
-            assert_eq!(
-                config.agents.defaults.model_defaults.context_tokens, 200_000,
-                "empty filesystem should use default context tokens"
-            );
-            Ok(())
-        });
+        let config = load_config_with(&oikos, &fs).unwrap_or_else(|e| panic!("load: {e}"));
+        assert_eq!(
+            config.gateway.port, 18789,
+            "empty filesystem should use default port"
+        );
+        assert_eq!(
+            config.agents.defaults.model_defaults.context_tokens, 200_000,
+            "empty filesystem should use default context tokens"
+        );
     }
 
     #[test]
     fn load_config_with_merges_env_over_toml() {
-        figment::Jail::expect_with(|jail| {
-            use koina::system::TestSystem;
+        let mut jail = EnvJail::new();
+        jail.set_env("ALETHEIA_GATEWAY__PORT", "5555");
 
-            jail.set_env("ALETHEIA_GATEWAY__PORT", "5555");
+        let oikos = Oikos::from_root(jail.directory());
+        let toml_path = oikos.config().join("aletheia.toml");
 
-            let oikos = Oikos::from_root(jail.directory());
-            let toml_path = oikos.config().join("aletheia.toml");
+        let mut fs = TestSystem::new();
+        fs.add_file(toml_path, b"[gateway]\nport = 1111\n");
 
-            let mut fs = TestSystem::new();
-            fs.add_file(toml_path, b"[gateway]\nport = 1111\n");
-
-            let config = load_config_with(&oikos, &fs).map_err(|e| e.to_string())?;
-            assert_eq!(
-                config.gateway.port, 5555,
-                "env var should override in-memory toml port"
-            );
-            Ok(())
-        });
+        let config = load_config_with(&oikos, &fs).unwrap_or_else(|e| panic!("load: {e}"));
+        assert_eq!(
+            config.gateway.port, 5555,
+            "env var should override in-memory toml port"
+        );
     }
 }

@@ -112,7 +112,7 @@ The oikos hierarchy is described in [CONFIGURATION.md](CONFIGURATION.md).
 | Crate | Directory | Domain | Depends On |
 |-------|-----------|--------|------------|
 | `koina` | `crates/koina` | Errors (snafu), tracing, fs utilities, safe wrappers | nothing (leaf) |
-| `taxis` | `crates/taxis` | Config loading (figment TOML cascade), path resolution, oikos hierarchy | koina |
+| `taxis` | `crates/taxis` | Config loading (owned TOML cascade), path resolution, oikos hierarchy | koina |
 | `eidos` | `crates/eidos` | Shared knowledge types: Fact, Entity, Relationship, EpistemicTier | nothing (leaf) |
 | `graphe` | `crates/graphe` | SQLite session store: WAL, migrations, retention, backup, export/import | eidos, koina |
 | `episteme` | `crates/episteme` | Knowledge pipeline: extraction, recall, consolidation, embedding provider | eidos, koina, graphe, krites (opt) |

@@ -1042,7 +1042,7 @@ Rust-specific framework choices and conventions:
 **Preferred:**
 - `snafu` (errors), `tokio` (async), `tracing` (logging), `serde` (serialization)
 - `jiff` (time), `ulid` (IDs), `compact_str` (small strings)
-- `figment` (config), `rusqlite` (SQLite)
+- `toml` + `serde_json` (config merge — no figment; see crates/taxis/src/loader.rs), `rusqlite` (SQLite)
 - `secrecy` (secret values), `subtle` (constant-time comparison)
 - `std::sync::LazyLock` (lazy statics)
 - `tokio_util::sync::CancellationToken` (shutdown coordination)

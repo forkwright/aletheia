@@ -135,7 +135,7 @@ The SDK abstracts JSON-RPC framing, lifecycle management, and transport details.
 
 ### 7. configuration system
 
-**Framework**: figment (defaults, TOML file, environment variables). All config types in `crates/taxis/src/config.rs`.
+**Framework**: owned TOML cascade (defaults, TOML file, environment variables) in `crates/taxis/src/loader.rs`. All config types in `crates/taxis/src/config.rs`.
 
 **Existing MCP config**: `McpConfig` with `rate_limit` sub-struct (for server rate limiting). This is the natural extension point for client configuration.
 

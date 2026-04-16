@@ -21,7 +21,7 @@ reason = "use tokio::fs for async or abstract behind a trait for testability"
 path = "std::fs::File::open"
 reason = "use tokio::fs::File::open for async or abstract behind a trait for testability"
 
-# Config is file-based (figment TOML cascade); HTTP does not belong here
+# Config is file-based (TOML cascade); HTTP does not belong here
 [[disallowed-types]]
 path = "reqwest::Client"
 reason = "taxis must not perform HTTP calls; config is file-based"

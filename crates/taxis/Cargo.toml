@@ -13,23 +13,30 @@ workspace = true
 [features]
 test-core = []
 test-full = []
+# WHY: exposes the test_support module (EnvJail) for sibling integration test
+# binaries in tests/. Gated so production builds never see test helpers.
+test-support = ["dep:tempfile"]
 
 [dependencies]
 koina = { path = "../koina" }
 eidos = { path = "../eidos" }
 base64 = { workspace = true }
-figment = { workspace = true }
 rand = { workspace = true }
 chacha20poly1305 = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 snafu = { workspace = true }
+# WHY: optional — only compiled in when the `test-support` feature gates the
+# EnvJail helper in. Production builds never pull tempfile.
+tempfile = { workspace = true, optional = true }
 toml = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
+# WHY: self-reference with `test-support` exposes `taxis::test_support::EnvJail`
+# to sibling integration-test binaries (tests/public_api_loader.rs etc).
+taxis = { path = ".", features = ["test-support"] }
 koina = { path = "../koina", features = ["test-support"] }
-figment = { workspace = true, features = ["test"] }
 proptest = { workspace = true }
 tempfile = { workspace = true }
 tracing-test = { workspace = true }
