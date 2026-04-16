@@ -219,6 +219,18 @@ strip = "symbols"
 
 ---
 
+## Workspace topology metric
+
+A dense dependency graph (many edges per node) signals that new work may fit better as a function inside an existing crate rather than as a new crate. We track the ratio of inter-crate edges to workspace crates:
+
+```bash
+./scripts/topology-metric.sh
+```
+
+**Baseline:** `crates=29, edges=102, ratio=3.51`
+
+When adding a component, prefer extending an existing edge (dependency or trait boundary) over introducing a new node, unless the new crate provides a clean abstraction boundary or is consumed by multiple unrelated crates.
+
 ## Structural properties
 
 - **koina, eidos, and dianoia are true leaf nodes.** No workspace deps in Rust.
