@@ -373,6 +373,77 @@ pub(super) fn open_knowledge_store(
     Ok(Some(store))
 }
 
+/// Build the Matrix channel provider when `channels.matrix.enabled` is true.
+///
+/// Mirrors [`build_signal_provider`]: returns `None` when the feature is
+/// disabled or the config does not carry Matrix accounts. Safe to call when
+/// the `matrix` feature is compiled in; the non-feature stub returns `None`.
+#[cfg(feature = "matrix")]
+pub(super) async fn build_matrix_provider(
+    matrix_config: &taxis::config::MatrixConfig,
+    oikos: &Oikos,
+) -> Option<Arc<agora::matrix::MatrixProvider>> {
+    use agora::matrix::{AccountBinding, FjallCryptoStore, MatrixProvider};
+
+    if !matrix_config.enabled {
+        info!("matrix channel disabled");
+        return None;
+    }
+
+    if matrix_config.accounts.is_empty() {
+        tracing::debug!("matrix enabled but no accounts configured");
+        return None;
+    }
+
+    // WHY: the crypto store lives under oikos.data() so it is covered by the
+    // same backup/restic policy as other stateful stores (symbolon, graphe).
+    // Nested `matrix-crypto/<agent>/` keeps per-agent keyspaces isolated.
+    let store_path = oikos.data().join(&matrix_config.crypto_store_path);
+
+    // WHY: we use user_id as the crypto-store namespace — matches Matrix's
+    // per-user device isolation. If Phase 3 splits per-agent devices, the
+    // nous_id becomes the namespace instead.
+    let store = match FjallCryptoStore::open(&store_path, &matrix_config.user_id).await {
+        Ok(s) => Arc::new(s),
+        Err(e) => {
+            warn!(
+                path = %store_path.display(),
+                user = %matrix_config.user_id,
+                error = %e,
+                "failed to open matrix crypto store"
+            );
+            return None;
+        }
+    };
+
+    let mut provider = match MatrixProvider::new(
+        &matrix_config.homeserver_url,
+        &matrix_config.user_id,
+        &matrix_config.device_display_name,
+        store,
+    ) {
+        Ok(p) => p,
+        Err(e) => {
+            warn!(
+                homeserver = %matrix_config.homeserver_url,
+                error = %e,
+                "failed to build MatrixProvider"
+            );
+            return None;
+        }
+    };
+
+    for account in &matrix_config.accounts {
+        provider.add_account(AccountBinding {
+            nous_id: account.nous_id.clone(),
+            room: account.room.clone(),
+        });
+        info!(nous = %account.nous_id, room = %account.room, "matrix binding added");
+    }
+
+    Some(Arc::new(provider))
+}
+
 pub(super) fn build_signal_provider(
     signal_config: &taxis::config::SignalConfig,
     messaging_config: &taxis::config::MessagingConfig,

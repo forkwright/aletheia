@@ -12,8 +12,9 @@ pub use agents::{
 };
 pub use behavior::{
     AnthropicConfig, ApiLimitsConfig, CapacityConfig, DaemonBehaviorConfig, JwtSettings,
-    KnowledgeConfig, MessagingConfig, NousBehaviorConfig, PromptCacheMode, ProviderBehaviorConfig,
-    RetrySettings, TimeoutsConfig, ToolLimitsConfig, TuningConfig,
+    KnowledgeConfig, MatrixAccountConfig, MatrixConfig, MessagingConfig, NousBehaviorConfig,
+    PromptCacheMode, ProviderBehaviorConfig, RetrySettings, TimeoutsConfig, ToolLimitsConfig,
+    TuningConfig,
 };
 pub use gateway::{
     BodyLimitConfig, CorsConfig, CsrfConfig, GatewayAuthConfig, GatewayConfig,
@@ -247,6 +248,9 @@ impl Default for EmbeddingSettings {
 pub struct ChannelsConfig {
     /// Signal messenger transport configuration.
     pub signal: SignalConfig,
+    /// Matrix (conduwuit) transport configuration. Feature-gated at the
+    /// binary level; `enabled = false` keeps it inert regardless.
+    pub matrix: MatrixConfig,
 }
 
 /// Signal messenger channel configuration.
