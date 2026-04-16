@@ -774,14 +774,14 @@ use validate::{validate_external_tools, validate_jwt};
 mod setup;
 mod tool_adapters;
 
+#[cfg(feature = "matrix")]
+use setup::build_matrix_provider;
 #[cfg(feature = "recall")]
 use setup::open_knowledge_store;
 use setup::{
     LazyEmbeddingProvider, build_provider_registry, build_signal_provider, build_tool_registry,
     start_inbound_dispatch,
 };
-#[cfg(feature = "matrix")]
-use setup::build_matrix_provider;
 
 /// Register every metrics-emitting crate's families with the shared registry.
 ///

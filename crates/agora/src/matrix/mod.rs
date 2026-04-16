@@ -196,9 +196,7 @@ impl ChannelProvider for MatrixProvider {
         &'a self,
         _params: &'a ChannelSendParams,
     ) -> Pin<Box<dyn Future<Output = SendResult> + Send + 'a>> {
-        Box::pin(async move {
-            SendResult::err("matrix: not yet wired (Phase 3)")
-        })
+        Box::pin(async move { SendResult::err("matrix: not yet wired (Phase 3)") })
     }
 
     fn probe<'a>(&'a self) -> Pin<Box<dyn Future<Output = ProbeResult> + Send + 'a>> {
@@ -324,13 +322,7 @@ mod tests {
         };
         let result = provider.send(&params).await;
         assert!(!result.sent);
-        assert!(
-            result
-                .error
-                .as_deref()
-                .unwrap_or("")
-                .contains("Phase 3")
-        );
+        assert!(result.error.as_deref().unwrap_or("").contains("Phase 3"));
     }
 
     #[tokio::test]
