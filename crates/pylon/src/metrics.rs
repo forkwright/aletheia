@@ -179,6 +179,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::expect_used,
+        reason = "test: encoding metrics into a String buffer is infallible"
+    )]
     fn register_and_encode_roundtrip() {
         let registry = MetricsRegistry::new();
         init(&registry);

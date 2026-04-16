@@ -54,6 +54,10 @@ pub(super) async fn test_state() -> (Arc<AppState>, tempfile::TempDir) {
     test_state_with_provider(true).await
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "test harness setup is inherently linear — splitting adds indirection without reducing reader burden"
+)]
 pub(super) async fn test_state_with_provider(
     with_provider: bool,
 ) -> (Arc<AppState>, tempfile::TempDir) {
