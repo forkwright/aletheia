@@ -42,10 +42,12 @@ jobs:
           persist-credentials: false # PROJECT: security hardening — never expose token to steps
       - uses: EmbarkStudios/cargo-deny-action@30f817c6f72275c6d54dc744fbca09ebc958599f # v2.0.14
         with:
-          command: check
           # WHY: run every check explicitly so a schema regression in one
-          # section can't silently disable the others.
-          arguments: --all-features advisories licenses bans sources
+          # section can't silently disable the others. cargo-deny expects
+          # the check subcommand followed by space-separated check names;
+          # `arguments:` passes post-subcommand flags only.
+          command: check advisories licenses bans sources
+          arguments: --all-features
 
   cargo-audit:
     # WHY: cargo-deny's advisories check overlaps but uses a different code

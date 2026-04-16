@@ -17,6 +17,14 @@ reason = "bincode unmaintained — transitive via syntect/aletheia-tui, no safe 
 id = "RUSTSEC-2024-0436"
 reason = "paste unmaintained, transitive via tokenizers; no safe upgrade"
 
+[[advisories.ignore]]
+id = "RUSTSEC-2025-0134"
+reason = "rustls-pemfile 2.x unmaintained — transitive via qdrant-client → tonic 0.12. Blocked until qdrant-client upgrades tonic to 0.13+"
+
+[[advisories.ignore]]
+id = "RUSTSEC-2026-0097"
+reason = "rand 0.8 unsound only with custom logger using rand::rng() — not our usage. Transitive via qdrant-client → tonic 0.12 + spreadsheet-ods + phf. Blocked on upstream migrations to rand 0.9+"
+
 [licenses]
 allow = [
     "MIT",
