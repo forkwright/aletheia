@@ -8,19 +8,19 @@ use koina::system::{Environment, RealSystem};
 ///
 /// WHY: systemd `Type=notify` services need this to know initialization is
 /// complete. No-op if `$NOTIFY_SOCKET` is not SET.
-pub(super) fn sd_notify_ready() {
+pub fn sd_notify_ready() {
     sd_notify("READY=1");
 }
 
 /// Send `WATCHDOG=1` to systemd.
 ///
 /// WHY: `WatchdogSec` integration enables automatic restart on hang.
-pub(super) fn sd_notify_watchdog() {
+pub fn sd_notify_watchdog() {
     sd_notify("WATCHDOG=1");
 }
 
 /// Send `STOPPING=1` to systemd before shutdown cleanup.
-pub(super) fn sd_notify_stopping() {
+pub fn sd_notify_stopping() {
     sd_notify("STOPPING=1");
 }
 
@@ -28,7 +28,7 @@ pub(super) fn sd_notify_stopping() {
 ///
 /// Returns `None` if the variable is not SET or unparseable. The recommended
 /// notification interval is half the watchdog timeout.
-pub(super) fn sd_watchdog_interval() -> Option<Duration> {
+pub fn sd_watchdog_interval() -> Option<Duration> {
     let usec_str = RealSystem.var("WATCHDOG_USEC")?;
     let usec: u64 = usec_str.parse().ok()?;
     // WHY: notify at half the watchdog interval to avoid races.

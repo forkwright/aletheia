@@ -4,11 +4,16 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-# WHY: Type=exec waits for the exec() call to succeed before marking the
-# service as started, catching binary-not-found immediately. The ExecStartPost
-# readiness probe then polls the health endpoint so dependents and `systemctl
-# start` only return once the HTTP gateway is actually accepting connections.
-Type=exec
+# WHY: Type=notify lets the binary signal READY=1 after the HTTP gateway
+# binds and starts accepting connections. systemctl start blocks until
+# the notification arrives, replacing the old ExecStartPost health-probe
+# polling loop. The binary also sends STOPPING=1 at shutdown start so
+# systemd knows drain is in progress.
+Type=notify
+# WHY: WatchdogSec enables automatic restart if the Tokio runtime
+# deadlocks. The binary sends WATCHDOG=1 every 15s (half the interval).
+# If two consecutive heartbeats are missed, systemd restarts the service.
+WatchdogSec=30
 Environment=RUST_BACKTRACE=1
 # WARNING: Do not put secrets (API keys, tokens) directly in this file.
 # Use the EnvironmentFile below instead. Unit files are world-readable.
@@ -17,16 +22,6 @@ Environment=RUST_BACKTRACE=1
 EnvironmentFile=-%h/aletheia/instance/config/env  # CUSTOMIZE: path to your instance config/env
 # %h expands to the user's home directory at runtime.
 ExecStart=%h/.local/bin/aletheia -r %h/aletheia/instance  # CUSTOMIZE: binary and instance paths
-# Readiness probe: poll the health endpoint until the gateway is listening.
-# Retries every 0.5s for up to 15s (30 attempts). Adjust URL if using a
-# non-default port or bind address.
-ExecStartPost=/bin/sh -c '\
-  url="${ALETHEIA_HEALTH_URL:-http://localhost:18789/api/health}"; \
-  i=0; while [ "$i" -lt 30 ]; do \
-    if curl -sf --max-time 2 "$url" >/dev/null 2>&1; then exit 0; fi; \
-    sleep 0.5; i=$((i+1)); \
-  done; \
-  echo "aletheia health endpoint not reachable after 15s" >&2; exit 1'
 Restart=on-failure
 RestartSec=5
 StandardOutput=journal

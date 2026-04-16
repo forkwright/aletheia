@@ -146,6 +146,34 @@ pub(crate) async fn run(args: Args) -> Result<()> {
 
     info!(addr = %bind_addr, "pylon listening");
 
+    // WHY: notify systemd that initialization is complete and the HTTP
+    // gateway is accepting connections. This is the authoritative READY=1
+    // for the Type=notify service — it fires after the TCP listener binds.
+    oikonomos::runner::systemd::sd_notify_ready();
+
+    // WHY: spawn a dedicated watchdog heartbeat task that sends WATCHDOG=1
+    // at half the systemd WatchdogSec interval. If the Tokio runtime
+    // deadlocks, the heartbeat stops and systemd restarts the service.
+    let watchdog_token = runtime.shutdown_token.child_token();
+    if let Some(interval) = oikonomos::runner::systemd::sd_watchdog_interval() {
+        tokio::spawn(async move {
+            let mut tick = tokio::time::interval(interval);
+            loop {
+                tokio::select! {
+                    biased;
+                    () = watchdog_token.cancelled() => break,
+                    _ = tick.tick() => {
+                        oikonomos::runner::systemd::sd_notify_watchdog();
+                    }
+                }
+            }
+        });
+        info!(
+            interval_secs = interval.as_secs(),
+            "systemd watchdog heartbeat started"
+        );
+    }
+
     // WHY: Without a SIGHUP handler, the signal hits the default Unix
     // disposition (terminate), crashing the server instead of reloading (#2350).
     #[cfg(unix)]
@@ -165,12 +193,17 @@ pub(crate) async fn run(args: Args) -> Result<()> {
         .whatever_context("server error")?;
 
     // INVARIANT: Drain ordering must follow this sequence:
+    // 0. Notify systemd that shutdown has begun (STOPPING=1).
     // 1. HTTP server has stopped accepting new requests (axum graceful_shutdown).
     // 2. Root token is cancelled: daemon tasks observe it and exit their loops.
     // 2a. Drain SIGHUP handler (observes shutdown token).
     // 3. Wait for system daemon to finish in-flight maintenance work.
     // 4. Drain nous actors with a timeout, flushing fjall WAL and other state.
     // 5. Drop AppState (session store, registries).
+
+    // WHY: notify systemd that graceful shutdown has begun so it does not
+    // treat the drain period as a hang and send SIGKILL prematurely.
+    oikonomos::runner::systemd::sd_notify_stopping();
 
     info!("shutting down");
 
