@@ -7,7 +7,7 @@ use std::time::Instant;
 
 use indexmap::IndexMap;
 use snafu::ensure;
-use tracing::info_span;
+use tracing::{Instrument, info_span};
 
 use koina::id::ToolName;
 
@@ -106,9 +106,16 @@ impl ToolRegistry {
             tool.duration_ms = tracing::field::Empty,
             tool.status = tracing::field::Empty,
         );
-        let _guard = span.enter();
         let start = Instant::now();
-        let result = tool.executor.execute(input, ctx).await;
+        // WHY: `.instrument(span)` instead of `span.enter()` so the span context
+        // propagates correctly across `.await` points. `span.enter()` in async code
+        // keeps the span entered on the current thread even when suspended, which
+        // causes incorrect parent attribution for concurrent tasks (#3384).
+        let result = tool
+            .executor
+            .execute(input, ctx)
+            .instrument(span.clone())
+            .await;
         let duration_ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
         span.record("tool.duration_ms", duration_ms);
         match &result {

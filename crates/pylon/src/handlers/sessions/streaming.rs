@@ -163,6 +163,7 @@ pub async fn send_message(
                                 input_tokens,
                                 output_tokens,
                             },
+                            request_id: Some(request_id.0.clone()),
                         },
                     ))
                     .await;
@@ -283,6 +284,7 @@ pub async fn send_message(
             // body, even if the turn fails before producing any content events.
             let event = SseEvent::MessageStart {
                 status: "accepted".to_owned(),
+                request_id: Some(request_id_str.clone()),
             };
             let seq = record_sse_event(&buf_handle_task, &event).await;
             let _ = tx.send((seq, event)).await;
@@ -305,7 +307,13 @@ pub async fn send_message(
             };
             match result {
                 Ok(result) => {
-                    emit_turn_result_events_buffered(&tx, &buf_handle_task, &result).await;
+                    emit_turn_result_events_buffered(
+                        &tx,
+                        &buf_handle_task,
+                        &result,
+                        Some(&request_id_str),
+                    )
+                    .await;
                     buf_handle_task.mark_completed().await;
 
                     // NOTE: Store the turn summary so cache-hit replays return real data.
@@ -345,6 +353,7 @@ pub async fn send_message(
                             input_tokens: 0,
                             output_tokens: 0,
                         },
+                        request_id: Some(request_id_str.clone()),
                     };
                     let seq = record_sse_event(&buf_handle_task, &event).await;
                     let _ = tx.send((seq, event)).await;
@@ -491,6 +500,7 @@ pub async fn stream_turn(
         session_id: session_id.clone(),
         nous_id: agent_id.clone(),
         turn_id: turn_id.clone(),
+        request_id: Some(request_id.0.clone()),
     };
     let seq = record_webchat_event(&buf_handle, &start_event).await;
     let _ = webchat_tx.send((seq, start_event)).await;
@@ -914,10 +924,14 @@ fn redact_secrets(msg: &str) -> String {
 ///
 /// WHY(#3276): Each event is recorded in the turn buffer before being sent
 /// to the client channel, so events survive client disconnection.
+///
+/// WHY(#3384): `request_id` is threaded through so `message_complete` carries it
+/// for distributed tracing correlation on the client side.
 async fn emit_turn_result_events_buffered(
     tx: &mpsc::Sender<(u64, SseEvent)>,
     buf: &TurnBufferHandle,
     result: &TurnResult,
+    request_id: Option<&str>,
 ) {
     if !result.content.is_empty() {
         let event = SseEvent::TextDelta {
@@ -953,6 +967,7 @@ async fn emit_turn_result_events_buffered(
             input_tokens: result.usage.input_tokens,
             output_tokens: result.usage.output_tokens,
         },
+        request_id: request_id.map(ToOwned::to_owned),
     };
     let seq = record_sse_event(buf, &event).await;
     let _ = tx.send((seq, event)).await;
