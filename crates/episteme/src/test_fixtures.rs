@@ -15,6 +15,10 @@ pub(crate) use eidos::test_fixtures::{make_entity, make_fact, make_relationship,
 pub(crate) const DIM: usize = 4;
 
 /// Open an in-memory `KnowledgeStore` with test defaults.
+#[expect(
+    clippy::expect_used,
+    reason = "test fixture: opening an in-memory store with a static config is infallible under valid inputs; any failure indicates a test-environment bug that should fail-fast"
+)]
 pub(crate) fn make_store() -> Arc<KnowledgeStore> {
     KnowledgeStore::open_mem_with_config(KnowledgeConfig {
         dim: DIM,

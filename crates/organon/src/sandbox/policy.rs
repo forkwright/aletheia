@@ -1,4 +1,18 @@
 //! Runtime sandbox policy application -- Landlock, seccomp, network namespaces.
+//!
+//! The full Landlock + seccomp + netns implementation is Linux-only. On other
+//! platforms (macOS CI, Windows) most symbols are unreachable via `apply_sandbox`,
+//! which short-circuits to a no-op. The attribute below silences dead_code /
+//! unused_import warnings on those platforms without sprinkling per-item cfgs.
+#![cfg_attr(
+    not(target_os = "linux"),
+    allow(
+        dead_code,
+        unused_imports,
+        reason = "Linux-only sandbox machinery; apply_sandbox is a no-op on other platforms"
+    )
+)]
+
 use std::net::IpAddr;
 use std::path::PathBuf;
 
