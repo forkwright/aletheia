@@ -19,6 +19,12 @@ Spec: NN Phase N
 
 How this was tested. Include relevant commands or test output.
 
+### Topology check (for new components)
+
+If this PR adds a new module, function, or abstraction:
+- What edge does it create between existing components?
+- Could the same capability be added by extending an existing edge instead?
+
 ## Checklist
 
 - [ ] `cargo test -p <affected-crate>` passes
