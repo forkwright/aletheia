@@ -359,6 +359,33 @@ pub(crate) async fn execute_builtin(
                 ),
             })
         }
+        BuiltinTask::FjallBackup => {
+            let config = maintenance
+                .map(|m| m.fjall_backup.clone())
+                .unwrap_or_default();
+            let report = tokio::task::spawn_blocking(move || {
+                let _span = tracing::info_span!("fjall_backup").entered();
+                crate::maintenance::FjallBackup::new(config).create_backup()
+            })
+            .await
+            .context(error::BlockingJoinSnafu {
+                context: "fjall backup",
+            })??;
+
+            tracing::info!(
+                files = report.files_copied,
+                bytes = report.bytes_copied,
+                pruned = report.backups_pruned,
+                "maintenance: fjall backup complete"
+            );
+            Ok(ExecutionResult {
+                success: true,
+                output: Some(format!(
+                    "{} files copied ({} bytes), {} old backups pruned",
+                    report.files_copied, report.bytes_copied, report.backups_pruned
+                )),
+            })
+        }
         BuiltinTask::RetentionExecution => {
             let Some(executor) = retention_executor else {
                 tracing::info!("retention execution skipped — no executor configured");
@@ -532,7 +559,8 @@ async fn execute_knowledge_task(
             | BuiltinTask::OpsFactExtraction
             | BuiltinTask::LessonExtraction
             | BuiltinTask::SelfPrompt
-            | BuiltinTask::ProposeRules => {
+            | BuiltinTask::ProposeRules
+            | BuiltinTask::FjallBackup => {
                 unreachable!("non-knowledge task routed to execute_knowledge_task")
             }
         }?;

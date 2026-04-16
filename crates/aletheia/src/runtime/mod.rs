@@ -379,9 +379,20 @@ impl RuntimeBuilder {
 
         let tool_registry = Arc::new(tool_registry);
 
-        // Embedding provider
-        let embedding_provider = if self.embedding {
-            create_embedding_provider(&self.config.embedding)
+        // Embedding provider — lazy initialization (#3474)
+        //
+        // WHY: the embedding model download/load can be slow or fail. Loading
+        // synchronously here blocks the HTTP gateway from binding. Wrapping in
+        // `LazyEmbeddingProvider` lets the gateway start immediately and defers
+        // the real init to first use.
+        let embedding_provider: Arc<dyn mneme::embedding::EmbeddingProvider> = if self.embedding {
+            let lazy = Arc::new(LazyEmbeddingProvider::new(self.config.embedding.clone()));
+            // Spawn background init so the model loads without blocking startup.
+            let lazy_clone = Arc::clone(&lazy);
+            tokio::spawn(async move {
+                lazy_clone.get().await;
+            });
+            lazy
         } else {
             Arc::new(DegradedEmbeddingProvider::new(
                 self.config.embedding.dimension,
@@ -746,6 +757,6 @@ mod tool_adapters;
 #[cfg(feature = "recall")]
 use setup::open_knowledge_store;
 use setup::{
-    build_provider_registry, build_signal_provider, build_tool_registry, create_embedding_provider,
+    LazyEmbeddingProvider, build_provider_registry, build_signal_provider, build_tool_registry,
     start_inbound_dispatch,
 };

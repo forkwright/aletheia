@@ -216,34 +216,131 @@ pub(super) fn build_tool_registry(
     Ok(registry)
 }
 
-pub(super) fn create_embedding_provider(
-    settings: &EmbeddingSettings,
-) -> Arc<dyn EmbeddingProvider> {
-    let embedding_config = EmbeddingConfig {
-        provider: settings.provider.clone(),
-        model: settings.model.clone(),
-        dimension: Some(settings.dimension),
-        api_key: None,
-    };
-    match create_provider(&embedding_config) {
-        Ok(p) => {
-            info!(
-                provider = %settings.provider,
-                dim = settings.dimension,
-                "embedding provider created"
-            );
-            Arc::from(p)
-        }
-        Err(e) => {
-            warn!(
-                error = %e,
-                provider = %settings.provider,
-                "embedding provider failed to load: starting in degraded mode \
-                 (recall and vector search unavailable)"
-            );
-            Arc::new(DegradedEmbeddingProvider::new(settings.dimension))
+/// Lazily-initialized embedding provider.
+///
+/// WHY (#3474): the embedding model download and initialization can be slow
+/// (network fetch, model load) or fail transiently. Loading synchronously
+/// during server startup blocks the HTTP gateway from accepting health
+/// checks, making the server appear dead. This wrapper defers the real
+/// initialization to first use so the gateway can bind immediately.
+pub(crate) struct LazyEmbeddingProvider {
+    inner: tokio::sync::OnceCell<Arc<dyn EmbeddingProvider>>,
+    /// Fallback provider returned before initialization completes.
+    degraded: DegradedEmbeddingProvider,
+    settings: EmbeddingSettings,
+    dimension: usize,
+}
+
+impl LazyEmbeddingProvider {
+    pub(crate) fn new(settings: EmbeddingSettings) -> Self {
+        let dimension = settings.dimension;
+        Self {
+            inner: tokio::sync::OnceCell::new(),
+            degraded: DegradedEmbeddingProvider::new(dimension),
+            settings,
+            dimension,
         }
     }
+
+    /// Returns the underlying provider, initializing on first call.
+    ///
+    /// If initialization fails, stores a `DegradedEmbeddingProvider` so
+    /// subsequent calls do not retry a broken init path.
+    pub(crate) async fn get(&self) -> &Arc<dyn EmbeddingProvider> {
+        self.inner
+            .get_or_init(|| async {
+                let embedding_config = EmbeddingConfig {
+                    provider: self.settings.provider.clone(),
+                    model: self.settings.model.clone(),
+                    dimension: Some(self.settings.dimension),
+                    api_key: None,
+                };
+                #[expect(
+                    clippy::as_conversions,
+                    reason = "coercion to dyn EmbeddingProvider trait object: required for OnceCell<Arc<dyn Trait>>"
+                )]
+                match create_provider(&embedding_config) {
+                    Ok(p) => {
+                        info!(
+                            provider = %self.settings.provider,
+                            dim = self.settings.dimension,
+                            "embedding provider initialized (lazy)"
+                        );
+                        Arc::from(p) as Arc<dyn EmbeddingProvider>
+                    }
+                    Err(e) => {
+                        warn!(
+                            error = %e,
+                            provider = %self.settings.provider,
+                            "embedding provider failed to load: degraded mode \
+                             (recall and vector search unavailable)"
+                        );
+                        Arc::new(DegradedEmbeddingProvider::new(self.settings.dimension))
+                            as Arc<dyn EmbeddingProvider>
+                    }
+                }
+            })
+            .await
+    }
+
+    /// Returns `true` if the provider has been initialized and is NOT degraded.
+    #[expect(
+        dead_code,
+        reason = "diagnostic helper for callers that need to check provider readiness"
+    )]
+    fn is_ready(&self) -> bool {
+        self.inner
+            .get()
+            .is_some_and(|p| !mneme::embedding::is_degraded_provider(p.as_ref()))
+    }
+
+    /// Returns `true` if initialization has started (provider present, degraded or not).
+    #[expect(
+        dead_code,
+        reason = "diagnostic helper for callers that need to check init status"
+    )]
+    fn is_initialized(&self) -> bool {
+        self.inner.get().is_some()
+    }
+}
+
+impl EmbeddingProvider for LazyEmbeddingProvider {
+    fn embed(&self, text: &str) -> std::result::Result<Vec<f32>, mneme::embedding::EmbeddingError> {
+        match self.inner.get() {
+            Some(provider) => provider.embed(text),
+            // WHY: before init completes, delegate to the degraded provider
+            // which returns a descriptive error for callers that need embeddings.
+            None => self.degraded.embed(text),
+        }
+    }
+
+    fn embed_batch(
+        &self,
+        texts: &[&str],
+    ) -> std::result::Result<Vec<Vec<f32>>, mneme::embedding::EmbeddingError> {
+        match self.inner.get() {
+            Some(provider) => provider.embed_batch(texts),
+            None => self.degraded.embed_batch(texts),
+        }
+    }
+
+    fn dimension(&self) -> usize {
+        self.inner.get().map_or(self.dimension, |p| p.dimension())
+    }
+
+    fn model_name(&self) -> &str {
+        match self.inner.get() {
+            Some(provider) => provider.model_name(),
+            None => LazyEmbeddingProvider::LOADING_MODEL_NAME,
+        }
+    }
+}
+
+impl LazyEmbeddingProvider {
+    /// Sentinel model name reported while the provider is still loading.
+    ///
+    /// Health checks use this to report `"degraded: embedding-loading"`.
+    pub(crate) const LOADING_MODEL_NAME: &'static str = "embedding-loading";
 }
 
 #[cfg(feature = "recall")]
