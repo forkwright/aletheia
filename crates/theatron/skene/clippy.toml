@@ -21,6 +21,3 @@ path = "std::fs::File::open"
 reason = "use tokio::fs::File::open for async or abstract behind a trait for testability"
 
 # UI library must not open DB connections
-[[disallowed-types]]
-path = "rusqlite::Connection"
-reason = "theatron-core must not access SQLite; persistence belongs in mneme"

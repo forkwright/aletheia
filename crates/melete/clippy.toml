@@ -22,6 +22,3 @@ path = "std::fs::File::open"
 reason = "use tokio::fs::File::open for async or abstract behind a trait for testability"
 
 # Distillation is a pure transformation; persistence belongs in mneme
-[[disallowed-types]]
-path = "rusqlite::Connection"
-reason = "melete must not access SQLite directly; persistence belongs in mneme"

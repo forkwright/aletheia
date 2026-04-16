@@ -1,5 +1,5 @@
-# daemon (aletheia-oikonomos): background task runner and maintenance scheduler.
-# May hold rusqlite connections for the cron/task store it owns directly.
+# daemon (oikonomos): background task runner and maintenance scheduler.
+# Owns a fjall-backed task-state store directly.
 
 [[disallowed-methods]]
 path = "std::process::exit"

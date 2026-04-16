@@ -10,6 +10,3 @@ path = "std::process::abort"
 reason = "do not call process::abort from UI code"
 
 # Desktop UI is a stateless client; direct DB access would couple it to the backend
-[[disallowed-types]]
-path = "rusqlite::Connection"
-reason = "theatron-desktop must not access SQLite; all data flows through the Aletheia HTTP API"

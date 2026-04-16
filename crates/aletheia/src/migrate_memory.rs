@@ -296,6 +296,7 @@ fn import_fact(
         nous_id: agent_id.to_owned(),
         content: record.content.clone(),
         fact_type: String::new(),
+        scope: None,
         temporal: FactTemporal {
             valid_from,
             valid_to: far_future(),
@@ -344,7 +345,11 @@ fn import_fact(
 fn content_hash(content: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(content.as_bytes());
-    let hex = format!("{:x}", hasher.finalize());
+    let digest = hasher.finalize();
+    let mut hex = String::with_capacity(digest.len() * 2);
+    for byte in digest.iter() {
+        std::fmt::Write::write_fmt(&mut hex, format_args!("{byte:02x}")).unwrap_or(());
+    }
     hex.get(..16).unwrap_or(&hex).to_owned()
 }
 

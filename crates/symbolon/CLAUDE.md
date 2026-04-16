@@ -8,7 +8,7 @@ Authentication and authorization: JWT sessions, API keys, Argon2id passwords, OA
 2. `src/jwt.rs`: JwtManager, JwtConfig (HS256 JWT issuance and validation using ring::hmac)
 3. `src/types.rs`: Claims, Role, TokenKind, Action (shared auth types)
 4. `src/auth.rs`: AuthService facade composing JWT, API keys, passwords, RBAC
-5. `src/store.rs`: AuthStore (SQLite-backed credential and token storage)
+5. `src/store.rs`: AuthStore (fjall-backed credential and token storage)
 
 ## Key types
 
@@ -24,7 +24,7 @@ Authentication and authorization: JWT sessions, API keys, Argon2id passwords, OA
 | `Claims` | `types.rs` | JWT payload: sub, role, nous_id, iss, iat, exp, jti, kind |
 | `Role` | `types.rs` | RBAC roles: Operator, Agent, Readonly |
 | `AuthService` | `auth.rs` | Unified facade: register, login, issue/validate tokens, check permissions |
-| `AuthStore` | `store.rs` | SQLite-backed user, API key, and token persistence |
+| `AuthStore` | `store.rs` | fjall-backed user, API key, and token persistence |
 
 ## Patterns
 
@@ -47,5 +47,5 @@ Authentication and authorization: JWT sessions, API keys, Argon2id passwords, OA
 
 ## Dependencies
 
-Uses: koina, argon2, ring, reqwest, rusqlite
+Uses: koina, argon2, ring, reqwest, fjall
 Used by: pylon, diaporeia, aletheia (binary)

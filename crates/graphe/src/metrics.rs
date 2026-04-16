@@ -68,7 +68,7 @@ pub fn register(registry: &mut Registry) {
 ///
 /// Compiled when either the `sqlite` or `fjall` feature is enabled — both
 /// store backends call this on successful session creation.
-#[cfg(any(feature = "sqlite", feature = "fjall", test))]
+
 pub(crate) fn record_session_created(nous_id: &str, session_type: &str) {
     SESSIONS_TOTAL
         .get_or_create(&SessionLabels {
@@ -82,7 +82,7 @@ pub(crate) fn record_session_created(nous_id: &str, session_type: &str) {
 ///
 /// Only compiled when the `sqlite` feature is enabled — the only call site
 /// (`backup::create_backup`) lives behind that feature gate.
-#[cfg(any(feature = "sqlite", test))]
+
 pub(crate) fn record_backup_duration(duration_secs: f64, success: bool) {
     let status = if success { "ok" } else { "error" };
     BACKUP_DURATION_SECONDS

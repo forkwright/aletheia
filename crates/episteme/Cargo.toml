@@ -14,9 +14,9 @@ workspace = true
 default = ["graph-algo"]
 graph-algo = []
 test-support = []
-# WHY: graphe/sqlite is required because knowledge_portability.rs (gated on
-# mneme-engine) references aletheia_graphe::portability which lives behind sqlite.
-mneme-engine = ["dep:krites", "dep:tokio", "graphe/mneme-engine", "graphe/sqlite"]
+# WHY: mneme-engine brings in the Datalog knowledge store via krites and the
+# tokio blocking-task utilities graphe's engine errors need.
+mneme-engine = ["dep:krites", "dep:tokio", "graphe/mneme-engine"]
 storage-fjall = ["mneme-engine", "krites/storage-fjall"]
 embed-candle = ["dep:candle-core", "dep:candle-nn", "dep:candle-transformers", "dep:tokenizers", "dep:hf-hub"]
 # Test tiers (see docs/test-tiers.md)

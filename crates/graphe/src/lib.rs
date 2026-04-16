@@ -1,65 +1,30 @@
 #![deny(missing_docs)]
 //! aletheia-graphe: session persistence layer
 //!
-//! Graphe (Γραφή): "writing, record." Manages sessions, messages, usage
-//! tracking, and agent portability via embedded `SQLite`.
+//! Graphe (Γραφή): "writing, record." Manages sessions, messages, and usage
+//! tracking via a fjall LSM-tree store (pure Rust, zero C dependencies).
 
 /// Newtype wrappers for knowledge-domain identifiers (re-exported from `eidos`).
 pub use eidos::id;
 /// Knowledge graph domain types (re-exported from `eidos`).
 pub use eidos::knowledge;
 
-/// Database backup and JSON export for session data.
-#[cfg(feature = "sqlite")]
-pub mod backup;
 /// Graphe-specific error types and result alias.
 pub mod error;
-/// Agent export: build an `AgentFile` from session store and workspace.
-#[cfg(feature = "sqlite")]
-pub mod export;
-/// Agent import: restore an agent from a portable `AgentFile`.
-#[cfg(feature = "sqlite")]
-pub mod import;
 /// Prometheus metric definitions for session persistence.
 pub mod metrics;
-/// Versioned `SQLite` schema migration runner.
-#[cfg(feature = "sqlite")]
-pub mod migration;
 /// Agent portability schema: `AgentFile` format for cross-runtime export/import.
-#[cfg(feature = "sqlite")]
 pub mod portability;
-/// SQLite corruption detection, read-only fallback, and auto-repair.
-#[cfg(feature = "sqlite")]
-pub mod recovery;
-/// Session retention policies and automated cleanup of old data.
-#[cfg(feature = "sqlite")]
-pub mod retention;
-/// `SQLite` schema DDL constants.
-#[cfg(feature = "sqlite")]
-pub mod schema;
-/// Session store — fjall (default) or SQLite backend.
-///
-/// Both backends expose the same [`store::SessionStore`] API.
-#[cfg(any(feature = "fjall", feature = "sqlite"))]
+/// Session store — fjall LSM-tree backend.
 pub mod store;
 /// Core types for sessions, messages, usage records, and agent notes.
 pub mod types;
 
-/// Shared test fixtures for session store tests (DRY helpers).
-#[cfg(all(test, any(feature = "sqlite", feature = "fjall")))]
+/// Shared test fixtures for session store tests.
+#[cfg(test)]
 pub(crate) mod test_fixtures;
 
-#[cfg(all(test, feature = "sqlite"))]
-mod assertions {
-    use super::store::SessionStore;
-
-    const _: fn() = || {
-        fn assert<T: Send>() {}
-        assert::<SessionStore>();
-    };
-}
-
-#[cfg(all(test, feature = "fjall", not(feature = "sqlite")))]
+#[cfg(test)]
 mod fjall_assertions {
     use super::store::SessionStore;
 

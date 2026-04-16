@@ -1,6 +1,6 @@
 # symbolon: credentials, auth, and RBAC — owns its own token store and OAuth flows.
-# May use rusqlite::Connection (manages JWT/RBAC persistence) and reqwest::Client
-# (OAuth token refresh). No higher-layer crate types should appear here.
+# Owns a fjall-backed auth store directly. May use reqwest::Client (OAuth token
+# refresh). No higher-layer crate types should appear here.
 
 [[disallowed-methods]]
 path = "std::process::exit"

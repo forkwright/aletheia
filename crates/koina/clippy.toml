@@ -17,6 +17,3 @@ path = "reqwest::Client"
 reason = "HTTP client belongs in hermeneus or pylon, not koina"
 
 # koina must not open SQLite connections; persistence belongs in mneme
-[[disallowed-types]]
-path = "rusqlite::Connection"
-reason = "database access belongs in mneme, not koina"

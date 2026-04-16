@@ -27,6 +27,3 @@ path = "reqwest::Client"
 reason = "thesauros must not perform HTTP calls; domain packs are loaded from the filesystem"
 
 # Pack loading is not database-backed
-[[disallowed-types]]
-path = "rusqlite::Connection"
-reason = "thesauros must not access SQLite directly; persistence belongs in mneme"

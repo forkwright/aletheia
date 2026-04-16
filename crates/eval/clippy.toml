@@ -22,6 +22,3 @@ path = "std::fs::File::open"
 reason = "use tokio::fs::File::open for async or abstract behind a trait for testability"
 
 # Eval is an external client; DB access would couple it to implementation details
-[[disallowed-types]]
-path = "rusqlite::Connection"
-reason = "eval must not access SQLite directly; test through the HTTP API"

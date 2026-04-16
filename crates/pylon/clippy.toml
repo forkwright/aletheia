@@ -21,7 +21,3 @@ reason = "use tokio::fs for async or abstract behind a trait for testability"
 path = "std::fs::File::open"
 reason = "use tokio::fs::File::open for async or abstract behind a trait for testability"
 
-# Handlers must not open DB connections; all persistence flows through AppState -> NousActor
-[[disallowed-types]]
-path = "rusqlite::Connection"
-reason = "pylon handlers must not open SQLite connections directly; use AppState and the actor model"

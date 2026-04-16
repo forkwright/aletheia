@@ -65,16 +65,6 @@ pub use krites as engine;
 
 // ── Session persistence (graphe) ───────────────────────────────────────────
 
-/// Database backup and JSON export for session data.
-///
-/// # Facade surface
-///
-/// [`BackupManager`](backup::BackupManager)
-#[cfg(feature = "sqlite")]
-pub mod backup {
-    pub use graphe::backup::BackupManager;
-}
-
 /// Mneme-specific error types and result alias.
 ///
 /// # Facade surface
@@ -84,46 +74,20 @@ pub mod error {
     pub use graphe::error::Error;
 }
 
-/// Agent export: build an `AgentFile` from session store and workspace.
-///
-/// # Facade surface
-///
-/// [`ExportOptions`](export::ExportOptions),
-/// [`export_agent`](export::export_agent)
-#[cfg(feature = "sqlite")]
-pub mod export {
-    pub use graphe::export::{ExportOptions, export_agent};
-}
-
-/// Agent import: restore an agent from a portable `AgentFile`.
-///
-/// # Facade surface
-///
-/// [`ImportOptions`](import::ImportOptions),
-/// [`import_agent`](import::import_agent)
-#[cfg(feature = "sqlite")]
-pub mod import {
-    pub use graphe::import::{ImportOptions, import_agent};
-}
-
 /// Agent portability schema: `AgentFile` format for cross-runtime export/import.
 ///
 /// # Facade surface
 ///
 /// [`AgentFile`](portability::AgentFile)
-#[cfg(feature = "sqlite")]
 pub mod portability {
     pub use graphe::portability::AgentFile;
 }
 
-/// Session store — fjall (default) or `SQLite` backend.
-///
-/// Both backends expose the same `SessionStore` API.
+/// Session store — fjall LSM-tree backend.
 ///
 /// # Facade surface
 ///
 /// [`SessionStore`](store::SessionStore)
-#[cfg(any(feature = "fjall", feature = "sqlite"))]
 pub mod store {
     pub use graphe::store::SessionStore;
 }
@@ -307,26 +271,19 @@ pub mod skills {
     }
 }
 
-/// Verify that `mneme-engine` and `sqlite` features coexist without `SQLite`
-/// link conflicts.
-///
-/// The engine's `storage-sqlite` backend was removed; its remaining backends
-/// (mem, redb, fjall) have no `SQLite` dependency. `rusqlite` compiles with
-/// `features = ["bundled"]`, so its symbols are isolated. Both features can
-/// be active in the same binary.
-#[cfg(all(test, feature = "sqlite", feature = "mneme-engine"))]
+#[cfg(all(test, feature = "mneme-engine"))]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod coexistence_tests {
     use crate::knowledge_store::KnowledgeStore;
     use crate::store::SessionStore;
 
     #[test]
-    fn engine_and_sqlite_session_store_coexist() {
+    fn engine_and_session_store_coexist() {
         let ks = KnowledgeStore::open_mem()
             .expect("KnowledgeStore::open_mem should succeed with mneme-engine feature");
 
-        let ss = SessionStore::open_in_memory()
-            .expect("SessionStore::open_in_memory should succeed with sqlite feature");
+        let ss =
+            SessionStore::open_in_memory().expect("SessionStore::open_in_memory should succeed");
 
         drop(ks);
         drop(ss);

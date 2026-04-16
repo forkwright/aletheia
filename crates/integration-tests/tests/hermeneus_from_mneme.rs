@@ -1,7 +1,6 @@
 //! Cross-crate tests converting mneme types to hermeneus types.
 
 #![expect(clippy::expect_used, reason = "test assertions")]
-#![cfg(feature = "sqlite-tests")]
 #![expect(
     clippy::indexing_slicing,
     reason = "integration tests: index-based assertions on known-length slices"

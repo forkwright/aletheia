@@ -22,6 +22,3 @@ path = "std::fs::File::open"
 reason = "use tokio::fs::File::open for async or abstract behind a trait for testability"
 
 # All persistence flows through the nous actor and AppState, not direct DB access
-[[disallowed-types]]
-path = "rusqlite::Connection"
-reason = "diaporeia must not access SQLite directly; use the nous actor and AppState"

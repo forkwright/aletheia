@@ -1,15 +1,12 @@
 //! Integration tests for the `SessionStore` public API.
 //!
 //! WHY: graphe had zero `crates/graphe/tests/` integration tests prior to
-//! this. Inline tests in `src/store/tests/` cover individual methods, but
-//! they're allowed to reach into private state. These tests run against
-//! the published API surface only — what an external crate
-//! (e.g. mneme, nous) can actually use.
+//! this. These tests run against the published API surface only — what an
+//! external crate (e.g. mneme, nous) can actually use.
 //!
-//! Each test creates an isolated tempdir-backed `SQLite` store so they
-//! can run in parallel without sharing state.
+//! Each test creates an isolated tempdir-backed fjall store so they can run
+//! in parallel without sharing state.
 
-#![cfg(feature = "sqlite")]
 #![expect(clippy::expect_used, reason = "test assertions")]
 #![expect(
     clippy::indexing_slicing,
@@ -25,18 +22,18 @@ use tempfile::TempDir;
 /// for the duration of the test or its files will be cleaned up.
 fn fresh_store() -> (SessionStore, TempDir) {
     let dir = TempDir::new().expect("temp dir creates");
-    let path = dir.path().join("session.db");
+    let path = dir.path().join("session");
     let store = SessionStore::open(&path).expect("session store opens");
     (store, dir)
 }
 
 #[test]
-fn open_creates_database_file() {
+fn open_creates_store_directory() {
     let (_store, dir) = fresh_store();
-    let db_path = dir.path().join("session.db");
+    let db_path = dir.path().join("session");
     assert!(
         db_path.exists(),
-        "open() must create the database file at the requested path"
+        "open() must create the store directory at the requested path"
     );
 }
 
