@@ -463,6 +463,9 @@ impl SessionTx<'_> {
                 .into());
             }
             if current >= warn_threshold {
+                // CodeQL: cleartext-logging false positive — index_name, current,
+                // and max_cap are internal HNSW metadata (table name and integer
+                // counters), not credentials or user-supplied sensitive data.
                 warn!(
                     index = %manifest.index_name,
                     current,

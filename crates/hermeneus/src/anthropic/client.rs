@@ -807,7 +807,7 @@ impl AnthropicProvider {
                 headers.insert("idempotency-key", val);
             }
 
-            // SAFETY: cleartext transmission is impossible here. Both constructors
+            // CodeQL: cleartext-transmission false positive. Both constructors
             // (`from_config` and `with_credential_provider`) reject non-HTTPS base
             // URLs unless the target is loopback (localhost / 127.0.0.1). The
             // `base_url` field is immutable after construction, so by the time we

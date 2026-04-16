@@ -545,11 +545,38 @@ fn parse_command_args(command: &str) -> std::result::Result<(String, Vec<String>
     Ok((program, args))
 }
 
+/// WHY: The parent process holds API keys (`ANTHROPIC_API_KEY`,
+/// `ANTHROPIC_AUTH_TOKEN`, `ALETHEIA_*`, etc.) in its environment. Without
+/// clearing, any child process spawned by the exec tool inherits these secrets,
+/// enabling exfiltration via prompt injection (e.g., `exec env | grep API`).
+/// The Landlock sandbox restricts filesystem access but NOT env var reading —
+/// env vars are process state, not filesystem objects.
+///
+/// We clear the entire environment and re-add only variables needed for basic
+/// process operation. Operators needing additional variables should add them to
+/// the `SandboxConfig` allowlist. Closes #3374.
+const SAFE_ENV_VARS: &[&str] = &[
+    "PATH",
+    "HOME",
+    "TERM",
+    "LANG",
+    "LC_ALL",
+    "USER",
+    "SHELL",
+    "TMPDIR",
+    "XDG_RUNTIME_DIR",
+    "TZ",
+];
+
 struct ExecExecutor {
     sandbox: crate::sandbox::SandboxConfig,
 }
 
 impl ToolExecutor for ExecExecutor {
+    #[expect(
+        clippy::too_many_lines,
+        reason = "env sanitization (#3374) + sandbox + rlimit setup in a single spawn sequence; splitting obscures the security-critical ordering"
+    )]
     fn execute<'a>(
         &'a self,
         input: &'a ToolInput,
@@ -577,6 +604,15 @@ impl ToolExecutor for ExecExecutor {
                 .current_dir(&ctx.workspace)
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped());
+
+            // WHY: Clear inherited environment to prevent API key exfiltration.
+            // See SAFE_ENV_VARS constant for rationale. Closes #3374.
+            cmd.env_clear();
+            for &var in SAFE_ENV_VARS {
+                if let Some(val) = std::env::var_os(var) {
+                    cmd.env(var, val);
+                }
+            }
 
             // WHY: Apply process resource limits before sandbox to constrain fork-bombs
             // and runaway CPU usage. RLIMIT_NPROC caps child process count;

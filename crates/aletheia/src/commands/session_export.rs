@@ -105,12 +105,11 @@ async fn fetch_session(
         );
     }
     let url = format!("{base_url}{API_V1}/sessions/{session_id}");
-    // SAFETY: cleartext transmission risk is mitigated. The CLI default is
+    // CodeQL: cleartext-transmission false positive. The CLI default is
     // localhost (http://127.0.0.1:18789) which never leaves the machine. The
-    // guard above (lines 97-106) logs a warning when the operator overrides
-    // --url to a non-HTTPS, non-localhost target, making the risk explicit.
-    // This is a local operator tool, not a library API — the operator controls
-    // the URL and accepts the risk when pointing at a remote HTTP endpoint.
+    // guard above logs a tracing::warn when the operator overrides --url to a
+    // non-HTTPS, non-localhost target, making the risk explicit. This is a
+    // local operator tool, not a library API — the operator controls the URL.
     let resp = client.get(&url).send().await.map_err(|e| {
         if e.is_connect() {
             crate::error::Error::msg(format!(
@@ -150,9 +149,8 @@ async fn fetch_history(
         );
     }
     let url = format!("{base_url}{API_V1}/sessions/{session_id}/history");
-    // SAFETY: cleartext transmission risk is mitigated — see the identical
-    // comment in `fetch_session` above. The non-HTTPS guard on lines 137-145
-    // warns when the operator targets a remote HTTP endpoint.
+    // CodeQL: cleartext-transmission false positive — same mitigation as
+    // `fetch_session` above: localhost default + tracing::warn on non-HTTPS.
     let resp = client
         .get(&url)
         .send()

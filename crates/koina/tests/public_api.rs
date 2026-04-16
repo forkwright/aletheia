@@ -187,12 +187,14 @@ mod uuid {
         let s = uuid_v4();
         let chars: Vec<char> = s.chars().collect();
         // Index after first 8 hex + first hyphen + 4 hex + second hyphen = 14
-        // codequality:ignore — test-generated UUID, not a credential or sensitive value
+        // CodeQL: cleartext-logging false positive — `s` is a freshly generated random
+        // UUID v4 from uuid_v4(), not a credential, password, or sensitive value.
+        // The assert message includes it for test failure diagnostics only.
         assert_eq!(
             chars[14], '4',
             "UUID v4 version marker should be '4' at position 14, got: {s}"
         );
-        // codequality:ignore — test-generated UUID, not a credential or sensitive value
+        // CodeQL: cleartext-logging false positive — same as above; random UUID, not a secret.
         assert!(
             matches!(chars[19], '8' | '9' | 'a' | 'b'),
             "UUID v4 variant should be 8/9/a/b at position 19, got: {s}"

@@ -24,7 +24,9 @@ use crate::knowledge_store::KnowledgeStore;
 /// should never be negative). When detected, a warning is logged with the
 /// raw value and the function returns 0 for operational continuity.
 fn i64_as_usize(v: i64) -> usize {
-    if let Ok(n) = v.try_into() { n } else {
+    if let Ok(n) = v.try_into() {
+        n
+    } else {
         // WHY: negative counts are a data corruption indicator — surface it
         // via logging rather than silently defaulting.
         tracing::warn!(
