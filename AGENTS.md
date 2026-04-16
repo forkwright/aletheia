@@ -32,16 +32,28 @@ Desktop crate (`proskenion`) excluded from workspace — build standalone:
 
 | Task | Location | Registration |
 |------|----------|-------------|
+| HTTP endpoint | `crates/pylon/src/handlers/` | Route in `crates/pylon/src/router.rs` + OpenAPI spec |
+| Tool | `crates/organon/src/builtins/` | `register_all()` |
+| Config field | `crates/taxis/src/config/behavior/{domain}.rs` | Field on `AletheiaConfig` |
+| Knowledge type | `crates/eidos/src/knowledge/` | Add to shared knowledge types |
+| Pipeline stage | `crates/nous/src/pipeline/` | Wire into turn pipeline |
+| Maintenance task | `crates/daemon/src/maintenance/` | Register in runner |
 | CLI subcommand | `crates/aletheia/src/commands/` | Add to clap derive in `main.rs` |
-| API endpoint | `crates/pylon/src/handlers/` | Route in `crates/pylon/src/router.rs` |
-| Built-in tool | `crates/organon/src/builtins/` | `register_all()` |
-| Config section | `crates/taxis/src/config.rs` | Field on `AletheiaConfig` |
+| Provider | `crates/hermeneus/src/{provider}/` | Register in provider factory |
+| Datalog rule | `crates/krites` | Add rule to embedded Datalog engine |
+| Dispatch stage | `crates/energeia` | Wire into dispatch orchestration |
 | Error variant | `crates/{crate}/src/error.rs` | snafu derive on Error enum |
-| Maintenance task | `crates/daemon/src/` | Register in runner |
 | Bootstrap file | `crates/nous/src/bootstrap/` | Section list in assembler |
 | Middleware | `crates/pylon/src/middleware/` | Layer in `crates/pylon/src/server.rs` |
 
 Crate architecture and dependency graph: `docs/ARCHITECTURE.md`.
+
+## Common Mistakes
+
+- **Don't add a new crate if a function in an existing crate would do.** See #3501.
+- **Don't add `rusqlite`-dependent code** — we use `fjall`.
+- **Don't add ad-hoc HTTP clients** — use `hermeneus` or `organon/http_client`.
+- **Don't write `_ = result`** — handle the result or document why we intentionally drop it.
 
 ## Gate Trailer
 
