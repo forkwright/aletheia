@@ -102,6 +102,16 @@ impl TaskRunner {
             false,
         );
 
+        if config.fjall_backup.enabled {
+            self.register_builtin(
+                "fjall-backup",
+                "Fjall knowledge store backup",
+                Schedule::Interval(Duration::from_hours(config.fjall_backup.interval_hours)),
+                BuiltinTask::FjallBackup,
+                true,
+            );
+        }
+
         if config.propose_rules.enabled {
             // WHY: weekly cadence balances freshness with noise — daily would flood
             // the operator with near-identical proposals.

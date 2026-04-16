@@ -132,6 +132,8 @@ pub enum BuiltinTask {
     SelfPrompt,
     /// Analyze recent session observations and write candidate lint rule proposals.
     ProposeRules,
+    /// Periodic file-level backup of the fjall knowledge store.
+    FjallBackup,
 }
 
 impl Schedule {

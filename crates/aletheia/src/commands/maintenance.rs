@@ -7,7 +7,7 @@ use snafu::prelude::*;
 
 use oikonomos::maintenance::{
     AutoDreamConfig, DbMonitor, DbMonitoringConfig, DriftDetectionConfig, DriftDetector,
-    MaintenanceConfig, ProposeRulesConfig, TraceRotationConfig, TraceRotator,
+    FjallBackupConfig, MaintenanceConfig, ProposeRulesConfig, TraceRotationConfig, TraceRotator,
 };
 use oikonomos::runner::TaskRunner;
 use taxis::loader::load_config;
@@ -66,7 +66,12 @@ pub(crate) fn run(action: Action, instance_root: Option<&PathBuf>) -> Result<()>
         }
         Action::Run { task, verbose } => {
             let tasks: Vec<&str> = if task == "all" {
-                vec!["trace-rotation", "drift-detection", "db-monitor"]
+                vec![
+                    "trace-rotation",
+                    "drift-detection",
+                    "db-monitor",
+                    "fjall-backup",
+                ]
             } else {
                 vec![task.as_str()]
             };
@@ -126,6 +131,22 @@ fn run_task(name: &str, maint: &MaintenanceConfig, verbose: bool) -> Result<()> 
                 );
             }
         }
+        "fjall-backup" => {
+            let manager = oikonomos::maintenance::FjallBackup::new(maint.fjall_backup.clone());
+            let report = manager
+                .create_backup()
+                .whatever_context("fjall backup failed")?;
+            match report.backup_path {
+                Some(path) => println!(
+                    "fjall-backup: {} files copied ({} bytes) to {}, {} old backups pruned",
+                    report.files_copied,
+                    report.bytes_copied,
+                    path.display(),
+                    report.backups_pruned,
+                ),
+                None => println!("fjall-backup: skipped (source directory not found)"),
+            }
+        }
         "self-audit" => {
             use nous::self_audit::{AuditTrigger, CheckContext, SelfAuditor};
             let mut auditor = SelfAuditor::new();
@@ -146,7 +167,7 @@ fn run_task(name: &str, maint: &MaintenanceConfig, verbose: bool) -> Result<()> 
             }
         }
         other => whatever!(
-            "unknown task: {other}. Valid: trace-rotation, drift-detection, db-monitor, self-audit, all"
+            "unknown task: {other}. Valid: trace-rotation, drift-detection, db-monitor, fjall-backup, self-audit, all"
         ),
     }
     Ok(())
@@ -189,6 +210,13 @@ pub(crate) fn build_config(
         knowledge_maintenance: oikonomos::maintenance::KnowledgeMaintenanceConfig {
             enabled: settings.knowledge_maintenance_enabled,
             auto_dream: AutoDreamConfig::default(),
+        },
+        fjall_backup: FjallBackupConfig {
+            enabled: settings.backup.enabled,
+            source_dir: oikos.knowledge_db(),
+            backup_dir: oikos.backups().join("fjall"),
+            interval_hours: settings.backup.backup_interval_hours,
+            retention_count: settings.backup.backup_retention_count,
         },
         propose_rules: ProposeRulesConfig::default(),
         cron: oikonomos::cron::CronConfig {

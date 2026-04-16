@@ -230,10 +230,18 @@ fn check_provider_reachability(state: &HealthState) -> HealthCheck {
     }
 }
 
-/// Check embedding provider status. Reports `"warn"` with
-/// `"degraded: no-embeddings"` when the real provider failed to load at
-/// startup and the server is running BM25-only (#3380).
+/// Check embedding provider status.
+///
+/// Reports:
+/// - `"pass"` when the real provider is loaded and healthy
+/// - `"warn"` with `"degraded: embedding-loading"` while the lazy provider
+///   is still initializing (#3474)
+/// - `"warn"` with `"degraded: no-embeddings"` when the real provider failed
+///   to load and the server is running BM25-only (#3380)
 fn check_embedding_provider(state: &HealthState) -> HealthCheck {
+    /// Sentinel model name emitted by `LazyEmbeddingProvider` while still loading.
+    const LOADING_MODEL_NAME: &str = "embedding-loading";
+
     let Some(provider) = state.embedding_provider.as_ref() else {
         return HealthCheck {
             name: "embedding_provider",
@@ -241,7 +249,20 @@ fn check_embedding_provider(state: &HealthState) -> HealthCheck {
             message: Some("no embedding provider configured".to_owned()),
         };
     };
-    if mneme::embedding::is_degraded_provider(provider.as_ref()) {
+
+    let model_name = provider.model_name();
+
+    if model_name == LOADING_MODEL_NAME {
+        HealthCheck {
+            name: "embedding_provider",
+            status: "warn",
+            message: Some(
+                "degraded: embedding-loading (model initializing — \
+                 recall unavailable until load completes)"
+                    .to_owned(),
+            ),
+        }
+    } else if mneme::embedding::is_degraded_provider(provider.as_ref()) {
         HealthCheck {
             name: "embedding_provider",
             status: "warn",
