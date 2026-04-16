@@ -151,7 +151,7 @@ fn hybrid_search_empty_seeds_returns_results() {
             access_count: 0,
             last_accessed_at: None,
         },
-            sensitivity: crate::knowledge::FactSensitivity::Public,
+        sensitivity: crate::knowledge::FactSensitivity::Public,
         scope: None,
     };
     store.insert_fact(&fact).expect("insert fact");
@@ -237,7 +237,7 @@ fn hybrid_search_graph_aggregation() {
             access_count: 0,
             last_accessed_at: None,
         },
-            sensitivity: crate::knowledge::FactSensitivity::Public,
+        sensitivity: crate::knowledge::FactSensitivity::Public,
         scope: None,
     };
     store.insert_fact(&f1).expect("insert f1");
@@ -282,7 +282,7 @@ fn hybrid_search_graph_aggregation() {
             access_count: 0,
             last_accessed_at: None,
         },
-            sensitivity: crate::knowledge::FactSensitivity::Public,
+        sensitivity: crate::knowledge::FactSensitivity::Public,
         scope: None,
     };
     store.insert_fact(&f2).expect("insert f2");
@@ -417,7 +417,7 @@ fn hybrid_search_two_signal_no_graph() {
             access_count: 0,
             last_accessed_at: None,
         },
-            sensitivity: crate::knowledge::FactSensitivity::Public,
+        sensitivity: crate::knowledge::FactSensitivity::Public,
         scope: None,
     };
     store.insert_fact(&fact).expect("insert fact");
@@ -512,7 +512,7 @@ fn hybrid_search_absent_signal_rank_is_negative_one() {
             access_count: 0,
             last_accessed_at: None,
         },
-            sensitivity: crate::knowledge::FactSensitivity::Public,
+        sensitivity: crate::knowledge::FactSensitivity::Public,
         scope: None,
     };
     store.insert_fact(&fact).expect("insert fact");

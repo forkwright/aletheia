@@ -132,7 +132,16 @@ pub enum PromptCacheMode {
 /// The ordering `Cloud < LocalHosted < Embedded` mirrors the sensitivity
 /// ordering so admission reduces to `sensitivity <= target`.
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize, Default,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+    Default,
 )]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]

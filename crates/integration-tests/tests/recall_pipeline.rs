@@ -31,14 +31,14 @@ fn recall_with_mock_vectors_end_to_end() {
                 distance: 0.05,
                 source_type: "fact".to_owned(),
                 source_id: "f-1".to_owned(),
-            sensitivity: mneme::knowledge::FactSensitivity::Public,
+                sensitivity: mneme::knowledge::FactSensitivity::Public,
             },
             KnowledgeRecallResult {
                 content: "Aletheia uses Tokio actors".to_owned(),
                 distance: 0.3,
                 source_type: "fact".to_owned(),
                 source_id: "f-2".to_owned(),
-            sensitivity: mneme::knowledge::FactSensitivity::Public,
+                sensitivity: mneme::knowledge::FactSensitivity::Public,
             },
         ],
     };

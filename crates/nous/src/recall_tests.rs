@@ -415,7 +415,7 @@ fn terminology_discovery_finds_novel_terms() {
             nous_id: String::new(),
             factors: FactorScores::default(),
             score: 0.8,
-        sensitivity: mneme::knowledge::FactSensitivity::Public,
+            sensitivity: mneme::knowledge::FactSensitivity::Public,
         },
         ScoredResult {
             content: "quantum computing leverages superposition states".to_owned(),
@@ -424,7 +424,7 @@ fn terminology_discovery_finds_novel_terms() {
             nous_id: String::new(),
             factors: FactorScores::default(),
             score: 0.7,
-        sensitivity: mneme::knowledge::FactSensitivity::Public,
+            sensitivity: mneme::knowledge::FactSensitivity::Public,
         },
     ];
 
@@ -445,7 +445,7 @@ fn terminology_discovery_ignores_stopwords() {
         nous_id: String::new(),
         factors: FactorScores::default(),
         score: 0.5,
-    sensitivity: mneme::knowledge::FactSensitivity::Public,
+        sensitivity: mneme::knowledge::FactSensitivity::Public,
     }];
 
     let terms = discover_terminology(&results, "test query");
@@ -470,7 +470,7 @@ fn terminology_discovery_skips_short_words() {
         nous_id: String::new(),
         factors: FactorScores::default(),
         score: 0.5,
-    sensitivity: mneme::knowledge::FactSensitivity::Public,
+        sensitivity: mneme::knowledge::FactSensitivity::Public,
     }];
 
     let terms = discover_terminology(&results, "test");
@@ -490,7 +490,7 @@ fn gap_detection_finds_capitalized_phrases() {
         nous_id: String::new(),
         factors: FactorScores::default(),
         score: 0.8,
-    sensitivity: mneme::knowledge::FactSensitivity::Public,
+        sensitivity: mneme::knowledge::FactSensitivity::Public,
     }];
 
     let gaps = detect_gaps(&results);
@@ -510,7 +510,7 @@ fn gap_detection_finds_quoted_strings() {
         nous_id: String::new(),
         factors: FactorScores::default(),
         score: 0.7,
-    sensitivity: mneme::knowledge::FactSensitivity::Public,
+        sensitivity: mneme::knowledge::FactSensitivity::Public,
     }];
 
     let gaps = detect_gaps(&results);

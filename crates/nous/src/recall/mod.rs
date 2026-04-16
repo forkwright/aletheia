@@ -469,15 +469,14 @@ impl RecallStage {
 /// The ordering on `FactSensitivity` mirrors the ordering on
 /// `DeploymentTarget`, so admission reduces to `sensitivity <= max`.
 fn max_sensitivity_for(target: DeploymentTarget) -> FactSensitivity {
+    // WHY: `DeploymentTarget` is `#[non_exhaustive]` — any future boundary
+    // this crate has not been taught about falls into the wildcard arm and
+    // is treated as `Public`, the safest classification. Operators cannot
+    // leak classified facts to an unknown target by accident.
     match target {
-        DeploymentTarget::Cloud => FactSensitivity::Public,
         DeploymentTarget::LocalHosted => FactSensitivity::Internal,
         DeploymentTarget::Embedded => FactSensitivity::Confidential,
-        // WHY: `DeploymentTarget` is `#[non_exhaustive]` — any future
-        // boundary this crate has not been taught about falls back to the
-        // safest classification (`Public`) so operators cannot leak
-        // classified facts to an unknown target by accident.
-        _ => FactSensitivity::Public,
+        DeploymentTarget::Cloud | _ => FactSensitivity::Public,
     }
 }
 
