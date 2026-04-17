@@ -69,6 +69,13 @@ pub struct RecallSettings {
     pub max_cycles: usize,
     /// Per-factor scoring weights (factor scores for non-vector signals).
     pub weights: RecallWeights,
+    /// Inject factor metadata into recalled knowledge prompts.
+    ///
+    /// When enabled, each recalled fact includes its factor scores
+    /// (vector similarity, decay, relevance, epistemic tier, relationship
+    /// proximity, access frequency) so the LLM can weight its reasoning
+    /// by provenance quality. Default: false.
+    pub inject_metadata: bool,
 }
 
 impl Default for RecallSettings {
@@ -81,6 +88,7 @@ impl Default for RecallSettings {
             iterative: false,
             max_cycles: 2,
             weights: RecallWeights::default(),
+            inject_metadata: false,
         }
     }
 }
