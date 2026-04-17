@@ -182,8 +182,8 @@ pub mod embedding_eval {
 /// [`LlmCallSnafu`](extract::LlmCallSnafu)
 pub mod extract {
     pub use episteme::extract::{
-        ConversationMessage, ExtractionConfig, ExtractionEngine, ExtractionError,
-        ExtractionProvider, LlmCallSnafu,
+        ConversationMessage, ExtractedToolCall, ExtractionConfig, ExtractionEngine,
+        ExtractionError, ExtractionProvider, LlmCallSnafu,
     };
 }
 

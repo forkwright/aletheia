@@ -77,6 +77,7 @@ fn turn_result_with_tool_calls() {
             cache_write_tokens: 50,
             llm_calls: 2,
         },
+        reasoning: String::new(),
         signals: vec![InteractionSignal::ToolExecution],
         stop_reason: "end_turn".to_owned(),
         degraded: None,

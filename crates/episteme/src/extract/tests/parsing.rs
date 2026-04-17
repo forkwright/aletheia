@@ -175,6 +175,8 @@ fn build_prompt_respects_max_entities() {
     let engine = ExtractionEngine::new(config);
     let messages = vec![ConversationMessage {
         role: "user".to_owned(),
+        tool_calls: None,
+        reasoning: None,
         content: "Alice works on Aletheia using Rust.".to_owned(),
     }];
     let prompt = engine.build_prompt(&messages);
@@ -194,14 +196,20 @@ fn build_prompt_concatenates_messages_in_order() {
     let messages = vec![
         ConversationMessage {
             role: "user".to_owned(),
+            tool_calls: None,
+            reasoning: None,
             content: "first message".to_owned(),
         },
         ConversationMessage {
             role: "assistant".to_owned(),
+            tool_calls: None,
+            reasoning: None,
             content: "second message".to_owned(),
         },
         ConversationMessage {
             role: "user".to_owned(),
+            tool_calls: None,
+            reasoning: None,
             content: "third message".to_owned(),
         },
     ];
@@ -252,6 +260,8 @@ async fn extract_provider_error_propagates() {
     let engine = ExtractionEngine::new(ExtractionConfig::default());
     let messages = vec![ConversationMessage {
         role: "user".to_owned(),
+        tool_calls: None,
+        reasoning: None,
         content: "Alice works on Aletheia, an AI memory system built in Rust for agent cognition."
             .to_owned(),
     }];

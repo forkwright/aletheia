@@ -74,7 +74,12 @@ impl NousActor {
             // before any async work begins.
             self.record_drift_metrics(session_key, turn_result);
 
-            self.maybe_spawn_extraction(content, &turn_result.content);
+            self.maybe_spawn_extraction(
+                content,
+                &turn_result.content,
+                &turn_result.tool_calls,
+                &turn_result.reasoning,
+            );
             self.maybe_spawn_skill_analysis(&turn_result.tool_calls, session_key);
             self.maybe_spawn_distillation(session_key).await;
         }
