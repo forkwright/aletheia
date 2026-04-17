@@ -2,6 +2,8 @@
 //!
 //! Per basanos ARCHITECTURE.md: "binary entrypoint under 100 lines."
 
+#![deny(clippy::unwrap_used)]
+
 mod cli;
 mod commands;
 mod daemon_bridge;
