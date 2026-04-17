@@ -8,7 +8,7 @@
     clippy::unreadable_literal,
     reason = "test: numeric literals mirror tested bit patterns verbatim"
 )]
-use uuid::Uuid;
+use koina::uuid::Uuid;
 
 use crate::data::memcmp::{MemCmpEncoder, decode_bytes};
 use crate::data::value::{DataValue, Num, UuidWrapper};

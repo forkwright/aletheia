@@ -337,7 +337,7 @@ impl DataValue {
                 let s_l = u32::from_be_bytes(as_array(&uuid_data[4..8]));
                 let mut s_rest = [0u8; 8];
                 s_rest.copy_from_slice(&uuid_data[8..]);
-                let uuid = uuid::Uuid::from_fields(s_l, s_m, s_h, &s_rest);
+                let uuid = koina::uuid::Uuid::from_fields(s_l, s_m, s_h, &s_rest);
                 (DataValue::Uuid(UuidWrapper(uuid)), remaining)
             }
             REGEX_TAG => {

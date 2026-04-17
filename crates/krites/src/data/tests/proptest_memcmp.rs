@@ -8,9 +8,9 @@
 use std::collections::BTreeSet;
 
 use compact_str::CompactString;
+use koina::uuid::Uuid;
 use ndarray::Array1;
 use proptest::prelude::*;
-use uuid::Uuid;
 
 use crate::data::memcmp::MemCmpEncoder;
 use crate::data::value::{DataValue, JsonData, Num, UuidWrapper, Validity, Vector};

@@ -8,10 +8,6 @@
     reason = "temporal functions return Result for API consistency with other builtins"
 )]
 #![expect(
-    clippy::cast_lossless,
-    reason = "uuid timestamp subsec is u32 — cast_lossless wants From but as is clearer in context"
-)]
-#![expect(
     clippy::single_match_else,
     reason = "timezone branch reads better as if-let for the happy path"
 )]
@@ -28,7 +24,6 @@ use itertools::Itertools;
 #[cfg(target_arch = "wasm32")]
 use js_sys::Date;
 use rand::prelude::*;
-use uuid::v1::Timestamp;
 
 use super::arg;
 use crate::data::error::*;
@@ -172,33 +167,38 @@ pub(crate) fn op_parse_timestamp(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_rand_uuid_v1(_args: &[DataValue]) -> Result<DataValue> {
+    // UUID epoch offset: 1582-10-15 → 1970-01-01 in 100-nanosecond intervals.
+    const UUID_UNIX_OFFSET: u64 = 122_192_928_000_000_000;
+    const INTERVALS_PER_SEC: u64 = 10_000_000;
+
     let mut rng = rand::rng();
-    #[expect(
-        deprecated,
-        reason = "vendored CozoDB: uuid Context → ContextV1 rename pending uuid 2.x"
-    )]
-    let uuid_ctx = uuid::v1::Context::new(rng.random());
+    let clock_seq: u16 = rng.random();
+
     #[cfg(target_arch = "wasm32")]
-    let ts = {
-        let since_epoch: f64 = Date::now();
-        let seconds = since_epoch.floor();
-        let fractional = (since_epoch - seconds) * 1.0e9;
-        Timestamp::from_unix(uuid_ctx, seconds as u64, fractional as u32)
+    let ts_100ns = {
+        let since_epoch_ms: f64 = Date::now();
+        let since_epoch_secs = since_epoch_ms.floor() / 1000.;
+        let secs = since_epoch_secs as u64;
+        let nanos = ((since_epoch_ms / 1000. - since_epoch_secs) * 1.0e9) as u64;
+        secs * INTERVALS_PER_SEC + nanos / 100 + UUID_UNIX_OFFSET
     };
     #[cfg(not(target_arch = "wasm32"))]
-    let ts = {
+    let ts_100ns = {
         let now = SystemTime::now();
         let since_epoch = now.duration_since(UNIX_EPOCH).unwrap_or_default();
-        Timestamp::from_unix(uuid_ctx, since_epoch.as_secs(), since_epoch.subsec_nanos())
+        let secs = since_epoch.as_secs();
+        let nanos = u64::from(since_epoch.subsec_nanos());
+        secs * INTERVALS_PER_SEC + nanos / 100 + UUID_UNIX_OFFSET
     };
+
     let mut rand_vals = [0u8; 6];
     rng.fill(&mut rand_vals);
-    let id = uuid::Uuid::new_v1(ts, &rand_vals);
+    let id = koina::uuid::Uuid::new_v1(ts_100ns, clock_seq, &rand_vals);
     Ok(DataValue::uuid(id))
 }
 
 pub(crate) fn op_rand_uuid_v4(_args: &[DataValue]) -> Result<DataValue> {
-    let id = uuid::Uuid::new_v4();
+    let id = koina::uuid::Uuid::new_v4();
     Ok(DataValue::uuid(id))
 }
 
@@ -210,9 +210,9 @@ pub(crate) fn op_uuid_timestamp(args: &[DataValue]) -> Result<DataValue> {
                 let (s, subs) = t.to_unix();
                 #[expect(
                     clippy::cast_precision_loss,
-                    reason = "i64 to f64: precision loss acceptable"
+                    reason = "u64 to f64: precision loss acceptable for Unix seconds"
                 )]
-                let s = (s as f64) + (subs as f64 / 10_000_000.);
+                let s = (s as f64) + (f64::from(subs) / 10_000_000.);
                 s.into()
             }
         },
