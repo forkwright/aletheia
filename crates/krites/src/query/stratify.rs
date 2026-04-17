@@ -189,7 +189,7 @@ fn verify_no_cycle(g: &StratifiedGraph<&'_ Symbol>, sccs: &[BTreeSet<&Symbol>]) 
 fn make_scc_reduced_graph(
     sccs: &[BTreeSet<&Symbol>],
     graph: &StratifiedGraph<&Symbol>,
-) -> (BTreeMap<Symbol, usize>, StratifiedGraph<usize>) {
+) -> Result<(BTreeMap<Symbol, usize>, StratifiedGraph<usize>)> {
     let indices = sccs
         .iter()
         .enumerate()
@@ -198,9 +198,12 @@ fn make_scc_reduced_graph(
     let mut ret: BTreeMap<usize, BTreeMap<usize, bool>> = Default::default();
     for (from, tos) in graph {
         // INVARIANT: `from` is a key of `graph` which was used to build `indices`
-        let from_idx = *indices
-            .get(from)
-            .unwrap_or_else(|| panic!("graph key must exist in SCC indices"));
+        let from_idx = *indices.get(from).ok_or_else(|| {
+            StratificationFailedSnafu {
+                message: format!("graph key '{from}' missing from SCC indices"),
+            }
+            .build()
+        })?;
         let cur_entry = ret.entry(from_idx).or_default();
         for (to, poisoned) in tos {
             let to_idx = match indices.get(to) {
@@ -221,7 +224,7 @@ fn make_scc_reduced_graph(
             }
         }
     }
-    (indices, ret)
+    Ok((indices, ret))
 }
 
 impl NormalFormProgram {
@@ -250,8 +253,8 @@ impl NormalFormProgram {
             .map(|scc| scc.into_iter().cloned().collect())
             .collect_vec();
         verify_no_cycle(&stratified_graph, &sccs)?;
-        let (invert_indices, reduced_graph) = make_scc_reduced_graph(&sccs, &stratified_graph);
-        let sort_result = generalized_kahn(&reduced_graph, stratified_graph.len());
+        let (invert_indices, reduced_graph) = make_scc_reduced_graph(&sccs, &stratified_graph)?;
+        let sort_result = generalized_kahn(&reduced_graph, stratified_graph.len())?;
         let n_strata = sort_result.len();
         let invert_sort_result = sort_result
             .into_iter()

@@ -44,14 +44,10 @@ impl<'a> From<&'a JsonValue> for DataValue {
     }
 }
 
-#[expect(
-    clippy::fallible_impl_from,
-    reason = "DataValue::Bot is a sentinel that must never appear here; panic is intentional"
-)]
 impl From<DataValue> for JsonValue {
     fn from(v: DataValue) -> Self {
         match v {
-            DataValue::Null => JsonValue::Null,
+            DataValue::Null | DataValue::Bot => JsonValue::Null,
             DataValue::Bool(b) => JsonValue::Bool(b),
             DataValue::Num(Num::Int(i)) => JsonValue::Number(i.into()),
             DataValue::Num(Num::Float(f)) => {
@@ -72,7 +68,6 @@ impl From<DataValue> for JsonValue {
             DataValue::Str(t) => JsonValue::String(t.into()),
             DataValue::Bytes(bytes) => JsonValue::String(base64::encode(&bytes)),
             DataValue::List(l) => JsonValue::Array(l.into_iter().map(JsonValue::from).collect()),
-            DataValue::Bot => panic!("found bottom"),
             DataValue::Set(l) => JsonValue::Array(l.into_iter().map(JsonValue::from).collect()),
             DataValue::Regex(r) => {
                 json!(r.0.as_str())

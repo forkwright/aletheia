@@ -114,4 +114,12 @@ pub(crate) enum QueryError {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+
+    /// An internal invariant was violated, indicating a corrupted or malformed query/program.
+    #[snafu(display("invariant violation: {message}"))]
+    InvariantViolation {
+        message: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
 }
