@@ -656,6 +656,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "basanos"
+version = "0.20.0"
+dependencies = [
+ "regex",
+ "snafu",
+ "tempfile",
+]
+
+[[package]]
 name = "base64"
 version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

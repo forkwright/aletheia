@@ -171,6 +171,15 @@ The plan is the full detail for a phase. It answers: "what exactly needs to happ
 ## Success criteria
 {Same as ROADMAP.md -- the contract}
 
+## Falsification
+
+For each success criterion, what observation would prove it wrong?
+
+| Criterion | Falsifier |
+|-----------|-----------|
+| {Criterion text} | {Observation that would falsify it} |
+| ... | ... |
+
 ## Scope
 {What's in scope and what's explicitly out}
 
