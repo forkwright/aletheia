@@ -27,6 +27,8 @@ impl PipelineStage for PreparationStage {
     }
 
     async fn run(&self, ctx: &mut PipelineContext) -> Result<(), PipelineError> {
+        let t0 = std::time::Instant::now();
+
         // --- Validate inputs ---
 
         if ctx.prompts.is_empty() {
@@ -41,6 +43,7 @@ impl PipelineStage for PreparationStage {
 
         ctx.dispatch_id = koina::ulid::Ulid::new().to_string();
         ctx.start = std::time::Instant::now();
+        ctx.start_ts = jiff::Timestamp::now();
 
         // --- Build DAG and compute frontier ---
 
@@ -113,6 +116,7 @@ impl PipelineStage for PreparationStage {
         #[cfg(not(feature = "storage-fjall"))]
         let _ = ();
 
+        ctx.record_stage_latency(self.name(), t0.elapsed());
         Ok(())
     }
 }
