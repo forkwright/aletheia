@@ -93,6 +93,9 @@ impl KnowledgeStore {
         )]
         results.truncate(k as usize);
 
+        self.enrich_recall_results(&mut results)?;
+        self.expand_recall_by_cluster(&mut results, k)?;
+
         let source_ids: Vec<crate::id::FactId> = results
             .iter()
             .filter(|r| r.source_type == "fact")
@@ -147,7 +150,158 @@ impl KnowledgeStore {
         params.insert("k".to_owned(), DataValue::from(k));
 
         let rows = self.run_read(queries::BM25_RECALL, params)?;
-        rows_to_recall_results(rows)
+        let mut results = rows_to_recall_results(rows)?;
+        self.enrich_recall_results(&mut results)?;
+        self.expand_recall_by_cluster(&mut results, k)?;
+        Ok(results)
+    }
+
+    /// Enrich recall results with graph importance scores from cached `graph_scores`.
+    ///
+    /// For each fact result, looks up associated entities in `fact_entities`, then
+    /// takes the maximum `PageRank` among those entities. Non-fact results are left
+    /// unchanged (`graph_importance` stays 0.0).
+    fn enrich_recall_results(
+        &self,
+        results: &mut [crate::knowledge::RecallResult],
+    ) -> crate::error::Result<()> {
+        let fact_results: Vec<&crate::knowledge::RecallResult> =
+            results.iter().filter(|r| r.source_type == "fact").collect();
+        if fact_results.is_empty() {
+            return Ok(());
+        }
+
+        let pageranks = self.load_graph_context()?.pageranks;
+        if pageranks.is_empty() {
+            return Ok(());
+        }
+
+        for result in results.iter_mut().filter(|r| r.source_type == "fact") {
+            let script = "?[entity_id] := *fact_entities{fact_id: $fid, entity_id}";
+            let mut params = std::collections::BTreeMap::new();
+            params.insert(
+                "fid".to_owned(),
+                crate::engine::DataValue::Str(result.source_id.as_str().into()),
+            );
+            let Ok(entity_rows) = self.run_read(script, params) else {
+                continue;
+            };
+            let max_pr = entity_rows
+                .rows
+                .iter()
+                .filter_map(|row| row.first().and_then(|v| v.get_str()))
+                .filter_map(|entity_id| pageranks.get(entity_id))
+                .fold(0.0_f64, |a, b| a.max(*b));
+            result.graph_importance = max_pr;
+        }
+
+        Ok(())
+    }
+
+    /// Expand recall results with cluster-mate facts.
+    ///
+    /// Takes the top results, finds their Louvain clusters, and queries for
+    /// additional active facts linked to entities in those clusters. Adds
+    /// new results with a neutral distance of 1.0, deduplicating by `source_id`.
+    /// Limits expansion to at most `k` additional results.
+    fn expand_recall_by_cluster(
+        &self,
+        results: &mut Vec<crate::knowledge::RecallResult>,
+        k: i64,
+    ) -> crate::error::Result<()> {
+        if results.is_empty() {
+            return Ok(());
+        }
+
+        let ctx = self.load_graph_context()?;
+        if ctx.clusters.is_empty() {
+            return Ok(());
+        }
+
+        // Collect clusters from top results.
+        let top_n = results.len().min(5);
+        let mut context_clusters = std::collections::HashSet::new();
+        for result in results.iter().take(top_n) {
+            if result.source_type != "fact" {
+                continue;
+            }
+            let script = "?[entity_id] := *fact_entities{fact_id: $fid, entity_id}";
+            let mut params = std::collections::BTreeMap::new();
+            params.insert(
+                "fid".to_owned(),
+                crate::engine::DataValue::Str(result.source_id.as_str().into()),
+            );
+            let Ok(entity_rows) = self.run_read(script, params) else {
+                continue;
+            };
+            for row in &entity_rows.rows {
+                if let Some(cid) = row
+                    .first()
+                    .and_then(|v| v.get_str())
+                    .and_then(|entity_id| ctx.clusters.get(entity_id))
+                {
+                    context_clusters.insert(*cid);
+                }
+            }
+        }
+
+        if context_clusters.is_empty() {
+            return Ok(());
+        }
+
+        let existing_ids: std::collections::HashSet<String> =
+            results.iter().map(|r| r.source_id.clone()).collect();
+        let mut added = 0;
+        let limit = usize::try_from(k.max(1)).unwrap_or(1);
+
+        for cluster_id in context_clusters {
+            let script = r"
+                ?[fact_id, content] :=
+                    *graph_scores{entity_id, score_type: 'cluster', cluster_id: $cid},
+                    *fact_entities{fact_id: fid, entity_id},
+                    *facts{id: fid, content, is_forgotten, superseded_by},
+                    is_forgotten == false,
+                    is_null(superseded_by),
+                    fact_id = fid
+                :limit $limit
+            ";
+            let mut params = std::collections::BTreeMap::new();
+            params.insert("cid".to_owned(), crate::engine::DataValue::from(cluster_id));
+            params.insert(
+                "limit".to_owned(),
+                crate::engine::DataValue::from(i64::try_from(limit).unwrap_or(i64::MAX)),
+            );
+            let Ok(rows) = self.run_read(script, params) else {
+                continue;
+            };
+            for row in &rows.rows {
+                let Some(fact_id) = row.first().and_then(|v| v.get_str()) else {
+                    continue;
+                };
+                if existing_ids.contains(fact_id) {
+                    continue;
+                }
+                let content = row
+                    .get(1)
+                    .and_then(|v| v.get_str())
+                    .unwrap_or("")
+                    .to_owned();
+                results.push(crate::knowledge::RecallResult {
+                    content,
+                    distance: 1.0,
+                    source_type: "fact".to_owned(),
+                    source_id: fact_id.to_owned(),
+                    sensitivity: crate::knowledge::FactSensitivity::Public,
+                    graph_importance: 0.0,
+                });
+                added += 1;
+                if added >= limit {
+                    return Ok(());
+                }
+            }
+        }
+
+        Ok(())
     }
 
     /// Hybrid BM25 + HNSW vector + graph retrieval fused via `ReciprocalRankFusion`.

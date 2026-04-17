@@ -25,6 +25,7 @@ fn fact_to_scored(fact: &Fact, engine: &RecallEngine, query_nous: &str) -> Score
             epistemic_tier: engine.score_epistemic_tier(fact.provenance.tier.as_str()),
             relationship_proximity: 0.5,
             access_frequency: 0.3,
+            graph_importance: 0.0,
         },
         score: 0.0,
         sensitivity: mneme::knowledge::FactSensitivity::Public,
@@ -135,6 +136,7 @@ fn knowledge_types_all_serialize() {
         source_type: "fact".to_owned(),
         source_id: "f-1".to_owned(),
         sensitivity: mneme::knowledge::FactSensitivity::Public,
+        graph_importance: 0.0,
     };
 
     assert!(serde_json::to_string(&fact).is_ok());

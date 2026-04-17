@@ -23,11 +23,12 @@ fn graph_recall_active_with_default_weights() {
 fn graph_recall_inactive_when_proximity_weight_zero() {
     let w = RecallWeights {
         relationship_proximity: 0.0,
+        graph_importance: 0.0,
         ..RecallWeights::default()
     };
     assert!(
         !w.graph_recall_active(),
-        "graph recall should be inactive when relationship_proximity is 0.0"
+        "graph recall should be inactive when relationship_proximity and graph_importance are 0.0"
     );
 }
 
@@ -35,6 +36,7 @@ fn graph_recall_inactive_when_proximity_weight_zero() {
 fn graph_enhanced_scoring_skipped_when_weight_zero() {
     let weights = RecallWeights {
         relationship_proximity: 0.0,
+        graph_importance: 0.0,
         ..RecallWeights::default()
     };
     let e = RecallEngine::with_weights(weights);
@@ -96,8 +98,8 @@ fn default_weights_match_documented() {
     let e = RecallEngine::new();
     let w = e.weights();
     assert!(
-        (w.vector_similarity - 0.35).abs() < f64::EPSILON,
-        "default vector_similarity weight should be 0.35, got {}",
+        (w.vector_similarity - 0.30).abs() < f64::EPSILON,
+        "default vector_similarity weight should be 0.30, got {}",
         w.vector_similarity
     );
     assert!(
@@ -111,8 +113,8 @@ fn default_weights_match_documented() {
         w.relevance
     );
     assert!(
-        (w.epistemic_tier - 0.15).abs() < f64::EPSILON,
-        "default epistemic_tier weight should be 0.15, got {}",
+        (w.epistemic_tier - 0.10).abs() < f64::EPSILON,
+        "default epistemic_tier weight should be 0.10, got {}",
         w.epistemic_tier
     );
     assert!(
@@ -125,6 +127,11 @@ fn default_weights_match_documented() {
         "default access_frequency weight should be 0.05, got {}",
         w.access_frequency
     );
+    assert!(
+        (w.graph_importance - 0.10).abs() < f64::EPSILON,
+        "default graph_importance weight should be 0.10, got {}",
+        w.graph_importance
+    );
 }
 
 #[test]
@@ -135,7 +142,8 @@ fn with_weights_overrides_all() {
         relevance: 0.1,
         epistemic_tier: 0.1,
         relationship_proximity: 0.1,
-        access_frequency: 0.1,
+        access_frequency: 0.05,
+        graph_importance: 0.05,
     };
     let e = RecallEngine::with_weights(custom);
     let w = e.weights();
@@ -165,9 +173,14 @@ fn with_weights_overrides_all() {
         w.relationship_proximity
     );
     assert!(
-        (w.access_frequency - 0.1).abs() < f64::EPSILON,
-        "custom access_frequency weight should be 0.1, got {}",
+        (w.access_frequency - 0.05).abs() < f64::EPSILON,
+        "custom access_frequency weight should be 0.05, got {}",
         w.access_frequency
+    );
+    assert!(
+        (w.graph_importance - 0.05).abs() < f64::EPSILON,
+        "custom graph_importance weight should be 0.05, got {}",
+        w.graph_importance
     );
 }
 
@@ -190,6 +203,7 @@ fn builder_chain_preserves_all() {
         epistemic_tier: 0.1,
         relationship_proximity: 0.05,
         access_frequency: 0.05,
+        graph_importance: 0.0,
     };
     let e = RecallEngine::with_weights(custom).with_max_access_count(50.0);
 
@@ -268,6 +282,7 @@ fn compute_score_single_factor_nonzero() {
         epistemic_tier: 0.0,
         relationship_proximity: 0.0,
         access_frequency: 0.0,
+        graph_importance: 0.0,
     };
     let e = RecallEngine::with_weights(weights);
     let factors = FactorScores {
@@ -277,6 +292,7 @@ fn compute_score_single_factor_nonzero() {
         epistemic_tier: 0.7,
         relationship_proximity: 0.6,
         access_frequency: 0.4,
+        graph_importance: 0.0,
     };
     let score = e.compute_score(&factors);
     assert!(
@@ -295,6 +311,7 @@ fn rank_preserves_equal_scores() {
         epistemic_tier: 0.5,
         relationship_proximity: 0.5,
         access_frequency: 0.5,
+        graph_importance: 0.0,
     };
     let candidates = vec![
         ScoredResult {
@@ -663,6 +680,7 @@ fn integration_full_recall_with_decay() {
                 epistemic_tier: 1.0,
                 relationship_proximity: 0.5,
                 access_frequency: 0.3,
+                graph_importance: 0.0,
             },
             score: 0.0,
             sensitivity: crate::knowledge::FactSensitivity::Public,
@@ -679,6 +697,7 @@ fn integration_full_recall_with_decay() {
                 epistemic_tier: 0.3,
                 relationship_proximity: 0.0,
                 access_frequency: 0.0,
+                graph_importance: 0.0,
             },
             score: 0.0,
             sensitivity: crate::knowledge::FactSensitivity::Public,

@@ -340,6 +340,7 @@ fn perfect_score() {
         epistemic_tier: 1.0,
         relationship_proximity: 1.0,
         access_frequency: 1.0,
+        graph_importance: 1.0,
     };
     assert!(
         (e.compute_score(&factors) - 1.0).abs() < 0.01,

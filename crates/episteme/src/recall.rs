@@ -23,29 +23,33 @@ use crate::knowledge::{EpistemicTier, FactType};
 /// Tunable weights for the multi-factor recall scoring formula.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RecallWeights {
-    /// Weight for vector similarity (cosine distance). Default: 0.35
+    /// Weight for vector similarity (cosine distance). Default: 0.30
     pub vector_similarity: f64,
     /// Weight for FSRS power-law decay. Default: 0.20
     pub decay: f64,
     /// Weight for nous-relevance (own memories boosted). Default: 0.15
     pub relevance: f64,
-    /// Weight for epistemic tier (verified > inferred > assumed). Default: 0.15
+    /// Weight for epistemic tier (verified > inferred > assumed). Default: 0.10
     pub epistemic_tier: f64,
     /// Weight for graph relationship proximity. Default: 0.10
     pub relationship_proximity: f64,
     /// Weight for access frequency. Default: 0.05
     pub access_frequency: f64,
+    /// Weight for graph `PageRank` importance (hub entities boosted).
+    /// Default: 0.10
+    pub graph_importance: f64,
 }
 
 impl Default for RecallWeights {
     fn default() -> Self {
         Self {
-            vector_similarity: 0.35,
+            vector_similarity: 0.30,
             decay: 0.20,
             relevance: 0.15,
-            epistemic_tier: 0.15,
+            epistemic_tier: 0.10,
             relationship_proximity: 0.10,
             access_frequency: 0.05,
+            graph_importance: 0.10,
         }
     }
 }
@@ -55,7 +59,7 @@ impl RecallWeights {
     ///
     /// # Complexity
     ///
-    /// O(1) - constant time sum of 6 fields.
+    /// O(1) - constant time sum of 7 fields.
     #[must_use]
     #[instrument(skip(self))]
     pub(crate) fn total(&self) -> f64 {
@@ -65,6 +69,7 @@ impl RecallWeights {
             + self.epistemic_tier
             + self.relationship_proximity
             + self.access_frequency
+            + self.graph_importance
     }
 
     /// Whether the graph intelligence recall pipeline should run.
@@ -79,7 +84,7 @@ impl RecallWeights {
     /// O(1) - single floating-point comparison.
     #[must_use]
     pub(crate) fn graph_recall_active(&self) -> bool {
-        self.relationship_proximity >= f64::EPSILON
+        self.relationship_proximity >= f64::EPSILON || self.graph_importance >= f64::EPSILON
     }
 }
 
@@ -98,6 +103,8 @@ pub struct FactorScores {
     pub relationship_proximity: f64,
     /// Access frequency score [0.0, 1.0] (1.0 = most accessed).
     pub access_frequency: f64,
+    /// `PageRank` graph importance score [0.0, 1.0] (1.0 = highest hub).
+    pub graph_importance: f64,
 }
 
 /// A scored recall candidate.
@@ -320,7 +327,7 @@ impl RecallEngine {
     ///
     /// # Complexity
     ///
-    /// O(1) - constant time weighted sum of 6 factors.
+    /// O(1) - constant time weighted sum of 7 factors.
     #[instrument(skip(self, factors))]
     #[must_use]
     pub(crate) fn compute_score(&self, factors: &FactorScores) -> f64 {
@@ -335,7 +342,8 @@ impl RecallEngine {
             + factors.relevance * w.relevance
             + factors.epistemic_tier * w.epistemic_tier
             + factors.relationship_proximity * w.relationship_proximity
-            + factors.access_frequency * w.access_frequency;
+            + factors.access_frequency * w.access_frequency
+            + factors.graph_importance * w.graph_importance;
 
         raw / total_weight
     }
@@ -463,6 +471,17 @@ impl RecallEngine {
         self.graph_enhanced(base, |b| {
             crate::graph_intelligence::score_access_with_evolution(b, chain_length)
         })
+    }
+
+    /// Compute the graph importance score from normalized `PageRank`.
+    ///
+    /// Returns the importance value clamped to [0.0, 1.0].
+    /// When no graph data is available, importance is 0.0 and this
+    /// returns 0.0, producing no boost.
+    #[must_use]
+    #[instrument(skip(self))]
+    pub fn score_graph_importance(&self, importance: f64) -> f64 {
+        importance.clamp(0.0, 1.0)
     }
 }
 
