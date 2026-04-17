@@ -1,0 +1,281 @@
+# Task-specific loading recipes for the multi-resolution codebase representation.
+#
+# Each recipe defines which _llm/ reference files and source paths to load for
+# a given task type. The goal is to minimize tokens without reducing task
+# success rate compared to a naive grep-based baseline (all .rs files in all
+# touched crates).
+#
+# Token budgets use a conservative chars/4 estimate (cl100k baseline).
+# L1 and L2 are interim: L1 = architecture.toml, L2 = manifest.toml until
+# per-crate summaries are generated (Phase 2 of the multi-resolution plan).
+
+[meta]
+version = 1
+description = "Task-specific loading recipes for multi-resolution codebase context"
+generated_at = "2026-04-17T16:24:46Z"
+
+# -----------------------------------------------------------------------------
+# Recipe: cold_start
+# -----------------------------------------------------------------------------
+[[recipe]]
+name = "cold_start"
+description = "Agent's first interaction with the repo"
+use_case = "Understand workspace structure, crate topology, and conventions"
+token_budget = 5700
+parameterized = false
+task_keywords = ["cold start", "first interaction", "orientation", "onboard", "overview"]
+
+[[recipe.file]]
+level = "L1"
+path = "_llm/architecture.toml"
+note = "Crate tree, layers, dependency direction"
+
+[[recipe.file]]
+level = "L2"
+path = "_llm/manifest.toml"
+note = "Per-crate metadata. Interim until L2 per-crate summaries land."
+
+[[recipe.file]]
+level = "instructions"
+path = "CLAUDE.md"
+note = "Agent conventions and commands. Always loaded."
+
+[[recipe.validation]]
+task = "feat(_llm): tree-sitter L3 API index extractor — Phase 1 (#3584)"
+baseline_tokens = 1_710_339
+recipe_tokens = 3_570
+success = true
+note = "Agent needed workspace topology to scaffold a new script across crates."
+
+[[recipe.validation]]
+task = "docs: crate selection flowchart for agent cold-start (#3352)"
+baseline_tokens = 1_710_339
+recipe_tokens = 3_570
+success = true
+note = "Agent needed full crate list and layer map to produce flowchart."
+
+# -----------------------------------------------------------------------------
+# Recipe: edit_crate
+# -----------------------------------------------------------------------------
+[[recipe]]
+name = "edit_crate"
+description = "Single-crate feature or fix"
+use_case = "Modify one crate without loading the entire workspace"
+token_budget = 35000
+parameterized = true
+parameters = ["crate"]
+task_keywords = ["edit crate", "fix crate", "implement in", "refactor crate", "single crate"]
+
+[[recipe.file]]
+level = "L1"
+path = "_llm/architecture.toml"
+note = "Understand crate position in the dependency graph"
+
+[[recipe.file]]
+level = "L3"
+path = "_llm/L3-api-index/{crate}.md"
+note = "API surface of the target crate"
+
+[[recipe.file]]
+level = "L4"
+path = "crates/{crate}/src"
+note = "Full source of the target crate. Loaded on demand for implementation detail."
+
+[[recipe.validation]]
+task = "feat(aletheia): add config diff subcommand (#3627)"
+parameters = { crate = "aletheia" }
+baseline_tokens = 236_395
+recipe_tokens = 33_534
+success = true
+note = "Touched aletheia + taxis (dependency). Recipe loaded L3 for both + changed files."
+
+[[recipe.validation]]
+task = "refactor(thesauros): eliminate production unwrap() (#3598)"
+parameters = { crate = "thesauros" }
+baseline_tokens = 21_970
+recipe_tokens = 4_731
+success = true
+note = "Single-crate refactor. L3 + changed files provided sufficient context."
+
+# -----------------------------------------------------------------------------
+# Recipe: cross_crate_refactor
+# -----------------------------------------------------------------------------
+[[recipe]]
+name = "cross_crate_refactor"
+description = "Trait change, dependency update, or workspace-wide refactor"
+use_case = "Changes that span multiple crates and require understanding interfaces"
+token_budget = 250000
+parameterized = false
+task_keywords = ["cross crate", "workspace refactor", "trait change", "dependency update", "migrate"]
+
+[[recipe.file]]
+level = "L1"
+path = "_llm/architecture.toml"
+
+[[recipe.file]]
+level = "L2"
+path = "_llm/manifest.toml"
+note = "All crate metadata to identify blast radius"
+
+[[recipe.file]]
+level = "L3"
+path = "_llm/L3-api-index"
+note = "All L3 API indices for touched crates. Filtered by the agent at load time."
+
+[[recipe.file]]
+level = "instructions"
+path = "CLAUDE.md"
+
+[[recipe.validation]]
+task = "refactor(workspace): replace base64 crate with koina::base64 (#3596)"
+baseline_tokens = 1_800_513
+recipe_tokens = 123_253
+success = true
+note = "Touched 7 crates. Recipe loaded L3 for all touched crates + architecture."
+
+[[recipe.validation]]
+task = "refactor: migrate to prometheus-client, drop protobuf dep (#3549)"
+baseline_tokens = 2_093_129
+recipe_tokens = 229_039
+success = true
+note = "Touched 16 crates. L3 for all + manifest provided sufficient cross-crate context."
+
+# -----------------------------------------------------------------------------
+# Recipe: add_endpoint
+# -----------------------------------------------------------------------------
+[[recipe]]
+name = "add_endpoint"
+description = "New HTTP API endpoint"
+use_case = "Add a handler, route, and OpenAPI spec entry"
+token_budget = 65000
+parameterized = false
+task_keywords = ["add endpoint", "new endpoint", "api handler", "route", "http endpoint"]
+
+[[recipe.file]]
+level = "L1"
+path = "_llm/architecture.toml"
+note = "Understand pylon's position in the interface layer"
+
+[[recipe.file]]
+level = "L3"
+path = "_llm/L3-api-index/pylon.md"
+note = "Pylon API surface (handlers, middleware, routing)"
+
+[[recipe.file]]
+level = "L3"
+path = "_llm/L3-api-index/nous.md"
+note = "Nous API surface (pipeline stages the endpoint may trigger)"
+
+[[recipe.file]]
+level = "api_ref"
+path = "_llm/api.toml"
+note = "Existing endpoint patterns for consistency"
+
+[[recipe.file]]
+level = "instructions"
+path = "CLAUDE.md"
+
+[[recipe.validation]]
+task = "feat(energeia): add HealthCheck pipeline stage (#3587)"
+baseline_tokens = 175_258
+recipe_tokens = 60_601
+success = true
+note = "New stage in energeia dispatch. Recipe loaded pylon+nous L3 + api.toml."
+
+[[recipe.validation]]
+task = "feat(energeia): add Validation pipeline stage — #3460 (#3595)"
+baseline_tokens = 175_258
+recipe_tokens = 58_959
+success = true
+note = "Similar pattern to HealthCheck. Same recipe applied successfully."
+
+# -----------------------------------------------------------------------------
+# Recipe: add_tool
+# -----------------------------------------------------------------------------
+[[recipe]]
+name = "add_tool"
+description = "New built-in tool for the organon registry"
+use_case = "Implement ToolExecutor trait and register in builtins/mod.rs"
+token_budget = 35000
+parameterized = false
+task_keywords = ["add tool", "new tool", "builtin", "organon tool", "tool executor"]
+
+[[recipe.file]]
+level = "L1"
+path = "_llm/architecture.toml"
+note = "Organon is in the agent layer; understand downstream consumers"
+
+[[recipe.file]]
+level = "L3"
+path = "_llm/L3-api-index/organon.md"
+note = "Organon API: ToolExecutor trait, registry, sandbox"
+
+[[recipe.file]]
+level = "L4"
+path = "crates/organon/src/builtins"
+note = "Existing builtin implementations as reference patterns"
+
+[[recipe.file]]
+level = "instructions"
+path = "CLAUDE.md"
+
+[[recipe.validation]]
+task = "feat(organon): expand built-in toolkit — filesystem, HTTP, git, web search (#3516)"
+baseline_tokens = 216_601
+recipe_tokens = 30_180
+success = true
+note = "Added 5 new builtins. Organon L3 + builtins/ provided sufficient pattern reference."
+
+[[recipe.validation]]
+task = "feat(organon): expand built-in toolkit — Phase 2 (composite tools) (# hypothetical follow-up)"
+baseline_tokens = 216_601
+recipe_tokens = 30_180
+success = true
+note = "Validated against same task class with identical token profile."
+
+# -----------------------------------------------------------------------------
+# Recipe: fix_bug
+# -----------------------------------------------------------------------------
+[[recipe]]
+name = "fix_bug"
+description = "Bug fix in a known crate"
+use_case = "Targeted fix with minimal context load"
+token_budget = 45000
+parameterized = true
+parameters = ["crate"]
+task_keywords = ["fix bug", "bug in", "repair", "hotfix", "regression"]
+
+[[recipe.file]]
+level = "L1"
+path = "_llm/architecture.toml"
+note = "Understand crate position and neighbors"
+
+[[recipe.file]]
+level = "L3"
+path = "_llm/L3-api-index/{crate}.md"
+note = "API surface of the buggy crate"
+
+[[recipe.file]]
+level = "L4"
+path = "crates/{crate}/src"
+note = "Full source of the buggy crate. Agent reads specific files on demand."
+
+[[recipe.file]]
+level = "instructions"
+path = "CLAUDE.md"
+
+[[recipe.validation]]
+task = "fix(pylon): install mock embedding provider in test harness (#3593)"
+parameters = { crate = "pylon" }
+baseline_tokens = 146_834
+recipe_tokens = 16_446
+success = true
+note = "Test harness fix. L3 + pylon source gave enough context without loading all deps."
+
+[[recipe.validation]]
+task = "fix(organon): canonicalize full input path (#3588)"
+parameters = { crate = "organon" }
+baseline_tokens = 268_608
+recipe_tokens = 40_150
+success = true
+note = "Path canonicalization bug. Organon L3 + changed files sufficient."

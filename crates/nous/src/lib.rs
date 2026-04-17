@@ -50,6 +50,8 @@ pub mod metrics;
 pub mod pipeline;
 /// Semantic recall stage: vector search over knowledge memories.
 pub mod recall;
+/// Task-specific _llm/ loading recipes for multi-resolution context.
+pub mod recipes;
 /// Parallel research orchestrator: spawns domain researchers via the sub-agent system.
 pub mod research;
 /// Specialized role templates for ephemeral sub-agents.
