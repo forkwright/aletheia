@@ -759,8 +759,10 @@ impl TrainingCapture {
     }
 }
 
+pub mod dpo;
 pub mod pii;
 
+pub use dpo::{DpoExtractor, DpoPair, DpoWriter};
 pub use pii::redact as redact_pii;
 
 #[cfg(test)]
