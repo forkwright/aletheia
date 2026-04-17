@@ -66,6 +66,62 @@ pub(crate) struct KnowledgeSearchParams {
     pub limit: Option<u32>,
 }
 
+/// Parameters for `knowledge.recall` — semantic + BM25 recall.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub(crate) struct KnowledgeRecallParams {
+    /// The recall query text (used for both BM25 and vector search).
+    pub query: String,
+    /// Scope the recall to a specific nous agent ID.
+    ///
+    /// When omitted, results span all agents visible to the caller.
+    pub nous_id: Option<String>,
+    /// Maximum number of facts to return (default: 20).
+    pub limit: Option<u32>,
+}
+
+/// Sensitivity classification for a new fact.
+///
+/// Accepted values: `"public"` (default), `"internal"`, `"confidential"`.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub(crate) struct KnowledgeInsertParams {
+    /// The fact content to store.
+    pub content: String,
+    /// The nous agent ID that owns this fact.
+    pub nous_id: String,
+    /// Data-sovereignty sensitivity: `"public"`, `"internal"`, or `"confidential"`.
+    ///
+    /// Defaults to `"public"` when omitted.
+    pub sensitivity: Option<String>,
+}
+
+/// Parameters for `knowledge.forget` — soft-delete a fact.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub(crate) struct KnowledgeForgetParams {
+    /// The fact ID to soft-delete.
+    pub fact_id: String,
+    /// Human-readable reason for forgetting.
+    ///
+    /// Accepted values: `"user_requested"` (default), `"superseded"`,
+    /// `"incorrect"`, `"privacy"`.
+    pub reason: Option<String>,
+}
+
+/// Parameters for `knowledge.get` — fetch a single fact by ID.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub(crate) struct KnowledgeGetParams {
+    /// The fact ID to retrieve.
+    pub fact_id: String,
+}
+
+/// Parameters for `knowledge.graph_neighbors` — traverse entity edges.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub(crate) struct KnowledgeGraphNeighborsParams {
+    /// The entity ID to start from.
+    pub entity_id: String,
+    /// Maximum number of hops from the start entity (default: 2, max: 4).
+    pub depth: Option<u32>,
+}
+
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
@@ -139,5 +195,68 @@ mod tests {
         let json = r"{}";
         let params: SessionListParams = serde_json::from_str(json).unwrap();
         assert!(params.nous_id.is_none());
+    }
+
+    #[test]
+    fn knowledge_recall_params_deserializes_minimal() {
+        let json = r#"{"query": "Rust ownership"}"#;
+        let params: KnowledgeRecallParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.query, "Rust ownership");
+        assert!(params.nous_id.is_none());
+        assert!(params.limit.is_none());
+    }
+
+    #[test]
+    fn knowledge_recall_params_deserializes_full() {
+        let json = r#"{"query": "error handling", "nous_id": "syn", "limit": 10}"#;
+        let params: KnowledgeRecallParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.query, "error handling");
+        assert_eq!(params.nous_id.as_deref(), Some("syn"));
+        assert_eq!(params.limit, Some(10));
+    }
+
+    #[test]
+    fn knowledge_insert_params_requires_content_and_nous_id() {
+        let json = r#"{"content": "Rust uses ownership for memory safety.", "nous_id": "syn"}"#;
+        let params: KnowledgeInsertParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.nous_id, "syn");
+        assert!(params.sensitivity.is_none());
+    }
+
+    #[test]
+    fn knowledge_insert_params_rejects_missing_nous_id() {
+        let json = r#"{"content": "some fact"}"#;
+        let result = serde_json::from_str::<KnowledgeInsertParams>(json);
+        assert!(result.is_err(), "missing nous_id must fail");
+    }
+
+    #[test]
+    fn knowledge_forget_params_deserializes_with_defaults() {
+        let json = r#"{"fact_id": "f-abc123"}"#;
+        let params: KnowledgeForgetParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.fact_id, "f-abc123");
+        assert!(params.reason.is_none());
+    }
+
+    #[test]
+    fn knowledge_get_params_deserializes() {
+        let json = r#"{"fact_id": "f-xyz"}"#;
+        let params: KnowledgeGetParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.fact_id, "f-xyz");
+    }
+
+    #[test]
+    fn knowledge_graph_neighbors_params_deserializes() {
+        let json = r#"{"entity_id": "e-42", "depth": 3}"#;
+        let params: KnowledgeGraphNeighborsParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.entity_id, "e-42");
+        assert_eq!(params.depth, Some(3));
+    }
+
+    #[test]
+    fn knowledge_graph_neighbors_params_allows_default_depth() {
+        let json = r#"{"entity_id": "e-1"}"#;
+        let params: KnowledgeGraphNeighborsParams = serde_json::from_str(json).unwrap();
+        assert!(params.depth.is_none());
     }
 }
