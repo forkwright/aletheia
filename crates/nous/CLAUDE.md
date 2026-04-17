@@ -1,5 +1,11 @@
 # nous
 
+## At a glance
+
+Agent session pipeline: bootstrap, recall, execute, finalize. Depends on koina, mneme, hermeneus, and organon. Entry point: `src/lib.rs` (NousActor, NousManager).
+
+## Depth
+
 Agent session pipeline: bootstrap, recall, execute, finalize. 22K lines. The agent runtime.
 
 ## Read first

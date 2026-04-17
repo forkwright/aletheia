@@ -1,5 +1,11 @@
 # koina
 
+## At a glance
+
+Core types, errors, and tracing shared by every Aletheia crate. Zero internal dependencies. Entry point: `src/lib.rs` (NousId, SessionId, RealSystem).
+
+## Depth
+
 Core types, errors, tracing, and system abstractions shared by every Aletheia crate. 4K lines. Zero internal dependencies.
 
 ## Read first

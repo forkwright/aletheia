@@ -1,5 +1,11 @@
 # diaporeia
 
+## At a glance
+
+MCP server interface for external AI agents. Depends on koina, taxis, nous, and mneme. Entry point: `src/lib.rs` (DiaporeiaServer, DiaporeiaState).
+
+## Depth
+
 MCP server interface for external AI agents via the Model Context Protocol. 1.5K lines.
 
 ## Read first

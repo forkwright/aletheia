@@ -1,5 +1,11 @@
 # melete
 
+## At a glance
+
+Context distillation engine for conversation history compression. Depends on hermeneus and koina. Entry point: `src/lib.rs` (DistillEngine, DistillConfig).
+
+## Depth
+
 Context distillation engine: compresses conversation history via LLM-driven summarization. 5.2K lines.
 
 ## Read first

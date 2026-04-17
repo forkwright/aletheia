@@ -1,5 +1,11 @@
 # proskenion
 
+## At a glance
+
+Dioxus desktop application for Aletheia. Depends on skene. Entry point: `src/main.rs` (proskenion::run).
+
+## Depth
+
 Dioxus desktop application for Aletheia: chat, planning, memory, metrics, ops, and file views. 45K lines.
 
 ## Read first

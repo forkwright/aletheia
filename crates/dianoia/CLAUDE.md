@@ -1,5 +1,11 @@
 # dianoia
 
+## At a glance
+
+Planning and project orchestration via multi-phase state machines. Depends on koina. Entry point: `src/lib.rs` (Project, ProjectWorkspace).
+
+## Depth
+
 Planning and project orchestration: multi-phase state machine with workspace persistence. 5.4K lines.
 
 ## Read first
