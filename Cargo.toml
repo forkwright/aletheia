@@ -194,7 +194,7 @@ hmac = { version = "0.13", default-features = false }
 sha2 = { version = "0.11", default-features = false }
 aes-gcm = "0.10"
 chacha20poly1305 = "0.10"
-rcgen = "0.14"
+pem = "3"
 regex = { version = "1", default-features = false, features = ["std", "perf", "unicode-case", "unicode-perl"] }
 
 # FFI / System
