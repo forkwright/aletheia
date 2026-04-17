@@ -1,0 +1,87 @@
+groups:
+  - name: aletheia
+    interval: 15s
+    rules:
+      - alert: AletheiaDown
+        expr: up{job="aletheia"} == 0 or absent(aletheia_uptime_seconds)
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Aletheia metrics endpoint is unreachable or process is down"
+          runbook_url: "../docs/OBSERVABILITY.md#aletheiadown"
+
+      - alert: HighHttpErrorRate
+        expr: |
+          (
+            rate(aletheia_http_requests_total{status=~"5.."}[5m])
+            /
+            rate(aletheia_http_requests_total[5m])
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "HTTP 5xx error rate exceeds 5% over 5 minutes"
+          runbook_url: "../docs/OBSERVABILITY.md#highhttperrorrate"
+
+      - alert: SlowLlmLatency
+        expr: |
+          histogram_quantile(0.95,
+            rate(aletheia_llm_request_duration_seconds_bucket[5m])
+          ) > 30
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "LLM request p95 latency exceeds 30 seconds for 5 minutes"
+          runbook_url: "../docs/OBSERVABILITY.md#slowllmlatency"
+
+      - alert: LlmCircuitBreakerOpen
+        expr: |
+          increase(aletheia_llm_circuit_breaker_transitions_total{to="open"}[5m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "LLM provider circuit breaker opened"
+          runbook_url: "../docs/OBSERVABILITY.md#llmcircuitbreakeropen"
+
+      - alert: BackupStale
+        expr: |
+          increase(aletheia_backup_duration_seconds_count{status="ok"}[48h]) == 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "No successful backup in the last 48 hours"
+          runbook_url: "../docs/OBSERVABILITY.md#backupstale"
+
+      - alert: BackgroundTaskFailures
+        expr: |
+          rate(aletheia_background_task_failures_total[5m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Background task failures detected in the last 5 minutes"
+          runbook_url: "../docs/OBSERVABILITY.md#backgroundtaskfailures"
+
+      - alert: WatchdogHungProcesses
+        expr: aletheia_watchdog_hung_processes > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "One or more watchdog-monitored processes are hung"
+          runbook_url: "../docs/OBSERVABILITY.md#watchdoghungprocesses"
+
+      - alert: StreamEventsDropped
+        expr: |
+          rate(aletheia_stream_events_dropped_total[5m]) > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Streaming events are being dropped"
+          runbook_url: "../docs/OBSERVABILITY.md#streameventsdropped"
