@@ -1,0 +1,443 @@
+bindings = []
+packs = []
+providers = []
+
+[agents]
+list = []
+
+[agents.defaults]
+contextTokens = 200000
+maxOutputTokens = 16384
+bootstrapMaxTokens = 40000
+thinkingEnabled = false
+thinkingBudget = 10000
+charsPerToken = 4
+prosocheModel = "claude-haiku-4-5-20251001"
+maxToolResultBytes = 32768
+agency = "standard"
+maxToolIterations = 200
+allowedRoots = []
+historyBudgetRatio = 0.6
+
+[agents.defaults.model]
+primary = "claude-sonnet-4-6"
+fallbacks = []
+retriesBeforeFallback = 2
+
+[agents.defaults.caching]
+enabled = true
+strategy = "auto"
+
+[agents.defaults.recall]
+enabled = true
+maxResults = 5
+minScore = 0.3
+maxRecallTokens = 2000
+iterative = false
+maxCycles = 2
+
+[agents.defaults.recall.weights]
+decay = 0.5
+relevance = 0.5
+epistemicTier = 0.3
+relationshipProximity = 0.0
+accessFrequency = 0.0
+
+[agents.defaults.behavior]
+safetyLoopDetectionThreshold = 3
+safetyConsecutiveErrorThreshold = 4
+safetyLoopMaxWarnings = 2
+safetySessionTokenCap = 500000
+safetyMaxConsecutiveToolOnlyIterations = 3
+hooksCostControlEnabled = true
+hooksTurnTokenBudget = 0
+hooksScopeEnforcementEnabled = true
+hooksCorrectionHooksEnabled = true
+hooksAuditLoggingEnabled = true
+distillationContextTokenTrigger = 120000
+distillationMessageCountTrigger = 150
+distillationStaleSessionDays = 7
+distillationStaleMinMessages = 20
+distillationNeverDistilledTrigger = 30
+distillationLegacyMinMessages = 10
+distillationMaxBackoffTurns = 8
+competenceCorrectionPenalty = 0.05
+competenceSuccessBonus = 0.02
+competenceDisagreementPenalty = 0.01
+competenceMinScore = 0.1
+competenceMaxScore = 0.95
+competenceDefaultScore = 0.5
+competenceEscalationFailureThreshold = 0.3
+competenceEscalationMinSamples = 5
+driftWindowSize = 20
+driftRecentSize = 5
+driftDeviationThreshold = 2.0
+driftMinSamples = 8
+uncertaintyMaxCalibrationPoints = 1000
+manifestMaxEntries = 200
+skillsMaxSkills = 5
+skillsMaxContextChars = 200
+workingStateTtlSecs = 604800
+workingStateMaxTaskStack = 10
+planningMaxIterations = 10
+planningStuckHistoryWindow = 20
+planningStuckRepeatedErrorThreshold = 3
+planningStuckSameArgsThreshold = 3
+planningStuckAlternatingThreshold = 3
+planningStuckEscalatingRetryThreshold = 3
+planningReconcilerTimestampToleranceSecs = 5
+knowledgeInstinctMinObservations = 5
+knowledgeInstinctMinSuccessRate = 0.8
+knowledgeInstinctStabilityHours = 168.0
+knowledgeSurpriseThreshold = 2.0
+knowledgeSurpriseEmaAlpha = 0.3
+knowledgeRuleMinObservations = 5
+knowledgeRuleMinConfidence = 0.6
+knowledgeDedupWeightName = 0.4
+knowledgeDedupWeightEmbed = 0.3
+knowledgeDedupWeightType = 0.2
+knowledgeDedupWeightAlias = 0.1
+knowledgeDedupJwThreshold = 0.85
+knowledgeDedupEmbedThreshold = 0.8
+factActiveThreshold = 0.7
+factFadingThreshold = 0.3
+factDormantThreshold = 0.1
+similarityThreshold = 0.85
+similarityMinTokenLen = 3
+distillationMaxToolResultLen = 500
+dreamMinHours = 24
+dreamMinSessions = 5
+dreamScanThrottleSecs = 600
+dreamStaleThresholdSecs = 3600
+toolAgentDispatchMaxTasks = 10
+toolDatalogDefaultRowLimit = 100
+toolDatalogDefaultTimeoutSecs = 5.0
+toolMaxImageBytes = 20971520
+toolMaxPdfBytes = 33554432
+bootstrapMinTruncationBudget = 200
+correctionsMaxCorrections = 50
+tuningEligible = true
+
+[gateway]
+port = 18789
+bind = "localhost"
+
+[gateway.auth]
+mode = "token"
+noneRole = "admin"
+
+[gateway.tls]
+enabled = false
+
+[gateway.cors]
+allowedOrigins = []
+maxAgeSecs = 3600
+
+[gateway.bodyLimit]
+maxBytes = 1048576
+
+[gateway.csrf]
+enabled = false
+headerName = "x-requested-with"
+headerValue = "aletheia"
+
+[gateway.rateLimit]
+enabled = false
+requestsPerMinute = 60
+
+[gateway.rateLimit.perUser]
+enabled = false
+defaultRpm = 60
+defaultBurst = 10
+llmRpm = 20
+llmBurst = 5
+toolRpm = 30
+toolBurst = 8
+staleAfterSecs = 600
+
+[channels.signal]
+enabled = true
+
+[channels.signal.accounts]
+
+[channels.matrix]
+enabled = false
+homeserverUrl = "http://127.0.0.1:6167"
+userId = ""
+deviceDisplayName = "aletheia"
+cryptoStorePath = "matrix-crypto"
+accounts = []
+
+[embedding]
+provider = "candle"
+dimension = 384
+
+[maintenance]
+knowledgeMaintenanceEnabled = false
+
+[maintenance.traceRotation]
+enabled = true
+maxAgeDays = 14
+maxTotalSizeMb = 500
+compress = true
+maxArchives = 30
+
+[maintenance.driftDetection]
+enabled = true
+alertOnMissing = true
+ignorePatterns = [
+    "data/",
+    "signal/",
+    "*.db",
+    ".gitkeep",
+]
+optionalPatterns = [
+    "nous/_default/",
+    "nous/_template/",
+    "packs/",
+    "services/",
+    "shared/",
+    "theke/",
+    "logs/",
+    "README.md",
+    "*.example",
+    ".gitignore",
+    "config/credentials/",
+    "config/tls/",
+]
+
+[maintenance.dbMonitoring]
+enabled = true
+warnThresholdMb = 100
+alertThresholdMb = 500
+
+[maintenance.diskSpace]
+enabled = true
+warningThresholdMb = 1024
+criticalThresholdMb = 100
+checkIntervalSecs = 60
+
+[maintenance.sqliteRecovery]
+enabled = true
+integrityCheckOnOpen = true
+autoRepair = true
+backupCorrupt = true
+
+[maintenance.retention]
+enabled = false
+
+[maintenance.watchdog]
+enabled = false
+heartbeatTimeoutSecs = 60
+checkIntervalSecs = 10
+maxRestarts = 5
+
+[maintenance.cronTasks.evolution]
+enabled = false
+intervalSecs = 86400
+
+[maintenance.cronTasks.reflection]
+enabled = false
+intervalSecs = 86400
+
+[maintenance.cronTasks.graphCleanup]
+enabled = false
+intervalSecs = 604800
+
+[maintenance.backup]
+enabled = true
+backupIntervalHours = 24
+backupRetentionCount = 7
+
+[pricing]
+
+[sandbox]
+enabled = true
+enforcement = "permissive"
+allowedRoot = "~"
+extraReadPaths = []
+extraWritePaths = []
+extraExecPaths = []
+egress = "allow"
+egressAllowlist = []
+nprocLimit = 256
+
+[credential]
+source = "auto"
+refreshThresholdSecs = 3600
+
+[credential.circuitBreaker]
+failureThreshold = 5
+failureWindowSecs = 60
+cooldownSecs = 30
+maxCooldownSecs = 300
+
+[logging]
+retentionDays = 14
+level = "warn"
+
+[logging.redaction]
+enabled = true
+redactFields = [
+    "token",
+    "api_key",
+    "secret",
+    "password",
+    "bearer",
+    "authorization",
+    "credential",
+]
+truncateFields = [
+    "message",
+    "content",
+    "body",
+    "input",
+    "output",
+]
+truncateLength = 200
+
+[mcp.rateLimit]
+enabled = true
+messageRequestsPerMinute = 60
+readRequestsPerMinute = 300
+
+[training]
+enabled = false
+path = "data/training"
+max_shard_bytes = 52428800
+pii_filter_enabled = true
+
+[timeouts]
+llmCallSecs = 300
+
+[capacity]
+maxToolOutputBytes = 51200
+opusContextTokens = 1000000
+
+[retry]
+maxAttempts = 3
+backoffBaseMs = 1000
+backoffMaxMs = 30000
+
+[nousBehavior]
+degradedPanicThreshold = 5
+degradedWindowSecs = 600
+inboxRecvTimeoutSecs = 30
+consecutiveTimeoutWarnThreshold = 3
+inboxCapacity = 32
+maxSpawnedTasks = 8
+maxSessions = 1000
+gcIntervalSecs = 300
+managerDeadThreshold = 3
+managerMaxRestartBackoffSecs = 300
+managerRestartDrainTimeoutSecs = 30
+managerRestartDecayWindowSecs = 3600
+managerHealthIntervalSecs = 30
+managerPingTimeoutSecs = 5
+stuckTurnTimeoutSecs = 600
+loopDetectionWindow = 50
+cycleDetectionMaxLen = 10
+selfAuditEventThreshold = 50
+bootstrapCacheTtlSecs = 60
+shutdownTimeoutSecs = 30
+
+[knowledge]
+conflictMaxLlmCallsPerFact = 3
+conflictIntraBatchDedupThreshold = 0.95
+conflictCandidateDistanceThreshold = 0.28
+conflictMaxCandidates = 5
+decayReinforcementBoost = 0.02
+decayMaxReinforcementBonus = 1.0
+decayCrossAgentBonusPerAgent = 0.15
+decayMaxCrossAgentMultiplier = 1.75
+extractionConfidenceThreshold = 0.3
+extractionMinFactLength = 10
+extractionMaxFactLength = 500
+instinctMinToolCalls = 5
+instinctMaxParamValueLen = 200
+instinctMaxContextSummaryLen = 100
+maxContentLength = 102400
+sideQueryMaxResults = 5
+sideQueryCacheTtlSecs = 300
+sideQueryCacheCapacity = 64
+skillDecayNeedsReviewThreshold = 0.3
+skillDecayRetireThreshold = 0.08
+skillDecayStaleDays = 28
+skillDecayHighUsageThreshold = 10
+skillDecayHighUsageFactor = 3.0
+surpriseThreshold = 2.0
+surpriseEmaAlpha = 0.3
+
+[providerBehavior]
+nonStreamingTimeoutSecs = 120
+sseDefaultRetryMs = 1000
+concurrencyEwmaAlpha = 0.8
+concurrencyLatencyThresholdSecs = 30.0
+complexityLowThreshold = 30
+complexityHighThreshold = 70
+
+[apiLimits]
+maxSessionNameLen = 255
+maxIdentifierBytes = 256
+maxHistoryLimit = 1000
+defaultHistoryLimit = 50
+maxMessageBytes = 262144
+maxFactsLimit = 1000
+maxSearchLimit = 1000
+maxImportBatchSize = 1000
+idempotencyTtlSecs = 300
+idempotencyCapacity = 10000
+idempotencyMaxKeyLength = 64
+clockSkewLeewaySecs = 30
+expiryWarningThresholdSecs = 3600
+
+[daemonBehavior]
+watchdogBackoffBaseSecs = 2
+watchdogBackoffCapSecs = 300
+prosocheAnomalySampleSize = 15
+runnerOutputBriefHeadLines = 5
+runnerOutputBriefTailLines = 3
+
+[toolLimits]
+maxPatternLength = 1000
+subprocessTimeoutSecs = 60
+maxWriteBytes = 10485760
+maxReadBytes = 52428800
+maxCommandLength = 10000
+messageMaxLen = 4000
+interSessionMaxMessageLen = 100000
+interSessionMaxTimeoutSecs = 300
+maxDispatchTasks = 10
+agentDispatchTimeoutSecs = 300
+datalogDefaultRowLimit = 100
+datalogDefaultTimeoutSecs = 5.0
+maxImageBytes = 20971520
+maxPdfBytes = 33554432
+
+[messaging]
+pollIntervalMs = 2000
+bufferCapacity = 100
+circuitBreakerThreshold = 5
+haltedHealthCheckIntervalSecs = 60
+rpcTimeoutSecs = 10
+healthTimeoutSecs = 2
+receiveTimeoutSecs = 15
+agentDispatchTimeoutSecs = 300
+maxConcurrentHandlers = 64
+
+[tuning]
+enabled = false
+maxChangesPerCycle = 3
+evidenceMinSamples = 20
+significanceThreshold = 1.5
+
+[anthropic]
+promptCacheMode = "disabled"
+
+[jwt]
+clockSkewLeewaySecs = 30
+
+[promptAudit]
+enabled = true
+retentionDays = 90
+includeFilteredIds = true
