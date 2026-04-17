@@ -173,6 +173,8 @@ pub(crate) struct InitArgs {
 
 use taxis::oikos::Oikos;
 
+use graphe::types::Role;
+
 pub(crate) fn export_agent(_instance_root: Option<&PathBuf>, _args: &ExportArgs) -> Result<()> {
     // WHY: the SQLite export pipeline was removed alongside rusqlite (#3446).
     // A fjall-backed agent export/import round trip needs to be re-implemented
@@ -181,16 +183,34 @@ pub(crate) fn export_agent(_instance_root: Option<&PathBuf>, _args: &ExportArgs)
         "export is temporarily unavailable: the agent-file export pipeline is being reimplemented on the fjall backend (#3446)"
     );
 }
+fn capitalize(s: &str) -> String {
+    let mut chars = s.chars();
+    match chars.next() {
+        None => String::new(),
+        Some(c) => {
+            let mut result: String = c.to_uppercase().collect();
+            result.push_str(chars.as_str());
+            result
+        }
+    }
+}
 
-pub(crate) fn import_agent(_instance_root: Option<&PathBuf>, args: &ImportArgs) -> Result<()> {
+#[expect(
+    clippy::too_many_lines,
+    reason = "import orchestrates config, workspace, and session store — sequential by nature"
+)]
+pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -> Result<()> {
+    let json = std::fs::read_to_string(&args.file)
+        .with_whatever_context(|_| format!("failed to read {}", args.file.display()))?;
+    let agent_file: mneme::portability::AgentFile =
+        serde_json::from_str(&json).whatever_context("failed to parse agent file")?;
+
+    let nous_id = args
+        .target_id
+        .clone()
+        .unwrap_or_else(|| agent_file.nous.id.clone());
+
     if args.dry_run {
-        let json = std::fs::read_to_string(&args.file)
-            .with_whatever_context(|_| format!("failed to read {}", args.file.display()))?;
-        let agent_file: mneme::portability::AgentFile =
-            serde_json::from_str(&json).whatever_context("failed to parse agent file")?;
-
-        let nous_id = args.target_id.as_deref().unwrap_or(&agent_file.nous.id);
-
         println!("Dry run — no changes will be made\n");
         println!(
             "Agent: {} ({})",
@@ -217,13 +237,213 @@ pub(crate) fn import_agent(_instance_root: Option<&PathBuf>, args: &ImportArgs) 
         return Ok(());
     }
 
-    // WHY: the SQLite import pipeline was removed alongside rusqlite (#3446).
-    // Dry-run still parses and reports the AgentFile shape; the actual write
-    // path needs to be reimplemented against the fjall backend.
-    whatever!(
-        "import is temporarily unavailable: the agent-file import pipeline is being reimplemented on the fjall backend (#3446). \
-         Use --dry-run to validate the file format."
+    let oikos = match instance_root {
+        Some(root) => Oikos::from_root(root),
+        None => Oikos::discover(),
+    };
+
+    let nous_dir = oikos.nous_dir(&nous_id);
+    if nous_dir.exists() && !args.force {
+        whatever!(
+            "nous directory already exists: {}\nUse --force to overwrite workspace files.",
+            nous_dir.display()
+        );
+    }
+
+    // Scaffold workspace from agent file.
+    if !args.skip_workspace {
+        std::fs::create_dir_all(&nous_dir)
+            .with_whatever_context(|_| format!("failed to create {}", nous_dir.display()))?;
+        for (path, content) in &agent_file.workspace.files {
+            let target = nous_dir.join(path);
+            if let Some(parent) = target.parent() {
+                std::fs::create_dir_all(parent).with_whatever_context(|_| {
+                    format!("failed to create directory: {}", parent.display())
+                })?;
+            }
+            koina::fs::write_restricted(&target, content.as_bytes())
+                .with_whatever_context(|_| format!("failed to write {}", target.display()))?;
+        }
+    }
+
+    // Write config entry.
+    let config_path = oikos.config().join("aletheia.toml");
+    let existing = if config_path.exists() {
+        std::fs::read_to_string(&config_path)
+            .with_whatever_context(|_| format!("failed to read {}", config_path.display()))?
+    } else {
+        String::new()
+    };
+
+    let mut doc: toml_edit::DocumentMut = existing
+        .parse()
+        .with_whatever_context(|_| format!("failed to parse {}", config_path.display()))?;
+
+    let already_listed = doc
+        .get("agents")
+        .and_then(|a| a.as_table())
+        .and_then(|a| a.get("list"))
+        .and_then(|l| l.as_array_of_tables())
+        .is_some_and(|list| {
+            list.iter()
+                .any(|t| t.get("id").and_then(|v| v.as_str()) == Some(nous_id.as_str()))
+        });
+
+    if already_listed && !args.force {
+        whatever!(
+            "agent '{}' already exists in the configuration file.\n\
+             Use --force to overwrite the existing entry.",
+            nous_id
+        );
+    }
+
+    if already_listed && args.force {
+        // Remove existing entry so we can replace it.
+        if let Some(list) = doc
+            .get_mut("agents")
+            .and_then(|a| a.as_table_mut())
+            .and_then(|a| a.get_mut("list"))
+            .and_then(|l| l.as_array_of_tables_mut())
+        {
+            let mut idx = None;
+            for (i, t) in list.iter().enumerate() {
+                if t.get("id").and_then(|v| v.as_str()) == Some(nous_id.as_str()) {
+                    idx = Some(i);
+                    break;
+                }
+            }
+            if let Some(i) = idx {
+                list.remove(i);
+            }
+        }
+    }
+
+    let workspace = format!("nous/{nous_id}");
+    let display_name = agent_file
+        .nous
+        .name
+        .clone()
+        .unwrap_or_else(|| capitalize(&nous_id));
+    let model = agent_file
+        .nous
+        .model
+        .clone()
+        .unwrap_or_else(|| koina::defaults::DEFAULT_MODEL.to_owned());
+
+    let mut entry = toml_edit::Table::new();
+    entry.insert("id", toml_edit::value(nous_id.clone()));
+    entry.insert("name", toml_edit::value(display_name));
+    entry.insert("workspace", toml_edit::value(workspace));
+    entry.insert("default", toml_edit::value(false));
+
+    let mut model_table = toml_edit::Table::new();
+    model_table.insert("primary", toml_edit::value(model));
+    model_table.insert(
+        "fallbacks",
+        toml_edit::Item::Value(toml_edit::Value::Array(toml_edit::Array::new())),
     );
+    entry.insert("model", toml_edit::Item::Table(model_table));
+
+    if doc.get("agents").and_then(|i| i.as_table()).is_none() {
+        doc.insert("agents", toml_edit::Item::Table(toml_edit::Table::new()));
+    }
+
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "key 'agents' was just inserted if absent, so indexing is valid"
+    )]
+    let agents = doc["agents"]
+        .as_table_mut()
+        .ok_or_else(|| crate::error::Error::msg("[agents] in config is not a table"))?;
+
+    if agents
+        .get("list")
+        .and_then(|i| i.as_array_of_tables())
+        .is_none()
+    {
+        agents.insert(
+            "list",
+            toml_edit::Item::ArrayOfTables(toml_edit::ArrayOfTables::new()),
+        );
+    }
+
+    let list = agents["list"].as_array_of_tables_mut().ok_or_else(|| {
+        crate::error::Error::msg("agents.list in config is not an array of tables")
+    })?;
+
+    list.push(entry);
+
+    koina::fs::write_restricted(&config_path, doc.to_string().as_bytes())
+        .with_whatever_context(|_| format!("failed to write {}", config_path.display()))?;
+
+    // Import sessions into graphe.
+    if !args.skip_sessions {
+        let sessions_db = oikos.sessions_db();
+        let store =
+            graphe::store::SessionStore::open(&sessions_db).with_whatever_context(|_| {
+                format!("failed to open session store at {}", sessions_db.display())
+            })?;
+
+        for session in &agent_file.sessions {
+            let imported = store
+                .create_session(
+                    &session.id,
+                    &nous_id,
+                    &session.session_key,
+                    None,
+                    agent_file.nous.model.as_deref(),
+                )
+                .with_whatever_context(|_| format!("failed to create session {}", session.id))?;
+
+            for msg in &session.messages {
+                let role = match msg.role.as_str() {
+                    "system" => Role::System,
+                    "user" => Role::User,
+                    "assistant" => Role::Assistant,
+                    "tool_result" => Role::ToolResult,
+                    other => {
+                        eprintln!("  WARN: unknown role '{other}', defaulting to 'user'");
+                        Role::User
+                    }
+                };
+                store
+                    .append_message(
+                        &imported.id,
+                        role,
+                        &msg.content,
+                        None,
+                        None,
+                        msg.token_estimate,
+                    )
+                    .with_whatever_context(|_| {
+                        format!("failed to append message to session {}", session.id)
+                    })?;
+            }
+
+            for note in &session.notes {
+                let category = if graphe::store::SessionStore::VALID_CATEGORIES
+                    .contains(&note.category.as_str())
+                {
+                    note.category.as_str()
+                } else {
+                    eprintln!(
+                        "  WARN: note category '{}' not valid, using 'context'",
+                        note.category
+                    );
+                    "context"
+                };
+                if let Err(e) = store.add_note(&imported.id, &nous_id, category, &note.content) {
+                    eprintln!("  WARN: failed to add note: {e}");
+                }
+            }
+        }
+    }
+
+    println!("Imported agent '{nous_id}' from {}", args.file.display());
+    println!("  Workspace: {} files", agent_file.workspace.files.len());
+    println!("  Sessions: {}", agent_file.sessions.len());
+
+    Ok(())
 }
 
 #[expect(
@@ -670,4 +890,193 @@ pub(crate) async fn guard_knowledge_lock(url: &str) -> Result<()> {
         );
     }
     Ok(())
+}
+#[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "test setup writes files to temp directories; synchronous I/O is required in test contexts"
+)]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test: vec indices valid after len assertions"
+)]
+mod tests {
+    use std::collections::HashMap;
+
+    use super::*;
+    use graphe::portability::{
+        AgentFile, ExportedMessage, ExportedNote, ExportedSession, NousInfo, WorkspaceData,
+    };
+
+    #[test]
+    fn capitalize_first_letter() {
+        assert_eq!(capitalize("analyst"), "Analyst");
+        assert_eq!(capitalize("my-agent"), "My-agent");
+        assert_eq!(capitalize(""), "");
+        assert_eq!(capitalize("A"), "A");
+    }
+
+    fn sample_agent_file() -> AgentFile {
+        AgentFile {
+            version: 1,
+            exported_at: "2026-03-05T12:00:00Z".to_owned(),
+            generator: "aletheia-rust/0.10.0".to_owned(),
+            nous: NousInfo {
+                id: "imported-agent".to_owned(),
+                name: Some("Imported Agent".to_owned()),
+                model: Some("claude-sonnet-4-6".to_owned()),
+                config: serde_json::json!({"domains": ["general"]}),
+            },
+            workspace: WorkspaceData {
+                files: HashMap::from([(
+                    "SOUL.md".to_owned(),
+                    "# Imported Agent\n\nYou are imported.\n".to_owned(),
+                )]),
+                binary_files: vec![],
+            },
+            sessions: vec![ExportedSession {
+                id: "ses-001".to_owned(),
+                session_key: "main".to_owned(),
+                status: "active".to_owned(),
+                session_type: "primary".to_owned(),
+                message_count: 2,
+                token_count_estimate: 150,
+                distillation_count: 0,
+                created_at: "2026-03-05T10:00:00Z".to_owned(),
+                updated_at: "2026-03-05T11:00:00Z".to_owned(),
+                working_state: None,
+                distillation_priming: None,
+                notes: vec![ExportedNote {
+                    category: "task".to_owned(),
+                    content: "working on import".to_owned(),
+                    created_at: "2026-03-05T10:30:00Z".to_owned(),
+                }],
+                messages: vec![
+                    ExportedMessage {
+                        role: "user".to_owned(),
+                        content: "hello".to_owned(),
+                        seq: 1,
+                        token_estimate: 50,
+                        is_distilled: false,
+                        created_at: "2026-03-05T10:00:00Z".to_owned(),
+                    },
+                    ExportedMessage {
+                        role: "assistant".to_owned(),
+                        content: "hi there".to_owned(),
+                        seq: 2,
+                        token_estimate: 100,
+                        is_distilled: false,
+                        created_at: "2026-03-05T10:00:01Z".to_owned(),
+                    },
+                ],
+            }],
+            memory: None,
+            knowledge: None,
+        }
+    }
+
+    #[test]
+    fn import_agent_writes_config_and_sessions() {
+        let dir = tempfile::tempdir().unwrap();
+        let oikos = Oikos::from_root(dir.path());
+        std::fs::create_dir_all(oikos.config()).unwrap();
+        std::fs::create_dir_all(oikos.data()).unwrap();
+
+        let agent_file = sample_agent_file();
+        let json = serde_json::to_string(&agent_file).unwrap();
+        let agent_path = dir.path().join("test.agent.json");
+        std::fs::write(&agent_path, json).unwrap();
+
+        let args = ImportArgs {
+            file: agent_path,
+            target_id: None,
+            skip_sessions: false,
+            skip_workspace: false,
+            force: false,
+            dry_run: false,
+        };
+
+        import_agent(Some(&dir.path().to_path_buf()), &args).unwrap();
+
+        // Verify config was written.
+        let config = std::fs::read_to_string(oikos.config().join("aletheia.toml")).unwrap();
+        assert!(config.contains(r#"id = "imported-agent""#));
+        assert!(config.contains(r#"name = "Imported Agent""#));
+
+        // Verify workspace was written.
+        let soul =
+            std::fs::read_to_string(oikos.nous_dir("imported-agent").join("SOUL.md")).unwrap();
+        assert!(soul.contains("Imported Agent"));
+
+        // Verify sessions were imported.
+        let store = graphe::store::SessionStore::open(&oikos.sessions_db()).unwrap();
+        let sessions = store.list_sessions(Some("imported-agent")).unwrap();
+        assert_eq!(sessions.len(), 1, "one session should be imported");
+
+        let history = store.get_history(&sessions[0].id, None).unwrap();
+        assert_eq!(history.len(), 2, "two messages should be imported");
+        assert_eq!(history[0].content, "hello");
+        assert_eq!(history[1].content, "hi there");
+    }
+
+    #[test]
+    fn import_agent_skips_sessions_when_flagged() {
+        let dir = tempfile::tempdir().unwrap();
+        let oikos = Oikos::from_root(dir.path());
+        std::fs::create_dir_all(oikos.config()).unwrap();
+        std::fs::create_dir_all(oikos.data()).unwrap();
+
+        let agent_file = sample_agent_file();
+        let json = serde_json::to_string(&agent_file).unwrap();
+        let agent_path = dir.path().join("test.agent.json");
+        std::fs::write(&agent_path, json).unwrap();
+
+        let args = ImportArgs {
+            file: agent_path,
+            target_id: None,
+            skip_sessions: true,
+            skip_workspace: false,
+            force: false,
+            dry_run: false,
+        };
+
+        import_agent(Some(&dir.path().to_path_buf()), &args).unwrap();
+
+        let store = graphe::store::SessionStore::open(&oikos.sessions_db()).unwrap();
+        let sessions = store.list_sessions(Some("imported-agent")).unwrap();
+        assert!(sessions.is_empty(), "sessions should be skipped");
+    }
+
+    #[test]
+    fn import_agent_rejects_duplicate_without_force() {
+        let dir = tempfile::tempdir().unwrap();
+        let oikos = Oikos::from_root(dir.path());
+        std::fs::create_dir_all(oikos.config()).unwrap();
+        std::fs::create_dir_all(oikos.data()).unwrap();
+
+        let agent_file = sample_agent_file();
+        let json = serde_json::to_string(&agent_file).unwrap();
+        let agent_path = dir.path().join("test.agent.json");
+        std::fs::write(&agent_path, json).unwrap();
+
+        let args = ImportArgs {
+            file: agent_path.clone(),
+            target_id: None,
+            skip_sessions: true,
+            skip_workspace: true,
+            force: false,
+            dry_run: false,
+        };
+
+        import_agent(Some(&dir.path().to_path_buf()), &args).unwrap();
+
+        let result = import_agent(Some(&dir.path().to_path_buf()), &args);
+        assert!(
+            result.is_err(),
+            "duplicate import without force should fail"
+        );
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("already exists"), "got: {msg}");
+    }
 }

@@ -12,7 +12,7 @@ An abstraction with only one creation path is a mesh with a single root.  If tha
 | Session     | 1        | Pylon HTTP API     | **Single-grounded** |
 | Plan        | 1        | Dianoia internal (`Plan::new`) | **Single-grounded** |
 | Tool        | 3        | Organon builtins, Thesauros packs, External tools config | Multi-grounded (diaporeia MCP is **not** equivalent) |
-| Agent       | 2        | Taxis config + `add-nous` CLI | **Partial** (import stubbed, no programmatic API) |
+| Agent       | 5        | Taxis config + `add-nous` CLI, agent file import, `NousManager::register_agent`, `POST /api/v1/nous` | Multi-grounded |
 | Fact        | 3        | Extraction pipelines, bulk import API, ops-fact daemon | Multi-grounded (no single-fact manual entry) |
 
 ---
@@ -103,13 +103,16 @@ An abstraction with only one creation path is a mesh with a single root.  If tha
 2. **Config-only (manual edit)** — `crates/taxis/src/config/agents.rs:218`  
    An operator can hand-write an `[[agents.list]]` entry; `taxis::config::resolve_nous` merges it with defaults.
 
-### Broken / missing grounds
+### Verified creation paths
 
-3. **Agent file import** — `crates/aletheia/src/commands/agent_io.rs:185-225`  
-   `aletheia import-agent` is **stubbed out**.  Dry-run parsing works (`crates/aletheia/src/commands/agent_io.rs:186-218`) but the write path returns:  
-   > "import is temporarily unavailable: the agent-file import pipeline is being reimplemented on the fjall backend (#3446)."
+3. **Agent file import** — `crates/aletheia/src/commands/agent_io.rs:185-437`  
+   `aletheia import-agent` writes the imported agent config into `config/aletheia.toml`, scaffolds the workspace from the agent file, and copies session history into `graphe` via `SessionStore::create_session` and `append_message`.
 
-4. **Programmatic creation** — there is no `Agent::new()` or `NousManager::create_agent()` API.  The pylon `/nous` endpoints are read-only (`list`, `get`, `tools`, `recover`); no `POST /nous` exists.
+4. **Programmatic creation** — `crates/nous/src/manager.rs:806-810`  
+   `NousManager::register_agent(def: NousConfig)` spawns a new agent actor with default `PipelineConfig`.  Useful for integration tests that need agents without touching the filesystem or HTTP layer.
+
+5. **HTTP API creation** — `crates/pylon/src/handlers/nous.rs:233-320`  
+   `POST /api/v1/nous` accepts an `AgentDefinition` payload, validates it, scaffolds the workspace, writes the config entry, and returns 201 Created.  The agent becomes active after the next config reload or server restart.
 
 ---
 
