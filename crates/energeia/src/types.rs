@@ -120,6 +120,12 @@ pub struct SessionOutcome {
     /// this outcome. `0` means this is the original execution.
     #[serde(default)]
     pub corrective_attempts: u32,
+    /// Tokens read from the prompt cache on this session.
+    #[serde(default)]
+    pub cache_hit_tokens: u64,
+    /// Tokens written to the prompt cache on this session.
+    #[serde(default)]
+    pub cache_miss_tokens: u64,
 }
 
 /// Terminal status of a dispatched session.
@@ -399,6 +405,8 @@ mod tests {
             model: Some("claude-3-5-sonnet".to_owned()),
             blast_radius: vec!["crates/foo/".to_owned()],
             corrective_attempts: 0,
+            cache_hit_tokens: 0,
+            cache_miss_tokens: 0,
         };
         let json = serde_json::to_string(&outcome).unwrap();
         let deserialized: SessionOutcome = serde_json::from_str(&json).unwrap();

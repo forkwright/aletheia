@@ -288,6 +288,8 @@ mod tests {
             prompt: "test".to_owned(),
             system_prompt: None,
             cwd: None,
+
+            prompt_components: None,
         }
     }
 

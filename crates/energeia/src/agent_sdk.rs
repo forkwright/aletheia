@@ -202,6 +202,8 @@ impl DispatchEngine for AgentSdkEngine {
                 cmd.current_dir(dir);
             }
 
+            // When prompt_components is present, the static prefix is already
+            // in system_prompt and the dynamic suffix is already in prompt.
             if let Some(ref sys) = spec.system_prompt
                 && options.system_prompt.is_none()
             {

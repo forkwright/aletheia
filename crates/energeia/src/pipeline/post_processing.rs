@@ -408,6 +408,8 @@ mod tests {
             acceptance_criteria: vec![],
             blast_radius: vec![],
             body: "do the thing".to_owned(),
+
+            prompt_components: None,
         }];
         let mut ctx =
             make_context_with_prompts(vec![success_mock_outcome("s1", 0.50, 10)], prompts);
@@ -447,6 +449,8 @@ mod tests {
             acceptance_criteria: vec![],
             blast_radius: vec![],
             body: "do the thing".to_owned(),
+
+            prompt_components: None,
         }];
         let mut ctx =
             make_context_with_prompts(vec![success_mock_outcome("s1", 0.50, 10)], prompts);
@@ -546,6 +550,8 @@ mod tests {
             acceptance_criteria: vec![],
             blast_radius: vec![],
             body: "do the thing".to_owned(),
+
+            prompt_components: None,
         }];
 
         for _ in 0..2 {
@@ -591,6 +597,8 @@ mod tests {
             acceptance_criteria: vec![],
             blast_radius: vec![],
             body: "do the thing".to_owned(),
+
+            prompt_components: None,
         }];
 
         // Seed an old file to simulate a prior day's log.
@@ -646,6 +654,8 @@ mod tests {
             acceptance_criteria: vec![],
             blast_radius: vec![],
             body: "do the thing".to_owned(),
+
+            prompt_components: None,
         }];
 
         // Use a nested path that does not yet exist.

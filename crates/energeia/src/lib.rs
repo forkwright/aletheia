@@ -33,6 +33,8 @@ pub mod dag;
 pub mod engine;
 /// Error types for energeia operations.
 pub mod error;
+/// Hermeneus-based dispatch engine with prompt caching.
+pub mod hermeneus_engine;
 /// HTTP/SSE dispatch engine: subprocess-based `DispatchEngine` and mock.
 pub mod http;
 /// Metrics and reporting: health signals, cost reports, status dashboard, Prometheus.
@@ -43,6 +45,8 @@ pub mod orchestrator;
 pub(crate) mod pipeline;
 /// Prompt loading from YAML frontmatter files.
 pub mod prompt;
+/// Prompt cache optimization: static prefix / dynamic suffix split.
+pub mod prompt_cache;
 /// Quality assurance gate trait.
 pub mod qa;
 /// Multi-stage resume escalation policy.

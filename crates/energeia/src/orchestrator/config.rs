@@ -2,6 +2,7 @@
 // separate from per-session config (EngineConfig) so callers can tune the
 // dispatch pipeline without touching session internals.
 
+use std::path::PathBuf;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
@@ -34,6 +35,16 @@ pub struct OrchestratorConfig {
     /// Maximum number of corrective prompt retries per failed prompt.
     /// Defaults to 0 (no corrective attempts unless explicitly configured).
     pub max_corrective_retries: u32,
+    /// Optional role definition text or path to a role file.
+    /// When present, the preparation stage splits prompts into a static
+    /// prefix (role + standards + validation gate) and dynamic suffix.
+    pub role: Option<String>,
+    /// Optional directory containing standard `.md` files.
+    pub standards_dir: Option<PathBuf>,
+    /// List of standard names to include in the static prefix.
+    pub standards: Vec<String>,
+    /// Optional scope context appended to the dynamic suffix.
+    pub scope: Option<String>,
 }
 
 /// Raw deserialization type for [`OrchestratorConfig`].
@@ -47,6 +58,14 @@ struct OrchestratorConfigRaw {
     #[serde(with = "duration_ms_option")]
     session_idle_timeout: Option<Duration>,
     max_corrective_retries: u32,
+    #[serde(default)]
+    role: Option<String>,
+    #[serde(default)]
+    standards_dir: Option<PathBuf>,
+    #[serde(default)]
+    standards: Vec<String>,
+    #[serde(default)]
+    scope: Option<String>,
 }
 
 impl From<OrchestratorConfigRaw> for OrchestratorConfig {
@@ -58,6 +77,10 @@ impl From<OrchestratorConfigRaw> for OrchestratorConfig {
             max_duration: raw.max_duration,
             session_idle_timeout: raw.session_idle_timeout,
             max_corrective_retries: raw.max_corrective_retries,
+            role: raw.role,
+            standards_dir: raw.standards_dir,
+            standards: raw.standards,
+            scope: raw.scope,
         }
     }
 }
@@ -71,6 +94,10 @@ impl Default for OrchestratorConfig {
             max_duration: None,
             session_idle_timeout: Some(Duration::from_mins(10)),
             max_corrective_retries: 0,
+            role: None,
+            standards_dir: None,
+            standards: Vec::new(),
+            scope: None,
         }
     }
 }
@@ -121,6 +148,34 @@ impl OrchestratorConfig {
     #[must_use]
     pub fn max_corrective_retries(mut self, n: u32) -> Self {
         self.max_corrective_retries = n;
+        self
+    }
+
+    /// Set the role definition text or path.
+    #[must_use]
+    pub fn role(mut self, role: impl Into<String>) -> Self {
+        self.role = Some(role.into());
+        self
+    }
+
+    /// Set the standards directory.
+    #[must_use]
+    pub fn standards_dir(mut self, dir: impl Into<PathBuf>) -> Self {
+        self.standards_dir = Some(dir.into());
+        self
+    }
+
+    /// Set the list of standards to include.
+    #[must_use]
+    pub fn standards(mut self, standards: Vec<String>) -> Self {
+        self.standards = standards;
+        self
+    }
+
+    /// Set the scope context.
+    #[must_use]
+    pub fn scope(mut self, scope: impl Into<String>) -> Self {
+        self.scope = Some(scope.into());
         self
     }
 }

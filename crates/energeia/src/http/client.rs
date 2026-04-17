@@ -303,6 +303,7 @@ mod tests {
             prompt: prompt.to_owned(),
             system_prompt: None,
             cwd: None,
+            prompt_components: None,
         }
     }
 

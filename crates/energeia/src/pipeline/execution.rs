@@ -83,6 +83,8 @@ impl PipelineStage for ExecutionStage {
                         model: None,
                         blast_radius: prompt.blast_radius.clone(),
                         corrective_attempts: 0,
+                        cache_hit_tokens: 0,
+                        cache_miss_tokens: 0,
                     });
                     mark_dependents_blocked(n, ctx.dag_mut());
                 } else {
@@ -207,6 +209,8 @@ impl PipelineStage for ExecutionStage {
                 model: None,
                 blast_radius: c.blast_radius.clone(),
                 corrective_attempts: 0,
+                cache_hit_tokens: 0,
+                cache_miss_tokens: 0,
             });
         }
 
@@ -271,6 +275,8 @@ fn collect_skipped(numbers: &[u32], dag: &mut PromptDag, reason: &str) -> Vec<Se
                 model: None,
                 blast_radius: vec![],
                 corrective_attempts: 0,
+                cache_hit_tokens: 0,
+                cache_miss_tokens: 0,
             }
         })
         .collect()
@@ -576,6 +582,8 @@ mod tests {
             acceptance_criteria: vec![],
             blast_radius: vec![],
             body: "do the thing".to_owned(),
+
+            prompt_components: None,
         }];
         let mut ctx = make_prepared_context(vec![success_mock_outcome("s1", 0.10, 5)], prompts);
 
@@ -603,6 +611,8 @@ mod tests {
                 acceptance_criteria: vec![],
                 blast_radius: vec![],
                 body: "first task".to_owned(),
+
+                prompt_components: None,
             },
             PromptSpec {
                 number: 2,
@@ -611,6 +621,8 @@ mod tests {
                 acceptance_criteria: vec![],
                 blast_radius: vec![],
                 body: "second task".to_owned(),
+
+                prompt_components: None,
             },
         ];
         let mut ctx = make_prepared_context(
@@ -648,6 +660,8 @@ mod tests {
             acceptance_criteria: vec![],
             blast_radius: vec![],
             body: "do the thing".to_owned(),
+
+            prompt_components: None,
         }];
         let mut ctx =
             make_prepared_context(vec![success_mock_outcome_with_pr("s1", 0.10, 5)], prompts);
@@ -680,6 +694,8 @@ mod tests {
                 acceptance_criteria: vec!["feature works".to_owned()],
                 blast_radius: vec![],
                 body: "do the thing".to_owned(),
+
+                prompt_components: None,
             },
             PromptSpec {
                 number: 2,
@@ -688,6 +704,8 @@ mod tests {
                 acceptance_criteria: vec![],
                 blast_radius: vec![],
                 body: "second task".to_owned(),
+
+                prompt_components: None,
             },
         ];
         let qa = Arc::new(PartialThenPassQa::new());
@@ -749,6 +767,8 @@ mod tests {
             acceptance_criteria: vec!["feature works".to_owned()],
             blast_radius: vec![],
             body: "do the thing".to_owned(),
+
+            prompt_components: None,
         }];
         let qa = Arc::new(AlwaysFailQa);
         let config = OrchestratorConfig::default()
