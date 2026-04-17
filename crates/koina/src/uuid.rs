@@ -220,7 +220,9 @@ impl Uuid {
         if version != 1 {
             return None;
         }
-        let time_low = u64::from(u32::from_be_bytes([self.0[0], self.0[1], self.0[2], self.0[3]]));
+        let time_low = u64::from(u32::from_be_bytes([
+            self.0[0], self.0[1], self.0[2], self.0[3],
+        ]));
         let time_mid = u64::from(u16::from_be_bytes([self.0[4], self.0[5]]));
         let time_hi = u64::from(u16::from_be_bytes([self.0[6], self.0[7]]) & 0x0FFF);
         let ts_100ns = time_low | (time_mid << 32) | (time_hi << 48);
@@ -317,6 +319,7 @@ pub fn uuid_v4() -> String {
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use proptest::prelude::*;
 
