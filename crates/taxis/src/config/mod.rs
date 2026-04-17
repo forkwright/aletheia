@@ -11,10 +11,11 @@ pub use agents::{
     ModelSpec, NousDefinition, RecallSettings, RecallWeights,
 };
 pub use behavior::{
-    AnthropicConfig, ApiLimitsConfig, CapacityConfig, DaemonBehaviorConfig, DeploymentTarget,
-    JwtSettings, KnowledgeConfig, LlmProviderConfig, MatrixAccountConfig, MatrixConfig,
-    MessagingConfig, NousBehaviorConfig, PromptCacheMode, ProviderBehaviorConfig, ProviderKind,
-    RetrySettings, TimeoutsConfig, ToolLimitsConfig, TuningConfig,
+    AnthropicConfig, ApiLimitsConfig, CapacityConfig, CronTaskConfig, DaemonBehaviorConfig,
+    DeploymentTarget, DispatchConfig, DispatchSpecConfig, JwtSettings, KnowledgeConfig,
+    LlmProviderConfig, MatrixAccountConfig, MatrixConfig, MessagingConfig, NousBehaviorConfig,
+    PromptCacheMode, ProviderBehaviorConfig, ProviderKind, RetrySettings, TimeoutsConfig,
+    ToolLimitsConfig, TuningConfig,
 };
 pub use gateway::{
     BodyLimitConfig, CorsConfig, CsrfConfig, GatewayAuthConfig, GatewayConfig,
@@ -112,6 +113,9 @@ pub struct AletheiaConfig {
     /// WHY configurable: watchdog backoff and anomaly detection sensitivity
     /// depend on system stability requirements and agent workload patterns.
     pub daemon_behavior: DaemonBehaviorConfig,
+    /// Recurring dispatch task configuration (cron-scheduled prompt runs).
+    #[serde(default)]
+    pub dispatch: DispatchConfig,
     /// Organon tool size and timeout limits.
     ///
     /// WHY configurable: filesystem write caps, subprocess timeouts, and

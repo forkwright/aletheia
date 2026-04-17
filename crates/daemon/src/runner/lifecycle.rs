@@ -37,6 +37,26 @@ impl TaskRunner {
         let mut watchdog_tick =
             tokio::time::interval(watchdog_interval.unwrap_or(Duration::from_secs(30)));
 
+        #[cfg(feature = "dispatch-cron")]
+        let _cron_handle = self.cron_scheduler.clone().map(|scheduler| {
+            let cancel = self.shutdown.child_token();
+            tokio::spawn(async move {
+                let _ = scheduler
+                    .run(cancel, |task| {
+                        let name = task.name.clone();
+                        let project = task.dispatch_spec.project.clone();
+                        async move {
+                            tracing::info!(
+                                task = %name,
+                                project = %project,
+                                "cron dispatch task fired"
+                            );
+                        }
+                    })
+                    .await;
+            })
+        });
+
         loop {
             tokio::select! {
                 // SAFETY: cancel-safe. `interval.tick()` is cancel-safe; dropping it

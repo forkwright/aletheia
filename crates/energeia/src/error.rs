@@ -153,6 +153,15 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// Invalid cron expression.
+    #[snafu(display("invalid cron expression '{expression}': {source}"))]
+    CronParse {
+        expression: String,
+        source: cron::error::Error,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// Invalid model identifier specified.
     #[snafu(display("invalid model: {model}"))]
     InvalidModel {

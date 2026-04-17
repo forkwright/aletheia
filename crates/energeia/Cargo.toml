@@ -13,13 +13,17 @@ workspace = true
 [features]
 test-core = ["storage-fjall"]
 test-full = []
-storage-fjall = ["dep:fjall"]
+storage-fjall = ["dep:fjall", "koina/fjall"]
 
 [dependencies]
+compact_str = { workspace = true }
+chrono = "0.4"
+cron = "=0.15.0"
 koina = { path = "../koina" }
 eidos = { path = "../eidos" }
 hermeneus = { path = "../hermeneus" }
 prometheus-client = { workspace = true }
+rand = { workspace = true }
 regex = { workspace = true }
 fjall = { version = "3", optional = true }
 jiff = { workspace = true, features = ["serde"] }

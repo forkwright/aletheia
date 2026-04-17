@@ -15,11 +15,13 @@ default = []
 # WHY: gates anomaly detection (prosoche memory consistency checks) on the
 # heavy CozoDB-backed KnowledgeStore from episteme. Not all daemon users need it.
 knowledge-store = ["episteme/mneme-engine"]
+dispatch-cron = ["energeia/storage-fjall", "dep:energeia"]
 test-core = []
 test-full = []
 
 [dependencies]
 episteme = { path = "../episteme", default-features = false }
+energeia = { path = "../energeia", optional = true }
 koina = { path = "../koina", features = ["fjall"] }
 # WHY: axum for webhook trigger listener
 axum = { workspace = true }

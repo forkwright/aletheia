@@ -33,7 +33,7 @@ tui = ["dep:koilon"]
 # Claude Code subprocess provider: delegates LLM calls to the `claude` CLI.
 cc-provider = ["hermeneus/cc-provider"]
 # Dispatch orchestration (kanon phronesis port). Default off for incremental development.
-energeia = ["dep:energeia"]
+energeia = ["dep:energeia", "oikonomos/dispatch-cron"]
 # Matrix channel provider (conduwuit homeserver + fjall-backed CryptoStore). See
 # issue #3557. Off by default: pulls in matrix-sdk-base + matrix-sdk-crypto
 # (vodozemac) which add ~60s to cold compile times.

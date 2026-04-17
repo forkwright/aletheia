@@ -670,6 +670,35 @@ impl RuntimeBuilder {
                 daemon_runner = daemon_runner.with_knowledge_maintenance(km_executor);
             }
 
+            #[cfg(feature = "energeia")]
+            if !self.config.dispatch.cron_tasks.is_empty() {
+                let db_path = self.oikos.data().join("cron-locks");
+                let db = koina::fjall::FjallDb::open(&db_path, &["cron_locks"])
+                    .with_whatever_context(|_| "failed to open cron lock store")?;
+                let lock_store = Arc::new(
+                    energeia::cron::CronLockStore::open(&db.db)
+                        .with_whatever_context(|_| "failed to open cron lock partition")?,
+                );
+                let mut tasks = Vec::with_capacity(self.config.dispatch.cron_tasks.len());
+                for c in &self.config.dispatch.cron_tasks {
+                    let task = energeia::cron::CronTask::new(
+                        &c.name,
+                        &c.schedule,
+                        std::time::Duration::from_secs(c.jitter_secs),
+                        energeia::types::DispatchSpec::with_options(
+                            c.dispatch_spec.project.clone(),
+                            c.dispatch_spec.prompt_numbers.clone(),
+                            c.dispatch_spec.dag_ref.clone(),
+                            c.dispatch_spec.max_parallel,
+                        ),
+                    )
+                    .with_whatever_context(|_| format!("invalid cron task '{}'", c.name))?;
+                    tasks.push(task);
+                }
+                let scheduler = Arc::new(energeia::cron::CronScheduler::new(tasks, lock_store));
+                daemon_runner = daemon_runner.with_cron_scheduler(scheduler);
+            }
+
             daemon_runner.register_maintenance_tasks();
             task_tracker.spawn(
                 async move {
