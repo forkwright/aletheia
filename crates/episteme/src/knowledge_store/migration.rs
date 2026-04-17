@@ -388,4 +388,94 @@ impl KnowledgeStore {
         tracing::info!("knowledge schema migration v5 -> v6 complete");
         Ok(())
     }
+
+    /// Migrate v6 → v7: add `relationship_type` to `causal_edges`.
+    pub(super) fn migrate_v6_to_v7(&self) -> crate::error::Result<()> {
+        use std::collections::BTreeMap;
+
+        use crate::engine::{DataValue, ScriptMutability};
+        tracing::info!("migrating knowledge schema v6 -> v7");
+
+        let all_edges = self
+            .db
+            .run(
+                r"?[cause, effect, ordering, confidence, created_at] :=
+                    *causal_edges{cause, effect, ordering, confidence, created_at}",
+                BTreeMap::new(),
+                ScriptMutability::Immutable,
+            )
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: format!("v6->v7 read causal_edges: {e}"),
+                }
+                .build()
+            })?;
+
+        self.db
+            .run(
+                "::remove causal_edges",
+                BTreeMap::new(),
+                ScriptMutability::Mutable,
+            )
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: format!("v6->v7 remove causal_edges: {e}"),
+                }
+                .build()
+            })?;
+
+        self.db
+            .run(KNOWLEDGE_DDL[6], BTreeMap::new(), ScriptMutability::Mutable)
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: format!("v6->v7 recreate causal_edges: {e}"),
+                }
+                .build()
+            })?;
+
+        for row in &all_edges.rows {
+            let script = r"
+                ?[cause, effect, ordering, relationship_type, confidence, created_at] <- [[
+                    $cause, $effect, $ordering, 'caused', $confidence, $created_at
+                ]]
+                :put causal_edges {cause, effect => ordering, relationship_type, confidence, created_at}
+            ";
+            let mut params = BTreeMap::new();
+            for (i, name) in ["cause", "effect", "ordering", "confidence", "created_at"]
+                .iter()
+                .enumerate()
+            {
+                if let Some(val) = row.get(i) {
+                    params.insert((*name).to_owned(), val.clone());
+                }
+            }
+            self.db
+                .run(script, params, ScriptMutability::Mutable)
+                .map_err(|e| {
+                    crate::error::EngineQuerySnafu {
+                        message: format!("v6->v7 reinsert causal_edge: {e}"),
+                    }
+                    .build()
+                })?;
+        }
+
+        let mut params = BTreeMap::new();
+        params.insert("key".to_owned(), DataValue::Str("schema".into()));
+        params.insert("version".to_owned(), DataValue::from(Self::SCHEMA_VERSION));
+        self.db
+            .run(
+                r"?[key, version] <- [[$key, $version]] :put schema_version { key => version }",
+                params,
+                ScriptMutability::Mutable,
+            )
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: format!("v6->v7 update version: {e}"),
+                }
+                .build()
+            })?;
+
+        tracing::info!("knowledge schema migration v6 -> v7 complete");
+        Ok(())
+    }
 }

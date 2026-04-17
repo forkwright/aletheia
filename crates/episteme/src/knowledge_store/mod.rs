@@ -122,6 +122,7 @@ pub const KNOWLEDGE_DDL: &[&str] = &[
     r":create causal_edges {
         cause: String, effect: String =>
         ordering: String,
+        relationship_type: String,
         confidence: Float,
         created_at: String
     }",
@@ -451,7 +452,7 @@ pub struct KnowledgeStore {
 
 #[cfg(feature = "mneme-engine")]
 impl KnowledgeStore {
-    const SCHEMA_VERSION: i64 = 6;
+    const SCHEMA_VERSION: i64 = 7;
 
     /// Open an in-memory knowledge store with default configuration.
     ///
@@ -558,6 +559,9 @@ impl KnowledgeStore {
             }
             if current_version < 6 {
                 self.migrate_v5_to_v6()?;
+            }
+            if current_version < 7 {
+                self.migrate_v6_to_v7()?;
             }
             return Ok(());
         }

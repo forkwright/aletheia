@@ -13,6 +13,7 @@ use std::sync::Arc;
 
 use crossbeam::channel::{Receiver, Sender, bounded};
 
+pub mod counterfactual;
 pub mod error;
 pub mod query_cache;
 pub use error::{Error, Result};
@@ -380,6 +381,9 @@ impl TestMultiTx {
         self.receiver.recv().unwrap().map(|_| ())
     }
 }
+
+#[cfg(test)]
+mod counterfactual_tests;
 
 #[cfg(test)]
 mod safety_assertions {
