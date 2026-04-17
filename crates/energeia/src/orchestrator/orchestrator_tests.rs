@@ -110,7 +110,7 @@ fn failure_outcome(session_id: &str, cost: f64, turns: u32) -> MockOutcome {
 fn sample_dispatch_spec(prompt_numbers: Vec<u32>) -> DispatchSpec {
     DispatchSpec {
         prompt_numbers,
-        project: "acme".to_owned(),
+        project: ".".to_owned(),
         dag_ref: None,
         max_parallel: None,
     }
@@ -124,7 +124,9 @@ fn sample_dispatch_spec(prompt_numbers: Vec<u32>) -> DispatchSpec {
 async fn dispatch_single_prompt_success() {
     let engine = Arc::new(MockEngine::new(vec![success_outcome("s1", 0.50, 10)]));
     let qa = Arc::new(MockQaGate::passing());
-    let config = OrchestratorConfig::new().max_concurrent(4);
+    let config = OrchestratorConfig::new()
+        .max_concurrent(4)
+        .default_budget_usd(10.0);
 
     let orchestrator = Orchestrator::new(engine, qa, config);
     let prompts = vec![sample_prompt_spec(1, vec![])];
@@ -149,7 +151,9 @@ async fn dispatch_diamond_dag() {
         success_outcome("s4", 0.25, 10),
     ]));
     let qa = Arc::new(MockQaGate::passing());
-    let config = OrchestratorConfig::new().max_concurrent(4);
+    let config = OrchestratorConfig::new()
+        .max_concurrent(4)
+        .default_budget_usd(10.0);
 
     let orchestrator = Orchestrator::new(engine, qa, config);
     let prompts = vec![
@@ -185,7 +189,9 @@ async fn dispatch_failure_blocks_dependents() {
         failure_outcome("s1-r2", 0.10, 80),
     ]));
     let qa = Arc::new(MockQaGate::passing());
-    let config = OrchestratorConfig::new().max_concurrent(4);
+    let config = OrchestratorConfig::new()
+        .max_concurrent(4)
+        .default_budget_usd(10.0);
 
     let orchestrator = Orchestrator::new(engine, qa, config);
     let prompts = vec![
@@ -275,7 +281,9 @@ async fn dispatch_parallel_independent_prompts() {
         success_outcome("s3", 0.15, 6),
     ]));
     let qa = Arc::new(MockQaGate::passing());
-    let config = OrchestratorConfig::new().max_concurrent(4);
+    let config = OrchestratorConfig::new()
+        .max_concurrent(4)
+        .default_budget_usd(10.0);
 
     let orchestrator = Orchestrator::new(engine, qa, config);
     let prompts = vec![
