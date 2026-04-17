@@ -72,6 +72,7 @@ fn make_knowledge_result(content: &str, distance: f64) -> KnowledgeRecallResult 
         source_type: "fact".to_owned(),
         source_id: format!("fact-{}", content.len()),
         sensitivity: mneme::knowledge::FactSensitivity::Public,
+        graph_importance: 0.0,
     }
 }
 
@@ -86,6 +87,7 @@ fn make_knowledge_result_with_id(
         source_type: "fact".to_owned(),
         source_id: source_id.to_owned(),
         sensitivity: mneme::knowledge::FactSensitivity::Public,
+        graph_importance: 0.0,
     }
 }
 
@@ -598,6 +600,7 @@ fn make_knowledge_result_sensitive(
         source_type: "fact".to_owned(),
         source_id: source_id.to_owned(),
         sensitivity,
+        graph_importance: 0.0,
     }
 }
 

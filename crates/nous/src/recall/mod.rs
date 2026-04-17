@@ -427,6 +427,7 @@ impl RecallStage {
                     epistemic_tier: w.epistemic_tier,
                     relationship_proximity: w.relationship_proximity,
                     access_frequency: w.access_frequency,
+                    graph_importance: self.engine.score_graph_importance(r.graph_importance),
                 },
                 score: 0.0,
                 // WHY (#3404, #3413): propagate sensitivity from the search

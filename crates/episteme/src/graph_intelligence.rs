@@ -77,6 +77,9 @@ pub(crate) struct GraphContext {
     pub proximity: HashMap<String, Option<u32>>,
     /// `fact_id` → length of supersession chain (number of predecessors)
     pub chain_lengths: HashMap<String, u32>,
+    /// Latest `updated_at` timestamp seen in loaded graph scores.
+    /// Used for staleness detection.
+    pub updated_at: Option<jiff::Timestamp>,
 }
 
 impl GraphContext {
@@ -84,6 +87,19 @@ impl GraphContext {
     #[must_use]
     pub(crate) fn is_empty(&self) -> bool {
         self.pageranks.is_empty() && self.clusters.is_empty()
+    }
+
+    /// Returns `true` if the cached graph scores are older than the given
+    /// threshold. Returns `false` when no scores have been computed.
+    #[must_use]
+    #[expect(dead_code, reason = "staleness trigger pending #3432 follow-up")]
+    pub(crate) fn is_stale(&self, threshold: jiff::SignedDuration) -> bool {
+        let Some(updated) = self.updated_at else {
+            return true;
+        };
+        let now = jiff::Timestamp::now();
+        let elapsed = now.duration_since(updated);
+        elapsed >= threshold
     }
 
     /// Look up the normalized `PageRank` importance for an entity.
@@ -200,8 +216,8 @@ comm[labels, entity_id] <~ CommunityDetectionLouvain(edges_w[])
     )
 )]
 pub(crate) const LOAD_GRAPH_SCORES: &str = r"
-?[entity_id, score_type, score, cluster_id] :=
-    *graph_scores{entity_id, score_type, score, cluster_id}
+?[entity_id, score_type, score, cluster_id, updated_at] :=
+    *graph_scores{entity_id, score_type, score, cluster_id, updated_at}
 ";
 
 /// Bounded BFS Datalog script for proximity computation.
@@ -364,6 +380,17 @@ impl crate::knowledge_store::KnowledgeStore {
                 .and_then(crate::engine::DataValue::get_int)
                 .unwrap_or(-1);
 
+            if let Some(ts) = row
+                .get(4)
+                .and_then(|v| v.get_str())
+                .and_then(crate::knowledge::parse_timestamp)
+            {
+                ctx.updated_at = Some(
+                    ctx.updated_at
+                        .map_or(ts, |existing| if ts > existing { ts } else { existing }),
+                );
+            }
+
             match score_type {
                 "pagerank" => {
                     ctx.pageranks.insert(entity_id.to_owned(), score);
@@ -451,7 +478,7 @@ impl crate::knowledge_store::KnowledgeStore {
     }
 
     /// Run the combined `PageRank` + `Louvain` recomputation and store to `graph_scores`.
-    pub(crate) fn recompute_graph_scores(&self) -> crate::error::Result<()> {
+    pub fn recompute_graph_scores(&self) -> crate::error::Result<()> {
         let now = crate::knowledge::format_timestamp(&jiff::Timestamp::now());
         let mut params = std::collections::BTreeMap::new();
         params.insert("now".to_owned(), crate::engine::DataValue::Str(now.into()));
@@ -515,7 +542,7 @@ impl crate::knowledge_store::KnowledgeStore {
     /// Intended for background scheduling: runs the volatility Datalog,
     /// computes scores, and upserts them into `graph_scores` with
     /// `score_type = "volatility"`.
-    pub(crate) fn compute_and_store_volatility(&self) -> crate::error::Result<()> {
+    pub fn compute_and_store_volatility(&self) -> crate::error::Result<()> {
         let volatilities = self.compute_domain_volatility()?;
         let now = crate::knowledge::format_timestamp(&jiff::Timestamp::now());
 
@@ -627,20 +654,12 @@ impl crate::knowledge_store::KnowledgeStore {
     /// Loads cached graph scores, computes BFS proximity from seed entities,
     /// populates context clusters, and computes supersession chain lengths.
     ///
-    /// Pass the `relationship_proximity_weight` from [`RecallWeights`](crate::recall::RecallWeights)
-    /// so the pipeline can skip all graph traversal when the weight is zero.
-    /// Use [`RecallWeights::graph_recall_active`](crate::recall::RecallWeights::graph_recall_active)
-    /// to pre-check.
+    /// Graph data is loaded regardless of weight settings so that callers
+    /// can always apply graph signals when scores are available (#3432).
     pub(crate) fn build_graph_context(
         &self,
         seed_entity_ids: &[String],
-        relationship_proximity_weight: f64,
     ) -> crate::error::Result<GraphContext> {
-        // PERF: skip all graph traversal when the weight is effectively zero.
-        if relationship_proximity_weight < f64::EPSILON {
-            return Ok(GraphContext::default());
-        }
-
         let mut ctx = self.load_graph_context()?;
 
         for seed_id in seed_entity_ids {

@@ -647,6 +647,7 @@ pub(super) fn rows_to_recall_results(
             // sensitivity; `search_vectors` hydrates it from the facts
             // table before results reach the recall scorer.
             sensitivity: crate::knowledge::FactSensitivity::Public,
+            graph_importance: 0.0,
         });
     }
     Ok(out)

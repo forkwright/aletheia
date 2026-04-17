@@ -33,6 +33,8 @@ pub struct RecallWeights {
     pub relationship_proximity: f64,
     /// Access frequency weight (0.0--1.0).
     pub access_frequency: f64,
+    /// Graph `PageRank` importance weight (0.0--1.0).
+    pub graph_importance: f64,
 }
 
 impl Default for RecallWeights {
@@ -41,8 +43,9 @@ impl Default for RecallWeights {
             decay: 0.5,
             relevance: 0.5,
             epistemic_tier: 0.3,
-            relationship_proximity: 0.0,
+            relationship_proximity: 0.1,
             access_frequency: 0.0,
+            graph_importance: 0.0,
         }
     }
 }

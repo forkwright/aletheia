@@ -20,6 +20,7 @@ proptest! {
             epistemic_tier: tier,
             relationship_proximity: proximity,
             access_frequency: freq,
+            graph_importance: 0.0,
         };
         let score = e.compute_score(&factors);
         prop_assert!(
@@ -87,6 +88,7 @@ proptest! {
         epi in 0.0_f64..=1.0,
         prox in 0.0_f64..=1.0,
         freq in 0.0_f64..=1.0,
+        g_imp in 0.0_f64..=1.0,
     ) {
         let w = RecallWeights {
             vector_similarity: vs,
@@ -95,8 +97,9 @@ proptest! {
             epistemic_tier: epi,
             relationship_proximity: prox,
             access_frequency: freq,
+            graph_importance: g_imp,
         };
-        let expected = vs + dec + rel + epi + prox + freq;
+        let expected = vs + dec + rel + epi + prox + freq + g_imp;
         prop_assert!(
             (w.total() - expected).abs() < 1e-10,
             "total() {} != sum {} for weights {:?}",
