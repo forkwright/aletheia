@@ -150,6 +150,8 @@ pub struct NousState {
     pub nous_manager: Arc<NousManager>,
     /// Registry of tools available to nous agents.
     pub tool_registry: Arc<ToolRegistry>,
+    /// Instance directory layout for file resolution.
+    pub oikos: Arc<Oikos>,
 }
 
 impl FromRef<Arc<AppState>> for NousState {
@@ -157,6 +159,7 @@ impl FromRef<Arc<AppState>> for NousState {
         Self {
             nous_manager: Arc::clone(&state.nous_manager),
             tool_registry: Arc::clone(&state.tool_registry),
+            oikos: Arc::clone(&state.oikos),
         }
     }
 }

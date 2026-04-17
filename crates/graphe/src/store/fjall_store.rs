@@ -1206,7 +1206,7 @@ impl SessionStore {
     // ── Agent notes ───────────────────────────────────────────────────────
 
     /// Valid agent note categories (must match schema.rs `VALID_CATEGORIES`).
-    const VALID_CATEGORIES: &'static [&'static str] =
+    pub const VALID_CATEGORIES: &'static [&'static str] =
         &["task", "decision", "preference", "correction", "context"];
 
     /// Add an agent note.

@@ -841,6 +841,14 @@ impl NousManager {
         self.actors.len()
     }
 
+    /// Register a new agent with default pipeline configuration.
+    ///
+    /// Convenience wrapper around [`Self::spawn`] that uses [`PipelineConfig::default`].
+    /// Useful for integration tests and programmatic agent creation.
+    pub async fn register_agent(&mut self, config: NousConfig) -> crate::error::Result<NousHandle> {
+        self.spawn(config, PipelineConfig::default()).await
+    }
+
     /// Access the shared knowledge store, if configured.
     #[cfg(feature = "knowledge-store")]
     #[must_use]
