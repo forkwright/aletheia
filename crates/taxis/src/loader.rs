@@ -298,10 +298,7 @@ pub fn parse_toml_file(path: &std::path::Path) -> Result<toml::Value> {
     clippy::double_must_use,
     reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
 )]
-pub fn parse_toml_file_with(
-    path: &std::path::Path,
-    fs: &impl FileSystem,
-) -> Result<toml::Value> {
+pub fn parse_toml_file_with(path: &std::path::Path, fs: &impl FileSystem) -> Result<toml::Value> {
     let bytes = fs.read_file(path).context(crate::error::ReadConfigSnafu {
         path: path.to_path_buf(),
     })?;
