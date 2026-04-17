@@ -12,8 +12,7 @@
     reason = "op_vec handles multiple input types and vector element types"
 )]
 
-use base64::Engine;
-use base64::engine::general_purpose::STANDARD;
+use koina::base64;
 use rand::Rng;
 
 use super::arg;
@@ -140,7 +139,7 @@ pub(crate) fn op_vec(args: &[DataValue]) -> Result<DataValue> {
             }
         },
         DataValue::Str(s) => {
-            let bytes = STANDARD.decode(s).map_err(|_e| {
+            let bytes = base64::decode(s).map_err(|_e| {
                 EncodingFailedSnafu {
                     message: "Data is not base64 encoded",
                 }

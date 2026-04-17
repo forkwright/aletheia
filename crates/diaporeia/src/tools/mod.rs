@@ -86,13 +86,8 @@ fn parse_role_from_token(token: &str) -> Option<Role> {
 }
 
 /// Base64 decode with URL-safe alphabet and no padding.
-fn base64_decode_urlsafe(input: &str) -> Result<Vec<u8>, base64::DecodeError> {
-    use base64::{Engine, alphabet, engine::GeneralPurpose};
-    let engine = GeneralPurpose::new(
-        &alphabet::URL_SAFE,
-        base64::engine::GeneralPurposeConfig::new(),
-    );
-    engine.decode(input.trim_end_matches('='))
+fn base64_decode_urlsafe(input: &str) -> Result<Vec<u8>, koina::base64::DecodeError> {
+    koina::base64::decode_url_safe_no_pad(input)
 }
 
 /// Check if the caller has operator-level access or above.

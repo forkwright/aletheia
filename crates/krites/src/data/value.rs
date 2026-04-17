@@ -34,9 +34,8 @@ use std::fmt::{Debug, Display, Formatter};
 use std::hash::{Hash, Hasher};
 use std::ops::Deref;
 
-use base64::Engine;
-use base64::engine::general_purpose::STANDARD;
 use compact_str::CompactString;
+use koina::base64;
 use ndarray::Array1;
 use ordered_float::OrderedFloat;
 use regex::Regex;
@@ -721,7 +720,7 @@ impl Display for DataValue {
             DataValue::Num(n) => write!(f, "{n}"),
             DataValue::Str(s) => write!(f, "{s:?}"),
             DataValue::Bytes(b) => {
-                let bs = STANDARD.encode(b);
+                let bs = base64::encode(b);
                 write!(f, "decode_base64({bs:?})")
             }
             DataValue::Uuid(u) => {

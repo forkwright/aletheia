@@ -1915,7 +1915,6 @@ name = "diaporeia"
 version = "0.19.0"
 dependencies = [
  "axum 0.8.8",
- "base64 0.22.1",
  "hermeneus",
  "http",
  "koina",
@@ -3805,7 +3804,6 @@ name = "koilon"
 version = "0.19.0"
 dependencies = [
  "arboard",
- "base64 0.22.1",
  "clap",
  "compact_str",
  "crossterm",
@@ -3843,6 +3841,7 @@ dependencies = [
  "fjall",
  "jiff",
  "prometheus-client",
+ "proptest",
  "rand 0.9.4",
  "regex",
  "rustix",
@@ -3942,7 +3941,6 @@ name = "krites"
 version = "0.19.0"
 dependencies = [
  "aho-corasick",
- "base64 0.22.1",
  "bytemuck",
  "compact_str",
  "crossbeam",
@@ -3951,6 +3949,7 @@ dependencies = [
  "fjall",
  "itertools 0.14.0",
  "jiff",
+ "koina",
  "loom",
  "lru",
  "ndarray",
@@ -4955,7 +4954,6 @@ dependencies = [
 name = "organon"
 version = "0.19.0"
 dependencies = [
- "base64 0.22.1",
  "energeia",
  "fjall",
  "hermeneus",
@@ -7502,7 +7500,6 @@ checksum = "55937e1799185b12863d447f42597ed69d9928686b8d88a1df17376a097d8369"
 name = "taxis"
 version = "0.19.0"
 dependencies = [
- "base64 0.22.1",
  "chacha20poly1305",
  "eidos",
  "koina",

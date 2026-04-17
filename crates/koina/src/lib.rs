@@ -5,6 +5,8 @@
 //! Imports nothing from other Aletheia crates. Contains only types, error definitions,
 //! and tracing initialization.
 
+/// RFC 4648 base64 encoding and decoding (standard and URL-safe variants).
+pub mod base64;
 /// Setup-time cleanup registration via RAII guards ([`cleanup::CleanupGuard`], [`cleanup::CleanupRegistry`]).
 pub mod cleanup;
 /// Credential provider trait for dynamic API key resolution.

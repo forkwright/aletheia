@@ -26,11 +26,10 @@
 use std::cmp::Reverse;
 use std::fmt::{Display, Formatter};
 
-use base64::Engine;
-use base64::engine::general_purpose::STANDARD;
 use compact_str::CompactString;
 use itertools::Itertools;
 use jiff::Timestamp;
+use koina::base64;
 use serde_json::json;
 
 use super::error::*;
@@ -240,7 +239,7 @@ impl NullableColType {
             ColType::Bytes => match data {
                 d @ DataValue::Bytes(_) => d,
                 DataValue::Str(s) => {
-                    let b = STANDARD.decode(s).map_err(|e| {
+                    let b = base64::decode(&s).map_err(|e| {
                         EncodingFailedSnafu {
                             message: format!("cannot decode string as base64-encoded bytes: {e}"),
                         }
@@ -314,7 +313,7 @@ impl NullableColType {
                     }
                 }
                 DataValue::Str(s) => {
-                    let bytes = STANDARD.decode(s).map_err(|_| make_err())?;
+                    let bytes = base64::decode(s).map_err(|_| make_err())?;
                     match eltype {
                         VecElementType::F32 => {
                             let floats: &[f32] =

@@ -4,8 +4,8 @@ use std::future::Future;
 use std::path::Path;
 use std::pin::Pin;
 
-use base64::Engine as _;
 use indexmap::IndexMap;
+use koina::base64;
 
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
@@ -162,7 +162,7 @@ fn execute_by_kind(
                 Ok(b) => b,
                 Err(e) => return ToolResult::error(format!("read failed: {e}")),
             };
-            let encoded = base64::engine::general_purpose::STANDARD.encode(&bytes);
+            let encoded = base64::encode(&bytes);
             ToolResult::blocks(vec![
                 ToolResultBlock::Image {
                     source: ImageSource {
@@ -197,7 +197,7 @@ fn execute_by_kind(
                 Ok(b) => b,
                 Err(e) => return ToolResult::error(format!("read failed: {e}")),
             };
-            let encoded = base64::engine::general_purpose::STANDARD.encode(&bytes);
+            let encoded = base64::encode(&bytes);
             ToolResult::blocks(vec![
                 ToolResultBlock::Document {
                     source: DocumentSource {

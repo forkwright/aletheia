@@ -49,9 +49,6 @@ snafu = { workspace = true }
 # Observability
 tracing = { workspace = true }
 
-# Base64 for JWT payload decoding
-base64 = { workspace = true }
-
 # HTTP types for accessing request extensions
 http = { workspace = true }
 
