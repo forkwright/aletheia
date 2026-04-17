@@ -10,7 +10,7 @@ use crate::data::value::ValidityTs;
 use crate::error::InternalResult;
 use crate::runtime::relation::{decode_tuple_from_kv, extend_tuple_from_v};
 use crate::storage::error::{
-    IoSnafu, StorageResult, TransactionFailedSnafu, WriteInReadTransactionSnafu,
+    CorruptedDataSnafu, IoSnafu, StorageResult, TransactionFailedSnafu, WriteInReadTransactionSnafu,
 };
 use crate::storage::{Storage, StoreTx};
 type Result<T> = StorageResult<T>;
@@ -189,9 +189,12 @@ unsafe impl Sync for FjallReadTx<'_> {}
 unsafe impl Sync for FjallWriteTx<'_> {}
 
 impl FjallWriteTx<'_> {
-    fn tx_ref(&self) -> &fjall::SingleWriterWriteTx<'_> {
-        self.tx.as_ref().unwrap_or_else(|| {
-            unreachable!("INVARIANT: tx is always Some while FjallWriteTx is live")
+    fn tx_ref(&self) -> Result<&fjall::SingleWriterWriteTx<'_>> {
+        self.tx.as_ref().ok_or_else(|| {
+            CorruptedDataSnafu {
+                message: "INVARIANT: tx is always Some while FjallWriteTx is live",
+            }
+            .build()
         })
     }
 }
@@ -212,7 +215,7 @@ impl<'s> StoreTx<'s> for FjallTx<'s> {
                     .build()
                 }),
             FjallTx::Writer(w) => w
-                .tx_ref()
+                .tx_ref()?
                 .get(w.keyspace, key)
                 .map(|opt| opt.map(|v| v.to_vec()))
                 .map_err(|e| {
@@ -269,7 +272,7 @@ impl<'s> StoreTx<'s> for FjallTx<'s> {
             FjallTx::Writer(w) => {
                 use fjall::Readable;
                 let keys: Vec<Vec<u8>> = w
-                    .tx_ref()
+                    .tx_ref()?
                     .range(w.keyspace, lower..upper)
                     .map(|guard| {
                         guard.key().map(|k| k.to_vec()).map_err(|e| {
@@ -306,7 +309,7 @@ impl<'s> StoreTx<'s> for FjallTx<'s> {
                 }
                 .build()
             }),
-            FjallTx::Writer(w) => w.tx_ref().contains_key(w.keyspace, key).map_err(|e| {
+            FjallTx::Writer(w) => w.tx_ref()?.contains_key(w.keyspace, key).map_err(|e| {
                 TransactionFailedSnafu {
                     backend: "fjall",
                     message: format!("contains_key: {e}"),
@@ -357,16 +360,17 @@ impl<'s> StoreTx<'s> for FjallTx<'s> {
                     Err(e) => Box::new(std::iter::once(Err(crate::error::InternalError::from(e)))),
                 }
             }
-            FjallTx::Writer(w) => {
-                match fjall_collect_range(w.tx_ref(), &w.keyspace, lower, upper) {
+            FjallTx::Writer(w) => match w.tx_ref() {
+                Ok(tx) => match fjall_collect_range(tx, &w.keyspace, lower, upper) {
                     Ok(pairs) => Box::new(
                         pairs
                             .into_iter()
                             .map(|(k, v)| Ok(decode_tuple_from_kv(&k, &v, None))),
                     ),
                     Err(e) => Box::new(std::iter::once(Err(crate::error::InternalError::from(e)))),
-                }
-            }
+                },
+                Err(e) => Box::new(std::iter::once(Err(crate::error::InternalError::from(e)))),
+            },
         }
     }
 
@@ -392,8 +396,8 @@ impl<'s> StoreTx<'s> for FjallTx<'s> {
                     Err(e) => Box::new(std::iter::once(Err(crate::error::InternalError::from(e)))),
                 }
             }
-            FjallTx::Writer(w) => {
-                match fjall_collect_range(w.tx_ref(), &w.keyspace, lower, upper) {
+            FjallTx::Writer(w) => match w.tx_ref() {
+                Ok(tx) => match fjall_collect_range(tx, &w.keyspace, lower, upper) {
                     Ok(pairs) => Box::new(
                         CollectedSkipIterator {
                             data: pairs,
@@ -405,8 +409,9 @@ impl<'s> StoreTx<'s> for FjallTx<'s> {
                         .map(Ok),
                     ),
                     Err(e) => Box::new(std::iter::once(Err(crate::error::InternalError::from(e)))),
-                }
-            }
+                },
+                Err(e) => Box::new(std::iter::once(Err(crate::error::InternalError::from(e)))),
+            },
         }
     }
 
@@ -425,12 +430,13 @@ impl<'s> StoreTx<'s> for FjallTx<'s> {
                     Err(e) => Box::new(std::iter::once(Err(crate::error::InternalError::from(e)))),
                 }
             }
-            FjallTx::Writer(w) => {
-                match fjall_collect_range(w.tx_ref(), &w.keyspace, lower, upper) {
+            FjallTx::Writer(w) => match w.tx_ref() {
+                Ok(tx) => match fjall_collect_range(tx, &w.keyspace, lower, upper) {
                     Ok(pairs) => Box::new(pairs.into_iter().map(Ok)),
                     Err(e) => Box::new(std::iter::once(Err(crate::error::InternalError::from(e)))),
-                }
-            }
+                },
+                Err(e) => Box::new(std::iter::once(Err(crate::error::InternalError::from(e)))),
+            },
         }
     }
 
@@ -443,7 +449,7 @@ impl<'s> StoreTx<'s> for FjallTx<'s> {
                 fjall_collect_range(&r.snapshot, &r.keyspace, lower, upper).map(|pairs| pairs.len())
             }
             FjallTx::Writer(w) => {
-                fjall_collect_range(w.tx_ref(), &w.keyspace, lower, upper).map(|pairs| pairs.len())
+                fjall_collect_range(w.tx_ref()?, &w.keyspace, lower, upper).map(|pairs| pairs.len())
             }
         }
     }
@@ -893,6 +899,29 @@ mod tests {
             .unwrap_or_else(|_| unreachable!("INVARIANT: NUM_WRITES fits in usize"));
         assert_eq!(result.rows.len(), expected_total, "all writes persisted");
 
+        Ok(())
+    }
+
+    #[test]
+    fn tx_ref_returns_error_when_tx_is_none() -> InternalResult<()> {
+        let (_dir, db) = setup_test_db()?;
+        let keyspace: &fjall::SingleWriterTxKeyspace = &db.db.keyspace;
+        let write_tx = FjallWriteTx { tx: None, keyspace };
+        let result = write_tx.tx_ref();
+        assert!(
+            result.is_err(),
+            "tx_ref should return error when tx is None"
+        );
+        match result {
+            Err(e) => {
+                let msg = e.to_string();
+                assert!(
+                    msg.contains("corrupted data"),
+                    "error should indicate corrupted data: {msg}"
+                );
+            }
+            Ok(_) => panic!("expected error"),
+        }
         Ok(())
     }
 }
