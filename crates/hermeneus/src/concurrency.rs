@@ -14,10 +14,11 @@
 //! A tower `Layer`/`Service` wrapper (`ConcurrencyLayer`/`ConcurrencyService`)
 //! is provided for middleware-style integration.
 
+use parking_lot::Mutex;
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
-use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 
@@ -156,42 +157,21 @@ impl AdaptiveConcurrencyLimiter {
     #[must_use]
     pub fn limit(&self) -> u32 {
         // kanon:ignore RUST/pub-visibility
-        #[expect(
-            clippy::expect_used,
-            reason = "Mutex poisoning means a thread panicked; no Result to propagate"
-        )]
-        self.inner
-            .lock()
-            .expect("mutex poisoning: thread panicked, no Result to propagate") // kanon:ignore RUST/expect
-            .limit
+        self.inner.lock().limit
     }
 
     /// Current number of in-flight requests (snapshot).
     #[must_use]
     pub fn in_flight(&self) -> u32 {
         // kanon:ignore RUST/pub-visibility
-        #[expect(
-            clippy::expect_used,
-            reason = "Mutex poisoning means a thread panicked; no Result to propagate"
-        )]
-        self.inner
-            .lock()
-            .expect("mutex poisoning: thread panicked, no Result to propagate") // kanon:ignore RUST/expect
-            .in_flight
+        self.inner.lock().in_flight
     }
 
     /// Current EWMA latency estimate in seconds, or `None` if no samples yet.
     #[must_use]
     pub fn latency_ewma(&self) -> Option<f64> {
         // kanon:ignore RUST/pub-visibility
-        #[expect(
-            clippy::expect_used,
-            reason = "Mutex poisoning means a thread panicked; no Result to propagate"
-        )]
-        self.inner
-            .lock()
-            .expect("mutex poisoning: thread panicked, no Result to propagate") // kanon:ignore RUST/expect
-            .latency_ewma
+        self.inner.lock().latency_ewma
     }
 
     /// Acquire a permit, waiting asynchronously when at capacity.
@@ -215,14 +195,7 @@ impl AdaptiveConcurrencyLimiter {
             let notified = self.notify.notified();
 
             {
-                #[expect(
-                    clippy::expect_used,
-                    reason = "Mutex poisoning means a thread panicked; no Result to propagate"
-                )]
-                let mut inner = self
-                    .inner
-                    .lock()
-                    .expect("mutex poisoning: thread panicked, no Result to propagate"); // kanon:ignore RUST/expect
+                let mut inner = self.inner.lock();
                 if inner.in_flight < inner.limit {
                     inner.in_flight += 1;
                     crate::metrics::set_concurrency_in_flight(&self.provider_name, inner.in_flight);
@@ -244,14 +217,7 @@ impl AdaptiveConcurrencyLimiter {
     /// Called by [`ConcurrencyPermit`] on `finish`/`finish_with_latency` or drop.
     fn release(&self, outcome: RequestOutcome, latency: Option<Duration>) {
         let (new_limit, new_in_flight, ewma) = {
-            #[expect(
-                clippy::expect_used,
-                reason = "Mutex poisoning means a thread panicked; no Result to propagate"
-            )]
-            let mut inner = self
-                .inner
-                .lock()
-                .expect("mutex poisoning: thread panicked, no Result to propagate"); // kanon:ignore RUST/expect
+            let mut inner = self.inner.lock();
 
             inner.in_flight = inner.in_flight.saturating_sub(1);
 
@@ -786,5 +752,45 @@ mod tests {
     fn layer_is_clone_send() {
         fn assert_clone_send<T: Clone + Send>() {}
         assert_clone_send::<ConcurrencyLayer>();
+    }
+
+    // -----------------------------------------------------------------------
+    // Mutex-poisoning resilience
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn limiter_survives_panic_during_unwind() {
+        // With std::sync::Mutex, a panic that triggers Drop → release() during
+        // unwinding would poison the mutex, killing all future LLM traffic.
+        // parking_lot::Mutex has no poisoning, so the limiter keeps working.
+        let limiter = Arc::new(AdaptiveConcurrencyLimiter::new(
+            "panic-test",
+            ConcurrencyConfig::default(),
+        ));
+
+        let limiter2 = Arc::clone(&limiter);
+        let handle = std::thread::spawn(move || {
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .build()
+                .unwrap();
+            rt.block_on(async {
+                let _permit = limiter2.acquire().await;
+                panic!("intentional panic while permit is held");
+            });
+        });
+
+        // The spawned thread must have panicked.
+        assert!(handle.join().is_err());
+
+        // The limiter should still be fully usable.
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        rt.block_on(async {
+            let permit = limiter.acquire().await;
+            permit.finish(RequestOutcome::Success);
+        });
+        assert_eq!(limiter.in_flight(), 0);
+        assert_eq!(limiter.limit(), 11); // default initial 10 + 1 for success
     }
 }
