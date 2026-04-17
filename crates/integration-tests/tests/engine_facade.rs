@@ -71,3 +71,48 @@ fn import_from_backup_returns_unsupported_error() {
         "expected mention of storage-sqlite, got: {msg}"
     );
 }
+
+#[test]
+fn insert_enforces_key_uniqueness() {
+    let db = Db::open_mem().expect("open mem");
+
+    db.run(
+        ":create facts { id: String, valid_from: String => content: String }",
+        BTreeMap::new(),
+        ScriptMutability::Mutable,
+    )
+    .expect("create facts relation");
+
+    db.run(
+        r#"?[id, valid_from, content] <- [["f-1", "2026-01-01", "original"]] :insert facts {id, valid_from => content}"#,
+        BTreeMap::new(),
+        ScriptMutability::Mutable,
+    )
+    .expect("first insert should succeed");
+
+    let result = db.run(
+        r#"?[id, valid_from, content] <- [["f-1", "2026-01-01", "duplicate"]] :insert facts {id, valid_from => content}"#,
+        BTreeMap::new(),
+        ScriptMutability::Mutable,
+    );
+    assert!(
+        result.is_err(),
+        "duplicate composite key insert should fail"
+    );
+
+    db.run(
+        r#"?[id, valid_from, content] <- [["f-1", "2026-01-01", "updated"]] :put facts {id, valid_from => content}"#,
+        BTreeMap::new(),
+        ScriptMutability::Mutable,
+    )
+    .expect("put should succeed as upsert");
+
+    let rows = db
+        .run_read_only(
+            "?[content] := *facts{id: 'f-1', valid_from: '2026-01-01', content}",
+            BTreeMap::new(),
+        )
+        .expect("query");
+    assert_eq!(rows.rows.len(), 1);
+    assert_eq!(rows.rows[0][0], DataValue::Str("updated".into()));
+}

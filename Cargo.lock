@@ -3540,6 +3540,7 @@ dependencies = [
  "axum 0.8.8",
  "dokimion",
  "hermeneus",
+ "http-body-util",
  "jiff",
  "koina",
  "mneme",

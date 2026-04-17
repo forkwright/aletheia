@@ -219,16 +219,18 @@ impl TestHarness {
     }
 
     fn router(&self) -> axum::Router {
-        build_router(
-            Arc::clone(&self.state),
-            &pylon::security::SecurityConfig {
-                csrf: pylon::security::CsrfConfig {
-                    enabled: false,
-                    ..pylon::security::CsrfConfig::default()
-                },
-                ..pylon::security::SecurityConfig::default()
+        let security = pylon::security::SecurityConfig {
+            csrf: pylon::security::CsrfConfig {
+                enabled: false,
+                ..pylon::security::CsrfConfig::default()
             },
-        )
+            ..pylon::security::SecurityConfig::default()
+        };
+        self.router_with_security(&security)
+    }
+
+    fn router_with_security(&self, security: &pylon::security::SecurityConfig) -> axum::Router {
+        build_router(Arc::clone(&self.state), security)
     }
 
     fn authed_request(
@@ -238,6 +240,20 @@ impl TestHarness {
         body: Option<serde_json::Value>,
     ) -> Request<Body> {
         let token = self.auth_token();
+        self.authed_request_with_token(&token, method, uri, body)
+    }
+
+    #[expect(
+        clippy::unused_self,
+        reason = "kept as instance method for API consistency"
+    )]
+    fn authed_request_with_token(
+        &self,
+        token: &str,
+        method: &str,
+        uri: &str,
+        body: Option<serde_json::Value>,
+    ) -> Request<Body> {
         let builder = Request::builder()
             .method(method)
             .uri(uri)
@@ -587,4 +603,123 @@ async fn send_message_stores_both_roles_in_history() {
     assert_eq!(messages[0]["content"], "test message");
     assert_eq!(messages[1]["role"], "assistant");
     assert_eq!(messages[1]["content"], "Hello from mock!");
+}
+
+#[tokio::test]
+async fn provider_failure_returns_sse_error_event() {
+    let harness = TestHarness::build_with_provider(Box::new(
+        MockProvider::error("simulated provider failure").models(&["mock-model"]),
+    ))
+    .await;
+    let router = harness.router();
+
+    let session = harness.create_session(&router).await;
+    let id = session["id"].as_str().expect("session id");
+
+    let req = harness.authed_request(
+        "POST",
+        &format!("/api/v1/sessions/{id}/messages"),
+        Some(serde_json::json!({ "content": "hello" })),
+    );
+    let resp = router.clone().oneshot(req).await.expect("send message");
+    assert_eq!(
+        resp.status(),
+        StatusCode::OK,
+        "streaming endpoint returns 200 even on provider error"
+    );
+
+    let body = body_string(resp).await;
+    assert!(
+        body.contains("event: error"),
+        "SSE stream should contain error event, got: {body}"
+    );
+    assert!(
+        body.contains("provider_error"),
+        "error event should have provider_error code, got: {body}"
+    );
+    assert!(
+        body.contains("event: message_complete"),
+        "SSE stream should contain message_complete even on error, got: {body}"
+    );
+}
+
+#[tokio::test]
+async fn oversized_payload_returns_413() {
+    let harness = TestHarness::build().await;
+    let security = pylon::security::SecurityConfig {
+        body_limit_bytes: 100,
+        csrf: pylon::security::CsrfConfig {
+            enabled: false,
+            ..pylon::security::CsrfConfig::default()
+        },
+        ..pylon::security::SecurityConfig::default()
+    };
+    let router = harness.router_with_security(&security);
+
+    let big_body = "x".repeat(200);
+    let req = harness.authed_request(
+        "POST",
+        "/api/v1/sessions",
+        Some(serde_json::json!({
+            "nous_id": "test-nous",
+            "session_key": "413-test",
+            "extra": big_body
+        })),
+    );
+    let resp = router.oneshot(req).await.expect("oneshot");
+    assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
+}
+
+#[tokio::test]
+async fn rate_limited_request_returns_429() {
+    let harness = TestHarness::build().await;
+    let security = pylon::security::SecurityConfig {
+        csrf: pylon::security::CsrfConfig {
+            enabled: false,
+            ..pylon::security::CsrfConfig::default()
+        },
+        rate_limit: pylon::security::RateLimitConfig {
+            enabled: false,
+            per_user: taxis::config::PerUserRateLimitConfig {
+                enabled: true,
+                default_rpm: 60,
+                default_burst: 2,
+                llm_rpm: 60,
+                llm_burst: 1,
+                tool_rpm: 60,
+                tool_burst: 1,
+                stale_after_secs: 600,
+            },
+            ..pylon::security::RateLimitConfig::default()
+        },
+        ..pylon::security::SecurityConfig::default()
+    };
+    let router = harness.router_with_security(&security);
+
+    let session = harness.create_session(&router).await;
+    let id = session["id"].as_str().expect("session id");
+
+    // Reuse the same token so all requests hash to the same per-user bucket.
+    let token = harness.auth_token();
+
+    // First LLM request should succeed (burst = 1).
+    let req = harness.authed_request_with_token(
+        &token,
+        "POST",
+        &format!("/api/v1/sessions/{id}/messages"),
+        Some(serde_json::json!({ "content": "first" })),
+    );
+    let resp = router.clone().oneshot(req).await.expect("first message");
+    assert_eq!(resp.status(), StatusCode::OK);
+    let _ = body_string(resp).await;
+
+    // Second LLM request should be rate-limited (burst = 1).
+    let req = harness.authed_request_with_token(
+        &token,
+        "POST",
+        &format!("/api/v1/sessions/{id}/messages"),
+        Some(serde_json::json!({ "content": "second" })),
+    );
+    let resp = router.clone().oneshot(req).await.expect("second message");
+    assert_eq!(resp.status(), StatusCode::TOO_MANY_REQUESTS);
 }
