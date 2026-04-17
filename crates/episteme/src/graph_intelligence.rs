@@ -15,10 +15,37 @@
     )
 )]
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, BinaryHeap, HashMap, HashSet, VecDeque};
 
 #[cfg(feature = "mneme-engine")]
 use snafu::ResultExt;
+
+/// Wrapper for `(cost, node)` that implements `Ord` so it can live in a
+/// `BinaryHeap` for Dijkstra's algorithm.
+#[derive(Debug, Clone)]
+struct DistState(f64, String);
+
+impl PartialEq for DistState {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.to_bits() == other.0.to_bits() && self.1 == other.1
+    }
+}
+
+impl Eq for DistState {}
+
+impl PartialOrd for DistState {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for DistState {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.0
+            .total_cmp(&other.0)
+            .then_with(|| self.1.cmp(&other.1))
+    }
+}
 
 /// Datalog DDL for the `graph_scores` relation.
 ///
@@ -630,6 +657,339 @@ impl crate::knowledge_store::KnowledgeStore {
         ctx.chain_lengths = self.compute_chain_lengths()?;
 
         Ok(ctx)
+    }
+
+    /// Compute betweenness centrality for all entities in the knowledge graph.
+    ///
+    /// Uses Brandes' algorithm on an undirected view of the relationship graph.
+    /// Higher scores indicate entities that act as "hubs" — they lie on many
+    /// shortest paths between other entities.
+    ///
+    /// Returns a map of `entity_id → normalized centrality score` in [0.0, 1.0].
+    pub fn compute_centrality(&self) -> BTreeMap<crate::id::EntityId, f64> {
+        let Ok(entities) = self.list_entities() else {
+            return BTreeMap::new();
+        };
+        let Ok(adj) = self.build_undirected_adjacency_list() else {
+            return BTreeMap::new();
+        };
+
+        let mut centrality: HashMap<String, f64> = entities
+            .iter()
+            .map(|e| (e.id.as_str().to_owned(), 0.0))
+            .collect();
+
+        let n = entities.len();
+        if n < 3 {
+            return centrality
+                .into_iter()
+                .filter_map(|(k, v)| crate::id::EntityId::new(k).ok().map(|id| (id, v)))
+                .collect();
+        }
+
+        for source in &entities {
+            let s = source.id.as_str();
+
+            let mut dist: HashMap<String, i32> = HashMap::new();
+            let mut sigma: HashMap<String, f64> = HashMap::new();
+            let mut pred: HashMap<String, Vec<String>> = HashMap::new();
+            let mut queue = VecDeque::new();
+            let mut stack = Vec::new();
+
+            dist.insert(s.to_owned(), 0);
+            sigma.insert(s.to_owned(), 1.0);
+            queue.push_back(s.to_owned());
+
+            while let Some(v) = queue.pop_front() {
+                stack.push(v.clone());
+                let dist_v = *dist.get(&v).unwrap_or(&0);
+                if let Some(neighbors) = adj.get(&v) {
+                    for (w, _weight) in neighbors {
+                        if !dist.contains_key(w) {
+                            dist.insert(w.clone(), dist_v + 1);
+                            queue.push_back(w.clone());
+                        }
+                        let dist_w = *dist.get(w).unwrap_or(&-1);
+                        if dist_w == dist_v + 1 {
+                            let sigma_v = sigma.get(&v).copied().unwrap_or(0.0);
+                            *sigma.entry(w.clone()).or_insert(0.0) += sigma_v;
+                            pred.entry(w.clone()).or_default().push(v.clone());
+                        }
+                    }
+                }
+            }
+
+            let mut delta: HashMap<String, f64> = entities
+                .iter()
+                .map(|e| (e.id.as_str().to_owned(), 0.0))
+                .collect();
+
+            while let Some(w) = stack.pop() {
+                let delta_w = delta.get(&w).copied().unwrap_or(0.0);
+                if let Some(preds) = pred.get(&w) {
+                    let sigma_w = sigma.get(&w).copied().unwrap_or(1.0);
+                    if sigma_w > 0.0 {
+                        for v in preds {
+                            let sigma_v = sigma.get(v).copied().unwrap_or(0.0);
+                            let coeff = (sigma_v / sigma_w) * (1.0 + delta_w);
+                            if let Some(dv) = delta.get_mut(v) {
+                                *dv += coeff;
+                            }
+                        }
+                    }
+                }
+                if w != s
+                    && let Some(cv) = centrality.get_mut(&w)
+                {
+                    *cv += delta_w;
+                }
+            }
+        }
+
+        // For undirected graphs each pair is counted twice.
+        for score in centrality.values_mut() {
+            *score /= 2.0;
+        }
+
+        // Normalize to [0.0, 1.0] using the theoretical maximum for undirected graphs.
+        let max_possible = if n > 2 {
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "n is entity count; precision loss for graphs > 2^52 nodes is impossible"
+            )]
+            let n_f64 = n as f64;
+            (n_f64 - 1.0) * (n_f64 - 2.0) / 2.0
+        } else {
+            1.0
+        };
+
+        if max_possible > 0.0 {
+            for score in centrality.values_mut() {
+                *score /= max_possible;
+            }
+        }
+
+        centrality
+            .into_iter()
+            .filter_map(|(k, v)| crate::id::EntityId::new(k).ok().map(|id| (id, v)))
+            .collect()
+    }
+
+    /// Find the shortest directed path between two entities weighted by
+    /// relationship confidence.
+    ///
+    /// Edge cost is `1.0 - confidence` so that stronger relationships produce
+    /// shorter paths. Returns `None` when no path exists.
+    pub fn shortest_path(
+        &self,
+        from: &crate::id::EntityId,
+        to: &crate::id::EntityId,
+    ) -> Option<Vec<crate::id::EntityId>> {
+        if from == to {
+            return Some(vec![from.clone()]);
+        }
+
+        let adj = self.build_adjacency_list().ok()?;
+        let start = from.as_str();
+        let goal = to.as_str();
+
+        let mut dist: HashMap<String, f64> = HashMap::new();
+        let mut prev: HashMap<String, String> = HashMap::new();
+        let mut heap = BinaryHeap::new();
+
+        dist.insert(start.to_owned(), 0.0);
+        heap.push(DistState(0.0, start.to_owned()));
+
+        while let Some(DistState(d, u)) = heap.pop() {
+            if u == goal {
+                break;
+            }
+            if d > *dist.get(&u).unwrap_or(&f64::INFINITY) {
+                continue;
+            }
+            if let Some(neighbors) = adj.get(&u) {
+                for (v, weight) in neighbors {
+                    let cost = 1.0 - weight.clamp(0.0, 1.0);
+                    let alt = d + cost;
+                    if alt < *dist.get(v).unwrap_or(&f64::INFINITY) {
+                        dist.insert(v.clone(), alt);
+                        prev.insert(v.clone(), u.clone());
+                        heap.push(DistState(alt, v.clone()));
+                    }
+                }
+            }
+        }
+
+        if !prev.contains_key(goal) {
+            return None;
+        }
+
+        let mut path = Vec::new();
+        let mut current = goal.to_owned();
+        path.push(current.clone());
+        while let Some(p) = prev.get(&current) {
+            current = p.clone();
+            path.push(current.clone());
+            if current == start {
+                break;
+            }
+        }
+
+        path.reverse();
+        path.into_iter()
+            .map(|s| crate::id::EntityId::new(s).ok())
+            .collect::<Option<Vec<_>>>()
+    }
+
+    /// Find weakly connected components in the knowledge graph.
+    ///
+    /// Treats relationships as undirected edges. Isolated entities form
+    /// singleton components.
+    pub fn connected_components(&self) -> Vec<Vec<crate::id::EntityId>> {
+        let Ok(entities) = self.list_entities() else {
+            return Vec::new();
+        };
+        let Ok(adj) = self.build_undirected_adjacency_list() else {
+            return Vec::new();
+        };
+
+        let mut visited: HashSet<String> = HashSet::new();
+        let mut components: Vec<Vec<crate::id::EntityId>> = Vec::new();
+
+        for entity in &entities {
+            let id = entity.id.as_str();
+            if visited.contains(id) {
+                continue;
+            }
+
+            let mut component = Vec::new();
+            let mut stack = vec![id.to_owned()];
+
+            while let Some(node) = stack.pop() {
+                if !visited.insert(node.clone()) {
+                    continue;
+                }
+                if let Ok(eid) = crate::id::EntityId::new(&node) {
+                    component.push(eid);
+                }
+
+                if let Some(neighbors) = adj.get(&node) {
+                    for (neighbor, _weight) in neighbors {
+                        if !visited.contains(neighbor) {
+                            stack.push(neighbor.clone());
+                        }
+                    }
+                }
+            }
+
+            component.sort_by(|a, b| a.as_str().cmp(b.as_str()));
+            components.push(component);
+        }
+
+        components.sort_by(|a, b| {
+            let a_first = a.first().map_or("", eidos::id::EntityId::as_str);
+            let b_first = b.first().map_or("", eidos::id::EntityId::as_str);
+            a_first.cmp(b_first)
+        });
+
+        components
+    }
+
+    /// Compute multi-source BFS proximity with exponential distance decay.
+    ///
+    /// Each seed starts with score `1.0`. Every hop multiplies the score by
+    /// `decay`. The result is a soft-recall map where distant entities still
+    /// receive a non-zero score that falls off geometrically.
+    ///
+    /// Cycles are handled via a visited set; the first (shortest) distance
+    /// from any seed wins.
+    pub fn compute_bfs_proximity_decay(
+        &self,
+        seeds: &[crate::id::EntityId],
+        decay: f64,
+    ) -> BTreeMap<crate::id::EntityId, f64> {
+        if seeds.is_empty() {
+            return BTreeMap::new();
+        }
+
+        let Ok(adj) = self.build_adjacency_list() else {
+            return BTreeMap::new();
+        };
+
+        let decay = decay.clamp(0.0, 1.0);
+        let mut scores = BTreeMap::new();
+        let mut visited: HashMap<String, u32> = HashMap::new();
+        let mut queue = VecDeque::new();
+
+        for seed in seeds {
+            let s = seed.as_str().to_owned();
+            scores.insert(seed.clone(), 1.0);
+            visited.insert(s.clone(), 0);
+            queue.push_back((s, 0));
+        }
+
+        while let Some((node, dist)) = queue.pop_front() {
+            if let Some(neighbors) = adj.get(&node) {
+                for (neighbor, _weight) in neighbors {
+                    if !visited.contains_key(neighbor) {
+                        let new_dist = dist + 1;
+                        visited.insert(neighbor.clone(), new_dist);
+                        let score = decay.powi(new_dist.cast_signed());
+                        if let Ok(eid) = crate::id::EntityId::new(neighbor) {
+                            scores.insert(eid, score);
+                        }
+                        queue.push_back((neighbor.clone(), new_dist));
+                    }
+                }
+            }
+        }
+
+        scores
+    }
+
+    /// Load all relationships from the store.
+    fn load_relationships(&self) -> crate::error::Result<Vec<(String, String, f64)>> {
+        let script = r"?[src, dst, weight] := *relationships{src, dst, relation, weight}";
+        let result = self.run_query(script, std::collections::BTreeMap::new())?;
+        let mut rels = Vec::new();
+        for row in &result.rows {
+            if row.len() < 3 {
+                continue;
+            }
+            let src = row.first().and_then(|v| v.get_str()).unwrap_or("");
+            let dst = row.get(1).and_then(|v| v.get_str()).unwrap_or("");
+            let weight = row
+                .get(2)
+                .and_then(crate::engine::DataValue::get_float)
+                .unwrap_or(0.0);
+            rels.push((src.to_owned(), dst.to_owned(), weight));
+        }
+        Ok(rels)
+    }
+
+    /// Build a directed adjacency list from the relationship table.
+    fn build_adjacency_list(&self) -> crate::error::Result<HashMap<String, Vec<(String, f64)>>> {
+        let rels = self.load_relationships()?;
+        let mut adj = HashMap::<String, Vec<(String, f64)>>::new();
+        for (src, dst, weight) in rels {
+            adj.entry(src).or_default().push((dst, weight));
+        }
+        Ok(adj)
+    }
+
+    /// Build an undirected adjacency list from the relationship table.
+    fn build_undirected_adjacency_list(
+        &self,
+    ) -> crate::error::Result<HashMap<String, Vec<(String, f64)>>> {
+        let rels = self.load_relationships()?;
+        let mut adj = HashMap::new();
+        for (src, dst, weight) in rels {
+            adj.entry(src.clone())
+                .or_insert_with(Vec::new)
+                .push((dst.clone(), weight));
+            adj.entry(dst).or_insert_with(Vec::new).push((src, weight));
+        }
+        Ok(adj)
     }
 }
 
