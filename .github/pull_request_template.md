@@ -32,3 +32,4 @@ If this PR adds a new module, function, or abstraction:
 - [ ] New functionality has tests
 - [ ] No secrets or credentials in the diff
 - [ ] Commit message follows convention (`type(scope): description`)
+- [ ] Binary decisions preserve informative tension (see `docs/ARCHITECTURE.md#preserving-informative-tension`)
