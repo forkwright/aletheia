@@ -13,6 +13,7 @@ use dianoia::gate::{GateCondition, GateResult, PhaseGate, default_gate, evaluate
 use dianoia::phase::{Phase, PhaseState};
 use dianoia::plan::{Blocker, Plan, PlanState};
 use dianoia::project::{Project, ProjectMode};
+use dianoia::research::{FindingStatus, ResearchDomain, ResearchFinding, ResearchOutput};
 use dianoia::state::{ProjectState, Transition};
 use dianoia::workspace::ProjectWorkspace;
 
@@ -142,6 +143,60 @@ fn plan_state_variants() {
     assert_ne!(PlanState::Executing, PlanState::Complete);
     assert_ne!(PlanState::Failed, PlanState::Skipped);
     assert_ne!(PlanState::Stuck, PlanState::Complete);
+}
+
+#[test]
+fn plan_from_research_generates_pending_plans() {
+    let research = ResearchOutput {
+        findings: vec![
+            ResearchFinding {
+                domain: ResearchDomain::Architecture,
+                content: "Use actor model".into(),
+                status: FindingStatus::Complete,
+            },
+            ResearchFinding {
+                domain: ResearchDomain::Pitfalls,
+                content: "Beware of race conditions".into(),
+                status: FindingStatus::Partial,
+            },
+            ResearchFinding {
+                domain: ResearchDomain::Stack,
+                content: "Timeout".into(),
+                status: FindingStatus::TimedOut,
+            },
+        ],
+        markdown: String::new(),
+    };
+
+    let plans = Plan::from_research(&research);
+    assert_eq!(plans.len(), 2);
+
+    assert_eq!(plans[0].title, "Architecture");
+    assert_eq!(plans[0].description, "Use actor model");
+    assert_eq!(plans[0].wave, 0);
+    assert_eq!(plans[0].state, PlanState::Pending);
+
+    assert_eq!(plans[1].title, "Pitfalls");
+    assert_eq!(plans[1].description, "Beware of race conditions");
+    assert_eq!(plans[1].wave, 0);
+    assert_eq!(plans[1].state, PlanState::Pending);
+}
+
+#[test]
+fn plan_from_template_copies_fields_and_resets_state() {
+    let completed = Plan::new("Refactor auth".into(), "Extract auth module".into(), 1);
+    let next = Plan::from_template(&completed, 2);
+
+    assert_eq!(next.title, "Refactor auth");
+    assert_eq!(next.description, "Extract auth module");
+    assert_eq!(next.wave, 2);
+    assert_eq!(next.state, PlanState::Pending);
+    assert_eq!(next.iterations, 0);
+    assert!(next.depends_on.is_empty());
+    assert!(next.blockers.is_empty());
+    assert!(next.achievements.is_empty());
+    assert_eq!(next.max_iterations, completed.max_iterations);
+    assert_ne!(next.id, completed.id);
 }
 
 // =============================================================================
