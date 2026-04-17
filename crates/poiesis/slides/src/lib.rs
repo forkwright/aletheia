@@ -2,7 +2,7 @@
 //! poiesis-slides: PPTX presentation rendering backend.
 //!
 //! Feature flags:
-//! - `pptx` (default): `PowerPoint` PPTX output via `ppt-rs`.
+//! - `pptx` (default): `PowerPoint` PPTX output via hand-rolled ZIP/XML emitter.
 
 #[cfg(feature = "pptx")]
 pub mod pptx;

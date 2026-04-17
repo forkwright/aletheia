@@ -30,7 +30,7 @@ Document rendering family: format-agnostic document model plus backends for PDF,
 | `OdtRenderer` | `text/src/odt.rs` | ODT backend via clean-room ZIP/XML |
 | `XlsxRenderer` | `sheet/src/xlsx.rs` | Excel backend via `rust_xlsxwriter` |
 | `OdsRenderer` | `sheet/src/ods.rs` | ODS backend via `spreadsheet-ods` |
-| `PptxRenderer` | `slides/src/pptx.rs` | PowerPoint backend via `ppt-rs` |
+| `PptxRenderer` | `slides/src/pptx.rs` | PowerPoint backend via hand-rolled ZIP/XML emitter |
 
 ## Feature flags
 
@@ -40,7 +40,7 @@ Document rendering family: format-agnostic document model plus backends for PDF,
 | `odt` | `poiesis-text` | yes | ODT output via `zip` |
 | `xlsx` | `poiesis-sheet` | yes | Excel output via `rust_xlsxwriter` |
 | `ods` | `poiesis-sheet` | yes | ODS output via `spreadsheet-ods` |
-| `pptx` | `poiesis-slides` | yes | PPTX output via `ppt-rs` |
+| `pptx` | `poiesis-slides` | yes | PPTX output via hand-rolled ZIP/XML emitter |
 
 ## Patterns
 
@@ -63,5 +63,5 @@ Document rendering family: format-agnostic document model plus backends for PDF,
 
 ## Dependencies
 
-Uses: jiff, snafu, krilla (optional), zip (optional), rust_xlsxwriter (optional), spreadsheet-ods (optional), ppt-rs (optional)
+Uses: jiff, snafu, krilla (optional), zip (optional), quick-xml (optional), rust_xlsxwriter (optional), spreadsheet-ods (optional)
 Used by: (none yet)
