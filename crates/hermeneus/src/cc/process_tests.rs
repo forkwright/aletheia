@@ -31,11 +31,10 @@ fn write_script(name: &str, body: &str) -> PathBuf {
     }
     fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
     // WHY: On busy CI runners the exec path occasionally sees the file as
-    // Text file busy for a moment after the writer closed. Poll the file
-    // metadata + open it once ourselves; by the time those succeed the
-    // kernel is no longer going to refuse to exec it.
+    // Text file busy for a moment after the writer closed. Poll metadata so
+    // the file is at least visible to subsequent syscalls before returning.
     for _ in 0..50 {
-        if fs::metadata(&path).is_ok() && fs::File::open(&path).is_ok() {
+        if fs::metadata(&path).is_ok() {
             return path;
         }
         std::thread::sleep(std::time::Duration::from_millis(10));
