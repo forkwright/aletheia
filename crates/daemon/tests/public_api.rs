@@ -1201,13 +1201,10 @@ fn workspace_guard_acquires_and_exposes_lock_path() {
 
 #[test]
 fn workspace_guard_acquires_releases_and_reacquires_cleanly() {
-    // WHY: the contract we can observe through the public API in a single
-    // process is: acquire → get a Guard with a valid lock_path → drop →
-    // a subsequent acquire on the same workspace also succeeds. The intended
-    // cross-process exclusion semantic (second acquire fails while the first
-    // is held) cannot be asserted here because fd-lock's try_write guard is
-    // dropped inside `acquire`, releasing the advisory lock before the Guard
-    // returns. Tracked as #3026.
+    // WHY: verify the full lifecycle — acquire → valid lock_path → drop →
+    // re-acquire succeeds. Double-acquisition exclusion (second acquire
+    // fails while first is held) is tested in state.rs unit tests where
+    // rustix flock properly enforces it within the same process.
     let tmp = tempfile::tempdir().expect("tempdir");
 
     let first = WorkspaceGuard::acquire(tmp.path()).expect("first lock acquires");

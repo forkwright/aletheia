@@ -1,14 +1,15 @@
-//! Consolidation lock: PID-file with fd-lock for atomic acquisition.
+//! Consolidation lock: PID-file with rustix flock for atomic acquisition.
 //!
 //! The lock file serves dual purpose:
 //! - **Body**: holder PID (identifies who holds the logical lock)
 //! - **mtime**: `lastConsolidatedAt` timestamp (avoids a separate state file)
 //!
-//! Acquisition uses fd-lock for atomic PID writes, then re-reads to verify
-//! ownership (race guard). Stale locks are reclaimed when the holder PID is
-//! dead or the mtime exceeds the stale threshold (default: 1 hour).
+//! Acquisition uses `rustix::fs::flock` for atomic PID writes, then re-reads
+//! to verify ownership (race guard). Stale locks are reclaimed when the holder
+//! PID is dead or the mtime exceeds the stale threshold (default: 1 hour).
 
 use std::io::{Read, Seek, Write};
+use std::os::fd::AsFd as _;
 use std::path::{Path, PathBuf};
 
 use snafu::ResultExt;
@@ -117,9 +118,9 @@ fn read_file_string(path: &Path) -> Option<String> {
 ///
 /// Gate ORDER within this function:
 /// 1. Check if another active process holds the lock (PID alive + mtime fresh)
-/// 2. Acquire fd-lock for atomic PID write
+/// 2. Acquire flock for atomic PID write
 /// 3. Write our PID
-/// 4. Release fd-lock
+/// 4. Release flock
 /// 5. Re-read to verify ownership (race guard)
 ///
 /// Returns `None` if the lock is held by another active process.
@@ -130,7 +131,7 @@ fn read_file_string(path: &Path) -> Option<String> {
 pub(crate) fn try_acquire(path: &Path, stale_threshold_secs: i64) -> Result<Option<AcquiredLock>> {
     let prior_mtime = lock_mtime(path);
 
-    // NOTE: check existing holder before attempting fd-lock.
+    // NOTE: check existing holder before attempting flock.
     if let Some(pid) = read_pid(path) {
         if is_pid_alive(pid) && !is_stale(prior_mtime.as_ref(), stale_threshold_secs) {
             tracing::debug!(
@@ -147,8 +148,8 @@ pub(crate) fn try_acquire(path: &Path, stale_threshold_secs: i64) -> Result<Opti
         }
     }
 
-    // NOTE: acquire fd-lock for the brief write+verify phase.
-    let file = std::fs::File::options()
+    // NOTE: acquire flock for the brief write+verify phase.
+    let mut file = std::fs::File::options()
         .read(true)
         .write(true)
         .create(true)
@@ -157,36 +158,49 @@ pub(crate) fn try_acquire(path: &Path, stale_threshold_secs: i64) -> Result<Opti
         .context(DreamLockIoSnafu {
             context: "open lock file",
         })?;
-    let mut lock = fd_lock::RwLock::new(file);
 
-    match lock.try_write() {
-        Ok(mut guard) => {
-            guard
-                .seek(std::io::SeekFrom::Start(0))
-                .context(DreamLockIoSnafu {
-                    context: "seek lock file",
-                })?;
-            guard.set_len(0).context(DreamLockIoSnafu {
-                context: "truncate lock file",
-            })?;
-            write!(guard, "{}", std::process::id()).context(DreamLockIoSnafu {
-                context: "write PID to lock file",
-            })?;
-            guard.flush().context(DreamLockIoSnafu {
-                context: "flush lock file",
-            })?;
-            // NOTE: fd-lock released when guard drops here.
-        }
-        Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-            tracing::debug!("consolidation lock fd-lock held by another acquirer");
+    // WHY: rustix::fs::flock binds the advisory lock to the file descriptor.
+    // NonBlockingLockExclusive returns EWOULDBLOCK/EAGAIN if the lock is held.
+    match rustix::fs::flock(
+        file.as_fd(),
+        rustix::fs::FlockOperation::NonBlockingLockExclusive,
+    ) {
+        Ok(()) => {}
+        Err(e) if e == rustix::io::Errno::WOULDBLOCK || e == rustix::io::Errno::AGAIN => {
+            tracing::debug!("consolidation lock flock held by another acquirer");
             return Ok(None);
         }
         Err(e) => {
-            return Err(e).context(DreamLockIoSnafu {
-                context: "acquire fd-lock",
-            });
+            return Err(std::io::Error::from_raw_os_error(e.raw_os_error())).context(
+                DreamLockIoSnafu {
+                    context: "acquire flock",
+                },
+            );
         }
     }
+
+    file.seek(std::io::SeekFrom::Start(0))
+        .context(DreamLockIoSnafu {
+            context: "seek lock file",
+        })?;
+    file.set_len(0).context(DreamLockIoSnafu {
+        context: "truncate lock file",
+    })?;
+    write!(file, "{}", std::process::id()).context(DreamLockIoSnafu {
+        context: "write PID to lock file",
+    })?;
+    file.flush().context(DreamLockIoSnafu {
+        context: "flush lock file",
+    })?;
+
+    // WHY: explicitly release the flock before the race-guard re-read so
+    // another concurrent acquirer can take the lock and write its PID. If
+    // our PID is still present after releasing, we won the race.
+    rustix::fs::flock(file.as_fd(), rustix::fs::FlockOperation::Unlock)
+        .map_err(|e| std::io::Error::from_raw_os_error(e.raw_os_error()))
+        .context(DreamLockIoSnafu {
+            context: "release flock",
+        })?;
 
     // NOTE: re-read to verify our PID stuck (race guard).
     let readback = read_pid(path);
