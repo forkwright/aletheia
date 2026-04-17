@@ -2,6 +2,7 @@
 
 mod api;
 mod daemon;
+mod dispatch;
 mod jwt;
 mod knowledge;
 mod matrix;
@@ -14,6 +15,7 @@ mod tuning;
 
 pub use api::ApiLimitsConfig;
 pub use daemon::DaemonBehaviorConfig;
+pub use dispatch::{CronTaskConfig, DispatchConfig, DispatchSpecConfig};
 pub use jwt::JwtSettings;
 pub use knowledge::KnowledgeConfig;
 pub use matrix::{MatrixAccountConfig, MatrixConfig};

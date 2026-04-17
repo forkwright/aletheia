@@ -62,6 +62,22 @@ impl DispatchSpec {
             max_parallel: None,
         }
     }
+
+    /// Create a dispatch spec with all fields specified.
+    #[must_use]
+    pub fn with_options(
+        project: String,
+        prompt_numbers: Vec<u32>,
+        dag_ref: Option<String>,
+        max_parallel: Option<u32>,
+    ) -> Self {
+        Self {
+            prompt_numbers,
+            project,
+            dag_ref,
+            max_parallel,
+        }
+    }
 }
 
 /// Aggregate result of a dispatch run.
