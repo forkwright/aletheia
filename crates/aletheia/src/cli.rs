@@ -17,6 +17,7 @@ use crate::commands::desktop::DesktopArgs;
 use crate::commands::eval::EvalArgs;
 use crate::commands::eval_embeddings::EvalEmbeddingsArgs;
 use crate::commands::health::HealthArgs;
+use crate::commands::ingest::IngestArgs;
 use crate::commands::maintenance;
 use crate::commands::memory;
 use crate::commands::migrate::MigrateArgs;
@@ -149,4 +150,6 @@ pub(crate) enum Command {
     AddNous(AddNousArgs),
     /// Interactive Datalog REPL for querying the knowledge graph
     Repl(ReplArgs),
+    /// Ingest files into the knowledge graph
+    Ingest(IngestArgs),
 }
