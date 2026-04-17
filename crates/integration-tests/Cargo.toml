@@ -39,4 +39,5 @@ tempfile = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
 tracing = { workspace = true }
+http-body-util = "0.1"
 tower = { workspace = true }
