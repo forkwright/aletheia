@@ -138,35 +138,52 @@ turns), and `qa` (list of `{question, answer, category, answer_alternatives}`).
 
 ## Execution
 
-Once prerequisites are met, run the benchmarks via the eval CLI:
+Once prerequisites are met, run the benchmarks via the CLI:
 
 ```bash
 # LongMemEval — full run (~500 questions, expect several hours)
-cargo run -p dokimion --bin dokimion -- benchmark longmemeval \
+cargo run -p aletheia -- benchmark longmemeval \
     --dataset benchmark-data/longmemeval.json \
-    --instance http://localhost:8080 \
+    --url http://localhost:8080 \
     --nous-id benchmark \
     --output results/longmemeval-$(date +%Y%m%d).json
 
 # LongMemEval — smoke test (5 questions, ~5 minutes)
-cargo run -p dokimion --bin dokimion -- benchmark longmemeval \
+cargo run -p aletheia -- benchmark longmemeval \
     --dataset benchmark-data/longmemeval.json \
-    --instance http://localhost:8080 \
+    --url http://localhost:8080 \
     --nous-id benchmark \
     --max-questions 5
 
 # LoCoMo — full run (~10,000 QA pairs across 50 conversations)
-cargo run -p dokimion --bin dokimion -- benchmark locomo \
+cargo run -p aletheia -- benchmark locomo \
     --dataset benchmark-data/locomo.json \
-    --instance http://localhost:8080 \
+    --url http://localhost:8080 \
     --nous-id benchmark \
     --output results/locomo-$(date +%Y%m%d).json
+
+# With retrieval metrics (Recall@k / NDCG@k)
+cargo run -p aletheia -- benchmark longmemeval \
+    --dataset benchmark-data/longmemeval.json \
+    --url http://localhost:8080 \
+    --nous-id benchmark \
+    --retrieval-k 5
+
+# With LLM-as-judge evaluation
+cargo run -p aletheia -- benchmark longmemeval \
+    --dataset benchmark-data/longmemeval.json \
+    --url http://localhost:8080 \
+    --nous-id benchmark \
+    --judge-endpoint https://api.openai.com/v1/chat/completions \
+    --judge-model gpt-4o \
+    --judge-api-key $OPENAI_API_KEY
 ```
 
-Note: The CLI wrapper (`dokimion benchmark`) is listed as a follow-on in
-PR #3091. Until it lands, use the runner directly from an integration test
-or a small Rust harness. See `crates/eval/tests/benchmark_runner.rs` for
-the exact API pattern.
+Or use the reproducibility script:
+
+```bash
+scripts/benchmark.sh --instance http://localhost:8080 --nous-id benchmark
+```
 
 ### Tuning the runner
 
@@ -179,6 +196,8 @@ Configure `BenchmarkRunnerConfig` for production runs:
 | `question_timeout` | 120s | Increase to 300s for long haystack ingestion |
 | `max_questions` | all | Use `Some(50)` for a fast representive sample |
 | `close_between_questions` | true | Keep true — resets memory between questions for clean isolation |
+| `judge` | `None` | Set to an `LlmJudgeConfig` for LLM-as-judge scoring |
+| `retrieval_k` | `None` | Set to `Some(k)` to compute Recall@k / NDCG@k from the knowledge store |
 
 ### Capturing results
 
