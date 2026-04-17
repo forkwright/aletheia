@@ -10,6 +10,8 @@ pub(crate) mod drift_detection;
 pub mod fjall_backup;
 /// Knowledge graph maintenance bridge trait and report types.
 pub(crate) mod knowledge;
+/// Prompt audit log retention pruning (#3411).
+pub(crate) mod prompt_audit_rotation;
 /// Data retention policy execution trait and summary types.
 pub(crate) mod retention;
 /// Trace file rotation, gzip compression, and archive pruning.
@@ -20,6 +22,9 @@ pub use drift_detection::{DriftDetectionConfig, DriftDetector, DriftReport};
 pub use fjall_backup::{FjallBackup, FjallBackupConfig, FjallBackupReport};
 pub use knowledge::{
     AutoDreamConfig, KnowledgeMaintenanceConfig, KnowledgeMaintenanceExecutor, MaintenanceReport,
+};
+pub use prompt_audit_rotation::{
+    PromptAuditRetentionConfig, PromptAuditRetentionReport, PromptAuditRotator,
 };
 pub use retention::{RetentionConfig, RetentionExecutor, RetentionSummary};
 pub use trace_rotation::{RotationReport, TraceRotationConfig, TraceRotator};
@@ -67,4 +72,6 @@ pub struct MaintenanceConfig {
     pub cron: crate::cron::CronConfig,
     /// Rule proposal generation from observed patterns.
     pub propose_rules: ProposeRulesConfig,
+    /// Prompt audit log retention pruning (#3411).
+    pub prompt_audit: PromptAuditRetentionConfig,
 }

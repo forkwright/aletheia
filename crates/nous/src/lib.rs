@@ -5,6 +5,8 @@
 pub(crate) mod actor;
 /// Trait adapters bridging organon tool traits to mneme SessionStore.
 pub mod adapters;
+/// Prompt audit log: operator-visible record of every outbound LLM request (#3411).
+pub mod audit;
 /// System prompt assembly from workspace files and domain packs.
 pub mod bootstrap;
 /// Token and wall-clock time budget tracking for pipeline stages.
