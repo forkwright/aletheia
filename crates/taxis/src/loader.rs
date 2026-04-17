@@ -210,17 +210,12 @@ fn set_path(root: &mut JsonValue, path: &[String], value: JsonValue) {
     }
 }
 
-/// Parse TOML content, decrypt any `enc:` values, and serialize back.
+/// Decrypt `enc:` values in a parsed TOML value tree in-place.
 ///
 /// Returns an error if encrypted values are found but the decryption key is
 /// missing. This prevents the server from silently starting with undecrypted
 /// `enc:` values in place of real secrets.
-fn decrypt_toml_content(content: &str) -> Result<String> {
-    let mut value: toml::Value = match toml::from_str(content) {
-        Ok(v) => v,
-        Err(_) => return Ok(content.to_owned()),
-    };
-
+fn decrypt_toml_value(value: &mut toml::Value) -> Result<()> {
     let primary_key = match encrypt::primary_key_path() {
         Some(path) => match encrypt::load_primary_key(&path) {
             Ok(key) => key,
@@ -236,7 +231,7 @@ fn decrypt_toml_content(content: &str) -> Result<String> {
     // actionable error listing every affected field instead of warning per-value
     if primary_key.is_none() {
         let mut enc_paths = Vec::new();
-        collect_encrypted_paths(&value, String::new(), &mut enc_paths);
+        collect_encrypted_paths(value, String::new(), &mut enc_paths);
         if !enc_paths.is_empty() {
             return Err(crate::error::ConfigDecryptSnafu {
                 fields: enc_paths.join(", "),
@@ -245,9 +240,77 @@ fn decrypt_toml_content(content: &str) -> Result<String> {
         }
     }
 
-    encrypt::decrypt_toml_values(&mut value, primary_key.as_ref());
+    encrypt::decrypt_toml_values(value, primary_key.as_ref());
+    Ok(())
+}
+
+/// Parse TOML content, decrypt any `enc:` values, and serialize back.
+///
+/// Returns an error if encrypted values are found but the decryption key is
+/// missing. This prevents the server from silently starting with undecrypted
+/// `enc:` values in place of real secrets.
+fn decrypt_toml_content(content: &str) -> Result<String> {
+    let mut value: toml::Value = match toml::from_str(content) {
+        Ok(v) => v,
+        Err(_) => return Ok(content.to_owned()),
+    };
+
+    decrypt_toml_value(&mut value)?;
 
     Ok(toml::to_string(&value).unwrap_or_else(|_| content.to_owned()))
+}
+
+/// Read a standalone TOML file, apply env-var interpolation and decrypt
+/// `enc:` values, and return the parsed value tree.
+///
+/// This uses the same interpolation and decryption pipeline as the cascade
+/// loader, but does **not** apply compiled defaults or environment-variable
+/// overlays.
+///
+/// Call [`parse_toml_file_with`] to supply a custom [`FileSystem`] implementation
+/// (e.g. `koina::system::TestSystem` in tests).
+///
+/// # Errors
+///
+/// Returns an error if the file cannot be read, if TOML parsing fails,
+/// or if encrypted values are found but the decryption key is missing.
+#[must_use]
+#[expect(
+    clippy::double_must_use,
+    reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+)]
+pub fn parse_toml_file(path: &std::path::Path) -> Result<toml::Value> {
+    parse_toml_file_with(path, &RealSystem)
+}
+
+/// Read a standalone TOML file using the provided [`FileSystem`].
+///
+/// This is the primary implementation; [`parse_toml_file`] is a convenience
+/// wrapper that passes [`RealSystem`]. Prefer this variant in tests so that
+/// TOML files can be supplied in-memory without touching the real disk.
+///
+/// # Errors
+///
+/// Returns an error if the file cannot be read, if TOML parsing fails,
+/// or if encrypted values are found but the decryption key is missing.
+#[must_use]
+#[expect(
+    clippy::double_must_use,
+    reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+)]
+pub fn parse_toml_file_with(
+    path: &std::path::Path,
+    fs: &impl FileSystem,
+) -> Result<toml::Value> {
+    let bytes = fs.read_file(path).context(crate::error::ReadConfigSnafu {
+        path: path.to_path_buf(),
+    })?;
+    let toml_content = String::from_utf8_lossy(&bytes);
+    let interpolated = interpolate::interpolate_env_vars(toml_content.as_ref())?;
+    let mut value: toml::Value =
+        toml::from_str(&interpolated).context(crate::error::ParseTomlSnafu)?;
+    decrypt_toml_value(&mut value)?;
+    Ok(value)
 }
 
 /// Walk a TOML value tree and collect dotted paths of all `enc:`-prefixed strings.
