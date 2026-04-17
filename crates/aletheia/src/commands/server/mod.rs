@@ -217,9 +217,10 @@ pub(crate) async fn run(args: Args) -> Result<()> {
 
     #[cfg(unix)]
     {
-        if tokio::time::timeout(shutdown_timeout, sighup_handle)
-            .await
-            .is_err()
+        if let Some(handle) = sighup_handle
+            && tokio::time::timeout(shutdown_timeout, handle)
+                .await
+                .is_err()
         {
             warn!("sighup handler did not exit within drain timeout");
         }

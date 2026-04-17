@@ -25,5 +25,6 @@ mod middleware;
 mod nous;
 mod per_user_rate_limit;
 mod session;
+mod signal;
 mod sse_events;
 mod streaming;
