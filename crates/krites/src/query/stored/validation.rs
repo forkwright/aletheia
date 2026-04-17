@@ -14,7 +14,6 @@
     clippy::similar_names,
     clippy::too_many_arguments,
     clippy::too_many_lines,
-    clippy::wildcard_imports,
     reason = "engine-internal validation — many arguments for trigger/callback propagation"
 )]
 

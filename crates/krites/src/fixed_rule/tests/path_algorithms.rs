@@ -1,6 +1,10 @@
 //! Path and traversal algorithm tests: Dijkstra, BFS, DFS, A*, centrality.
 #![cfg(test)]
 #![expect(clippy::expect_used, reason = "test assertions")]
+#![expect(
+    clippy::indexing_slicing,
+    reason = "test assertions: index into known-shape NamedRows results"
+)]
 use crate::DbInstance;
 use crate::data::value::DataValue;
 

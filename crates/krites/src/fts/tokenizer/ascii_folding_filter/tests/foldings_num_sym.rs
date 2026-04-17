@@ -1,4 +1,8 @@
 //! ASCII folding tests for numbers and symbols.
+#![expect(
+    clippy::too_many_lines,
+    reason = "test covers all folding rules for numbers and symbols in a single readable table"
+)]
 
 use super::folding_using_raw_tokenizer_helper;
 

@@ -524,6 +524,14 @@ impl Iterator for CollectedSkipIterator {
     clippy::indexing_slicing,
     reason = "test assertions on collections with known length"
 )]
+#[expect(
+    clippy::default_trait_access,
+    reason = "tests use `Default::default()` idiomatically for script option structs"
+)]
+#[expect(
+    clippy::result_large_err,
+    reason = "tests return InternalResult which carries rich context; size is intentional"
+)]
 mod tests {
     use std::collections::BTreeMap;
     use std::sync::Arc;

@@ -1,5 +1,13 @@
 //! Tests for predicates, collection operations, geographic functions, and UUIDs.
 #![expect(clippy::expect_used, reason = "test assertions")]
+#![expect(
+    clippy::too_many_lines,
+    reason = "test covers many collection ops in a single readable sequence"
+)]
+#![expect(
+    clippy::float_cmp,
+    reason = "test compares exact-arithmetic floats against known-exact expected values"
+)]
 use std::f64::consts::PI;
 
 use crate::data::functions::*;

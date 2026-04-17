@@ -262,6 +262,12 @@ fn utf8_codepoint_width(b: u8) -> usize {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::as_conversions,
+    reason = "test: byte values are bounded to u8 range by construction"
+)]
 mod tests {
 
     use super::{CodepointFrontiers, StutteringIterator, utf8_codepoint_width};

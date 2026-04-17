@@ -7,7 +7,7 @@ use std::pin::Pin;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 use std::os::unix::process::CommandExt as _;
 
 use indexmap::IndexMap;

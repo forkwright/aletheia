@@ -163,6 +163,10 @@ fn policy_includes_allowed_roots_as_read_only() {
 }
 
 #[test]
+#[cfg_attr(
+    target_os = "macos",
+    ignore = "asserts /tmp inclusion; macOS canonicalizes /tmp to /private/tmp — tracked in #3573"
+)]
 fn policy_includes_system_paths() {
     let config = SandboxConfig::default();
     let policy = config.build_policy(Path::new("/tmp/ws"), &[]);

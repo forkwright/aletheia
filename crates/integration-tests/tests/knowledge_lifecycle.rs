@@ -34,6 +34,7 @@ fn make_fact(id: &str, nous_id: &str, content: &str, confidence: f64, tier: Epis
         nous_id: nous_id.to_owned(),
         content: content.to_owned(),
         fact_type: String::new(),
+        scope: None,
         temporal: FactTemporal {
             valid_from: ts(TS_2026),
             valid_to: far_future(),
@@ -96,6 +97,7 @@ fn correct_fact(
         nous_id: nous_id.to_owned(),
         content: new_content.to_owned(),
         fact_type: String::new(),
+        scope: None,
         temporal: FactTemporal {
             valid_from: ts(correction_time),
             valid_to: far_future(),
@@ -159,8 +161,8 @@ fn audit_all_facts(store: &Arc<KnowledgeStore>, nous_id: &str) -> Vec<AuditRow> 
     params.insert(String::from("nous_id"), DataValue::Str(nous_id.into()));
     let rows = store.run_query(script, params).expect("audit query");
 
-    rows.rows
-        .into_iter()
+    rows.rows()
+        .iter()
         .map(|row| {
             let id = match &row[0] {
                 DataValue::Str(s) => s.to_string(),

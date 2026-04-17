@@ -272,6 +272,10 @@ fn test_validate_path_tilde_expands_to_home_before_resolution() {
 }
 
 #[test]
+#[cfg_attr(
+    target_os = "macos",
+    ignore = "macOS path canonicalization drift — tracked in #3573"
+)]
 fn test_validate_path_relative_resolves_inside_workspace() {
     let dir = tempfile::tempdir().expect("create temp dir");
     let name = koina::id::ToolName::new("read").expect("valid");

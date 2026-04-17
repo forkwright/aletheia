@@ -15,7 +15,6 @@
     clippy::type_complexity,
     clippy::unnecessary_semicolon,
     clippy::unused_self,
-    clippy::wildcard_imports,
     reason = "engine-internal mutation — many arguments required for trigger/callback propagation"
 )]
 

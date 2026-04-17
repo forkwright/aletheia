@@ -18,7 +18,6 @@
     clippy::redundant_closure_for_method_calls,
     clippy::result_large_err,
     clippy::too_many_lines,
-    clippy::wildcard_imports,
     reason = "engine-internal stratification — complex graph analysis with BTreeMap defaults"
 )]
 

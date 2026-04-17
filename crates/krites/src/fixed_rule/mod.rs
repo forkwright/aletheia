@@ -18,17 +18,17 @@ use crate::data::tuple::TupleIter;
 use crate::data::value::DataValue;
 use crate::error::InternalResult as Result;
 #[cfg(feature = "graph-algo")]
-#[expect(
+#[allow(
     clippy::wildcard_imports,
-    reason = "graph algorithm registry re-exports all algo types for registration"
+    reason = "graph algorithm registry re-exports all algo types for registration; expectation cannot be expressed reliably across lib and lib-test compilations"
 )]
 use crate::fixed_rule::algos::*;
 #[cfg(feature = "graph-algo")]
 use crate::fixed_rule::csr::{CsrBuilder, DirectedCsrGraph};
 use crate::fixed_rule::error::InvalidInputSnafu;
-#[expect(
+#[allow(
     clippy::wildcard_imports,
-    reason = "utility rule registry re-exports all utility types for registration"
+    reason = "utility rule registry re-exports all utility types for registration; expectation cannot be expressed reliably across lib and lib-test compilations"
 )]
 use crate::fixed_rule::utilities::*;
 use crate::parse::SourceSpan;

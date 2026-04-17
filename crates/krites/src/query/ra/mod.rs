@@ -25,7 +25,6 @@
     clippy::too_many_lines,
     clippy::unnecessary_semicolon,
     clippy::unnecessary_wraps,
-    clippy::wildcard_imports,
     reason = "engine-internal relational algebra -- match arms kept explicit, result size structural"
 )]
 

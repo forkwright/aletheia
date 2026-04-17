@@ -1,6 +1,14 @@
 //! Centrality and spanning tree tests: `DegreeCentrality`, MST, `LabelProp`, `PageRank`, `RandomWalk`.
 #![cfg(test)]
 #![expect(clippy::expect_used, reason = "test assertions")]
+#![expect(
+    clippy::indexing_slicing,
+    reason = "test assertions: index into known-shape NamedRows results"
+)]
+#![expect(
+    clippy::as_conversions,
+    reason = "test: graph node counts fit well within target numeric ranges"
+)]
 use crate::DbInstance;
 use crate::data::value::DataValue;
 

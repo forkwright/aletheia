@@ -4,9 +4,9 @@
 //! expression evaluation ([`expr`]), scalar functions ([`functions`]),
 //! aggregation operators ([`aggr`]), relation metadata ([`relation`]),
 //! binary key encoding ([`memcmp`]), and the Datalog program AST ([`program`]).
-#![expect(
+#![allow(
     clippy::wildcard_imports,
-    reason = "error selectors and re-exports used pervasively across data module"
+    reason = "error selectors and re-exports used pervasively across data module; expectation cannot be expressed because the lint fires only on the lib build, not lib-test"
 )]
 pub(crate) mod aggr;
 pub(crate) mod error;

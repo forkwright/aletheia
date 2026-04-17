@@ -360,6 +360,11 @@ fn louvain_step(
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::as_conversions,
+    reason = "test: node indices fit in u32 for small fixed graphs"
+)]
 mod tests {
     use crate::fixed_rule::csr::CsrBuilder;
 

@@ -251,17 +251,27 @@ fn is_pid_alive(pid: u32) -> bool {
     }
     #[cfg(all(unix, not(target_os = "linux")))]
     {
+        // WHY: Unix PIDs are positive i32. A value greater than i32::MAX
+        // (e.g. u32::MAX sentinel written by a stale lock) casts to a
+        // negative i32, and kill(negative, 0) is interpreted by POSIX as
+        // "signal the caller's process group" — which always succeeds and
+        // would falsely report the PID as alive.
+        let Ok(pid_i32) = i32::try_from(pid) else {
+            return false;
+        };
+        if pid_i32 <= 0 {
+            return false;
+        }
         // WHY: kill(pid, 0) checks process existence without sending a signal.
         // Returns 0 if the process exists, -1 with ESRCH if it does not.
         // EPERM (no permission to signal) still means the process exists.
+        // SAFETY: kill(pid, 0) with a positive PID is safe — signal 0 performs
+        // a permission check without delivering any signal. This is the
+        // standard Unix idiom for process existence checks.
         #[expect(
-            clippy::as_conversions,
-            reason = "u32→i32: PIDs are always positive and fit in i32 on Unix"
+            unsafe_code,
+            reason = "libc::kill with signal 0 is the portable idiom for PID liveness check; no process state is modified"
         )]
-        let pid_i32 = pid as i32;
-        // SAFETY: kill(pid, 0) is safe — signal 0 performs a permission check
-        // without delivering any signal. This is the standard Unix idiom for
-        // process existence checks.
         let ret = unsafe { libc::kill(pid_i32, 0) };
         if ret == 0 {
             return true;

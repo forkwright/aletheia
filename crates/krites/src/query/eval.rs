@@ -13,7 +13,6 @@
     clippy::semicolon_if_nothing_returned,
     clippy::too_many_arguments,
     clippy::too_many_lines,
-    clippy::wildcard_imports,
     reason = "engine-internal query evaluator — pass-by-value for Poison, indexing on validated bounds"
 )]
 

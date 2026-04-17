@@ -698,6 +698,14 @@ impl SessionTx<'_> {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::as_conversions,
+    reason = "test: BM25 score arithmetic uses small known integer-to-float casts"
+)]
+#[expect(
+    clippy::float_cmp,
+    reason = "test compares exact-arithmetic floats against known-exact expected values"
+)]
 mod tests {
     use super::bm25_compute_score;
     use crate::data::program::FtsScoreKind;

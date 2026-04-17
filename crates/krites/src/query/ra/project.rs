@@ -7,7 +7,6 @@
 #![expect(
     clippy::iter_not_returning_iterator,
     clippy::result_large_err,
-    clippy::wildcard_imports,
     reason = "engine-internal unification RA -- iter returns TupleIter (boxed trait)"
 )]
 
