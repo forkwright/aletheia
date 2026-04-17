@@ -1,4 +1,5 @@
 #![deny(missing_docs)]
+#![deny(clippy::unwrap_used)]
 //! Diaporeia: MCP server interface for Aletheia.
 //!
 //! The passage through (διαπορεία) for external AI agents to access Aletheia's
