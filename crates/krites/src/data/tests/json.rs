@@ -1,5 +1,9 @@
 //! Tests for JSON round-tripping.
 #![expect(clippy::expect_used, reason = "test assertions")]
+#![expect(
+    clippy::unnecessary_fallible_conversions,
+    reason = "test exercises fallible conversion paths explicitly"
+)]
 use serde_json::json;
 
 use crate::data::json::JsonValue;

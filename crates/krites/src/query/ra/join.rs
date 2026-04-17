@@ -20,7 +20,6 @@
     clippy::result_large_err,
     clippy::semicolon_if_nothing_returned,
     clippy::single_match_else,
-    clippy::wildcard_imports,
     reason = "engine-internal join operators -- indexing validated by join_indices, mutable keys are Symbol"
 )]
 

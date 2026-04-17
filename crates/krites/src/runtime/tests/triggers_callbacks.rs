@@ -1,5 +1,21 @@
 //! Tests for triggers, callbacks, updates, indexes, and multi-transaction behavior.
 #![expect(clippy::expect_used, reason = "test assertions")]
+#![expect(
+    clippy::indexing_slicing,
+    reason = "test assertions: index into known-shape NamedRows results"
+)]
+#![expect(
+    clippy::default_trait_access,
+    reason = "tests use `Default::default()` idiomatically for script option structs"
+)]
+#![expect(
+    clippy::similar_names,
+    reason = "tests use parallel binding names (tx_a/tx_b, rx_a/rx_b) for clarity"
+)]
+#![expect(
+    clippy::items_after_statements,
+    reason = "test helper fns are defined near their first use for readability"
+)]
 use std::collections::BTreeMap;
 use std::time::Duration;
 

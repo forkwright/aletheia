@@ -1,5 +1,13 @@
 //! Tests for temporal validity ranges.
 #![expect(clippy::expect_used, reason = "test assertions")]
+#![expect(
+    clippy::indexing_slicing,
+    reason = "test assertions: index into known-shape NamedRows results"
+)]
+#![expect(
+    clippy::too_many_lines,
+    reason = "test covers end-to-end validity flow in one readable sequence"
+)]
 use std::env;
 
 use serde_json::json;

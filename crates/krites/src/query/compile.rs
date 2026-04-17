@@ -9,7 +9,6 @@
     clippy::semicolon_if_nothing_returned,
     clippy::too_many_lines,
     clippy::unnecessary_semicolon,
-    clippy::wildcard_imports,
     reason = "engine-internal query compiler — casts, indexing, and result size are structural"
 )]
 

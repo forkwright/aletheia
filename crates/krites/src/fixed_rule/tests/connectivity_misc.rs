@@ -1,6 +1,20 @@
 //! Connectivity and misc tests: SCC, CC, `TopSort`, Clustering, KSP, Louvain, `KCore`.
 #![cfg(test)]
 #![expect(clippy::expect_used, reason = "test assertions")]
+#![expect(
+    clippy::indexing_slicing,
+    reason = "test assertions: index into known-shape NamedRows results"
+)]
+#![expect(
+    clippy::mutable_key_type,
+    reason = "test uses BTreeSet<DataValue>; interior mutability is not exercised in DataValue keys here"
+)]
+#![expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::as_conversions,
+    reason = "test: small graph sizes fit target numeric ranges"
+)]
 use crate::DbInstance;
 use crate::data::value::DataValue;
 

@@ -22,6 +22,10 @@
 //! All errors propagate through [`QueryError`](error::QueryError) with
 //! `snafu::Location` tracking. The error type covers compilation, evaluation,
 //! stratification, graph traversal, type mismatches, and access control.
+#![allow(
+    clippy::wildcard_imports,
+    reason = "snafu error selectors are imported via glob across query submodules — scoped to engine internals; expectation cannot be expressed because the lint fires only on the lib build, not lib-test"
+)]
 pub(crate) mod compile;
 pub(crate) mod error;
 pub(crate) mod eval;

@@ -1,5 +1,13 @@
 //! Tests for memory-comparable encoding.
 #![expect(clippy::expect_used, reason = "test assertions")]
+#![expect(
+    clippy::indexing_slicing,
+    reason = "test assertions: index into known-size encoding buffers"
+)]
+#![expect(
+    clippy::unreadable_literal,
+    reason = "test: numeric literals mirror tested bit patterns verbatim"
+)]
 use uuid::Uuid;
 
 use crate::data::memcmp::{MemCmpEncoder, decode_bytes};

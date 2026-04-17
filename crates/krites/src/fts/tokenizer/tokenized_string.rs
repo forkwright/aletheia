@@ -1,4 +1,15 @@
 //! Pre-tokenized string wrapper.
+#![cfg_attr(
+    test,
+    expect(
+        clippy::indexing_slicing,
+        clippy::as_conversions,
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        clippy::cast_possible_wrap,
+        reason = "test-only module: indices and casts bounded by fixed small token streams"
+    )
+)]
 
 #[cfg(test)]
 use std::cmp::Ordering;

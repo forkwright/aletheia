@@ -1,5 +1,9 @@
 //! Tests for vector indexing, FTS indexing, LSH indexing, and insertions.
 #![expect(clippy::expect_used, reason = "test assertions")]
+#![expect(
+    clippy::indexing_slicing,
+    reason = "test assertions: index into known-shape NamedRows results"
+)]
 use std::collections::BTreeMap;
 
 use crate::DbInstance;

@@ -447,6 +447,10 @@ impl HashValues {
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(
+    clippy::float_cmp,
+    reason = "test compares exact-arithmetic floats against known-exact expected values"
+)]
 mod test {
     use super::*;
 

@@ -4,7 +4,6 @@
 //! deserializes, and verifies equality. Also tests rmp-serde round-trips
 //! and sort-order preservation.
 #![expect(clippy::expect_used, reason = "test assertions")]
-#![expect(clippy::indexing_slicing, reason = "test data with known structure")]
 
 use std::collections::BTreeSet;
 

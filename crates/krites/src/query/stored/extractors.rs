@@ -4,7 +4,6 @@
     clippy::explicit_iter_loop,
     clippy::indexing_slicing,
     clippy::result_large_err,
-    clippy::wildcard_imports,
     reason = "engine-internal data extractors — indexing validated by make_extractor callers"
 )]
 
