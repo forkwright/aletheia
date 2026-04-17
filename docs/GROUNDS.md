@@ -41,15 +41,21 @@ An abstraction with only one creation path is a mesh with a single root.  If tha
 
 ---
 
-## 2. Plans — single-grounded
+## 2. Plans — multi-grounded
 
 ### Verified creation paths
 
 1. **`Plan::new`** — `crates/dianoia/src/plan.rs:109`  
-   The only constructor.  It generates a fresh ULID, sets `state = Pending`, and uses `DEFAULT_MAX_ITERATIONS = 10`.
+   The original constructor.  It generates a fresh ULID, sets `state = Pending`, and uses `DEFAULT_MAX_ITERATIONS = 10`.
 
 2. **`Phase::add_plan`** — `crates/dianoia/src/phase.rs:92`  
-   The only caller of `Plan::new` outside unit tests.  It is `pub(crate)` and marked `#[cfg_attr(not(test), expect(dead_code, reason = "WIP: planning phase lifecycle"))]` — i.e. not exercised in production builds.
+   The original caller of `Plan::new` outside unit tests.  It is `pub(crate)` and marked `#[cfg_attr(not(test), expect(dead_code, reason = "WIP: planning phase lifecycle"))]` — i.e. not exercised in production builds.
+
+3. **`Plan::from_research`** — `crates/dianoia/src/plan.rs:137`  
+   Creates one `Plan` per [`FindingStatus::Complete`] or [`FindingStatus::Partial`] finding in a [`ResearchOutput`].  Title is the domain heading, description is the finding content, wave is `0`.
+
+4. **`Plan::from_template`** — `crates/dianoia/src/plan.rs:158`  
+   Creates a new `Plan` from a completed plan, copying title/description and max-iterations, resetting state to `Pending`, clearing blockers/achievements/dependencies, and setting wave to the supplied `next_wave`.
 
 ### Production usage
 
@@ -58,8 +64,6 @@ An abstraction with only one creation path is a mesh with a single root.  If tha
 
 ### Missing grounds
 
-- **Generate from research output** — no pipeline converts an episteme research result into a `Plan`.
-- **Generate from completed plan as next-iteration template** — no `Plan::from_template(&Plan)` or similar exists.
 - **Planning API** — the pylon handlers are stubs; plans cannot be created via HTTP.
 
 ---
