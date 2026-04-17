@@ -19,6 +19,7 @@ use crate::commands::eval_embeddings::EvalEmbeddingsArgs;
 use crate::commands::health::HealthArgs;
 use crate::commands::maintenance;
 use crate::commands::memory;
+use crate::commands::migrate::MigrateArgs;
 use crate::commands::prompt_audit;
 use crate::commands::repl::ReplArgs;
 use crate::commands::session_export::SessionExportArgs;
@@ -139,6 +140,8 @@ pub(crate) enum Command {
         #[command(subcommand)]
         action: config::Action,
     },
+    /// Migrate an instance to a new directory
+    Migrate(MigrateArgs),
     /// Scaffold a new nous agent directory
     AddNous(AddNousArgs),
     /// Interactive Datalog REPL for querying the knowledge graph

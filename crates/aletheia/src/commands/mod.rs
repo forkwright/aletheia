@@ -14,6 +14,7 @@ pub(crate) mod eval_embeddings;
 pub(crate) mod health;
 pub(crate) mod maintenance;
 pub(crate) mod memory;
+pub(crate) mod migrate;
 pub(crate) mod prompt_audit;
 pub(crate) mod repl;
 pub(crate) mod server;
@@ -123,6 +124,7 @@ pub(crate) async fn dispatch(cmd: Command, instance_root: Option<&PathBuf>) -> R
         Command::Config { action } => config::run(&action, instance_root).map_err(Into::into),
         Command::AddNous(a) => add_nous::run(instance_root, &a).await.map_err(Into::into),
         Command::Repl(a) => repl::run(instance_root, &a).await.map_err(Into::into),
+        Command::Migrate(a) => migrate::run(&a).map_err(Into::into),
         // NOTE: Serve is intercepted in main() before dispatch is called.
         // This arm exists only for match exhaustiveness.
         #[expect(
