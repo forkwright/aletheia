@@ -117,9 +117,9 @@ pub(crate) struct ToolInvocation {
 pub(crate) enum DateRange {
     #[default]
     Last7Days,
-    #[expect(dead_code, reason = "reserved for future use")]
+    #[cfg_attr(not(test), expect(dead_code, reason = "reserved for future use"))]
     Last30Days,
-    #[expect(dead_code, reason = "reserved for future use")]
+    #[cfg_attr(not(test), expect(dead_code, reason = "reserved for future use"))]
     Last90Days,
 }
 
@@ -148,7 +148,7 @@ pub(crate) fn tools_by_duration(tools: &[ToolStat]) -> Vec<&ToolStat> {
 }
 
 /// Trend arrow: ↑ if current is >1% above prev, ↓ if >1% below, → otherwise.
-#[expect(dead_code, reason = "reserved for future use")]
+#[cfg_attr(not(test), expect(dead_code, reason = "reserved for future use"))]
 pub(crate) fn trend_arrow(current: f64, prev: f64) -> &'static str {
     if prev == 0.0 {
         return "→";
@@ -263,5 +263,183 @@ mod tests {
         let values: Vec<u64> = (1..=100).collect();
         // p95 of 100: ceil(0.95*100)=95, idx=94, value=95
         assert_eq!(percentile_nearest_rank(&values, 0.95), 95);
+    }
+
+    #[test]
+    fn percentile_nearest_rank_empty() {
+        assert_eq!(percentile_nearest_rank(&[], 0.5), 0);
+    }
+
+    #[test]
+    fn percentile_nearest_rank_single_value() {
+        assert_eq!(percentile_nearest_rank(&[42], 0.5), 42);
+        assert_eq!(percentile_nearest_rank(&[42], 0.95), 42);
+    }
+
+    #[test]
+    fn paginate_beyond_end_returns_empty() {
+        let items: Vec<u32> = (0..10).collect();
+        let page = paginate(&items, 5, 20);
+        assert!(page.is_empty());
+    }
+
+    #[test]
+    fn paginate_zero_per_page_returns_empty() {
+        let items: Vec<u32> = (0..10).collect();
+        // start = 0 * 0 = 0, end = (0+0).min(10) = 0
+        let page = paginate(&items, 0, 0);
+        assert!(page.is_empty());
+    }
+
+    #[test]
+    fn page_count_zero_per_page() {
+        assert_eq!(page_count(50, 0), 0);
+    }
+
+    #[test]
+    fn page_count_zero_items() {
+        assert_eq!(page_count(0, 20), 0);
+    }
+
+    #[test]
+    fn date_range_days_for_each_variant() {
+        assert_eq!(DateRange::Last7Days.days(), 7);
+        assert_eq!(DateRange::Last30Days.days(), 30);
+        assert_eq!(DateRange::Last90Days.days(), 90);
+    }
+
+    #[test]
+    fn date_range_default_is_7days() {
+        assert_eq!(DateRange::default(), DateRange::Last7Days);
+    }
+
+    #[test]
+    fn format_delta_positive() {
+        assert_eq!(format_delta(0), "+0");
+        assert_eq!(format_delta(5), "+5");
+        assert_eq!(format_delta(1234), "+1234");
+    }
+
+    #[test]
+    fn format_delta_negative() {
+        assert_eq!(format_delta(-1), "-1");
+        assert_eq!(format_delta(-100), "-100");
+    }
+
+    #[test]
+    fn format_duration_ms_units() {
+        assert_eq!(format_duration_ms(500), "500ms");
+        assert_eq!(format_duration_ms(999), "999ms");
+        assert_eq!(format_duration_ms(1000), "1.0s");
+        assert_eq!(format_duration_ms(2500), "2.5s");
+        assert_eq!(format_duration_ms(60_000), "1.0m");
+        assert_eq!(format_duration_ms(120_000), "2.0m");
+    }
+
+    #[test]
+    fn trend_arrow_up_down_stable() {
+        // current > 1.01 * prev → up
+        assert_eq!(trend_arrow(102.0, 100.0), "↑");
+        // current < 0.99 * prev → down
+        assert_eq!(trend_arrow(98.0, 100.0), "↓");
+        // within ±1% → stable
+        assert_eq!(trend_arrow(100.0, 100.0), "→");
+        assert_eq!(trend_arrow(100.5, 100.0), "→");
+    }
+
+    #[test]
+    fn trend_arrow_zero_prev_stable() {
+        assert_eq!(trend_arrow(50.0, 0.0), "→");
+    }
+
+    #[test]
+    fn tools_by_failure_descending() {
+        let tools = vec![
+            ToolStat {
+                name: "low".to_string(),
+                failed: 1,
+                ..Default::default()
+            },
+            ToolStat {
+                name: "high".to_string(),
+                failed: 100,
+                ..Default::default()
+            },
+            ToolStat {
+                name: "mid".to_string(),
+                failed: 10,
+                ..Default::default()
+            },
+        ];
+        let sorted = tools_by_failure(&tools);
+        assert_eq!(sorted[0].name, "high");
+        assert_eq!(sorted[1].name, "mid");
+        assert_eq!(sorted[2].name, "low");
+    }
+
+    #[test]
+    fn tools_by_duration_descending_by_p50() {
+        let tools = vec![
+            ToolStat {
+                name: "fast".to_string(),
+                p50_ms: 5,
+                ..Default::default()
+            },
+            ToolStat {
+                name: "slow".to_string(),
+                p50_ms: 500,
+                ..Default::default()
+            },
+        ];
+        let sorted = tools_by_duration(&tools);
+        assert_eq!(sorted[0].name, "slow");
+    }
+
+    #[test]
+    fn tools_by_failure_empty_input() {
+        let sorted = tools_by_failure(&[]);
+        assert!(sorted.is_empty());
+    }
+
+    #[test]
+    fn tool_stats_response_deserializes_partial() {
+        let json = r#"{"summary": {"total_invocations_today": 10, "success_rate": 0.95}}"#;
+        let resp: ToolStatsResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.summary.total_invocations_today, 10);
+        assert!((resp.summary.success_rate - 0.95).abs() < 0.001);
+        assert!(resp.tools.is_empty());
+        assert!(resp.invocations.is_empty());
+    }
+
+    #[test]
+    fn tool_stats_response_deserializes_empty_object() {
+        let resp: ToolStatsResponse = serde_json::from_str("{}").unwrap();
+        assert_eq!(resp.summary.total_invocations_today, 0);
+        assert!(resp.tools.is_empty());
+    }
+
+    #[test]
+    fn tool_stat_default_zero_values() {
+        let s = ToolStat::default();
+        assert_eq!(s.total, 0);
+        assert_eq!(s.succeeded, 0);
+        assert_eq!(s.failed, 0);
+        assert!(s.most_common_error.is_none());
+    }
+
+    #[test]
+    fn tool_invocation_default_unsuccessful() {
+        let inv = ToolInvocation::default();
+        assert!(!inv.success);
+        assert!(inv.error.is_none());
+    }
+
+    #[test]
+    fn time_series_bucket_counts_deserialize() {
+        let json = r#"{"date": "2024-01-01", "counts": {"web_search": 5, "file_read": 2}}"#;
+        let bucket: TimeSeriesBucket = serde_json::from_str(json).unwrap();
+        assert_eq!(bucket.date, "2024-01-01");
+        assert_eq!(bucket.counts.get("web_search"), Some(&5));
+        assert_eq!(bucket.counts.get("file_read"), Some(&2));
     }
 }

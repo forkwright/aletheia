@@ -122,4 +122,76 @@ mod tests {
         assert_eq!(relative_time(now + 600), "just now");
     }
 
+    #[test]
+    fn relative_time_days() {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        // 2 days = 172800 seconds.
+        assert_eq!(relative_time(now - 172_800), "2d ago");
+    }
+
+    #[test]
+    fn relative_time_weeks() {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        // 3 weeks = 1814400 seconds.
+        assert_eq!(relative_time(now - 1_814_400), "3w ago");
+    }
+
+    #[test]
+    fn relative_time_under_one_minute_is_just_now() {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        assert_eq!(relative_time(now - 30), "just now");
+    }
+
+    #[test]
+    fn relative_time_one_hour_boundary() {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        // 1 hour = 3600 seconds — boundary case (h pattern).
+        assert_eq!(relative_time(now - 3600), "1h ago");
+    }
+
+    #[test]
+    fn role_equality_and_copy() {
+        // Role derives Copy/Eq; verify these traits work as expected.
+        let r1 = Role::User;
+        let r2 = r1;
+        assert_eq!(r1, r2);
+        assert_ne!(Role::User, Role::Assistant);
+        assert_ne!(Role::Assistant, Role::System);
+    }
+
+    #[test]
+    fn chat_message_clone_preserves_fields() {
+        let msg = ChatMessage {
+            id: 42,
+            role: Role::Assistant,
+            content: "hello".to_string(),
+            timestamp: 100,
+            agent_id: None,
+            tool_calls: 3,
+            thinking_content: Some("thinking...".to_string()),
+            is_streaming: true,
+            model: Some("claude-sonnet-4".to_string()),
+            input_tokens: 100,
+            output_tokens: 200,
+        };
+        let cloned = msg.clone();
+        assert_eq!(cloned, msg);
+        assert_eq!(cloned.id, 42);
+        assert_eq!(cloned.tool_calls, 3);
+        assert_eq!(cloned.input_tokens, 100);
+        assert_eq!(cloned.output_tokens, 200);
+        assert!(cloned.is_streaming);
+    }
 }
