@@ -171,10 +171,11 @@ pub(crate) fn try_acquire(path: &Path, stale_threshold_secs: i64) -> Result<Opti
             return Ok(None);
         }
         Err(e) => {
-            return Err(std::io::Error::from_raw_os_error(e.raw_os_error()))
-                .context(DreamLockIoSnafu {
+            return Err(std::io::Error::from_raw_os_error(e.raw_os_error())).context(
+                DreamLockIoSnafu {
                     context: "acquire flock",
-                });
+                },
+            );
         }
     }
 
@@ -195,11 +196,11 @@ pub(crate) fn try_acquire(path: &Path, stale_threshold_secs: i64) -> Result<Opti
     // WHY: explicitly release the flock before the race-guard re-read so
     // another concurrent acquirer can take the lock and write its PID. If
     // our PID is still present after releasing, we won the race.
-    rustix::fs::flock(file.as_fd(), rustix::fs::FlockOperation::Unlock).map_err(|e| {
-        std::io::Error::from_raw_os_error(e.raw_os_error())
-    }).context(DreamLockIoSnafu {
-        context: "release flock",
-    })?;
+    rustix::fs::flock(file.as_fd(), rustix::fs::FlockOperation::Unlock)
+        .map_err(|e| std::io::Error::from_raw_os_error(e.raw_os_error()))
+        .context(DreamLockIoSnafu {
+            context: "release flock",
+        })?;
 
     // NOTE: re-read to verify our PID stuck (race guard).
     let readback = read_pid(path);
