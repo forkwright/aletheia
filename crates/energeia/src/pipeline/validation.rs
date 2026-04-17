@@ -145,6 +145,7 @@ mod tests {
                     verdict: QaVerdict::Pass,
                     criteria_results: vec![],
                     mechanical_issues: vec![],
+                    reasons: vec![],
                     cost_usd: 0.0,
                     evaluated_at: Timestamp::now(),
                     semantic_evaluated: false,

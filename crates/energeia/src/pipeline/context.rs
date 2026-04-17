@@ -76,6 +76,8 @@ pub(crate) struct PipelineContext {
     pub(crate) correctives: Vec<PromptSpec>,
     /// Whether the dispatch was aborted (budget exceeded or cancelled).
     pub(crate) aborted: bool,
+    /// Number of corrective attempts already generated per prompt number.
+    pub(crate) corrective_attempt_counts: HashMap<u32, u32>,
 
     // --- Set by post-processing stage ---
     /// Final aggregate result, set by post-processing.
@@ -148,6 +150,7 @@ impl PipelineContext {
             outcomes: Vec::new(),
             correctives: Vec::new(),
             aborted: false,
+            corrective_attempt_counts: HashMap::new(),
             result: None,
             start_ts: jiff::Timestamp::now(),
             stage_latencies: HashMap::new(),
@@ -264,6 +267,7 @@ mod tests {
                     verdict: QaVerdict::Pass,
                     criteria_results: vec![],
                     mechanical_issues: vec![],
+                    reasons: vec![],
                     cost_usd: 0.0,
                     evaluated_at: Timestamp::now(),
                     semantic_evaluated: false,
