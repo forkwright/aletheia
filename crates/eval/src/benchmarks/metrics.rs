@@ -8,8 +8,10 @@
 //! The runner picks the best score across all expected answers (benchmarks
 //! often allow multiple valid forms of the same answer).
 
+use serde::{Deserialize, Serialize};
+
 /// Result of scoring an actual answer against one or more expected answers.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct BenchmarkScore {
     /// Exact match: normalized strings are equal.
     pub exact_match: bool,
@@ -131,6 +133,77 @@ fn token_f1(predicted: &[&str], expected: &[&str]) -> f64 {
     2.0 * precision * recall / (precision + recall)
 }
 
+/// Compute Recall@k: fraction of relevant items found in the top-k retrieved.
+///
+/// `relevant` is the set of ground-truth strings (e.g. expected answers).
+/// `retrieved` is the ordered list of returned strings.
+///
+/// # Panics
+///
+/// Panics if `k == 0`.
+#[must_use]
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "k and relevant counts are small (<10000); f64 mantissa handles them exactly"
+)]
+#[expect(
+    clippy::as_conversions,
+    reason = "usize to f64 — counts are bounded and small"
+)]
+pub fn recall_at_k(retrieved: &[String], relevant: &[String], k: usize) -> f64 {
+    assert!(k > 0, "k must be > 0");
+    if relevant.is_empty() {
+        return 1.0;
+    }
+    let top_k = retrieved.get(..retrieved.len().min(k)).unwrap_or(retrieved);
+    let found = relevant.iter().filter(|r| top_k.contains(r)).count();
+    found as f64 / relevant.len() as f64
+}
+
+/// Compute NDCG@k (Normalized Discounted Cumulative Gain).
+///
+/// Assumes binary relevance: an item is relevant if it appears in `relevant`.
+/// `retrieved` is the ordered list of returned strings.
+///
+/// # Panics
+///
+/// Panics if `k == 0`.
+#[must_use]
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "k and relevant counts are small (<10000); f64 mantissa handles them exactly"
+)]
+#[expect(
+    clippy::as_conversions,
+    reason = "usize to f64 — counts are bounded and small"
+)]
+pub fn ndcg_at_k(retrieved: &[String], relevant: &[String], k: usize) -> f64 {
+    assert!(k > 0, "k must be > 0");
+    if relevant.is_empty() {
+        return 1.0;
+    }
+
+    let top_k = retrieved.get(..retrieved.len().min(k)).unwrap_or(retrieved);
+
+    // DCG
+    let dcg: f64 = top_k
+        .iter()
+        .enumerate()
+        .map(|(i, item)| {
+            let rel = if relevant.contains(item) { 1.0 } else { 0.0 };
+            rel / ((i + 2) as f64).log2()
+        })
+        .sum();
+
+    // Ideal DCG: all relevant items in top positions
+    let ideal_count = relevant.len().min(k);
+    let idcg: f64 = (0..ideal_count)
+        .map(|i| 1.0 / ((i + 2) as f64).log2())
+        .sum();
+
+    if idcg == 0.0 { 0.0 } else { dcg / idcg }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -240,5 +313,48 @@ mod tests {
             "expected ~0.333, got {}",
             score.f1
         );
+    }
+
+    #[test]
+    fn recall_at_k_finds_all_relevant() {
+        let retrieved = vec!["a".to_owned(), "b".to_owned(), "c".to_owned()];
+        let relevant = vec!["a".to_owned(), "b".to_owned()];
+        assert!((recall_at_k(&retrieved, &relevant, 3) - 1.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn recall_at_k_partial() {
+        let retrieved = vec!["a".to_owned(), "x".to_owned(), "c".to_owned()];
+        let relevant = vec!["a".to_owned(), "b".to_owned(), "c".to_owned()];
+        // k=2 finds only "a" ("c" is at rank 3, outside top-2)
+        assert!((recall_at_k(&retrieved, &relevant, 2) - 1.0 / 3.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn recall_at_k_empty_relevant_is_one() {
+        let retrieved = vec!["a".to_owned()];
+        let relevant: Vec<String> = vec![];
+        assert!((recall_at_k(&retrieved, &relevant, 1) - 1.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn ndcg_at_k_perfect_ordering() {
+        let retrieved = vec!["a".to_owned(), "b".to_owned(), "x".to_owned()];
+        let relevant = vec!["a".to_owned(), "b".to_owned()];
+        assert!((ndcg_at_k(&retrieved, &relevant, 3) - 1.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn ndcg_at_k_zero_when_none_relevant() {
+        let retrieved = vec!["x".to_owned(), "y".to_owned()];
+        let relevant = vec!["a".to_owned(), "b".to_owned()];
+        assert!(ndcg_at_k(&retrieved, &relevant, 2).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn ndcg_at_k_empty_relevant_is_one() {
+        let retrieved = vec!["a".to_owned()];
+        let relevant: Vec<String> = vec![];
+        assert!((ndcg_at_k(&retrieved, &relevant, 1) - 1.0).abs() < f64::EPSILON);
     }
 }

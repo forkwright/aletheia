@@ -20,7 +20,10 @@ use tracing::{info, instrument, warn};
 use crate::client::EvalClient;
 use crate::error::{BenchmarkSnafu, Result};
 
-use super::{BenchmarkQuestion, BenchmarkReport, MemoryBenchmark, QuestionResult, score_answer};
+use super::{
+    BenchmarkQuestion, BenchmarkReport, MemoryBenchmark, QuestionResult, judge, metrics,
+    score_answer,
+};
 
 /// Configuration for a benchmark run.
 #[derive(Debug, Clone)]
@@ -38,6 +41,12 @@ pub struct BenchmarkRunnerConfig {
     /// When true, close sessions after each question to reset memory state.
     /// When false, all questions share one session (simulates continuous memory).
     pub close_between_questions: bool,
+    /// Optional LLM-as-judge configuration. When set, each answer is also
+    /// evaluated by an external LLM for binary correctness.
+    pub judge: Option<judge::LlmJudgeConfig>,
+    /// When set, query the knowledge store after ingestion and compute
+    /// Recall@k and NDCG@k against the expected answers.
+    pub retrieval_k: Option<usize>,
 }
 
 impl Default for BenchmarkRunnerConfig {
@@ -48,6 +57,8 @@ impl Default for BenchmarkRunnerConfig {
             question_timeout: Duration::from_mins(2),
             max_questions: None,
             close_between_questions: true,
+            judge: None,
+            retrieval_k: None,
         }
     }
 }
@@ -121,12 +132,61 @@ impl BenchmarkRunner {
         };
 
         let score = score_answer(&answer, &question.expected_answers);
+
+        // Optional LLM-as-judge evaluation.
+        let judge_score = if let Some(ref config) = self.config.judge {
+            let judge = judge::LlmJudge::new(config.clone());
+            let expected = question
+                .expected_answers
+                .first()
+                .map_or("", String::as_str);
+            match judge.judge(&question.question, &answer, expected).await {
+                Ok(js) => Some(js),
+                Err(e) => {
+                    warn!(id = %question.id, error = %e, "judge evaluation failed");
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
+        // Optional retrieval metrics.
+        let (retrieved_facts, recall_at_k, ndcg_at_k) = if let Some(k) = self.config.retrieval_k {
+            match self
+                .client
+                .search_knowledge(
+                    &question.question,
+                    &self.config.nous_id,
+                    u32::try_from(k).unwrap_or(u32::MAX),
+                )
+                .await
+            {
+                Ok(resp) => {
+                    let facts: Vec<String> = resp.facts.into_iter().map(|f| f.content).collect();
+                    let r = metrics::recall_at_k(&facts, &question.expected_answers, k);
+                    let n = metrics::ndcg_at_k(&facts, &question.expected_answers, k);
+                    (Some(facts), Some(r), Some(n))
+                }
+                Err(e) => {
+                    warn!(id = %question.id, error = %e, "knowledge search failed");
+                    (None, None, None)
+                }
+            }
+        } else {
+            (None, None, None)
+        };
+
         QuestionResult {
             id: question.id,
             category: question.category,
             actual_answer: answer,
             expected_answers: question.expected_answers,
             score,
+            judge_score,
+            retrieved_facts,
+            recall_at_k,
+            ndcg_at_k,
         }
     }
 
@@ -232,6 +292,8 @@ mod tests {
         assert_eq!(config.question_timeout, Duration::from_mins(2));
         assert!(config.max_questions.is_none());
         assert!(config.close_between_questions);
+        assert!(config.judge.is_none());
+        assert!(config.retrieval_k.is_none());
     }
 
     #[test]

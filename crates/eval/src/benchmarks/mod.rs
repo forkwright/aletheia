@@ -31,11 +31,15 @@
 //! Datasets must be downloaded separately — see [`download_instructions`].
 //! The harness does not commit dataset files to the repo.
 
+/// Published peer baseline scores for contextualizing results.
+pub mod baselines;
+/// LLM-as-judge scorer for binary answer correctness.
+pub mod judge;
 /// Dataset loader + question iterator for the `LoCoMo` benchmark.
 pub mod locomo;
 /// Dataset loader + question iterator for the `LongMemEval` benchmark.
 pub mod longmemeval;
-/// Benchmark scoring (exact match, F1, contains).
+/// Benchmark scoring (exact match, F1, contains, recall@k, NDCG@k).
 pub mod metrics;
 /// Live benchmark runner: executes a benchmark against an aletheia instance.
 pub mod runner;
@@ -49,6 +53,8 @@ pub use self::runner::{BenchmarkRunner, BenchmarkRunnerConfig};
 pub type EvalClient = crate::client::EvalClient;
 
 use std::path::Path;
+
+use serde::{Deserialize, Serialize};
 
 pub use self::metrics::{BenchmarkScore, score_answer};
 
@@ -86,8 +92,44 @@ pub trait MemoryBenchmark {
     }
 }
 
+/// System and run metadata captured alongside a benchmark report.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BenchmarkMetadata {
+    /// ISO-8601 timestamp when the benchmark run started.
+    pub timestamp: String,
+    /// Aletheia version string from `/api/health`.
+    pub aletheia_version: String,
+    /// Nous agent ID used for the benchmark.
+    pub nous_id: String,
+    /// Model identifier from the nous agent configuration.
+    pub model: String,
+    /// Name of the benchmark dataset.
+    pub benchmark: String,
+    /// Total questions in the dataset.
+    pub total_questions: usize,
+    /// Number of questions actually evaluated (after `max_questions` limit).
+    pub evaluated_questions: usize,
+    /// Per-question timeout in seconds.
+    pub timeout_secs: u64,
+}
+
+impl Default for BenchmarkMetadata {
+    fn default() -> Self {
+        Self {
+            timestamp: "1970-01-01T00:00:00Z".to_owned(),
+            aletheia_version: "unknown".to_owned(),
+            nous_id: "benchmark".to_owned(),
+            model: "unknown".to_owned(),
+            benchmark: "unknown".to_owned(),
+            total_questions: 0,
+            evaluated_questions: 0,
+            timeout_secs: 120,
+        }
+    }
+}
+
 /// Result of scoring a single benchmark question.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QuestionResult {
     /// Question id.
     pub id: String,
@@ -99,10 +141,22 @@ pub struct QuestionResult {
     pub expected_answers: Vec<String>,
     /// Best score across all expected answers.
     pub score: BenchmarkScore,
+    /// Optional LLM-as-judge score (populated when judge is configured).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub judge_score: Option<judge::JudgeScore>,
+    /// Optional retrieval metrics: facts retrieved for the question.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub retrieved_facts: Option<Vec<String>>,
+    /// Optional retrieval metric: Recall@k.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub recall_at_k: Option<f64>,
+    /// Optional retrieval metric: NDCG@k.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub ndcg_at_k: Option<f64>,
 }
 
 /// Aggregate report for a benchmark run.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct BenchmarkReport {
     /// Benchmark name.
     pub benchmark: String,
@@ -110,6 +164,9 @@ pub struct BenchmarkReport {
     pub total: usize,
     /// Per-question results.
     pub questions: Vec<QuestionResult>,
+    /// System and run metadata.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub metadata: Option<BenchmarkMetadata>,
 }
 
 impl BenchmarkReport {
@@ -120,6 +177,22 @@ impl BenchmarkReport {
             benchmark: benchmark.into(),
             total: questions.len(),
             questions,
+            metadata: None,
+        }
+    }
+
+    /// Build a report with metadata.
+    #[must_use]
+    pub fn with_metadata(
+        benchmark: impl Into<String>,
+        questions: Vec<QuestionResult>,
+        metadata: BenchmarkMetadata,
+    ) -> Self {
+        Self {
+            benchmark: benchmark.into(),
+            total: questions.len(),
+            questions,
+            metadata: Some(metadata),
         }
     }
 
@@ -161,6 +234,69 @@ impl BenchmarkReport {
         }
         let sum: f64 = self.questions.iter().map(|q| q.score.f1).sum();
         sum / self.questions.len() as f64
+    }
+
+    /// Mean LLM-as-judge accuracy across all questions that have a judge score.
+    #[must_use]
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "question counts are small (<10000); f64 mantissa handles them exactly"
+    )]
+    #[expect(
+        clippy::as_conversions,
+        reason = "usize to f64 — question counts are bounded and small"
+    )]
+    pub fn judge_accuracy(&self) -> Option<f64> {
+        let scored: Vec<_> = self
+            .questions
+            .iter()
+            .filter_map(|q| q.judge_score.as_ref())
+            .collect();
+        if scored.is_empty() {
+            return None;
+        }
+        let correct = scored.iter().filter(|j| j.correct).count() as f64;
+        Some(correct / scored.len() as f64)
+    }
+
+    /// Mean Recall@k across all questions that have retrieval metrics.
+    #[must_use]
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "value counts are small (<10000); f64 mantissa handles them exactly"
+    )]
+    #[expect(
+        clippy::as_conversions,
+        reason = "usize to f64 — value counts are bounded and small"
+    )]
+    pub fn mean_recall_at_k(&self) -> Option<f64> {
+        let values: Vec<f64> = self
+            .questions
+            .iter()
+            .filter_map(|q| q.recall_at_k)
+            .collect();
+        if values.is_empty() {
+            return None;
+        }
+        Some(values.iter().sum::<f64>() / values.len() as f64)
+    }
+
+    /// Mean NDCG@k across all questions that have retrieval metrics.
+    #[must_use]
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "value counts are small (<10000); f64 mantissa handles them exactly"
+    )]
+    #[expect(
+        clippy::as_conversions,
+        reason = "usize to f64 — value counts are bounded and small"
+    )]
+    pub fn mean_ndcg_at_k(&self) -> Option<f64> {
+        let values: Vec<f64> = self.questions.iter().filter_map(|q| q.ndcg_at_k).collect();
+        if values.is_empty() {
+            return None;
+        }
+        Some(values.iter().sum::<f64>() / values.len() as f64)
     }
 
     /// Group questions by category and return a (category, `exact_match_rate`, f1) tuple per category.
@@ -238,6 +374,8 @@ pub async fn load_locomo(path: impl AsRef<Path> + Send) -> std::io::Result<locom
     clippy::indexing_slicing,
     reason = "tests assert against known-length vectors"
 )]
+#[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
 
@@ -262,6 +400,10 @@ mod tests {
                     f1: 1.0,
                     contains: true,
                 },
+                judge_score: None,
+                retrieved_facts: None,
+                recall_at_k: None,
+                ndcg_at_k: None,
             },
             QuestionResult {
                 id: "q2".to_owned(),
@@ -273,6 +415,10 @@ mod tests {
                     f1: 0.0,
                     contains: false,
                 },
+                judge_score: None,
+                retrieved_facts: None,
+                recall_at_k: None,
+                ndcg_at_k: None,
             },
         ];
         let report = BenchmarkReport::new("Test", questions);
@@ -294,6 +440,10 @@ mod tests {
                     f1: 1.0,
                     contains: true,
                 },
+                judge_score: None,
+                retrieved_facts: None,
+                recall_at_k: None,
+                ndcg_at_k: None,
             },
             QuestionResult {
                 id: "q2".to_owned(),
@@ -305,6 +455,10 @@ mod tests {
                     f1: 0.0,
                     contains: false,
                 },
+                judge_score: None,
+                retrieved_facts: None,
+                recall_at_k: None,
+                ndcg_at_k: None,
             },
             QuestionResult {
                 id: "q3".to_owned(),
@@ -316,6 +470,10 @@ mod tests {
                     f1: 1.0,
                     contains: true,
                 },
+                judge_score: None,
+                retrieved_facts: None,
+                recall_at_k: None,
+                ndcg_at_k: None,
             },
         ];
         let report = BenchmarkReport::new("Test", questions);
@@ -326,6 +484,115 @@ mod tests {
         assert!((per_cat[0].1 - 1.0).abs() < f64::EPSILON);
         assert_eq!(per_cat[1].0, "temporal");
         assert!((per_cat[1].1 - 0.5).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn judge_accuracy_computed_correctly() {
+        let questions = vec![
+            QuestionResult {
+                id: "q1".to_owned(),
+                category: "factual".to_owned(),
+                actual_answer: "blue".to_owned(),
+                expected_answers: vec!["blue".to_owned()],
+                score: BenchmarkScore::zero(),
+                judge_score: Some(judge::JudgeScore {
+                    correct: true,
+                    reasoning: "ok".to_owned(),
+                }),
+                retrieved_facts: None,
+                recall_at_k: None,
+                ndcg_at_k: None,
+            },
+            QuestionResult {
+                id: "q2".to_owned(),
+                category: "factual".to_owned(),
+                actual_answer: "red".to_owned(),
+                expected_answers: vec!["blue".to_owned()],
+                score: BenchmarkScore::zero(),
+                judge_score: Some(judge::JudgeScore {
+                    correct: false,
+                    reasoning: "wrong".to_owned(),
+                }),
+                retrieved_facts: None,
+                recall_at_k: None,
+                ndcg_at_k: None,
+            },
+        ];
+        let report = BenchmarkReport::new("Test", questions);
+        assert!((report.judge_accuracy().unwrap() - 0.5).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn judge_accuracy_none_when_no_scores() {
+        let questions = vec![QuestionResult {
+            id: "q1".to_owned(),
+            category: "factual".to_owned(),
+            actual_answer: "blue".to_owned(),
+            expected_answers: vec!["blue".to_owned()],
+            score: BenchmarkScore::zero(),
+            judge_score: None,
+            retrieved_facts: None,
+            recall_at_k: None,
+            ndcg_at_k: None,
+        }];
+        let report = BenchmarkReport::new("Test", questions);
+        assert!(report.judge_accuracy().is_none());
+    }
+
+    #[test]
+    fn mean_recall_and_ndcg_computed_correctly() {
+        let questions = vec![
+            QuestionResult {
+                id: "q1".to_owned(),
+                category: "factual".to_owned(),
+                actual_answer: "blue".to_owned(),
+                expected_answers: vec!["blue".to_owned()],
+                score: BenchmarkScore::zero(),
+                judge_score: None,
+                retrieved_facts: None,
+                recall_at_k: Some(1.0),
+                ndcg_at_k: Some(1.0),
+            },
+            QuestionResult {
+                id: "q2".to_owned(),
+                category: "factual".to_owned(),
+                actual_answer: "red".to_owned(),
+                expected_answers: vec!["blue".to_owned()],
+                score: BenchmarkScore::zero(),
+                judge_score: None,
+                retrieved_facts: None,
+                recall_at_k: Some(0.0),
+                ndcg_at_k: Some(0.0),
+            },
+        ];
+        let report = BenchmarkReport::new("Test", questions);
+        assert!((report.mean_recall_at_k().unwrap() - 0.5).abs() < f64::EPSILON);
+        assert!((report.mean_ndcg_at_k().unwrap() - 0.5).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn metadata_defaults() {
+        let meta = BenchmarkMetadata::default();
+        assert_eq!(meta.nous_id, "benchmark");
+        assert_eq!(meta.model, "unknown");
+    }
+
+    #[test]
+    fn report_with_metadata_roundtrips_via_json() {
+        let meta = BenchmarkMetadata {
+            timestamp: "2026-04-17T12:00:00Z".to_owned(),
+            aletheia_version: "1.0.0".to_owned(),
+            nous_id: "benchmark".to_owned(),
+            model: "claude-opus-4".to_owned(),
+            benchmark: "LongMemEval".to_owned(),
+            total_questions: 500,
+            evaluated_questions: 50,
+            timeout_secs: 120,
+        };
+        let report = BenchmarkReport::with_metadata("LongMemEval", vec![], meta);
+        let json = serde_json::to_string(&report).expect("serialize");
+        let deserialized: BenchmarkReport = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(deserialized.metadata, report.metadata);
     }
 
     #[test]
