@@ -272,17 +272,25 @@ fn test_validate_path_tilde_expands_to_home_before_resolution() {
 }
 
 #[test]
-#[cfg_attr(
-    target_os = "macos",
-    ignore = "macOS path canonicalization drift — tracked in #3573"
-)]
 fn test_validate_path_relative_resolves_inside_workspace() {
     let dir = tempfile::tempdir().expect("create temp dir");
+    let canonical_dir = dir.path().canonicalize().expect("canonicalize tmpdir");
     let name = koina::id::ToolName::new("read").expect("valid");
-    let ctx = test_ctx(dir.path());
+    // WHY: Use canonicalized dir for both workspace and allowed_roots so that
+    // the validator's canonical form of the input matches the canonical root on
+    // all platforms, including macOS where /var -> /private/var. Closes #3573.
+    let ctx = ToolContext {
+        nous_id: koina::id::NousId::new("test-agent").expect("valid"),
+        session_id: koina::id::SessionId::new(),
+        workspace: canonical_dir.clone(),
+        allowed_roots: vec![canonical_dir.clone()],
+        services: None,
+        active_tools: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashSet::new())),
+        tool_config: std::sync::Arc::new(taxis::config::ToolLimitsConfig::default()),
+    };
     let resolved = validate_path("sub/file.txt", &ctx, &name).expect("valid relative path");
     assert!(
-        resolved.starts_with(dir.path()),
+        resolved.starts_with(&canonical_dir),
         "resolved path should be under the workspace directory"
     );
     assert!(

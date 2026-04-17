@@ -163,10 +163,6 @@ fn policy_includes_allowed_roots_as_read_only() {
 }
 
 #[test]
-#[cfg_attr(
-    target_os = "macos",
-    ignore = "asserts /tmp inclusion; macOS canonicalizes /tmp to /private/tmp — tracked in #3573"
-)]
 fn policy_includes_system_paths() {
     let config = SandboxConfig::default();
     let policy = config.build_policy(Path::new("/tmp/ws"), &[]);
@@ -198,9 +194,21 @@ fn policy_includes_system_paths() {
         policy.exec_paths.contains(&PathBuf::from("/lib64")),
         "policy should include /lib64 in exec paths"
     );
+    // WHY: On macOS /tmp is a symlink to /private/tmp, so the policy stores the
+    // canonical form. Canonicalize both sides before comparing so the assertion
+    // passes on all platforms. Closes #3573.
+    let tmp_canonical = PathBuf::from("/tmp")
+        .canonicalize()
+        .unwrap_or_else(|_| PathBuf::from("/tmp"));
+    let write_paths_canonical: Vec<PathBuf> = policy
+        .write_paths
+        .iter()
+        .map(|p| p.canonicalize().unwrap_or_else(|_| p.clone()))
+        .collect();
     assert!(
-        policy.write_paths.contains(&PathBuf::from("/tmp")),
-        "policy should include /tmp in write paths"
+        write_paths_canonical.contains(&tmp_canonical),
+        "policy should include /tmp (canonical: {}) in write paths",
+        tmp_canonical.display()
     );
 }
 
