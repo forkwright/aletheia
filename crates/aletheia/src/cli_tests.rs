@@ -11,6 +11,7 @@ use super::{
     commands::backup::{BackupAction, BackupArgs},
     commands::credential,
     commands::maintenance,
+    commands::session_create::SessionCreateArgs,
     commands::session_export::ExportFormat,
     commands::tls,
 };
@@ -175,6 +176,30 @@ fn export_with_output_parses() {
             assert_eq!(args.max_messages, 100, "max_messages should be set");
         }
         _ => panic!("expected Export command"),
+    }
+}
+
+#[test]
+fn session_create_defaults_parses() {
+    let cli = Cli::parse_from(["aletheia", "session-create", "alice"]);
+    match cli.command {
+        Some(Command::SessionCreate(SessionCreateArgs { nous_id, key })) => {
+            assert_eq!(nous_id, "alice", "nous_id should be set");
+            assert_eq!(key, "main", "key should default to main");
+        }
+        _ => panic!("expected SessionCreate command"),
+    }
+}
+
+#[test]
+fn session_create_with_key_parses() {
+    let cli = Cli::parse_from(["aletheia", "session-create", "bob", "--key", "custom-key"]);
+    match cli.command {
+        Some(Command::SessionCreate(SessionCreateArgs { nous_id, key })) => {
+            assert_eq!(nous_id, "bob", "nous_id should be set");
+            assert_eq!(key, "custom-key", "key should be set");
+        }
+        _ => panic!("expected SessionCreate command"),
     }
 }
 
