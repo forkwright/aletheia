@@ -94,6 +94,8 @@ pub fn build_router_with(
         )
         .route("/knowledge/facts", get(knowledge::list_facts))
         .route("/knowledge/facts/import", post(knowledge::import_facts))
+        .route("/knowledge/ingest", post(knowledge::ingest))
+        .route("/knowledge/ingest/webhook", post(knowledge::webhook_ingest))
         .route("/knowledge/facts/{id}", get(knowledge::get_fact))
         .route("/knowledge/facts/{id}/forget", post(knowledge::forget_fact))
         .route(

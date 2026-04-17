@@ -170,6 +170,17 @@ pub mod embedding_eval {
     pub use episteme::embedding_eval::{EvalDataset, EvalRunResult, compare_models};
 }
 
+/// Data source ingestion pipeline: file → chunk → fact extraction.
+///
+/// # Facade surface
+///
+/// [`IngestFormat`](ingest::IngestFormat),
+/// [`IngestConfig`](ingest::IngestConfig),
+/// [`ingest_content`](ingest::ingest_content)
+pub mod ingest {
+    pub use episteme::ingest::*;
+}
+
 /// LLM-driven knowledge extraction pipeline (entities, relationships, facts).
 ///
 /// # Facade surface

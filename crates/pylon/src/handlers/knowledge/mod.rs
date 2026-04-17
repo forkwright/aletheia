@@ -487,10 +487,13 @@ pub async fn entity_relationships(
 }
 
 mod bulk_import;
+mod ingest;
 mod mutation;
 mod search;
+mod webhook;
 
 pub use bulk_import::{__path_import_facts, import_facts};
+pub use ingest::{__path_ingest, IngestRequest, IngestResponse, ingest};
 pub use mutation::{
     __path_forget_fact, __path_restore_fact, __path_update_confidence, __path_update_sensitivity,
     forget_fact, restore_fact, update_confidence, update_sensitivity,
@@ -501,6 +504,9 @@ pub use search::{__path_search, __path_timeline, search, timeline};
 use search::{get_entity_relationships, get_stored_entities, get_stored_facts, sort_facts};
 #[cfg(feature = "knowledge-store")]
 use search::{get_fact_relationships, get_similar_facts};
+pub use webhook::{
+    __path_webhook_ingest, WebhookIngestRequest, WebhookIngestResponse, webhook_ingest,
+};
 
 /// Response type for graph health check.
 #[derive(Debug, serde::Serialize)]
