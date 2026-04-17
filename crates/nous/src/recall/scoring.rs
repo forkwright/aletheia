@@ -56,6 +56,12 @@ pub struct RecallConfig {
     /// Per-factor scoring weights applied when building candidates.
     #[serde(default)]
     pub weights: RecallWeights,
+    /// Inject factor metadata into recalled knowledge prompts.
+    ///
+    /// When enabled, each recalled fact includes its factor scores so the
+    /// LLM can weight its reasoning by provenance quality.
+    #[serde(default)]
+    pub inject_metadata: bool,
     /// Characters per token for recall budget estimation.
     ///
     /// Wired from `agents.defaults.chars_per_token` at startup.
@@ -78,6 +84,7 @@ impl Default for RecallConfig {
             iterative: false,
             max_cycles: 2,
             weights: RecallWeights::default(),
+            inject_metadata: false,
             chars_per_token: default_chars_per_token(),
         }
     }
@@ -99,6 +106,7 @@ impl From<taxis::config::RecallSettings> for RecallConfig {
                 relationship_proximity: s.weights.relationship_proximity,
                 access_frequency: s.weights.access_frequency,
             },
+            inject_metadata: s.inject_metadata,
             // NOTE: chars_per_token is forwarded separately from AgentDefaults
             //       via NousConfig; the From conversion cannot carry it since
             //       RecallSettings does not own that field.
@@ -109,7 +117,7 @@ impl From<taxis::config::RecallSettings> for RecallConfig {
 
 /// Format scored results as a markdown section.
 #[must_use]
-pub(crate) fn format_section(results: &[&ScoredResult]) -> String {
+pub(crate) fn format_section(results: &[&ScoredResult], inject_metadata: bool) -> String {
     use std::fmt::Write;
 
     let mut out = String::from(
@@ -118,6 +126,18 @@ pub(crate) fn format_section(results: &[&ScoredResult]) -> String {
 
     for r in results {
         let _ = write!(out, "\n- [{:.2}] {}", r.score, r.content);
+        if inject_metadata {
+            let _ = write!(
+                out,
+                "\n  (factors: vector={:.2}, decay={:.2}, relevance={:.2}, tier={:.2}, proximity={:.2}, freq={:.2})",
+                r.factors.vector_similarity,
+                r.factors.decay,
+                r.factors.relevance,
+                r.factors.epistemic_tier,
+                r.factors.relationship_proximity,
+                r.factors.access_frequency,
+            );
+        }
     }
 
     out

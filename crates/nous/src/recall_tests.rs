@@ -159,7 +159,7 @@ fn recall_formats_section_correctly() {
     let a = make_scored("User prefers dark mode", 0.87);
     let b = make_scored("Project deadline is March 15", 0.72);
     let refs: Vec<&ScoredResult> = vec![&a, &b];
-    let section = format_section(&refs);
+    let section = format_section(&refs, false);
 
     assert!(
         section.starts_with("## Recalled Knowledge"),
@@ -172,6 +172,76 @@ fn recall_formats_section_correctly() {
     assert!(
         section.contains("[0.72] Project deadline is March 15"),
         "section should contain second result"
+    );
+    assert!(
+        !section.contains("factors:"),
+        "disabled metadata should not contain factors"
+    );
+}
+
+#[test]
+fn recall_formats_section_with_metadata() {
+    let a = ScoredResult {
+        content: "User prefers dark mode".to_owned(),
+        source_type: "fact".to_owned(),
+        source_id: "f1".to_owned(),
+        nous_id: "syn".to_owned(),
+        factors: FactorScores {
+            vector_similarity: 0.91,
+            decay: 0.75,
+            relevance: 0.8,
+            epistemic_tier: 1.0,
+            relationship_proximity: 0.5,
+            access_frequency: 0.3,
+        },
+        score: 0.87,
+        sensitivity: mneme::knowledge::FactSensitivity::Public,
+    };
+    let b = ScoredResult {
+        content: "Project deadline is March 15".to_owned(),
+        source_type: "fact".to_owned(),
+        source_id: "f2".to_owned(),
+        nous_id: "syn".to_owned(),
+        factors: FactorScores {
+            vector_similarity: 0.82,
+            decay: 0.6,
+            relevance: 0.7,
+            epistemic_tier: 0.6,
+            relationship_proximity: 1.0,
+            access_frequency: 0.2,
+        },
+        score: 0.72,
+        sensitivity: mneme::knowledge::FactSensitivity::Public,
+    };
+    let refs: Vec<&ScoredResult> = vec![&a, &b];
+    let section = format_section(&refs, true);
+
+    assert!(
+        section.starts_with("## Recalled Knowledge"),
+        "section should start with header"
+    );
+    assert!(
+        section.contains("[0.87] User prefers dark mode"),
+        "section should contain first result"
+    );
+    assert!(
+        section.contains("(factors: vector=0.91, decay=0.75, relevance=0.80, tier=1.00, proximity=0.50, freq=0.30)"),
+        "section should contain first result metadata: {section}"
+    );
+    assert!(
+        section.contains("(factors: vector=0.82, decay=0.60, relevance=0.70, tier=0.60, proximity=1.00, freq=0.20)"),
+        "section should contain second result metadata: {section}"
+    );
+}
+
+#[test]
+fn recall_disabled_metadata_returns_plain_bullets() {
+    let a = make_scored("Fact one", 0.9);
+    let refs: Vec<&ScoredResult> = vec![&a];
+    let section = format_section(&refs, false);
+    assert!(
+        !section.contains("factors:"),
+        "disabled metadata should not emit factor line"
     );
 }
 
@@ -745,6 +815,64 @@ fn sovereignty_filter_default_is_cloud() {
         "default (Cloud) must drop Confidential"
     );
     assert_eq!(result.results_injected, 1);
+}
+
+#[test]
+fn recall_injects_metadata_when_enabled() {
+    let results = vec![make_knowledge_result("verified fact about Rust", 0.1)];
+    let config = RecallConfig {
+        inject_metadata: true,
+        min_score: 0.0,
+        max_results: 10,
+        ..Default::default()
+    };
+    let stage = RecallStage::new(config);
+    let result = stage
+        .run(
+            "query",
+            "syn",
+            &mock_embed(),
+            &MockVectorSearch::new(results),
+            50000,
+        )
+        .expect("recall should succeed");
+
+    let section = result.recall_section.expect("should have recall section");
+    assert!(
+        section.contains("factors:"),
+        "metadata injection should include factors: {section}"
+    );
+    assert!(
+        section.contains("vector="),
+        "metadata should include vector similarity: {section}"
+    );
+}
+
+#[test]
+fn recall_omits_metadata_when_disabled() {
+    let results = vec![make_knowledge_result("plain fact about Rust", 0.1)];
+    let config = RecallConfig {
+        inject_metadata: false,
+        min_score: 0.0,
+        max_results: 10,
+        ..Default::default()
+    };
+    let stage = RecallStage::new(config);
+    let result = stage
+        .run(
+            "query",
+            "syn",
+            &mock_embed(),
+            &MockVectorSearch::new(results),
+            50000,
+        )
+        .expect("recall should succeed");
+
+    let section = result.recall_section.expect("should have recall section");
+    assert!(
+        !section.contains("factors:"),
+        "disabled metadata should omit factors: {section}"
+    );
 }
 
 #[test]

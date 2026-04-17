@@ -470,7 +470,7 @@ impl RecallStage {
 
         for result in results {
             included.push(result);
-            let section = format_section(&included);
+            let section = format_section(&included, self.config.inject_metadata);
             let tokens = estimate_tokens(&section, cpt);
             if tokens > budget {
                 included.pop();
@@ -482,7 +482,7 @@ impl RecallStage {
             return (0, String::new(), 0, Vec::new());
         }
 
-        let section = format_section(&included);
+        let section = format_section(&included, self.config.inject_metadata);
         let tokens = estimate_tokens(&section, cpt);
         let fact_ids = included.iter().map(|r| r.source_id.clone()).collect();
         (included.len(), section, tokens, fact_ids)
