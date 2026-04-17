@@ -22,6 +22,7 @@ use std::fmt::Debug;
 use itertools::Itertools;
 
 use crate::error::InternalResult as Result;
+use crate::query::error::*;
 use crate::runtime::db::Poison;
 
 pub(crate) type Graph<T> = BTreeMap<T, Vec<T>>;
@@ -86,7 +87,7 @@ pub(crate) type StratifiedGraph<T> = BTreeMap<T, BTreeMap<T, bool>>;
 pub(crate) fn generalized_kahn(
     graph: &StratifiedGraph<usize>,
     num_nodes: usize,
-) -> Vec<Vec<usize>> {
+) -> Result<Vec<Vec<usize>>> {
     let mut in_degree = vec![0; num_nodes];
     for tos in graph.values() {
         for to in tos.keys() {
@@ -122,9 +123,13 @@ pub(crate) fn generalized_kahn(
             break;
         }
         // INVARIANT: the `safe_pending.is_empty()` check above guarantees at least one element
-        let removed = safe_pending
-            .pop()
-            .unwrap_or_else(|| panic!("safe_pending verified non-empty above"));
+        let removed = safe_pending.pop().ok_or_else(|| {
+            GraphTraversalSnafu {
+                algorithm: "generalized_kahn",
+                message: "safe_pending was empty after non-empty check",
+            }
+            .build()
+        })?;
         current_stratum.push(removed);
         if let Some(edges) = graph.get(&removed) {
             for (nxt, poisoned) in edges {
@@ -139,7 +144,7 @@ pub(crate) fn generalized_kahn(
         }
     }
     debug_assert_eq!(in_degree.iter().sum::<usize>(), 0);
-    ret
+    Ok(ret)
 }
 
 struct TarjanScc<'a> {
@@ -167,7 +172,7 @@ impl<'a> TarjanScc<'a> {
             // SAFETY: `i` ranges from 0 to `self.graph.len() - 1`, and `self.ids`
             // is initialized with `graph.len()` elements.
             if self.ids[i].is_none() {
-                self.dfs(i);
+                self.dfs(i)?;
                 poison.check()?;
             }
         }
@@ -179,7 +184,7 @@ impl<'a> TarjanScc<'a> {
 
         Ok(low_map.into_values().collect_vec())
     }
-    fn dfs(&mut self, at: usize) {
+    fn dfs(&mut self, at: usize) -> Result<()> {
         self.stack.push(at);
         // SAFETY: `at` is always less than `graph.len()` (validated by caller).
         self.on_stack[at] = true;
@@ -193,7 +198,7 @@ impl<'a> TarjanScc<'a> {
             let to = *to;
             // SAFETY: `to` is always less than `graph.len()` (validated by graph construction).
             if self.ids[to].is_none() {
-                self.dfs(to);
+                self.dfs(to)?;
             }
             // SAFETY: `to` is always less than `graph.len()` (validated by graph construction).
             if self.on_stack[to] {
@@ -202,17 +207,67 @@ impl<'a> TarjanScc<'a> {
             }
         }
         // INVARIANT: `self.ids[at]` was set to `Some(self.id)` at the top of this function
-        if self.ids[at].unwrap_or_else(|| panic!("ids[at] set earlier in dfs")) == self.low[at] {
+        let ids_at = self.ids[at].ok_or_else(|| {
+            GraphTraversalSnafu {
+                algorithm: "tarjan_scc",
+                message: format!("ids[{at}] was not set during DFS"),
+            }
+            .build()
+        })?;
+        if ids_at == self.low[at] {
             while let Some(node) = self.stack.pop() {
                 // SAFETY: `node` was pushed from valid indices within this function.
                 self.on_stack[node] = false;
                 // INVARIANT: `self.ids[at]` was set to `Some(self.id)` at the top of this function
-                self.low[node] =
-                    self.ids[at].unwrap_or_else(|| panic!("ids[at] set earlier in dfs"));
+                self.low[node] = ids_at;
                 if node == at {
                     break;
                 }
             }
         }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn generalized_kahn_empty_graph() -> Result<()> {
+        let graph: StratifiedGraph<usize> = BTreeMap::new();
+        let result = generalized_kahn(&graph, 0)?;
+        assert!(result.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn generalized_kahn_linear_chain() -> Result<()> {
+        let mut graph: StratifiedGraph<usize> = BTreeMap::new();
+        graph.insert(0, BTreeMap::from([(1, false)]));
+        graph.insert(1, BTreeMap::from([(2, false)]));
+        graph.insert(2, BTreeMap::new());
+        let strata = generalized_kahn(&graph, 3)?;
+        // Without poisoned edges, all nodes can share a single stratum.
+        assert_eq!(strata, vec![vec![0, 1, 2]]);
+        Ok(())
+    }
+
+    #[test]
+    fn strongly_connected_components_single_node() -> Result<()> {
+        let graph: Graph<usize> = BTreeMap::from([(0, vec![])]);
+        let sccs = strongly_connected_components(&graph)?;
+        assert_eq!(sccs.len(), 1);
+        assert_eq!(sccs[0], vec![&0]);
+        Ok(())
+    }
+
+    #[test]
+    fn strongly_connected_components_cycle() -> Result<()> {
+        let graph: Graph<usize> = BTreeMap::from([(0, vec![1]), (1, vec![0])]);
+        let sccs = strongly_connected_components(&graph)?;
+        assert_eq!(sccs.len(), 1);
+        assert_eq!(sccs[0].len(), 2);
+        Ok(())
     }
 }

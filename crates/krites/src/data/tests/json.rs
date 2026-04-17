@@ -1,9 +1,5 @@
 //! Tests for JSON round-tripping.
 #![expect(clippy::expect_used, reason = "test assertions")]
-#![expect(
-    clippy::unnecessary_fallible_conversions,
-    reason = "test exercises fallible conversion paths explicitly"
-)]
 use serde_json::json;
 
 use crate::data::json::JsonValue;
@@ -54,8 +50,10 @@ fn special_float_json_serialization() {
 }
 
 #[test]
-#[ignore = "pre-existing bug: panics in impl instead of returning Err — tracked in #3568"]
-fn bot_to_json_returns_error() {
-    let result = JsonValue::try_from(DataValue::Bot);
-    assert!(result.is_err(), "Bot should not convert to JSON");
+fn bot_to_json_returns_null() {
+    let result = JsonValue::from(DataValue::Bot);
+    assert!(
+        result.is_null(),
+        "Bot should convert to JSON null instead of panicking"
+    );
 }

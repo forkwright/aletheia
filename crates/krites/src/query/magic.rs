@@ -77,7 +77,7 @@ impl StratifiedNormalFormProgram {
             prog.exempt_aggr_rules_for_magic_sets(&mut exempt_rules);
             let down_stream_rules = prog.get_downstream_rules();
             let adorned = prog.adorn(&exempt_rules, tx)?;
-            collected.push(adorned.magic_rewrite());
+            collected.push(adorned.magic_rewrite()?);
             exempt_rules.extend(down_stream_rules);
         }
         Ok(StratifiedMagicProgram(collected))
@@ -85,14 +85,14 @@ impl StratifiedNormalFormProgram {
 }
 
 impl MagicProgram {
-    fn magic_rewrite(self) -> MagicProgram {
+    fn magic_rewrite(self) -> Result<MagicProgram> {
         let mut ret_prog = MagicProgram {
             prog: Default::default(),
         };
         for (rule_head, ruleset) in self.prog {
             match ruleset {
                 MagicRulesOrFixed::Rules { rules: ruleset } => {
-                    magic_rewrite_ruleset(rule_head, ruleset, &mut ret_prog);
+                    magic_rewrite_ruleset(rule_head, ruleset, &mut ret_prog)?;
                 }
                 MagicRulesOrFixed::Fixed { fixed } => {
                     ret_prog
@@ -101,7 +101,7 @@ impl MagicProgram {
                 }
             }
         }
-        ret_prog
+        Ok(ret_prog)
     }
 }
 
@@ -109,7 +109,7 @@ fn magic_rewrite_ruleset(
     rule_head: MagicSymbol,
     ruleset: Vec<MagicInlineRule>,
     ret_prog: &mut MagicProgram,
-) {
+) -> Result<()> {
     let rule_name = rule_head.as_plain_symbol();
     let adornment = rule_head.magic_adornment();
 
@@ -213,9 +213,13 @@ fn magic_rewrite_ruleset(
                             .entry(sup_kw.clone())
                             .or_default()
                             .mut_rules()
-                            .unwrap_or_else(|| {
-                                panic!("freshly-defaulted MagicRulesOrFixed must be Rules")
-                            });
+                            .ok_or_else(|| {
+                                InvariantViolationSnafu {
+                                    message: "freshly-defaulted MagicRulesOrFixed must be Rules"
+                                        .to_string(),
+                                }
+                                .build()
+                            })?;
                         let mut sup_rule_atoms = vec![];
                         mem::swap(&mut sup_rule_atoms, &mut collected_atoms);
 
@@ -241,9 +245,13 @@ fn magic_rewrite_ruleset(
                             .entry(inp_kw.clone())
                             .or_default()
                             .mut_rules()
-                            .unwrap_or_else(|| {
-                                panic!("freshly-defaulted MagicRulesOrFixed must be Rules")
-                            });
+                            .ok_or_else(|| {
+                                InvariantViolationSnafu {
+                                    message: "freshly-defaulted MagicRulesOrFixed must be Rules"
+                                        .to_string(),
+                                }
+                                .build()
+                            })?;
                         let inp_args = r_app
                             .args
                             .iter()
@@ -272,13 +280,19 @@ fn magic_rewrite_ruleset(
             .entry(rule_head.clone())
             .or_default()
             .mut_rules()
-            .unwrap_or_else(|| panic!("freshly-defaulted MagicRulesOrFixed must be Rules"));
+            .ok_or_else(|| {
+                InvariantViolationSnafu {
+                    message: "freshly-defaulted MagicRulesOrFixed must be Rules".to_string(),
+                }
+                .build()
+            })?;
         entry.push(MagicInlineRule {
             head: rule.head,
             aggr: rule.aggr,
             body: collected_atoms,
         });
     }
+    Ok(())
 }
 
 impl NormalFormProgram {
