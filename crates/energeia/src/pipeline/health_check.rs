@@ -39,16 +39,19 @@ impl PipelineStage for HealthCheckStage {
     }
 
     async fn run(&self, ctx: &mut PipelineContext) -> Result<(), PipelineError> {
+        let t0 = std::time::Instant::now();
+
         let Some(ref endpoint) = ctx.health_endpoint.clone() else {
             // No endpoint configured — skip gracefully.
             tracing::debug!("health_check: no endpoint configured, skipping probe");
+            ctx.record_stage_latency(self.name(), t0.elapsed());
             return Ok(());
         };
 
         let timeout = ctx.health_probe_timeout;
         let client = build_client(timeout).context(StageSnafu { stage: self.name() })?;
 
-        match probe(&client, endpoint).await {
+        let result = match probe(&client, endpoint).await {
             ProbeOutcome::Ok { latency_ms } => {
                 tracing::info!(latency_ms, endpoint, "health_check: backend reachable");
                 ctx.health_probe_latency_ms = Some(latency_ms);
@@ -70,13 +73,15 @@ impl PipelineStage for HealthCheckStage {
 
                 // Try fallback if configured.
                 let Some(ref fallback) = ctx.fallback_health_endpoint.clone() else {
-                    return EngineSnafu {
+                    let err = EngineSnafu {
                         detail: format!(
                             "backend health probe failed (transient) and no fallback configured: {detail}"
                         ),
                     }
                     .fail()
                     .context(StageSnafu { stage: self.name() });
+                    ctx.record_stage_latency(self.name(), t0.elapsed());
+                    return err;
                 };
 
                 match probe(&client, fallback).await {
@@ -109,7 +114,10 @@ impl PipelineStage for HealthCheckStage {
                     }
                 }
             }
-        }
+        };
+
+        ctx.record_stage_latency(self.name(), t0.elapsed());
+        result
     }
 }
 

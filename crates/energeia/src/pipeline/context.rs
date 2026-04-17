@@ -5,8 +5,9 @@
 // grows.
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use tokio_util::sync::CancellationToken;
 
@@ -80,6 +81,17 @@ pub(crate) struct PipelineContext {
     /// Final aggregate result, set by post-processing.
     pub(crate) result: Option<DispatchResult>,
 
+    // --- Accumulated by all stages ---
+    /// Wall-clock start time (set by preparation).
+    pub(crate) start_ts: jiff::Timestamp,
+    /// Per-stage wall-clock latencies in milliseconds.
+    pub(crate) stage_latencies: HashMap<&'static str, Duration>,
+    /// QA verdicts collected during execution.
+    pub(crate) qa_verdicts: Vec<crate::types::QaVerdict>,
+    /// Directory for after-action JSONL logs (`{instance}/logs/after-actions`).
+    /// `None` disables after-action record emission.
+    pub(crate) after_action_log_dir: Option<PathBuf>,
+
     // --- Health-check stage configuration ---
     /// Primary backend health endpoint URL. `None` skips the HTTP probe.
     ///
@@ -137,6 +149,10 @@ impl PipelineContext {
             correctives: Vec::new(),
             aborted: false,
             result: None,
+            start_ts: jiff::Timestamp::now(),
+            stage_latencies: HashMap::new(),
+            qa_verdicts: Vec::new(),
+            after_action_log_dir: None,
             health_endpoint: None,
             fallback_health_endpoint: None,
             health_probe_timeout: std::time::Duration::from_secs(5),
@@ -193,6 +209,11 @@ impl PipelineContext {
         self.engine_config
             .as_ref()
             .expect("engine_config accessed before preparation stage completed")
+    }
+
+    /// Record the wall-clock latency for a completed pipeline stage.
+    pub(crate) fn record_stage_latency(&mut self, name: &'static str, elapsed: Duration) {
+        self.stage_latencies.insert(name, elapsed);
     }
 }
 

@@ -28,6 +28,8 @@ impl PipelineStage for ExecutionStage {
     async fn run(&self, ctx: &mut PipelineContext) -> Result<(), PipelineError> {
         use crate::budget::BudgetStatus;
 
+        let t0 = std::time::Instant::now();
+
         // Clone frontier to avoid borrow conflict while mutating ctx inside the
         // loop. The frontier is immutable after preparation.
         let frontier = ctx.frontier.clone();
@@ -147,7 +149,7 @@ impl PipelineStage for ExecutionStage {
                             let outcome_clone = outcome.clone();
                             let prompt_map = &ctx.prompt_map;
                             let correctives = &mut ctx.correctives;
-                            run_qa_and_generate_corrective(
+                            if let Some(verdict) = run_qa_and_generate_corrective(
                                 &*ctx.qa,
                                 &outcome_clone,
                                 &pr_url,
@@ -155,7 +157,10 @@ impl PipelineStage for ExecutionStage {
                                 correctives,
                                 ctx.config.max_corrective_retries,
                             )
-                            .await;
+                            .await
+                            {
+                                ctx.qa_verdicts.push(verdict);
+                            }
                         }
                     }
                     SessionStatus::Skipped => {
@@ -190,6 +195,7 @@ impl PipelineStage for ExecutionStage {
             });
         }
 
+        ctx.record_stage_latency(self.name(), t0.elapsed());
         Ok(())
     }
 }
@@ -261,10 +267,8 @@ async fn run_qa_and_generate_corrective(
     prompt_map: &std::collections::HashMap<u32, crate::prompt::PromptSpec>,
     correctives: &mut Vec<crate::prompt::PromptSpec>,
     max_corrective_retries: u32,
-) {
-    let Some(prompt) = prompt_map.get(&outcome.prompt_number) else {
-        return;
-    };
+) -> Option<crate::types::QaVerdict> {
+    let prompt = prompt_map.get(&outcome.prompt_number)?;
 
     let pr_number = pr_url
         .rsplit('/')
@@ -287,7 +291,7 @@ async fn run_qa_and_generate_corrective(
                 error = %e,
                 "QA evaluation failed, skipping corrective generation"
             );
-            return;
+            return None;
         }
     };
 
@@ -324,6 +328,8 @@ async fn run_qa_and_generate_corrective(
             body,
         });
     }
+
+    Some(qa_result.verdict)
 }
 
 #[cfg(test)]
