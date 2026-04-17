@@ -1,3 +1,4 @@
+#![deny(clippy::unwrap_used)]
 #![deny(missing_docs)]
 //! Pylon (πυλών): "gateway." Routes HTTP and SSE requests to the agent pipeline.
 
