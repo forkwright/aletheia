@@ -59,6 +59,10 @@ pub struct MatrixAccountConfig {
 
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test asserts accounts.len() == 1 immediately before indexing"
+)]
 mod tests {
     use super::*;
 
