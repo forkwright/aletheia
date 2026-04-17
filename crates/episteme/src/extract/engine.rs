@@ -101,7 +101,9 @@ Rules:
 - Normalize entity names: use proper nouns ("Alice" not "she", "Aletheia" not "the project").
 - Skip greetings, small talk, and meta-conversation ("let me think about that").
 - Maximum {max_entities} entities, {max_relationships} relationships, {max_facts} facts.
-- If the conversation contains no extractable knowledge, return empty arrays."#,
+- If the conversation contains no extractable knowledge, return empty arrays.
+- Process facts: when the assistant used tools to derive an answer, extract facts about the process itself (e.g., "Agent used tool X to verify Y"). Include tool names and what they were used to accomplish.
+- Reasoning blocks: if reasoning is present, extract the underlying rationale as facts about why certain approaches were chosen."#,
             max_entities = self.config.max_entities,
             max_relationships = self.config.max_relationships,
             max_facts = self.config.max_facts,
@@ -118,6 +120,29 @@ Rules:
             conversation.push_str(": ");
             conversation.push_str(&msg.content);
             conversation.push('\n');
+            if let Some(ref reasoning) = msg.reasoning {
+                conversation.push_str("reasoning: ");
+                conversation.push_str(reasoning);
+                conversation.push('\n');
+            }
+            if let Some(ref tool_calls) = msg.tool_calls {
+                for tc in tool_calls {
+                    conversation.push_str("tool_call: ");
+                    conversation.push_str(&tc.name);
+                    conversation.push_str(" id=");
+                    conversation.push_str(&tc.id);
+                    conversation.push_str(" input=");
+                    conversation.push_str(&tc.input.to_string());
+                    if let Some(ref result) = tc.result {
+                        conversation.push_str(" result=");
+                        conversation.push_str(result);
+                    }
+                    if tc.is_error {
+                        conversation.push_str(" [ERROR]");
+                    }
+                    conversation.push('\n');
+                }
+            }
         }
 
         ExtractionPrompt {
@@ -156,7 +181,24 @@ Rules:
         messages: &[ConversationMessage],
         provider: &dyn ExtractionProvider,
     ) -> Result<Extraction, ExtractionError> {
-        let total_len: usize = messages.iter().map(|m| m.content.len()).sum();
+        let total_len: usize = messages
+            .iter()
+            .map(|m| {
+                let mut len = m.content.len();
+                if let Some(ref reasoning) = m.reasoning {
+                    len += reasoning.len();
+                }
+                if let Some(ref tool_calls) = m.tool_calls {
+                    for tc in tool_calls {
+                        len += tc.name.len() + tc.id.len() + tc.input.to_string().len();
+                        if let Some(ref result) = tc.result {
+                            len += result.len();
+                        }
+                    }
+                }
+                len
+            })
+            .sum();
         if total_len < self.config.min_message_length {
             return Ok(Extraction {
                 entities: vec![],
@@ -182,12 +224,33 @@ Rules:
     ///
     /// Returns an error if the provider call fails or if the response cannot be parsed.
     #[instrument(skip(self, provider))]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "refinement pipeline: classify, prompt, parse, filter, boost — sequential by design"
+    )]
     pub async fn extract_refined(
         &self,
         messages: &[ConversationMessage],
         provider: &dyn ExtractionProvider,
     ) -> Result<RefinedExtraction, ExtractionError> {
-        let total_len: usize = messages.iter().map(|m| m.content.len()).sum();
+        let total_len: usize = messages
+            .iter()
+            .map(|m| {
+                let mut len = m.content.len();
+                if let Some(ref reasoning) = m.reasoning {
+                    len += reasoning.len();
+                }
+                if let Some(ref tool_calls) = m.tool_calls {
+                    for tc in tool_calls {
+                        len += tc.name.len() + tc.id.len() + tc.input.to_string().len();
+                        if let Some(ref result) = tc.result {
+                            len += result.len();
+                        }
+                    }
+                }
+                len
+            })
+            .sum();
         if total_len < self.config.min_message_length {
             return Ok(RefinedExtraction {
                 extraction: Extraction {

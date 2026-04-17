@@ -112,12 +112,13 @@ fn resolve_active_server_tools(
     (active, Arc::new(combined))
 }
 
-/// Extracted text, tool uses, and server-tool flags from a single LLM response.
+/// Extracted text, tool uses, server-tool flags, and reasoning from a single LLM response.
 struct ResponseExtract {
     text_parts: Vec<String>,
     tool_uses: Vec<(String, String, serde_json::Value)>,
     saw_server_web_search: bool,
     saw_server_code_execution: bool,
+    reasoning_parts: Vec<String>,
 }
 
 /// Process response content blocks into text, tool-use tuples, and server-tool flags.
@@ -127,6 +128,7 @@ fn process_response_blocks(content: &[ContentBlock]) -> ResponseExtract {
         tool_uses: Vec::new(),
         saw_server_web_search: false,
         saw_server_code_execution: false,
+        reasoning_parts: Vec::new(),
     };
 
     for block in content {
@@ -139,6 +141,7 @@ fn process_response_blocks(content: &[ContentBlock]) -> ResponseExtract {
             }
             ContentBlock::Thinking { thinking, .. } => {
                 debug!(len = thinking.len(), "thinking block received");
+                extract.reasoning_parts.push(thinking.clone());
             }
             ContentBlock::ServerToolUse { name, .. } if name == "web_search" => {
                 extract.saw_server_web_search = true;
@@ -207,6 +210,7 @@ pub async fn execute(
     let mut final_stop_reason = String::new();
     let mut used_server_web_search = false;
     let mut used_server_code_execution = false;
+    let mut reasoning_parts: Vec<String> = Vec::new();
 
     let thinking = config
         .generation
@@ -285,6 +289,7 @@ pub async fn execute(
         used_server_web_search |= extracted.saw_server_web_search;
         used_server_code_execution |= extracted.saw_server_code_execution;
         final_content = extracted.text_parts.join("");
+        reasoning_parts.extend(extracted.reasoning_parts);
         final_stop_reason = stop_reason.to_string();
 
         // WHY: only break on no local tool uses: server tool results don't require client tool_result
@@ -435,6 +440,7 @@ pub async fn execute(
         signals,
         stop_reason: final_stop_reason,
         degraded: None,
+        reasoning: reasoning_parts.join("\n"),
     })
 }
 
@@ -489,6 +495,7 @@ pub async fn execute_streaming(
     let mut final_stop_reason = String::new();
     let mut used_server_web_search = false;
     let mut used_server_code_execution = false;
+    let mut reasoning_parts: Vec<String> = Vec::new();
 
     let thinking = config
         .generation
@@ -575,6 +582,7 @@ pub async fn execute_streaming(
         used_server_web_search |= extracted.saw_server_web_search;
         used_server_code_execution |= extracted.saw_server_code_execution;
         final_content = extracted.text_parts.join("");
+        reasoning_parts.extend(extracted.reasoning_parts);
         final_stop_reason = stop_reason.to_string();
 
         if extracted.tool_uses.is_empty() || stop_reason != StopReason::ToolUse {
@@ -719,5 +727,6 @@ pub async fn execute_streaming(
         signals,
         stop_reason: final_stop_reason,
         degraded: None,
+        reasoning: reasoning_parts.join("\n"),
     })
 }

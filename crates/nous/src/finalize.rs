@@ -250,6 +250,7 @@ mod tests {
             stop_reason: "end_turn".to_owned(),
             signals: vec![],
             degraded: None,
+            reasoning: String::new(),
         }
     }
 
@@ -274,6 +275,7 @@ mod tests {
             stop_reason: "end_turn".to_owned(),
             signals: vec![],
             degraded: None,
+            reasoning: String::new(),
         }
     }
 

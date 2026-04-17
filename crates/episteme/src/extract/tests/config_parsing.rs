@@ -33,10 +33,14 @@ fn build_prompt_contains_instructions() {
     let messages = vec![
         ConversationMessage {
             role: "user".to_owned(),
+            tool_calls: None,
+            reasoning: None,
             content: "I'm working on Aletheia, a memory system for AI agents.".to_owned(),
         },
         ConversationMessage {
             role: "assistant".to_owned(),
+            tool_calls: None,
+            reasoning: None,
             content: "That sounds like an interesting project. Tell me more about it.".to_owned(),
         },
     ];
@@ -177,6 +181,8 @@ async fn extract_skips_short_messages() {
     let engine = ExtractionEngine::new(ExtractionConfig::default());
     let messages = vec![ConversationMessage {
         role: "user".to_owned(),
+        tool_calls: None,
+        reasoning: None,
         content: "Hi".to_owned(),
     }];
 
@@ -210,6 +216,8 @@ async fn extract_calls_provider() {
     let engine = ExtractionEngine::new(ExtractionConfig::default());
     let messages = vec![ConversationMessage {
         role: "user".to_owned(),
+        tool_calls: None,
+        reasoning: None,
         content: "Dr. Chen studies neural networks at the university and works on AI memory systems every day."
             .to_owned(),
     }];

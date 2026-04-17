@@ -397,6 +397,7 @@ async fn detector_returns_continue() {
         signals: Vec::new(),
         stop_reason: "end_turn".to_owned(),
         degraded: None,
+        reasoning: String::new(),
     };
     let ctx = crate::hooks::TurnContext {
         result: &turn_result,
