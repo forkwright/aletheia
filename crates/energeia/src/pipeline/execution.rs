@@ -7,9 +7,9 @@
 // stages.
 
 use crate::dag::{PromptDag, PromptStatus};
+use crate::pipeline::PipelineStage;
 use crate::pipeline::context::PipelineContext;
 use crate::pipeline::error::PipelineError;
-use crate::pipeline::PipelineStage;
 use crate::prompt::PromptSpec;
 use crate::types::{SessionOutcome, SessionStatus};
 
@@ -21,6 +21,10 @@ impl PipelineStage for ExecutionStage {
         "execution"
     }
 
+    #[expect(
+        clippy::too_many_lines,
+        reason = "execution lifecycle is inherently sequential: group iteration, DAG updates, QA, and corrective generation cannot be further decomposed without breaking the single-pass invariant"
+    )]
     async fn run(&self, ctx: &mut PipelineContext) -> Result<(), PipelineError> {
         use crate::budget::BudgetStatus;
 
@@ -295,10 +299,8 @@ async fn run_qa_and_generate_corrective(
     );
 
     if qa_result.verdict != crate::types::QaVerdict::Pass
-        && correctives.len()
-            < usize::try_from(max_corrective_retries).unwrap_or(usize::MAX)
-        && let Some(corrective) =
-            crate::qa::corrective::generate_corrective(&qa_result, &qa_prompt)
+        && correctives.len() < usize::try_from(max_corrective_retries).unwrap_or(usize::MAX)
+        && let Some(corrective) = crate::qa::corrective::generate_corrective(&qa_result, &qa_prompt)
     {
         tracing::info!(
             prompt_number = outcome.prompt_number,
@@ -325,15 +327,21 @@ async fn run_qa_and_generate_corrective(
 }
 
 #[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
+#[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test assertions on known-length collections"
+)]
 mod tests {
     use std::sync::Arc;
 
     use crate::engine::{SessionEvent, SessionResult};
     use crate::http::mock::{MockEngine, MockOutcome};
     use crate::orchestrator::OrchestratorConfig;
+    use crate::pipeline::PipelineStage as _;
     use crate::pipeline::context::PipelineContext;
     use crate::pipeline::preparation::PreparationStage;
-    use crate::pipeline::PipelineStage as _;
     use crate::prompt::PromptSpec;
     use crate::qa::QaGate;
     use crate::types::{DispatchSpec, MechanicalIssue, QaResult, QaVerdict, SessionStatus};
@@ -475,6 +483,31 @@ mod tests {
             .expect("execution must succeed");
 
         assert_eq!(ctx.outcomes.len(), 2);
-        assert!(ctx.outcomes.iter().all(|o| o.status == SessionStatus::Success));
+        assert!(
+            ctx.outcomes
+                .iter()
+                .all(|o| o.status == SessionStatus::Success)
+        );
+    }
+
+    #[test]
+    fn mark_dependents_blocked_cascades() {
+        use crate::dag::{PromptDag, PromptStatus};
+        let mut dag = PromptDag::new();
+        dag.add_node(1, vec![]).unwrap();
+        dag.add_node(2, vec![1]).unwrap();
+        dag.add_node(3, vec![1]).unwrap();
+        dag.add_node(4, vec![2]).unwrap();
+
+        dag.set_status(1, PromptStatus::Failed).unwrap();
+        dag.set_status(2, PromptStatus::Blocked).unwrap();
+        dag.set_status(3, PromptStatus::Ready).unwrap();
+
+        super::mark_dependents_blocked(1, &mut dag);
+
+        assert_eq!(dag.nodes[&2].status, PromptStatus::Blocked);
+        assert_eq!(dag.nodes[&3].status, PromptStatus::Blocked);
+        // NOTE: 4 depends on 2, not directly on 1. It is not marked blocked
+        // by this call. The orchestrator marks it in a subsequent pass.
     }
 }

@@ -6,9 +6,9 @@
 
 use jiff::Timestamp;
 
+use crate::pipeline::PipelineStage;
 use crate::pipeline::context::PipelineContext;
 use crate::pipeline::error::PipelineError;
-use crate::pipeline::PipelineStage;
 use crate::types::DispatchResult;
 
 /// Post-processing stage: record metrics, assemble result, finish store record.
@@ -94,17 +94,21 @@ impl PipelineStage for PostProcessingStage {
 }
 
 #[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test assertions on known-length collections"
+)]
 mod tests {
     use std::sync::Arc;
-    use std::time::Instant;
 
     use crate::engine::{SessionEvent, SessionResult};
     use crate::http::mock::{MockEngine, MockOutcome};
     use crate::orchestrator::OrchestratorConfig;
-    use crate::pipeline::context::PipelineContext;
-    use crate::pipeline::preparation::PreparationStage;
-    use crate::pipeline::execution::ExecutionStage;
     use crate::pipeline::PipelineStage as _;
+    use crate::pipeline::context::PipelineContext;
+    use crate::pipeline::execution::ExecutionStage;
+    use crate::pipeline::preparation::PreparationStage;
     use crate::prompt::PromptSpec;
     use crate::qa::QaGate;
     use crate::types::{DispatchSpec, MechanicalIssue, QaResult, QaVerdict, SessionStatus};

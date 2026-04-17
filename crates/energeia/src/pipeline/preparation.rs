@@ -13,9 +13,9 @@ use snafu::ResultExt as _;
 use crate::budget::Budget;
 use crate::cost_ledger::CostLedger;
 use crate::error::PreflightSnafu;
+use crate::pipeline::PipelineStage;
 use crate::pipeline::context::PipelineContext;
 use crate::pipeline::error::{PipelineError, StageSnafu};
-use crate::pipeline::PipelineStage;
 use crate::session::options::EngineConfig;
 
 /// Preparation stage: validate, build DAG, compute frontier, initialise shared state.
@@ -34,9 +34,7 @@ impl PipelineStage for PreparationStage {
                 reason: "no prompts to dispatch",
             }
             .fail()
-            .context(StageSnafu {
-                stage: self.name(),
-            });
+            .context(StageSnafu { stage: self.name() });
         }
 
         // --- Assign dispatch ID and record start time ---
@@ -46,9 +44,8 @@ impl PipelineStage for PreparationStage {
 
         // --- Build DAG and compute frontier ---
 
-        let dag = crate::prompt::build_dag(&ctx.prompts).context(StageSnafu {
-            stage: self.name(),
-        })?;
+        let dag =
+            crate::prompt::build_dag(&ctx.prompts).context(StageSnafu { stage: self.name() })?;
         ctx.set_dag_and_compute_frontier(dag);
 
         if ctx.frontier().is_empty() {
@@ -56,9 +53,7 @@ impl PipelineStage for PreparationStage {
                 reason: "all prompts already completed or DAG has no dispatchable nodes",
             }
             .fail()
-            .context(StageSnafu {
-                stage: self.name(),
-            });
+            .context(StageSnafu { stage: self.name() });
         }
 
         tracing::info!(
@@ -123,13 +118,14 @@ impl PipelineStage for PreparationStage {
 }
 
 #[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use std::sync::Arc;
 
     use crate::http::mock::MockEngine;
     use crate::orchestrator::OrchestratorConfig;
-    use crate::pipeline::context::PipelineContext;
     use crate::pipeline::PipelineStage as _;
+    use crate::pipeline::context::PipelineContext;
     use crate::prompt::PromptSpec;
     use crate::qa::QaGate;
     use crate::types::{DispatchSpec, MechanicalIssue, QaResult, QaVerdict};
@@ -212,7 +208,10 @@ mod tests {
         let mut ctx = make_context_with_prompts(prompts);
 
         let stage = PreparationStage;
-        stage.run(&mut ctx).await.expect("preparation should succeed");
+        stage
+            .run(&mut ctx)
+            .await
+            .expect("preparation should succeed");
 
         assert!(!ctx.dispatch_id.is_empty());
         assert!(ctx.dag.is_some());
@@ -233,7 +232,10 @@ mod tests {
             .await
             .expect_err("should fail on empty prompts");
 
-        assert!(err.to_string().contains("preparation"), "no stage in: {err}");
+        assert!(
+            err.to_string().contains("preparation"),
+            "no stage in: {err}"
+        );
         assert!(
             err.to_string().contains("no prompts"),
             "no reason in: {err}"

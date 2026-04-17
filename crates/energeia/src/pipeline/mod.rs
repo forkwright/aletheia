@@ -13,12 +13,12 @@ use crate::pipeline::error::PipelineError;
 pub(crate) mod context;
 /// Stage-identified error type.
 pub(crate) mod error;
+/// Stage 2: drive frontier group loop, collect session outcomes.
+pub(crate) mod execution;
 /// Stage 3: record metrics, assemble result, finish store record.
 pub(crate) mod post_processing;
 /// Stage 1: validate inputs, build DAG, compute frontier, initialise shared state.
 pub(crate) mod preparation;
-/// Stage 2: drive frontier group loop, collect session outcomes.
-pub(crate) mod execution;
 
 // Re-export stage implementations for use by the orchestrator.
 pub(crate) use execution::ExecutionStage;
@@ -116,6 +116,11 @@ impl<T: PipelineStage> PipelineStageErased for T {
 }
 
 #[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test assertions on known-length collections"
+)]
 mod tests {
     use std::sync::Arc;
 
@@ -208,7 +213,10 @@ mod tests {
 
         let mut ctx = make_context(mock_outcomes, prompts);
         let pipeline = DispatchPipeline::default();
-        pipeline.run(&mut ctx).await.expect("pipeline should succeed");
+        pipeline
+            .run(&mut ctx)
+            .await
+            .expect("pipeline should succeed");
 
         let result = ctx.result.expect("result should be set after pipeline");
         assert!(!result.aborted);

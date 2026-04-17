@@ -27,6 +27,7 @@ pub(crate) enum PipelineError {
 
 impl PipelineError {
     /// The name of the stage that produced this error.
+    #[cfg(test)]
     pub(crate) fn stage(&self) -> &'static str {
         match self {
             Self::Stage { stage, .. } => stage,
@@ -47,6 +48,8 @@ impl From<PipelineError> for OrchestratorError {
 
 #[cfg(test)]
 mod tests {
+    use snafu::IntoError as _;
+
     use super::*;
     use crate::error::PreflightSnafu;
 
@@ -68,10 +71,7 @@ mod tests {
 
     #[test]
     fn stage_accessor_returns_stage_name() {
-        let inner = PreflightSnafu {
-            reason: "test",
-        }
-        .build();
+        let inner = PreflightSnafu { reason: "test" }.build();
         let err = StageSnafu { stage: "execution" }.into_error(inner);
         assert_eq!(err.stage(), "execution");
     }
