@@ -22,12 +22,15 @@ pub(crate) mod health_check;
 pub(crate) mod post_processing;
 /// Stage 1: validate inputs, build DAG, compute frontier, initialise shared state.
 pub(crate) mod preparation;
+/// Stage 0: deterministic pre-dispatch validation gates.
+pub(crate) mod validation;
 
 // Re-export stage implementations for use by the orchestrator.
 pub(crate) use execution::ExecutionStage;
 pub(crate) use health_check::HealthCheckStage;
 pub(crate) use post_processing::PostProcessingStage;
 pub(crate) use preparation::PreparationStage;
+pub(crate) use validation::ValidationStage;
 
 // ---------------------------------------------------------------------------
 // PipelineStage trait
@@ -66,10 +69,11 @@ pub(crate) struct DispatchPipeline {
 }
 
 impl Default for DispatchPipeline {
-    /// Build the standard 4-stage pipeline:
-    /// preparation → `health_check` → execution → post-processing.
+    /// Build the standard 5-stage pipeline:
+    /// validation → preparation → `health_check` → execution → post-processing.
     fn default() -> Self {
         Self::new(vec![
+            Box::new(ValidationStage),
             Box::new(PreparationStage),
             Box::new(HealthCheckStage),
             Box::new(ExecutionStage),
@@ -178,16 +182,13 @@ mod tests {
     fn make_context(mock_outcomes: Vec<MockOutcome>, prompts: Vec<PromptSpec>) -> PipelineContext {
         let engine = Arc::new(MockEngine::new(mock_outcomes));
         let qa = Arc::new(AlwaysPassQa);
-        let spec = DispatchSpec::new(
-            "acme".to_owned(),
-            prompts.iter().map(|p| p.number).collect(),
-        );
+        let spec = DispatchSpec::new(".".to_owned(), prompts.iter().map(|p| p.number).collect());
         PipelineContext::new(
             spec,
             prompts,
             engine,
             qa,
-            OrchestratorConfig::default(),
+            OrchestratorConfig::default().default_budget_usd(10.0),
             #[cfg(feature = "storage-fjall")]
             None,
         )
@@ -233,7 +234,7 @@ mod tests {
 
     #[tokio::test]
     async fn pipeline_reports_stage_on_failure() {
-        // Empty prompts → preflight error in preparation stage.
+        // Empty prompts → preflight error in validation stage.
         let mut ctx = make_context(vec![], vec![]);
         let pipeline = DispatchPipeline::default();
         let err = pipeline
@@ -241,7 +242,7 @@ mod tests {
             .await
             .expect_err("should fail on empty prompts");
 
-        assert_eq!(err.stage(), "preparation");
-        assert!(err.to_string().contains("preparation"), "msg: {err}");
+        assert_eq!(err.stage(), "validation");
+        assert!(err.to_string().contains("validation"), "msg: {err}");
     }
 }
