@@ -290,12 +290,14 @@ fn aggregate_qa_verdict(verdicts: &[QaVerdict]) -> QaVerdict {
 fn compute_prompt_hash(prompts: &[crate::prompt::PromptSpec]) -> String {
     let bytes = serde_json::to_vec(prompts).unwrap_or_default();
     let hash = Sha256::digest(&bytes);
-    let hex = hash.iter().fold(String::with_capacity(hash.len() * 2), |mut acc, b| {
-        use std::fmt::Write;
-        // intentional: write to String cannot fail
-        let _ = write!(acc, "{b:02x}");
-        acc
-    });
+    let hex = hash
+        .iter()
+        .fold(String::with_capacity(hash.len() * 2), |mut acc, b| {
+            use std::fmt::Write;
+            // intentional: write to String cannot fail
+            let _ = write!(acc, "{b:02x}");
+            acc
+        });
     format!("sha256:{hex}")
 }
 
