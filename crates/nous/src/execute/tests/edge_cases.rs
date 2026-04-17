@@ -5,6 +5,29 @@
 //! Edge case and utility tests.
 use super::*;
 
+use organon::types::ToolDiagnostics;
+
+struct DiagnosticExecutor;
+
+impl ToolExecutor for DiagnosticExecutor {
+    fn execute<'a>(
+        &'a self,
+        _input: &'a ToolInput,
+        _ctx: &'a ToolContext,
+    ) -> Pin<Box<dyn Future<Output = organon::error::Result<ToolResult>> + Send + 'a>> {
+        Box::pin(async {
+            Ok(
+                ToolResult::error("command failed").with_diagnostics(ToolDiagnostics {
+                    exit_code: Some(127),
+                    stderr: Some("command not found".to_owned()),
+                    sandbox_violations: Vec::new(),
+                    duration_ms: 0,
+                }),
+            )
+        })
+    }
+}
+
 #[tokio::test]
 async fn empty_text_response() {
     let mut providers = ProviderRegistry::new();
@@ -281,4 +304,51 @@ fn build_messages_maps_roles_correctly() {
         Role::User,
         "unknown role should fall back to Role::User"
     ); // unknown maps to User
+}
+
+#[tokio::test]
+async fn tool_diagnostics_injected_into_llm_content() {
+    let mock = MockProvider::with_responses(vec![
+        make_tool_response("diag_tool", "tu_1", serde_json::json!({})),
+        make_text_response("recovered"),
+    ])
+    .models(&["test-model"]);
+
+    let mut providers = ProviderRegistry::new();
+    providers.register(Box::new(mock));
+
+    let tools = make_registry_with("diag_tool", Box::new(DiagnosticExecutor));
+    let result = execute(
+        &test_pipeline_ctx(),
+        &test_session(),
+        &test_config(),
+        &providers,
+        &tools,
+        &test_tool_ctx(),
+        None,
+    )
+    .await
+    .expect("pipeline should complete");
+
+    assert!(
+        result.tool_calls.iter().any(|tc| tc.is_error),
+        "tool call should be marked as error"
+    );
+
+    // Verify via tool_calls metadata: the result summary is computed from
+    // the truncated content, which includes the injected diagnostics.
+    let tc = result
+        .tool_calls
+        .iter()
+        .find(|tc| tc.name == "diag_tool")
+        .expect("should have diag_tool call");
+    let result_text = tc.result.as_ref().expect("should have result");
+    assert!(
+        result_text.contains("exit_code=127"),
+        "result summary should contain diagnostic exit_code: {result_text}"
+    );
+    assert!(
+        result_text.contains("command not found"),
+        "result summary should contain diagnostic stderr: {result_text}"
+    );
 }

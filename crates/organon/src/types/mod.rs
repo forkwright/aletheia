@@ -328,6 +328,68 @@ impl ToolCategory {
     }
 }
 
+/// Diagnostic metadata preserved from tool execution.
+///
+/// Populated by tools that run in a rich environment (subprocesses,
+/// sandboxes, etc.) so the LLM can distinguish failure modes such as
+/// "command not found" vs "permission denied".
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ToolDiagnostics {
+    /// Subprocess exit code, if applicable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exit_code: Option<i32>,
+    /// Captured stderr output, if any.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stderr: Option<String>,
+    /// Sandbox policy violations that occurred during execution.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub sandbox_violations: Vec<String>,
+    /// Wall-clock execution duration in milliseconds.
+    pub duration_ms: u64,
+}
+
+impl ToolDiagnostics {
+    /// Format diagnostics for LLM consumption.
+    ///
+    /// Each field is bounded to avoid consuming excessive token budget.
+    /// The total output is designed to fit in ~256 tokens.
+    #[must_use]
+    pub fn to_llm_text(&self) -> String {
+        let mut parts = Vec::new();
+        if let Some(code) = self.exit_code {
+            parts.push(format!("exit_code={code}"));
+        }
+        if let Some(stderr) = &self.stderr {
+            let trimmed = stderr.trim();
+            if !trimmed.is_empty() {
+                let max = 512;
+                let bounded = if trimmed.len() > max {
+                    let end = trimmed.floor_char_boundary(max);
+                    let prefix = trimmed.get(..end).unwrap_or(trimmed);
+                    format!("{prefix}…[truncated]")
+                } else {
+                    trimmed.to_owned()
+                };
+                parts.push(format!("stderr={bounded}"));
+            }
+        }
+        if !self.sandbox_violations.is_empty() {
+            let joined = self.sandbox_violations.join(", ");
+            let max = 256;
+            let bounded = if joined.len() > max {
+                let end = joined.floor_char_boundary(max);
+                let prefix = joined.get(..end).unwrap_or(&joined);
+                format!("{prefix}…[truncated]")
+            } else {
+                joined
+            };
+            parts.push(format!("sandbox_violations={bounded}"));
+        }
+        parts.push(format!("duration_ms={}", self.duration_ms));
+        format!("[diagnostics: {}]", parts.join(", "))
+    }
+}
+
 /// What the tool executor returns.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolResult {
@@ -335,6 +397,9 @@ pub struct ToolResult {
     pub content: ToolResultContent,
     /// Whether this result represents an error.
     pub is_error: bool,
+    /// Optional diagnostic metadata from the execution environment.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub diagnostics: Option<ToolDiagnostics>,
 }
 
 impl ToolResult {
@@ -345,6 +410,7 @@ impl ToolResult {
         Self {
             content: ToolResultContent::Text(content.into()),
             is_error: false,
+            diagnostics: None,
         }
     }
 
@@ -355,6 +421,7 @@ impl ToolResult {
         Self {
             content: ToolResultContent::Text(content.into()),
             is_error: true,
+            diagnostics: None,
         }
     }
 
@@ -365,7 +432,16 @@ impl ToolResult {
         Self {
             content: ToolResultContent::Blocks(blocks),
             is_error: false,
+            diagnostics: None,
         }
+    }
+
+    /// Attach diagnostic metadata to this result.
+    #[must_use]
+    pub fn with_diagnostics(mut self, diagnostics: ToolDiagnostics) -> Self {
+        // kanon:ignore RUST/pub-visibility
+        self.diagnostics = Some(diagnostics);
+        self
     }
 }
 

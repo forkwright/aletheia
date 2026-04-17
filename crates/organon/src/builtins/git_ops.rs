@@ -38,7 +38,7 @@ use crate::process_guard::ProcessGuard;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
     InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
-    ToolInput, ToolResult,
+    ToolDiagnostics, ToolInput, ToolResult,
 };
 
 use super::workspace::{extract_opt_bool, extract_opt_str, extract_opt_u64, extract_str};
@@ -69,17 +69,26 @@ fn validate_ref(raw: &str) -> std::result::Result<&str, String> {
     Ok(raw)
 }
 
+/// Captured output from a `git` subprocess invocation.
+struct GitRunOutput {
+    stdout: String,
+    stderr: String,
+    code: i32,
+}
+
 /// Run `git` in the workspace root. Returns stdout on success, stderr on failure.
-fn run_git(ctx: &ToolContext, args: &[&str]) -> std::result::Result<String, String> {
+fn run_git(ctx: &ToolContext, args: &[&str]) -> std::result::Result<GitRunOutput, GitRunOutput> {
     let mut cmd = Command::new("git");
     cmd.args(args)
         .current_dir(&ctx.workspace)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
-    let child = cmd
-        .spawn()
-        .map_err(|e| format!("failed to spawn git: {e}"))?;
+    let child = cmd.spawn().map_err(|e| GitRunOutput {
+        stdout: String::new(),
+        stderr: format!("failed to spawn git: {e}"),
+        code: -1,
+    })?;
     let mut guard = ProcessGuard::new(child);
 
     let deadline = Instant::now() + GIT_TIMEOUT;
@@ -89,11 +98,21 @@ fn run_git(ctx: &ToolContext, args: &[&str]) -> std::result::Result<String, Stri
             Ok(None) => {
                 if Instant::now() >= deadline {
                     // Guard drop kills + reaps.
-                    return Err("git timed out after 30s".to_owned());
+                    return Err(GitRunOutput {
+                        stdout: String::new(),
+                        stderr: "git timed out after 30s".to_owned(),
+                        code: -1,
+                    });
                 }
                 std::thread::sleep(Duration::from_millis(50));
             }
-            Err(e) => return Err(format!("git wait failed: {e}")),
+            Err(e) => {
+                return Err(GitRunOutput {
+                    stdout: String::new(),
+                    stderr: format!("git wait failed: {e}"),
+                    code: -1,
+                });
+            }
         }
     };
 
@@ -122,12 +141,52 @@ fn run_git(ctx: &ToolContext, args: &[&str]) -> std::result::Result<String, Stri
         stdout.push_str("\n[output truncated]");
     }
 
+    let code = status.code().unwrap_or(-1);
+    let output = GitRunOutput {
+        stdout,
+        stderr,
+        code,
+    };
+
     if status.success() {
-        Ok(stdout)
+        Ok(output)
     } else {
-        let code = status.code().unwrap_or(-1);
-        Err(format!("git exited with {code}\n{stderr}"))
+        Err(output)
     }
+}
+
+/// Build a [`ToolResult`] from a successful git invocation.
+fn git_ok(out: GitRunOutput, empty_msg: &str) -> ToolResult {
+    let content = if out.stdout.trim().is_empty() {
+        empty_msg.to_owned()
+    } else {
+        out.stdout
+    };
+    ToolResult::text(content).with_diagnostics(ToolDiagnostics {
+        exit_code: Some(out.code),
+        stderr: if out.stderr.is_empty() {
+            None
+        } else {
+            Some(out.stderr)
+        },
+        sandbox_violations: Vec::new(),
+        duration_ms: 0,
+    })
+}
+
+/// Build a [`ToolResult`] from a failed git invocation.
+fn git_err(out: GitRunOutput) -> ToolResult {
+    let msg = format!("git exited with {}\n{}", out.code, out.stderr);
+    ToolResult::error(msg).with_diagnostics(ToolDiagnostics {
+        exit_code: Some(out.code),
+        stderr: if out.stderr.is_empty() {
+            None
+        } else {
+            Some(out.stderr)
+        },
+        sandbox_violations: Vec::new(),
+        duration_ms: 0,
+    })
 }
 
 // -------------------------------------------------------------------------
@@ -145,12 +204,8 @@ impl ToolExecutor for GitStatusExecutor {
         Box::pin(async {
             let _ = input;
             match run_git(ctx, &["status", "--short", "--branch"]) {
-                Ok(out) => Ok(ToolResult::text(if out.trim().is_empty() {
-                    "(clean working tree)".to_owned()
-                } else {
-                    out
-                })),
-                Err(e) => Ok(ToolResult::error(e)),
+                Ok(out) => Ok(git_ok(out, "(clean working tree)")),
+                Err(out) => Ok(git_err(out)),
             }
         })
     }
@@ -188,12 +243,8 @@ impl ToolExecutor for GitLogExecutor {
             }
 
             match run_git(ctx, &args) {
-                Ok(out) => Ok(ToolResult::text(if out.trim().is_empty() {
-                    "(no commits)".to_owned()
-                } else {
-                    out
-                })),
-                Err(e) => Ok(ToolResult::error(e)),
+                Ok(out) => Ok(git_ok(out, "(no commits)")),
+                Err(out) => Ok(git_err(out)),
             }
         })
     }
@@ -238,12 +289,8 @@ impl ToolExecutor for GitDiffExecutor {
             }
 
             match run_git(ctx, &args) {
-                Ok(out) => Ok(ToolResult::text(if out.trim().is_empty() {
-                    "(no changes)".to_owned()
-                } else {
-                    out
-                })),
-                Err(e) => Ok(ToolResult::error(e)),
+                Ok(out) => Ok(git_ok(out, "(no changes)")),
+                Err(out) => Ok(git_err(out)),
             }
         })
     }
@@ -266,12 +313,8 @@ impl ToolExecutor for GitBranchExecutor {
             // WHY: --list default shows local branches; --verbose adds the
             // commit subject which helps the LLM pick a branch.
             match run_git(ctx, &["branch", "--list", "--verbose"]) {
-                Ok(out) => Ok(ToolResult::text(if out.trim().is_empty() {
-                    "(no local branches)".to_owned()
-                } else {
-                    out
-                })),
-                Err(e) => Ok(ToolResult::error(e)),
+                Ok(out) => Ok(git_ok(out, "(no local branches)")),
+                Err(out) => Ok(git_err(out)),
             }
         })
     }
@@ -309,15 +352,14 @@ impl ToolExecutor for GitCheckoutExecutor {
             };
 
             match run_git(ctx, &args) {
-                Ok(out) => Ok(ToolResult::text(if out.trim().is_empty() {
-                    format!(
+                Ok(out) => Ok(git_ok(
+                    out,
+                    &format!(
                         "checked out {validated}{}",
                         if create { " (new branch)" } else { "" }
-                    )
-                } else {
-                    out
-                })),
-                Err(e) => Ok(ToolResult::error(e)),
+                    ),
+                )),
+                Err(out) => Ok(git_err(out)),
             }
         })
     }
