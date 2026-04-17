@@ -9,6 +9,8 @@ use std::time::Instant;
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
+#[cfg(feature = "knowledge-store")]
+use mneme::knowledge_store::KnowledgeStore;
 use mneme::store::SessionStore;
 use nous::manager::NousManager;
 use organon::registry::ToolRegistry;
@@ -43,6 +45,12 @@ pub struct DiaporeiaState {
     pub none_role: String,
     /// Root shutdown token.
     pub shutdown: CancellationToken,
+    /// Shared knowledge store for the knowledge graph MCP surface.
+    ///
+    /// `None` when the knowledge store is not configured or when
+    /// `mcp.knowledge_graph.enabled` is `false`.
+    #[cfg(feature = "knowledge-store")]
+    pub knowledge_store: Option<Arc<KnowledgeStore>>,
 }
 
 #[cfg(test)]
