@@ -211,7 +211,7 @@ impl NousActor {
     /// // WHY: Pipeline panics are isolated to a spawned task so they don't
     /// // crash the actor. This is essential for long-running agents where
     /// // a single malformed input or tool bug shouldn't terminate the service.
-    async fn execute_turn_with_panic_boundary(
+    pub(super) async fn execute_turn_with_panic_boundary(
         &mut self,
         session_key: &str,
         session_id: Option<&str>,
@@ -525,109 +525,5 @@ impl NousActor {
             );
             self.channel.status = NousLifecycle::Degraded;
         }
-    }
-
-    /// # Cancel safety
-    ///
-    /// Cancel-safe. Session creation via `entry().or_insert_with()` is
-    /// idempotent. If cancelled during `run_pipeline`, the session exists
-    /// but the turn is incomplete: no persistent state is corrupted.
-    pub(super) async fn execute_turn(
-        &mut self,
-        session_key: &str,
-        content: &str,
-    ) -> crate::error::Result<TurnResult> {
-        self.evict_oldest_session_if_needed();
-        let session = self
-            .sessions
-            .entry(session_key.to_owned())
-            .or_insert_with(|| {
-                // WHY: cross-nous messages carry no database session ID: generate one so finalize can create the DB row
-                let id = SessionId::new().to_string();
-                debug!(session_key, session_id = %id, "creating new session");
-                let mut state = SessionState::new(id, session_key.to_owned(), &self.config);
-                // WHY: prosoche heartbeat sessions use a cheap model to avoid
-                // wasting Opus-tier capacity on routine health checks.
-                if crate::session::SessionManager::is_background(session_key) {
-                    state
-                        .model
-                        .clone_from(&self.config.generation.prosoche_model);
-                }
-                state
-            });
-
-        session.next_turn();
-
-        let input = crate::pipeline::PipelineInput {
-            content: content.to_owned(),
-            session: session.clone(),
-            config: self.pipeline_config.clone(),
-        };
-
-        let nous_id = NousId::new(&self.id).map_err(|e| {
-            crate::error::ConfigSnafu {
-                message: format!("invalid nous id: {e}"),
-            }
-            .build()
-        })?;
-
-        let session_id = SessionId::parse(session.id.as_str()).map_err(|e| {
-            crate::error::ConfigSnafu {
-                message: format!("invalid session id '{}': {e}", session.id),
-            }
-            .build()
-        })?;
-
-        let tool_ctx = ToolContext {
-            nous_id,
-            session_id,
-            workspace: self.services.oikos.nous_dir(&self.id),
-            allowed_roots: vec![self.services.oikos.root().to_path_buf()],
-            services: self.services.tool_services.clone(),
-            active_tools: std::sync::Arc::new(std::sync::RwLock::new(
-                std::collections::HashSet::new(),
-            )),
-            tool_config: self.services.tool_config.clone(),
-        };
-
-        let mut extra_bootstrap = self.extra_bootstrap.clone();
-        extra_bootstrap.extend(self.resolve_intent_sections());
-        extra_bootstrap.extend(self.resolve_skill_sections(content).await);
-
-        // WHY: create hook registry for the direct (non-spawned) execute_turn path
-        let mut hook_registry = crate::hooks::registry::HookRegistry::new();
-        let workspace = self.services.oikos.nous_dir(&self.id);
-        crate::hooks::builtins::register_builtin_hooks(
-            &mut hook_registry,
-            &self.config.hooks,
-            &workspace,
-        );
-
-        #[cfg(feature = "knowledge-store")]
-        let text_search_ref: Option<&dyn crate::recall::TextSearch> =
-            self.stores.text_search.as_deref();
-        #[cfg(not(feature = "knowledge-store"))]
-        let text_search_ref: Option<&dyn crate::recall::TextSearch> = None;
-
-        crate::pipeline::run_pipeline(
-            input,
-            &self.services.oikos,
-            &self.config,
-            &self.pipeline_config,
-            &self.services.providers,
-            &self.services.tools,
-            &tool_ctx,
-            self.services.embedding_provider.as_deref(),
-            self.stores.vector_search.as_deref(),
-            text_search_ref,
-            self.stores.session_store.as_deref(),
-            extra_bootstrap,
-            None,
-            None,
-            Some(&hook_registry),
-            Some(self.services.bootstrap_cache.as_ref()),
-            self.services.audit_log.as_deref(),
-        )
-        .await
     }
 }

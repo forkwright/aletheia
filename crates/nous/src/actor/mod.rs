@@ -417,9 +417,22 @@ impl NousActor {
 
         debug!(from = %from, session_key = %session_key, "processing cross-nous message");
 
-        match self.execute_turn(&session_key, &content).await {
-            Ok(result) => {
-                debug!(from = %from, content_len = result.content.len(), "cross-nous turn completed");
+        let result = self
+            .execute_turn_with_panic_boundary(
+                &session_key,
+                None,
+                &content,
+                tracing::Span::current(),
+            )
+            .await;
+
+        match result {
+            Ok(turn_result) => {
+                debug!(from = %from, content_len = turn_result.content.len(), "cross-nous turn completed");
+                Ok(())
+            }
+            Err(crate::error::Error::PipelinePanic { .. }) => {
+                warn!(nous_id = %self.id, from = %from, "cross-nous turn panicked — actor continues");
                 Ok(())
             }
             Err(e) => Err(e),
