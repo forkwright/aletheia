@@ -47,8 +47,9 @@ diaporeia = { path = "../diaporeia", optional = true }
 dianoia = { path = "../dianoia" }
 energeia = { path = "../energeia", optional = true }
 oikonomos = { path = "../daemon" }
-koina = { path = "../koina" }
+koina = { path = "../koina", features = ["fjall"] }
 taxis = { path = "../taxis" }
+fjall = { version = "3", default-features = false }
 hermeneus = { path = "../hermeneus" }
 organon = { path = "../organon" }
 mneme = { path = "../mneme" }

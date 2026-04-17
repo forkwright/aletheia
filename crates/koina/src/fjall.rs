@@ -51,6 +51,24 @@ pub struct FjallDb {
 }
 
 impl FjallDb {
+    /// Open an existing persistent fjall database at `path` without creating
+    /// any partitions.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `String` error message if the database cannot be opened.
+    pub fn open_existing(path: &Path) -> Result<Self, FjallOpenError> {
+        let db = SingleWriterTxDatabase::builder(path)
+            .open()
+            .map_err(|e| FjallOpenError::Open(format!("fjall open: {e}")))?;
+
+        Ok(Self {
+            db,
+            write_lock: Mutex::new(()),
+            _temp_dir: None,
+        })
+    }
+
     /// Open (or create) a persistent fjall database at `path`, eagerly creating
     /// all named partitions.
     ///
