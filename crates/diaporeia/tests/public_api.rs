@@ -135,6 +135,8 @@ impl StateBuilder {
             auth_mode: self.auth_mode,
             none_role: self.none_role,
             shutdown: CancellationToken::new(),
+            #[cfg(feature = "knowledge-store")]
+            knowledge_store: None,
         });
 
         (state, jwt_manager, self.instance_root)
@@ -507,6 +509,8 @@ async fn router_rejects_expired_bearer_token() {
         auth_mode: "token".to_owned(),
         none_role: "readonly".to_owned(),
         shutdown: CancellationToken::new(),
+        #[cfg(feature = "knowledge-store")]
+        knowledge_store: None,
     });
 
     let token = issue_token(&jwt_manager, "alice", Role::Admin);

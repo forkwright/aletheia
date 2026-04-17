@@ -23,10 +23,10 @@ pub use gateway::{
 };
 pub use maintenance::{
     CircuitBreakerSettings, CredentialConfig, CronTaskEntry, CronTaskSettings,
-    DbMonitoringSettings, DiskSpaceSettings, DriftDetectionSettings, LoggingSettings,
-    MaintenanceSettings, McpConfig, McpRateLimitConfig, PromptAuditSettings, RedactionSettings,
-    RetentionSettings, SandboxSettings, SqliteRecoverySettings, TraceRotationSettings,
-    WatchdogSettings,
+    DbMonitoringSettings, DiskSpaceSettings, DriftDetectionSettings, KnowledgeGraphMcpConfig,
+    LoggingSettings, MaintenanceSettings, McpConfig, McpRateLimitConfig, PromptAuditSettings,
+    RedactionSettings, RetentionSettings, SandboxSettings, SqliteRecoverySettings,
+    TraceRotationSettings, WatchdogSettings,
 };
 pub use resolved::{
     AgentCapabilities, ResolvedModelConfig, ResolvedNousConfig, TokenLimits, resolve_nous,

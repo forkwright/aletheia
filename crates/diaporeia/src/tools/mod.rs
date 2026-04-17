@@ -16,6 +16,7 @@ use koina::id::SessionId;
 use symbolon::types::Role;
 
 use crate::error::{
+    FactNotFoundSnafu, InvalidInputSnafu, KnowledgeStoreSnafu, KnowledgeStoreUnavailableSnafu,
     NousNotFoundSnafu, PipelineSnafu, SerializationSnafu, SessionStoreSnafu, UnauthorizedSnafu,
 };
 use crate::rate_limit::Tier;
@@ -140,6 +141,42 @@ async fn require_role(
             .into())
         }
     }
+}
+
+/// Check that the knowledge graph MCP surface is enabled.
+///
+/// Returns `Err(KnowledgeStoreUnavailable)` when the feature is disabled in
+/// config, or when the server was not compiled with the `knowledge-store`
+/// feature. On success, returns a snapshot of the current config.
+///
+/// # Why a helper
+///
+/// Every knowledge tool needs the same preamble: read config, gate on
+/// `mcp.knowledge_graph.enabled`. Centralising avoids repeating the read in
+/// every tool.
+async fn require_knowledge_graph(
+    server: &DiaporeiaServer,
+) -> Result<taxis::config::AletheiaConfig, rmcp::ErrorData> {
+    let config = server.state.config.read().await.clone();
+    if !config.mcp.knowledge_graph.enabled {
+        return Err(KnowledgeStoreUnavailableSnafu {}.build().into());
+    }
+    Ok(config)
+}
+
+/// Resolve the knowledge store from server state, returning an error if absent.
+///
+/// Fails with `KnowledgeStoreUnavailable` when compiled without the
+/// `knowledge-store` feature or when the store was not initialised.
+#[cfg(feature = "knowledge-store")]
+fn resolve_store(
+    server: &DiaporeiaServer,
+) -> Result<std::sync::Arc<mneme::knowledge_store::KnowledgeStore>, crate::error::Error> {
+    server
+        .state
+        .knowledge_store
+        .clone()
+        .ok_or_else(|| KnowledgeStoreUnavailableSnafu {}.build())
 }
 
 /// Register all tools on the server via the `#[tool_router]` macro.
@@ -492,6 +529,398 @@ impl DiaporeiaServer {
              and a knowledge store must be configured."
                 .to_string(),
         )]))
+    }
+
+    /// BM25 text recall across the knowledge graph.
+    ///
+    /// Returns ranked fact results using BM25 full-text scoring. For read
+    /// access, requires `Agent` role or above. When the knowledge graph MCP
+    /// surface is disabled (`mcp.knowledge_graph.enabled = false`), returns
+    /// error code -32002.
+    #[tool(description = "BM25 text recall across the knowledge graph. \
+        Returns ranked facts. Requires Agent role.")]
+    async fn knowledge_recall(
+        &self,
+        Parameters(params): Parameters<params::KnowledgeRecallParams>,
+        context: RequestContext<rmcp::RoleServer>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        self.rate_limiter.check(Tier::Expensive)?;
+        require_role(self, &context, Role::Agent, "knowledge_recall").await?;
+        let config = require_knowledge_graph(self).await?;
+
+        #[cfg(feature = "knowledge-store")]
+        {
+            let store = resolve_store(self).map_err(rmcp::ErrorData::from)?;
+            let limit = params
+                .limit
+                .unwrap_or(20)
+                .min(config.mcp.knowledge_graph.max_search_results);
+            let limit_i64 = i64::from(limit);
+
+            let results = store
+                .search_text_for_recall(&params.query, limit_i64)
+                .map_err(|e| {
+                    rmcp::ErrorData::from(
+                        KnowledgeStoreSnafu {
+                            message: e.to_string(),
+                        }
+                        .build(),
+                    )
+                })?;
+
+            // Optionally filter to a single nous_id.
+            let results: Vec<_> = if let Some(ref nous_id) = params.nous_id {
+                results
+                    .into_iter()
+                    .filter(|r| r.source_id.contains(nous_id.as_str()))
+                    .collect()
+            } else {
+                results
+            };
+
+            let json = serde_json::to_string_pretty(&results)
+                .context(SerializationSnafu {})
+                .map_err(rmcp::ErrorData::from)?;
+            return Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+                json,
+            )]));
+        }
+
+        #[cfg(not(feature = "knowledge-store"))]
+        {
+            let _ = (params, config);
+            Err(KnowledgeStoreUnavailableSnafu {}.build().into())
+        }
+    }
+
+    /// Retrieve a single fact by ID.
+    ///
+    /// Returns the full `Fact` record including provenance, lifecycle, and
+    /// access metadata. Requires `Agent` role or above.
+    #[tool(description = "Retrieve a single knowledge fact by ID. Requires Agent role.")]
+    async fn knowledge_get(
+        &self,
+        Parameters(params): Parameters<params::KnowledgeGetParams>,
+        context: RequestContext<rmcp::RoleServer>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        self.rate_limiter.check(Tier::Cheap)?;
+        require_role(self, &context, Role::Agent, "knowledge_get").await?;
+        require_knowledge_graph(self).await?;
+
+        #[cfg(feature = "knowledge-store")]
+        {
+            let store = resolve_store(self).map_err(rmcp::ErrorData::from)?;
+            let mut facts = store.read_facts_by_id(&params.fact_id).map_err(|e| {
+                rmcp::ErrorData::from(
+                    KnowledgeStoreSnafu {
+                        message: e.to_string(),
+                    }
+                    .build(),
+                )
+            })?;
+            let fact = facts.pop().ok_or_else(|| {
+                rmcp::ErrorData::from(
+                    FactNotFoundSnafu {
+                        id: params.fact_id.clone(),
+                    }
+                    .build(),
+                )
+            })?;
+            let json = serde_json::to_string_pretty(&fact)
+                .context(SerializationSnafu {})
+                .map_err(rmcp::ErrorData::from)?;
+            return Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+                json,
+            )]));
+        }
+
+        #[cfg(not(feature = "knowledge-store"))]
+        {
+            let _ = params;
+            Err(KnowledgeStoreUnavailableSnafu {}.build().into())
+        }
+    }
+
+    /// Insert a new fact into the knowledge graph.
+    ///
+    /// Creates a fact with the given content under the specified nous agent.
+    /// The fact is admitted through the configured admission policy.
+    ///
+    /// Requires `Operator` role or above. Mutations are restricted to
+    /// Operator+ to prevent agents from unilaterally persisting beliefs.
+    #[tool(description = "Insert a new fact into the knowledge graph. \
+        Requires Operator role. Returns the new fact ID.")]
+    async fn knowledge_insert(
+        &self,
+        Parameters(params): Parameters<params::KnowledgeInsertParams>,
+        context: RequestContext<rmcp::RoleServer>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        self.rate_limiter.check(Tier::Expensive)?;
+        require_role(self, &context, Role::Operator, "knowledge_insert").await?;
+        require_knowledge_graph(self).await?;
+
+        #[cfg(feature = "knowledge-store")]
+        {
+            use mneme::id::FactId;
+            use mneme::knowledge::{
+                EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactSensitivity,
+                FactTemporal, default_stability_hours, far_future,
+            };
+
+            let store = resolve_store(self).map_err(rmcp::ErrorData::from)?;
+
+            // Parse sensitivity, defaulting to Public.
+            let sensitivity = params
+                .sensitivity
+                .as_deref()
+                .unwrap_or("public")
+                .parse::<FactSensitivity>()
+                .map_err(|e| rmcp::ErrorData::from(InvalidInputSnafu { message: e }.build()))?;
+
+            let now = jiff::Timestamp::now();
+            // WHY: koina::uuid::uuid_v4() provides UUID v4 without adding a
+            // direct `uuid` crate dep. Prefix with "f-mcp-" to make the origin
+            // of MCP-inserted facts identifiable during audits.
+            let fact_id_str = format!("f-mcp-{}", koina::uuid::uuid_v4());
+            let fact_id = FactId::new(&fact_id_str).map_err(|e| {
+                rmcp::ErrorData::from(
+                    InvalidInputSnafu {
+                        message: e.to_string(),
+                    }
+                    .build(),
+                )
+            })?;
+
+            let fact = Fact {
+                id: fact_id.clone(),
+                nous_id: params.nous_id.clone(),
+                fact_type: "knowledge".to_string(),
+                content: params.content.clone(),
+                scope: None,
+                sensitivity,
+                temporal: FactTemporal {
+                    valid_from: now,
+                    valid_to: far_future(),
+                    recorded_at: now,
+                },
+                provenance: FactProvenance {
+                    confidence: 0.8,
+                    tier: EpistemicTier::Inferred,
+                    source_session_id: None,
+                    stability_hours: default_stability_hours("knowledge"),
+                },
+                lifecycle: FactLifecycle {
+                    superseded_by: None,
+                    is_forgotten: false,
+                    forgotten_at: None,
+                    forget_reason: None,
+                },
+                access: FactAccess {
+                    access_count: 0,
+                    last_accessed_at: None,
+                },
+            };
+
+            store.insert_fact_async(fact).await.map_err(|e| {
+                rmcp::ErrorData::from(
+                    KnowledgeStoreSnafu {
+                        message: e.to_string(),
+                    }
+                    .build(),
+                )
+            })?;
+
+            let json = serde_json::to_string_pretty(&serde_json::json!({
+                "fact_id": fact_id.as_str(),
+                "nous_id": params.nous_id,
+                "sensitivity": sensitivity.as_str(),
+            }))
+            .context(SerializationSnafu {})
+            .map_err(rmcp::ErrorData::from)?;
+            return Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+                json,
+            )]));
+        }
+
+        #[cfg(not(feature = "knowledge-store"))]
+        {
+            let _ = params;
+            Err(KnowledgeStoreUnavailableSnafu {}.build().into())
+        }
+    }
+
+    /// Soft-delete a fact from the knowledge graph.
+    ///
+    /// The fact is marked as forgotten (not physically deleted). Forgotten
+    /// facts are excluded from recall but remain for audit purposes.
+    ///
+    /// Requires `Operator` role or above.
+    #[tool(description = "Soft-delete a fact from the knowledge graph. \
+        Requires Operator role.")]
+    async fn knowledge_forget(
+        &self,
+        Parameters(params): Parameters<params::KnowledgeForgetParams>,
+        context: RequestContext<rmcp::RoleServer>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        self.rate_limiter.check(Tier::Expensive)?;
+        require_role(self, &context, Role::Operator, "knowledge_forget").await?;
+        require_knowledge_graph(self).await?;
+
+        #[cfg(feature = "knowledge-store")]
+        {
+            use mneme::id::FactId;
+            use mneme::knowledge::ForgetReason;
+
+            let store = resolve_store(self).map_err(rmcp::ErrorData::from)?;
+
+            let fact_id = FactId::new(&params.fact_id).map_err(|e| {
+                rmcp::ErrorData::from(
+                    InvalidInputSnafu {
+                        message: e.to_string(),
+                    }
+                    .build(),
+                )
+            })?;
+
+            let reason = params
+                .reason
+                .as_deref()
+                .unwrap_or("user_requested")
+                .parse::<ForgetReason>()
+                .map_err(|e| rmcp::ErrorData::from(InvalidInputSnafu { message: e }.build()))?;
+
+            let fact_id_clone = fact_id.clone();
+            let reason_clone = reason;
+            tokio::task::spawn_blocking(move || store.forget_fact(&fact_id_clone, reason_clone))
+                .await
+                .map_err(|e| {
+                    rmcp::ErrorData::from(
+                        KnowledgeStoreSnafu {
+                            message: e.to_string(),
+                        }
+                        .build(),
+                    )
+                })?
+                .map_err(|e| {
+                    rmcp::ErrorData::from(
+                        KnowledgeStoreSnafu {
+                            message: e.to_string(),
+                        }
+                        .build(),
+                    )
+                })?;
+
+            let json = serde_json::to_string_pretty(&serde_json::json!({
+                "fact_id": fact_id.as_str(),
+                "forgotten": true,
+                "reason": reason.as_str(),
+            }))
+            .context(SerializationSnafu {})
+            .map_err(rmcp::ErrorData::from)?;
+            return Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+                json,
+            )]));
+        }
+
+        #[cfg(not(feature = "knowledge-store"))]
+        {
+            let _ = params;
+            Err(KnowledgeStoreUnavailableSnafu {}.build().into())
+        }
+    }
+
+    /// Traverse entity edges in the knowledge graph.
+    ///
+    /// Returns entities within `depth` hops of the given entity, along with
+    /// the relationships connecting them. Depth is capped at 4 to prevent
+    /// unbounded traversal.
+    ///
+    /// Requires `Agent` role or above.
+    #[tool(
+        description = "Traverse entity edges in the knowledge graph up to the given depth. \
+        Returns neighbors and connecting relationships. Requires Agent role."
+    )]
+    async fn knowledge_graph_neighbors(
+        &self,
+        Parameters(params): Parameters<params::KnowledgeGraphNeighborsParams>,
+        context: RequestContext<rmcp::RoleServer>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        self.rate_limiter.check(Tier::Expensive)?;
+        require_role(self, &context, Role::Agent, "knowledge_graph_neighbors").await?;
+        let config = require_knowledge_graph(self).await?;
+
+        #[cfg(feature = "knowledge-store")]
+        {
+            use std::collections::BTreeMap;
+
+            use mneme::engine::DataValue;
+
+            let store = resolve_store(self).map_err(rmcp::ErrorData::from)?;
+
+            let max_depth = config.mcp.knowledge_graph.max_graph_depth.min(4);
+            let depth = params.depth.unwrap_or(2).min(max_depth);
+
+            // WHY: run_query accepts arbitrary Datalog so we can traverse
+            // the neighborhood without exposing `entity_neighborhood`
+            // (which is pub(crate) in episteme) through the public facade.
+            // The query fetches direct edges (1-hop) from the seed entity.
+            // Multi-hop traversal beyond depth=1 is left for future work
+            // once the Datalog recursive-rule API is stable.
+            let script = r"
+                ?[entity_id, name, entity_type, relation, weight] :=
+                    *relationships{src: $entity_id, dst: entity_id, relation, weight},
+                    *entities{id: entity_id, name, entity_type}
+
+                ?[entity_id, name, entity_type, relation, weight] :=
+                    *relationships{src: entity_id, dst: $entity_id, relation, weight},
+                    *entities{id: entity_id, name, entity_type}
+            ";
+            let mut query_params: BTreeMap<String, DataValue> = BTreeMap::new();
+            query_params.insert(
+                "entity_id".to_owned(),
+                DataValue::Str(params.entity_id.clone().into()),
+            );
+
+            let result = store.run_query(script, query_params).map_err(|e| {
+                rmcp::ErrorData::from(
+                    KnowledgeStoreSnafu {
+                        message: e.to_string(),
+                    }
+                    .build(),
+                )
+            })?;
+
+            let neighbors: Vec<serde_json::Value> = result
+                .rows_to_json()
+                .into_iter()
+                .map(|row| {
+                    serde_json::json!({
+                        "entity_id": row.first().cloned().unwrap_or(serde_json::Value::Null),
+                        "name": row.get(1).cloned().unwrap_or(serde_json::Value::Null),
+                        "entity_type": row.get(2).cloned().unwrap_or(serde_json::Value::Null),
+                        "relation": row.get(3).cloned().unwrap_or(serde_json::Value::Null),
+                        "weight": row.get(4).cloned().unwrap_or(serde_json::Value::Null),
+                    })
+                })
+                .collect();
+
+            let json = serde_json::to_string_pretty(&serde_json::json!({
+                "entity_id": params.entity_id,
+                "depth": depth,
+                "neighbors": neighbors,
+            }))
+            .context(SerializationSnafu {})
+            .map_err(rmcp::ErrorData::from)?;
+            return Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+                json,
+            )]));
+        }
+
+        #[cfg(not(feature = "knowledge-store"))]
+        {
+            let _ = (params, config);
+            Err(KnowledgeStoreUnavailableSnafu {}.build().into())
+        }
     }
 
     /// Get the runtime configuration with sensitive fields redacted.

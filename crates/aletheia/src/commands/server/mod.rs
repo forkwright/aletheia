@@ -91,6 +91,10 @@ pub(crate) async fn run(args: Args) -> Result<()> {
             auth_mode: runtime.state.auth_mode.clone(),
             none_role: runtime.state.none_role.clone(),
             shutdown: runtime.shutdown_token.clone(),
+            // WHY: pass the same KnowledgeStore Arc that pylon uses so the
+            // MCP knowledge tools access the identical in-process instance.
+            #[cfg(feature = "knowledge-store")]
+            knowledge_store: runtime.state.knowledge_store.clone(),
         });
         let mcp_router = diaporeia::transport::streamable_http_router(diaporeia_state);
         info!("diaporeia MCP server mounted at /mcp");
