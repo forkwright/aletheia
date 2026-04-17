@@ -1,3 +1,4 @@
+#![deny(clippy::unwrap_used)]
 #![deny(missing_docs)]
 //! aletheia-thesauros: domain pack loader
 //!
