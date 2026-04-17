@@ -66,4 +66,15 @@ pub struct RecallResult {
     pub source_type: String,
     /// Source ID.
     pub source_id: String,
+    /// Data-sovereignty classification for the underlying fact, carried
+    /// from [`Fact::sensitivity`] so the recall pipeline can filter results
+    /// by the active provider's deployment target (#3404, #3413). Defaults
+    /// to [`FactSensitivity::Public`] for non-fact sources (messages,
+    /// notes) and for facts persisted before sensitivity tracking was
+    /// introduced.
+    ///
+    /// [`Fact::sensitivity`]: super::fact::Fact::sensitivity
+    /// [`FactSensitivity::Public`]: super::fact::FactSensitivity::Public
+    #[serde(default)]
+    pub sensitivity: super::fact::FactSensitivity,
 }

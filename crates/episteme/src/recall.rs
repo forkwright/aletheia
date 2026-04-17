@@ -115,6 +115,10 @@ pub struct ScoredResult {
     pub factors: FactorScores,
     /// Final weighted score [0.0, 1.0].
     pub score: f64,
+    /// Data-sovereignty classification carried from the store so the recall
+    /// pipeline can filter by the active provider's deployment target
+    /// (#3404, #3413).
+    pub sensitivity: crate::knowledge::FactSensitivity,
 }
 
 /// The recall engine.

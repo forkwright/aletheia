@@ -529,6 +529,7 @@ pub(crate) fn persist_lesson(
                 access_count: 0,
                 last_accessed_at: None,
             },
+            sensitivity: crate::knowledge::FactSensitivity::Public,
         };
         store.insert_fact(&f).map_err(|e| {
             PersistSnafu {

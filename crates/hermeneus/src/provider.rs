@@ -45,6 +45,18 @@ pub trait LlmProvider: Send + Sync {
     /// Provider name for logging and diagnostics.
     fn name(&self) -> &str;
 
+    /// Where this provider runs, for data-sovereignty gating (#3404, #3413).
+    ///
+    /// The recall pipeline filters facts whose `FactSensitivity` exceeds the
+    /// provider's trust boundary before the system prompt is handed off to
+    /// the provider. Defaults to [`DeploymentTarget::Cloud`] — the safe
+    /// assumption, so operators cannot accidentally leak `Internal` or
+    /// `Confidential` facts by registering a new provider without
+    /// classifying it.
+    fn deployment_target(&self) -> DeploymentTarget {
+        DeploymentTarget::Cloud
+    }
+
     /// Whether this provider supports streaming completions.
     fn supports_streaming(&self) -> bool {
         false
@@ -105,6 +117,56 @@ pub enum PromptCacheMode {
     Extended,
 }
 
+/// Where a provider's inference runs, for data-sovereignty gating.
+///
+/// Facts classified with a `FactSensitivity` strictly greater than the
+/// provider's deployment target are filtered out during recall so they
+/// never leave the boundary the operator has chosen (#3404, #3413).
+///
+/// | Variant | Meaning | Accepts |
+/// |---------|---------|---------|
+/// | `Cloud` | External API (`Anthropic`, `OpenAI`, etc.) | `Public` only |
+/// | `LocalHosted` | Self-hosted but network-accessible (`llama.cpp`, `Ollama`) | `Public`, `Internal` |
+/// | `Embedded` | In-process (`candle`, static model) | all sensitivities |
+///
+/// The ordering `Cloud < LocalHosted < Embedded` mirrors the sensitivity
+/// ordering so admission reduces to `sensitivity <= target`.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+    Default,
+)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum DeploymentTarget {
+    /// External cloud provider; receives only `Public` facts.
+    #[default]
+    Cloud,
+    /// Self-hosted or network-local provider; receives `Public` and `Internal`.
+    LocalHosted,
+    /// In-process provider; no facts leave the host.
+    Embedded,
+}
+
+impl DeploymentTarget {
+    /// Lowercase `snake_case` name.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Cloud => "cloud",
+            Self::LocalHosted => "local_hosted",
+            Self::Embedded => "embedded",
+        }
+    }
+}
+
 /// Configuration for provider initialization.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ProviderConfig {
@@ -132,6 +194,12 @@ pub struct ProviderConfig {
     /// enters Anthropic's cache infrastructure (#3410).
     #[serde(default)]
     pub prompt_cache_mode: PromptCacheMode,
+    /// Where this provider runs, gating which `FactSensitivity` the recall
+    /// pipeline is allowed to send to it (#3404, #3413). Defaults to
+    /// [`DeploymentTarget::Cloud`] — the safe assumption that an
+    /// unconfigured provider speaks to an external service.
+    #[serde(default)]
+    pub deployment_target: DeploymentTarget,
 }
 
 impl Default for ProviderConfig {
@@ -192,6 +260,12 @@ impl Default for ProviderConfig {
             pricing,
             cc_mimicry: None,
             prompt_cache_mode: PromptCacheMode::Disabled,
+            // WHY (#3404, #3413): Anthropic is a cloud provider — only
+            // `Public`-classified facts may be sent. Operators running a
+            // self-hosted proxy or embedded model MUST override this in
+            // `aletheia.toml` so the recall filter lets `Internal` /
+            // `Confidential` facts through to the non-cloud boundary.
+            deployment_target: DeploymentTarget::Cloud,
         }
     }
 }
@@ -374,6 +448,32 @@ mod tests {
         let registry = ProviderRegistry::new();
         assert!(registry.find_provider("any-model").is_none());
         assert!(registry.providers().is_empty());
+    }
+
+    #[test]
+    fn provider_config_deployment_target_defaults_to_cloud() {
+        // WHY (#3404, #3413): the safe default — any unconfigured provider
+        // is treated as a cloud target so the sovereignty filter only
+        // admits `Public` facts until the operator explicitly opts in to a
+        // lower-trust boundary.
+        let config = ProviderConfig::default();
+        assert_eq!(
+            config.deployment_target,
+            DeploymentTarget::Cloud,
+            "default ProviderConfig must bind deployment_target = Cloud"
+        );
+    }
+
+    #[test]
+    fn deployment_target_ordering() {
+        assert!(DeploymentTarget::Cloud < DeploymentTarget::LocalHosted);
+        assert!(DeploymentTarget::LocalHosted < DeploymentTarget::Embedded);
+    }
+
+    #[test]
+    fn llm_provider_default_deployment_target_is_cloud() {
+        let provider = MockProvider::new("x");
+        assert_eq!(provider.deployment_target(), DeploymentTarget::Cloud);
     }
 
     #[test]

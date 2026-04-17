@@ -136,6 +136,18 @@ pub struct UpdateConfidenceRequest {
     pub confidence: f64,
 }
 
+/// Body for sovereignty sensitivity edit (#3404, #3413).
+///
+/// Accepted values (lowercase): `public`, `internal`, `confidential`.
+#[derive(Debug, Deserialize)]
+#[expect(
+    missing_docs,
+    reason = "response struct fields are self-documenting by name"
+)]
+pub struct UpdateSensitivityRequest {
+    pub sensitivity: String,
+}
+
 /// Search query parameters.
 #[derive(Debug, Deserialize)]
 #[expect(
@@ -480,8 +492,8 @@ mod search;
 
 pub use bulk_import::{__path_import_facts, import_facts};
 pub use mutation::{
-    __path_forget_fact, __path_restore_fact, __path_update_confidence, forget_fact, restore_fact,
-    update_confidence,
+    __path_forget_fact, __path_restore_fact, __path_update_confidence, __path_update_sensitivity,
+    forget_fact, restore_fact, update_confidence, update_sensitivity,
 };
 #[cfg(test)]
 use search::truncate_content;

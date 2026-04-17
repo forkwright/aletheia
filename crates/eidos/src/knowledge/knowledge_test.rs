@@ -119,6 +119,7 @@ fn fact_serde_roundtrip() {
             access_count: 0,
             last_accessed_at: None,
         },
+        sensitivity: FactSensitivity::Public,
     };
     let json = serde_json::to_string(&fact).expect("Fact serialization is infallible");
     let back: Fact =
@@ -131,6 +132,53 @@ fn fact_serde_roundtrip() {
         fact.provenance.tier, back.provenance.tier,
         "fact tier should survive serde roundtrip"
     );
+}
+
+#[test]
+fn fact_sensitivity_serde_roundtrip() {
+    // WHY (#3404, #3413): every variant must survive serde roundtrip, and
+    // legacy Fact JSON without the field must default to `Public`.
+    for s in [
+        FactSensitivity::Public,
+        FactSensitivity::Internal,
+        FactSensitivity::Confidential,
+    ] {
+        let json = serde_json::to_string(&s).expect("FactSensitivity serializes");
+        let back: FactSensitivity =
+            serde_json::from_str(&json).expect("FactSensitivity deserializes");
+        assert_eq!(s, back, "{s:?} must survive serde roundtrip");
+    }
+
+    let legacy_json = r#"{
+        "id": "fact-legacy",
+        "nous_id": "syn",
+        "fact_type": "",
+        "content": "legacy fact",
+        "valid_from": "2026-02-01T00:00:00Z",
+        "valid_to": "9999-01-01T00:00:00Z",
+        "recorded_at": "2026-02-01T00:00:00Z",
+        "confidence": 0.5,
+        "tier": "inferred",
+        "stability_hours": 720.0,
+        "is_forgotten": false,
+        "access_count": 0
+    }"#;
+    let fact: Fact = serde_json::from_str(legacy_json)
+        .expect("legacy Fact JSON without sensitivity must deserialize via serde default");
+    assert_eq!(
+        fact.sensitivity,
+        FactSensitivity::Public,
+        "missing sensitivity must default to Public for backward compat"
+    );
+}
+
+#[test]
+fn fact_sensitivity_ordering() {
+    // WHY: the sovereignty filter reduces to `sensitivity <= max_allowed`,
+    // so `Public < Internal < Confidential` is load-bearing.
+    assert!(FactSensitivity::Public < FactSensitivity::Internal);
+    assert!(FactSensitivity::Internal < FactSensitivity::Confidential);
+    assert!(FactSensitivity::Public < FactSensitivity::Confidential);
 }
 
 #[test]
@@ -214,6 +262,7 @@ fn recall_result_serde_roundtrip() {
         distance: 0.12,
         source_type: "fact".to_owned(),
         source_id: "fact-1".to_owned(),
+        sensitivity: FactSensitivity::Public,
     };
     let json = serde_json::to_string(&result).expect("RecallResult serialization is infallible");
     let back: RecallResult =
@@ -257,6 +306,7 @@ fn fact_with_empty_content() {
             access_count: 0,
             last_accessed_at: None,
         },
+        sensitivity: FactSensitivity::Public,
     };
     let json =
         serde_json::to_string(&fact).expect("Fact with empty content serializes successfully");
@@ -297,6 +347,7 @@ fn fact_with_unicode_content() {
             access_count: 0,
             last_accessed_at: None,
         },
+        sensitivity: FactSensitivity::Public,
     };
     let json =
         serde_json::to_string(&fact).expect("Fact with unicode content serializes successfully");
@@ -668,6 +719,7 @@ fn fact_with_supersession() {
             access_count: 0,
             last_accessed_at: None,
         },
+        sensitivity: FactSensitivity::Public,
     };
     assert_eq!(
         fact.lifecycle.superseded_by.as_ref().map(FactId::as_str),
@@ -714,6 +766,7 @@ fn fact_with_session_source() {
             access_count: 3,
             last_accessed_at: Some(test_timestamp("2026-03-05T12:00:00Z")),
         },
+        sensitivity: FactSensitivity::Public,
     };
     assert_eq!(
         fact.provenance.source_session_id.as_deref(),
@@ -1017,6 +1070,7 @@ fn fact_scope_none_omitted_in_json() {
             access_count: 0,
             last_accessed_at: None,
         },
+        sensitivity: FactSensitivity::Public,
     };
     let json = serde_json::to_string(&fact).expect("Fact serialization is infallible");
     assert!(
@@ -1060,6 +1114,7 @@ fn fact_scope_some_included_in_json() {
             access_count: 0,
             last_accessed_at: None,
         },
+        sensitivity: FactSensitivity::Public,
     };
     let json = serde_json::to_string(&fact).expect("Fact serialization is infallible");
     assert!(
@@ -1135,6 +1190,7 @@ fn fact_scope_all_variants_roundtrip() {
                 access_count: 0,
                 last_accessed_at: None,
             },
+            sensitivity: FactSensitivity::Public,
         };
         let json = serde_json::to_string(&fact).expect("Fact serialization is infallible");
         let back: Fact =

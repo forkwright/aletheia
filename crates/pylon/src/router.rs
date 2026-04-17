@@ -104,6 +104,10 @@ pub fn build_router_with(
             "/knowledge/facts/{id}/confidence",
             axum::routing::put(knowledge::update_confidence),
         )
+        .route(
+            "/knowledge/facts/{id}/sensitivity",
+            axum::routing::put(knowledge::update_sensitivity),
+        )
         .route("/knowledge/entities", get(knowledge::list_entities))
         .route(
             "/knowledge/entities/{id}/relationships",

@@ -26,8 +26,8 @@ pub use entity::{EmbeddedChunk, Entity, RecallResult, Relationship};
 #[cfg(test)]
 pub(crate) use fact::is_far_future;
 pub use fact::{
-    EpistemicTier, Fact, FactAccess, FactDiff, FactLifecycle, FactProvenance, FactTemporal,
-    FactType, ForgetReason, KnowledgeStage, MAX_CONTENT_LENGTH, StageTransition,
+    EpistemicTier, Fact, FactAccess, FactDiff, FactLifecycle, FactProvenance, FactSensitivity,
+    FactTemporal, FactType, ForgetReason, KnowledgeStage, MAX_CONTENT_LENGTH, StageTransition,
     VerificationRecord, VerificationSource, VerificationStatus, default_stability_hours,
     far_future, format_timestamp, parse_timestamp,
 };
@@ -61,6 +61,7 @@ display_via_as_str!(
     KnowledgeStage,
     ForgetReason,
     FactType,
+    FactSensitivity,
     VerificationSource,
     VerificationStatus,
     TemporalOrdering,

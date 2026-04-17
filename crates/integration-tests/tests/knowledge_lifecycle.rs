@@ -56,6 +56,7 @@ fn make_fact(id: &str, nous_id: &str, content: &str, confidence: f64, tier: Epis
             access_count: 0,
             last_accessed_at: None,
         },
+        sensitivity: mneme::knowledge::FactSensitivity::Public,
     }
 }
 
@@ -119,6 +120,7 @@ fn correct_fact(
             access_count: 0,
             last_accessed_at: None,
         },
+        sensitivity: mneme::knowledge::FactSensitivity::Public,
     };
     store
         .insert_fact(&new_fact)

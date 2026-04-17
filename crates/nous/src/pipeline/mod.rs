@@ -817,6 +817,7 @@ pub(crate) async fn run_pipeline(
             embedding_provider,
             vector_search,
             text_search,
+            providers,
             emitter,
         )
         .await;
