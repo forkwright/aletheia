@@ -557,6 +557,10 @@ pub fn apply_sandbox(
     Ok(())
 }
 
-#[cfg(test)]
+// NOTE: sandbox tests exercise Linux-only syscalls (Landlock, seccomp) so
+// the entire test module is gated to Linux. On other platforms every test
+// inside would be cfg'd out, leaving the module-level #![expect(...)]
+// attributes unfulfilled.
+#[cfg(all(test, target_os = "linux"))]
 #[path = "policy_tests.rs"]
 mod policy_tests;
