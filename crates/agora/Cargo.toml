@@ -13,6 +13,17 @@ workspace = true
 [features]
 test-core = []
 test-full = []
+# WHY: opt-in Matrix channel provider (issue #3557). Gated so builds without
+# the feature do not pull in the matrix-sdk dependency tree or vodozemac.
+matrix = [
+    "dep:matrix-sdk-base",
+    "dep:matrix-sdk-crypto",
+    "dep:async-trait",
+    "dep:rmp-serde",
+    "dep:fjall",
+    "dep:tempfile",
+    "koina/fjall",
+]
 
 [dependencies]
 koina = { path = "../koina" }
@@ -27,7 +38,27 @@ tokio = { workspace = true }
 tokio-util = { workspace = true }
 tracing = { workspace = true }
 
+# WHY: matrix-sdk-base + matrix-sdk-crypto deliver protocol state + Olm/Megolm
+# E2E (wrapping vodozemac) without the full matrix-rust-sdk (which bundles
+# sqlite storage we reject in favour of a fjall-backed CryptoStore). See
+# thumos/phases/09-secure-communications/design-harmostes.md for the stack
+# decision and rationale.
+matrix-sdk-base = { version = "0.16", optional = true, default-features = false }
+matrix-sdk-crypto = { version = "0.16", optional = true, default-features = false }
+# WHY: the CryptoStore trait is #[async_trait]; we must use the same macro
+# to implement it.
+async-trait = { version = "0.1", optional = true }
+# WHY: rmp-serde gives compact, typed MessagePack encoding for the cached
+# in-memory state we flush to fjall, matching the codec used in krites.
+rmp-serde = { version = "1.3", optional = true }
+# WHY: fjall LSM is imported directly by the crypto store module (same major
+# version as used by symbolon/graphe via koina::fjall helpers).
+fjall = { version = "3", optional = true, default-features = false }
+tempfile = { workspace = true, optional = true }
+
 [dev-dependencies]
 organon = { path = "../organon", features = ["test-support"] }
 tokio = { workspace = true }
 wiremock = { workspace = true }
+tempfile = { workspace = true }
+toml = { workspace = true }

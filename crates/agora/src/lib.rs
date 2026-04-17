@@ -9,6 +9,9 @@
 pub(crate) mod error;
 /// Unified channel listener that merges inbound messages from all providers into a single stream.
 pub mod listener;
+/// Matrix channel provider (feature-gated, issue #3557).
+#[cfg(feature = "matrix")]
+pub mod matrix;
 /// Prometheus metric definitions for channel messaging.
 pub mod metrics;
 /// Channel registry: the single source of truth for available channel providers.
