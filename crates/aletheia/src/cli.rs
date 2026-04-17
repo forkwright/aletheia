@@ -22,6 +22,7 @@ use crate::commands::memory;
 use crate::commands::migrate::MigrateArgs;
 use crate::commands::prompt_audit;
 use crate::commands::repl::ReplArgs;
+use crate::commands::session_create::SessionCreateArgs;
 use crate::commands::session_export::SessionExportArgs;
 use crate::commands::tls;
 
@@ -110,6 +111,8 @@ pub(crate) enum Command {
     EvalEmbeddings(EvalEmbeddingsArgs),
     /// Export an agent to a portable .agent.json file
     Export(ExportArgs),
+    /// Create a session directly in the local store
+    SessionCreate(SessionCreateArgs),
     /// Export a session as Markdown or JSON
     SessionExport(SessionExportArgs),
     /// Launch the terminal dashboard
