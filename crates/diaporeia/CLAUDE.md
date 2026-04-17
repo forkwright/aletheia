@@ -25,20 +25,27 @@ MCP server interface for external AI agents via the Model Context Protocol. 1.5K
 | `RateLimiter` | `rate_limit.rs` | Per-session rate limiting with Cheap/Expensive tiers |
 | `Error` | `error.rs` | Error enum with `Into<rmcp::ErrorData>` conversion |
 
-## MCP tools (10)
+## MCP tools (15)
 
-| Tool | Tier | Purpose |
-|------|------|---------|
-| `session_create` | Expensive | Create a new session for a nous agent |
-| `session_list` | Cheap | List sessions, optionally filtered by nous ID |
-| `session_message` | Expensive | Send a message and get the response |
-| `session_history` | Cheap | Get conversation history for a session |
-| `nous_list` | Cheap | List all registered nous agents |
-| `nous_status` | Cheap | Detailed status of a specific agent |
-| `nous_tools` | Cheap | List tools available to an agent |
-| `knowledge_search` | Expensive | Semantic search across the knowledge graph |
-| `config_get` | Cheap | Runtime config (redacted) |
-| `system_health` | Cheap | Uptime, actor health, version info |
+| Tool | Tier | RBAC | Purpose |
+|------|------|------|---------|
+| `session_create` | Expensive | Operator | Create a new session for a nous agent |
+| `session_list` | Cheap | Agent | List sessions, optionally filtered by nous ID |
+| `session_message` | Expensive | Operator | Send a message and get the response |
+| `session_history` | Cheap | Agent | Get conversation history for a session |
+| `nous_list` | Cheap | Agent | List all registered nous agents |
+| `nous_status` | Cheap | Agent | Detailed status of a specific agent |
+| `nous_tools` | Cheap | Agent | List tools available to an agent |
+| `knowledge_search` | Expensive | Operator | Semantic search across the knowledge graph (stub) |
+| `knowledge_recall` | Expensive | Agent | BM25 text recall across the knowledge graph |
+| `knowledge_get` | Cheap | Agent | Retrieve a single fact by ID |
+| `knowledge_insert` | Expensive | Operator | Insert a new fact (returns fact ID) |
+| `knowledge_forget` | Expensive | Operator | Soft-delete a fact by ID |
+| `knowledge_graph_neighbors` | Expensive | Agent | Traverse entity edges up to configured depth |
+| `config_get` | Cheap | Operator | Runtime config (redacted) |
+| `system_health` | Cheap | Agent | Uptime, actor health, version info |
+
+Knowledge graph tools require `mcp.knowledge_graph.enabled = true` in config (default `false`).
 
 ## Patterns
 

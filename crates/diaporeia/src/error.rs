@@ -74,6 +74,40 @@ pub enum Error {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+
+    /// The knowledge graph MCP surface is disabled or not configured.
+    #[snafu(display(
+        "knowledge graph MCP surface is disabled; \
+         set mcp.knowledge_graph.enabled = true in aletheia.toml"
+    ))]
+    KnowledgeStoreUnavailable {
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// A knowledge store operation failed.
+    #[snafu(display("knowledge store error: {message}"))]
+    KnowledgeStore {
+        message: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// The requested fact was not found.
+    #[snafu(display("fact not found: {id}"))]
+    FactNotFound {
+        id: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// The caller supplied an invalid input value.
+    #[snafu(display("invalid input: {message}"))]
+    InvalidInput {
+        message: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
 }
 
 /// Result alias using diaporeia's [`Error`] type.
@@ -88,17 +122,25 @@ impl From<Error> for rmcp::ErrorData {
         let message = crate::sanitize::strip_paths(&err.to_string());
         match &err {
             // NOTE: client provided an invalid agent or session ID: include what wasn't found
-            Error::NousNotFound { .. } | Error::SessionNotFound { .. } => {
-                rmcp::ErrorData::invalid_params(message, None)
-            }
+            Error::NousNotFound { .. }
+            | Error::SessionNotFound { .. }
+            | Error::FactNotFound { .. }
+            | Error::InvalidInput { .. } => rmcp::ErrorData::invalid_params(message, None),
             // WHY: authorization failures return a clear message so clients can
             // distinguish access-denied from invalid-params.
             Error::Unauthorized { .. } => {
                 rmcp::ErrorData::new(rmcp::model::ErrorCode(-32001), message, None)
             }
+            // WHY: feature-disabled surfaces a distinct code so clients can
+            // detect the configuration issue rather than treating it as a
+            // transient server error.
+            Error::KnowledgeStoreUnavailable { .. } => {
+                rmcp::ErrorData::new(rmcp::model::ErrorCode(-32002), message, None)
+            }
             // WHY: server-side failures expose only a sanitized message, never internal details
             Error::Pipeline { .. }
             | Error::SessionStore { .. }
+            | Error::KnowledgeStore { .. }
             | Error::Serialization { .. }
             | Error::Transport { .. }
             | Error::WorkspaceFile { .. } => rmcp::ErrorData::internal_error(message, None),

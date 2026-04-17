@@ -563,6 +563,41 @@ impl Default for PromptAuditSettings {
 pub struct McpConfig {
     /// Per-session rate limiting for MCP tool calls.
     pub rate_limit: McpRateLimitConfig,
+    /// Knowledge graph MCP surface configuration.
+    pub knowledge_graph: KnowledgeGraphMcpConfig,
+}
+
+/// Configuration for the knowledge graph MCP surface.
+///
+/// When enabled, the MCP server exposes `knowledge.*` tools for querying
+/// and mutating the knowledge graph. Read operations require `Agent` role;
+/// mutations (`insert`, `forget`) require `Operator` role.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+pub struct KnowledgeGraphMcpConfig {
+    /// Whether the knowledge graph MCP tools are enabled.
+    ///
+    /// Defaults to `false` — operators must explicitly opt in.
+    pub enabled: bool,
+    /// Maximum number of results returned by `knowledge.search`.
+    ///
+    /// Defaults to 50.
+    pub max_search_results: u32,
+    /// Maximum graph traversal depth for `knowledge.graph_neighbors`.
+    ///
+    /// Capped at 4 to prevent unbounded Datalog recursion.
+    pub max_graph_depth: u32,
+}
+
+impl Default for KnowledgeGraphMcpConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            max_search_results: 50,
+            max_graph_depth: 2,
+        }
+    }
 }
 
 /// Per-session rate limiting configuration for MCP requests.
