@@ -464,4 +464,166 @@ mod tests {
         let state = rx.recv().await.unwrap();
         assert!(matches!(state, ConnectionState::Failed { .. }));
     }
+
+    #[tokio::test]
+    async fn connection_error_health_check_display() {
+        install_crypto();
+        // Build a real reqwest::Error by failing on an unreachable URL.
+        let client = reqwest::Client::new();
+        let result = client.get("http://127.0.0.1:1").send().await;
+        if let Err(e) = result {
+            let err = ConnectionError::HealthCheck { source: e };
+            assert!(err.to_string().contains("health check failed"));
+        }
+    }
+
+    #[test]
+    fn connection_error_timeout_display() {
+        let err = ConnectionError::Timeout { timeout_secs: 30 };
+        assert!(err.to_string().contains("30s"));
+        assert!(err.to_string().contains("timed out"));
+    }
+
+    #[test]
+    fn pylon_client_with_token_succeeds() {
+        install_crypto();
+        let config = ConnectionConfig {
+            auth_token: Some("good-token".to_string()),
+            ..ConnectionConfig::default()
+        };
+        let client = PylonClient::new(&config).unwrap();
+        assert_eq!(client.base_url(), "http://localhost:3000");
+    }
+
+    /// Spawns a minimal HTTP server on an ephemeral port that responds with
+    /// the configured status code and body for any request.
+    ///
+    /// Returns (port, server_task_handle). The server handles a single
+    /// request, then exits.
+    async fn spawn_test_server(status: u16, body: &'static str) -> u16 {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+
+        tokio::spawn(async move {
+            // Accept multiple sequential connections so health-check loops work.
+            for _ in 0..32 {
+                let Ok((mut socket, _)) = listener.accept().await else {
+                    return;
+                };
+                // Best-effort read of request preamble.
+                let mut buf = [0u8; 4096];
+                let _ = socket.read(&mut buf).await;
+                let reason = match status {
+                    200 => "OK",
+                    503 => "Service Unavailable",
+                    500 => "Internal Server Error",
+                    _ => "OK",
+                };
+                let resp = format!(
+                    "HTTP/1.1 {status} {reason}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                let _ = socket.write_all(resp.as_bytes()).await;
+                let _ = socket.shutdown().await;
+            }
+        });
+
+        port
+    }
+
+    #[tokio::test]
+    async fn pylon_client_health_succeeds_against_mock_server() {
+        install_crypto();
+        let port = spawn_test_server(200, "ok").await;
+        let config = ConnectionConfig {
+            server_url: format!("http://127.0.0.1:{port}"),
+            ..ConnectionConfig::default()
+        };
+        let client = PylonClient::new(&config).unwrap();
+        let result = client.health().await;
+        assert!(result.is_ok(), "health check must succeed: {result:?}");
+    }
+
+    #[tokio::test]
+    async fn pylon_client_health_returns_unhealthy_on_5xx() {
+        install_crypto();
+        let port = spawn_test_server(503, "down").await;
+        let config = ConnectionConfig {
+            server_url: format!("http://127.0.0.1:{port}"),
+            ..ConnectionConfig::default()
+        };
+        let client = PylonClient::new(&config).unwrap();
+        let result = client.health().await;
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            ConnectionError::Unhealthy { status } => assert_eq!(status, 503),
+            other => panic!("expected Unhealthy, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn service_emits_connected_against_mock_server() {
+        install_crypto();
+        let port = spawn_test_server(200, "ok").await;
+        let config = ConnectionConfig {
+            server_url: format!("http://127.0.0.1:{port}"),
+            ..ConnectionConfig::default()
+        };
+        let cancel = CancellationToken::new();
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let svc_cancel = cancel.clone();
+        let svc = ConnectionService::new(config, svc_cancel, tx);
+        let handle = tokio::spawn(svc.run());
+
+        // Drain states until we observe Connected or timeout.
+        let mut saw_connecting = false;
+        let mut saw_connected = false;
+        for _ in 0..20 {
+            match tokio::time::timeout(Duration::from_millis(200), rx.recv()).await {
+                Ok(Some(ConnectionState::Connecting)) => saw_connecting = true,
+                Ok(Some(ConnectionState::Connected)) => {
+                    saw_connected = true;
+                    break;
+                }
+                Ok(Some(_other)) => {}
+                Ok(None) => break,
+                Err(_) => break,
+            }
+        }
+        cancel.cancel();
+        let _ = handle.await;
+        assert!(saw_connecting, "must transition through Connecting");
+        assert!(saw_connected, "must reach Connected against healthy server");
+    }
+
+    #[tokio::test]
+    async fn service_respects_cancellation_during_connect() {
+        install_crypto();
+        // No server bound — connection will fail and retry. Cancel before
+        // the deadline elapses.
+        let config = ConnectionConfig {
+            // Use an unreachable port to force connection failures.
+            server_url: "http://127.0.0.1:1".to_string(),
+            connect_timeout_secs: 60,
+            ..ConnectionConfig::default()
+        };
+        let cancel = CancellationToken::new();
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let svc = ConnectionService::new(config, cancel.clone(), tx);
+        let handle = tokio::spawn(svc.run());
+
+        // Let it emit Connecting, then cancel.
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        cancel.cancel();
+        let _ = tokio::time::timeout(Duration::from_secs(2), handle)
+            .await
+            .expect("task must exit promptly after cancel");
+
+        // Drain whatever was sent; first should be Connecting.
+        if let Ok(Some(state)) = tokio::time::timeout(Duration::from_millis(50), rx.recv()).await {
+            assert!(matches!(state, ConnectionState::Connecting));
+        }
+    }
 }

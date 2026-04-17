@@ -127,9 +127,12 @@ pub(crate) struct TokenSeriesPoint {
 }
 
 impl TokenSeriesPoint {
-    #[expect(
-        dead_code,
-        reason = "used when series filtering by agent/model is implemented"
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "used when series filtering by agent/model is implemented"
+        )
     )]
     pub(crate) fn total(&self) -> u64 {
         self.input_tokens.saturating_add(self.output_tokens)
@@ -759,5 +762,353 @@ mod tests {
         assert!((row.cost_per_1k_output() - 0.1).abs() < 0.001);
         assert!((row.cost_per_session() - 0.5).abs() < 0.001);
         assert!((row.cost_per_message() - 0.1).abs() < 0.001);
+    }
+
+    #[test]
+    fn agent_cost_row_zero_denominators_return_zero() {
+        let row = AgentCostRow {
+            total_cost: 1.0,
+            ..Default::default()
+        };
+        assert_eq!(row.cost_per_session(), 0.0);
+        assert_eq!(row.cost_per_message(), 0.0);
+        assert_eq!(row.cost_per_1k_output(), 0.0);
+    }
+
+    #[test]
+    fn agent_token_row_zero_session_count() {
+        let row = AgentTokenRow {
+            input_tokens: 100,
+            output_tokens: 50,
+            session_count: 0,
+            ..Default::default()
+        };
+        assert_eq!(row.avg_per_session(), 0);
+    }
+
+    #[test]
+    fn agent_token_row_pct_of_total_zero_grand() {
+        let row = AgentTokenRow {
+            input_tokens: 100,
+            output_tokens: 50,
+            ..Default::default()
+        };
+        assert_eq!(row.pct_of_total(0), 0.0);
+    }
+
+    #[test]
+    fn agent_token_row_pct_of_total_basic() {
+        let row = AgentTokenRow {
+            input_tokens: 25,
+            output_tokens: 25,
+            ..Default::default()
+        };
+        let pct = row.pct_of_total(200);
+        assert!((pct - 25.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn model_token_row_total_and_pct() {
+        let row = ModelTokenRow {
+            input_tokens: 200,
+            output_tokens: 300,
+            ..Default::default()
+        };
+        assert_eq!(row.total(), 500);
+        let pct = row.pct_of_total(1000);
+        assert!((pct - 50.0).abs() < 0.01);
+        assert_eq!(row.pct_of_total(0), 0.0);
+    }
+
+    #[test]
+    fn token_metrics_response_totals() {
+        let resp = TokenMetricsResponse {
+            today_input: 10,
+            today_output: 20,
+            week_input: 100,
+            week_output: 200,
+            month_input: 1000,
+            month_output: 2000,
+            prev_today_input: 5,
+            prev_today_output: 10,
+            prev_week_input: 50,
+            prev_week_output: 100,
+            prev_month_input: 500,
+            prev_month_output: 1000,
+            ..Default::default()
+        };
+        assert_eq!(resp.today_total(), 30);
+        assert_eq!(resp.week_total(), 300);
+        assert_eq!(resp.month_total(), 3000);
+        assert_eq!(resp.prev_today_total(), 15);
+        assert_eq!(resp.prev_week_total(), 150);
+        assert_eq!(resp.prev_month_total(), 1500);
+    }
+
+    #[test]
+    fn token_metrics_grand_total_tokens_sums_agents() {
+        let resp = TokenMetricsResponse {
+            agents: vec![
+                AgentTokenRow {
+                    input_tokens: 100,
+                    output_tokens: 50,
+                    ..Default::default()
+                },
+                AgentTokenRow {
+                    input_tokens: 200,
+                    output_tokens: 100,
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+        assert_eq!(resp.grand_total_tokens(), 450);
+    }
+
+    #[test]
+    fn token_series_point_total() {
+        let p = TokenSeriesPoint {
+            input_tokens: 100,
+            output_tokens: 200,
+            ..Default::default()
+        };
+        assert_eq!(p.total(), 300);
+    }
+
+    #[test]
+    fn granularity_label_and_url_param() {
+        assert_eq!(Granularity::Daily.label(), "Daily");
+        assert_eq!(Granularity::Weekly.label(), "Weekly");
+        assert_eq!(Granularity::Monthly.label(), "Monthly");
+        assert_eq!(Granularity::Daily.url_param(), "daily");
+        assert_eq!(Granularity::Weekly.url_param(), "weekly");
+        assert_eq!(Granularity::Monthly.url_param(), "monthly");
+    }
+
+    #[test]
+    fn date_range_label() {
+        assert_eq!(DateRange::Last7Days.label(), "7 days");
+        assert_eq!(DateRange::Last30Days.label(), "30 days");
+        assert_eq!(DateRange::Last90Days.label(), "90 days");
+        assert_eq!(
+            DateRange::Custom {
+                from: "2024-01-01".to_string(),
+                to: "2024-02-01".to_string(),
+            }
+            .label(),
+            "Custom"
+        );
+    }
+
+    #[test]
+    fn date_range_custom_to_query_dates_passes_through() {
+        let r = DateRange::Custom {
+            from: "2024-01-01".to_string(),
+            to: "2024-02-01".to_string(),
+        };
+        let (from, to) = r.to_query_dates();
+        assert_eq!(from, "2024-01-01");
+        assert_eq!(to, "2024-02-01");
+    }
+
+    #[test]
+    fn date_range_presets_produce_iso_dates() {
+        let (from, to) = DateRange::Last7Days.to_query_dates();
+        // Just verify ISO-8601 format YYYY-MM-DD
+        assert_eq!(from.len(), 10);
+        assert_eq!(to.len(), 10);
+        assert!(from.chars().nth(4) == Some('-'));
+        assert!(from.chars().nth(7) == Some('-'));
+    }
+
+    #[test]
+    fn day_of_month_today_in_valid_range() {
+        let d = day_of_month_today();
+        assert!((1..=31).contains(&d), "day must be 1..=31, got {d}");
+    }
+
+    #[test]
+    fn days_in_current_month_in_valid_range() {
+        let n = days_in_current_month();
+        assert!((28..=31).contains(&n), "days_in_month must be 28..=31, got {n}");
+    }
+
+    #[test]
+    fn date_minus_days_format() {
+        let s = date_minus_days(30);
+        assert_eq!(s.len(), 10);
+    }
+
+    #[test]
+    fn today_date_str_format() {
+        let s = today_date_str();
+        assert_eq!(s.len(), 10);
+    }
+
+    #[test]
+    fn cost_per_1k_output_pricing_table() {
+        assert!((cost_per_1k_output("claude-opus-4") - 0.075).abs() < 0.0001);
+        assert!((cost_per_1k_output("claude-sonnet-4") - 0.015).abs() < 0.0001);
+        assert!((cost_per_1k_output("claude-haiku-4") - 0.00125).abs() < 0.00001);
+        assert!((cost_per_1k_output("claude-opus-3") - 0.060).abs() < 0.0001);
+        assert!((cost_per_1k_output("claude-sonnet-3-5") - 0.015).abs() < 0.0001);
+        assert!((cost_per_1k_output("claude-sonnet-3.5") - 0.015).abs() < 0.0001);
+        assert!((cost_per_1k_output("claude-sonnet-3") - 0.015).abs() < 0.0001);
+        assert!((cost_per_1k_output("claude-haiku-3") - 0.00125).abs() < 0.00001);
+        // Unknown model defaults to sonnet pricing.
+        assert!((cost_per_1k_output("unknown-model-9000") - 0.015).abs() < 0.0001);
+    }
+
+    #[test]
+    fn agent_color_cycles_through_palette() {
+        let c0 = agent_color(0);
+        let c8 = agent_color(8);
+        // 8-element palette wraps.
+        assert_eq!(c0, c8);
+        assert_ne!(agent_color(0), agent_color(1));
+    }
+
+    #[test]
+    fn model_color_buckets() {
+        assert_eq!(model_color("claude-opus-4"), "#8b5cf6");
+        assert_eq!(model_color("claude-sonnet-4"), "#5b6af0");
+        assert_eq!(model_color("claude-haiku-4"), "#10b981");
+        assert_eq!(model_color("gpt-4"), "#9A7B4F");
+    }
+
+    #[test]
+    fn compute_delta_u64_bridges_to_f64() {
+        let d = compute_delta_u64(120, 100);
+        assert!(d.is_up);
+        assert!((d.delta_pct - 20.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn sort_agent_token_rows_by_total_desc() {
+        let mut rows = vec![
+            AgentTokenRow {
+                name: "small".to_string(),
+                input_tokens: 10,
+                output_tokens: 0,
+                ..Default::default()
+            },
+            AgentTokenRow {
+                name: "big".to_string(),
+                input_tokens: 100,
+                output_tokens: 0,
+                ..Default::default()
+            },
+        ];
+        sort_agent_token_rows(&mut rows, AgentTokenSort::Total, SortDir::Desc, 110);
+        assert_eq!(rows[0].name, "big");
+        assert_eq!(rows[1].name, "small");
+    }
+
+    #[test]
+    fn sort_agent_token_rows_by_name_asc() {
+        let mut rows = vec![
+            AgentTokenRow {
+                name: "zebra".to_string(),
+                ..Default::default()
+            },
+            AgentTokenRow {
+                name: "alpha".to_string(),
+                ..Default::default()
+            },
+        ];
+        sort_agent_token_rows(&mut rows, AgentTokenSort::Name, SortDir::Asc, 0);
+        assert_eq!(rows[0].name, "alpha");
+        assert_eq!(rows[1].name, "zebra");
+    }
+
+    #[test]
+    fn sort_agent_token_rows_by_input_output_avg_pct() {
+        let make = |name: &str, input: u64, output: u64, sessions: u64| AgentTokenRow {
+            name: name.to_string(),
+            input_tokens: input,
+            output_tokens: output,
+            session_count: sessions,
+            ..Default::default()
+        };
+        let mut rows = vec![make("a", 10, 5, 5), make("b", 100, 50, 5), make("c", 50, 25, 5)];
+        let grand = 240u64;
+
+        sort_agent_token_rows(&mut rows, AgentTokenSort::Input, SortDir::Asc, grand);
+        assert_eq!(rows[0].name, "a");
+        assert_eq!(rows[2].name, "b");
+
+        sort_agent_token_rows(&mut rows, AgentTokenSort::Output, SortDir::Desc, grand);
+        assert_eq!(rows[0].name, "b");
+
+        sort_agent_token_rows(&mut rows, AgentTokenSort::AvgPerSession, SortDir::Desc, grand);
+        assert_eq!(rows[0].name, "b");
+
+        sort_agent_token_rows(&mut rows, AgentTokenSort::PctOfTotal, SortDir::Asc, grand);
+        assert_eq!(rows[0].name, "a");
+    }
+
+    #[test]
+    fn sort_agent_cost_rows_by_total_cost_desc() {
+        let mut rows = vec![
+            AgentCostRow {
+                name: "cheap".to_string(),
+                total_cost: 1.0,
+                ..Default::default()
+            },
+            AgentCostRow {
+                name: "expensive".to_string(),
+                total_cost: 10.0,
+                ..Default::default()
+            },
+        ];
+        sort_agent_cost_rows(&mut rows, AgentCostSort::TotalCost, SortDir::Desc);
+        assert_eq!(rows[0].name, "expensive");
+    }
+
+    #[test]
+    fn sort_agent_cost_rows_by_all_columns() {
+        let make = |name: &str, cost: f64, msgs: u64, sessions: u64, output: u64| AgentCostRow {
+            name: name.to_string(),
+            total_cost: cost,
+            message_count: msgs,
+            session_count: sessions,
+            output_tokens: output,
+            ..Default::default()
+        };
+        let mut rows = vec![
+            make("a", 1.0, 10, 5, 1000),
+            make("b", 5.0, 50, 5, 5000),
+            make("c", 10.0, 100, 5, 100_000),
+        ];
+
+        sort_agent_cost_rows(&mut rows, AgentCostSort::Name, SortDir::Asc);
+        assert_eq!(rows[0].name, "a");
+
+        sort_agent_cost_rows(&mut rows, AgentCostSort::CostPerSession, SortDir::Desc);
+        assert_eq!(rows[0].name, "c");
+
+        sort_agent_cost_rows(&mut rows, AgentCostSort::CostPerMessage, SortDir::Desc);
+        assert!(rows[0].cost_per_message() >= rows[1].cost_per_message());
+
+        sort_agent_cost_rows(&mut rows, AgentCostSort::CostPer1k, SortDir::Desc);
+        // c has 10/100 = 0.1 per-1k, a has 1/1 = 1.0, b has 5/5 = 1.0
+        // a and b both have 1.0; c lowest. With Desc, c is last.
+        assert_eq!(rows[2].name, "c");
+    }
+
+    #[test]
+    fn budget_config_default_zero_limit() {
+        let b = BudgetConfig::default();
+        assert_eq!(b.monthly_limit_usd, 0.0);
+    }
+
+    #[test]
+    fn metrics_tab_default_is_tokens() {
+        assert_eq!(MetricsTab::default(), MetricsTab::Tokens);
+    }
+
+    #[test]
+    fn date_range_default_is_7days() {
+        assert_eq!(DateRange::default(), DateRange::Last7Days);
     }
 }
