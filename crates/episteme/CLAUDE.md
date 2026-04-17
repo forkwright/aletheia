@@ -1,5 +1,11 @@
 # episteme
 
+## At a glance
+
+Knowledge pipeline: extraction, recall, and embeddings. Depends on eidos, graphe, and koina. Entry point: `src/lib.rs` (ExtractionEngine, RecallEngine).
+
+## Depth
+
 Knowledge pipeline: extraction, recall, conflict detection, consolidation, embeddings, skills. 34K lines.
 
 ## Read first

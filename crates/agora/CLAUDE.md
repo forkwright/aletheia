@@ -1,5 +1,11 @@
 # agora
 
+## At a glance
+
+Channel registry and Signal provider for external messaging. Depends on koina and taxis. Entry point: `src/lib.rs` (ChannelListener, ChannelRegistry, MessageRouter).
+
+## Depth
+
 Channel registry and provider implementations for external messaging (Signal). 3K lines.
 
 ## Read first

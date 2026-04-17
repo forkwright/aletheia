@@ -1,5 +1,11 @@
 # poiesis
 
+## At a glance
+
+Document rendering family: format-agnostic model plus PDF, ODT, XLSX, ODS, and PPTX backends. Zero internal dependencies. Entry point: `core/src/lib.rs` (Document, Renderer).
+
+## Depth
+
 Document rendering family: format-agnostic document model plus backends for PDF, ODT, XLSX, ODS, and PPTX. ~1.7K lines.
 
 ## Read first

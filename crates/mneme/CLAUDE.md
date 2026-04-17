@@ -1,5 +1,11 @@
 # mneme
 
+## At a glance
+
+Curated facade re-exporting memory and session types from sub-crates. Depends on eidos, graphe, and episteme. Entry point: `src/lib.rs` (SessionStore, KnowledgeStore).
+
+## Depth
+
 Curated facade re-exporting from four decomposed sub-crates. ~270 lines of glue code.
 
 ## Facade justification (#3243)

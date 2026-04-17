@@ -1,5 +1,11 @@
 # CLAUDE.md
 
+## At a glance
+
+Repo-level conventions for AI coding agents working on Aletheia. Key crates: aletheia, nous, pylon, mneme. Entry point: `crates/aletheia/src/main.rs`.
+
+## Depth
+
 Build the system you'd trust to run without you.
 
 Project conventions for AI coding agents working on this codebase.

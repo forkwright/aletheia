@@ -1,5 +1,11 @@
 # skene
 
+## At a glance
+
+Shared API client, types, SSE parser, and streaming for UIs. Depends on koina. Entry point: `src/lib.rs` (ApiClient, StreamEvent).
+
+## Depth
+
 Shared API client, types, SSE parser, and streaming infrastructure for Aletheia UIs. 3K lines.
 
 ## Read first
