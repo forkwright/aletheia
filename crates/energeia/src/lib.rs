@@ -27,6 +27,9 @@ pub mod backend;
 pub mod budget;
 /// Per-blast-radius cost attribution ledger.
 pub mod cost_ledger;
+/// Cron scheduler for recurring dispatch tasks with fjall-backed locking.
+#[cfg(feature = "storage-fjall")]
+pub mod cron;
 /// Prompt dependency DAG and parallel frontier computation.
 pub mod dag;
 /// Dispatch engine trait and session types.
