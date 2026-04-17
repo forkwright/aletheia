@@ -1,4 +1,5 @@
 #![deny(missing_docs)]
+#![deny(clippy::unwrap_used)]
 //! aletheia-koina: core types, errors, and tracing for Aletheia
 //!
 //! Koina (κοινά): "shared things." The common foundation that every crate depends on.
