@@ -24,6 +24,15 @@ use super::utils::strip_code_fences;
 use crate::causal;
 
 /// Drives the extraction pipeline: prompt building, LLM calling, response parsing.
+///
+/// # Examples
+///
+/// ```no_run
+/// use episteme::extract::{ExtractionConfig, ExtractionEngine};
+///
+/// let config = ExtractionConfig::default();
+/// let engine = ExtractionEngine::new(config);
+/// ```
 pub struct ExtractionEngine {
     config: ExtractionConfig,
 }

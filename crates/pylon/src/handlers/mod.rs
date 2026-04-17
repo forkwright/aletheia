@@ -1,4 +1,20 @@
 //! HTTP request handlers.
+//!
+//! # Examples
+//!
+//! New handlers are async functions that take [`axum::extract::State`] and
+//! return an Axum [`IntoResponse`](axum::response::IntoResponse):
+//!
+//! ```no_run
+//! use axum::{Json, extract::State, response::IntoResponse};
+//! use std::sync::Arc;
+//!
+//! struct AppState;
+//!
+//! async fn example(State(_state): State<Arc<AppState>>) -> impl IntoResponse {
+//!     Json("ok")
+//! }
+//! ```
 
 /// Runtime configuration read/write.
 pub mod config;
