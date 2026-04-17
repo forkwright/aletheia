@@ -36,6 +36,7 @@ use std::ops::Deref;
 
 use compact_str::CompactString;
 use koina::base64;
+use koina::uuid::Uuid;
 use ndarray::Array1;
 use ordered_float::OrderedFloat;
 use regex::Regex;
@@ -44,7 +45,6 @@ use serde::ser::SerializeTuple;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use sha2::digest::FixedOutput;
 use sha2::{Digest, Sha256};
-use uuid::Uuid;
 
 use crate::data::json::JsonValue;
 use crate::data::relation::VecElementType;
@@ -815,7 +815,7 @@ impl DataValue {
     pub(crate) fn get_uuid(&self) -> Option<Uuid> {
         match self {
             DataValue::Uuid(UuidWrapper(uuid)) => Some(*uuid),
-            DataValue::Str(s) => uuid::Uuid::try_parse(s).ok(), // WHY: parse failure means not a valid UUID; None is correct
+            DataValue::Str(s) => Uuid::parse_str(s).ok(), // WHY: parse failure means not a valid UUID; None is correct
             _ => None,
         }
     }

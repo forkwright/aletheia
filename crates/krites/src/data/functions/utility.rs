@@ -381,7 +381,7 @@ pub(crate) fn op_to_uuid(args: &[DataValue]) -> Result<DataValue> {
     match arg(args, 0)? {
         d @ DataValue::Uuid(_u) => Ok(d.clone()),
         DataValue::Str(s) => {
-            let id = uuid::Uuid::try_parse(s).map_err(|e| {
+            let id = koina::uuid::Uuid::parse_str(s).map_err(|e| {
                 ParseFailedSnafu {
                     target: format!("UUID: {e}"),
                 }
