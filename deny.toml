@@ -17,7 +17,19 @@ reason = "bincode unmaintained — transitive via syntect/aletheia-tui, no safe 
 id = "RUSTSEC-2024-0436"
 reason = "paste unmaintained, transitive via tokenizers; no safe upgrade"
 
+[[advisories.ignore]]
+id = "RUSTSEC-2025-0134"
+reason = "rustls-pemfile 2.x unmaintained — transitive via qdrant-client → tonic 0.12. Blocked until qdrant-client upgrades tonic to 0.13+"
+
+[[advisories.ignore]]
+id = "RUSTSEC-2026-0097"
+reason = "rand 0.8 unsound only with custom logger using rand::rng() — not our usage. Transitive via qdrant-client → tonic 0.12 + spreadsheet-ods + phf. Blocked on upstream migrations to rand 0.9+"
+
 [licenses]
+# WHY: `version = 2` enables modern SPDX 3.x parsing so "AGPL-3.0-or-later" /
+# "LGPL-3.0-or-later" are accepted as bare license identifiers. Without this,
+# the legacy parser rejects them with "expected a <bare-gnu-license>".
+version = 2
 allow = [
     "MIT",
     "Apache-2.0",
@@ -33,6 +45,7 @@ allow = [
     "MPL-2.0",              # option-ext, smartstring
     "LGPL-3.0-or-later",    # priority-queue
     "CDLA-Permissive-2.0",  # webpki-roots, webpki-root-certs
+    "bzip2-1.0.6",          # libbz2-rs-sys (via zip 7.x), standalone bzip2 license
 ]
 confidence-threshold = 0.8
 
@@ -130,16 +143,14 @@ skip = [
     { name = "rand_core", version = "=0.6.4" },
     { name = "rand_core", version = "=0.9.5" },
 
-<<<<<<< HEAD
     # WHY: procfs (prometheus metrics client) pins rustix 0.38.
     # Blocked until prometheus/procfs upgrades to rustix 1.x.
     # (See also windows-sys 0.59 skip above — same dep chain.)
     { name = "rustix", version = "=0.38.44" },
-=======
+
     # WHY: toml 0.8 (figment dependency) uses serde_spanned 0.6; toml 1.x uses 1.x.
     # Same root cause as the toml/toml_datetime skips below.
     { name = "serde_spanned", version = "=0.6.9" },
->>>>>>> 3a90f5307 (refactor: migrate from prometheus to prometheus-client (drops protobuf) (#3444))
 
     # WHY: various transitive deps have not yet migrated to thiserror v2.
     # Blocked until upstream crates release versions using thiserror 2.x.

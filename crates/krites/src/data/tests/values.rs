@@ -1,5 +1,13 @@
 //! Tests for core value type.
 #![expect(clippy::expect_used, reason = "test assertions")]
+#![expect(
+    clippy::indexing_slicing,
+    reason = "test assertions: index into known-size encoding buffers"
+)]
+#![expect(
+    clippy::unreadable_literal,
+    reason = "test: numeric literals mirror tested bit patterns verbatim"
+)]
 use std::collections::{BTreeMap, HashMap};
 use std::mem::size_of;
 

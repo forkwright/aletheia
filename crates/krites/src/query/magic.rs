@@ -20,7 +20,6 @@
     clippy::result_large_err,
     clippy::semicolon_if_nothing_returned,
     clippy::too_many_lines,
-    clippy::wildcard_imports,
     reason = "engine-internal magic sets rewrite — complex transformation with many intermediate collections"
 )]
 
@@ -675,6 +674,10 @@ impl NormalFormInlineRule {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test assertions: index into known-shape NamedRows results"
+)]
 mod tests {
     use serde_json::json;
 

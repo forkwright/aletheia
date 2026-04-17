@@ -381,6 +381,10 @@ fn parse_command_args_program_only() {
 }
 
 #[tokio::test]
+#[cfg_attr(
+    target_os = "macos",
+    ignore = "macOS path canonicalization drift — tracked in #3573"
+)]
 async fn write_blocks_identity_md() {
     let dir = tempfile::tempdir().expect("create temp dir");
     let ctx = test_ctx(dir.path());
@@ -401,6 +405,10 @@ async fn write_blocks_identity_md() {
 }
 
 #[tokio::test]
+#[cfg_attr(
+    target_os = "macos",
+    ignore = "macOS path canonicalization drift — tracked in #3573"
+)]
 async fn write_blocks_soul_md() {
     let dir = tempfile::tempdir().expect("create temp dir");
     let ctx = test_ctx(dir.path());
@@ -420,6 +428,10 @@ async fn write_blocks_soul_md() {
 }
 
 #[tokio::test]
+#[cfg_attr(
+    target_os = "macos",
+    ignore = "macOS path canonicalization drift — tracked in #3573"
+)]
 async fn write_blocks_goals_md() {
     let dir = tempfile::tempdir().expect("create temp dir");
     let ctx = test_ctx(dir.path());

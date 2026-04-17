@@ -590,11 +590,7 @@ impl SessionTx<'_> {
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::unwrap_used,
-    clippy::cast_precision_loss,
-    reason = "test assertions and test-only numeric casts"
-)]
+#[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
     use crate::DbInstance;
 

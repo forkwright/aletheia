@@ -156,8 +156,8 @@ fn forget_preserves_for_audit() {
     );
 }
 
-#[test]
-fn unforget_restores_to_search() {
+#[tokio::test]
+async fn unforget_restores_to_search() {
     use mneme::knowledge::ForgetReason;
 
     let store = open_store();
@@ -183,7 +183,7 @@ fn unforget_restores_to_search() {
         .expect("query after forget");
     assert!(results.is_empty(), "should be excluded after forget");
 
-    store.unforget_fact(&fid).expect("unforget");
+    store.unforget_fact_async(fid).await.expect("unforget");
 
     let results = store
         .query_facts(nous, query_time, 10)
@@ -249,8 +249,8 @@ fn forget_with_each_reason() {
     }
 }
 
-#[test]
-fn full_forget_lifecycle() {
+#[tokio::test]
+async fn full_forget_lifecycle() {
     use mneme::knowledge::ForgetReason;
 
     let store = open_store();
@@ -290,7 +290,7 @@ fn full_forget_lifecycle() {
     assert_eq!(audit[0].forget_reason.as_deref(), Some("privacy"));
 
     // 6. Unforget
-    store.unforget_fact(&fid).expect("unforget");
+    store.unforget_fact_async(fid).await.expect("unforget");
 
     // 7. Search: found again
     let results = store

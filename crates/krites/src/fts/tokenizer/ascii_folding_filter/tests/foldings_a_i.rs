@@ -1,4 +1,8 @@
 //! ASCII folding tests for letters A through I.
+#![expect(
+    clippy::too_many_lines,
+    reason = "test covers all folding rules for letters A-I in a single readable table"
+)]
 
 use super::folding_using_raw_tokenizer_helper;
 

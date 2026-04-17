@@ -1,5 +1,17 @@
 //! Tests for arithmetic, comparison, boolean, and bit operations.
 #![expect(clippy::expect_used, reason = "test assertions")]
+#![expect(
+    clippy::unreadable_literal,
+    reason = "test: numeric literals mirror tested bit-patterns and arithmetic inputs verbatim; adding `_` separators would obscure the test intent"
+)]
+#![expect(
+    clippy::too_many_lines,
+    reason = "test covers many arithmetic ops in a single readable sequence"
+)]
+#![expect(
+    clippy::float_cmp,
+    reason = "test compares exact-arithmetic floats against known-exact expected values"
+)]
 use std::f64::consts::{E, PI};
 
 use crate::data::functions::*;

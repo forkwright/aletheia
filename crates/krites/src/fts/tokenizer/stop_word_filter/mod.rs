@@ -146,6 +146,10 @@ impl TokenStream for StopWordFilterStream<'_> {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test assertions: index into known-length token vectors"
+)]
 mod tests {
     use crate::fts::tokenizer::tests::assert_token;
     use crate::fts::tokenizer::{SimpleTokenizer, StopWordFilter, TextAnalyzer, Token};

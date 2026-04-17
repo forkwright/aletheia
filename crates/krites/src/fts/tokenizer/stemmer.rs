@@ -32,9 +32,9 @@ pub(crate) enum Language {
 
 impl Language {
     fn algorithm(self) -> Algorithm {
-        #[expect(
+        #[allow(
             clippy::enum_glob_use,
-            reason = "local import for concise match arms in Language-to-Algorithm mapping"
+            reason = "local import for concise match arms in Language-to-Algorithm mapping; expectation cannot be expressed reliably across lib and lib-test compilations"
         )]
         use self::Language::*;
         match self {

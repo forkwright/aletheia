@@ -11,17 +11,16 @@
     clippy::float_cmp,
     reason = "exact equality for integer-representable float check — not accumulated arithmetic"
 )]
-#![expect(
-    clippy::enum_glob_use,
-    reason = "DataValue::* glob import is scoped to function body for pattern matching"
-)]
-
 use super::arg;
 use crate::data::error::*;
 type Result<T> = DataResult<T>;
 use crate::data::value::{DataValue, Num, Vector};
 
 pub(crate) fn ensure_same_value_type(a: &DataValue, b: &DataValue) -> Result<()> {
+    #[allow(
+        clippy::enum_glob_use,
+        reason = "DataValue::* glob import is scoped to function body for pattern matching; expectation cannot be expressed reliably across lib and lib-test compilations"
+    )]
     use DataValue::*;
     if !matches!(
         (a, b),

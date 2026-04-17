@@ -1,5 +1,9 @@
 //! Basic query tests: limits, aggregation, conditions, classical logic.
 #![expect(clippy::expect_used, reason = "test assertions")]
+#![expect(
+    clippy::indexing_slicing,
+    reason = "test assertions: index into known-shape NamedRows results"
+)]
 use serde_json::json;
 use tracing::debug;
 

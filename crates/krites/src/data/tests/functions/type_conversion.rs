@@ -1,5 +1,9 @@
 //! Tests for type conversion, coalesce, and range functions.
 #![expect(clippy::expect_used, reason = "test assertions")]
+#![expect(
+    clippy::indexing_slicing,
+    reason = "test assertions: index into known-shape DataValue::List results"
+)]
 use serde_json::json;
 
 use crate::DbInstance;

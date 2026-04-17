@@ -151,6 +151,10 @@ impl FixedRule for ShortestPathBFS {
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test assertions: index into known-shape NamedRows results"
+)]
 mod tests {
     use crate::data::value::DataValue;
 

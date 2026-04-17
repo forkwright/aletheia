@@ -108,6 +108,10 @@ fn resolve_returns_none_for_missing() {
 }
 
 #[test]
+#[cfg_attr(
+    target_os = "macos",
+    ignore = "macOS /var → /private/var canonicalization breaks direct path equality — tracked in #3573"
+)]
 fn oikos_paths_match_structure() {
     let (dir, oikos) = setup();
     let root = dir.path();

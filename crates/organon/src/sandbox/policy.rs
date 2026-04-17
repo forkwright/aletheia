@@ -1,4 +1,22 @@
 //! Runtime sandbox policy application -- Landlock, seccomp, network namespaces.
+//!
+//! The full Landlock + seccomp + netns implementation is Linux-only. On other
+//! platforms (macOS CI, Windows) most symbols are unreachable via `apply_sandbox`,
+//! which short-circuits to a no-op. The attribute below silences `dead_code` /
+//! `unused_imports` warnings on those platforms without sprinkling per-item cfgs.
+#![cfg_attr(
+    not(target_os = "linux"),
+    allow(
+        dead_code,
+        unused_imports,
+        unused_variables,
+        clippy::unused_self,
+        clippy::needless_pass_by_value,
+        clippy::missing_const_for_fn,
+        reason = "Linux-only sandbox machinery; apply_sandbox is a no-op on other platforms"
+    )
+)]
+
 use std::net::IpAddr;
 use std::path::PathBuf;
 
@@ -147,6 +165,10 @@ impl SandboxPolicy {
     }
 
     #[cfg(not(target_os = "linux"))]
+    #[expect(
+        clippy::unnecessary_wraps,
+        reason = "signature must match the Linux implementation; non-Linux stub is a no-op"
+    )]
     fn apply_egress(&self) -> std::io::Result<()> {
         Ok(())
     }
@@ -238,6 +260,10 @@ impl SandboxPolicy {
     }
 
     #[cfg(not(target_os = "linux"))]
+    #[expect(
+        clippy::unnecessary_wraps,
+        reason = "signature must match the Linux implementation; non-Linux stub is a no-op"
+    )]
     fn apply_landlock(&self) -> std::io::Result<()> {
         Ok(())
     }
@@ -286,6 +312,10 @@ impl SandboxPolicy {
     }
 
     #[cfg(not(target_os = "linux"))]
+    #[expect(
+        clippy::unnecessary_wraps,
+        reason = "signature must match the Linux implementation; non-Linux stub is a no-op"
+    )]
     fn apply_seccomp(&self) -> std::io::Result<()> {
         Ok(())
     }
@@ -527,6 +557,10 @@ pub fn apply_sandbox(
     Ok(())
 }
 
-#[cfg(test)]
+// NOTE: sandbox tests exercise Linux-only syscalls (Landlock, seccomp) so
+// the entire test module is gated to Linux. On other platforms every test
+// inside would be cfg'd out, leaving the module-level #![expect(...)]
+// attributes unfulfilled.
+#[cfg(all(test, target_os = "linux"))]
 #[path = "policy_tests.rs"]
 mod policy_tests;

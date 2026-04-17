@@ -136,6 +136,14 @@ fn rank_to_output(rank: usize) -> i64 {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test assertions: index into known-shape rank/score maps"
+)]
+#[expect(
+    clippy::float_cmp,
+    reason = "test compares exact-arithmetic floats against known-exact expected values"
+)]
 mod tests {
     use super::*;
 

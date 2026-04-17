@@ -10,7 +10,6 @@
     clippy::indexing_slicing,
     clippy::iter_not_returning_iterator,
     clippy::result_large_err,
-    clippy::wildcard_imports,
     reason = "engine-internal search RA -- indexing on bind_idx validated during compilation"
 )]
 

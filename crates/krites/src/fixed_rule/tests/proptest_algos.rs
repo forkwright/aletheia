@@ -9,8 +9,11 @@
 #![expect(clippy::expect_used, reason = "test assertions")]
 #![expect(clippy::indexing_slicing, reason = "test data with known structure")]
 #![expect(
-    clippy::cast_precision_loss,
-    reason = "small graph sizes -- precision loss irrelevant"
+    clippy::as_conversions,
+    clippy::cast_possible_wrap,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "test: small proptest graph sizes fit target numeric ranges"
 )]
 
 use proptest::prelude::*;

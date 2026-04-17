@@ -204,6 +204,10 @@ impl CsrBuilder<()> {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test assertions: index into known-shape CSR offset/target arrays"
+)]
 mod tests {
     use super::*;
 
