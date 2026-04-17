@@ -262,6 +262,10 @@ fn is_pid_alive(pid: u32) -> bool {
         // SAFETY: kill(pid, 0) is safe — signal 0 performs a permission check
         // without delivering any signal. This is the standard Unix idiom for
         // process existence checks.
+        #[expect(
+            unsafe_code,
+            reason = "libc::kill with signal 0 is the portable idiom for PID liveness check; no process state is modified"
+        )]
         let ret = unsafe { libc::kill(pid_i32, 0) };
         if ret == 0 {
             return true;
