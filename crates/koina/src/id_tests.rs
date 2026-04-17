@@ -273,11 +273,6 @@ mod newtype_id_macro {
         pub struct TestStringId(String)
     );
 
-    newtype_id!(
-        /// Test ID using `CompactString` inner type.
-        pub struct TestCompactId(compact_str::CompactString)
-    );
-
     #[test]
     fn new_and_as_str() {
         let id = TestStringId::new("abc");
@@ -345,25 +340,5 @@ mod newtype_id_macro {
         assert_eq!(json, r#""serde-test""#);
         let back: TestStringId = serde_json::from_str(&json).unwrap();
         assert_eq!(id, back);
-    }
-
-    #[test]
-    fn compact_string_variant_works() {
-        let id = TestCompactId::new("compact");
-        assert_eq!(id.as_str(), "compact");
-        assert_eq!(id.to_string(), "compact");
-
-        let json = serde_json::to_string(&id).unwrap();
-        assert_eq!(json, r#""compact""#);
-        let back: TestCompactId = serde_json::from_str(&json).unwrap();
-        assert_eq!(id, back);
-    }
-
-    #[test]
-    fn distinct_types_not_interchangeable() {
-        let a = TestStringId::new("x");
-        let b = TestCompactId::new("x");
-        assert_eq!(a.as_str(), b.as_str());
-        // WHY: a == b would not compile: different types
     }
 }

@@ -21,10 +21,10 @@ Core types, errors, tracing, and system abstractions shared by every Aletheia cr
 
 | Type | Path | Purpose |
 |------|------|---------|
-| `NousId` | `id.rs` | Agent identifier (CompactString newtype) |
+| `NousId` | `id.rs` | Agent identifier (String newtype) |
 | `SessionId` | `id.rs` | Session identifier (UUID newtype) |
 | `TurnId` | `id.rs` | Turn counter (u64 newtype) |
-| `ToolName` | `id.rs` | Tool name identifier (CompactString newtype) |
+| `ToolName` | `id.rs` | Tool name identifier (String newtype) |
 | `SecretString` | `secret.rs` | API key/token holder with redacted output and zeroize-on-drop |
 | `FileSystem` | `system.rs` | Trait: read, write, exists, list for testable filesystem access |
 | `Clock` | `system.rs` | Trait: `now()` for testable time |
@@ -60,5 +60,5 @@ Core types, errors, tracing, and system abstractions shared by every Aletheia cr
 
 ## Dependencies
 
-Uses: compact_str, jiff, serde, snafu, tracing, ulid, uuid, zeroize, rustix, regex
+Uses: jiff, serde, snafu, tracing, ulid, uuid, zeroize, rustix, regex
 Used by: every other Aletheia crate

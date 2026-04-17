@@ -3,7 +3,6 @@
 use std::borrow::Borrow;
 use std::fmt;
 
-use compact_str::CompactString;
 use serde::{Deserialize, Serialize};
 
 use crate::uuid::Uuid;
@@ -131,7 +130,7 @@ macro_rules! newtype_id {
 /// A nous (agent) identifier. Lowercase alphanumeric + hyphens, 1-64 chars.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
-pub struct NousId(CompactString);
+pub struct NousId(String);
 
 impl NousId {
     /// Create a new `NousId`, validating the format.
@@ -140,7 +139,7 @@ impl NousId {
     /// Returns an error if the ID is empty, exceeds 64 characters,
     /// or contains characters other than lowercase alphanumeric and hyphens.
     #[must_use = "returns a validated identifier that should not be discarded"]
-    pub fn new(id: impl Into<CompactString>) -> Result<Self, IdError> {
+    pub fn new(id: impl Into<String>) -> Result<Self, IdError> {
         let id = id.into();
         validate_id(&id, "NousId")?;
         Ok(Self(id))
@@ -292,7 +291,7 @@ impl fmt::Display for TurnId {
 /// A tool name. Validated to be non-empty and contain only safe characters.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
-pub struct ToolName(CompactString);
+pub struct ToolName(String);
 
 impl ToolName {
     /// Construct a `ToolName` from a string literal known to be valid at compile time.
@@ -314,7 +313,7 @@ impl ToolName {
     /// Returns an error if the name is empty, exceeds 128 characters,
     /// or contains characters other than alphanumeric, hyphens, and underscores.
     #[must_use = "returns a validated tool name that should not be discarded"]
-    pub fn new(name: impl Into<CompactString>) -> Result<Self, IdError> {
+    pub fn new(name: impl Into<String>) -> Result<Self, IdError> {
         let name = name.into();
         if name.is_empty() {
             return Err(IdError::Empty { kind: "ToolName" });
