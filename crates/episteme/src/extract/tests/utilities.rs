@@ -104,6 +104,8 @@ fn build_prompt_single_message() {
     let engine = ExtractionEngine::new(ExtractionConfig::default());
     let messages = vec![ConversationMessage {
         role: "user".to_owned(),
+        tool_calls: None,
+        reasoning: None,
         content: "Alice builds Aletheia in Rust.".to_owned(),
     }];
     let prompt = engine.build_prompt(&messages);
@@ -294,6 +296,8 @@ async fn extract_min_length_boundary() {
 
     let below = vec![ConversationMessage {
         role: "user".to_owned(),
+        tool_calls: None,
+        reasoning: None,
         content: "123456789".to_owned(),
     }];
     let result = engine
@@ -307,6 +311,8 @@ async fn extract_min_length_boundary() {
 
     let exact = vec![ConversationMessage {
         role: "user".to_owned(),
+        tool_calls: None,
+        reasoning: None,
         content: "1234567890".to_owned(),
     }];
     let result = engine
@@ -320,6 +326,8 @@ async fn extract_min_length_boundary() {
 
     let above = vec![ConversationMessage {
         role: "user".to_owned(),
+        tool_calls: None,
+        reasoning: None,
         content: "12345678901".to_owned(),
     }];
     let result = engine
@@ -648,4 +656,100 @@ mod proptests {
             );
         }
     }
+}
+
+#[test]
+fn build_prompt_includes_tool_calls_and_reasoning() {
+    let engine = ExtractionEngine::new(ExtractionConfig::default());
+    let messages = vec![ConversationMessage {
+        role: "assistant".to_owned(),
+        content: "The file contains 42 lines.".to_owned(),
+        tool_calls: Some(vec![ExtractedToolCall {
+            id: "tc-1".to_owned(),
+            name: "read_file".to_owned(),
+            input: serde_json::json!({"path": "/tmp/test.txt"}),
+            result: Some("line 1\nline 2".to_owned()),
+            is_error: false,
+        }]),
+        reasoning: Some("I need to check the file size first.".to_owned()),
+    }];
+
+    let prompt = engine.build_prompt(&messages);
+    assert!(
+        prompt.user_message.contains("tool_call: read_file"),
+        "prompt should include tool call name"
+    );
+    assert!(
+        prompt.user_message.contains("result=line 1"),
+        "prompt should include tool call result"
+    );
+    assert!(
+        prompt.user_message.contains("reasoning: I need to check"),
+        "prompt should include reasoning block"
+    );
+}
+
+#[test]
+fn build_prompt_handles_error_tool_calls() {
+    let engine = ExtractionEngine::new(ExtractionConfig::default());
+    let messages = vec![ConversationMessage {
+        role: "assistant".to_owned(),
+        content: "I encountered an error.".to_owned(),
+        tool_calls: Some(vec![ExtractedToolCall {
+            id: "tc-2".to_owned(),
+            name: "bash".to_owned(),
+            input: serde_json::json!({"command": "ls /nonexistent"}),
+            result: Some("No such file or directory".to_owned()),
+            is_error: true,
+        }]),
+        reasoning: None,
+    }];
+
+    let prompt = engine.build_prompt(&messages);
+    assert!(
+        prompt.user_message.contains("[ERROR]"),
+        "prompt should mark errored tool calls"
+    );
+}
+
+#[test]
+fn build_prompt_omits_empty_tool_calls_and_reasoning() {
+    let engine = ExtractionEngine::new(ExtractionConfig::default());
+    let messages = vec![ConversationMessage {
+        role: "user".to_owned(),
+        content: "Hello!".to_owned(),
+        tool_calls: None,
+        reasoning: None,
+    }];
+
+    let prompt = engine.build_prompt(&messages);
+    assert!(
+        !prompt.user_message.contains("tool_call:"),
+        "prompt should not mention tool calls when none are present"
+    );
+    assert!(
+        !prompt.user_message.contains("reasoning:"),
+        "prompt should not mention reasoning when none is present"
+    );
+}
+
+#[test]
+fn build_prompt_includes_process_extraction_instructions() {
+    let engine = ExtractionEngine::new(ExtractionConfig::default());
+    let messages = vec![ConversationMessage {
+        role: "user".to_owned(),
+        content: "Hello".to_owned(),
+        tool_calls: None,
+        reasoning: None,
+    }];
+
+    let prompt = engine.build_prompt(&messages);
+    assert!(
+        prompt.system.contains("Process facts"),
+        "system prompt should include process-fact extraction instructions"
+    );
+    assert!(
+        prompt.system.contains("Reasoning blocks"),
+        "system prompt should include reasoning block instructions"
+    );
 }

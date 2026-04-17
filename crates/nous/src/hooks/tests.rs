@@ -153,6 +153,7 @@ fn test_turn_result() -> TurnResult {
         signals: Vec::new(),
         stop_reason: "end_turn".to_owned(),
         degraded: None,
+        reasoning: String::new(),
     }
 }
 

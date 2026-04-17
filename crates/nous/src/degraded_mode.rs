@@ -121,6 +121,7 @@ pub fn build_degraded_response(
             degraded: Some(crate::pipeline::DegradedMode::DistillationCache {
                 status_banner: banner,
             }),
+            reasoning: String::new(),
         }
     } else {
         let banner = "Operating in degraded mode — LLM unavailable. \
@@ -146,6 +147,7 @@ pub fn build_degraded_response(
             degraded: Some(crate::pipeline::DegradedMode::Unavailable {
                 status_banner: banner,
             }),
+            reasoning: String::new(),
         }
     }
 }

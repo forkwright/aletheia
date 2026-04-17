@@ -71,7 +71,13 @@ impl NousActor {
         );
     }
 
-    pub(super) fn maybe_spawn_extraction(&mut self, user_content: &str, assistant_content: &str) {
+    pub(super) fn maybe_spawn_extraction(
+        &mut self,
+        user_content: &str,
+        assistant_content: &str,
+        tool_calls: &[crate::pipeline::ToolCall],
+        reasoning: &str,
+    ) {
         let Some(ref extraction_config) = self.pipeline_config.extraction else {
             return;
         };
@@ -89,6 +95,8 @@ impl NousActor {
         let nous_id = self.id.clone();
         let user = user_content.to_owned();
         let assistant = assistant_content.to_owned();
+        let tool_calls: Vec<crate::pipeline::ToolCall> = tool_calls.to_vec();
+        let reasoning = reasoning.to_owned();
         let span = tracing::info_span!("extraction", nous.id = %nous_id);
         #[cfg(feature = "knowledge-store")]
         let knowledge_store = self.stores.knowledge_store.clone();
@@ -114,6 +122,8 @@ impl NousActor {
                         &nous_id,
                         &user,
                         &assistant,
+                        &tool_calls,
+                        &reasoning,
                         #[cfg(feature = "knowledge-store")]
                         knowledge_store.as_ref(),
                     ) => {}
@@ -321,27 +331,59 @@ impl NousActor {
 }
 
 /// Run extraction as a background task. Logs results, never panics.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "background extraction async runner: config + providers + ids + content + tool_calls + reasoning + optional store"
+)]
 async fn run_extraction(
     config: &mneme::extract::ExtractionConfig,
     providers: Arc<ProviderRegistry>,
     nous_id: &str,
     user_content: &str,
     assistant_content: &str,
+    tool_calls: &[crate::pipeline::ToolCall],
+    reasoning: &str,
     #[cfg(feature = "knowledge-store")] knowledge_store: Option<&Arc<KnowledgeStore>>,
 ) {
-    use mneme::extract::{ConversationMessage, ExtractionEngine};
+    use mneme::extract::{ConversationMessage, ExtractedToolCall, ExtractionEngine};
 
     let engine = ExtractionEngine::new(config.clone());
     let provider = crate::extraction::HermeneusExtractionProvider::new(providers, &config.model);
+
+    let extracted_tool_calls = if tool_calls.is_empty() {
+        None
+    } else {
+        Some(
+            tool_calls
+                .iter()
+                .map(|tc| ExtractedToolCall {
+                    id: tc.id.clone(),
+                    name: tc.name.clone(),
+                    input: tc.input.clone(),
+                    result: tc.result.clone(),
+                    is_error: tc.is_error,
+                })
+                .collect(),
+        )
+    };
+    let reasoning = if reasoning.is_empty() {
+        None
+    } else {
+        Some(reasoning.to_owned())
+    };
 
     let messages = vec![
         ConversationMessage {
             role: "user".to_owned(),
             content: user_content.to_owned(),
+            tool_calls: None,
+            reasoning: None,
         },
         ConversationMessage {
             role: "assistant".to_owned(),
             content: assistant_content.to_owned(),
+            tool_calls: extracted_tool_calls,
+            reasoning,
         },
     ];
 

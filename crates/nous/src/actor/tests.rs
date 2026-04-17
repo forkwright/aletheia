@@ -708,6 +708,7 @@ fn make_turn_result(
         signals: vec![],
         stop_reason: "end_turn".to_owned(),
         degraded: None,
+        reasoning: String::new(),
     }
 }
 
@@ -871,7 +872,7 @@ fn maybe_spawn_extraction_skips_when_no_config() {
     };
     let (mut actor, _tx, _dir) = make_test_actor(config);
 
-    actor.maybe_spawn_extraction("hello world", "response text");
+    actor.maybe_spawn_extraction("hello world", "response text", &[], "");
 
     assert_eq!(
         actor.runtime.background_tasks.len(),
@@ -891,7 +892,7 @@ fn maybe_spawn_extraction_skips_when_disabled() {
     };
     let (mut actor, _tx, _dir) = make_test_actor(config);
 
-    actor.maybe_spawn_extraction("hello world", "response");
+    actor.maybe_spawn_extraction("hello world", "response", &[], "");
 
     assert_eq!(
         actor.runtime.background_tasks.len(),
@@ -912,7 +913,7 @@ fn maybe_spawn_extraction_skips_when_content_too_short() {
     };
     let (mut actor, _tx, _dir) = make_test_actor(config);
 
-    actor.maybe_spawn_extraction("short", "response");
+    actor.maybe_spawn_extraction("short", "response", &[], "");
 
     assert_eq!(
         actor.runtime.background_tasks.len(),
@@ -942,13 +943,69 @@ async fn maybe_spawn_extraction_skips_when_task_limit_reached() {
     }
     assert_eq!(actor.runtime.background_tasks.len(), MAX_SPAWNED_TASKS);
 
-    actor.maybe_spawn_extraction("long enough content here", "response text here");
+    actor.maybe_spawn_extraction("long enough content here", "response text here", &[], "");
 
     // Limit was already reached; no additional task spawned.
     assert_eq!(
         actor.runtime.background_tasks.len(),
         MAX_SPAWNED_TASKS,
         "task should not be spawned when limit is reached"
+    );
+}
+
+#[tokio::test]
+async fn maybe_spawn_extraction_spawns_with_tool_calls_and_reasoning() {
+    let config = PipelineConfig {
+        extraction: Some(mneme::extract::ExtractionConfig {
+            enabled: true,
+            min_message_length: 1,
+            ..mneme::extract::ExtractionConfig::default()
+        }),
+        ..PipelineConfig::default()
+    };
+    let (mut actor, _tx, _dir) = make_test_actor(config);
+
+    let tool_calls = vec![crate::pipeline::ToolCall {
+        id: "tc-1".to_owned(),
+        name: "read_file".to_owned(),
+        input: serde_json::json!({"path": "/tmp/test.txt"}),
+        result: Some("file contents".to_owned()),
+        is_error: false,
+        duration_ms: 42,
+    }];
+
+    actor.maybe_spawn_extraction(
+        "user message here",
+        "assistant response here",
+        &tool_calls,
+        "I need to check the file first.",
+    );
+
+    assert_eq!(
+        actor.runtime.background_tasks.len(),
+        1,
+        "extraction task should be spawned with tool calls and reasoning"
+    );
+}
+
+#[tokio::test]
+async fn maybe_spawn_extraction_spawns_without_tool_calls_or_reasoning() {
+    let config = PipelineConfig {
+        extraction: Some(mneme::extract::ExtractionConfig {
+            enabled: true,
+            min_message_length: 1,
+            ..mneme::extract::ExtractionConfig::default()
+        }),
+        ..PipelineConfig::default()
+    };
+    let (mut actor, _tx, _dir) = make_test_actor(config);
+
+    actor.maybe_spawn_extraction("user message here", "assistant response here", &[], "");
+
+    assert_eq!(
+        actor.runtime.background_tasks.len(),
+        1,
+        "extraction task should be spawned even without tool calls or reasoning"
     );
 }
 
