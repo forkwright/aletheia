@@ -20,6 +20,33 @@ use crate::types::{
 /// The trait tool implementations must satisfy.
 ///
 /// Uses `Pin<Box<dyn Future>>` for object-safety with async dispatch.
+///
+/// # Errors
+///
+/// Implementations may return `ExecutionFailed` if the tool
+/// cannot complete its operation, or `InvalidInput` if the
+/// provided arguments fail validation.
+///
+/// # Examples
+///
+/// ```no_run
+/// use std::future::Future;
+/// use std::pin::Pin;
+/// use organon::registry::ToolExecutor;
+/// use organon::types::{ToolContext, ToolInput, ToolResult};
+///
+/// struct MyTool;
+///
+/// impl ToolExecutor for MyTool {
+///     fn execute<'a>(
+///         &'a self,
+///         _input: &'a ToolInput,
+///         _ctx: &'a ToolContext,
+///     ) -> Pin<Box<dyn Future<Output = organon::error::Result<ToolResult>> + Send + 'a>> {
+///         Box::pin(async move { Ok(ToolResult::text("done")) })
+///     }
+/// }
+/// ```
 pub trait ToolExecutor: Send + Sync {
     // kanon:ignore RUST/pub-visibility
     /// Execute the tool with the given input and context.
@@ -39,6 +66,16 @@ struct RegisteredTool {
 ///
 /// Tools are registered at startup and looked up by name during execution.
 /// The registry is the single source of truth for what tools an agent can use.
+///
+/// # Examples
+///
+/// ```no_run
+/// use organon::registry::ToolRegistry;
+///
+/// let mut registry = ToolRegistry::new();
+/// // Tools are registered at startup with their definitions and executors.
+/// // See the `builtins` module for built-in tool implementations.
+/// ```
 pub struct ToolRegistry {
     // kanon:ignore RUST/pub-visibility
     tools: IndexMap<ToolName, RegisteredTool>,
