@@ -1,4 +1,5 @@
 #![deny(missing_docs)]
+#![deny(clippy::unwrap_used)]
 //! aletheia-organon: tool registry, definitions, and built-in tool stubs
 //!
 //! Organon (ὄργανον): "instrument." The formal instruments through which
