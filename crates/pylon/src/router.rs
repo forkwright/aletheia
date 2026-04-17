@@ -82,7 +82,7 @@ pub fn build_router_with(
         )
         .route("/sessions/{id}/history", get(sessions::history))
         .route("/events", get(sessions::events))
-        .route("/nous", get(nous::list))
+        .route("/nous", get(nous::list).post(nous::create))
         .route("/nous/{id}", get(nous::get_status))
         .route("/nous/{id}/tools", get(nous::tools))
         .route("/nous/{id}/recover", post(nous::recover))

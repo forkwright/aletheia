@@ -111,6 +111,7 @@ serde = { version = "1", default-features = false, features = ["derive", "std"] 
 serde_json = { version = "1", default-features = false, features = ["std"] }
 serde_yaml = { version = "0.9", default-features = false }
 toml = "1.1"
+toml_edit = "0.22"
 
 # HTTP
 http = { version = "1", default-features = false }

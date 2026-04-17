@@ -88,6 +88,25 @@ async fn spawn_returns_handle() {
 }
 
 #[tokio::test]
+async fn register_agent_spawns_with_default_pipeline() {
+    let (_dir, oikos) = make_oikos();
+    let mut mgr = make_manager(oikos);
+
+    let handle = mgr
+        .register_agent(syn_config())
+        .await
+        .expect("register_agent should succeed");
+    assert_eq!(handle.id(), "syn", "registered handle should have syn id");
+    assert_eq!(
+        mgr.count(),
+        1,
+        "manager should have one actor after register"
+    );
+
+    mgr.shutdown_all().await;
+}
+
+#[tokio::test]
 async fn get_finds_spawned_actor() {
     let (_dir, oikos) = make_oikos();
     let mut mgr = make_manager(oikos);

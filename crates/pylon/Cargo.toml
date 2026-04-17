@@ -34,6 +34,9 @@ tokio-util = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 
+# Config editing
+toml_edit = { workspace = true }
+
 # Time
 jiff = { workspace = true }
 

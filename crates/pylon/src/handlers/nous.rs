@@ -2,12 +2,14 @@
 
 use axum::Json;
 use axum::extract::{Path, State};
-use serde::Serialize;
+use axum::http::StatusCode;
+use axum::response::IntoResponse;
+use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 use symbolon::types::Role;
 
-use crate::error::{ApiError, ErrorResponse, NousNotFoundSnafu};
+use crate::error::{ApiError, ErrorResponse, FieldError, NousNotFoundSnafu, ValidationFailedSnafu};
 use crate::extract::{Claims, require_role};
 use crate::state::NousState;
 
@@ -175,6 +177,316 @@ pub async fn recover(
     })?;
 
     Ok(Json(RecoverResponse { id, recovered }))
+}
+
+/// Payload for creating a new nous agent via `POST /api/v1/nous`.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct AgentDefinition {
+    /// Agent identifier (alphanumeric and hyphens only).
+    pub id: String,
+    /// Human-readable display name. Falls back to a capitalized `id`.
+    #[serde(default)]
+    pub name: Option<String>,
+    /// LLM model identifier. Falls back to the workspace default.
+    #[serde(default)]
+    pub model: Option<String>,
+}
+
+/// Response from a successful agent creation.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct CreateAgentResponse {
+    /// Agent identifier.
+    pub id: String,
+    /// Human-readable display name.
+    pub name: String,
+    /// LLM model assigned to this agent.
+    pub model: String,
+    /// Whether the agent requires a server restart to become active.
+    pub restart_required: bool,
+}
+
+/// POST /api/v1/nous: create a new nous agent.
+///
+/// Validates the payload, scaffolds the agent workspace, writes the config
+/// entry, and returns the agent definition. The agent becomes active after
+/// the next config reload or server restart.
+///
+/// # Cancel safety
+///
+/// Cancel-safe. Axum handler; cancellation drops the future with no
+/// side effects beyond not returning a response.
+#[utoipa::path(
+    post,
+    path = "/api/v1/nous",
+    request_body = AgentDefinition,
+    responses(
+        (status = 201, description = "Agent created", body = CreateAgentResponse),
+        (status = 400, description = "Bad request", body = ErrorResponse),
+        (status = 401, description = "Unauthorized", body = ErrorResponse),
+        (status = 409, description = "Conflict", body = ErrorResponse),
+        (status = 422, description = "Validation failed", body = ErrorResponse),
+    ),
+    security(("bearer_auth" = []))
+)]
+pub async fn create(
+    State(state): State<NousState>,
+    claims: Claims,
+    Json(body): Json<AgentDefinition>,
+) -> Result<impl IntoResponse, ApiError> {
+    require_role(&claims, Role::Operator)?;
+
+    let mut field_errors = Vec::new();
+    if body.id.is_empty() {
+        field_errors.push(FieldError {
+            field: "id".to_owned(),
+            code: "required".to_owned(),
+            message: "must not be empty".to_owned(),
+        });
+    } else if !body
+        .id
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-')
+    {
+        field_errors.push(FieldError {
+            field: "id".to_owned(),
+            code: "format".to_owned(),
+            message: "must contain only alphanumeric characters and hyphens".to_owned(),
+        });
+    } else if body.id.starts_with('-') || body.id.ends_with('-') {
+        field_errors.push(FieldError {
+            field: "id".to_owned(),
+            code: "format".to_owned(),
+            message: "cannot start or end with a hyphen".to_owned(),
+        });
+    }
+    if !field_errors.is_empty() {
+        return Err(ValidationFailedSnafu {
+            errors: field_errors,
+        }
+        .build());
+    }
+
+    let id = body.id;
+    let name = body.name.unwrap_or_else(|| capitalize(&id));
+    let model = body
+        .model
+        .unwrap_or_else(|| koina::defaults::DEFAULT_MODEL.to_owned());
+
+    // Check if already loaded.
+    if state.nous_manager.get_config(&id).is_some() {
+        return Err(ApiError::Conflict {
+            message: format!("agent '{id}' already exists"),
+            location: snafu::location!(),
+        });
+    }
+
+    let oikos = state.oikos;
+    let id_for_response = id.clone();
+    let name_for_response = name.clone();
+    let model_for_response = model.clone();
+
+    let result = tokio::task::spawn_blocking(move || {
+        let nous_dir = oikos.nous_dir(&id);
+        if nous_dir.exists() {
+            return Err(ApiError::Conflict {
+                message: format!("nous directory already exists: {}", nous_dir.display()),
+                location: snafu::location!(),
+            });
+        }
+
+        scaffold_agent(&oikos, &id, &name).map_err(|e| ApiError::Internal {
+            message: format!("scaffold failed: {e}"),
+            location: snafu::location!(),
+        })?;
+
+        write_agent_config(&oikos, &id, &name, &model).map_err(|e| ApiError::Internal {
+            message: format!("config update failed: {e}"),
+            location: snafu::location!(),
+        })?;
+
+        Ok::<_, ApiError>(())
+    })
+    .await
+    .map_err(|e| ApiError::Internal {
+        message: format!("spawn blocking failed: {e}"),
+        location: snafu::location!(),
+    })?;
+
+    result?;
+
+    Ok((
+        StatusCode::CREATED,
+        Json(CreateAgentResponse {
+            id: id_for_response,
+            name: name_for_response,
+            model: model_for_response,
+            restart_required: true,
+        }),
+    ))
+}
+
+fn capitalize(s: &str) -> String {
+    let mut chars = s.chars();
+    match chars.next() {
+        None => String::new(),
+        Some(c) => {
+            let mut result: String = c.to_uppercase().collect();
+            result.push_str(chars.as_str());
+            result
+        }
+    }
+}
+
+fn scaffold_agent(oikos: &taxis::oikos::Oikos, id: &str, name: &str) -> std::io::Result<()> {
+    let nous_dir = oikos.nous_dir(id);
+    std::fs::create_dir_all(nous_dir.join("memory"))?;
+    std::fs::create_dir_all(nous_dir.join("workspace/drafts"))?;
+    std::fs::create_dir_all(nous_dir.join("workspace/scripts"))?;
+
+    let soul = format!(
+        "# {name}\n\n\
+         You are {name}, an Aletheia cognitive agent.\n\n\
+         You are helpful, thoughtful, and direct. Use the tools available to you\n\
+         to assist with tasks.\n"
+    );
+    koina::fs::write_restricted(&nous_dir.join("SOUL.md"), soul.as_bytes())?;
+
+    let identity = format!(
+        "# Identity\n\n\
+         - **Name:** {name}\n\
+         - **Creature:** \n\
+         - **Vibe:** \n\
+         - **Emoji:** \n"
+    );
+    koina::fs::write_restricted(&nous_dir.join("IDENTITY.md"), identity.as_bytes())?;
+
+    for filename in &[
+        "AGENTS.md",
+        "CONTEXT.md",
+        "GOALS.md",
+        "MEMORY.md",
+        "PROSOCHE.md",
+        "TOOLS.md",
+        "USER.md",
+        "WORKFLOWS.md",
+    ] {
+        let header = filename.trim_end_matches(".md");
+        koina::fs::write_restricted(&nous_dir.join(filename), format!("# {header}\n").as_bytes())?;
+    }
+
+    for gitkeep in &[
+        "memory/.gitkeep",
+        "workspace/drafts/.gitkeep",
+        "workspace/scripts/.gitkeep",
+    ] {
+        koina::fs::write_restricted(&nous_dir.join(gitkeep), b"")?;
+    }
+
+    koina::fs::write_restricted(
+        &nous_dir.join(".gitignore"),
+        ".aletheia-index/manifest_*.json\n".as_bytes(),
+    )?;
+
+    Ok(())
+}
+
+fn write_agent_config(
+    oikos: &taxis::oikos::Oikos,
+    id: &str,
+    name: &str,
+    model: &str,
+) -> Result<(), ApiError> {
+    let config_path = oikos.config().join("aletheia.toml");
+
+    let existing = if config_path.exists() {
+        std::fs::read_to_string(&config_path).map_err(|e| ApiError::Internal {
+            message: format!("failed to read {}: {e}", config_path.display()),
+            location: snafu::location!(),
+        })?
+    } else {
+        String::new()
+    };
+
+    let mut doc: toml_edit::DocumentMut = existing.parse().map_err(|e| ApiError::Internal {
+        message: format!("failed to parse config: {e}"),
+        location: snafu::location!(),
+    })?;
+
+    let already_listed = doc
+        .get("agents")
+        .and_then(|a| a.as_table())
+        .and_then(|a| a.get("list"))
+        .and_then(|l| l.as_array_of_tables())
+        .is_some_and(|list| {
+            list.iter()
+                .any(|t| t.get("id").and_then(|v| v.as_str()) == Some(id))
+        });
+
+    if already_listed {
+        return Err(ApiError::Conflict {
+            message: format!("agent '{id}' already exists in the configuration file"),
+            location: snafu::location!(),
+        });
+    }
+
+    let workspace = format!("nous/{id}");
+    let mut entry = toml_edit::Table::new();
+    entry.insert("id", toml_edit::value(id));
+    entry.insert("name", toml_edit::value(name));
+    entry.insert("workspace", toml_edit::value(workspace));
+    entry.insert("default", toml_edit::value(false));
+
+    let mut model_table = toml_edit::Table::new();
+    model_table.insert("primary", toml_edit::value(model));
+    model_table.insert(
+        "fallbacks",
+        toml_edit::Item::Value(toml_edit::Value::Array(toml_edit::Array::new())),
+    );
+    entry.insert("model", toml_edit::Item::Table(model_table));
+
+    if doc.get("agents").and_then(|i| i.as_table()).is_none() {
+        doc.insert("agents", toml_edit::Item::Table(toml_edit::Table::new()));
+    }
+
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "key 'agents' was just inserted if absent, so indexing is valid"
+    )]
+    let agents = doc["agents"]
+        .as_table_mut()
+        .ok_or_else(|| ApiError::Internal {
+            message: "[agents] in config is not a table".to_owned(),
+            location: snafu::location!(),
+        })?;
+
+    if agents
+        .get("list")
+        .and_then(|i| i.as_array_of_tables())
+        .is_none()
+    {
+        agents.insert(
+            "list",
+            toml_edit::Item::ArrayOfTables(toml_edit::ArrayOfTables::new()),
+        );
+    }
+
+    let list = agents["list"]
+        .as_array_of_tables_mut()
+        .ok_or_else(|| ApiError::Internal {
+            message: "agents.list in config is not an array of tables".to_owned(),
+            location: snafu::location!(),
+        })?;
+
+    list.push(entry);
+
+    koina::fs::write_restricted(&config_path, doc.to_string().as_bytes()).map_err(|e| {
+        ApiError::Internal {
+            message: format!("failed to write config: {e}"),
+            location: snafu::location!(),
+        }
+    })?;
+
+    Ok(())
 }
 
 /// Response from a recovery attempt.
@@ -360,5 +672,96 @@ mod tests {
         .build();
         let response = err.into_response();
         assert_eq!(response.status(), axum::http::StatusCode::NOT_FOUND);
+    }
+
+    #[test]
+    fn create_agent_response_serializes() {
+        let resp = CreateAgentResponse {
+            id: "alice".to_owned(),
+            name: "Alice".to_owned(),
+            model: "claude-sonnet-4-6".to_owned(),
+            restart_required: true,
+        };
+        let json = serde_json::to_value(&resp).unwrap();
+        assert_eq!(json["id"], "alice");
+        assert_eq!(json["name"], "Alice");
+        assert_eq!(json["model"], "claude-sonnet-4-6");
+        assert_eq!(json["restart_required"], true);
+    }
+
+    #[test]
+    fn capitalize_first_letter() {
+        assert_eq!(capitalize("analyst"), "Analyst");
+        assert_eq!(capitalize("my-agent"), "My-agent");
+        assert_eq!(capitalize(""), "");
+        assert_eq!(capitalize("A"), "A");
+    }
+
+    #[test]
+    fn scaffold_creates_expected_structure() {
+        let dir = tempfile::tempdir().unwrap();
+        let oikos = taxis::oikos::Oikos::from_root(dir.path());
+
+        scaffold_agent(&oikos, "test-agent", "Test-agent").unwrap();
+
+        let nous_dir = dir.path().join("nous/test-agent");
+        assert!(nous_dir.join("SOUL.md").exists());
+        assert!(nous_dir.join("IDENTITY.md").exists());
+        assert!(nous_dir.join("AGENTS.md").exists());
+        assert!(nous_dir.join("USER.md").exists());
+        assert!(nous_dir.join("memory").is_dir());
+        assert!(nous_dir.join("workspace/drafts").is_dir());
+
+        let soul = std::fs::read_to_string(nous_dir.join("SOUL.md")).unwrap();
+        assert!(soul.contains("Test-agent"));
+    }
+
+    #[test]
+    fn write_agent_config_appends_without_destroying_comments() {
+        let dir = tempfile::tempdir().unwrap();
+        let oikos = taxis::oikos::Oikos::from_root(dir.path());
+        std::fs::create_dir_all(dir.path().join("config")).unwrap();
+
+        let original = "# My custom config\n\
+            # This comment must survive\n\
+            [gateway]\n\
+            port = 9999\n\n";
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "test setup writes config template to temp directory"
+        )]
+        std::fs::write(dir.path().join("config/aletheia.toml"), original).unwrap();
+
+        write_agent_config(&oikos, "alice", "Alice", "claude-sonnet-4-6").unwrap();
+
+        let result = std::fs::read_to_string(dir.path().join("config/aletheia.toml")).unwrap();
+        assert!(
+            result.contains("# My custom config"),
+            "comment must survive"
+        );
+        assert!(
+            result.contains("# This comment must survive"),
+            "comment must survive"
+        );
+        assert!(
+            result.contains("port = 9999"),
+            "existing config must survive"
+        );
+        assert!(result.contains(r#"id = "alice""#), "new agent must appear");
+        assert!(
+            result.contains(r#"workspace = "nous/alice""#),
+            "workspace must be relative"
+        );
+    }
+
+    #[test]
+    fn write_agent_config_rejects_duplicate() {
+        let dir = tempfile::tempdir().unwrap();
+        let oikos = taxis::oikos::Oikos::from_root(dir.path());
+        std::fs::create_dir_all(dir.path().join("config")).unwrap();
+
+        write_agent_config(&oikos, "bob", "Bob", "claude-sonnet-4-6").unwrap();
+        let result = write_agent_config(&oikos, "bob", "Bob", "claude-sonnet-4-6");
+        assert!(result.is_err(), "duplicate agent should return an error");
     }
 }
