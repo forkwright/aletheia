@@ -1,4 +1,5 @@
 #![deny(missing_docs)]
+#![deny(clippy::unwrap_used)]
 //! aletheia-theatron: thin facade re-exporting skene types.
 //!
 //! Theatron (Θέατρον): "theatre." Consumers write `use theatron::ApiClient`
