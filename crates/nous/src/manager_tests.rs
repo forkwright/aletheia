@@ -570,3 +570,82 @@ fn backoff_calculation() {
         "attempt 10 should clamp to 300s"
     );
 }
+
+/// Supervisor spawns the inner poller once and exits cleanly when cancelled.
+#[tokio::test]
+async fn health_poller_supervisor_runs_until_cancelled() {
+    let cancel = CancellationToken::new();
+    let calls = Arc::new(std::sync::atomic::AtomicU64::new(0));
+    let c = Arc::clone(&calls);
+
+    let cancel_for_supervisor = cancel.clone();
+    let supervisor = tokio::spawn(async move {
+        super::supervise_health_poller(
+            move || {
+                let c = Arc::clone(&c);
+                tokio::spawn(async move {
+                    c.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    tokio::time::sleep(Duration::from_hours(1)).await;
+                })
+            },
+            cancel_for_supervisor.child_token(),
+            Duration::from_millis(50),
+        )
+        .await;
+    });
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert_eq!(
+        calls.load(std::sync::atomic::Ordering::SeqCst),
+        1,
+        "poller should have been spawned exactly once"
+    );
+
+    cancel.cancel();
+    let _ = tokio::time::timeout(Duration::from_secs(5), supervisor).await;
+    assert_eq!(
+        calls.load(std::sync::atomic::Ordering::SeqCst),
+        1,
+        "poller should not have been restarted"
+    );
+}
+
+/// When the inner poller panics, the supervisor catches the `JoinError`,
+/// logs, and respawns after backoff. This is the previously-broken path:
+/// without supervision a panicking `health_cycle` would kill health checks
+/// permanently for all actors. (#3607)
+#[tokio::test]
+async fn health_poller_supervisor_restarts_on_panic() {
+    let cancel = CancellationToken::new();
+    let calls = Arc::new(std::sync::atomic::AtomicU64::new(0));
+    let c = Arc::clone(&calls);
+
+    let cancel_for_supervisor = cancel.clone();
+    let supervisor = tokio::spawn(async move {
+        super::supervise_health_poller(
+            move || {
+                let c = Arc::clone(&c);
+                tokio::spawn(async move {
+                    assert!(
+                        c.fetch_add(1, std::sync::atomic::Ordering::SeqCst) != 0,
+                        "simulated health poller panic"
+                    );
+                    tokio::time::sleep(Duration::from_hours(1)).await;
+                })
+            },
+            cancel_for_supervisor.child_token(),
+            Duration::from_millis(50),
+        )
+        .await;
+    });
+
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert!(
+        calls.load(std::sync::atomic::Ordering::SeqCst) >= 2,
+        "supervisor should have restarted poller at least once, got {}",
+        calls.load(std::sync::atomic::Ordering::SeqCst)
+    );
+
+    cancel.cancel();
+    let _ = tokio::time::timeout(Duration::from_secs(5), supervisor).await;
+}
