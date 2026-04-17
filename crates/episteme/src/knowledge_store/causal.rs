@@ -50,6 +50,10 @@ impl KnowledgeStore {
             "ordering".to_owned(),
             DataValue::Str(edge.ordering.as_str().into()),
         );
+        params.insert(
+            "relationship_type".to_owned(),
+            DataValue::Str(edge.relationship_type.as_str().into()),
+        );
         params.insert("confidence".to_owned(), DataValue::from(edge.confidence));
         params.insert("created_at".to_owned(), DataValue::Str(now.into()));
         self.run_mut(&queries::upsert_causal_edge(), params)
@@ -93,8 +97,8 @@ impl KnowledgeStore {
 
         use crate::engine::DataValue;
         let script = r"
-            ?[cause, effect, ordering, confidence, created_at] :=
-                *causal_edges{cause, effect, ordering, confidence, created_at},
+            ?[cause, effect, ordering, relationship_type, confidence, created_at] :=
+                *causal_edges{cause, effect, ordering, relationship_type, confidence, created_at},
                 cause = $cause
         ";
         let mut params = BTreeMap::new();
@@ -121,8 +125,8 @@ impl KnowledgeStore {
 
         use crate::engine::DataValue;
         let script = r"
-            ?[cause, effect, ordering, confidence, created_at] :=
-                *causal_edges{cause, effect, ordering, confidence, created_at},
+            ?[cause, effect, ordering, relationship_type, confidence, created_at] :=
+                *causal_edges{cause, effect, ordering, relationship_type, confidence, created_at},
                 effect = $effect
         ";
         let mut params = BTreeMap::new();
@@ -150,8 +154,8 @@ impl KnowledgeStore {
         use std::collections::BTreeMap;
 
         let script = r"
-            ?[cause, effect, ordering, confidence, created_at] :=
-                *causal_edges{cause, effect, ordering, confidence, created_at}
+            ?[cause, effect, ordering, relationship_type, confidence, created_at] :=
+                *causal_edges{cause, effect, ordering, relationship_type, confidence, created_at}
             :order created_at
         ";
         let rows = self.run_read(script, BTreeMap::new())?;
@@ -236,18 +240,23 @@ fn rows_to_causal_edges(
 
     let mut edges = Vec::new();
     for row in &rows.rows {
-        if row.len() < 5 {
+        if row.len() < 6 {
             continue;
         }
         let cause_str = extract_str(&row[0])?;
         let effect_str = extract_str(&row[1])?;
         let ordering_str = extract_str(&row[2])?;
-        let confidence = extract_float(&row[3])?;
-        let created_at_str = extract_str(&row[4])?;
+        let rel_type_str = extract_str(&row[3])?;
+        let confidence = extract_float(&row[4])?;
+        let created_at_str = extract_str(&row[5])?;
 
         let ordering = ordering_str
             .parse::<crate::knowledge::TemporalOrdering>()
             .unwrap_or(crate::knowledge::TemporalOrdering::Before);
+
+        let relationship_type = rel_type_str
+            .parse::<crate::knowledge::CausalRelationType>()
+            .unwrap_or(crate::knowledge::CausalRelationType::Caused);
 
         let timestamp =
             crate::knowledge::parse_timestamp(&created_at_str).unwrap_or_else(jiff::Timestamp::now);
@@ -256,7 +265,7 @@ fn rows_to_causal_edges(
             crate::id::FactId::new(cause_str.as_str()).context(crate::error::InvalidIdSnafu)?;
         let target_id =
             crate::id::FactId::new(effect_str.as_str()).context(crate::error::InvalidIdSnafu)?;
-        // WHY: Datalog rows don't carry id/relationship_type/evidence_session_id;
+        // WHY: Datalog rows don't carry id/evidence_session_id;
         // generate a fresh edge ID and default the optional fields.
         let id = crate::id::CausalEdgeId::new(koina::ulid::Ulid::new().to_string())
             .context(crate::error::InvalidIdSnafu)?;
@@ -264,7 +273,7 @@ fn rows_to_causal_edges(
             id,
             source_id,
             target_id,
-            relationship_type: crate::knowledge::CausalRelationType::Caused,
+            relationship_type,
             ordering,
             confidence,
             evidence_session_id: None,

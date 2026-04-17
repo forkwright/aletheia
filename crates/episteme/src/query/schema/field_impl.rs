@@ -115,6 +115,7 @@ impl Field for CausalEdgesField {
             Self::Cause => "cause",
             Self::Effect => "effect",
             Self::Ordering => "ordering",
+            Self::RelationshipType => "relationship_type",
             Self::Confidence => "confidence",
             Self::CreatedAt => "created_at",
         }
