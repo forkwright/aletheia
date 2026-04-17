@@ -535,11 +535,43 @@ impl NousManager {
         }
     }
 
-    /// Spawn a background task that runs `health_cycle` on an interval.
+    /// Spawn a supervised background task that runs `health_cycle` on an interval.
     ///
-    /// Returns a `JoinHandle` that can be used to track or cancel the poller.
-    /// The poller stops when the cancellation token fires.
+    /// The returned [`JoinHandle`] is a supervisor. It spawns an inner poller
+    /// task; if that task panics (e.g. due to a bug in restart logic or a
+    /// poisoned mutex), the supervisor logs the failure, increments a metric,
+    /// waits a short backoff, and respawns the poller. Health checks therefore
+    /// cannot stop permanently for all actors managed by this manager.
+    ///
+    /// The supervisor stops when `cancel` fires.
     pub fn start_health_poller(
+        manager: Arc<TokioMutex<Self>>,
+        interval: Duration,
+        cancel: CancellationToken,
+    ) -> JoinHandle<()> {
+        tokio::spawn(
+            async move {
+                let cancel_for_supervisor = cancel.clone();
+                supervise_health_poller(
+                    || {
+                        Self::spawn_single_health_poller(
+                            Arc::clone(&manager),
+                            interval,
+                            cancel.child_token(),
+                        )
+                    },
+                    cancel_for_supervisor,
+                    Duration::from_secs(5),
+                )
+                .await;
+            }
+            .instrument(tracing::info_span!("health_poller_supervisor")),
+        )
+    }
+
+    /// Spawn one health-poller task. This is the inner task supervised by
+    /// [`start_health_poller`].
+    fn spawn_single_health_poller(
         manager: Arc<TokioMutex<Self>>,
         interval: Duration,
         cancel: CancellationToken,
@@ -814,6 +846,46 @@ impl NousManager {
     #[must_use]
     pub fn knowledge_store(&self) -> Option<&Arc<KnowledgeStore>> {
         self.knowledge_store.as_ref()
+    }
+}
+
+/// Supervisor loop: spawns a health-poller task, awaits it, and restarts
+/// it on panic after a short backoff.
+///
+/// Stops when `cancel` fires.
+async fn supervise_health_poller(
+    mut spawn_poller: impl FnMut() -> JoinHandle<()>,
+    cancel: CancellationToken,
+    backoff: Duration,
+) {
+    let mut restart_count = 0u64;
+    loop {
+        // If shutdown has been requested, don't spawn another poller.
+        if cancel.is_cancelled() {
+            break;
+        }
+
+        let poller = spawn_poller();
+
+        match poller.await {
+            Ok(()) => {
+                debug!("health poller exited cleanly");
+                break;
+            }
+            Err(e) => {
+                if cancel.is_cancelled() {
+                    break;
+                }
+                restart_count += 1;
+                error!(
+                    error = %e,
+                    restart_count,
+                    "health poller died — respawning after backoff"
+                );
+                crate::metrics::record_health_poller_restart();
+                tokio::time::sleep(backoff).await;
+            }
+        }
     }
 }
 

@@ -88,6 +88,8 @@ static CACHE_CREATION_TOKENS_TOTAL: LazyLock<Family<NousLabels, Counter>> =
 static DPO_PAIRS_CAPTURED_TOTAL: LazyLock<Family<NousLabels, Counter>> =
     LazyLock::new(Family::default);
 
+static HEALTH_POLLER_RESTARTS_TOTAL: LazyLock<Counter> = LazyLock::new(Counter::default);
+
 // ---------------------------------------------------------------------------
 // Registration
 // ---------------------------------------------------------------------------
@@ -138,6 +140,11 @@ pub fn register(registry: &mut Registry) {
         "aletheia_dpo_pairs_captured",
         "Total DPO preference pairs captured from correction turns",
         DPO_PAIRS_CAPTURED_TOTAL.clone(),
+    );
+    registry.register(
+        "aletheia_nous_health_poller_restarts",
+        "Total health poller restarts by the supervisor",
+        HEALTH_POLLER_RESTARTS_TOTAL.clone(),
     );
 }
 
@@ -227,6 +234,14 @@ pub(crate) fn record_background_failure(nous_id: &str, task_type: &str) {
         .inc();
 }
 
+/// Record a health poller supervisor restart.
+///
+/// WHY: Repeated restarts indicate a persistent bug in `health_cycle` or
+/// `restart_actor`. Operators should alert when this counter grows.
+pub(crate) fn record_health_poller_restart() {
+    HEALTH_POLLER_RESTARTS_TOTAL.inc();
+}
+
 /// Record prompt cache usage from an API response.
 ///
 /// Tracks cache effectiveness for cost monitoring. `cache_read_tokens` maps to
@@ -286,6 +301,7 @@ mod tests {
         record_background_failure("n1", "extract");
         record_tool_failure("n1", "read");
         record_stream_event_dropped("n1", "full");
+        record_health_poller_restart();
 
         let out = encode(&r);
         for metric in [
@@ -297,6 +313,7 @@ mod tests {
             "aletheia_nous_background_task_failures_total",
             "aletheia_tool_failures_total",
             "aletheia_stream_events_dropped_total",
+            "aletheia_nous_health_poller_restarts_total",
         ] {
             assert!(out.contains(metric), "missing `{metric}` in: {out}");
         }
