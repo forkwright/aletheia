@@ -8,7 +8,7 @@
 //! Gate ORDER matters: each subsequent gate is more expensive.
 //! 1. **Time gate**  -  single stat call on the lock file.
 //! 2. **Session gate**  -  directory scan, throttled to 10-minute intervals.
-//! 3. **Lock gate**  -  fd-lock write + PID verify.
+//! 3. **Lock gate**  -  rustix flock write + PID verify.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -264,7 +264,7 @@ impl DreamEngine {
             return Ok(None);
         }
 
-        // GATE 3: Lock gate (fd-lock + PID verify).
+        // GATE 3: Lock gate (rustix flock + PID verify).
         let acquired = lock::try_acquire(&self.config.lock_path, self.config.stale_threshold_secs)?;
 
         if acquired.is_none() {
