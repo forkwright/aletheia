@@ -125,7 +125,7 @@ The crate that owns the functionality defines the feature. Every crate above it 
 ```toml
 # crates/phronesis/Cargo.toml (owns the feature)
 [features]
-cron_scheduler = ["dep:uuid", "dep:fd-lock"]
+cron_scheduler = ["dep:uuid", "dep:cron"]
 
 # crates/kanon-cli/Cargo.toml (forwards the feature)
 [features]
@@ -228,7 +228,7 @@ Feature flags are not permanent. Every flag has a lifecycle: experimental, stabl
 ```toml
 [features]
 # Experimental — owner: @ck — target: default or remove by 0.9.0
-cron_scheduler = ["dep:uuid", "dep:fd-lock"]
+cron_scheduler = ["dep:uuid", "dep:cron"]
 ```
 
 WHY: features without owners become permanent. Features without timelines never graduate or get removed.
