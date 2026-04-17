@@ -485,3 +485,49 @@ channel = "signal"
 source = "*"
 nous_id = "main"
 ```
+
+---
+
+## Matrix (optional)
+
+Aletheia can run as a Matrix client against a self-hosted [conduwuit](https://conduwuit.puppyirl.gay/) homeserver. The homeserver binds to `127.0.0.1:6167` and is reached over Tailscale only — no federation, no public exposure.
+
+### Prerequisites
+
+- [Tailscale](https://tailscale.com) installed and authenticated on this host (conduwuit is only reachable via the tailnet).
+- `podman` 4.4+ with Quadlet generator (`/etc/containers/systemd/`).
+- `/storage/conduwuit/` writable (the script creates it under `sudo`).
+
+### Deploy the homeserver
+
+```bash
+scripts/deploy-conduwuit.sh --server-name menos.lan
+```
+
+The script:
+
+- pulls a pinned conduwuit container image,
+- generates a registration token at `~/menos-ops/secrets/conduwuit-registration-token` (mode `0600`),
+- installs a Quadlet unit at `/etc/containers/systemd/conduwuit.container`,
+- reloads systemd and starts `conduwuit.service`,
+- waits for `http://127.0.0.1:6167/_matrix/client/versions` to return 200.
+
+The service restarts on failure and runs with `NoNewPrivileges`, `ProtectSystem`, and loopback-only publish.
+
+### Register the first user
+
+Use the registration token the script printed (also at `~/menos-ops/secrets/conduwuit-registration-token`). Follow conduwuit's current API docs for the exact endpoint — typically via `element` (web client) against `http://menos.lan:6167`, selecting "Create account" and pasting the token when prompted.
+
+### Connect an Element client
+
+Point Element (desktop or web) at `http://menos.lan:6167`. Sign in as the user you registered. Over Tailscale this URL resolves and authenticates end-to-end.
+
+### Wire the aletheia MatrixProvider (Phase 3)
+
+The `MatrixProvider` scaffold is gated behind the `matrix` Cargo feature. Build with:
+
+```bash
+cargo build --release --features matrix
+```
+
+Then configure `[channels.matrix]` in `aletheia.toml` (see Phase 3 for full syntax). In Phase 2 the provider can be loaded but only `probe()` is wired; `send()` returns an error until Phase 3.
