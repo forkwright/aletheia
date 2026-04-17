@@ -3,10 +3,9 @@
     clippy::as_conversions,
     reason = "string function casts (CompactString as &str) are safe coercions"
 )]
-use base64::Engine;
-use base64::engine::general_purpose::STANDARD;
 use compact_str::CompactString;
 use itertools::Itertools;
+use koina::base64;
 use snafu::ResultExt;
 use unicode_normalization::UnicodeNormalization;
 
@@ -216,7 +215,7 @@ pub(crate) fn op_unicode_normalize(args: &[DataValue]) -> Result<DataValue> {
 pub(crate) fn op_encode_base64(args: &[DataValue]) -> Result<DataValue> {
     match arg(args, 0)? {
         DataValue::Bytes(b) => {
-            let s = STANDARD.encode(b);
+            let s = base64::encode(b);
             Ok(DataValue::from(s))
         }
         _ => TypeMismatchSnafu {
@@ -230,7 +229,7 @@ pub(crate) fn op_encode_base64(args: &[DataValue]) -> Result<DataValue> {
 pub(crate) fn op_decode_base64(args: &[DataValue]) -> Result<DataValue> {
     match arg(args, 0)? {
         DataValue::Str(s) => {
-            let b = STANDARD.decode(s).map_err(|e| {
+            let b = base64::decode(s).map_err(|e| {
                 EncodingFailedSnafu {
                     message: format!("Data is not properly encoded: {e}"),
                 }

@@ -137,10 +137,7 @@ pub(super) fn execute_sandboxed_action(
     let change_description = describe_change(action, diff_region.as_ref());
 
     // Encode post-action frame for return.
-    let frame_base64 = Some(base64::Engine::encode(
-        &base64::engine::general_purpose::STANDARD,
-        &after_bytes,
-    ));
+    let frame_base64 = Some(koina::base64::encode(&after_bytes));
 
     // Clean up temp files.
     let _ = std::fs::remove_file(&before_path);

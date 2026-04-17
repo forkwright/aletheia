@@ -8,10 +8,10 @@
 
 use std::path::{Path, PathBuf};
 
-use base64::Engine as _;
 use chacha20poly1305::aead::generic_array::GenericArray;
 use chacha20poly1305::aead::{Aead, AeadCore, OsRng};
 use chacha20poly1305::{ChaCha20Poly1305, KeyInit};
+use koina::base64;
 use snafu::ResultExt;
 use tracing::warn;
 
@@ -202,7 +202,7 @@ pub(crate) fn encrypt_value(plaintext: &str, primary_key: &[u8; KEY_LEN]) -> Res
     payload.extend_from_slice(&nonce);
     payload.extend_from_slice(&ciphertext_with_tag);
 
-    let encoded = base64::engine::general_purpose::STANDARD.encode(&payload);
+    let encoded = base64::encode(&payload);
     Ok(format!("{ENCRYPTED_PREFIX}{encoded}"))
 }
 
@@ -220,10 +220,9 @@ pub(crate) fn decrypt_value(encrypted: &str, primary_key: &[u8; KEY_LEN]) -> Res
         .strip_prefix(ENCRYPTED_PREFIX)
         .ok_or_else(|| build_decrypt_error("missing enc: prefix"))?;
 
-    // WHY: base64::DecodeError is not useful to propagate through taxis Error
-    let payload = base64::engine::general_purpose::STANDARD
-        .decode(encoded)
-        .map_err(|_decode_err| build_decrypt_error("invalid base64"))?;
+    // WHY: koina::base64::DecodeError is not useful to propagate through taxis Error
+    let payload =
+        base64::decode(encoded).map_err(|_decode_err| build_decrypt_error("invalid base64"))?;
 
     if payload.len() < NONCE_LEN + TAG_LEN {
         return Err(build_decrypt_error("ciphertext too short"));

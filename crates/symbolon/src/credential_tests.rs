@@ -213,32 +213,7 @@ fn env_provider_with_source_forces_oauth() {
 /// signature is unused (no verification is performed).
 fn make_test_oauth_token(exp_secs: u64) -> String {
     fn base64url_encode(input: &[u8]) -> String {
-        const TABLE: &[u8; 64] =
-            b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
-        // SAFETY: index is masked to 0..=63 by & 0x3F, TABLE has exactly 64 elements
-        fn lookup(table: &[u8; 64], idx: u32) -> char {
-            char::from(
-                *table
-                    .get(usize::try_from(idx).unwrap_or(0))
-                    .unwrap_or(&b'A'),
-            )
-        }
-        let mut out = String::new();
-        for chunk in input.chunks(3) {
-            let b0 = u32::from(*chunk.first().unwrap_or(&0));
-            let b1 = u32::from(*chunk.get(1).unwrap_or(&0));
-            let b2 = u32::from(*chunk.get(2).unwrap_or(&0));
-            let n = (b0 << 16) | (b1 << 8) | b2;
-            out.push(lookup(TABLE, (n >> 18) & 0x3F));
-            out.push(lookup(TABLE, (n >> 12) & 0x3F));
-            if chunk.len() > 1 {
-                out.push(lookup(TABLE, (n >> 6) & 0x3F));
-            }
-            if chunk.len() > 2 {
-                out.push(lookup(TABLE, n & 0x3F));
-            }
-        }
-        out
+        koina::base64::encode_url_safe_no_pad(input)
     }
 
     let payload_json = format!(r#"{{"exp":{exp_secs}}}"#);

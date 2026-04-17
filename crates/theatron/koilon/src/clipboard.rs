@@ -102,9 +102,7 @@ fn read_system_clipboard_text() -> ClipboardContent {
 fn copy_osc52(text: &str) -> Result<(), String> {
     use std::io::Write;
 
-    use base64::{Engine, engine::general_purpose::STANDARD};
-
-    let encoded = STANDARD.encode(text.as_bytes());
+    let encoded = koina::base64::encode(text.as_bytes());
 
     // NOTE: tmux requires an OSC52 passthrough wrapper for the escape sequence to reach the terminal
     let seq = if RealSystem.var("TMUX").is_some() {
@@ -131,19 +129,17 @@ mod tests {
 
     #[test]
     fn copy_osc52_generates_valid_sequence() {
-        use base64::{Engine, engine::general_purpose::STANDARD};
         let text = "test clipboard content";
-        let encoded = STANDARD.encode(text.as_bytes());
+        let encoded = koina::base64::encode(text.as_bytes());
         assert!(!encoded.is_empty());
-        let decoded = STANDARD.decode(&encoded).unwrap();
+        let decoded = koina::base64::decode(&encoded).unwrap();
         assert_eq!(String::from_utf8(decoded).unwrap(), text);
     }
 
     #[test]
     fn copy_osc52_tmux_detection() {
         let text = "test";
-        use base64::{Engine, engine::general_purpose::STANDARD};
-        let encoded = STANDARD.encode(text.as_bytes());
+        let encoded = koina::base64::encode(text.as_bytes());
         let tmux_seq = format!("\x1bPtmux;\x1b\x1b]52;c;{}\x07\x1b\\", encoded);
         let normal_seq = format!("\x1b]52;c;{}\x07", encoded);
         assert!(tmux_seq.len() > normal_seq.len());

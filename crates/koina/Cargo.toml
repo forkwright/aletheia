@@ -38,6 +38,7 @@ prometheus-client = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt", "test-util"] }
 criterion = { workspace = true }
 tempfile = { workspace = true }
+proptest = { workspace = true }
 
 # WHY: ID generation is on every session/turn/observation hot path. Track
 # regressions in the internal ULID/UUID implementations against external
