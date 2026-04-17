@@ -77,4 +77,10 @@ pub struct RecallResult {
     /// [`FactSensitivity::Public`]: super::fact::FactSensitivity::Public
     #[serde(default)]
     pub sensitivity: super::fact::FactSensitivity,
+    /// Normalized `PageRank` importance of the entity associated with this
+    /// result. Zero when no graph score is available. Carried from the
+    /// `graph_scores` relation so the recall pipeline can boost hub
+    /// entities directly (#3432).
+    #[serde(default)]
+    pub graph_importance: f64,
 }

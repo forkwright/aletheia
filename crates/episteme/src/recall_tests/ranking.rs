@@ -92,6 +92,7 @@ fn custom_weights_change_ranking() {
         epistemic_tier: 0.0,
         relationship_proximity: 0.0,
         access_frequency: 0.0,
+        graph_importance: 0.0,
     };
     let e = RecallEngine::with_weights(weights);
 
@@ -123,6 +124,7 @@ fn all_weights_zero_returns_zero() {
         epistemic_tier: 0.0,
         relationship_proximity: 0.0,
         access_frequency: 0.0,
+        graph_importance: 0.0,
     };
     let e = RecallEngine::with_weights(weights);
     let factors = FactorScores {
@@ -132,6 +134,7 @@ fn all_weights_zero_returns_zero() {
         epistemic_tier: 1.0,
         relationship_proximity: 1.0,
         access_frequency: 1.0,
+        graph_importance: 0.0,
     };
     assert!(
         (e.compute_score(&factors)).abs() < f64::EPSILON,
@@ -263,6 +266,7 @@ fn single_weight_isolation() {
         epistemic_tier: 0.0,
         relationship_proximity: 0.0,
         access_frequency: 0.0,
+        graph_importance: 0.0,
     };
     let e = engine();
     let score = e.compute_score(&factors);
@@ -285,6 +289,7 @@ fn scores_are_bounded_zero_to_one() {
             epistemic_tier: 1.0,
             relationship_proximity: 1.0,
             access_frequency: 1.0,
+            graph_importance: 0.0,
         },
         FactorScores {
             vector_similarity: 1.0,
@@ -293,6 +298,7 @@ fn scores_are_bounded_zero_to_one() {
             epistemic_tier: 0.0,
             relationship_proximity: 1.0,
             access_frequency: 0.0,
+            graph_importance: 0.0,
         },
         FactorScores {
             vector_similarity: 0.0,
@@ -301,6 +307,7 @@ fn scores_are_bounded_zero_to_one() {
             epistemic_tier: 0.0,
             relationship_proximity: 0.0,
             access_frequency: 1.0,
+            graph_importance: 0.0,
         },
     ];
 
@@ -378,6 +385,7 @@ fn verified_tier_scores_higher_than_inferred_in_ranking() {
                 epistemic_tier: 0.6,
                 relationship_proximity: 0.5,
                 access_frequency: 0.3,
+                graph_importance: 0.0,
             },
             score: 0.0,
             sensitivity: crate::knowledge::FactSensitivity::Public,
@@ -394,6 +402,7 @@ fn verified_tier_scores_higher_than_inferred_in_ranking() {
                 epistemic_tier: 1.0,
                 relationship_proximity: 0.5,
                 access_frequency: 0.3,
+                graph_importance: 0.0,
             },
             score: 0.0,
             sensitivity: crate::knowledge::FactSensitivity::Public,
@@ -420,6 +429,7 @@ fn recent_facts_score_higher_composite() {
         epistemic_tier: 0.6,
         relationship_proximity: 0.4,
         access_frequency: 0.3,
+        graph_importance: 0.0,
         ..FactorScores::default()
     };
 
@@ -448,6 +458,7 @@ fn score_deterministic() {
         epistemic_tier: 0.8,
         relationship_proximity: 0.4,
         access_frequency: 0.2,
+        graph_importance: 0.0,
     };
 
     let score1 = e.compute_score(&factors);

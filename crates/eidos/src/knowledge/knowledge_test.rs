@@ -263,6 +263,7 @@ fn recall_result_serde_roundtrip() {
         source_type: "fact".to_owned(),
         source_id: "fact-1".to_owned(),
         sensitivity: FactSensitivity::Public,
+        graph_importance: 0.0,
     };
     let json = serde_json::to_string(&result).expect("RecallResult serialization is infallible");
     let back: RecallResult =

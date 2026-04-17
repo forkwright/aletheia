@@ -128,12 +128,36 @@ impl KnowledgeMaintenanceExecutor for KnowledgeMaintenanceAdapter {
         &self,
         _nous_id: &str,
     ) -> oikonomos::error::Result<MaintenanceReport> {
+        let start = std::time::Instant::now();
+        let mut items_modified: u64 = 0;
+        let mut errors: u32 = 0;
+
+        if let Err(e) = self.store.recompute_graph_scores() {
+            tracing::warn!(error = %e, "graph score recomputation failed");
+            errors += 1;
+        } else {
+            items_modified += 1;
+        }
+
+        if let Err(e) = self.store.compute_and_store_volatility() {
+            tracing::warn!(error = %e, "volatility score computation failed");
+            errors += 1;
+        } else {
+            items_modified += 1;
+        }
+
+        let duration_ms = start.elapsed().as_millis().try_into().unwrap_or(u64::MAX);
+        let detail = format!(
+            "Graph recompute: PageRank+Louvain refreshed, volatility stored, {errors} errors"
+        );
+        tracing::info!(%detail, duration_ms, "maintenance: graph recompute complete");
+
         Ok(MaintenanceReport {
-            detail: Some(
-                "NOT_IMPLEMENTED: graph score recomputation (PageRank/centrality) not yet wired"
-                    .to_owned(),
-            ),
-            ..Default::default()
+            items_processed: items_modified,
+            items_modified,
+            errors,
+            duration_ms,
+            detail: Some(detail),
         })
     }
 

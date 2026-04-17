@@ -199,7 +199,7 @@ mod engine_tests {
         store.recompute_graph_scores().expect("recompute");
 
         let ctx = store
-            .build_graph_context(&["a1".to_owned()], 0.10)
+            .build_graph_context(&["a1".to_owned()])
             .expect("build_graph_context");
 
         assert!(
@@ -213,7 +213,7 @@ mod engine_tests {
     }
 
     #[test]
-    fn build_graph_context_skipped_when_weight_zero() {
+    fn build_graph_context_always_loads_graph_data() {
         let store = test_store();
 
         for (id, name) in [("x1", "X1"), ("x2", "X2")] {
@@ -227,28 +227,19 @@ mod engine_tests {
         store.recompute_graph_scores().expect("recompute");
 
         let ctx = store
-            .build_graph_context(&["x1".to_owned()], 0.0)
-            .expect("build_graph_context with zero weight");
+            .build_graph_context(&["x1".to_owned()])
+            .expect("build_graph_context");
         assert!(
-            ctx.is_empty(),
-            "graph context must be empty when weight is zero"
+            !ctx.is_empty(),
+            "graph context should load data regardless of recall weight (#3432)"
         );
         assert!(
-            ctx.proximity.is_empty(),
-            "no BFS proximity should be computed when weight is zero"
+            !ctx.proximity.is_empty(),
+            "BFS proximity should be computed"
         );
-        assert!(
-            ctx.chain_lengths.is_empty(),
-            "no chain lengths should be computed when weight is zero"
-        );
-
-        let ctx_active = store
-            .build_graph_context(&["x1".to_owned()], 0.10)
-            .expect("build_graph_context with nonzero weight");
-        assert!(
-            !ctx_active.is_empty(),
-            "graph context should have data when weight is nonzero"
-        );
+        // Chain lengths are computed from supersession chains in the facts
+        // table; this test only inserts entities/relationships, so they
+        // will legitimately be empty.
     }
 
     #[test]

@@ -8,10 +8,10 @@ use mneme::recall::ScoredResult;
 ///
 /// These values are placed directly into the non-vector
 /// [`mneme::recall::FactorScores`] fields. Only vector similarity is computed
-/// from the actual embedding distance; decay, relevance, tier, proximity, and frequency
-/// use these configured values as their scores. All values default to the previously
-/// hardcoded constants, preserving existing behaviour unless an operator overrides them
-/// in taxis config.
+/// from the actual embedding distance; decay, relevance, tier, proximity, frequency,
+/// and graph importance use these configured values as their scores. All values default
+/// to the previously hardcoded constants, preserving existing behaviour unless an
+/// operator overrides them in taxis config.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RecallWeights {
     /// Temporal decay weight (0.0-1.0).
@@ -24,6 +24,8 @@ pub struct RecallWeights {
     pub relationship_proximity: f64,
     /// Access frequency weight (0.0-1.0).
     pub access_frequency: f64,
+    /// Graph `PageRank` importance weight (0.0-1.0).
+    pub graph_importance: f64,
 }
 
 impl Default for RecallWeights {
@@ -32,8 +34,9 @@ impl Default for RecallWeights {
             decay: 0.5,
             relevance: 0.5,
             epistemic_tier: 0.3,
-            relationship_proximity: 0.0,
+            relationship_proximity: 0.1,
             access_frequency: 0.0,
+            graph_importance: 0.1,
         }
     }
 }
@@ -105,6 +108,7 @@ impl From<taxis::config::RecallSettings> for RecallConfig {
                 epistemic_tier: s.weights.epistemic_tier,
                 relationship_proximity: s.weights.relationship_proximity,
                 access_frequency: s.weights.access_frequency,
+                graph_importance: s.weights.graph_importance,
             },
             inject_metadata: s.inject_metadata,
             // NOTE: chars_per_token is forwarded separately from AgentDefaults
