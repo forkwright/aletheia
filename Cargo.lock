@@ -135,6 +135,7 @@ dependencies = [
  "predicates",
  "pylon",
  "qdrant-client",
+ "quick-xml",
  "rand 0.9.4",
  "rcgen",
  "reqwest 0.13.2",
