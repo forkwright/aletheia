@@ -6,10 +6,11 @@ mod search;
 
 use std::collections::HashSet;
 
-use tracing::{debug, instrument};
+use tracing::{debug, info, instrument};
 
+use hermeneus::provider::DeploymentTarget;
 use mneme::embedding::EmbeddingProvider;
-use mneme::knowledge::RecallResult as KnowledgeRecallResult;
+use mneme::knowledge::{FactSensitivity, RecallResult as KnowledgeRecallResult};
 use mneme::recall::{FactorScores, RecallEngine, ScoredResult};
 
 use crate::error;
@@ -58,6 +59,12 @@ pub struct RecallStage {
     config: RecallConfig,
     /// Optional side-query selected IDs for pre-filtering before 6-factor scoring.
     side_query_ids: Option<HashSet<String>>,
+    /// Data-sovereignty target: gates which facts may leave the instance
+    /// through this recall pass (#3404, #3413). Defaults to
+    /// [`DeploymentTarget::Cloud`] — the safe assumption so callers who do
+    /// not thread `with_deployment_target` never leak `Internal` or
+    /// `Confidential` facts.
+    deployment_target: DeploymentTarget,
 }
 
 impl RecallStage {
@@ -73,6 +80,7 @@ impl RecallStage {
             engine: RecallEngine::with_weights(mneme::recall::RecallWeights::default()),
             config,
             side_query_ids: None,
+            deployment_target: DeploymentTarget::Cloud,
         }
     }
 
@@ -84,6 +92,17 @@ impl RecallStage {
     #[must_use]
     pub fn with_side_query_ids(mut self, ids: HashSet<String>) -> Self {
         self.side_query_ids = Some(ids);
+        self
+    }
+
+    /// Set the deployment target used to filter recalled facts by sensitivity.
+    ///
+    /// Facts whose [`FactSensitivity`] exceeds the target are dropped in
+    /// [`finalize_results`](Self::finalize_results) before the recall section
+    /// is built, so they never reach the LLM provider (#3404, #3413).
+    #[must_use]
+    pub fn with_deployment_target(mut self, target: DeploymentTarget) -> Self {
+        self.deployment_target = target;
         self
     }
 
@@ -283,6 +302,14 @@ impl RecallStage {
         remaining_budget: u64,
     ) -> RecallStageResult {
         let candidates_found = ranked.len();
+
+        // WHY (#3404, #3413): data-sovereignty filter. Drop facts whose
+        // sensitivity exceeds the active provider's deployment target BEFORE
+        // `min_score` filtering / budgeting, so the dropped facts never
+        // contribute to the recall section sent to the LLM. Non-fact sources
+        // default to `Public` and pass through unchanged.
+        let ranked = self.filter_by_sensitivity(ranked);
+
         let filtered = self.filter(ranked);
 
         if filtered.is_empty() {
@@ -315,6 +342,47 @@ impl RecallStage {
         }
     }
 
+    /// Drop candidates whose sensitivity exceeds the active deployment target.
+    ///
+    /// Emits an info-level log listing the filtered fact IDs so operators
+    /// can audit which memories were withheld from the current provider.
+    ///
+    /// | Target | Accepts |
+    /// |--------|---------|
+    /// | `Cloud` | `Public` only |
+    /// | `LocalHosted` | `Public`, `Internal` |
+    /// | `Embedded` | all sensitivities |
+    ///
+    /// # Complexity
+    ///
+    /// O(n) where n is the number of ranked candidates.
+    fn filter_by_sensitivity(&self, ranked: Vec<ScoredResult>) -> Vec<ScoredResult> {
+        let target = self.deployment_target;
+        let max_allowed = max_sensitivity_for(target);
+        let mut filtered_ids: Vec<String> = Vec::new();
+        let kept: Vec<ScoredResult> = ranked
+            .into_iter()
+            .filter(|r| {
+                if r.sensitivity <= max_allowed {
+                    true
+                } else {
+                    filtered_ids.push(r.source_id.clone());
+                    false
+                }
+            })
+            .collect();
+        if !filtered_ids.is_empty() {
+            info!(
+                filtered_count = filtered_ids.len(),
+                deployment_target = target.as_str(),
+                max_sensitivity = max_allowed.as_str(),
+                fact_ids = ?filtered_ids,
+                "recall: dropped sensitive facts before provider dispatch (sovereignty filter)"
+            );
+        }
+        kept
+    }
+
     /// Build candidate scores from raw search results.
     ///
     /// # Complexity
@@ -341,6 +409,10 @@ impl RecallStage {
                     access_frequency: w.access_frequency,
                 },
                 score: 0.0,
+                // WHY (#3404, #3413): propagate sensitivity from the search
+                // layer so the sovereignty filter in `finalize_results` sees
+                // per-fact classification rather than assuming `Public`.
+                sensitivity: r.sensitivity,
             })
             .collect()
     }
@@ -385,6 +457,26 @@ impl RecallStage {
         let section = format_section(&included);
         let tokens = estimate_tokens(&section, cpt);
         (included.len(), section, tokens)
+    }
+}
+
+/// Maximum [`FactSensitivity`] this deployment target is permitted to receive.
+///
+/// - `Cloud` → `Public`
+/// - `LocalHosted` → `Internal`
+/// - `Embedded` → `Confidential`
+///
+/// The ordering on `FactSensitivity` mirrors the ordering on
+/// `DeploymentTarget`, so admission reduces to `sensitivity <= max`.
+fn max_sensitivity_for(target: DeploymentTarget) -> FactSensitivity {
+    // WHY: `DeploymentTarget` is `#[non_exhaustive]` — any future boundary
+    // this crate has not been taught about falls into the wildcard arm and
+    // is treated as `Public`, the safest classification. Operators cannot
+    // leak classified facts to an unknown target by accident.
+    match target {
+        DeploymentTarget::LocalHosted => FactSensitivity::Internal,
+        DeploymentTarget::Embedded => FactSensitivity::Confidential,
+        DeploymentTarget::Cloud | _ => FactSensitivity::Public,
     }
 }
 

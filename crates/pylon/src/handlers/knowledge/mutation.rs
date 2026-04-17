@@ -10,7 +10,7 @@ use crate::error::ApiError;
 use crate::extract::{Claims, require_role};
 use crate::state::KnowledgeState;
 
-use super::{ForgetRequest, UpdateConfidenceRequest};
+use super::{ForgetRequest, UpdateConfidenceRequest, UpdateSensitivityRequest};
 
 /// POST /api/v1/knowledge/facts/{id}/forget
 #[utoipa::path(
@@ -190,6 +190,85 @@ pub async fn update_confidence(
     #[cfg(not(feature = "knowledge-store"))]
     let _ = (state, body);
     tracing::info!(fact_id = %id, "confidence update requested but knowledge store not available");
+    Err(ApiError::ServiceUnavailable {
+        message: "knowledge store not available".to_owned(),
+        location: snafu::location!(),
+    })
+}
+
+/// PUT /api/v1/knowledge/facts/{id}/sensitivity
+///
+/// Set the data-sovereignty classification on a fact so the recall pipeline
+/// can gate which LLM providers receive it (#3404, #3413). Valid values:
+/// `public`, `internal`, `confidential`.
+#[utoipa::path(
+    put,
+    path = "/api/v1/knowledge/facts/{id}/sensitivity",
+    params(("id" = String, Path, description = "Fact ID")),
+    request_body(
+        content = serde_json::Value,
+        description = "Sensitivity classification: `{\"sensitivity\": \"public|internal|confidential\"}`",
+        content_type = "application/json"
+    ),
+    responses(
+        (status = 200, description = "Sensitivity updated"),
+        (status = 400, description = "Invalid sensitivity value", body = crate::error::ErrorResponse),
+        (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 404, description = "Fact not found", body = crate::error::ErrorResponse),
+    ),
+    security(("bearer_auth" = []))
+)]
+///
+/// # Cancel safety
+///
+/// Cancel-safe. Axum handler; cancellation drops the future with no
+/// side effects beyond not returning a response.
+pub async fn update_sensitivity(
+    State(state): State<KnowledgeState>,
+    claims: Claims,
+    Path(id): Path<String>,
+    Json(body): Json<UpdateSensitivityRequest>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    require_role(&claims, Role::Operator)?;
+    let sensitivity = body
+        .sensitivity
+        .parse::<mneme::knowledge::FactSensitivity>()
+        .map_err(|e| ApiError::BadRequest {
+            message: format!("invalid sensitivity: {e}"),
+            location: snafu::location!(),
+        })?;
+    #[cfg(feature = "knowledge-store")]
+    if let Some(ref store) = state.knowledge_store {
+        let fact_id = mneme::id::FactId::new(&id).map_err(|e| ApiError::BadRequest {
+            message: format!("invalid fact id: {e}"),
+            location: snafu::location!(),
+        })?;
+        return match store.update_sensitivity_async(fact_id, sensitivity).await {
+            Ok(_) => {
+                tracing::info!(
+                    fact_id = %id,
+                    sensitivity = sensitivity.as_str(),
+                    "fact sensitivity updated"
+                );
+                Ok(Json(serde_json::json!({
+                    "status": "updated",
+                    "id": id,
+                    "sensitivity": sensitivity.as_str(),
+                })))
+            }
+            Err(mneme::error::Error::FactNotFound { .. }) => Err(ApiError::NotFound {
+                path: format!("fact/{id}"),
+                location: snafu::location!(),
+            }),
+            Err(e) => Err(ApiError::Internal {
+                message: e.to_string(),
+                location: snafu::location!(),
+            }),
+        };
+    }
+    #[cfg(not(feature = "knowledge-store"))]
+    let _ = (state, sensitivity);
+    tracing::info!(fact_id = %id, "sensitivity update requested but knowledge store not available");
     Err(ApiError::ServiceUnavailable {
         message: "knowledge store not available".to_owned(),
         location: snafu::location!(),

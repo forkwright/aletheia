@@ -83,6 +83,14 @@ pub struct Fact {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scope: Option<MemoryScope>,
 
+    /// Data-sovereignty classification gating which provider deployment
+    /// targets may receive this fact during recall (#3404, #3413).
+    ///
+    /// Defaults to [`FactSensitivity::Public`] via `#[serde(default)]` so
+    /// facts persisted before sensitivity tracking deserialize unchanged.
+    #[serde(default)]
+    pub sensitivity: FactSensitivity,
+
     /// Bi-temporal validity and recording timestamps.
     #[serde(flatten)]
     pub temporal: FactTemporal,
@@ -95,6 +103,57 @@ pub struct Fact {
     /// Access-tracking counters.
     #[serde(flatten)]
     pub access: FactAccess,
+}
+
+/// Data-sovereignty classification for a fact.
+///
+/// Controls which `DeploymentTarget` tiers may receive the fact during
+/// recall. Variants are ordered `Public < Internal < Confidential` (least
+/// restrictive → most restrictive) so admission reduces to a comparison
+/// against the provider's target.
+///
+/// | Variant | Allowed targets |
+/// |---------|----------------|
+/// | `Public` | any provider |
+/// | `Internal` | self-hosted / embedded only |
+/// | `Confidential` | embedded (in-process) only |
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum FactSensitivity {
+    /// Safe for any provider, including cloud LLM providers.
+    #[default]
+    Public,
+    /// Safe for local or self-hosted providers; must not leave the instance
+    /// via cloud APIs.
+    Internal,
+    /// Never send to any external provider. Only embedded (in-process)
+    /// providers may receive this fact.
+    Confidential,
+}
+
+impl FactSensitivity {
+    /// Return the lowercase string representation.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Public => "public",
+            Self::Internal => "internal",
+            Self::Confidential => "confidential",
+        }
+    }
+}
+
+impl std::str::FromStr for FactSensitivity {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s {
+            "public" => Ok(Self::Public),
+            "internal" => Ok(Self::Internal),
+            "confidential" => Ok(Self::Confidential),
+            other => Err(format!("unknown fact sensitivity: {other}")),
+        }
+    }
 }
 
 /// Epistemic confidence tier.

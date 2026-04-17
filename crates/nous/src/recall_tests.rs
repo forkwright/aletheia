@@ -71,6 +71,7 @@ fn make_knowledge_result(content: &str, distance: f64) -> KnowledgeRecallResult 
         distance,
         source_type: "fact".to_owned(),
         source_id: format!("fact-{}", content.len()),
+        sensitivity: mneme::knowledge::FactSensitivity::Public,
     }
 }
 
@@ -84,6 +85,7 @@ fn make_knowledge_result_with_id(
         distance,
         source_type: "fact".to_owned(),
         source_id: source_id.to_owned(),
+        sensitivity: mneme::knowledge::FactSensitivity::Public,
     }
 }
 
@@ -95,6 +97,7 @@ fn make_scored(content: &str, score: f64) -> ScoredResult {
         nous_id: "syn".to_owned(),
         factors: FactorScores::default(),
         score,
+        sensitivity: mneme::knowledge::FactSensitivity::Public,
     }
 }
 
@@ -412,6 +415,7 @@ fn terminology_discovery_finds_novel_terms() {
             nous_id: String::new(),
             factors: FactorScores::default(),
             score: 0.8,
+            sensitivity: mneme::knowledge::FactSensitivity::Public,
         },
         ScoredResult {
             content: "quantum computing leverages superposition states".to_owned(),
@@ -420,6 +424,7 @@ fn terminology_discovery_finds_novel_terms() {
             nous_id: String::new(),
             factors: FactorScores::default(),
             score: 0.7,
+            sensitivity: mneme::knowledge::FactSensitivity::Public,
         },
     ];
 
@@ -440,6 +445,7 @@ fn terminology_discovery_ignores_stopwords() {
         nous_id: String::new(),
         factors: FactorScores::default(),
         score: 0.5,
+        sensitivity: mneme::knowledge::FactSensitivity::Public,
     }];
 
     let terms = discover_terminology(&results, "test query");
@@ -464,6 +470,7 @@ fn terminology_discovery_skips_short_words() {
         nous_id: String::new(),
         factors: FactorScores::default(),
         score: 0.5,
+        sensitivity: mneme::knowledge::FactSensitivity::Public,
     }];
 
     let terms = discover_terminology(&results, "test");
@@ -483,6 +490,7 @@ fn gap_detection_finds_capitalized_phrases() {
         nous_id: String::new(),
         factors: FactorScores::default(),
         score: 0.8,
+        sensitivity: mneme::knowledge::FactSensitivity::Public,
     }];
 
     let gaps = detect_gaps(&results);
@@ -502,6 +510,7 @@ fn gap_detection_finds_quoted_strings() {
         nous_id: String::new(),
         factors: FactorScores::default(),
         score: 0.7,
+        sensitivity: mneme::knowledge::FactSensitivity::Public,
     }];
 
     let gaps = detect_gaps(&results);
@@ -572,5 +581,202 @@ fn iterative_recall_disabled_by_default() {
         search.call_count(),
         1,
         "default config should only search once"
+    );
+}
+
+// ── Sovereignty filter tests (#3404, #3413) ──────────────────────────────
+
+fn make_knowledge_result_sensitive(
+    content: &str,
+    distance: f64,
+    source_id: &str,
+    sensitivity: mneme::knowledge::FactSensitivity,
+) -> KnowledgeRecallResult {
+    KnowledgeRecallResult {
+        content: content.to_owned(),
+        distance,
+        source_type: "fact".to_owned(),
+        source_id: source_id.to_owned(),
+        sensitivity,
+    }
+}
+
+#[test]
+fn sovereignty_filter_cloud_drops_internal_and_confidential() {
+    use hermeneus::provider::DeploymentTarget;
+    use mneme::knowledge::FactSensitivity;
+
+    let results = vec![
+        make_knowledge_result_sensitive("public A", 0.1, "f-pub", FactSensitivity::Public),
+        make_knowledge_result_sensitive("internal B", 0.1, "f-int", FactSensitivity::Internal),
+        make_knowledge_result_sensitive(
+            "confidential C",
+            0.1,
+            "f-conf",
+            FactSensitivity::Confidential,
+        ),
+    ];
+    let search = MockVectorSearch::new(results);
+    let config = RecallConfig {
+        min_score: 0.0,
+        max_results: 10,
+        ..Default::default()
+    };
+    let stage = RecallStage::new(config).with_deployment_target(DeploymentTarget::Cloud);
+    let result = stage
+        .run("query", "syn", &mock_embed(), &search, 50000)
+        .expect("recall runs");
+
+    let section = result
+        .recall_section
+        .expect("public result should yield a section");
+    assert!(
+        section.contains("public A"),
+        "Cloud target must keep Public; section = {section}"
+    );
+    assert!(
+        !section.contains("internal B"),
+        "Cloud target must drop Internal; section = {section}"
+    );
+    assert!(
+        !section.contains("confidential C"),
+        "Cloud target must drop Confidential; section = {section}"
+    );
+    assert_eq!(
+        result.results_injected, 1,
+        "only Public fact should be injected on Cloud target"
+    );
+}
+
+#[test]
+fn sovereignty_filter_local_hosted_drops_only_confidential() {
+    use hermeneus::provider::DeploymentTarget;
+    use mneme::knowledge::FactSensitivity;
+
+    let results = vec![
+        make_knowledge_result_sensitive("public A", 0.1, "f-pub", FactSensitivity::Public),
+        make_knowledge_result_sensitive("internal B", 0.15, "f-int", FactSensitivity::Internal),
+        make_knowledge_result_sensitive(
+            "confidential C",
+            0.2,
+            "f-conf",
+            FactSensitivity::Confidential,
+        ),
+    ];
+    let search = MockVectorSearch::new(results);
+    let config = RecallConfig {
+        min_score: 0.0,
+        max_results: 10,
+        ..Default::default()
+    };
+    let stage = RecallStage::new(config).with_deployment_target(DeploymentTarget::LocalHosted);
+    let result = stage
+        .run("query", "syn", &mock_embed(), &search, 50000)
+        .expect("recall runs");
+
+    let section = result
+        .recall_section
+        .expect("public+internal should yield a section");
+    assert!(section.contains("public A"));
+    assert!(section.contains("internal B"));
+    assert!(!section.contains("confidential C"));
+    assert_eq!(result.results_injected, 2);
+}
+
+#[test]
+fn sovereignty_filter_embedded_keeps_all() {
+    use hermeneus::provider::DeploymentTarget;
+    use mneme::knowledge::FactSensitivity;
+
+    let results = vec![
+        make_knowledge_result_sensitive("public A", 0.1, "f-pub", FactSensitivity::Public),
+        make_knowledge_result_sensitive("internal B", 0.15, "f-int", FactSensitivity::Internal),
+        make_knowledge_result_sensitive(
+            "confidential C",
+            0.2,
+            "f-conf",
+            FactSensitivity::Confidential,
+        ),
+    ];
+    let search = MockVectorSearch::new(results);
+    let config = RecallConfig {
+        min_score: 0.0,
+        max_results: 10,
+        ..Default::default()
+    };
+    let stage = RecallStage::new(config).with_deployment_target(DeploymentTarget::Embedded);
+    let result = stage
+        .run("query", "syn", &mock_embed(), &search, 50000)
+        .expect("recall runs");
+
+    let section = result.recall_section.expect("section present");
+    assert!(section.contains("public A"));
+    assert!(section.contains("internal B"));
+    assert!(section.contains("confidential C"));
+    assert_eq!(result.results_injected, 3);
+}
+
+#[test]
+fn sovereignty_filter_default_is_cloud() {
+    use mneme::knowledge::FactSensitivity;
+
+    // WHY: an unconfigured `RecallStage::new` defaults to Cloud so callers
+    // who forget to thread `with_deployment_target` still get the safest
+    // behaviour (no Internal/Confidential leaks).
+    let results = vec![
+        make_knowledge_result_sensitive("public A", 0.1, "f-pub", FactSensitivity::Public),
+        make_knowledge_result_sensitive("secret B", 0.1, "f-sec", FactSensitivity::Confidential),
+    ];
+    let search = MockVectorSearch::new(results);
+    let config = RecallConfig {
+        min_score: 0.0,
+        max_results: 10,
+        ..Default::default()
+    };
+    let stage = RecallStage::new(config);
+    let result = stage
+        .run("query", "syn", &mock_embed(), &search, 50000)
+        .expect("recall runs");
+
+    let section = result.recall_section.expect("public yields a section");
+    assert!(section.contains("public A"));
+    assert!(
+        !section.contains("secret B"),
+        "default (Cloud) must drop Confidential"
+    );
+    assert_eq!(result.results_injected, 1);
+}
+
+#[test]
+fn sovereignty_filter_reports_filtered_count_in_result() {
+    use hermeneus::provider::DeploymentTarget;
+    use mneme::knowledge::FactSensitivity;
+
+    // WHY: `candidates_found` is pre-filter and `results_injected` is
+    // post-filter; the delta quantifies what the sovereignty filter
+    // removed (audited alongside the info-level log).
+    let results = vec![
+        make_knowledge_result_sensitive("public A", 0.1, "f-pub", FactSensitivity::Public),
+        make_knowledge_result_sensitive("internal B", 0.1, "f-int-42", FactSensitivity::Internal),
+        make_knowledge_result_sensitive("secret C", 0.1, "f-sec", FactSensitivity::Confidential),
+    ];
+    let search = MockVectorSearch::new(results);
+    let config = RecallConfig {
+        min_score: 0.0,
+        max_results: 10,
+        ..Default::default()
+    };
+    let stage = RecallStage::new(config).with_deployment_target(DeploymentTarget::Cloud);
+    let result = stage
+        .run("query", "syn", &mock_embed(), &search, 50000)
+        .expect("recall runs");
+
+    assert_eq!(
+        result.candidates_found, 3,
+        "candidates_found is pre-filter total"
+    );
+    assert_eq!(
+        result.results_injected, 1,
+        "only Public fact survives Cloud sovereignty filter"
     );
 }
