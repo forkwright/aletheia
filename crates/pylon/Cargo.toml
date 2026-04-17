@@ -65,6 +65,7 @@ symbolon = { path = "../symbolon" }
 
 [dev-dependencies]
 hermeneus = { path = "../hermeneus", features = ["test-utils"] }
+mneme = { path = "../mneme", features = ["test-support"] }
 symbolon = { path = "../symbolon", features = ["test-support"] }
 http-body-util = "0.1"
 jiff = { workspace = true }
