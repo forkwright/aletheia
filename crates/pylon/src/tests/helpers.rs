@@ -11,6 +11,7 @@ use hermeneus::provider::ProviderRegistry;
 use hermeneus::test_utils::MockProvider;
 use koina::http::{BEARER_PREFIX, CONTENT_TYPE_JSON};
 use koina::secret::SecretString;
+use mneme::embedding::MockEmbeddingProvider;
 use mneme::store::SessionStore;
 use nous::config::{NousConfig, PipelineConfig};
 use nous::manager::NousManager;
@@ -171,7 +172,7 @@ bind = "localhost"
         shutdown: CancellationToken::new(),
         #[cfg(feature = "knowledge-store")]
         knowledge_store: None,
-        embedding_provider: None,
+        embedding_provider: Some(Arc::new(MockEmbeddingProvider::new(384))),
         turn_buffer_registry: Arc::new(crate::turn_buffer::TurnBufferRegistry::new()),
         metrics_registry,
     });
