@@ -5,6 +5,7 @@
 //! or graceful failures without a live server.
 
 #![expect(clippy::expect_used, reason = "test assertions")]
+#![expect(clippy::unwrap_used, reason = "test assertions")]
 
 use assert_cmd::Command;
 use predicates::prelude::*;
@@ -280,4 +281,89 @@ fn no_args_does_not_panic() {
 
     let exit_code = output.status.code().unwrap_or(101);
     assert_ne!(exit_code, 101, "aletheia exited with a panic exit code");
+}
+
+// ── Backup verify ────────────────────────────────────────────────────────────
+
+#[test]
+fn backup_verify_exits_zero_on_valid_backup() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let db_path = tmp.path().join("db");
+
+    // Create a small fjall database.
+    {
+        let db = fjall::SingleWriterTxDatabase::builder(&db_path)
+            .open()
+            .expect("open fjall db");
+        let ks = db
+            .keyspace("sessions", fjall::KeyspaceCreateOptions::default)
+            .expect("create keyspace");
+        // WHY: Session uses #[serde(flatten)] for metrics and origin, so fields
+        // must be at the top level, not nested.
+        let session = serde_json::json!({
+            "id": "sess-1",
+            "nous_id": "syn",
+            "session_key": "default",
+            "status": "active",
+            "model": null,
+            "session_type": "primary",
+            "created_at": "2024-01-01T00:00:00.000Z",
+            "updated_at": "2024-01-01T00:00:00.000Z",
+            "token_count_estimate": 0,
+            "message_count": 0,
+            "last_input_tokens": 0,
+            "bootstrap_hash": null,
+            "distillation_count": 0,
+            "last_distilled_at": null,
+            "computed_context_tokens": 0,
+            "parent_session_id": null,
+            "thread_id": null,
+            "transport": null,
+            "display_name": null
+        });
+        ks.insert("sess-1", serde_json::to_vec(&session).unwrap().as_slice())
+            .expect("insert");
+        // db is dropped here, but fjall may hold background locks briefly.
+    }
+
+    // WHY: copy to a second path so the verifier doesn't contend with any
+    // lingering background threads from the creation handle.
+    let verify_path = tmp.path().join("verify");
+    copy_dir(&db_path, &verify_path);
+
+    let output = aletheia()
+        .args(["backup", "verify", verify_path.to_str().unwrap()])
+        .output()
+        .expect("failed to run aletheia backup verify");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let exit_code = output.status.code().unwrap_or(255);
+
+    assert_eq!(
+        exit_code, 0,
+        "backup verify should exit 0 on valid backup\nstdout: {stdout}\nstderr: {stderr}"
+    );
+    assert!(
+        stdout.contains("PASS"),
+        "stdout should contain PASS\nstdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("sessions"),
+        "stdout should list sessions partition\nstdout: {stdout}"
+    );
+}
+
+fn copy_dir(src: &std::path::Path, dst: &std::path::Path) {
+    std::fs::create_dir_all(dst).expect("create_dir_all");
+    for entry in std::fs::read_dir(src).expect("read_dir") {
+        let entry = entry.expect("dir entry");
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+        if src_path.is_dir() {
+            copy_dir(&src_path, &dst_path);
+        } else {
+            std::fs::copy(&src_path, &dst_path).expect("copy");
+        }
+    }
 }
