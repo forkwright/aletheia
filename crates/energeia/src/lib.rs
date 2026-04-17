@@ -16,6 +16,7 @@
 //! - [`resume`] — multi-stage escalation policy for stuck sessions
 //! - [`dag`] — prompt dependency graph with topological frontier computation
 //! - [`prompt`] — YAML frontmatter loading and DAG construction from prompt files
+//! - [`routing`] — static and empirical provider selection (success-rate based)
 //! - [`types`] — dispatch specs, outcomes, QA results
 //! - [`error`] — snafu error types with location tracking
 
@@ -54,6 +55,8 @@ pub mod prompt_cache;
 pub mod qa;
 /// Multi-stage resume escalation policy.
 pub mod resume;
+/// Provider routing: static config-driven and empirical success-rate-based selection.
+pub(crate) mod routing;
 /// Per-prompt session management: spawn, monitor, resume, budget enforce.
 pub mod session;
 /// Steward CI management pipeline: classify, merge, fix, and manage pull requests.
