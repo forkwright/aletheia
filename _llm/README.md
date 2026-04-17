@@ -21,6 +21,10 @@ L1 and L2 are deferred to a follow-up PR. See Architecture Plan: Multi-Resolutio
 
 ## Loading recipes
 
+Task-specific resolution selection is defined in [`recipes.toml`](recipes.toml).
+The `nous` crate provides `RecipeRegistry` for parsing and selecting recipes at
+bootstrap time. See [`CLAUDE.md`](../CLAUDE.md) for the recipe-to-task mapping.
+
 | Task | What to load |
 |------|-------------|
 | Cold orientation | `_llm/architecture.toml` (until L1 lands) |

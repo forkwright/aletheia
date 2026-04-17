@@ -24,6 +24,21 @@ Shell: [standards/SHELL.md](standards/SHELL.md)
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): crate workspace, module map, dependency graph, trait boundaries.  
 [docs/ARCHITECTURE-QUICK.md](docs/ARCHITECTURE-QUICK.md): one-page crate reference for cold-start.
 
+### Loading recipes
+
+Task-specific context selection is defined in [`_llm/recipes.toml`](_llm/recipes.toml). Use it to decide which resolution levels to load:
+
+| Task type | Recipe | What to load | Token budget |
+|-----------|--------|--------------|-------------|
+| Cold start / first interaction | `cold_start` | `architecture.toml` + `manifest.toml` + `CLAUDE.md` | ~5,700 |
+| Single-crate edit | `edit_crate` | `architecture.toml` + L3(crate) + source(crate) | varies |
+| Cross-crate refactor | `cross_crate_refactor` | `architecture.toml` + `manifest.toml` + L3(touched crates) | ~250K |
+| New HTTP endpoint | `add_endpoint` | `architecture.toml` + `api.toml` + L3(pylon, nous) | ~65K |
+| New built-in tool | `add_tool` | `architecture.toml` + L3(organon) + `builtins/` source | ~35K |
+| Bug fix in known crate | `fix_bug` | `architecture.toml` + L3(crate) + source(crate) | ~45K |
+
+The `nous` crate provides [`RecipeRegistry`](crates/nous/src/recipes.rs) for parsing and selecting recipes at bootstrap time.
+
 ### Config
 
 - **Rust crates:** `instance.example/config/aletheia.toml` (TOML cascade: defaults → TOML → env vars)

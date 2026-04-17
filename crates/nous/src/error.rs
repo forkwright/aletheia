@@ -232,6 +232,14 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// Recipe loading or resolution failed.
+    #[snafu(display("recipe error: {message}"))]
+    RecipeLoading {
+        message: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// Competence store error.
     #[snafu(display("competence store error: {message}"))]
     CompetenceStore {
@@ -287,6 +295,7 @@ impl koina::error_class::Classifiable for Error {
             Error::CompetenceStore { .. } => ErrorClass::Permanent,
             Error::UncertaintyStore { .. } => ErrorClass::Permanent,
             Error::RoleContract { .. } => ErrorClass::Permanent,
+            Error::RecipeLoading { .. } => ErrorClass::Permanent,
 
             // Unknown: incomplete information — escalate
             Error::DeliveryFailed { .. } => ErrorClass::Unknown,
@@ -568,6 +577,17 @@ mod tests {
         let msg = err.to_string();
         assert!(msg.contains("panic"));
         assert!(msg.contains("null pointer"));
+    }
+
+    #[test]
+    fn error_display_recipe_loading() {
+        let err = RecipeLoadingSnafu {
+            message: "missing parameter crate",
+        }
+        .build();
+        let msg = err.to_string();
+        assert!(msg.contains("recipe error"));
+        assert!(msg.contains("missing parameter crate"));
     }
 
     #[test]
