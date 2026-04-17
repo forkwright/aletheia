@@ -49,7 +49,6 @@ regex = { workspace = true }
 sha2 = { workspace = true, default-features = false }
 either = { version = "1", default-features = false }
 rand = { workspace = true }
-uuid = { workspace = true, features = ["v1", "serde"] }
 pest = "2.8"
 pest_derive = "2.8"
 unicode-normalization = { version = "0.1", default-features = false }
