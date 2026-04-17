@@ -37,6 +37,11 @@ An abstraction with only one creation path is a mesh with a single root.  If tha
 
 - **Programmatic test fixtures** — integration tests reach directly into `graphe::SessionStore::create_session` (`crates/integration-tests/tests/mneme_session.rs:20`, `crates/graphe/tests/session_lifecycle.rs:45`) or use the HTTP client (`crates/eval/src/client.rs:81`).  There is no shared `TestFixture::create_session()` helper that bypasses the network layer.
 - **CLI command** — `aletheia session-export` exists (`crates/aletheia/src/commands/session_export.rs:1`) but there is no `aletheia session-create`.
+
+### New grounds (post-#3601)
+
+5. **`aletheia session-create <nous-id> [--key <session-key>]`** — `crates/aletheia/src/commands/session_create.rs:50`  
+   The `session-create` CLI subcommand opens the local `graphe::SessionStore` directly, validates the agent exists in config, generates a UUID v4 `SessionId`, and calls `SessionStore::create_session`.  This bypasses the HTTP layer entirely and is useful for scripting and headless integration-test setups.  It produces behavior equivalent to the API path: same validation rules, same conflict semantics, and the same JSON-shaped output.
 - **Domain pack initial state** — packs can declare tools and prompts, but there is no pack-level hook that pre-creates a session for an agent.
 
 ---
