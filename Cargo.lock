@@ -119,6 +119,7 @@ dependencies = [
  "dokimion",
  "energeia",
  "episteme",
+ "fjall",
  "graphe",
  "hermeneus",
  "indexmap 2.14.0",
