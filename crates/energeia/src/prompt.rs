@@ -46,6 +46,10 @@ pub struct PromptSpec {
     pub blast_radius: Vec<String>,
     /// Full Markdown body (task instructions after the frontmatter delimiter).
     pub body: String,
+    /// Optional prompt cache split. Populated by the preparation stage when
+    /// role/standards configuration is present.
+    #[serde(skip)]
+    pub prompt_components: Option<crate::prompt_cache::PromptComponents>,
 }
 
 /// Raw frontmatter fields deserialized from YAML.
@@ -133,6 +137,7 @@ fn parse_prompt_str(raw: &str, path: &Path) -> Result<PromptSpec> {
         acceptance_criteria: fm.acceptance_criteria,
         blast_radius: fm.blast_radius,
         body,
+        prompt_components: None,
     })
 }
 
@@ -387,6 +392,7 @@ blast_radius:
             acceptance_criteria: vec![],
             blast_radius: vec![],
             body: String::new(),
+            prompt_components: None,
         }
     }
 

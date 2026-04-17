@@ -87,6 +87,8 @@ pub(crate) async fn execute_group(
                     model: None,
                     blast_radius: prompt.blast_radius.clone(),
                     corrective_attempts: 0,
+                    cache_hit_tokens: 0,
+                    cache_miss_tokens: 0,
                 },
             };
 
@@ -130,6 +132,8 @@ pub(crate) async fn execute_group(
                     model: None,
                     blast_radius: vec![],
                     corrective_attempts: 0,
+                    cache_hit_tokens: 0,
+                    cache_miss_tokens: 0,
                 });
             }
         }
@@ -153,6 +157,8 @@ fn skipped_outcome(prompt: &PromptSpec, reason: &str) -> SessionOutcome {
         model: None,
         blast_radius: prompt.blast_radius.clone(),
         corrective_attempts: 0,
+        cache_hit_tokens: 0,
+        cache_miss_tokens: 0,
     }
 }
 
@@ -183,7 +189,10 @@ mod tests {
             depends_on: vec![],
             acceptance_criteria: vec![],
             blast_radius: vec![],
-            body: format!("implement task {number}"),
+            body: format!(
+                "implement task {number
+            prompt_components: None,}"
+            ),
         }
     }
 

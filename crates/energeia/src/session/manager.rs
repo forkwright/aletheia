@@ -85,10 +85,20 @@ impl SessionManager {
 
         // --- Initial session ---
 
-        let spec = SessionSpec {
-            prompt: prompt.body.clone(),
-            system_prompt: options.options.system_prompt.clone(),
-            cwd: options.options.cwd.clone(),
+        let spec = if let Some(ref components) = prompt.prompt_components {
+            SessionSpec {
+                prompt: components.dynamic_suffix.clone(),
+                system_prompt: Some(components.static_prefix.clone()),
+                cwd: options.options.cwd.clone(),
+                prompt_components: Some(components.clone()),
+            }
+        } else {
+            SessionSpec {
+                prompt: prompt.body.clone(),
+                system_prompt: options.options.system_prompt.clone(),
+                cwd: options.options.cwd.clone(),
+                prompt_components: None,
+            }
         };
 
         let initial_opts = options.to_agent_options();
@@ -115,7 +125,7 @@ impl SessionManager {
         // NOTE: Wait for the session to produce its final result.
         let session_result = handle.wait().await;
 
-        let (run_cost, run_turns, run_success, result_text, run_model) =
+        let (run_cost, run_turns, run_success, result_text, run_model, cache_hits, cache_misses) =
             extract_run_metrics(session_result, &stream_result);
 
         // Use model from result if available, otherwise from initial options
@@ -151,6 +161,8 @@ impl SessionManager {
                 Some(format!("timeout: no events for {}s", elapsed.as_secs())),
                 effective_model.clone(),
                 prompt.blast_radius.clone(),
+                cache_hits,
+                cache_misses,
             ));
         }
 
@@ -180,6 +192,8 @@ impl SessionManager {
                 None,
                 effective_model.clone(),
                 prompt.blast_radius.clone(),
+                cache_hits,
+                cache_misses,
             ));
         }
 
@@ -203,6 +217,8 @@ impl SessionManager {
                 Some(reason),
                 effective_model.clone(),
                 prompt.blast_radius.clone(),
+                cache_hits,
+                cache_misses,
             ));
         }
 
@@ -237,6 +253,8 @@ impl SessionManager {
                     Some("resume policy exhausted".to_owned()),
                     effective_model.clone(),
                     prompt.blast_radius.clone(),
+                    cache_hits,
+                    cache_misses,
                 ));
             };
 
@@ -278,6 +296,8 @@ impl SessionManager {
                         Some(format!("resume failed: {e}")),
                         effective_model.clone(),
                         prompt.blast_radius.clone(),
+                        cache_hits,
+                        cache_misses,
                     ));
                 }
             };
@@ -288,8 +308,15 @@ impl SessionManager {
 
             let session_result = handle.wait().await;
 
-            let (run_cost, run_turns, run_success, result_text, run_model) =
-                extract_run_metrics(session_result, &stream_result);
+            let (
+                run_cost,
+                run_turns,
+                run_success,
+                result_text,
+                run_model,
+                cache_hits,
+                cache_misses,
+            ) = extract_run_metrics(session_result, &stream_result);
 
             // Use model from result if available, otherwise preserve existing
             let effective_model = run_model.or_else(|| effective_model.clone());
@@ -345,6 +372,8 @@ impl SessionManager {
                     None,
                     effective_model.clone(),
                     prompt.blast_radius.clone(),
+                    cache_hits,
+                    cache_misses,
                 ));
             }
 
@@ -369,6 +398,8 @@ impl SessionManager {
                         Some(reason),
                         effective_model.clone(),
                         prompt.blast_radius.clone(),
+                        cache_hits,
+                        cache_misses,
                     ));
                 }
                 BudgetStatus::Warning(msg) => {
@@ -396,7 +427,7 @@ impl SessionManager {
 fn extract_run_metrics(
     session_result: Result<crate::engine::SessionResult>,
     stream_result: &StreamOutcome,
-) -> (f64, u32, bool, Option<String>, Option<String>) {
+) -> (f64, u32, bool, Option<String>, Option<String>, u64, u64) {
     if let Ok(result) = session_result {
         (
             result.cost_usd,
@@ -404,10 +435,12 @@ fn extract_run_metrics(
             result.success,
             result.result_text,
             result.model,
+            result.cache_hit_tokens,
+            result.cache_miss_tokens,
         )
     } else {
         let acc = accumulator_from(stream_result);
-        (acc.cost_usd, acc.num_turns, false, None, None)
+        (acc.cost_usd, acc.num_turns, false, None, None, 0, 0)
     }
 }
 
@@ -449,6 +482,8 @@ fn build_outcome(
     error: Option<String>,
     model: Option<String>,
     blast_radius: Vec<String>,
+    cache_hit_tokens: u64,
+    cache_miss_tokens: u64,
 ) -> SessionOutcome {
     SessionOutcome {
         prompt_number,
@@ -463,6 +498,8 @@ fn build_outcome(
         model,
         blast_radius,
         corrective_attempts: 0,
+        cache_hit_tokens,
+        cache_miss_tokens,
     }
 }
 
@@ -485,7 +522,11 @@ mod tests {
             depends_on: vec![],
             acceptance_criteria: vec![],
             blast_radius: vec![],
-            body: format!("implement task {number}"),
+            body: format!(
+                "implement task {number
+            prompt_components: None,}"
+            ),
+            prompt_components: None,
         }
     }
 
