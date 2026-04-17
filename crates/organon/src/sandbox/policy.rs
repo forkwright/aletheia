@@ -165,6 +165,10 @@ impl SandboxPolicy {
     }
 
     #[cfg(not(target_os = "linux"))]
+    #[expect(
+        clippy::unnecessary_wraps,
+        reason = "signature must match the Linux implementation; non-Linux stub is a no-op"
+    )]
     fn apply_egress(&self) -> std::io::Result<()> {
         Ok(())
     }
@@ -256,6 +260,10 @@ impl SandboxPolicy {
     }
 
     #[cfg(not(target_os = "linux"))]
+    #[expect(
+        clippy::unnecessary_wraps,
+        reason = "signature must match the Linux implementation; non-Linux stub is a no-op"
+    )]
     fn apply_landlock(&self) -> std::io::Result<()> {
         Ok(())
     }
@@ -304,6 +312,10 @@ impl SandboxPolicy {
     }
 
     #[cfg(not(target_os = "linux"))]
+    #[expect(
+        clippy::unnecessary_wraps,
+        reason = "signature must match the Linux implementation; non-Linux stub is a no-op"
+    )]
     fn apply_seccomp(&self) -> std::io::Result<()> {
         Ok(())
     }
