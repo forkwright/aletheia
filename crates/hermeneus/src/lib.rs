@@ -31,6 +31,10 @@ pub mod health;
 pub mod metrics;
 /// Model constants and API configuration defaults.
 pub mod models;
+/// OpenAI Chat Completions-compatible HTTP client. Bridges aletheia to any
+/// endpoint that speaks the OpenAI wire format: local llama.cpp / ollama /
+/// vllm for air-gapped operation, plus OpenAI and other cloud alternatives.
+pub mod openai;
 /// [`LlmProvider`](provider::LlmProvider), [`ProviderConfig`](provider::ProviderConfig), and [`ProviderRegistry`](provider::ProviderRegistry).
 pub mod provider;
 /// Shared mock provider for tests across the workspace.

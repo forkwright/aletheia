@@ -5,7 +5,7 @@
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 
-/// Default maximum shard size: 50 MiB.
+/// Default maximum shard size: 50 `MiB`.
 const DEFAULT_MAX_SHARD_BYTES: u64 = 50 * 1024 * 1024;
 
 /// Configuration for training data capture.
@@ -21,7 +21,7 @@ pub struct TrainingConfig {
     /// Maximum size in bytes before rotating to a new shard file.
     ///
     /// When the current shard exceeds this limit, it is closed and a new
-    /// shard is started. Default: 50 MiB.
+    /// shard is started. Default: 50 `MiB`.
     #[serde(default = "default_max_shard_bytes")]
     pub max_shard_bytes: u64,
     /// Whether to redact PII and secret patterns from `user_message` and
