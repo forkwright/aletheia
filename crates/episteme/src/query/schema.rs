@@ -179,6 +179,7 @@ pub enum CausalEdgesField {
     Cause,
     Effect,
     Ordering,
+    RelationshipType,
     Confidence,
     CreatedAt,
 }

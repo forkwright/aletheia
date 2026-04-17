@@ -648,14 +648,14 @@ pub(crate) fn put_pending_merge() -> String {
 }
 
 /// Insert or update a causal edge.
-/// Params: `$cause`, `$effect`, `$ordering`, `$confidence`, `$created_at`.
+/// Params: `$cause`, `$effect`, `$ordering`, `$relationship_type`, `$confidence`, `$created_at`.
 #[must_use]
 pub(crate) fn upsert_causal_edge() -> String {
     use CausalEdgesField::*;
     QueryBuilder::new()
         .put(Relation::CausalEdges)
         .keys(&[Cause, Effect])
-        .values(&[Ordering, Confidence, CreatedAt])
+        .values(&[Ordering, RelationshipType, Confidence, CreatedAt])
         .done()
         .build_script()
 }
