@@ -244,6 +244,23 @@ When adding a component, prefer extending an existing edge (dependency or trait 
 - **thesauros loads domain packs** - knowledge, tools, config overlays bundled as portable extensions. Depends on koina + organon.
 - **nous requires a multi-thread Tokio runtime** (`rt-multi-thread`). The actor model and spawn-based timeout machinery depend on multiple OS threads. Single-thread runtime will deadlock.
 
+## Preserving informative tension
+
+Some architectural decisions look binary but aren't. When the tension between options carries information, model both states.
+
+Examples in aletheia (correctly preserved):
+- `EpistemicTier` (`Verified` / `Inferred` / `Assumed`): facts have confidence, not just yes/no
+- Hot vs cold config classification
+- `DegradedEmbeddingProvider`: embedding can be unavailable AND system continues
+
+Examples audited for premature resolution:
+- **Conflict resolution** (`episteme/conflict.rs`): when supersession happens, the original fact is preserved as historical evidence via `superseded_by` and `valid_to` — correctly binary.
+- **Tool execution** (`organon/dispatch.rs`, `ToolResult`): `is_error: bool` is a strict success/fail collapse. Partial states (e.g. some prompts succeeded in a dispatch batch, tool produced output but also emitted warnings) are lost — premature collapse; see #3633.
+- **Consolidation** (`episteme/consolidation/`): original facts are superseded, not deleted, and `consolidation_audit` records provenance. However, the consolidated `Fact` itself carries no `source_count` or multiplicity metadata, so independent-evidence signal is lost after merge — premature collapse; see #3634.
+- **Actor shutdown** (`nous/manager.rs`): `ShutdownOutcome` already distinguishes `Clean` / `Panicked` / `TimedOut`, and #3472 addresses further graceful-degradation phases — correctly non-binary.
+
+When adding a new feature, ask: does this decision collapse information that downstream code might need? If so, model the tension explicitly.
+
 ## Ergon
 
 Tracks aletheia's main branch with zero divergence - no custom code, no feature additions. Ergon exists as a client-deliverable identity: same runtime, different branding. Changes flow from aletheia to ergon, never the reverse. Do not add ergon-specific code to this repository.
