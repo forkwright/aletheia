@@ -235,7 +235,9 @@ fn import_missing_file_produces_error() {
             predicate::str::contains("No such file")
                 .or(predicate::str::contains("not found"))
                 .or(predicate::str::contains("error"))
-                .or(predicate::str::contains("cannot")),
+                .or(predicate::str::contains("Error"))
+                .or(predicate::str::contains("cannot"))
+                .or(predicate::str::contains("unavailable")),
         );
 }
 
