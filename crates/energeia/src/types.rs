@@ -116,6 +116,10 @@ pub struct SessionOutcome {
     ///
     /// Used for cost attribution to specific modules/features.
     pub blast_radius: Vec<String>,
+    /// Number of QA-driven corrective attempts made for this prompt before
+    /// this outcome. `0` means this is the original execution.
+    #[serde(default)]
+    pub corrective_attempts: u32,
 }
 
 /// Terminal status of a dispatched session.
@@ -171,6 +175,9 @@ pub struct QaResult {
     pub criteria_results: Vec<CriterionResult>,
     /// Mechanical issues found in the diff.
     pub mechanical_issues: Vec<MechanicalIssue>,
+    /// Human-readable reasons for the verdict, derived from failed criteria
+    /// and mechanical issues.
+    pub reasons: Vec<String>,
     /// Cost in USD for the LLM evaluation.
     pub cost_usd: f64,
     /// Timestamp when the evaluation completed.
@@ -193,6 +200,8 @@ struct QaResultRaw {
     verdict: QaVerdict,
     criteria_results: Vec<CriterionResult>,
     mechanical_issues: Vec<MechanicalIssue>,
+    #[serde(default)]
+    reasons: Vec<String>,
     cost_usd: f64,
     evaluated_at: Timestamp,
     #[serde(default)]
@@ -207,6 +216,7 @@ impl From<QaResultRaw> for QaResult {
             verdict: raw.verdict,
             criteria_results: raw.criteria_results,
             mechanical_issues: raw.mechanical_issues,
+            reasons: raw.reasons,
             cost_usd: raw.cost_usd,
             evaluated_at: raw.evaluated_at,
             semantic_evaluated: raw.semantic_evaluated,
@@ -226,6 +236,7 @@ impl QaResult {
         verdict: QaVerdict,
         criteria_results: Vec<CriterionResult>,
         mechanical_issues: Vec<MechanicalIssue>,
+        reasons: Vec<String>,
         cost_usd: f64,
         evaluated_at: Timestamp,
         semantic_evaluated: bool,
@@ -236,6 +247,7 @@ impl QaResult {
             verdict,
             criteria_results,
             mechanical_issues,
+            reasons,
             cost_usd,
             evaluated_at,
             semantic_evaluated,
@@ -386,6 +398,7 @@ mod tests {
             error: None,
             model: Some("claude-3-5-sonnet".to_owned()),
             blast_radius: vec!["crates/foo/".to_owned()],
+            corrective_attempts: 0,
         };
         let json = serde_json::to_string(&outcome).unwrap();
         let deserialized: SessionOutcome = serde_json::from_str(&json).unwrap();
@@ -408,6 +421,7 @@ mod tests {
                 evidence: "CI green".to_owned(),
             }],
             mechanical_issues: vec![],
+            reasons: vec![],
             cost_usd: 0.03,
             evaluated_at: Timestamp::now(),
             semantic_evaluated: true,

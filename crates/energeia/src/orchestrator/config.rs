@@ -32,7 +32,7 @@ pub struct OrchestratorConfig {
     #[serde(with = "duration_ms_option")]
     pub session_idle_timeout: Option<Duration>,
     /// Maximum number of corrective prompt retries per failed prompt.
-    /// Defaults to 1.
+    /// Defaults to 0 (no corrective attempts unless explicitly configured).
     pub max_corrective_retries: u32,
 }
 
@@ -70,7 +70,7 @@ impl Default for OrchestratorConfig {
             default_budget_turns: None,
             max_duration: None,
             session_idle_timeout: Some(Duration::from_mins(10)),
-            max_corrective_retries: 1,
+            max_corrective_retries: 0,
         }
     }
 }
@@ -166,7 +166,7 @@ mod tests {
         assert!(config.default_budget_turns.is_none());
         assert!(config.max_duration.is_none());
         assert_eq!(config.session_idle_timeout, Some(Duration::from_mins(10)));
-        assert_eq!(config.max_corrective_retries, 1);
+        assert_eq!(config.max_corrective_retries, 0);
     }
 
     #[test]

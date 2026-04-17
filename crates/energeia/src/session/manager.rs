@@ -462,6 +462,7 @@ fn build_outcome(
         error,
         model,
         blast_radius,
+        corrective_attempts: 0,
     }
 }
 
