@@ -85,6 +85,9 @@ static STREAM_EVENTS_DROPPED_TOTAL: LazyLock<Family<NousReasonLabels, Counter>> 
 static CACHE_CREATION_TOKENS_TOTAL: LazyLock<Family<NousLabels, Counter>> =
     LazyLock::new(Family::default);
 
+static DPO_PAIRS_CAPTURED_TOTAL: LazyLock<Family<NousLabels, Counter>> =
+    LazyLock::new(Family::default);
+
 // ---------------------------------------------------------------------------
 // Registration
 // ---------------------------------------------------------------------------
@@ -130,6 +133,11 @@ pub fn register(registry: &mut Registry) {
         "aletheia_stream_events_dropped",
         "Total streaming events dropped due to full channel or disconnected receiver",
         STREAM_EVENTS_DROPPED_TOTAL.clone(),
+    );
+    registry.register(
+        "aletheia_dpo_pairs_captured",
+        "Total DPO preference pairs captured from correction turns",
+        DPO_PAIRS_CAPTURED_TOTAL.clone(),
     );
 }
 
@@ -189,6 +197,19 @@ pub(crate) fn record_stream_event_dropped(nous_id: &str, reason: &str) {
         .get_or_create(&NousReasonLabels {
             nous_id: nous_id.to_owned(),
             reason: reason.to_owned(),
+        })
+        .inc();
+}
+
+/// Record a captured DPO preference pair.
+///
+/// WHY: DPO pair capture is a training pipeline signal. Operators need
+/// visibility into how much free preference data is being generated
+/// from user corrections. Closes #3421.
+pub(crate) fn record_dpo_pair(nous_id: &str) {
+    DPO_PAIRS_CAPTURED_TOTAL
+        .get_or_create(&NousLabels {
+            nous_id: nous_id.to_owned(),
         })
         .inc();
 }

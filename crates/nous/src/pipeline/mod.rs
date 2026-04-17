@@ -899,17 +899,30 @@ pub(crate) async fn run_pipeline(
         // WHY: training capture runs after finalize so only persisted, successful
         // turns enter the training corpus. Errors are logged, never propagated:
         // training capture must never block the pipeline.
+        //
+        // Episteme labels are computed once and shared by both the training
+        // capture and DPO extraction paths.
+        let (turn_classification, correction_signal, fact_type) =
+            if pipeline_config.training.enabled {
+                (
+                    episteme::extract::refinement::classify_turn(&input.content),
+                    episteme::extract::refinement::detect_correction(&input.content),
+                    episteme::extract::refinement::classify_fact(&input.content),
+                )
+            } else {
+                (
+                    episteme::extract::refinement::TurnType::Discussion,
+                    episteme::extract::refinement::CorrectionSignal {
+                        is_correction: false,
+                        confidence_boost: 0.0,
+                    },
+                    episteme::extract::refinement::FactType::Observation,
+                )
+            };
+
         if pipeline_config.training.enabled {
             match crate::training::TrainingCapture::new(oikos.root(), &pipeline_config.training) {
                 Ok(mut capture) => {
-                    // Compute episteme labels from the user message for training enrichment.
-                    // These are cheap heuristic classifiers — no LLM calls.
-                    let turn_classification =
-                        episteme::extract::refinement::classify_turn(&input.content);
-                    let correction_signal =
-                        episteme::extract::refinement::detect_correction(&input.content);
-                    let fact_type = episteme::extract::refinement::classify_fact(&input.content);
-
                     // Tool outcomes: one entry per tool call with
                     // success/error classification and timing. Feeds
                     // the DPO/ORPO reward signal (#3417).
@@ -985,6 +998,32 @@ pub(crate) async fn run_pipeline(
                 }
                 Err(e) => {
                     tracing::warn!(error = %e, "training capture initialization failed");
+                }
+            }
+        }
+
+        // WHY: DPO pair extraction runs after training capture so the same
+        // quality-filtered turn data feeds both pipelines. Uses a global
+        // extractor because the pipeline task has no persistent actor state.
+        // Session IDs are ULID-based and globally unique. Closes #3421.
+        if pipeline_config.training.enabled {
+            let dpo_dir = oikos.root().join(&pipeline_config.training.path);
+            if let Ok(writer) = crate::training::DpoWriter::new(&dpo_dir) {
+                if let Some(pair) = crate::training::dpo::process_turn_global(
+                    &input.session.id,
+                    input.session.turn,
+                    &input.content,
+                    &result.content,
+                    correction_signal.is_correction,
+                ) {
+                    match writer.write_pair(&pair) {
+                        Ok(()) => {
+                            crate::training::dpo::record_dpo_pair_captured(&config.id);
+                        }
+                        Err(e) => {
+                            tracing::warn!(error = %e, "DPO pair write failed");
+                        }
+                    }
                 }
             }
         }
