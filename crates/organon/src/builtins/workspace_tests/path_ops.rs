@@ -117,10 +117,6 @@ async fn write_creates_file() {
 }
 
 #[tokio::test]
-#[cfg_attr(
-    target_os = "macos",
-    ignore = "macOS path canonicalization drift — tracked in #3573"
-)]
 async fn write_creates_parent_dirs() {
     let dir = tempfile::tempdir().expect("create temp dir");
     let ctx = test_ctx(dir.path());
