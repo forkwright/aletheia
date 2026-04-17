@@ -207,9 +207,6 @@ rustix = { version = "1", default-features = false, features = [
     "thread",
 ] }
 
-# File locking
-fd-lock = { version = "4", default-features = false }
-
 # File watching
 notify = { version = "8", default-features = false, features = [
     "macos_fsevent",

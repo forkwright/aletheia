@@ -1,5 +1,9 @@
 //! Tests for context limit enforcement, `nous_id` sanitization, token estimation, and summary parsing.
 #![expect(clippy::expect_used, reason = "test assertions")]
+#![expect(
+    clippy::indexing_slicing,
+    reason = "test assertions: index is validated by assert_eq!(len, N) immediately above"
+)]
 #[cfg(test)]
 use hermeneus::types::{ContentBlock, ToolResultContent};
 
