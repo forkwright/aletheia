@@ -107,28 +107,48 @@ pub(crate) fn validate_path(raw: &str, ctx: &ToolContext, tool_name: &ToolName) 
 
     // NOTE: Resolve symlinks to prevent symlink-based escapes.
     // If the file exists, canonicalize it directly.
-    // If not (e.g. write to new file), canonicalize the parent directory.
+    // If not (e.g. write to new file), canonicalize the deepest existing ancestor
+    // and re-attach the remaining components. This ensures the canonical form is
+    // consistent even on macOS, where /var is a symlink to /private/var and
+    // tempfile::tempdir() returns /var/folders/... whose canonical form is
+    // /private/var/folders/... Comparing a canonicalized root against a path
+    // that was only partially canonicalized (parent only, or not at all) produces
+    // false "outside allowed roots" rejections. Closes #3573.
     let canonical = if normalized.exists() {
-        normalized.canonicalize()
-    } else if let Some(parent) = normalized.parent() {
-        // NOTE: For new files: canonicalize parent, then append the filename
-        if parent.exists() {
-            parent.canonicalize().map(|p| {
-                if let Some(name) = normalized.file_name() {
-                    p.join(name)
-                } else {
-                    p
-                }
-            })
-        } else {
-            // NOTE: Parent doesn't exist yet (will be created by write): use normalized
-            Ok(normalized.clone())
-        }
+        normalized
+            .canonicalize()
+            .unwrap_or_else(|_| normalized.clone())
     } else {
-        Ok(normalized.clone())
+        // Walk up to find the deepest ancestor that actually exists, canonicalize
+        // it, then re-attach all the non-existent trailing components.
+        let mut existing = normalized.as_path();
+        // Collect the non-existent suffix components in forward (top-down) order.
+        // We prepend each new component so that: given path /a/b/c where /a/b
+        // exists but /a/b/c does not, we collect ["c"] and join as /canonical_a_b/c.
+        let mut suffix_components: Vec<std::ffi::OsString> = Vec::new();
+        loop {
+            match existing.parent() {
+                Some(parent) if !existing.exists() => {
+                    if let Some(name) = existing.file_name() {
+                        // Insert at front to preserve path order (deepest component last).
+                        suffix_components.insert(0, name.to_owned());
+                    }
+                    existing = parent;
+                }
+                _ => break,
+            }
+        }
+        let base = if existing.exists() {
+            existing
+                .canonicalize()
+                .unwrap_or_else(|_| existing.to_path_buf())
+        } else {
+            normalized.clone()
+        };
+        suffix_components
+            .iter()
+            .fold(base, |acc, component| acc.join(component))
     };
-
-    let canonical = canonical.unwrap_or_else(|_| normalized.clone());
 
     // WHY: Single-phase check using canonical paths for both the input and
     // the allowed roots. The previous two-phase approach hard-rejected in the

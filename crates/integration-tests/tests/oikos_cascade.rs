@@ -108,13 +108,16 @@ fn resolve_returns_none_for_missing() {
 }
 
 #[test]
-#[cfg_attr(
-    target_os = "macos",
-    ignore = "macOS /var → /private/var canonicalization breaks direct path equality — tracked in #3573"
-)]
 fn oikos_paths_match_structure() {
     let (dir, oikos) = setup();
-    let root = dir.path();
+    // WHY: Oikos::from_root canonicalizes the root when it exists. On macOS
+    // tempfile::tempdir() returns /var/folders/... but the canonical form is
+    // /private/var/folders/... Canonicalize the reference root so both sides
+    // agree on all platforms. Closes #3573.
+    let root = dir
+        .path()
+        .canonicalize()
+        .expect("canonicalize tempdir root");
 
     assert_eq!(oikos.root(), root);
     assert_eq!(oikos.shared(), root.join("shared"));

@@ -42,10 +42,6 @@ fn write_file(path: &std::path::Path, content: &str) {
 // -------------------------------------------------------------------------
 
 #[tokio::test]
-#[cfg_attr(
-    target_os = "macos",
-    ignore = "macOS path canonicalization drift — workspace validator rejects tempfile paths; tracked in #3573"
-)]
 async fn mkdir_creates_directory() {
     let dir = tempfile::tempdir().expect("tmpdir");
     let ctx = test_ctx(dir.path());
