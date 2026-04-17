@@ -54,7 +54,7 @@ fn special_float_json_serialization() {
 }
 
 #[test]
-    #[ignore = "pre-existing bug: panics in impl instead of returning Err — tracked in #3568"]
+#[ignore = "pre-existing bug: panics in impl instead of returning Err — tracked in #3568"]
 fn bot_to_json_returns_error() {
     let result = JsonValue::try_from(DataValue::Bot);
     assert!(result.is_err(), "Bot should not convert to JSON");

@@ -11,7 +11,7 @@ use tower::ServiceExt;
 use super::helpers::*;
 
 #[tokio::test]
-    #[ignore = "pre-existing: health endpoint requires config harness missing — tracked in #3568"]
+#[ignore = "pre-existing: health endpoint requires config harness missing — tracked in #3568"]
 async fn health_no_auth_required() {
     let (app, _dir) = app().await;
     let resp = app
@@ -25,7 +25,7 @@ async fn health_no_auth_required() {
 }
 
 #[tokio::test]
-    #[ignore = "pre-existing: health endpoint requires config harness missing — tracked in #3568"]
+#[ignore = "pre-existing: health endpoint requires config harness missing — tracked in #3568"]
 async fn health_returns_200() {
     let (app, _dir) = app().await;
     let resp = app
