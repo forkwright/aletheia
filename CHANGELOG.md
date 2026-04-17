@@ -1,5 +1,46 @@
 # Changelog
 
+## [0.20.0](https://github.com/forkwright/aletheia/compare/v0.19.0...v0.20.0) (2026-04-17)
+
+
+### Features
+
+* **_llm:** tree-sitter L3 API index extractor — Phase 1 ([#3584](https://github.com/forkwright/aletheia/issues/3584)) ([97899a9](https://github.com/forkwright/aletheia/commit/97899a9e12033631e2a40f38f9cead678a729882))
+* **agora:** Matrix channel provider Phase 1-2 — conduwuit deploy + scaffold ([#3579](https://github.com/forkwright/aletheia/issues/3579)) ([0dac555](https://github.com/forkwright/aletheia/commit/0dac555701eee4154c47ca91f3f89f7aea2430ce))
+* **aletheia:** add config diff subcommand ([#3627](https://github.com/forkwright/aletheia/issues/3627)) ([f702ed3](https://github.com/forkwright/aletheia/commit/f702ed3b7bab937e6269d1f554ab7dca17dff74d)), closes [#3434](https://github.com/forkwright/aletheia/issues/3434)
+* **aletheia:** backup verify subcommand ([#3615](https://github.com/forkwright/aletheia/issues/3615)) ([90a0600](https://github.com/forkwright/aletheia/commit/90a0600d3712e70e13f0055d785cabf522812d39))
+* distributed tracing — propagate request_id from HTTP to nous + tools ([#3384](https://github.com/forkwright/aletheia/issues/3384)) ([#3543](https://github.com/forkwright/aletheia/issues/3543)) ([b704f7a](https://github.com/forkwright/aletheia/commit/b704f7aa1c6981494f60a571bf4afe7b31b84e94))
+* **energeia:** add HealthCheck pipeline stage ([#3587](https://github.com/forkwright/aletheia/issues/3587)) ([f3ca340](https://github.com/forkwright/aletheia/commit/f3ca340bb649e248cf15bf595071ab75dadebb58))
+* **energeia:** add Validation pipeline stage — [#3460](https://github.com/forkwright/aletheia/issues/3460) ([#3595](https://github.com/forkwright/aletheia/issues/3595)) ([b0d2991](https://github.com/forkwright/aletheia/commit/b0d29911f975261e8f73a32293eb1a8525f208ad))
+* **energeia:** after-action JSONL records ([#3616](https://github.com/forkwright/aletheia/issues/3616)) ([243b342](https://github.com/forkwright/aletheia/commit/243b342def4aed787916f257f396d84b644e6ec3))
+* **hermeneus:** OpenAI-compatible provider for local LLMs + cloud alternatives ([#3581](https://github.com/forkwright/aletheia/issues/3581)) ([e7fe729](https://github.com/forkwright/aletheia/commit/e7fe7294857ac0ebb5a9dfe452dcdb258fa67391))
+* **sovereignty:** FactSensitivity + recall filter for cloud providers ([#3582](https://github.com/forkwright/aletheia/issues/3582)) ([af60234](https://github.com/forkwright/aletheia/commit/af6023467adb571b9d2bb676de674df57b8db446))
+* **sovereignty:** prompt audit log — operator visibility into outbound LLM requests ([#3583](https://github.com/forkwright/aletheia/issues/3583)) ([f060ef0](https://github.com/forkwright/aletheia/commit/f060ef008209cb402ef4f5f758082012c07c4c23))
+* **systemd:** Type=notify + watchdog heartbeat + STOPPING signal ([#3470](https://github.com/forkwright/aletheia/issues/3470) [#3471](https://github.com/forkwright/aletheia/issues/3471) [#3473](https://github.com/forkwright/aletheia/issues/3473)) ([#3540](https://github.com/forkwright/aletheia/issues/3540)) ([7b35316](https://github.com/forkwright/aletheia/commit/7b35316fc5267325f333e068abc3b0f8e9b25131))
+* workspace topology metric + PR prompt ([#3501](https://github.com/forkwright/aletheia/issues/3501)) ([#3554](https://github.com/forkwright/aletheia/issues/3554)) ([45aa119](https://github.com/forkwright/aletheia/commit/45aa119dc02d70dd0eb996397e3076693418f75b))
+
+
+### Bug Fixes
+
+* **krites:** silence 345 clippy warnings in test code ([#3531](https://github.com/forkwright/aletheia/issues/3531)) ([#3574](https://github.com/forkwright/aletheia/issues/3574)) ([3108448](https://github.com/forkwright/aletheia/commit/31084489a9ff2cfcff8deb0ed249dd033ff609b7))
+* **organon:** canonicalize full input path to fix macOS /var→/private/var drift ([#3588](https://github.com/forkwright/aletheia/issues/3588)) ([630a8f0](https://github.com/forkwright/aletheia/commit/630a8f0aae1534d2116682c8ed15c6175e9b1401)), closes [#3573](https://github.com/forkwright/aletheia/issues/3573)
+* **pylon:** install mock embedding provider in test harness ([#3593](https://github.com/forkwright/aletheia/issues/3593)) ([7ed1b8c](https://github.com/forkwright/aletheia/commit/7ed1b8c25bad16f6f0240f9d933120c228196a7c)), closes [#3548](https://github.com/forkwright/aletheia/issues/3548)
+
+
+### Documentation
+
+* add 'at a glance' + 'depth' sections to all CLAUDE.md files ([#3485](https://github.com/forkwright/aletheia/issues/3485)) ([#3577](https://github.com/forkwright/aletheia/issues/3577)) ([059f994](https://github.com/forkwright/aletheia/commit/059f99443128a5c3317667ce361c28ad3fc55ecf))
+* add #Errors and #Examples sections to public APIs ([#3594](https://github.com/forkwright/aletheia/issues/3594)) ([824b188](https://github.com/forkwright/aletheia/commit/824b188214f13c25531543b77e74d2f9bf498741)), closes [#3295](https://github.com/forkwright/aletheia/issues/3295)
+* add observability guide and prometheus alerting rules ([#3387](https://github.com/forkwright/aletheia/issues/3387)) ([#3590](https://github.com/forkwright/aletheia/issues/3590)) ([abf8a03](https://github.com/forkwright/aletheia/commit/abf8a0397d7af25b27a0c5761141b8209733ce0f))
+* API versioning policy ([#3393](https://github.com/forkwright/aletheia/issues/3393)) ([#3553](https://github.com/forkwright/aletheia/issues/3553)) ([5c2034d](https://github.com/forkwright/aletheia/commit/5c2034d59d1fea123afc27192aef081862b5eaa5))
+* crate selection flowchart for agent cold-start ([#3352](https://github.com/forkwright/aletheia/issues/3352)) ([#3550](https://github.com/forkwright/aletheia/issues/3550)) ([df1cf13](https://github.com/forkwright/aletheia/commit/df1cf13db6c99f0b9dfe76700d5a0ee278c25308))
+* disaster recovery + RTO/RPO ([#3386](https://github.com/forkwright/aletheia/issues/3386)) ([#3552](https://github.com/forkwright/aletheia/issues/3552)) ([578bfe8](https://github.com/forkwright/aletheia/commit/578bfe8db6b0179f2b139b47c97222660f5b8422))
+* feature flag matrix ([#3353](https://github.com/forkwright/aletheia/issues/3353)) ([#3551](https://github.com/forkwright/aletheia/issues/3551)) ([7b30727](https://github.com/forkwright/aletheia/commit/7b307279384b35f4f375db3271a8d6c77554d9ce))
+* graceful-degradation audit findings ([#3609](https://github.com/forkwright/aletheia/issues/3609)) ([cfea72f](https://github.com/forkwright/aletheia/commit/cfea72f696046409c69dff1661f444f9492ceaa4))
+* **grounds:** audit single-grounded abstractions ([#3610](https://github.com/forkwright/aletheia/issues/3610)) ([06fb063](https://github.com/forkwright/aletheia/commit/06fb063ad24ae1c42a06c9527e12c15e4dfa9433))
+* **hubs:** add architectural hub index ([#3589](https://github.com/forkwright/aletheia/issues/3589)) ([8fe152c](https://github.com/forkwright/aletheia/commit/8fe152c7882b635e9e981d74e1b4784bde60cad4)), closes [#3487](https://github.com/forkwright/aletheia/issues/3487)
+* translation-tax audit — boundary loss analysis ([#3614](https://github.com/forkwright/aletheia/issues/3614)) ([827b094](https://github.com/forkwright/aletheia/commit/827b0949b11ab19f90697196c159452951fbee37))
+
 ## [0.19.0](https://github.com/forkwright/aletheia/compare/v0.18.0...v0.19.0) (2026-04-16)
 
 
