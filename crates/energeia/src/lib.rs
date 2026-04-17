@@ -39,6 +39,8 @@ pub mod http;
 pub mod metrics;
 /// Top-level dispatch orchestrator: DAG execution with concurrency and QA.
 pub mod orchestrator;
+/// 4-stage dispatch pipeline: preparation → execution → post-processing.
+pub(crate) mod pipeline;
 /// Prompt loading from YAML frontmatter files.
 pub mod prompt;
 /// Quality assurance gate trait.
