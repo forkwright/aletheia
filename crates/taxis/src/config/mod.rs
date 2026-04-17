@@ -23,8 +23,9 @@ pub use gateway::{
 pub use maintenance::{
     CircuitBreakerSettings, CredentialConfig, CronTaskEntry, CronTaskSettings,
     DbMonitoringSettings, DiskSpaceSettings, DriftDetectionSettings, LoggingSettings,
-    MaintenanceSettings, McpConfig, McpRateLimitConfig, RedactionSettings, RetentionSettings,
-    SandboxSettings, SqliteRecoverySettings, TraceRotationSettings, WatchdogSettings,
+    MaintenanceSettings, McpConfig, McpRateLimitConfig, PromptAuditSettings, RedactionSettings,
+    RetentionSettings, SandboxSettings, SqliteRecoverySettings, TraceRotationSettings,
+    WatchdogSettings,
 };
 pub use resolved::{
     AgentCapabilities, ResolvedModelConfig, ResolvedNousConfig, TokenLimits, resolve_nous,
@@ -154,6 +155,13 @@ pub struct AletheiaConfig {
     /// declare explicit deployment targets for the factsensitivity filter.
     #[serde(default)]
     pub providers: Vec<LlmProviderConfig>,
+    /// Prompt audit log: operator visibility into outbound LLM requests (#3411).
+    ///
+    /// WHY configurable: operators can disable the log or tune retention and
+    /// filtered-ID inclusion. Default is on with 90-day retention because
+    /// the log is a sovereignty feature — operators should be able to see
+    /// what the system sent out without opting in.
+    pub prompt_audit: PromptAuditSettings,
 }
 
 /// Sandbox enforcement level for tool execution.

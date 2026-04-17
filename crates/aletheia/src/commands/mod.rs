@@ -14,6 +14,7 @@ pub(crate) mod eval_embeddings;
 pub(crate) mod health;
 pub(crate) mod maintenance;
 pub(crate) mod memory;
+pub(crate) mod prompt_audit;
 pub(crate) mod repl;
 pub(crate) mod server;
 pub(crate) mod session_export;
@@ -72,6 +73,9 @@ pub(crate) async fn dispatch(cmd: Command, instance_root: Option<&PathBuf>) -> R
         Command::Backup(a) => backup::run(instance_root, &a).map_err(Into::into),
         Command::Maintenance { action } => {
             maintenance::run(action, instance_root).map_err(Into::into)
+        }
+        Command::PromptAudit { action } => {
+            prompt_audit::run(action, instance_root).map_err(Into::into)
         }
         Command::Memory { url, action } => memory::run(action, &url, instance_root)
             .await

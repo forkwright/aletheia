@@ -519,6 +519,43 @@ impl Default for CronTaskEntry {
     }
 }
 
+/// Prompt audit log configuration (#3411).
+///
+/// Controls the operator-visible append-only JSONL log of every outbound
+/// LLM `CompletionRequest`. See `nous::audit` for the record schema and
+/// sovereignty contract on what is (and is not) logged.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+pub struct PromptAuditSettings {
+    /// Whether outbound requests are recorded. Default: `true`.
+    ///
+    /// WHY default-on: this is a sovereignty feature — operators need
+    /// visibility into what the system sends to external providers without
+    /// opting in. The log stores hashes and IDs, not content, so the cost
+    /// of enabling it is small.
+    pub enabled: bool,
+    /// Directory for daily JSONL files. When `None`, resolves to
+    /// `{instance}/logs/prompt-audit/` at startup.
+    pub log_dir: Option<PathBuf>,
+    /// Days to retain JSONL files before the daemon prunes them.
+    pub retention_days: u32,
+    /// Whether the IDs of facts filtered by the sensitivity policy (#3404)
+    /// are included in each record. Default: `true`.
+    pub include_filtered_ids: bool,
+}
+
+impl Default for PromptAuditSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            log_dir: None,
+            retention_days: 90,
+            include_filtered_ids: true,
+        }
+    }
+}
+
 /// MCP server configuration.
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
