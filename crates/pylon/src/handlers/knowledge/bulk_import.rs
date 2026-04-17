@@ -7,7 +7,7 @@ use tracing::instrument;
 
 use symbolon::types::Role;
 
-use crate::error::ApiError;
+use crate::error::{ApiError, BadRequestSnafu};
 use crate::extract::{Claims, require_role};
 use crate::state::KnowledgeState;
 
@@ -35,17 +35,54 @@ pub struct ImportFactError {
     pub message: String,
 }
 
+/// Parse a request body as either JSON (`{ "facts": [...] }`) or JSONL.
+fn parse_import_body(bytes: &[u8]) -> Result<Vec<mneme::knowledge::Fact>, ApiError> {
+    // First, try as structured JSON object.
+    if let Ok(req) = serde_json::from_slice::<BulkImportRequest>(bytes) {
+        return Ok(req.facts);
+    }
+
+    // Fall back to JSONL: one fact per line.
+    let text = std::str::from_utf8(bytes).map_err(|e| {
+        BadRequestSnafu {
+            message: format!("body is not valid UTF-8: {e}"),
+        }
+        .build()
+    })?;
+
+    let mut facts = Vec::new();
+    for (line_no, line) in text.lines().enumerate() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let fact: mneme::knowledge::Fact = serde_json::from_str(line).map_err(|e| {
+            BadRequestSnafu {
+                message: format!("JSONL parse error on line {}: {e}", line_no + 1),
+            }
+            .build()
+        })?;
+        facts.push(fact);
+    }
+
+    Ok(facts)
+}
+
 /// POST /api/v1/knowledge/facts/import
 ///
 /// Bulk-import facts into the knowledge store. Accepts up to 1000 facts per
 /// request. Each fact is validated independently; valid facts are inserted
 /// even if others fail.
+///
+/// Supports two body formats:
+/// - **JSON**: `{"facts": [{...}, {...}]}`
+/// - **JSONL**: one fact object per line
 #[utoipa::path(
     post,
     path = "/api/v1/knowledge/facts/import",
     request_body(
         content = serde_json::Value,
-        description = "JSON object with a `facts` array of Fact objects (max 1000)",
+        description = "JSON object with a `facts` array, or JSONL (one fact per line). Max 1000.",
         content_type = "application/json"
     ),
     responses(
@@ -61,20 +98,19 @@ pub struct ImportFactError {
 ///
 /// Cancel-safe. Axum handler; cancellation drops the future with no
 /// side effects beyond not returning a response.
-#[instrument(skip_all, fields(count = body.facts.len()))]
+#[instrument(skip_all)]
 pub async fn import_facts(
     State(state): State<KnowledgeState>,
     claims: Claims,
-    Json(body): Json<BulkImportRequest>,
+    body: axum::body::Bytes,
 ) -> Result<Json<BulkImportResponse>, ApiError> {
     require_role(&claims, Role::Operator)?;
+
+    let facts = parse_import_body(&body)?;
     let max_batch = state.config.read().await.api_limits.max_import_batch_size;
-    if body.facts.len() > max_batch {
+    if facts.len() > max_batch {
         return Err(ApiError::BadRequest {
-            message: format!(
-                "batch size {} exceeds maximum of {max_batch}",
-                body.facts.len()
-            ),
+            message: format!("batch size {} exceeds maximum of {max_batch}", facts.len()),
             location: snafu::location!(),
         });
     }
@@ -82,7 +118,6 @@ pub async fn import_facts(
     #[cfg(feature = "knowledge-store")]
     if let Some(ref store) = state.knowledge_store {
         let store = std::sync::Arc::clone(store);
-        let facts = body.facts;
         let result = tokio::task::spawn_blocking(move || {
             let mut imported = 0usize;
             let mut skipped = 0usize;

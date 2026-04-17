@@ -1,0 +1,179 @@
+//! Programmatic knowledge ingestion handler.
+
+use axum::Json;
+use axum::extract::State;
+use serde::{Deserialize, Serialize};
+use tracing::instrument;
+use utoipa::ToSchema;
+
+use symbolon::types::Role;
+
+use crate::error::{ApiError, BadRequestSnafu, ValidationFailedSnafu};
+use crate::extract::{Claims, require_role};
+use crate::state::KnowledgeState;
+
+/// Request body for knowledge ingestion.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct IngestRequest {
+    /// Raw content to ingest.
+    pub content: String,
+    /// Format: markdown, text, json, jsonl.
+    #[serde(default)]
+    pub format: String,
+    /// Nous agent ID that will own the extracted facts.
+    pub nous_id: String,
+}
+
+/// Per-fact error during ingestion.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct IngestFactError {
+    /// Index of the fact in the batch.
+    pub index: usize,
+    /// Fact ID if available.
+    pub id: Option<String>,
+    /// Error message.
+    pub message: String,
+}
+
+/// Response for knowledge ingestion.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct IngestResponse {
+    /// Number of facts successfully inserted.
+    pub inserted: usize,
+    /// Number of facts skipped due to errors.
+    pub skipped: usize,
+    /// Per-fact error details.
+    pub errors: Vec<IngestFactError>,
+}
+
+/// POST /api/v1/knowledge/ingest
+///
+/// Ingest raw content into the knowledge store. Content is chunked and
+/// heuristic-extracted for markdown/plain text, or parsed directly for
+/// JSON/JSONL.
+#[utoipa::path(
+    post,
+    path = "/api/v1/knowledge/ingest",
+    request_body(
+        content = IngestRequest,
+        description = "Content to ingest with format and target agent",
+        content_type = "application/json"
+    ),
+    responses(
+        (status = 200, description = "Ingestion summary"),
+        (status = 400, description = "Invalid format or malformed request", body = crate::error::ErrorResponse),
+        (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 422, description = "Validation failed", body = crate::error::ErrorResponse),
+        (status = 503, description = "Knowledge store not available", body = crate::error::ErrorResponse),
+    ),
+    security(("bearer_auth" = []))
+)]
+///
+/// # Cancel safety
+///
+/// Cancel-safe. Axum handler; cancellation drops the future with no
+/// side effects beyond not returning a response.
+#[instrument(skip_all, fields(content_len = body.content.len()))]
+pub async fn ingest(
+    State(state): State<KnowledgeState>,
+    claims: Claims,
+    Json(body): Json<IngestRequest>,
+) -> Result<Json<IngestResponse>, ApiError> {
+    require_role(&claims, Role::Operator)?;
+
+    if body.content.is_empty() {
+        return Err(BadRequestSnafu {
+            message: "content must not be empty".to_owned(),
+        }
+        .build());
+    }
+
+    if body.nous_id.is_empty() {
+        return Err(ValidationFailedSnafu {
+            errors: vec![crate::error::FieldError {
+                field: "nous_id".to_owned(),
+                code: "required".to_owned(),
+                message: "must not be empty".to_owned(),
+            }],
+        }
+        .build());
+    }
+
+    let format = if body.format.is_empty() {
+        mneme::ingest::IngestFormat::PlainText
+    } else {
+        mneme::ingest::parse_format(&body.format).ok_or_else(|| {
+            BadRequestSnafu {
+                message: format!(
+                    "unsupported format '{}': valid values are markdown, text, json, jsonl",
+                    body.format
+                ),
+            }
+            .build()
+        })?
+    };
+
+    let config = mneme::ingest::IngestConfig::default();
+    let facts = tokio::task::spawn_blocking(move || {
+        mneme::ingest::ingest_content(&body.content, format, &config, &body.nous_id)
+    })
+    .await
+    .map_err(|e| ApiError::Internal {
+        message: format!("ingest task failed: {e}"),
+        location: snafu::location!(),
+    })?
+    .map_err(|e| ApiError::BadRequest {
+        message: e.to_string(),
+        location: snafu::location!(),
+    })?;
+
+    #[cfg(feature = "knowledge-store")]
+    if let Some(ref store) = state.knowledge_store {
+        let store = std::sync::Arc::clone(store);
+        let result = tokio::task::spawn_blocking(move || {
+            let mut inserted = 0usize;
+            let mut skipped = 0usize;
+            let mut errors = Vec::new();
+
+            for (index, fact) in facts.iter().enumerate() {
+                match store.insert_fact(fact) {
+                    Ok(()) => inserted += 1,
+                    Err(e) => {
+                        errors.push(IngestFactError {
+                            index,
+                            id: Some(fact.id.as_str().to_owned()),
+                            message: e.to_string(),
+                        });
+                        skipped += 1;
+                    }
+                }
+            }
+
+            IngestResponse {
+                inserted,
+                skipped,
+                errors,
+            }
+        })
+        .await
+        .map_err(|e| ApiError::Internal {
+            message: format!("ingest insert task failed: {e}"),
+            location: snafu::location!(),
+        })?;
+
+        tracing::info!(
+            inserted = result.inserted,
+            skipped = result.skipped,
+            "knowledge ingestion complete"
+        );
+        return Ok(Json(result));
+    }
+
+    #[cfg(not(feature = "knowledge-store"))]
+    let _ = state;
+
+    Err(ApiError::ServiceUnavailable {
+        message: "knowledge store not available".to_owned(),
+        location: snafu::location!(),
+    })
+}
