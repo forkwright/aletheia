@@ -1,5 +1,11 @@
 # aletheia
 
+## At a glance
+
+Binary entrypoint and service wiring for the Aletheia runtime. Depends on nous, pylon, mneme, and organon. Entry point: `src/main.rs` (Cli, main).
+
+## Depth
+
 Binary entrypoint: CLI, server startup, service wiring, and adapter glue. 8.9K lines.
 
 ## Read first

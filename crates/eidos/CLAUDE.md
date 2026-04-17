@@ -1,5 +1,11 @@
 # eidos
 
+## At a glance
+
+Shared knowledge types for the memory layer. Zero internal dependencies. Entry point: `src/lib.rs` (Fact, Entity, Relationship).
+
+## Depth
+
 Shared knowledge types for the memory layer. 1.6K lines. Zero internal dependencies.
 
 ## Read first

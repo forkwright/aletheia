@@ -1,5 +1,11 @@
 # taxis
 
+## At a glance
+
+Configuration cascade and path resolution for Aletheia. Depends on koina and eidos. Entry point: `src/lib.rs` (AletheiaConfig, Oikos, loader).
+
+## Depth
+
 Configuration cascade and path resolution: TOML loading, oikos directory structure, env interpolation, hot-reload. 8.2K lines.
 
 ## Read first

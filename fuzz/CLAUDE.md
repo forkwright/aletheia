@@ -1,5 +1,11 @@
 # fuzz
 
+## At a glance
+
+Fuzz testing workspace for parsing and serialization surfaces. Depends on hermeneus, nous, koina, and mneme. Entry point: `fuzz_targets/fuzz_tool_dispatch.rs`.
+
+## Depth
+
 Fuzz testing workspace for Aletheia. Separate Cargo workspace that links against crate APIs to exercise parsing and serialization surfaces with arbitrary input.
 
 ## Structure

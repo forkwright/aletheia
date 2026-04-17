@@ -1,5 +1,11 @@
 # theatron
 
+## At a glance
+
+Presentation umbrella re-exporting skene types for UI consumers. Depends on skene. Entry point: `src/lib.rs` (ApiClient, StreamEvent).
+
+## Depth
+
 Presentation umbrella grouping the three UI crates: core (shared infrastructure), tui (terminal), desktop (Dioxus). 86K lines total across sub-crates; no individual sub-crate exceeds the 50K budget.
 
 ## Sub-crates

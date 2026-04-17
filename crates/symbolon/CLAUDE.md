@@ -1,5 +1,11 @@
 # symbolon
 
+## At a glance
+
+Authentication and authorization: JWT sessions, API keys, and RBAC. Depends on koina. Entry point: `src/lib.rs` (AuthService, JwtManager).
+
+## Depth
+
 Authentication and authorization: JWT sessions, API keys, Argon2id passwords, OAuth credential refresh, RBAC. 5.3K lines.
 
 ## Read first
