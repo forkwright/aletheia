@@ -13,11 +13,10 @@ workspace = true
 
 [dependencies]
 poiesis-core = { path = "../core" }
+quick-xml = "0.38"
 snafu = { workspace = true }
-
-# PPTX backend
-ppt-rs = { version = "0.2", optional = true }
+zip = "7"
 
 [features]
 default = ["pptx"]
-pptx = ["dep:ppt-rs"]
+pptx = []
