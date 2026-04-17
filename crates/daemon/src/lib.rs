@@ -1,4 +1,5 @@
 #![deny(missing_docs)]
+#![deny(clippy::unwrap_used)]
 //! aletheia-oikonomos: per-nous background task runner
 //!
 //! Oikonomos (οἰκονόμος): "the steward." The quiet persistent presence that
