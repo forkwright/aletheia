@@ -96,6 +96,7 @@ rcgen = { workspace = true }
 # not add a new crate to the binary — it only pins our access to the same version.
 time = "0.3"
 owo-colors = "4"
+quick-xml = "0.38"
 supports-color = "3"
 toml = { workspace = true }
 toml_edit = "0.25"

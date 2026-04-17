@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use clap::Subcommand;
+use clap::{Subcommand, ValueEnum};
 use snafu::prelude::*;
 
 use crate::error::Result;
@@ -51,6 +51,30 @@ pub(crate) enum Action {
         #[arg(long, default_value_t = 20)]
         limit: u16,
     },
+    /// Export the entity + relationship graph for visualization
+    ExportGraph {
+        /// Output format
+        #[arg(long, value_enum, default_value = "dot")]
+        format: ExportFormat,
+        /// Filter to a specific nous agent's view
+        #[arg(long)]
+        nous_id: Option<String>,
+        /// Filter to a specific memory scope
+        #[arg(long)]
+        scope: Option<mneme::knowledge::MemoryScope>,
+        /// Output file path
+        output_path: PathBuf,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub(crate) enum ExportFormat {
+    /// Graphviz DOT format
+    Dot,
+    /// `GraphML` XML format
+    Graphml,
+    /// JSON format
+    Json,
 }
 
 pub(crate) async fn run(action: Action, url: &str, instance_root: Option<&PathBuf>) -> Result<()> {
@@ -93,6 +117,12 @@ pub(crate) async fn run(action: Action, url: &str, instance_root: Option<&PathBu
             Action::Sample { count, nous_id } => run_sample(&store, count, nous_id.as_deref()),
             Action::Dedup { nous_id, dry_run } => run_dedup(&store, &nous_id, dry_run),
             Action::Patterns { nous_id, limit } => run_patterns(&store, nous_id.as_deref(), limit),
+            Action::ExportGraph {
+                format,
+                nous_id,
+                scope,
+                output_path,
+            } => run_export_graph(&store, format, nous_id.as_deref(), scope, &output_path),
         }
     }
 
@@ -767,6 +797,551 @@ fn find_hub_entities(
             Some((name, total))
         })
         .collect())
+}
+
+// --- export-graph ---
+
+#[cfg(feature = "recall")]
+fn run_export_graph(
+    store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
+    format: ExportFormat,
+    nous_id: Option<&str>,
+    scope: Option<mneme::knowledge::MemoryScope>,
+    output_path: &std::path::Path,
+) -> Result<()> {
+    let is_operator = is_operator();
+
+    let file =
+        std::fs::File::create(output_path).whatever_context("failed to create output file")?;
+    let mut writer = std::io::BufWriter::new(file);
+
+    // Determine if we need to load facts for sensitivity coloring or filtering.
+    // WHY: scope and sensitivity are not yet columns in the Datalog facts schema
+    // (#3413). When that migration lands, these filters can push down to CozoDB.
+    let need_fact_load = !is_operator || scope.is_some() || matches!(format, ExportFormat::Dot);
+
+    let (entities, relationships, entity_sensitivities) = if need_fact_load {
+        let (visible_ids, sensitivities) = load_filtered_facts(store, nous_id, scope, is_operator)?;
+        let all_entities = query_entities(store)?;
+        let entities: Vec<_> = all_entities
+            .into_iter()
+            .filter(|e| visible_ids.contains(e.id.as_str()))
+            .collect();
+        let all_relationships = query_relationships(store)?;
+        let relationships: Vec<_> = all_relationships
+            .into_iter()
+            .filter(|r| {
+                visible_ids.contains(r.src.as_str()) && visible_ids.contains(r.dst.as_str())
+            })
+            .collect();
+        (entities, relationships, Some(sensitivities))
+    } else if let Some(nid) = nous_id {
+        let entities = query_entities_filtered(store, nid)?;
+        let relationships = query_relationships_filtered(store, nid)?;
+        (entities, relationships, None)
+    } else {
+        let entities = query_entities(store)?;
+        let relationships = query_relationships(store)?;
+        (entities, relationships, None)
+    };
+
+    let entity_count = entities.len();
+    let edge_count = relationships.len();
+
+    match format {
+        ExportFormat::Dot => {
+            let empty = std::collections::HashMap::new();
+            let sens_map = entity_sensitivities.as_ref().unwrap_or(&empty);
+            export_dot(&mut writer, &entities, &relationships, sens_map)?;
+        }
+        ExportFormat::Graphml => {
+            export_graphml(&mut writer, &entities, &relationships)?;
+        }
+        ExportFormat::Json => {
+            export_json(&mut writer, &entities, &relationships)?;
+        }
+    }
+
+    // Print summary
+    let mut dist = std::collections::BTreeMap::new();
+    if let Some(ref sens) = entity_sensitivities {
+        for sensitivity in sens.values() {
+            *dist.entry(*sensitivity).or_insert(0usize) += 1;
+        }
+    } else {
+        dist.insert(mneme::knowledge::FactSensitivity::Public, entity_count);
+    }
+
+    println!("=== Memory Graph Export ===");
+    println!("Format:        {format:?}");
+    println!("Entities:      {entity_count}");
+    println!("Relationships: {edge_count}");
+    println!("Output:        {}", output_path.display());
+    println!();
+    println!("Sensitivity distribution:");
+    for (sens, label) in [
+        (mneme::knowledge::FactSensitivity::Public, "public"),
+        (mneme::knowledge::FactSensitivity::Internal, "internal"),
+        (
+            mneme::knowledge::FactSensitivity::Confidential,
+            "confidential",
+        ),
+    ] {
+        let count = dist.get(&sens).copied().unwrap_or(0);
+        println!("  {label}: {count}");
+    }
+
+    Ok(())
+}
+
+/// Determine whether the current process is running as an operator.
+///
+/// Interactive terminal sessions are treated as operators. Non-interactive
+/// scripts can set `ALETHEIA_OPERATOR=1` to export all sensitivities.
+#[cfg(feature = "recall")]
+fn is_operator() -> bool {
+    std::io::IsTerminal::is_terminal(&std::io::stdin())
+        || std::env::var("ALETHEIA_OPERATOR").is_ok_and(|v| v == "1" || v == "true")
+}
+
+/// Load facts, apply scope / sensitivity filters, and return:
+/// 1. The set of entity IDs linked to visible facts.
+/// 2. A map of entity ID -> max sensitivity among its linked facts.
+#[cfg(feature = "recall")]
+fn load_filtered_facts(
+    store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
+    nous_id: Option<&str>,
+    scope: Option<mneme::knowledge::MemoryScope>,
+    is_operator: bool,
+) -> Result<(
+    std::collections::HashSet<String>,
+    std::collections::HashMap<String, mneme::knowledge::FactSensitivity>,
+)> {
+    use mneme::knowledge::FactSensitivity;
+    use std::collections::{HashMap, HashSet};
+
+    let facts = match nous_id {
+        Some(id) => {
+            let now = mneme::knowledge::format_timestamp(&jiff::Timestamp::now());
+            store
+                .query_facts(id, &now, 1_000_000)
+                .whatever_context("fact query failed")?
+        }
+        None => store
+            .list_all_facts(1_000_000)
+            .whatever_context("list_all_facts failed")?,
+    };
+
+    let fact_entities = load_fact_entities(store)?;
+    let mut visible: HashSet<String> = HashSet::new();
+    let mut sensitivities: HashMap<String, FactSensitivity> = HashMap::new();
+
+    for fact in &facts {
+        // Scope filter
+        if let Some(filter_scope) = scope
+            && fact.scope != Some(filter_scope)
+        {
+            continue;
+        }
+
+        // Sensitivity filter for non-operators
+        if !is_operator && fact.sensitivity != FactSensitivity::Public {
+            continue;
+        }
+
+        if let Some(entities) = fact_entities.get(fact.id.as_str()) {
+            for eid in entities {
+                visible.insert(eid.clone());
+                let current = sensitivities
+                    .get(eid)
+                    .copied()
+                    .unwrap_or(FactSensitivity::Public);
+                if fact.sensitivity > current {
+                    sensitivities.insert(eid.clone(), fact.sensitivity);
+                }
+            }
+        }
+    }
+
+    Ok((visible, sensitivities))
+}
+
+/// Load the full `fact_entities` relation as a map of `fact_id` -> `[entity_id]`.
+#[cfg(feature = "recall")]
+fn load_fact_entities(
+    store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
+) -> Result<std::collections::HashMap<String, Vec<String>>> {
+    use std::collections::{BTreeMap, HashMap};
+
+    let script = r"?[fact_id, entity_id] := *fact_entities{fact_id, entity_id}";
+    let result = store
+        .run_query(script, BTreeMap::new())
+        .whatever_context("fact_entities query failed")?;
+    let mut map: HashMap<String, Vec<String>> = HashMap::new();
+    for i in 0..result.row_count() {
+        if let (Some(fid), Some(eid)) = (
+            result.get_string(i, "fact_id"),
+            result.get_string(i, "entity_id"),
+        ) {
+            map.entry(fid).or_default().push(eid);
+        }
+    }
+    Ok(map)
+}
+
+#[cfg(feature = "recall")]
+fn query_entities(
+    store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
+) -> Result<Vec<mneme::knowledge::Entity>> {
+    let result = store
+        .list_entities()
+        .whatever_context("entity query failed")?;
+    Ok(result)
+}
+
+#[cfg(feature = "recall")]
+fn query_entities_filtered(
+    store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
+    nous_id: &str,
+) -> Result<Vec<mneme::knowledge::Entity>> {
+    use std::collections::BTreeMap;
+
+    // WHY: inline nous_id into the script because CozoDB parameter binding
+    // for string literals in filters uses '$var' syntax; we avoid the extra
+    // param plumbing for a single string filter.
+    let script = format!(
+        r"
+        ?[id, name, entity_type, aliases, created_at, updated_at] :=
+            *entities{{id, name, entity_type, aliases, created_at, updated_at}},
+            *fact_entities{{fact_id, entity_id: id}},
+            *facts{{fact_id, nous_id: '{nous_id}'}}
+        :order name
+        "
+    );
+    let result = store
+        .run_query(&script, BTreeMap::new())
+        .whatever_context("filtered entity query failed")?;
+    parse_entity_rows(&result)
+}
+
+#[cfg(feature = "recall")]
+fn query_relationships(
+    store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
+) -> Result<Vec<mneme::knowledge::Relationship>> {
+    use std::collections::BTreeMap;
+
+    let script = r"?[src, dst, relation, weight, created_at] := *relationships{src, dst, relation, weight, created_at}";
+    let result = store
+        .run_query(script, BTreeMap::new())
+        .whatever_context("relationship query failed")?;
+    parse_relationship_rows(&result)
+}
+
+#[cfg(feature = "recall")]
+fn query_relationships_filtered(
+    store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
+    nous_id: &str,
+) -> Result<Vec<mneme::knowledge::Relationship>> {
+    use std::collections::BTreeMap;
+
+    let script = format!(
+        r"
+        ?[src, dst, relation, weight, created_at] :=
+            *relationships{{src, dst, relation, weight, created_at}},
+            *fact_entities{{fact_id: fid1, entity_id: src}},
+            *facts{{fid1, nous_id: '{nous_id}'}},
+            *fact_entities{{fact_id: fid2, entity_id: dst}},
+            *facts{{fid2, nous_id: '{nous_id}'}}
+        "
+    );
+    let result = store
+        .run_query(&script, BTreeMap::new())
+        .whatever_context("filtered relationship query failed")?;
+    parse_relationship_rows(&result)
+}
+
+#[cfg(feature = "recall")]
+fn parse_entity_rows(
+    result: &episteme::knowledge_store::QueryResult,
+) -> Result<Vec<mneme::knowledge::Entity>> {
+    let mut entities = Vec::with_capacity(result.row_count());
+    for i in 0..result.row_count() {
+        let id_str = result.get_string(i, "id").unwrap_or_default();
+        let name = result.get_string(i, "name").unwrap_or_default();
+        let entity_type = result.get_string(i, "entity_type").unwrap_or_default();
+        let aliases_str = result.get_string(i, "aliases").unwrap_or_default();
+        let aliases = if aliases_str.is_empty() {
+            Vec::new()
+        } else {
+            aliases_str
+                .split(',')
+                .map(|s| s.trim().to_owned())
+                .collect()
+        };
+        let created_at = mneme::knowledge::parse_timestamp(
+            &result.get_string(i, "created_at").unwrap_or_default(),
+        )
+        .unwrap_or_else(jiff::Timestamp::now);
+        let updated_at = mneme::knowledge::parse_timestamp(
+            &result.get_string(i, "updated_at").unwrap_or_default(),
+        )
+        .unwrap_or_else(jiff::Timestamp::now);
+
+        let id =
+            mneme::id::EntityId::new(&id_str).whatever_context("invalid entity id in store")?;
+        entities.push(mneme::knowledge::Entity {
+            id,
+            name,
+            entity_type,
+            aliases,
+            created_at,
+            updated_at,
+        });
+    }
+    Ok(entities)
+}
+
+#[cfg(feature = "recall")]
+fn parse_relationship_rows(
+    result: &episteme::knowledge_store::QueryResult,
+) -> Result<Vec<mneme::knowledge::Relationship>> {
+    use snafu::ResultExt;
+
+    let mut relationships = Vec::with_capacity(result.row_count());
+    for i in 0..result.row_count() {
+        let src_str = result.get_string(i, "src").unwrap_or_default();
+        let dst_str = result.get_string(i, "dst").unwrap_or_default();
+        let relation = result.get_string(i, "relation").unwrap_or_default();
+        let weight = result.get_f64(i, "weight").unwrap_or(1.0);
+        let created_at = mneme::knowledge::parse_timestamp(
+            &result.get_string(i, "created_at").unwrap_or_default(),
+        )
+        .unwrap_or_else(jiff::Timestamp::now);
+
+        let src = mneme::id::EntityId::new(&src_str)
+            .whatever_context("invalid relationship src id in store")?;
+        let dst = mneme::id::EntityId::new(&dst_str)
+            .whatever_context("invalid relationship dst id in store")?;
+        relationships.push(mneme::knowledge::Relationship {
+            src,
+            dst,
+            relation,
+            weight,
+            created_at,
+        });
+    }
+    Ok(relationships)
+}
+
+#[cfg(feature = "recall")]
+fn export_dot(
+    writer: &mut dyn std::io::Write,
+    entities: &[mneme::knowledge::Entity],
+    relationships: &[mneme::knowledge::Relationship],
+    entity_sensitivities: &std::collections::HashMap<String, mneme::knowledge::FactSensitivity>,
+) -> Result<()> {
+    writeln!(writer, "digraph G {{").whatever_context("failed to write dot header")?;
+    writeln!(
+        writer,
+        "  node [shape=box, style=filled, fontname=\"Helvetica\"];"
+    )
+    .whatever_context("failed to write dot node style")?;
+
+    for entity in entities {
+        let sens = entity_sensitivities
+            .get(entity.id.as_str())
+            .copied()
+            .unwrap_or(mneme::knowledge::FactSensitivity::Public);
+        let color = sensitivity_dot_color(sens);
+        let label = format!(
+            "{}\\n({})",
+            dot_escape(&entity.name),
+            dot_escape(&entity.entity_type)
+        );
+        writeln!(
+            writer,
+            "  \"{}\" [label=\"{}\", fillcolor=\"{}\"];",
+            dot_escape(entity.id.as_str()),
+            label,
+            color
+        )
+        .whatever_context("failed to write dot node")?;
+    }
+
+    for rel in relationships {
+        writeln!(
+            writer,
+            "  \"{}\" -> \"{}\" [label=\"{}\"];",
+            dot_escape(rel.src.as_str()),
+            dot_escape(rel.dst.as_str()),
+            dot_escape(&rel.relation)
+        )
+        .whatever_context("failed to write dot edge")?;
+    }
+
+    writeln!(writer, "}}").whatever_context("failed to write dot footer")?;
+    Ok(())
+}
+
+#[cfg(feature = "recall")]
+fn dot_escape(s: &str) -> String {
+    s.replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', "\\n")
+        .replace('\r', "\\r")
+}
+
+#[cfg(feature = "recall")]
+fn sensitivity_dot_color(sensitivity: mneme::knowledge::FactSensitivity) -> &'static str {
+    match sensitivity {
+        mneme::knowledge::FactSensitivity::Public => "#90EE90", // green
+        mneme::knowledge::FactSensitivity::Internal => "#FFD700", // gold
+        mneme::knowledge::FactSensitivity::Confidential => "#FF6B6B", // red
+    }
+}
+
+#[cfg(feature = "recall")]
+fn export_graphml(
+    writer: &mut dyn std::io::Write,
+    entities: &[mneme::knowledge::Entity],
+    relationships: &[mneme::knowledge::Relationship],
+) -> Result<()> {
+    writeln!(writer, r#"<?xml version="1.0" encoding="UTF-8"?>"#)
+        .whatever_context("failed to write graphml header")?;
+    writeln!(
+        writer,
+        r#"<graphml xmlns="http://graphml.graphdrawing.org/xmlns">"#
+    )
+    .whatever_context("failed to write graphml root")?;
+
+    // Keys for node data
+    writeln!(
+        writer,
+        r#"  <key id="d0" for="node" attr.name="label" attr.type="string"/>"#
+    )
+    .whatever_context("failed to write graphml key")?;
+    writeln!(
+        writer,
+        r#"  <key id="d1" for="node" attr.name="entity_type" attr.type="string"/>"#
+    )
+    .whatever_context("failed to write graphml key")?;
+    writeln!(
+        writer,
+        r#"  <key id="d2" for="edge" attr.name="relation" attr.type="string"/>"#
+    )
+    .whatever_context("failed to write graphml key")?;
+    writeln!(
+        writer,
+        r#"  <key id="d3" for="edge" attr.name="weight" attr.type="double"/>"#
+    )
+    .whatever_context("failed to write graphml key")?;
+
+    writeln!(writer, r#"  <graph id="G" edgedefault="directed">"#)
+        .whatever_context("failed to write graphml graph start")?;
+
+    for entity in entities {
+        let id_escaped = xml_escape(entity.id.as_str());
+        let name_escaped = xml_escape(&entity.name);
+        let type_escaped = xml_escape(&entity.entity_type);
+        writeln!(
+            writer,
+            r#"    <node id="{id_escaped}">
+      <data key="d0">{name_escaped}</data>
+      <data key="d1">{type_escaped}</data>
+    </node>"#
+        )
+        .whatever_context("failed to write graphml node")?;
+    }
+
+    for rel in relationships {
+        let src_escaped = xml_escape(rel.src.as_str());
+        let dst_escaped = xml_escape(rel.dst.as_str());
+        let rel_escaped = xml_escape(&rel.relation);
+        writeln!(
+            writer,
+            r#"    <edge source="{src_escaped}" target="{dst_escaped}">
+      <data key="d2">{rel_escaped}</data>
+      <data key="d3">{}</data>
+    </edge>"#,
+            rel.weight
+        )
+        .whatever_context("failed to write graphml edge")?;
+    }
+
+    writeln!(writer, "  </graph>").whatever_context("failed to write graphml graph end")?;
+    writeln!(writer, "</graphml>").whatever_context("failed to write graphml root end")?;
+    Ok(())
+}
+
+#[cfg(feature = "recall")]
+fn xml_escape(s: &str) -> String {
+    quick_xml::escape::escape(s).to_string()
+}
+
+#[cfg(feature = "recall")]
+fn export_json(
+    writer: &mut dyn std::io::Write,
+    entities: &[mneme::knowledge::Entity],
+    relationships: &[mneme::knowledge::Relationship],
+) -> Result<()> {
+    #[derive(serde::Serialize)]
+    struct JsonEntity<'a> {
+        id: &'a str,
+        name: &'a str,
+        entity_type: &'a str,
+        aliases: &'a [String],
+    }
+
+    #[derive(serde::Serialize)]
+    struct JsonRelationship<'a> {
+        src: &'a str,
+        dst: &'a str,
+        relation: &'a str,
+        weight: f64,
+    }
+
+    writer
+        .write_all(b"{\n  \"entities\": [")
+        .whatever_context("failed to write json start")?;
+    for (i, entity) in entities.iter().enumerate() {
+        if i > 0 {
+            writer.write_all(b",").whatever_context("json comma")?;
+        }
+        writer
+            .write_all(b"\n    ")
+            .whatever_context("json indent")?;
+        let je = JsonEntity {
+            id: entity.id.as_str(),
+            name: &entity.name,
+            entity_type: &entity.entity_type,
+            aliases: &entity.aliases,
+        };
+        serde_json::to_writer(&mut *writer, &je)
+            .whatever_context("failed to serialize json entity")?;
+    }
+    writer
+        .write_all(b"\n  ],\n  \"relationships\": [")
+        .whatever_context("failed to write json relationships start")?;
+    for (i, rel) in relationships.iter().enumerate() {
+        if i > 0 {
+            writer.write_all(b",").whatever_context("json comma")?;
+        }
+        writer
+            .write_all(b"\n    ")
+            .whatever_context("json indent")?;
+        let jr = JsonRelationship {
+            src: rel.src.as_str(),
+            dst: rel.dst.as_str(),
+            relation: &rel.relation,
+            weight: rel.weight,
+        };
+        serde_json::to_writer(&mut *writer, &jr)
+            .whatever_context("failed to serialize json relationship")?;
+    }
+    writer
+        .write_all(b"\n  ]\n}\n")
+        .whatever_context("failed to write json end")?;
+    Ok(())
 }
 
 #[cfg(all(test, feature = "recall"))]
