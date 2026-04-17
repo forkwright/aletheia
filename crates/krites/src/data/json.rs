@@ -1,6 +1,5 @@
 //! JSON serialization and deserialization for data values.
-use base64::Engine;
-use base64::engine::general_purpose::STANDARD;
+use koina::base64;
 pub(crate) use serde_json::Value as JsonValue;
 use serde_json::json;
 
@@ -71,7 +70,7 @@ impl From<DataValue> for JsonValue {
                 }
             }
             DataValue::Str(t) => JsonValue::String(t.into()),
-            DataValue::Bytes(bytes) => JsonValue::String(STANDARD.encode(bytes)),
+            DataValue::Bytes(bytes) => JsonValue::String(base64::encode(&bytes)),
             DataValue::List(l) => JsonValue::Array(l.into_iter().map(JsonValue::from).collect()),
             DataValue::Bot => panic!("found bottom"),
             DataValue::Set(l) => JsonValue::Array(l.into_iter().map(JsonValue::from).collect()),

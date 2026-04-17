@@ -29,7 +29,6 @@ energeia = { path = "../energeia", optional = true, features = [
 hermeneus = { path = "../hermeneus" }
 koina = { path = "../koina" }
 taxis = { path = "../taxis" }
-base64 = { workspace = true }
 indexmap = { workspace = true }
 jiff = { workspace = true }
 prometheus-client = { workspace = true }

@@ -18,26 +18,19 @@ pub(crate) fn days_to_date(days_since_epoch: u64) -> (u64, u64, u64) {
     (y, m, d)
 }
 
-/// Standard base64 character set (with `+` and `/`).
-const BASE64_CHARS: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-
-/// URL-safe base64 character set (with `-` and `_`).
-const BASE64URL_CHARS: &[u8; 64] =
-    b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
-
 /// Encode bytes to standard base64 (with `+`, `/`, and `=` padding).
 pub(crate) fn base64_encode(input: &[u8]) -> String {
-    base64_encode_with_alphabet(input, BASE64_CHARS, true)
+    koina::base64::encode(input)
 }
 
 /// Decode standard base64 (with `+`, `/`, `=` padding).
 pub(crate) fn base64_decode(s: &str) -> Option<Vec<u8>> {
-    base64_decode_with_alphabet(s, false)
+    koina::base64::decode(s).ok()
 }
 
 /// Encode bytes to base64url (with `-`, `_`, no padding).
 pub(crate) fn base64url_encode(input: &[u8]) -> String {
-    base64_encode_with_alphabet(input, BASE64URL_CHARS, false)
+    koina::base64::encode_url_safe_no_pad(input)
 }
 
 /// Decode base64url-encoded string (with `-`, `_`, no padding required).
@@ -46,114 +39,7 @@ pub(crate) fn base64url_encode(input: &[u8]) -> String {
 /// dedicated crate for this ~30-line function. Base64url differs from standard
 /// Base64 only in the `+`/`-` and `/`/`_` substitutions and the omission of `=` padding.
 pub(crate) fn base64url_decode(s: &str) -> Option<Vec<u8>> {
-    base64_decode_with_alphabet(s, true)
-}
-
-/// Look up a base64 sextet (0-63) in a 64-entry alphabet.
-///
-/// INVARIANT: callers mask inputs with `& 0x3F` (range 0-63) before calling;
-/// the alphabet is a fixed 64-byte array, so the index is always in bounds.
-/// The `unwrap_or(b'A')` branch is mathematically unreachable but avoids a
-/// panic path and keeps the function total.
-fn base64_sextet(alphabet: &[u8; 64], six_bits: u32) -> char {
-    let idx = (six_bits & 0x3F).to_le_bytes();
-    // INVARIANT: `six_bits & 0x3F` fits in u8, so idx[0] is the whole index.
-    let byte = idx.first().copied().unwrap_or(0);
-    char::from(alphabet.get(usize::from(byte)).copied().unwrap_or(b'A'))
-}
-
-/// Internal: encode with a given alphabet and optional padding.
-fn base64_encode_with_alphabet(input: &[u8], alphabet: &[u8; 64], pad: bool) -> String {
-    let mut out = String::with_capacity((input.len() * 4).div_ceil(3) + if pad { 4 } else { 0 });
-
-    let mut chunks = input.chunks_exact(3);
-    for chunk in &mut chunks {
-        // INVARIANT: chunks_exact(3) guarantees every yielded chunk has len == 3.
-        let [b0, b1, b2] = *chunk else {
-            #[expect(
-                clippy::unreachable,
-                reason = "chunks_exact(3) yields only full-length chunks; remainder is handled separately"
-            )]
-            {
-                unreachable!("chunks_exact(3) chunk must have len 3")
-            }
-        };
-        let b = (u32::from(b0) << 16) | (u32::from(b1) << 8) | u32::from(b2);
-        out.push(base64_sextet(alphabet, b >> 18));
-        out.push(base64_sextet(alphabet, b >> 12));
-        out.push(base64_sextet(alphabet, b >> 6));
-        out.push(base64_sextet(alphabet, b));
-    }
-
-    let remainder = chunks.remainder();
-    match *remainder {
-        [] => {}
-        [b0] => {
-            let b = u32::from(b0) << 16;
-            out.push(base64_sextet(alphabet, b >> 18));
-            out.push(base64_sextet(alphabet, b >> 12));
-            if pad {
-                out.push('=');
-                out.push('=');
-            }
-        }
-        [b0, b1] => {
-            let b = (u32::from(b0) << 16) | (u32::from(b1) << 8);
-            out.push(base64_sextet(alphabet, b >> 18));
-            out.push(base64_sextet(alphabet, b >> 12));
-            out.push(base64_sextet(alphabet, b >> 6));
-            if pad {
-                out.push('=');
-            }
-        }
-        // INVARIANT: chunks_exact(3).remainder() always has len ∈ {0, 1, 2}.
-        #[expect(
-            clippy::unreachable,
-            reason = "chunks_exact(3) guarantees remainder().len() ∈ {0, 1, 2}; only 3 arms reachable"
-        )]
-        _ => unreachable!("chunks_exact(3) remainder cannot exceed 2"),
-    }
-
-    out
-}
-
-/// Internal: decode with support for both standard and URL-safe alphabets.
-fn base64_decode_with_alphabet(s: &str, url_safe: bool) -> Option<Vec<u8>> {
-    /// Map a single base64/base64url character to its 6-bit value.
-    fn char_val(b: u8, url_safe: bool) -> Option<u8> {
-        match b {
-            b'A'..=b'Z' => Some(b - b'A'),
-            b'a'..=b'z' => Some(b - b'a' + 26),
-            b'0'..=b'9' => Some(b - b'0' + 52),
-            b'-' => Some(62),
-            b'_' => Some(63),
-            b'+' if !url_safe => Some(62),
-            b'/' if !url_safe => Some(63),
-            b'=' => Some(0), // NOTE: padding treated as zero bits
-            _ => None,
-        }
-    }
-
-    let bytes = s.as_bytes();
-    let end = bytes.iter().rposition(|&b| b != b'=').map_or(0, |i| i + 1);
-    let bytes = bytes.get(..end).unwrap_or(bytes); // SAFETY: end <= bytes.len() by construction from rposition
-
-    let mut out = Vec::with_capacity(bytes.len() * 6 / 8 + 1);
-    let mut buf: u32 = 0;
-    let mut bits: u32 = 0;
-
-    for &b in bytes {
-        let v = char_val(b, url_safe)?;
-        buf = (buf << 6) | u32::from(v);
-        bits += 6;
-        if bits >= 8 {
-            bits -= 8;
-            // SAFETY: bits is 0-7 after decrement, buf >> bits lowest 8 bits are the decoded byte
-            out.push(u8::try_from((buf >> bits) & 0xFF).unwrap_or(0));
-        }
-    }
-
-    Some(out)
+    koina::base64::decode_url_safe_no_pad(s).ok()
 }
 
 /// Extract the `exp` (expiry, seconds since epoch) claim from a dot-segmented token.
