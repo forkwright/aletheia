@@ -3013,6 +3013,7 @@ dependencies = [
  "criterion",
  "jiff",
  "koina",
+ "parking_lot",
  "prometheus-client",
  "proptest",
  "rand 0.9.4",
