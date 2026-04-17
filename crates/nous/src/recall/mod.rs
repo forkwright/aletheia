@@ -54,6 +54,14 @@ impl RecallStageResult {
 }
 
 /// Recall stage: scores and formats knowledge for injection into the system prompt.
+///
+/// # Examples
+///
+/// ```no_run
+/// use nous::recall::{RecallConfig, RecallStage};
+///
+/// let stage = RecallStage::new(RecallConfig::default());
+/// ```
 pub struct RecallStage {
     engine: RecallEngine,
     config: RecallConfig,
@@ -164,6 +172,11 @@ impl RecallStage {
     /// // where the user's vocabulary may not match the knowledge base.
     ///
     /// Non-fatal errors are returned as `Err`: the caller should catch and continue.
+    ///
+    /// # Errors
+    ///
+    /// - Returns `RecallEmbedding` if embedding the query fails.
+    /// - Returns `RecallSearch` if the vector search fails.
     ///
     /// # Complexity
     ///

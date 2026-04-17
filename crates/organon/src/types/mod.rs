@@ -16,6 +16,26 @@ use koina::id::ToolName;
 ///
 /// Converted to `hermeneus::types::ToolDefinition` (the lean LLM wire format)
 /// via `ToolRegistry::to_hermeneus_tools`.
+///
+/// # Examples
+///
+/// ```no_run
+/// use organon::types::{ToolDef, InputSchema, ToolCategory, Reversibility};
+/// use koina::id::ToolName;
+///
+/// let def = ToolDef {
+///     name: ToolName::new("read_file").unwrap(),
+///     description: "Read a file from disk.".into(),
+///     extended_description: None,
+///     input_schema: InputSchema {
+///         properties: Default::default(),
+///         required: vec![],
+///     },
+///     category: ToolCategory::Workspace,
+///     reversibility: Reversibility::FullyReversible,
+///     auto_activate: true,
+/// };
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolDef {
     /// Validated tool name.
