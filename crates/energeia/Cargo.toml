@@ -24,6 +24,7 @@ regex = { workspace = true }
 fjall = { version = "3", optional = true }
 jiff = { workspace = true, features = ["serde"] }
 parking_lot = { version = "0.12", default-features = false }
+reqwest = { workspace = true }
 rmp-serde = "1.2"
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -34,5 +35,7 @@ tokio-util = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
+rustls = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["process", "io-util", "test-util"] }
+wiremock = { workspace = true }

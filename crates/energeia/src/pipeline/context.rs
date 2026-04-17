@@ -79,6 +79,24 @@ pub(crate) struct PipelineContext {
     // --- Set by post-processing stage ---
     /// Final aggregate result, set by post-processing.
     pub(crate) result: Option<DispatchResult>,
+
+    // --- Health-check stage configuration ---
+    /// Primary backend health endpoint URL. `None` skips the HTTP probe.
+    ///
+    /// OpenAI-compatible backends: `<base_url>/v1/models`.
+    /// Anthropic: omit — the stage skips gracefully when `None`.
+    pub(crate) health_endpoint: Option<String>,
+    /// Fallback backend health endpoint URL.
+    ///
+    /// If the primary probe fails with a transient error (timeout, connection
+    /// refused), the stage retries against this URL before failing the dispatch.
+    pub(crate) fallback_health_endpoint: Option<String>,
+    /// Timeout for each HTTP probe. Defaults to 5 seconds.
+    pub(crate) health_probe_timeout: std::time::Duration,
+    /// Latency recorded by the health-check stage (milliseconds).
+    ///
+    /// Set on the first successful probe; `None` if the stage was skipped.
+    pub(crate) health_probe_latency_ms: Option<u64>,
 }
 
 impl PipelineContext {
@@ -119,6 +137,10 @@ impl PipelineContext {
             correctives: Vec::new(),
             aborted: false,
             result: None,
+            health_endpoint: None,
+            fallback_health_endpoint: None,
+            health_probe_timeout: std::time::Duration::from_secs(5),
+            health_probe_latency_ms: None,
         }
     }
 

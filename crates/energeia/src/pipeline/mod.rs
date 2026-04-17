@@ -1,10 +1,11 @@
-// WHY: The 4-stage pipeline (preparation → execution → post-processing) is the
-// foundation of Wave 4. Each stage is a named, independently testable unit with
-// a uniform interface. The DispatchPipeline driver wires them in order and
-// surfaces which stage failed when an error occurs.
+// WHY: The dispatch pipeline (preparation → health_check → execution →
+// post-processing) executes each stage in order. Each stage is a named,
+// independently testable unit with a uniform interface. The DispatchPipeline
+// driver wires them in order and surfaces which stage failed when an error
+// occurs.
 //
-// Follow-up stages (health-check, QA-gate, record, validate — #3458–#3461)
-// will slot into this structure without touching the driver.
+// Remaining Wave 4 follow-up stages: QA-gate (#3459), validate (#3460),
+// record (#3461).
 
 use crate::pipeline::context::PipelineContext;
 use crate::pipeline::error::PipelineError;
@@ -15,6 +16,8 @@ pub(crate) mod context;
 pub(crate) mod error;
 /// Stage 2: drive frontier group loop, collect session outcomes.
 pub(crate) mod execution;
+/// Stage 1b: probe target backend reachability before spawning sessions.
+pub(crate) mod health_check;
 /// Stage 3: record metrics, assemble result, finish store record.
 pub(crate) mod post_processing;
 /// Stage 1: validate inputs, build DAG, compute frontier, initialise shared state.
@@ -22,6 +25,7 @@ pub(crate) mod preparation;
 
 // Re-export stage implementations for use by the orchestrator.
 pub(crate) use execution::ExecutionStage;
+pub(crate) use health_check::HealthCheckStage;
 pub(crate) use post_processing::PostProcessingStage;
 pub(crate) use preparation::PreparationStage;
 
@@ -62,10 +66,12 @@ pub(crate) struct DispatchPipeline {
 }
 
 impl Default for DispatchPipeline {
-    /// Build the standard 3-stage pipeline: preparation → execution → post-processing.
+    /// Build the standard 4-stage pipeline:
+    /// preparation → `health_check` → execution → post-processing.
     fn default() -> Self {
         Self::new(vec![
             Box::new(PreparationStage),
+            Box::new(HealthCheckStage),
             Box::new(ExecutionStage),
             Box::new(PostProcessingStage),
         ])
