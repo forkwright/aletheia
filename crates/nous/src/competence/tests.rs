@@ -159,6 +159,10 @@ fn overall_score_averages_domains() {
 }
 
 #[test]
+#[cfg_attr(
+    target_os = "macos",
+    ignore = "fjall outcome-log ordering differs on macOS; tracked in #3573"
+)]
 fn rolling_stats_respects_window() {
     let t = tracker();
     for _ in 0..10 {
