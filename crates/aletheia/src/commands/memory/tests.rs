@@ -173,3 +173,249 @@ fn count_relation_after_insert() {
     let count = super::count_relation(&store, "facts").expect("count should succeed");
     assert!(count >= 1, "at least one fact after insert");
 }
+
+// --- export-graph tests ---
+
+fn make_relationship(src: &str, dst: &str, relation: &str) -> mneme::knowledge::Relationship {
+    mneme::knowledge::Relationship {
+        src: EntityId::new(src).expect("valid id"),
+        dst: EntityId::new(dst).expect("valid id"),
+        relation: relation.to_owned(),
+        weight: 1.0,
+        created_at: jiff::Timestamp::now(),
+    }
+}
+
+#[test]
+fn export_dot_empty_store() {
+    let mut buf: Vec<u8> = Vec::new();
+    let entities: Vec<mneme::knowledge::Entity> = Vec::new();
+    let relationships: Vec<mneme::knowledge::Relationship> = Vec::new();
+    let sensitivities = std::collections::HashMap::new();
+    super::export_dot(&mut buf, &entities, &relationships, &sensitivities)
+        .expect("dot export should succeed");
+    let output = String::from_utf8(buf).expect("valid utf-8");
+    assert!(output.contains("digraph G"), "dot has digraph header");
+    assert!(!output.contains("->"), "empty store has no edges");
+}
+
+#[test]
+fn export_dot_includes_nodes_and_edges() {
+    let mut buf: Vec<u8> = Vec::new();
+    let entities = vec![
+        make_entity("ent-a", "Alice", "person"),
+        make_entity("ent-b", "Bob", "person"),
+    ];
+    let relationships = vec![make_relationship("ent-a", "ent-b", "knows")];
+    let mut sensitivities = std::collections::HashMap::new();
+    sensitivities.insert(
+        "ent-a".to_owned(),
+        mneme::knowledge::FactSensitivity::Public,
+    );
+    super::export_dot(&mut buf, &entities, &relationships, &sensitivities)
+        .expect("dot export should succeed");
+    let output = String::from_utf8(buf).expect("valid utf-8");
+    assert!(output.contains("\"ent-a\""), "dot contains alice node");
+    assert!(output.contains("\"ent-b\""), "dot contains bob node");
+    assert!(
+        output.contains("\"ent-a\" -> \"ent-b\" [label=\"knows\"]"),
+        "dot contains edge"
+    );
+    assert!(
+        output.contains("fillcolor=\"#90EE90\""),
+        "public sensitivity is green"
+    );
+}
+
+#[test]
+fn export_dot_colors_by_sensitivity() {
+    let mut buf: Vec<u8> = Vec::new();
+    let entities = vec![
+        make_entity("ent-p", "PublicEnt", "concept"),
+        make_entity("ent-i", "InternalEnt", "concept"),
+        make_entity("ent-c", "ConfidentialEnt", "concept"),
+    ];
+    let relationships: Vec<mneme::knowledge::Relationship> = Vec::new();
+    let mut sensitivities = std::collections::HashMap::new();
+    sensitivities.insert(
+        "ent-p".to_owned(),
+        mneme::knowledge::FactSensitivity::Public,
+    );
+    sensitivities.insert(
+        "ent-i".to_owned(),
+        mneme::knowledge::FactSensitivity::Internal,
+    );
+    sensitivities.insert(
+        "ent-c".to_owned(),
+        mneme::knowledge::FactSensitivity::Confidential,
+    );
+    super::export_dot(&mut buf, &entities, &relationships, &sensitivities)
+        .expect("dot export should succeed");
+    let output = String::from_utf8(buf).expect("valid utf-8");
+    assert!(output.contains("fillcolor=\"#90EE90\""), "public is green");
+    assert!(output.contains("fillcolor=\"#FFD700\""), "internal is gold");
+    assert!(
+        output.contains("fillcolor=\"#FF6B6B\""),
+        "confidential is red"
+    );
+}
+
+#[test]
+fn export_json_empty_store() {
+    let mut buf: Vec<u8> = Vec::new();
+    let entities: Vec<mneme::knowledge::Entity> = Vec::new();
+    let relationships: Vec<mneme::knowledge::Relationship> = Vec::new();
+    super::export_json(&mut buf, &entities, &relationships).expect("json export should succeed");
+    let output = String::from_utf8(buf).expect("valid utf-8");
+    let parsed: serde_json::Value = serde_json::from_str(&output).expect("valid json");
+    assert_eq!(
+        parsed["entities"].as_array().map_or(0, Vec::len),
+        0,
+        "empty store has no entities"
+    );
+    assert_eq!(
+        parsed["relationships"].as_array().map_or(0, Vec::len),
+        0,
+        "empty store has no relationships"
+    );
+}
+
+#[test]
+fn export_json_roundtrips_entities_and_relationships() {
+    let mut buf: Vec<u8> = Vec::new();
+    let entities = vec![
+        make_entity("ent-a", "Alice", "person"),
+        make_entity("ent-b", "Bob", "person"),
+    ];
+    let relationships = vec![make_relationship("ent-a", "ent-b", "knows")];
+    super::export_json(&mut buf, &entities, &relationships).expect("json export should succeed");
+    let output = String::from_utf8(buf).expect("valid utf-8");
+    let parsed: serde_json::Value = serde_json::from_str(&output).expect("valid json");
+    assert_eq!(
+        parsed["entities"].as_array().map_or(0, Vec::len),
+        2,
+        "two entities"
+    );
+    assert_eq!(
+        parsed["relationships"].as_array().map_or(0, Vec::len),
+        1,
+        "one relationship"
+    );
+    assert_eq!(
+        parsed["relationships"][0]["src"].as_str(),
+        Some("ent-a"),
+        "correct src"
+    );
+    assert_eq!(
+        parsed["relationships"][0]["dst"].as_str(),
+        Some("ent-b"),
+        "correct dst"
+    );
+}
+
+#[test]
+fn export_graphml_empty_store() {
+    let mut buf: Vec<u8> = Vec::new();
+    let entities: Vec<mneme::knowledge::Entity> = Vec::new();
+    let relationships: Vec<mneme::knowledge::Relationship> = Vec::new();
+    super::export_graphml(&mut buf, &entities, &relationships)
+        .expect("graphml export should succeed");
+    let output = String::from_utf8(buf).expect("valid utf-8");
+    assert!(
+        output.contains("<?xml version=\"1.0\" encoding=\"UTF-8\"?>"),
+        "has xml declaration"
+    );
+    assert!(output.contains("<graphml xmlns="), "has graphml root");
+    assert!(output.contains("</graphml>"), "has closing graphml tag");
+}
+
+#[test]
+fn export_graphml_includes_nodes_and_edges() {
+    let mut buf: Vec<u8> = Vec::new();
+    let entities = vec![
+        make_entity("ent-a", "Alice", "person"),
+        make_entity("ent-b", "Bob", "person"),
+    ];
+    let relationships = vec![make_relationship("ent-a", "ent-b", "knows")];
+    super::export_graphml(&mut buf, &entities, &relationships)
+        .expect("graphml export should succeed");
+    let output = String::from_utf8(buf).expect("valid utf-8");
+    assert!(output.contains(r#"<node id="ent-a">"#), "has alice node");
+    assert!(output.contains(r#"<node id="ent-b">"#), "has bob node");
+    assert!(
+        output.contains(r#"<edge source="ent-a" target="ent-b">"#),
+        "has edge"
+    );
+    assert!(
+        output.contains("<data key=\"d2\">knows</data>"),
+        "edge has relation data"
+    );
+}
+
+#[test]
+fn load_filtered_facts_respects_nous_filter() {
+    use std::collections::BTreeMap;
+
+    let store = test_store();
+    let e1 = make_entity("ent-a", "Alice", "person");
+    let e2 = make_entity("ent-b", "Bob", "person");
+    store.insert_entity(&e1).expect("insert e1");
+    store.insert_entity(&e2).expect("insert e2");
+
+    let f1 = make_fact("fact-1", "nous-1", "Alice likes Rust");
+    store.insert_fact(&f1).expect("insert f1");
+
+    // Link fact to entity e1 via Datalog :put
+    let mut params = BTreeMap::new();
+    params.insert(
+        "fact_id".to_owned(),
+        mneme::engine::DataValue::Str(f1.id.as_str().into()),
+    );
+    params.insert(
+        "entity_id".to_owned(),
+        mneme::engine::DataValue::Str(e1.id.as_str().into()),
+    );
+    params.insert(
+        "created_at".to_owned(),
+        mneme::engine::DataValue::Str(
+            mneme::knowledge::format_timestamp(&jiff::Timestamp::now()).into(),
+        ),
+    );
+    store
+        .run_mut_query(
+            r"?[fact_id, entity_id, created_at] <- [[$fact_id, $entity_id, $created_at]]
+              :put fact_entities {fact_id, entity_id => created_at}",
+            params,
+        )
+        .expect("link fact to entity");
+
+    let (visible, _sensitivities) = super::load_filtered_facts(&store, Some("nous-1"), None, true)
+        .expect("load filtered facts should succeed");
+    assert!(
+        visible.contains("ent-a"),
+        "entity linked to nous-1 fact is visible"
+    );
+    assert!(
+        !visible.contains("ent-b"),
+        "entity not linked to nous-1 fact is hidden"
+    );
+}
+
+#[test]
+fn sensitivity_dot_color_maps_correctly() {
+    assert_eq!(
+        super::sensitivity_dot_color(mneme::knowledge::FactSensitivity::Public),
+        "#90EE90",
+        "public is green"
+    );
+    assert_eq!(
+        super::sensitivity_dot_color(mneme::knowledge::FactSensitivity::Internal),
+        "#FFD700",
+        "internal is gold"
+    );
+    assert_eq!(
+        super::sensitivity_dot_color(mneme::knowledge::FactSensitivity::Confidential),
+        "#FF6B6B",
+        "confidential is red"
+    );
+}
