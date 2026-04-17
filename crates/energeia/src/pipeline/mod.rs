@@ -204,6 +204,8 @@ mod tests {
             acceptance_criteria: vec![],
             blast_radius: vec![],
             body: "do the thing".to_owned(),
+
+            prompt_components: None,
         }];
 
         let mock_outcomes = vec![MockOutcome::Success {

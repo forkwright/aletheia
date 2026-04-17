@@ -79,6 +79,10 @@ pub struct SessionSpec {
     pub system_prompt: Option<String>,
     /// Working directory for the agent session.
     pub cwd: Option<String>,
+    /// Optional prompt cache components. When present, engines that support
+    /// prompt caching should use `static_prefix` as the cached system prompt
+    /// and `dynamic_suffix` as the user message.
+    pub prompt_components: Option<crate::prompt_cache::PromptComponents>,
 }
 
 /// Configuration options for an agent session.
@@ -231,6 +235,12 @@ pub struct SessionResult {
     pub result_text: Option<String>,
     /// LLM model used for this session, if known.
     pub model: Option<String>,
+    /// Tokens read from the prompt cache.
+    #[serde(default)]
+    pub cache_hit_tokens: u64,
+    /// Tokens written to the prompt cache.
+    #[serde(default)]
+    pub cache_miss_tokens: u64,
 }
 
 /// Raw deserialization type for [`SessionResult`].
@@ -243,6 +253,10 @@ struct SessionResultRaw {
     success: bool,
     result_text: Option<String>,
     model: Option<String>,
+    #[serde(default)]
+    cache_hit_tokens: u64,
+    #[serde(default)]
+    cache_miss_tokens: u64,
 }
 
 impl From<SessionResultRaw> for SessionResult {
@@ -255,6 +269,8 @@ impl From<SessionResultRaw> for SessionResult {
             success: raw.success,
             result_text: raw.result_text,
             model: raw.model,
+            cache_hit_tokens: raw.cache_hit_tokens,
+            cache_miss_tokens: raw.cache_miss_tokens,
         }
     }
 }
@@ -281,6 +297,8 @@ impl SessionResult {
             success,
             result_text,
             model: None,
+            cache_hit_tokens: 0,
+            cache_miss_tokens: 0,
         }
     }
 }
@@ -317,6 +335,7 @@ mod tests {
             prompt: "implement feature X".to_owned(),
             system_prompt: Some("you are a coding agent".to_owned()),
             cwd: Some("/home/user/project".to_owned()),
+            prompt_components: None,
         };
         let json = serde_json::to_string(&spec).unwrap();
         let deserialized: SessionSpec = serde_json::from_str(&json).unwrap();

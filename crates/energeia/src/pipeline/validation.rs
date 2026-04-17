@@ -190,6 +190,8 @@ mod tests {
             acceptance_criteria: vec![],
             blast_radius: vec![],
             body: "do the thing".to_owned(),
+
+            prompt_components: None,
         }
     }
 
@@ -226,6 +228,8 @@ mod tests {
             acceptance_criteria: vec![],
             blast_radius: vec![],
             body: long_body,
+
+            prompt_components: None,
         }];
         let mut ctx = make_context(
             prompts,

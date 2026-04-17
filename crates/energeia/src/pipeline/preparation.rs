@@ -75,9 +75,41 @@ impl PipelineStage for PreparationStage {
             .map(|p| (p.number, p.clone()))
             .collect::<HashMap<_, _>>();
 
-        // --- Budget and cancellation ---
+        // --- Build prompt cache components ---
+        //
+        // When role or standards are configured, split each prompt into a
+        // static prefix (cacheable across dispatches) and dynamic suffix
+        // (per-dispatch state). This enables prompt cache hits at the LLM
+        // boundary when dispatched through hermeneus.
 
         let cfg = &ctx.config;
+        let should_split = cfg.role.is_some()
+            || cfg.standards_dir.is_some()
+            || !cfg.standards.is_empty()
+            || cfg.scope.is_some();
+
+        if should_split {
+            for prompt in &mut ctx.prompts {
+                let components = crate::prompt_cache::PromptComponents::build(
+                    cfg.role.as_deref(),
+                    &ctx.spec.project,
+                    cfg.standards_dir.as_deref(),
+                    &cfg.standards,
+                    cfg.scope.as_deref(),
+                    &prompt.body,
+                );
+                prompt.prompt_components = Some(components);
+            }
+            // Sync prompt_map with updated prompts.
+            ctx.prompt_map = ctx
+                .prompts
+                .iter()
+                .map(|p| (p.number, p.clone()))
+                .collect::<HashMap<_, _>>();
+        }
+
+        // --- Budget and cancellation ---
+
         ctx.budget = Some(Arc::new(Budget::new(
             cfg.default_budget_usd,
             cfg.default_budget_turns,
@@ -200,6 +232,8 @@ mod tests {
                 acceptance_criteria: vec![],
                 blast_radius: vec![],
                 body: "do first".to_owned(),
+
+                prompt_components: None,
             },
             PromptSpec {
                 number: 2,
@@ -208,6 +242,8 @@ mod tests {
                 acceptance_criteria: vec![],
                 blast_radius: vec![],
                 body: "do second".to_owned(),
+
+                prompt_components: None,
             },
         ];
         let mut ctx = make_context_with_prompts(prompts);
