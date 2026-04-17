@@ -13,8 +13,8 @@ use koina::id::ToolName;
 use organon::process_guard::ProcessGuard;
 use organon::registry::{ToolExecutor, ToolRegistry};
 use organon::types::{
-    InputSchema, PropertyDef, PropertyType, ToolCategory, ToolContext, ToolDef, ToolInput,
-    ToolResult,
+    InputSchema, PropertyDef, PropertyType, ToolCategory, ToolContext, ToolDef, ToolDiagnostics,
+    ToolInput, ToolResult,
 };
 use tracing::info;
 
@@ -168,10 +168,21 @@ impl ToolExecutor for ShellToolExecutor {
                 output.push_str("\n[output truncated]");
             }
 
+            let diagnostics = ToolDiagnostics {
+                exit_code: Some(code),
+                stderr: if output_result.stderr.is_empty() {
+                    None
+                } else {
+                    Some(String::from_utf8_lossy(&output_result.stderr).into_owned())
+                },
+                sandbox_violations: Vec::new(),
+                duration_ms: 0,
+            };
+
             if is_error {
-                Ok(ToolResult::error(output))
+                Ok(ToolResult::error(output).with_diagnostics(diagnostics))
             } else {
-                Ok(ToolResult::text(output))
+                Ok(ToolResult::text(output).with_diagnostics(diagnostics))
             }
         })
     }

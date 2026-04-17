@@ -24,6 +24,27 @@ pub(super) struct DispatchResult {
     pub loop_warning: Option<String>,
 }
 
+/// Inject a bounded diagnostic preamble into tool result content.
+///
+/// Diagnostics are placed at the front of the payload so they survive
+/// truncation that cuts from the end.
+pub(crate) fn inject_diagnostics(content: ToolResultContent, diag_text: &str) -> ToolResultContent {
+    match content {
+        ToolResultContent::Text(text) => ToolResultContent::Text(format!("{diag_text}\n\n{text}")),
+        ToolResultContent::Blocks(mut blocks) => {
+            blocks.insert(
+                0,
+                ToolResultBlock::Text {
+                    text: diag_text.to_owned(),
+                },
+            );
+            ToolResultContent::Blocks(blocks)
+        }
+        // WHY: ToolResultContent is #[non_exhaustive]; forward-compatibility arm.
+        other => other,
+    }
+}
+
 /// Truncate a tool result if it exceeds `max_bytes`.
 ///
 /// Only text content is truncated; image and document blocks are left
@@ -256,7 +277,14 @@ pub(super) async fn dispatch_tools(
         let duration_ms = start.elapsed().as_millis() as u64; // kanon:ignore RUST/as-cast
 
         let (content, is_error) = match result {
-            Ok(r) => (r.content, r.is_error),
+            Ok(mut r) => {
+                if let Some(ref mut d) = r.diagnostics {
+                    d.duration_ms = duration_ms;
+                    let diag_text = d.to_llm_text();
+                    r.content = inject_diagnostics(r.content, &diag_text);
+                }
+                (r.content, r.is_error)
+            }
             Err(e) => (ToolResultContent::text(format!("Tool error: {e}")), true),
         };
 
@@ -399,7 +427,14 @@ pub(super) async fn dispatch_tools_streaming(
         let duration_ms = start.elapsed().as_millis() as u64; // kanon:ignore RUST/as-cast
 
         let (content, is_error) = match result {
-            Ok(r) => (r.content, r.is_error),
+            Ok(mut r) => {
+                if let Some(ref mut d) = r.diagnostics {
+                    d.duration_ms = duration_ms;
+                    let diag_text = d.to_llm_text();
+                    r.content = inject_diagnostics(r.content, &diag_text);
+                }
+                (r.content, r.is_error)
+            }
             Err(e) => (ToolResultContent::text(format!("Tool error: {e}")), true),
         };
 
@@ -669,6 +704,90 @@ mod tests {
                     .iter()
                     .any(|b| matches!(b, ToolResultBlock::Image { .. }));
                 assert!(!has_image, "image block should be skipped when over budget");
+            }
+            _ => panic!("expected Blocks variant"),
+        }
+    }
+
+    // ── inject_diagnostics tests ───────────────────────────────────────
+
+    #[test]
+    fn inject_diagnostics_into_text_prepends_diag() {
+        let content = ToolResultContent::text("tool output");
+        let result = inject_diagnostics(content, "[diagnostics: exit_code=1]");
+        match result {
+            ToolResultContent::Text(s) => {
+                assert!(
+                    s.starts_with("[diagnostics: exit_code=1]"),
+                    "diagnostics should be prepended: {s}"
+                );
+                assert!(
+                    s.contains("tool output"),
+                    "original content should remain: {s}"
+                );
+            }
+            _ => panic!("expected Text variant"),
+        }
+    }
+
+    #[test]
+    fn inject_diagnostics_into_blocks_inserts_first_block() {
+        let blocks = vec![ToolResultBlock::Text {
+            text: "block 1".to_owned(),
+        }];
+        let content = ToolResultContent::Blocks(blocks);
+        let result = inject_diagnostics(content, "[diagnostics: exit_code=2]");
+        match result {
+            ToolResultContent::Blocks(bs) => {
+                assert_eq!(bs.len(), 2, "should have two blocks");
+                match bs.first().expect("should have first block") {
+                    ToolResultBlock::Text { text } => {
+                        assert_eq!(text, "[diagnostics: exit_code=2]");
+                    }
+                    _ => panic!("first block should be diagnostic text"),
+                }
+            }
+            _ => panic!("expected Blocks variant"),
+        }
+    }
+
+    #[test]
+    fn diagnostics_survive_text_truncation() {
+        let content = ToolResultContent::text("a".repeat(200));
+        let with_diag = inject_diagnostics(content, "[diagnostics: exit_code=127]");
+        let truncated = truncate_tool_result(with_diag, 50);
+        match truncated {
+            ToolResultContent::Text(s) => {
+                assert!(
+                    s.starts_with("[diagnostics: exit_code=127]"),
+                    "diagnostics should survive truncation: {s}"
+                );
+            }
+            _ => panic!("expected Text variant"),
+        }
+    }
+
+    #[test]
+    fn diagnostics_survive_block_truncation() {
+        let blocks = vec![
+            ToolResultBlock::Text {
+                text: "a".repeat(100),
+            },
+            ToolResultBlock::Text {
+                text: "b".repeat(100),
+            },
+        ];
+        let content = ToolResultContent::Blocks(blocks);
+        let with_diag = inject_diagnostics(content, "[diagnostics: exit_code=1]");
+        let truncated = truncate_tool_result(with_diag, 80);
+        match truncated {
+            ToolResultContent::Blocks(bs) => {
+                match bs.first().expect("should have first block") {
+                    ToolResultBlock::Text { text } => {
+                        assert_eq!(text, "[diagnostics: exit_code=1]");
+                    }
+                    _ => panic!("first block should be diagnostics"),
+                }
             }
             _ => panic!("expected Blocks variant"),
         }

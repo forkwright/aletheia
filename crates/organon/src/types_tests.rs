@@ -755,3 +755,135 @@ fn tool_def_includes_reversibility_in_serde() {
         "reversibility should survive serde roundtrip"
     );
 }
+
+// ── ToolDiagnostics tests ────────────────────────────────────────────
+
+#[test]
+fn tool_diagnostics_to_llm_text_includes_all_fields() {
+    let diag = ToolDiagnostics {
+        exit_code: Some(127),
+        stderr: Some("command not found".to_owned()),
+        sandbox_violations: vec!["read /etc/shadow".to_owned()],
+        duration_ms: 42,
+    };
+    let text = diag.to_llm_text();
+    assert!(
+        text.contains("exit_code=127"),
+        "should include exit_code: {text}"
+    );
+    assert!(
+        text.contains("stderr=command not found"),
+        "should include stderr: {text}"
+    );
+    assert!(
+        text.contains("sandbox_violations=read /etc/shadow"),
+        "should include sandbox violations: {text}"
+    );
+    assert!(
+        text.contains("duration_ms=42"),
+        "should include duration: {text}"
+    );
+}
+
+#[test]
+fn tool_diagnostics_to_llm_text_omits_empty_fields() {
+    let diag = ToolDiagnostics {
+        exit_code: None,
+        stderr: None,
+        sandbox_violations: Vec::new(),
+        duration_ms: 100,
+    };
+    let text = diag.to_llm_text();
+    assert!(
+        !text.contains("exit_code"),
+        "should omit exit_code when None: {text}"
+    );
+    assert!(
+        !text.contains("stderr"),
+        "should omit stderr when None: {text}"
+    );
+    assert!(
+        !text.contains("sandbox_violations"),
+        "should omit sandbox_violations when empty: {text}"
+    );
+    assert!(
+        text.contains("duration_ms=100"),
+        "should always include duration: {text}"
+    );
+}
+
+#[test]
+fn tool_diagnostics_bounds_long_stderr() {
+    let long_stderr = "e".repeat(600);
+    let diag = ToolDiagnostics {
+        exit_code: Some(1),
+        stderr: Some(long_stderr.clone()),
+        sandbox_violations: Vec::new(),
+        duration_ms: 0,
+    };
+    let text = diag.to_llm_text();
+    assert!(
+        text.contains("stderr="),
+        "should include stderr prefix: {text}"
+    );
+    assert!(
+        text.contains("…[truncated]"),
+        "should truncate long stderr: {text}"
+    );
+    assert!(
+        text.len() < long_stderr.len() + 100,
+        "diagnostic text should be bounded: {text}"
+    );
+}
+
+#[test]
+fn tool_result_with_diagnostics_builder() {
+    let result = ToolResult::text("hello").with_diagnostics(ToolDiagnostics {
+        exit_code: Some(0),
+        stderr: None,
+        sandbox_violations: Vec::new(),
+        duration_ms: 5,
+    });
+    assert!(!result.is_error, "should not be error");
+    assert_eq!(
+        result
+            .diagnostics
+            .as_ref()
+            .expect("diagnostics present")
+            .exit_code,
+        Some(0),
+        "should carry diagnostics"
+    );
+}
+
+#[test]
+fn tool_result_serde_roundtrip_preserves_diagnostics() {
+    let result = ToolResult::error("fail").with_diagnostics(ToolDiagnostics {
+        exit_code: Some(1),
+        stderr: Some("stderr output".to_owned()),
+        sandbox_violations: vec!["violation".to_owned()],
+        duration_ms: 10,
+    });
+    let json = serde_json::to_string(&result).expect("serialize");
+    let back: ToolResult = serde_json::from_str(&json).expect("deserialize");
+    assert!(back.is_error, "should preserve is_error");
+    let diag = back.diagnostics.expect("should preserve diagnostics");
+    assert_eq!(diag.exit_code, Some(1));
+    assert_eq!(diag.stderr.as_deref(), Some("stderr output"));
+    assert_eq!(diag.sandbox_violations, vec!["violation".to_owned()]);
+    assert_eq!(diag.duration_ms, 10);
+}
+
+#[test]
+fn tool_result_serde_backward_compat_missing_diagnostics() {
+    // WHY: ToolResultContent is an untagged enum; Text(String) serializes as
+    // a plain JSON string, not an object.
+    let json = r#"{"content":"legacy","is_error":false}"#;
+    let back: ToolResult = serde_json::from_str(json).expect("deserialize legacy");
+    assert_eq!(back.content.text_summary(), "legacy");
+    assert!(!back.is_error);
+    assert!(
+        back.diagnostics.is_none(),
+        "missing diagnostics should default to None"
+    );
+}

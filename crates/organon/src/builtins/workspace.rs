@@ -21,7 +21,7 @@ use crate::process_guard::ProcessGuard;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
     InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
-    ToolInput, ToolResult,
+    ToolDiagnostics, ToolInput, ToolResult,
 };
 
 /// Strip absolute path prefixes from an error message, showing only the filename.
@@ -743,7 +743,19 @@ impl ToolExecutor for ExecExecutor {
                 output.push_str("\n[output truncated]");
             }
 
-            Ok(ToolResult::text(output))
+            let stderr_diag = if stderr.is_empty() {
+                None
+            } else {
+                Some(stderr)
+            };
+            let diagnostics = ToolDiagnostics {
+                exit_code: Some(code),
+                stderr: stderr_diag,
+                sandbox_violations: Vec::new(),
+                duration_ms: 0, // filled in by dispatch
+            };
+
+            Ok(ToolResult::text(output).with_diagnostics(diagnostics))
         })
     }
 }
