@@ -350,6 +350,7 @@ fn record_training_data_produces_fact() {
         error: None,
         model: Some("claude-3-5-sonnet".to_owned()),
         blast_radius: vec!["crates/test/".to_owned()],
+        corrective_attempts: 0,
     };
 
     let fact = store.record_training_data(session, &outcome).unwrap();

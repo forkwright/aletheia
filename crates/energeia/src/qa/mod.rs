@@ -210,12 +210,15 @@ pub async fn run_qa(
 
     let qa_verdict = verdict::determine_verdict(&all_results, &mechanical_issues);
 
+    let reasons = build_reasons(&all_results, &mechanical_issues);
+
     let qa_result = QaResult {
         prompt_number: prompt.prompt_number,
         pr_number,
         verdict: qa_verdict,
         criteria_results: all_results,
         mechanical_issues,
+        reasons,
         cost_usd,
         evaluated_at: Timestamp::now(),
         semantic_evaluated,
@@ -319,6 +322,30 @@ async fn evaluate_semantic_criteria(
     }
 }
 
+/// Build human-readable reasons from failed criteria and mechanical issues.
+#[must_use]
+fn build_reasons(
+    criteria: &[CriterionResult],
+    mechanical_issues: &[MechanicalIssue],
+) -> Vec<String> {
+    let mut reasons = Vec::new();
+
+    for issue in mechanical_issues {
+        let mut reason = issue.message.clone();
+        if let Some(ref details) = issue.details {
+            reason.push_str(": ");
+            reason.push_str(details);
+        }
+        reasons.push(reason);
+    }
+
+    for cr in criteria.iter().filter(|c| !c.passed) {
+        reasons.push(format!("{}: {}", cr.criterion, cr.evidence));
+    }
+
+    reasons
+}
+
 /// Record a QA evaluation result as a lesson in the store.
 ///
 /// Captures the verdict, criteria details, and cost for training data.
@@ -417,6 +444,7 @@ mod tests {
         // semantic criteria to evaluate (vacuously complete).
         assert_eq!(result.verdict, QaVerdict::Pass);
         assert!(result.mechanical_issues.is_empty());
+        assert!(result.reasons.is_empty());
         assert!(result.semantic_evaluated);
     }
 

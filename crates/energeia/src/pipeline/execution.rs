@@ -82,6 +82,7 @@ impl PipelineStage for ExecutionStage {
                         error: Some("dependency failed".to_owned()),
                         model: None,
                         blast_radius: prompt.blast_radius.clone(),
+                        corrective_attempts: 0,
                     });
                     mark_dependents_blocked(n, ctx.dag_mut());
                 } else {
@@ -109,7 +110,7 @@ impl PipelineStage for ExecutionStage {
             );
 
             let engine_config = ctx.engine_config().clone();
-            let outcomes = crate::orchestrator::group::execute_group(
+            let mut outcomes = crate::orchestrator::group::execute_group(
                 &group_prompts,
                 std::sync::Arc::clone(&ctx.engine),
                 std::sync::Arc::clone(ctx.budget()),
@@ -119,6 +120,16 @@ impl PipelineStage for ExecutionStage {
                 &ctx.cancel,
             )
             .await;
+
+            // Stamp each outcome with the number of corrective attempts already
+            // made for its prompt number before this execution.
+            for outcome in &mut outcomes {
+                outcome.corrective_attempts = ctx
+                    .corrective_attempt_counts
+                    .get(&outcome.prompt_number)
+                    .copied()
+                    .unwrap_or(0);
+            }
 
             // Process outcomes: update DAG, record cost, handle QA and
             // correctives. Post-processing handles metrics and store; this
@@ -144,18 +155,21 @@ impl PipelineStage for ExecutionStage {
                             .dag_mut()
                             .set_status(outcome.prompt_number, PromptStatus::Done);
 
-                        if let Some(pr_url) = &outcome.pr_url {
-                            let pr_url = pr_url.clone();
-                            let outcome_clone = outcome.clone();
-                            let prompt_map = &ctx.prompt_map;
+                        if let Some(pr_url) = &outcome.pr_url
+                            && let Some(prompt) =
+                                ctx.prompt_map.get(&outcome.prompt_number).cloned()
+                        {
+                            let budget = std::sync::Arc::clone(ctx.budget());
                             let correctives = &mut ctx.correctives;
+                            let counts = &mut ctx.corrective_attempt_counts;
                             if let Some(verdict) = run_qa_and_generate_corrective(
                                 &*ctx.qa,
-                                &outcome_clone,
-                                &pr_url,
-                                prompt_map,
+                                &prompt,
+                                pr_url,
                                 correctives,
                                 ctx.config.max_corrective_retries,
+                                counts,
+                                &budget,
                             )
                             .await
                             {
@@ -192,6 +206,7 @@ impl PipelineStage for ExecutionStage {
                 error: Some("corrective prompt had no remaining group to execute in".to_owned()),
                 model: None,
                 blast_radius: c.blast_radius.clone(),
+                corrective_attempts: 0,
             });
         }
 
@@ -255,6 +270,7 @@ fn collect_skipped(numbers: &[u32], dag: &mut PromptDag, reason: &str) -> Vec<Se
                 error: Some(reason.to_owned()),
                 model: None,
                 blast_radius: vec![],
+                corrective_attempts: 0,
             }
         })
         .collect()
@@ -262,14 +278,13 @@ fn collect_skipped(numbers: &[u32], dag: &mut PromptDag, reason: &str) -> Vec<Se
 
 async fn run_qa_and_generate_corrective(
     qa: &dyn crate::qa::QaGate,
-    outcome: &crate::types::SessionOutcome,
+    prompt: &crate::prompt::PromptSpec,
     pr_url: &str,
-    prompt_map: &std::collections::HashMap<u32, crate::prompt::PromptSpec>,
     correctives: &mut Vec<crate::prompt::PromptSpec>,
     max_corrective_retries: u32,
+    corrective_attempt_counts: &mut std::collections::HashMap<u32, u32>,
+    budget: &crate::types::Budget,
 ) -> Option<crate::types::QaVerdict> {
-    let prompt = prompt_map.get(&outcome.prompt_number)?;
-
     let pr_number = pr_url
         .rsplit('/')
         .next()
@@ -287,7 +302,7 @@ async fn run_qa_and_generate_corrective(
         Ok(result) => result,
         Err(e) => {
             tracing::warn!(
-                prompt_number = outcome.prompt_number,
+                prompt_number = prompt.number,
                 error = %e,
                 "QA evaluation failed, skipping corrective generation"
             );
@@ -296,37 +311,38 @@ async fn run_qa_and_generate_corrective(
     };
 
     tracing::info!(
-        prompt_number = outcome.prompt_number,
+        prompt_number = prompt.number,
         pr_number,
         verdict = %qa_result.verdict,
         "QA evaluation complete"
     );
 
+    let current_count = corrective_attempt_counts
+        .get(&prompt.number)
+        .copied()
+        .unwrap_or(0);
+
+    let budget_ok = !matches!(budget.check(), crate::budget::BudgetStatus::Exceeded(_));
+
     if qa_result.verdict != crate::types::QaVerdict::Pass
-        && correctives.len() < usize::try_from(max_corrective_retries).unwrap_or(usize::MAX)
+        && current_count < max_corrective_retries
+        && budget_ok
         && let Some(corrective) = crate::qa::corrective::generate_corrective(&qa_result, &qa_prompt)
     {
-        tracing::info!(
-            prompt_number = outcome.prompt_number,
-            "generated corrective prompt"
-        );
+        tracing::info!(prompt_number = prompt.number, "generated corrective prompt");
+        let reasons_text = qa_result.reasons.join(", ");
         let body = format!(
-            "Fix the following issues in PR #{pr_number}:\n\n{}",
-            corrective
-                .acceptance_criteria
-                .iter()
-                .map(|c| format!("- {c}"))
-                .collect::<Vec<_>>()
-                .join("\n")
+            "Your previous attempt had these issues: {reasons_text}. Fix them and push a new commit."
         );
         correctives.push(crate::prompt::PromptSpec {
-            number: outcome.prompt_number,
+            number: prompt.number,
             description: corrective.description,
             depends_on: vec![],
             acceptance_criteria: corrective.acceptance_criteria,
             blast_radius: corrective.blast_radius,
             body,
         });
+        corrective_attempt_counts.insert(prompt.number, current_count + 1);
     }
 
     Some(qa_result.verdict)
@@ -373,9 +389,105 @@ mod tests {
                     verdict: QaVerdict::Pass,
                     criteria_results: vec![],
                     mechanical_issues: vec![],
+                    reasons: vec![],
                     cost_usd: 0.0,
                     evaluated_at: Timestamp::now(),
                     semantic_evaluated: false,
+                })
+            })
+        }
+
+        fn mechanical_check(
+            &self,
+            _diff: &str,
+            _prompt: &crate::qa::PromptSpec,
+        ) -> Vec<MechanicalIssue> {
+            vec![]
+        }
+    }
+
+    struct PartialThenPassQa {
+        call_count: std::sync::atomic::AtomicUsize,
+    }
+
+    impl PartialThenPassQa {
+        fn new() -> Self {
+            Self {
+                call_count: std::sync::atomic::AtomicUsize::new(0),
+            }
+        }
+    }
+
+    impl QaGate for PartialThenPassQa {
+        fn evaluate<'a>(
+            &'a self,
+            prompt: &'a crate::qa::PromptSpec,
+            pr_number: u64,
+            _diff: &'a str,
+        ) -> std::pin::Pin<
+            Box<dyn std::future::Future<Output = crate::error::Result<QaResult>> + Send + 'a>,
+        > {
+            use jiff::Timestamp;
+            let count = self
+                .call_count
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let verdict = if count == 0 {
+                QaVerdict::Partial
+            } else {
+                QaVerdict::Pass
+            };
+            let reasons = if count == 0 {
+                vec!["missing error handling".to_owned()]
+            } else {
+                vec![]
+            };
+            Box::pin(async move {
+                Ok(QaResult {
+                    prompt_number: prompt.prompt_number,
+                    pr_number,
+                    verdict,
+                    criteria_results: vec![],
+                    mechanical_issues: vec![],
+                    reasons,
+                    cost_usd: 0.0,
+                    evaluated_at: Timestamp::now(),
+                    semantic_evaluated: true,
+                })
+            })
+        }
+
+        fn mechanical_check(
+            &self,
+            _diff: &str,
+            _prompt: &crate::qa::PromptSpec,
+        ) -> Vec<MechanicalIssue> {
+            vec![]
+        }
+    }
+
+    struct AlwaysFailQa;
+
+    impl QaGate for AlwaysFailQa {
+        fn evaluate<'a>(
+            &'a self,
+            prompt: &'a crate::qa::PromptSpec,
+            pr_number: u64,
+            _diff: &'a str,
+        ) -> std::pin::Pin<
+            Box<dyn std::future::Future<Output = crate::error::Result<QaResult>> + Send + 'a>,
+        > {
+            use jiff::Timestamp;
+            Box::pin(async move {
+                Ok(QaResult {
+                    prompt_number: prompt.prompt_number,
+                    pr_number,
+                    verdict: QaVerdict::Fail,
+                    criteria_results: vec![],
+                    mechanical_issues: vec![],
+                    reasons: vec!["tests fail".to_owned()],
+                    cost_usd: 0.0,
+                    evaluated_at: Timestamp::now(),
+                    semantic_evaluated: true,
                 })
             })
         }
@@ -404,12 +516,42 @@ mod tests {
         }
     }
 
+    fn success_mock_outcome_with_pr(session_id: &str, cost: f64, turns: u32) -> MockOutcome {
+        MockOutcome::Success {
+            events: vec![SessionEvent::TextDelta {
+                text: "Created https://github.com/acme/repo/pull/42".to_owned(),
+            }],
+            result: SessionResult {
+                session_id: session_id.to_owned(),
+                cost_usd: cost,
+                num_turns: turns,
+                duration_ms: 100,
+                success: true,
+                result_text: Some("PR: https://github.com/acme/repo/pull/42".to_owned()),
+                model: Some("claude-3-5-sonnet".to_owned()),
+            },
+        }
+    }
+
     fn make_prepared_context(
         mock_outcomes: Vec<MockOutcome>,
         prompts: Vec<PromptSpec>,
     ) -> PipelineContext {
+        make_prepared_context_with_config_and_qa(
+            mock_outcomes,
+            prompts,
+            OrchestratorConfig::default(),
+            Arc::new(AlwaysPassQa),
+        )
+    }
+
+    fn make_prepared_context_with_config_and_qa(
+        mock_outcomes: Vec<MockOutcome>,
+        prompts: Vec<PromptSpec>,
+        config: OrchestratorConfig,
+        qa: Arc<dyn QaGate>,
+    ) -> PipelineContext {
         let engine = Arc::new(MockEngine::new(mock_outcomes));
-        let qa = Arc::new(AlwaysPassQa);
         let spec = DispatchSpec::new(
             "acme".to_owned(),
             prompts.iter().map(|p| p.number).collect(),
@@ -419,7 +561,7 @@ mod tests {
             prompts,
             engine,
             qa,
-            OrchestratorConfig::default(),
+            config,
             #[cfg(feature = "storage-fjall")]
             None,
         )
@@ -494,6 +636,145 @@ mod tests {
                 .iter()
                 .all(|o| o.status == SessionStatus::Success)
         );
+    }
+
+    #[tokio::test]
+    async fn execution_qa_pass_no_corrective() {
+        // Happy path: QA returns Pass, no corrective generated.
+        let prompts = vec![PromptSpec {
+            number: 1,
+            description: "test".to_owned(),
+            depends_on: vec![],
+            acceptance_criteria: vec![],
+            blast_radius: vec![],
+            body: "do the thing".to_owned(),
+        }];
+        let mut ctx =
+            make_prepared_context(vec![success_mock_outcome_with_pr("s1", 0.10, 5)], prompts);
+        ctx.config.max_corrective_retries = 1;
+
+        PreparationStage
+            .run(&mut ctx)
+            .await
+            .expect("preparation must succeed");
+        ExecutionStage
+            .run(&mut ctx)
+            .await
+            .expect("execution must succeed");
+
+        assert_eq!(ctx.outcomes.len(), 1);
+        assert_eq!(ctx.outcomes[0].status, SessionStatus::Success);
+        assert_eq!(ctx.outcomes[0].corrective_attempts, 0);
+        assert!(ctx.correctives.is_empty());
+    }
+
+    #[tokio::test]
+    async fn execution_one_corrective_partial_then_pass() {
+        // One corrective: first QA returns Partial, corrective runs and passes.
+        // DAG: 1 -> 2. Group 0 runs prompt 1, group 1 runs prompt 2 + corrective.
+        let prompts = vec![
+            PromptSpec {
+                number: 1,
+                description: "first".to_owned(),
+                depends_on: vec![],
+                acceptance_criteria: vec!["feature works".to_owned()],
+                blast_radius: vec![],
+                body: "do the thing".to_owned(),
+            },
+            PromptSpec {
+                number: 2,
+                description: "second".to_owned(),
+                depends_on: vec![1],
+                acceptance_criteria: vec![],
+                blast_radius: vec![],
+                body: "second task".to_owned(),
+            },
+        ];
+        let qa = Arc::new(PartialThenPassQa::new());
+        let config = OrchestratorConfig::default()
+            .max_corrective_retries(1)
+            .max_concurrent(1);
+        let mut ctx = make_prepared_context_with_config_and_qa(
+            vec![
+                success_mock_outcome_with_pr("s1", 0.10, 5), // group 0: prompt 1
+                success_mock_outcome_with_pr("s2", 0.10, 5), // group 1: prompt 2
+                success_mock_outcome_with_pr("s1-c1", 0.10, 5), // group 1: corrective 1
+            ],
+            prompts,
+            config,
+            qa,
+        );
+
+        PreparationStage
+            .run(&mut ctx)
+            .await
+            .expect("preparation must succeed");
+        ExecutionStage
+            .run(&mut ctx)
+            .await
+            .expect("execution must succeed");
+
+        // Original 1 + corrective 1 + original 2 = 3 outcomes.
+        assert_eq!(
+            ctx.outcomes.len(),
+            3,
+            "expected 3 outcomes: {:?}",
+            ctx.outcomes
+        );
+
+        let original = ctx
+            .outcomes
+            .iter()
+            .find(|o| o.session_id.as_deref() == Some("s1"))
+            .expect("original outcome should exist");
+        assert_eq!(original.status, SessionStatus::Success);
+        assert_eq!(original.corrective_attempts, 0);
+
+        let corrective = ctx
+            .outcomes
+            .iter()
+            .find(|o| o.corrective_attempts == 1)
+            .expect("corrective outcome should exist");
+        assert_eq!(corrective.status, SessionStatus::Success);
+        assert_eq!(corrective.prompt_number, 1);
+    }
+
+    #[tokio::test]
+    async fn execution_corrective_exhausted_by_budget() {
+        // QA returns Fail but budget is exhausted after original, so no corrective.
+        let prompts = vec![PromptSpec {
+            number: 1,
+            description: "test".to_owned(),
+            depends_on: vec![],
+            acceptance_criteria: vec!["feature works".to_owned()],
+            blast_radius: vec![],
+            body: "do the thing".to_owned(),
+        }];
+        let qa = Arc::new(AlwaysFailQa);
+        let config = OrchestratorConfig::default()
+            .max_corrective_retries(1)
+            .default_budget_usd(0.05);
+        let mut ctx = make_prepared_context_with_config_and_qa(
+            vec![success_mock_outcome_with_pr("s1", 0.10, 5)],
+            prompts,
+            config,
+            qa,
+        );
+
+        PreparationStage
+            .run(&mut ctx)
+            .await
+            .expect("preparation must succeed");
+        ExecutionStage
+            .run(&mut ctx)
+            .await
+            .expect("execution must succeed");
+
+        // Original succeeds, budget exhausted, corrective not generated.
+        assert_eq!(ctx.outcomes.len(), 1);
+        assert_eq!(ctx.outcomes[0].status, SessionStatus::Success);
+        assert_eq!(ctx.outcomes[0].corrective_attempts, 0);
+        assert!(ctx.correctives.is_empty());
     }
 
     #[test]

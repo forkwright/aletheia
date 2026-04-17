@@ -22,15 +22,19 @@ pub fn generate_corrective(qa_result: &QaResult, original: &PromptSpec) -> Optio
         .filter(|cr| !cr.passed)
         .collect();
 
-    if failed_criteria.is_empty() {
+    if failed_criteria.is_empty() && qa_result.reasons.is_empty() {
         return None;
     }
 
     // NOTE: Build acceptance criteria from only the failed criteria.
-    let acceptance_criteria: Vec<String> = failed_criteria
-        .iter()
-        .map(|cr| cr.criterion.clone())
-        .collect();
+    let acceptance_criteria: Vec<String> = if failed_criteria.is_empty() {
+        qa_result.reasons.clone()
+    } else {
+        failed_criteria
+            .iter()
+            .map(|cr| cr.criterion.clone())
+            .collect()
+    };
 
     let blast_radius = extract_corrective_blast_radius(qa_result, original);
 
@@ -119,12 +123,18 @@ mod tests {
     use super::*;
 
     fn make_qa_result(verdict: QaVerdict, criteria: Vec<CriterionResult>) -> QaResult {
+        let reasons: Vec<String> = criteria
+            .iter()
+            .filter(|c| !c.passed)
+            .map(|c| format!("{}: {}", c.criterion, c.evidence))
+            .collect();
         QaResult {
             prompt_number: 1,
             pr_number: 42,
             verdict,
             criteria_results: criteria,
             mechanical_issues: vec![],
+            reasons,
             cost_usd: 0.03,
             evaluated_at: Timestamp::now(),
             semantic_evaluated: true,

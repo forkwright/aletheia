@@ -434,6 +434,7 @@ impl EnergeiaStore {
             num_turns: outcome.num_turns,
             duration_ms: outcome.duration_ms,
             pr_url: outcome.pr_url.clone(),
+            corrective_attempts: outcome.corrective_attempts,
         };
 
         let content = serde_json::to_string(&outcome_data)

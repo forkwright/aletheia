@@ -86,6 +86,7 @@ pub(crate) async fn execute_group(
                     error: Some(e.to_string()),
                     model: None,
                     blast_radius: prompt.blast_radius.clone(),
+                    corrective_attempts: 0,
                 },
             };
 
@@ -128,6 +129,7 @@ pub(crate) async fn execute_group(
                     error: Some(format!("task join error: {join_err}")),
                     model: None,
                     blast_radius: vec![],
+                    corrective_attempts: 0,
                 });
             }
         }
@@ -150,6 +152,7 @@ fn skipped_outcome(prompt: &PromptSpec, reason: &str) -> SessionOutcome {
         error: Some(reason.to_owned()),
         model: None,
         blast_radius: prompt.blast_radius.clone(),
+        corrective_attempts: 0,
     }
 }
 

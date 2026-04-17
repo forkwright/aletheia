@@ -259,6 +259,9 @@ pub struct SessionOutcomeData {
     pub duration_ms: u64,
     /// URL of the PR created by this session, if any.
     pub pr_url: Option<String>,
+    /// Number of QA-driven corrective attempts made for this prompt.
+    #[serde(default)]
+    pub corrective_attempts: u32,
 }
 
 #[cfg(test)]

@@ -162,7 +162,7 @@ fn orchestrator_config_defaults() {
     assert!(config.default_budget_turns.is_none());
     assert!(config.max_duration.is_none());
     assert_eq!(config.session_idle_timeout, Some(Duration::from_mins(10)));
-    assert_eq!(config.max_corrective_retries, 1);
+    assert_eq!(config.max_corrective_retries, 0);
 }
 
 #[test]
