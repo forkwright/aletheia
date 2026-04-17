@@ -16,10 +16,6 @@ fn write_script(name: &str, body: &str) -> PathBuf {
     // WHY: Open, write, fsync, close, then set permissions. Without fsync
     // the kernel may not have finished writing page cache to disk when we
     // exec the script, producing ETXTBSY (errno 26) on Linux.
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "test helper writes temp scripts, async not needed"
-    )]
     {
         use std::io::Write;
         let mut f = fs::File::create(&path).unwrap();
