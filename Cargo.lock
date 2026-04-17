@@ -45,7 +45,7 @@ dependencies = [
 
 [[package]]
 name = "agora"
-version = "0.19.0"
+version = "0.20.0"
 dependencies = [
  "async-trait",
  "fjall",
@@ -105,7 +105,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia"
-version = "0.19.0"
+version = "0.20.0"
 dependencies = [
  "agora",
  "anyhow",
@@ -653,6 +653,15 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "tower-service",
+]
+
+[[package]]
+name = "basanos"
+version = "0.20.0"
+dependencies = [
+ "regex",
+ "snafu",
+ "tempfile",
 ]
 
 [[package]]
@@ -1900,7 +1909,7 @@ dependencies = [
 
 [[package]]
 name = "dianoia"
-version = "0.19.0"
+version = "0.20.0"
 dependencies = [
  "jiff",
  "koina",
@@ -1913,7 +1922,7 @@ dependencies = [
 
 [[package]]
 name = "diaporeia"
-version = "0.19.0"
+version = "0.20.0"
 dependencies = [
  "axum 0.8.8",
  "hermeneus",
@@ -2017,7 +2026,7 @@ dependencies = [
 
 [[package]]
 name = "dokimion"
-version = "0.19.0"
+version = "0.20.0"
 dependencies = [
  "koina",
  "organon",
@@ -2096,7 +2105,7 @@ dependencies = [
 
 [[package]]
 name = "eidos"
-version = "0.19.0"
+version = "0.20.0"
 dependencies = [
  "jiff",
  "serde",
@@ -2127,7 +2136,7 @@ dependencies = [
 
 [[package]]
 name = "energeia"
-version = "0.19.0"
+version = "0.20.0"
 dependencies = [
  "eidos",
  "fjall",
@@ -2198,7 +2207,7 @@ dependencies = [
 
 [[package]]
 name = "episteme"
-version = "0.19.0"
+version = "0.20.0"
 dependencies = [
  "candle-core",
  "candle-nn",
@@ -2894,7 +2903,7 @@ dependencies = [
 
 [[package]]
 name = "graphe"
-version = "0.19.0"
+version = "0.20.0"
 dependencies = [
  "criterion",
  "eidos",
@@ -3008,7 +3017,7 @@ checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 
 [[package]]
 name = "hermeneus"
-version = "0.19.0"
+version = "0.20.0"
 dependencies = [
  "criterion",
  "jiff",
@@ -3538,7 +3547,7 @@ dependencies = [
 
 [[package]]
 name = "integration-tests"
-version = "0.19.0"
+version = "0.20.0"
 dependencies = [
  "axum 0.8.8",
  "dokimion",
@@ -3805,7 +3814,7 @@ dependencies = [
 
 [[package]]
 name = "koilon"
-version = "0.19.0"
+version = "0.20.0"
 dependencies = [
  "arboard",
  "clap",
@@ -3838,7 +3847,7 @@ dependencies = [
 
 [[package]]
 name = "koina"
-version = "0.19.0"
+version = "0.20.0"
 dependencies = [
  "compact_str",
  "criterion",
@@ -3942,7 +3951,7 @@ dependencies = [
 
 [[package]]
 name = "krites"
-version = "0.19.0"
+version = "0.20.0"
 dependencies = [
  "aho-corasick",
  "bytemuck",
@@ -4418,7 +4427,7 @@ dependencies = [
 
 [[package]]
 name = "melete"
-version = "0.19.0"
+version = "0.20.0"
 dependencies = [
  "futures",
  "hermeneus",
@@ -4512,7 +4521,7 @@ dependencies = [
 
 [[package]]
 name = "mneme"
-version = "0.19.0"
+version = "0.20.0"
 dependencies = [
  "eidos",
  "episteme",
@@ -4648,7 +4657,7 @@ dependencies = [
 
 [[package]]
 name = "nous"
-version = "0.19.0"
+version = "0.20.0"
 dependencies = [
  "criterion",
  "dianoia",
@@ -4846,7 +4855,7 @@ dependencies = [
 
 [[package]]
 name = "oikonomos"
-version = "0.19.0"
+version = "0.20.0"
 dependencies = [
  "axum 0.8.8",
  "episteme",
@@ -4956,7 +4965,7 @@ dependencies = [
 
 [[package]]
 name = "organon"
-version = "0.19.0"
+version = "0.20.0"
 dependencies = [
  "energeia",
  "fjall",
@@ -5273,7 +5282,7 @@ dependencies = [
 
 [[package]]
 name = "poiesis-core"
-version = "0.19.0"
+version = "0.20.0"
 dependencies = [
  "jiff",
  "snafu",
@@ -5281,7 +5290,7 @@ dependencies = [
 
 [[package]]
 name = "poiesis-sheet"
-version = "0.19.0"
+version = "0.20.0"
 dependencies = [
  "poiesis-core",
  "rust_xlsxwriter",
@@ -5291,7 +5300,7 @@ dependencies = [
 
 [[package]]
 name = "poiesis-slides"
-version = "0.19.0"
+version = "0.20.0"
 dependencies = [
  "poiesis-core",
  "quick-xml",
@@ -5301,7 +5310,7 @@ dependencies = [
 
 [[package]]
 name = "poiesis-text"
-version = "0.19.0"
+version = "0.20.0"
 dependencies = [
  "krilla",
  "poiesis-core",
@@ -5644,7 +5653,7 @@ checksum = "b5a041e753da8b807c9255f28de81879c78c876392ff2469cde94799b2896b9d"
 
 [[package]]
 name = "pylon"
-version = "0.19.0"
+version = "0.20.0"
 dependencies = [
  "axum 0.8.8",
  "axum-server",
@@ -7112,7 +7121,7 @@ checksum = "b2aa850e253778c88a04c3d7323b043aeda9d3e30d5971937c1855769763678e"
 
 [[package]]
 name = "skene"
-version = "0.19.0"
+version = "0.20.0"
 dependencies = [
  "bytes",
  "compact_str",
@@ -7390,7 +7399,7 @@ dependencies = [
 
 [[package]]
 name = "symbolon"
-version = "0.19.0"
+version = "0.20.0"
 dependencies = [
  "aes-gcm",
  "argon2",
@@ -7502,7 +7511,7 @@ checksum = "55937e1799185b12863d447f42597ed69d9928686b8d88a1df17376a097d8369"
 
 [[package]]
 name = "taxis"
-version = "0.19.0"
+version = "0.20.0"
 dependencies = [
  "chacha20poly1305",
  "eidos",
@@ -7625,14 +7634,14 @@ dependencies = [
 
 [[package]]
 name = "theatron"
-version = "0.19.0"
+version = "0.20.0"
 dependencies = [
  "skene",
 ]
 
 [[package]]
 name = "thesauros"
-version = "0.19.0"
+version = "0.20.0"
 dependencies = [
  "futures",
  "indexmap 2.14.0",
