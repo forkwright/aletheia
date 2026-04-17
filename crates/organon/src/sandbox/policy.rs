@@ -9,6 +9,10 @@
     allow(
         dead_code,
         unused_imports,
+        unused_variables,
+        clippy::unused_self,
+        clippy::needless_pass_by_value,
+        clippy::missing_const_for_fn,
         reason = "Linux-only sandbox machinery; apply_sandbox is a no-op on other platforms"
     )
 )]

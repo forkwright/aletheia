@@ -254,11 +254,7 @@ fn is_pid_alive(pid: u32) -> bool {
         // WHY: kill(pid, 0) checks process existence without sending a signal.
         // Returns 0 if the process exists, -1 with ESRCH if it does not.
         // EPERM (no permission to signal) still means the process exists.
-        #[expect(
-            clippy::as_conversions,
-            reason = "u32→i32: PIDs are always positive and fit in i32 on Unix"
-        )]
-        let pid_i32 = pid as i32;
+        let pid_i32 = pid.cast_signed();
         // SAFETY: kill(pid, 0) is safe — signal 0 performs a permission check
         // without delivering any signal. This is the standard Unix idiom for
         // process existence checks.
