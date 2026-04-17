@@ -148,9 +148,6 @@ tracing-test = "0.2"
 # standard Prometheus scrapers — they already accept OpenMetrics text.
 prometheus-client = "0.24"
 
-# IDs
-uuid = { version = "1", default-features = false, features = ["v4", "serde"] }
-
 # Types
 compact_str = { version = "0.9", features = ["serde"] }
 indexmap = { version = "2", default-features = false, features = ["serde"] }
