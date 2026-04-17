@@ -101,10 +101,10 @@ pub(crate) fn run(instance_root: Option<&PathBuf>, args: &BackupArgs) -> Result<
 // ── Verify ─────────────────────────────────────────────────────────────────
 
 /// Result of verifying a single backup directory.
-struct VerifyResult {
-    partition_counts: Vec<(String, usize)>,
-    first_error: Option<String>,
-    total_keys: usize,
+pub(crate) struct VerifyResult {
+    pub(crate) partition_counts: Vec<(String, usize)>,
+    pub(crate) first_error: Option<String>,
+    pub(crate) total_keys: usize,
 }
 
 fn run_verify(path: &Path) -> Result<()> {
@@ -139,7 +139,7 @@ fn run_verify(path: &Path) -> Result<()> {
     Ok(())
 }
 
-fn verify_backup(path: &Path) -> Result<VerifyResult> {
+pub(crate) fn verify_backup(path: &Path) -> Result<VerifyResult> {
     let fdb = koina::fjall::FjallDb::open_existing(path)
         .map_err(|e| crate::error::Error::msg(format!("failed to open backup: {e}")))?;
 
