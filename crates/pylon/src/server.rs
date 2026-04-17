@@ -194,9 +194,8 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
     #[cfg(unix)]
     {
         let drain_timeout = std::time::Duration::from_secs(10);
-        if tokio::time::timeout(drain_timeout, sighup_handle)
-            .await
-            .is_err()
+        if let Some(handle) = sighup_handle
+            && tokio::time::timeout(drain_timeout, handle).await.is_err()
         {
             warn!("sighup handler did not exit within drain timeout");
         }
@@ -347,23 +346,40 @@ pub(crate) async fn apply_reload(
 /// current config, and applies hot-reloadable values. Invalid configs are
 /// rejected with an error log; the running config is preserved.
 ///
-/// Returns a `JoinHandle` so the caller can await graceful shutdown.
+/// Returns `Some(JoinHandle)` on success so the caller can await graceful
+/// shutdown. Returns `None` if signal handler installation fails (e.g., in
+/// restricted containers); the server continues serving without config reload.
 #[cfg(unix)]
-pub fn spawn_sighup_handler(state: Arc<AppState>) -> tokio::task::JoinHandle<()> {
+pub fn spawn_sighup_handler(state: Arc<AppState>) -> Option<tokio::task::JoinHandle<()>> {
+    spawn_sighup_handler_with(
+        state,
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::hangup()),
+    )
+}
+
+/// Core implementation of [`spawn_sighup_handler`] that accepts a pre-built
+/// signal result.  This allows unit tests to inject failure without relying on
+/// OS-level resource exhaustion.
+#[cfg(unix)]
+pub(crate) fn spawn_sighup_handler_with(
+    state: Arc<AppState>,
+    signal: std::io::Result<tokio::signal::unix::Signal>,
+) -> Option<tokio::task::JoinHandle<()>> {
     use axum::extract::FromRef;
     use tracing::Instrument;
 
+    let mut sighup = match signal {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::warn!(error = %e, "failed to install SIGHUP handler");
+            return None;
+        }
+    };
+
     let shutdown = state.shutdown.clone();
     let span = tracing::info_span!("sighup_reload");
-    tokio::spawn(
+    Some(tokio::spawn(
         async move {
-            #[expect(
-                clippy::expect_used,
-                reason = "signal handler installation is infallible on supported platforms"
-            )]
-            let mut sighup = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::hangup())
-                .expect("failed to install SIGHUP handler");
-
             loop {
                 tokio::select! {
                     biased;
@@ -399,26 +415,43 @@ pub fn spawn_sighup_handler(state: Arc<AppState>) -> tokio::task::JoinHandle<()>
             }
         }
         .instrument(span),
-    )
+    ))
 }
 
-#[expect(
-    clippy::expect_used,
-    reason = "signal handler installation is infallible on supported platforms"
-)]
-async fn shutdown_signal() {
+pub(crate) async fn shutdown_signal() {
+    shutdown_signal_with(
+        tokio::signal::ctrl_c().await,
+        #[cfg(unix)]
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()),
+    )
+    .await;
+}
+
+/// Core implementation of [`shutdown_signal`] that accepts pre-built signal
+/// results.  This allows unit tests to inject failure without relying on
+/// OS-level resource exhaustion.
+pub(crate) async fn shutdown_signal_with(
+    ctrl_c_result: std::io::Result<()>,
+    #[cfg(unix)] terminate_result: std::io::Result<tokio::signal::unix::Signal>,
+) {
     let ctrl_c = async {
-        tokio::signal::ctrl_c()
-            .await
-            .expect("failed to install ctrl+c handler");
+        if let Err(e) = ctrl_c_result {
+            tracing::warn!(error = %e, "failed to install ctrl+c handler");
+            std::future::pending::<()>().await;
+        }
     };
 
     #[cfg(unix)]
     let terminate = async {
-        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-            .expect("failed to install SIGTERM handler")
-            .recv()
-            .await;
+        match terminate_result {
+            Ok(mut signal) => {
+                signal.recv().await;
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "failed to install SIGTERM handler");
+                std::future::pending::<()>().await;
+            }
+        }
     };
 
     #[cfg(not(unix))]
