@@ -107,6 +107,8 @@ help_test!(seed_skills_help, "seed-skills");
 help_test!(export_skills_help, "export-skills");
 help_test!(review_skills_help, "review-skills");
 help_test!(completions_help, "completions");
+help_test!(config_help, "config");
+help_test!(config_diff_help, "config", "diff");
 
 // ── Completions (fully offline) ───────────────────────────────────────────────
 
