@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use snafu::ensure;
 
 use crate::error::{self, Result};
+use crate::research::{FindingStatus, ResearchOutput};
 
 /// Default maximum planning iterations.
 ///
@@ -115,6 +116,43 @@ impl Plan {
             depends_on: Vec::new(),
             state: PlanState::Pending,
             max_iterations: DEFAULT_MAX_ITERATIONS,
+            iterations: 0,
+            blockers: Vec::new(),
+            achievements: Vec::new(),
+        }
+    }
+
+    /// Create plans from a [`ResearchOutput`].
+    ///
+    /// One plan is generated per finding with [`FindingStatus::Complete`] or
+    /// [`FindingStatus::Partial`] status.  Failed or timed-out findings are
+    /// skipped.  Wave is set to `0` because research-derived plans have not
+    /// yet been ordered.
+    #[must_use]
+    pub fn from_research(research: &ResearchOutput) -> Vec<Self> {
+        research
+            .findings
+            .iter()
+            .filter(|f| matches!(f.status, FindingStatus::Complete | FindingStatus::Partial))
+            .map(|f| Self::new(f.domain.heading().into(), f.content.clone(), 0))
+            .collect()
+    }
+
+    /// Create a new plan from a completed plan, treating it as a template.
+    ///
+    /// Copies title and description, resets state to [`PlanState::Pending`],
+    /// clears blockers, achievements, and dependencies, and uses the supplied
+    /// `next_wave`.
+    #[must_use]
+    pub fn from_template(completed: &Plan, next_wave: u32) -> Self {
+        Self {
+            id: Ulid::new(),
+            title: completed.title.clone(),
+            description: completed.description.clone(),
+            wave: next_wave,
+            depends_on: Vec::new(),
+            state: PlanState::Pending,
+            max_iterations: completed.max_iterations,
             iterations: 0,
             blockers: Vec::new(),
             achievements: Vec::new(),
@@ -505,5 +543,104 @@ mod tests {
             result.is_err(),
             "self-dependency should be detected as a cycle"
         );
+    }
+
+    // ── Alternative constructors ──────────────────────────────────────────────
+
+    #[test]
+    fn from_research_creates_plan_per_complete_finding() {
+        use crate::research::{ResearchDomain, ResearchFinding, ResearchOutput};
+
+        let research = ResearchOutput {
+            findings: vec![
+                ResearchFinding {
+                    domain: ResearchDomain::Stack,
+                    content: "Use Rust with Tokio".into(),
+                    status: FindingStatus::Complete,
+                },
+                ResearchFinding {
+                    domain: ResearchDomain::Features,
+                    content: "Need auth and billing".into(),
+                    status: FindingStatus::Partial,
+                },
+                ResearchFinding {
+                    domain: ResearchDomain::Architecture,
+                    content: "Microservices".into(),
+                    status: FindingStatus::Failed,
+                },
+                ResearchFinding {
+                    domain: ResearchDomain::Pitfalls,
+                    content: "Deadlocks possible".into(),
+                    status: FindingStatus::TimedOut,
+                },
+            ],
+            markdown: String::new(),
+        };
+
+        let plans = Plan::from_research(&research);
+        assert_eq!(
+            plans.len(),
+            2,
+            "only Complete and Partial findings become plans"
+        );
+
+        assert_eq!(plans[0].title, "Stack");
+        assert_eq!(plans[0].description, "Use Rust with Tokio");
+        assert_eq!(plans[0].wave, 0);
+        assert_eq!(plans[0].state, PlanState::Pending);
+
+        assert_eq!(plans[1].title, "Features");
+        assert_eq!(plans[1].description, "Need auth and billing");
+        assert_eq!(plans[1].wave, 0);
+        assert_eq!(plans[1].state, PlanState::Pending);
+    }
+
+    #[test]
+    fn from_research_empty_when_all_findings_fail() {
+        use crate::research::{ResearchDomain, ResearchFinding, ResearchOutput};
+
+        let research = ResearchOutput {
+            findings: vec![ResearchFinding {
+                domain: ResearchDomain::Stack,
+                content: "error".into(),
+                status: FindingStatus::Failed,
+            }],
+            markdown: String::new(),
+        };
+
+        let plans = Plan::from_research(&research);
+        assert!(plans.is_empty());
+    }
+
+    #[test]
+    fn from_template_copies_title_description_and_increments_wave() {
+        let completed = Plan::new("Original".into(), "Original desc".into(), 2);
+        let next = Plan::from_template(&completed, 3);
+
+        assert_eq!(next.title, "Original");
+        assert_eq!(next.description, "Original desc");
+        assert_eq!(next.wave, 3);
+        assert_eq!(next.state, PlanState::Pending);
+        assert_eq!(next.iterations, 0);
+        assert!(next.depends_on.is_empty());
+        assert!(next.blockers.is_empty());
+        assert!(next.achievements.is_empty());
+        assert_eq!(next.max_iterations, completed.max_iterations);
+        assert_ne!(next.id, completed.id, "template plan must get a new ID");
+    }
+
+    #[test]
+    fn from_template_preserves_max_iterations() {
+        let mut completed = Plan::new("Task".into(), "Desc".into(), 1);
+        completed.max_iterations = 42;
+        completed.iterations = 5;
+        completed.achievements = vec!["done".into()];
+        completed.state = PlanState::Complete;
+
+        let next = Plan::from_template(&completed, 2);
+        assert_eq!(next.max_iterations, 42);
+        assert_eq!(next.iterations, 0);
+        assert!(next.achievements.is_empty());
+        assert_eq!(next.state, PlanState::Pending);
     }
 }
