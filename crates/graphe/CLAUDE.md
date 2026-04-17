@@ -1,5 +1,11 @@
 # graphe
 
+## At a glance
+
+Session persistence layer with fjall-backed store. Depends on eidos and koina. Entry point: `src/lib.rs` (SessionStore, Session, Message).
+
+## Depth
+
 Session persistence layer: fjall-backed session/message store with agent portability types. ~2K lines after rusqlite removal (#3446).
 
 ## Read first

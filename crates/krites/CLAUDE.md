@@ -1,5 +1,11 @@
 # krites
 
+## At a glance
+
+Embedded Datalog engine with HNSW vector search and graph algorithms. Depends on eidos. Entry point: `src/lib.rs` (Db, DataValue, FixedRule).
+
+## Depth
+
 Embedded Datalog engine with HNSW vector search, full-text search, and graph algorithms. 55K lines. Embedded Datalog engine for Aletheia knowledge graph.
 
 ## Read first

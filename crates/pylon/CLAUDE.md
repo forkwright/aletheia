@@ -1,5 +1,11 @@
 # pylon
 
+## At a glance
+
+HTTP gateway with Axum handlers, SSE streaming, and auth. Depends on koina, taxis, nous, and mneme. Entry point: `src/lib.rs` (AppState, router, server).
+
+## Depth
+
 HTTP gateway: Axum handlers, SSE streaming, auth middleware, rate limiting. 11K lines.
 
 ## Read first

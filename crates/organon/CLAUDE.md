@@ -1,5 +1,11 @@
 # organon
 
+## At a glance
+
+Tool registry, executors, and sandbox for built-in tools. Depends on koina, hermeneus, and taxis. Entry point: `src/lib.rs` (ToolRegistry, ToolExecutor).
+
+## Depth
+
 Tool registry, executors, and sandbox. 16K lines. 49 built-in tools.
 
 ## Read first

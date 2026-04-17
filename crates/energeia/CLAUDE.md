@@ -1,5 +1,11 @@
 # energeia
 
+## At a glance
+
+Dispatch orchestration for plan execution. Depends on koina, eidos, and hermeneus. Entry point: `src/lib.rs` (DispatchEngine, QaGate).
+
+## Depth
+
 Dispatch orchestration: actualization of plans into execution. Absorbs kanon's phronesis dispatch system into aletheia.
 
 ## Read first

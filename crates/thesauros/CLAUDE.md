@@ -1,5 +1,11 @@
 # thesauros
 
+## At a glance
+
+Domain pack loader for external knowledge, tools, and config overlays. Depends on koina and organon. Entry point: `src/lib.rs` (PackManifest, LoadedPack).
+
+## Depth
+
 Domain pack loader: parses pack.toml manifests, resolves context files, registers pack-declared tools. 2.1K lines.
 
 ## Read first

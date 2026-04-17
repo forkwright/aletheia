@@ -1,5 +1,11 @@
 # eval (dokimion)
 
+## At a glance
+
+Behavioral eval framework for scenario-based API testing. Depends on koina. Entry point: `src/lib.rs` (Scenario, ScenarioRunner).
+
+## Depth
+
 Behavioral eval framework: scenario-based API testing against a live Aletheia instance. 4.9K lines.
 
 ## Read first

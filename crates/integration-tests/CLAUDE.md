@@ -1,5 +1,11 @@
 # integration-tests
 
+## At a glance
+
+Cross-crate integration test suite for end-to-end pipelines. Depends on dokimion, mneme, nous, and pylon. Entry point: `tests/end_to_end.rs`.
+
+## Depth
+
 Cross-crate integration test suite exercising multi-crate pipelines end-to-end. 5.7K lines. No library code (test-only crate).
 
 ## Read first

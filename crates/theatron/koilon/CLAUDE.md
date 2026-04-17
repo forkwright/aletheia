@@ -1,5 +1,11 @@
 # koilon
 
+## At a glance
+
+Ratatui terminal dashboard for Aletheia. Depends on skene and koina. Entry point: `src/main.rs` (run_tui).
+
+## Depth
+
 Ratatui terminal dashboard for Aletheia: chat, planning, memory, metrics, ops views. 37K lines.
 
 ## Read first

@@ -1,5 +1,11 @@
 # daemon (oikonomos)
 
+## At a glance
+
+Per-nous background task runner with cron scheduling and maintenance. Depends on koina and episteme. Entry point: `src/lib.rs` (TaskRunner, ProsocheCheck, Watchdog).
+
+## Depth
+
 Per-nous background task runner: cron scheduling, maintenance services, prosoche attention, watchdog. 6K lines.
 
 ## Read first

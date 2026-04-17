@@ -1,5 +1,11 @@
 # hermeneus
 
+## At a glance
+
+Anthropic LLM client with streaming, retries, and cost tracking. Depends on koina. Entry point: `src/lib.rs` (LlmProvider, AnthropicProvider).
+
+## Depth
+
 Anthropic LLM client with streaming, retries, fallback, health tracking, and cost estimation. 10.5K lines.
 
 ## Read first
