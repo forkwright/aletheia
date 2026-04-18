@@ -335,10 +335,10 @@ fn rejects_invalid_confidence() {
 }
 
 #[test]
-fn schema_version_is_seven_after_fresh_init() {
+fn schema_version_is_eight_after_fresh_init() {
     let store = KnowledgeStore::open_mem().expect("open_mem should succeed");
     let version = store
         .schema_version()
         .expect("schema_version should succeed");
-    assert_eq!(version, 7, "fresh init should be at schema version 7");
+    assert_eq!(version, 8, "fresh init should be at schema version 8");
 }

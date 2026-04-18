@@ -12,8 +12,8 @@ use super::super::*;
 #[test]
 fn ddl_templates_are_valid_strings() {
     assert!(
-        KNOWLEDGE_DDL.len() == 7,
-        "expected 7 DDL entries (including causal_edges)"
+        KNOWLEDGE_DDL.len() == 10,
+        "expected 10 DDL entries (including type_hierarchy, derived_facts, defaults)"
     );
     let emb = embeddings_ddl(1024);
     assert!(emb.contains("1024"));
