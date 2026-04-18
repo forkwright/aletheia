@@ -542,7 +542,7 @@ async fn stream_turn_missing_agent_id_returns_422_with_envelope() {
     assert_eq!(
         resp.status(),
         StatusCode::UNPROCESSABLE_ENTITY,
-        "missing agentId field should return 422"
+        "missing nous_id field should return 422"
     );
     let body = body_json(resp).await;
     assert_error_envelope(&body, "validation_failed");
@@ -555,7 +555,7 @@ async fn stream_turn_unknown_agent_returns_404_with_envelope() {
         "POST",
         "/api/v1/sessions/stream",
         Some(serde_json::json!({
-            "agentId": "nonexistent-agent",
+            "nous_id": "nonexistent-agent",
             "message": "hello"
         })),
     );

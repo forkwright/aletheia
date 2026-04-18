@@ -120,7 +120,7 @@ fn sse_event_error_omits_request_id_when_none() {
 
 #[test]
 fn tui_event_message_start_type() {
-    let event = crate::stream::WebchatEvent::MessageStart {
+    let event = crate::stream::TurnStreamEvent::MessageStart {
         session_id: "s1".to_owned(),
         nous_id: "syn".to_owned(),
         turn_id: "t1".to_owned(),
@@ -131,7 +131,7 @@ fn tui_event_message_start_type() {
 
 #[test]
 fn tui_event_text_delta_type() {
-    let event = crate::stream::WebchatEvent::TextDelta {
+    let event = crate::stream::TurnStreamEvent::TextDelta {
         text: "hello".to_owned(),
     };
     assert_eq!(event.event_type(), "text_delta");
@@ -139,7 +139,7 @@ fn tui_event_text_delta_type() {
 
 #[test]
 fn tui_event_thinking_delta_type() {
-    let event = crate::stream::WebchatEvent::ThinkingDelta {
+    let event = crate::stream::TurnStreamEvent::ThinkingDelta {
         text: "hmm".to_owned(),
     };
     assert_eq!(event.event_type(), "thinking_delta");
@@ -147,7 +147,7 @@ fn tui_event_thinking_delta_type() {
 
 #[test]
 fn tui_event_tool_use_type() {
-    let event = crate::stream::WebchatEvent::ToolUse {
+    let event = crate::stream::TurnStreamEvent::ToolUse {
         tool_name: "search".to_owned(),
         tool_id: "t1".to_owned(),
         input: serde_json::json!({}),
@@ -157,7 +157,7 @@ fn tui_event_tool_use_type() {
 
 #[test]
 fn tui_event_tool_result_type() {
-    let event = crate::stream::WebchatEvent::ToolResult {
+    let event = crate::stream::TurnStreamEvent::ToolResult {
         tool_name: "search".to_owned(),
         tool_id: "t1".to_owned(),
         result: "found".to_owned(),
@@ -169,7 +169,7 @@ fn tui_event_tool_result_type() {
 
 #[test]
 fn tui_event_message_complete_type() {
-    let event = crate::stream::WebchatEvent::MessageComplete {
+    let event = crate::stream::TurnStreamEvent::MessageComplete {
         outcome: crate::stream::TurnOutcome {
             text: "done".to_owned(),
             nous_id: "syn".to_owned(),
@@ -187,7 +187,7 @@ fn tui_event_message_complete_type() {
 
 #[test]
 fn tui_event_error_type() {
-    let event = crate::stream::WebchatEvent::Error {
+    let event = crate::stream::TurnStreamEvent::Error {
         message: "fail".to_owned(),
         request_id: None,
     };
@@ -196,7 +196,7 @@ fn tui_event_error_type() {
 
 #[test]
 fn tui_event_message_start_serialization() {
-    let event = crate::stream::WebchatEvent::MessageStart {
+    let event = crate::stream::TurnStreamEvent::MessageStart {
         session_id: "s1".to_owned(),
         nous_id: "syn".to_owned(),
         turn_id: "t1".to_owned(),
@@ -212,7 +212,7 @@ fn tui_event_message_start_serialization() {
 
 #[test]
 fn tui_event_message_complete_serialization() {
-    let event = crate::stream::WebchatEvent::MessageComplete {
+    let event = crate::stream::TurnStreamEvent::MessageComplete {
         outcome: crate::stream::TurnOutcome {
             text: "response".to_owned(),
             nous_id: "syn".to_owned(),
