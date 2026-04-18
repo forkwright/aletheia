@@ -1,0 +1,444 @@
+//! Poiesis report tools: `generate_document`, `lint_report`, `verify_report`.
+//!
+//! - `generate_document` — render a JSON document descriptor to ODT/XLSX/PDF bytes
+//! - `lint_report`       — check report prose quality (banned words, citations, structure)
+//! - `verify_report`     — validate numeric claims in a verify manifest
+
+use std::future::Future;
+use std::pin::Pin;
+
+use indexmap::IndexMap;
+use poiesis_core::{Block, Document, Metadata, Renderer, RichText, Span};
+use poiesis_lint::{LintConfig, Linter};
+use poiesis_verify::Verifier;
+
+use crate::error::Result;
+use crate::registry::{ToolExecutor, ToolRegistry};
+use crate::types::{
+    InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
+    ToolInput, ToolResult,
+};
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+fn extract_opt_str<'a>(args: &'a serde_json::Value, key: &str) -> Option<&'a str> {
+    args.get(key).and_then(serde_json::Value::as_str)
+}
+
+fn extract_str<'a>(
+    args: &'a serde_json::Value,
+    key: &str,
+) -> std::result::Result<&'a str, ToolResult> {
+    args.get(key)
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| ToolResult::error(format!("missing required argument: {key}")))
+}
+
+// ── generate_document ─────────────────────────────────────────────────────────
+
+struct GenerateDocumentExecutor;
+
+impl ToolExecutor for GenerateDocumentExecutor {
+    fn execute<'a>(
+        &'a self,
+        input: &'a ToolInput,
+        _ctx: &'a ToolContext,
+    ) -> Pin<Box<dyn Future<Output = Result<ToolResult>> + Send + 'a>> {
+        Box::pin(async move {
+            let args = &input.arguments;
+
+            let title = extract_opt_str(args, "title").unwrap_or("Untitled Document");
+            let author = extract_opt_str(args, "author");
+            let format = extract_opt_str(args, "format").unwrap_or("odt");
+            let content_str = match extract_str(args, "content") {
+                Ok(s) => s,
+                Err(e) => return Ok(e),
+            };
+
+            let raw_blocks: Vec<serde_json::Value> = match serde_json::from_str(content_str) {
+                Ok(v) => v,
+                Err(e) => {
+                    return Ok(ToolResult::error(format!(
+                        "content must be a JSON array of block objects: {e}"
+                    )));
+                }
+            };
+
+            let blocks: Vec<Block> = raw_blocks.iter().filter_map(parse_block).collect();
+
+            let doc = Document {
+                metadata: Metadata {
+                    title: title.to_owned(),
+                    author: author.map(str::to_owned),
+                    created: None,
+                },
+                content: blocks,
+            };
+
+            let bytes = match format.to_lowercase().as_str() {
+                "xlsx" => {
+                    let renderer = poiesis_sheet::XlsxRenderer::new();
+                    match renderer.render(&doc) {
+                        Ok(b) => b,
+                        Err(e) => {
+                            return Ok(ToolResult::error(format!("XLSX render failed: {e}")));
+                        }
+                    }
+                }
+                "pdf" => match poiesis_text::PdfRenderer::new() {
+                    Ok(renderer) => match renderer.render(&doc) {
+                        Ok(b) => b,
+                        Err(e) => {
+                            return Ok(ToolResult::error(format!(
+                                "PDF render failed (falling back): {e}"
+                            )));
+                        }
+                    },
+                    Err(e) => {
+                        return Ok(ToolResult::error(format!(
+                            "PDF renderer unavailable (no system font?): {e}"
+                        )));
+                    }
+                },
+                // Default: ODT
+                _ => {
+                    let renderer = poiesis_text::OdtRenderer::new();
+                    match renderer.render(&doc) {
+                        Ok(b) => b,
+                        Err(e) => {
+                            return Ok(ToolResult::error(format!("ODT render failed: {e}")));
+                        }
+                    }
+                }
+            };
+
+            Ok(ToolResult::text(format!(
+                "Generated {} document: {} bytes",
+                format.to_uppercase(),
+                bytes.len()
+            )))
+        })
+    }
+}
+
+/// Parse a JSON block object into a `poiesis_core::Block`.
+fn parse_block(v: &serde_json::Value) -> Option<Block> {
+    let kind = v.get("type").and_then(serde_json::Value::as_str)?;
+    match kind {
+        "heading" => {
+            let level = v
+                .get("level")
+                .and_then(serde_json::Value::as_u64)
+                .and_then(|n| u8::try_from(n.min(6)).ok())
+                .unwrap_or(1);
+            let text = plain(
+                v.get("text")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or(""),
+            );
+            Some(Block::Heading { level, text })
+        }
+        "paragraph" => {
+            let text = plain(
+                v.get("text")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or(""),
+            );
+            Some(Block::Paragraph(text))
+        }
+        "page_break" => Some(Block::PageBreak),
+        _ => None,
+    }
+}
+
+fn plain(s: &str) -> RichText {
+    RichText {
+        spans: vec![Span::Plain(s.to_owned())],
+    }
+}
+
+fn generate_document_def() -> ToolDef {
+    ToolDef {
+        name: koina::id::ToolName::from_static("generate_document"), // kanon:ignore RUST/expect
+        description: "Render a document descriptor to ODT, XLSX, or PDF bytes.".to_owned(),
+        extended_description: None,
+        input_schema: InputSchema {
+            properties: IndexMap::from([
+                (
+                    "content".to_owned(),
+                    PropertyDef {
+                        property_type: PropertyType::String,
+                        description:
+                            "JSON array of block objects (each with type, text, level fields)"
+                                .to_owned(),
+                        enum_values: None,
+                        default: None,
+                    },
+                ),
+                (
+                    "format".to_owned(),
+                    PropertyDef {
+                        property_type: PropertyType::String,
+                        description: "Output format: odt (default), xlsx, or pdf".to_owned(),
+                        enum_values: Some(vec![
+                            "odt".to_owned(),
+                            "xlsx".to_owned(),
+                            "pdf".to_owned(),
+                        ]),
+                        default: Some(serde_json::json!("odt")),
+                    },
+                ),
+                (
+                    "title".to_owned(),
+                    PropertyDef {
+                        property_type: PropertyType::String,
+                        description: "Document title (default: Untitled Document)".to_owned(),
+                        enum_values: None,
+                        default: None,
+                    },
+                ),
+                (
+                    "author".to_owned(),
+                    PropertyDef {
+                        property_type: PropertyType::String,
+                        description: "Document author (optional)".to_owned(),
+                        enum_values: None,
+                        default: None,
+                    },
+                ),
+            ]),
+            required: vec!["content".to_owned()],
+        },
+        category: ToolCategory::Workspace,
+        reversibility: Reversibility::FullyReversible,
+        auto_activate: false,
+    }
+}
+
+// ── lint_report ───────────────────────────────────────────────────────────────
+
+struct LintReportExecutor;
+
+impl ToolExecutor for LintReportExecutor {
+    fn execute<'a>(
+        &'a self,
+        input: &'a ToolInput,
+        _ctx: &'a ToolContext,
+    ) -> Pin<Box<dyn Future<Output = Result<ToolResult>> + Send + 'a>> {
+        Box::pin(async move {
+            let args = &input.arguments;
+            let json_output = args
+                .get("json")
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false);
+
+            // Accept either inline text or a file path.
+            let text_owned: String;
+            let text: &str = if let Some(t) = extract_opt_str(args, "text") {
+                t
+            } else if let Some(path_str) = extract_opt_str(args, "path") {
+                match std::fs::read_to_string(path_str) {
+                    Ok(s) => {
+                        text_owned = s;
+                        &text_owned
+                    }
+                    Err(e) => {
+                        return Ok(ToolResult::error(format!(
+                            "failed to read {path_str:?}: {e}"
+                        )));
+                    }
+                }
+            } else {
+                return Ok(ToolResult::error(
+                    "lint_report requires 'text' or 'path'".to_owned(),
+                ));
+            };
+
+            let linter = Linter::new(LintConfig::default());
+            let findings = linter.check(text);
+
+            if json_output {
+                match Linter::to_json(&findings) {
+                    Ok(json) => return Ok(ToolResult::text(json)),
+                    Err(e) => {
+                        return Ok(ToolResult::error(format!("serialize failed: {e}")));
+                    }
+                }
+            }
+
+            if findings.is_empty() {
+                return Ok(ToolResult::text("LINT: no findings".to_owned()));
+            }
+
+            let mut lines: Vec<String> = Vec::with_capacity(findings.len());
+            for f in &findings {
+                if f.line_start == f.line_end {
+                    lines.push(format!("LINT: line {}: {}", f.line_start, f.message));
+                } else {
+                    lines.push(format!(
+                        "LINT: lines {}-{}: {}",
+                        f.line_start, f.line_end, f.message
+                    ));
+                }
+            }
+            Ok(ToolResult::text(lines.join("\n")))
+        })
+    }
+}
+
+fn lint_report_def() -> ToolDef {
+    ToolDef {
+        name: koina::id::ToolName::from_static("lint_report"), // kanon:ignore RUST/expect
+        description: "Check report prose quality: banned words, citation coverage, structure."
+            .to_owned(),
+        extended_description: None,
+        input_schema: InputSchema {
+            properties: IndexMap::from([
+                (
+                    "text".to_owned(),
+                    PropertyDef {
+                        property_type: PropertyType::String,
+                        description: "Report text to lint (inline)".to_owned(),
+                        enum_values: None,
+                        default: None,
+                    },
+                ),
+                (
+                    "path".to_owned(),
+                    PropertyDef {
+                        property_type: PropertyType::String,
+                        description: "Path to report file to lint".to_owned(),
+                        enum_values: None,
+                        default: None,
+                    },
+                ),
+                (
+                    "json".to_owned(),
+                    PropertyDef {
+                        property_type: PropertyType::Boolean,
+                        description:
+                            "Return findings as JSON array instead of human-readable lines"
+                                .to_owned(),
+                        enum_values: None,
+                        default: Some(serde_json::json!(false)),
+                    },
+                ),
+            ]),
+            required: vec![],
+        },
+        category: ToolCategory::Workspace,
+        reversibility: Reversibility::FullyReversible,
+        auto_activate: false,
+    }
+}
+
+// ── verify_report ─────────────────────────────────────────────────────────────
+
+struct VerifyReportExecutor;
+
+impl ToolExecutor for VerifyReportExecutor {
+    fn execute<'a>(
+        &'a self,
+        input: &'a ToolInput,
+        _ctx: &'a ToolContext,
+    ) -> Pin<Box<dyn Future<Output = Result<ToolResult>> + Send + 'a>> {
+        Box::pin(async move {
+            let args = &input.arguments;
+
+            let verifier = Verifier::new();
+
+            let results = if let Some(manifest_str) = extract_opt_str(args, "manifest") {
+                let manifest: poiesis_verify::VerifyManifest =
+                    match serde_json::from_str(manifest_str) {
+                        Ok(m) => m,
+                        Err(e) => {
+                            return Ok(ToolResult::error(format!(
+                                "failed to parse manifest JSON: {e}"
+                            )));
+                        }
+                    };
+                verifier.verify(&manifest)
+            } else if let Some(path_str) = extract_opt_str(args, "path") {
+                let path = std::path::Path::new(path_str);
+                match verifier.verify_file(path) {
+                    Ok(r) => r,
+                    Err(e) => {
+                        return Ok(ToolResult::error(format!(
+                            "failed to verify manifest at {path_str:?}: {e}"
+                        )));
+                    }
+                }
+            } else {
+                return Ok(ToolResult::error(
+                    "verify_report requires 'manifest' (inline JSON) or 'path'".to_owned(),
+                ));
+            };
+
+            let summary = poiesis_verify::VerifyResult::from_claims(results);
+            let any_failed = summary.any_failed();
+
+            match serde_json::to_string_pretty(&summary) {
+                Ok(json) => {
+                    if any_failed {
+                        Ok(ToolResult::error(format!(
+                            "VERIFY FAILED: {}/{} claims passed\n{json}",
+                            summary.passed, summary.total
+                        )))
+                    } else {
+                        Ok(ToolResult::text(format!(
+                            "VERIFY PASSED: {}/{} claims passed\n{json}",
+                            summary.passed, summary.total
+                        )))
+                    }
+                }
+                Err(e) => Ok(ToolResult::error(format!("serialize failed: {e}"))),
+            }
+        })
+    }
+}
+
+fn verify_report_def() -> ToolDef {
+    ToolDef {
+        name: koina::id::ToolName::from_static("verify_report"), // kanon:ignore RUST/expect
+        description:
+            "Validate numeric claims in a verify manifest against derived and reference sources."
+                .to_owned(),
+        extended_description: None,
+        input_schema: InputSchema {
+            properties: IndexMap::from([
+                (
+                    "manifest".to_owned(),
+                    PropertyDef {
+                        property_type: PropertyType::String,
+                        description: "Inline JSON verify manifest string".to_owned(),
+                        enum_values: None,
+                        default: None,
+                    },
+                ),
+                (
+                    "path".to_owned(),
+                    PropertyDef {
+                        property_type: PropertyType::String,
+                        description: "Path to a verify manifest JSON file".to_owned(),
+                        enum_values: None,
+                        default: None,
+                    },
+                ),
+            ]),
+            required: vec![],
+        },
+        category: ToolCategory::Workspace,
+        reversibility: Reversibility::FullyReversible,
+        auto_activate: false,
+    }
+}
+
+// ── Registration ──────────────────────────────────────────────────────────────
+
+/// Register the poiesis report tools: `generate_document`, `lint_report`, `verify_report`.
+pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
+    registry.register(generate_document_def(), Box::new(GenerateDocumentExecutor))?;
+    registry.register(lint_report_def(), Box::new(LintReportExecutor))?;
+    registry.register(verify_report_def(), Box::new(VerifyReportExecutor))?;
+    Ok(())
+}
