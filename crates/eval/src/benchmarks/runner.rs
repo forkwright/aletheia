@@ -136,10 +136,7 @@ impl BenchmarkRunner {
         // Optional LLM-as-judge evaluation.
         let judge_score = if let Some(ref config) = self.config.judge {
             let judge = judge::LlmJudge::new(config.clone());
-            let expected = question
-                .expected_answers
-                .first()
-                .map_or("", String::as_str);
+            let expected = question.expected_answers.first().map_or("", String::as_str);
             match judge.judge(&question.question, &answer, expected).await {
                 Ok(js) => Some(js),
                 Err(e) => {

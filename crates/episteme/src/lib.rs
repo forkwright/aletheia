@@ -31,6 +31,10 @@ pub mod consolidation;
 pub mod decay;
 /// Entity deduplication pipeline for merging semantically identical entities.
 pub(crate) mod dedup;
+/// Derived Datalog rule definitions: ontological IS-A closure, causal chains,
+/// and defeasible defaults. Rule strings consumed by the knowledge store's
+/// derived-rule materialization engine.
+pub mod derived_rules;
 /// Embedding provider trait and implementations (candle, mock).
 pub mod embedding;
 /// Embedding evaluation gate: Recall@K and MRR for model upgrade checks.

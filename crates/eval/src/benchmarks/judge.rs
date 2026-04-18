@@ -144,7 +144,9 @@ fn parse_judge_response(json: &serde_json::Value) -> Result<JudgeScore> {
         .trim()
         .strip_prefix("```json")
         .or_else(|| content.trim().strip_prefix("```"))
-        .map_or(content.trim(), |s| s.strip_suffix("```").unwrap_or(s).trim());
+        .map_or(content.trim(), |s| {
+            s.strip_suffix("```").unwrap_or(s).trim()
+        });
 
     let parsed: JudgeResponse = serde_json::from_str(cleaned).map_err(|e| {
         error::SseParseSnafu {
