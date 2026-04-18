@@ -7,6 +7,8 @@
 | File | Scope |
 |------|-------|
 | **This file** | Universal principles: philosophy, comments, naming, errors, concurrency, config, git, security, logging, observability contracts, writing, code review (testing → TESTING.md) |
+| AGENTIC_PIPELINE.md | **Canonical** pipeline description: planner→dispatcher→worker→QA→CI→triage loop, prompt-as-work-order, blast radius as authorization boundary, verdict control signals, model tier selection |
+| PROMPTING.md | API-level prompt construction: system prompt ordering, XML tags, voice, caching, few-shot examples, structured output, role framing |
 | REPO-SETUP.md | New project checklist: required files, directories, CI, Cargo.toml template, deny.toml baseline, verification script |
 | ENVIRONMENT.md | Environment variables, configuration files, secrets handling, feature flags, path resolution |
 | PLANNING.md | Project planning: phase structure, ROADMAP/STATE/PLAN/SUMMARY formats, lifecycle, migration |
