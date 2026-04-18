@@ -3,7 +3,6 @@
 use std::borrow::Borrow;
 use std::fmt;
 
-use compact_str::CompactString;
 use serde::{Deserialize, Serialize};
 
 koina::newtype_id!(
@@ -16,14 +15,10 @@ koina::newtype_id!(
     pub struct SessionId(String) // kanon:ignore RUST/pub-visibility
 );
 
-/// Turn identifier, using `CompactString` for inline storage.
-///
-/// WHY: Decimal u64 strings are at most 20 bytes (`u64::MAX`), always within
-/// `CompactString`'s 24-byte inline limit. `NousId` (<=64 bytes), `SessionId`
-/// (26-byte ULID), `ToolId` (<=128 bytes), and `PlanId` (variable) exceed it.
+/// Turn identifier.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct TurnId(CompactString);
+pub struct TurnId(String);
 
 koina::newtype_id!(
     /// Tool call identifier.

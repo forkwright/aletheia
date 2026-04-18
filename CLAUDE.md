@@ -61,7 +61,7 @@ Test tiers: [docs/test-tiers.md](docs/test-tiers.md)
 
 - **Errors:** `snafu` with `.context()` propagation and `Location` tracking
 - **IDs:** Newtypes for all domain IDs (`AgentId`, `SessionId`, `NousId`)
-- **Time:** `jiff` for time, `ulid` for IDs, `compact_str` for small strings
+- **Time:** `jiff` for time, `ulid` for IDs
 - **Async:** Tokio actor model (`NousActor` pattern)
 - **Config:** TOML cascade in `taxis` (owned loader, no figment)
 - **Lints:** `#[expect(lint, reason = "...")]` over `#[allow]`; every suppression justified
