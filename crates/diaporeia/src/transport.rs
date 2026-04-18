@@ -25,14 +25,21 @@ use crate::state::DiaporeiaState;
 /// `ERROR` when the bind address is not loopback, because the MCP server
 /// is reachable from the network with no authentication.
 pub fn streamable_http_router(state: Arc<DiaporeiaState>) -> axum::Router {
+    streamable_http_router_with_config(
+        state,
+        rmcp::transport::streamable_http_server::StreamableHttpServerConfig::default(),
+    )
+}
+
+/// Build an Axum Router with a custom Streamable HTTP config.
+///
+/// Used by integration tests to enable stateless+json-response mode for
+/// simpler request-response testing without SSE parsing.
+pub fn streamable_http_router_with_config(
+    state: Arc<DiaporeiaState>,
+    config: rmcp::transport::streamable_http_server::StreamableHttpServerConfig,
+) -> axum::Router {
     if state.auth_mode == "none" {
-        // WHY: silent auth bypass is a security anti-pattern. Make the
-        // operator decision visible in logs so it's never accidental.
-        //
-        // NOTE: try_read() avoids panicking when called within a tokio
-        // runtime (integration tests). If the lock is held, default to
-        // "localhost" which is the safe default — the warning is about
-        // network exposure, so false-safe is acceptable.
         let bind = state
             .config
             .try_read()
@@ -57,7 +64,7 @@ pub fn streamable_http_router(state: Arc<DiaporeiaState>) -> axum::Router {
     let service = StreamableHttpService::new(
         move || Ok(DiaporeiaServer::with_state(Arc::clone(&state))),
         LocalSessionManager::default().into(),
-        rmcp::transport::streamable_http_server::StreamableHttpServerConfig::default(),
+        config,
     );
 
     axum::Router::new()

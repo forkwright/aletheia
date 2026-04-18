@@ -122,6 +122,24 @@ pub(crate) struct KnowledgeGraphNeighborsParams {
     pub depth: Option<u32>,
 }
 
+/// Parameters for `repomix.pack` — pack crate source into compressed context.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub(crate) struct RepomixPackParams {
+    /// Crate names to pack (e.g. `["diaporeia"]` or `["nous", "pylon"]`).
+    pub crate_names: Vec<String>,
+    /// Template to use: `single_crate`, `crate_with_deps`, or `cross_crate`.
+    pub template: String,
+    /// Maximum output tokens (overrides config default if provided).
+    pub max_tokens: Option<u32>,
+}
+
+/// Parameters for `repomix.template_get` — fetch a template definition.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub(crate) struct RepomixTemplateGetParams {
+    /// Template name.
+    pub name: String,
+}
+
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
@@ -258,5 +276,29 @@ mod tests {
         let json = r#"{"entity_id": "e-1"}"#;
         let params: KnowledgeGraphNeighborsParams = serde_json::from_str(json).unwrap();
         assert!(params.depth.is_none());
+    }
+
+    #[test]
+    fn repomix_pack_params_deserializes() {
+        let json =
+            r#"{"crate_names": ["diaporeia"], "template": "single_crate", "max_tokens": 1000}"#;
+        let params: RepomixPackParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.crate_names, vec!["diaporeia"]);
+        assert_eq!(params.template, "single_crate");
+        assert_eq!(params.max_tokens, Some(1000));
+    }
+
+    #[test]
+    fn repomix_pack_params_rejects_missing_template() {
+        let json = r#"{"crate_names": ["diaporeia"]}"#;
+        let result = serde_json::from_str::<RepomixPackParams>(json);
+        assert!(result.is_err(), "missing template must fail");
+    }
+
+    #[test]
+    fn repomix_template_get_params_deserializes() {
+        let json = r#"{"name": "single_crate"}"#;
+        let params: RepomixTemplateGetParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.name, "single_crate");
     }
 }

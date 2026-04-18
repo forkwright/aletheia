@@ -781,14 +781,12 @@ mod tests {
         let with_diag = inject_diagnostics(content, "[diagnostics: exit_code=1]");
         let truncated = truncate_tool_result(with_diag, 80);
         match truncated {
-            ToolResultContent::Blocks(bs) => {
-                match bs.first().expect("should have first block") {
-                    ToolResultBlock::Text { text } => {
-                        assert_eq!(text, "[diagnostics: exit_code=1]");
-                    }
-                    _ => panic!("first block should be diagnostics"),
+            ToolResultContent::Blocks(bs) => match bs.first().expect("should have first block") {
+                ToolResultBlock::Text { text } => {
+                    assert_eq!(text, "[diagnostics: exit_code=1]");
                 }
-            }
+                _ => panic!("first block should be diagnostics"),
+            },
             _ => panic!("expected Blocks variant"),
         }
     }

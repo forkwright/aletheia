@@ -108,6 +108,31 @@ pub enum Error {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+
+    /// The repomix MCP surface is disabled or not configured.
+    #[snafu(display(
+        "repomix MCP surface is disabled; set mcp.repomix.enabled = true in aletheia.toml"
+    ))]
+    RepomixUnavailable {
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// The requested repomix template was not found.
+    #[snafu(display("repomix template not found: {name}"))]
+    TemplateNotFound {
+        name: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// A repomix pack operation failed.
+    #[snafu(display("repomix pack error: {message}"))]
+    RepomixPack {
+        message: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
 }
 
 /// Result alias using diaporeia's [`Error`] type.
@@ -125,6 +150,7 @@ impl From<Error> for rmcp::ErrorData {
             Error::NousNotFound { .. }
             | Error::SessionNotFound { .. }
             | Error::FactNotFound { .. }
+            | Error::TemplateNotFound { .. }
             | Error::InvalidInput { .. } => rmcp::ErrorData::invalid_params(message, None),
             // WHY: authorization failures return a clear message so clients can
             // distinguish access-denied from invalid-params.
@@ -137,13 +163,17 @@ impl From<Error> for rmcp::ErrorData {
             Error::KnowledgeStoreUnavailable { .. } => {
                 rmcp::ErrorData::new(rmcp::model::ErrorCode(-32002), message, None)
             }
+            Error::RepomixUnavailable { .. } => {
+                rmcp::ErrorData::new(rmcp::model::ErrorCode(-32003), message, None)
+            }
             // WHY: server-side failures expose only a sanitized message, never internal details
             Error::Pipeline { .. }
             | Error::SessionStore { .. }
             | Error::KnowledgeStore { .. }
             | Error::Serialization { .. }
             | Error::Transport { .. }
-            | Error::WorkspaceFile { .. } => rmcp::ErrorData::internal_error(message, None),
+            | Error::WorkspaceFile { .. }
+            | Error::RepomixPack { .. } => rmcp::ErrorData::internal_error(message, None),
         }
     }
 }

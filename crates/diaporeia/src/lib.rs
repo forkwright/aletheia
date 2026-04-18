@@ -21,6 +21,7 @@ pub mod auth;
 /// Diaporeia-specific error types and result alias.
 pub mod error;
 pub(crate) mod rate_limit;
+mod repomix;
 mod resources;
 pub(crate) mod sanitize;
 /// MCP server implementation with tool, resource, and prompt capabilities.

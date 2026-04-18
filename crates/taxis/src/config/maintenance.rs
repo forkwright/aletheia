@@ -565,6 +565,8 @@ pub struct McpConfig {
     pub rate_limit: McpRateLimitConfig,
     /// Knowledge graph MCP surface configuration.
     pub knowledge_graph: KnowledgeGraphMcpConfig,
+    /// Repomix MCP surface configuration.
+    pub repomix: RepomixMcpConfig,
 }
 
 /// Configuration for the knowledge graph MCP surface.
@@ -596,6 +598,42 @@ impl Default for KnowledgeGraphMcpConfig {
             enabled: false,
             max_search_results: 50,
             max_graph_depth: 2,
+        }
+    }
+}
+
+/// Configuration for the repomix MCP surface.
+///
+/// When enabled, the MCP server exposes `repomix.*` tools for packing
+/// crate source code into token-efficient context windows. Read operations
+/// (`templates_list`, `template_get`) require `Agent` role; the pack
+/// operation requires `Operator` role because it can be expensive and
+/// generates dispatch context.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+pub struct RepomixMcpConfig {
+    /// Whether the repomix MCP tools are enabled.
+    ///
+    /// Defaults to `false` — operators must explicitly opt in.
+    pub enabled: bool,
+    /// Maximum output tokens for a packed context.
+    ///
+    /// Defaults to `128_000` (Claude 3.5 Sonnet context window).
+    pub max_output_tokens: u32,
+    /// Directory containing custom `.repomix` template files.
+    ///
+    /// When `None`, built-in templates (`single_crate`, `crate_with_deps`,
+    /// `cross_crate`) are used.
+    pub templates_dir: Option<String>,
+}
+
+impl Default for RepomixMcpConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            max_output_tokens: 128_000,
+            templates_dir: None,
         }
     }
 }
