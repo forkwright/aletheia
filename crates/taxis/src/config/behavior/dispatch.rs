@@ -3,20 +3,12 @@
 use serde::{Deserialize, Serialize};
 
 /// Dispatch configuration.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
 pub struct DispatchConfig {
     /// Recurring cron-dispatched tasks.
     pub cron_tasks: Vec<CronTaskConfig>,
-}
-
-impl Default for DispatchConfig {
-    fn default() -> Self {
-        Self {
-            cron_tasks: Vec::new(),
-        }
-    }
 }
 
 /// Configuration for a single cron-dispatched task.

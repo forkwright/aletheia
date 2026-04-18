@@ -25,8 +25,8 @@ pub use maintenance::{
     CircuitBreakerSettings, CredentialConfig, CronTaskEntry, CronTaskSettings,
     DbMonitoringSettings, DiskSpaceSettings, DriftDetectionSettings, KnowledgeGraphMcpConfig,
     LoggingSettings, MaintenanceSettings, McpConfig, McpRateLimitConfig, PromptAuditSettings,
-    RedactionSettings, RetentionSettings, SandboxSettings, SqliteRecoverySettings,
-    TraceRotationSettings, WatchdogSettings,
+    RedactionSettings, RepomixMcpConfig, RetentionSettings, SandboxSettings,
+    SqliteRecoverySettings, TraceRotationSettings, WatchdogSettings,
 };
 pub use resolved::{
     AgentCapabilities, ResolvedModelConfig, ResolvedNousConfig, TokenLimits, resolve_nous,
