@@ -17,7 +17,8 @@ use symbolon::types::Role;
 
 use crate::error::{
     FactNotFoundSnafu, InvalidInputSnafu, KnowledgeStoreSnafu, KnowledgeStoreUnavailableSnafu,
-    NousNotFoundSnafu, PipelineSnafu, SerializationSnafu, SessionStoreSnafu, UnauthorizedSnafu,
+    NousNotFoundSnafu, PipelineSnafu, RepomixPackSnafu, RepomixUnavailableSnafu,
+    SerializationSnafu, SessionStoreSnafu, TemplateNotFoundSnafu, UnauthorizedSnafu,
 };
 use crate::rate_limit::Tier;
 use crate::server::DiaporeiaServer;
@@ -160,6 +161,20 @@ async fn require_knowledge_graph(
     let config = server.state.config.read().await.clone();
     if !config.mcp.knowledge_graph.enabled {
         return Err(KnowledgeStoreUnavailableSnafu {}.build().into());
+    }
+    Ok(config)
+}
+
+/// Check that the repomix MCP surface is enabled.
+///
+/// Returns `Err(RepomixUnavailable)` when the feature is disabled in config.
+/// On success, returns a snapshot of the current config.
+async fn require_repomix(
+    server: &DiaporeiaServer,
+) -> Result<taxis::config::AletheiaConfig, rmcp::ErrorData> {
+    let config = server.state.config.read().await.clone();
+    if !config.mcp.repomix.enabled {
+        return Err(RepomixUnavailableSnafu {}.build().into());
     }
     Ok(config)
 }
@@ -921,6 +936,127 @@ impl DiaporeiaServer {
             let _ = (params, config);
             Err(KnowledgeStoreUnavailableSnafu {}.build().into())
         }
+    }
+
+    /// List available repomix templates.
+    ///
+    /// Returns the built-in template names and descriptions. Requires `Agent`
+    /// role or above.
+    #[tool(description = "List available repomix templates. Requires Agent role.")]
+    async fn repomix_templates_list(
+        &self,
+        context: RequestContext<rmcp::RoleServer>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        self.rate_limiter.check(Tier::Cheap)?;
+        require_role(self, &context, Role::Agent, "repomix_templates_list").await?;
+        require_repomix(self).await?;
+
+        let templates = crate::repomix::list_templates();
+        let json = serde_json::to_string_pretty(&templates)
+            .context(SerializationSnafu {})
+            .map_err(rmcp::ErrorData::from)?;
+        Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+            json,
+        )]))
+    }
+
+    /// Get a single repomix template definition.
+    ///
+    /// Requires `Agent` role or above.
+    #[tool(description = "Get a repomix template definition by name. Requires Agent role.")]
+    async fn repomix_template_get(
+        &self,
+        Parameters(params): Parameters<params::RepomixTemplateGetParams>,
+        context: RequestContext<rmcp::RoleServer>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        self.rate_limiter.check(Tier::Cheap)?;
+        require_role(self, &context, Role::Agent, "repomix_template_get").await?;
+        require_repomix(self).await?;
+
+        let template = crate::repomix::get_template(&params.name).map_err(|_| {
+            rmcp::ErrorData::from(
+                TemplateNotFoundSnafu {
+                    name: params.name.clone(),
+                }
+                .build(),
+            )
+        })?;
+        let json = serde_json::to_string_pretty(&serde_json::json!({
+            "name": template.name,
+            "description": template.description,
+            "include_deps": template.include_deps,
+        }))
+        .context(SerializationSnafu {})
+        .map_err(rmcp::ErrorData::from)?;
+        Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+            json,
+        )]))
+    }
+
+    /// Pack crate source code into a token-efficient context window.
+    ///
+    /// Uses native Rust compression (comment stripping, whitespace collapse)
+    /// to approximate repomix output without requiring an external npm
+    /// binary. Respects `mcp.repomix.max_output_tokens` from config.
+    ///
+    /// Requires `Operator` role or above because packing can be expensive
+    /// and generates dispatch context.
+    #[tool(description = "Pack crate source into compressed context. \
+        Requires Operator role. Returns packed XML with metadata.")]
+    async fn repomix_pack(
+        &self,
+        Parameters(params): Parameters<params::RepomixPackParams>,
+        context: RequestContext<rmcp::RoleServer>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        self.rate_limiter.check(Tier::Expensive)?;
+        require_role(self, &context, Role::Operator, "repomix_pack").await?;
+        let config = require_repomix(self).await?;
+
+        let workspace_root = crate::repomix::detect_workspace_root().ok_or_else(|| {
+            rmcp::ErrorData::from(
+                RepomixPackSnafu {
+                    message: "could not detect workspace root (no Cargo.toml with [workspace])"
+                        .to_owned(),
+                }
+                .build(),
+            )
+        })?;
+
+        let max_tokens = params
+            .max_tokens
+            .unwrap_or(config.mcp.repomix.max_output_tokens);
+
+        let template_name = params.template.clone();
+        let crate_names = params.crate_names.clone();
+
+        let result = tokio::task::spawn_blocking(move || {
+            crate::repomix::pack(&workspace_root, &crate_names, &template_name, max_tokens)
+        })
+        .await
+        .map_err(|e| {
+            rmcp::ErrorData::from(
+                RepomixPackSnafu {
+                    message: e.to_string(),
+                }
+                .build(),
+            )
+        })?
+        .map_err(rmcp::ErrorData::from)?;
+
+        let json = serde_json::to_string_pretty(&serde_json::json!({
+            "packed": result.packed,
+            "files_included": result.files_included,
+            "raw_bytes": result.raw_bytes,
+            "packed_bytes": result.packed_bytes,
+            "estimated_tokens": result.estimated_tokens,
+            "template": params.template,
+            "crate_names": params.crate_names,
+        }))
+        .context(SerializationSnafu {})
+        .map_err(rmcp::ErrorData::from)?;
+        Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+            json,
+        )]))
     }
 
     /// Get the runtime configuration with sensitive fields redacted.
