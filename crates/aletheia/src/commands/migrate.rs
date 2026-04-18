@@ -362,29 +362,38 @@ fn maybe_rewrite_path(path_str: &str, source_root: &Path, _dest_root: &Path) -> 
     if !path.is_absolute() {
         return None;
     }
-    // WHY: on macOS, `/var/folders/...` expands to `/private/var/folders/...`
-    // after canonicalize. A path written into a config may be either form, and
-    // its target may not exist (e.g. a `packs` directory referenced but not yet
-    // created). Try all four comparison combinations so we catch both prefix
-    // forms regardless of which side canonicalizes.
-    let canonical_source = source_root.canonicalize().ok();
-    let canonical_path = path.canonicalize().ok();
-
-    let candidates: [(&Path, &Path); 4] = [
-        (source_root, path),
-        (
-            canonical_source.as_deref().unwrap_or(source_root),
-            canonical_path.as_deref().unwrap_or(path),
-        ),
-        (canonical_source.as_deref().unwrap_or(source_root), path),
-        (source_root, canonical_path.as_deref().unwrap_or(path)),
-    ];
-
-    for (src, p) in candidates {
-        if p.starts_with(src)
-            && let Ok(rel) = p.strip_prefix(src)
+    // WHY: `source_root` is already canonical (via `absolute_path`), but paths
+    // inside a config file may still be in the non-canonical form the user
+    // authored (`/var/folders/...` on macOS, before the `/private` prefix is
+    // resolved). The target may not exist either (e.g. a `packs` directory
+    // declared but never created), so we cannot rely on `path.canonicalize()`.
+    // Build every plausible form of both sides and try each pairing.
+    let forms = |p: &Path| -> Vec<PathBuf> {
+        let mut v = vec![p.to_path_buf()];
+        if let Ok(canonical) = p.canonicalize()
+            && canonical != *p
         {
-            return Some(rel.to_string_lossy().into_owned());
+            v.push(canonical);
+        }
+        if let Ok(stripped) = p.strip_prefix("/private") {
+            let unprefixed = Path::new("/").join(stripped);
+            if !v.contains(&unprefixed) {
+                v.push(unprefixed);
+            }
+        }
+        v
+    };
+
+    let source_forms = forms(source_root);
+    let path_forms = forms(path);
+
+    for src in &source_forms {
+        for p in &path_forms {
+            if p.starts_with(src)
+                && let Ok(rel) = p.strip_prefix(src)
+            {
+                return Some(rel.to_string_lossy().into_owned());
+            }
         }
     }
     None
