@@ -1,0 +1,16 @@
+[package]
+name = "poiesis-verify"
+version.workspace = true
+description = "Report claim verification: arithmetic evaluation and source resolution"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+snafu = { workspace = true }
