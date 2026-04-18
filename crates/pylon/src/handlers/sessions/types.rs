@@ -26,17 +26,15 @@ pub struct SendMessageRequest {
     pub content: String,
 }
 
-/// Body for `POST /api/v1/sessions/stream` (TUI streaming protocol).
+/// Body for `POST /api/v1/sessions/stream` (turn streaming protocol).
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct StreamTurnRequest {
-    /// Target agent ID.
-    #[serde(alias = "agentId")]
-    pub agent_id: String,
+    /// Target nous agent ID.
+    pub nous_id: String,
     /// User message text.
     pub message: String,
     /// Session key for deduplication (defaults to "main").
-    #[serde(alias = "sessionKey", default = "default_session_key")]
+    #[serde(default = "default_session_key")]
     pub session_key: String,
 }
 

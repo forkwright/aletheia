@@ -412,7 +412,7 @@ pub async fn send_message(
     clippy::too_many_lines,
     reason = "streaming bridge setup is inherently sequential"
 )]
-#[instrument(skip(state, claims, body), fields(agent_id = %body.agent_id))]
+#[instrument(skip(state, claims, body), fields(nous_id = %body.nous_id))]
 pub async fn stream_turn(
     State(state): State<SessionsState>,
     claims: Claims,
@@ -420,8 +420,8 @@ pub async fn stream_turn(
     Json(body): Json<StreamTurnRequest>,
 ) -> Result<Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>>, ApiError> {
     require_role(&claims, Role::Operator)?;
-    require_nous_access(&claims, &body.agent_id)?;
-    let agent_id = body.agent_id;
+    require_nous_access(&claims, &body.nous_id)?;
+    let agent_id = body.nous_id;
     let message = body.message;
     let session_key = body.session_key;
 
@@ -446,7 +446,7 @@ pub async fn stream_turn(
     }
     if agent_id.len() > max_id_bytes {
         field_errors.push(FieldError {
-            field: "agent_id".to_owned(),
+            field: "nous_id".to_owned(),
             code: "too_long".to_owned(),
             message: format!("exceeds maximum length of {max_id_bytes} bytes"),
         });
