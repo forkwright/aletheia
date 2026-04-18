@@ -23,6 +23,7 @@ use std::path::{Path, PathBuf};
 use std::sync::RwLock;
 use std::time::{Duration, Instant, SystemTime};
 
+use serde::Deserialize;
 use snafu::IntoError as _;
 use tracing::{debug, info, warn};
 
@@ -256,6 +257,40 @@ pub enum TaskHint {
     Conversation,
 }
 
+/// Recipe for loading `_llm/` content into the bootstrap system prompt.
+///
+/// Maps _llm/ levels to bootstrap priorities based on session state and
+/// task type. Selected automatically from [`TaskHint`] or overridden via
+/// dispatch metadata.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[non_exhaustive]
+pub enum LlmRecipe {
+    /// Load L1 as Required, L3 as Optional. Used on first turn (cold start).
+    #[default]
+    ColdStart,
+    /// Load L1 as Optional, L3 as Optional. Used for general in-session turns.
+    InSession,
+    /// Load L1 as Important, L3 as Important. Used for planning and refactoring.
+    Refactor,
+    /// Skip all `_llm/` content.
+    None,
+}
+
+impl LlmRecipe {
+    /// Select a recipe based on task hint and whether this is the first turn.
+    #[must_use]
+    pub fn from_task_hint(task_hint: TaskHint, is_cold_start: bool) -> Self {
+        if is_cold_start {
+            return Self::ColdStart;
+        }
+        match task_hint {
+            TaskHint::Planning => Self::Refactor,
+            TaskHint::Conversation => Self::None,
+            _ => Self::InSession,
+        }
+    }
+}
+
 /// Load tier: whether a workspace file loads unconditionally or based on task hint.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum LoadTier {
@@ -402,6 +437,50 @@ const DEFAULT_OUTPUT_STYLE: &str = "\
 - No forced linearity, no basics when the bigger picture is visible.
 - If you can say it in one sentence, don't use three.";
 
+/// Parsed `_llm/manifest.toml` describing available levels.
+///
+/// WHY: The manifest is the single source of truth for which _llm/ levels
+/// exist and where they live. Parsing it lets the bootstrap assembler
+/// discover levels dynamically rather than hardcoding paths.
+#[derive(Debug, Clone, Deserialize)]
+#[expect(
+    dead_code,
+    reason = "fields deserialized from manifest for future use but not yet consumed"
+)]
+struct LlmManifest {
+    #[serde(default)]
+    version: u32,
+    #[serde(default)]
+    levels: HashMap<String, LlmLevel>,
+    #[serde(default)]
+    crates: Vec<LlmManifestCrate>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[expect(
+    dead_code,
+    reason = "fields deserialized from manifest for future use but not yet consumed"
+)]
+struct LlmLevel {
+    path: String,
+    #[serde(default)]
+    generator: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[expect(
+    dead_code,
+    reason = "fields deserialized from manifest for future use but not yet consumed"
+)]
+struct LlmManifestCrate {
+    name: String,
+    path: String,
+    #[serde(rename = "source_hash")]
+    _source_hash: String,
+    #[serde(rename = "l3_token_estimate")]
+    _l3_token_estimate: u64,
+}
+
 /// Assembles the bootstrap system prompt from oikos workspace files.
 ///
 /// Resolves files through the three-tier cascade (`nous/{id}/` → `shared/` → `theke/`),
@@ -419,6 +498,8 @@ pub struct BootstrapAssembler<'a> {
     /// Shared file cache: `None` disables caching (legacy path, used by tests
     /// that want guaranteed fresh reads).
     cache: Option<&'a BootstrapFileCache>,
+    /// Recipe for loading `_llm/` content. `None` skips _llm/ entirely.
+    llm_recipe: LlmRecipe,
 }
 
 impl<'a> BootstrapAssembler<'a> {
@@ -432,6 +513,7 @@ impl<'a> BootstrapAssembler<'a> {
             estimator: CharEstimator::default(),
             min_truncation_budget,
             cache: None,
+            llm_recipe: LlmRecipe::default(),
         }
     }
 
@@ -448,6 +530,7 @@ impl<'a> BootstrapAssembler<'a> {
             estimator: CharEstimator::new(chars_per_token),
             min_truncation_budget,
             cache: None,
+            llm_recipe: LlmRecipe::default(),
         }
     }
 
@@ -459,6 +542,16 @@ impl<'a> BootstrapAssembler<'a> {
     #[must_use]
     pub fn with_cache(mut self, cache: &'a BootstrapFileCache) -> Self {
         self.cache = Some(cache);
+        self
+    }
+
+    /// Set the [`LlmRecipe`] for loading `_llm/` content.
+    ///
+    /// Determines which _llm/ levels are loaded and at what priority tier.
+    /// The default is [`LlmRecipe::ColdStart`].
+    #[must_use]
+    pub fn with_llm_recipe(mut self, recipe: LlmRecipe) -> Self {
+        self.llm_recipe = recipe;
         self
     }
 
@@ -526,11 +619,10 @@ impl<'a> BootstrapAssembler<'a> {
     /// Operational files (AGENTS, GOALS, TOOLS, CHECKLIST, MEMORY, CONTEXT)
     /// load only when relevant to the task hint.
     ///
-    /// # Why
-    ///
-    /// Identity files define "who the agent is" and must always load.
-    /// Operational files bloat the context window unnecessarily for simple
-    /// queries. Loading TOOLS.md for a casual greeting wastes tokens.
+    /// Uses [`LlmRecipe::from_task_hint`] with `is_cold_start = false` to
+    /// select the _llm/ loading recipe. Use
+    /// [`assemble_conditional_with_recipe`](Self::assemble_conditional_with_recipe)
+    /// for explicit recipe control (e.g. cold-start detection).
     ///
     /// # Complexity
     ///
@@ -554,8 +646,44 @@ impl<'a> BootstrapAssembler<'a> {
         extra_sections: Vec<BootstrapSection>,
         hint: TaskHint,
     ) -> Result<BootstrapResult> {
+        self.assemble_conditional_with_recipe(
+            nous_id,
+            budget,
+            extra_sections,
+            hint,
+            self.llm_recipe,
+        )
+        .await
+    }
+
+    /// Assemble the bootstrap system prompt with conditional file loading and
+    /// explicit _llm/ recipe control.
+    ///
+    /// Same as [`assemble_conditional`](Self::assemble_conditional) but accepts
+    /// an explicit [`LlmRecipe`] so callers can override automatic selection
+    /// (e.g. to load L1 as Required on a cold start).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`error::Error::ContextAssembly`] if a Required file (SOUL.md) is
+    /// missing or unreadable.
+    ///
+    /// # Cancel safety
+    ///
+    /// Not cancel-safe. Delegates to the same I/O path as `assemble_conditional`.
+    pub async fn assemble_conditional_with_recipe(
+        &self,
+        nous_id: &str,
+        budget: &mut TokenBudget,
+        extra_sections: Vec<BootstrapSection>,
+        hint: TaskHint,
+        recipe: LlmRecipe,
+    ) -> Result<BootstrapResult> {
         let (mut sections, filtered_names) = self.resolve_workspace_files(nous_id, hint).await?;
         sections.extend(extra_sections);
+
+        let llm_sections = self.resolve_llm_sections(recipe).await;
+        sections.extend(llm_sections);
 
         // NOTE: stable sort preserves declaration order within same priority
         sections.sort_by_key(|s| s.priority);
@@ -782,6 +910,173 @@ impl<'a> BootstrapAssembler<'a> {
         debug!("injected output-style section ({style_tokens} tokens)");
 
         Ok((sections, filtered))
+    }
+
+    /// Resolve `_llm/` content into bootstrap sections based on the recipe.
+    ///
+    /// Reads `_llm/manifest.toml` when present to discover available levels.
+    /// Loads L1 (workspace manifest files at `_llm/` root) and L3 (cross-crate
+    /// index from the path declared in the manifest). L2 is reserved for
+    /// per-crate summaries and skipped when absent.
+    ///
+    /// Returns an empty vec when:
+    /// - the recipe is [`LlmRecipe::None`]
+    /// - `_llm/manifest.toml` does not exist
+    /// - any I/O or parse error occurs (logged, not propagated)
+    ///
+    /// # Cancel safety
+    ///
+    /// Not cancel-safe. Performs async file I/O.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "L1 + L3 loading in one method keeps the recipe→levels mapping colocated"
+    )]
+    async fn resolve_llm_sections(&self, recipe: LlmRecipe) -> Vec<BootstrapSection> {
+        if recipe == LlmRecipe::None {
+            return Vec::new();
+        }
+
+        let llm_root = self.oikos.root().join("_llm");
+        let manifest_path = llm_root.join("manifest.toml");
+
+        if !manifest_path.exists() {
+            debug!(path = %manifest_path.display(), "_llm/manifest.toml not found, skipping");
+            return Vec::new();
+        }
+
+        let manifest_raw = match tokio::fs::read_to_string(&manifest_path).await {
+            Ok(r) => r,
+            Err(e) => {
+                warn!(
+                    path = %manifest_path.display(),
+                    error = %e,
+                    "failed to read _llm/manifest.toml, skipping"
+                );
+                return Vec::new();
+            }
+        };
+
+        let manifest: LlmManifest = match toml::from_str(&manifest_raw) {
+            Ok(m) => m,
+            Err(e) => {
+                warn!(
+                    path = %manifest_path.display(),
+                    error = %e,
+                    "failed to parse _llm/manifest.toml, skipping"
+                );
+                return Vec::new();
+            }
+        };
+
+        let mut sections = Vec::new();
+
+        // --- L1: workspace manifest files at _llm/ root ---
+        let (l1_priority, l1_truncatable) = match recipe {
+            LlmRecipe::ColdStart => (SectionPriority::Required, false),
+            LlmRecipe::InSession => (SectionPriority::Optional, true),
+            LlmRecipe::Refactor => (SectionPriority::Important, true),
+            LlmRecipe::None => return Vec::new(),
+        };
+
+        if let Ok(mut entries) = tokio::fs::read_dir(&llm_root).await {
+            while let Ok(Some(entry)) = entries.next_entry().await {
+                let path = entry.path();
+                let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+                    continue;
+                };
+
+                if name == "manifest.toml" || name == "recipes.toml" {
+                    continue;
+                }
+                if path.is_dir() {
+                    continue;
+                }
+                let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+                if !matches!(ext, "md" | "toml") {
+                    continue;
+                }
+
+                match tokio::fs::read_to_string(&path).await {
+                    Ok(raw) => {
+                        let content = raw.trim().to_owned();
+                        if content.is_empty() {
+                            continue;
+                        }
+                        let tokens = self.estimator.estimate(&content);
+                        sections.push(BootstrapSection {
+                            name: format!("_llm/{name}"),
+                            priority: l1_priority,
+                            content,
+                            tokens,
+                            truncatable: l1_truncatable,
+                        });
+                    }
+                    Err(e) => {
+                        warn!(
+                            path = %path.display(),
+                            error = %e,
+                            "failed to read _llm file, skipping"
+                        );
+                    }
+                }
+            }
+        }
+
+        // --- L3: cross-crate index ---
+        let (l3_priority, l3_truncatable) = match recipe {
+            LlmRecipe::ColdStart | LlmRecipe::InSession => (SectionPriority::Optional, true),
+            LlmRecipe::Refactor => (SectionPriority::Important, true),
+            LlmRecipe::None => return Vec::new(),
+        };
+
+        if let Some(l3_level) = manifest.levels.get("L3") {
+            let l3_dir = llm_root.join(&l3_level.path);
+            if l3_dir.is_dir()
+                && let Ok(mut entries) = tokio::fs::read_dir(&l3_dir).await
+            {
+                while let Ok(Some(entry)) = entries.next_entry().await {
+                    let path = entry.path();
+                    if !path.is_file() {
+                        continue;
+                    }
+                    let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+                        continue;
+                    };
+                    if !std::path::Path::new(name)
+                        .extension()
+                        .is_some_and(|ext| ext.eq_ignore_ascii_case("md"))
+                    {
+                        continue;
+                    }
+
+                    match tokio::fs::read_to_string(&path).await {
+                        Ok(raw) => {
+                            let content = raw.trim().to_owned();
+                            if content.is_empty() {
+                                continue;
+                            }
+                            let tokens = self.estimator.estimate(&content);
+                            sections.push(BootstrapSection {
+                                name: format!("_llm/{}/{name}", l3_level.path),
+                                priority: l3_priority,
+                                content,
+                                tokens,
+                                truncatable: l3_truncatable,
+                            });
+                        }
+                        Err(e) => {
+                            warn!(
+                                path = %path.display(),
+                                error = %e,
+                                "failed to read L3 index file, skipping"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
+        sections
     }
 
     /// Truncate a section to fit within the given token limit.

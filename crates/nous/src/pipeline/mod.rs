@@ -662,6 +662,7 @@ pub async fn assemble_context_conditional(
         ctx,
         extra_sections,
         task_hint,
+        crate::bootstrap::LlmRecipe::from_task_hint(task_hint, false),
         None,
     )
     .await
@@ -675,6 +676,10 @@ pub async fn assemble_context_conditional(
 /// reads across pipeline turns (#3388). When `None`, behaviour matches the
 /// legacy path that re-reads every file every turn.
 #[instrument(skip_all, fields(nous_id = %nous_config.id, ?task_hint))]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "recipe parameter required for explicit cold-start/refactor control (#3366)"
+)]
 pub async fn assemble_context_conditional_with_cache(
     oikos: &Oikos,
     nous_config: &NousConfig,
@@ -682,6 +687,7 @@ pub async fn assemble_context_conditional_with_cache(
     ctx: &mut PipelineContext,
     extra_sections: Vec<BootstrapSection>,
     task_hint: TaskHint,
+    recipe: crate::bootstrap::LlmRecipe,
     cache: Option<&crate::bootstrap::BootstrapFileCache>,
 ) -> crate::error::Result<()> {
     let mut budget = TokenBudget::new(
@@ -695,8 +701,15 @@ pub async fn assemble_context_conditional_with_cache(
     if let Some(cache) = cache {
         assembler = assembler.with_cache(cache);
     }
+    assembler = assembler.with_llm_recipe(recipe);
     let result = assembler
-        .assemble_conditional(&nous_config.id, &mut budget, extra_sections, task_hint)
+        .assemble_conditional_with_recipe(
+            &nous_config.id,
+            &mut budget,
+            extra_sections,
+            task_hint,
+            recipe,
+        )
         .await?;
 
     ctx.system_prompt = Some(result.system_prompt);
@@ -798,6 +811,8 @@ pub(crate) async fn run_pipeline(
 
         let mut ctx = PipelineContext::default();
         let task_hint = classify_task_hint(&input.content);
+        let recipe =
+            crate::bootstrap::LlmRecipe::from_task_hint(task_hint, input.session.turn == 1);
 
         run_context_stage(
             oikos,
@@ -806,6 +821,7 @@ pub(crate) async fn run_pipeline(
             &mut ctx,
             extra_bootstrap,
             task_hint,
+            recipe,
             bootstrap_cache,
             emitter,
         )
