@@ -42,7 +42,7 @@ use diaporeia::auth::McpClaims;
 use diaporeia::error::{Error, Result as DiaporeiaResult};
 use diaporeia::server::DiaporeiaServer;
 use diaporeia::state::DiaporeiaState;
-use diaporeia::transport::{streamable_http_router, streamable_http_router_with_config};
+use diaporeia::transport::streamable_http_router;
 
 use hermeneus::provider::ProviderRegistry;
 use koina::secret::SecretString;
@@ -824,15 +824,15 @@ async fn router_in_none_mode_ignores_authorization_header_when_present() {
 /// WHY: `DiaporeiaServer::with_state` uses `blocking_read()` which panics
 /// when called from within a tokio runtime. We construct the server on a
 /// dedicated OS thread and clone it into the service factory.
-fn test_router(state: Arc<DiaporeiaState>) -> axum::Router {
+fn test_router(state: &Arc<DiaporeiaState>) -> axum::Router {
     let server = std::thread::spawn({
-        let state = Arc::clone(&state);
+        let state = Arc::clone(state);
         move || DiaporeiaServer::with_state(state)
     })
     .join()
     .expect("construct server on blocking thread");
 
-    let auth_state = Arc::clone(&state);
+    let auth_state = Arc::clone(state);
     let service = rmcp::transport::streamable_http_server::tower::StreamableHttpService::new(
         move || Ok(server.clone()),
         rmcp::transport::streamable_http_server::session::local::LocalSessionManager::default()
@@ -850,7 +850,7 @@ fn test_router(state: Arc<DiaporeiaState>) -> axum::Router {
 }
 
 /// Helper to build a JSON-RPC tool call request body.
-fn tool_call_request(id: u64, name: &str, arguments: serde_json::Value) -> Body {
+fn tool_call_request(id: u64, name: &str, arguments: &serde_json::Value) -> Body {
     let req = serde_json::json!({
         "jsonrpc": "2.0",
         "id": id,
@@ -884,10 +884,7 @@ async fn repomix_templates_list_via_http_socket() {
         .build();
     let token = issue_token(&jwt, "alice", Role::Agent);
 
-    let config = rmcp::transport::streamable_http_server::StreamableHttpServerConfig::default()
-        .with_stateful_mode(false)
-        .with_json_response(true);
-    let router = test_router(state);
+    let router = test_router(&state);
 
     let response = router
         .oneshot(
@@ -901,7 +898,7 @@ async fn repomix_templates_list_via_http_socket() {
                 .body(tool_call_request(
                     1,
                     "repomix_templates_list",
-                    serde_json::json!({}),
+                    &serde_json::json!({}),
                 ))
                 .unwrap(),
         )
@@ -934,10 +931,7 @@ async fn repomix_template_get_via_http_socket() {
         .build();
     let token = issue_token(&jwt, "alice", Role::Agent);
 
-    let config = rmcp::transport::streamable_http_server::StreamableHttpServerConfig::default()
-        .with_stateful_mode(false)
-        .with_json_response(true);
-    let router = test_router(state);
+    let router = test_router(&state);
 
     let response = router
         .oneshot(
@@ -951,7 +945,7 @@ async fn repomix_template_get_via_http_socket() {
                 .body(tool_call_request(
                     1,
                     "repomix_template_get",
-                    serde_json::json!({"name": "single_crate"}),
+                    &serde_json::json!({"name": "single_crate"}),
                 ))
                 .unwrap(),
         )
@@ -981,10 +975,7 @@ async fn repomix_pack_rejects_agent_role() {
         .build();
     let token = issue_token(&jwt, "alice", Role::Agent);
 
-    let config = rmcp::transport::streamable_http_server::StreamableHttpServerConfig::default()
-        .with_stateful_mode(false)
-        .with_json_response(true);
-    let router = test_router(state);
+    let router = test_router(&state);
 
     let response = router
         .oneshot(
@@ -998,7 +989,7 @@ async fn repomix_pack_rejects_agent_role() {
                 .body(tool_call_request(
                     1,
                     "repomix_pack",
-                    serde_json::json!({
+                    &serde_json::json!({
                         "crate_names": ["diaporeia"],
                         "template": "single_crate",
                     }),
@@ -1029,10 +1020,7 @@ async fn repomix_pack_allows_operator_role() {
         .build();
     let token = issue_token(&jwt, "bob", Role::Operator);
 
-    let config = rmcp::transport::streamable_http_server::StreamableHttpServerConfig::default()
-        .with_stateful_mode(false)
-        .with_json_response(true);
-    let router = test_router(state);
+    let router = test_router(&state);
 
     let response = router
         .oneshot(
@@ -1046,7 +1034,7 @@ async fn repomix_pack_allows_operator_role() {
                 .body(tool_call_request(
                     1,
                     "repomix_pack",
-                    serde_json::json!({
+                    &serde_json::json!({
                         "crate_names": ["diaporeia"],
                         "template": "single_crate",
                     }),
@@ -1073,10 +1061,7 @@ async fn repomix_tools_reject_when_disabled() {
     let (state, jwt, _tmp) = StateBuilder::new().auth_mode("token").build();
     let token = issue_token(&jwt, "alice", Role::Agent);
 
-    let config = rmcp::transport::streamable_http_server::StreamableHttpServerConfig::default()
-        .with_stateful_mode(false)
-        .with_json_response(true);
-    let router = test_router(state);
+    let router = test_router(&state);
 
     let response = router
         .oneshot(
@@ -1090,7 +1075,7 @@ async fn repomix_tools_reject_when_disabled() {
                 .body(tool_call_request(
                     1,
                     "repomix_templates_list",
-                    serde_json::json!({}),
+                    &serde_json::json!({}),
                 ))
                 .unwrap(),
         )

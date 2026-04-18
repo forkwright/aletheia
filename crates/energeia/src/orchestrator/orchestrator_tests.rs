@@ -74,10 +74,8 @@ fn sample_prompt_spec(number: u32, depends_on: Vec<u32>) -> PromptSpec {
         depends_on,
         acceptance_criteria: vec![],
         blast_radius: vec![],
-        body: format!(
-            "implement task {number
-            prompt_components: None,}"
-        ),
+        body: format!("implement task {number}"),
+        prompt_components: None,
     }
 }
 
@@ -92,6 +90,8 @@ fn success_outcome(session_id: &str, cost: f64, turns: u32) -> MockOutcome {
             success: true,
             result_text: Some("done".to_owned()),
             model: Some("claude-3-5-sonnet".to_owned()),
+            cache_hit_tokens: 0,
+            cache_miss_tokens: 0,
         },
     }
 }
@@ -107,6 +107,8 @@ fn failure_outcome(session_id: &str, cost: f64, turns: u32) -> MockOutcome {
             success: false,
             result_text: None,
             model: Some("claude-3-5-sonnet".to_owned()),
+            cache_hit_tokens: 0,
+            cache_miss_tokens: 0,
         },
     }
 }

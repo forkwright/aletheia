@@ -285,6 +285,11 @@ impl DpoExtractor {
         let intersection: HashSet<&String> = original_words.intersection(&chosen_words).collect();
         let union: HashSet<&String> = original_words.union(&chosen_words).collect();
 
+        #[expect(
+            clippy::cast_precision_loss,
+            clippy::as_conversions,
+            reason = "set cardinalities for Jaccard similarity — precision loss above 2^53 elements is harmless for this small-vocabulary similarity heuristic"
+        )]
         let similarity = intersection.len() as f64 / union.len() as f64;
         similarity >= SEMANTIC_SIMILARITY_THRESHOLD
     }
@@ -406,6 +411,7 @@ pub fn record_dpo_pair_captured(nous_id: &str) {
 
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
+#[expect(clippy::indexing_slicing, reason = "test asserts len before indexing")]
 mod tests {
     use super::*;
 
@@ -449,14 +455,14 @@ mod tests {
     fn extractor_rejects_semantic_mismatch() {
         let mut extractor = DpoExtractor::new();
 
-        extractor.process_turn(
+        let _ = extractor.process_turn(
             "ses-1",
             1,
             "What is the capital of France?",
             "London",
             false,
         );
-        extractor.process_turn(
+        let _ = extractor.process_turn(
             "ses-1",
             2,
             "Actually, the capital of France is Paris.",
@@ -473,14 +479,14 @@ mod tests {
     fn extractor_accepts_continuation_prompt() {
         let mut extractor = DpoExtractor::new();
 
-        extractor.process_turn(
+        let _ = extractor.process_turn(
             "ses-1",
             1,
             "What is the capital of France?",
             "London",
             false,
         );
-        extractor.process_turn(
+        let _ = extractor.process_turn(
             "ses-1",
             2,
             "Actually, the capital of France is Paris.",
@@ -499,12 +505,12 @@ mod tests {
         let mut extractor = DpoExtractor::new();
 
         // Session A
-        extractor.process_turn("ses-a", 1, "Question A?", "Wrong A", false);
-        extractor.process_turn("ses-a", 2, "Actually...", "Sorry.", true);
+        let _ = extractor.process_turn("ses-a", 1, "Question A?", "Wrong A", false);
+        let _ = extractor.process_turn("ses-a", 2, "Actually...", "Sorry.", true);
 
         // Session B (interleaved)
-        extractor.process_turn("ses-b", 1, "Question B?", "Wrong B", false);
-        extractor.process_turn("ses-b", 2, "No, it's...", "My mistake.", true);
+        let _ = extractor.process_turn("ses-b", 1, "Question B?", "Wrong B", false);
+        let _ = extractor.process_turn("ses-b", 2, "No, it's...", "My mistake.", true);
 
         // Session A corrected
         let pa = extractor.process_turn("ses-a", 3, "Question A?", "Right A", false);
@@ -519,10 +525,10 @@ mod tests {
     fn extractor_overwrites_pending_on_chained_corrections() {
         let mut extractor = DpoExtractor::new();
 
-        extractor.process_turn("ses-1", 1, "Question?", "Wrong 1", false);
-        extractor.process_turn("ses-1", 2, "Actually...", "Sorry.", true);
+        let _ = extractor.process_turn("ses-1", 1, "Question?", "Wrong 1", false);
+        let _ = extractor.process_turn("ses-1", 2, "Actually...", "Sorry.", true);
         // Chain: another correction before a real answer
-        extractor.process_turn("ses-1", 3, "No wait...", "I see.", true);
+        let _ = extractor.process_turn("ses-1", 3, "No wait...", "I see.", true);
 
         // The second correction should overwrite pending.
         // Since there was no last_turn cached (Turn 2 was a correction),
@@ -585,7 +591,7 @@ mod tests {
     fn dpo_writer_creates_file() {
         let dir = tempfile::tempdir().expect("tempdir");
         let writer = DpoWriter::new(dir.path()).expect("new");
-        assert!(writer.file_path().exists() || true); // file created on first write
+        let _ = writer.file_path(); // file created on first write
     }
 
     #[test]

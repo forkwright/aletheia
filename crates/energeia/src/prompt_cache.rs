@@ -113,6 +113,8 @@ fn build_static_prefix(
     standards_dir: Option<&Path>,
     standards: &[String],
 ) -> String {
+    const VALIDATION_GATE: &str = "\n## Validation Gate\n\nBefore finishing, run the full validation suite (format, lint, test) and confirm all acceptance criteria pass.";
+
     let mut parts: Vec<String> = Vec::new();
 
     // Role definition.
@@ -148,7 +150,6 @@ fn build_static_prefix(
     }
 
     // Validation gate.
-    const VALIDATION_GATE: &str = "\n## Validation Gate\n\nBefore finishing, run the full validation suite (format, lint, test) and confirm all acceptance criteria pass.";
     parts.push(VALIDATION_GATE.to_owned());
 
     parts.join("\n\n---\n\n")
@@ -159,10 +160,10 @@ fn build_dynamic_suffix(project: &str, scope: Option<&str>, prompt_body: &str) -
 
     parts.push(format!("Project: {project}"));
 
-    if let Some(scope_text) = scope {
-        if !scope_text.is_empty() {
-            parts.push(format!("Scope: {scope_text}"));
-        }
+    if let Some(scope_text) = scope
+        && !scope_text.is_empty()
+    {
+        parts.push(format!("Scope: {scope_text}"));
     }
 
     parts.push(prompt_body.to_owned());

@@ -163,14 +163,12 @@ async fn collect_metadata(
     let version = client
         .health()
         .await
-        .map(|h| h.version)
-        .unwrap_or_else(|_| "unknown".to_owned());
+        .map_or_else(|_| "unknown".to_owned(), |h| h.version);
 
     let model = client
         .get_nous(&args.nous_id)
         .await
-        .map(|n| n.model)
-        .unwrap_or_else(|_| "unknown".to_owned());
+        .map_or_else(|_| "unknown".to_owned(), |n| n.model);
 
     BenchmarkMetadata {
         timestamp: jiff::Timestamp::now().to_string(),
@@ -278,7 +276,7 @@ fn args_retrieval_k(report: &BenchmarkReport) -> usize {
         .questions
         .iter()
         .find(|q| q.recall_at_k.is_some())
-        .and_then(|q| q.retrieved_facts.as_ref().map(|f| f.len()))
+        .and_then(|q| q.retrieved_facts.as_ref().map(Vec::len))
         .unwrap_or(0)
 }
 
@@ -297,12 +295,10 @@ fn print_baselines(report: &BenchmarkReport, use_color: bool) {
     for baseline in &baselines {
         let em_str = baseline
             .exact_match_rate
-            .map(|v| format!("{:.1}", v * 100.0))
-            .unwrap_or_else(|| "-".to_owned());
+            .map_or_else(|| "-".to_owned(), |v| format!("{:.1}", v * 100.0));
         let f1_str = baseline
             .mean_f1
-            .map(|v| format!("{:.1}", v * 100.0))
-            .unwrap_or_else(|| "-".to_owned());
+            .map_or_else(|| "-".to_owned(), |v| format!("{:.1}", v * 100.0));
         if use_color {
             println!(
                 "  {:<28} {:>8} {:>8}  {}",
