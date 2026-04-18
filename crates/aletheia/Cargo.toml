@@ -78,6 +78,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 reqwest = { workspace = true }
 rustls = { workspace = true }
+ring = { version = "0.17", default-features = false }
 
 indexmap = { workspace = true }
 jiff = { workspace = true }
@@ -90,11 +91,7 @@ rand = { workspace = true }
 sha2 = { workspace = true }
 anyhow = "1"
 snafu = { workspace = true }
-rcgen = { workspace = true }
-# time is a direct dep because rcgen's CertificateParams.not_before/not_after are
-# time::OffsetDateTime. rcgen already depends on time transitively, so this does
-# not add a new crate to the binary — it only pins our access to the same version.
-time = "0.3"
+pem = { workspace = true }
 owo-colors = "4"
 quick-xml = "0.38"
 supports-color = "3"

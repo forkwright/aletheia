@@ -7,6 +7,8 @@ use snafu::prelude::*;
 
 use crate::error::Result;
 
+use crate::commands::tls_self_signed;
+
 #[derive(Debug, Clone, Subcommand)]
 pub(crate) enum Action {
     /// Generate self-signed certificates for development/LAN use
@@ -55,29 +57,12 @@ fn generate_certs(output_dir: &Path, days: u32, sans: &[String], force: bool) ->
         }
     }
 
-    let subject_alt_names: Vec<String> = sans.to_vec();
-    let key_pair = rcgen::KeyPair::generate().whatever_context("failed to generate key pair")?;
-    let mut params = rcgen::CertificateParams::new(subject_alt_names)
-        .whatever_context("failed to build certificate params")?;
-    params
-        .distinguished_name
-        .push(rcgen::DnType::CommonName, "Aletheia Dev");
-    params.not_after = rcgen::date_time_ymd(2030, 1, 1);
-
-    if days < 3650 {
-        let now = time::OffsetDateTime::now_utc();
-        let end = now + time::Duration::days(i64::from(days));
-        params.not_before = now;
-        params.not_after = end;
-    }
-
-    let cert = params
-        .self_signed(&key_pair)
+    let cert = tls_self_signed::generate(sans, days, "Aletheia Dev")
         .whatever_context("failed to generate self-signed certificate")?;
 
-    koina::fs::write_restricted(&cert_path, cert.pem().as_bytes())
+    koina::fs::write_restricted(&cert_path, cert.cert_pem.as_bytes())
         .with_whatever_context(|_| format!("failed to write {}", cert_path.display()))?;
-    koina::fs::write_restricted(&key_path, key_pair.serialize_pem().as_bytes())
+    koina::fs::write_restricted(&key_path, cert.key_pem.as_bytes())
         .with_whatever_context(|_| format!("failed to write {}", key_path.display()))?;
 
     // WHY: print absolute paths so the user knows where files were written,

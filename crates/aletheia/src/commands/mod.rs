@@ -22,6 +22,7 @@ pub(crate) mod server;
 pub(crate) mod session_create;
 pub(crate) mod session_export;
 pub(crate) mod tls;
+pub(crate) mod tls_self_signed;
 
 use std::path::PathBuf;
 
