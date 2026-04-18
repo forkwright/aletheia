@@ -478,4 +478,51 @@ impl KnowledgeStore {
         tracing::info!("knowledge schema migration v6 -> v7 complete");
         Ok(())
     }
+
+    /// Migrate v7 → v8: add `type_hierarchy`, `derived_facts`, and `defaults` relations.
+    ///
+    /// These relations support the derived-rule engine introduced in the Wave 5
+    /// Datalog feature (`derived_rules` module). All three are additive; no
+    /// existing data is migrated.
+    ///
+    /// - `type_hierarchy` — IS-A edges used by ontological rules
+    /// - `derived_facts` — materialized output of all rule sets
+    /// - `defaults` — defeasible default assertions per entity+tag
+    pub(super) fn migrate_v7_to_v8(&self) -> crate::error::Result<()> {
+        use std::collections::BTreeMap;
+
+        use crate::engine::{DataValue, ScriptMutability};
+        tracing::info!("migrating knowledge schema v7 -> v8");
+
+        // KNOWLEDGE_DDL[7] = type_hierarchy, [8] = derived_facts, [9] = defaults.
+        for ddl in &KNOWLEDGE_DDL[7..=9] {
+            self.db
+                .run(ddl, BTreeMap::new(), ScriptMutability::Mutable)
+                .map_err(|e| {
+                    crate::error::EngineQuerySnafu {
+                        message: format!("v7->v8 create relation: {e}"),
+                    }
+                    .build()
+                })?;
+        }
+
+        let mut params = BTreeMap::new();
+        params.insert("key".to_owned(), DataValue::Str("schema".into()));
+        params.insert("version".to_owned(), DataValue::from(Self::SCHEMA_VERSION));
+        self.db
+            .run(
+                r"?[key, version] <- [[$key, $version]] :put schema_version { key => version }",
+                params,
+                ScriptMutability::Mutable,
+            )
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: format!("v7->v8 update version: {e}"),
+                }
+                .build()
+            })?;
+
+        tracing::info!("knowledge schema migration v7 -> v8 complete");
+        Ok(())
+    }
 }

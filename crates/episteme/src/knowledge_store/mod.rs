@@ -28,6 +28,14 @@
 //!
 //! embeddings { id: String => content: String, source_type: String, source_id: String,
 //!              nous_id: String, embedding: <F32; DIM>, created_at: String }
+//!
+//! type_hierarchy { child_type: String, parent_type: String => created_at: String }
+//!
+//! derived_facts { entity_id: String, rule_id: String, derived_content: String =>
+//!                 confidence: Float, materialized_at: String }
+//!
+//! defaults { entity_id: String, tag: String => default_content: String,
+//!            confidence: Float, created_at: String }
 //! ```
 //!
 //! ## HNSW Index
@@ -44,6 +52,8 @@
 
 #[cfg(feature = "mneme-engine")]
 mod causal;
+#[cfg(feature = "mneme-engine")]
+pub(crate) mod derived_rules;
 #[cfg(feature = "mneme-engine")]
 mod entity;
 #[cfg(feature = "mneme-engine")]
@@ -123,6 +133,24 @@ pub const KNOWLEDGE_DDL: &[&str] = &[
         cause: String, effect: String =>
         ordering: String,
         relationship_type: String,
+        confidence: Float,
+        created_at: String
+    }",
+    // Index 7 — type_hierarchy (added in schema v8)
+    r":create type_hierarchy {
+        child_type: String, parent_type: String =>
+        created_at: String
+    }",
+    // Index 8 — derived_facts (added in schema v8)
+    r":create derived_facts {
+        entity_id: String, rule_id: String, derived_content: String =>
+        confidence: Float,
+        materialized_at: String
+    }",
+    // Index 9 — defaults (added in schema v8)
+    r":create defaults {
+        entity_id: String, tag: String =>
+        default_content: String,
         confidence: Float,
         created_at: String
     }",
@@ -452,7 +480,7 @@ pub struct KnowledgeStore {
 
 #[cfg(feature = "mneme-engine")]
 impl KnowledgeStore {
-    const SCHEMA_VERSION: i64 = 7;
+    const SCHEMA_VERSION: i64 = 8;
 
     /// Open an in-memory knowledge store with default configuration.
     ///
@@ -562,6 +590,9 @@ impl KnowledgeStore {
             }
             if current_version < 7 {
                 self.migrate_v6_to_v7()?;
+            }
+            if current_version < 8 {
+                self.migrate_v7_to_v8()?;
             }
             return Ok(());
         }
