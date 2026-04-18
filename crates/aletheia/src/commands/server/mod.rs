@@ -80,6 +80,30 @@ pub(crate) async fn run(args: Args) -> Result<()> {
         } else {
             Some(Arc::clone(&runtime.state.jwt_manager))
         };
+
+        // Initialize Serena LSP MCP client if enabled.
+        let serena_client = {
+            let cfg = runtime.state.config.read().await;
+            if cfg.mcp.serena.enabled {
+                let socket_path =
+                    cfg.mcp.serena.socket_path.clone().unwrap_or_else(|| {
+                        runtime.state.oikos.root().join("run").join("serena.sock")
+                    });
+                match diaporeia::serena::SerenaClient::connect(&socket_path).await {
+                    Ok(client) => {
+                        info!(socket = %socket_path.display(), "Serena LSP MCP client connected");
+                        Some(Arc::new(client))
+                    }
+                    Err(e) => {
+                        warn!(error = %e, socket = %socket_path.display(), "Serena LSP MCP client unavailable");
+                        None
+                    }
+                }
+            } else {
+                None
+            }
+        };
+
         let diaporeia_state = Arc::new(diaporeia::state::DiaporeiaState {
             session_store: Arc::clone(&runtime.state.session_store),
             nous_manager: Arc::clone(&runtime.state.nous_manager),
@@ -93,8 +117,11 @@ pub(crate) async fn run(args: Args) -> Result<()> {
             shutdown: runtime.shutdown_token.clone(),
             // WHY: pass the same KnowledgeStore Arc that pylon uses so the
             // MCP knowledge tools access the identical in-process instance.
-            #[cfg(feature = "knowledge-store")]
+            #[cfg(feature = "recall")]
             knowledge_store: runtime.state.knowledge_store.clone(),
+            #[cfg(not(feature = "recall"))]
+            knowledge_store: None,
+            serena_client,
         });
         let mcp_router = diaporeia::transport::streamable_http_router(diaporeia_state);
         info!("diaporeia MCP server mounted at /mcp");

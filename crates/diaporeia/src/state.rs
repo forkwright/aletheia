@@ -51,6 +51,11 @@ pub struct DiaporeiaState {
     /// `mcp.knowledge_graph.enabled` is `false`.
     #[cfg(feature = "knowledge-store")]
     pub knowledge_store: Option<Arc<KnowledgeStore>>,
+    /// Serena LSP MCP client for IDE-level navigation tools.
+    ///
+    /// `None` when Serena is disabled in config or the socket is unreachable
+    /// at startup.
+    pub serena_client: Option<Arc<crate::serena::SerenaClient>>,
 }
 
 #[cfg(test)]

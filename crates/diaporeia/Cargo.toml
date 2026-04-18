@@ -26,9 +26,11 @@ knowledge-store = ["nous/knowledge-store", "mneme/mneme-engine"]
 # MCP SDK — pin exact per TECHNOLOGY.md policy
 rmcp = { version = "=1.4.0", features = [
     "server",
+    "client",
     "macros",
     "transport-io",
     "transport-streamable-http-server",
+    "transport-async-rw",
 ] }
 schemars = "1"
 

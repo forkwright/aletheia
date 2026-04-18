@@ -23,6 +23,8 @@ pub mod error;
 pub(crate) mod rate_limit;
 mod resources;
 pub(crate) mod sanitize;
+/// Serena LSP MCP client.
+pub mod serena;
 /// MCP server implementation with tool, resource, and prompt capabilities.
 pub mod server;
 /// Shared application state for the MCP server.

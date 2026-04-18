@@ -122,6 +122,59 @@ pub(crate) struct KnowledgeGraphNeighborsParams {
     pub depth: Option<u32>,
 }
 
+/// Parameters for `serena_go_to_definition`.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub(crate) struct SerenaGoToDefinitionParams {
+    /// Absolute or workspace-relative file path.
+    pub file_path: String,
+    /// Zero-based line number.
+    pub line: u32,
+    /// Zero-based column number.
+    pub column: u32,
+}
+
+/// Parameters for `serena_find_references`.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub(crate) struct SerenaFindReferencesParams {
+    /// Absolute or workspace-relative file path.
+    pub file_path: String,
+    /// Zero-based line number.
+    pub line: u32,
+    /// Zero-based column number.
+    pub column: u32,
+}
+
+/// Parameters for `serena_type_hierarchy`.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub(crate) struct SerenaTypeHierarchyParams {
+    /// Absolute or workspace-relative file path.
+    pub file_path: String,
+    /// Zero-based line number.
+    pub line: u32,
+    /// Zero-based column number.
+    pub column: u32,
+}
+
+/// Parameters for `serena_rename`.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub(crate) struct SerenaRenameParams {
+    /// Absolute or workspace-relative file path.
+    pub file_path: String,
+    /// Zero-based line number.
+    pub line: u32,
+    /// Zero-based column number.
+    pub column: u32,
+    /// New name for the symbol.
+    pub new_name: String,
+}
+
+/// Parameters for `serena_diagnostics`.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub(crate) struct SerenaDiagnosticsParams {
+    /// Absolute or workspace-relative file path.
+    pub file_path: String,
+}
+
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
@@ -258,5 +311,37 @@ mod tests {
         let json = r#"{"entity_id": "e-1"}"#;
         let params: KnowledgeGraphNeighborsParams = serde_json::from_str(json).unwrap();
         assert!(params.depth.is_none());
+    }
+
+    #[test]
+    fn serena_go_to_definition_params_deserializes() {
+        let json = r#"{"file_path": "crates/koina/src/lib.rs", "line": 10, "column": 4}"#;
+        let params: SerenaGoToDefinitionParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.file_path, "crates/koina/src/lib.rs");
+        assert_eq!(params.line, 10);
+        assert_eq!(params.column, 4);
+    }
+
+    #[test]
+    fn serena_find_references_params_deserializes() {
+        let json = r#"{"file_path": "src/main.rs", "line": 0, "column": 0}"#;
+        let params: SerenaFindReferencesParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.file_path, "src/main.rs");
+        assert_eq!(params.line, 0);
+        assert_eq!(params.column, 0);
+    }
+
+    #[test]
+    fn serena_rename_params_requires_new_name() {
+        let json = r#"{"file_path": "src/lib.rs", "line": 5, "column": 10, "new_name": "foo_bar"}"#;
+        let params: SerenaRenameParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.new_name, "foo_bar");
+    }
+
+    #[test]
+    fn serena_diagnostics_params_deserializes() {
+        let json = r#"{"file_path": "src/lib.rs"}"#;
+        let params: SerenaDiagnosticsParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.file_path, "src/lib.rs");
     }
 }

@@ -137,6 +137,7 @@ impl StateBuilder {
             shutdown: CancellationToken::new(),
             #[cfg(feature = "knowledge-store")]
             knowledge_store: None,
+            serena_client: None,
         });
 
         (state, jwt_manager, self.instance_root)
@@ -511,6 +512,7 @@ async fn router_rejects_expired_bearer_token() {
         shutdown: CancellationToken::new(),
         #[cfg(feature = "knowledge-store")]
         knowledge_store: None,
+        serena_client: None,
     });
 
     let token = issue_token(&jwt_manager, "alice", Role::Admin);

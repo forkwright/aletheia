@@ -108,6 +108,22 @@ pub enum Error {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+
+    /// The Serena LSP MCP surface is disabled or the socket is unreachable.
+    #[snafu(display("serena unavailable: {message}"))]
+    SerenaUnavailable {
+        message: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// A Serena LSP operation failed.
+    #[snafu(display("serena error: {message}"))]
+    SerenaError {
+        message: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
 }
 
 /// Result alias using diaporeia's [`Error`] type.
@@ -137,13 +153,20 @@ impl From<Error> for rmcp::ErrorData {
             Error::KnowledgeStoreUnavailable { .. } => {
                 rmcp::ErrorData::new(rmcp::model::ErrorCode(-32002), message, None)
             }
+            // WHY: Serena-unavailable surfaces a distinct code so clients can
+            // detect the configuration issue rather than treating it as a
+            // transient server error.
+            Error::SerenaUnavailable { .. } => {
+                rmcp::ErrorData::new(rmcp::model::ErrorCode(-32003), message, None)
+            }
             // WHY: server-side failures expose only a sanitized message, never internal details
             Error::Pipeline { .. }
             | Error::SessionStore { .. }
             | Error::KnowledgeStore { .. }
             | Error::Serialization { .. }
             | Error::Transport { .. }
-            | Error::WorkspaceFile { .. } => rmcp::ErrorData::internal_error(message, None),
+            | Error::WorkspaceFile { .. }
+            | Error::SerenaError { .. } => rmcp::ErrorData::internal_error(message, None),
         }
     }
 }

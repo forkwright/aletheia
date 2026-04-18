@@ -565,6 +565,8 @@ pub struct McpConfig {
     pub rate_limit: McpRateLimitConfig,
     /// Knowledge graph MCP surface configuration.
     pub knowledge_graph: KnowledgeGraphMcpConfig,
+    /// Serena LSP MCP surface configuration.
+    pub serena: SerenaMcpConfig,
 }
 
 /// Configuration for the knowledge graph MCP surface.
@@ -598,6 +600,27 @@ impl Default for KnowledgeGraphMcpConfig {
             max_graph_depth: 2,
         }
     }
+}
+
+/// Configuration for the Serena LSP MCP surface.
+///
+/// When enabled, the MCP server exposes `serena_*` tools that proxy to a
+/// Serena language-server-protocol backend (typically rust-analyzer). Read
+/// operations require `Agent` role; the `rename` mutation requires `Operator`
+/// role.
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+pub struct SerenaMcpConfig {
+    /// Whether the Serena MCP tools are enabled.
+    ///
+    /// Defaults to `false` — operators must explicitly opt in.
+    pub enabled: bool,
+    /// Unix domain socket path to the Serena MCP server.
+    ///
+    /// When `None`, diaporeia will look for a well-known socket in the
+    /// instance directory (`{instance}/run/serena.sock`).
+    pub socket_path: Option<std::path::PathBuf>,
 }
 
 /// Per-session rate limiting configuration for MCP requests.

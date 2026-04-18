@@ -17,7 +17,8 @@ use symbolon::types::Role;
 
 use crate::error::{
     FactNotFoundSnafu, InvalidInputSnafu, KnowledgeStoreSnafu, KnowledgeStoreUnavailableSnafu,
-    NousNotFoundSnafu, PipelineSnafu, SerializationSnafu, SessionStoreSnafu, UnauthorizedSnafu,
+    NousNotFoundSnafu, PipelineSnafu, SerenaSnafu, SerenaUnavailableSnafu, SerializationSnafu,
+    SessionStoreSnafu, UnauthorizedSnafu,
 };
 use crate::rate_limit::Tier;
 use crate::server::DiaporeiaServer;
@@ -177,6 +178,41 @@ fn resolve_store(
         .knowledge_store
         .clone()
         .ok_or_else(|| KnowledgeStoreUnavailableSnafu {}.build())
+}
+
+/// Check that the Serena LSP MCP surface is enabled.
+///
+/// Returns `Err(SerenaUnavailable)` when the feature is disabled in config
+/// or when the client was not initialised.
+async fn require_serena(server: &DiaporeiaServer) -> Result<(), rmcp::ErrorData> {
+    let config = server.state.config.read().await;
+    if !config.mcp.serena.enabled {
+        return Err(SerenaUnavailableSnafu {
+            message: "Serena LSP MCP surface is disabled in config".to_string(),
+        }
+        .build()
+        .into());
+    }
+    if server.state.serena_client.is_none() {
+        return Err(SerenaUnavailableSnafu {
+            message: "Serena LSP MCP client is not connected".to_string(),
+        }
+        .build()
+        .into());
+    }
+    Ok(())
+}
+
+/// Resolve the Serena client from server state, returning an error if absent.
+fn resolve_serena_client(
+    server: &DiaporeiaServer,
+) -> Result<std::sync::Arc<crate::serena::SerenaClient>, crate::error::Error> {
+    server.state.serena_client.clone().ok_or_else(|| {
+        SerenaUnavailableSnafu {
+            message: "Serena LSP MCP client is not connected".to_string(),
+        }
+        .build()
+    })
 }
 
 /// Register all tools on the server via the `#[tool_router]` macro.
@@ -921,6 +957,229 @@ impl DiaporeiaServer {
             let _ = (params, config);
             Err(KnowledgeStoreUnavailableSnafu {}.build().into())
         }
+    }
+
+    /// Jump from a symbol usage to its declaration via Serena LSP.
+    ///
+    /// Returns the target URI and range. Requires `Agent` role or above.
+    /// When Serena is disabled or unreachable, returns error code -32003.
+    #[tool(description = "Go to definition for a symbol via Serena LSP. \
+        Returns URI and range of the declaration. Requires Agent role.")]
+    async fn serena_go_to_definition(
+        &self,
+        Parameters(params): Parameters<params::SerenaGoToDefinitionParams>,
+        context: RequestContext<rmcp::RoleServer>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        self.rate_limiter.check(Tier::Cheap)?;
+        require_role(self, &context, Role::Agent, "serena_go_to_definition").await?;
+        require_serena(self).await?;
+        let client = resolve_serena_client(self).map_err(rmcp::ErrorData::from)?;
+        let mut args = serde_json::Map::new();
+        args.insert(
+            "file_path".to_owned(),
+            serde_json::Value::String(params.file_path),
+        );
+        args.insert(
+            "line".to_owned(),
+            serde_json::Value::Number(params.line.into()),
+        );
+        args.insert(
+            "column".to_owned(),
+            serde_json::Value::Number(params.column.into()),
+        );
+        let result = client
+            .call_tool("go_to_definition", args)
+            .await
+            .map_err(|e| {
+                rmcp::ErrorData::from(
+                    SerenaSnafu {
+                        message: e.to_string(),
+                    }
+                    .build(),
+                )
+            })?;
+        let json = serde_json::to_string_pretty(&result)
+            .context(SerializationSnafu {})
+            .map_err(rmcp::ErrorData::from)?;
+        Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+            json,
+        )]))
+    }
+
+    /// Find all references to a symbol via Serena LSP.
+    ///
+    /// Returns a list of URIs and ranges. Requires `Agent` role or above.
+    #[tool(description = "Find all references to a symbol via Serena LSP. \
+        Returns URIs and ranges. Requires Agent role.")]
+    async fn serena_find_references(
+        &self,
+        Parameters(params): Parameters<params::SerenaFindReferencesParams>,
+        context: RequestContext<rmcp::RoleServer>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        self.rate_limiter.check(Tier::Expensive)?;
+        require_role(self, &context, Role::Agent, "serena_find_references").await?;
+        require_serena(self).await?;
+        let client = resolve_serena_client(self).map_err(rmcp::ErrorData::from)?;
+        let mut args = serde_json::Map::new();
+        args.insert(
+            "file_path".to_owned(),
+            serde_json::Value::String(params.file_path),
+        );
+        args.insert(
+            "line".to_owned(),
+            serde_json::Value::Number(params.line.into()),
+        );
+        args.insert(
+            "column".to_owned(),
+            serde_json::Value::Number(params.column.into()),
+        );
+        let result = client
+            .call_tool("find_references", args)
+            .await
+            .map_err(|e| {
+                rmcp::ErrorData::from(
+                    SerenaSnafu {
+                        message: e.to_string(),
+                    }
+                    .build(),
+                )
+            })?;
+        let json = serde_json::to_string_pretty(&result)
+            .context(SerializationSnafu {})
+            .map_err(rmcp::ErrorData::from)?;
+        Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+            json,
+        )]))
+    }
+
+    /// Get type hierarchy information for a symbol via Serena LSP.
+    ///
+    /// Returns type kind, name, and crate. Requires `Agent` role or above.
+    #[tool(description = "Get type hierarchy for a symbol via Serena LSP. \
+        Returns type kind, name, and crate. Requires Agent role.")]
+    async fn serena_type_hierarchy(
+        &self,
+        Parameters(params): Parameters<params::SerenaTypeHierarchyParams>,
+        context: RequestContext<rmcp::RoleServer>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        self.rate_limiter.check(Tier::Cheap)?;
+        require_role(self, &context, Role::Agent, "serena_type_hierarchy").await?;
+        require_serena(self).await?;
+        let client = resolve_serena_client(self).map_err(rmcp::ErrorData::from)?;
+        let mut args = serde_json::Map::new();
+        args.insert(
+            "file_path".to_owned(),
+            serde_json::Value::String(params.file_path),
+        );
+        args.insert(
+            "line".to_owned(),
+            serde_json::Value::Number(params.line.into()),
+        );
+        args.insert(
+            "column".to_owned(),
+            serde_json::Value::Number(params.column.into()),
+        );
+        let result = client
+            .call_tool("type_hierarchy", args)
+            .await
+            .map_err(|e| {
+                rmcp::ErrorData::from(
+                    SerenaSnafu {
+                        message: e.to_string(),
+                    }
+                    .build(),
+                )
+            })?;
+        let json = serde_json::to_string_pretty(&result)
+            .context(SerializationSnafu {})
+            .map_err(rmcp::ErrorData::from)?;
+        Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+            json,
+        )]))
+    }
+
+    /// Rename a symbol workspace-wide via Serena LSP.
+    ///
+    /// Returns the number of changed locations. Requires `Operator` role or
+    /// above because this is a mutating operation.
+    #[tool(description = "Rename a symbol workspace-wide via Serena LSP. \
+        Returns change count. Requires Operator role.")]
+    async fn serena_rename(
+        &self,
+        Parameters(params): Parameters<params::SerenaRenameParams>,
+        context: RequestContext<rmcp::RoleServer>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        self.rate_limiter.check(Tier::Expensive)?;
+        require_role(self, &context, Role::Operator, "serena_rename").await?;
+        require_serena(self).await?;
+        let client = resolve_serena_client(self).map_err(rmcp::ErrorData::from)?;
+        let mut args = serde_json::Map::new();
+        args.insert(
+            "file_path".to_owned(),
+            serde_json::Value::String(params.file_path),
+        );
+        args.insert(
+            "line".to_owned(),
+            serde_json::Value::Number(params.line.into()),
+        );
+        args.insert(
+            "column".to_owned(),
+            serde_json::Value::Number(params.column.into()),
+        );
+        args.insert(
+            "new_name".to_owned(),
+            serde_json::Value::String(params.new_name),
+        );
+        let result = client.call_tool("rename", args).await.map_err(|e| {
+            rmcp::ErrorData::from(
+                SerenaSnafu {
+                    message: e.to_string(),
+                }
+                .build(),
+            )
+        })?;
+        let json = serde_json::to_string_pretty(&result)
+            .context(SerializationSnafu {})
+            .map_err(rmcp::ErrorData::from)?;
+        Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+            json,
+        )]))
+    }
+
+    /// Get compiler diagnostics for a file via Serena LSP.
+    ///
+    /// Returns diagnostics without running cargo check. Requires `Agent` role
+    /// or above.
+    #[tool(description = "Get compiler diagnostics for a file via Serena LSP. \
+        Returns diagnostic list. Requires Agent role.")]
+    async fn serena_diagnostics(
+        &self,
+        Parameters(params): Parameters<params::SerenaDiagnosticsParams>,
+        context: RequestContext<rmcp::RoleServer>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        self.rate_limiter.check(Tier::Cheap)?;
+        require_role(self, &context, Role::Agent, "serena_diagnostics").await?;
+        require_serena(self).await?;
+        let client = resolve_serena_client(self).map_err(rmcp::ErrorData::from)?;
+        let mut args = serde_json::Map::new();
+        args.insert(
+            "file_path".to_owned(),
+            serde_json::Value::String(params.file_path),
+        );
+        let result = client.call_tool("diagnostics", args).await.map_err(|e| {
+            rmcp::ErrorData::from(
+                SerenaSnafu {
+                    message: e.to_string(),
+                }
+                .build(),
+            )
+        })?;
+        let json = serde_json::to_string_pretty(&result)
+            .context(SerializationSnafu {})
+            .map_err(rmcp::ErrorData::from)?;
+        Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+            json,
+        )]))
     }
 
     /// Get the runtime configuration with sensitive fields redacted.
