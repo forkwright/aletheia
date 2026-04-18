@@ -112,12 +112,16 @@ struct MigrateManifest {
 }
 
 fn absolute_path(path: &Path) -> Result<PathBuf> {
-    if path.is_absolute() {
-        Ok(path.to_path_buf())
+    let raw = if path.is_absolute() {
+        path.to_path_buf()
     } else {
         let cwd = std::env::current_dir().whatever_context("failed to get current directory")?;
-        Ok(cwd.join(path))
-    }
+        cwd.join(path)
+    };
+    // WHY: canonicalize existing paths so macOS `/var/...` and `/private/var/...`
+    // compare equal during the same-directory / containment checks below. Missing
+    // paths (e.g. a --dest that hasn't been created yet) pass through unchanged.
+    Ok(raw.canonicalize().unwrap_or(raw))
 }
 
 fn copy_tree(src: &Path, dst: &Path, manifest: &mut MigrateManifest) -> Result<()> {
@@ -331,8 +335,20 @@ fn maybe_rewrite_path(path_str: &str, source_root: &Path, _dest_root: &Path) -> 
     if !path.is_absolute() {
         return None;
     }
-    if path.starts_with(source_root) {
-        let relative = path.strip_prefix(source_root).ok()?;
+    // WHY: canonicalize both sides so macOS tempdirs like `/var/folders/...`
+    // (which expand to `/private/var/folders/...`) match the path as written
+    // into the config. Without this, `starts_with` returns false on macOS and
+    // the path is left untouched.
+    let canonical_source = source_root.canonicalize().ok();
+    let canonical_path = path.canonicalize().ok();
+
+    let (source_ref, path_ref) = match (canonical_source.as_deref(), canonical_path.as_deref()) {
+        (Some(cs), Some(cp)) => (cs, cp),
+        _ => (source_root, path),
+    };
+
+    if path_ref.starts_with(source_ref) {
+        let relative = path_ref.strip_prefix(source_ref).ok()?;
         return Some(relative.to_string_lossy().into_owned());
     }
     None

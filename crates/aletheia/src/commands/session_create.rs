@@ -154,12 +154,13 @@ mod tests {
         std::fs::write(
             root.join("config/aletheia.toml"),
             r#"
-[agents.defaults.model_defaults]
-model = "mock-model"
+[agents.defaults.model]
+primary = "mock-model"
 
 [[agents.list]]
 id = "alice"
 name = "Alice"
+workspace = "/tmp/alice"
 "#,
         )
         .unwrap();
@@ -196,6 +197,7 @@ name = "Alice"
 [[agents.list]]
 id = "alice"
 name = "Alice"
+workspace = "/tmp/alice"
 "#,
         )
         .unwrap();
@@ -224,6 +226,7 @@ name = "Alice"
 [[agents.list]]
 id = "alice"
 name = "Alice"
+workspace = "/tmp/alice"
 "#,
         )
         .unwrap();

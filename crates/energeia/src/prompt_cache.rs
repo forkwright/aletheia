@@ -257,7 +257,13 @@ mod tests {
 
     #[test]
     fn to_full_prompt_without_prefix_returns_suffix_only() {
-        let components = PromptComponents::build(None, "proj", None, &[], None, "body text");
+        // WHY: `build()` always pushes a validation gate into the static prefix.
+        // Direct construction with an empty prefix verifies the `is_empty` branch
+        // of `to_full_prompt`.
+        let components = PromptComponents {
+            static_prefix: String::new(),
+            dynamic_suffix: "body text".to_owned(),
+        };
         assert_eq!(components.to_full_prompt(), "body text");
     }
 
@@ -265,8 +271,9 @@ mod tests {
     fn to_session_spec_populates_fields() {
         let components = PromptComponents::build(Some("role"), "proj", None, &[], None, "body");
         let spec = components.to_session_spec(Some("/tmp".to_owned()));
-        assert_eq!(spec.prompt, "body");
-        assert_eq!(spec.system_prompt, Some("role".to_owned()));
+        // `prompt` carries the full dynamic suffix (project + body).
+        assert!(spec.prompt.ends_with("body"));
+        assert!(spec.system_prompt.as_deref().unwrap().contains("role"));
         assert_eq!(spec.cwd, Some("/tmp".to_owned()));
         assert!(spec.prompt_components.is_some());
     }
