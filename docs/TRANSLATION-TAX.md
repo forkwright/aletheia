@@ -222,7 +222,7 @@ with a monotonic sequence ID (`crates/pylon/src/stream.rs:10`). The
   not the original `TurnStreamEvent` structs, so typed consumers must re-parse.
 - **Thinking deltas are schema-ready but not emitted.** `SseEvent::ThinkingDelta`
   exists in the OpenAPI schema (`crates/pylon/src/stream.rs:33`) but the
-  streaming bridge does not forward thinking blocks to the webchat protocol.
+  streaming bridge does not forward thinking blocks to the turn stream protocol.
 
 ### Verdict
 

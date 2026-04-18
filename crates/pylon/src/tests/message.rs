@@ -200,9 +200,9 @@ async fn stream_turn_returns_sse() {
         "POST",
         "/api/v1/sessions/stream",
         Some(serde_json::json!({
-            "agentId": "syn",
+            "nous_id": "syn",
             "message": "Hello from TUI",
-            "sessionKey": "stream-test"
+            "session_key": "stream-test"
         })),
     );
 
@@ -226,9 +226,9 @@ async fn stream_turn_contains_turn_start_event() {
         "POST",
         "/api/v1/sessions/stream",
         Some(serde_json::json!({
-            "agentId": "syn",
+            "nous_id": "syn",
             "message": "Hello!",
-            "sessionKey": "stream-events"
+            "session_key": "stream-events"
         })),
     );
 
@@ -247,9 +247,9 @@ async fn stream_turn_empty_message_returns_400() {
         "POST",
         "/api/v1/sessions/stream",
         Some(serde_json::json!({
-            "agentId": "syn",
+            "nous_id": "syn",
             "message": "",
-            "sessionKey": "empty-msg"
+            "session_key": "empty-msg"
         })),
     );
 
@@ -264,9 +264,9 @@ async fn stream_turn_unknown_agent_returns_404() {
         "POST",
         "/api/v1/sessions/stream",
         Some(serde_json::json!({
-            "agentId": "nonexistent",
+            "nous_id": "nonexistent",
             "message": "Hello!",
-            "sessionKey": "test"
+            "session_key": "test"
         })),
     );
 

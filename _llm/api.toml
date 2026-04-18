@@ -115,7 +115,7 @@ purpose = "Conversation history"
 [[api.endpoint]]
 method = "POST"
 path = "/api/v1/sessions/stream"
-purpose = "Stream a turn (TUI webchat protocol)"
+purpose = "Stream a turn (turn stream protocol — TUI, desktop)"
 
 [[api.endpoint]]
 method = "GET"

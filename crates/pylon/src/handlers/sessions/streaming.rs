@@ -28,7 +28,7 @@ use crate::extract::{Claims, require_nous_access, require_role};
 use crate::idempotency::LookupResult;
 use crate::middleware::RequestId;
 use crate::state::SessionsState;
-use crate::stream::{SseEvent, TurnOutcome, UsageData, WebchatEvent};
+use crate::stream::{SseEvent, TurnOutcome, TurnStreamEvent as PylonTurnStreamEvent, UsageData};
 use crate::turn_buffer::TurnBufferHandle;
 
 use super::types::{SendMessageRequest, StreamTurnRequest};
@@ -378,22 +378,22 @@ pub async fn send_message(
     ))
 }
 
-/// POST /api/v1/sessions/stream: stream a conversation turn (TUI protocol).
+/// POST /api/v1/sessions/stream: stream a conversation turn (turn stream protocol).
 ///
-/// Accepts the webchat-style `StreamRequest` (agentId, message, sessionKey) and
-/// returns SSE events in the `WebchatEvent` format that the TUI expects:
-/// `turn_start`, `text_delta`, `thinking_delta`, `tool_start`, `tool_result`,
-/// `turn_complete`, `error`.
+/// Accepts a `StreamTurnRequest` (`nous_id`, `message`, `session_key`) and
+/// returns SSE events in `TurnStreamEvent` format (used by TUI and desktop clients):
+/// `message_start`, `text_delta`, `thinking_delta`, `tool_use`, `tool_result`,
+/// `message_complete`, `error`.
 #[utoipa::path(
     post,
     path = "/api/v1/sessions/stream",
     request_body(
         content = serde_json::Value,
-        description = "Stream turn request: `{agentId, message, sessionKey?}`",
+        description = "Stream turn request: `{nous_id, message, session_key?}`",
         content_type = "application/json"
     ),
     responses(
-        (status = 200, description = "SSE event stream (WebchatEvent format)", content_type = "text/event-stream"),
+        (status = 200, description = "SSE event stream (TurnStreamEvent format)", content_type = "text/event-stream"),
         (status = 400, description = "Bad request", body = crate::error::ErrorResponse),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
         (status = 404, description = "Nous not found", body = crate::error::ErrorResponse),
@@ -412,7 +412,7 @@ pub async fn send_message(
     clippy::too_many_lines,
     reason = "streaming bridge setup is inherently sequential"
 )]
-#[instrument(skip(state, claims, body), fields(agent_id = %body.agent_id))]
+#[instrument(skip(state, claims, body), fields(nous_id = %body.nous_id))]
 pub async fn stream_turn(
     State(state): State<SessionsState>,
     claims: Claims,
@@ -420,8 +420,8 @@ pub async fn stream_turn(
     Json(body): Json<StreamTurnRequest>,
 ) -> Result<Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>>, ApiError> {
     require_role(&claims, Role::Operator)?;
-    require_nous_access(&claims, &body.agent_id)?;
-    let agent_id = body.agent_id;
+    require_nous_access(&claims, &body.nous_id)?;
+    let agent_id = body.nous_id;
     let message = body.message;
     let session_key = body.session_key;
 
@@ -446,7 +446,7 @@ pub async fn stream_turn(
     }
     if agent_id.len() > max_id_bytes {
         field_errors.push(FieldError {
-            field: "agent_id".to_owned(),
+            field: "nous_id".to_owned(),
             code: "too_long".to_owned(),
             message: format!("exceeds maximum length of {max_id_bytes} bytes"),
         });
@@ -483,10 +483,10 @@ pub async fn stream_turn(
 
     let session_id = resolve_session(&state, &agent_id, &session_key, model.as_deref()).await?;
 
-    let webchat_request_id = request_id.0.clone();
+    let stream_request_id = request_id.0.clone();
     let turn_id = koina::ulid::Ulid::new().to_string();
     // WHY(#3276): channel carries (seq, event) pairs for Last-Event-ID support.
-    let (webchat_tx, webchat_rx) = mpsc::channel::<(u64, WebchatEvent)>(32);
+    let (turn_tx, turn_rx) = mpsc::channel::<(u64, PylonTurnStreamEvent)>(32);
     let (nous_tx, mut nous_rx) = mpsc::channel::<TurnStreamEvent>(64);
 
     // WHY(#3276): Create a turn buffer so events survive client disconnection.
@@ -496,14 +496,14 @@ pub async fn stream_turn(
         .await;
     let buf_handle = TurnBufferHandle::new(turn_buf);
 
-    let start_event = WebchatEvent::MessageStart {
+    let start_event = PylonTurnStreamEvent::MessageStart {
         session_id: session_id.clone(),
         nous_id: agent_id.clone(),
         turn_id: turn_id.clone(),
         request_id: Some(request_id.0.clone()),
     };
-    let seq = record_webchat_event(&buf_handle, &start_event).await;
-    let _ = webchat_tx.send((seq, start_event)).await;
+    let seq = record_turn_event(&buf_handle, &start_event).await;
+    let _ = turn_tx.send((seq, start_event)).await;
 
     let sid = session_id;
     let aid = agent_id;
@@ -520,23 +520,23 @@ pub async fn stream_turn(
     // WHY: Returns a JoinHandle so the turn task can wait for all deltas to drain
     // before emitting turn_complete (prevents the race where turn_complete
     // arrives at the TUI before the final text_delta events).
-    let bridge_tx = webchat_tx.clone();
+    let bridge_tx = turn_tx.clone();
     let bridge_buf = buf_handle.clone();
     let bridge_handle = tokio::spawn(
         async move {
             while let Some(event) = nous_rx.recv().await {
-                let webchat_event = match event {
+                let turn_event = match event {
                     TurnStreamEvent::LlmDelta(LlmStreamEvent::TextDelta { text }) => {
-                        WebchatEvent::TextDelta { text }
+                        PylonTurnStreamEvent::TextDelta { text }
                     }
                     TurnStreamEvent::LlmDelta(LlmStreamEvent::ThinkingDelta { thinking }) => {
-                        WebchatEvent::ThinkingDelta { text: thinking }
+                        PylonTurnStreamEvent::ThinkingDelta { text: thinking }
                     }
                     TurnStreamEvent::ToolStart {
                         tool_id,
                         tool_name,
                         input,
-                    } => WebchatEvent::ToolUse {
+                    } => PylonTurnStreamEvent::ToolUse {
                         tool_name,
                         tool_id,
                         input,
@@ -547,7 +547,7 @@ pub async fn stream_turn(
                         result,
                         is_error,
                         duration_ms,
-                    } => WebchatEvent::ToolResult {
+                    } => PylonTurnStreamEvent::ToolResult {
                         tool_name,
                         tool_id,
                         result,
@@ -556,8 +556,8 @@ pub async fn stream_turn(
                     },
                     _ => continue,
                 };
-                let seq = record_webchat_event(&bridge_buf, &webchat_event).await;
-                if bridge_tx.send((seq, webchat_event)).await.is_err() {
+                let seq = record_turn_event(&bridge_buf, &turn_event).await;
+                if bridge_tx.send((seq, turn_event)).await.is_err() {
                     break;
                 }
             }
@@ -593,7 +593,7 @@ pub async fn stream_turn(
                     // seeing turn_complete before the final text_delta events.
                     let _ = bridge_handle.await;
 
-                    let event = WebchatEvent::MessageComplete {
+                    let event = PylonTurnStreamEvent::MessageComplete {
                         outcome: TurnOutcome {
                             text: result.content.clone(),
                             nous_id: aid,
@@ -606,8 +606,8 @@ pub async fn stream_turn(
                             cache_write_tokens: result.usage.cache_write_tokens,
                         },
                     };
-                    let seq = record_webchat_event(&buf_handle_task, &event).await;
-                    let _ = webchat_tx.send((seq, event)).await;
+                    let seq = record_turn_event(&buf_handle_task, &event).await;
+                    let _ = turn_tx.send((seq, event)).await;
                     buf_handle_task.mark_completed().await;
                 }
                 Err(err) => {
@@ -615,15 +615,15 @@ pub async fn stream_turn(
                     tracing::error!(error = %err, "streaming turn failed");
                     let _ = bridge_handle.await;
                     let (_, err_message) = turn_error_info(&err);
-                    let event = WebchatEvent::Error {
+                    let event = PylonTurnStreamEvent::Error {
                         message: err_message,
-                        request_id: Some(webchat_request_id.clone()),
+                        request_id: Some(stream_request_id.clone()),
                     };
-                    let seq = record_webchat_event(&buf_handle_task, &event).await;
-                    let _ = webchat_tx.send((seq, event)).await;
+                    let seq = record_turn_event(&buf_handle_task, &event).await;
+                    let _ = turn_tx.send((seq, event)).await;
                     // WHY: Always send a completion marker so the TUI knows the stream
                     // is finished, even on error paths.
-                    let event = WebchatEvent::MessageComplete {
+                    let event = PylonTurnStreamEvent::MessageComplete {
                         outcome: TurnOutcome {
                             text: String::new(),
                             nous_id: aid,
@@ -636,8 +636,8 @@ pub async fn stream_turn(
                             cache_write_tokens: 0,
                         },
                     };
-                    let seq = record_webchat_event(&buf_handle_task, &event).await;
-                    let _ = webchat_tx.send((seq, event)).await;
+                    let seq = record_turn_event(&buf_handle_task, &event).await;
+                    let _ = turn_tx.send((seq, event)).await;
                     buf_handle_task.mark_failed().await;
                 }
             }
@@ -647,7 +647,7 @@ pub async fn stream_turn(
 
     // WHY: Abort streaming turn task when the client disconnects.
     let stream = GuardedStream {
-        inner: ReceiverStream::new(webchat_rx).map(|(seq, event)| {
+        inner: ReceiverStream::new(turn_rx).map(|(seq, event)| {
             match serde_json::to_string(&event) {
                 Ok(data) => Ok(Event::default()
                     .event(event.event_type())
@@ -655,7 +655,7 @@ pub async fn stream_turn(
                     .id(seq.to_string())),
                 Err(e) => {
                     warn!(error = %e, "failed to serialize SSE event");
-                    // WHY: Use the WebchatEvent::Error shape so the fallback event has the
+                    // WHY: Use the TurnStreamEvent::Error shape so the fallback event has the
                     // same structure as all other error events in the stream (#3160).
                     Ok(Event::default()
                         .event("error")
@@ -980,8 +980,8 @@ async fn record_sse_event(buf: &TurnBufferHandle, event: &SseEvent) -> u64 {
     buf.record(&event_type, &data).await
 }
 
-/// Record a [`WebchatEvent`] to the turn buffer. Returns the assigned sequence number.
-async fn record_webchat_event(buf: &TurnBufferHandle, event: &WebchatEvent) -> u64 {
+/// Record a [`TurnStreamEvent`] to the turn buffer. Returns the assigned sequence number.
+async fn record_turn_event(buf: &TurnBufferHandle, event: &PylonTurnStreamEvent) -> u64 {
     let event_type = event.event_type().to_owned();
     let data = serde_json::to_string(event).unwrap_or_default();
     buf.record(&event_type, &data).await

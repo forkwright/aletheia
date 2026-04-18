@@ -432,9 +432,9 @@ async fn stream_turn_empty_message_returns_422() {
         "POST",
         "/api/v1/sessions/stream",
         Some(serde_json::json!({
-            "agentId": "syn",
+            "nous_id": "syn",
             "message": "",
-            "sessionKey": "test"
+            "session_key": "test"
         })),
     );
     let resp = app.oneshot(req).await.unwrap();
@@ -459,9 +459,9 @@ async fn stream_turn_oversized_message_returns_422() {
         "POST",
         "/api/v1/sessions/stream",
         Some(serde_json::json!({
-            "agentId": "syn",
+            "nous_id": "syn",
             "message": oversized_message,
-            "sessionKey": "test"
+            "session_key": "test"
         })),
     );
     let resp = app.oneshot(req).await.unwrap();
@@ -477,7 +477,7 @@ async fn stream_turn_oversized_message_returns_422() {
     );
 }
 
-/// Error path: `stream_turn` with unknown `agent_id` returns 404 Not Found.
+/// Error path: `stream_turn` with unknown `nous_id` returns 404 Not Found.
 #[tokio::test]
 async fn stream_turn_unknown_agent_returns_404() {
     let (app, _dir) = app().await;
@@ -485,9 +485,9 @@ async fn stream_turn_unknown_agent_returns_404() {
         "POST",
         "/api/v1/sessions/stream",
         Some(serde_json::json!({
-            "agentId": "nonexistent-agent",
+            "nous_id": "nonexistent-agent",
             "message": "test",
-            "sessionKey": "test"
+            "session_key": "test"
         })),
     );
     let resp = app.oneshot(req).await.unwrap();
@@ -497,7 +497,7 @@ async fn stream_turn_unknown_agent_returns_404() {
     assert_eq!(body["error"]["code"], "nous_not_found");
 }
 
-/// Error path: `stream_turn` with oversized `agent_id` returns 422.
+/// Error path: `stream_turn` with oversized `nous_id` returns 422.
 #[tokio::test]
 async fn stream_turn_oversized_agent_id_returns_422() {
     let (app, _dir) = app().await;
@@ -506,9 +506,9 @@ async fn stream_turn_oversized_agent_id_returns_422() {
         "POST",
         "/api/v1/sessions/stream",
         Some(serde_json::json!({
-            "agentId": oversized_agent_id,
+            "nous_id": oversized_agent_id,
             "message": "test",
-            "sessionKey": "test"
+            "session_key": "test"
         })),
     );
     let resp = app.oneshot(req).await.unwrap();
@@ -520,7 +520,7 @@ async fn stream_turn_oversized_agent_id_returns_422() {
     assert!(
         errors
             .iter()
-            .any(|e| e["field"] == "agent_id" && e["code"] == "too_long")
+            .any(|e| e["field"] == "nous_id" && e["code"] == "too_long")
     );
 }
 
@@ -533,9 +533,9 @@ async fn stream_turn_oversized_session_key_returns_422() {
         "POST",
         "/api/v1/sessions/stream",
         Some(serde_json::json!({
-            "agentId": "syn",
+            "nous_id": "syn",
             "message": "test",
-            "sessionKey": oversized_session_key
+            "session_key": oversized_session_key
         })),
     );
     let resp = app.oneshot(req).await.unwrap();
