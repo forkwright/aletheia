@@ -167,6 +167,33 @@ pub struct BenchmarkReport {
     /// System and run metadata.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub metadata: Option<BenchmarkMetadata>,
+    /// Statistical summary with 95% CI for key metrics.
+    ///
+    /// Populated by calling [`BenchmarkReport::with_statistics`].
+    /// Absent in reports produced without statistical analysis.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub statistics: Option<BenchmarkStatistics>,
+}
+
+/// Statistical summary for a benchmark run.
+///
+/// Carries the key aggregate metrics with 95% bootstrap CIs, absorbed from
+/// the quantified-self pipeline's statistical discipline. These numbers make
+/// results honest: a point estimate without a CI is not publishable.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BenchmarkStatistics {
+    /// 95% bootstrap CI lower bound for mean F1 across all questions.
+    pub f1_ci_low: f64,
+    /// 95% bootstrap CI upper bound for mean F1 across all questions.
+    pub f1_ci_high: f64,
+    /// 95% bootstrap CI lower bound for exact-match rate.
+    pub em_ci_low: f64,
+    /// 95% bootstrap CI upper bound for exact-match rate.
+    pub em_ci_high: f64,
+    /// Number of bootstrap resamples used to compute CI.
+    pub n_resamples: usize,
+    /// Tool + version string for provenance.
+    pub method: String,
 }
 
 impl BenchmarkReport {
@@ -178,6 +205,7 @@ impl BenchmarkReport {
             total: questions.len(),
             questions,
             metadata: None,
+            statistics: None,
         }
     }
 
@@ -193,7 +221,65 @@ impl BenchmarkReport {
             total: questions.len(),
             questions,
             metadata: Some(metadata),
+            statistics: None,
         }
+    }
+
+    /// Attach bootstrap CIs for F1 and exact-match rate to the report.
+    ///
+    /// Computes 95% percentile bootstrap CIs using `n_resamples` draws.
+    /// Call this after all questions have been collected, before publishing
+    /// results. Returns the same report unchanged if fewer than 2 questions
+    /// are present (CI requires n ≥ 2).
+    ///
+    /// # Provenance
+    ///
+    /// Absorbed from `shared/stats.py` in the quantified-self pipeline.
+    /// Reference: Efron & Hastie (2021) *Computer Age Statistical Inference*.
+    #[must_use]
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "question counts are small (<10K); f64 handles them exactly"
+    )]
+    #[expect(
+        clippy::as_conversions,
+        reason = "usize to f64 — question counts are bounded and small"
+    )]
+    pub fn with_statistics(mut self, n_resamples: usize) -> Self {
+        use crate::stats::bootstrap::bootstrap_ci;
+
+        if self.questions.len() < 2 {
+            return self;
+        }
+        let f1_scores: Vec<f64> = self.questions.iter().map(|q| q.score.f1).collect();
+        let em_scores: Vec<f64> = self
+            .questions
+            .iter()
+            .map(|q| if q.score.exact_match { 1.0 } else { 0.0 })
+            .collect();
+
+        let mean_fn = |data: &[f64]| {
+            if data.is_empty() {
+                0.0
+            } else {
+                data.iter().sum::<f64>() / data.len() as f64
+            }
+        };
+
+        let f1_ci = bootstrap_ci(&f1_scores, mean_fn, n_resamples, 42, 0.95);
+        let em_ci = bootstrap_ci(&em_scores, mean_fn, n_resamples, 42, 0.95);
+
+        if let (Ok(f1), Ok(em)) = (f1_ci, em_ci) {
+            self.statistics = Some(BenchmarkStatistics {
+                f1_ci_low: f1.ci_low,
+                f1_ci_high: f1.ci_high,
+                em_ci_low: em.ci_low,
+                em_ci_high: em.ci_high,
+                n_resamples: f1.n_resamples,
+                method: "percentile bootstrap (Efron & Hastie 2021)".to_owned(),
+            });
+        }
+        self
     }
 
     /// Fraction of questions with exact-match score >= 1.0.

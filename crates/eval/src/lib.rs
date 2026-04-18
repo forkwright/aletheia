@@ -23,6 +23,12 @@ pub mod scenario;
 pub mod scenarios;
 /// SSE stream consumer for real-time evaluation output.
 pub mod sse;
+/// Statistical helpers: bootstrap CI, effect size, FDR correction.
+///
+/// Absorbed from the quantified-self pipeline (`shared/stats.py`).
+/// Every benchmark comparison that publishes results must report
+/// CI + effect size + FDR-adjusted p-value via this module.
+pub mod stats;
 /// Configurable evaluation trigger scheduling.
 pub mod triggers;
 
