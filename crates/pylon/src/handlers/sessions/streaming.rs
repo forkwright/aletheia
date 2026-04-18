@@ -378,22 +378,22 @@ pub async fn send_message(
     ))
 }
 
-/// POST /api/v1/sessions/stream: stream a conversation turn (TUI protocol).
+/// POST /api/v1/sessions/stream: stream a conversation turn (turn stream protocol).
 ///
-/// Accepts the webchat-style `StreamRequest` (agentId, message, sessionKey) and
-/// returns SSE events in the `PylonTurnStreamEvent` format that the TUI expects:
-/// `turn_start`, `text_delta`, `thinking_delta`, `tool_start`, `tool_result`,
-/// `turn_complete`, `error`.
+/// Accepts a `StreamTurnRequest` (`nous_id`, `message`, `session_key`) and
+/// returns SSE events in `TurnStreamEvent` format (used by TUI and desktop clients):
+/// `message_start`, `text_delta`, `thinking_delta`, `tool_use`, `tool_result`,
+/// `message_complete`, `error`.
 #[utoipa::path(
     post,
     path = "/api/v1/sessions/stream",
     request_body(
         content = serde_json::Value,
-        description = "Stream turn request: `{agentId, message, sessionKey?}`",
+        description = "Stream turn request: `{nous_id, message, session_key?}`",
         content_type = "application/json"
     ),
     responses(
-        (status = 200, description = "SSE event stream (PylonTurnStreamEvent format)", content_type = "text/event-stream"),
+        (status = 200, description = "SSE event stream (TurnStreamEvent format)", content_type = "text/event-stream"),
         (status = 400, description = "Bad request", body = crate::error::ErrorResponse),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
         (status = 404, description = "Nous not found", body = crate::error::ErrorResponse),
@@ -655,7 +655,7 @@ pub async fn stream_turn(
                     .id(seq.to_string())),
                 Err(e) => {
                     warn!(error = %e, "failed to serialize SSE event");
-                    // WHY: Use the PylonTurnStreamEvent::Error shape so the fallback event has the
+                    // WHY: Use the TurnStreamEvent::Error shape so the fallback event has the
                     // same structure as all other error events in the stream (#3160).
                     Ok(Event::default()
                         .event("error")
@@ -980,7 +980,7 @@ async fn record_sse_event(buf: &TurnBufferHandle, event: &SseEvent) -> u64 {
     buf.record(&event_type, &data).await
 }
 
-/// Record a [`PylonTurnStreamEvent`] to the turn buffer. Returns the assigned sequence number.
+/// Record a [`TurnStreamEvent`] to the turn buffer. Returns the assigned sequence number.
 async fn record_webchat_event(buf: &TurnBufferHandle, event: &PylonTurnStreamEvent) -> u64 {
     let event_type = event.event_type().to_owned();
     let data = serde_json::to_string(event).unwrap_or_default();

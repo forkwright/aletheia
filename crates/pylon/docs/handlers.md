@@ -392,18 +392,18 @@ Retrieve conversation history.
 
 ### `POST /api/v1/sessions/stream`
 
-TUI streaming protocol. Creates or retrieves a session by `(agent_id, session_key)` and
-streams the turn using the webchat event format (distinct from the SSE format above).
+Turn stream protocol. Creates or retrieves a session by `(nous_id, session_key)` and
+streams the turn as `TurnStreamEvent` SSE events (used by TUI and desktop clients).
 
 **Request body:**
 
 ```json
-{ "agentId": "pronoea", "message": "Hello", "sessionKey": "main" }
+{ "nous_id": "pronoea", "message": "Hello", "session_key": "main" }
 ```
 
-`sessionKey` defaults to `"main"` if omitted.
+`session_key` defaults to `"main"` if omitted.
 
-**Response `200 OK`** - `text/event-stream` of `WebchatEvent`:
+**Response `200 OK`** - `text/event-stream` of `TurnStreamEvent`:
 
 | Type | Fields |
 |------|--------|
