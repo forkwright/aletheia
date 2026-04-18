@@ -94,7 +94,7 @@ impl SseEvent {
     }
 }
 
-/// SSE events for the TUI streaming protocol (`POST /api/v1/sessions/stream`).
+/// SSE events for the turn streaming protocol (`POST /api/v1/sessions/stream`).
 ///
 /// Used by `koilon` and the Signal integration. Unified with `SseEvent` naming:
 /// event types use the same `message_start`/`message_complete` vocabulary,
@@ -102,7 +102,7 @@ impl SseEvent {
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type")]
 #[non_exhaustive]
-pub(crate) enum WebchatEvent {
+pub(crate) enum TurnStreamEvent {
     /// Turn accepted — mirrors `SseEvent::MessageStart`.
     #[serde(rename = "message_start")]
     MessageStart {
@@ -148,7 +148,7 @@ pub(crate) enum WebchatEvent {
     },
 }
 
-impl WebchatEvent {
+impl TurnStreamEvent {
     /// SSE event name for the `event:` field.
     #[must_use]
     pub(crate) fn event_type(&self) -> &'static str {
