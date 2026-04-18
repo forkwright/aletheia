@@ -98,6 +98,16 @@ pub enum Error {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+
+    /// Statistical computation precondition violated.
+    #[snafu(display("stats error: {message}"))]
+    Stats {
+        /// Human-readable description of the violated precondition.
+        message: String,
+        /// Source location where the error was created.
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
 }
 
 /// Convenience alias for `Result` with eval's [`Error`] type.
