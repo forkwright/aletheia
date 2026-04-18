@@ -130,7 +130,7 @@ struct PendingCorrection {
 ///
 /// WHY: 0.35 catches rephrased questions and keyword overlap while
 /// filtering out topic switches and pure acknowledgements.
-const SEMANTIC_SIMILARITY_THRESHOLD: f64 = 0.35;
+const SEMANTIC_SIMILARITY_THRESHOLD: f64 = 0.5;
 
 /// Maximum length in characters for a continuation message that
 /// bypasses the semantic gate.
@@ -205,6 +205,12 @@ impl DpoExtractor {
                         rejected_turn: last.turn_number,
                     },
                 );
+            } else {
+                // WHY: a chained correction (correction turn with no intervening
+                // non-correction turn) invalidates any stale pending. Without this,
+                // pending from an earlier correction could spuriously pair with a
+                // much later non-correction turn.
+                self.pending.remove(session_id);
             }
             // Do not cache correction turns as last_turn.
             return None;
@@ -267,16 +273,18 @@ impl DpoExtractor {
             return true;
         }
 
-        let original_words: HashSet<String> = original_prompt
-            .to_lowercase()
-            .split_whitespace()
-            .map(ToOwned::to_owned)
-            .collect();
-        let chosen_words: HashSet<String> = chosen_trimmed
-            .to_lowercase()
-            .split_whitespace()
-            .map(ToOwned::to_owned)
-            .collect();
+        // WHY: normalize by stripping non-alphanumerics so that "france?" and
+        // "france." collapse to the same token. Without this, trailing punctuation
+        // perturbs Jaccard similarity enough to fall below the threshold.
+        let tokenize = |s: &str| -> HashSet<String> {
+            s.to_lowercase()
+                .split_whitespace()
+                .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric()).to_owned())
+                .filter(|w| !w.is_empty())
+                .collect()
+        };
+        let original_words = tokenize(original_prompt);
+        let chosen_words = tokenize(chosen_trimmed);
 
         if original_words.is_empty() || chosen_words.is_empty() {
             return false;
@@ -411,7 +419,6 @@ pub fn record_dpo_pair_captured(nous_id: &str) {
 
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
-#[expect(clippy::indexing_slicing, reason = "test asserts len before indexing")]
 mod tests {
     use super::*;
 
@@ -591,7 +598,7 @@ mod tests {
     fn dpo_writer_creates_file() {
         let dir = tempfile::tempdir().expect("tempdir");
         let writer = DpoWriter::new(dir.path()).expect("new");
-        let _ = writer.file_path(); // file created on first write
+        assert!(writer.file_path().to_string_lossy().ends_with(".jsonl"));
     }
 
     #[test]
@@ -614,7 +621,8 @@ mod tests {
         let lines: Vec<&str> = content.lines().collect();
         assert_eq!(lines.len(), 2);
 
-        let parsed: DpoPair = serde_json::from_str(lines[0]).expect("parse");
+        let parsed: DpoPair =
+            serde_json::from_str(lines.first().expect("first line")).expect("parse");
         assert_eq!(parsed.prompt, "P");
         assert_eq!(parsed.chosen, "C");
         assert_eq!(parsed.rejected, "R");
