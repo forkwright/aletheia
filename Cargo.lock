@@ -4991,6 +4991,11 @@ dependencies = [
  "jiff",
  "koina",
  "landlock",
+ "poiesis-core",
+ "poiesis-lint",
+ "poiesis-sheet",
+ "poiesis-text",
+ "poiesis-verify",
  "prometheus-client",
  "proptest",
  "reqwest 0.13.2",
@@ -5306,6 +5311,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "poiesis-lint"
+version = "0.20.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "snafu",
+]
+
+[[package]]
 name = "poiesis-sheet"
 version = "0.20.0"
 dependencies = [
@@ -5333,6 +5347,15 @@ dependencies = [
  "poiesis-core",
  "snafu",
  "zip 7.2.0",
+]
+
+[[package]]
+name = "poiesis-verify"
+version = "0.20.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "snafu",
 ]
 
 [[package]]

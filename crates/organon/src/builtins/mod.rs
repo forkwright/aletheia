@@ -30,6 +30,8 @@ pub mod memory;
 pub mod parameters;
 /// Planning project management tools (create, status, execute, verify).
 pub mod planning;
+/// Poiesis report tools: generate_document, lint_report, verify_report.
+pub mod poiesis;
 /// Web research tools (web_fetch).
 pub mod research;
 /// Issue triage tools (scan, score, stage, approve).
@@ -90,5 +92,6 @@ pub fn register_all_with_sandbox(
     energeia::register(registry, None)?;
     #[cfg(feature = "energeia")]
     bookkeeper::register(registry)?;
+    poiesis::register(registry)?;
     Ok(())
 }
