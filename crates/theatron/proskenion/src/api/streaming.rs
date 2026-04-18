@@ -64,8 +64,8 @@ pub(crate) fn stream_turn(
 
     let body = serde_json::json!({
         "message": message,
-        "agentId": nous_id,
-        "sessionKey": session_key,
+        "nous_id": nous_id,
+        "session_key": session_key,
     });
 
     let builder = client
