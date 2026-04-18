@@ -1008,21 +1008,21 @@ pub(crate) async fn run_pipeline(
         // Session IDs are ULID-based and globally unique. Closes #3421.
         if pipeline_config.training.enabled {
             let dpo_dir = oikos.root().join(&pipeline_config.training.path);
-            if let Ok(writer) = crate::training::DpoWriter::new(&dpo_dir) {
-                if let Some(pair) = crate::training::dpo::process_turn_global(
+            if let Ok(writer) = crate::training::DpoWriter::new(&dpo_dir)
+                && let Some(pair) = crate::training::dpo::process_turn_global(
                     &input.session.id,
                     input.session.turn,
                     &input.content,
                     &result.content,
                     correction_signal.is_correction,
-                ) {
-                    match writer.write_pair(&pair) {
-                        Ok(()) => {
-                            crate::training::dpo::record_dpo_pair_captured(&config.id);
-                        }
-                        Err(e) => {
-                            tracing::warn!(error = %e, "DPO pair write failed");
-                        }
+                )
+            {
+                match writer.write_pair(&pair) {
+                    Ok(()) => {
+                        crate::training::dpo::record_dpo_pair_captured(&config.id);
+                    }
+                    Err(e) => {
+                        tracing::warn!(error = %e, "DPO pair write failed");
                     }
                 }
             }

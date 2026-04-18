@@ -109,17 +109,23 @@ async fn run_via_api(args: &IngestArgs) -> Result<()> {
         println!("--dry-run: would have ingested (via API)");
     }
 
-    let inserted = result["inserted"].as_u64().unwrap_or(0);
-    let skipped = result["skipped"].as_u64().unwrap_or(0);
+    let inserted = result
+        .get("inserted")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
+    let skipped = result
+        .get("skipped")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
     println!("Ingested: {inserted} facts, skipped: {skipped}");
 
-    if let Some(errors) = result["errors"].as_array() {
-        if !errors.is_empty() {
-            println!("\nErrors:");
-            for err in errors {
-                if let Some(msg) = err["message"].as_str() {
-                    println!("  - {msg}");
-                }
+    if let Some(errors) = result.get("errors").and_then(|v| v.as_array())
+        && !errors.is_empty()
+    {
+        println!("\nErrors:");
+        for err in errors {
+            if let Some(msg) = err.get("message").and_then(|v| v.as_str()) {
+                println!("  - {msg}");
             }
         }
     }
@@ -132,8 +138,6 @@ fn run_direct(
     args: &IngestArgs,
     store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
 ) -> Result<()> {
-    use std::io::Read;
-
     let path = &args.path;
     if !path.exists() {
         whatever!("path does not exist: {}", path.display());
@@ -150,9 +154,7 @@ fn run_direct(
     let mut total_skipped = 0usize;
 
     for file in &files {
-        let mut content = String::new();
-        std::fs::File::open(file)
-            .and_then(|mut f| f.read_to_string(&mut content))
+        let content = std::fs::read_to_string(file)
             .with_whatever_context(|_| format!("failed to read {}", file.display()))?;
 
         let format_str = if args.format == "auto" {
@@ -229,11 +231,12 @@ async fn read_path(path: &Path) -> Result<String> {
             let path = entry.path();
             if path.is_file() && is_supported_extension(&path) {
                 let mut content = String::new();
-                if let Ok(mut file) = tokio::fs::File::open(&path).await {
-                    if file.read_to_string(&mut content).await.is_ok() {
-                        combined.push_str(&format!("\n\n--- {} ---\n\n", path.display()));
-                        combined.push_str(&content);
-                    }
+                if let Ok(mut file) = tokio::fs::File::open(&path).await
+                    && file.read_to_string(&mut content).await.is_ok()
+                {
+                    use std::fmt::Write as _;
+                    let _ = writeln!(combined, "\n\n--- {} ---\n", path.display());
+                    combined.push_str(&content);
                 }
             }
         }
@@ -246,7 +249,6 @@ async fn read_path(path: &Path) -> Result<String> {
 fn detect_format(path: &Path) -> Option<&'static str> {
     path.extension().and_then(|ext| match ext.to_str()? {
         "md" | "markdown" => Some("markdown"),
-        "txt" | "text" => Some("text"),
         "json" => Some("json"),
         "jsonl" => Some("jsonl"),
         _ => Some("text"),

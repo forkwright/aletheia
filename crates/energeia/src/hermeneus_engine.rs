@@ -57,13 +57,10 @@ impl HermeneusEngine {
         };
 
         let cache_system = system.is_some()
-            && spec.prompt_components.is_some()
-            && !spec
+            && spec
                 .prompt_components
                 .as_ref()
-                .expect("checked above")
-                .static_prefix
-                .is_empty();
+                .is_some_and(|c| !c.static_prefix.is_empty());
 
         CompletionRequest {
             model: options
@@ -110,7 +107,7 @@ impl DispatchEngine for HermeneusEngine {
 
             let success = matches!(
                 response.stop_reason,
-                Some(StopReason::EndTurn) | Some(StopReason::StopSequence) | None
+                StopReason::EndTurn | StopReason::StopSequence
             );
 
             let result = SessionResult {
@@ -178,7 +175,7 @@ impl DispatchEngine for HermeneusEngine {
 
             let success = matches!(
                 response.stop_reason,
-                Some(StopReason::EndTurn) | Some(StopReason::StopSequence) | None
+                StopReason::EndTurn | StopReason::StopSequence
             );
 
             let result = SessionResult {
@@ -255,7 +252,7 @@ impl SessionHandle for HermeneusSessionHandle {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
-#[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(clippy::indexing_slicing, reason = "test assertions")]
 mod tests {
     use super::*;
     use crate::prompt_cache::PromptComponents;
@@ -306,10 +303,10 @@ mod tests {
 
         let spec = SessionSpec {
             prompt: "dynamic".to_owned(),
-            system_prompt: Some("".to_owned()),
+            system_prompt: Some(String::new()),
             cwd: None,
             prompt_components: Some(PromptComponents {
-                static_prefix: "".to_owned(),
+                static_prefix: String::new(),
                 dynamic_suffix: "dynamic".to_owned(),
             }),
         };

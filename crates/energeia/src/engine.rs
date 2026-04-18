@@ -363,6 +363,8 @@ mod tests {
             success: true,
             result_text: Some("done".to_owned()),
             model: Some("claude-3-5-sonnet".to_owned()),
+            cache_hit_tokens: 0,
+            cache_miss_tokens: 0,
         };
         let json = serde_json::to_string(&result).unwrap();
         let deserialized: SessionResult = serde_json::from_str(&json).unwrap();

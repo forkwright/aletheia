@@ -112,12 +112,43 @@ struct MigrateManifest {
 }
 
 fn absolute_path(path: &Path) -> Result<PathBuf> {
-    if path.is_absolute() {
-        Ok(path.to_path_buf())
+    let raw = if path.is_absolute() {
+        path.to_path_buf()
     } else {
         let cwd = std::env::current_dir().whatever_context("failed to get current directory")?;
-        Ok(cwd.join(path))
+        cwd.join(path)
+    };
+    // WHY: canonicalize so macOS `/var/...` and `/private/var/...` compare
+    // equal during the same-directory and containment checks. If the path
+    // itself doesn't exist yet (e.g. `--dest`), walk up to the nearest
+    // existing ancestor, canonicalize that, then re-append the trailing
+    // segments so the resulting PathBuf is still a canonical form.
+    Ok(canonicalize_partial(&raw))
+}
+
+fn canonicalize_partial(path: &Path) -> PathBuf {
+    if let Ok(canonical) = path.canonicalize() {
+        return canonical;
     }
+    let mut tail: Vec<&std::ffi::OsStr> = Vec::new();
+    let mut ancestor = path;
+    while let Some(parent) = ancestor.parent() {
+        if let Ok(canonical) = parent.canonicalize() {
+            let mut result = canonical;
+            if let Some(last) = ancestor.file_name() {
+                tail.push(last);
+            }
+            for seg in tail.iter().rev() {
+                result.push(seg);
+            }
+            return result;
+        }
+        if let Some(last) = ancestor.file_name() {
+            tail.push(last);
+        }
+        ancestor = parent;
+    }
+    path.to_path_buf()
 }
 
 fn copy_tree(src: &Path, dst: &Path, manifest: &mut MigrateManifest) -> Result<()> {
@@ -331,9 +362,39 @@ fn maybe_rewrite_path(path_str: &str, source_root: &Path, _dest_root: &Path) -> 
     if !path.is_absolute() {
         return None;
     }
-    if path.starts_with(source_root) {
-        let relative = path.strip_prefix(source_root).ok()?;
-        return Some(relative.to_string_lossy().into_owned());
+    // WHY: `source_root` is already canonical (via `absolute_path`), but paths
+    // inside a config file may still be in the non-canonical form the user
+    // authored (`/var/folders/...` on macOS, before the `/private` prefix is
+    // resolved). The target may not exist either (e.g. a `packs` directory
+    // declared but never created), so we cannot rely on `path.canonicalize()`.
+    // Build every plausible form of both sides and try each pairing.
+    let forms = |p: &Path| -> Vec<PathBuf> {
+        let mut v = vec![p.to_path_buf()];
+        if let Ok(canonical) = p.canonicalize()
+            && canonical != *p
+        {
+            v.push(canonical);
+        }
+        if let Ok(stripped) = p.strip_prefix("/private") {
+            let unprefixed = Path::new("/").join(stripped);
+            if !v.contains(&unprefixed) {
+                v.push(unprefixed);
+            }
+        }
+        v
+    };
+
+    let source_forms = forms(source_root);
+    let path_forms = forms(path);
+
+    for src in &source_forms {
+        for p in &path_forms {
+            if p.starts_with(src)
+                && let Ok(rel) = p.strip_prefix(src)
+            {
+                return Some(rel.to_string_lossy().into_owned());
+            }
+        }
     }
     None
 }
