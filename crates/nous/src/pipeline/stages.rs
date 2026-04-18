@@ -14,7 +14,7 @@ use organon::registry::ToolRegistry;
 use organon::types::ToolContext;
 use taxis::oikos::Oikos;
 
-use crate::bootstrap::{BootstrapFileCache, BootstrapSection, TaskHint};
+use crate::bootstrap::{BootstrapFileCache, BootstrapSection, LlmRecipe, TaskHint};
 use crate::compact::CompactConfig;
 use crate::config::{NousConfig, PipelineConfig};
 use crate::error;
@@ -40,6 +40,7 @@ pub(super) async fn run_context_stage(
     ctx: &mut PipelineContext,
     extra_bootstrap: Vec<BootstrapSection>,
     task_hint: TaskHint,
+    recipe: LlmRecipe,
     bootstrap_cache: Option<&BootstrapFileCache>,
     emitter: &EventEmitter,
 ) -> error::Result<()> {
@@ -57,6 +58,7 @@ pub(super) async fn run_context_stage(
         ctx,
         extra_bootstrap,
         task_hint,
+        recipe,
         bootstrap_cache,
     )
     .instrument(span.clone())
