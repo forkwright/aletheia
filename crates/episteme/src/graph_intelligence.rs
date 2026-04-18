@@ -444,6 +444,11 @@ impl crate::knowledge_store::KnowledgeStore {
     fn bfs_fallback_2hop(&self, seed_entity_ids: &[String]) -> HashMap<String, u32> {
         let mut proximity = HashMap::new();
         for seed_id in seed_entity_ids {
+            // WHY: callers rely on the seed appearing at hop 0 in the result
+            // regardless of which implementation served the query. The 4-hop
+            // Datalog path includes seeds; mirror that here so behaviour does
+            // not silently diverge under the slower CI path.
+            proximity.insert(seed_id.clone(), 0);
             let Ok(entity_id) = crate::id::EntityId::new(seed_id) else {
                 continue;
             };
