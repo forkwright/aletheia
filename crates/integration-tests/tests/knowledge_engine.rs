@@ -202,7 +202,7 @@ fn schema_version_queryable() {
     })
     .expect("open_mem");
     let version = store.schema_version().expect("version");
-    assert_eq!(version, 6);
+    assert_eq!(version, 8);
 }
 
 // Verify ordering of multiple facts by confidence (descending).

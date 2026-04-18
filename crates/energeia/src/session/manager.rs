@@ -354,6 +354,8 @@ impl SessionManager {
                     )),
                     effective_model.clone(),
                     prompt.blast_radius.clone(),
+                    0,
+                    0,
                 ));
             }
 
@@ -522,10 +524,7 @@ mod tests {
             depends_on: vec![],
             acceptance_criteria: vec![],
             blast_radius: vec![],
-            body: format!(
-                "implement task {number
-            prompt_components: None,}"
-            ),
+            body: format!("implement task {number}"),
             prompt_components: None,
         }
     }
@@ -546,6 +545,8 @@ mod tests {
                 success: true,
                 result_text: Some("task complete".to_owned()),
                 model: Some("claude-3-5-sonnet".to_owned()),
+                cache_hit_tokens: 0,
+                cache_miss_tokens: 0,
             },
         }
     }
@@ -561,6 +562,8 @@ mod tests {
                 success: false,
                 result_text: Some("stuck".to_owned()),
                 model: Some("claude-3-5-sonnet".to_owned()),
+                cache_hit_tokens: 0,
+                cache_miss_tokens: 0,
             },
         }
     }
@@ -581,6 +584,8 @@ mod tests {
                 success: true,
                 result_text: Some("PR: https://github.com/acme/repo/pull/42".to_owned()),
                 model: Some("claude-3-5-sonnet".to_owned()),
+                cache_hit_tokens: 0,
+                cache_miss_tokens: 0,
             },
         }
     }
@@ -776,6 +781,8 @@ mod tests {
                     success: false,
                     result_text: None,
                     model: Some("claude-3-5-sonnet".to_owned()),
+                    cache_hit_tokens: 0,
+                    cache_miss_tokens: 0,
                 },
             },
             success_outcome("sess-err-r1", 0.10, 5),

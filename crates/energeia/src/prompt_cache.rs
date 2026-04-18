@@ -113,6 +113,8 @@ fn build_static_prefix(
     standards_dir: Option<&Path>,
     standards: &[String],
 ) -> String {
+    const VALIDATION_GATE: &str = "\n## Validation Gate\n\nBefore finishing, run the full validation suite (format, lint, test) and confirm all acceptance criteria pass.";
+
     let mut parts: Vec<String> = Vec::new();
 
     // Role definition.
@@ -148,7 +150,6 @@ fn build_static_prefix(
     }
 
     // Validation gate.
-    const VALIDATION_GATE: &str = "\n## Validation Gate\n\nBefore finishing, run the full validation suite (format, lint, test) and confirm all acceptance criteria pass.";
     parts.push(VALIDATION_GATE.to_owned());
 
     parts.join("\n\n---\n\n")
@@ -159,10 +160,10 @@ fn build_dynamic_suffix(project: &str, scope: Option<&str>, prompt_body: &str) -
 
     parts.push(format!("Project: {project}"));
 
-    if let Some(scope_text) = scope {
-        if !scope_text.is_empty() {
-            parts.push(format!("Scope: {scope_text}"));
-        }
+    if let Some(scope_text) = scope
+        && !scope_text.is_empty()
+    {
+        parts.push(format!("Scope: {scope_text}"));
     }
 
     parts.push(prompt_body.to_owned());
@@ -256,7 +257,13 @@ mod tests {
 
     #[test]
     fn to_full_prompt_without_prefix_returns_suffix_only() {
-        let components = PromptComponents::build(None, "proj", None, &[], None, "body text");
+        // WHY: `build()` always pushes a validation gate into the static prefix.
+        // Direct construction with an empty prefix verifies the `is_empty` branch
+        // of `to_full_prompt`.
+        let components = PromptComponents {
+            static_prefix: String::new(),
+            dynamic_suffix: "body text".to_owned(),
+        };
         assert_eq!(components.to_full_prompt(), "body text");
     }
 
@@ -264,8 +271,9 @@ mod tests {
     fn to_session_spec_populates_fields() {
         let components = PromptComponents::build(Some("role"), "proj", None, &[], None, "body");
         let spec = components.to_session_spec(Some("/tmp".to_owned()));
-        assert_eq!(spec.prompt, "body");
-        assert_eq!(spec.system_prompt, Some("role".to_owned()));
+        // `prompt` carries the full dynamic suffix (project + body).
+        assert!(spec.prompt.ends_with("body"));
+        assert!(spec.system_prompt.as_deref().unwrap().contains("role"));
         assert_eq!(spec.cwd, Some("/tmp".to_owned()));
         assert!(spec.prompt_components.is_some());
     }

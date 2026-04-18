@@ -175,6 +175,8 @@ mod tests {
             success,
             result_text: Some("done".to_owned()),
             model: Some("claude-3-5-sonnet".to_owned()),
+            cache_hit_tokens: 0,
+            cache_miss_tokens: 0,
         }
     }
 

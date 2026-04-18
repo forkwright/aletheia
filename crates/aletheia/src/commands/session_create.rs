@@ -7,7 +7,6 @@ use clap::Args;
 use snafu::prelude::*;
 
 use mneme::store::SessionStore;
-use taxis::config::AletheiaConfig;
 use taxis::loader::load_config;
 use taxis::oikos::Oikos;
 
@@ -114,6 +113,11 @@ fn is_unique_constraint_violation(err: &mneme::error::Error) -> bool {
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(clippy::expect_used, reason = "test assertions")]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "test fixture setup uses sync std::fs to write config files before exercising run()"
+)]
 mod tests {
     use super::*;
 
@@ -150,12 +154,13 @@ mod tests {
         std::fs::write(
             root.join("config/aletheia.toml"),
             r#"
-[agents.defaults.model_defaults]
-model = "mock-model"
+[agents.defaults.model]
+primary = "mock-model"
 
 [[agents.list]]
 id = "alice"
 name = "Alice"
+workspace = "/tmp/alice"
 "#,
         )
         .unwrap();
@@ -192,6 +197,7 @@ name = "Alice"
 [[agents.list]]
 id = "alice"
 name = "Alice"
+workspace = "/tmp/alice"
 "#,
         )
         .unwrap();
@@ -220,6 +226,7 @@ name = "Alice"
 [[agents.list]]
 id = "alice"
 name = "Alice"
+workspace = "/tmp/alice"
 "#,
         )
         .unwrap();

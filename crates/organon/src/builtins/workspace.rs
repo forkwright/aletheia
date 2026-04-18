@@ -268,7 +268,18 @@ const PROTECTED_SUBSTRINGS: &[&str] = &[".credentials"];
 
 /// Check if a resolved path matches a protected file pattern.
 fn is_protected_file(path: &Path, workspace: &Path) -> Option<&'static str> {
-    let relative = path.strip_prefix(workspace).unwrap_or(path);
+    // WHY: `path` is always canonical (resolved via `resolve_path`), but the
+    // `workspace` we were handed may not be. On macOS `/var/...` and
+    // `/private/var/...` both point to the same directory, and without matching
+    // canonical forms `strip_prefix` falls through so `rel_str` becomes the
+    // full absolute path and never matches `"IDENTITY.md"`. Canonicalize the
+    // workspace here before stripping.
+    let workspace_canonical = workspace.canonicalize();
+    let ws_ref = workspace_canonical.as_deref().unwrap_or(workspace);
+    let relative = path
+        .strip_prefix(ws_ref)
+        .or_else(|_| path.strip_prefix(workspace))
+        .unwrap_or(path);
     let rel_str = relative.to_string_lossy();
 
     for &protected in PROTECTED_FILES {

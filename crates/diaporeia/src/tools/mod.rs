@@ -18,7 +18,7 @@ use symbolon::types::Role;
 use crate::error::{
     FactNotFoundSnafu, InvalidInputSnafu, KnowledgeStoreSnafu, KnowledgeStoreUnavailableSnafu,
     NousNotFoundSnafu, PipelineSnafu, RepomixPackSnafu, RepomixUnavailableSnafu,
-    SerializationSnafu, SessionStoreSnafu, TemplateNotFoundSnafu, UnauthorizedSnafu,
+    SerializationSnafu, SessionStoreSnafu, UnauthorizedSnafu,
 };
 use crate::rate_limit::Tier;
 use crate::server::DiaporeiaServer;
@@ -973,14 +973,7 @@ impl DiaporeiaServer {
         require_role(self, &context, Role::Agent, "repomix_template_get").await?;
         require_repomix(self).await?;
 
-        let template = crate::repomix::get_template(&params.name).map_err(|_| {
-            rmcp::ErrorData::from(
-                TemplateNotFoundSnafu {
-                    name: params.name.clone(),
-                }
-                .build(),
-            )
-        })?;
+        let template = crate::repomix::get_template(&params.name).map_err(rmcp::ErrorData::from)?;
         let json = serde_json::to_string_pretty(&serde_json::json!({
             "name": template.name,
             "description": template.description,

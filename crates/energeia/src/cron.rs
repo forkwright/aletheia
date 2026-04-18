@@ -322,6 +322,7 @@ fn apply_jitter(base: DateTime<Utc>, jitter: Duration) -> DateTime<Utc> {
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -379,7 +380,7 @@ mod tests {
     #[test]
     fn jitter_applies_signed_offset() {
         let base = Utc.with_ymd_and_hms(2026, 4, 17, 12, 0, 0).unwrap();
-        let jitter = Duration::from_secs(300);
+        let jitter = Duration::from_mins(5);
         let mut seen_different = false;
         for _ in 0..100 {
             let result = apply_jitter(base, jitter);

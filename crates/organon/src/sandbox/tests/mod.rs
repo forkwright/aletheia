@@ -2,6 +2,8 @@
 #![expect(clippy::expect_used, reason = "test assertions")]
 use std::path::{Path, PathBuf};
 
+use koina::system::{Environment, RealSystem};
+
 use super::config::expand_tilde;
 use super::*;
 mod egress;
@@ -194,21 +196,23 @@ fn policy_includes_system_paths() {
         policy.exec_paths.contains(&PathBuf::from("/lib64")),
         "policy should include /lib64 in exec paths"
     );
-    // WHY: On macOS /tmp is a symlink to /private/tmp, so the policy stores the
-    // canonical form. Canonicalize both sides before comparing so the assertion
-    // passes on all platforms. Closes #3573.
-    let tmp_canonical = PathBuf::from("/tmp")
+    // WHY: On macOS `/tmp` is a symlink to `/private/tmp` AND `RealSystem::temp_dir()`
+    // returns the per-user `/var/folders/.../T` directory, not `/tmp`. Compare
+    // against whatever the platform temp dir actually is (canonicalized on
+    // both sides) so the assertion passes on every runner. Closes #3573.
+    let expected = RealSystem
+        .temp_dir()
         .canonicalize()
-        .unwrap_or_else(|_| PathBuf::from("/tmp"));
+        .unwrap_or_else(|_| RealSystem.temp_dir());
     let write_paths_canonical: Vec<PathBuf> = policy
         .write_paths
         .iter()
         .map(|p| p.canonicalize().unwrap_or_else(|_| p.clone()))
         .collect();
     assert!(
-        write_paths_canonical.contains(&tmp_canonical),
-        "policy should include /tmp (canonical: {}) in write paths",
-        tmp_canonical.display()
+        write_paths_canonical.contains(&expected),
+        "policy should include the platform temp dir ({}) in write paths",
+        expected.display()
     );
 }
 
