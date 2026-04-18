@@ -267,6 +267,58 @@ Use Tier 1 by default. Use Tier 2 when the task requires domain-specific judgmen
 
 ---
 
+## Dispatch prompts
+
+Dispatch prompts (work orders sent to coding agents via energeia) have
+additional requirements beyond standard API prompts. A dispatch prompt is
+picked up by a worker with zero prior context. It must be fully self-contained.
+
+### Ten ground rules
+
+1. **Self-contained work order.** The worker reads nothing except what the
+   prompt provides (plus the repo). No implicit prior context, no "as
+   discussed", no session state.
+
+2. **Blast radius is an authorization boundary.** List every file and
+   directory the worker may touch. Files outside that list are off-limits.
+   The QA gate enforces this mechanically.
+
+3. **One PR per prompt.** Each prompt produces exactly one pull request.
+   Prompts that produce multiple PRs are scoped incorrectly.
+
+4. **Acceptance criteria are verifiable.** Every criterion must have a
+   deterministic pass/fail answer (a command that exits 0 or non-zero, a
+   structural property that can be checked). "Code is clean" is not a
+   criterion. "`cargo clippy -- -D warnings` exits 0" is.
+
+5. **Task goes last.** Context, constraints, and criteria come first. The
+   task directive is the final section. Placing the task first degrades
+   quality by up to 30% (see § User prompt ordering).
+
+6. **Model tier matches task complexity.** Opus for architecture, Sonnet for
+   execution, Haiku for mechanical. See `standards/AGENTIC_PIPELINE.md §
+   Model tier selection`.
+
+7. **QA sub-agent before completion.** Complex PRs (cross-crate, security,
+   new subsystems) require a semantic QA sub-agent evaluation before merge.
+   Declare this in the acceptance criteria.
+
+8. **Standards reference is explicit.** Name the standards files that govern
+   the work. Don't assume the worker will discover them.
+
+9. **Progress commits required.** Multi-step tasks must commit at each logical
+   checkpoint. Commits enable bisect and recovery if the worker gets stuck.
+
+10. **Gate trailer in final commit.** Include `Gate-Passed: kanon 0.1.0` in
+    the final commit body. The steward checks for this before merging.
+
+### Templates
+
+Role-specific prompt templates with YAML frontmatter:
+`workflow/prompts/templates/` — coder, reviewer, researcher, refactor, infra.
+
+---
+
 ## Anti-patterns
 
 - Prose-dump system prompts without structural markers (use XML tags)
@@ -280,3 +332,6 @@ Use Tier 1 by default. Use Tier 2 when the task requires domain-specific judgmen
 - Examples that don't match actual use cases
 - Rules without WHY (followed rigidly, not understood)
 - Identity claims in role definitions (see [Role framing](#role-framing) -- use directive-only instead)
+- Dispatch prompts that assume prior context (worker starts cold every time)
+- Acceptance criteria that cannot be mechanically verified
+- Missing blast radius (QA cannot check what it cannot enumerate)

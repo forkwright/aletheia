@@ -1,0 +1,27 @@
+# Git guard — block destructive git operations without explicit operator approval.
+#
+# Fires on tool:called for any tool that executes a shell command. Inspects the
+# command for git operations that cannot be undone and either warns or blocks.
+#
+# Copy to shared/hooks/ and set enabled: true to activate.
+# Set ALETHEIA_GIT_GUARD_BLOCK=1 to switch from warn to block mode.
+#
+# Permanently blocked (no override): force push, --delete on remote refs, --mirror.
+# Operator-override required: push to main/master, reset --hard, clean -f.
+
+name: git-guard
+event: tool:called
+enabled: false
+description: >
+  Block or warn on destructive git operations. Permanent block on force push
+  and remote branch deletion. Operator-approval block on push to main and
+  history-rewriting commands.
+
+handler:
+  type: shell
+  command: <aletheia-root>/shared/hooks/_templates/git-guard.sh
+  timeout: 5s
+  failAction: warn   # change to "block" to hard-block the operation
+  env:
+    # Set to 1 to switch from warn to block mode for operator-approval operations.
+    ALETHEIA_GIT_GUARD_BLOCK: "0"
