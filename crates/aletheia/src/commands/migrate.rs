@@ -118,10 +118,37 @@ fn absolute_path(path: &Path) -> Result<PathBuf> {
         let cwd = std::env::current_dir().whatever_context("failed to get current directory")?;
         cwd.join(path)
     };
-    // WHY: canonicalize existing paths so macOS `/var/...` and `/private/var/...`
-    // compare equal during the same-directory / containment checks below. Missing
-    // paths (e.g. a --dest that hasn't been created yet) pass through unchanged.
-    Ok(raw.canonicalize().unwrap_or(raw))
+    // WHY: canonicalize so macOS `/var/...` and `/private/var/...` compare
+    // equal during the same-directory and containment checks. If the path
+    // itself doesn't exist yet (e.g. `--dest`), walk up to the nearest
+    // existing ancestor, canonicalize that, then re-append the trailing
+    // segments so the resulting PathBuf is still a canonical form.
+    Ok(canonicalize_partial(&raw))
+}
+
+fn canonicalize_partial(path: &Path) -> PathBuf {
+    if let Ok(canonical) = path.canonicalize() {
+        return canonical;
+    }
+    let mut tail: Vec<&std::ffi::OsStr> = Vec::new();
+    let mut ancestor = path;
+    while let Some(parent) = ancestor.parent() {
+        if let Ok(canonical) = parent.canonicalize() {
+            let mut result = canonical;
+            if let Some(last) = ancestor.file_name() {
+                tail.push(last);
+            }
+            for seg in tail.iter().rev() {
+                result.push(seg);
+            }
+            return result;
+        }
+        if let Some(last) = ancestor.file_name() {
+            tail.push(last);
+        }
+        ancestor = parent;
+    }
+    path.to_path_buf()
 }
 
 fn copy_tree(src: &Path, dst: &Path, manifest: &mut MigrateManifest) -> Result<()> {
@@ -335,21 +362,30 @@ fn maybe_rewrite_path(path_str: &str, source_root: &Path, _dest_root: &Path) -> 
     if !path.is_absolute() {
         return None;
     }
-    // WHY: canonicalize both sides so macOS tempdirs like `/var/folders/...`
-    // (which expand to `/private/var/folders/...`) match the path as written
-    // into the config. Without this, `starts_with` returns false on macOS and
-    // the path is left untouched.
+    // WHY: on macOS, `/var/folders/...` expands to `/private/var/folders/...`
+    // after canonicalize. A path written into a config may be either form, and
+    // its target may not exist (e.g. a `packs` directory referenced but not yet
+    // created). Try all four comparison combinations so we catch both prefix
+    // forms regardless of which side canonicalizes.
     let canonical_source = source_root.canonicalize().ok();
     let canonical_path = path.canonicalize().ok();
 
-    let (source_ref, path_ref) = match (canonical_source.as_deref(), canonical_path.as_deref()) {
-        (Some(cs), Some(cp)) => (cs, cp),
-        _ => (source_root, path),
-    };
+    let candidates: [(&Path, &Path); 4] = [
+        (source_root, path),
+        (
+            canonical_source.as_deref().unwrap_or(source_root),
+            canonical_path.as_deref().unwrap_or(path),
+        ),
+        (canonical_source.as_deref().unwrap_or(source_root), path),
+        (source_root, canonical_path.as_deref().unwrap_or(path)),
+    ];
 
-    if path_ref.starts_with(source_ref) {
-        let relative = path_ref.strip_prefix(source_ref).ok()?;
-        return Some(relative.to_string_lossy().into_owned());
+    for (src, p) in candidates {
+        if p.starts_with(src)
+            && let Ok(rel) = p.strip_prefix(src)
+        {
+            return Some(rel.to_string_lossy().into_owned());
+        }
     }
     None
 }
