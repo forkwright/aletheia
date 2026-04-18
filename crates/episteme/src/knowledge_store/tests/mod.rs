@@ -12,6 +12,8 @@ mod engine_assertions {
 mod causal;
 mod ddl;
 #[cfg(feature = "mneme-engine")]
+mod derived_rules;
+#[cfg(feature = "mneme-engine")]
 mod entities;
 #[cfg(feature = "mneme-engine")]
 mod facts;
