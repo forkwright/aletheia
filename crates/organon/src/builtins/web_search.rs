@@ -213,7 +213,20 @@ mod tests {
 
     use super::*;
 
+    // WHY(#3693): reqwest 0.13 requires a rustls crypto provider to be
+    // installed before any `Client` is constructed. `mock_ctx` builds a
+    // `reqwest::Client`; without this, the test panics with
+    // "No provider set". `install_default` fails if the process already
+    // installed one, so we swallow the result.
+    fn ensure_crypto_provider() {
+        static INIT: std::sync::Once = std::sync::Once::new();
+        INIT.call_once(|| {
+            let _ = rustls::crypto::ring::default_provider().install_default();
+        });
+    }
+
     fn mock_ctx() -> ToolContext {
+        ensure_crypto_provider();
         ToolContext {
             nous_id: NousId::new("alice").expect("valid"),
             session_id: SessionId::new(),
