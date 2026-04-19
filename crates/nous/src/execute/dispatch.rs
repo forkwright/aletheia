@@ -7,6 +7,7 @@ use tracing::{debug, warn};
 
 use tokio::sync::mpsc;
 
+use hermeneus::secret::substitute_in_json;
 use hermeneus::types::{ContentBlock, ToolResultBlock, ToolResultContent};
 use koina::id::ToolName;
 use organon::registry::ToolRegistry;
@@ -257,13 +258,38 @@ pub(super) async fn dispatch_tools(
             .build()
         })?;
 
+        // WHY(#3569): substitute secrets at the LAST moment before tool
+        // execution. The original `tool_input` (with placeholders) is preserved
+        // for persistence in `all_tool_calls`; only the executor sees resolved
+        // values.
+        let mut substituted_args = tool_input.clone();
+        if let Some(services) = &tool_ctx.services
+            && let Err(e) = substitute_in_json(&mut substituted_args, &services.secret_vault)
+        {
+            all_tool_calls.push(ToolCall {
+                id: tool_id.clone(),
+                name: tool_name.clone(),
+                input: tool_input.clone(),
+                result: Some(format!("Tool error: {e}")),
+                is_error: true,
+                duration_ms: 0,
+            });
+            tool_results.push(ContentBlock::ToolResult {
+                tool_use_id: tool_id.clone(),
+                content: ToolResultContent::text(format!("Tool error: {e}")),
+                is_error: Some(true),
+            });
+            crate::metrics::record_tool_failure(tool_ctx.nous_id.as_ref(), tool_name);
+            continue;
+        }
+
         let start = std::time::Instant::now();
         let result = tools
             .execute(
                 &ToolInput {
                     name: tool_name_id,
                     tool_use_id: tool_id.clone(),
-                    arguments: tool_input.clone(),
+                    arguments: substituted_args,
                 },
                 tool_ctx,
             )
@@ -375,6 +401,31 @@ pub(super) async fn dispatch_tools_streaming(
             .build()
         })?;
 
+        // WHY(#3569): substitute secrets at the LAST moment before tool
+        // execution. The original `tool_input` (with placeholders) is preserved
+        // for persistence in `all_tool_calls`; only the executor sees resolved
+        // values.
+        let mut substituted_args = tool_input.clone();
+        if let Some(services) = &tool_ctx.services
+            && let Err(e) = substitute_in_json(&mut substituted_args, &services.secret_vault)
+        {
+            all_tool_calls.push(ToolCall {
+                id: tool_id.clone(),
+                name: tool_name.clone(),
+                input: tool_input.clone(),
+                result: Some(format!("Tool error: {e}")),
+                is_error: true,
+                duration_ms: 0,
+            });
+            tool_results.push(ContentBlock::ToolResult {
+                tool_use_id: tool_id.clone(),
+                content: ToolResultContent::text(format!("Tool error: {e}")),
+                is_error: Some(true),
+            });
+            crate::metrics::record_tool_failure(tool_ctx.nous_id.as_ref(), tool_name);
+            continue;
+        }
+
         // WHY: distinguish buffer-full (performance problem, warn) from receiver-
         // disconnected (expected client close, debug). Silent drops violate the
         // streaming observability contract. (#3285)
@@ -413,7 +464,7 @@ pub(super) async fn dispatch_tools_streaming(
                 &ToolInput {
                     name: tool_name_id,
                     tool_use_id: tool_id.clone(),
-                    arguments: tool_input.clone(),
+                    arguments: substituted_args,
                 },
                 tool_ctx,
             )

@@ -282,6 +282,12 @@ impl NousManager {
         self.actors.get(nous_id).map(|e| &e.handle)
     }
 
+    /// Access the shared secret vault used by all managed actors.
+    #[must_use]
+    pub fn secret_vault(&self) -> Option<&hermeneus::secret::SecretVault> {
+        self.tool_services.as_ref().map(|s| &s.secret_vault)
+    }
+
     /// Look up a config by nous id.
     #[must_use]
     pub fn get_config(&self, nous_id: &str) -> Option<&NousConfig> {

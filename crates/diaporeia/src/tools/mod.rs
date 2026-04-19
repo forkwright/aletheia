@@ -1092,6 +1092,110 @@ impl DiaporeiaServer {
         )]))
     }
 
+    /// Store a secret in the session vault.
+    ///
+    /// The secret can later be referenced in tool arguments via
+    /// `{{secret:<name>}}` or `$SECRET(<name>)` placeholders.
+    ///
+    /// Requires `Operator` role or above (#3337).
+    #[tool(description = "Store a secret in the session vault for use in tool arguments")]
+    async fn creds_set(
+        &self,
+        Parameters(params): Parameters<params::CredsSetParams>,
+        context: RequestContext<rmcp::RoleServer>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        self.rate_limiter.check(Tier::Cheap)?;
+        require_role(self, &context, Role::Operator, "creds_set").await?;
+
+        let vault = self
+            .state
+            .nous_manager
+            .secret_vault()
+            .ok_or_else(|| {
+                PipelineSnafu {
+                    message: "secret vault not available".to_owned(),
+                }
+                .build()
+            })
+            .map_err(rmcp::ErrorData::from)?;
+
+        vault.store(&params.name, params.value);
+
+        Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+            format!("Secret `{}` stored.", params.name),
+        )]))
+    }
+
+    /// List names of secrets stored in the session vault.
+    ///
+    /// Values are never exposed — only names are returned.
+    ///
+    /// Requires `Operator` role or above (#3337).
+    #[tool(description = "List secret names stored in the session vault")]
+    async fn creds_list(
+        &self,
+        context: RequestContext<rmcp::RoleServer>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        self.rate_limiter.check(Tier::Cheap)?;
+        require_role(self, &context, Role::Operator, "creds_list").await?;
+
+        let vault = self
+            .state
+            .nous_manager
+            .secret_vault()
+            .ok_or_else(|| {
+                PipelineSnafu {
+                    message: "secret vault not available".to_owned(),
+                }
+                .build()
+            })
+            .map_err(rmcp::ErrorData::from)?;
+
+        let names = vault.list_names();
+        let json = serde_json::to_string_pretty(&names)
+            .context(SerializationSnafu {})
+            .map_err(rmcp::ErrorData::from)?;
+
+        Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+            json,
+        )]))
+    }
+
+    /// Remove a secret from the session vault.
+    ///
+    /// Requires `Operator` role or above (#3337).
+    #[tool(description = "Remove a secret from the session vault")]
+    async fn creds_rm(
+        &self,
+        Parameters(params): Parameters<params::CredsRmParams>,
+        context: RequestContext<rmcp::RoleServer>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        self.rate_limiter.check(Tier::Cheap)?;
+        require_role(self, &context, Role::Operator, "creds_rm").await?;
+
+        let vault = self
+            .state
+            .nous_manager
+            .secret_vault()
+            .ok_or_else(|| {
+                PipelineSnafu {
+                    message: "secret vault not available".to_owned(),
+                }
+                .build()
+            })
+            .map_err(rmcp::ErrorData::from)?;
+
+        if vault.remove(&params.name).is_some() {
+            Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+                format!("Secret `{}` removed.", params.name),
+            )]))
+        } else {
+            Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+                format!("Secret `{}` not found.", params.name),
+            )]))
+        }
+    }
+
     /// System health check with uptime, actor health, and version info.
     #[tool(description = "System health check with uptime, actor health, and version info")]
     async fn system_health(

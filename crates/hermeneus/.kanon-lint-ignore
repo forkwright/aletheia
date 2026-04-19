@@ -83,3 +83,13 @@ RUST/struct-too-many-fields:src/types.rs
 # binary's must-use check doesn't detect the attribute. Code is correct.
 RUST/missing-must-use:src/anthropic/client.rs
 RUST/missing-must-use:src/health.rs
+
+# WHY(#3569): lock-poison recovery logs a fixed description string; secret
+# values are never passed to tracing macros. Linter matches on "secret" in the
+# surrounding function body, not on the log argument.
+SECURITY/credential-logging:src/secret.rs
+
+# WHY(#3569): wildcard arms in substitute_in_json and redact_in_json cover
+# numeric/bool/null JSON scalars which have no strings to process. Comments
+# adjacent explain intent; the arms are intentionally empty.
+RUST/empty-match-arm:src/secret.rs
