@@ -155,21 +155,44 @@ fn issue_access_assigns_unique_jti_per_call() {
 // --- JwtManager: tampered tokens ---
 
 #[test]
-#[ignore = "flaky: when tampered char roundtrips through ring::hmac it can occasionally still validate (P ≈ 2^-256); tracked in #3565"]
 fn validate_rejects_tampered_signature() {
     // WHY: signature verification must fail if any byte in the signature
-    // segment is altered. Flip the last char to corrupt the HMAC.
+    // segment is altered.
+    //
+    // WHY deterministic byte-level tampering: a prior implementation flipped
+    // the last base64url character of the signature segment. Because
+    // base64url encodes 32 HMAC-SHA256 bytes into 43 chars (6 bits each =
+    // 258 bits), the trailing char carries only 2 significant bits; the
+    // other 4 bits are "don't-care" padding that permissive decoders ignore.
+    // Flipping a char that only differs in those padding bits produced the
+    // same decoded signature bytes, so verification succeeded and the test
+    // flaked. Tracked in #3565.
+    //
+    // Fix: decode the signature to raw bytes, XOR a specific byte with 0xFF,
+    // then re-encode. This guarantees the decoded MAC differs from the
+    // correct MAC by exactly 8 bits, so `Mac::verify_slice` (constant-time)
+    // will always reject it.
     let mgr = test_manager();
     let token = mgr
         .issue_access("user", Role::Operator, None)
         .expect("issue");
 
-    // Corrupt the last char of the signature
-    let mut bytes: Vec<char> = token.chars().collect();
-    let last = bytes.pop().expect("token has chars");
-    let replacement = if last == 'A' { 'B' } else { 'A' };
-    bytes.push(replacement);
-    let tampered: String = bytes.into_iter().collect();
+    let parts: Vec<&str> = token.split('.').collect();
+    assert_eq!(parts.len(), 3, "JWT has three segments");
+
+    let mut sig_bytes =
+        koina::base64::decode_url_safe_no_pad(parts[2]).expect("signature is valid base64url");
+    assert!(!sig_bytes.is_empty(), "HMAC-SHA256 signature is non-empty");
+    // WHY: XOR the first byte. Any byte would work; the first is chosen for
+    // stability and clarity. Flipping all 8 bits of one byte cannot collide
+    // with the original value.
+    sig_bytes[0] ^= 0xFF;
+    let tampered_sig = koina::base64::encode_url_safe_no_pad(&sig_bytes);
+    let tampered = format!("{}.{}.{}", parts[0], parts[1], tampered_sig);
+
+    // Sanity: the tampered token must differ from the original. If this
+    // fails the tampering logic above is broken.
+    assert_ne!(tampered, token, "tampered token must differ from original");
 
     let result = mgr.validate(&tampered);
     assert!(
