@@ -156,6 +156,14 @@ pub struct ConsolidatedFact {
     pub tier: String,
     /// IDs of the original facts that were consolidated into this one.
     pub source_fact_ids: Vec<FactId>,
+    /// `recorded_at` timestamps (ISO 8601) of the original facts, aligned to
+    /// [`source_fact_ids`](Self::source_fact_ids) by index.
+    ///
+    /// Used to compute multiplicity time-spread metadata (#3634). Defaulted
+    /// via `#[serde(default)]` so legacy serialized `ConsolidatedFact`
+    /// records (which predate this field) still deserialize.
+    #[serde(default)]
+    pub source_recorded_ats: Vec<String>,
 }
 
 /// Result of a consolidation operation.
@@ -169,6 +177,37 @@ pub struct ConsolidationResult {
     pub original_count: usize,
     /// Number of output facts.
     pub consolidated_count: usize,
+}
+
+/// Multiplicity metadata for a consolidated fact.
+///
+/// Stored in the `fact_multiplicity` relation keyed by the consolidated
+/// fact's ID. Captures the epistemic strength of a merged fact: how many
+/// independent observations converged on it, and over what time window.
+///
+/// A fact that emerged from 5 converging observations over 30 days is
+/// epistemically stronger than one built from 2 observations on the same
+/// day. Recall and conflict resolution can consult this via
+/// [`KnowledgeStore::get_fact_multiplicity`](crate::knowledge_store::KnowledgeStore)
+/// to weight consolidated facts appropriately (#3634).
+///
+/// The `#[serde(default)]` on `source_count` allows deserializing legacy
+/// records emitted before this struct gained richer fields.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FactMultiplicity {
+    /// The consolidated fact this multiplicity record describes.
+    pub fact_id: FactId,
+    /// Number of independent source observations that converged on this fact.
+    #[serde(default)]
+    pub source_count: u32,
+    /// Earliest `recorded_at` timestamp among source facts (ISO 8601).
+    pub first_observed: String,
+    /// Latest `recorded_at` timestamp among source facts (ISO 8601).
+    pub last_observed: String,
+    /// Span between `first_observed` and `last_observed` in seconds.
+    pub time_spread_seconds: i64,
+    /// When this multiplicity record was written (ISO 8601).
+    pub recorded_at: String,
 }
 
 /// Record of a completed consolidation for the audit trail.
@@ -396,6 +435,21 @@ pub const CONSOLIDATION_AUDIT_DDL: &str = r":create consolidation_audit {
     original_fact_ids: String,
     consolidated_fact_ids: String,
     consolidated_at: String
+}";
+
+/// Datalog DDL for the `fact_multiplicity` side-index (#3634).
+///
+/// Side-indexed rather than folded into the `facts` relation so that the
+/// fact schema stays stable and legacy records without multiplicity
+/// metadata remain valid. Consumers (recall, conflict resolution) look
+/// up multiplicity by fact ID on demand.
+pub const FACT_MULTIPLICITY_DDL: &str = r":create fact_multiplicity {
+    fact_id: String =>
+    source_count: Int,
+    first_observed: String,
+    last_observed: String,
+    time_spread_seconds: Int,
+    recorded_at: String
 }";
 
 /// Compute the age cutoff timestamp (now - `min_age_days`).

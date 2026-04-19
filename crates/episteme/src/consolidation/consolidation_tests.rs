@@ -311,6 +311,10 @@ fn consolidated_fact_serde_roundtrip() {
             FactId::new("f-1").expect("valid test id"),
             FactId::new("f-2").expect("valid test id"),
         ],
+        source_recorded_ats: vec![
+            "2026-01-01T00:00:00Z".to_owned(),
+            "2026-01-05T00:00:00Z".to_owned(),
+        ],
     };
     let json = serde_json::to_string(&fact).expect("serialize");
     let back: ConsolidatedFact = serde_json::from_str(&json).expect("deserialize");
