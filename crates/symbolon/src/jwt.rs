@@ -614,6 +614,56 @@ mod tests {
         assert!(!claims.jti.is_empty(), "jti must be set");
     }
 
+    /// Regression: encode_claims must produce a token that round-trips through
+    /// validate with every field intact. Catches the mutant that replaces the
+    /// return value with Ok("xyzzy".into()).
+    #[test]
+    fn encode_claims_round_trip_preserves_fields() {
+        let mgr = hmac_manager();
+        let now = now_unix();
+        let expected = Claims {
+            sub: "alice".to_owned(),
+            role: Role::Operator,
+            nous_id: Some("nous-42".to_owned()),
+            iss: "aletheia-test".to_owned(),
+            iat: now,
+            exp: now + 3600,
+            jti: "distinctive-jti-123".to_owned(),
+            kind: TokenKind::Access,
+        };
+        let token = mgr.encode_claims(&expected).unwrap();
+        let actual = mgr.validate(&token).unwrap();
+
+        assert_eq!(actual.sub, expected.sub);
+        assert_eq!(actual.role, expected.role);
+        assert_eq!(actual.nous_id, expected.nous_id);
+        assert_eq!(actual.iss, expected.iss);
+        assert_eq!(actual.iat, expected.iat);
+        assert_eq!(actual.exp, expected.exp);
+        assert_eq!(actual.jti, expected.jti);
+        assert_eq!(actual.kind, expected.kind);
+    }
+
+    /// Regression: issue must compute exp as iat + ttl. Catches the mutant
+    /// that flips the `+` to `-` on line 336.
+    #[test]
+    fn issue_computes_exp_as_iat_plus_ttl() {
+        let mgr = hmac_manager();
+        let token = mgr
+            .issue(
+                "bob",
+                Role::Readonly,
+                None,
+                TokenKind::Access,
+                Duration::from_secs(3600),
+            )
+            .unwrap();
+        let claims = mgr.validate(&token).unwrap();
+
+        let delta = claims.exp - claims.iat;
+        assert_eq!(delta, 3600, "exp must be exactly iat + ttl (3600s)");
+    }
+
     #[test]
     fn empty_string_token_rejected() {
         let mgr = hmac_manager();
