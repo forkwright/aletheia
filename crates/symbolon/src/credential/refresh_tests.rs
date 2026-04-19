@@ -1,3 +1,5 @@
+#![expect(clippy::unwrap_used, clippy::expect_used, reason = "test assertions")]
+
 //! Unit tests for `credential/refresh.rs`.
 //!
 //! # WHY
@@ -11,8 +13,6 @@
 //! `get_credential` fallback branch). These tests target those call sites
 //! directly so any arithmetic flip, boolean flip, stubbed-body, or
 //! replaced-return mutant is caught.
-
-#![expect(clippy::expect_used, reason = "test assertions")]
 
 use std::path::Path;
 use std::sync::{Arc, RwLock};
