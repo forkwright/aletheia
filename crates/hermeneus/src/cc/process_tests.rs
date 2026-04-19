@@ -10,14 +10,25 @@ use super::*;
 const ETXTBSY: i32 = 26;
 
 /// Write a shell script to a unique temp path, make it executable, and
-/// verify the path is safe to `execve` before returning.
+/// verify the path is safe to exec before returning.
 ///
 /// Returns the final script path. The caller is responsible for cleanup
 /// (or letting the OS reclaim the temp dir on process exit).
 ///
-/// Defeats the Linux ETXTBSY (errno 26, "Text file busy") race that
-/// surfaces when execve runs on a freshly-written file whose writer's
-/// `__fput` has not yet been processed. See forkwright/aletheia#3723.
+/// Defeats the Linux ETXTBSY (errno 26, "Text file busy") race described
+/// in forkwright/aletheia#3723 with two layers of defense:
+///
+/// 1. Stage the script at a `.tmp` sibling and rename into place. The
+///    writer's file descriptor is tied to the tmp dentry and fully
+///    released before rename exposes the final inode, so the common
+///    case sees the final path land with a zero writer-count.
+/// 2. Probe the final path by sacrificially spawning it and killing the
+///    child immediately. An exec syscall is the only observer that
+///    fires when the inode still has an open writer, so a successful
+///    spawn is the definitive signal that the caller's real spawn
+///    cannot race. Transient ETXTBSY is swallowed and retried on a
+///    short sleep; the loop caps so a genuinely busy file surfaces an
+///    error rather than hanging.
 fn write_script(name: &str, body: &str) -> PathBuf {
     use std::sync::atomic::{AtomicU64, Ordering};
     static NONCE: AtomicU64 = AtomicU64::new(0);
@@ -26,25 +37,6 @@ fn write_script(name: &str, body: &str) -> PathBuf {
         "hermeneus_test_{name}_{}_{nonce}.sh",
         std::process::id()
     ));
-    // WHY: Writing directly to `final_path` and then execve()ing it races
-    // with the kernel's `i_writecount` accounting — under parallel test
-    // load, `__fput` for the writer can be deferred via the kernel's
-    // delayed-fput workqueue long enough for a sibling thread's spawn()
-    // to observe `i_writecount > 0` and return ETXTBSY (os error 26,
-    // "Text file busy"). See forkwright/aletheia#3723.
-    //
-    // Defense in depth:
-    //   1. Write to a `.tmp` sibling, fsync + chmod, then rename(2) it
-    //      into place. The writer-FD was tied to the tmp dentry and has
-    //      been fully released before rename observes the inode, so the
-    //      final path's inode lands with `i_writecount == 0` in the
-    //      common case.
-    //   2. Probe by sacrificially spawning the script itself and killing
-    //      it immediately. execve(2) is the *only* syscall that consults
-    //      i_writecount, so a successful spawn is the definitive signal
-    //      that the caller's real spawn() cannot race us. Swallow any
-    //      ETXTBSY and retry with a short sleep; cap the loop so we
-    //      don't hang if a genuinely-busy file is passed.
     let tmp_path = final_path.with_extension("sh.tmp");
     let script = format!("#!/bin/sh\n{body}\n");
     {
