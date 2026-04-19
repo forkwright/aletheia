@@ -112,6 +112,13 @@ jobs:
         with:
           version: "latest"
 
+      # WHY: gate regeneration on the fixture test so we never rewrite the
+      # index with a broken extractor (which would silently drop pub items,
+      # as the `type_item` / `static_item` miss demonstrated pre-fix).
+      - name: Test L3 extractor
+        if: steps.detect.outputs.full_regen == 'true' || steps.detect.outputs.changed_crates != ''
+        run: uv run scripts/test_llm_extract_l3.py
+
       - name: Regenerate _llm/
         id: regen
         if: steps.detect.outputs.full_regen == 'true' || steps.detect.outputs.changed_crates != ''
