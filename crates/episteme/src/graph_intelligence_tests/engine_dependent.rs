@@ -335,10 +335,6 @@ mod engine_tests {
     }
 
     #[test]
-    #[cfg_attr(
-        target_os = "macos",
-        ignore = "engine traversal ordering drift on macOS; tracked in #3573"
-    )]
     fn bfs_proximity_5hop_chain_excludes_5th_node() {
         let store = test_store();
 
