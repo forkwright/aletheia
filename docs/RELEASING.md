@@ -20,6 +20,44 @@ The canonical version lives in `Cargo.toml` at `[workspace.package].version`. Al
    - Generates and attaches an SBOM (SPDX)
    - Uploads everything to the GitHub Release
 
+## Substance audit gate
+
+Before merging the release-please PR, run the substance audit against the
+security-critical and execution-critical crates. This is a manual step —
+the audit is not fast enough to run on every PR — but release time is the
+right moment to verify that the tests still catch real mutations.
+
+```bash
+# Install once per machine (see CLAUDE.md § Mutation testing).
+cargo install cargo-mutants
+
+# Audit each crate. `kanon audit substance` runs three detectors:
+#   1. mutation          — cargo-mutants on the crate
+#   2. always_default_config — config knobs that equal their documented default
+#   3. tautological_doc  — "/// Returns the X" style doc comments
+kanon audit substance crates/symbolon       --json > audit-symbolon.json
+kanon audit substance crates/organon        --json > audit-organon.json
+kanon audit substance crates/episteme       --json > audit-episteme.json
+kanon audit substance crates/krites         --json > audit-krites.json
+kanon audit substance crates/nous           --json > audit-nous.json
+```
+
+Treat findings per crate:
+
+- **Security-critical (release blocker):** any FAIL on `crates/symbolon/`
+  (auth, JWT, credentials) or `crates/organon/src/sandbox/` (Landlock +
+  seccomp policy). Fix before tagging.
+- **Execution-critical (release blocker):** any FAIL on
+  `crates/episteme/src/recall.rs` (6-factor scoring),
+  `crates/episteme/src/conflict.rs` (fact-conflict resolution), or
+  `crates/krites/src/fixed_rule/algos/` (graph algorithms). Fix before
+  tagging.
+- **Advisory (file an issue, do not block):** FAILs on other crates. The
+  substance gap is real — track it — but shipping can proceed.
+
+Skip the mutation detector for the fast-path with `--no-mutations` when
+only the config scan and tautological-doc detectors are needed.
+
 ## Supported platforms
 
 | Target | Runner | Method |
