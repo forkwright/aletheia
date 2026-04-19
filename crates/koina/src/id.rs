@@ -179,7 +179,7 @@ impl TryFrom<String> for NousId {
 
 impl From<NousId> for String {
     fn from(id: NousId) -> Self {
-        id.0.into()
+        id.0
     }
 }
 
@@ -331,7 +331,7 @@ impl ToolName {
         {
             return Err(IdError::InvalidFormat {
                 kind: "ToolName",
-                value: name.to_string(),
+                value: name.clone(),
                 reason: "must contain only alphanumeric, hyphens, and underscores".to_owned(),
             });
         }
@@ -372,7 +372,7 @@ impl TryFrom<String> for ToolName {
 
 impl From<ToolName> for String {
     fn from(name: ToolName) -> Self {
-        name.0.into()
+        name.0
     }
 }
 
