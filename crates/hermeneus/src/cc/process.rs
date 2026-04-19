@@ -252,6 +252,27 @@ pub(crate) async fn run_completion(
     }
 }
 
+/// Synthesize a human-readable error message from an error-subtype result
+/// event's `errors` array + `terminal_reason`.
+///
+/// WHY(#3717): when CC terminates with `subtype = "error_max_turns"` (or any
+/// other error subtype) it omits the `result` field entirely. Rather than
+/// bubble `None` up to `result_to_response` — which would need its own None
+/// handling — we synthesize a message here. Downstream `is_error = true`
+/// propagation turns this into an `ApiRequest` error with readable text.
+fn synthesize_error_text(errors: &[String], terminal_reason: Option<&str>) -> String {
+    let mut parts = Vec::new();
+    if let Some(reason) = terminal_reason {
+        parts.push(format!("terminal_reason={reason}"));
+    }
+    if errors.is_empty() {
+        parts.push("(no error messages reported)".to_owned());
+    } else {
+        parts.push(errors.join("; "));
+    }
+    parts.join(": ")
+}
+
 /// Read CC's stdout stream, collecting assistant deltas and the final result.
 ///
 /// Generic over the reader so unit tests can pass an in-memory buffer
@@ -313,9 +334,16 @@ where
                 cost_usd: c,
                 duration_ms: d,
                 session_id: s,
+                errors,
+                terminal_reason,
                 ..
             } => {
-                result_text = result;
+                // WHY(#3717): error-subtype result events omit `result` and
+                // populate `errors` + `terminal_reason` instead. Synthesize
+                // a human-readable `result_text` so downstream is_error
+                // propagation keeps working without losing the reason.
+                result_text = result
+                    .unwrap_or_else(|| synthesize_error_text(&errors, terminal_reason.as_deref()));
                 is_error = err;
                 usage = u;
                 cost_usd = c;
@@ -529,9 +557,14 @@ where
                 cost_usd: c,
                 duration_ms: d,
                 session_id: s,
+                errors,
+                terminal_reason,
                 ..
             } => {
-                result_text = result;
+                // WHY(#3717): error-subtype result events omit `result`.
+                // See read_stream.
+                result_text = result
+                    .unwrap_or_else(|| synthesize_error_text(&errors, terminal_reason.as_deref()));
                 is_error = err;
                 usage = u;
                 cost_usd = c;

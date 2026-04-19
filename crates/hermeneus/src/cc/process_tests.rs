@@ -214,6 +214,51 @@ async fn read_stream_propagates_is_error_flag() {
     assert_eq!(output.result_text, "rate limit");
 }
 
+// WHY(#3717): regression — when CC terminates with `subtype = "error_max_turns"`
+// (or any error subtype) it omits the `result` field entirely, populating
+// `errors` + `terminal_reason` instead. Before the fix, the event failed
+// deserialization ("missing field `result`") and the whole turn was
+// dropped as pipeline_error. Now we parse it, propagate is_error=true,
+// and synthesize a human-readable result_text from terminal_reason +
+// errors for downstream error mapping.
+#[tokio::test]
+async fn read_stream_error_subtype_without_result_field() {
+    let buf = stream_buf(&[
+        r#"{"type":"result","subtype":"error_max_turns","duration_ms":4065,"is_error":true,"num_turns":2,"session_id":"sess_err","terminal_reason":"max_turns","errors":["Reached maximum number of turns (1)"]}"#,
+    ]);
+    let output = read_stream(buf.as_slice()).await.unwrap();
+    assert!(output.is_error);
+    assert!(
+        output.result_text.contains("max_turns"),
+        "synthesized text should name the terminal reason: {}",
+        output.result_text
+    );
+    assert!(
+        output
+            .result_text
+            .contains("Reached maximum number of turns (1)"),
+        "synthesized text should include the error message: {}",
+        output.result_text
+    );
+    assert_eq!(output.session_id.as_deref(), Some("sess_err"));
+}
+
+// WHY(#3717): regression — CC also emits `{"type":"user"}` echo events
+// carrying `tool_result` content blocks. These must parse without
+// emitting the `unknown variant \`user\`` warning and must not end the
+// read_stream loop. Verify by feeding a user event followed by a normal
+// result event and checking the result survives.
+#[tokio::test]
+async fn read_stream_ignores_user_tool_result_event() {
+    let buf = stream_buf(&[
+        r#"{"type":"user","message":{"role":"user","content":[{"type":"tool_result","content":"File not found","is_error":true,"tool_use_id":"toolu_x"}]},"session_id":"s","uuid":"u"}"#,
+        r#"{"type":"result","subtype":"success","result":"recovered","is_error":false}"#,
+    ]);
+    let output = read_stream(buf.as_slice()).await.unwrap();
+    assert!(!output.is_error);
+    assert_eq!(output.result_text, "recovered");
+}
+
 // ── parse_oauth_token_from_json ───────────────────────────────────────────
 // WHY: Tests target the JSON-parsing helper rather than read_oauth_token
 // directly. read_oauth_token wraps parse_oauth_token_from_json with I/O
