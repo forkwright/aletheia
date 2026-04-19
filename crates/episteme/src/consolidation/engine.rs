@@ -9,9 +9,9 @@ use super::{
     CLUSTER_FACTS_FOR_CONSOLIDATION, COMMUNITY_OVERFLOW_CANDIDATES, CONSOLIDATION_AUDIT_DDL,
     ConsolidatedFact, ConsolidationAuditRecord, ConsolidationCandidate, ConsolidationConfig,
     ConsolidationError, ConsolidationProvider, ConsolidationResult, ConsolidationTrigger,
-    ENTITY_FACTS_FOR_CONSOLIDATION, ENTITY_OVERFLOW_CANDIDATES, RateLimitedSnafu, StoreSnafu,
-    age_cutoff, batch_facts, consolidation_system_prompt, consolidation_user_message,
-    parse_consolidation_response,
+    ENTITY_FACTS_FOR_CONSOLIDATION, ENTITY_OVERFLOW_CANDIDATES, FACT_MULTIPLICITY_DDL,
+    FactMultiplicity, RateLimitedSnafu, StoreSnafu, age_cutoff, batch_facts,
+    consolidation_system_prompt, consolidation_user_message, parse_consolidation_response,
 };
 use crate::engine::DataValue;
 use crate::id::{EntityId, FactId};
@@ -45,6 +45,19 @@ impl KnowledgeStore {
     )]
     pub(crate) fn init_consolidation_audit(&self) -> crate::error::Result<()> {
         self.run_mut_query(CONSOLIDATION_AUDIT_DDL, BTreeMap::new())?;
+        Ok(())
+    }
+
+    /// Initialize the `fact_multiplicity` side-index relation (#3634).
+    ///
+    /// Called during schema setup. Separate from the facts relation so the
+    /// fact schema stays stable and legacy records remain valid.
+    #[expect(
+        dead_code,
+        reason = "knowledge consolidation engine, feature-gated behind mneme-engine"
+    )]
+    pub(crate) fn init_fact_multiplicity(&self) -> crate::error::Result<()> {
+        self.run_mut_query(FACT_MULTIPLICITY_DDL, BTreeMap::new())?;
         Ok(())
     }
 
@@ -313,9 +326,110 @@ impl KnowledgeStore {
                 }
                 .build()
             })?;
+
+            // WHY (#3634): record multiplicity metadata in the side-index so
+            // downstream recall and conflict resolution can weight a
+            // consolidated fact by how many independent observations
+            // converged on it. Failing to record multiplicity must not
+            // prevent the fact from being persisted, but the error should
+            // surface to the caller.
+            let multiplicity = compute_multiplicity(
+                &new_id,
+                consolidated,
+                &crate::knowledge::format_timestamp(&now),
+            );
+            self.record_fact_multiplicity(&multiplicity)?;
+
             new_fact_ids.push(new_id);
         }
         Ok(new_fact_ids)
+    }
+
+    /// Persist a `FactMultiplicity` record for a consolidated fact (#3634).
+    fn record_fact_multiplicity(
+        &self,
+        record: &FactMultiplicity,
+    ) -> Result<(), ConsolidationError> {
+        let script = r"
+?[fact_id, source_count, first_observed, last_observed, time_spread_seconds, recorded_at] <-
+    [[$fact_id, $source_count, $first_observed, $last_observed, $time_spread_seconds, $recorded_at]]
+
+:put fact_multiplicity {fact_id => source_count, first_observed, last_observed,
+                        time_spread_seconds, recorded_at}
+";
+        let mut params = BTreeMap::new();
+        let str_val = |s: &str| DataValue::Str(s.into());
+        params.insert("fact_id".to_owned(), str_val(record.fact_id.as_str()));
+        params.insert(
+            "source_count".to_owned(),
+            DataValue::from(i64::from(record.source_count)),
+        );
+        params.insert("first_observed".to_owned(), str_val(&record.first_observed));
+        params.insert("last_observed".to_owned(), str_val(&record.last_observed));
+        params.insert(
+            "time_spread_seconds".to_owned(),
+            DataValue::from(record.time_spread_seconds),
+        );
+        params.insert("recorded_at".to_owned(), str_val(&record.recorded_at));
+        self.run_mut_query(script, params).map_err(|e| {
+            StoreSnafu {
+                message: e.to_string(),
+            }
+            .build()
+        })?;
+        Ok(())
+    }
+
+    /// Look up multiplicity metadata for a consolidated fact (#3634).
+    ///
+    /// Returns `None` if no multiplicity record exists (e.g. the fact was
+    /// not produced by consolidation, or was persisted before this
+    /// side-index was introduced).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the knowledge store query fails.
+    #[instrument(skip(self))]
+    pub fn get_fact_multiplicity(
+        &self,
+        fact_id: &FactId,
+    ) -> Result<Option<FactMultiplicity>, ConsolidationError> {
+        let script = r"
+?[source_count, first_observed, last_observed, time_spread_seconds, recorded_at] :=
+    *fact_multiplicity{fact_id: $fact_id, source_count, first_observed,
+                       last_observed, time_spread_seconds, recorded_at}
+";
+        let mut params = BTreeMap::new();
+        params.insert(
+            "fact_id".to_owned(),
+            DataValue::Str(fact_id.as_str().into()),
+        );
+        let result = self.run_query(script, params).map_err(|e| {
+            StoreSnafu {
+                message: e.to_string(),
+            }
+            .build()
+        })?;
+
+        if result.is_empty() {
+            return Ok(None);
+        }
+
+        let source_count_i64 = result.get_i64(0, "source_count").unwrap_or(0);
+        let source_count = u32::try_from(source_count_i64).unwrap_or(0);
+        let first_observed = result.get_string(0, "first_observed").unwrap_or_default();
+        let last_observed = result.get_string(0, "last_observed").unwrap_or_default();
+        let time_spread_seconds = result.get_i64(0, "time_spread_seconds").unwrap_or(0);
+        let recorded_at = result.get_string(0, "recorded_at").unwrap_or_default();
+
+        Ok(Some(FactMultiplicity {
+            fact_id: fact_id.clone(),
+            source_count,
+            first_observed,
+            last_observed,
+            time_spread_seconds,
+            recorded_at,
+        }))
     }
 
     /// Mark original facts as superseded.
@@ -572,6 +686,11 @@ fn run_llm_consolidation(
         let entries = parse_consolidation_response(&response)?;
 
         let batch_fact_ids: Vec<FactId> = batch.iter().map(|(id, _, _, _)| id.clone()).collect();
+        // WHY (#3634): preserve source recorded_at timestamps so multiplicity
+        // metadata (time-spread, first/last observation) can be computed
+        // downstream. Aligned by index to `batch_fact_ids`.
+        let batch_recorded_ats: Vec<String> =
+            batch.iter().map(|(_, _, _, ts)| ts.clone()).collect();
 
         for entry in entries {
             all_consolidated.push(ConsolidatedFact {
@@ -582,6 +701,7 @@ fn run_llm_consolidation(
                 // need the same IDs for all_superseded after the loop; Arc<[FactId]>
                 // would eliminate this but ConsolidatedFact is part of the public API.
                 source_fact_ids: batch_fact_ids.clone(),
+                source_recorded_ats: batch_recorded_ats.clone(),
             });
         }
         all_superseded.extend(batch_fact_ids);
@@ -593,6 +713,50 @@ fn run_llm_consolidation(
         consolidated_facts: all_consolidated,
         superseded_fact_ids: all_superseded,
     })
+}
+
+/// Compute multiplicity metadata for a consolidated fact (#3634).
+///
+/// `source_count` is the number of independent source fact IDs. The time
+/// window spans the earliest to latest `recorded_at` across those sources;
+/// when timestamps are unavailable or unparseable we fall back to `now`
+/// for both ends (zero spread) so the record remains well-formed.
+fn compute_multiplicity(
+    new_id: &FactId,
+    consolidated: &ConsolidatedFact,
+    now: &str,
+) -> FactMultiplicity {
+    let source_count = u32::try_from(consolidated.source_fact_ids.len()).unwrap_or(u32::MAX);
+    let parsed: Vec<jiff::Timestamp> = consolidated
+        .source_recorded_ats
+        .iter()
+        .filter_map(|s| crate::knowledge::parse_timestamp(s))
+        .collect();
+    let (first_observed, last_observed, time_spread_seconds) =
+        match (parsed.iter().min().copied(), parsed.iter().max().copied()) {
+            (Some(min_ts), Some(max_ts)) => {
+                let spread = max_ts.since(min_ts).map_or(0_i64, |span| {
+                    i64::from(span.get_hours())
+                        .saturating_mul(3600)
+                        .saturating_add(span.get_minutes().saturating_mul(60))
+                        .saturating_add(span.get_seconds())
+                });
+                (
+                    crate::knowledge::format_timestamp(&min_ts),
+                    crate::knowledge::format_timestamp(&max_ts),
+                    spread,
+                )
+            }
+            _ => (now.to_owned(), now.to_owned(), 0_i64),
+        };
+    FactMultiplicity {
+        fact_id: new_id.clone(),
+        source_count,
+        first_observed,
+        last_observed,
+        time_spread_seconds,
+        recorded_at: now.to_owned(),
+    }
 }
 
 /// Parse fact rows from query results.
@@ -618,3 +782,7 @@ fn parse_fact_rows(rows: &[Vec<DataValue>]) -> Vec<(FactId, String, f64, String)
         })
         .collect()
 }
+
+#[cfg(all(test, feature = "mneme-engine"))]
+#[path = "engine_tests.rs"]
+mod engine_tests;
