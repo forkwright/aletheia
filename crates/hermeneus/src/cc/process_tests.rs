@@ -5,41 +5,82 @@ use std::os::unix::fs::PermissionsExt as _;
 
 use super::*;
 
-/// Write a shell script to a unique temp path and make it executable.
+/// Linux `ETXTBSY` errno — `execve(2)` returns this when the target file
+/// has an open writable descriptor anywhere in the kernel.
+const ETXTBSY: i32 = 26;
+
+/// Write a shell script to a unique temp path, make it executable, and
+/// verify the path is safe to `execve` before returning.
 ///
-/// Returns the script path. The caller is responsible for cleanup (or letting
-/// the OS reclaim the temp dir on process exit).
+/// Returns the final script path. The caller is responsible for cleanup
+/// (or letting the OS reclaim the temp dir on process exit).
 ///
-/// Includes a per-thread nonce in the filename so concurrent tests never race
-/// on the same path, and a post-chmod readability probe to defeat the Linux
-/// ETXTBSY (errno 26) race where exec-after-write can still see the file as
-/// busy for a tick after our writer has closed and fsync'd.
+/// Defeats the Linux ETXTBSY (errno 26, "Text file busy") race that
+/// surfaces when execve runs on a freshly-written file whose writer's
+/// `__fput` has not yet been processed. See forkwright/aletheia#3723.
 fn write_script(name: &str, body: &str) -> PathBuf {
     use std::sync::atomic::{AtomicU64, Ordering};
     static NONCE: AtomicU64 = AtomicU64::new(0);
     let nonce = NONCE.fetch_add(1, Ordering::Relaxed);
-    let path = std::env::temp_dir().join(format!(
+    let final_path = std::env::temp_dir().join(format!(
         "hermeneus_test_{name}_{}_{nonce}.sh",
         std::process::id()
     ));
+    // WHY: Writing directly to `final_path` and then execve()ing it races
+    // with the kernel's `i_writecount` accounting — under parallel test
+    // load, `__fput` for the writer can be deferred via the kernel's
+    // delayed-fput workqueue long enough for a sibling thread's spawn()
+    // to observe `i_writecount > 0` and return ETXTBSY (os error 26,
+    // "Text file busy"). See forkwright/aletheia#3723.
+    //
+    // Defense in depth:
+    //   1. Write to a `.tmp` sibling, fsync + chmod, then rename(2) it
+    //      into place. The writer-FD was tied to the tmp dentry and has
+    //      been fully released before rename observes the inode, so the
+    //      final path's inode lands with `i_writecount == 0` in the
+    //      common case.
+    //   2. Probe by sacrificially spawning the script itself and killing
+    //      it immediately. execve(2) is the *only* syscall that consults
+    //      i_writecount, so a successful spawn is the definitive signal
+    //      that the caller's real spawn() cannot race us. Swallow any
+    //      ETXTBSY and retry with a short sleep; cap the loop so we
+    //      don't hang if a genuinely-busy file is passed.
+    let tmp_path = final_path.with_extension("sh.tmp");
     let script = format!("#!/bin/sh\n{body}\n");
     {
         use std::io::Write;
-        let mut f = fs::File::create(&path).unwrap();
+        let mut f = fs::File::create(&tmp_path).unwrap();
         f.write_all(script.as_bytes()).unwrap();
         f.sync_all().unwrap();
     }
-    fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
-    // WHY: On busy CI runners the exec path occasionally sees the file as
-    // Text file busy for a moment after the writer closed. Poll metadata so
-    // the file is at least visible to subsequent syscalls before returning.
-    for _ in 0..50 {
-        if fs::metadata(&path).is_ok() {
-            return path;
+    fs::set_permissions(&tmp_path, fs::Permissions::from_mode(0o755)).unwrap();
+    fs::rename(&tmp_path, &final_path).unwrap();
+
+    for _ in 0..200 {
+        match std::process::Command::new(&final_path)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+        {
+            Ok(mut child) => {
+                // Kill + reap immediately; we only care that execve passed.
+                let _ = child.kill();
+                let _ = child.wait();
+                return final_path;
+            }
+            Err(e) if e.raw_os_error() == Some(ETXTBSY) => {
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            Err(_) => {
+                // Any other error (ENOENT, EACCES, …) is not our race —
+                // return the path and let the caller surface the error
+                // with its own context.
+                return final_path;
+            }
         }
-        std::thread::sleep(std::time::Duration::from_millis(10));
     }
-    path
+    final_path
 }
 
 /// Build a multi-line stream-json buffer from individual event JSON strings.
