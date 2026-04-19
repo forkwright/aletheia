@@ -44,6 +44,13 @@ impl TaskCategory {
     /// the router's hot path. Keyword matching is O(n) and zero-latency. The
     /// follow-up PR (#3455) replaces this with persona-aware routing that
     /// operates on richer metadata.
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "binary wiring consumes from_prompt (follow-up #3455)"
+        )
+    )]
     pub(crate) fn from_prompt(text: &str) -> Self {
         let lower = text.to_lowercase();
         if lower.contains("refactor") || lower.contains("restructure") || lower.contains("rename") {
@@ -173,6 +180,13 @@ pub(crate) enum RoutingMode {
 /// Operator-facing routing configuration for the dispatch engine.
 ///
 /// Placed under `[dispatch.routing]` in the instance `taxis` config.
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "binary wiring constructs DispatchRoutingConfig (follow-up #3455)"
+    )
+)]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(default)]
 pub(crate) struct DispatchRoutingConfig {

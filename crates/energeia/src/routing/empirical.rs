@@ -66,6 +66,10 @@ impl EmpiricalRouter {
     ///
     /// Returns the static fallback provider when empirical data is absent or
     /// insufficient.  If `candidates` is empty the static default is returned.
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "binary wiring invokes pick (follow-up #3455)")
+    )]
     pub(crate) async fn pick(
         &self,
         task_category: &TaskCategory,

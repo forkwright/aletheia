@@ -3807,7 +3807,6 @@ dependencies = [
 name = "koina"
 version = "0.20.0"
 dependencies = [
- "compact_str",
  "criterion",
  "fjall",
  "jiff",
@@ -7064,7 +7063,6 @@ name = "skene"
 version = "0.20.0"
 dependencies = [
  "bytes",
- "compact_str",
  "futures-core",
  "futures-util",
  "koina",
