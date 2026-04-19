@@ -32,6 +32,9 @@ fuzz/target/
 fuzz/artifacts/
 fuzz/Cargo.lock
 .cargo/*
+# cargo-mutants local runs; baseline reports live on release branches only.
+mutants.out/
+mutants-out/
 # Keep cargo-audit config under version control so CI and local runs share the same
 # advisory-ignore list (mirrors deny.toml's [[advisories.ignore]]).
 !.cargo/audit.toml
