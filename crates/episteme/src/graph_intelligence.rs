@@ -220,34 +220,18 @@ pub(crate) const LOAD_GRAPH_SCORES: &str = r"
     *graph_scores{entity_id, score_type, score, cluster_id, updated_at}
 ";
 
-/// Bounded BFS Datalog script for proximity computation.
+/// Maximum hop distance returned by [`KnowledgeStore::compute_bfs_proximity`].
 ///
-/// Computes hop distances from a set of seed entity IDs up to 4 hops.
-/// Parameters: `$seeds` (list of entity IDs).
-///
-/// Returns rows of `[entity_id, hops]`.
+/// Entities reachable at a greater distance from any seed are excluded from
+/// the result. Matches the historical 4-hop Datalog bound (`hop0`..`hop4`).
 #[cfg_attr(
     not(feature = "mneme-engine"),
     expect(
         dead_code,
-        reason = "Datalog query used by mneme-engine graph pipeline"
+        reason = "bound consumed by mneme-engine BFS proximity traversal"
     )
 )]
-pub(crate) const BFS_PROXIMITY_4HOP: &str = r"
-seed[id] := id in $seeds
-
-hop0[id, h] := seed[id], h = 0
-hop1[dst, h] := hop0[src, _], *relationships{src, dst}, not hop0[dst, _], h = 1
-hop2[dst, h] := hop1[src, _], *relationships{src, dst}, not hop0[dst, _], not hop1[dst, _], h = 2
-hop3[dst, h] := hop2[src, _], *relationships{src, dst}, not hop0[dst, _], not hop1[dst, _], not hop2[dst, _], h = 3
-hop4[dst, h] := hop3[src, _], *relationships{src, dst}, not hop0[dst, _], not hop1[dst, _], not hop2[dst, _], not hop3[dst, _], h = 4
-
-?[entity_id, hops] := hop0[entity_id, hops]
-?[entity_id, hops] := hop1[entity_id, hops]
-?[entity_id, hops] := hop2[entity_id, hops]
-?[entity_id, hops] := hop3[entity_id, hops]
-?[entity_id, hops] := hop4[entity_id, hops]
-";
+pub(crate) const BFS_PROXIMITY_MAX_HOPS: u32 = 4;
 
 /// Datalog script for computing supersession chain lengths.
 ///
@@ -407,70 +391,63 @@ impl crate::knowledge_store::KnowledgeStore {
         Ok(ctx)
     }
 
-    /// Compute BFS proximity from seed entities up to 4 hops.
+    /// Compute BFS proximity from seed entities up to [`BFS_PROXIMITY_MAX_HOPS`]
+    /// hops.
     ///
-    /// Uses a 5ms timeout budget. Falls back to the existing 2-hop neighborhood
-    /// query if the budget is exceeded.
+    /// Loads the full relationship set once, then runs a standard queue-based
+    /// multi-source BFS in-process. Seeds are included at hop 0. First-visit
+    /// wins, so cycles terminate naturally and shortest-path hop counts are
+    /// preserved.
+    ///
+    /// WHY in-process rather than Datalog: the previous implementation issued a
+    /// 4-hop recursive Datalog query under a 5 ms wall-clock budget and, on
+    /// timeout, degraded to a buggy 2-hop fallback (wrong column index, wrong
+    /// horizon). The timeout fired on slower CI runners (notably macOS),
+    /// producing platform-dependent hop counts. A direct traversal over the
+    /// materialized adjacency list is both faster for small/medium graphs and
+    /// platform-independent.
     pub(crate) fn compute_bfs_proximity(
         &self,
         seed_entity_ids: &[String],
     ) -> crate::error::Result<HashMap<String, u32>> {
-        use crate::engine::DataValue;
-
         if seed_entity_ids.is_empty() {
             return Ok(HashMap::new());
         }
 
-        let seeds_list: Vec<DataValue> = seed_entity_ids
-            .iter()
-            .map(|s| DataValue::Str(s.as_str().into()))
-            .collect();
+        let adj = self.build_adjacency_list()?;
 
-        let mut params = std::collections::BTreeMap::new();
-        params.insert("seeds".to_owned(), DataValue::List(seeds_list));
+        let mut hops: HashMap<String, u32> = HashMap::new();
+        let mut queue: VecDeque<(String, u32)> = VecDeque::new();
 
-        let timeout = std::time::Duration::from_millis(5);
-        match self.run_query_with_timeout(BFS_PROXIMITY_4HOP, params, Some(timeout)) {
-            Ok(result) => Ok(parse_hop_rows(&result.rows, 1)),
-            Err(crate::error::Error::QueryTimeout { .. }) => {
-                tracing::debug!("4-hop BFS exceeded 5ms budget, falling back to 2-hop");
-                Ok(self.bfs_fallback_2hop(seed_entity_ids))
+        for seed in seed_entity_ids {
+            // Multi-source BFS: every seed starts at hop 0. `or_insert(0)` keeps
+            // duplicate seeds idempotent.
+            if hops.insert(seed.clone(), 0).is_none() {
+                queue.push_back((seed.clone(), 0));
             }
-            Err(e) => Err(e),
         }
-    }
 
-    /// 2-hop fallback when 4-hop BFS exceeds the time budget.
-    fn bfs_fallback_2hop(&self, seed_entity_ids: &[String]) -> HashMap<String, u32> {
-        let mut proximity = HashMap::new();
-        for seed_id in seed_entity_ids {
-            // WHY: callers rely on the seed appearing at hop 0 in the result
-            // regardless of which implementation served the query. The 4-hop
-            // Datalog path includes seeds; mirror that here so behaviour does
-            // not silently diverge under the slower CI path.
-            proximity.insert(seed_id.clone(), 0);
-            let Ok(entity_id) = crate::id::EntityId::new(seed_id) else {
+        while let Some((node, dist)) = queue.pop_front() {
+            if dist >= BFS_PROXIMITY_MAX_HOPS {
+                // Respect the 4-hop bound: do not expand past the horizon so
+                // entities at hop 5+ never appear in the result.
+                continue;
+            }
+            let Some(neighbors) = adj.get(&node) else {
                 continue;
             };
-            if let Ok(neighborhood) = self.entity_neighborhood(&entity_id) {
-                for row in &neighborhood.rows {
-                    if let Some(neighbor_id) = row.first().and_then(|v| v.get_str()) {
-                        let hops = row
-                            .get(2)
-                            .and_then(crate::engine::DataValue::get_int)
-                            .unwrap_or(2);
-                        let hops_u32 = i64_to_u32(hops);
-                        proximity
-                            .entry(neighbor_id.to_owned())
-                            .and_modify(|existing: &mut u32| {
-                                *existing = (*existing).min(hops_u32);
-                            })
-                            .or_insert(hops_u32);
-                    }
+            let next = dist + 1;
+            for (neighbor, _weight) in neighbors {
+                if let std::collections::hash_map::Entry::Vacant(slot) =
+                    hops.entry(neighbor.clone())
+                {
+                    slot.insert(next);
+                    queue.push_back((neighbor.clone(), next));
                 }
             }
         }
-        proximity
+
+        Ok(hops)
     }
 
     /// Compute supersession chain lengths for all facts.
