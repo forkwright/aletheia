@@ -1,3 +1,9 @@
+#![expect(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "test assertions"
+)]
+
 //! Mutation-hardening tests for `EnvCredentialProvider`, `FileCredentialProvider`,
 //! and `CredentialChain` covering the 16 missed mutants tracked in #3710.
 //!
