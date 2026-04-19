@@ -1,0 +1,55 @@
+[package]
+name = "aletheia-memory-mcp"
+version.workspace = true
+description = "Standalone stdio MCP server exposing Aletheia's memory and knowledge graph (read-only) to external agents"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "aletheia-memory-mcp"
+path = "src/main.rs"
+
+[dependencies]
+# MCP SDK — pin exact per TECHNOLOGY.md policy (matches diaporeia)
+rmcp = { version = "=1.4.0", features = [
+    "server",
+    "macros",
+    "transport-io",
+] }
+schemars = "1"
+
+# Async
+tokio = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Error handling
+snafu = { workspace = true }
+
+# Observability
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# Internal crates: memory facade + path resolver
+mneme = { path = "../mneme", features = ["storage-fjall"] }
+taxis = { path = "../taxis" }
+
+[dev-dependencies]
+# WHY: the `client` rmcp feature enables the `ClientHandler` blanket impl we
+# need to drive the server in-process during integration tests.
+rmcp = { version = "=1.4.0", features = [
+    "server",
+    "client",
+    "macros",
+    "transport-io",
+] }
+tokio = { workspace = true, features = ["test-util"] }
+tempfile = { workspace = true }
+jiff = { workspace = true }
