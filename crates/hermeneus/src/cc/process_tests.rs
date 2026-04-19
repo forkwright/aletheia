@@ -268,7 +268,6 @@ async fn run_completion_spawn_failure_reports_binary_path() {
 }
 
 #[tokio::test]
-#[ignore = "ETXTBSY race between chmod+x and exec — flaky on CI; tracked in #3568"]
 async fn run_completion_success_collects_output() {
     // WHY: End-to-end subprocess path with a real script. Verifies that
     // run_completion feeds stdin, reads stdout stream-json, and returns
@@ -304,7 +303,6 @@ printf '{"type":"result","subtype":"success","result":"hello world","is_error":f
 }
 
 #[tokio::test]
-#[ignore = "ETXTBSY race between chmod+x and exec — flaky on CI; tracked in #3568"]
 async fn run_completion_with_system_prompt_succeeds() {
     // WHY: Verifies the --system-prompt branch executes without error.
     // The actual arg passing is structural (cmd.arg) and not visible from
@@ -331,7 +329,6 @@ printf '{"type":"result","subtype":"success","result":"sys ok","is_error":false}
 }
 
 #[tokio::test]
-#[ignore = "ETXTBSY race between chmod+x and exec — flaky on CI; tracked in #3568"]
 async fn run_completion_timeout_returns_error() {
     // WHY: Subprocess that sleeps past the deadline must be killed and
     // must surface a timeout error message that includes the duration.
@@ -357,7 +354,6 @@ async fn run_completion_timeout_returns_error() {
 }
 
 #[tokio::test]
-#[ignore = "ETXTBSY race between chmod+x and exec — flaky on CI; tracked in #3568"]
 async fn run_completion_nonzero_exit_with_stderr_captured() {
     // WHY: When CC emits a result event with empty result text and then exits
     // nonzero, run_completion falls through to the stderr-capture branch
@@ -427,7 +423,6 @@ async fn run_streaming_spawn_failure_reports_binary_path() {
 }
 
 #[tokio::test]
-#[ignore = "ETXTBSY race between chmod+x and exec — flaky on CI; tracked in #3568"]
 async fn run_streaming_invokes_callback_for_each_delta() {
     // WHY: run_streaming must call on_delta once per assistant text event,
     // in order, with the exact text. This is the primary contract of the
@@ -468,7 +463,6 @@ printf '{"type":"result","subtype":"success","result":"chunk1chunk2chunk3","is_e
 }
 
 #[tokio::test]
-#[ignore = "ETXTBSY race between chmod+x and exec — flaky on CI; tracked in #3568"]
 async fn run_streaming_timeout_returns_error() {
     // WHY: Same timeout contract as run_completion — streaming subprocess
     // that stalls must be killed and must return a timeout error.

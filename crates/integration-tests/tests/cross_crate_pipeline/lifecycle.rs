@@ -242,7 +242,6 @@ async fn system_prompt_includes_oikos_bootstrap_files() {
 // ===========================================================================
 
 #[tokio::test]
-#[ignore = "pre-existing: unarchive+rename sequence panics — tracked in #3568"]
 async fn session_lifecycle_create_list_archive_unarchive_rename() {
     let harness = TestHarness::build().await;
     let router = harness.router();
@@ -270,7 +269,10 @@ async fn session_lifecycle_create_list_archive_unarchive_rename() {
         .expect("list sessions");
     assert_eq!(resp.status(), StatusCode::OK);
     let list = body_json(resp).await;
-    let sessions = list["sessions"].as_array().expect("sessions array");
+    // WHY: pylon's cursor-pagination refactor (#3467) renamed the response
+    // envelope field from `sessions` to `items` — the shared PaginatedResponse
+    // uses `items` across every paginated endpoint.
+    let sessions = list["items"].as_array().expect("items array");
     assert!(
         sessions.iter().any(|s| s["id"] == id),
         "session should appear in list"
@@ -323,7 +325,7 @@ async fn session_lifecycle_create_list_archive_unarchive_rename() {
         .await
         .expect("list after rename");
     let list = body_json(resp).await;
-    let sessions = list["sessions"].as_array().expect("sessions array");
+    let sessions = list["items"].as_array().expect("items array");
     let our_session = sessions
         .iter()
         .find(|s| s["id"] == id)

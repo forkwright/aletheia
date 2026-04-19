@@ -256,7 +256,6 @@ async fn eval_session_scenarios_pass() {
 }
 
 #[tokio::test]
-#[ignore = "pre-existing: conversation scenarios drifted — tracked in #3568"]
 async fn eval_conversation_scenarios_pass() {
     let (base_url, token, _dir) = start_test_server().await;
 
@@ -281,7 +280,6 @@ async fn eval_conversation_scenarios_pass() {
 }
 
 #[tokio::test]
-#[ignore = "pre-existing: non-canary scenario fails — tracked in #3568"]
 async fn eval_full_run_excludes_canary() {
     // WHY: full run excludes the `canary-*` categories which exercise a real
     // LLM and would fail against the mock provider. Run all OTHER categories

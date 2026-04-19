@@ -128,8 +128,10 @@ async fn error_invalid_session_returns_404() {
 }
 
 #[tokio::test]
-#[ignore = "pre-existing: returns 422 not 400 — tracked in #3568"]
-async fn error_empty_message_returns_400() {
+async fn error_empty_message_returns_422() {
+    // WHY: pylon returns 422 Unprocessable Entity for validation failures
+    // (empty content), matching the canonical pattern in error.rs and other
+    // `*_returns_422` tests in pylon::tests::error_envelope and streaming.
     let harness = TestHarness::build().await;
     let router = harness.router();
 
@@ -142,12 +144,14 @@ async fn error_empty_message_returns_400() {
         Some(serde_json::json!({ "content": "" })),
     );
     let resp = router.clone().oneshot(req).await.expect("empty message");
-    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
 }
 
 #[tokio::test]
-#[ignore = "pre-existing: returns 422 not 400 — tracked in #3568"]
-async fn error_empty_rename_returns_400() {
+async fn error_empty_rename_returns_422() {
+    // WHY: pylon returns 422 Unprocessable Entity for validation failures
+    // (empty name), matching the canonical pattern in error.rs and the
+    // `rename_session_empty_name_returns_422_with_envelope` test in pylon.
     let harness = TestHarness::build().await;
     let router = harness.router();
 
@@ -160,7 +164,7 @@ async fn error_empty_rename_returns_400() {
         Some(serde_json::json!({ "name": "" })),
     );
     let resp = router.clone().oneshot(req).await.expect("empty rename");
-    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
 }
 
 #[tokio::test]

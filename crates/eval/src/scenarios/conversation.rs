@@ -180,7 +180,7 @@ impl Scenario for ConversationEmptyRejected {
     fn meta(&self) -> ScenarioMeta {
         ScenarioMeta {
             id: "conversation-empty-rejected",
-            description: "Sending empty content returns 400",
+            description: "Sending empty content returns 422",
             category: "conversation",
             requires_auth: true,
             requires_nous: true,
@@ -191,6 +191,9 @@ impl Scenario for ConversationEmptyRejected {
     fn run<'a>(&'a self, client: &'a EvalClient) -> ScenarioFuture<'a> {
         Box::pin(
             async move {
+                // WHY: pylon returns 422 Unprocessable Entity for validation
+                // failures (empty content). See pylon::error::ApiError::Validation
+                // and the `send_message_empty_content_returns_422` test.
                 let nous_list = client.list_nous().await?;
                 let nous = nous_list
                     .first()
@@ -200,11 +203,11 @@ impl Scenario for ConversationEmptyRejected {
                 let session = client.create_session(nous_id, &key).await?;
                 match client.send_message(&session.id, "").await {
                     Err(crate::error::Error::UnexpectedStatus { status, .. }) => {
-                        assert_eval(status == 400, format!("expected 400, got {status}"))
+                        assert_eval(status == 422, format!("expected 422, got {status}"))
                     }
                     Err(e) => Err(e),
                     Ok(_) => crate::error::AssertionSnafu {
-                        message: "expected 400 for empty content but got success",
+                        message: "expected 422 for empty content but got success",
                     }
                     .fail(),
                 }
