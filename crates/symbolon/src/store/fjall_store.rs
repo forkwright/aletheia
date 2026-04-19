@@ -638,4 +638,98 @@ mod tests {
         let result = store.revoke_api_key("no-such-key");
         assert!(result.is_err());
     }
+
+    /// Boundary test for `cleanup_expired_revocations` comparison at line 445.
+    ///
+    /// WHY: Kills the `<` → `<=` mutant. A token whose `expires_at` is exactly
+    /// `now` must *not* be removed; changing `<` to `<=` would incorrectly
+    /// delete it, violating the revocation guarantee.
+    #[test]
+    fn cleanup_expired_revocations_boundary() {
+        let store = memory_store();
+
+        let now = jiff::Zoned::now();
+        let past = now
+            .clone()
+            .checked_sub(jiff::Span::new().seconds(1))
+            .unwrap()
+            .strftime("%Y-%m-%dT%H:%M:%S%.3fZ")
+            .to_string();
+        let present = now.strftime("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+        let future = now
+            .checked_add(jiff::Span::new().seconds(1))
+            .unwrap()
+            .strftime("%Y-%m-%dT%H:%M:%S%.3fZ")
+            .to_string();
+
+        store.revoke_token("past-jti", &past).unwrap();
+        store.revoke_token("present-jti", &present).unwrap();
+        store.revoke_token("future-jti", &future).unwrap();
+
+        let cleaned = store.cleanup_expired_revocations().unwrap();
+        assert_eq!(
+            cleaned, 1,
+            "only the strictly-past token should be cleaned up"
+        );
+
+        assert!(!store.is_token_revoked("past-jti").unwrap());
+        assert!(
+            store.is_token_revoked("present-jti").unwrap(),
+            "token with expires_at == now must survive cleanup"
+        );
+        assert!(store.is_token_revoked("future-jti").unwrap());
+    }
+
+    /// Ensures `cleanup_expired_revocations` behaves correctly when nothing is
+    /// expired (count == 0 path at line 453).
+    #[test]
+    fn cleanup_expired_revocations_noop() {
+        let store = memory_store();
+
+        // Empty store → count == 0.
+        assert_eq!(store.cleanup_expired_revocations().unwrap(), 0);
+
+        // Only future tokens → count == 0.
+        store
+            .revoke_token("future-jti", "2099-01-01T00:00:00.000Z")
+            .unwrap();
+        assert_eq!(store.cleanup_expired_revocations().unwrap(), 0);
+        assert!(store.is_token_revoked("future-jti").unwrap());
+    }
+
+    /// Round-trip test for `api_key_entry_to_record` (line 470).
+    ///
+    /// WHY: Kills the `Default::default()` mutant by asserting every field
+    /// survives encoding → storage → decoding. All `Option` fields are set to
+    /// `Some` so that a default-value replacement is detected.
+    #[test]
+    fn api_key_round_trip_all_fields() {
+        let store = memory_store();
+        let record = ApiKeyRecord {
+            id: "k1".to_owned(),
+            prefix: "ak_prefix".to_owned(),
+            key_hash: "blake3hash".to_owned(),
+            role: Role::Admin,
+            nous_id: Some("nous-42".to_owned()),
+            created_at: "2024-01-15T09:30:00.000Z".to_owned(),
+            expires_at: Some("2025-01-15T09:30:00.000Z".to_owned()),
+            last_used_at: Some("2024-06-15T09:30:00.000Z".to_owned()),
+            revoked_at: Some("2024-07-15T09:30:00.000Z".to_owned()),
+        };
+
+        store.store_api_key(&record).unwrap();
+        let found = store.find_api_key_by_hash("blake3hash").unwrap();
+        assert!(found.is_some(), "api key should be found by hash");
+        let found = found.unwrap();
+
+        assert_eq!(found.id, record.id);
+        assert_eq!(found.prefix, record.prefix);
+        assert_eq!(found.key_hash, record.key_hash);
+        assert_eq!(found.role, record.role);
+        assert_eq!(found.nous_id, record.nous_id);
+        assert_eq!(found.created_at, record.created_at);
+        assert_eq!(found.expires_at, record.expires_at);
+        assert_eq!(found.last_used_at, record.last_used_at);
+        assert_eq!(found.revoked_at, record.revoked_at);
+    }
 }
