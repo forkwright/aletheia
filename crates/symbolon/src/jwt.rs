@@ -614,9 +614,9 @@ mod tests {
         assert!(!claims.jti.is_empty(), "jti must be set");
     }
 
-    /// Regression: encode_claims must produce a token that round-trips through
-    /// validate with every field intact. Catches the mutant that replaces the
-    /// return value with Ok("xyzzy".into()).
+    /// Regression: `encode_claims` must produce a token that round-trips
+    /// through `validate` with every field intact. Catches the mutant that
+    /// replaces the return value with `Ok("xyzzy".into())`.
     #[test]
     fn encode_claims_round_trip_preserves_fields() {
         let mgr = hmac_manager();
@@ -644,8 +644,8 @@ mod tests {
         assert_eq!(actual.kind, expected.kind);
     }
 
-    /// Regression: issue must compute exp as iat + ttl. Catches the mutant
-    /// that flips the `+` to `-` on line 336.
+    /// Regression: `issue` must compute `exp` as `iat + ttl`. Catches the
+    /// mutant that flips the `+` to `-` on line 336.
     #[test]
     fn issue_computes_exp_as_iat_plus_ttl() {
         let mgr = hmac_manager();
@@ -655,7 +655,7 @@ mod tests {
                 Role::Readonly,
                 None,
                 TokenKind::Access,
-                Duration::from_secs(3600),
+                Duration::from_hours(1),
             )
             .unwrap();
         let claims = mgr.validate(&token).unwrap();
