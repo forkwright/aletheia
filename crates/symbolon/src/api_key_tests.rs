@@ -118,8 +118,8 @@ fn generate_returns_well_formed_full_key_string() {
     assert!(key.starts_with("ale_holder_"));
 }
 
-/// WHY: catches `Default::default()` mutant on the returned record. Default `ApiKeyRecord`
-/// would have empty prefix / Role::Readonly / `nous_id == None`, which must fail here.
+// WHY: catches `Default::default()` mutant on the returned record. Default `ApiKeyRecord`
+// would have empty prefix / Role::Readonly / `nous_id == None`, which must fail here.
 #[test]
 fn generate_record_reflects_requested_role_and_nous_id() {
     let store = memory_store();
@@ -154,7 +154,7 @@ fn generate_without_expiry_leaves_expires_at_none() {
 #[test]
 fn generate_with_expiry_sets_expires_at_near_requested() {
     let store = memory_store();
-    let expires_in = Duration::from_secs(3600); // 1 hour
+    let expires_in = Duration::from_hours(1);
 
     let before = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -166,9 +166,7 @@ fn generate_with_expiry_sets_expires_at_near_requested() {
         .unwrap()
         .as_secs();
 
-    let stored = record
-        .expires_at
-        .expect("expires_at set when expires_in is Some");
+    let stored = record.expires_at.unwrap();
     // Parse the ISO string back to a unix-seconds value via the inverse of time_from_unix.
     let parsed_secs = iso8601_to_unix_secs(&stored);
 
@@ -193,13 +191,19 @@ fn generate_with_expiry_sets_expires_at_near_requested() {
 /// Intentionally independent of `time_from_unix` so the test does not just
 /// round-trip through the same arithmetic it is trying to verify.
 fn iso8601_to_unix_secs(s: &str) -> u64 {
-    // Format: YYYY-MM-DDTHH:MM:SS.000Z (24 chars).
-    let year: u64 = s[0..4].parse().unwrap();
-    let month: u64 = s[5..7].parse().unwrap();
-    let day: u64 = s[8..10].parse().unwrap();
-    let hour: u64 = s[11..13].parse().unwrap();
-    let minute: u64 = s[14..16].parse().unwrap();
-    let second: u64 = s[17..19].parse().unwrap();
+    // Format: YYYY-MM-DDTHH:MM:SS.000Z (24 chars of pure ASCII).
+    // Use byte-slice indexing so clippy::string_slice doesn't fire; ASCII
+    // guarantees the field boundaries land on char boundaries.
+    let b = s.as_bytes();
+    let parse = |range: std::ops::Range<usize>| -> u64 {
+        std::str::from_utf8(&b[range]).unwrap().parse().unwrap()
+    };
+    let year = parse(0..4);
+    let month = parse(5..7);
+    let day = parse(8..10);
+    let hour = parse(11..13);
+    let minute = parse(14..16);
+    let second = parse(17..19);
 
     // Howard Hinnant civil-to-days, inverse of util::days_to_date.
     let y = if month <= 2 { year - 1 } else { year };
@@ -214,9 +218,9 @@ fn iso8601_to_unix_secs(s: &str) -> u64 {
 
 // ── validate: expiry boundary + claims round-trip (mutants 79, 92) ────────────
 
-/// Store an API key record whose `expires_at` is a known ISO-8601 string, then
-/// validate the corresponding raw key. Returns the validate() Result so callers
-/// can check both Ok(claims) and Err(expired) outcomes.
+// Store an API key record whose `expires_at` is a known ISO-8601 string, then
+// validate the corresponding raw key. Returns the `validate()` Result so callers
+// can check both `Ok(claims)` and `Err(expired)` outcomes.
 fn validate_with_stored_expiry(expires_at: &str) -> (crate::error::Result<Claims>, String) {
     let store = memory_store();
     // Generate a real key to get valid (raw_key, key_hash) pair.
@@ -231,12 +235,12 @@ fn validate_with_stored_expiry(expires_at: &str) -> (crate::error::Result<Claims
     (result, raw_key)
 }
 
-/// WHY: line 92 `if *expires_at < now`. A stored expiry of "1970-..." is in the
-/// strict past — must trigger ExpiredToken, catching `>`/`==` mutants.
+// WHY: line 92 `if *expires_at < now`. A stored expiry of "1970-..." is in the
+// strict past - must trigger `ExpiredToken`, catching `>`/`==` mutants.
 #[test]
 fn validate_rejects_expired_key() {
     let (result, _) = validate_with_stored_expiry("1970-01-01T00:00:00.000Z");
-    let err = result.expect_err("expired expires_at must fail validation");
+    let err = result.unwrap_err();
     assert!(
         matches!(err, crate::error::Error::ExpiredToken { .. }),
         "expected ExpiredToken, got {err:?}"
@@ -248,7 +252,7 @@ fn validate_rejects_expired_key() {
 #[test]
 fn validate_accepts_unexpired_key() {
     let (result, _) = validate_with_stored_expiry("9999-12-31T23:59:59.000Z");
-    let claims = result.expect("future expires_at must pass validation");
+    let claims = result.unwrap();
     assert_eq!(claims.role, Role::Agent);
     assert_eq!(claims.nous_id.as_deref(), Some("syn"));
 }
@@ -274,9 +278,9 @@ fn validate_equal_to_now_is_not_rejected() {
     );
 }
 
-/// WHY: line 79 `Result<Claims>` can be replaced with `Ok(Default::default())`.
-/// Assert every field of the returned Claims carries the stored record data.
-/// Uses a table over (role, nous_id, prefix) to cover multiple shapes.
+// WHY: line 79 `Result<Claims>` can be replaced with `Ok(Default::default())`.
+// Assert every field of the returned Claims carries the stored record data.
+// Uses a table over (role, `nous_id`, prefix) to cover multiple shapes.
 #[test]
 fn validate_claims_round_trip_all_fields() {
     let cases: &[(Role, Option<&str>, &str)] = &[
@@ -381,7 +385,7 @@ fn time_from_unix_known_2023_timestamp() {
 fn time_from_unix_shape_is_iso8601_z() {
     let out = time_from_unix(1_700_000_000);
     assert_eq!(out.len(), 24);
-    assert!(out.ends_with(".000Z"));
+    assert!(out.as_bytes().ends_with(b".000Z"));
     assert_eq!(out.as_bytes()[4], b'-');
     assert_eq!(out.as_bytes()[7], b'-');
     assert_eq!(out.as_bytes()[10], b'T');
