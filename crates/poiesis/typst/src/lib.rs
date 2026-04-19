@@ -1,0 +1,215 @@
+#![deny(missing_docs)]
+//! poiesis-typst: Typst-based PDF rendering for poiesis.
+//!
+//! Typst is the primary rendering backend for the poiesis report tooling arc.
+//! It is more expressive than direct PDF generation: templates, math,
+//! citations, breakable blocks, cross-references, and page-aware layout all
+//! come for free, and diagnostics carry source locations.
+//!
+//! This crate embeds the Typst compiler as a library (not a subprocess), so
+//! rendering is reproducible, offline, and returns structured errors.
+//!
+//! ## Public API
+//!
+//! - [`render_typst`] — compile an arbitrary Typst source string with an
+//!   injected JSON data blob and return PDF bytes.
+//! - [`render_template`] — compile a built-in template (looked up by slug)
+//!   against JSON data and return PDF bytes.
+//! - [`templates`] — listing of built-in template slugs.
+//!
+//! ## Data injection
+//!
+//! The JSON value supplied to [`render_typst`] is exposed to the Typst source
+//! as a virtual file named `data.json`. Templates load it with:
+//!
+//! ```typst
+//! #let data = json("data.json")
+//! ```
+//!
+//! This mirrors Typst's own `json()` function and avoids a bespoke macro
+//! layer. See [`templates::DEFAULT`] for an example.
+//!
+//! ## Attribution
+//!
+//! The compiler `World` implementation is adapted from `ergon_tools/sdr`
+//! (Cody's private code, freely adaptable per issue #3450).
+
+mod error;
+mod world;
+
+/// Built-in Typst templates.
+pub mod templates;
+
+pub use error::PoiesisError;
+
+use tracing::instrument;
+use typst::layout::PagedDocument;
+
+use crate::world::{TypstWorld, format_diagnostics};
+
+/// Result alias for poiesis-typst operations.
+pub type Result<T, E = PoiesisError> = std::result::Result<T, E>;
+
+/// Render a Typst source string to PDF bytes, with optional JSON data injected
+/// at the virtual path `data.json`.
+///
+/// Templates can read the injected data via `json("data.json")`. Pass
+/// `serde_json::Value::Null` (or any empty object) if the template does not
+/// consume data.
+///
+/// # Errors
+///
+/// Returns [`PoiesisError::SerializeData`] if `data` cannot be serialized,
+/// [`PoiesisError::Compile`] if Typst rejects the source, or
+/// [`PoiesisError::PdfExport`] if PDF export fails.
+#[instrument(skip_all, fields(source_bytes = source.len()))]
+pub fn render_typst(source: &str, data: &serde_json::Value) -> Result<Vec<u8>> {
+    let data_bytes = serde_json::to_vec(data).map_err(|e| PoiesisError::SerializeData {
+        detail: e.to_string(),
+    })?;
+
+    let world = TypstWorld::new(source, Some(data_bytes));
+
+    let result = typst::compile::<PagedDocument>(&world);
+
+    for warning in &result.warnings {
+        tracing::warn!(message = %warning.message, "typst warning");
+    }
+
+    let document = result.output.map_err(|diagnostics| PoiesisError::Compile {
+        diagnostics: format_diagnostics(&world, &diagnostics),
+    })?;
+
+    let pdf_bytes =
+        typst_pdf::pdf(&document, &typst_pdf::PdfOptions::default()).map_err(|diagnostics| {
+            PoiesisError::PdfExport {
+                diagnostics: format_diagnostics(&world, &diagnostics),
+            }
+        })?;
+
+    Ok(pdf_bytes)
+}
+
+/// Render a built-in template slug against JSON data.
+///
+/// See [`templates`] for the list of slugs.
+///
+/// # Errors
+///
+/// Returns [`PoiesisError::UnknownTemplate`] if the slug is not recognized,
+/// plus any error from [`render_typst`].
+#[instrument(skip_all, fields(slug))]
+pub fn render_template(slug: &str, data: &serde_json::Value) -> Result<Vec<u8>> {
+    let source = templates::lookup(slug).ok_or_else(|| PoiesisError::UnknownTemplate {
+        slug: slug.to_owned(),
+        known: templates::SLUGS.join(", "),
+    })?;
+    render_typst(source, data)
+}
+
+#[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn render_minimal_document_produces_pdf() {
+        let source = "= Hello\n\nThis is a test.";
+        let pdf = render_typst(source, &serde_json::Value::Null).expect("minimal must render");
+        assert!(pdf.starts_with(b"%PDF-"), "output must be PDF-magic");
+        assert!(pdf.len() > 200, "PDF should be more than a few bytes");
+        assert!(pdf.len() < 5_000_000, "one-pager PDF should be <5MB");
+    }
+
+    #[test]
+    fn render_default_template_round_trip() {
+        let data = serde_json::json!({
+            "title": "Quarterly Review",
+            "author": "alice",
+            "subtitle": "Draft — internal circulation only",
+            "body": [
+                "First body paragraph describing the headline finding.",
+                "Second body paragraph with supporting detail."
+            ],
+            "table": {
+                "columns": 3,
+                "header": ["Metric", "Q1", "Q2"],
+                "rows": [
+                    ["Revenue", "100", "120"],
+                    ["Costs",   "60",  "70"]
+                ]
+            },
+            "footer": "Prepared for internal review."
+        });
+        let pdf = render_template(templates::DEFAULT, &data).expect("default must render");
+        assert!(pdf.starts_with(b"%PDF-"), "output must be PDF-magic");
+        // WHY: exact byte equality is not meaningful — PDFs embed fonts and
+        // creation dates. Assert on magic prefix and reasonable size bounds.
+        assert!(
+            pdf.len() > 500,
+            "template PDF should be more than 500 bytes"
+        );
+        assert!(pdf.len() < 5_000_000, "template PDF should be <5MB");
+    }
+
+    #[test]
+    fn render_default_template_with_only_title() {
+        let data = serde_json::json!({ "title": "Minimal" });
+        let pdf =
+            render_template(templates::DEFAULT, &data).expect("minimal template data must render");
+        assert!(pdf.starts_with(b"%PDF-"));
+    }
+
+    #[test]
+    fn render_default_template_no_data_uses_default_title() {
+        let data = serde_json::json!({});
+        let pdf = render_template(templates::DEFAULT, &data).expect("empty data must still render");
+        assert!(pdf.starts_with(b"%PDF-"));
+    }
+
+    #[test]
+    fn unknown_template_returns_error() {
+        let data = serde_json::Value::Null;
+        let err = render_template("no-such-template", &data).expect_err("must error");
+        assert!(
+            matches!(err, PoiesisError::UnknownTemplate { .. }),
+            "expected UnknownTemplate, got: {err:?}"
+        );
+    }
+
+    #[test]
+    fn malformed_typst_returns_compile_error() {
+        let source = "#this-function-does-not-exist()";
+        let err = render_typst(source, &serde_json::Value::Null).expect_err("must error");
+        assert!(
+            matches!(err, PoiesisError::Compile { .. }),
+            "expected Compile, got: {err:?}"
+        );
+    }
+
+    #[test]
+    fn compile_diagnostics_include_location() {
+        let source = "#unknown-function()";
+        let err = render_typst(source, &serde_json::Value::Null).expect_err("must error");
+        let PoiesisError::Compile { diagnostics } = err else {
+            panic!("expected Compile error");
+        };
+        assert!(
+            diagnostics.contains("main.typ"),
+            "diagnostics must reference main.typ: {diagnostics}"
+        );
+    }
+
+    #[test]
+    fn data_injection_is_visible_to_template() {
+        // Template that prints a field from data; failure to load means
+        // json() returns an error and compile fails.
+        let source = r#"
+#let d = json("data.json")
+The marker is #d.marker.
+"#;
+        let data = serde_json::json!({ "marker": "sentinel-value-xyz" });
+        let pdf = render_typst(source, &data).expect("must render");
+        assert!(pdf.starts_with(b"%PDF-"));
+    }
+}
