@@ -581,6 +581,11 @@ impl Error {
 }
 ```
 
+> Convenience alias for `Result<T, Error>`.
+```rust
+pub type Result<T> = std::result::Result<T, Error>;
+```
+
 ## `src/fallback.rs`
 
 ```rust
@@ -740,6 +745,22 @@ pub const BACKOFF_FACTOR: u64 = 2;
 pub const BACKOFF_MAX_MS: u64 = 30_000;
 ```
 
+> All supported Anthropic model identifiers.
+> 
+> Includes both short names (e.g., `claude-opus-4-6`) and dated snapshots
+> (e.g., `claude-opus-4-20250514`).
+```rust
+pub static SUPPORTED_MODELS: &[&str] = &[
+    // kanon:ignore RUST/pub-visibility
+    "claude-opus-4-6",
+    "claude-opus-4-20250514",
+    "claude-sonnet-4-6",
+    "claude-sonnet-4-20250514",
+    "claude-haiku-4-5",
+    "claude-haiku-4-5-20251001",
+];
+```
+
 > Default Opus model alias.
 ```rust
 pub const OPUS: &str = "claude-opus-4-6";
@@ -753,6 +774,50 @@ pub const SONNET: &str = "claude-sonnet-4-6";
 > Default Haiku model alias.
 ```rust
 pub const HAIKU: &str = "claude-haiku-4-5-20251001";
+```
+
+## `src/openai/client.rs`
+
+```rust
+pub struct OpenAiProviderConfig {
+    /// Operator-facing label used for logs, metrics, and `name()`.
+    pub name: String,
+    /// Base URL for the target endpoint — typically ends in `/v1`. Example:
+    /// `http://127.0.0.1:8088/v1` for a local llama.cpp server. TLS is
+    /// required unless the URL is loopback.
+    pub base_url: String,
+    /// Optional bearer token for authenticated endpoints. Loopback llama.cpp
+    /// and ollama accept any value (or no auth at all); OpenAI requires a
+    /// real key.
+    pub api_key: Option<SecretString>,
+    /// Model IDs this provider advertises support for. Determines routing
+    /// in the [`ProviderRegistry`](crate::provider::ProviderRegistry).
+    pub models: Vec<String>,
+    /// Per-request timeout override. Defaults to 2 minutes (matches
+    /// Anthropic's non-streaming default).
+    pub request_timeout: Duration,
+    /// Maximum retries on transient failures (5xx, timeout, connection
+    /// reset). Defaults to 3.
+    pub max_retries: u32,
+}
+```
+
+> OpenAI Chat Completions-compatible LLM provider.
+```rust
+pub struct OpenAiProvider {
+    client: Client,
+    config: OpenAiProviderConfig,
+    /// Owned `&'static str` slice of model IDs for [`LlmProvider::supported_models`].
+    /// Leaked once at construction — the provider lives for the server lifetime.
+    model_refs: &'static [&'static str],
+    health: Arc<ProviderHealthTracker>,
+}
+```
+
+```rust
+impl OpenAiProvider {
+    pub fn new (config: OpenAiProviderConfig) -> Result<Self>;
+}
 ```
 
 ## `src/provider.rs`
@@ -774,6 +839,7 @@ pub trait LlmProvider : Send + Sync {
     fn supported_models (&self) -> &[&str];
     fn supports_model (&self, model: &str) -> bool; // default impl
     fn name (&self) -> &str;
+    fn deployment_target (&self) -> DeploymentTarget; // default impl
     fn supports_streaming (&self) -> bool; // default impl
     fn complete_streaming <'a> (
         &'a self,
@@ -809,6 +875,24 @@ pub enum PromptCacheMode {
 ```
 
 ```rust
+pub enum DeploymentTarget {
+    /// External cloud provider; receives only `Public` facts.
+    #[default]
+    Cloud,
+    /// Self-hosted or network-local provider; receives `Public` and `Internal`.
+    LocalHosted,
+    /// In-process provider; no facts leave the host.
+    Embedded,
+}
+```
+
+```rust
+impl DeploymentTarget {
+    pub fn as_str (self) -> &'static str;
+}
+```
+
+```rust
 pub struct ProviderConfig {
     /// Provider type: `anthropic`, `openai`, `ollama`.
     pub provider_type: String,
@@ -834,6 +918,12 @@ pub struct ProviderConfig {
     /// enters Anthropic's cache infrastructure (#3410).
     #[serde(default)]
     pub prompt_cache_mode: PromptCacheMode,
+    /// Where this provider runs, gating which `FactSensitivity` the recall
+    /// pipeline is allowed to send to it (#3404, #3413). Defaults to
+    /// [`DeploymentTarget::Cloud`] — the safe assumption that an
+    /// unconfigured provider speaks to an external service.
+    #[serde(default)]
+    pub deployment_target: DeploymentTarget,
 }
 ```
 

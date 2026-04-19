@@ -66,6 +66,172 @@ impl ChannelListener {
 }
 ```
 
+## `src/matrix/client.rs`
+
+```rust
+pub struct VersionsReport {
+    /// HTTP status code from the versions endpoint.
+    pub status: u16,
+    /// Round-trip latency in milliseconds, measured locally.
+    pub latency_ms: u64,
+}
+```
+
+```rust
+pub struct MatrixClient {
+    /// Base URL, trailing slash trimmed. All endpoint paths are joined with `/`.
+    homeserver: String,
+    http: HttpClient,
+}
+```
+
+```rust
+impl MatrixClient {
+    pub fn new (homeserver_url: &str) -> Result<Self>;
+    pub fn with_timeout (homeserver_url: &str, timeout: Duration) -> Result<Self>;
+    pub fn homeserver (&self) -> &str;
+    pub async fn versions (&self) -> Result<VersionsReport>;
+}
+```
+
+## `src/matrix/crypto_store.rs`
+
+> fjall-backed custom `CryptoStore`.
+> 
+> The in-memory `MemoryStore` is the authoritative cache for reads and
+> writes; fjall is the durable mirror, refreshed on every mutating
+> operation. A dedicated persist `Mutex` serialises snapshot writes so
+> concurrent `save_changes` calls do not race the fjall txn.
+```rust
+pub struct FjallCryptoStore {
+    /// Authoritative in-memory store. All `CryptoStore` trait methods delegate here.
+    inner: MemoryStore,
+    /// fjall database handle (shared with the write-lock guard).
+    db: Arc<SingleWriterTxDatabase>,
+    /// Koina-style write-serialisation lock around fjall writes.
+    ///
+    /// WHY `std::sync::Mutex`: matches the convention in `koina::fjall::FjallDb`.
+    /// Held only across synchronous fjall transactions, never across `.await`.
+    fjall_write_lock: std::sync::Mutex<()>,
+    /// Temp dir guard for ephemeral stores (test mode). `None` for persistent stores.
+    ///
+    /// Read only via `Debug` (to report persistent vs ephemeral); kept alive
+    /// primarily for its `Drop` side-effect which deletes the tempdir.
+    temp_dir_guard: Option<tempfile::TempDir>,
+    /// Serialises async persist calls so repeated `save_changes` does not
+    /// interleave their snapshot dumps (which would otherwise briefly write
+    /// stale state over fresh state).
+    persist_lock: Mutex<()>,
+}
+```
+
+```rust
+impl FjallCryptoStore {
+    pub async fn open (path: &Path, agent_id: &str) -> Result<Self>;
+    pub fn open_temp (agent_id: &str) -> Result<Self>;
+}
+```
+
+## `src/matrix/error.rs`
+
+```rust
+pub enum Error {
+    /// HTTP transport error talking to the Matrix homeserver.
+    #[snafu(display("matrix HTTP error: {source}"))]
+    Http {
+        source: reqwest::Error,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// The homeserver URL could not be parsed or was not an absolute `http(s)` URL.
+    #[snafu(display("invalid matrix homeserver URL '{url}': {message}"))]
+    InvalidUrl {
+        url: String,
+        message: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Fjall key-value store open/partition/read/write failure.
+    #[snafu(display("matrix crypto store: {message}"))]
+    Store {
+        message: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// rmp-serde encode/decode failure against the crypto store.
+    #[snafu(display("matrix crypto store codec: {message}"))]
+    Codec {
+        message: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+}
+```
+
+## `src/matrix/mod.rs`
+
+> Matrix channel provider implementing [`ChannelProvider`].
+> 
+> Phase 2 scope:
+> - `probe()` — real HTTP GET `/_matrix/client/versions`.
+> - `send()` — returns a "Phase 3" error (never dispatches).
+> - `listen()` — returns a closed receiver + empty `JoinSet`.
+> - Holds an `Arc<FjallCryptoStore>` so Phase 3 can plug in
+>   `matrix-sdk-base` without reshaping the registration path.
+```rust
+pub struct MatrixProvider {
+    homeserver_url: String,
+    user_id: String,
+    device_display_name: String,
+    http: MatrixClient,
+    crypto_store: Arc<FjallCryptoStore>,
+    accounts: HashMap<String, AccountBinding>,
+}
+```
+
+```rust
+pub struct AccountBinding {
+    /// Nous (agent) identifier.
+    pub nous_id: String,
+    /// Matrix room ID the agent operates in.
+    pub room: String,
+}
+```
+
+```rust
+impl MatrixProvider {
+    pub fn new (
+        homeserver_url: impl Into<String>,
+        user_id: impl Into<String>,
+        device_display_name: impl Into<String>,
+        crypto_store: Arc<FjallCryptoStore>,
+    ) -> error::Result<Self>;
+    pub fn add_account (&mut self, binding: AccountBinding);
+    pub fn user_id (&self) -> &str;
+    pub fn device_display_name (&self) -> &str;
+    pub fn homeserver_url (&self) -> &str;
+    pub fn crypto_store (&self) -> &Arc<FjallCryptoStore>;
+    pub fn accounts (&self) -> &HashMap<String, AccountBinding>;
+    pub fn listen (
+        &self,
+        poll_interval: Option<Duration>,
+        cancel: CancellationToken,
+    ) -> (mpsc::Receiver<InboundMessage>, JoinSet<()>);
+}
+```
+
+## `src/matrix/snapshot.rs`
+
+```rust
+impl Snapshot {
+    pub async fn capture (inner: &MemoryStore) -> Self;
+    pub async fn restore_into (self, inner: &MemoryStore);
+}
+```
+
 ## `src/metrics.rs`
 
 > Register this crate's metrics with the shared registry.

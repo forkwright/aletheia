@@ -146,6 +146,23 @@ pub struct RecallResult {
     pub source_type: String,
     /// Source ID.
     pub source_id: String,
+    /// Data-sovereignty classification for the underlying fact, carried
+    /// from [`Fact::sensitivity`] so the recall pipeline can filter results
+    /// by the active provider's deployment target (#3404, #3413). Defaults
+    /// to [`FactSensitivity::Public`] for non-fact sources (messages,
+    /// notes) and for facts persisted before sensitivity tracking was
+    /// introduced.
+    ///
+    /// [`Fact::sensitivity`]: super::fact::Fact::sensitivity
+    /// [`FactSensitivity::Public`]: super::fact::FactSensitivity::Public
+    #[serde(default)]
+    pub sensitivity: super::fact::FactSensitivity,
+    /// Normalized `PageRank` importance of the entity associated with this
+    /// result. Zero when no graph score is available. Carried from the
+    /// `graph_scores` relation so the recall pipeline can boost hub
+    /// entities directly (#3432).
+    #[serde(default)]
+    pub graph_importance: f64,
 }
 ```
 
@@ -229,6 +246,14 @@ pub struct Fact {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scope: Option<MemoryScope>,
 
+    /// Data-sovereignty classification gating which provider deployment
+    /// targets may receive this fact during recall (#3404, #3413).
+    ///
+    /// Defaults to [`FactSensitivity::Public`] via `#[serde(default)]` so
+    /// facts persisted before sensitivity tracking deserialize unchanged.
+    #[serde(default)]
+    pub sensitivity: FactSensitivity,
+
     /// Bi-temporal validity and recording timestamps.
     #[serde(flatten)]
     pub temporal: FactTemporal,
@@ -241,6 +266,26 @@ pub struct Fact {
     /// Access-tracking counters.
     #[serde(flatten)]
     pub access: FactAccess,
+}
+```
+
+```rust
+pub enum FactSensitivity {
+    /// Safe for any provider, including cloud LLM providers.
+    #[default]
+    Public,
+    /// Safe for local or self-hosted providers; must not leave the instance
+    /// via cloud APIs.
+    Internal,
+    /// Never send to any external provider. Only embedded (in-process)
+    /// providers may receive this fact.
+    Confidential,
+}
+```
+
+```rust
+impl FactSensitivity {
+    pub fn as_str (self) -> &'static str;
 }
 ```
 
@@ -700,7 +745,7 @@ pub struct TrainingConfig {
     /// Maximum size in bytes before rotating to a new shard file.
     ///
     /// When the current shard exceeds this limit, it is closed and a new
-    /// shard is started. Default: 50 MiB.
+    /// shard is started. Default: 50 `MiB`.
     #[serde(default = "default_max_shard_bytes")]
     pub max_shard_bytes: u64,
     /// Whether to redact PII and secret patterns from `user_message` and

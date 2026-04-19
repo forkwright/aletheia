@@ -31,7 +31,10 @@
 | `poiesis-text` | `crates/poiesis/text` | PDF + ODT rendering backends |
 | `poiesis-sheet` | `crates/poiesis/sheet` | XLSX + ODS rendering backends |
 | `poiesis-slides` | `crates/poiesis/slides` | PPTX rendering backend |
+| `poiesis-lint` | `crates/poiesis/lint` | Prose-quality linting: banned words, citations, required sections |
+| `poiesis-verify` | `crates/poiesis/verify` | Claim verification: arithmetic formula evaluation, cross-claim references |
 | `dokimion` | `crates/eval` | Behavioral eval framework: HTTP scenario runner against live instances |
+| `basanos` | `crates/basanos` | Planning and standards linter for kanon projects |
 | `integration-tests` | `crates/integration-tests` | Cross-crate integration test suite |
 | `aletheia` | `crates/aletheia` | Binary entrypoint: Clap CLI, service wiring |
 
@@ -55,8 +58,11 @@
 **Operator / presentation**:
 `skene`, `koilon`, `theatron`, `proskenion`, `poiesis-{text,sheet,slides}`
 
+**Report rendering** (document generation):
+`poiesis-core`, `poiesis-text`, `poiesis-sheet`, `poiesis-slides`, `poiesis-lint`, `poiesis-verify`
+
 **Support** (not in application dep graph):
-`dokimion`, `integration-tests`, `aletheia` (binary)
+`dokimion`, `basanos`, `integration-tests`, `aletheia` (binary)
 
 ## Dependency direction
 

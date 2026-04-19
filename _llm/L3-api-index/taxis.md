@@ -109,6 +109,8 @@ pub struct RecallWeights {
     pub relationship_proximity: f64,
     /// Access frequency weight (0.0--1.0).
     pub access_frequency: f64,
+    /// Graph `PageRank` importance weight (0.0--1.0).
+    pub graph_importance: f64,
 }
 ```
 
@@ -128,6 +130,13 @@ pub struct RecallSettings {
     pub max_cycles: usize,
     /// Per-factor scoring weights (factor scores for non-vector signals).
     pub weights: RecallWeights,
+    /// Inject factor metadata into recalled knowledge prompts.
+    ///
+    /// When enabled, each recalled fact includes its factor scores
+    /// (vector similarity, decay, relevance, epistemic tier, relationship
+    /// proximity, access frequency) so the LLM can weight its reasoning
+    /// by provenance quality. Default: false.
+    pub inject_metadata: bool,
 }
 ```
 
@@ -548,6 +557,43 @@ pub struct DaemonBehaviorConfig {
 }
 ```
 
+## `src/config/behavior/dispatch.rs`
+
+```rust
+pub struct DispatchConfig {
+    /// Recurring cron-dispatched tasks.
+    pub cron_tasks: Vec<CronTaskConfig>,
+}
+```
+
+```rust
+pub struct CronTaskConfig {
+    /// Unique task name.
+    pub name: String,
+    /// Cron expression (e.g., "0 2 * * *").
+    pub schedule: String,
+    /// Jitter in seconds (+/-).
+    pub jitter_secs: u64,
+    /// What to dispatch.
+    pub dispatch_spec: DispatchSpecConfig,
+}
+```
+
+```rust
+pub struct DispatchSpecConfig {
+    /// Prompt numbers to execute.
+    pub prompt_numbers: Vec<u32>,
+    /// Project identifier.
+    pub project: String,
+    /// Optional DAG reference.
+    #[serde(default)]
+    pub dag_ref: Option<String>,
+    /// Maximum parallelism.
+    #[serde(default)]
+    pub max_parallel: Option<u32>,
+}
+```
+
 ## `src/config/behavior/jwt.rs`
 
 ```rust
@@ -635,6 +681,36 @@ pub struct KnowledgeConfig {
     /// EMA alpha for surprise baseline adaptation. Default: 0.3.
     /// Mirrors `episteme::surprise::DEFAULT_EMA_ALPHA`.
     pub surprise_ema_alpha: f64,
+}
+```
+
+## `src/config/behavior/matrix.rs`
+
+```rust
+pub struct MatrixConfig {
+    /// Whether the Matrix channel is active.
+    pub enabled: bool,
+    /// Homeserver URL (e.g. `http://menos.lan:6167`). Must include scheme.
+    pub homeserver_url: String,
+    /// Matrix `user_id` this deployment authenticates as (e.g. `@syn:menos.lan`).
+    pub user_id: String,
+    /// Device display name advertised to the homeserver during login.
+    pub device_display_name: String,
+    /// Path to the fjall-backed crypto store, relative to `oikos.data()`.
+    ///
+    /// Default: `matrix-crypto/`. The store is namespaced per agent underneath.
+    pub crypto_store_path: PathBuf,
+    /// Per-nous room bindings (one entry per agent on this homeserver).
+    pub accounts: Vec<MatrixAccountConfig>,
+}
+```
+
+```rust
+pub struct MatrixAccountConfig {
+    /// Nous (agent) identifier.
+    pub nous_id: String,
+    /// Matrix room ID (e.g. `!abcd1234:menos.lan`).
+    pub room: String,
 }
 ```
 
@@ -806,6 +882,67 @@ pub enum PromptCacheMode {
     /// Extended 1-hour cache (reserved; behaves like `Ephemeral` until the
     /// wire format for extended TTL is plumbed through).
     Extended,
+}
+```
+
+```rust
+pub enum DeploymentTarget {
+    /// Third-party cloud API (e.g., api.anthropic.com, api.openai.com).
+    /// Facts marked sensitive are filtered before the request is sent.
+    #[default]
+    Cloud,
+    /// Self-hosted endpoint reachable over the local network (e.g., a
+    /// colocated llama.cpp server on the same subnet). Trusted with
+    /// operator-sensitive content but not with personally-identifiable data.
+    LocalHosted,
+    /// Runs on the same machine as aletheia (loopback llama.cpp / ollama
+    /// / vllm). Trusted with every fact the operator would trust to disk.
+    Embedded,
+}
+```
+
+```rust
+pub enum ProviderKind {
+    /// Anthropic Messages API native client.
+    Anthropic,
+    /// `OpenAI` Chat Completions-compatible HTTP client. Works with
+    /// `OpenAI`, llama.cpp, ollama, vllm, and any other server exposing the
+    /// same wire format.
+    OpenAiCompatible,
+    /// Claude Code subprocess adapter (delegates to the `claude` CLI).
+    /// Requires the `cc-provider` feature flag on hermeneus.
+    ClaudeCode,
+}
+```
+
+```rust
+pub struct LlmProviderConfig {
+    /// Operator-facing label for logs and diagnostics (e.g., `"local-qwen"`,
+    /// `"anthropic-cloud"`). Must be unique across the provider list.
+    pub name: String,
+    /// Which concrete provider implementation to instantiate.
+    #[serde(rename = "providerType")]
+    pub kind: ProviderKind,
+    /// HTTP base URL override. Required for OpenAI-compatible providers
+    /// (e.g., `http://127.0.0.1:8088/v1` for local llama.cpp). Optional for
+    /// Anthropic (defaults to `https://api.anthropic.com`). Ignored for
+    /// the Claude Code subprocess adapter.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_url: Option<String>,
+    /// Environment variable name holding the API key. Read at startup via
+    /// `std::env::var`. Optional for loopback / embedded providers that do
+    /// not require authentication.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub api_key_env: Option<String>,
+    /// Where this provider's traffic terminates. Drives the
+    /// factsensitivity filter (#3414) and air-gapped mode.
+    #[serde(default)]
+    pub deployment_target: DeploymentTarget,
+    /// Model identifiers this provider advertises support for. Used by the
+    /// provider registry for routing: the first provider in list order that
+    /// claims the requested model wins.
+    #[serde(default)]
+    pub models: Vec<String>,
 }
 ```
 
@@ -1288,9 +1425,68 @@ pub struct CronTaskEntry {
 ```
 
 ```rust
+pub struct PromptAuditSettings {
+    /// Whether outbound requests are recorded. Default: `true`.
+    ///
+    /// WHY default-on: this is a sovereignty feature — operators need
+    /// visibility into what the system sends to external providers without
+    /// opting in. The log stores hashes and IDs, not content, so the cost
+    /// of enabling it is small.
+    pub enabled: bool,
+    /// Directory for daily JSONL files. When `None`, resolves to
+    /// `{instance}/logs/prompt-audit/` at startup.
+    pub log_dir: Option<PathBuf>,
+    /// Days to retain JSONL files before the daemon prunes them.
+    pub retention_days: u32,
+    /// Whether the IDs of facts filtered by the sensitivity policy (#3404)
+    /// are included in each record. Default: `true`.
+    pub include_filtered_ids: bool,
+}
+```
+
+```rust
 pub struct McpConfig {
     /// Per-session rate limiting for MCP tool calls.
     pub rate_limit: McpRateLimitConfig,
+    /// Knowledge graph MCP surface configuration.
+    pub knowledge_graph: KnowledgeGraphMcpConfig,
+    /// Repomix MCP surface configuration.
+    pub repomix: RepomixMcpConfig,
+}
+```
+
+```rust
+pub struct KnowledgeGraphMcpConfig {
+    /// Whether the knowledge graph MCP tools are enabled.
+    ///
+    /// Defaults to `false` — operators must explicitly opt in.
+    pub enabled: bool,
+    /// Maximum number of results returned by `knowledge.search`.
+    ///
+    /// Defaults to 50.
+    pub max_search_results: u32,
+    /// Maximum graph traversal depth for `knowledge.graph_neighbors`.
+    ///
+    /// Capped at 4 to prevent unbounded Datalog recursion.
+    pub max_graph_depth: u32,
+}
+```
+
+```rust
+pub struct RepomixMcpConfig {
+    /// Whether the repomix MCP tools are enabled.
+    ///
+    /// Defaults to `false` — operators must explicitly opt in.
+    pub enabled: bool,
+    /// Maximum output tokens for a packed context.
+    ///
+    /// Defaults to `128_000` (Claude 3.5 Sonnet context window).
+    pub max_output_tokens: u32,
+    /// Directory containing custom `.repomix` template files.
+    ///
+    /// When `None`, built-in templates (`single_crate`, `crate_with_deps`,
+    /// `cross_crate`) are used.
+    pub templates_dir: Option<String>,
 }
 ```
 
@@ -1380,6 +1576,9 @@ pub struct AletheiaConfig {
     /// WHY configurable: watchdog backoff and anomaly detection sensitivity
     /// depend on system stability requirements and agent workload patterns.
     pub daemon_behavior: DaemonBehaviorConfig,
+    /// Recurring dispatch task configuration (cron-scheduled prompt runs).
+    #[serde(default)]
+    pub dispatch: DispatchConfig,
     /// Organon tool size and timeout limits.
     ///
     /// WHY configurable: filesystem write caps, subprocess timeouts, and
@@ -1412,6 +1611,24 @@ pub struct AletheiaConfig {
     /// typical NTP drift; operators on tightly synchronized hosts may
     /// lower this, and those behind mis-synced proxies may raise it.
     pub jwt: JwtSettings,
+    /// LLM provider definitions (#3424, #3414).
+    ///
+    /// Ordered list of backends — the provider registry routes each request
+    /// to the first entry that claims the requested model. Empty by default
+    /// for backward compatibility: when empty, the runtime falls back to the
+    /// legacy single-Anthropic setup driven by [`Self::anthropic`] and the
+    /// top-level credential chain. Populate this to enable OpenAI-compatible
+    /// endpoints (local llama.cpp/ollama/vllm, other cloud APIs) or to
+    /// declare explicit deployment targets for the factsensitivity filter.
+    #[serde(default)]
+    pub providers: Vec<LlmProviderConfig>,
+    /// Prompt audit log: operator visibility into outbound LLM requests (#3411).
+    ///
+    /// WHY configurable: operators can disable the log or tune retention and
+    /// filtered-ID inclusion. Default is on with 90-day retention because
+    /// the log is a sovereignty feature — operators should be able to see
+    /// what the system sent out without opting in.
+    pub prompt_audit: PromptAuditSettings,
 }
 ```
 
@@ -1486,6 +1703,9 @@ pub struct EmbeddingSettings {
 pub struct ChannelsConfig {
     /// Signal messenger transport configuration.
     pub signal: SignalConfig,
+    /// Matrix (conduwuit) transport configuration. Feature-gated at the
+    /// binary level; `enabled = false` keeps it inert regardless.
+    pub matrix: MatrixConfig,
 }
 ```
 
@@ -1814,6 +2034,14 @@ pub fn load_config (oikos: &Oikos) -> Result<AletheiaConfig>
 
 ```rust
 pub fn load_config_with (oikos: &Oikos, fs: &impl FileSystem) -> Result<AletheiaConfig>
+```
+
+```rust
+pub fn parse_toml_file (path: &std::path::Path) -> Result<toml::Value>
+```
+
+```rust
+pub fn parse_toml_file_with (path: &std::path::Path, fs: &impl FileSystem) -> Result<toml::Value>
 ```
 
 ```rust

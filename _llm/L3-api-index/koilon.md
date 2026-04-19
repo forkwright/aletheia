@@ -210,6 +210,186 @@ pub struct Suggestion {
 }
 ```
 
+```rust
+pub static COMMANDS: &[Command] = &[
+    Command {
+        name: "sessions",
+        aliases: &["s"],
+        description: "List sessions for current agent",
+        category: CommandCategory::Navigation,
+        shortcut: Some("Ctrl+S"),
+    },
+    Command {
+        name: "agents",
+        aliases: &["a"],
+        description: "Switch agent",
+        category: CommandCategory::Navigation,
+        shortcut: Some("Ctrl+A"),
+    },
+    Command {
+        name: "agent",
+        aliases: &[],
+        description: "Switch to named agent",
+        category: CommandCategory::Agent,
+        shortcut: None,
+    },
+    Command {
+        name: "cost",
+        aliases: &["$"],
+        description: "Show daily cost breakdown",
+        category: CommandCategory::Query,
+        shortcut: Some("Ctrl+I"),
+    },
+    Command {
+        name: "health",
+        aliases: &["h"],
+        description: "System health status",
+        category: CommandCategory::Query,
+        shortcut: Some("Ctrl+I"),
+    },
+    Command {
+        name: "compact",
+        aliases: &[],
+        description: "Trigger distillation",
+        category: CommandCategory::Action,
+        shortcut: None,
+    },
+    Command {
+        name: "clear",
+        aliases: &[],
+        description: "Clear conversation / new session",
+        category: CommandCategory::Action,
+        shortcut: Some("Ctrl+N"),
+    },
+    Command {
+        name: "help",
+        aliases: &["?"],
+        description: "Show help",
+        category: CommandCategory::Navigation,
+        shortcut: Some("F1"),
+    },
+    Command {
+        name: "quit",
+        aliases: &["q"],
+        description: "Quit application",
+        category: CommandCategory::Action,
+        shortcut: Some("Ctrl+C"),
+    },
+    Command {
+        name: "recall",
+        aliases: &["r"],
+        description: "Search memory graph",
+        category: CommandCategory::Query,
+        shortcut: None,
+    },
+    Command {
+        name: "memory",
+        aliases: &["mem", "m"],
+        description: "Open memory inspector",
+        category: CommandCategory::Navigation,
+        shortcut: Some("Ctrl+M"),
+    },
+    Command {
+        name: "model",
+        aliases: &[],
+        description: "Show current model info",
+        category: CommandCategory::Query,
+        shortcut: None,
+    },
+    Command {
+        name: "settings",
+        aliases: &[],
+        description: "Open settings",
+        category: CommandCategory::Navigation,
+        shortcut: None,
+    },
+    Command {
+        name: "new",
+        aliases: &[],
+        description: "New conversation",
+        category: CommandCategory::Action,
+        shortcut: Some("Ctrl+N"),
+    },
+    Command {
+        name: "rename",
+        aliases: &[],
+        description: "Rename current session",
+        category: CommandCategory::Action,
+        shortcut: None,
+    },
+    Command {
+        name: "archive",
+        aliases: &[],
+        description: "Archive current session",
+        category: CommandCategory::Action,
+        shortcut: None,
+    },
+    Command {
+        name: "unarchive",
+        aliases: &[],
+        description: "Restore archived session",
+        category: CommandCategory::Action,
+        shortcut: None,
+    },
+    Command {
+        name: "diff",
+        aliases: &["d"],
+        description: "Show uncommitted changes",
+        category: CommandCategory::Query,
+        shortcut: None,
+    },
+    Command {
+        name: "ops",
+        aliases: &[],
+        description: "Toggle operations pane",
+        category: CommandCategory::Navigation,
+        shortcut: Some("Ctrl+O"),
+    },
+    Command {
+        name: "tab",
+        aliases: &[],
+        description: "Switch to tab by name",
+        category: CommandCategory::Navigation,
+        shortcut: None,
+    },
+    Command {
+        name: "export",
+        aliases: &[],
+        description: "Export conversation to markdown",
+        category: CommandCategory::Action,
+        shortcut: None,
+    },
+    Command {
+        name: "search",
+        aliases: &[],
+        description: "Search sessions and messages",
+        category: CommandCategory::Query,
+        shortcut: None,
+    },
+    Command {
+        name: "notifications",
+        aliases: &["notif"],
+        description: "View notification history",
+        category: CommandCategory::Navigation,
+        shortcut: None,
+    },
+    Command {
+        name: "metrics",
+        aliases: &["stats"],
+        description: "Open metrics dashboard",
+        category: CommandCategory::Navigation,
+        shortcut: None,
+    },
+    Command {
+        name: "editor",
+        aliases: &["edit", "e"],
+        description: "Open file editor",
+        category: CommandCategory::Navigation,
+        shortcut: None,
+    },
+];
+```
+
 > Build suggestions from static commands + dynamic agent entries.
 ```rust
 pub fn build_suggestions (input: &str, agents: &[AgentState]) -> Vec<Suggestion>
@@ -270,6 +450,11 @@ pub enum Error {
     #[snafu(display("setup wizard aborted"))]
     WizardAborted,
 }
+```
+
+> Convenience alias for `Result` with the TUI [`Error`] type.
+```rust
+pub type Result<T, E = Error> = std::result::Result<T, E>;
 ```
 
 ## `src/events.rs`
@@ -1626,6 +1811,10 @@ pub struct Theme {
     /// Light or dark background.
     pub mode: ThemeMode,
 }
+```
+
+```rust
+pub static THEME: std::sync::LazyLock<Theme> = std::sync::LazyLock::new(Theme::default);
 ```
 
 ```rust

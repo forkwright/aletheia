@@ -382,6 +382,11 @@ pub enum Error {
 }
 ```
 
+> Convenience alias for `Result` with melete's [`Error`] type.
+```rust
+pub type Result<T> = std::result::Result<T, Error>;
+```
+
 ## `src/flush.rs`
 
 ```rust

@@ -5,6 +5,72 @@ Crate path: `crates/koina`
 Public API signatures extracted from source. Doc comments shown above each signature.
 For implementation context, read the source directly (`L4`).
 
+## `src/base64.rs`
+
+```rust
+pub enum DecodeError {
+    /// Input contained a character not in the base64 alphabet.
+    #[snafu(display("invalid base64 character: {ch} at position {position}"))]
+    InvalidChar {
+        /// The offending character.
+        ch: char,
+        /// Byte position in the input string.
+        position: usize,
+        #[snafu(implicit)]
+        /// Source location captured by snafu.
+        location: snafu::Location,
+    },
+    /// Input length is not valid for base64.
+    #[snafu(display("invalid base64 length: {length}"))]
+    InvalidLength {
+        /// The length of the input.
+        length: usize,
+        #[snafu(implicit)]
+        /// Source location captured by snafu.
+        location: snafu::Location,
+    },
+    /// Padding is malformed or absent where required.
+    #[snafu(display("invalid base64 padding"))]
+    InvalidPadding {
+        #[snafu(implicit)]
+        /// Source location captured by snafu.
+        location: snafu::Location,
+    },
+}
+```
+
+```rust
+pub fn encode (input: &[u8]) -> String
+```
+
+> Decode standard base64 (with `+`, `/`, `=` padding).
+> 
+> # Errors
+> 
+> Returns [`DecodeError`] if the input contains invalid characters,
+> has an invalid length, or has malformed padding.
+```rust
+pub fn decode (input: &str) -> Result<Vec<u8>, DecodeError>
+```
+
+```rust
+pub fn encode_url_safe_no_pad (input: &[u8]) -> String
+```
+
+> Decode URL-safe base64 (with `-`, `_`, no padding required).
+> 
+> Leniently accepts `+` and `/` as aliases for `-` and `_`, and strips
+> any trailing `=` padding, so callers that receive mildly malformed
+> inputs do not fail unnecessarily.
+> 
+> # Errors
+> 
+> Returns [`DecodeError`] if the input contains invalid characters
+> or has an invalid length.
+```rust
+pub fn decode_url_safe_no_pad (input: &str) -> Result<Vec<u8>, DecodeError>
+```
+
 ## `src/cleanup.rs`
 
 ```rust
@@ -458,6 +524,7 @@ pub struct FjallDb {
 
 ```rust
 impl FjallDb {
+    pub fn open_existing (path: &Path) -> Result<Self, FjallOpenError>;
     pub fn open (path: &Path, partitions: &[&str]) -> Result<Self, FjallOpenError>;
     pub fn open_temp (partitions: &[&str]) -> Result<Self, FjallOpenError>;
 }
@@ -556,12 +623,12 @@ pub const API_HEALTH: &str = "/api/health";
 ## `src/id.rs`
 
 ```rust
-pub struct NousId(CompactString);
+pub struct NousId(String);
 ```
 
 ```rust
 impl NousId {
-    pub fn new (id: impl Into<CompactString>) -> Result<Self, IdError>;
+    pub fn new (id: impl Into<String>) -> Result<Self, IdError>;
     pub fn as_str (&self) -> &str;
 }
 ```
@@ -590,13 +657,13 @@ impl TurnId {
 ```
 
 ```rust
-pub struct ToolName(CompactString);
+pub struct ToolName(String);
 ```
 
 ```rust
 impl ToolName {
     pub fn from_static (name: &'static str) -> Self;
-    pub fn new (name: impl Into<CompactString>) -> Result<Self, IdError>;
+    pub fn new (name: impl Into<String>) -> Result<Self, IdError>;
     pub fn as_str (&self) -> &str;
 }
 ```
@@ -898,11 +965,29 @@ impl Uuid {
     pub fn new_v4 () -> Self;
     pub fn from_u128 (v: u128) -> Self;
     pub fn parse_str (s: &str) -> Result<Self, UuidParseError>;
+    pub fn as_bytes (&self) -> &[u8; 16];
+    pub fn from_bytes (bytes: [u8; 16]) -> Self;
+    pub fn as_u128 (&self) -> u128;
+    pub fn is_nil (&self) -> bool;
+    pub fn as_fields (&self) -> (u32, u16, u16, &[u8; 8]);
+    pub fn from_fields (time_low: u32, time_mid: u16, time_hi: u16, rest: &[u8; 8]) -> Self;
+    pub fn new_v1 (timestamp_100ns: u64, clock_seq: u16, node: &[u8; 6]) -> Self;
+    pub fn get_timestamp (&self) -> Option<V1Timestamp>;
 }
 ```
 
 ```rust
 pub struct UuidParseError;
+```
+
+```rust
+pub struct V1Timestamp(u64);
+```
+
+```rust
+impl V1Timestamp {
+    pub fn to_unix (&self) -> (u64, u32);
+}
 ```
 
 ```rust
