@@ -111,6 +111,130 @@ pub struct SessionNoteAdapter(pub Arc<Mutex<SessionStore>>);
 pub struct SessionBlackboardAdapter(pub Arc<Mutex<SessionStore>>);
 ```
 
+## `src/audit.rs`
+
+```rust
+pub enum PromptAuditError {
+    /// Failed to create the audit log directory.
+    #[snafu(display("failed to create prompt audit directory {}: {source}", path.display()))]
+    CreateDir {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+
+    /// Failed to open the daily JSONL file for appending.
+    #[snafu(display("failed to open prompt audit file {}: {source}", path.display()))]
+    OpenFile {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+
+    /// Failed to serialize a record to JSON.
+    #[snafu(display("failed to serialize prompt audit record: {source}"))]
+    Serialize { source: serde_json::Error },
+
+    /// Failed to write a record to the JSONL file.
+    #[snafu(display("failed to write prompt audit record to {}: {source}", path.display()))]
+    WriteRecord {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+}
+```
+
+> Result alias for prompt audit operations.
+```rust
+pub type Result<T> = std::result::Result<T, PromptAuditError>;
+```
+
+> Deployment target classification for a request.
+> 
+> WHY(stub): #3404 will introduce a proper `DeploymentTarget` enum shared with
+> eidos/hermeneus for the fact sensitivity recall filter. Until then, the
+> audit log carries a simple string default of `"cloud"` so the schema is
+> stable and the follow-up PR only has to swap the field type.
+```rust
+pub type DeploymentTarget = String;
+```
+
+> Sensitivity classification of a fact that was filtered from recall.
+> 
+> WHY(stub): Same as [`DeploymentTarget`] — #3404 owns the canonical enum.
+> The audit log keeps the field in the schema now so `PromptAuditRecord` is
+> stable; the filtered-facts vector defaults to empty until the filter lands.
+```rust
+pub type FactSensitivity = String;
+```
+
+```rust
+pub struct FilteredFact {
+    /// Fact identifier from the knowledge store.
+    pub id: String,
+    /// Sensitivity tier that caused the filter to exclude the fact.
+    pub sensitivity: FactSensitivity,
+}
+```
+
+```rust
+pub struct PromptAuditRecord {
+    /// When the request was assembled (UTC).
+    pub timestamp: Timestamp,
+    /// Nous agent identifier (e.g. `"syn"`).
+    pub nous_id: String,
+    /// Session identifier.
+    pub session_id: String,
+    /// Turn identifier (ULID). Stable across actor restarts for a given turn.
+    pub turn_id: String,
+    /// LLM provider name (`"anthropic"`, `"cc"`, etc.).
+    pub provider: String,
+    /// Deployment target (cloud/local/…). See [`DeploymentTarget`].
+    pub deployment_target: DeploymentTarget,
+    /// Model identifier passed to the provider.
+    pub model: String,
+    /// SHA-256 of the system prompt (hex). Empty string when no system prompt.
+    pub system_prompt_hash: String,
+    /// Byte length of the system prompt.
+    pub system_prompt_bytes: usize,
+    /// Number of conversation messages in the request.
+    pub message_count: usize,
+    /// Rough token count estimate for the request.
+    pub token_count_estimate: u32,
+    /// Fact IDs whose content was included in the recall section.
+    pub fact_ids_included: Vec<String>,
+    /// Facts excluded from recall by the sensitivity filter (#3404).
+    #[serde(default)]
+    pub fact_ids_filtered: Vec<FilteredFact>,
+    /// Names of tools exposed to the model for this request.
+    pub tool_names: Vec<String>,
+    /// Request identifier propagated from pylon middleware (#3384).
+    #[serde(default)]
+    pub request_id: Option<String>,
+}
+```
+
+```rust
+pub fn hash_system_prompt (prompt: Option<&str>) -> String
+```
+
+```rust
+pub struct PromptAuditLog {
+    inner: Mutex<PromptAuditLogInner>,
+    /// Whether logging is active. When `false`, [`PromptAuditLog::log_request`]
+    /// is a no-op that does not touch the filesystem.
+    enabled: bool,
+    log_dir: PathBuf,
+}
+```
+
+```rust
+impl PromptAuditLog {
+    pub fn new (log_dir: PathBuf, enabled: bool) -> Self;
+    pub fn log_dir (&self) -> &Path;
+    pub fn enabled (&self) -> bool;
+    pub fn log_request (&self, record: &PromptAuditRecord) -> Result<()>;
+}
+```
+
 ## `src/bootstrap/mod.rs`
 
 > Default TTL for bootstrap file cache entries when no operator override is set.
@@ -170,6 +294,26 @@ pub enum TaskHint {
 ```
 
 ```rust
+pub enum LlmRecipe {
+    /// Load L1 as Required, L3 as Optional. Used on first turn (cold start).
+    #[default]
+    ColdStart,
+    /// Load L1 as Optional, L3 as Optional. Used for general in-session turns.
+    InSession,
+    /// Load L1 as Important, L3 as Important. Used for planning and refactoring.
+    Refactor,
+    /// Skip all `_llm/` content.
+    None,
+}
+```
+
+```rust
+impl LlmRecipe {
+    pub fn from_task_hint (task_hint: TaskHint, is_cold_start: bool) -> Self;
+}
+```
+
+```rust
 pub struct BootstrapSection {
     /// Section name (e.g. "SOUL.md", "tools-summary").
     pub name: String,
@@ -221,6 +365,8 @@ pub struct BootstrapAssembler<'a> {
     /// Shared file cache: `None` disables caching (legacy path, used by tests
     /// that want guaranteed fresh reads).
     cache: Option<&'a BootstrapFileCache>,
+    /// Recipe for loading `_llm/` content. `None` skips _llm/ entirely.
+    llm_recipe: LlmRecipe,
 }
 ```
 
@@ -229,6 +375,7 @@ impl <'a> BootstrapAssembler<'a> {
     pub fn new (oikos: &'a Oikos) -> Self;
     pub fn new_with_chars_per_token (oikos: &'a Oikos, chars_per_token: u64) -> Self;
     pub fn with_cache (mut self, cache: &'a BootstrapFileCache) -> Self;
+    pub fn with_llm_recipe (mut self, recipe: LlmRecipe) -> Self;
     pub async fn assemble (
         &self,
         nous_id: &str,
@@ -246,6 +393,14 @@ impl <'a> BootstrapAssembler<'a> {
         budget: &mut TokenBudget,
         extra_sections: Vec<BootstrapSection>,
         hint: TaskHint,
+    ) -> Result<BootstrapResult>;
+    pub async fn assemble_conditional_with_recipe (
+        &self,
+        nous_id: &str,
+        budget: &mut TokenBudget,
+        extra_sections: Vec<BootstrapSection>,
+        hint: TaskHint,
+        recipe: LlmRecipe,
     ) -> Result<BootstrapResult>;
     pub fn estimate_tokens (&self, text: &str) -> u64;
 }
@@ -1229,6 +1384,14 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// Recipe loading or resolution failed.
+    #[snafu(display("recipe error: {message}"))]
+    RecipeLoading {
+        message: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// Competence store error.
     #[snafu(display("competence store error: {message}"))]
     CompetenceStore {
@@ -1245,6 +1408,11 @@ pub enum Error {
         location: snafu::Location,
     },
 }
+```
+
+> Convenience alias for results with [`Error`].
+```rust
+pub type Result<T> = std::result::Result<T, Error>;
 ```
 
 ## `src/execute/mod.rs`
@@ -1406,6 +1574,8 @@ pub struct NousManager {
     cancel: CancellationToken,
     /// Deployment-level behavioral configuration (health intervals, restart limits).
     nous_behavior: taxis::config::NousBehaviorConfig,
+    /// Prompt audit log shared across all actors (#3411).
+    audit_log: Option<Arc<crate::audit::PromptAuditLog>>,
 }
 ```
 
@@ -1424,6 +1594,7 @@ impl NousManager {
         tool_services: Option<Arc<ToolServices>>,
         nous_behavior: taxis::config::NousBehaviorConfig,
     ) -> Self;
+    pub fn with_audit_log (mut self, audit_log: Arc<crate::audit::PromptAuditLog>) -> Self;
     pub fn ready (&self);
     pub fn ready_rx (&self) -> watch::Receiver<bool>;
     pub fn router (&self) -> Option<&Arc<crate::cross::CrossNousRouter>>;
@@ -1448,6 +1619,7 @@ impl NousManager {
     pub async fn drain (&self, timeout: Duration);
     pub async fn shutdown_readonly (&self);
     pub fn count (&self) -> usize;
+    pub async fn register_agent (&mut self, config: NousConfig) -> crate::error::Result<NousHandle>;
     pub fn knowledge_store (&self) -> Option<&Arc<KnowledgeStore>>;
 }
 ```
@@ -1660,6 +1832,8 @@ pub struct TurnResult {
     /// The TUI and API use this to render a warning banner instead of a normal
     /// response bubble.
     pub degraded: Option<crate::degraded_mode::DegradedMode>,
+    /// Reasoning or thinking blocks generated by the model during this turn.
+    pub reasoning: String,
 }
 ```
 
@@ -1739,6 +1913,7 @@ pub async fn assemble_context_conditional_with_cache (
     ctx: &mut PipelineContext,
     extra_sections: Vec<BootstrapSection>,
     task_hint: TaskHint,
+    recipe: crate::bootstrap::LlmRecipe,
     cache: Option<&crate::bootstrap::BootstrapFileCache>,
 ) -> crate::error::Result<()>
 ```
@@ -1759,16 +1934,34 @@ pub struct RecallStageResult {
     pub tokens_consumed: u64,
     /// The formatted recall section (appended to system prompt).
     pub recall_section: Option<String>,
+    /// Source IDs of facts whose content was injected into the recall
+    /// section. Used by the prompt audit log (#3411) so operators can see
+    /// which stored facts were included in each outbound request.
+    pub fact_ids: Vec<String>,
 }
 ```
 
 > Recall stage: scores and formats knowledge for injection into the system prompt.
+> 
+> # Examples
+> 
+> ```no_run
+> use nous::recall::{RecallConfig, RecallStage};
+> 
+> let stage = RecallStage::new(RecallConfig::default());
+> ```
 ```rust
 pub struct RecallStage {
     engine: RecallEngine,
     config: RecallConfig,
     /// Optional side-query selected IDs for pre-filtering before 6-factor scoring.
     side_query_ids: Option<HashSet<String>>,
+    /// Data-sovereignty target: gates which facts may leave the instance
+    /// through this recall pass (#3404, #3413). Defaults to
+    /// [`DeploymentTarget::Cloud`] — the safe assumption so callers who do
+    /// not thread `with_deployment_target` never leak `Internal` or
+    /// `Confidential` facts.
+    deployment_target: DeploymentTarget,
 }
 ```
 
@@ -1776,6 +1969,7 @@ pub struct RecallStage {
 impl RecallStage {
     pub fn new (config: RecallConfig) -> Self;
     pub fn with_side_query_ids (mut self, ids: HashSet<String>) -> Self;
+    pub fn with_deployment_target (mut self, target: DeploymentTarget) -> Self;
     pub fn run (
         &self,
         query: &str,
@@ -1801,6 +1995,8 @@ pub struct RecallWeights {
     pub relationship_proximity: f64,
     /// Access frequency weight (0.0-1.0).
     pub access_frequency: f64,
+    /// Graph `PageRank` importance weight (0.0-1.0).
+    pub graph_importance: f64,
 }
 ```
 
@@ -1821,6 +2017,12 @@ pub struct RecallConfig {
     /// Per-factor scoring weights applied when building candidates.
     #[serde(default)]
     pub weights: RecallWeights,
+    /// Inject factor metadata into recalled knowledge prompts.
+    ///
+    /// When enabled, each recalled fact includes its factor scores so the
+    /// LLM can weight its reasoning by provenance quality.
+    #[serde(default)]
+    pub inject_metadata: bool,
     /// Characters per token for recall budget estimation.
     ///
     /// Wired from `agents.defaults.chars_per_token` at startup.
@@ -1864,6 +2066,101 @@ pub trait VectorSearch : Send + Sync {
         k: usize,
         ef: usize,
     ) -> error::Result<Vec<KnowledgeRecallResult>>;
+}
+```
+
+## `src/recipes.rs`
+
+```rust
+pub struct RecipeFile {
+    /// Resolution level (L1, L2, L3, L4, instructions, etc.).
+    pub level: String,
+    /// Path template relative to repo root. May contain `{param}` placeholders.
+    pub path: String,
+    /// Optional human-readable note explaining why this file loads.
+    #[serde(default)]
+    pub note: Option<String>,
+}
+```
+
+```rust
+pub struct RecipeValidation {
+    /// Description of the real task (e.g. PR title).
+    pub task: String,
+    /// Tokens consumed by the naive grep-based baseline.
+    pub baseline_tokens: u64,
+    /// Tokens consumed by this recipe.
+    pub recipe_tokens: u64,
+    /// Whether the task completed successfully.
+    pub success: bool,
+    /// Optional note about the validation.
+    #[serde(default)]
+    pub note: Option<String>,
+    /// Parameter values used for parameterized recipes.
+    #[serde(default)]
+    pub parameters: HashMap<String, String>,
+}
+```
+
+```rust
+pub struct Recipe {
+    /// Short identifier (e.g. `"cold_start"`, `"edit_crate"`).
+    pub name: String,
+    /// Human-readable description.
+    pub description: String,
+    /// When to use this recipe.
+    pub use_case: String,
+    /// Conservative token budget for this recipe.
+    pub token_budget: u64,
+    /// Whether the recipe has `{crate}`-style parameter placeholders.
+    #[serde(default)]
+    pub parameterized: bool,
+    /// Parameter names when `parameterized` is true.
+    #[serde(default)]
+    pub parameters: Vec<String>,
+    /// Keywords for task-to-recipe matching.
+    #[serde(default)]
+    pub task_keywords: Vec<String>,
+    /// Files to load.
+    #[serde(default)]
+    pub file: Vec<RecipeFile>,
+    /// Validation records.
+    #[serde(default)]
+    pub validation: Vec<RecipeValidation>,
+}
+```
+
+```rust
+impl Recipe {
+    pub fn resolve_files (&self, params: &HashMap<String, String>) -> Result<Vec<RecipeFile>>;
+    pub fn avg_reduction_pct (&self) -> f64;
+    pub fn success_rate (&self) -> f64;
+}
+```
+
+```rust
+pub struct RecipeRegistry {
+    recipes: HashMap<String, Recipe>,
+}
+```
+
+```rust
+impl RecipeRegistry {
+    pub fn empty () -> Self;
+    pub fn load_from_file (path: &Path) -> Result<Self>;
+    pub fn from_toml (content: &str) -> Result<Self>;
+    pub fn get (&self, name: &str) -> Option<&Recipe>;
+    pub fn all (&self) -> &HashMap<String, Recipe>;
+    pub fn len (&self) -> usize;
+    pub fn is_empty (&self) -> bool;
+    pub fn select_for_task (&self, task_description: &str) -> Option<&Recipe>;
+    pub fn select (&self, hint: &str) -> Option<&Recipe>;
+    pub fn resolve_files (
+        &self,
+        recipe_name: &str,
+        params: &HashMap<String, String>,
+    ) -> Result<Vec<RecipeFile>>;
+    pub fn all_reference_paths (&self) -> Vec<PathBuf>;
 }
 ```
 
@@ -2591,6 +2888,130 @@ pub struct TaskEntry {
 }
 ```
 
+## `src/training/dpo.rs`
+
+```rust
+pub enum DpoError {
+    /// Failed to create the DPO output directory.
+    #[snafu(display("failed to create DPO directory {}: {source}", path.display()))]
+    CreateDir {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+
+    /// Failed to open the DPO JSONL file for appending.
+    #[snafu(display("failed to open DPO file {}: {source}", path.display()))]
+    OpenFile {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+
+    /// Failed to serialize a DPO pair to JSON.
+    #[snafu(display("failed to serialize DPO pair: {source}"))]
+    Serialize { source: serde_json::Error },
+
+    /// Failed to write a DPO pair to the JSONL file.
+    #[snafu(display("failed to write DPO pair to {}: {source}", path.display()))]
+    WritePair {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+
+    /// Failed to read file metadata.
+    #[snafu(display("failed to read metadata for {}: {source}", path.display()))]
+    ReadMetadata {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+}
+```
+
+> Result alias for DPO operations.
+```rust
+pub type Result<T> = std::result::Result<T, DpoError>;
+```
+
+```rust
+pub struct DpoPair {
+    /// The user prompt that both the rejected and chosen responses answer.
+    pub prompt: String,
+    /// The corrected assistant response (preferred).
+    pub chosen: String,
+    /// The original assistant response that was corrected (dispreferred).
+    pub rejected: String,
+    /// Session identifier linking the pair to its conversation.
+    pub session_id: String,
+    /// Turn number of the rejected response.
+    pub rejected_turn: u64,
+    /// Turn number of the chosen response.
+    pub chosen_turn: u64,
+}
+```
+
+> Extractor that detects correction→response sequences and produces
+> [`DpoPair`]s.
+> 
+> Maintains a small per-session buffer of the most recent turn and
+> at most one pending correction. State is bounded: old pending
+> state is silently overwritten if a new correction arrives before
+> the chosen response.
+```rust
+pub struct DpoExtractor {
+    /// Most recent non-correction turn per session.
+    last_turn: HashMap<String, TurnSnapshot>,
+    /// Pending correction waiting for the chosen response.
+    pending: HashMap<String, PendingCorrection>,
+}
+```
+
+```rust
+impl DpoExtractor {
+    pub fn new () -> Self;
+    pub fn process_turn (
+        &mut self,
+        session_id: &str,
+        turn_number: u64,
+        user_message: &str,
+        assistant_response: &str,
+        is_correction: bool,
+    ) -> Option<DpoPair>;
+}
+```
+
+> Writer for DPO preference pairs to a dated JSONL file.
+> 
+> File naming: `dpo-pairs-YYYYMMDD.jsonl` in the training directory.
+> The file is opened in append mode for each write; no handle is
+> held between calls.
+```rust
+pub struct DpoWriter {
+    path: PathBuf,
+}
+```
+
+```rust
+impl DpoWriter {
+    pub fn new (dir: &Path) -> Result<Self>;
+    pub fn write_pair (&self, pair: &DpoPair) -> Result<()>;
+    pub fn file_path (&self) -> &Path;
+}
+```
+
+```rust
+pub fn process_turn_global (
+    session_id: &str,
+    turn_number: u64,
+    user_message: &str,
+    assistant_response: &str,
+    is_correction: bool,
+) -> Option<DpoPair>
+```
+
+> Record a captured DPO pair in the metrics registry.
+```rust
+pub fn record_dpo_pair_captured (nous_id: &str)
+```
+
 ## `src/training/mod.rs`
 
 ```rust
@@ -2646,6 +3067,11 @@ pub enum TrainingCaptureError {
         source: std::io::Error,
     },
 }
+```
+
+> Result alias for training capture operations.
+```rust
+pub type Result<T> = std::result::Result<T, TrainingCaptureError>;
 ```
 
 ```rust

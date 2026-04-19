@@ -129,6 +129,11 @@ pub enum Error {
 }
 ```
 
+> Convenience alias.
+```rust
+pub type Result<T> = std::result::Result<T, Error>;
+```
+
 ```rust
 pub enum StoreError {
     // kanon:ignore RUST/pub-visibility
@@ -321,6 +326,33 @@ impl ProcessGuard {
 > The trait tool implementations must satisfy.
 > 
 > Uses `Pin<Box<dyn Future>>` for object-safety with async dispatch.
+> 
+> # Errors
+> 
+> Implementations may return `ExecutionFailed` if the tool
+> cannot complete its operation, or `InvalidInput` if the
+> provided arguments fail validation.
+> 
+> # Examples
+> 
+> ```no_run
+> use std::future::Future;
+> use std::pin::Pin;
+> use organon::registry::ToolExecutor;
+> use organon::types::{ToolContext, ToolInput, ToolResult};
+> 
+> struct MyTool;
+> 
+> impl ToolExecutor for MyTool {
+>     fn execute<'a>(
+>         &'a self,
+>         _input: &'a ToolInput,
+>         _ctx: &'a ToolContext,
+>     ) -> Pin<Box<dyn Future<Output = organon::error::Result<ToolResult>> + Send + 'a>> {
+>         Box::pin(async move { Ok(ToolResult::text("done")) })
+>     }
+> }
+> ```
 ```rust
 pub trait ToolExecutor : Send + Sync {
     fn execute <'a> (
@@ -335,6 +367,16 @@ pub trait ToolExecutor : Send + Sync {
 > 
 > Tools are registered at startup and looked up by name during execution.
 > The registry is the single source of truth for what tools an agent can use.
+> 
+> # Examples
+> 
+> ```no_run
+> use organon::registry::ToolRegistry;
+> 
+> let mut registry = ToolRegistry::new();
+> // Tools are registered at startup with their definitions and executors.
+> // See the `builtins` module for built-in tool implementations.
+> ```
 ```rust
 pub struct ToolRegistry {
     // kanon:ignore RUST/pub-visibility
@@ -792,11 +834,36 @@ impl ToolCategory {
 ```
 
 ```rust
+pub struct ToolDiagnostics {
+    /// Subprocess exit code, if applicable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exit_code: Option<i32>,
+    /// Captured stderr output, if any.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stderr: Option<String>,
+    /// Sandbox policy violations that occurred during execution.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub sandbox_violations: Vec<String>,
+    /// Wall-clock execution duration in milliseconds.
+    pub duration_ms: u64,
+}
+```
+
+```rust
+impl ToolDiagnostics {
+    pub fn to_llm_text (&self) -> String;
+}
+```
+
+```rust
 pub struct ToolResult {
     /// Result content: text or rich content blocks.
     pub content: ToolResultContent,
     /// Whether this result represents an error.
     pub is_error: bool,
+    /// Optional diagnostic metadata from the execution environment.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub diagnostics: Option<ToolDiagnostics>,
 }
 ```
 
@@ -805,6 +872,7 @@ impl ToolResult {
     pub fn text (content: impl Into<String>) -> Self;
     pub fn error (content: impl Into<String>) -> Self;
     pub fn blocks (blocks: Vec<ToolResultBlock>) -> Self;
+    pub fn with_diagnostics (mut self, diagnostics: ToolDiagnostics) -> Self;
 }
 ```
 

@@ -55,16 +55,26 @@ TOML for structured data (token-efficient, machine-parseable). Markdown for L3 (
 uv run scripts/llm-extract-l3.py
 ```
 
-The script reads `Cargo.toml` workspace members, parses each `.rs` file with tree-sitter-rust, and writes one markdown file per crate to `_llm/L3-api-index/`. It also writes `_llm/manifest.toml` with per-crate source hashes and token estimates.
+The script reads `Cargo.toml` workspace members, parses each `.rs` file with tree-sitter-rust, and writes one markdown file per crate to `_llm/L3-api-index/`. It also writes `_llm/manifest.toml` with per-crate source hashes and token estimates. Hand-authored `[levels.L1]`, `[levels.L2]`, `[l1]`, and `[[l2]]` manifest blocks are preserved verbatim across regeneration.
+
+The extractor runs offline: tree-sitter and tree-sitter-rust are the only runtime deps and both are pure Python wheels. No network access is required.
 
 Running the script twice on unchanged source produces identical L3 content. The manifest `generated_at` timestamp updates on every run by design.
 
+## Testing the extractor
+
+```bash
+uv run scripts/test_llm_extract_l3.py
+```
+
+Scaffolds a synthetic fixture crate in a temp directory and asserts the extractor's behavior: bare `pub` items captured (fn, struct, enum, trait, type_item, const_item, static_item); `pub(crate)` and private items excluded; items inside `#[cfg(test)] mod tests { ... }` excluded; doc comments attached to their item; fn bodies stripped; determinism across repeated runs; source hash stability.
+
 ## manifest.toml
 
-Records generation metadata: schema version, timestamp, generator script, and per-crate entries with source hash and token estimate. Source hash is SHA-256 of all `.rs` files in the crate concatenated in sorted path order — use it to detect staleness without re-parsing.
+Records generation metadata: schema version, timestamp, generator script, and per-crate entries with source hash and token estimate. Source hash is SHA-256 of all `.rs` files in the crate concatenated in sorted path order - use it to detect staleness without re-parsing.
 
 ## Follow-up phases
 
 - **Phase 2**: L1 workspace summary + L2 per-crate summaries (template-based from CLAUDE.md + lib.rs docs)
-- **Phase 3**: Bootstrap assembler integration — task-hint-aware loading recipes wired into `nous` bootstrap
-- **Phase 4**: CI hook — post-merge regeneration when source changes
+- **Phase 3**: Bootstrap assembler integration - task-hint-aware loading recipes wired into `nous` bootstrap
+- **Phase 4**: CI hook - post-merge regeneration when source changes

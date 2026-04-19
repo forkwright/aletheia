@@ -93,7 +93,71 @@ pub enum Error {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+
+    /// The knowledge graph MCP surface is disabled or not configured.
+    #[snafu(display(
+        "knowledge graph MCP surface is disabled; \
+         set mcp.knowledge_graph.enabled = true in aletheia.toml"
+    ))]
+    KnowledgeStoreUnavailable {
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// A knowledge store operation failed.
+    #[snafu(display("knowledge store error: {message}"))]
+    KnowledgeStore {
+        message: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// The requested fact was not found.
+    #[snafu(display("fact not found: {id}"))]
+    FactNotFound {
+        id: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// The caller supplied an invalid input value.
+    #[snafu(display("invalid input: {message}"))]
+    InvalidInput {
+        message: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// The repomix MCP surface is disabled or not configured.
+    #[snafu(display(
+        "repomix MCP surface is disabled; set mcp.repomix.enabled = true in aletheia.toml"
+    ))]
+    RepomixUnavailable {
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// The requested repomix template was not found.
+    #[snafu(display("repomix template not found: {name}"))]
+    TemplateNotFound {
+        name: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// A repomix pack operation failed.
+    #[snafu(display("repomix pack error: {message}"))]
+    RepomixPack {
+        message: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
 }
+```
+
+> Result alias using diaporeia's [`Error`] type.
+```rust
+pub type Result<T> = std::result::Result<T, Error>;
 ```
 
 ## `src/rate_limit.rs`
@@ -157,6 +221,12 @@ pub struct DiaporeiaState {
     pub none_role: String,
     /// Root shutdown token.
     pub shutdown: CancellationToken,
+    /// Shared knowledge store for the knowledge graph MCP surface.
+    ///
+    /// `None` when the knowledge store is not configured or when
+    /// `mcp.knowledge_graph.enabled` is `false`.
+    #[cfg(feature = "knowledge-store")]
+    pub knowledge_store: Option<Arc<KnowledgeStore>>,
 }
 ```
 
@@ -176,4 +246,15 @@ pub struct DiaporeiaState {
 > is reachable from the network with no authentication.
 ```rust
 pub fn streamable_http_router (state: Arc<DiaporeiaState>) -> axum::Router
+```
+
+> Build an Axum Router with a custom Streamable HTTP config.
+> 
+> Used by integration tests to enable stateless+json-response mode for
+> simpler request-response testing without SSE parsing.
+```rust
+pub fn streamable_http_router_with_config (
+    state: Arc<DiaporeiaState>,
+    config: rmcp::transport::streamable_http_server::StreamableHttpServerConfig,
+) -> axum::Router
 ```

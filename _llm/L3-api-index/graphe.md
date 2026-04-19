@@ -209,6 +209,11 @@ impl Error {
 }
 ```
 
+> Result alias using graphe's [`Error`] type.
+```rust
+pub type Result<T> = std::result::Result<T, Error>;
+```
+
 ## `src/metrics.rs`
 
 > Register this crate's metrics with the shared registry.

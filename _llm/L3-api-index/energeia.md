@@ -15,7 +15,7 @@ pub struct AgentSdkConfig {
     pub skip_permissions: bool,
     /// Disable MCP plugin loading.
     pub disable_plugins: bool,
-    /// Optional OAuth token for API authentication.
+    /// Optional `OAuth` token for API authentication.
     pub oauth_token: Option<String>,
     /// Optional MCP server configurations.
     pub mcp_servers: Vec<McpServerConfig>,
@@ -37,7 +37,7 @@ pub struct McpServerConfig {
 
 > Agent SDK-based dispatch engine.
 > 
-> WHY: Provides native Agent SDK integration with OAuth, permissions, and
+> WHY: Provides native Agent SDK integration with `OAuth`, permissions, and
 > plugin support, replacing the subprocess-based `HttpEngine`.
 ```rust
 pub struct AgentSdkEngine {
@@ -203,6 +203,69 @@ impl CostLedger {
 }
 ```
 
+## `src/cron.rs`
+
+```rust
+pub struct CronTask {
+    /// Unique task identifier.
+    pub name: CompactString,
+    /// Cron schedule.
+    pub cron: cron::Schedule,
+    /// Maximum jitter to apply (+/- this duration).
+    pub jitter: Duration,
+    /// What to dispatch when this task fires.
+    pub dispatch_spec: DispatchSpec,
+}
+```
+
+```rust
+impl CronTask {
+    pub fn new (
+        name: impl Into<CompactString>,
+        schedule: &str,
+        jitter: Duration,
+        dispatch_spec: DispatchSpec,
+    ) -> Result<Self>;
+}
+```
+
+> Fjall-backed lock store that persists the last-fired timestamp per task.
+> 
+> A mutex serializes lock acquisition within a single process; the fjall
+> write provides cross-restart deduplication.
+```rust
+pub struct CronLockStore {
+    db: Arc<fjall::SingleWriterTxDatabase>,
+    lock: parking_lot::Mutex<()>,
+}
+```
+
+```rust
+impl CronLockStore {
+    pub fn open (db: Arc<fjall::SingleWriterTxDatabase>) -> Result<Self>;
+    pub fn try_acquire (&self, task_name: &str, scheduled_time: DateTime<Utc>) -> Result<bool>;
+    pub fn last_fired (&self, task_name: &str) -> Result<Option<DateTime<Utc>>>;
+}
+```
+
+> Scheduler that manages a set of [`CronTask`]s with fjall-backed locking.
+```rust
+pub struct CronScheduler {
+    tasks: Vec<CronTask>,
+    lock_store: Arc<CronLockStore>,
+}
+```
+
+```rust
+impl CronScheduler {
+    pub fn new (tasks: Vec<CronTask>, lock_store: Arc<CronLockStore>) -> Self;
+    pub fn next_fire_after (&self, task: &CronTask, now: DateTime<Utc>) -> Option<DateTime<Utc>>;
+    pub async fn run <F, Fut> (&self, cancel: CancellationToken, mut on_fire: F) -> Result<()> where
+        F: FnMut(&CronTask) -> Fut + Send,
+        Fut: Future<Output = ()> + Send,;
+}
+```
+
 ## `src/dag.rs`
 
 ```rust
@@ -327,6 +390,10 @@ pub struct SessionSpec {
     pub system_prompt: Option<String>,
     /// Working directory for the agent session.
     pub cwd: Option<String>,
+    /// Optional prompt cache components. When present, engines that support
+    /// prompt caching should use `static_prefix` as the cached system prompt
+    /// and `dynamic_suffix` as the user message.
+    pub prompt_components: Option<crate::prompt_cache::PromptComponents>,
 }
 ```
 
@@ -406,6 +473,12 @@ pub struct SessionResult {
     pub result_text: Option<String>,
     /// LLM model used for this session, if known.
     pub model: Option<String>,
+    /// Tokens read from the prompt cache.
+    #[serde(default)]
+    pub cache_hit_tokens: u64,
+    /// Tokens written to the prompt cache.
+    #[serde(default)]
+    pub cache_miss_tokens: u64,
 }
 ```
 
@@ -566,6 +639,15 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// Invalid cron expression.
+    #[snafu(display("invalid cron expression '{expression}': {source}"))]
+    CronParse {
+        expression: String,
+        source: cron::error::Error,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// Invalid model identifier specified.
     #[snafu(display("invalid model: {model}"))]
     InvalidModel {
@@ -581,6 +663,31 @@ pub enum Error {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+}
+```
+
+> Convenience alias for results with [`Error`].
+```rust
+pub type Result<T> = std::result::Result<T, Error>;
+```
+
+## `src/hermeneus_engine.rs`
+
+> Dispatch engine backed by hermeneus [`LlmProvider`].
+> 
+> Supports prompt caching via the [`PromptComponents`](crate::prompt_cache::PromptComponents)
+> split: the static prefix is sent as a cached system prompt and the dynamic
+> suffix as the user message.
+```rust
+pub struct HermeneusEngine {
+    provider: Arc<dyn LlmProvider>,
+    default_model: String,
+}
+```
+
+```rust
+impl HermeneusEngine {
+    pub fn new (provider: Arc<dyn LlmProvider>, default_model: impl Into<String>) -> Self;
 }
 ```
 
@@ -914,8 +1021,18 @@ pub struct OrchestratorConfig {
     #[serde(with = "duration_ms_option")]
     pub session_idle_timeout: Option<Duration>,
     /// Maximum number of corrective prompt retries per failed prompt.
-    /// Defaults to 1.
+    /// Defaults to 0 (no corrective attempts unless explicitly configured).
     pub max_corrective_retries: u32,
+    /// Optional role definition text or path to a role file.
+    /// When present, the preparation stage splits prompts into a static
+    /// prefix (role + standards + validation gate) and dynamic suffix.
+    pub role: Option<String>,
+    /// Optional directory containing standard `.md` files.
+    pub standards_dir: Option<PathBuf>,
+    /// List of standard names to include in the static prefix.
+    pub standards: Vec<String>,
+    /// Optional scope context appended to the dynamic suffix.
+    pub scope: Option<String>,
 }
 ```
 
@@ -928,6 +1045,10 @@ impl OrchestratorConfig {
     pub fn max_duration (mut self, duration: Duration) -> Self;
     pub fn session_idle_timeout (mut self, timeout: Duration) -> Self;
     pub fn max_corrective_retries (mut self, n: u32) -> Self;
+    pub fn role (mut self, role: impl Into<String>) -> Self;
+    pub fn standards_dir (mut self, dir: impl Into<PathBuf>) -> Self;
+    pub fn standards (mut self, standards: Vec<String>) -> Self;
+    pub fn scope (mut self, scope: impl Into<String>) -> Self;
 }
 ```
 
@@ -935,10 +1056,10 @@ impl OrchestratorConfig {
 
 > Top-level dispatch orchestrator.
 > 
-> Wires together the DAG/frontier, session management, QA evaluation, and
-> state persistence into a single execution pipeline. The dianoia integration
-> point is [`DispatchSpec`] as the interface type — the orchestrator does not
-> concern itself with who produces specs.
+> Builds the pipeline context, runs the 4-stage dispatch pipeline
+> (preparation → execution → `post_processing`), and returns the result.
+> Stage logic lives in [`crate::pipeline`]; this struct owns the
+> engine/QA/store references and exposes the public API.
 ```rust
 pub struct Orchestrator {
     engine: Arc<dyn DispatchEngine>,
@@ -1017,6 +1138,10 @@ pub struct PromptSpec {
     pub blast_radius: Vec<String>,
     /// Full Markdown body (task instructions after the frontmatter delimiter).
     pub body: String,
+    /// Optional prompt cache split. Populated by the preparation stage when
+    /// role/standards configuration is present.
+    #[serde(skip)]
+    pub prompt_components: Option<crate::prompt_cache::PromptComponents>,
 }
 ```
 
@@ -1058,6 +1183,34 @@ pub fn load_queue (dir: &Path) -> Result<Vec<PromptSpec>>
 > [`crate::error::Error::DagMissingDeps`] for broken dependency references.
 ```rust
 pub fn build_dag (prompts: &[PromptSpec]) -> Result<PromptDag>
+```
+
+## `src/prompt_cache.rs`
+
+```rust
+pub struct PromptComponents {
+    /// Static content that can be prompt-cached: role definition + standards +
+    /// validation gate. Identical across dispatches for the same role.
+    pub static_prefix: String,
+    /// Dynamic content that changes per dispatch: project state + scope +
+    /// prompt body.
+    pub dynamic_suffix: String,
+}
+```
+
+```rust
+impl PromptComponents {
+    pub fn build (
+        role: Option<&str>,
+        project: &str,
+        standards_dir: Option<&Path>,
+        standards: &[String],
+        scope: Option<&str>,
+        prompt_body: &str,
+    ) -> Self;
+    pub fn to_full_prompt (&self) -> String;
+    pub fn to_session_spec (&self, cwd: Option<String>) -> crate::engine::SessionSpec;
+}
 ```
 
 ## `src/qa/corrective.rs`
@@ -1246,7 +1399,7 @@ impl EventAccumulator {
 }
 ```
 
-> Extract a GitHub pull request URL from text.
+> Extract a `GitHub` pull request URL from text.
 > 
 > Matches `https://github.com/{owner}/{repo}/pull/{number}` patterns.
 > Returns the first match found.
@@ -1384,7 +1537,7 @@ pub struct StewardConfig {
     pub once: bool,
     /// Dry-run mode: classify without executing actions.
     pub dry_run: bool,
-    /// GitHub project slug (owner/repo).
+    /// `GitHub` project slug (owner/repo).
     pub project: String,
     /// Required CI check names (empty = all checks matter).
     pub required_checks: Vec<String>,
@@ -1442,7 +1595,7 @@ pub struct PullRequest {
     pub head_sha: Option<String>,
     /// State of the PR (e.g., "open", "closed").
     pub state: Option<String>,
-    /// Mergeability status from GitHub API.
+    /// Mergeability status from `GitHub` API.
     pub mergeable: Option<String>,
     /// Body/description of the PR.
     pub body: Option<String>,
@@ -1502,9 +1655,9 @@ pub struct ClassifiedPr {
     pub merge_safe: bool,
 
     /// Whether a `Gate-Passed` trailer was found in any PR commit.
-    /// WHY: Local gate enforcement replaces the verify-gate GitHub Action.
+    /// WHY: Local gate enforcement replaces the verify-gate `GitHub` Action.
     /// When CI checks are absent (minutes exhausted), this field allows the
-    /// steward to treat the PR as green without depending on GitHub CI.
+    /// steward to treat the PR as green without depending on `GitHub` CI.
     pub has_gate_trailer: bool,
 
     /// Suppression findings detected in the PR diff.
@@ -1692,7 +1845,7 @@ pub struct CheckRun {
     pub name: String,
 
     /// Status of the check (e.g. "completed", `in_progress`, "queued").
-    /// WHY: GitHub API uses "status" not "state" for check-runs.
+    /// WHY: `GitHub` API uses "status" not "state" for check-runs.
     #[serde(default, alias = "state")]
     pub status: String,
 
@@ -2051,6 +2204,9 @@ pub struct SessionOutcomeData {
     pub duration_ms: u64,
     /// URL of the PR created by this session, if any.
     pub pr_url: Option<String>,
+    /// Number of QA-driven corrective attempts made for this prompt.
+    #[serde(default)]
+    pub corrective_attempts: u32,
 }
 ```
 
@@ -2072,6 +2228,12 @@ pub struct DispatchSpec {
 ```rust
 impl DispatchSpec {
     pub fn new (project: String, prompt_numbers: Vec<u32>) -> Self;
+    pub fn with_options (
+        project: String,
+        prompt_numbers: Vec<u32>,
+        dag_ref: Option<String>,
+        max_parallel: Option<u32>,
+    ) -> Self;
 }
 ```
 
@@ -2120,6 +2282,16 @@ pub struct SessionOutcome {
     ///
     /// Used for cost attribution to specific modules/features.
     pub blast_radius: Vec<String>,
+    /// Number of QA-driven corrective attempts made for this prompt before
+    /// this outcome. `0` means this is the original execution.
+    #[serde(default)]
+    pub corrective_attempts: u32,
+    /// Tokens read from the prompt cache on this session.
+    #[serde(default)]
+    pub cache_hit_tokens: u64,
+    /// Tokens written to the prompt cache on this session.
+    #[serde(default)]
+    pub cache_miss_tokens: u64,
 }
 ```
 
@@ -2154,6 +2326,9 @@ pub struct QaResult {
     pub criteria_results: Vec<CriterionResult>,
     /// Mechanical issues found in the diff.
     pub mechanical_issues: Vec<MechanicalIssue>,
+    /// Human-readable reasons for the verdict, derived from failed criteria
+    /// and mechanical issues.
+    pub reasons: Vec<String>,
     /// Cost in USD for the LLM evaluation.
     pub cost_usd: f64,
     /// Timestamp when the evaluation completed.
@@ -2174,6 +2349,7 @@ impl QaResult {
         verdict: QaVerdict,
         criteria_results: Vec<CriterionResult>,
         mechanical_issues: Vec<MechanicalIssue>,
+        reasons: Vec<String>,
         cost_usd: f64,
         evaluated_at: Timestamp,
         semantic_evaluated: bool,

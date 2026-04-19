@@ -5,6 +5,99 @@ Crate path: `crates/eval`
 Public API signatures extracted from source. Doc comments shown above each signature.
 For implementation context, read the source directly (`L4`).
 
+## `src/benchmarks/baselines.rs`
+
+```rust
+pub struct Baseline {
+    /// System name (e.g. "Hindsight", "GPT-4o + memory").
+    pub system: &'static str,
+    /// Exact-match rate (0.0–1.0) if reported.
+    pub exact_match_rate: Option<f64>,
+    /// Mean F1 score (0.0–1.0) if reported.
+    pub mean_f1: Option<f64>,
+    /// Free-form note (e.g. "upper bound: full context at query time").
+    pub note: &'static str,
+}
+```
+
+```rust
+pub struct CategoryBaseline {
+    /// Category name (e.g. `"single-session-user"`, `"multi_hop"`).
+    pub category: &'static str,
+    /// Exact-match rate (0.0–1.0) if reported.
+    pub exact_match_rate: Option<f64>,
+    /// Mean F1 score (0.0–1.0) if reported.
+    pub mean_f1: Option<f64>,
+}
+```
+
+> Baselines for the `LongMemEval` benchmark.
+> 
+> Paper: *`LongMemEval`: Benchmarking Chat Assistants on Long-Term Interactive
+> Memory*, Zhang et al., 2024 (arxiv:2410.10813).
+```rust
+pub fn longmemeval_baselines () -> Vec<Baseline>
+```
+
+> Per-category `LongMemEval` baselines (Hindsight and GPT-4o + memory).
+```rust
+pub fn longmemeval_category_baselines () -> Vec<(&'static str, Vec<CategoryBaseline>)>
+```
+
+> Baselines for the `LoCoMo` benchmark.
+> 
+> Paper: *Long-Context Conversational Memory (`LoCoMo`)*, Maharana et al.,
+> 2024 (arxiv:2402.17753).
+```rust
+pub fn locomo_baselines () -> Vec<Baseline>
+```
+
+> Per-category `LoCoMo` baselines (Hindsight and GPT-4 + memory).
+```rust
+pub fn locomo_category_baselines () -> Vec<(&'static str, Vec<CategoryBaseline>)>
+```
+
+## `src/benchmarks/judge.rs`
+
+```rust
+pub struct JudgeScore {
+    /// Whether the judge deemed the answer correct.
+    pub correct: bool,
+    /// Short reasoning provided by the judge.
+    pub reasoning: String,
+}
+```
+
+```rust
+pub struct LlmJudgeConfig {
+    /// OpenAI-compatible chat completions URL.
+    pub endpoint: String,
+    /// Model identifier (e.g. "gpt-4o", "claude-3-5-sonnet").
+    pub model: String,
+    /// Optional API key.
+    pub api_key: Option<String>,
+    /// Maximum tokens for the judgment response.
+    pub max_tokens: u32,
+    /// Temperature (default 0.0 for deterministic judging).
+    pub temperature: f32,
+}
+```
+
+> LLM-as-judge evaluator.
+```rust
+pub struct LlmJudge {
+    client: reqwest::Client,
+    config: LlmJudgeConfig,
+}
+```
+
+```rust
+impl LlmJudge {
+    pub fn new (config: LlmJudgeConfig) -> Self;
+    pub async fn judge (&self, question: &str, actual: &str, expected: &str) -> Result<JudgeScore>;
+}
+```
+
 ## `src/benchmarks/locomo.rs`
 
 ```rust
@@ -59,7 +152,23 @@ impl BenchmarkScore {
 pub fn score_answer (actual: &str, expected: &[String]) -> BenchmarkScore
 ```
 
+```rust
+pub fn recall_at_k (retrieved: &[String], relevant: &[String], k: usize) -> f64
+```
+
+```rust
+pub fn ndcg_at_k (retrieved: &[String], relevant: &[String], k: usize) -> f64
+```
+
 ## `src/benchmarks/mod.rs`
+
+> Re-export of [`EvalClient`](crate::client::EvalClient) for external use.
+> 
+> External consumers of the benchmark runner need this to construct a
+> runner. The rest of the client API surface is not stable.
+```rust
+pub type EvalClient = crate::client::EvalClient;
+```
 
 ```rust
 pub struct BenchmarkQuestion {
@@ -89,6 +198,27 @@ pub trait MemoryBenchmark {
 ```
 
 ```rust
+pub struct BenchmarkMetadata {
+    /// ISO-8601 timestamp when the benchmark run started.
+    pub timestamp: String,
+    /// Aletheia version string from `/api/health`.
+    pub aletheia_version: String,
+    /// Nous agent ID used for the benchmark.
+    pub nous_id: String,
+    /// Model identifier from the nous agent configuration.
+    pub model: String,
+    /// Name of the benchmark dataset.
+    pub benchmark: String,
+    /// Total questions in the dataset.
+    pub total_questions: usize,
+    /// Number of questions actually evaluated (after `max_questions` limit).
+    pub evaluated_questions: usize,
+    /// Per-question timeout in seconds.
+    pub timeout_secs: u64,
+}
+```
+
+```rust
 pub struct QuestionResult {
     /// Question id.
     pub id: String,
@@ -100,6 +230,18 @@ pub struct QuestionResult {
     pub expected_answers: Vec<String>,
     /// Best score across all expected answers.
     pub score: BenchmarkScore,
+    /// Optional LLM-as-judge score (populated when judge is configured).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub judge_score: Option<judge::JudgeScore>,
+    /// Optional retrieval metrics: facts retrieved for the question.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub retrieved_facts: Option<Vec<String>>,
+    /// Optional retrieval metric: Recall@k.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub recall_at_k: Option<f64>,
+    /// Optional retrieval metric: NDCG@k.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub ndcg_at_k: Option<f64>,
 }
 ```
 
@@ -111,14 +253,49 @@ pub struct BenchmarkReport {
     pub total: usize,
     /// Per-question results.
     pub questions: Vec<QuestionResult>,
+    /// System and run metadata.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub metadata: Option<BenchmarkMetadata>,
+    /// Statistical summary with 95% CI for key metrics.
+    ///
+    /// Populated by calling [`BenchmarkReport::with_statistics`].
+    /// Absent in reports produced without statistical analysis.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub statistics: Option<BenchmarkStatistics>,
+}
+```
+
+```rust
+pub struct BenchmarkStatistics {
+    /// 95% bootstrap CI lower bound for mean F1 across all questions.
+    pub f1_ci_low: f64,
+    /// 95% bootstrap CI upper bound for mean F1 across all questions.
+    pub f1_ci_high: f64,
+    /// 95% bootstrap CI lower bound for exact-match rate.
+    pub em_ci_low: f64,
+    /// 95% bootstrap CI upper bound for exact-match rate.
+    pub em_ci_high: f64,
+    /// Number of bootstrap resamples used to compute CI.
+    pub n_resamples: usize,
+    /// Tool + version string for provenance.
+    pub method: String,
 }
 ```
 
 ```rust
 impl BenchmarkReport {
     pub fn new (benchmark: impl Into<String>, questions: Vec<QuestionResult>) -> Self;
+    pub fn with_metadata (
+        benchmark: impl Into<String>,
+        questions: Vec<QuestionResult>,
+        metadata: BenchmarkMetadata,
+    ) -> Self;
+    pub fn with_statistics (mut self, n_resamples: usize) -> Self;
     pub fn exact_match_rate (&self) -> f64;
     pub fn mean_f1 (&self) -> f64;
+    pub fn judge_accuracy (&self) -> Option<f64>;
+    pub fn mean_recall_at_k (&self) -> Option<f64>;
+    pub fn mean_ndcg_at_k (&self) -> Option<f64>;
     pub fn per_category (&self) -> Vec<(String, f64, f64)>;
 }
 ```
@@ -166,6 +343,12 @@ pub struct BenchmarkRunnerConfig {
     /// When true, close sessions after each question to reset memory state.
     /// When false, all questions share one session (simulates continuous memory).
     pub close_between_questions: bool,
+    /// Optional LLM-as-judge configuration. When set, each answer is also
+    /// evaluated by an external LLM for binary correctness.
+    pub judge: Option<judge::LlmJudgeConfig>,
+    /// When set, query the knowledge store after ingestion and compute
+    /// Recall@k and NDCG@k against the expected answers.
+    pub retrieval_k: Option<usize>,
 }
 ```
 
@@ -464,7 +647,22 @@ pub enum Error {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+
+    /// Statistical computation precondition violated.
+    #[snafu(display("stats error: {message}"))]
+    Stats {
+        /// Human-readable description of the violated precondition.
+        message: String,
+        /// Source location where the error was created.
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
 }
+```
+
+> Convenience alias for `Result` with eval's [`Error`] type.
+```rust
+pub type Result<T> = std::result::Result<T, Error>;
 ```
 
 ## `src/persistence.rs`
@@ -613,6 +811,11 @@ impl ScenarioRunner {
 
 ## `src/scenario.rs`
 
+> Boxed future returned by scenario `run` methods.
+```rust
+pub type ScenarioFuture<'a> = Pin<Box<dyn Future<Output = Result<()>> + Send + 'a>>;
+```
+
 ```rust
 pub struct ScenarioMeta {
     /// Unique identifier (e.g., "health-returns-ok").
@@ -717,6 +920,267 @@ pub struct UsageData {
     /// Number of output tokens generated by the response.
     pub output_tokens: u64,
 }
+```
+
+## `src/stats/bootstrap.rs`
+
+```rust
+pub struct BootstrapCi {
+    /// Point estimate of the statistic on the original data.
+    pub point: f64,
+    /// Lower bound of the confidence interval.
+    pub ci_low: f64,
+    /// Upper bound of the confidence interval.
+    pub ci_high: f64,
+    /// Confidence level used (e.g. `0.95` for 95%).
+    pub confidence: f64,
+    /// Number of bootstrap resamples used.
+    pub n_resamples: usize,
+}
+```
+
+```rust
+pub fn bootstrap_ci (
+    data: &[f64],
+    stat_fn: impl Fn(&[f64]) -> f64,
+    n: usize,
+    seed: u64,
+    ci: f64,
+) -> Result<BootstrapCi, Error>
+```
+
+```rust
+pub fn block_bootstrap_ci (
+    series: &[f64],
+    stat_fn: impl Fn(&[f64]) -> f64,
+    block_length: Option<usize>,
+    n: usize,
+    seed: u64,
+    ci: f64,
+) -> Result<BootstrapCi, Error>
+```
+
+## `src/stats/effect_size.rs`
+
+```rust
+pub enum EffectSizeInterpretation {
+    /// |d| < 0.2 (Cohen 1988).
+    Negligible,
+    /// 0.2 ≤ |d| < 0.5.
+    Small,
+    /// 0.5 ≤ |d| < 0.8.
+    Medium,
+    /// |d| ≥ 0.8.
+    Large,
+    /// Fewer than 2 observations in one group.
+    InsufficientData,
+}
+```
+
+```rust
+pub struct CohensD {
+    /// The Cohen's d value `(mean_a - mean_b) / pooled_sd`.
+    pub d: f64,
+    /// 95% bootstrap CI lower bound. `None` when CI was not requested.
+    pub ci_low: Option<f64>,
+    /// 95% bootstrap CI upper bound. `None` when CI was not requested.
+    pub ci_high: Option<f64>,
+    /// Verbal interpretation of the magnitude.
+    pub interpretation: EffectSizeInterpretation,
+}
+```
+
+```rust
+pub fn cohens_d (a: &[f64], b: &[f64], compute_ci: bool, seed: u64) -> CohensD
+```
+
+```rust
+pub struct EffectWithCi {
+    /// The Cohen's d effect size computation.
+    pub effect: CohensD,
+    /// The mean of group a.
+    pub mean_a: f64,
+    /// The mean of group b.
+    pub mean_b: f64,
+    /// Sample sizes.
+    pub n_a: usize,
+    /// Sample size of group b.
+    pub n_b: usize,
+    /// Bootstrap CI for the mean of group a.
+    pub ci_a: BootstrapCi,
+}
+```
+
+## `src/stats/fdr.rs`
+
+```rust
+pub enum FdrMethod {
+    /// Benjamini-Hochberg (1995): controls FDR under independence or PRDS.
+    /// Appropriate for independent or positively-correlated tests.
+    #[default]
+    BenjaminiHochberg,
+    /// Benjamini-Yekutieli (2001): controls FDR under arbitrary dependency.
+    /// More conservative; use when tests share samples.
+    BenjaminiYekutieli,
+}
+```
+
+```rust
+pub fn fdr_correct (p_values: &[f64], method: FdrMethod) -> Result<Vec<f64>, Error>
+```
+
+## `src/stats/finding.rs`
+
+```rust
+pub enum EvidenceLevel {
+    /// Survives FDR correction, n is large enough for inference.
+    Statistical,
+    /// Consistent across methods but p-value is not FDR-corrected.
+    Robust,
+    /// Pattern present; useful for hypothesis generation only.
+    Exploratory,
+    /// Qualitative reading; no direct statistical backing.
+    Interpretive,
+    /// Low-confidence extrapolation; flag explicitly in reports.
+    Speculative,
+}
+```
+
+```rust
+pub struct FindingStats {
+    /// FDR-adjusted p-value. `None` for non-statistical findings.
+    pub p_adjusted: Option<f64>,
+    /// Effect size metric name (e.g. `"cohens_d"`).
+    pub effect_metric: Option<String>,
+    /// Effect size value.
+    pub effect_value: Option<f64>,
+    /// 95% CI as `[low, high]`. `None` when not computable.
+    pub ci: Option<[f64; 2]>,
+    /// Sample sizes: `[n_a, n_b]`.
+    pub sample_sizes: Option<[usize; 2]>,
+}
+```
+
+```rust
+impl FindingStats {
+    pub fn none () -> Self;
+}
+```
+
+```rust
+pub struct EvalFinding {
+    /// Stable identifier for this finding within the eval run.
+    ///
+    /// Convention: `<BENCHMARK>-<CATEGORY>-<N>`, e.g. `LME-factual-001`.
+    pub finding_id: String,
+    /// The claim as a single declarative sentence.
+    ///
+    /// Write as: "{system} {verb} {metric} ({value}), {framing qualifier}."
+    /// Example: "Candidate recall@5 is 0.73 (↑0.08 vs baseline), exploratory."
+    pub claim: String,
+    /// Epistemological tier of the evidence.
+    pub evidence_level: EvidenceLevel,
+    /// The strongest objection a hostile reader would raise.
+    ///
+    /// Forces the producer to acknowledge scope limits before publication.
+    /// Every finding must include one even if only "insufficient sample for
+    /// inference" or "metric does not capture semantic correctness".
+    pub counter_argument: String,
+    /// Provenance: what produced this finding (e.g. `"benchmark/runner.rs"`).
+    pub source: String,
+    /// Statistical backing. Use [`FindingStats::none`] for non-statistical tiers.
+    pub stats: FindingStats,
+}
+```
+
+```rust
+impl EvalFinding {
+    pub fn from_comparison (
+        finding_id: impl Into<String>,
+        claim: impl Into<String>,
+        counter_argument: impl Into<String>,
+        source: impl Into<String>,
+        report: &super::ComparisonReport,
+    ) -> Self;
+}
+```
+
+```rust
+pub struct ConfidenceSummary {
+    /// Count of `Statistical` findings.
+    pub statistical: usize,
+    /// Count of `Robust` findings.
+    pub robust: usize,
+    /// Count of `Exploratory` findings.
+    pub exploratory: usize,
+    /// Count of `Interpretive` findings.
+    pub interpretive: usize,
+    /// Count of `Speculative` findings.
+    pub speculative: usize,
+}
+```
+
+```rust
+impl ConfidenceSummary {
+    pub fn from_findings (findings: &[EvalFinding]) -> Self;
+    pub fn total (&self) -> usize;
+}
+```
+
+## `src/stats/report.rs`
+
+```rust
+pub struct ComparisonReport {
+    /// Human-readable label for this comparison.
+    pub label: String,
+    /// Number of observations in group a (e.g. baseline scores).
+    pub n_a: usize,
+    /// Number of observations in group b (e.g. candidate scores).
+    pub n_b: usize,
+    /// Mean of group a.
+    pub mean_a: f64,
+    /// Mean of group b.
+    pub mean_b: f64,
+    /// 95% bootstrap CI for the mean of group a.
+    pub ci_a: BootstrapCi,
+    /// 95% bootstrap CI for the mean of group b.
+    pub ci_b: BootstrapCi,
+    /// Cohen's d effect size (group a minus group b).
+    pub effect: CohensD,
+    /// Raw p-value from a sign test on per-question score differences.
+    ///
+    /// The sign test asks: across all questions, is the fraction where
+    /// `score_a > score_b` significantly different from 0.5?  Computed as
+    /// the proportion of pairs where group a outperforms group b.
+    pub p_raw: f64,
+    /// FDR-adjusted p-value. `None` until the caller applies [`fdr_correct`] and
+    /// sets this field.
+    ///
+    /// [`fdr_correct`]: crate::stats::fdr_correct
+    pub p_adjusted: Option<f64>,
+    /// Whether the result is significant at α=0.05 (using raw p).
+    pub significant_raw: Option<bool>,
+    /// Whether the result is significant at α=0.05 after FDR correction.
+    /// `None` until `p_adjusted` is set.
+    pub significant_adjusted: Option<bool>,
+}
+```
+
+```rust
+impl ComparisonReport {
+    pub fn set_adjusted_p (&mut self, p_adjusted: f64);
+    pub fn is_significant (&self) -> bool;
+    pub fn has_practical_effect (&self) -> bool;
+}
+```
+
+```rust
+pub fn comparison_report (
+    a: &[f64],
+    b: &[f64],
+    label: impl Into<String>,
+    fdr_adjusted_p: Option<f64>,
+) -> Result<ComparisonReport, Error>
 ```
 
 ## `src/triggers.rs`
