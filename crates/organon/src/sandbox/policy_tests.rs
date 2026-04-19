@@ -1106,17 +1106,22 @@ fn temp_directory_access() {
 // GitHub's ubuntu-latest), and the test used to branch on a brittle
 // string match. The security invariant is: file contents unchanged +
 // child did not report success.
+/// Original contents written to the read-only fixture before the
+/// sandboxed child attempts to overwrite it. Declared at module scope
+/// so the body of `read_only_paths_cannot_be_written` has no item-
+/// after-statements (`clippy::items_after_statements` on stable).
+const READONLY_TEST_ORIGINAL: &str = "original";
+
 #[cfg(target_os = "linux")]
 #[test]
 fn read_only_paths_cannot_be_written() {
     let read_only_dir = tempfile::tempdir().expect("create read-only dir");
     let test_file = read_only_dir.path().join("readonly.txt");
-    const ORIGINAL_CONTENTS: &str = "original";
     #[expect(
         clippy::disallowed_methods,
         reason = "test setup requires direct filesystem access"
     )]
-    std::fs::write(&test_file, ORIGINAL_CONTENTS).expect("write test file");
+    std::fs::write(&test_file, READONLY_TEST_ORIGINAL).expect("write test file");
 
     let workspace = tempfile::tempdir().expect("create workspace");
     let mut policy = policy_with_system_paths(workspace.path());
@@ -1133,14 +1138,10 @@ fn read_only_paths_cannot_be_written() {
 
     // Invariant 1: the file on disk is unchanged. Landlock enforcement
     // is visible here regardless of shell exit conventions.
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "test assertion requires direct filesystem access"
-    )]
     let after = std::fs::read_to_string(&test_file).expect("read test file");
     assert_eq!(
         after,
-        ORIGINAL_CONTENTS,
+        READONLY_TEST_ORIGINAL,
         "read-only path was modified despite Landlock policy; stdout={}, stderr={}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr),
