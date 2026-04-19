@@ -57,6 +57,25 @@ cargo clippy --workspace               # Lint (zero warnings)
 
 Test tiers: [docs/test-tiers.md](docs/test-tiers.md)
 
+### Mutation testing
+
+`cargo-mutants` mutates the source and re-runs the tests; a mutation that
+passes all tests is a test that does not actually test the code it claims
+to cover. Install once per machine, then run against the changed crate
+(full workspace takes hours):
+
+```bash
+cargo install cargo-mutants
+cargo mutants --package <crate> --baseline=skip   # mutate a whole crate
+cargo mutants --baseline=skip --in-diff <branch>  # mutate only the diff vs <branch>
+```
+
+Baselines for critical paths live under `mutants-out/` (gitignored). Treat
+any **missed** mutation as a test gap: either strengthen the existing
+assertion or add a new test that catches the mutant. See `docs/RELEASING.md`
+for the release-time substance-audit gate that calls this tool via
+`kanon audit substance`.
+
 ## Key patterns
 
 - **Errors:** `snafu` with `.context()` propagation and `Location` tracking

@@ -238,6 +238,14 @@ pub(super) fn build_messages(
 /// Records each tool call in the loop detector AFTER execution (so error
 /// status is known). On [`LoopVerdict::Warn`], stops processing remaining
 /// tools and returns the warning. On [`LoopVerdict::Halt`], returns an error.
+// WHY: Function is 106 lines after #3569 (last-moment secret substitution)
+// and #3691 (rich tool outcome); clippy default limit is 100. The refactor
+// splits this into `dispatch_single_tool` + outer loop and is tracked in
+// #3698. Scope-limited allow until that lands.
+#[expect(
+    clippy::too_many_lines,
+    reason = "per-tool dispatch loop; split tracked in forkwright/aletheia#3698"
+)]
 pub(super) async fn dispatch_tools(
     tool_uses: &[(String, String, serde_json::Value)],
     tools: &ToolRegistry,
