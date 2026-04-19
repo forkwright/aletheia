@@ -122,16 +122,31 @@ pub(crate) async fn run(args: Args) -> Result<()> {
             "auth mode is 'none' -- all requests granted configured role"
         );
     }
-    if config.gateway.auth.mode == "none"
-        && bind_addr_str != "127.0.0.1"
-        && bind_addr_str != "localhost"
-        && bind_addr_str != "::1"
-    {
-        warn!(
-            bind = %bind_addr_str,
-            "authentication is disabled (auth.mode = \"none\") on a non-localhost address -- \
-             the API is accessible without credentials"
-        );
+    // WHY(#3716): refusing to boot with `auth.mode = "none"` on a non-loopback
+    // bind address. Operators who genuinely want unauthenticated LAN/Tailscale
+    // access must explicitly set `ALETHEIA_ALLOW_AUTH_NONE_LAN=1`. This
+    // matches the existing opt-in pattern for accepting `auth.mode = "none"`
+    // via the config API (`ALETHEIA_ALLOW_AUTH_NONE`) and prevents the
+    // insecure-by-default posture where a LAN/tailnet process silently served
+    // operator-privileged requests without credentials.
+    if config.gateway.auth.mode == "none" && !taxis::validate::is_loopback_bind(bind_addr_str) {
+        if taxis::validate::auth_none_lan_opt_in_enabled() {
+            warn!(
+                bind = %bind_addr_str,
+                "authentication is disabled (auth.mode = \"none\") on a non-localhost address -- \
+                 the API is accessible without credentials (ALETHEIA_ALLOW_AUTH_NONE_LAN=1 set)"
+            );
+        } else {
+            return Err(crate::error::Error::msg(format!(
+                "refusing to bind {bind_addr_str}: gateway.auth.mode = \"none\" on a non-localhost \
+                 address would serve unauthenticated LAN/Tailscale traffic with role '{}'. \
+                 Either (a) set gateway.auth.mode = \"token\" or \"jwt\", \
+                 (b) bind to 127.0.0.1 or ::1, or \
+                 (c) set {}=1 to opt in explicitly.",
+                config.gateway.auth.none_role,
+                taxis::validate::ALLOW_AUTH_NONE_LAN_ENV,
+            )));
+        }
     }
 
     let bind_addr = format!("{bind_addr_str}:{port}");
