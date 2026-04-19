@@ -187,6 +187,11 @@ pub enum Error {
 }
 ```
 
+> Convenience alias for `Result` with daemon's [`Error`] type.
+```rust
+pub type Result<T> = std::result::Result<T, Error>;
+```
+
 ## `src/maintenance/db_monitor.rs`
 
 ```rust
@@ -447,6 +452,44 @@ pub struct MaintenanceConfig {
     pub cron: crate::cron::CronConfig,
     /// Rule proposal generation from observed patterns.
     pub propose_rules: ProposeRulesConfig,
+    /// Prompt audit log retention pruning (#3411).
+    pub prompt_audit: PromptAuditRetentionConfig,
+}
+```
+
+## `src/maintenance/prompt_audit_rotation.rs`
+
+```rust
+pub struct PromptAuditRetentionConfig {
+    /// Whether pruning is active.
+    pub enabled: bool,
+    /// Directory holding daily JSONL files.
+    pub log_dir: PathBuf,
+    /// Files older than this many days are deleted.
+    pub retention_days: u32,
+}
+```
+
+```rust
+pub struct PromptAuditRetentionReport {
+    /// Number of daily files deleted.
+    pub files_pruned: u32,
+    /// Total bytes freed.
+    pub bytes_freed: u64,
+}
+```
+
+> Prunes prompt-audit daily files past the retention window.
+```rust
+pub struct PromptAuditRotator {
+    config: PromptAuditRetentionConfig,
+}
+```
+
+```rust
+impl PromptAuditRotator {
+    pub fn new (config: PromptAuditRetentionConfig) -> Self;
+    pub fn prune (&self) -> error::Result<PromptAuditRetentionReport>;
 }
 ```
 
@@ -766,6 +809,9 @@ pub struct TaskRunner {
     self_prompt_limiter: crate::self_prompt::SelfPromptLimiter,
     /// Self-prompt configuration (enabled, rate limits).
     self_prompt_config: crate::self_prompt::SelfPromptConfig,
+    /// Optional cron scheduler for recurring dispatch tasks.
+    #[cfg(feature = "dispatch-cron")]
+    cron_scheduler: Option<Arc<energeia::cron::CronScheduler>>,
 }
 ```
 
@@ -786,6 +832,7 @@ impl TaskRunner {
         shutdown: CancellationToken,
         bridge: Arc<dyn DaemonBridge>,
     ) -> Self;
+    pub fn with_cron_scheduler (mut self, scheduler: Arc<energeia::cron::CronScheduler>) -> Self;
     pub fn with_maintenance (mut self, config: MaintenanceConfig) -> Self;
     pub fn with_retention (
         mut self,
@@ -947,6 +994,8 @@ pub enum BuiltinTask {
     ProposeRules,
     /// Periodic file-level backup of the fjall knowledge store.
     FjallBackup,
+    /// Prune prompt audit log daily files past the retention window (#3411).
+    PromptAuditRotation,
 }
 ```
 

@@ -5,6 +5,37 @@ Crate path: `crates/krites`
 Public API signatures extracted from source. Doc comments shown above each signature.
 For implementation context, read the source directly (`L4`).
 
+## `src/counterfactual.rs`
+
+```rust
+pub struct CausalEdgeRow {
+    /// Cause fact ID.
+    pub cause: String,
+    /// Effect fact ID.
+    pub effect: String,
+    /// Relationship type (caused, enabled, prevented, correlated).
+    pub relationship_type: CausalRelationType,
+    /// Edge confidence in `[0.0, 1.0]`.
+    pub confidence: f64,
+}
+```
+
+> Typed query builders for counterfactual reasoning over causal graphs.
+```rust
+pub struct Counterfactual;
+```
+
+```rust
+impl Counterfactual {
+    pub fn dependency_analysis (db: &Db, fact_id: impl AsRef<str>) -> Result<Vec<CausalEdgeRow>>;
+    pub fn impact_analysis (db: &Db, fact_id: impl AsRef<str>) -> Result<Vec<CausalEdgeRow>>;
+    pub fn minimal_provenance (
+        db: &Db,
+        conclusion_id: impl AsRef<str>,
+    ) -> Result<Vec<CausalEdgeRow>>;
+}
+```
+
 ## `src/data/expr/expr_impl.rs`
 
 ```rust
@@ -206,6 +237,10 @@ pub struct Symbol {
 ## `src/data/tuple.rs`
 
 ```rust
+pub type Tuple = Vec<DataValue>;
+```
+
+```rust
 pub fn decode_tuple_from_key (key: &[u8], size_hint: usize) -> Tuple
 ```
 
@@ -359,6 +394,11 @@ pub enum Error {
         location: snafu::Location,
     },
 }
+```
+
+> Result alias using the engine's public [`Error`] type.
+```rust
+pub type Result<T> = std::result::Result<T, Error>;
 ```
 
 ## `src/fixed_rule/csr/mod.rs`
@@ -726,6 +766,11 @@ pub enum ImperativeStmt {
 }
 ```
 
+> A series of `{}` queries possibly with imperative directives like `%if` and `%loop`.
+```rust
+pub type ImperativeProgram = Vec<ImperativeStmt>;
+```
+
 ```rust
 pub struct SourceSpan(pub usize, pub usize);
 ```
@@ -965,6 +1010,11 @@ impl NamedRows {
     pub fn from_json (value: &JsonValue) -> Result<Self>;
     pub fn into_payload (self, relation: &str, op: &str) -> Payload;
 }
+```
+
+> The query and parameters.
+```rust
+pub type Payload = (String, BTreeMap<String, DataValue>);
 ```
 
 ```rust

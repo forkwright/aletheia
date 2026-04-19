@@ -268,8 +268,52 @@ pub struct ImportFactError {
 pub async fn import_facts (
     State(state): State<KnowledgeState>,
     claims: Claims,
-    Json(body): Json<BulkImportRequest>,
+    body: axum::body::Bytes,
 ) -> Result<Json<BulkImportResponse>, ApiError>
+```
+
+## `src/handlers/knowledge/ingest.rs`
+
+```rust
+pub struct IngestRequest {
+    /// Raw content to ingest.
+    pub content: String,
+    /// Format: markdown, text, json, jsonl.
+    #[serde(default)]
+    pub format: String,
+    /// Nous agent ID that will own the extracted facts.
+    pub nous_id: String,
+}
+```
+
+```rust
+pub struct IngestFactError {
+    /// Index of the fact in the batch.
+    pub index: usize,
+    /// Fact ID if available.
+    pub id: Option<String>,
+    /// Error message.
+    pub message: String,
+}
+```
+
+```rust
+pub struct IngestResponse {
+    /// Number of facts successfully inserted.
+    pub inserted: usize,
+    /// Number of facts skipped due to errors.
+    pub skipped: usize,
+    /// Per-fact error details.
+    pub errors: Vec<IngestFactError>,
+}
+```
+
+```rust
+pub async fn ingest (
+    State(state): State<KnowledgeState>,
+    claims: Claims,
+    Json(body): Json<IngestRequest>,
+) -> Result<Json<IngestResponse>, ApiError>
 ```
 
 ## `src/handlers/knowledge/mod.rs`
@@ -347,6 +391,12 @@ pub struct ForgetRequest {
 ```rust
 pub struct UpdateConfidenceRequest {
     pub confidence: f64,
+}
+```
+
+```rust
+pub struct UpdateSensitivityRequest {
+    pub sensitivity: String,
 }
 ```
 
@@ -535,6 +585,20 @@ pub async fn update_confidence (
 ) -> Result<Json<serde_json::Value>, ApiError>
 ```
 
+> 
+> # Cancel safety
+> 
+> Cancel-safe. Axum handler; cancellation drops the future with no
+> side effects beyond not returning a response.
+```rust
+pub async fn update_sensitivity (
+    State(state): State<KnowledgeState>,
+    claims: Claims,
+    Path(id): Path<String>,
+    Json(body): Json<UpdateSensitivityRequest>,
+) -> Result<Json<serde_json::Value>, ApiError>
+```
+
 ## `src/handlers/knowledge/search.rs`
 
 > 
@@ -559,6 +623,39 @@ pub async fn timeline (
     State(state): State<KnowledgeState>,
     Query(mut query): Query<TimelineQuery>,
 ) -> Result<Json<TimelineResponse>, ApiError>
+```
+
+## `src/handlers/knowledge/webhook.rs`
+
+```rust
+pub struct WebhookIngestRequest {
+    /// Nous agent ID that will own the facts.
+    pub nous_id: String,
+    /// Facts to insert.
+    pub facts: Vec<mneme::knowledge::Fact>,
+    /// Optional source identifier for provenance.
+    #[serde(default)]
+    pub source: Option<String>,
+}
+```
+
+```rust
+pub struct WebhookIngestResponse {
+    /// Number of facts successfully inserted.
+    pub inserted: usize,
+    /// Number of facts skipped due to errors.
+    pub skipped: usize,
+    /// Per-fact error details.
+    pub errors: Vec<crate::handlers::knowledge::ingest::IngestFactError>,
+}
+```
+
+```rust
+pub async fn webhook_ingest (
+    State(state): State<KnowledgeState>,
+    claims: Claims,
+    Json(body): Json<WebhookIngestRequest>,
+) -> Result<Json<WebhookIngestResponse>, ApiError>
 ```
 
 ## `src/handlers/metrics.rs`
@@ -595,6 +692,40 @@ pub async fn recover (
     claims: Claims,
     Path(id): Path<String>,
 ) -> Result<Json<RecoverResponse>, ApiError>
+```
+
+```rust
+pub struct AgentDefinition {
+    /// Agent identifier (alphanumeric and hyphens only).
+    pub id: String,
+    /// Human-readable display name. Falls back to a capitalized `id`.
+    #[serde(default)]
+    pub name: Option<String>,
+    /// LLM model identifier. Falls back to the workspace default.
+    #[serde(default)]
+    pub model: Option<String>,
+}
+```
+
+```rust
+pub struct CreateAgentResponse {
+    /// Agent identifier.
+    pub id: String,
+    /// Human-readable display name.
+    pub name: String,
+    /// LLM model assigned to this agent.
+    pub model: String,
+    /// Whether the agent requires a server restart to become active.
+    pub restart_required: bool,
+}
+```
+
+```rust
+pub async fn create (
+    State(state): State<NousState>,
+    claims: Claims,
+    Json(body): Json<AgentDefinition>,
+) -> Result<impl IntoResponse, ApiError>
 ```
 
 ```rust
@@ -810,13 +941,12 @@ pub struct SendMessageRequest {
 
 ```rust
 pub struct StreamTurnRequest {
-    /// Target agent ID.
-    #[serde(alias = "agentId")]
-    pub agent_id: String,
+    /// Target nous agent ID.
+    pub nous_id: String,
     /// User message text.
     pub message: String,
     /// Session key for deduplication (defaults to "main").
-    #[serde(alias = "sessionKey", default = "default_session_key")]
+    #[serde(default = "default_session_key")]
     pub session_key: String,
 }
 ```
@@ -840,6 +970,14 @@ pub struct HistoryParams {
     /// Return messages with `seq` strictly less than this value.
     pub before: Option<i64>,
 }
+```
+
+> Response for `GET /api/v1/sessions` (list).
+> 
+> Uses the standard paginated envelope. The `items` field contains
+> `SessionListItem` values; `has_more` and `next_cursor` enable paging.
+```rust
+pub type ListSessionsResponse = crate::pagination::PaginatedResponse<SessionListItem>;
 ```
 
 ```rust
@@ -1295,7 +1433,7 @@ pub async fn run (config: ServerConfig) -> Result<(), ServerError>
 ```
 
 ```rust
-pub fn spawn_sighup_handler (state: Arc<AppState>) -> tokio::task::JoinHandle<()>
+pub fn spawn_sighup_handler (state: Arc<AppState>) -> Option<tokio::task::JoinHandle<()>>
 ```
 
 ## `src/state.rs`
@@ -1390,6 +1528,8 @@ pub struct NousState {
     pub nous_manager: Arc<NousManager>,
     /// Registry of tools available to nous agents.
     pub tool_registry: Arc<ToolRegistry>,
+    /// Instance directory layout for file resolution.
+    pub oikos: Arc<Oikos>,
 }
 ```
 

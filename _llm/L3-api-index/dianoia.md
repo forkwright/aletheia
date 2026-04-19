@@ -478,6 +478,8 @@ pub struct Blocker {
 ```rust
 impl Plan {
     pub fn new (title: String, description: String, wave: u32) -> Self;
+    pub fn from_research (research: &ResearchOutput) -> Vec<Self>;
+    pub fn from_template (completed: &Plan, next_wave: u32) -> Self;
     pub fn with_max_iterations (mut self, max: u32) -> Self;
     pub fn set_depends_on (&mut self, deps: Vec<Ulid>, all_plans: &[Plan]) -> Result<()>;
 }

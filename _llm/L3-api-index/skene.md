@@ -693,7 +693,7 @@ pub enum StreamEvent {
 ## `src/id.rs`
 
 ```rust
-pub struct TurnId(CompactString);
+pub struct TurnId(String);
 ```
 
 ```rust

@@ -9,7 +9,7 @@ For implementation context, read the source directly (`L4`).
 
 ```rust
 pub enum PptxError {
-    /// `ppt-rs` returned an error while generating the presentation.
+    /// An error occurred while generating the presentation.
     #[snafu(display("PPTX error: {message}"))]
     Pptx {
         /// Human-readable error description.

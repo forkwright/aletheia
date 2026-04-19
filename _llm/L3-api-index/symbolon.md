@@ -111,6 +111,11 @@ pub enum DeviceCodeError {
 }
 ```
 
+> Result type for Device Code operations.
+```rust
+pub type Result<T> = std::result::Result<T, DeviceCodeError>;
+```
+
 ```rust
 pub struct DeviceOAuthProvider {
     /// Base OAuth provider configuration.
@@ -348,6 +353,11 @@ pub enum PkceError {
         location: snafu::Location,
     },
 }
+```
+
+> Result type for PKCE operations.
+```rust
+pub type Result<T> = std::result::Result<T, PkceError>;
 ```
 
 ```rust
