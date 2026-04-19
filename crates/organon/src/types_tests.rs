@@ -887,3 +887,98 @@ fn tool_result_serde_backward_compat_missing_diagnostics() {
         "missing diagnostics should default to None"
     );
 }
+
+// ---------------------------------------------------------------------------
+// ToolOutcome / partial success (#3633)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn tool_result_partial_success_constructor_carries_reasons() {
+    // Scenario: 3-way sub-agent dispatch where 2 succeeded and 1 failed.
+    // Old is_error bool would collapse this into a binary; new outcome
+    // surfaces it as PartialSuccess with one reason per failed sub-op.
+    let r = ToolResult::partial_success(
+        r#"[{"ok":1},{"ok":2},{"err":"boom"}]"#,
+        vec!["sub-agent #3: boom".to_owned()],
+    );
+    assert!(
+        !r.is_error,
+        "partial_success should map to is_error=false — tool delivered usable output"
+    );
+    assert!(r.outcome.is_partial(), "outcome should be PartialSuccess");
+    assert_eq!(
+        r.outcome.partial_reasons(),
+        &["sub-agent #3: boom".to_owned()],
+        "reasons should propagate through the outcome, not be collapsed"
+    );
+
+    // Old consumers still reading is_error get the back-compat view.
+    match &r.outcome {
+        ToolOutcome::PartialSuccess(info) => {
+            assert_eq!(info.reasons.len(), 1, "one reason per failed sub-operation");
+        }
+        other => panic!("expected PartialSuccess, got {other:?}"),
+    }
+}
+
+#[test]
+fn tool_outcome_is_error_collapse_matches_legacy_bool() {
+    assert!(!ToolOutcome::Success.is_error());
+    assert!(!ToolOutcome::partial(Vec::<String>::new()).is_error());
+    assert!(ToolOutcome::failure("x").is_error());
+}
+
+#[test]
+fn tool_result_outcome_serde_roundtrip_partial() {
+    let r = ToolResult::partial_success("payload", vec!["warn".to_owned()]);
+    let json = serde_json::to_string(&r).expect("serialize");
+    let back: ToolResult = serde_json::from_str(&json).expect("deserialize");
+    assert!(back.outcome.is_partial(), "outcome should survive serde");
+    assert_eq!(back.outcome.partial_reasons(), &["warn".to_owned()]);
+    assert!(!back.is_error);
+}
+
+#[test]
+fn tool_result_serde_legacy_payload_defaults_to_success_then_normalizes() {
+    // Legacy payloads predate the `outcome` field; #[serde(default)]
+    // populates it as Success. For legacy error records, normalize()
+    // promotes the outcome to Failure to match is_error=true.
+    let success_legacy = r#"{"content":"ok","is_error":false}"#;
+    let back: ToolResult = serde_json::from_str(success_legacy).expect("deserialize success");
+    assert!(
+        back.outcome.is_success(),
+        "legacy success defaults correctly"
+    );
+
+    let error_legacy = r#"{"content":"bad","is_error":true}"#;
+    let back: ToolResult = serde_json::from_str::<ToolResult>(error_legacy)
+        .expect("deserialize error")
+        .normalize();
+    assert!(
+        back.outcome.is_error(),
+        "normalize() promotes legacy is_error=true records to Failure"
+    );
+    assert!(back.is_error);
+}
+
+#[test]
+fn tool_stats_record_outcome_separates_partial_from_error() {
+    let mut stats = ToolStats::default();
+    stats.record_outcome("dispatch", 10, &ToolOutcome::Success);
+    stats.record_outcome(
+        "dispatch",
+        20,
+        &ToolOutcome::partial(vec!["one failed".to_owned()]),
+    );
+    stats.record_outcome("dispatch", 30, &ToolOutcome::failure("crash"));
+    assert_eq!(stats.total_calls, 3);
+    assert_eq!(
+        stats.error_count, 1,
+        "only true failures count as errors, not partials"
+    );
+    assert_eq!(
+        stats.partial_count, 1,
+        "partial successes get their own counter (#3633)"
+    );
+    assert_eq!(stats.total_duration_ms, 60);
+}
