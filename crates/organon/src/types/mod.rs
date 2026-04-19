@@ -390,13 +390,131 @@ impl ToolDiagnostics {
     }
 }
 
+/// Rich outcome classification for a tool invocation.
+///
+/// Replaces the collapsed `is_error: bool` view with three cases that
+/// expose partial-success states — e.g. `sessions_dispatch` running
+/// several sub-agents where some succeed and some fail (#3633).
+///
+/// Legacy callers read [`ToolResult::is_error`], which remains derived
+/// from the outcome for backward compatibility: `PartialSuccess` maps
+/// to `is_error = false` because the tool itself delivered usable
+/// output; the LLM sees caveats inside the content.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum ToolOutcome {
+    /// All sub-operations succeeded.
+    #[default]
+    Success,
+    /// Tool returned usable output, but some sub-operations failed or
+    /// emitted warnings. Payload is boxed to keep `ToolOutcome`
+    /// (and therefore `ToolResult`) small so that
+    /// `Result<_, ToolResult>` helpers stay under the
+    /// `clippy::result_large_err` threshold.
+    PartialSuccess(Box<PartialSuccessInfo>),
+    /// Tool failed; no usable output.
+    Failure(Box<FailureInfo>),
+}
+
+/// Payload for [`ToolOutcome::PartialSuccess`]. Boxed in the outcome
+/// to keep the enum pointer-sized.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PartialSuccessInfo {
+    /// One reason per degraded sub-operation.
+    pub reasons: Vec<String>,
+}
+
+/// Payload for [`ToolOutcome::Failure`]. Boxed in the outcome to keep
+/// the enum pointer-sized.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FailureInfo {
+    /// Single human-readable failure reason.
+    pub reason: String,
+}
+
+impl ToolOutcome {
+    /// Construct a `PartialSuccess` outcome from an iterator of reasons.
+    #[must_use]
+    pub fn partial(reasons: impl IntoIterator<Item = String>) -> Self {
+        // kanon:ignore RUST/pub-visibility
+        Self::PartialSuccess(Box::new(PartialSuccessInfo {
+            reasons: reasons.into_iter().collect(),
+        }))
+    }
+
+    /// Construct a `Failure` outcome from a single reason.
+    #[must_use]
+    pub fn failure(reason: impl Into<String>) -> Self {
+        // kanon:ignore RUST/pub-visibility
+        Self::Failure(Box::new(FailureInfo {
+            reason: reason.into(),
+        }))
+    }
+
+    /// Whether this outcome represents a pure error state.
+    ///
+    /// `PartialSuccess` returns `false` because the tool produced
+    /// usable output even if some sub-operations were degraded — the
+    /// caveats travel in the content payload, not the error channel.
+    #[must_use]
+    pub fn is_error(&self) -> bool {
+        matches!(self, Self::Failure(_))
+    }
+
+    /// Whether this outcome represents a fully-successful run.
+    #[must_use]
+    pub fn is_success(&self) -> bool {
+        matches!(self, Self::Success)
+    }
+
+    /// Whether this outcome represents a partial success.
+    #[must_use]
+    pub fn is_partial(&self) -> bool {
+        matches!(self, Self::PartialSuccess(_))
+    }
+
+    /// Reasons recorded for `PartialSuccess`, empty otherwise.
+    #[must_use]
+    pub fn partial_reasons(&self) -> &[String] {
+        match self {
+            Self::PartialSuccess(info) => info.reasons.as_slice(),
+            _ => &[],
+        }
+    }
+
+    /// Reason recorded for `Failure`, empty string otherwise.
+    #[must_use]
+    pub fn failure_reason(&self) -> &str {
+        match self {
+            Self::Failure(info) => info.reason.as_str(),
+            _ => "",
+        }
+    }
+}
+
 /// What the tool executor returns.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolResult {
     /// Result content: text or rich content blocks.
     pub content: ToolResultContent,
     /// Whether this result represents an error.
+    ///
+    /// Retained for backward compatibility and wire-format stability
+    /// (serialized LLM-facing envelopes and persisted sessions).
+    /// New code should inspect [`ToolResult::outcome`] for the
+    /// partial-success distinction (#3633); `is_error` stays
+    /// synchronized with it via the constructors and remains a
+    /// faithful binary collapse: `Success` or `PartialSuccess`
+    /// → `false`, `Failure` → `true`.
     pub is_error: bool,
+    /// Rich outcome classification. Defaults to `Success` when a
+    /// legacy payload without this field is deserialized; the
+    /// `is_error` flag is not consulted during deserialization
+    /// because `#[serde(default)]` runs before field population.
+    /// For legacy inputs, call [`ToolResult::normalize`] to reconcile.
+    #[serde(default)]
+    pub outcome: ToolOutcome,
     /// Optional diagnostic metadata from the execution environment.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub diagnostics: Option<ToolDiagnostics>,
@@ -410,6 +528,7 @@ impl ToolResult {
         Self {
             content: ToolResultContent::Text(content.into()),
             is_error: false,
+            outcome: ToolOutcome::Success,
             diagnostics: None,
         }
     }
@@ -418,9 +537,11 @@ impl ToolResult {
     #[must_use]
     pub fn error(content: impl Into<String>) -> Self {
         // kanon:ignore RUST/pub-visibility
+        let reason = content.into();
         Self {
-            content: ToolResultContent::Text(content.into()),
+            content: ToolResultContent::Text(reason.clone()),
             is_error: true,
+            outcome: ToolOutcome::failure(reason),
             diagnostics: None,
         }
     }
@@ -432,8 +553,48 @@ impl ToolResult {
         Self {
             content: ToolResultContent::Blocks(blocks),
             is_error: false,
+            outcome: ToolOutcome::Success,
             diagnostics: None,
         }
+    }
+
+    /// Create a partial-success result: the tool produced usable
+    /// output, but some sub-operations failed or emitted warnings.
+    ///
+    /// `reasons` should carry one human-readable note per degraded
+    /// sub-operation. `is_error` is set to `false` because the tool
+    /// surface delivered output; caveats travel in-band.
+    ///
+    /// See #3633 — `sessions_dispatch` is the canonical producer.
+    #[must_use]
+    pub fn partial_success(
+        content: impl Into<String>,
+        reasons: impl IntoIterator<Item = String>,
+    ) -> Self {
+        // kanon:ignore RUST/pub-visibility
+        Self {
+            content: ToolResultContent::Text(content.into()),
+            is_error: false,
+            outcome: ToolOutcome::partial(reasons),
+            diagnostics: None,
+        }
+    }
+
+    /// Reconcile `outcome` against `is_error` after deserialization.
+    ///
+    /// Legacy payloads omit the `outcome` field, so it defaults to
+    /// `Success`; call this to promote `is_error = true` legacy
+    /// records to `Failure` so downstream observers see the error
+    /// through the new API.
+    #[must_use]
+    pub fn normalize(mut self) -> Self {
+        // kanon:ignore RUST/pub-visibility
+        if self.is_error && matches!(self.outcome, ToolOutcome::Success) {
+            // text_summary() already returns an owned String.
+            let reason = self.content.text_summary();
+            self.outcome = ToolOutcome::failure(reason);
+        }
+        self
     }
 
     /// Attach diagnostic metadata to this result.
@@ -466,17 +627,39 @@ pub struct ToolStats {
     pub total_calls: u32,
     pub total_duration_ms: u64,
     pub error_count: u32,
+    /// Count of calls that produced `ToolOutcome::PartialSuccess`
+    /// (see #3633). Separate from `error_count` because partial
+    /// successes deliver usable output even with degraded
+    /// sub-operations.
+    pub partial_count: u32,
     pub calls_by_tool: IndexMap<String, u32>,
 }
 
 impl ToolStats {
-    /// Record a tool execution.
+    /// Record a tool execution (binary-outcome variant).
+    ///
+    /// Retained for call sites that only know `is_error`; prefer
+    /// [`ToolStats::record_outcome`] to capture partial-success
+    /// state explicitly.
     pub fn record(&mut self, name: &str, duration_ms: u64, is_error: bool) {
+        // kanon:ignore RUST/pub-visibility
+        let outcome = if is_error {
+            ToolOutcome::failure(String::new())
+        } else {
+            ToolOutcome::Success
+        };
+        self.record_outcome(name, duration_ms, &outcome);
+    }
+
+    /// Record a tool execution with full outcome detail.
+    pub fn record_outcome(&mut self, name: &str, duration_ms: u64, outcome: &ToolOutcome) {
         // kanon:ignore RUST/pub-visibility
         self.total_calls += 1;
         self.total_duration_ms += duration_ms;
-        if is_error {
-            self.error_count += 1;
+        match outcome {
+            ToolOutcome::Success => {}
+            ToolOutcome::PartialSuccess(_) => self.partial_count += 1,
+            ToolOutcome::Failure(_) => self.error_count += 1,
         }
         *self.calls_by_tool.entry(name.to_owned()).or_insert(0) += 1;
     }

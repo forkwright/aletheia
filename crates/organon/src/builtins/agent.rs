@@ -12,8 +12,8 @@ use super::workspace::{extract_opt_u64, extract_str};
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
-    InputSchema, PropertyDef, PropertyType, Reversibility, SpawnRequest, ToolCategory, ToolContext,
-    ToolDef, ToolInput, ToolResult,
+    InputSchema, PropertyDef, PropertyType, Reversibility, SpawnRequest, SpawnResult, ToolCategory,
+    ToolContext, ToolDef, ToolInput, ToolResult,
 };
 
 /// Fallback default; runtime reads `ctx.tool_config.agent_dispatch_timeout_secs`.
@@ -154,31 +154,89 @@ impl ToolExecutor for SessionsDispatchExecutor {
                 join_set.spawn(async move { svc.spawn_and_run(request, &parent).await });
             }
 
-            let mut results = Vec::with_capacity(join_set.len());
-            while let Some(join_result) = join_set.join_next().await {
-                match join_result {
-                    Ok(Ok(spawn_result)) => results.push(serde_json::json!({
-                        "content": spawn_result.content,
-                        "is_error": spawn_result.is_error,
-                        "input_tokens": spawn_result.input_tokens,
-                        "output_tokens": spawn_result.output_tokens,
-                    })),
-                    Ok(Err(e)) => results.push(serde_json::json!({
-                        "content": format!("Spawn error: {e}"),
-                        "is_error": true,
-                    })),
-                    Err(e) => results.push(serde_json::json!({
-                        "content": format!("Task panicked: {e}"),
-                        "is_error": true,
-                    })),
-                }
-            }
-
-            Ok(ToolResult::text(
-                serde_json::to_string(&results).unwrap_or_else(|_| "[]".to_owned()),
-            ))
+            Ok(aggregate_dispatch_results(join_set).await)
         })
     }
+}
+
+/// Drain a `JoinSet` of sub-agent spawn futures into a single
+/// [`ToolResult`] whose outcome reflects partial-success semantics.
+///
+/// # Outcome rules (#3633)
+///
+/// - All sub-agents succeeded -> [`ToolOutcome::Success`].
+/// - All sub-agents failed or panicked -> [`ToolOutcome::Failure`].
+/// - Mixed -> [`ToolOutcome::PartialSuccess`] with one reason per
+///   degraded sub-operation.
+///
+/// Extracted from the dispatch executor to keep the executor body
+/// inside the workspace's `too_many_lines` clippy threshold.
+async fn aggregate_dispatch_results(
+    mut join_set: tokio::task::JoinSet<std::result::Result<SpawnResult, String>>,
+) -> ToolResult {
+    let mut results = Vec::with_capacity(join_set.len());
+    let mut failure_reasons: Vec<String> = Vec::new();
+    let mut success_count: u32 = 0;
+    while let Some(join_result) = join_set.join_next().await {
+        match join_result {
+            Ok(Ok(spawn_result)) => {
+                if spawn_result.is_error {
+                    failure_reasons.push(format!(
+                        "sub-agent reported error: {}",
+                        truncate_reason(&spawn_result.content)
+                    ));
+                } else {
+                    success_count += 1;
+                }
+                results.push(serde_json::json!({
+                    "content": spawn_result.content,
+                    "is_error": spawn_result.is_error,
+                    "input_tokens": spawn_result.input_tokens,
+                    "output_tokens": spawn_result.output_tokens,
+                }));
+            }
+            Ok(Err(e)) => {
+                failure_reasons.push(format!("spawn error: {e}"));
+                results.push(serde_json::json!({
+                    "content": format!("Spawn error: {e}"),
+                    "is_error": true,
+                }));
+            }
+            Err(e) => {
+                failure_reasons.push(format!("task panic: {e}"));
+                results.push(serde_json::json!({
+                    "content": format!("Task panicked: {e}"),
+                    "is_error": true,
+                }));
+            }
+        }
+    }
+
+    let payload = serde_json::to_string(&results).unwrap_or_else(|_| "[]".to_owned());
+
+    // WHY (#3633): surface partial-success so downstream observers
+    // (pipeline metrics, the LLM, audit trails) can tell "all N
+    // sub-agents succeeded" apart from "K of N succeeded, rest
+    // failed". Full failure still rides the `is_error` channel.
+    if failure_reasons.is_empty() {
+        ToolResult::text(payload)
+    } else if success_count == 0 {
+        ToolResult::error(payload)
+    } else {
+        ToolResult::partial_success(payload, failure_reasons)
+    }
+}
+
+/// Truncate a sub-agent reason string to a token-friendly length for
+/// inclusion in a `ToolOutcome::PartialSuccess` reason list.
+fn truncate_reason(text: &str) -> String {
+    const MAX: usize = 160;
+    let trimmed = text.trim();
+    if trimmed.len() <= MAX {
+        return trimmed.to_owned();
+    }
+    let end = trimmed.floor_char_boundary(MAX);
+    format!("{}…", trimmed.get(..end).unwrap_or(trimmed))
 }
 
 /// Register agent coordination tools.
