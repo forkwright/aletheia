@@ -233,19 +233,141 @@ pub(super) fn build_messages(
         .collect()
 }
 
+/// Outcome of executing a single tool call: the persisted [`ToolCall`]
+/// record, the LLM-facing [`ContentBlock::ToolResult`] block, and the
+/// `is_error` flag the outer loop feeds into the loop detector.
+struct SingleToolOutcome {
+    call: ToolCall,
+    result_block: ContentBlock,
+    is_error: bool,
+}
+
+/// Execute one tool call: substitute secrets, invoke the executor,
+/// truncate + log + build the (`ToolCall`, `ContentBlock::ToolResult`)
+/// pair. Loop-detection bookkeeping is handled by the caller.
+async fn dispatch_single_tool(
+    tool_id: &str,
+    tool_name: &str,
+    tool_input: &serde_json::Value,
+    tools: &ToolRegistry,
+    tool_ctx: &ToolContext,
+    max_tool_result_bytes: u32,
+) -> error::Result<SingleToolOutcome> {
+    let tool_name_id = ToolName::new(tool_name).map_err(|_err| {
+        error::PipelineStageSnafu {
+            stage: "execute",
+            message: format!("invalid tool name: {tool_name}"),
+        }
+        .build()
+    })?;
+
+    // WHY(#3569): substitute secrets at the LAST moment before tool
+    // execution. The original `tool_input` (with placeholders) is preserved
+    // for persistence in the `ToolCall`; only the executor sees resolved
+    // values.
+    let mut substituted_args = tool_input.clone();
+    if let Some(services) = &tool_ctx.services
+        && let Err(e) = substitute_in_json(&mut substituted_args, &services.secret_vault)
+    {
+        crate::metrics::record_tool_failure(tool_ctx.nous_id.as_ref(), tool_name);
+        let msg = format!("Tool error: {e}");
+        return Ok(SingleToolOutcome {
+            call: ToolCall {
+                id: tool_id.to_owned(),
+                name: tool_name.to_owned(),
+                input: tool_input.clone(),
+                result: Some(msg.clone()),
+                is_error: true,
+                duration_ms: 0,
+            },
+            result_block: ContentBlock::ToolResult {
+                tool_use_id: tool_id.to_owned(),
+                content: ToolResultContent::text(msg),
+                is_error: Some(true),
+            },
+            is_error: true,
+        });
+    }
+
+    let start = std::time::Instant::now();
+    let result = tools
+        .execute(
+            &ToolInput {
+                name: tool_name_id,
+                tool_use_id: tool_id.to_owned(),
+                arguments: substituted_args,
+            },
+            tool_ctx,
+        )
+        .await;
+
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::as_conversions,
+        reason = "u128→u64: tool execution duration won't exceed u64::MAX milliseconds"
+    )]
+    let duration_ms = start.elapsed().as_millis() as u64; // kanon:ignore RUST/as-cast
+
+    let (content, is_error) = match result {
+        Ok(mut r) => {
+            if let Some(ref mut d) = r.diagnostics {
+                d.duration_ms = duration_ms;
+                let diag_text = d.to_llm_text();
+                r.content = inject_diagnostics(r.content, &diag_text);
+            }
+            (r.content, r.is_error)
+        }
+        Err(e) => (ToolResultContent::text(format!("Tool error: {e}")), true),
+    };
+
+    let content = truncate_tool_result(content, max_tool_result_bytes);
+
+    // WHY: tool failures must be visible at production log levels so operators
+    // can detect systematic tool problems (DNS, permissions, etc.) without
+    // enabling debug-level tracing. (#3284)
+    if is_error {
+        warn!(
+            tool = tool_name,
+            tool_id = tool_id,
+            duration_ms,
+            "tool execution failed"
+        );
+        crate::metrics::record_tool_failure(tool_ctx.nous_id.as_ref(), tool_name);
+    } else {
+        debug!(tool = tool_name, duration_ms, "tool executed");
+    }
+
+    let call = ToolCall {
+        id: tool_id.to_owned(),
+        name: tool_name.to_owned(),
+        input: tool_input.clone(),
+        result: Some(content.text_summary()),
+        is_error,
+        duration_ms,
+    };
+
+    let result_block = ContentBlock::ToolResult {
+        tool_use_id: tool_id.to_owned(),
+        content,
+        is_error: Some(is_error),
+    };
+
+    Ok(SingleToolOutcome {
+        call,
+        result_block,
+        is_error,
+    })
+}
+
 /// Dispatch tool calls from an LLM response and collect results.
 ///
 /// Records each tool call in the loop detector AFTER execution (so error
 /// status is known). On [`LoopVerdict::Warn`], stops processing remaining
 /// tools and returns the warning. On [`LoopVerdict::Halt`], returns an error.
-// WHY: Function is 106 lines after #3569 (last-moment secret substitution)
-// and #3691 (rich tool outcome); clippy default limit is 100. The refactor
-// splits this into `dispatch_single_tool` + outer loop and is tracked in
-// #3698. Scope-limited allow until that lands.
-#[expect(
-    clippy::too_many_lines,
-    reason = "per-tool dispatch loop; split tracked in forkwright/aletheia#3698"
-)]
+///
+/// Per-tool work lives in [`dispatch_single_tool`]; this function owns the
+/// iteration over `tool_uses` and the loop-detection branch that can halt
+/// or warn before subsequent tools run.
 pub(super) async fn dispatch_tools(
     tool_uses: &[(String, String, serde_json::Value)],
     tools: &ToolRegistry,
@@ -258,104 +380,21 @@ pub(super) async fn dispatch_tools(
     let mut tool_results: Vec<ContentBlock> = Vec::new();
 
     for (tool_id, tool_name, tool_input) in tool_uses {
-        let tool_name_id = ToolName::new(tool_name.as_str()).map_err(|_err| {
-            error::PipelineStageSnafu {
-                stage: "execute",
-                message: format!("invalid tool name: {tool_name}"),
-            }
-            .build()
-        })?;
+        let outcome = dispatch_single_tool(
+            tool_id,
+            tool_name,
+            tool_input,
+            tools,
+            tool_ctx,
+            max_tool_result_bytes,
+        )
+        .await?;
 
-        // WHY(#3569): substitute secrets at the LAST moment before tool
-        // execution. The original `tool_input` (with placeholders) is preserved
-        // for persistence in `all_tool_calls`; only the executor sees resolved
-        // values.
-        let mut substituted_args = tool_input.clone();
-        if let Some(services) = &tool_ctx.services
-            && let Err(e) = substitute_in_json(&mut substituted_args, &services.secret_vault)
-        {
-            all_tool_calls.push(ToolCall {
-                id: tool_id.clone(),
-                name: tool_name.clone(),
-                input: tool_input.clone(),
-                result: Some(format!("Tool error: {e}")),
-                is_error: true,
-                duration_ms: 0,
-            });
-            tool_results.push(ContentBlock::ToolResult {
-                tool_use_id: tool_id.clone(),
-                content: ToolResultContent::text(format!("Tool error: {e}")),
-                is_error: Some(true),
-            });
-            crate::metrics::record_tool_failure(tool_ctx.nous_id.as_ref(), tool_name);
-            continue;
-        }
-
-        let start = std::time::Instant::now();
-        let result = tools
-            .execute(
-                &ToolInput {
-                    name: tool_name_id,
-                    tool_use_id: tool_id.clone(),
-                    arguments: substituted_args,
-                },
-                tool_ctx,
-            )
-            .await;
-
-        #[expect(
-            clippy::cast_possible_truncation,
-            clippy::as_conversions,
-            reason = "u128→u64: tool execution duration won't exceed u64::MAX milliseconds"
-        )]
-        let duration_ms = start.elapsed().as_millis() as u64; // kanon:ignore RUST/as-cast
-
-        let (content, is_error) = match result {
-            Ok(mut r) => {
-                if let Some(ref mut d) = r.diagnostics {
-                    d.duration_ms = duration_ms;
-                    let diag_text = d.to_llm_text();
-                    r.content = inject_diagnostics(r.content, &diag_text);
-                }
-                (r.content, r.is_error)
-            }
-            Err(e) => (ToolResultContent::text(format!("Tool error: {e}")), true),
-        };
-
-        let content = truncate_tool_result(content, max_tool_result_bytes);
-
-        // WHY: tool failures must be visible at production log levels so operators
-        // can detect systematic tool problems (DNS, permissions, etc.) without
-        // enabling debug-level tracing. (#3284)
-        if is_error {
-            warn!(
-                tool = tool_name.as_str(),
-                tool_id = tool_id.as_str(),
-                duration_ms,
-                "tool execution failed"
-            );
-            crate::metrics::record_tool_failure(tool_ctx.nous_id.as_ref(), tool_name);
-        } else {
-            debug!(tool = tool_name.as_str(), duration_ms, "tool executed");
-        }
-
-        all_tool_calls.push(ToolCall {
-            id: tool_id.clone(),
-            name: tool_name.clone(),
-            input: tool_input.clone(),
-            result: Some(content.text_summary()),
-            is_error,
-            duration_ms,
-        });
-
-        tool_results.push(ContentBlock::ToolResult {
-            tool_use_id: tool_id.clone(),
-            content,
-            is_error: Some(is_error),
-        });
+        all_tool_calls.push(outcome.call);
+        tool_results.push(outcome.result_block);
 
         let input_hash = simple_hash(tool_input);
-        match loop_detector.record(tool_name, &input_hash, is_error) {
+        match loop_detector.record(tool_name, &input_hash, outcome.is_error) {
             LoopVerdict::Ok => {}
             LoopVerdict::Warn { message, .. } => {
                 return Ok(DispatchResult {
