@@ -1,4 +1,5 @@
 #![expect(clippy::unwrap_used, reason = "test assertions")]
+#![expect(clippy::expect_used, reason = "test assertions")]
 #![expect(clippy::panic, reason = "test failures")]
 
 use std::io::{Read as _, Write as _};
