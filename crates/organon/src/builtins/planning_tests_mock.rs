@@ -39,6 +39,7 @@ pub(super) fn test_ctx_with_planning(planning: Arc<dyn PlanningService>) -> Tool
             planning: Some(planning),
             knowledge: None,
             http_client: reqwest::Client::new(),
+            secret_vault: hermeneus::secret::SecretVault::new(),
             lazy_tool_catalog: vec![],
             server_tool_config: ServerToolConfig::default(),
         })),

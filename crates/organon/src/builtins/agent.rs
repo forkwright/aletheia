@@ -346,6 +346,7 @@ mod tests {
                 lazy_tool_catalog: vec![],
                 server_tool_config: ServerToolConfig::default(),
                 http_client: reqwest::Client::new(),
+                secret_vault: hermeneus::secret::SecretVault::new(),
             })),
             active_tools: Arc::new(RwLock::new(HashSet::new())),
             tool_config: Arc::new(ToolLimitsConfig::default()),
