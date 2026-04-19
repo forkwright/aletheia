@@ -7,8 +7,17 @@ name: CI
 on:
   pull_request:
     branches: [main]
+    # WHY: the `online-tests` label opts a PR into the HuggingFace-network
+    # candle suite. Re-run CI when the label toggles so the opt-in job attaches
+    # to the existing PR check bundle instead of needing a new commit.
+    types: [opened, synchronize, reopened, labeled, unlabeled]
   push:
     branches: [main]
+  schedule:
+    # WHY: weekly run catches regressions in the network-gated candle tests
+    # (see #3683) without blocking every PR on HuggingFace DNS.
+    - cron: "0 7 * * 1"
+  workflow_dispatch:
 
 # PROJECT: explicit top-level default deny; job-level permissions grant only what's needed
 permissions:
@@ -91,3 +100,35 @@ jobs:
 
       - name: cargo test --workspace --features ${{ matrix.features }}
         run: cargo test --workspace --features ${{ matrix.features }} --no-fail-fast
+
+  # WHY: network-dependent candle tests download model weights from
+  # huggingface.co at runtime (see #3683). macOS GitHub runners intermittently
+  # lose DNS for HF, cascading the shared-singleton poisoning across the suite.
+  # Keep this job off the default PR gate; run on schedule, on the
+  # `online-tests` PR label, or via manual dispatch.
+  online-tests:
+    name: online tests (${{ matrix.os }})
+    if: >
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' &&
+       contains(github.event.pull_request.labels.*.name, 'online-tests'))
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          key: ${{ matrix.os }}-online-tests
+
+      - name: cargo test --workspace --features test-core,online-tests
+        run: cargo test --workspace --features test-core,online-tests --no-fail-fast
