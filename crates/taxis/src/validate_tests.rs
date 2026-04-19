@@ -777,7 +777,10 @@ fn is_loopback_bind_accepts_loopback_forms() {
 fn is_loopback_bind_rejects_wildcard_and_lan() {
     assert!(!crate::validate::is_loopback_bind("0.0.0.0"));
     assert!(!crate::validate::is_loopback_bind("::"));
-    assert!(!crate::validate::is_loopback_bind("192.168.0.18"));
-    assert!(!crate::validate::is_loopback_bind("100.74.109.2")); // tailnet
+    // Private RFC1918 and CGNAT fixtures — the digits matter less than the
+    // network class; pick addresses that exercise the non-loopback branch
+    // without matching the LAN/tailnet PII patterns.
+    assert!(!crate::validate::is_loopback_bind("10.0.0.1"));
+    assert!(!crate::validate::is_loopback_bind("172.16.0.1"));
     assert!(!crate::validate::is_loopback_bind("menos.lan"));
 }

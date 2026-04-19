@@ -264,7 +264,6 @@ pub const ALLOW_AUTH_NONE_ENV: &str = "ALETHEIA_ALLOW_AUTH_NONE";
 /// (#3716)
 pub const ALLOW_AUTH_NONE_LAN_ENV: &str = "ALETHEIA_ALLOW_AUTH_NONE_LAN";
 
-
 /// `true` when the bound address is a loopback address that keeps the API
 /// reachable only from the local machine.
 #[must_use]
