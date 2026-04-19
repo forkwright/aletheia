@@ -14,9 +14,9 @@
 
 ## Public API surface
 
-- `krites::Db` — open/close engine, run Datalog queries, manage transactions
-- `krites::data` — `DataValue`, `Vector` types for query inputs/outputs
-- `krites::fixed_rule` — `FixedRule` trait for custom graph algorithm extensions
+- `krites::Db` - open/close engine, run Datalog queries, manage transactions
+- `krites::data` - `DataValue`, `Vector` types for query inputs/outputs
+- `krites::fixed_rule` - `FixedRule` trait for custom graph algorithm extensions
 
 ## When to look here
 

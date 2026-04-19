@@ -46,7 +46,7 @@ Tool registry, executors, and sandbox. 16K lines. 49 built-in tools.
 | Triage | issue_scan, issue_triage, issue_approve |
 | Computer Use | computer_use (feature-gated: `computer-use`) |
 
-`web_search` requires `BRAVE_SEARCH_API_KEY` at runtime (Brave Search API). `http_request` and `web_search` are lazy (activate via `enable_tool`). Git operations are read-only or non-destructive by design — no commit, push, reset, rebase, or `--force` checkout; destructive Git work still goes through `exec` under operator review.
+`web_search` requires `BRAVE_SEARCH_API_KEY` at runtime (Brave Search API). `http_request` and `web_search` are lazy (activate via `enable_tool`). Git operations are read-only or non-destructive by design - no commit, push, reset, rebase, or `--force` checkout; destructive Git work still goes through `exec` under operator review.
 
 ## Patterns
 

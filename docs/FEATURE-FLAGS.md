@@ -6,79 +6,79 @@ This document lists every feature flag defined in the workspace, how they intera
 
 | Crate | Feature | Default? | Enables | Depends on |
 |-------|---------|----------|---------|------------|
-| **agora** | `test-core` | no | — | — |
-| **agora** | `test-full` | no | — | — |
-| **aletheia** | `default` | **yes** | `tui`, `recall`, `storage-fjall`, `embed-candle`, `cc-provider` | — |
-| **aletheia** | `mcp` | no | `dep:diaporeia` | — |
+| **agora** | `test-core` | no | - | - |
+| **agora** | `test-full` | no | - | - |
+| **aletheia** | `default` | **yes** | `tui`, `recall`, `storage-fjall`, `embed-candle`, `cc-provider` | - |
+| **aletheia** | `mcp` | no | `dep:diaporeia` | - |
 | **aletheia** | `recall` | no | KnowledgeStore vector search + extraction persistence | `nous/knowledge-store`, `mneme/mneme-engine`, `mneme/storage-fjall`, `pylon/knowledge-store` |
 | **aletheia** | `storage-fjall` | no | fjall LSM-tree backend | `mneme/storage-fjall` |
 | **aletheia** | `embed-candle` | no | Local ML embeddings via candle | `mneme/embed-candle` |
 | **aletheia** | `migrate-qdrant` | no | `dep:qdrant-client` | `mneme/mneme-engine`, `mneme/storage-fjall` |
 | **aletheia** | `tls` | no | TLS support | `pylon/tls` |
 | **aletheia** | `keyring` | no | Keyring integration | `symbolon/keyring` |
-| **aletheia** | `tui` | no | `dep:koilon` | — |
+| **aletheia** | `tui` | no | `dep:koilon` | - |
 | **aletheia** | `cc-provider` | no | Claude Code subprocess provider | `hermeneus/cc-provider` |
-| **aletheia** | `energeia` | no | `dep:energeia` | — |
-| **aletheia** | `test-core` | no | — | `mneme/test-core`, `nous/test-core`, `pylon/test-core` |
-| **aletheia** | `test-full` | no | — | `test-core`, `mneme/test-full` |
-| **daemon** (oikonomos) | `default` | **yes** | `fjall` | — |
+| **aletheia** | `energeia` | no | `dep:energeia` | - |
+| **aletheia** | `test-core` | no | - | `mneme/test-core`, `nous/test-core`, `pylon/test-core` |
+| **aletheia** | `test-full` | no | - | `test-core`, `mneme/test-full` |
+| **daemon** (oikonomos) | `default` | **yes** | `fjall` | - |
 | **daemon** | `fjall` | no | fjall task-state backend | `dep:fjall`, `koina/fjall` |
 | **daemon** | `sqlite` | no | SQLite task-state backend | `dep:rusqlite` |
 | **daemon** | `knowledge-store` | no | Prosoche memory consistency checks | `episteme/mneme-engine` |
-| **daemon** | `test-core` | no | — | — |
-| **daemon** | `test-full` | no | — | — |
-| **dianoia** | `test-core` | no | — | — |
-| **dianoia** | `test-full` | no | — | — |
-| **diaporeia** | `default` | **yes** | `knowledge-store` | — |
+| **daemon** | `test-core` | no | - | - |
+| **daemon** | `test-full` | no | - | - |
+| **dianoia** | `test-core` | no | - | - |
+| **dianoia** | `test-full` | no | - | - |
+| **diaporeia** | `default` | **yes** | `knowledge-store` | - |
 | **diaporeia** | `knowledge-store` | no | NousManager knowledge-store argument | `nous/knowledge-store` |
-| **diaporeia** | `test-core` | no | — | — |
-| **diaporeia** | `test-full` | no | — | — |
-| **eidos** | `test-core` | no | — | — |
-| **eidos** | `test-full` | no | — | — |
-| **eidos** | `test-support` | no | `test_fixtures` module (Fact/Entity/Relationship builders) | — |
+| **diaporeia** | `test-core` | no | - | - |
+| **diaporeia** | `test-full` | no | - | - |
+| **eidos** | `test-core` | no | - | - |
+| **eidos** | `test-full` | no | - | - |
+| **eidos** | `test-support` | no | `test_fixtures` module (Fact/Entity/Relationship builders) | - |
 | **energeia** | `storage-fjall` | no | fjall storage for dispatch orchestration | `dep:fjall` |
-| **energeia** | `test-core` | no | — | `storage-fjall` |
-| **energeia** | `test-full` | no | — | — |
-| **episteme** | `default` | **yes** | `graph-algo` | — |
-| **episteme** | `graph-algo` | no | Graph algorithms | — |
-| **episteme** | `test-support` | no | Test helpers | — |
+| **energeia** | `test-core` | no | - | `storage-fjall` |
+| **energeia** | `test-full` | no | - | - |
+| **episteme** | `default` | **yes** | `graph-algo` | - |
+| **episteme** | `graph-algo` | no | Graph algorithms | - |
+| **episteme** | `test-support` | no | Test helpers | - |
 | **episteme** | `mneme-engine` | no | Datalog knowledge store + typed query builder | `dep:krites`, `dep:tokio`, `graphe/mneme-engine`, `graphe/sqlite` |
 | **episteme** | `storage-fjall` | no | fjall storage backend | `mneme-engine`, `krites/storage-fjall` |
 | **episteme** | `embed-candle` | no | Candle embedding model loading | `dep:candle-core`, `dep:candle-nn`, `dep:candle-transformers`, `dep:tokenizers`, `dep:hf-hub` |
-| **episteme** | `test-core` | no | — | `mneme-engine` |
-| **episteme** | `test-full` | no | — | `test-core`, `embed-candle` |
-| **eval** (dokimion) | `test-core` | no | — | — |
-| **eval** | `test-full` | no | — | — |
-| **graphe** | `default` | **yes** | `fjall` | — |
+| **episteme** | `test-core` | no | - | `mneme-engine` |
+| **episteme** | `test-full` | no | - | `test-core`, `embed-candle` |
+| **eval** (dokimion) | `test-core` | no | - | - |
+| **eval** | `test-full` | no | - | - |
+| **graphe** | `default` | **yes** | `fjall` | - |
 | **graphe** | `fjall` | no | fjall session backend | `dep:fjall`, `dep:tempfile`, `koina/fjall` |
 | **graphe** | `sqlite` | no | SQLite session backend | `dep:rusqlite`, `dep:sha2` |
 | **graphe** | `mneme-engine` | no | Gates `tokio::task::JoinError` variants | `dep:tokio` |
-| **graphe** | `test-core` | no | — | — |
-| **graphe** | `test-full` | no | — | — |
-| **hermeneus** | `cc-provider` | no | Claude Code subprocess provider | — |
-| **hermeneus** | `test-utils` | no | Legacy mock LLM provider alias | — |
+| **graphe** | `test-core` | no | - | - |
+| **graphe** | `test-full` | no | - | - |
+| **hermeneus** | `cc-provider` | no | Claude Code subprocess provider | - |
+| **hermeneus** | `test-utils` | no | Legacy mock LLM provider alias | - |
 | **hermeneus** | `test-support` | no | Mock LLM provider for tests | `test-utils` |
-| **hermeneus** | `test-core` | no | — | — |
-| **hermeneus** | `test-full` | no | — | — |
-| **integration-tests** | `default` | **yes** | `sqlite-tests`, `knowledge-store` | — |
+| **hermeneus** | `test-core` | no | - | - |
+| **hermeneus** | `test-full` | no | - | - |
+| **integration-tests** | `default` | **yes** | `sqlite-tests`, `knowledge-store` | - |
 | **integration-tests** | `sqlite-tests` | no | SQLite-backed tests | `mneme/sqlite` |
 | **integration-tests** | `engine-tests` | no | Engine integration tests | `mneme/mneme-engine` |
 | **integration-tests** | `knowledge-store` | no | Knowledge-store integration tests | `nous/knowledge-store`, `pylon/knowledge-store` |
-| **integration-tests** | `test-core` | no | — | `engine-tests` |
-| **integration-tests** | `test-full` | no | — | `test-core` |
-| **koina** | `default` | **yes** | *(empty)* | — |
+| **integration-tests** | `test-core` | no | - | `engine-tests` |
+| **integration-tests** | `test-full` | no | - | `test-core` |
+| **koina** | `default` | **yes** | *(empty)* | - |
 | **koina** | `fjall` | no | fjall types / utilities | `dep:fjall`, `dep:tempfile` |
-| **koina** | `test-core` | no | — | — |
-| **koina** | `test-full` | no | — | — |
-| **koina** | `test-support` | no | Test helpers | — |
-| **krites** | `default` | **yes** | `graph-algo` | — |
-| **krites** | `graph-algo` | no | Graph algorithms | — |
+| **koina** | `test-core` | no | - | - |
+| **koina** | `test-full` | no | - | - |
+| **koina** | `test-support` | no | Test helpers | - |
+| **krites** | `default` | **yes** | `graph-algo` | - |
+| **krites** | `graph-algo` | no | Graph algorithms | - |
 | **krites** | `storage-fjall` | no | fjall storage backend | `dep:fjall` |
-| **krites** | `test-core` | no | — | `storage-fjall` |
-| **krites** | `test-full` | no | — | — |
-| **melete** | `test-core` | no | — | — |
-| **melete** | `test-full` | no | — | — |
-| **mneme** | `default` | **yes** | `fjall`, `graph-algo`, `mneme-engine` | — |
+| **krites** | `test-core` | no | - | `storage-fjall` |
+| **krites** | `test-full` | no | - | - |
+| **melete** | `test-core` | no | - | - |
+| **melete** | `test-full` | no | - | - |
+| **mneme** | `default` | **yes** | `fjall`, `graph-algo`, `mneme-engine` | - |
 | **mneme** | `fjall` | no | fjall session backend | `graphe/fjall` |
 | **mneme** | `graph-algo` | no | Graph algorithm types | `episteme/graph-algo` |
 | **mneme** | `test-support` | no | `MockEmbeddingProvider` and test helpers | `episteme/test-support` |
@@ -86,46 +86,46 @@ This document lists every feature flag defined in the workspace, how they intera
 | **mneme** | `embed-candle` | no | Candle embedding provider | `episteme/embed-candle` |
 | **mneme** | `mneme-engine` | no | Datalog knowledge engine | `dep:krites`, `graphe/mneme-engine`, `episteme/mneme-engine` |
 | **mneme** | `storage-fjall` | no | fjall knowledge storage | `mneme-engine`, `episteme/storage-fjall` |
-| **mneme** | `test-core` | no | — | `mneme-engine`, `storage-fjall` |
-| **mneme** | `test-full` | no | — | `test-core`, `embed-candle` |
+| **mneme** | `test-core` | no | - | `mneme-engine`, `storage-fjall` |
+| **mneme** | `test-full` | no | - | `test-core`, `embed-candle` |
 | **nous** | `knowledge-store` | no | Knowledge-store CRUD in agent pipeline | `mneme/mneme-engine` |
 | **nous** | `test-support` | no | Mock search / test helpers | `hermeneus/test-utils`, `organon/test-support` |
-| **nous** | `test-core` | no | — | `knowledge-store` |
-| **nous** | `test-full` | no | — | `test-core` |
-| **organon** | `computer-use` | no | Screen capture, Landlock sandbox (Linux 5.13+) | — |
+| **nous** | `test-core` | no | - | `knowledge-store` |
+| **nous** | `test-full` | no | - | `test-core` |
+| **organon** | `computer-use` | no | Screen capture, Landlock sandbox (Linux 5.13+) | - |
 | **organon** | `energeia` | no | Energeia capability tools | `dep:energeia` (pre-enabled with `storage-fjall`) |
 | **organon** | `test-support` | no | `MockToolExecutor`, `ToolExecutorSpec`, etc. | `hermeneus/test-support`, `dep:rustls` |
-| **organon** | `test-core` | no | — | — |
-| **organon** | `test-full` | no | — | — |
-| **pylon** | `default` | **yes** | *(empty)* | — |
+| **organon** | `test-core` | no | - | - |
+| **organon** | `test-full` | no | - | - |
+| **pylon** | `default` | **yes** | *(empty)* | - |
 | **pylon** | `tls` | no | TLS termination via `axum-server` | `dep:axum-server` |
 | **pylon** | `knowledge-store` | no | Knowledge-store HTTP handlers | `nous/knowledge-store` |
-| **pylon** | `test-core` | no | — | `knowledge-store` |
-| **pylon** | `test-full` | no | — | — |
-| **symbolon** | `default` | **yes** | `fjall` | — |
+| **pylon** | `test-core` | no | - | `knowledge-store` |
+| **pylon** | `test-full` | no | - | - |
+| **symbolon** | `default` | **yes** | `fjall` | - |
 | **symbolon** | `fjall` | no | fjall auth backend | `dep:fjall`, `dep:jiff`, `dep:tempfile`, `koina/fjall` |
 | **symbolon** | `sqlite` | no | SQLite auth backend | `dep:rusqlite` |
 | **symbolon** | `keyring` | no | OS keyring integration | `dep:keyring` |
-| **symbolon** | `test-support` | no | Test helpers | — |
-| **symbolon** | `test-core` | no | — | — |
-| **symbolon** | `test-full` | no | — | — |
-| **taxis** | `test-core` | no | — | — |
-| **taxis** | `test-full` | no | — | — |
-| **thesauros** | `test-core` | no | — | — |
-| **thesauros** | `test-full` | no | — | — |
-| **theatron** | *(none)* | — | — | — |
-| **koilon** | `test-core` | no | — | — |
-| **koilon** | `test-full` | no | — | — |
-| **proskenion** | *(none)* | — | — | — |
-| **skene** | `test-core` | no | — | — |
-| **skene** | `test-full` | no | — | — |
-| **poiesis-core** | *(none)* | — | — | — |
-| **poiesis-sheet** | `default` | **yes** | `xlsx`, `ods` | — |
+| **symbolon** | `test-support` | no | Test helpers | - |
+| **symbolon** | `test-core` | no | - | - |
+| **symbolon** | `test-full` | no | - | - |
+| **taxis** | `test-core` | no | - | - |
+| **taxis** | `test-full` | no | - | - |
+| **thesauros** | `test-core` | no | - | - |
+| **thesauros** | `test-full` | no | - | - |
+| **theatron** | *(none)* | - | - | - |
+| **koilon** | `test-core` | no | - | - |
+| **koilon** | `test-full` | no | - | - |
+| **proskenion** | *(none)* | - | - | - |
+| **skene** | `test-core` | no | - | - |
+| **skene** | `test-full` | no | - | - |
+| **poiesis-core** | *(none)* | - | - | - |
+| **poiesis-sheet** | `default` | **yes** | `xlsx`, `ods` | - |
 | **poiesis-sheet** | `xlsx` | no | XLSX backend | `dep:rust_xlsxwriter` |
 | **poiesis-sheet** | `ods` | no | ODS backend | `dep:spreadsheet-ods` |
-| **poiesis-slides** | `default` | **yes** | `pptx` | — |
+| **poiesis-slides** | `default` | **yes** | `pptx` | - |
 | **poiesis-slides** | `pptx` | no | PPTX backend | `dep:ppt-rs` |
-| **poiesis-text** | `default` | **yes** | `pdf`, `odt` | — |
+| **poiesis-text** | `default` | **yes** | `pdf`, `odt` | - |
 | **poiesis-text** | `pdf` | no | PDF backend | `dep:krilla` |
 | **poiesis-text** | `odt` | no | ODT backend | `dep:zip` |
 
@@ -202,10 +202,10 @@ Every workspace crate declares `test-core` and `test-full`. Most crates leave th
 | `aletheia` | `mneme/test-core`, `nous/test-core`, `pylon/test-core` | `test-core` + `mneme/test-full` |
 | `mneme` | `mneme-engine`, `storage-fjall` | `test-core` + `embed-candle` |
 | `episteme` | `mneme-engine` | `test-core` + `embed-candle` |
-| `energeia` | `storage-fjall` | — |
-| `krites` | `storage-fjall` | — |
+| `energeia` | `storage-fjall` | - |
+| `krites` | `storage-fjall` | - |
 | `nous` | `knowledge-store` | `test-core` |
-| `pylon` | `knowledge-store` | — |
+| `pylon` | `knowledge-store` | - |
 | `integration-tests` | `engine-tests` (→ `mneme/mneme-engine`) | `test-core` |
 
 ### How to run

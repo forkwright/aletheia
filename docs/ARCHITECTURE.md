@@ -254,10 +254,10 @@ Examples in aletheia (correctly preserved):
 - `DegradedEmbeddingProvider`: embedding can be unavailable AND system continues
 
 Examples audited for premature resolution:
-- **Conflict resolution** (`episteme/conflict.rs`): when supersession happens, the original fact is preserved as historical evidence via `superseded_by` and `valid_to` — correctly binary.
-- **Tool execution** (`organon/dispatch.rs`, `ToolResult`): `is_error: bool` is a strict success/fail collapse. Partial states (e.g. some prompts succeeded in a dispatch batch, tool produced output but also emitted warnings) are lost — premature collapse; see #3633.
-- **Consolidation** (`episteme/consolidation/`): original facts are superseded, not deleted, and `consolidation_audit` records provenance. However, the consolidated `Fact` itself carries no `source_count` or multiplicity metadata, so independent-evidence signal is lost after merge — premature collapse; see #3634.
-- **Actor shutdown** (`nous/manager.rs`): `ShutdownOutcome` already distinguishes `Clean` / `Panicked` / `TimedOut`, and #3472 addresses further graceful-degradation phases — correctly non-binary.
+- **Conflict resolution** (`episteme/conflict.rs`): when supersession happens, the original fact is preserved as historical evidence via `superseded_by` and `valid_to` - correctly binary.
+- **Tool execution** (`organon/dispatch.rs`, `ToolResult`): `is_error: bool` is a strict success/fail collapse. Partial states (e.g. some prompts succeeded in a dispatch batch, tool produced output but also emitted warnings) are lost - premature collapse; see #3633.
+- **Consolidation** (`episteme/consolidation/`): original facts are superseded, not deleted, and `consolidation_audit` records provenance. However, the consolidated `Fact` itself carries no `source_count` or multiplicity metadata, so independent-evidence signal is lost after merge - premature collapse; see #3634.
+- **Actor shutdown** (`nous/manager.rs`): `ShutdownOutcome` already distinguishes `Clean` / `Panicked` / `TimedOut`, and #3472 addresses further graceful-degradation phases - correctly non-binary.
 
 When adding a new feature, ask: does this decision collapse information that downstream code might need? If so, model the tension explicitly.
 

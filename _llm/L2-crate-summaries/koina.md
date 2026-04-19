@@ -14,9 +14,9 @@
 
 ## Public API surface
 
-- `koina::id` — `NousId`, `SessionId`, `TurnId`, `ToolName` newtypes; `newtype_id!` macro
-- `koina::secret` — `SecretString` for safe credential handling
-- `koina::system` — `FileSystem`, `Clock`, `Environment` traits + `RealSystem`/`TestSystem` impls
+- `koina::id` - `NousId`, `SessionId`, `TurnId`, `ToolName` newtypes; `newtype_id!` macro
+- `koina::secret` - `SecretString` for safe credential handling
+- `koina::system` - `FileSystem`, `Clock`, `Environment` traits + `RealSystem`/`TestSystem` impls
 
 ## When to look here
 

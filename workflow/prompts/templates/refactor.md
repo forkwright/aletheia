@@ -4,7 +4,7 @@ description: "Refactor: [what is being restructured]"
 depends_on: []
 model_tier: sonnet
 blast_radius:
-  - [every file that will be touched — refactors touch many files]
+  - [every file that will be touched - refactors touch many files]
 acceptance_criteria:
   - "cargo test --workspace --features test-core passes (no regressions)"
   - "cargo clippy --workspace --features test-core --all-targets -- -D warnings clean"
@@ -15,10 +15,10 @@ acceptance_criteria:
 
 # Standards
 
-- `standards/STANDARDS.md` — information hierarchy and define-once principles
-- `standards/RUST.md` — Rust-specific layout and visibility rules
-- `standards/ARCHITECTURE.md` — dependency direction, crate boundaries
-- `AGENTS.md` — where to add things, common mistakes
+- `standards/STANDARDS.md` - information hierarchy and define-once principles
+- `standards/RUST.md` - Rust-specific layout and visibility rules
+- `standards/ARCHITECTURE.md` - dependency direction, crate boundaries
+- `AGENTS.md` - where to add things, common mistakes
 
 # Context
 
@@ -31,11 +31,11 @@ like before and what it should look like after.]
 
 This refactor touches:
 
-[List every file or directory. Refactors often have wide blast radius — be
+[List every file or directory. Refactors often have wide blast radius - be
 complete. Files not listed are off-limits.]
 
 **Public API impact:** [None | Changes documented in CHANGELOG | Migration
-required — details below]
+required - details below]
 
 # Constraints
 
@@ -51,8 +51,8 @@ required — details below]
 1. `cargo test --workspace --features test-core` passes.
 2. `cargo clippy --workspace --features test-core --all-targets -- -D warnings` clean.
 3. `cargo fmt --all -- --check` passes.
-4. [Structural criterion — e.g., "No import cycles in crates/mneme/"]
-5. [API criterion — e.g., "SessionStore trait signature unchanged"]
+4. [Structural criterion - e.g., "No import cycles in crates/mneme/"]
+5. [API criterion - e.g., "SessionStore trait signature unchanged"]
 
 # Task
 

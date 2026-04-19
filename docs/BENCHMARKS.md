@@ -7,7 +7,7 @@ them in the crate's `Cargo.toml` under `[[bench]]`.
 
 ## What gets benched
 
-The bench suite is **not** comprehensive — it tracks the functions that
+The bench suite is **not** comprehensive - it tracks the functions that
 actually run on every turn or every request. Adding a bench should be
 motivated by one of:
 
@@ -25,7 +25,7 @@ Benches are NOT for:
 - One-off computations (e.g., crate startup, test setup).
 - I/O-dominated paths (criterion is poorly suited; use `cargo test` with
   release profile and `tracing` spans for those).
-- Functions that change frequently — the bench is more cost than signal.
+- Functions that change frequently - the bench is more cost than signal.
 
 ## Running
 

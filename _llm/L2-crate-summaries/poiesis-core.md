@@ -14,10 +14,10 @@
 
 ## Public API surface
 
-- `poiesis_core::document` — `Document`, `Metadata`
-- `poiesis_core::block` — `Block` enum for all content block types
-- `poiesis_core::renderer` — `Renderer` trait implemented by all backends
-- `poiesis_core::rich_text` — `RichText`, `Span` for inline styled content
+- `poiesis_core::document` - `Document`, `Metadata`
+- `poiesis_core::block` - `Block` enum for all content block types
+- `poiesis_core::renderer` - `Renderer` trait implemented by all backends
+- `poiesis_core::rich_text` - `RichText`, `Span` for inline styled content
 
 ## When to look here
 

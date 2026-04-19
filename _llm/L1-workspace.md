@@ -1,4 +1,4 @@
-# L1 — Workspace Overview
+# L1 - Workspace Overview
 
 ## Crate list
 

@@ -14,10 +14,10 @@
 
 ## Public API surface
 
-- `pylon::router` — route construction and middleware layer ordering
-- `pylon::state` — `AppState` shared across all handlers
-- `pylon::handlers` — handler modules: sessions, streaming, nous, auth, costs
-- `pylon::error` — `ApiError` with HTTP status mapping
+- `pylon::router` - route construction and middleware layer ordering
+- `pylon::state` - `AppState` shared across all handlers
+- `pylon::handlers` - handler modules: sessions, streaming, nous, auth, costs
+- `pylon::error` - `ApiError` with HTTP status mapping
 
 ## When to look here
 

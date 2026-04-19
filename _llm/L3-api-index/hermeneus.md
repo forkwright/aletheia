@@ -682,7 +682,7 @@ impl ProviderHealthTracker {
 > 
 > Called once at startup. Counter names registered here drop the `_total`
 > suffix because `prometheus-client` appends it automatically during
-> exposition — register `aletheia_llm_tokens`, not `aletheia_llm_tokens_total`.
+> exposition - register `aletheia_llm_tokens`, not `aletheia_llm_tokens_total`.
 ```rust
 pub fn register (registry: &mut Registry)
 ```

@@ -14,9 +14,9 @@
 
 ## Public API surface
 
-- `koilon::run_tui` — entry point: takes `ApiClient` + config, runs terminal event loop
-- `koilon::app` — `App`, `DashboardState`, `ConnectionState`
-- `koilon::msg` — `Msg` enum (all application messages)
+- `koilon::run_tui` - entry point: takes `ApiClient` + config, runs terminal event loop
+- `koilon::app` - `App`, `DashboardState`, `ConnectionState`
+- `koilon::msg` - `Msg` enum (all application messages)
 
 ## When to look here
 

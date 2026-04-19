@@ -1,6 +1,6 @@
 # dianoia
 
-**Purpose:** Multi-phase planning state machine with on-disk workspace persistence. Zero workspace dependencies — fully decoupled from the agent pipeline.
+**Purpose:** Multi-phase planning state machine with on-disk workspace persistence. Zero workspace dependencies - fully decoupled from the agent pipeline.
 
 ## Key types
 
@@ -14,9 +14,9 @@
 
 ## Public API surface
 
-- `dianoia::project` — `Project`, `ProjectMode`, lifecycle management
-- `dianoia::workspace` — `ProjectWorkspace` for on-disk JSON persistence
-- `dianoia::stuck` — `StuckDetector` for pattern-based loop detection
+- `dianoia::project` - `Project`, `ProjectMode`, lifecycle management
+- `dianoia::workspace` - `ProjectWorkspace` for on-disk JSON persistence
+- `dianoia::stuck` - `StuckDetector` for pattern-based loop detection
 
 ## When to look here
 

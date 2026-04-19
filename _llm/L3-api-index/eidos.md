@@ -627,13 +627,13 @@ impl ValidatedPath {
 > 
 > # Layers (applied in order)
 > 
-> 1. **Null byte** — reject `\0` characters
-> 2. **Canonicalization** — reject `..` and backslash components
-> 3. **URL-encoded traversal** — detect `%2e`, `%2f`, `%5c`
-> 4. **Unicode normalization** — detect fullwidth `.` `/` `\` characters
-> 5. **Scope containment** — resolved path must be under `root/scope_dir/`
-> 6. **Symlink resolution** — canonical path must stay within root (I/O)
-> 7. **Dangling symlink / loop detection** — reject broken or looping
+> 1. **Null byte** - reject `\0` characters
+> 2. **Canonicalization** - reject `..` and backslash components
+> 3. **URL-encoded traversal** - detect `%2e`, `%2f`, `%5c`
+> 4. **Unicode normalization** - detect fullwidth `.` `/` `\` characters
+> 5. **Scope containment** - resolved path must be under `root/scope_dir/`
+> 6. **Symlink resolution** - canonical path must stay within root (I/O)
+> 7. **Dangling symlink / loop detection** - reject broken or looping
 >    symlinks (I/O)
 > 
 > # Errors

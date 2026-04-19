@@ -14,10 +14,10 @@
 
 ## Public API surface
 
-- `nous::actor` — `NousActor` run loop, `NousHandle` for external invocation
-- `nous::manager` — `NousManager` lifecycle, health polling, restart
-- `nous::bootstrap` — `BootstrapAssembler`, system prompt construction
-- `nous::pipeline` — `PipelineContext`, `TurnResult`, stage composition
+- `nous::actor` - `NousActor` run loop, `NousHandle` for external invocation
+- `nous::manager` - `NousManager` lifecycle, health polling, restart
+- `nous::bootstrap` - `BootstrapAssembler`, system prompt construction
+- `nous::pipeline` - `PipelineContext`, `TurnResult`, stage composition
 
 ## When to look here
 

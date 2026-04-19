@@ -34,7 +34,7 @@ Entries are prepended (newest first). Do not reorder existing entries.
 
 ## Entries
 
-### 2026-04-17 — ergon_tools pattern absorption (Wave 7)
+### 2026-04-17 - ergon_tools pattern absorption (Wave 7)
 
 **Context:** Bulk standards absorption from ergon_tools (external reference
 project). No Rust changes; standards and workflow artifacts only.

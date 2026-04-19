@@ -2339,7 +2339,7 @@ pub fn auth_none_opt_in_enabled () -> bool
 > 
 > Called after the initial config load. Emits a single `warn!` event with the
 > prefix `SECURITY: auth disabled` so operators running with `auth_mode = "none"`
-> — even intentionally — see the consequence in every log aggregator. (#3383)
+> - even intentionally - see the consequence in every log aggregator. (#3383)
 ```rust
 pub fn warn_if_auth_disabled (config: &AletheiaConfig)
 ```

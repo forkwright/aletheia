@@ -176,9 +176,9 @@ pub enum Error {
 > Matrix channel provider implementing [`ChannelProvider`].
 > 
 > Phase 2 scope:
-> - `probe()` — real HTTP GET `/_matrix/client/versions`.
-> - `send()` — returns a "Phase 3" error (never dispatches).
-> - `listen()` — returns a closed receiver + empty `JoinSet`.
+> - `probe()` - real HTTP GET `/_matrix/client/versions`.
+> - `send()` - returns a "Phase 3" error (never dispatches).
+> - `listen()` - returns a closed receiver + empty `JoinSet`.
 > - Holds an `Arc<FjallCryptoStore>` so Phase 3 can plug in
 >   `matrix-sdk-base` without reshaping the registration path.
 ```rust
