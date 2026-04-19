@@ -1099,45 +1099,61 @@ fn temp_directory_access() {
 }
 
 /// Test read-only paths are actually read-only.
-// WHY: Test asserts on shell exit string ("exit_status=1" or
-// "Permission denied") which is kernel-specific. Fails on GitHub
-// Actions ubuntu-latest runner kernel (Landlock rejects the write
-// but the shell surfaces exit 2, not 1). Passes on Linux 6.19 dev
-// host. Re-ignored to unblock CI while the assertion is rewritten
-// to check file-content invariant (see #3707).
+// WHY(#3707): assert on the filesystem invariant, not the shell exit
+// string. The Landlock restriction we're testing is "file-under-
+// read_paths is not modified". Different kernel versions surface that
+// as different shell exit codes (1 on fedora 43's 6.19 kernel, 2 on
+// GitHub's ubuntu-latest), and the test used to branch on a brittle
+// string match. The security invariant is: file contents unchanged +
+// child did not report success.
 #[cfg(target_os = "linux")]
 #[test]
-#[ignore = "kernel-dependent shell exit string, tracked in forkwright/aletheia#3707"]
 fn read_only_paths_cannot_be_written() {
     let read_only_dir = tempfile::tempdir().expect("create read-only dir");
     let test_file = read_only_dir.path().join("readonly.txt");
+    const ORIGINAL_CONTENTS: &str = "original";
     #[expect(
         clippy::disallowed_methods,
         reason = "test setup requires direct filesystem access"
     )]
-    std::fs::write(&test_file, "original").expect("write test file");
+    std::fs::write(&test_file, ORIGINAL_CONTENTS).expect("write test file");
 
     let workspace = tempfile::tempdir().expect("create workspace");
     let mut policy = policy_with_system_paths(workspace.path());
     // Add read-only dir to read_paths but NOT write_paths
     policy.read_paths.push(read_only_dir.path().to_path_buf());
 
-    let cmd_str = format!(
-        "echo 'modified' > {} 2>&1; echo exit_status=$?",
-        test_file.display()
-    );
+    let cmd_str = format!("echo 'modified' > {}", test_file.display());
 
     let mut cmd = Command::new("sh");
     cmd.arg("-c").arg(&cmd_str);
     apply_sandbox(&mut cmd, policy).expect("apply sandbox");
 
     let output = cmd.output().expect("spawn child");
-    let stdout = String::from_utf8_lossy(&output.stdout);
 
-    // Should fail - read-only paths should not be writable
+    // Invariant 1: the file on disk is unchanged. Landlock enforcement
+    // is visible here regardless of shell exit conventions.
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "test assertion requires direct filesystem access"
+    )]
+    let after = std::fs::read_to_string(&test_file).expect("read test file");
+    assert_eq!(
+        after,
+        ORIGINAL_CONTENTS,
+        "read-only path was modified despite Landlock policy; stdout={}, stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr),
+    );
+
+    // Invariant 2: the child reported a non-zero exit (some signal of
+    // failure). We don't depend on *which* non-zero code — the shell
+    // picks 1 on some kernels and 2 on others for redirection failure.
     assert!(
-        stdout.contains("exit_status=1") || stdout.contains("Permission denied"),
-        "writing to read-only path should fail: {stdout}"
+        !output.status.success(),
+        "child reported success despite read-only Landlock policy; stdout={}, stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr),
     );
 }
 
