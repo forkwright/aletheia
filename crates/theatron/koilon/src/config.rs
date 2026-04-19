@@ -224,8 +224,22 @@ fn write_config(path: &Path, content: &str) -> Result<()> {
 mod tests {
     use super::*;
 
+    // WHY(#3693): reqwest 0.13 requires a rustls crypto provider to be
+    // installed before any `Client` is constructed. `Config::load` builds
+    // a reqwest client via `try_discover`; without this, every test that
+    // calls `Config::load(...)` panics with "No provider set". Ignoring
+    // the result so the second install on the same process (from main or
+    // another test) is a no-op instead of a panic.
+    fn ensure_crypto_provider() {
+        static INIT: std::sync::Once = std::sync::Once::new();
+        INIT.call_once(|| {
+            let _ = rustls::crypto::ring::default_provider().install_default();
+        });
+    }
+
     #[test]
     fn cli_overrides_file_config() {
+        ensure_crypto_provider();
         let config = Config::load(
             Some("http://custom:9999".into()),
             Some("tok".into()),
@@ -242,6 +256,7 @@ mod tests {
 
     #[test]
     fn default_url_when_none() {
+        ensure_crypto_provider();
         let config = Config::load(None, None, None, None).unwrap();
         assert_eq!(config.url, DEFAULT_URL);
     }
@@ -280,6 +295,7 @@ mod tests {
 
     #[test]
     fn theme_parsing_light() {
+        ensure_crypto_provider();
         let config = Config::load(None, None, None, None).unwrap();
         // Default is auto (None) when no file setting
         let _ = config.theme;
@@ -287,6 +303,7 @@ mod tests {
 
     #[test]
     fn workspace_root_none_when_no_env_or_file() {
+        ensure_crypto_provider();
         // ALETHEIA_ROOT env var must not be set for this test to be meaningful.
         // We can't mutate env vars (unsafe-code is denied in this crate).
         // Verify that when neither env nor file provides workspace_root, it is None.
@@ -323,18 +340,21 @@ mod tests {
 
     #[test]
     fn config_load_detects_oauth_credential() {
+        ensure_crypto_provider();
         let config = Config::load(None, Some("sk-ant-oat-test123".into()), None, None).unwrap();
         assert_eq!(config.credential_label, CredentialLabel::OAuthToken);
     }
 
     #[test]
     fn config_load_detects_static_credential() {
+        ensure_crypto_provider();
         let config = Config::load(None, Some("sk-ant-api01-test".into()), None, None).unwrap();
         assert_eq!(config.credential_label, CredentialLabel::StaticApiKey);
     }
 
     #[test]
     fn config_load_no_credential() {
+        ensure_crypto_provider();
         let config = Config::load(None, None, None, None).unwrap();
         assert_eq!(config.credential_label, CredentialLabel::None);
     }
