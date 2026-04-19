@@ -252,6 +252,33 @@ const VALID_AUTH_MODES: &[&str] = &["none", "token", "jwt"];
 /// from silently turning off auth. (#3383)
 pub const ALLOW_AUTH_NONE_ENV: &str = "ALETHEIA_ALLOW_AUTH_NONE";
 
+/// Environment variable operators must set to `1` to allow the server to bind
+/// to a non-localhost address while running with `gateway.auth.mode = "none"`.
+///
+/// WHY: disabled-auth on localhost is a supported local-dev shape; disabled-auth
+/// on a LAN or Tailscale bind is an insecure-by-default posture we refuse to
+/// boot into. Operators who genuinely want unauthenticated LAN access must
+/// flip this knob explicitly. The variable is distinct from
+/// [`ALLOW_AUTH_NONE_ENV`] because disabling auth locally is a meaningfully
+/// smaller blast radius than disabling auth and exposing it to the tailnet.
+/// (#3716)
+pub const ALLOW_AUTH_NONE_LAN_ENV: &str = "ALETHEIA_ALLOW_AUTH_NONE_LAN";
+
+/// `true` when the bound address is a loopback address that keeps the API
+/// reachable only from the local machine.
+#[must_use]
+pub fn is_loopback_bind(addr: &str) -> bool {
+    matches!(addr, "127.0.0.1" | "localhost" | "::1" | "[::1]")
+}
+
+/// Return `true` when the operator has set `ALETHEIA_ALLOW_AUTH_NONE_LAN=1`,
+/// which is required to boot the server with `auth.mode = "none"` on a
+/// non-localhost bind.
+#[must_use]
+pub fn auth_none_lan_opt_in_enabled() -> bool {
+    std::env::var(ALLOW_AUTH_NONE_LAN_ENV).is_ok_and(|v| v == "1")
+}
+
 fn validate_gateway(value: &Value, errors: &mut Vec<String>) {
     check_port(value, "port", "port", errors);
 

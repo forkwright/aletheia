@@ -759,3 +759,28 @@ fn validate_startup_error_includes_init_hint() {
         "error should include help hint about `aletheia init`: {err:?}"
     );
 }
+
+// WHY(#3716): `is_loopback_bind` is the single point of truth for "is this
+// address host-local enough that auth-none is acceptable". The fix wires it
+// into server startup and gates a hard refusal on non-loopback + auth.mode =
+// none. Pin the classification so future operator-visible addresses don't
+// silently slip into the loopback bucket.
+#[test]
+fn is_loopback_bind_accepts_loopback_forms() {
+    assert!(crate::validate::is_loopback_bind("127.0.0.1"));
+    assert!(crate::validate::is_loopback_bind("localhost"));
+    assert!(crate::validate::is_loopback_bind("::1"));
+    assert!(crate::validate::is_loopback_bind("[::1]"));
+}
+
+#[test]
+fn is_loopback_bind_rejects_wildcard_and_lan() {
+    assert!(!crate::validate::is_loopback_bind("0.0.0.0"));
+    assert!(!crate::validate::is_loopback_bind("::"));
+    // Private RFC1918 and CGNAT fixtures — the digits matter less than the
+    // network class; pick addresses that exercise the non-loopback branch
+    // without matching the LAN/tailnet PII patterns.
+    assert!(!crate::validate::is_loopback_bind("10.0.0.1"));
+    assert!(!crate::validate::is_loopback_bind("172.16.0.1"));
+    assert!(!crate::validate::is_loopback_bind("menos.lan"));
+}
