@@ -64,10 +64,9 @@ pub type Result<T, E = PoiesisError> = std::result::Result<T, E>;
 /// [`PoiesisError::PdfExport`] if PDF export fails.
 #[instrument(skip_all, fields(source_bytes = source.len()))]
 pub fn render_typst(source: &str, data: &serde_json::Value) -> Result<Vec<u8>> {
-    let data_bytes =
-        serde_json::to_vec(data).map_err(|e| PoiesisError::SerializeData {
-            detail: e.to_string(),
-        })?;
+    let data_bytes = serde_json::to_vec(data).map_err(|e| PoiesisError::SerializeData {
+        detail: e.to_string(),
+    })?;
 
     let world = TypstWorld::new(source, Some(data_bytes));
 
@@ -77,17 +76,16 @@ pub fn render_typst(source: &str, data: &serde_json::Value) -> Result<Vec<u8>> {
         tracing::warn!(message = %warning.message, "typst warning");
     }
 
-    let document = result
-        .output
-        .map_err(|diagnostics| PoiesisError::Compile {
-            diagnostics: format_diagnostics(&world, &diagnostics),
-        })?;
+    let document = result.output.map_err(|diagnostics| PoiesisError::Compile {
+        diagnostics: format_diagnostics(&world, &diagnostics),
+    })?;
 
-    let pdf_bytes = typst_pdf::pdf(&document, &typst_pdf::PdfOptions::default()).map_err(
-        |diagnostics| PoiesisError::PdfExport {
-            diagnostics: format_diagnostics(&world, &diagnostics),
-        },
-    )?;
+    let pdf_bytes =
+        typst_pdf::pdf(&document, &typst_pdf::PdfOptions::default()).map_err(|diagnostics| {
+            PoiesisError::PdfExport {
+                diagnostics: format_diagnostics(&world, &diagnostics),
+            }
+        })?;
 
     Ok(pdf_bytes)
 }
@@ -147,23 +145,25 @@ mod tests {
         assert!(pdf.starts_with(b"%PDF-"), "output must be PDF-magic");
         // WHY: exact byte equality is not meaningful — PDFs embed fonts and
         // creation dates. Assert on magic prefix and reasonable size bounds.
-        assert!(pdf.len() > 500, "template PDF should be more than 500 bytes");
+        assert!(
+            pdf.len() > 500,
+            "template PDF should be more than 500 bytes"
+        );
         assert!(pdf.len() < 5_000_000, "template PDF should be <5MB");
     }
 
     #[test]
     fn render_default_template_with_only_title() {
         let data = serde_json::json!({ "title": "Minimal" });
-        let pdf = render_template(templates::DEFAULT, &data)
-            .expect("minimal template data must render");
+        let pdf =
+            render_template(templates::DEFAULT, &data).expect("minimal template data must render");
         assert!(pdf.starts_with(b"%PDF-"));
     }
 
     #[test]
     fn render_default_template_no_data_uses_default_title() {
         let data = serde_json::json!({});
-        let pdf =
-            render_template(templates::DEFAULT, &data).expect("empty data must still render");
+        let pdf = render_template(templates::DEFAULT, &data).expect("empty data must still render");
         assert!(pdf.starts_with(b"%PDF-"));
     }
 

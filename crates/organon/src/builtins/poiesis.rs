@@ -454,9 +454,7 @@ impl ToolExecutor for RenderTypstReportExecutor {
                 match serde_json::from_str(raw) {
                     Ok(v) => v,
                     Err(e) => {
-                        return Ok(ToolResult::error(format!(
-                            "data must be valid JSON: {e}"
-                        )));
+                        return Ok(ToolResult::error(format!("data must be valid JSON: {e}")));
                     }
                 }
             } else {
@@ -483,12 +481,12 @@ impl ToolExecutor for RenderTypstReportExecutor {
             };
 
             // Optional: write to a caller-provided path in addition to returning bytes.
-            if let Some(out_path) = extract_opt_str(args, "out_path") {
-                if let Err(e) = std::fs::write(out_path, &pdf_bytes) {
-                    return Ok(ToolResult::error(format!(
-                        "wrote 0 bytes to {out_path:?}: {e}"
-                    )));
-                }
+            if let Some(out_path) = extract_opt_str(args, "out_path")
+                && let Err(e) = tokio::fs::write(out_path, &pdf_bytes).await
+            {
+                return Ok(ToolResult::error(format!(
+                    "wrote 0 bytes to {out_path:?}: {e}"
+                )));
             }
 
             let encoded = koina::base64::encode(&pdf_bytes);
@@ -538,8 +536,7 @@ fn render_typst_report_def() -> ToolDef {
                     "template".to_owned(),
                     PropertyDef {
                         property_type: PropertyType::String,
-                        description: "Built-in template slug (e.g. `default`)."
-                            .to_owned(),
+                        description: "Built-in template slug (e.g. `default`).".to_owned(),
                         enum_values: Some(vec!["default".to_owned()]),
                         default: None,
                     },

@@ -38,7 +38,10 @@ mod tests {
     #[test]
     fn lookup_default_returns_source() {
         let src = lookup(DEFAULT).expect("default must resolve");
-        assert!(src.contains("json(\"data.json\")"), "default must load data");
+        assert!(
+            src.contains("json(\"data.json\")"),
+            "default must load data"
+        );
     }
 
     #[test]

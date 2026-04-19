@@ -2,7 +2,7 @@
 //! Tests for poiesis tool executors.
 //!
 //! Current coverage: `render_typst_report`. The other poiesis executors (lint,
-//! verify, generate_document) are exercised by the underlying crates' tests.
+//! verify, `generate_document`) are exercised by the underlying crates' tests.
 
 use std::collections::HashSet;
 use std::sync::{Arc, RwLock};
