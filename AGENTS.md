@@ -59,3 +59,7 @@ Crate architecture and dependency graph: `docs/ARCHITECTURE.md`.
 
 All PRs need `Gate-Passed: kanon 0.1.0` in a commit body.
 Desktop PRs: `Gate-Passed: kanon 0.1.0 desktop-only (excluded from workspace build)`.
+
+## Optional: LSP-powered navigation
+
+External MCP servers can give an agent IDE-level navigation across the 23-crate workspace. See [docs/MCP-SERVERS.md](docs/MCP-SERVERS.md) — `scripts/serena-mcp.sh register` wires up Serena (rust-analyzer via MCP) for `find_symbol`, `find_referencing_symbols`, and `rename_symbol` across crate boundaries.
