@@ -202,7 +202,10 @@ fn schema_version_queryable() {
     })
     .expect("open_mem");
     let version = store.schema_version().expect("version");
-    assert_eq!(version, 8);
+    // v8 -> v9: additive migration added the `fact_multiplicity` side-index
+    // that records source-observation count / first+last timestamps / spread
+    // for consolidated facts (see KnowledgeStore::SCHEMA_VERSION).
+    assert_eq!(version, 9);
 }
 
 // Verify ordering of multiple facts by confidence (descending).
