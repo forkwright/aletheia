@@ -19,9 +19,15 @@ test-support = []
 mneme-engine = ["dep:krites", "dep:tokio", "graphe/mneme-engine"]
 storage-fjall = ["mneme-engine", "krites/storage-fjall"]
 embed-candle = ["dep:candle-core", "dep:candle-nn", "dep:candle-transformers", "dep:tokenizers", "dep:hf-hub"]
+# WHY: candle embedding tests download config.json from HuggingFace at test
+# time. macOS GitHub runners intermittently fail DNS lookup for huggingface.co
+# (see #3683). Gate those network-dependent tests behind `online-tests` so the
+# default CI matrix never depends on external reachability. Enable explicitly
+# in scheduled or label-triggered jobs.
+online-tests = []
 # Test tiers (see docs/test-tiers.md)
 test-core = ["mneme-engine"]
-test-full = ["test-core", "embed-candle"]
+test-full = ["test-core", "embed-candle", "online-tests"]
 
 [dependencies]
 eidos = { path = "../eidos" }
