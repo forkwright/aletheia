@@ -480,7 +480,7 @@ pub struct KnowledgeStore {
 
 #[cfg(feature = "mneme-engine")]
 impl KnowledgeStore {
-    const SCHEMA_VERSION: i64 = 8;
+    const SCHEMA_VERSION: i64 = 9;
 
     /// Open an in-memory knowledge store with default configuration.
     ///
@@ -594,6 +594,9 @@ impl KnowledgeStore {
             if current_version < 8 {
                 self.migrate_v7_to_v8()?;
             }
+            if current_version < 9 {
+                self.migrate_v8_to_v9()?;
+            }
             return Ok(());
         }
 
@@ -654,6 +657,21 @@ impl KnowledgeStore {
         self.db
             .run(
                 crate::consolidation::CONSOLIDATION_AUDIT_DDL,
+                BTreeMap::new(),
+                ScriptMutability::Mutable,
+            )
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })?;
+
+        // WHY (#3634): fact_multiplicity is a side-index for consolidated-fact
+        // strength. Lives next to consolidation_audit so both arrive at v9.
+        self.db
+            .run(
+                crate::consolidation::FACT_MULTIPLICITY_DDL,
                 BTreeMap::new(),
                 ScriptMutability::Mutable,
             )

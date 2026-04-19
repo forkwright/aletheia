@@ -479,6 +479,55 @@ impl KnowledgeStore {
         Ok(())
     }
 
+    /// Migrate v8 → v9: add `fact_multiplicity` side-index (#3634).
+    ///
+    /// Preserves multiplicity metadata for consolidated facts — source
+    /// observation count, time spread, first/last observed timestamps —
+    /// so recall and conflict resolution can weight consolidated facts by
+    /// convergence strength without joining against the audit relation.
+    ///
+    /// Additive migration: no existing data is rewritten. Facts consolidated
+    /// before v9 will have no multiplicity record; `get_fact_multiplicity`
+    /// returns `None` for those.
+    pub(super) fn migrate_v8_to_v9(&self) -> crate::error::Result<()> {
+        use std::collections::BTreeMap;
+
+        use crate::engine::{DataValue, ScriptMutability};
+        tracing::info!("migrating knowledge schema v8 -> v9");
+
+        self.db
+            .run(
+                crate::consolidation::FACT_MULTIPLICITY_DDL,
+                BTreeMap::new(),
+                ScriptMutability::Mutable,
+            )
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: format!("v8->v9 create fact_multiplicity: {e}"),
+                }
+                .build()
+            })?;
+
+        let mut params = BTreeMap::new();
+        params.insert("key".to_owned(), DataValue::Str("schema".into()));
+        params.insert("version".to_owned(), DataValue::from(Self::SCHEMA_VERSION));
+        self.db
+            .run(
+                r"?[key, version] <- [[$key, $version]] :put schema_version { key => version }",
+                params,
+                ScriptMutability::Mutable,
+            )
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: format!("v8->v9 update version: {e}"),
+                }
+                .build()
+            })?;
+
+        tracing::info!("knowledge schema migration v8 -> v9 complete");
+        Ok(())
+    }
+
     /// Migrate v7 → v8: add `type_hierarchy`, `derived_facts`, and `defaults` relations.
     ///
     /// These relations support the derived-rule engine introduced in the Wave 5
