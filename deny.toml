@@ -46,6 +46,10 @@ allow = [
     "LGPL-3.0-or-later",    # priority-queue
     "CDLA-Permissive-2.0",  # webpki-roots, webpki-root-certs
     "bzip2-1.0.6",          # libbz2-rs-sys (via zip 7.x), standalone bzip2 license
+    # Apache-2.0 with LLVM's additional permission for compiled output.
+    # Pulled in by typst-eval -> stacker -> psm -> ar_archive_writer (build).
+    # LLVM exception is a superset of Apache-2.0 (strictly more permissive).
+    "Apache-2.0 WITH LLVM-exception",
 ]
 confidence-threshold = 0.8
 

@@ -1,12 +1,15 @@
-//! Poiesis report tools: `generate_document`, `lint_report`, `verify_report`.
+//! Poiesis report tools: `generate_document`, `lint_report`, `verify_report`,
+//! `render_typst_report`.
 //!
-//! - `generate_document` — render a JSON document descriptor to ODT/XLSX/PDF bytes
-//! - `lint_report`       — check report prose quality (banned words, citations, structure)
-//! - `verify_report`     — validate numeric claims in a verify manifest
+//! - `generate_document`    — render a JSON document descriptor to ODT/XLSX/PDF bytes
+//! - `lint_report`          — check report prose quality (banned words, citations, structure)
+//! - `verify_report`        — validate numeric claims in a verify manifest
+//! - `render_typst_report`  — render a Typst source (or built-in template slug) to PDF
 
 use std::future::Future;
 use std::pin::Pin;
 
+use hermeneus::types::{DocumentSource, ToolResultBlock};
 use indexmap::IndexMap;
 use poiesis_core::{Block, Document, Metadata, Renderer, RichText, Span};
 use poiesis_lint::{LintConfig, Linter};
@@ -433,12 +436,158 @@ fn verify_report_def() -> ToolDef {
     }
 }
 
+// ── render_typst_report ───────────────────────────────────────────────────────
+
+struct RenderTypstReportExecutor;
+
+impl ToolExecutor for RenderTypstReportExecutor {
+    fn execute<'a>(
+        &'a self,
+        input: &'a ToolInput,
+        _ctx: &'a ToolContext,
+    ) -> Pin<Box<dyn Future<Output = Result<ToolResult>> + Send + 'a>> {
+        Box::pin(async move {
+            let args = &input.arguments;
+
+            // Optional inline JSON data; defaults to empty object.
+            let data: serde_json::Value = if let Some(raw) = extract_opt_str(args, "data") {
+                match serde_json::from_str(raw) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        return Ok(ToolResult::error(format!("data must be valid JSON: {e}")));
+                    }
+                }
+            } else {
+                serde_json::json!({})
+            };
+
+            // Choose source: inline `source` wins over `template` slug.
+            let pdf_result = if let Some(source) = extract_opt_str(args, "source") {
+                poiesis_typst::render_typst(source, &data)
+            } else if let Some(slug) = extract_opt_str(args, "template") {
+                poiesis_typst::render_template(slug, &data)
+            } else {
+                return Ok(ToolResult::error(
+                    "render_typst_report requires 'source' (inline Typst) or 'template' (slug)"
+                        .to_owned(),
+                ));
+            };
+
+            let pdf_bytes = match pdf_result {
+                Ok(b) => b,
+                Err(e) => {
+                    return Ok(ToolResult::error(format!("typst render failed: {e}")));
+                }
+            };
+
+            // Optional: write to a caller-provided path in addition to returning bytes.
+            if let Some(out_path) = extract_opt_str(args, "out_path")
+                && let Err(e) = tokio::fs::write(out_path, &pdf_bytes).await
+            {
+                return Ok(ToolResult::error(format!(
+                    "wrote 0 bytes to {out_path:?}: {e}"
+                )));
+            }
+
+            let encoded = koina::base64::encode(&pdf_bytes);
+            let summary = format!("Rendered Typst report: {} bytes PDF", pdf_bytes.len());
+
+            Ok(ToolResult::blocks(vec![
+                ToolResultBlock::Text { text: summary },
+                ToolResultBlock::Document {
+                    source: DocumentSource {
+                        source_type: "base64".to_owned(),
+                        media_type: "application/pdf".to_owned(),
+                        data: encoded,
+                    },
+                },
+            ]))
+        })
+    }
+}
+
+fn render_typst_report_def() -> ToolDef {
+    ToolDef {
+        name: koina::id::ToolName::from_static("render_typst_report"), // kanon:ignore RUST/expect
+        description: "Render a Typst source string (or built-in template slug) to a PDF, \
+                      with optional JSON data injected at the virtual path `data.json`."
+            .to_owned(),
+        extended_description: Some(
+            "Pass either `source` (inline Typst markup) or `template` (one of the built-in \
+             slugs, currently: `default`). The JSON blob passed as `data` is exposed to the \
+             Typst document as a virtual file read via `json(\"data.json\")`. The result \
+             contains a text summary plus a base64-encoded PDF document block; optionally \
+             also writes the PDF to `out_path` on the filesystem."
+                .to_owned(),
+        ),
+        input_schema: InputSchema {
+            properties: IndexMap::from([
+                (
+                    "source".to_owned(),
+                    PropertyDef {
+                        property_type: PropertyType::String,
+                        description: "Inline Typst source. Mutually exclusive with `template`."
+                            .to_owned(),
+                        enum_values: None,
+                        default: None,
+                    },
+                ),
+                (
+                    "template".to_owned(),
+                    PropertyDef {
+                        property_type: PropertyType::String,
+                        description: "Built-in template slug (e.g. `default`).".to_owned(),
+                        enum_values: Some(vec!["default".to_owned()]),
+                        default: None,
+                    },
+                ),
+                (
+                    "data".to_owned(),
+                    PropertyDef {
+                        property_type: PropertyType::String,
+                        description:
+                            "Inline JSON data blob exposed to the template as `data.json`."
+                                .to_owned(),
+                        enum_values: None,
+                        default: None,
+                    },
+                ),
+                (
+                    "out_path".to_owned(),
+                    PropertyDef {
+                        property_type: PropertyType::String,
+                        description:
+                            "Optional filesystem path to write the rendered PDF to, in addition \
+                             to returning base64 bytes."
+                                .to_owned(),
+                        enum_values: None,
+                        default: None,
+                    },
+                ),
+            ]),
+            required: vec![],
+        },
+        category: ToolCategory::Workspace,
+        reversibility: Reversibility::FullyReversible,
+        auto_activate: false,
+    }
+}
+
 // ── Registration ──────────────────────────────────────────────────────────────
 
-/// Register the poiesis report tools: `generate_document`, `lint_report`, `verify_report`.
+/// Register the poiesis report tools: `generate_document`, `lint_report`, `verify_report`,
+/// `render_typst_report`.
 pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
     registry.register(generate_document_def(), Box::new(GenerateDocumentExecutor))?;
     registry.register(lint_report_def(), Box::new(LintReportExecutor))?;
     registry.register(verify_report_def(), Box::new(VerifyReportExecutor))?;
+    registry.register(
+        render_typst_report_def(),
+        Box::new(RenderTypstReportExecutor),
+    )?;
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "poiesis_tests.rs"]
+mod tests;

@@ -31,6 +31,7 @@ poiesis-core = { path = "../poiesis/core" }
 poiesis-text = { path = "../poiesis/text" }
 poiesis-sheet = { path = "../poiesis/sheet" }
 poiesis-lint = { path = "../poiesis/lint" }
+poiesis-typst = { path = "../poiesis/typst" }
 poiesis-verify = { path = "../poiesis/verify" }
 koina = { path = "../koina" }
 taxis = { path = "../taxis" }
