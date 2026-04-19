@@ -90,6 +90,9 @@ clawd
 **/heartbeat-state.json
 *sync-conflict*
 
+# === External MCP server state (see docs/MCP-SERVERS.md) ===
+.serena/
+
 # === Learned skills (instance-specific, not shipped) ===
 shared/skills/
 !shared/skills/_examples/
