@@ -237,9 +237,14 @@ impl CredentialFile {
 
     /// Whether the token needs refresh (expired or within threshold).
     #[must_use]
-    #[expect(
-        dead_code,
-        reason = "refresh logic inlined in refresh_loop; kept as public API"
+    // WHY: exercised only under `#[cfg(test)]`; non-test builds must still
+    // see this as intentionally-unused public-API surface.
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "refresh logic inlined in refresh_loop; kept as public API"
+        )
     )]
     pub(crate) fn needs_refresh(&self) -> bool {
         match self.seconds_remaining() {
@@ -262,9 +267,14 @@ pub(super) struct CredentialFileLock {
 
 impl CredentialFileLock {
     /// Acquire a shared (read) lock on the credential file.
-    #[expect(
-        dead_code,
-        reason = "available for load() callers that need consistency"
+    // WHY: exercised only under `#[cfg(test)]`; non-test builds must still
+    // see this as intentionally-unused public-API surface.
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "available for load() callers that need consistency"
+        )
     )]
     pub(super) fn shared(credential_path: &Path) -> std::io::Result<Self> {
         Self::lock(credential_path, rustix::fs::FlockOperation::LockShared)
@@ -311,3 +321,7 @@ impl CredentialFileLock {
 }
 
 // NOTE: lock is released when _file is dropped (flock semantics)
+
+#[cfg(test)]
+#[path = "file_ops_tests.rs"]
+mod file_ops_tests;
