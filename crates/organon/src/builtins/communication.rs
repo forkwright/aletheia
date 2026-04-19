@@ -540,6 +540,7 @@ mod tests {
             planning: None,
             knowledge: None,
             http_client: reqwest::Client::new(),
+            secret_vault: hermeneus::secret::SecretVault::new(),
             lazy_tool_catalog: vec![],
             server_tool_config: ServerToolConfig::default(),
             messenger: Some(messenger),
@@ -572,6 +573,7 @@ mod tests {
             planning: None,
             knowledge: None,
             http_client: reqwest::Client::new(),
+            secret_vault: hermeneus::secret::SecretVault::new(),
             lazy_tool_catalog: vec![],
             server_tool_config: ServerToolConfig::default(),
             messenger: Some(messenger),
@@ -620,6 +622,7 @@ mod tests {
             planning: None,
             knowledge: None,
             http_client: reqwest::Client::new(),
+            secret_vault: hermeneus::secret::SecretVault::new(),
             lazy_tool_catalog: vec![],
             server_tool_config: ServerToolConfig::default(),
         });
@@ -665,6 +668,7 @@ mod tests {
             planning: None,
             knowledge: None,
             http_client: reqwest::Client::new(),
+            secret_vault: hermeneus::secret::SecretVault::new(),
             lazy_tool_catalog: vec![],
             server_tool_config: ServerToolConfig::default(),
         });
@@ -699,6 +703,7 @@ mod tests {
             planning: None,
             knowledge: None,
             http_client: reqwest::Client::new(),
+            secret_vault: hermeneus::secret::SecretVault::new(),
             lazy_tool_catalog: vec![],
             server_tool_config: ServerToolConfig::default(),
         });
@@ -732,6 +737,7 @@ mod tests {
             planning: None,
             knowledge: None,
             http_client: reqwest::Client::new(),
+            secret_vault: hermeneus::secret::SecretVault::new(),
             lazy_tool_catalog: vec![],
             server_tool_config: ServerToolConfig::default(),
         });

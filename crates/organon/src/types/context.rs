@@ -4,6 +4,8 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
+use hermeneus::secret::SecretVault;
+
 use serde::{Deserialize, Serialize};
 
 use koina::id::{NousId, SessionId, ToolName};
@@ -99,6 +101,12 @@ pub struct ToolServices {
     pub planning: Option<Arc<dyn PlanningService>>,
     pub knowledge: Option<Arc<dyn KnowledgeSearchService>>,
     pub http_client: reqwest::Client,
+    /// In-memory vault for session-scoped secrets (AWS SSO keys, API tokens, etc.).
+    ///
+    /// Referenced via `{{secret:<name>}}` or `$SECRET(<name>)` placeholders in
+    /// tool arguments and substituted at dispatch time so resolved values never
+    /// reach transcripts or outbound LLM payloads.
+    pub secret_vault: SecretVault,
     /// Catalog of lazy tools available for activation via `enable_tool`.
     pub lazy_tool_catalog: Vec<(ToolName, String)>,
     /// Server tool configuration for provider-side tools (web search, code execution).
@@ -115,6 +123,7 @@ impl std::fmt::Debug for ToolServices {
             .field("spawn", &self.spawn.is_some())
             .field("planning", &self.planning.is_some())
             .field("knowledge", &self.knowledge.is_some())
+            .field("secret_vault_len", &self.secret_vault.len())
             .field("lazy_tool_catalog_len", &self.lazy_tool_catalog.len())
             .field("server_tool_config", &self.server_tool_config)
             .finish_non_exhaustive()

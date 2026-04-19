@@ -37,6 +37,12 @@ pub mod models;
 pub mod openai;
 /// [`LlmProvider`](provider::LlmProvider), [`ProviderConfig`](provider::ProviderConfig), and [`ProviderRegistry`](provider::ProviderRegistry).
 pub mod provider;
+/// Session-scoped secret vault and credential substitution.
+///
+/// Provides [`SecretVault`](secret::SecretVault) for storing named secrets and
+/// [`substitute_in_json`](secret::substitute_in_json) for replacing
+/// `{{secret:<name>}}` / `$SECRET(<name>)` placeholders in tool arguments.
+pub mod secret;
 /// Shared mock provider for tests across the workspace.
 #[cfg(any(test, feature = "test-utils"))]
 #[expect(

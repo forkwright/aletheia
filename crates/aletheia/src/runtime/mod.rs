@@ -548,6 +548,7 @@ impl RuntimeBuilder {
             planning,
             knowledge: knowledge_search,
             http_client: reqwest::Client::new(),
+            secret_vault: hermeneus::secret::SecretVault::new(),
             lazy_tool_catalog: tool_registry.lazy_tool_catalog(),
             server_tool_config: organon::types::ServerToolConfig::default(),
         });

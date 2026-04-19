@@ -140,6 +140,22 @@ pub(crate) struct RepomixTemplateGetParams {
     pub name: String,
 }
 
+/// Parameters for storing a secret in the session vault.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub(crate) struct CredsSetParams {
+    /// Name of the secret (used in `{{secret:name}}` placeholders).
+    pub name: String,
+    /// The secret value.
+    pub value: String,
+}
+
+/// Parameters for removing a secret from the session vault.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub(crate) struct CredsRmParams {
+    /// Name of the secret to remove.
+    pub name: String,
+}
+
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
