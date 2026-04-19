@@ -9,11 +9,24 @@ coverage against build time and resource requirements.
 |------|-------------|-----------------|---------------|
 | **default** | *(none)* | Pure-logic unit tests, config validation, type invariants | ~5,400 |
 | **test-core** | `--features test-core` | Storage engine tests (Datalog, HNSW, fjall, knowledge store CRUD) | ~5,435 |
-| **test-full** | `--features test-full` | ML embedding tests (candle model loading, vector generation) | ~5,435 |
+| **test-full** | `--features test-full` | ML embedding tests (candle model loading, vector generation) - includes `online-tests` | ~5,435 |
 | **all** | `--all-features` | + local-llm, computer-use, other optional features | ~5,475 |
 
 Each tier is a strict superset of the previous: `test-full` implies `test-core`,
 which adds to the default set.
+
+### Online-only tests
+
+A small set of tests call `CandelProvider::new`, which downloads model weights
+from `huggingface.co` at test time. macOS GitHub runners intermittently fail
+DNS lookup for HuggingFace, so these tests are gated behind a dedicated
+`online-tests` feature (see #3683) and **excluded** from the default CI matrix.
+
+- `--features test-core`: fast deterministic gate, no external network.
+- `--features test-core,online-tests`: adds the HuggingFace-network candle
+  tests. Enable via the `online-tests` PR label, the weekly schedule, or
+  `workflow_dispatch` in `.github/workflows/ci.yml`.
+- `--features test-full`: everything, including `online-tests`.
 
 ## Usage
 

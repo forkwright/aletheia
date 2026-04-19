@@ -470,7 +470,13 @@ fn lock_poisoned_error_formats() {
     );
 }
 
-#[cfg(feature = "embed-candle")]
+// WHY: these tests call `CandelProvider::new`, which downloads `config.json`
+// and model weights from huggingface.co at test time. macOS GitHub-hosted
+// runners intermittently fail DNS lookup for huggingface.co (see #3683).
+// Gate behind `online-tests` so the default CI run never depends on external
+// reachability; scheduled/label-triggered jobs opt in with
+// `--features test-core,online-tests` (or `test-full`).
+#[cfg(all(feature = "embed-candle", feature = "online-tests"))]
 mod candle_tests {
     use std::sync::LazyLock;
 

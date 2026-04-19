@@ -18,11 +18,13 @@ graph-algo = ["episteme/graph-algo"]
 # Gates MockEmbeddingProvider and other test helpers. No test code in release binaries.
 test-support = ["episteme/test-support"]
 embed-candle = ["episteme/embed-candle"]
+# Passthrough for the network-dependent candle tests (see episteme #3683).
+online-tests = ["episteme/online-tests"]
 mneme-engine = ["dep:krites", "graphe/mneme-engine", "episteme/mneme-engine"]
 storage-fjall = ["mneme-engine", "episteme/storage-fjall"]
 # Test tiers (see docs/test-tiers.md)
 test-core = ["mneme-engine", "storage-fjall"]
-test-full = ["test-core", "embed-candle"]
+test-full = ["test-core", "embed-candle", "online-tests"]
 
 [dependencies]
 eidos = { path = "../eidos" }
