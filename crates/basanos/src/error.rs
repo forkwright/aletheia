@@ -35,4 +35,4 @@ pub enum Error {
 }
 
 /// Shorthand for fallible operations.
-pub type Result<T> = std::result::Result<T, Error>;
+pub(crate) type Result<T> = std::result::Result<T, Error>;

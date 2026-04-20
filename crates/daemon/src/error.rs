@@ -87,6 +87,14 @@ pub enum Error {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+
+    /// Invariant violation during maintenance (situation the caller believed impossible).
+    #[snafu(display("maintenance invariant violated: {context}"))]
+    MaintenanceInvariant {
+        context: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
 }
 
 /// Convenience alias for `Result` with daemon's [`Error`] type.

@@ -241,20 +241,15 @@ pub(crate) fn compute_jitter(
     // u32::try_from on the masked value is lossless since the mask already
     // fits u32; the unwrap_or is unreachable defensive code.
     let low32 = u32::try_from(hash & u64::from(u32::MAX)).unwrap_or(u32::MAX);
-    let frac = f64::from(low32) / f64::from(u32::MAX);
 
     let max_nanos = max_jitter.as_nanos();
-    // NOTE: f64 multiplication then truncate back to i128.
-    // max_nanos is an i128 SignedDuration count with practical limits (at most
-    // a few hours of nanoseconds ≈ 1.3e13, well under f64 mantissa 2^53 ≈ 9e15)
-    // and frac is in [0, 1); the product stays inside both f64 and i128.
-    #[expect(
-        clippy::as_conversions,
-        clippy::cast_precision_loss,
-        clippy::cast_possible_truncation,
-        reason = "i128→f64→i128: max_nanos ≤ few-hour SignedDuration count (~1.3e13) is well below f64 mantissa 2^53; product × frac ∈ [0,1) stays inside i128"
-    )]
-    let jitter_nanos = (max_nanos as f64 * frac) as i128;
+    // WHY: compute jitter = max_nanos * low32 / u32::MAX in integer i128 space
+    // so there is no f64 precision-loss cast. max_nanos is a SignedDuration nanos
+    // count bounded to a few hours in practice (~1.3e13); multiplying by a 32-bit
+    // value stays inside i128 (~1.7e38) with room to spare.
+    let scale = i128::from(low32);
+    let denom = i128::from(u32::MAX);
+    let jitter_nanos = max_nanos.saturating_mul(scale) / denom;
 
     // SAFETY: jitter_nanos ≤ max_jitter nanos, which fits in the input SignedDuration
     jiff::SignedDuration::from_nanos(i64::try_from(jitter_nanos).unwrap_or_default())
