@@ -111,7 +111,6 @@ rayon = { version = "1", default-features = false }
 snafu = "0.8"
 
 # Serialization
-serde = { version = "1", default-features = false, features = ["derive", "std"] }
 serde_json = { version = "1", default-features = false, features = ["std"] }
 serde_yaml = { version = "0.9", default-features = false }
 toml = "1.1"
@@ -136,7 +135,6 @@ tower-http = { version = "0.6", default-features = false, features = [
     "set-header",
     "fs",
 ] }
-axum-server = { version = "0.8", default-features = false, features = ["tls-rustls"] }
 
 # Secrets
 zeroize = { version = "1", default-features = false, features = ["std"] }
@@ -199,7 +197,6 @@ sha2 = { version = "0.11", default-features = false }
 aes-gcm = "0.10"
 chacha20poly1305 = "0.10"
 pem = "3"
-regex = { version = "1", default-features = false, features = ["std", "perf", "unicode-case", "unicode-perl"] }
 
 # FFI / System
 libc = { version = "0.2", default-features = false }
@@ -221,14 +218,36 @@ rand = "0.10"
 proptest = "1"
 tempfile = { version = "3", default-features = false }
 wiremock = { version = "0.6", default-features = false }
-# WHY: criterion provides statistical microbenchmarks with regression detection.
-# Used in `benches/` per crate. `default-features = false` strips rayon/plotters
-# (HTML reports) — we don't need plotting for CI-only runs and it cuts ~150 deps.
-criterion = { version = "0.8", default-features = false, features = ["cargo_bench_support"] }
 # WHY: loom provides permutation-testing for concurrent code under `#[cfg(loom)]`.
 # Only used by the manual `unsafe impl Sync` sites in krites (#2864, #3066).
 # Invoked as `RUSTFLAGS="--cfg loom" cargo test -p krites --release loom_tests`.
 loom = { version = "0.7", default-features = false }
+
+# WHY: serde, axum-server, regex, criterion declared as expanded tables at the
+# end to satisfy TOML/inline-table-too-long while keeping `[workspace.dependencies]`
+# block readable. Cargo resolves them identically to inline form.
+[workspace.dependencies.serde]
+version = "1"
+default-features = false
+features = ["derive", "std"]
+
+[workspace.dependencies.axum-server]
+version = "0.8"
+default-features = false
+features = ["tls-rustls"]
+
+[workspace.dependencies.regex]
+version = "1"
+default-features = false
+features = ["std", "perf", "unicode-case", "unicode-perl"]
+
+# WHY: criterion provides statistical microbenchmarks with regression detection.
+# Used in `benches/` per crate. `default-features = false` strips rayon/plotters
+# (HTML reports) — we don't need plotting for CI-only runs and it cuts ~150 deps.
+[workspace.dependencies.criterion]
+version = "0.8"
+default-features = false
+features = ["cargo_bench_support"]
 
 [profile.dev]
 opt-level = 1
