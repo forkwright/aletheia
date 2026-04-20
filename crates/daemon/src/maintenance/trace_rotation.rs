@@ -83,10 +83,6 @@ impl TraceRotator {
     ///
     /// Trace rotation is a non-essential write. When disk space is critical,
     /// rotation is skipped entirely (returns an empty report).
-    #[expect(
-        clippy::expect_used,
-        reason = "file_name() is None only for paths ending in '..', which trace files never are"
-    )]
     pub fn rotate(&self) -> error::Result<RotationReport> {
         if let Some(ref monitor) = self.disk_monitor
             && !monitor.allow_non_essential_write()
@@ -135,10 +131,16 @@ impl TraceRotator {
         }
 
         for entry in to_rotate.iter().filter_map(|&i| entries.get(i)) {
-            let dest = self
-                .config
-                .archive_dir
-                .join(entry.path.file_name().expect("trace file has a file name"));
+            let file_name = entry.path.file_name().ok_or_else(|| {
+                error::MaintenanceInvariantSnafu {
+                    context: format!(
+                        "trace entry {} has no file name component",
+                        entry.path.display()
+                    ),
+                }
+                .build()
+            })?;
+            let dest = self.config.archive_dir.join(file_name);
 
             fs::rename(&entry.path, &dest).context(error::MaintenanceIoSnafu {
                 context: format!("moving {} to archive", entry.path.display()),

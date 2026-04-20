@@ -105,10 +105,6 @@ impl DriftDetector {
         Ok(report)
     }
 
-    #[expect(
-        clippy::expect_used,
-        reason = "path is obtained by walking example_root so strip_prefix is guaranteed to succeed"
-    )]
     fn walk_example(&self, dir: &Path, report: &mut DriftReport) -> error::Result<()> {
         let entries = fs::read_dir(dir).context(error::MaintenanceIoSnafu {
             context: format!("reading example dir {}", dir.display()),
@@ -121,7 +117,16 @@ impl DriftDetector {
             let path = entry.path();
             let relative = path
                 .strip_prefix(&self.config.example_root)
-                .expect("path is under example root");
+                .map_err(|_strip_err| {
+                    error::MaintenanceInvariantSnafu {
+                        context: format!(
+                            "path {} produced by walking {} did not carry example_root as prefix",
+                            path.display(),
+                            self.config.example_root.display()
+                        ),
+                    }
+                    .build()
+                })?;
 
             if self.is_ignored(relative) {
                 continue;

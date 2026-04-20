@@ -333,12 +333,12 @@ fn check_db_sizes(paths: &[PathBuf]) -> Vec<AttentionItem> {
     for path in paths {
         match std::fs::metadata(path) {
             Ok(meta) => {
-                #[expect(
-                    clippy::cast_precision_loss,
-                    clippy::as_conversions,
-                    reason = "u64→f64: file sizes on supported storage are well below f64 mantissa 2^53 ≈ 9 exabytes; display precision need is a single decimal place"
-                )]
-                let size_gb = meta.len() as f64 / ONE_GB as f64;
+                // WHY: compute GB in integer milli-GB (bytes / (GB/1024)) so the
+                // usize→f64 conversion is from u32 (lossless up to ~4 petabyte file
+                // sizes in milli-GB), avoiding a u64-as-f64 precision-loss cast.
+                let milli_gb = meta.len() / (ONE_GB / 1024);
+                let milli_gb_u32 = u32::try_from(milli_gb).unwrap_or(u32::MAX);
+                let size_gb = f64::from(milli_gb_u32) / 1024.0_f64;
                 // NOTE: single threshold — any file over 1 GB is High urgency.
                 items.extend(check_threshold(size_gb, 1.0, f64::INFINITY, |gb| {
                     format!("Database file large: {} is {gb:.1} GB", path.display())
@@ -367,12 +367,10 @@ fn check_memory() -> Vec<AttentionItem> {
     match read_process_rss_kb() {
         Ok(resident_kb) => {
             let rss_mb = resident_kb / 1024;
-            #[expect(
-                clippy::cast_precision_loss,
-                clippy::as_conversions,
-                reason = "u64→f64: process RSS in MB is bounded by host RAM (under 2^53 MB); cast is exact at practical scale"
-            )]
-            let rss_f64 = rss_mb as f64;
+            // WHY: RSS in MB is bounded by host RAM; clamp to u32::MAX (4TB)
+            // then f64::from(u32) is lossless, avoiding u64→f64 precision loss.
+            let rss_mb_u32 = u32::try_from(rss_mb).unwrap_or(u32::MAX);
+            let rss_f64 = f64::from(rss_mb_u32);
             let label = if rss_mb >= 2048 { "critical" } else { "high" };
             check_threshold(rss_f64, 1024.0, 2048.0, |mb| {
                 format!("Process memory {label}: {mb:.0} MB RSS")

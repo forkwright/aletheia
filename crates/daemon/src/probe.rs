@@ -176,12 +176,10 @@ impl ProbeSet {
         let confidence = if passed {
             1.0_f32
         } else {
-            #[expect(
-                clippy::cast_precision_loss,
-                clippy::as_conversions,
-                reason = "usize→f32: probe violation/missing counts are under 20 per probe, far below f32 mantissa 2^24"
-            )]
-            let penalty = total_issues as f32 * 0.25_f32;
+            // WHY: u16→f32 is lossless (f32 mantissa is 24 bits, u16 is 16 bits);
+            // clamp to u16::MAX so pathological count overflow caps at max-penalty.
+            let issues_u16 = u16::try_from(total_issues).unwrap_or(u16::MAX);
+            let penalty = f32::from(issues_u16) * 0.25_f32;
             (1.0_f32 - penalty).max(0.0_f32)
         };
 
@@ -200,7 +198,7 @@ impl ProbeSet {
     /// `responses` maps `probe.id` → response text. Probes with no entry in the
     /// map produce a `ProbeResult` with `passed = false` and a synthetic violation.
     #[must_use]
-    pub fn evaluate_all<'a>(
+    pub(crate) fn evaluate_all<'a>(
         &self,
         responses: impl Fn(&str) -> Option<&'a str>,
     ) -> Vec<ProbeResult> {
@@ -270,15 +268,13 @@ impl ProbeAuditSummary {
         let passed = results.iter().filter(|r| r.passed).count();
         let failed = total - passed;
 
-        #[expect(
-            clippy::cast_precision_loss,
-            clippy::as_conversions,
-            reason = "usize→f32: probe count in an audit is under 100, far below f32 mantissa 2^24"
-        )]
         let avg_confidence = if total == 0 {
             1.0_f32
         } else {
-            results.iter().map(|r| r.confidence).sum::<f32>() / total as f32
+            // WHY: u16→f32 is lossless (f32 mantissa 24 bits vs u16's 16 bits);
+            // clamp to u16::MAX so pathological counts still produce a finite average.
+            let total_u16 = u16::try_from(total).unwrap_or(u16::MAX);
+            results.iter().map(|r| r.confidence).sum::<f32>() / f32::from(total_u16)
         };
 
         Self {

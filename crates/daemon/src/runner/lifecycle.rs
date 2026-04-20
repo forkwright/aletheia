@@ -105,17 +105,19 @@ impl TaskRunner {
         let now = jiff::Timestamp::now();
         let now_instant = Instant::now();
 
-        // i is always in 0..self.tasks.len() so all self.tasks[i] accesses are valid
-        #[expect(
-            clippy::indexing_slicing,
-            reason = "i ∈ 0..self.tasks.len() by for-loop bounds"
-        )]
         for i in 0..self.tasks.len() {
-            if !self.tasks[i].def.enabled {
+            // WHY: `get_mut` over the length we just read keeps the indexing
+            // fallible; `continue` on None leaves the loop lenient to concurrent
+            // resize (not possible here, but avoids the `[i]` suppression).
+            let Some(task) = self.tasks.get_mut(i) else {
+                continue;
+            };
+
+            if !task.def.enabled {
                 continue;
             }
 
-            let Some(next) = self.tasks[i].next_run else {
+            let Some(next) = task.next_run else {
                 continue;
             };
 
@@ -123,39 +125,48 @@ impl TaskRunner {
                 continue;
             }
 
-            if !Schedule::in_window(self.tasks[i].def.active_window) {
+            if !Schedule::in_window(task.def.active_window) {
                 continue;
             }
 
+            let task_def_id = task.def.id.clone();
+            let backoff_until = task.backoff_until;
+
             // WHY: skip tasks still in-flight to prevent overlapping executions.
-            if self.in_flight.contains_key(&self.tasks[i].def.id) {
+            if self.in_flight.contains_key(&task_def_id) {
                 tracing::debug!(
-                    task_id = %self.tasks[i].def.id,
+                    task_id = %task_def_id,
                     "skipping  -  previous execution still in progress"
                 );
                 continue;
             }
 
-            if let Some(backoff_until) = self.tasks[i].backoff_until
+            if let Some(backoff_until) = backoff_until
                 && now_instant < backoff_until
             {
                 tracing::debug!(
-                    task_id = %self.tasks[i].def.id,
+                    task_id = %task_def_id,
                     remaining_secs = (backoff_until - now_instant).as_secs(),
                     "skipping  -  in backoff period"
                 );
                 continue;
             }
 
+            // Re-borrow mutably to record last_run and collect the spawn inputs.
+            let Some(task) = self.tasks.get_mut(i) else {
+                continue;
+            };
+
             // WHY(#2212): record last_run BEFORE spawning the task so that a crash
             // during execution does not leave last_run stale, which would cause
             // the scheduler to re-execute the task immediately on recovery.
-            self.tasks[i].last_run = Some(jiff::Timestamp::now());
+            task.last_run = Some(jiff::Timestamp::now());
 
-            let action = self.tasks[i].def.action.clone();
-            let nous_id = self.tasks[i].def.nous_id.clone();
-            let task_id = self.tasks[i].def.id.clone();
-            let timeout = self.tasks[i].def.timeout;
+            let action = task.def.action.clone();
+            let nous_id = task.def.nous_id.clone();
+            let task_id = task.def.id.clone();
+            let timeout = task.def.timeout;
+            let task_name = task.def.name.clone();
 
             let bridge = self.bridge.clone();
             let maintenance = self.maintenance.clone();
@@ -165,7 +176,7 @@ impl TaskRunner {
             let span = tracing::info_span!(
                 "task_execute",
                 task_id = %task_id,
-                task_name = %self.tasks[i].def.name,
+                task_name = %task_name,
                 nous_id = %nous_id,
             );
 

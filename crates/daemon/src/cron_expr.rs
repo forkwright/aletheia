@@ -38,21 +38,15 @@ impl CronExpr {
     /// Accepts 5-field (`min hour dom month dow`) or 6-field
     /// (`sec min hour dom month dow`) formats.
     #[expect(
-        clippy::indexing_slicing,
-        reason = "indices match the just-validated `fields.len()` arm above"
-    )]
-    #[expect(
         clippy::similar_names,
         reason = "field names mirror cron section names — disambiguating them with longer/shorter names hurts readability"
     )]
     pub(crate) fn parse(expr: &str) -> Result<Self, error::Error> {
         let fields: Vec<&str> = expr.split_whitespace().collect();
 
-        let (sec_str, minute_str, hour_str, dom_str, month_str, dow_str) = match fields.len() {
-            5 => ("0", fields[0], fields[1], fields[2], fields[3], fields[4]),
-            6 => (
-                fields[0], fields[1], fields[2], fields[3], fields[4], fields[5],
-            ),
+        let (sec_str, minute_str, hour_str, dom_str, month_str, dow_str) = match fields.as_slice() {
+            [min, hour, dom, month, dow] => ("0", *min, *hour, *dom, *month, *dow),
+            [sec, min, hour, dom, month, dow] => (*sec, *min, *hour, *dom, *month, *dow),
             _ => {
                 return Err(error::Error::CronParse {
                     expression: expr.to_owned(),
@@ -98,22 +92,22 @@ impl CronExpr {
     // either jiff or the parse_field validator below, so none can overflow,
     // wrap, or lose sign.
     #[expect(
-        clippy::as_conversions,
-        clippy::cast_sign_loss,
-        clippy::cast_possible_wrap,
         clippy::too_many_lines,
-        reason = "month/day/hour/minute/second all bounded 0..=59 (max); i8↔u8 round-trip is lossless. Function length: single cohesive cron field-walking state machine; splitting would scatter the carry logic across helpers and obscure rollover semantics"
+        reason = "single cohesive cron field-walking state machine; splitting would scatter the carry logic across helpers and obscure rollover semantics"
     )]
     pub(crate) fn next_after(&self, after: jiff::Timestamp) -> Option<jiff::Timestamp> {
         // Work in UTC civil datetime for field-level manipulation.
         let dt = after.to_zoned(jiff::tz::TimeZone::UTC).datetime();
 
         let mut year = dt.year();
-        let mut month = dt.month();
-        let mut day = dt.day();
-        let mut hour = dt.hour();
-        let mut minute = dt.minute();
-        let mut second = dt.second();
+        // WHY: jiff returns these signed (i8) but all cron-domain values (month 1..=12,
+        // day 1..=31, hour 0..=23, minute/second 0..=59) fit in u8 without loss;
+        // keeping them in u8 lets every try_from be lossless without saturation.
+        let mut month: u8 = u8::try_from(dt.month()).ok()?;
+        let mut day: u8 = u8::try_from(dt.day()).ok()?;
+        let mut hour: u8 = u8::try_from(dt.hour()).ok()?;
+        let mut minute: u8 = u8::try_from(dt.minute()).ok()?;
+        let mut second: u8 = u8::try_from(dt.second()).ok()?;
 
         // Advance by one second so we are strictly after `after`.
         second += 1;
@@ -139,10 +133,10 @@ impl CronExpr {
             }
 
             // --- Month ---
-            match next_value(&self.months, month as u8) {
-                Some(m) if m == month as u8 => { /* current month is valid */ }
+            match next_value(&self.months, month) {
+                Some(m) if m == month => { /* current month is valid */ }
                 Some(m) => {
-                    month = m as i8;
+                    month = m;
                     day = 1;
                     hour = 0;
                     minute = 0;
@@ -151,7 +145,7 @@ impl CronExpr {
                 None => {
                     // No valid month left this year — roll to next year.
                     year += 1;
-                    month = first_value(&self.months) as i8;
+                    month = first_value(&self.months);
                     day = 1;
                     hour = 0;
                     minute = 0;
@@ -163,9 +157,9 @@ impl CronExpr {
             // --- Day of month ---
             let dim = days_in_month(year, month);
             // Clamp day-of-month candidates to actual month length.
-            if let Some(d) = next_value_max(&self.days_of_month, day as u8, dim) {
-                if d != day as u8 {
-                    day = d as i8;
+            if let Some(d) = next_value_max(&self.days_of_month, day, dim) {
+                if d != day {
+                    day = d;
                     hour = 0;
                     minute = 0;
                     second = 0;
@@ -192,7 +186,7 @@ impl CronExpr {
                 hour = 0;
                 minute = 0;
                 second = 0;
-                if day as u8 > dim {
+                if day > dim {
                     month += 1;
                     if month > 12 {
                         month = 1;
@@ -204,10 +198,10 @@ impl CronExpr {
             }
 
             // --- Hour ---
-            match next_value(&self.hours, hour as u8) {
-                Some(h) if h == hour as u8 => {}
+            match next_value(&self.hours, hour) {
+                Some(h) if h == hour => {}
                 Some(h) => {
-                    hour = h as i8;
+                    hour = h;
                     minute = 0;
                     second = 0;
                 }
@@ -217,7 +211,7 @@ impl CronExpr {
                     hour = 0;
                     minute = 0;
                     second = 0;
-                    if day as u8 > dim {
+                    if day > dim {
                         month += 1;
                         if month > 12 {
                             month = 1;
@@ -230,10 +224,10 @@ impl CronExpr {
             }
 
             // --- Minute ---
-            match next_value(&self.minutes, minute as u8) {
-                Some(m) if m == minute as u8 => {}
+            match next_value(&self.minutes, minute) {
+                Some(m) if m == minute => {}
                 Some(m) => {
-                    minute = m as i8;
+                    minute = m;
                     second = 0;
                 }
                 None => {
@@ -243,7 +237,7 @@ impl CronExpr {
                     if hour > 23 {
                         hour = 0;
                         day += 1;
-                        if day as u8 > dim {
+                        if day > dim {
                             month += 1;
                             if month > 12 {
                                 month = 1;
@@ -257,10 +251,10 @@ impl CronExpr {
             }
 
             // --- Second ---
-            match next_value(&self.seconds, second as u8) {
-                Some(s) if s == second as u8 => {}
+            match next_value(&self.seconds, second) {
+                Some(s) if s == second => {}
                 Some(s) => {
-                    second = s as i8;
+                    second = s;
                 }
                 None => {
                     minute += 1;
@@ -271,7 +265,7 @@ impl CronExpr {
                         if hour > 23 {
                             hour = 0;
                             day += 1;
-                            if day as u8 > dim {
+                            if day > dim {
                                 month += 1;
                                 if month > 12 {
                                     month = 1;
@@ -286,8 +280,18 @@ impl CronExpr {
             }
 
             // All fields matched — construct result.
-            let civil =
-                jiff::civil::DateTime::new(year, month, day, hour, minute, second, 0).ok()?;
+            // WHY: jiff's civil DateTime API takes i8 for month/day/hour/minute/second;
+            // we keep them in u8 internally (cron domain bounded 0..=59) and convert
+            // fallibly at the boundary. Any failure bubbles out as None (no valid match).
+            let month_i8 = i8::try_from(month).ok()?;
+            let day_i8 = i8::try_from(day).ok()?;
+            let hour_i8 = i8::try_from(hour).ok()?;
+            let minute_i8 = i8::try_from(minute).ok()?;
+            let second_i8 = i8::try_from(second).ok()?;
+            let civil = jiff::civil::DateTime::new(
+                year, month_i8, day_i8, hour_i8, minute_i8, second_i8, 0,
+            )
+            .ok()?;
             let zoned = civil.to_zoned(jiff::tz::TimeZone::UTC).ok()?;
             return Some(zoned.timestamp());
         }
@@ -453,25 +457,30 @@ fn first_value(set: &BTreeSet<u8>) -> u8 {
 // ---------------------------------------------------------------------------
 
 /// Number of days in a given month (1-12) for a given year.
-fn days_in_month(year: i16, month: i8) -> u8 {
-    // Use jiff to get the correct answer including leap years.
-    // The `try_into().ok()` keeps the conversion safe — no `as` cast needed.
-    jiff::civil::Date::new(year, month, 1)
-        .ok()
-        .and_then(|d| d.days_in_month().try_into().ok())
-        .unwrap_or(30)
+///
+/// WHY `unwrap_or(30)`: cron callers pass month values already validated in 1..=12
+/// via `parse_field`, so construction cannot fail in practice. 30 is a conservative
+/// fallback (wrong by at most one day) for the defensive branch.
+fn days_in_month(year: i16, month: u8) -> u8 {
+    let Ok(month_i8) = i8::try_from(month) else {
+        return 30;
+    };
+    let Ok(date) = jiff::civil::Date::new(year, month_i8, 1) else {
+        return 30;
+    };
+    u8::try_from(date.days_in_month()).unwrap_or(30)
 }
 
 /// Day of week for a date: 0=Sunday, 1=Monday, ..., 6=Saturday.
 ///
 /// Uses Tomohiko Sakamoto's algorithm.
-fn day_of_week(year: i16, month: i8, day: i8) -> u8 {
+fn day_of_week(year: i16, month: u8, day: u8) -> u8 {
     static T: [i32; 12] = [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4];
     let mut y = i32::from(year);
     // WHY: month is guaranteed to be in 1..=12 by the caller (cron state machine
     // clamps month via parse_field's 1-12 range); saturate to 1 on unreachable
     // out-of-range rather than panic.
-    let m = usize::try_from(month.max(1)).unwrap_or(1).min(12);
+    let m = usize::from(month.max(1)).min(12);
     let d = i32::from(day);
     if m < 3 {
         y -= 1;
@@ -652,7 +661,9 @@ mod tests {
         let next = expr.next_after(base).unwrap();
         let dt = next.to_zoned(jiff::tz::TimeZone::UTC).datetime();
         // Verify it's a Monday
-        let dow = day_of_week(dt.year(), dt.month(), dt.day());
+        let month_u8 = u8::try_from(dt.month()).unwrap();
+        let day_u8 = u8::try_from(dt.day()).unwrap();
+        let dow = day_of_week(dt.year(), month_u8, day_u8);
         assert_eq!(dow, 1, "expected Monday (1), got {dow}");
     }
 
