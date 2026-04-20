@@ -15,7 +15,7 @@ workspace = true
 poiesis-core = { path = "../core" }
 quick-xml = "0.38"
 snafu = { workspace = true }
-zip = "7"
+zip = "8"
 
 [features]
 default = ["pptx"]
