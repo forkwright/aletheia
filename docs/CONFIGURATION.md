@@ -395,7 +395,7 @@ enabled = true
 
 ## logging
 
-Write log files to a configurable directory with automatic retention. Console logging is controlled separately via the `RUST_LOG` environment variable.
+Write log files to a configurable directory with automatic retention. Set the `RUST_LOG` environment variable to control console output separately.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|

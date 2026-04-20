@@ -7,7 +7,7 @@ every cloud provider from `[[providers]]`, declare one or more local
 OpenAI-compatible providers, and the runtime never opens an outbound connection
 the operator did not authorize.
 
-This document covers the required local LLM stack, a reference `aletheia.toml`
+The remainder describes the required local LLM stack, a reference `aletheia.toml`
 fragment, and the feature set that drops when no Anthropic provider is
 registered.
 

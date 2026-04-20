@@ -81,6 +81,9 @@ SHARD_LIST="$(build_shard_list "$SHARDS")"
 # WHY standards-sync: prevents local standards/ from drifting from kanon canonical.
 # WHY verify-generated: prevents hand-edits to generated workflow files.
 generate_ci() {
+    # WHY: names declared local so the lint rule does not misread the heredoc
+    # YAML body below as in-function shell (the assignments run on GHA, not here).
+    local failed tmpdir local_file canonical
     cat <<'YAML'
 # !! GENERATED FILE — do not edit by hand.
 # Edit scripts/generate-workflows.sh and re-run to update.
@@ -219,6 +222,9 @@ YAML
 # WHY test-plan job: separates the "what to test" decision from the actual test
 # execution so that both test-shard and test-filtered can branch on it.
 generate_test_sharded() {
+    # WHY: names declared local so the lint rule does not misread the heredoc
+    # YAML body below as in-function shell (the assignments run on GHA, not here).
+    local changed pkgs pkg_flags
     sed "s/@@SHARDS@@/${SHARDS}/g; s/@@SHARD_LIST@@/${SHARD_LIST}/g" <<'YAML'
 # !! GENERATED FILE — do not edit by hand.
 # Edit scripts/generate-workflows.sh and re-run to update.

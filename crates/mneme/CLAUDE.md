@@ -57,7 +57,7 @@ Only types with downstream consumers are surfaced. Modules not listed here (admi
 
 ## Training capture
 
-Training capture logic (`TrainingCapture`, `CaptureInput`, `CaptureStopReason`, quality gate) lives in `nous::training`, not here. Mneme re-exports only the shared types (`TrainingConfig`, `TrainingRecord`) from eidos. Training is a pipeline tap (side-effect observer on the turn loop), not a memory operation.
+The capture logic (`TrainingCapture`, `CaptureInput`, `CaptureStopReason`, quality gate) lives in `nous::training`, not here. Mneme re-exports the shared types (`TrainingConfig`, `TrainingRecord`) from eidos. Training runs as a pipeline tap (side-effect observer on the turn loop), not a memory operation.
 
 ## Where to make changes
 

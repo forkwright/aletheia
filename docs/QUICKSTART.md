@@ -1,6 +1,6 @@
 # Quickstart
 
-End-to-end guide: from zero to chatting with an agent. Tested on a clean machine. If something here doesn't work, that's a bug in this document -- file an issue.
+End-to-end guide: from zero to chatting with an agent. Tested on a clean machine. If something here doesn't work, that's a bug -- file an issue.
 
 ---
 

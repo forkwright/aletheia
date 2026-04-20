@@ -1,6 +1,6 @@
 # Observability for Aletheia operators
 
-This document covers service-level objectives (SLOs), alerting thresholds, and runbook steps for the metrics Prometheus scrapes from Aletheia.
+Service-level objectives (SLOs), alerting thresholds, and runbook steps for the metrics Prometheus scrapes from Aletheia.
 
 For setup and deployment, see [DEPLOYMENT.md](DEPLOYMENT.md). For day-to-day operational procedures, see [RUNBOOK.md](RUNBOOK.md).
 
