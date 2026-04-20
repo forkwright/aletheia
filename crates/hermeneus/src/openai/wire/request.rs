@@ -246,9 +246,7 @@ fn translate_message(msg: &Message, out: &mut Vec<ChatMessage>) {
                                     tool_call_id: Some(tool_use_id.clone()),
                                 });
                             }
-                            // Thinking / server-side blocks have no inbound
-                            // user-side equivalent; skip.
-                            _ => {}
+                            _ => {} // Thinking/server-side blocks have no user-side equivalent.
                         }
                     }
                     if !text_parts.is_empty() {
@@ -294,11 +292,7 @@ fn translate_message(msg: &Message, out: &mut Vec<ChatMessage>) {
                                     },
                                 });
                             }
-                            // WHY: thinking blocks and server-side blocks
-                            // have no OpenAI equivalent; skipped silently
-                            // (thinking is warned once at request build
-                            // time, server_tools is rejected outright).
-                            _ => {}
+                            _ => {} // Thinking/server-side blocks have no OpenAI equivalent (thinking warned at request build; server_tools rejected).
                         }
                     }
                 }

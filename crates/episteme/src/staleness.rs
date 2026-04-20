@@ -37,6 +37,7 @@ pub struct StalenessResult {
 
 /// Whether a fact is still consistent with its source.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum StalenessStatus {
     /// Fact content is still grounded in the source.
     Fresh,

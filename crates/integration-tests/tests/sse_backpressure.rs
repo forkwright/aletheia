@@ -2,16 +2,13 @@
 
 #![expect(clippy::expect_used, reason = "test assertions")]
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
-use http_body_util::BodyExt;
-use std::time::Instant;
-use tower::ServiceExt;
-
 use hermeneus::provider::ProviderRegistry;
 use hermeneus::test_utils::MockProvider;
+use http_body_util::BodyExt;
 use mneme::store::SessionStore;
 use nous::config::{NousConfig, PipelineConfig};
 use nous::manager::NousManager;
@@ -23,6 +20,7 @@ use symbolon::types::Role;
 use taxis::oikos::Oikos;
 use tokio::sync::Mutex as TokioMutex;
 use tokio_util::sync::CancellationToken;
+use tower::ServiceExt;
 
 struct TestHarness {
     state: std::sync::Arc<AppState>,

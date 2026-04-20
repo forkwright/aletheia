@@ -16,6 +16,7 @@ use super::bootstrap::{BootstrapCi, Lcg64};
 /// Interpretation of an effect size magnitude.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum EffectSizeInterpretation {
     /// |d| < 0.2 (Cohen 1988).
     Negligible,

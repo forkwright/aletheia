@@ -118,6 +118,7 @@ pub type Result<T> = std::result::Result<T, TrainingCaptureError>;
 /// captures just what the quality gate needs. Callers parse the string stop
 /// reason into this enum at the call site.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum CaptureStopReason {
     /// Normal end of turn — safe to capture.
     EndTurn,

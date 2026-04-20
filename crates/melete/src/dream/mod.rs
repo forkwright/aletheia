@@ -15,7 +15,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicI64, Ordering};
 
 use snafu::ResultExt;
-use tracing::instrument;
+use tracing::{Instrument as _, instrument};
 
 use hermeneus::provider::LlmProvider;
 use hermeneus::types::Message;
@@ -307,48 +307,48 @@ impl DreamEngine {
         let target = Arc::clone(target);
         let provider = Arc::clone(provider);
 
-        tokio::spawn(async move {
-            let span = tracing::info_span!("auto_dream_consolidation");
-            let _guard = span.enter();
+        tokio::spawn(
+            async move {
+                tracing::info!("auto-dream consolidation started");
+                let start = std::time::Instant::now();
 
-            tracing::info!("auto-dream consolidation started");
-            let start = std::time::Instant::now();
-
-            match engine
-                .run_consolidation(
-                    acquired,
-                    source.as_ref(),
-                    target.as_ref(),
-                    provider.as_ref(),
-                )
-                .await
-            {
-                Ok(report) => {
-                    let duration_ms = start.elapsed().as_millis().min(u64::MAX.into());
-                    let duration_ms = u64::try_from(duration_ms).unwrap_or_default();
-                    tracing::info!(
-                        facts_added = report.facts_added,
-                        facts_deduped = report.facts_deduped,
-                        facts_stale = report.facts_stale,
-                        duration_ms,
-                        "auto-dream consolidation completed"
-                    );
-                    crate::metrics::record_distillation(
-                        "auto-dream",
-                        start.elapsed().as_secs_f64(),
-                        true,
-                    );
-                }
-                Err(e) => {
-                    tracing::error!(error = %e, "auto-dream consolidation failed");
-                    crate::metrics::record_distillation(
-                        "auto-dream",
-                        start.elapsed().as_secs_f64(),
-                        false,
-                    );
+                match engine
+                    .run_consolidation(
+                        acquired,
+                        source.as_ref(),
+                        target.as_ref(),
+                        provider.as_ref(),
+                    )
+                    .await
+                {
+                    Ok(report) => {
+                        let duration_ms = start.elapsed().as_millis().min(u64::MAX.into());
+                        let duration_ms = u64::try_from(duration_ms).unwrap_or_default();
+                        tracing::info!(
+                            facts_added = report.facts_added,
+                            facts_deduped = report.facts_deduped,
+                            facts_stale = report.facts_stale,
+                            duration_ms,
+                            "auto-dream consolidation completed"
+                        );
+                        crate::metrics::record_distillation(
+                            "auto-dream",
+                            start.elapsed().as_secs_f64(),
+                            true,
+                        );
+                    }
+                    Err(e) => {
+                        tracing::error!(error = %e, "auto-dream consolidation failed");
+                        crate::metrics::record_distillation(
+                            "auto-dream",
+                            start.elapsed().as_secs_f64(),
+                            false,
+                        );
+                    }
                 }
             }
-        });
+            .instrument(tracing::info_span!("auto_dream_consolidation")),
+        );
     }
 
     /// Execute the consolidation pipeline.

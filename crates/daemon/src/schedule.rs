@@ -4,8 +4,9 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::time::Duration;
 
-use crate::error::Result;
 use serde::{Deserialize, Serialize};
+
+use crate::error::Result;
 
 /// When a task should run.
 #[non_exhaustive]

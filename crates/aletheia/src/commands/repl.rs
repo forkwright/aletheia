@@ -127,7 +127,7 @@ fn run_repl(instance_root: Option<&PathBuf>) -> Result<()> {
                     run_query_and_print(&store, "::relations");
                     continue;
                 }
-                _ => {}
+                _ => {} // Not a REPL command; fall through to treat as query.
             }
         }
 

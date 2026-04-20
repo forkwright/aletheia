@@ -17,10 +17,10 @@
 
 use std::collections::{HashMap, HashSet};
 
+use eidos::id::{CausalEdgeId, FactId};
 use snafu::Snafu;
 
 use crate::knowledge::{CausalEdge, CausalRelationType, TemporalOrdering};
-use eidos::id::{CausalEdgeId, FactId};
 
 // ── Error type ────────────────────────────────────────────────────────────────
 

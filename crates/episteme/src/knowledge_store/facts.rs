@@ -1058,7 +1058,11 @@ mod tests {
         let results = store
             .query_facts("alice", "2026-06-01", 100)
             .expect("query single fact");
-        assert_eq!(results.len(), 1);
+        assert_eq!(
+            results.len(),
+            1,
+            "single stored fact should return 1 result"
+        );
         assert_eq!(results[0].id.as_str(), "q-single");
     }
 
@@ -1393,7 +1397,11 @@ mod tests {
         let results = store
             .query_facts("alice", "2026-06-01", 100)
             .expect("query after confidence update");
-        assert_eq!(results.len(), 1);
+        assert_eq!(
+            results.len(),
+            1,
+            "confidence update should not duplicate fact"
+        );
         assert!(
             (results[0].provenance.confidence - 0.5).abs() < f64::EPSILON,
             "persisted confidence should be 0.5"

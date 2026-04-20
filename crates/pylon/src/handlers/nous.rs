@@ -579,9 +579,10 @@ mod tests {
             reason = "compile-time shape assertion: proves field types via unused local fn"
         )]
         fn assert_nous_state_fields(state: &NousState) {
+            use std::sync::Arc;
+
             use nous::manager::NousManager;
             use organon::registry::ToolRegistry;
-            use std::sync::Arc;
 
             let _: &Arc<NousManager> = &state.nous_manager;
             let _: &Arc<ToolRegistry> = &state.tool_registry;

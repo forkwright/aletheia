@@ -320,8 +320,8 @@ async fn check_config_readable(state: &HealthState) -> HealthCheck {
     };
 
     match tokio::fs::metadata(&config_path).await {
-        Ok(_metadata) => {
-            if std::fs::metadata(&config_path).is_ok_and(|m| m.is_file()) {
+        Ok(metadata) => {
+            if metadata.is_file() {
                 // Also verify we can read the current config in memory
                 let _config = state.config.read().await;
                 HealthCheck {
@@ -627,10 +627,11 @@ mod tests {
             reason = "compile-time shape assertion: proves field types via unused local fn"
         )]
         fn assert_health_state_fields(state: &HealthState) {
+            use std::sync::Arc;
+
             use hermeneus::provider::ProviderRegistry;
             use mneme::store::SessionStore;
             use nous::manager::NousManager;
-            use std::sync::Arc;
             use taxis::config::AletheiaConfig;
             use taxis::oikos::Oikos;
 

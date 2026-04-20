@@ -5,6 +5,7 @@ use snafu::Snafu;
 /// Errors that can occur during lint operations.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
+#[non_exhaustive]
 pub enum LintError {
     /// Failed to read the input file.
     #[snafu(display("failed to read file {path:?}: {source}"))]

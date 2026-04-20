@@ -364,11 +364,10 @@ mod tests {
     use std::sync::{Arc, RwLock};
 
     use koina::id::{NousId, SessionId, ToolName};
+    use taxis::config::ToolLimitsConfig;
 
     use crate::registry::ToolRegistry;
     use crate::testing::install_crypto_provider;
-    use taxis::config::ToolLimitsConfig;
-
     use crate::types::{
         ServerToolConfig, SpawnRequest, SpawnResult, SpawnService, ToolContext, ToolInput,
         ToolServices,

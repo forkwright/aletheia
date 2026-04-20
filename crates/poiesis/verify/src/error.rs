@@ -5,6 +5,7 @@ use snafu::Snafu;
 /// Errors that can occur during verify operations.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
+#[non_exhaustive]
 pub enum VerifyError {
     /// Failed to evaluate an arithmetic formula.
     #[snafu(display("arithmetic evaluation failed for formula {formula:?}: {detail}"))]

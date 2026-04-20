@@ -36,6 +36,7 @@ use serde::{Deserialize, Serialize};
 /// Mirrors the `evidence_level` field in `shared/agent_format.py`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum EvidenceLevel {
     /// Survives FDR correction, n is large enough for inference.
     Statistical,

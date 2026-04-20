@@ -81,12 +81,8 @@ impl AgentSdkEngine {
             .fail();
         }
 
-        // NOTE: In a full implementation, this would:
-        // 1. Validate OAuth token if provided
-        // 2. Initialize MCP plugin system if not disabled
-        // 3. Set up permission system if not skipped
-        // 4. Verify agent SDK binary availability
-
+        // Future-work: validate OAuth token, init MCP plugin system, set up
+        // permission system, verify SDK binary availability.
         Ok(Self {
             config,
             binary: "claude".to_owned(),

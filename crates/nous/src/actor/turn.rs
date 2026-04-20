@@ -2,21 +2,18 @@
 
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
-
-use tokio::sync::mpsc;
-use tracing::{Instrument, debug, error, warn};
+use std::time::Duration;
 
 use koina::id::{NousId, SessionId};
 use organon::types::ToolContext;
+use tokio::sync::mpsc;
+use tracing::{Instrument, debug, error, warn};
 
+use super::{NousActor, NousLifecycle};
 use crate::drift::{DriftConfig, DriftDetector, TurnMetrics};
 use crate::pipeline::TurnResult;
 use crate::session::SessionState;
 use crate::stream::TurnStreamEvent;
-
-use std::time::Duration;
-
-use super::{NousActor, NousLifecycle};
 
 /// Drop guard that drops the streaming sender when the turn completes or is cancelled.
 /// Signals the receiver that no more data is coming, preventing hung SSE connections.

@@ -13,6 +13,7 @@ use snafu::Snafu;
 
 /// Errors produced by the XLSX renderer.
 #[derive(Debug, Snafu)]
+#[non_exhaustive]
 pub enum XlsxRendererError {
     /// `rust_xlsxwriter` returned an error.
     #[snafu(display("XLSX error: {message}"))]
@@ -160,8 +161,9 @@ fn sanitize_sheet_name(name: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use poiesis_core::{Block, Document, Metadata, RichText, Span, block::Table};
+
+    use super::*;
 
     fn sample_doc() -> Document {
         Document {

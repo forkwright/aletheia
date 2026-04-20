@@ -20,6 +20,7 @@ use zip::write::SimpleFileOptions;
 
 /// Errors produced by the ODT renderer.
 #[derive(Debug, Snafu)]
+#[non_exhaustive]
 pub enum OdtError {
     /// A ZIP I/O error occurred while building the ODT package.
     #[snafu(display("ODT zip error: {message}"))]
@@ -318,8 +319,9 @@ fn xml_escape(s: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use poiesis_core::{Block, Document, Metadata, RichText, Span, block::Table};
+
+    use super::*;
 
     fn sample_doc() -> Document {
         Document {

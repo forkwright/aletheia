@@ -93,8 +93,9 @@ mod model_constants {
 // --- StopReason enum ---
 
 mod stop_reason {
-    use super::StopReason;
     use std::str::FromStr;
+
+    use super::StopReason;
 
     #[test]
     fn round_trips_through_as_str_and_from_str() {
