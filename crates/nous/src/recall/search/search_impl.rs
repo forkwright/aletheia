@@ -4,13 +4,12 @@
 use std::sync::Arc;
 
 #[cfg(feature = "knowledge-store")]
-use crate::error;
-
-#[cfg(feature = "knowledge-store")]
 use mneme::knowledge::RecallResult as KnowledgeRecallResult;
 #[cfg(feature = "knowledge-store")]
 use mneme::knowledge_store::KnowledgeStore;
 
+#[cfg(feature = "knowledge-store")]
+use crate::error;
 #[cfg(feature = "knowledge-store")]
 use crate::recall::search::TextSearch;
 #[cfg(feature = "knowledge-store")]

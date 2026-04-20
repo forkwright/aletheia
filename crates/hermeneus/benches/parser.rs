@@ -22,12 +22,12 @@
 
 #![expect(clippy::expect_used, reason = "bench setup; fatal on fixture failure")]
 
-use criterion::{Criterion, criterion_group, criterion_main};
 use std::hint::black_box;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 
+use criterion::{Criterion, criterion_group, criterion_main};
 use hermeneus::complexity::{ComplexityInput, score_complexity};
 use hermeneus::concurrency::{AdaptiveConcurrencyLimiter, ConcurrencyConfig, RequestOutcome};
 use hermeneus::types::{StopReason, ToolResultType, Usage};

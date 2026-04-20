@@ -917,8 +917,9 @@ fn load_filtered_facts(
     std::collections::HashSet<String>,
     std::collections::HashMap<String, mneme::knowledge::FactSensitivity>,
 )> {
-    use mneme::knowledge::FactSensitivity;
     use std::collections::{HashMap, HashSet};
+
+    use mneme::knowledge::FactSensitivity;
 
     let facts = match nous_id {
         Some(id) => {

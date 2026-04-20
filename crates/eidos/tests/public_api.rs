@@ -158,8 +158,8 @@ mod epistemic_tier {
 
     #[test]
     fn display_matches_as_str() {
-        assert_eq!(format!("{}", EpistemicTier::Verified), "verified");
-        assert_eq!(format!("{}", EpistemicTier::Training), "training");
+        assert_eq!(EpistemicTier::Verified.to_string(), "verified");
+        assert_eq!(EpistemicTier::Training.to_string(), "training");
     }
 
     #[test]

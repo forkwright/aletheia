@@ -331,9 +331,9 @@ fn build_daily_velocity(
     reason = "test assertions on collections with known length"
 )]
 mod tests {
-    use super::*;
     use tempfile::TempDir;
 
+    use super::*;
     use crate::store::EnergeiaStore;
     use crate::store::records::SessionUpdate;
     use crate::types::{DispatchSpec, SessionStatus};

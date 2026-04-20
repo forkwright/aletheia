@@ -40,21 +40,24 @@ impl TaskRunner {
         #[cfg(feature = "dispatch-cron")]
         let _cron_handle = self.cron_scheduler.clone().map(|scheduler| {
             let cancel = self.shutdown.child_token();
-            tokio::spawn(async move {
-                let _ = scheduler
-                    .run(cancel, |task| {
-                        let name = task.name.clone();
-                        let project = task.dispatch_spec.project.clone();
-                        async move {
-                            tracing::info!(
-                                task = %name,
-                                project = %project,
-                                "cron dispatch task fired"
-                            );
-                        }
-                    })
-                    .await;
-            })
+            tokio::spawn(
+                async move {
+                    let _ = scheduler
+                        .run(cancel, |task| {
+                            let name = task.name.clone();
+                            let project = task.dispatch_spec.project.clone();
+                            async move {
+                                tracing::info!(
+                                    task = %name,
+                                    project = %project,
+                                    "cron dispatch task fired"
+                                );
+                            }
+                        })
+                        .await;
+                }
+                .instrument(tracing::info_span!("daemon.cron_scheduler")),
+            )
         });
 
         loop {

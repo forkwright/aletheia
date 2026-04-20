@@ -2,17 +2,14 @@
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 
-use tokio::sync::Mutex;
-use tracing::{Instrument, debug, info, warn};
-
+use hermeneus::provider::ProviderRegistry;
 #[cfg(feature = "knowledge-store")]
 use mneme::knowledge_store::KnowledgeStore;
 use mneme::store::SessionStore;
-
-use hermeneus::provider::ProviderRegistry;
-
-use std::time::Duration;
+use tokio::sync::Mutex;
+use tracing::{Instrument, debug, info, warn};
 
 use super::{MAX_SPAWNED_TASKS, NousActor};
 

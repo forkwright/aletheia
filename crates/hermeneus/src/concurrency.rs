@@ -14,7 +14,6 @@
 //! A tower `Layer`/`Service` wrapper (`ConcurrencyLayer`/`ConcurrencyService`)
 //! is provided for middleware-style integration.
 
-use parking_lot::Mutex;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -22,6 +21,7 @@ use std::sync::atomic::{AtomicU8, Ordering};
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 
+use parking_lot::Mutex;
 use tokio::sync::Notify;
 use tower::{Layer, Service};
 

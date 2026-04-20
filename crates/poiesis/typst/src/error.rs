@@ -5,6 +5,7 @@ use snafu::Snafu;
 /// Errors returned by the Typst rendering pipeline.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
+#[non_exhaustive]
 pub enum PoiesisError {
     /// Data injection produced invalid JSON.
     #[snafu(display("failed to serialize injected data: {detail}"))]

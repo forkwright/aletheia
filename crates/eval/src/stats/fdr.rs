@@ -18,6 +18,7 @@ use crate::error::{Error, StatsSnafu};
 
 /// FDR correction method.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[non_exhaustive]
 pub enum FdrMethod {
     /// Benjamini-Hochberg (1995): controls FDR under independence or PRDS.
     /// Appropriate for independent or positively-correlated tests.

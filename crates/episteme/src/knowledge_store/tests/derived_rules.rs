@@ -8,12 +8,13 @@
 #![expect(clippy::expect_used, reason = "test assertions")]
 #![expect(clippy::unwrap_used, reason = "test assertions")]
 
+use eidos::id::{CausalEdgeId, EntityId, FactId};
+
 use crate::knowledge::{
     CausalEdge, CausalRelationType, Entity, EpistemicTier, Fact, FactAccess, FactLifecycle,
     FactProvenance, FactSensitivity, FactTemporal, TemporalOrdering, far_future,
 };
 use crate::knowledge_store::KnowledgeStore;
-use eidos::id::{CausalEdgeId, EntityId, FactId};
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 

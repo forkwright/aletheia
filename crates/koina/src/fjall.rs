@@ -133,6 +133,7 @@ impl FjallDb {
 ///
 /// Callers map these into their crate-specific error type.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum FjallOpenError {
     /// Failed to create the store directory.
     CreateDir {

@@ -36,11 +36,17 @@ pub struct LlmJudgeConfig {
     pub temperature: f32,
 }
 
+/// Default LLM-judge model. Overridable via [`LlmJudgeConfig::model`].
+pub const DEFAULT_JUDGE_MODEL: &str = "gpt-4o";
+
+/// Default LLM-judge endpoint.
+pub const DEFAULT_JUDGE_ENDPOINT: &str = "https://api.openai.com/v1/chat/completions";
+
 impl Default for LlmJudgeConfig {
     fn default() -> Self {
         Self {
-            endpoint: "https://api.openai.com/v1/chat/completions".to_owned(),
-            model: "gpt-4o".to_owned(),
+            endpoint: DEFAULT_JUDGE_ENDPOINT.to_owned(),
+            model: DEFAULT_JUDGE_MODEL.to_owned(),
             api_key: None,
             max_tokens: 256,
             temperature: 0.0,

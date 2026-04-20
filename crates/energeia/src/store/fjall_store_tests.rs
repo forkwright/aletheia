@@ -5,8 +5,9 @@
 )]
 #![expect(clippy::float_cmp, reason = "test assertions on exact float values")]
 
-use super::*;
 use tempfile::TempDir;
+
+use super::*;
 
 fn setup_test_store() -> (TempDir, EnergeiaStore) {
     let temp_dir = TempDir::new().unwrap();

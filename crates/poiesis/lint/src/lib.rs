@@ -35,6 +35,7 @@ pub struct Finding {
 
 /// Category of a lint finding.
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum FindingKind {
     /// A banned word or phrase was found.
     BannedWord,

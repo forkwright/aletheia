@@ -816,14 +816,20 @@ mod tests {
     fn tool_overlap_identical_sets() {
         let a = vec!["read".to_owned(), "write".to_owned(), "bash".to_owned()];
         let b = vec!["read".to_owned(), "write".to_owned(), "bash".to_owned()];
-        assert!((compute_tool_overlap(&a, &b) - 1.0).abs() < f64::EPSILON);
+        assert!(
+            (compute_tool_overlap(&a, &b) - 1.0).abs() < f64::EPSILON,
+            "identical sets should yield overlap 1.0"
+        );
     }
 
     #[test]
     fn tool_overlap_disjoint_sets() {
         let a = vec!["read".to_owned(), "write".to_owned()];
         let b = vec!["bash".to_owned(), "grep".to_owned()];
-        assert!(compute_tool_overlap(&a, &b).abs() < f64::EPSILON);
+        assert!(
+            compute_tool_overlap(&a, &b).abs() < f64::EPSILON,
+            "disjoint sets should yield overlap 0.0"
+        );
     }
 
     #[test]
@@ -842,14 +848,20 @@ mod tests {
     fn tool_overlap_both_empty_returns_one() {
         let a: Vec<String> = Vec::new();
         let b: Vec<String> = Vec::new();
-        assert!((compute_tool_overlap(&a, &b) - 1.0).abs() < f64::EPSILON);
+        assert!(
+            (compute_tool_overlap(&a, &b) - 1.0).abs() < f64::EPSILON,
+            "both-empty tool sets should yield overlap 1.0"
+        );
     }
 
     #[test]
     fn tool_overlap_one_empty_returns_zero() {
         let a = vec!["read".to_owned()];
         let b: Vec<String> = Vec::new();
-        assert!(compute_tool_overlap(&a, &b).abs() < f64::EPSILON);
+        assert!(
+            compute_tool_overlap(&a, &b).abs() < f64::EPSILON,
+            "one-empty tool set should yield overlap 0.0"
+        );
     }
 
     #[test]
@@ -857,7 +869,10 @@ mod tests {
         // Duplicates in input should be collapsed by the HashSet
         let a = vec!["read".to_owned(), "read".to_owned(), "write".to_owned()];
         let b = vec!["read".to_owned(), "write".to_owned()];
-        assert!((compute_tool_overlap(&a, &b) - 1.0).abs() < f64::EPSILON);
+        assert!(
+            (compute_tool_overlap(&a, &b) - 1.0).abs() < f64::EPSILON,
+            "duplicates in sets should not affect overlap 1.0"
+        );
     }
 
     // ─────────────────────────────────────────────────────────
@@ -866,19 +881,28 @@ mod tests {
 
     #[test]
     fn name_similarity_identical() {
-        assert!((compute_name_similarity("Alice", "Alice") - 1.0).abs() < f64::EPSILON);
+        assert!(
+            (compute_name_similarity("Alice", "Alice") - 1.0).abs() < f64::EPSILON,
+            "identical names should yield similarity 1.0"
+        );
     }
 
     #[test]
     fn name_similarity_case_insensitive() {
         // LCS runs on lowercased strings
-        assert!((compute_name_similarity("Alice", "alice") - 1.0).abs() < f64::EPSILON);
+        assert!(
+            (compute_name_similarity("Alice", "alice") - 1.0).abs() < f64::EPSILON,
+            "case-insensitive match should yield similarity 1.0"
+        );
     }
 
     #[test]
     fn name_similarity_completely_different() {
         // "abc" vs "xyz" — LCS length 0, ratio 0.0
-        assert!(compute_name_similarity("abc", "xyz").abs() < f64::EPSILON);
+        assert!(
+            compute_name_similarity("abc", "xyz").abs() < f64::EPSILON,
+            "disjoint names should yield similarity 0.0"
+        );
     }
 
     #[test]
@@ -893,12 +917,18 @@ mod tests {
 
     #[test]
     fn name_similarity_both_empty() {
-        assert!((compute_name_similarity("", "") - 1.0).abs() < f64::EPSILON);
+        assert!(
+            (compute_name_similarity("", "") - 1.0).abs() < f64::EPSILON,
+            "both-empty names should yield similarity 1.0"
+        );
     }
 
     #[test]
     fn name_similarity_one_empty() {
-        assert!(compute_name_similarity("hello", "").abs() < f64::EPSILON);
+        assert!(
+            compute_name_similarity("hello", "").abs() < f64::EPSILON,
+            "one-empty name should yield similarity 0.0"
+        );
     }
 
     // ─────────────────────────────────────────────────────────
@@ -909,7 +939,11 @@ mod tests {
     fn lcs_exact_match() {
         let a: Vec<char> = "abc".chars().collect();
         let b: Vec<char> = "abc".chars().collect();
-        assert_eq!(lcs_char_length(&a, &b), 3);
+        assert_eq!(
+            lcs_char_length(&a, &b),
+            3,
+            "LCS of exact match should equal input length"
+        );
     }
 
     #[test]
@@ -917,23 +951,35 @@ mod tests {
         // "abcde" vs "ace" → LCS = "ace" (3)
         let a: Vec<char> = "abcde".chars().collect();
         let b: Vec<char> = "ace".chars().collect();
-        assert_eq!(lcs_char_length(&a, &b), 3);
+        assert_eq!(
+            lcs_char_length(&a, &b),
+            3,
+            "LCS of abcde vs ace should be 3"
+        );
     }
 
     #[test]
     fn lcs_no_match() {
         let a: Vec<char> = "abc".chars().collect();
         let b: Vec<char> = "xyz".chars().collect();
-        assert_eq!(lcs_char_length(&a, &b), 0);
+        assert_eq!(
+            lcs_char_length(&a, &b),
+            0,
+            "LCS of disjoint char sets should be 0"
+        );
     }
 
     #[test]
     fn lcs_empty_inputs() {
         let empty: Vec<char> = Vec::new();
         let a: Vec<char> = "abc".chars().collect();
-        assert_eq!(lcs_char_length(&empty, &a), 0);
-        assert_eq!(lcs_char_length(&a, &empty), 0);
-        assert_eq!(lcs_char_length(&empty, &empty), 0);
+        assert_eq!(lcs_char_length(&empty, &a), 0, "LCS(empty, a) should be 0");
+        assert_eq!(lcs_char_length(&a, &empty), 0, "LCS(a, empty) should be 0");
+        assert_eq!(
+            lcs_char_length(&empty, &empty),
+            0,
+            "LCS(empty, empty) should be 0"
+        );
     }
 
     // ─────────────────────────────────────────────────────────
@@ -951,28 +997,35 @@ mod tests {
     fn extract_str_rejects_non_str() {
         let val = DataValue::from(42i64);
         let result = extract_str(&val);
-        assert!(result.is_err());
+        assert!(result.is_err(), "extract_str on int should return Err");
     }
 
     #[test]
     fn extract_optional_str_from_null() {
         let val = DataValue::Null;
         let result = extract_optional_str(&val).expect("should extract");
-        assert!(result.is_none());
+        assert!(result.is_none(), "Null DataValue should map to None");
     }
 
     #[test]
     fn extract_optional_str_from_str_value() {
         let val = DataValue::Str("present".into());
         let result = extract_optional_str(&val).expect("should extract");
-        assert_eq!(result.as_deref(), Some("present"));
+        assert_eq!(
+            result.as_deref(),
+            Some("present"),
+            "extract_optional_str should yield the inner str"
+        );
     }
 
     #[test]
     fn extract_optional_str_rejects_other_types() {
         let val = DataValue::Bool(true);
         let result = extract_optional_str(&val);
-        assert!(result.is_err());
+        assert!(
+            result.is_err(),
+            "extract_optional_str on Bool should return Err"
+        );
     }
 
     // ─────────────────────────────────────────────────────────
@@ -983,49 +1036,52 @@ mod tests {
     fn extract_float_from_float_value() {
         let val = DataValue::from(1.5_f64);
         let result = extract_float(&val).expect("should extract");
-        assert!((result - 1.5).abs() < f64::EPSILON);
+        assert!(
+            (result - 1.5).abs() < f64::EPSILON,
+            "extract_float should return input 1.5"
+        );
     }
 
     #[test]
     fn extract_float_rejects_str() {
         let val = DataValue::Str("not a number".into());
         let result = extract_float(&val);
-        assert!(result.is_err());
+        assert!(result.is_err(), "extract_float on Str should return Err");
     }
 
     #[test]
     fn extract_int_from_int_value() {
         let val = DataValue::from(42i64);
         let result = extract_int(&val).expect("should extract");
-        assert_eq!(result, 42);
+        assert_eq!(result, 42, "extract_int should return input 42");
     }
 
     #[test]
     fn extract_int_rejects_str() {
         let val = DataValue::Str("42".into());
         let result = extract_int(&val);
-        assert!(result.is_err());
+        assert!(result.is_err(), "extract_int on Str should return Err");
     }
 
     #[test]
     fn extract_bool_true() {
         let val = DataValue::Bool(true);
         let result = extract_bool(&val).expect("should extract");
-        assert!(result);
+        assert!(result, "extract_bool on Bool(true) should be true");
     }
 
     #[test]
     fn extract_bool_false() {
         let val = DataValue::Bool(false);
         let result = extract_bool(&val).expect("should extract");
-        assert!(!result);
+        assert!(!result, "extract_bool on Bool(false) should be false");
     }
 
     #[test]
     fn extract_bool_rejects_int() {
         let val = DataValue::from(1i64);
         let result = extract_bool(&val);
-        assert!(result.is_err());
+        assert!(result.is_err(), "extract_bool on int should return Err");
     }
 
     // ─────────────────────────────────────────────────────────
@@ -1034,25 +1090,49 @@ mod tests {
 
     #[test]
     fn parse_verified_tier() {
-        assert_eq!(parse_epistemic_tier("verified"), EpistemicTier::Verified);
+        assert_eq!(
+            parse_epistemic_tier("verified"),
+            EpistemicTier::Verified,
+            "`verified` tier string should map to Verified"
+        );
     }
 
     #[test]
     fn parse_inferred_tier() {
-        assert_eq!(parse_epistemic_tier("inferred"), EpistemicTier::Inferred);
+        assert_eq!(
+            parse_epistemic_tier("inferred"),
+            EpistemicTier::Inferred,
+            "`inferred` tier string should map to Inferred"
+        );
     }
 
     #[test]
     fn parse_assumed_tier() {
-        assert_eq!(parse_epistemic_tier("assumed"), EpistemicTier::Assumed);
+        assert_eq!(
+            parse_epistemic_tier("assumed"),
+            EpistemicTier::Assumed,
+            "`assumed` tier string should map to Assumed"
+        );
     }
 
     #[test]
     fn parse_unknown_tier_defaults_to_assumed() {
         // Unknown strings fall back to Assumed (with a warn log)
-        assert_eq!(parse_epistemic_tier("bogus"), EpistemicTier::Assumed);
-        assert_eq!(parse_epistemic_tier(""), EpistemicTier::Assumed);
-        assert_eq!(parse_epistemic_tier("VERIFIED"), EpistemicTier::Assumed);
+        assert_eq!(
+            parse_epistemic_tier("bogus"),
+            EpistemicTier::Assumed,
+            "unknown tier should default to Assumed"
+        );
+        assert_eq!(
+            parse_epistemic_tier(""),
+            EpistemicTier::Assumed,
+            "empty tier should default to Assumed"
+        );
+        assert_eq!(
+            parse_epistemic_tier("VERIFIED"),
+            EpistemicTier::Assumed,
+            "uppercase tier name should not match (case-sensitive)"
+        );
     }
 
     // ─────────────────────────────────────────────────────────

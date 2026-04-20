@@ -8,6 +8,7 @@ use std::sync::LazyLock;
 
 /// Classification of who should tune a parameter and when.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[non_exhaustive]
 pub enum ParameterTier {
     /// Operator sets at deployment time; not self-tunable.
     Deployment,

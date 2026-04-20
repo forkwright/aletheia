@@ -13,6 +13,7 @@ use spreadsheet_ods::{Sheet, WorkBook, write_ods_buf};
 
 /// Errors produced by the ODS renderer.
 #[derive(Debug, Snafu)]
+#[non_exhaustive]
 pub enum OdsRendererError {
     /// `spreadsheet-ods` returned an error while writing the ODS file.
     #[snafu(display("ODS error: {message}"))]
@@ -127,8 +128,9 @@ fn truncate_sheet_name(name: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use poiesis_core::{Block, Document, Metadata, RichText, Span, block::Table};
+
+    use super::*;
 
     fn sample_doc() -> Document {
         Document {

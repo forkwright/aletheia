@@ -13,10 +13,10 @@ use std::path::{Path, PathBuf};
 use std::pin::Pin;
 
 use serde::{Deserialize, Serialize};
+use taxis::config::AgentBehaviorDefaults;
 use tracing::{debug, warn};
 
 use crate::hooks::{HookResult, QueryContext, TurnContext, TurnHook};
-use taxis::config::AgentBehaviorDefaults;
 
 /// Filename for the corrections store within the agent workspace.
 const CORRECTIONS_FILENAME: &str = "corrections.json";

@@ -17,6 +17,7 @@ use crate::knowledge::Fact;
 
 /// Result of an admission check.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub enum AdmissionDecision {
     /// Fact should be admitted to the knowledge graph.
     Admit,
@@ -42,6 +43,7 @@ pub struct AdmissionRejection {
 
 /// The factor that caused a rejection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum RejectionFactor {
     /// The fact's predicted future utility is too low.
     LowUtility,

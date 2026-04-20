@@ -326,7 +326,11 @@ fn normalize_toml_value(
                 normalize_toml_value(v, source_root, dest_root, rewritten);
             }
         }
-        _ => {}
+        // Scalars (bool, int, float, datetime): no path strings to rewrite.
+        toml_edit::Value::Boolean(_)
+        | toml_edit::Value::Integer(_)
+        | toml_edit::Value::Float(_)
+        | toml_edit::Value::Datetime(_) => {}
     }
 }
 
@@ -353,7 +357,8 @@ fn normalize_json_value(
                 normalize_json_value(v, source_root, dest_root, rewritten);
             }
         }
-        _ => {}
+        // Null, Bool, Number: no path strings to rewrite.
+        serde_json::Value::Null | serde_json::Value::Bool(_) | serde_json::Value::Number(_) => {}
     }
 }
 

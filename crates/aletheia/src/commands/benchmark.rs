@@ -64,7 +64,7 @@ pub(crate) struct RunArgs {
     #[arg(long, env = "ALETHEIA_JUDGE_ENDPOINT")]
     pub judge_endpoint: Option<String>,
     /// LLM-as-judge model identifier
-    #[arg(long, default_value = "gpt-4o", env = "ALETHEIA_JUDGE_MODEL")]
+    #[arg(long, default_value = dokimion::benchmarks::judge::DEFAULT_JUDGE_MODEL, env = "ALETHEIA_JUDGE_MODEL")]
     pub judge_model: String,
     /// LLM-as-judge API key
     #[arg(long, env = "ALETHEIA_JUDGE_API_KEY")]

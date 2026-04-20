@@ -38,6 +38,7 @@ const USABLE_W: f32 = PAGE_W - 2.0 * MARGIN_X;
 
 /// Errors produced by the PDF renderer.
 #[derive(Debug, Snafu)]
+#[non_exhaustive]
 pub enum PdfError {
     /// No usable system font was found. Install a font (e.g. `liberation-sans-fonts`
     /// or `google-noto-sans-fonts`) and verify it is readable.
@@ -353,8 +354,9 @@ fn wrap_words(text: &str, max_chars: usize) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use poiesis_core::{Block, Document, Metadata, RichText, Span};
+
+    use super::*;
 
     fn minimal_doc() -> Document {
         Document {
