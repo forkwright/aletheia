@@ -46,7 +46,10 @@ impl MatrixClient {
     /// Build a client with a custom request timeout.
     pub fn with_timeout(homeserver_url: &str, timeout: Duration) -> Result<Self> {
         let trimmed = homeserver_url.trim_end_matches('/').to_owned();
-        if !(trimmed.starts_with("http://") || trimmed.starts_with("https://")) {
+        // WHY: scheme validation routed through `koina::http` so the
+        // plaintext HTTP literal lives in exactly one audited place
+        // (see `SECURITY/insecure-transport`).
+        if !koina::http::has_http_or_https_scheme(&trimmed) {
             return Err(InvalidUrlSnafu {
                 url: homeserver_url.to_owned(),
                 message: "expected http:// or https:// prefix".to_owned(),

@@ -89,7 +89,7 @@ impl ToolExecutor for NoteExecutor {
                         })?;
                     match note_store.delete_note(id) {
                         Ok(_) => Ok(ToolResult::text(format!("Note #{id} deleted."))), // kanon:ignore STORAGE/sql-string-concat
-                        Err(e) => Ok(ToolResult::error(format!("Failed to delete note: {e}"))), // kanon:ignore STORAGE/sql-string-concat
+                        Err(e) => Ok(ToolResult::error(format!("failed to delete note: {e}"))), // kanon:ignore STORAGE/sql-string-concat
                     }
                 }
                 _ => Ok(ToolResult::error(format!("Unknown action: {action}"))),

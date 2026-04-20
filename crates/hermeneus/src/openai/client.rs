@@ -79,10 +79,12 @@ impl Default for OpenAiProviderConfig {
 }
 
 /// Returns true when the URL is safe to use without TLS.
+///
+/// WHY: delegates to `koina::http::is_plaintext_loopback_url` so the
+/// plaintext HTTP scheme literal lives in exactly one audited place
+/// (see `SECURITY/insecure-transport`).
 fn is_loopback_url(url: &str) -> bool {
-    url.starts_with("http://localhost")
-        || url.starts_with("http://127.0.0.1")
-        || url.starts_with("http://[::1]")
+    koina::http::is_plaintext_loopback_url(url)
 }
 
 /// OpenAI Chat Completions-compatible LLM provider.

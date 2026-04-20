@@ -20,6 +20,51 @@ use snafu::Snafu;
 use zip::ZipWriter;
 use zip::write::SimpleFileOptions;
 
+// ------------------------------------------------------------------
+// OOXML namespace identifiers
+//
+// These are the fixed, W3C/OOXML-registered URI *identifiers* that every
+// PPTX package must embed verbatim in its XML parts and relationships.
+// They are not endpoints the renderer fetches — substituting HTTPS
+// equivalents produces a corrupt package that Office/LibreOffice reject.
+//
+// See ECMA-376 Part 1 "Fundamentals and Markup Language Reference"
+// §11 (package) and §19 (presentation). The constants live on dedicated
+// lines so `SECURITY/insecure-transport` can skip them via the shared
+// `// WHY:` skip-pattern (standardised identifier, not a credential path).
+// ------------------------------------------------------------------
+
+// Each constant sits on a single line so the `// WHY:` marker is co-located
+// with the literal, letting `SECURITY/insecure-transport`'s skip-pattern
+// bypass the standardised OOXML identifier URIs without an ad-hoc ignore.
+
+/// OOXML content-types namespace.
+const NS_PKG_CT: &str = "http://schemas.openxmlformats.org/package/2006/content-types"; // WHY: standardised OOXML identifier URI, not an endpoint
+/// OOXML package relationships namespace.
+const NS_PKG_RELS: &str = "http://schemas.openxmlformats.org/package/2006/relationships"; // WHY: standardised OOXML identifier URI, not an endpoint
+/// OOXML `officeDocument` relationship type.
+const REL_TYPE_OFFICE_DOC: &str =
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument"; // WHY: standardised OOXML identifier URI, not an endpoint
+/// OOXML `slide` relationship type.
+const REL_TYPE_SLIDE: &str =
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide"; // WHY: standardised OOXML identifier URI, not an endpoint
+/// OOXML `slideMaster` relationship type.
+const REL_TYPE_SLIDE_MASTER: &str =
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster"; // WHY: standardised OOXML identifier URI, not an endpoint
+/// OOXML `slideLayout` relationship type.
+const REL_TYPE_SLIDE_LAYOUT: &str =
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout"; // WHY: standardised OOXML identifier URI, not an endpoint
+/// OOXML `theme` relationship type.
+const REL_TYPE_THEME: &str =
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme"; // WHY: standardised OOXML identifier URI, not an endpoint
+/// OOXML `DrawingML` namespace (`a:` prefix).
+const NS_DRAWINGML: &str = "http://schemas.openxmlformats.org/drawingml/2006/main"; // WHY: standardised OOXML identifier URI, not an endpoint
+/// OOXML `PresentationML` namespace (`p:` prefix).
+const NS_PRESENTATIONML: &str = "http://schemas.openxmlformats.org/presentationml/2006/main"; // WHY: standardised OOXML identifier URI, not an endpoint
+/// OOXML officeDocument relationships namespace (`r:` prefix).
+const NS_OFFICE_DOC_RELS: &str =
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships"; // WHY: standardised OOXML identifier URI, not an endpoint
+
 /// Errors produced by the PPTX renderer.
 #[derive(Debug, Snafu)]
 pub enum PptxError {
@@ -145,7 +190,7 @@ fn create_pptx_with_content(_title: &str, slides: &[SlideContent]) -> Result<Vec
         "[Content_Types].xml",
         &build_content_types(slides),
     )?;
-    write_entry(&mut zip, "_rels/.rels", RELS_RELS)?;
+    write_entry(&mut zip, "_rels/.rels", RELS_RELS.as_str())?;
     write_entry(
         &mut zip,
         "ppt/presentation.xml",
@@ -158,19 +203,27 @@ fn create_pptx_with_content(_title: &str, slides: &[SlideContent]) -> Result<Vec
     )?;
 
     // Static template files.
-    write_entry(&mut zip, "ppt/slideLayouts/slideLayout1.xml", SLIDE_LAYOUT)?;
+    write_entry(
+        &mut zip,
+        "ppt/slideLayouts/slideLayout1.xml",
+        SLIDE_LAYOUT.as_str(),
+    )?;
     write_entry(
         &mut zip,
         "ppt/slideLayouts/_rels/slideLayout1.xml.rels",
-        SLIDE_LAYOUT_RELS,
+        SLIDE_LAYOUT_RELS.as_str(),
     )?;
-    write_entry(&mut zip, "ppt/slideMasters/slideMaster1.xml", SLIDE_MASTER)?;
+    write_entry(
+        &mut zip,
+        "ppt/slideMasters/slideMaster1.xml",
+        SLIDE_MASTER.as_str(),
+    )?;
     write_entry(
         &mut zip,
         "ppt/slideMasters/_rels/slideMaster1.xml.rels",
-        SLIDE_MASTER_RELS,
+        SLIDE_MASTER_RELS.as_str(),
     )?;
-    write_entry(&mut zip, "ppt/theme/theme1.xml", THEME)?;
+    write_entry(&mut zip, "ppt/theme/theme1.xml", THEME.as_str())?;
 
     // Dynamic slide files.
     for (i, slide) in slides.iter().enumerate() {
@@ -183,7 +236,7 @@ fn create_pptx_with_content(_title: &str, slides: &[SlideContent]) -> Result<Vec
         write_entry(
             &mut zip,
             &format!("ppt/slides/_rels/slide{slide_num}.xml.rels"),
-            SLIDE_RELS,
+            SLIDE_RELS.as_str(),
         )?;
     }
 
@@ -224,14 +277,14 @@ fn build_content_types(slides: &[SlideContent]) -> String {
     }
     format!(
         r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+<Types xmlns="{NS_PKG_CT}">
   <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
   <Default Extension="xml" ContentType="application/xml"/>
   <Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/>
   <Override PartName="/ppt/slideMaster1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"/>
   <Override PartName="/ppt/slideLayout1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml"/>
   <Override PartName="/ppt/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>
-{overrides}</Types>"#
+{overrides}</Types>"#,
     )
 }
 
@@ -245,34 +298,35 @@ fn build_presentation(slides: &[SlideContent]) -> String {
     }
     format!(
         r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<p:presentation xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
+<p:presentation xmlns:a="{NS_DRAWINGML}" xmlns:r="{NS_OFFICE_DOC_RELS}" xmlns:p="{NS_PRESENTATIONML}">
   <p:sldIdLst>
 {slide_ids}  </p:sldIdLst>
   <p:sldSz cx="12192000" cy="6858000" type="screen16x9"/>
   <p:notesSz cx="6858000" cy="9144000"/>
-</p:presentation>"#
+</p:presentation>"#,
     )
 }
 
 fn build_presentation_rels(slides: &[SlideContent]) -> String {
     let mut rels = String::new();
-    rels.push_str(
-        r#"  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" Target="slideMasters/slideMaster1.xml"/>"#,
+    let _ = write!(
+        rels,
+        r#"  <Relationship Id="rId1" Type="{REL_TYPE_SLIDE_MASTER}" Target="slideMasters/slideMaster1.xml"/>"#,
     );
     rels.push('\n');
     for i in 0..slides.len() {
         let rid = i + 2;
+        let slide_num = i + 1;
         let _ = write!(
             rels,
-            r#"  <Relationship Id="rId{rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide{slide_num}.xml"/>"#,
-            slide_num = i + 1,
+            r#"  <Relationship Id="rId{rid}" Type="{REL_TYPE_SLIDE}" Target="slides/slide{slide_num}.xml"/>"#,
         );
         rels.push('\n');
     }
     format!(
         r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-{rels}</Relationships>"#
+<Relationships xmlns="{NS_PKG_RELS}">
+{rels}</Relationships>"#,
     )
 }
 
@@ -304,7 +358,7 @@ fn build_slide(slide: &SlideContent) -> String {
     }
     format!(
         r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
+<p:sld xmlns:a="{NS_DRAWINGML}" xmlns:r="{NS_OFFICE_DOC_RELS}" xmlns:p="{NS_PRESENTATIONML}">
   <p:cSld>
     <p:bg>
       <p:bgRef idx="1001">
@@ -374,37 +428,61 @@ fn build_slide(slide: &SlideContent) -> String {
       </p:sp>
     </p:spTree>
   </p:cSld>
-</p:sld>"#
+</p:sld>"#,
     )
 }
 
 // ------------------------------------------------------------------
-// Static OOXML template constants
+// Static OOXML template builders
+//
+// Each template is built from the OOXML namespace constants above via
+// `LazyLock<String>` so the URI literals live in exactly one audited
+// place. The callers use `.as_str()` to obtain the computed `&str`.
 // ------------------------------------------------------------------
 
-const RELS_RELS: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="ppt/presentation.xml"/>
-</Relationships>"#;
+use std::sync::LazyLock;
 
-const SLIDE_RELS: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>
-</Relationships>"#;
+static RELS_RELS: LazyLock<String> = LazyLock::new(|| {
+    format!(
+        r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="{NS_PKG_RELS}">
+  <Relationship Id="rId1" Type="{REL_TYPE_OFFICE_DOC}" Target="ppt/presentation.xml"/>
+</Relationships>"#,
+    )
+});
 
-const SLIDE_LAYOUT_RELS: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" Target="../slideMasters/slideMaster1.xml"/>
-</Relationships>"#;
+static SLIDE_RELS: LazyLock<String> = LazyLock::new(|| {
+    format!(
+        r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="{NS_PKG_RELS}">
+  <Relationship Id="rId1" Type="{REL_TYPE_SLIDE_LAYOUT}" Target="../slideLayouts/slideLayout1.xml"/>
+</Relationships>"#,
+    )
+});
 
-const SLIDE_MASTER_RELS: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>
-  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" Target="../theme/theme1.xml"/>
-</Relationships>"#;
+static SLIDE_LAYOUT_RELS: LazyLock<String> = LazyLock::new(|| {
+    format!(
+        r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="{NS_PKG_RELS}">
+  <Relationship Id="rId1" Type="{REL_TYPE_SLIDE_MASTER}" Target="../slideMasters/slideMaster1.xml"/>
+</Relationships>"#,
+    )
+});
 
-const SLIDE_LAYOUT: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<p:sldLayout xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" type="titleAndContent" preserve="1">
+static SLIDE_MASTER_RELS: LazyLock<String> = LazyLock::new(|| {
+    format!(
+        r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="{NS_PKG_RELS}">
+  <Relationship Id="rId1" Type="{REL_TYPE_SLIDE_LAYOUT}" Target="../slideLayouts/slideLayout1.xml"/>
+  <Relationship Id="rId2" Type="{REL_TYPE_THEME}" Target="../theme/theme1.xml"/>
+</Relationships>"#,
+    )
+});
+
+static SLIDE_LAYOUT: LazyLock<String> = LazyLock::new(|| {
+    format!(
+        r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sldLayout xmlns:a="{NS_DRAWINGML}" xmlns:r="{NS_OFFICE_DOC_RELS}" xmlns:p="{NS_PRESENTATIONML}" type="titleAndContent" preserve="1">
   <p:cSld name="Title and Content">
     <p:spTree>
       <p:nvGrpSpPr>
@@ -470,10 +548,14 @@ const SLIDE_LAYOUT: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="y
     </p:spTree>
   </p:cSld>
   <p:clrMap bg1="lt1" tx1="dk1" bg2="lt2" tx2="dk2" accent1="accent1" accent2="accent2" accent3="accent3" accent4="accent4" accent5="accent5" accent6="accent6" hlink="hlink" folHlink="folHlink"/>
-</p:sldLayout>"#;
+</p:sldLayout>"#,
+    )
+});
 
-const SLIDE_MASTER: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<p:sldMaster xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
+static SLIDE_MASTER: LazyLock<String> = LazyLock::new(|| {
+    format!(
+        r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sldMaster xmlns:a="{NS_DRAWINGML}" xmlns:r="{NS_OFFICE_DOC_RELS}" xmlns:p="{NS_PRESENTATIONML}">
   <p:cSld>
     <p:bg>
       <p:bgRef idx="1001">
@@ -514,10 +596,14 @@ const SLIDE_MASTER: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="y
       </a:defPPr>
     </p:otherStyle>
   </p:txStyles>
-</p:sldMaster>"#;
+</p:sldMaster>"#,
+    )
+});
 
-const THEME: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="Office Theme">
+static THEME: LazyLock<String> = LazyLock::new(|| {
+    format!(
+        r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<a:theme xmlns:a="{NS_DRAWINGML}" name="Office Theme">
   <a:themeElements>
     <a:clrScheme name="Office">
       <a:dk1><a:sysClr val="windowText" lastClr="000000"/></a:dk1>
@@ -544,7 +630,9 @@ const THEME: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
       <a:bgFillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:gradFill rotWithShape="1"><a:gsLst><a:gs pos="0"><a:schemeClr val="phClr"><a:tint val="40000"/><a:satMod val="350000"/></a:schemeClr></a:gs><a:gs pos="100000"><a:schemeClr val="phClr"><a:tint val="100000"/><a:satMod val="350000"/></a:schemeClr></a:gs></a:gsLst><a:path path="circle"><a:fillToRect l="50000" t="-80000" r="50000" b="180000"/></a:path></a:gradFill><a:gradFill rotWithShape="1"><a:gsLst><a:gs pos="0"><a:schemeClr val="phClr"><a:tint val="80000"/><a:satMod val="300000"/></a:schemeClr></a:gs><a:gs pos="100000"><a:schemeClr val="phClr"><a:tint val="80000"/><a:satMod val="300000"/></a:schemeClr></a:gs></a:gsLst><a:path path="circle"><a:fillToRect l="50000" t="50000" r="50000" b="50000"/></a:path></a:gradFill></a:bgFillStyleLst>
     </a:fmtScheme>
   </a:themeElements>
-</a:theme>"#;
+</a:theme>"#,
+    )
+});
 
 #[cfg(test)]
 mod tests {

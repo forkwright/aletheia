@@ -300,7 +300,7 @@ pub async fn create(
         })?;
 
         write_agent_config(&oikos, &id, &name, &model).map_err(|e| ApiError::Internal {
-            message: format!("config update failed: {e}"),
+            message: format!("config write failed: {e}"),
             location: snafu::location!(),
         })?;
 

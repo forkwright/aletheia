@@ -114,9 +114,10 @@ impl ToolExecutor for WebFetchExecutor {
             let url = extract_str(&input.arguments, "url", &input.name)?;
             let max_length = extract_opt_u64(&input.arguments, "maxLength").unwrap_or(50_000);
 
-            // SAFE: protocol validation for user-supplied URLs, not endpoint construction
-            if !url.starts_with("http://") && !url.starts_with("https://") {
-                // kanon:ignore SECURITY/insecure-transport -- URL validation, not construction
+            // WHY: protocol validation for user-supplied URLs, not endpoint
+            // construction. The shared helper keeps the plaintext HTTP literal
+            // in one audited place.
+            if !koina::http::has_http_or_https_scheme(url) {
                 return Ok(ToolResult::error("URL must start with http:// or https://"));
             }
 

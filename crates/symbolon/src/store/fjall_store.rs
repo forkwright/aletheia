@@ -28,6 +28,7 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use fjall::{KeyspaceCreateOptions, SingleWriterTxDatabase};
+use koina::secret::SecretString;
 use serde::{Deserialize, Serialize};
 use tracing::{info, instrument, warn};
 
@@ -36,12 +37,30 @@ use crate::types::{ApiKeyRecord, Role, User};
 
 // ── Wire types for fjall serialization ────────────────────────────────────────
 
+/// Serialise a `SecretString` by exposing its inner value.
+///
+/// WHY: fjall persistence needs the actual hash bytes to round-trip. The
+/// default `SecretString` `Serialize` impl writes `"[REDACTED]"`, which
+/// would destroy auth state on write. Callers still benefit from
+/// `SecretString`'s `Debug`/`Display` redaction and zeroize-on-drop.
+fn serialize_secret_hash<S: serde::Serializer>(
+    secret: &SecretString,
+    serializer: S,
+) -> std::result::Result<S::Ok, S::Error> {
+    serializer.serialize_str(secret.expose_secret())
+}
+
 /// Serializable form of [`User`] stored in fjall.
 #[derive(Serialize, Deserialize)]
 struct UserRecord {
     id: String,
     username: String,
-    password_hash: String,
+    // WHY: Argon2id hash. The value is derived and irreversible, but we
+    // still wrap it in `SecretString` so stray `Debug` or `tracing`
+    // interpolation cannot leak it; the field uses a custom
+    // `serialize_with` so round-tripping to fjall preserves the hash.
+    #[serde(serialize_with = "serialize_secret_hash")]
+    password_hash: SecretString,
     role: String,
     created_at: String,
     updated_at: String,
@@ -52,7 +71,11 @@ struct UserRecord {
 struct ApiKeyEntry {
     id: String,
     prefix: String,
-    key_hash: String,
+    // WHY: blake3 hash of the raw API key. Irreversible but a lookup
+    // primitive, so we wrap it in `SecretString` for leak-resistant
+    // handling and retain round-trip via `serialize_with`.
+    #[serde(serialize_with = "serialize_secret_hash")]
+    key_hash: SecretString,
     role: String,
     nous_id: Option<String>,
     created_at: String,
@@ -195,7 +218,7 @@ impl AuthStore {
         let mut tx = self.db.write_tx();
         tx.remove(partition, key.as_bytes());
         tx.commit()
-            .map_err(|e| storage_err(format!("fjall commit delete: {e}")))?;
+            .map_err(|e| storage_err(format!("fjall commit failed (remove path): {e}")))?;
         Ok(true)
     }
 
@@ -226,7 +249,7 @@ impl AuthStore {
         let record = UserRecord {
             id: id.to_owned(),
             username: username.to_owned(),
-            password_hash: password_hash.to_owned(),
+            password_hash: SecretString::from(password_hash),
             role: role.as_str().to_owned(),
             created_at: now.clone(),
             updated_at: now,
@@ -253,7 +276,10 @@ impl AuthStore {
         Ok(Some(User {
             id: record.id,
             username: record.username,
-            password_hash: record.password_hash,
+            // WHY: `User.password_hash` is the public domain type; the
+            // wire-side SecretString is exposed here only at the
+            // persistence boundary.
+            password_hash: record.password_hash.expose_secret().to_owned(),
             role: decode_role(&record.role),
             created_at: record.created_at,
             updated_at: record.updated_at,
@@ -292,7 +318,7 @@ impl AuthStore {
         let entry = ApiKeyEntry {
             id: record.id.clone(),
             prefix: record.prefix.clone(),
-            key_hash: record.key_hash.clone(),
+            key_hash: SecretString::from(record.key_hash.clone()),
             role: record.role.as_str().to_owned(),
             nous_id: record.nous_id.clone(),
             created_at: if record.created_at.is_empty() {
@@ -470,7 +496,10 @@ fn api_key_entry_to_record(entry: ApiKeyEntry) -> ApiKeyRecord {
     ApiKeyRecord {
         id: entry.id,
         prefix: entry.prefix,
-        key_hash: entry.key_hash,
+        // WHY: `ApiKeyRecord.key_hash` is the public domain type; the
+        // wire-side SecretString is unwrapped here at the persistence
+        // boundary.
+        key_hash: entry.key_hash.expose_secret().to_owned(),
         role: decode_role(&entry.role),
         nous_id: entry.nous_id,
         created_at: entry.created_at,
