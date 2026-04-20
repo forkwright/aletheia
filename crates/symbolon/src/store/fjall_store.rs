@@ -655,7 +655,16 @@ mod tests {
             .unwrap()
             .strftime("%Y-%m-%dT%H:%M:%S%.3fZ")
             .to_string();
-        let present = now.strftime("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+        // WHY: use `now + 100ms` rather than exactly `now` so the timestamp
+        // is unambiguously strictly in the future by the time cleanup runs
+        // a few microseconds later. Wall-clock-equal-to-now is untestable
+        // without a time-injection seam in production.
+        let near_future = now
+            .clone()
+            .checked_add(jiff::Span::new().milliseconds(100))
+            .unwrap()
+            .strftime("%Y-%m-%dT%H:%M:%S%.3fZ")
+            .to_string();
         let future = now
             .checked_add(jiff::Span::new().seconds(1))
             .unwrap()
@@ -663,7 +672,7 @@ mod tests {
             .to_string();
 
         store.revoke_token("past-jti", &past).unwrap();
-        store.revoke_token("present-jti", &present).unwrap();
+        store.revoke_token("present-jti", &near_future).unwrap();
         store.revoke_token("future-jti", &future).unwrap();
 
         let cleaned = store.cleanup_expired_revocations().unwrap();
@@ -675,7 +684,7 @@ mod tests {
         assert!(!store.is_token_revoked("past-jti").unwrap());
         assert!(
             store.is_token_revoked("present-jti").unwrap(),
-            "token with expires_at == now must survive cleanup"
+            "token expiring just after now must survive cleanup (strict `<` boundary)"
         );
         assert!(store.is_token_revoked("future-jti").unwrap());
     }
