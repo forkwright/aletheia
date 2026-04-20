@@ -155,7 +155,7 @@ pub fn record_session(
         clippy::as_conversions,
         reason = "u64 ms → f64: realistic session durations (bounded by 1h timeout = 3_600_000 ms) are well below f64 mantissa 2^53"
     )]
-    let duration_secs = duration_ms as f64 / 1_000.0;
+    let duration_secs = duration_ms as f64 / 1_000.0; // SAFETY: duration_ms bounded by 1h session timeout
     SESSION_DURATION_SECONDS
         .get_or_create(&ProjectLabels {
             project: project.to_owned(),

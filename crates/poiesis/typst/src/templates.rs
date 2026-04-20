@@ -6,19 +6,19 @@
 //! (which [`crate::render_typst`] populates automatically).
 
 /// Slug for the default one-page report template.
-pub const DEFAULT: &str = "default";
+pub(crate) const DEFAULT: &str = "default";
 
 /// Source for the [`DEFAULT`] template.
 ///
 /// Embedded at compile time from `templates/default.typ`.
-pub const DEFAULT_SOURCE: &str = include_str!("../templates/default.typ");
+pub(crate) const DEFAULT_SOURCE: &str = include_str!("../templates/default.typ");
 
 /// List of all known template slugs.
-pub const SLUGS: &[&str] = &[DEFAULT];
+pub(crate) const SLUGS: &[&str] = &[DEFAULT];
 
 /// Resolve a slug to its Typst source, or `None` if unknown.
 #[must_use]
-pub fn lookup(slug: &str) -> Option<&'static str> {
+pub(crate) fn lookup(slug: &str) -> Option<&'static str> {
     match slug {
         DEFAULT => Some(DEFAULT_SOURCE),
         _ => None,

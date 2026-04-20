@@ -50,7 +50,7 @@ pub enum Span {
 
 impl Span {
     /// The text content of the span, regardless of styling.
-    pub fn text(&self) -> &str {
+    pub(crate) fn text(&self) -> &str {
         match self {
             Self::Plain(s) | Self::Bold(s) | Self::Italic(s) | Self::Code(s) => s.as_str(),
             Self::Link { text, .. } => text.as_str(),

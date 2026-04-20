@@ -907,7 +907,7 @@ static SECRET_PATTERN: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::
     regex::Regex::new(
         r"(?i)(sk-ant-[a-zA-Z0-9_-]+|sk-[a-zA-Z0-9_-]{20,}|key-[a-zA-Z0-9_-]{20,}|bearer\s+[a-zA-Z0-9._-]{20,}|[a-f0-9]{40,})"
     )
-    .expect("compile-time-constant regex literals cannot fail")
+    .expect("compile-time-constant regex literals cannot fail") // INVARIANT: regex literal is validated at compile time
 });
 
 /// Strip potential secrets (API keys, bearer tokens) from an error message

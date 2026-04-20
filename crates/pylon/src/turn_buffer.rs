@@ -214,36 +214,36 @@ pub(crate) struct TurnBufferHandle {
 
 impl TurnBufferHandle {
     /// Create a handle from a buffer reference.
-    pub fn new(buffer: Arc<Mutex<TurnBuffer>>) -> Self {
+    pub(crate) fn new(buffer: Arc<Mutex<TurnBuffer>>) -> Self {
         Self { inner: buffer }
     }
 
     /// Record an SSE event. Returns the assigned sequence number.
-    pub async fn record(&self, event_type: &str, data: &str) -> u64 {
+    pub(crate) async fn record(&self, event_type: &str, data: &str) -> u64 {
         let mut buf = self.inner.lock().await;
         buf.push(event_type.to_owned(), data.to_owned())
     }
 
     /// Mark the turn as completed.
-    pub async fn mark_completed(&self) {
+    pub(crate) async fn mark_completed(&self) {
         let mut buf = self.inner.lock().await;
         buf.finish(TurnState::Completed);
     }
 
     /// Mark the turn as failed.
-    pub async fn mark_failed(&self) {
+    pub(crate) async fn mark_failed(&self) {
         let mut buf = self.inner.lock().await;
         buf.finish(TurnState::Failed);
     }
 
     /// Get the notify handle for live-streaming to reconnecting clients.
-    pub async fn notify_handle(&self) -> Arc<Notify> {
+    pub(crate) async fn notify_handle(&self) -> Arc<Notify> {
         let buf = self.inner.lock().await;
         Arc::clone(&buf.notify)
     }
 
     /// Get events after a given sequence number, plus the current turn state.
-    pub async fn events_after(&self, after_seq: u64) -> (Vec<BufferedEvent>, TurnState) {
+    pub(crate) async fn events_after(&self, after_seq: u64) -> (Vec<BufferedEvent>, TurnState) {
         let buf = self.inner.lock().await;
         (buf.events_after(after_seq), buf.state.clone())
     }

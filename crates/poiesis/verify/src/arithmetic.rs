@@ -12,7 +12,7 @@ use crate::error::VerifyError;
 ///
 /// Returns `VerifyError::Eval` if the formula contains unknown characters,
 /// unmatched parentheses, or a division-by-zero.
-pub fn eval(formula: &str) -> Result<f64, VerifyError> {
+pub(crate) fn eval(formula: &str) -> Result<f64, VerifyError> {
     let tokens = tokenize(formula)?;
     let mut pos = 0usize;
     if tokens.is_empty() {

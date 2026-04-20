@@ -36,7 +36,7 @@ static EXPECT_RE: LazyLock<Regex> =
     reason = "compile-time constant regex patterns cannot fail"
 )]
 static CFG_ATTR_ALLOW_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"#\[cfg_attr\s*\([^,]*,\s*allow\s*\(([^)]*)\)\s*\)\s*\]").expect("valid regex")
+    Regex::new(r"#\[cfg_attr\s*\([^,]*,\s*allow\s*\(([^)]*)\)\s*\)\s*\]").expect("valid regex") // INVARIANT: compile-time constant regex pattern
 });
 
 #[expect(

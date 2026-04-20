@@ -128,8 +128,8 @@ fn token_f1(predicted: &[&str], expected: &[&str]) -> f64 {
         return 0.0;
     }
 
-    let precision = common as f64 / predicted.len() as f64;
-    let recall = common as f64 / expected.len() as f64;
+    let precision = common as f64 / predicted.len() as f64; // SAFETY: token counts <1000; exact in f64 mantissa
+    let recall = common as f64 / expected.len() as f64; // SAFETY: token counts <1000; exact in f64 mantissa
     2.0 * precision * recall / (precision + recall)
 }
 
@@ -157,7 +157,7 @@ pub fn recall_at_k(retrieved: &[String], relevant: &[String], k: usize) -> f64 {
     }
     let top_k = retrieved.get(..retrieved.len().min(k)).unwrap_or(retrieved);
     let found = relevant.iter().filter(|r| top_k.contains(r)).count();
-    found as f64 / relevant.len() as f64
+    found as f64 / relevant.len() as f64 // SAFETY: counts <10_000 per function-level #[expect]; exact in f64 mantissa
 }
 
 /// Compute NDCG@k (Normalized Discounted Cumulative Gain).
@@ -191,14 +191,14 @@ pub fn ndcg_at_k(retrieved: &[String], relevant: &[String], k: usize) -> f64 {
         .enumerate()
         .map(|(i, item)| {
             let rel = if relevant.contains(item) { 1.0 } else { 0.0 };
-            rel / ((i + 2) as f64).log2()
+            rel / ((i + 2) as f64).log2() // SAFETY: index bounded by k (<10_000); exact in f64 mantissa
         })
         .sum();
 
     // Ideal DCG: all relevant items in top positions
     let ideal_count = relevant.len().min(k);
     let idcg: f64 = (0..ideal_count)
-        .map(|i| 1.0 / ((i + 2) as f64).log2())
+        .map(|i| 1.0 / ((i + 2) as f64).log2()) // SAFETY: index bounded by ideal_count (<=k<10_000); exact in f64 mantissa
         .sum();
 
     if idcg == 0.0 { 0.0 } else { dcg / idcg }

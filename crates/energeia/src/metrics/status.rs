@@ -199,7 +199,7 @@ fn build_project_summaries(
                     reason = "u64→f64: both counts bounded by SCAN_LIMIT_DISPATCHES (10_000), well below f64 mantissa 2^53"
                 )]
                 {
-                    acc.completed as f64 / acc.total as f64
+                    acc.completed as f64 / acc.total as f64 // SAFETY: counts bounded by SCAN_LIMIT_DISPATCHES
                 }
             } else {
                 0.0

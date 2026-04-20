@@ -56,7 +56,7 @@ pub(crate) fn compute_recall_at_k(
         clippy::cast_precision_loss,
         reason = "count values are small enough for lossless f64 conversion"
     )]
-    let score = found as f64 / total_relevant as f64;
+    let score = found as f64 / total_relevant as f64; // SAFETY: count values small; exact in f64 mantissa
 
     RecallScore {
         k,

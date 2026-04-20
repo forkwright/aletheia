@@ -121,7 +121,7 @@ pub fn compute_health_report(store: &EnergeiaStore, window_days: u32) -> Result<
         )]
         let cutoff = now
             .checked_sub(span)
-            .expect("timestamp subtraction within realistic day range");
+            .expect("timestamp subtraction within realistic day range"); // INVARIANT: span bounded to window_days*24h from current time
         Some(cutoff.as_millisecond())
     } else {
         None
@@ -252,7 +252,7 @@ fn corrective_rate(dispatches: &[&DispatchRecord], sessions: &[&SessionRecord]) 
         clippy::as_conversions,
         reason = "dispatch counts bounded by SCAN_LIMIT_DISPATCHES (10_000), well below f64 mantissa 2^53"
     )]
-    let rate = corrective_dispatch_ids.len() as f64 / total as f64;
+    let rate = corrective_dispatch_ids.len() as f64 / total as f64; // SAFETY: counts bounded by SCAN_LIMIT_DISPATCHES (10_000)
 
     let sample_size = u64::try_from(total).unwrap_or(u64::MAX);
 
@@ -291,7 +291,7 @@ fn stuck_rate(sessions: &[&SessionRecord]) -> HealthMetric {
         clippy::as_conversions,
         reason = "session counts bounded by SCAN_LIMIT_SESSIONS (100_000), well below f64 mantissa 2^53"
     )]
-    let rate = stuck as f64 / total as f64;
+    let rate = stuck as f64 / total as f64; // SAFETY: counts bounded by SCAN_LIMIT_SESSIONS (100_000)
 
     let sample_size = u64::try_from(total).unwrap_or(u64::MAX);
 
@@ -346,7 +346,7 @@ fn qa_false_positive_rate(
         clippy::as_conversions,
         reason = "session counts bounded by SCAN_LIMIT_SESSIONS (100_000), well below f64 mantissa 2^53"
     )]
-    let rate = ci_fail_count as f64 / total as f64;
+    let rate = ci_fail_count as f64 / total as f64; // SAFETY: counts bounded by SCAN_LIMIT_SESSIONS (100_000)
 
     let sample_size = u64::try_from(total).unwrap_or(u64::MAX);
 
@@ -398,7 +398,7 @@ fn fix_agent_success_rate(
         clippy::as_conversions,
         reason = "session counts bounded by SCAN_LIMIT_SESSIONS (100_000), well below f64 mantissa 2^53"
     )]
-    let rate = successes as f64 / total as f64;
+    let rate = successes as f64 / total as f64; // SAFETY: counts bounded by SCAN_LIMIT_SESSIONS (100_000)
 
     let sample_size = u64::try_from(total).unwrap_or(u64::MAX);
 
@@ -446,7 +446,7 @@ fn cycle_time(dispatches: &[&DispatchRecord]) -> HealthMetric {
         clippy::as_conversions,
         reason = "total_ms sums i64 millisecond deltas across at most SCAN_LIMIT_DISPATCHES (10_000) completed dispatches; precision loss well below f64 mantissa 2^53 at practical scale"
     )]
-    let avg_hours = (total_ms as f64 / total as f64) / 3_600_000.0;
+    let avg_hours = (total_ms as f64 / total as f64) / 3_600_000.0; // SAFETY: total_ms bounded by SCAN_LIMIT_DISPATCHES deltas
 
     let sample_size = u64::try_from(total).unwrap_or(u64::MAX);
 
@@ -520,7 +520,7 @@ fn batch_parallelism(dispatches: &[&DispatchRecord], sessions: &[&SessionRecord]
         clippy::as_conversions,
         reason = "total_sessions bounded by SCAN_LIMIT_SESSIONS (100_000) and n bounded by SCAN_LIMIT_DISPATCHES (10_000); both well below f64 mantissa 2^53"
     )]
-    let avg = total_sessions as f64 / n as f64;
+    let avg = total_sessions as f64 / n as f64; // SAFETY: totals bounded by SCAN_LIMIT_SESSIONS / SCAN_LIMIT_DISPATCHES
 
     let sample_size = u64::try_from(n).unwrap_or(u64::MAX);
 
