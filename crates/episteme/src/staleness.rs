@@ -107,29 +107,25 @@ impl StalenessChecker {
         };
 
         let similarity = compute_similarity(&fact.content, source);
-        let status = if similarity >= self.config.fresh_threshold {
-            StalenessStatus::Fresh
+        let (status, explanation) = if similarity >= self.config.fresh_threshold {
+            (
+                StalenessStatus::Fresh,
+                format!("fact grounded in source (similarity={similarity:.2})"),
+            )
         } else if similarity >= self.config.stale_threshold {
-            StalenessStatus::Drifted
-        } else {
-            StalenessStatus::Stale
-        };
-
-        let explanation = match status {
-            StalenessStatus::Fresh => {
-                format!("fact grounded in source (similarity={similarity:.2})")
-            }
-            StalenessStatus::Drifted => {
+            (
+                StalenessStatus::Drifted,
                 format!(
                     "fact partially matches source (similarity={similarity:.2}), may need update"
-                )
-            }
-            StalenessStatus::Stale => {
+                ),
+            )
+        } else {
+            (
+                StalenessStatus::Stale,
                 format!(
                     "fact no longer matches source (similarity={similarity:.2}), likely outdated"
-                )
-            }
-            StalenessStatus::Unreachable => unreachable!(),
+                ),
+            )
         };
 
         StalenessResult {
