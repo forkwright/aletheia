@@ -174,11 +174,8 @@ impl StuckDetector {
     }
 
     fn check_repeated_error(&self) -> Option<StuckSignal> {
-        #[expect(
-            clippy::as_conversions,
-            reason = "u32→usize: threshold values are small, no truncation possible"
-        )]
-        let threshold = self.config.repeated_error_threshold as usize;
+        let threshold_u32 = self.config.repeated_error_threshold;
+        let threshold = usize::try_from(threshold_u32).unwrap_or(usize::MAX);
         if self.history.len() < threshold {
             return None;
         }
@@ -200,12 +197,7 @@ impl StuckDetector {
             Some(StuckSignal {
                 pattern: StuckPattern::RepeatedError {
                     message: first_message.clone(),
-                    #[expect(
-                        clippy::as_conversions,
-                        clippy::cast_possible_truncation,
-                        reason = "usize→u32: threshold originated as u32, roundtrip is lossless"
-                    )]
-                    count: threshold as u32,
+                    count: threshold_u32,
                 },
                 suggestion: format!(
                     "The same error has occurred {threshold} times consecutively. \
@@ -218,11 +210,8 @@ impl StuckDetector {
     }
 
     fn check_same_tool_same_args(&self) -> Option<StuckSignal> {
-        #[expect(
-            clippy::as_conversions,
-            reason = "u32→usize: threshold values are small, no truncation possible"
-        )]
-        let threshold = self.config.same_args_threshold as usize;
+        let threshold_u32 = self.config.same_args_threshold;
+        let threshold = usize::try_from(threshold_u32).unwrap_or(usize::MAX);
         if self.history.len() < threshold {
             return None;
         }
@@ -238,12 +227,7 @@ impl StuckDetector {
             Some(StuckSignal {
                 pattern: StuckPattern::SameToolSameArgs {
                     tool_name: first.tool_name.clone(),
-                    #[expect(
-                        clippy::as_conversions,
-                        clippy::cast_possible_truncation,
-                        reason = "usize→u32: threshold originated as u32, roundtrip is lossless"
-                    )]
-                    count: threshold as u32,
+                    count: threshold_u32,
                 },
                 suggestion: format!(
                     "Tool '{}' has been called with identical arguments {threshold} times. \
@@ -257,11 +241,8 @@ impl StuckDetector {
     }
 
     fn check_alternating_failure(&self) -> Option<StuckSignal> {
-        #[expect(
-            clippy::as_conversions,
-            reason = "u32→usize: threshold values are small, no truncation possible"
-        )]
-        let threshold = self.config.alternating_threshold as usize;
+        let threshold_u32 = self.config.alternating_threshold;
+        let threshold = usize::try_from(threshold_u32).unwrap_or(usize::MAX);
         let required = threshold.checked_mul(2)?;
         if self.history.len() < required {
             return None;
@@ -295,12 +276,7 @@ impl StuckDetector {
                 pattern: StuckPattern::AlternatingFailure {
                     tool_a: a_inv.tool_name.clone(),
                     tool_b: b_inv.tool_name.clone(),
-                    #[expect(
-                        clippy::as_conversions,
-                        clippy::cast_possible_truncation,
-                        reason = "usize→u32: threshold originated as u32, roundtrip is lossless"
-                    )]
-                    cycles: threshold as u32,
+                    cycles: threshold_u32,
                 },
                 suggestion: format!(
                     "Alternating between '{}' and '{}' without progress for {threshold} cycles. \
@@ -314,11 +290,8 @@ impl StuckDetector {
     }
 
     fn check_escalating_retry(&self) -> Option<StuckSignal> {
-        #[expect(
-            clippy::as_conversions,
-            reason = "u32→usize: threshold values are small, no truncation possible"
-        )]
-        let threshold = self.config.escalating_retry_threshold as usize;
+        let threshold =
+            usize::try_from(self.config.escalating_retry_threshold).unwrap_or(usize::MAX);
         if self.history.len() < threshold {
             return None;
         }
@@ -368,15 +341,11 @@ impl StuckDetector {
         let has_gap = span > matching_indices.len() - 1;
 
         if has_gap {
-            #[expect(
-                clippy::as_conversions,
-                clippy::cast_possible_truncation,
-                reason = "usize→u32: match count bounded by history_window which fits in u32"
-            )]
+            let count = u32::try_from(max_entry.3).unwrap_or(u32::MAX);
             Some(StuckSignal {
                 pattern: StuckPattern::EscalatingRetry {
                     tool_name: max_entry.0.to_string(),
-                    count: max_entry.3 as u32,
+                    count,
                 },
                 suggestion: format!(
                     "Tool '{}' has been retried {} times across the history window with the same error. \

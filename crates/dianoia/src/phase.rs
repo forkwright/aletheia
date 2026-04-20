@@ -116,13 +116,11 @@ impl Phase {
                 )
             })
             .count();
-        #[expect(
-            clippy::cast_precision_loss,
-            clippy::as_conversions,
-            reason = "usize→f64: plan counts are small, precision loss is acceptable"
-        )]
-        let pct = done as f64 / self.plans.len() as f64 * 100.0;
-        pct
+        // WHY: u32→f64 is lossless; plan counts saturated to u32::MAX keep the
+        // computation non-`as` and avoid precision-loss casts.
+        let done_u32 = u32::try_from(done).unwrap_or(u32::MAX);
+        let total_u32 = u32::try_from(self.plans.len()).unwrap_or(u32::MAX);
+        f64::from(done_u32) / f64::from(total_u32) * 100.0
     }
 }
 

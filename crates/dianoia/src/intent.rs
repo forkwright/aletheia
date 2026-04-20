@@ -182,7 +182,7 @@ impl Intent {
 
     /// Return `true` if the intent is active: not resolved and not expired.
     #[must_use]
-    pub fn is_active(&self) -> bool {
+    pub(crate) fn is_active(&self) -> bool {
         if self.resolved {
             return false;
         }
@@ -256,7 +256,7 @@ impl IntentStore {
     /// # Errors
     ///
     /// Returns a deserialization error if the store file is malformed.
-    pub fn active_intents(&self) -> Result<Vec<Intent>> {
+    pub(crate) fn active_intents(&self) -> Result<Vec<Intent>> {
         let mut active: Vec<Intent> = self
             .load_all()?
             .into_iter()
