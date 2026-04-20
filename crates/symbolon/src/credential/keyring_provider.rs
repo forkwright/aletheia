@@ -108,3 +108,7 @@ impl CredentialProvider for KeyringCredentialProvider {
         "keyring"
     }
 }
+
+#[cfg(test)]
+#[path = "keyring_provider_tests.rs"]
+mod keyring_provider_tests;
