@@ -16,7 +16,7 @@ path = "src/main.rs"
 
 [dependencies]
 # MCP SDK — pin exact per TECHNOLOGY.md policy (matches diaporeia)
-rmcp = { version = "=1.4.0", features = [
+rmcp = { version = "=1.5.0", features = [
     "server",
     "macros",
     "transport-io",
@@ -44,7 +44,7 @@ taxis = { path = "../taxis" }
 [dev-dependencies]
 # WHY: the `client` rmcp feature enables the `ClientHandler` blanket impl we
 # need to drive the server in-process during integration tests.
-rmcp = { version = "=1.4.0", features = [
+rmcp = { version = "=1.5.0", features = [
     "server",
     "client",
     "macros",
