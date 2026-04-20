@@ -15,6 +15,8 @@ publish = false
 
 [dependencies]
 skene = { path = "../skene" }
+# WHY: secret-wrapping for auth tokens and raw API keys handled in UI state.
+koina = { path = "../../koina" }
 
 # UI framework
 dioxus = { version = "0.7", features = ["desktop", "router"] }

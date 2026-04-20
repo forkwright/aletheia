@@ -285,7 +285,7 @@ pub(crate) fn handle_confirm_delete(app: &mut App, confirmed: bool) {
                 app.viewport.success_toast = Some(ErrorToast::new("Deleted".to_string()));
             }
             Err(e) => {
-                app.viewport.error_toast = Some(ErrorToast::new(format!("Delete failed: {e}")));
+                app.viewport.error_toast = Some(ErrorToast::new(format!("Removal failed: {e}")));
             }
         }
     }

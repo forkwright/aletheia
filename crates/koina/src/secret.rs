@@ -36,6 +36,21 @@ impl Clone for SecretString {
     }
 }
 
+impl Default for SecretString {
+    /// An empty `SecretString`.
+    ///
+    /// WHY: many transient-state structs derive `Default`. Without this
+    /// impl every call site that uses `SecretString` inside a
+    /// `#[derive(Default)]` type would need a manual `Default` body.
+    /// The empty inner string carries no secret value, so the semantics
+    /// match `String::default()`.
+    fn default() -> Self {
+        Self {
+            inner: String::new(),
+        }
+    }
+}
+
 impl PartialEq for SecretString {
     fn eq(&self, other: &Self) -> bool {
         self.inner == other.inner

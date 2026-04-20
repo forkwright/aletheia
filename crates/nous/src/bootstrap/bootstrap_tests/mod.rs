@@ -17,9 +17,9 @@ pub(super) fn setup_oikos(nous_id: &str, files: &[(&str, &str)]) -> (TempDir, Oi
     let dir = TempDir::new().expect("create temp dir");
     let root = dir.path();
 
-    fs::create_dir_all(root.join(format!("nous/{nous_id}"))).expect("create nous dir");
-    fs::create_dir_all(root.join("shared")).expect("create shared dir");
-    fs::create_dir_all(root.join("theke")).expect("create theke dir");
+    fs::create_dir_all(root.join(format!("nous/{nous_id}"))).expect("mkdir nous failed");
+    fs::create_dir_all(root.join("shared")).expect("mkdir shared failed");
+    fs::create_dir_all(root.join("theke")).expect("mkdir theke failed");
 
     for (name, content) in files {
         if let Some(stripped) = name.strip_prefix("theke:") {

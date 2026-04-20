@@ -255,7 +255,7 @@ pub(crate) async fn handle_confidence_submit(app: &mut App) {
                     f.confidence = prev_conf;
                 }
                 app.viewport.error_toast =
-                    Some(ErrorToast::new(format!("Confidence update failed: {e}")));
+                    Some(ErrorToast::new(format!("Confidence write failed: {e}")));
             }
         }
     }
