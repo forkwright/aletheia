@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.21.1](https://github.com/forkwright/aletheia/compare/v0.21.0...v0.21.1) (2026-04-20)
+
+
+### Documentation
+
+* mechanical lint cleanup -- writing + standards + TOML/SHELL/YAML/PY text ([#3747](https://github.com/forkwright/aletheia/issues/3747)) ([73ec97d](https://github.com/forkwright/aletheia/commit/73ec97dcacb06d23eb10dc56401f57820ea8d6b2))
+
 ## [0.21.0](https://github.com/forkwright/aletheia/compare/v0.20.0...v0.21.0) (2026-04-20)
 
 
