@@ -14,9 +14,9 @@
 
 ## Public API surface
 
-- `hermeneus::provider` — `LlmProvider` trait, `ProviderRegistry`, `ModelPricing`
-- `hermeneus::types` — `CompletionRequest`, `CompletionResponse`, `Message`, `ContentBlock`
-- `hermeneus::anthropic` — `AnthropicProvider`, `StreamEvent`, `FallbackConfig`
+- `hermeneus::provider` - `LlmProvider` trait, `ProviderRegistry`, `ModelPricing`
+- `hermeneus::types` - `CompletionRequest`, `CompletionResponse`, `Message`, `ContentBlock`
+- `hermeneus::anthropic` - `AnthropicProvider`, `StreamEvent`, `FallbackConfig`
 
 ## When to look here
 

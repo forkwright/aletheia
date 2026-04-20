@@ -1,6 +1,6 @@
 # eidos
 
-**Purpose:** Shared knowledge types for the memory layer. Zero workspace dependencies — pure data types.
+**Purpose:** Shared knowledge types for the memory layer. Zero workspace dependencies - pure data types.
 
 ## Key types
 
@@ -14,8 +14,8 @@
 
 ## Public API surface
 
-- `eidos::knowledge` — `Fact`, `Entity`, `Relationship`, `EmbeddedChunk`, `EpistemicTier`, `FactType`, `ForgetReason`
-- `eidos::id` — `FactId`, `EntityId`, `EmbeddingId` validated newtype wrappers
+- `eidos::knowledge` - `Fact`, `Entity`, `Relationship`, `EmbeddedChunk`, `EpistemicTier`, `FactType`, `ForgetReason`
+- `eidos::id` - `FactId`, `EntityId`, `EmbeddingId` validated newtype wrappers
 
 ## When to look here
 

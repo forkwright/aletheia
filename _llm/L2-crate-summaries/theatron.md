@@ -12,7 +12,7 @@
 
 ## Public API surface
 
-- `theatron::*` — re-exports skene's public types; no additional logic
+- `theatron::*` - re-exports skene's public types; no additional logic
 - Sub-crates accessed directly: `aletheia-skene`, `aletheia-koilon`, `aletheia-proskenion`
 
 ## When to look here

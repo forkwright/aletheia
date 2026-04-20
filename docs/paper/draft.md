@@ -1,13 +1,13 @@
 # Aletheia: Datalog, Kernel Sandboxing, and Multi-Signal Recall for Persistent Agent Memory
 
-> Draft technical paper — ready for review
+> Draft technical paper - ready for review
 > Target: arXiv preprint + conference submission
 
 ---
 
 ## Abstract
 
-Aletheia is a persistent agent runtime that embeds knowledge graph, vector search, full-text retrieval, and kernel-level sandboxing in a single Rust binary. Three design choices distinguish it from existing memory systems. First, it uses Datalog as the knowledge graph substrate instead of property graphs, which enables recursive inference and rule-based reasoning within the recall pipeline. Second, it integrates Landlock LSM, seccomp BPF, and Linux network namespaces into the agent tool loop, providing sandboxing comparable to OpenAI Codex and NVIDIA OpenShell but without external orchestration. Third, it scores memory recall with six signals — vector similarity, BM25 full-text, graph intelligence, temporal decay, epistemic tier, and access frequency — combined through a tunable weighted formula. The system runs as one self-contained process with zero external services. This paper describes the architecture, evaluates the recall pipeline against published benchmarks, and compares Aletheia to Zep, Letta, Hindsight, and Mem0.
+Aletheia is a persistent agent runtime that embeds knowledge graph, vector search, full-text retrieval, and kernel-level sandboxing in a single Rust binary. Three design choices distinguish it from existing memory systems. First, it uses Datalog as the knowledge graph substrate instead of property graphs, which enables recursive inference and rule-based reasoning within the recall pipeline. Second, it integrates Landlock LSM, seccomp BPF, and Linux network namespaces into the agent tool loop, providing sandboxing comparable to OpenAI Codex and NVIDIA OpenShell but without external orchestration. Third, it scores memory recall with six signals - vector similarity, BM25 full-text, graph intelligence, temporal decay, epistemic tier, and access frequency - combined through a tunable weighted formula. The system runs as one self-contained process with zero external services. This paper describes the architecture, evaluates the recall pipeline against published benchmarks, and compares Aletheia to Zep, Letta, Hindsight, and Mem0.
 
 ---
 
@@ -24,7 +24,7 @@ This paper makes four contributions:
 1. **Datalog as a knowledge graph substrate for agent memory.** We show that Datalog's recursive queries and rule-based inference provide expressiveness that property graphs cannot match, and we quantify the overhead.
 2. **Kernel-level sandbox integration in a persistent agent server.** We describe how Landlock, seccomp, and network namespaces apply to every tool execution without containers or root privileges.
 3. **6-factor multi-signal recall scoring.** We present a weighted combination of vector similarity, BM25, graph intelligence, temporal decay, epistemic tier, and access frequency, with per-nous tunable weights.
-4. **Single-binary architectural sovereignty.** We demonstrate that the full stack — KG, vectors, BM25, agent loop, sandbox, and SSE streaming — runs in one process with no external dependencies.
+4. **Single-binary architectural sovereignty.** We demonstrate that the full stack - KG, vectors, BM25, agent loop, sandbox, and SSE streaming - runs in one process with no external dependencies.
 
 ---
 
@@ -340,9 +340,9 @@ This matters for persistent agents. A long-running agent server that executes hu
 
 We recommend a two-stage publication strategy:
 
-1. **arXiv preprint** — immediate. Establishes priority for the Datalog substrate, sandbox integration, and 6-factor recall. The system is running in production; the contributions are mature enough to claim.
+1. **arXiv preprint** - immediate. Establishes priority for the Datalog substrate, sandbox integration, and 6-factor recall. The system is running in production; the contributions are mature enough to claim.
 
-2. **Conference submission** — follow within 6 months. Two tracks are appropriate:
+2. **Conference submission** - follow within 6 months. Two tracks are appropriate:
    - **Systems:** OSDI, SOSP, EuroSys, or ATC for the single-binary architecture, sandbox design, and embedded database contributions.
    - **AI/ML:** NeurIPS or ICML workshop for the memory model, recall scoring, and benchmark evaluation.
 
@@ -352,7 +352,7 @@ The agent-specific venues (AAMAS, agent workshops) are also suitable if the eval
 
 ## 8. Conclusion
 
-Aletheia demonstrates that three unconventional design choices — Datalog for knowledge representation, kernel-level sandboxing in the agent loop, and 6-factor recall scoring — combine into a deployable persistent agent runtime. The system runs as a single binary with no external services, making it suitable for sovereign deployments where data never leaves the operator's machine. The benchmark harness is ready; live evaluation will quantify the recall quality against published baselines. We invite the research community to inspect the open-source implementation and reproduce the results.
+Aletheia demonstrates that three unconventional design choices - Datalog for knowledge representation, kernel-level sandboxing in the agent loop, and 6-factor recall scoring - combine into a deployable persistent agent runtime. The system runs as a single binary with no external services, making it suitable for sovereign deployments where data never leaves the operator's machine. The benchmark harness is ready; live evaluation will quantify the recall quality against published baselines. We invite the research community to inspect the open-source implementation and reproduce the results.
 
 ---
 

@@ -86,10 +86,10 @@ impl EnergeiaBackend {
 > 
 > # Implementations
 > 
-> - [`EnergeiaBackend`] — uses energeia's [`Orchestrator`](crate::orchestrator::Orchestrator),
+> - [`EnergeiaBackend`] - uses energeia's [`Orchestrator`](crate::orchestrator::Orchestrator),
 >   steward service, and fjall-backed metrics. This is the production backend
 >   in aletheia. Requires the `storage-fjall` feature.
-> - `PhronesisBackend` (in kanon) — wraps kanon's phronesis dispatch engine.
+> - `PhronesisBackend` (in kanon) - wraps kanon's phronesis dispatch engine.
 >   Exists for backwards compatibility during the migration period.
 ```rust
 pub trait DispatchBackend : Send + Sync {
@@ -907,10 +907,10 @@ pub fn record_dispatch (project: &str, status: &str)
 
 > Record a completed agent session.
 > 
-> - `cost_usd` — session cost; silently skipped when zero.
-> - `duration_ms` — wall-clock duration in milliseconds.
-> - `model` — LLM model used (e.g., "claude-3-5-sonnet").
-> - `blast_radius` — blast radius identifier for cost attribution.
+> - `cost_usd` - session cost; silently skipped when zero.
+> - `duration_ms` - wall-clock duration in milliseconds.
+> - `model` - LLM model used (e.g., "claude-3-5-sonnet").
+> - `blast_radius` - blast radius identifier for cost attribution.
 ```rust
 pub fn record_session (
     project: &str,

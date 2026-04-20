@@ -14,9 +14,9 @@
 
 ## Public API surface
 
-- `aletheia::main` — binary entry point (not a library; no public API surface)
-- `crates/aletheia/src/commands/` — one module per CLI subcommand
-- `crates/aletheia/src/dispatch.rs` — inbound message dispatcher (agora → nous routing)
+- `aletheia::main` - binary entry point (not a library; no public API surface)
+- `crates/aletheia/src/commands/` - one module per CLI subcommand
+- `crates/aletheia/src/dispatch.rs` - inbound message dispatcher (agora → nous routing)
 
 ## When to look here
 

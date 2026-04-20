@@ -29,22 +29,22 @@ Sorted by criticality (highest data-sovereignty impact first).
 ### Usage categories
 
 - **Always-on (when configured):**
-  - `api.anthropic.com` — every agent turn if Anthropic is the provider.
-  - signal-cli daemon — when the Signal channel is enabled.
-  - `console.anthropic.com` — background OAuth refresh when using Claude Code credentials.
+  - `api.anthropic.com` - every agent turn if Anthropic is the provider.
+  - signal-cli daemon - when the Signal channel is enabled.
+  - `console.anthropic.com` - background OAuth refresh when using Claude Code credentials.
 
 - **Operator-triggered:**
-  - `claude` CLI subprocess — triggered by LLM calls when CC provider is selected.
-  - Anthropic server-side `web_search` — triggered by the LLM during inference.
-  - Configurable OAuth PKCE / device code — triggered by credential login commands.
-  - `api.github.com` — triggered by `issue_scan` / `issue_triage` tool use.
-  - Arbitrary URLs (`web_fetch`) — triggered by `web_fetch` tool use.
-  - External tool endpoints — triggered by configured external tool invocations.
+  - `claude` CLI subprocess - triggered by LLM calls when CC provider is selected.
+  - Anthropic server-side `web_search` - triggered by the LLM during inference.
+  - Configurable OAuth PKCE / device code - triggered by credential login commands.
+  - `api.github.com` - triggered by `issue_scan` / `issue_triage` tool use.
+  - Arbitrary URLs (`web_fetch`) - triggered by `web_fetch` tool use.
+  - External tool endpoints - triggered by configured external tool invocations.
 
 - **One-time:**
-  - HuggingFace Hub — first download when the `candle` embedding provider initializes; cached thereafter.
-  - Qdrant — only during `migrate-memory` CLI command (`migrate-qdrant` feature).
-  - Tailscale local status query — once per pylon server startup.
+  - HuggingFace Hub - first download when the `candle` embedding provider initializes; cached thereafter.
+  - Qdrant - only during `migrate-memory` CLI command (`migrate-qdrant` feature).
+  - Tailscale local status query - once per pylon server startup.
 
 ### Configurable / opt-out
 
@@ -93,11 +93,11 @@ request is scrubbed before it leaves the process:
 
 | Control | Default | Issue | Behaviour |
 |---------|---------|-------|-----------|
-| Training opt-out header | Always on | #3406 | `anthropic-disable-training: true` and `anthropic-training-opt-out: true` are sent on every request. Not configurable — sovereignty default. |
+| Training opt-out header | Always on | #3406 | `anthropic-disable-training: true` and `anthropic-training-opt-out: true` are sent on every request. Not configurable - sovereignty default. |
 | Prompt cache markers | Disabled | #3410 | No `cache_control` markers on any block. Operator system prompts, tool definitions, and conversation history never enter Anthropic's prompt cache. Opt in via `[anthropic] promptCacheMode = "ephemeral"` if the cost tradeoff is acceptable. |
 | CC attribution fingerprint | Stripped | #3409 | The 3-char fingerprint slot in the attribution block is pinned to `000`; the upstream CC algorithm would otherwise hash operator message content into it. |
 | `X-Claude-Code-Session-Id` | Randomized per request | #3409 | Fresh UUID on every call so Anthropic cannot correlate requests to a persistent operator session. Upstream CC sends a stable per-process UUID. |
-| `User-Agent`, `anthropic-beta`, `anthropic-version`, `x-app` | Preserved | — | Required for OAuth tier access; values are static and do not carry operator identity. |
+| `User-Agent`, `anthropic-beta`, `anthropic-version`, `x-app` | Preserved | - | Required for OAuth tier access; values are static and do not carry operator identity. |
 
 ## No telemetry
 

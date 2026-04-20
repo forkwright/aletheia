@@ -14,9 +14,9 @@
 
 ## Public API surface
 
-- `proskenion::run` — entry point: initializes Dioxus app and starts desktop window
-- `proskenion::state` — `AppState`, `EventState`, reactive state modules
-- `proskenion::services` — background services: SSE, streaming, cache, file watcher, keybindings
+- `proskenion::run` - entry point: initializes Dioxus app and starts desktop window
+- `proskenion::state` - `AppState`, `EventState`, reactive state modules
+- `proskenion::services` - background services: SSE, streaming, cache, file watcher, keybindings
 
 ## When to look here
 

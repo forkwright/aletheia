@@ -1977,7 +1977,7 @@ pub enum IndicatorColor {
 > 
 > Initialises log-to-file, loads persisted window state, and configures the
 > desktop window before showing it. Closing the window exits the process
-> cleanly — no minimize-to-tray, no hidden background process.
+> cleanly - no minimize-to-tray, no hidden background process.
 > 
 > Pass `verbose = true` (e.g. from a `--verbose` CLI flag) to also emit logs
 > to stderr. When `RUST_LOG` is set in the environment stderr output is added

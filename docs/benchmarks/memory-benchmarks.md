@@ -31,15 +31,15 @@ BenchmarkRunner (crates/eval/src/benchmarks/runner.rs)
 
 ### Per-question flow (live runner)
 
-1. `POST /api/v1/sessions` — create a fresh session keyed to the question
+1. `POST /api/v1/sessions` - create a fresh session keyed to the question
 2. Replay every **user turn** from the haystack sessions as messages
    (assistant turns are skipped to avoid contaminating the answer signal)
-3. `POST /api/v1/sessions/{id}/messages` — ask the benchmark question
+3. `POST /api/v1/sessions/{id}/messages` - ask the benchmark question
 4. Collect the SSE stream; extract concatenated `text_delta` events
 5. Score the answer with `score_answer(actual, expected_answers)`
 6. Optionally `DELETE /api/v1/sessions/{id}` to reset memory between questions
 
-Per-question errors are logged and scored as zero — a network hiccup does
+Per-question errors are logged and scored as zero - a network hiccup does
 not abort the entire run. The runner produces a `BenchmarkReport` with
 `exact_match_rate()`, `mean_f1()`, and a `per_category()` breakdown.
 
@@ -195,7 +195,7 @@ Configure `BenchmarkRunnerConfig` for production runs:
 | `session_key_prefix` | `"bench"` | Include date: `"bench-20260412"` |
 | `question_timeout` | 120s | Increase to 300s for long haystack ingestion |
 | `max_questions` | all | Use `Some(50)` for a fast representive sample |
-| `close_between_questions` | true | Keep true — resets memory between questions for clean isolation |
+| `close_between_questions` | true | Keep true - resets memory between questions for clean isolation |
 | `judge` | `None` | Set to an `LlmJudgeConfig` for LLM-as-judge scoring |
 | `retrieval_k` | `None` | Set to `Some(k)` to compute Recall@k / NDCG@k from the knowledge store |
 
@@ -208,9 +208,9 @@ RUST_LOG=info cargo run -p dokimion ... 2>&1 | tee results/run.log
 ```
 
 Key log lines to watch:
-- `"starting benchmark run"` — includes `total` and `limit` counts
-- `"benchmark question failed"` — per-question errors with cause
-- `"benchmark run complete"` — final `em_rate` and `mean_f1`
+- `"starting benchmark run"` - includes `total` and `limit` counts
+- `"benchmark question failed"` - per-question errors with cause
+- `"benchmark run complete"` - final `em_rate` and `mean_f1`
 
 ---
 
@@ -292,7 +292,7 @@ Per-category breakdown (Hindsight / GPT-4 + mem):
 
 ## Results
 
-*Not yet collected — see [Prerequisites](#prerequisites).*
+*Not yet collected - see [Prerequisites](#prerequisites).*
 
 When results are available, record them here:
 
@@ -300,13 +300,13 @@ When results are available, record them here:
 
 | Date | Aletheia version | Model | EM (%) | Mean F1 | Notes |
 |---|---|---|---|---|---|
-| — | — | — | — | — | Awaiting run |
+| - | - | - | - | - | Awaiting run |
 
 ### LoCoMo
 
 | Date | Aletheia version | Model | F1 (%) | Notes |
 |---|---|---|---|---|
-| — | — | — | — | Awaiting run |
+| - | - | - | - | Awaiting run |
 
 ---
 
@@ -320,7 +320,7 @@ When results land, compare against the [Published SOTA baselines](#published-sot
 - `temporal-reasoning` above 60%: Bayesian surprise and staleness features
   (#2848, #2852) are contributing
 - F1 above EM: the model is producing correct-content answers that
-  fail normalized exact match — consider relaxing the scorer or accepting
+  fail normalized exact match - consider relaxing the scorer or accepting
   contains as partial credit
 
 **Weaknesses to watch for:**

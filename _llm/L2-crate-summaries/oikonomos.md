@@ -14,9 +14,9 @@
 
 ## Public API surface
 
-- `daemon::runner` — `TaskRunner` lifecycle (start, register, stop)
-- `daemon::schedule` — `TaskDef`, `Schedule`, `BuiltinTask`
-- `daemon::bridge` — `DaemonBridge` trait (implemented in aletheia crate)
+- `daemon::runner` - `TaskRunner` lifecycle (start, register, stop)
+- `daemon::schedule` - `TaskDef`, `Schedule`, `BuiltinTask`
+- `daemon::bridge` - `DaemonBridge` trait (implemented in aletheia crate)
 
 ## When to look here
 

@@ -10,7 +10,7 @@
 
 ## Public API surface
 
-- `poiesis_slides::PptxRenderer` — implements `Renderer`, produces PPTX bytes
+- `poiesis_slides::PptxRenderer` - implements `Renderer`, produces PPTX bytes
 
 ## When to look here
 

@@ -14,9 +14,9 @@
 
 ## Public API surface
 
-- `dokimion::scenario` — `Scenario` trait, `ScenarioMeta`, `ScenarioOutcome`
-- `dokimion::runner` — `ScenarioRunner`, `RunConfig`, `RunReport`
-- `dokimion::client` — `EvalClient` for live instance API calls
+- `dokimion::scenario` - `Scenario` trait, `ScenarioMeta`, `ScenarioOutcome`
+- `dokimion::runner` - `ScenarioRunner`, `RunConfig`, `RunReport`
+- `dokimion::client` - `EvalClient` for live instance API calls
 
 ## When to look here
 

@@ -14,9 +14,9 @@
 
 ## Public API surface
 
-- `organon::registry` — `ToolExecutor` trait, `ToolRegistry`; call `register_all()` to load builtins
-- `organon::types` — `ToolDef`, `ToolInput`, `ToolResult`, `ToolContext`, `ToolServices`
-- `organon::sandbox` — `SandboxConfig` for process-level isolation
+- `organon::registry` - `ToolExecutor` trait, `ToolRegistry`; call `register_all()` to load builtins
+- `organon::types` - `ToolDef`, `ToolInput`, `ToolResult`, `ToolContext`, `ToolServices`
+- `organon::sandbox` - `SandboxConfig` for process-level isolation
 
 ## When to look here
 

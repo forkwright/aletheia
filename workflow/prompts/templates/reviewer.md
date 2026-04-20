@@ -87,5 +87,5 @@ Reasons:
 # Task
 
 Review PR #[number] against the criteria above. Emit the output in the format
-specified. Do not suggest improvements outside the stated criteria — scope that
+specified. Do not suggest improvements outside the stated criteria - scope that
 to a follow-up issue.

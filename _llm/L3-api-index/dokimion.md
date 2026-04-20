@@ -705,7 +705,7 @@ pub fn append_jsonl (path: &Path, records: &[EvalRecord]) -> Result<()>
 
 > Provider that returns all built-in dokimion scenarios.
 > 
-> This is the default when no custom provider is specified — it wraps
+> This is the default when no custom provider is specified - it wraps
 > [`scenarios::all_scenarios()`](crate::scenarios::all_scenarios).
 ```rust
 pub struct BuiltinProvider;

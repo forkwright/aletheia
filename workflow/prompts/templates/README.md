@@ -16,7 +16,7 @@ point, not a fill-in-the-blank form. Adapt to the specific task.
 ## How to use
 
 1. Copy the relevant template.
-2. Fill in the `[BRACKETED]` fields — these are required.
+2. Fill in the `[BRACKETED]` fields - these are required.
 3. Fill in the optional fields (marked with `# optional`) if you have the
    information. Leave them out otherwise; the worker will discover them.
 4. Place the filled prompt in `workflow/prompts/<project>/` with a numeric

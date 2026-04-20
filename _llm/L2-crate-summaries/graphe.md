@@ -14,9 +14,9 @@
 
 ## Public API surface
 
-- `graphe::store` — `SessionStore` CRUD: create, get, append messages, list, archive
-- `graphe::types` — `Session`, `Message`, `UsageRecord`, `Role`, `SessionType`, `SessionStatus`
-- `graphe::portability` — `AgentFile` for cross-runtime agent export/import
+- `graphe::store` - `SessionStore` CRUD: create, get, append messages, list, archive
+- `graphe::types` - `Session`, `Message`, `UsageRecord`, `Role`, `SessionType`, `SessionStatus`
+- `graphe::portability` - `AgentFile` for cross-runtime agent export/import
 
 ## When to look here
 

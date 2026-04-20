@@ -14,7 +14,7 @@
 
 ## Public API surface
 
-- `mneme::*` — single import prefix for all memory-layer types; replaces four separate crate imports
+- `mneme::*` - single import prefix for all memory-layer types; replaces four separate crate imports
 - Feature gate `mneme-engine` enables krites `Db` and related Datalog types
 
 ## When to look here
