@@ -55,7 +55,7 @@ unicode-normalization = { version = "0.1", default-features = false }
 aho-corasick = { version = "1.1", default-features = false, features = ["std"] }
 rust-stemmers = { version = "1.2", default-features = false }
 bytemuck = { version = "1.25", default-features = false }
-lru = { version = "0.16", default-features = false }
+lru = { version = "0.17", default-features = false }
 rustix = { workspace = true }
 snafu = { workspace = true }
 tracing = { workspace = true }
