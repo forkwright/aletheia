@@ -2,7 +2,7 @@
 
 Crate path: `crates/poiesis/core`
 
-Public API signatures extracted from source. Doc comments shown above each signature.
+Public API signatures extracted from source. Each signature is preceded by its doc comment.
 For implementation context, read the source directly (`L4`).
 
 ## `src/block.rs`
@@ -145,11 +145,5 @@ pub enum Span {
         /// Destination URL.
         url: String,
     },
-}
-```
-
-```rust
-impl Span {
-    pub fn text (&self) -> &str;
 }
 ```

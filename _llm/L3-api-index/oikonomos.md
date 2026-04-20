@@ -2,7 +2,7 @@
 
 Crate path: `crates/daemon`
 
-Public API signatures extracted from source. Doc comments shown above each signature.
+Public API signatures extracted from source. Each signature is preceded by its doc comment.
 For implementation context, read the source directly (`L4`).
 
 ## `src/bridge/bridge_impl.rs`
@@ -181,6 +181,14 @@ pub enum Error {
     BlockingJoin {
         context: String,
         source: tokio::task::JoinError,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Invariant violation during maintenance (situation the caller believed impossible).
+    #[snafu(display("maintenance invariant violated: {context}"))]
+    MaintenanceInvariant {
+        context: String,
         #[snafu(implicit)]
         location: snafu::Location,
     },
@@ -638,10 +646,6 @@ impl ProbeSet {
     pub fn is_empty (&self) -> bool;
     pub fn iter (&self) -> impl Iterator<Item = &Probe>;
     pub fn run_probe (probe: &Probe, response: &str) -> ProbeResult;
-    pub fn evaluate_all <'a> (
-        &self,
-        responses: impl Fn(&str) -> Option<&'a str>,
-    ) -> Vec<ProbeResult>;
 }
 ```
 

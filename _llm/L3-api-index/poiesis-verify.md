@@ -2,20 +2,8 @@
 
 Crate path: `crates/poiesis/verify`
 
-Public API signatures extracted from source. Doc comments shown above each signature.
+Public API signatures extracted from source. Each signature is preceded by its doc comment.
 For implementation context, read the source directly (`L4`).
-
-## `src/arithmetic.rs`
-
-> Evaluate an arithmetic formula string and return the f64 result.
-> 
-> # Errors
-> 
-> Returns `VerifyError::Eval` if the formula contains unknown characters,
-> unmatched parentheses, or a division-by-zero.
-```rust
-pub fn eval (formula: &str) -> Result<f64, VerifyError>
-```
 
 ## `src/error.rs`
 

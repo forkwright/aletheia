@@ -2,7 +2,7 @@
 
 Crate path: `crates/basanos`
 
-Public API signatures extracted from source. Doc comments shown above each signature.
+Public API signatures extracted from source. Each signature is preceded by its doc comment.
 For implementation context, read the source directly (`L4`).
 
 ## `src/error.rs`
@@ -33,11 +33,6 @@ pub enum Error {
         location: snafu::Location,
     },
 }
-```
-
-> Shorthand for fallible operations.
-```rust
-pub type Result<T> = std::result::Result<T, Error>;
 ```
 
 ## `src/rules/mod.rs`

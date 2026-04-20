@@ -2,7 +2,7 @@
 
 Crate path: `crates/nous`
 
-Public API signatures extracted from source. Doc comments shown above each signature.
+Public API signatures extracted from source. Each signature is preceded by its doc comment.
 For implementation context, read the source directly (`L4`).
 
 ## `src/actor/mod.rs`
@@ -159,7 +159,7 @@ pub type DeploymentTarget = String;
 
 > Sensitivity classification of a fact that was filtered from recall.
 > 
-> WHY(stub): Same as [`DeploymentTarget`] - #3404 owns the canonical enum.
+> WHY(stub): Same as [`DeploymentTarget`]  -  #3404 owns the canonical enum.
 > The audit log keeps the field in the schema now so `PromptAuditRecord` is
 > stable; the filtered-facts vector defaults to empty until the filter lands.
 ```rust
@@ -991,10 +991,10 @@ pub fn is_transient_llm_error (err: &error::Error) -> bool
 > 
 > # Parameters
 > 
-> - `nous_id` - agent identifier used for log context.
-> - `session_id` - session identifier used for log context.
-> - `original_error` - the transient error that triggered degradation.
-> - `recent_distillation` - most recent distillation summary for this session,
+> - `nous_id`  -  agent identifier used for log context.
+> - `session_id`  -  session identifier used for log context.
+> - `original_error`  -  the transient error that triggered degradation.
+> - `recent_distillation`  -  most recent distillation summary for this session,
 >   if any. Callers should pass `None` when no store is available or when the
 >   session has never been distilled.
 ```rust
@@ -1604,6 +1604,7 @@ impl NousManager {
         pipeline_config: PipelineConfig,
     ) -> crate::error::Result<NousHandle>;
     pub fn get (&self, nous_id: &str) -> Option<&NousHandle>;
+    pub fn secret_vault (&self) -> Option<&hermeneus::secret::SecretVault>;
     pub fn get_config (&self, nous_id: &str) -> Option<&NousConfig>;
     pub fn configs (&self) -> Vec<&NousConfig>;
     pub async fn check_health (&self) -> BTreeMap<String, ActorHealth>;

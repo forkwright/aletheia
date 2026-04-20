@@ -2,5 +2,5 @@
 
 Crate path: `crates/integration-tests`
 
-Public API signatures extracted from source. Doc comments shown above each signature.
+Public API signatures extracted from source. Each signature is preceded by its doc comment.
 For implementation context, read the source directly (`L4`).

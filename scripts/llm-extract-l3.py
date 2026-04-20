@@ -64,6 +64,29 @@ PUB_ITEM_TYPES = {
 DOC_COMMENT_TYPES = {"line_comment"}
 
 
+# Source rustdocs carry mixed unicode punctuation; the `_llm/L3-api-index`
+# corpus must stay ASCII-clean (kanon basanos `WRITING/em-dash` +
+# `WRITING/ellipsis` + smart-quote rules). Normalize at render so the
+# output is independent of source-rustdoc hygiene.
+_UNICODE_TO_ASCII: dict[str, str] = {
+    "\u2014": " - ",   # em dash
+    "\u2013": "-",      # en dash
+    "\u2026": "...",    # ellipsis
+    "\u2018": "'",      # left single quote
+    "\u2019": "'",      # right single quote / apostrophe
+    "\u201c": '"',      # left double quote
+    "\u201d": '"',      # right double quote
+    "\u2212": "-",      # minus sign
+    "\u00a0": " ",      # non-breaking space
+}
+
+
+def _ascii_normalize(text: str) -> str:
+    for src, dst in _UNICODE_TO_ASCII.items():
+        text = text.replace(src, dst)
+    return text
+
+
 # ---------------------------------------------------------------------------
 # Data structures
 # ---------------------------------------------------------------------------
@@ -84,6 +107,7 @@ class PublicItem:
             stripped = comment.strip()
             if stripped.startswith("///"):
                 stripped = stripped[3:]
+            stripped = _ascii_normalize(stripped)
             parts.append(f">{stripped}" if stripped.startswith(" ") else f"> {stripped}")
         doc_block = "\n".join(parts)
         sig_block = f"```rust\n{self.signature}\n```"
@@ -472,7 +496,7 @@ def render_crate_markdown(idx: CrateIndex) -> str:
         "",
         f"Crate path: `{idx.path}`",
         "",
-        "Public API signatures extracted from source. Doc comments shown above each signature.",
+        "Public API signatures extracted from source. Each signature is preceded by its doc comment.",
         "For implementation context, read the source directly (`L4`).",
         "",
     ]
