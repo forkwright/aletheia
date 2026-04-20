@@ -49,57 +49,16 @@ jobs:
       - name: cargo fmt --check
         run: cargo fmt --all -- --check
 
-  check-clippy-test:
-    # WHY: single job per OS runs check, clippy, and test sharing one target/
-    # cache. Splitting them across jobs would rebuild the workspace 3× per
-    # matrix entry. ubuntu and macos run in parallel — fail-fast: false so a
-    # macOS failure doesn't cancel the Linux job.
-    #
-    # macOS notes (#3390):
-    # - rusqlite uses the `bundled` feature (statically compiles sqlite3) so
-    #   no libsqlite3-dev system dep is needed.
-    # - landlock + seccompiler are Linux-only deps declared under
-    #   [target.'cfg(target_os = "linux")'.dependencies] in organon/Cargo.toml
-    #   so they are simply absent on macOS — no feature flag needed.
-    # - All sandbox/systemd tests are already gated with
-    #   #[cfg(target_os = "linux")] or #[cfg(unix)] in source.
-    name: ${{ matrix.name }} (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: check + clippy + test
-            os: ubuntu-latest
-            features: test-core
-          - name: check + clippy + test
-            os: macos-latest
-            features: test-core
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-        with:
-          persist-credentials: false
-
-      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
-        with:
-          components: clippy
-
-      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
-        with:
-          # WHY: one cache per OS so macOS (when added) doesn't clobber Linux.
-          key: ${{ matrix.os }}-${{ matrix.features }}
-
-      - name: cargo check --workspace --features ${{ matrix.features }}
-        run: cargo check --workspace --features ${{ matrix.features }} --all-targets
-
-      - name: cargo clippy --workspace --features ${{ matrix.features }} -- -D warnings
-        # WHY: RUSTFLAGS already sets -D warnings, but pass it to clippy
-        # explicitly too so the intent is local to the step.
-        run: cargo clippy --workspace --features ${{ matrix.features }} --all-targets -- -D warnings
-
-      - name: cargo test --workspace --features ${{ matrix.features }}
-        run: cargo test --workspace --features ${{ matrix.features }} --no-fail-fast
+  # WHY: the workspace check + clippy + test job retired 2026-04-20 as part
+  # of the Phase 05e forge-CI cutover. The `kanon-server` forge at
+  # http://127.0.0.1:7878 now runs `cargo fmt + check + clippy -D warnings +
+  # nextest` per `.kanon-ci.toml`; every PR's sha triggers a forge run via
+  # the post-receive hook. The fmt job above stays as a fast GitHub-side
+  # posture check (third-party eyes, belt-and-suspenders) alongside cargo
+  # audit / cargo deny / SonarCloud / PII Scan. Online-tests (candle) still
+  # live in GHA below because they need HF network access that the local
+  # forge runner blocks. See `.kanon-ci.toml` + `docs/RELEASING.md` for the
+  # canonical Rust gate.
 
   # WHY: network-dependent candle tests download model weights from
   # huggingface.co at runtime (see #3683). macOS GitHub runners intermittently
