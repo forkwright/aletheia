@@ -525,12 +525,11 @@ fn compute_calibration_curve(points: &[(f64, bool)]) -> Vec<CalibrationBin> {
     let mut bins = Vec::with_capacity(NUM_BINS);
 
     for i in 0..NUM_BINS {
-        #[expect(
-            clippy::cast_precision_loss,
-            clippy::as_conversions,
-            reason = "usize→f64: bin index bounded by NUM_BINS (10); cast is exact, far below f64 mantissa 2^53"
-        )]
-        let low = i as f64 * BIN_WIDTH;
+        // WHY f64::from(u32): bin index is bounded by NUM_BINS (10), so
+        // `try_from` is infallible in practice; u32→f64 is an exact
+        // conversion (u32 values fit in f64 mantissa exactly).
+        let i_u32 = u32::try_from(i).unwrap_or(u32::MAX);
+        let low = f64::from(i_u32) * BIN_WIDTH;
         let high = low + BIN_WIDTH;
         let low_rounded = (low * 100.0).round() / 100.0;
         let high_rounded = (high * 100.0).round() / 100.0;
@@ -576,12 +575,11 @@ fn compute_brier_score(points: &[(f64, bool)]) -> f64 {
         })
         .sum();
 
-    #[expect(
-        clippy::cast_precision_loss,
-        clippy::as_conversions,
-        reason = "usize→f64: calibration point count bounded by MAX_CALIBRATION_POINTS (1000); far below f64 mantissa 2^53"
-    )]
-    let count = points.len() as f64;
+    // WHY f64::from(u32): calibration point count is bounded by
+    // MAX_CALIBRATION_POINTS (1000), so `try_from` is infallible in
+    // practice; u32→f64 is an exact conversion.
+    let count_u32 = u32::try_from(points.len()).unwrap_or(u32::MAX);
+    let count = f64::from(count_u32);
     sum / count
 }
 

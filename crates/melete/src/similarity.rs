@@ -30,13 +30,12 @@ impl PruningStats {
         if self.total_chunks == 0 {
             return 0.0;
         }
-        #[expect(
-            clippy::cast_precision_loss,
-            clippy::as_conversions,
-            reason = "usize->f64: chunk counts always fit in f64 mantissa"
-        )]
-        let result = (self.pruned_count as f64 / self.total_chunks as f64) * 100.0;
-        result
+        // WHY f64::from(u32): chunk counts fit in u32 (< 2^32); u32→f64 is
+        // an exact conversion; `try_from` saturating to u32::MAX guards
+        // the pathological case.
+        let pruned_u32 = u32::try_from(self.pruned_count).unwrap_or(u32::MAX);
+        let total_u32 = u32::try_from(self.total_chunks).unwrap_or(u32::MAX);
+        (f64::from(pruned_u32) / f64::from(total_u32)) * 100.0
     }
 }
 
@@ -109,13 +108,12 @@ pub(crate) fn jaccard_similarity(a: &HashSet<String>, b: &HashSet<String>) -> f6
         return 0.0;
     }
 
-    #[expect(
-        clippy::cast_precision_loss,
-        clippy::as_conversions,
-        reason = "usize->f64: set counts always fit in f64 mantissa"
-    )]
-    let result = intersection as f64 / union as f64;
-    result
+    // WHY f64::from(u32): set counts fit in u32 (< 2^32); u32→f64 is an
+    // exact conversion; `try_from` saturating to u32::MAX guards the
+    // pathological case.
+    let i_u32 = u32::try_from(intersection).unwrap_or(u32::MAX);
+    let u_u32 = u32::try_from(union).unwrap_or(u32::MAX);
+    f64::from(i_u32) / f64::from(u_u32)
 }
 
 /// Remove near-duplicate messages by Jaccard similarity.

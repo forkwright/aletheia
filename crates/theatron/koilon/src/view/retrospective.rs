@@ -13,23 +13,21 @@ const HEADER_HEIGHT: u16 = 3;
 const STATUS_BAR_HEIGHT: u16 = 1;
 const CONTENT_MIN_HEIGHT: u16 = 5;
 
-#[expect(
-    clippy::indexing_slicing,
-    reason = "Layout.split() returns exactly as many Rects as constraints; indices match the three defined constraints"
-)]
 pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
-    let layout = Layout::default()
+    // WHY `.areas::<3>()`: returns a const-sized array matching the three
+    // layout constraints, so destructuring names each region directly.
+    let [header, body, status] = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(HEADER_HEIGHT),
             Constraint::Min(CONTENT_MIN_HEIGHT),
             Constraint::Length(STATUS_BAR_HEIGHT),
         ])
-        .split(area);
+        .areas(area);
 
-    render_header(frame, layout[0], theme);
-    render_completed_phases(app, frame, layout[1], theme);
-    render_status_bar(frame, layout[2], theme);
+    render_header(frame, header, theme);
+    render_completed_phases(app, frame, body, theme);
+    render_status_bar(frame, status, theme);
 }
 
 fn render_header(frame: &mut Frame, area: Rect, theme: &Theme) {

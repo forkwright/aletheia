@@ -140,26 +140,42 @@ impl LlmProvider for MockProvider {
         request: &'a CompletionRequest,
     ) -> Pin<Box<dyn Future<Output = Result<CompletionResponse>> + Send + 'a>> {
         Box::pin(async {
+            // WHY `unwrap_or_else(|p| p.into_inner())`: a poisoned mutex
+            // here means a prior test panicked; the mock is observational
+            // so we recover the inner state and continue rather than
+            // cascading panics across the test suite.
             self.requests
                 .lock()
-                .expect("mock request lock poisoned")
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
                 .push(request.clone());
 
             {
-                let mut err_guard = self.error.lock().expect("mock error lock poisoned");
+                let mut err_guard = self
+                    .error
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
                 if let Some(err) = err_guard.take() {
                     return Err(err);
                 }
             }
 
-            let mut responses = self.responses.lock().expect("mock response lock poisoned");
+            let mut responses = self
+                .responses
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             if responses.len() > 1 {
                 Ok(responses.remove(0))
             } else {
-                Ok(responses
-                    .first()
-                    .expect("MockProvider has no responses configured")
-                    .clone())
+                // WHY `.first().cloned().ok_or_else(...)`: the mock
+                // contract requires at least one configured response,
+                // but returning a typed error lets the test harness
+                // surface misconfiguration cleanly instead of panicking.
+                responses.first().cloned().ok_or_else(|| {
+                    error::ProviderInitSnafu {
+                        message: "MockProvider has no responses configured".to_owned(),
+                    }
+                    .build()
+                })
             }
         })
     }

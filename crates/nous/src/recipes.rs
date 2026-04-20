@@ -118,15 +118,14 @@ impl Recipe {
 
     /// Average token reduction percentage across all validation records.
     #[must_use]
-    #[expect(
-        clippy::as_conversions,
-        clippy::cast_precision_loss,
-        reason = "token counts are approximate; percentage precision loss is acceptable for display metrics"
-    )]
     pub fn avg_reduction_pct(&self) -> f64 {
         if self.validation.is_empty() {
             return 0.0;
         }
+        // WHY f64::from(u32): token counts and validation list sizes are
+        // bounded in practice (< 2^32); u32→f64 is exact. `try_from`
+        // guards the rare pathological case by saturating to u32::MAX
+        // before conversion.
         let total: f64 = self
             .validation
             .iter()
@@ -135,26 +134,26 @@ impl Recipe {
                     0.0
                 } else {
                     let reduction = v.baseline_tokens.saturating_sub(v.recipe_tokens);
-                    (reduction as f64 / v.baseline_tokens as f64) * 100.0
+                    let r_u32 = u32::try_from(reduction).unwrap_or(u32::MAX);
+                    let b_u32 = u32::try_from(v.baseline_tokens).unwrap_or(u32::MAX);
+                    (f64::from(r_u32) / f64::from(b_u32)) * 100.0
                 }
             })
             .sum();
-        total / self.validation.len() as f64
+        let len_u32 = u32::try_from(self.validation.len()).unwrap_or(u32::MAX);
+        total / f64::from(len_u32)
     }
 
-    /// Success rate across validation records (0.0–1.0).
+    /// Success rate across validation records (0.0--1.0).
     #[must_use]
-    #[expect(
-        clippy::as_conversions,
-        clippy::cast_precision_loss,
-        reason = "count→f64: validation list length fits in f64 mantissa for percentage display"
-    )]
     pub fn success_rate(&self) -> f64 {
         if self.validation.is_empty() {
             return 0.0;
         }
         let successes = self.validation.iter().filter(|v| v.success).count();
-        successes as f64 / self.validation.len() as f64
+        let s_u32 = u32::try_from(successes).unwrap_or(u32::MAX);
+        let len_u32 = u32::try_from(self.validation.len()).unwrap_or(u32::MAX);
+        f64::from(s_u32) / f64::from(len_u32)
     }
 }
 
