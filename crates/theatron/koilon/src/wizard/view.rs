@@ -231,7 +231,11 @@ fn editing_span(edit: &EditState, secret: bool, theme: &Theme) -> Span<'static> 
         s.push('▎');
         s
     } else {
-        let before = &edit.buffer[..edit.cursor];
+        // WHY `.get(..cursor)`: cursor is a byte offset maintained on
+        // char boundaries, so `.get()` returns `Some` in the invariant
+        // case; fall back to the whole buffer if the invariant drifts,
+        // which is safer than a panic inside a hot-path render.
+        let before = edit.buffer.get(..edit.cursor).unwrap_or(&edit.buffer);
         format!("{before}▎")
     };
 
@@ -348,10 +352,6 @@ fn keybinding_next_back_spans(
 // ─── Layout helper ───────────────────────────────────────────────────────────
 
 /// Split `area` vertically into fixed-height rows.  A height of `0` means fill remaining space.
-#[expect(
-    clippy::indexing_slicing,
-    reason = "slice built from caller-supplied array; len matches N, so indexing [0..N] is valid"
-)]
 fn split_vertical<const N: usize>(area: Rect, heights: &[u16; N]) -> [Rect; N] {
     let constraints: Vec<Constraint> = heights
         .iter()
@@ -369,9 +369,13 @@ fn split_vertical<const N: usize>(area: Rect, heights: &[u16; N]) -> [Rect; N] {
         .constraints(constraints)
         .split(area);
 
+    // WHY `.get().copied().unwrap_or_default()`: `Layout::split` returns
+    // exactly `N` rects for `N` constraints, so `.get(i)` is `Some` in
+    // practice; falling back to `Rect::default()` keeps rendering safe
+    // if ratatui ever changes the contract.
     let mut result = [Rect::default(); N];
-    for i in 0..N {
-        result[i] = chunks[i];
+    for (i, slot) in result.iter_mut().enumerate() {
+        *slot = chunks.get(i).copied().unwrap_or_default();
     }
     result
 }

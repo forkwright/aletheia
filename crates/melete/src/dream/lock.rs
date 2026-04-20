@@ -227,18 +227,12 @@ pub(crate) fn lock_mtime(path: &Path) -> Option<std::time::SystemTime> {
 /// Convert a `SystemTime` to a `jiff::Timestamp` (best-effort).
 pub(crate) fn system_time_to_timestamp(st: std::time::SystemTime) -> Option<jiff::Timestamp> {
     let duration = st.duration_since(std::time::UNIX_EPOCH).ok()?;
-    #[expect(
-        clippy::as_conversions,
-        clippy::cast_possible_wrap,
-        reason = "u64→i64: Unix seconds fit in i64 until year 292 billion"
-    )]
-    let secs = duration.as_secs() as i64;
-    #[expect(
-        clippy::as_conversions,
-        clippy::cast_possible_wrap,
-        reason = "u32→i32: nanosecond subseconds (0..999_999_999) always fit in i32"
-    )]
-    let nanos = duration.subsec_nanos() as i32;
+    // WHY `try_from`: Unix seconds fit in i64 until year 292 billion and
+    // subsec nanos are in 0..1_000_000_000 (well within i32), so both
+    // conversions succeed in practice; `?` returns `None` on the
+    // pathological overflow case instead of wrapping.
+    let secs = i64::try_from(duration.as_secs()).ok()?;
+    let nanos = i32::try_from(duration.subsec_nanos()).ok()?;
     jiff::Timestamp::new(secs, nanos).ok()
 }
 

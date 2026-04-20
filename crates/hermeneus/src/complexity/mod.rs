@@ -478,14 +478,11 @@ fn tier_from_score(score: u32, low_threshold: u32, high_threshold: u32) -> Model
 /// Clamp an i32 score into the [0, 100] range.
 #[must_use]
 fn clamp_score(raw: i32) -> u32 {
-    #[expect(
-        clippy::cast_sign_loss,
-        clippy::as_conversions,
-        reason = "value is guaranteed non-negative after clamping to 0; as-cast is safe for 0..=100"
-    )]
-    {
-        raw.clamp(0, 100) as u32
-    }
+    // WHY `try_from().unwrap_or(0)`: `raw.clamp(0, 100)` guarantees
+    // non-negative, so `try_from` is infallible in practice; the `0`
+    // fallback would only fire for negative values (already clamped
+    // away) and matches the desired clamp semantics.
+    u32::try_from(raw.clamp(0, 100)).unwrap_or(0)
 }
 
 #[cfg(test)]

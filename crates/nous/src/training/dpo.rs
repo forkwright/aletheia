@@ -293,12 +293,13 @@ impl DpoExtractor {
         let intersection: HashSet<&String> = original_words.intersection(&chosen_words).collect();
         let union: HashSet<&String> = original_words.union(&chosen_words).collect();
 
-        #[expect(
-            clippy::cast_precision_loss,
-            clippy::as_conversions,
-            reason = "set cardinalities for Jaccard similarity — precision loss above 2^53 elements is harmless for this small-vocabulary similarity heuristic"
-        )]
-        let similarity = intersection.len() as f64 / union.len() as f64;
+        // WHY f64::from(u32): set cardinalities for a small-vocabulary
+        // Jaccard similarity are bounded by the message word count
+        // (< 2^32), so `try_from` is infallible in practice; u32→f64 is
+        // an exact conversion.
+        let i_u32 = u32::try_from(intersection.len()).unwrap_or(u32::MAX);
+        let u_u32 = u32::try_from(union.len()).unwrap_or(u32::MAX);
+        let similarity = f64::from(i_u32) / f64::from(u_u32);
         similarity >= SEMANTIC_SIMILARITY_THRESHOLD
     }
 }

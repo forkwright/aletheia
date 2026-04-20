@@ -104,21 +104,18 @@ impl ProbeReport {
 
     /// Pass rate as a fraction (0.0..=1.0).
     #[must_use]
-    #[expect(
-        clippy::cast_precision_loss,
-        reason = "probe counts are tiny (<100); f64 mantissa handles this exactly"
-    )]
-    #[expect(
-        clippy::as_conversions,
-        reason = "usize to f64 — probe counts are bounded and small"
-    )]
     pub fn pass_rate(&self) -> f64 {
         let total = self.total_probes();
         if total == 0 {
             return 1.0;
         }
         let passed = total - self.failure_count();
-        passed as f64 / total as f64
+        // WHY f64::from(u32): probe counts are tiny (<100); u32→f64 is
+        // an exact conversion; `try_from` saturating to u32::MAX guards
+        // the pathological case while keeping arithmetic lossless.
+        let passed_u32 = u32::try_from(passed).unwrap_or(u32::MAX);
+        let total_u32 = u32::try_from(total).unwrap_or(u32::MAX);
+        f64::from(passed_u32) / f64::from(total_u32)
     }
 }
 
@@ -308,10 +305,6 @@ impl ProbeVerifier {
 /// Heuristic: split on sentence boundaries and extract phrases containing
 /// proper nouns (capitalized words not at sentence start) or technical terms
 /// (words containing underscores, dots, or colons).
-#[expect(
-    clippy::indexing_slicing,
-    reason = "slice bounds guarded by explicit len checks immediately above each access"
-)]
 fn extract_key_phrases(content: &str) -> Vec<String> {
     let mut phrases = Vec::new();
 
@@ -333,12 +326,23 @@ fn extract_key_phrases(content: &str) -> Vec<String> {
         if words.len() <= 10 {
             phrases.push(trimmed.to_owned());
         } else {
-            // For longer sentences, extract the first and last meaningful chunks
-            let first_half: String = words[..5].join(" ");
+            // For longer sentences, extract the first and last meaningful chunks.
+            // WHY `.iter().take(5)`: equivalent to `words[..5]` but avoids the
+            // panic-on-out-of-bounds surface; the outer `words.len() > 10`
+            // guard makes the 5-prefix always available in practice.
+            let first_half: String = words.iter().take(5).copied().collect::<Vec<_>>().join(" ");
             phrases.push(first_half);
 
             if words.len() > 6 {
-                let last_half: String = words[words.len() - 4..].join(" ");
+                // WHY `.iter().skip(n)`: `words.len() - 4` is non-negative
+                // by the `words.len() > 6` guard; skipping avoids indexing.
+                let skip = words.len().saturating_sub(4);
+                let last_half: String = words
+                    .iter()
+                    .skip(skip)
+                    .copied()
+                    .collect::<Vec<_>>()
+                    .join(" ");
                 phrases.push(last_half);
             }
         }
@@ -373,14 +377,6 @@ fn tokenize(text: &str) -> Vec<String> {
 /// Compute Jaccard-style token overlap between two token sets.
 ///
 /// Returns the fraction of `fact_tokens` that appear in `transcript_tokens`.
-#[expect(
-    clippy::cast_precision_loss,
-    reason = "token counts are small (<1000); f64 mantissa handles this exactly"
-)]
-#[expect(
-    clippy::as_conversions,
-    reason = "usize to f64 — token counts are bounded and small"
-)]
 fn token_overlap(fact_tokens: &[String], transcript_tokens: &[String]) -> f64 {
     if fact_tokens.is_empty() {
         return 0.0;
@@ -389,7 +385,12 @@ fn token_overlap(fact_tokens: &[String], transcript_tokens: &[String]) -> f64 {
         .iter()
         .filter(|t| transcript_tokens.contains(t))
         .count();
-    matches as f64 / fact_tokens.len() as f64
+    // WHY f64::from(u32): token counts are small (<1000); u32→f64 is an
+    // exact conversion; `try_from` saturating to u32::MAX guards the
+    // pathological case.
+    let matches_u32 = u32::try_from(matches).unwrap_or(u32::MAX);
+    let total_u32 = u32::try_from(fact_tokens.len()).unwrap_or(u32::MAX);
+    f64::from(matches_u32) / f64::from(total_u32)
 }
 
 #[cfg(test)]

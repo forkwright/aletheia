@@ -566,12 +566,11 @@ impl CompetenceTracker {
         let overall_score = if domains.is_empty() {
             self.config.default_score
         } else {
-            #[expect(
-                clippy::cast_precision_loss,
-                clippy::as_conversions,
-                reason = "usize→f64: competence domain count is under 100 (one per skill area); far below f64 mantissa 2^53"
-            )]
-            let len = domains.len() as f64;
+            // WHY f64::from(u32): competence domain count is under 100
+            // (one per skill area), so `try_from` is infallible in
+            // practice; u32→f64 is an exact conversion.
+            let len_u32 = u32::try_from(domains.len()).unwrap_or(u32::MAX);
+            let len = f64::from(len_u32);
             domains.iter().map(|d| d.score).sum::<f64>() / len
         };
 

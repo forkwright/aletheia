@@ -244,12 +244,12 @@ impl PromptAuditLog {
             poisoned.into_inner()
         });
 
-        let needs_rotation = match inner.current.as_ref() {
-            Some((d, _)) => *d != record_date,
-            None => true,
-        };
+        // WHY: compute once whether the currently-open file matches
+        // `record_date` so we can take the writable borrow from the right
+        // arm without a later `expect` on `Option::as_mut`.
+        let current_matches = matches!(inner.current.as_ref(), Some((d, _)) if *d == record_date);
 
-        if needs_rotation {
+        if !current_matches {
             if !self.log_dir.exists() {
                 std::fs::create_dir_all(&self.log_dir).context(CreateDirSnafu {
                     path: self.log_dir.clone(),
@@ -265,19 +265,14 @@ impl PromptAuditLog {
             inner.current = Some((record_date, file));
         }
 
-        // SAFETY: `needs_rotation` guarantees `current` is `Some` here.
-        #[expect(
-            clippy::expect_used,
-            reason = "current is Some: either it already was, or we just set it in the rotation branch above"
-        )]
-        let (_, file) = inner
-            .current
-            .as_mut()
-            .expect("current file populated above");
-
+        // WHY: `inner.current` is `Some` by construction -- either it
+        // already matched `record_date`, or we just replaced it in the
+        // rotation branch above. Use `if let` to avoid an `expect()`.
         let path = self.log_dir.join(format!("{record_date}.jsonl"));
-        writeln!(file, "{json}").context(WriteRecordSnafu { path: path.clone() })?;
-        file.flush().context(WriteRecordSnafu { path })?;
+        if let Some((_, file)) = inner.current.as_mut() {
+            writeln!(file, "{json}").context(WriteRecordSnafu { path: path.clone() })?;
+            file.flush().context(WriteRecordSnafu { path })?;
+        }
         Ok(())
     }
 }
@@ -335,16 +330,15 @@ pub(crate) fn build_audit_record(
     // already computed, plus the system-prompt byte length divided by a
     // conservative chars-per-token heuristic. Matches the order-of-magnitude
     // figure operators see in the tracing spans.
-    #[expect(
-        clippy::cast_sign_loss,
-        clippy::cast_possible_truncation,
-        clippy::as_conversions,
-        reason = "i64→u32: per-message token estimates are positive and fit in u32 for practical turns"
-    )]
+    //
+    // WHY `try_from(...).unwrap_or(u32::MAX)`: per-message token estimates
+    // are positive for practical turns; if an implausible value ever
+    // overflowed u32 we prefer a saturated audit figure to a silent `as`
+    // truncation.
     let msg_tokens: u32 = ctx
         .messages
         .iter()
-        .map(|m| m.token_estimate.max(0) as u32)
+        .map(|m| u32::try_from(m.token_estimate.max(0)).unwrap_or(u32::MAX))
         .sum();
     let cpt = usize::try_from(config.generation.chars_per_token.max(1)).unwrap_or(4);
     let sys_tokens = u32::try_from(system_prompt_bytes / cpt).unwrap_or(u32::MAX);
