@@ -45,7 +45,7 @@ dependencies = [
 
 [[package]]
 name = "agora"
-version = "0.21.0"
+version = "0.21.1"
 dependencies = [
  "async-trait",
  "fjall",
@@ -105,7 +105,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia"
-version = "0.21.0"
+version = "0.21.1"
 dependencies = [
  "agora",
  "anyhow",
@@ -136,7 +136,7 @@ dependencies = [
  "predicates",
  "pylon",
  "qdrant-client",
- "quick-xml",
+ "quick-xml 0.39.2",
  "rand 0.10.1",
  "reqwest 0.13.2",
  "ring",
@@ -161,7 +161,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-memory-mcp"
-version = "0.21.0"
+version = "0.21.1"
 dependencies = [
  "jiff",
  "mneme",
@@ -661,7 +661,7 @@ checksum = "be5eb007b7cacc6c660343e96f650fedf4b5a77512399eb952ca6642cf8d13f7"
 
 [[package]]
 name = "basanos"
-version = "0.21.0"
+version = "0.21.1"
 dependencies = [
  "regex",
  "snafu",
@@ -1183,7 +1183,7 @@ version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1f6597e8bdbca37f1f56e5a80d15857b0932aead21a78d20de49e99e74933046"
 dependencies = [
- "quick-xml",
+ "quick-xml 0.38.4",
  "serde",
 ]
 
@@ -1997,7 +1997,7 @@ dependencies = [
 
 [[package]]
 name = "dianoia"
-version = "0.21.0"
+version = "0.21.1"
 dependencies = [
  "jiff",
  "koina",
@@ -2010,7 +2010,7 @@ dependencies = [
 
 [[package]]
 name = "diaporeia"
-version = "0.21.0"
+version = "0.21.1"
 dependencies = [
  "axum 0.8.9",
  "hermeneus",
@@ -2115,7 +2115,7 @@ dependencies = [
 
 [[package]]
 name = "dokimion"
-version = "0.21.0"
+version = "0.21.1"
 dependencies = [
  "koina",
  "organon",
@@ -2203,7 +2203,7 @@ dependencies = [
 
 [[package]]
 name = "eidos"
-version = "0.21.0"
+version = "0.21.1"
 dependencies = [
  "jiff",
  "serde",
@@ -2246,7 +2246,7 @@ dependencies = [
 
 [[package]]
 name = "energeia"
-version = "0.21.0"
+version = "0.21.1"
 dependencies = [
  "chrono",
  "compact_str",
@@ -2341,7 +2341,7 @@ dependencies = [
 
 [[package]]
 name = "episteme"
-version = "0.21.0"
+version = "0.21.1"
 dependencies = [
  "candle-core",
  "candle-nn",
@@ -3080,7 +3080,7 @@ dependencies = [
 
 [[package]]
 name = "graphe"
-version = "0.21.0"
+version = "0.21.1"
 dependencies = [
  "criterion",
  "eidos",
@@ -3297,7 +3297,7 @@ checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 
 [[package]]
 name = "hermeneus"
-version = "0.21.0"
+version = "0.21.1"
 dependencies = [
  "criterion",
  "jiff",
@@ -3993,7 +3993,7 @@ dependencies = [
 
 [[package]]
 name = "integration-tests"
-version = "0.21.0"
+version = "0.21.1"
 dependencies = [
  "axum 0.8.9",
  "dokimion",
@@ -4269,7 +4269,7 @@ dependencies = [
 
 [[package]]
 name = "koilon"
-version = "0.21.0"
+version = "0.21.1"
 dependencies = [
  "arboard",
  "clap",
@@ -4302,7 +4302,7 @@ dependencies = [
 
 [[package]]
 name = "koina"
-version = "0.21.0"
+version = "0.21.1"
 dependencies = [
  "criterion",
  "fjall",
@@ -4452,7 +4452,7 @@ dependencies = [
 
 [[package]]
 name = "krites"
-version = "0.21.0"
+version = "0.21.1"
 dependencies = [
  "aho-corasick",
  "bytemuck",
@@ -4962,7 +4962,7 @@ dependencies = [
 
 [[package]]
 name = "melete"
-version = "0.21.0"
+version = "0.21.1"
 dependencies = [
  "futures",
  "hermeneus",
@@ -5056,7 +5056,7 @@ dependencies = [
 
 [[package]]
 name = "mneme"
-version = "0.21.0"
+version = "0.21.1"
 dependencies = [
  "eidos",
  "episteme",
@@ -5208,7 +5208,7 @@ dependencies = [
 
 [[package]]
 name = "nous"
-version = "0.21.0"
+version = "0.21.1"
 dependencies = [
  "criterion",
  "dianoia",
@@ -5406,7 +5406,7 @@ dependencies = [
 
 [[package]]
 name = "oikonomos"
-version = "0.21.0"
+version = "0.21.1"
 dependencies = [
  "axum 0.8.9",
  "energeia",
@@ -5517,7 +5517,7 @@ dependencies = [
 
 [[package]]
 name = "organon"
-version = "0.21.0"
+version = "0.21.1"
 dependencies = [
  "energeia",
  "fjall",
@@ -5871,7 +5871,7 @@ checksum = "740ebea15c5d1428f910cd1a5f52cebf8d25006245ed8ade92702f4943d91e07"
 dependencies = [
  "base64 0.22.1",
  "indexmap 2.14.0",
- "quick-xml",
+ "quick-xml 0.38.4",
  "serde",
  "time",
 ]
@@ -5904,7 +5904,7 @@ dependencies = [
 
 [[package]]
 name = "poiesis-core"
-version = "0.21.0"
+version = "0.21.1"
 dependencies = [
  "jiff",
  "snafu",
@@ -5912,7 +5912,7 @@ dependencies = [
 
 [[package]]
 name = "poiesis-lint"
-version = "0.21.0"
+version = "0.21.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -5921,7 +5921,7 @@ dependencies = [
 
 [[package]]
 name = "poiesis-sheet"
-version = "0.21.0"
+version = "0.21.1"
 dependencies = [
  "poiesis-core",
  "rust_xlsxwriter",
@@ -5931,17 +5931,17 @@ dependencies = [
 
 [[package]]
 name = "poiesis-slides"
-version = "0.21.0"
+version = "0.21.1"
 dependencies = [
  "poiesis-core",
- "quick-xml",
+ "quick-xml 0.39.2",
  "snafu",
  "zip 8.5.1",
 ]
 
 [[package]]
 name = "poiesis-text"
-version = "0.21.0"
+version = "0.21.1"
 dependencies = [
  "krilla 0.7.0",
  "poiesis-core",
@@ -5951,7 +5951,7 @@ dependencies = [
 
 [[package]]
 name = "poiesis-typst"
-version = "0.21.0"
+version = "0.21.1"
 dependencies = [
  "comemo",
  "jiff",
@@ -5967,7 +5967,7 @@ dependencies = [
 
 [[package]]
 name = "poiesis-verify"
-version = "0.21.0"
+version = "0.21.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -6337,7 +6337,7 @@ checksum = "b5a041e753da8b807c9255f28de81879c78c876392ff2469cde94799b2896b9d"
 
 [[package]]
 name = "pylon"
-version = "0.21.0"
+version = "0.21.1"
 dependencies = [
  "axum 0.8.9",
  "axum-server",
@@ -6418,6 +6418,15 @@ dependencies = [
  "encoding_rs",
  "memchr",
  "serde",
+]
+
+[[package]]
+name = "quick-xml"
+version = "0.39.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "958f21e8e7ceb5a1aa7fa87fab28e7c75976e0bfe7e23ff069e0a260f894067d"
+dependencies = [
+ "memchr",
 ]
 
 [[package]]
@@ -7846,7 +7855,7 @@ checksum = "b2aa850e253778c88a04c3d7323b043aeda9d3e30d5971937c1855769763678e"
 
 [[package]]
 name = "skene"
-version = "0.21.0"
+version = "0.21.1"
 dependencies = [
  "bytes",
  "futures-core",
@@ -8000,7 +8009,7 @@ dependencies = [
  "lazy_static",
  "nom",
  "nom_locate",
- "quick-xml",
+ "quick-xml 0.38.4",
  "rust_decimal",
  "rust_decimal_macros",
  "string_cache 0.9.0",
@@ -8158,7 +8167,7 @@ dependencies = [
 
 [[package]]
 name = "symbolon"
-version = "0.21.0"
+version = "0.21.1"
 dependencies = [
  "aes-gcm",
  "argon2",
@@ -8276,7 +8285,7 @@ checksum = "55937e1799185b12863d447f42597ed69d9928686b8d88a1df17376a097d8369"
 
 [[package]]
 name = "taxis"
-version = "0.21.0"
+version = "0.21.1"
 dependencies = [
  "chacha20poly1305",
  "eidos",
@@ -8399,14 +8408,14 @@ dependencies = [
 
 [[package]]
 name = "theatron"
-version = "0.21.0"
+version = "0.21.1"
 dependencies = [
  "skene",
 ]
 
 [[package]]
 name = "thesauros"
-version = "0.21.0"
+version = "0.21.1"
 dependencies = [
  "futures",
  "indexmap 2.14.0",
