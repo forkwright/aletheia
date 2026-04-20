@@ -528,9 +528,9 @@ impl ApiClient {
             clippy::cast_possible_truncation,
             clippy::cast_sign_loss,
             clippy::as_conversions,
-            reason = "clamped to [0, u32::MAX] above; kanon:ignore RUST/as-cast"
+            reason = "clamped to [0, u32::MAX] above; f64 → u32 is lossless within that range"
         )]
-        let cents = cents_f as u32;
+        let cents = cents_f as u32; // SAFETY: cents_f clamped to [0.0, u32::MAX as f64]; truncation exact
         Ok(cents)
     }
 

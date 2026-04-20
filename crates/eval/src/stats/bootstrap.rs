@@ -57,10 +57,6 @@ pub struct BootstrapCi {
     clippy::cast_sign_loss,
     reason = "alpha/2 * n is non-negative by construction"
 )]
-#[expect(
-    clippy::indexing_slicing,
-    reason = "indices lo_idx/hi_idx are computed as percentiles within [0, n); boot_stats[idx] is always in range"
-)]
 pub fn bootstrap_ci(
     data: &[f64],
     stat_fn: impl Fn(&[f64]) -> f64,
@@ -94,7 +90,8 @@ pub fn bootstrap_ci(
     for _ in 0..n {
         for slot in &mut resample {
             let idx = rng.next_bounded_usize(size);
-            *slot = data[idx];
+            // INVARIANT: idx < size = data.len() by construction of next_bounded_usize.
+            *slot = data.get(idx).copied().unwrap_or_default();
         }
         boot_stats.push(stat_fn(&resample));
     }
@@ -102,13 +99,16 @@ pub fn bootstrap_ci(
     boot_stats.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
 
     let alpha = 1.0 - ci;
-    let lo_idx = ((alpha / 2.0) * n as f64) as usize;
-    let hi_idx = (((1.0 - alpha / 2.0) * n as f64) as usize).min(n - 1);
+    let lo_idx = ((alpha / 2.0) * n as f64) as usize; // SAFETY: n < 100K; product non-negative; truncation to usize is exact
+    let hi_idx = (((1.0 - alpha / 2.0) * n as f64) as usize).min(n - 1); // SAFETY: n < 100K; product non-negative; clamped to valid index
 
+    // INVARIANT: lo_idx and hi_idx are derived percentiles in [0, n), boot_stats has n elements
+    let ci_low = boot_stats.get(lo_idx).copied().unwrap_or(f64::NAN);
+    let ci_high = boot_stats.get(hi_idx).copied().unwrap_or(f64::NAN);
     Ok(BootstrapCi {
         point,
-        ci_low: boot_stats[lo_idx],
-        ci_high: boot_stats[hi_idx],
+        ci_low,
+        ci_high,
         confidence: ci,
         n_resamples: n,
     })
@@ -143,10 +143,6 @@ pub fn bootstrap_ci(
     clippy::cast_sign_loss,
     reason = "alpha/2 * n is non-negative by construction"
 )]
-#[expect(
-    clippy::indexing_slicing,
-    reason = "lo_idx/hi_idx are percentile indices within [0, n); series[(start+offset)%len] is modular so always in range"
-)]
 pub fn block_bootstrap_ci(
     series: &[f64],
     stat_fn: impl Fn(&[f64]) -> f64,
@@ -170,7 +166,7 @@ pub fn block_bootstrap_ci(
     }
 
     let blk = block_length
-        .unwrap_or_else(|| (len as f64).sqrt().floor() as usize)
+        .unwrap_or_else(|| (len as f64).sqrt().floor() as usize) // SAFETY: len is small bootstrap count (<100K); sqrt.floor fits in usize
         .max(2);
     if blk > len {
         return Err(StatsSnafu {
@@ -193,7 +189,9 @@ pub fn block_bootstrap_ci(
         for _ in 0..n_blocks {
             let start = rng.next_bounded_usize(len);
             for offset in 0..blk {
-                resampled.push(series[(start + offset) % len]);
+                // INVARIANT: (start + offset) % len < len = series.len()
+                let idx = (start + offset) % len;
+                resampled.push(series.get(idx).copied().unwrap_or_default());
             }
         }
         resampled.truncate(len);
@@ -203,13 +201,16 @@ pub fn block_bootstrap_ci(
     boot_stats.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
 
     let alpha = 1.0 - ci;
-    let lo_idx = ((alpha / 2.0) * n as f64) as usize;
-    let hi_idx = (((1.0 - alpha / 2.0) * n as f64) as usize).min(n - 1);
+    let lo_idx = ((alpha / 2.0) * n as f64) as usize; // SAFETY: n < 100K; product non-negative; truncation to usize is exact
+    let hi_idx = (((1.0 - alpha / 2.0) * n as f64) as usize).min(n - 1); // SAFETY: n < 100K; product non-negative; clamped to valid index
 
+    // INVARIANT: lo_idx and hi_idx are derived percentiles in [0, n), boot_stats has n elements
+    let ci_low = boot_stats.get(lo_idx).copied().unwrap_or(f64::NAN);
+    let ci_high = boot_stats.get(hi_idx).copied().unwrap_or(f64::NAN);
     Ok(BootstrapCi {
         point,
-        ci_low: boot_stats[lo_idx],
-        ci_high: boot_stats[hi_idx],
+        ci_low,
+        ci_high,
         confidence: ci,
         n_resamples: n,
     })
@@ -272,7 +273,7 @@ impl Lcg64 {
         reason = "usize <-> u64 round-trip; bound fits in u64 and result fits in usize"
     )]
     pub(super) fn next_bounded_usize(&mut self, bound: usize) -> usize {
-        self.next_bounded(bound as u64) as usize
+        self.next_bounded(bound as u64) as usize // SAFETY: bound fits in u64; result in [0, bound) fits in usize
     }
 }
 
@@ -291,7 +292,7 @@ pub(crate) fn mean(data: &[f64]) -> f64 {
     if data.is_empty() {
         return f64::NAN;
     }
-    data.iter().sum::<f64>() / data.len() as f64
+    data.iter().sum::<f64>() / data.len() as f64 // SAFETY: length <100K per function-level #[expect]
 }
 
 #[cfg(test)]

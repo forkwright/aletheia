@@ -104,7 +104,7 @@ impl RollingStats {
                 clippy::as_conversions,
                 reason = "u64→f64 for rate computation; loss is acceptable and documented above"
             )]
-            Some(self.successes as f64 / self.total as f64)
+            Some(self.successes as f64 / self.total as f64) // SAFETY: heuristic routing rate; precision loss documented acceptable
         }
     }
 }

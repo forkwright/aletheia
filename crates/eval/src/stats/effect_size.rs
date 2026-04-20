@@ -88,10 +88,6 @@ pub struct CohensD {
     clippy::cast_sign_loss,
     reason = "0.025 * n_boot is non-negative by construction"
 )]
-#[expect(
-    clippy::indexing_slicing,
-    reason = "a[idx]/b[idx] use LCG indices in [0, len); boot_ds[lo_idx/hi_idx] are percentile indices within [0, n_boot)"
-)]
 pub fn cohens_d(a: &[f64], b: &[f64], compute_ci: bool, seed: u64) -> CohensD {
     if a.len() < 2 || b.len() < 2 {
         return CohensD {
@@ -126,24 +122,27 @@ pub fn cohens_d(a: &[f64], b: &[f64], compute_ci: bool, seed: u64) -> CohensD {
     for _ in 0..n_boot {
         for slot in &mut sa {
             let idx = rng.next_bounded_usize(na);
-            *slot = a[idx];
+            // INVARIANT: idx < na = a.len() by construction of next_bounded_usize
+            *slot = a.get(idx).copied().unwrap_or_default();
         }
         for slot in &mut sb {
             let idx = rng.next_bounded_usize(nb);
-            *slot = b[idx];
+            // INVARIANT: idx < nb = b.len() by construction of next_bounded_usize
+            *slot = b.get(idx).copied().unwrap_or_default();
         }
         boot_ds.push(raw_cohens_d(&sa, &sb));
     }
 
     boot_ds.sort_by(|x, y| x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal));
 
-    let lo_idx = (0.025 * n_boot as f64) as usize;
-    let hi_idx = (0.975 * n_boot as f64).min((n_boot - 1) as f64) as usize;
+    let lo_idx = (0.025 * n_boot as f64) as usize; // SAFETY: n_boot <100K; percentile product non-negative; truncation exact
+    let hi_idx = (0.975 * n_boot as f64).min((n_boot - 1) as f64) as usize; // SAFETY: n_boot <100K; min-clamp keeps index valid
 
     CohensD {
         d,
-        ci_low: Some(boot_ds[lo_idx]),
-        ci_high: Some(boot_ds[hi_idx]),
+        // INVARIANT: lo_idx, hi_idx in [0, n_boot) by percentile construction; boot_ds has n_boot entries
+        ci_low: boot_ds.get(lo_idx).copied(),
+        ci_high: boot_ds.get(hi_idx).copied(),
         interpretation,
     }
 }
@@ -160,12 +159,12 @@ pub fn cohens_d(a: &[f64], b: &[f64], compute_ci: bool, seed: u64) -> CohensD {
 pub(super) fn raw_cohens_d(a: &[f64], b: &[f64]) -> f64 {
     let na = a.len();
     let nb = b.len();
-    let mean_a = a.iter().sum::<f64>() / na as f64;
-    let mean_b = b.iter().sum::<f64>() / nb as f64;
-    let var_a = a.iter().map(|x| (x - mean_a).powi(2)).sum::<f64>() / (na - 1) as f64;
-    let var_b = b.iter().map(|x| (x - mean_b).powi(2)).sum::<f64>() / (nb - 1) as f64;
+    let mean_a = a.iter().sum::<f64>() / na as f64; // SAFETY: sample size <10K per function-level #[expect]
+    let mean_b = b.iter().sum::<f64>() / nb as f64; // SAFETY: sample size <10K per function-level #[expect]
+    let var_a = a.iter().map(|x| (x - mean_a).powi(2)).sum::<f64>() / (na - 1) as f64; // SAFETY: sample size <10K
+    let var_b = b.iter().map(|x| (x - mean_b).powi(2)).sum::<f64>() / (nb - 1) as f64; // SAFETY: sample size <10K
     let pooled_sd =
-        (((na - 1) as f64 * var_a + (nb - 1) as f64 * var_b) / (na + nb - 2) as f64).sqrt();
+        (((na - 1) as f64 * var_a + (nb - 1) as f64 * var_b) / (na + nb - 2) as f64).sqrt(); // SAFETY: sample sizes <10K
     if pooled_sd == 0.0 {
         // WHY: when both groups have zero variance, Cohen's d is undefined in
         // the pooled-SD form. If the means also coincide, return 0 (no effect);

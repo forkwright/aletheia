@@ -262,7 +262,7 @@ impl BenchmarkReport {
             if data.is_empty() {
                 0.0
             } else {
-                data.iter().sum::<f64>() / data.len() as f64
+                data.iter().sum::<f64>() / data.len() as f64 // SAFETY: bootstrap resample count; small usize within f64 mantissa
             }
         };
 
@@ -301,7 +301,7 @@ impl BenchmarkReport {
             .iter()
             .filter(|q| q.score.exact_match)
             .count();
-        hits as f64 / self.questions.len() as f64
+        hits as f64 / self.questions.len() as f64 // SAFETY: question counts <10_000 per function-level #[expect]
     }
 
     /// Mean F1 score across all questions.
@@ -319,7 +319,7 @@ impl BenchmarkReport {
             return 0.0;
         }
         let sum: f64 = self.questions.iter().map(|q| q.score.f1).sum();
-        sum / self.questions.len() as f64
+        sum / self.questions.len() as f64 // SAFETY: question counts <10_000 per function-level #[expect]
     }
 
     /// Mean LLM-as-judge accuracy across all questions that have a judge score.
@@ -341,8 +341,8 @@ impl BenchmarkReport {
         if scored.is_empty() {
             return None;
         }
-        let correct = scored.iter().filter(|j| j.correct).count() as f64;
-        Some(correct / scored.len() as f64)
+        let correct = scored.iter().filter(|j| j.correct).count() as f64; // SAFETY: question counts <10_000 per function-level #[expect]
+        Some(correct / scored.len() as f64) // SAFETY: question counts <10_000 per function-level #[expect]
     }
 
     /// Mean Recall@k across all questions that have retrieval metrics.
@@ -364,7 +364,7 @@ impl BenchmarkReport {
         if values.is_empty() {
             return None;
         }
-        Some(values.iter().sum::<f64>() / values.len() as f64)
+        Some(values.iter().sum::<f64>() / values.len() as f64) // SAFETY: value counts <10_000 per function-level #[expect]
     }
 
     /// Mean NDCG@k across all questions that have retrieval metrics.
@@ -382,7 +382,7 @@ impl BenchmarkReport {
         if values.is_empty() {
             return None;
         }
-        Some(values.iter().sum::<f64>() / values.len() as f64)
+        Some(values.iter().sum::<f64>() / values.len() as f64) // SAFETY: value counts <10_000 per function-level #[expect]
     }
 
     /// Group questions by category and return a (category, `exact_match_rate`, f1) tuple per category.
@@ -404,8 +404,8 @@ impl BenchmarkReport {
         buckets
             .into_iter()
             .map(|(cat, results)| {
-                let total = results.len() as f64;
-                let em = results.iter().filter(|r| r.score.exact_match).count() as f64;
+                let total = results.len() as f64; // SAFETY: bucket counts small per function-level #[expect]
+                let em = results.iter().filter(|r| r.score.exact_match).count() as f64; // SAFETY: bucket counts small per function-level #[expect]
                 let f1_sum: f64 = results.iter().map(|r| r.score.f1).sum();
                 (cat, em / total, f1_sum / total)
             })

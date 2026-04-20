@@ -67,16 +67,10 @@ impl PipelineStage for PostProcessingStage {
 
         for outcome in &ctx.outcomes {
             let model = outcome.model.as_deref().unwrap_or("unknown");
-            let blast_radius = if outcome.blast_radius.is_empty() {
-                "unknown"
-            } else {
-                // SAFETY: non-empty checked above
-                #[expect(
-                    clippy::indexing_slicing,
-                    reason = "blast_radius checked non-empty at line above"
-                )]
-                outcome.blast_radius[0].as_str()
-            };
+            let blast_radius = outcome
+                .blast_radius
+                .first()
+                .map_or("unknown", String::as_str);
 
             crate::metrics::prometheus::record_session(
                 &ctx.spec.project,
@@ -266,12 +260,13 @@ fn build_after_action_record(ctx: &PipelineContext) -> AfterActionRecord {
 )]
 fn usd_to_cents(usd: f64) -> u64 {
     let cents = (usd * 100.0).round();
+    let max_as_f64 = u64::MAX as f64; // SAFETY: u64::MAX → f64 is the f64 nearest below u64::MAX; saturation threshold
     if cents.is_nan() || cents < 0.0 {
         0
-    } else if cents >= u64::MAX as f64 {
+    } else if cents >= max_as_f64 {
         u64::MAX
     } else {
-        cents as u64
+        cents as u64 // SAFETY: cents in [0.0, u64::MAX as f64) after guards above
     }
 }
 

@@ -78,7 +78,7 @@ impl Budget {
             clippy::as_conversions,
             reason = "f64→u64: cost_usd is non-negative per API contract; cost * 10_000 bounded by realistic per-session spend (max a few $USD → max a few hundred thousand hundredths), fits u64 and under f64 mantissa 2^53"
         )]
-        let hundredths = (cost_usd * 10_000.0) as u64;
+        let hundredths = (cost_usd * 10_000.0) as u64; // SAFETY: cost_usd non-negative per contract; product bounded by per-session $USD spend
         self.current_cost_hundredths
             .fetch_add(hundredths, Ordering::Relaxed);
         self.current_turns.fetch_add(turns, Ordering::Relaxed);
@@ -138,7 +138,7 @@ impl Budget {
             clippy::as_conversions,
             reason = "u64→f64: aggregated cost in hundredths of a cent; realistic per-dispatch spend is well under 2^53 hundredths (~$9 trillion)"
         )]
-        let cost = raw as f64 / 10_000.0;
+        let cost = raw as f64 / 10_000.0; // SAFETY: aggregated hundredths well under 2^53 for realistic dispatch cost
         cost
     }
 

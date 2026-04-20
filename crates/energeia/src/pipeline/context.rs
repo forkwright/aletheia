@@ -178,7 +178,7 @@ impl PipelineContext {
     pub(crate) fn dag_mut(&mut self) -> &mut PromptDag {
         self.dag
             .as_mut()
-            .expect("dag accessed before preparation stage completed")
+            .expect("dag accessed before preparation stage completed") // INVARIANT: dag set by preparation stage; callers run post-preparation
     }
 
     /// Budget Arc — panics if preparation has not run.
@@ -189,7 +189,7 @@ impl PipelineContext {
     pub(crate) fn budget(&self) -> &Arc<Budget> {
         self.budget
             .as_ref()
-            .expect("budget accessed before preparation stage completed")
+            .expect("budget accessed before preparation stage completed") // INVARIANT: budget set by preparation stage; callers run post-preparation
     }
 
     /// Cost ledger Arc — panics if preparation has not run.
@@ -200,7 +200,7 @@ impl PipelineContext {
     pub(crate) fn cost_ledger(&self) -> &Arc<CostLedger> {
         self.cost_ledger
             .as_ref()
-            .expect("cost_ledger accessed before preparation stage completed")
+            .expect("cost_ledger accessed before preparation stage completed") // INVARIANT: cost_ledger set by preparation stage; callers run post-preparation
     }
 
     /// Engine config ref — panics if preparation has not run.
@@ -211,7 +211,7 @@ impl PipelineContext {
     pub(crate) fn engine_config(&self) -> &EngineConfig {
         self.engine_config
             .as_ref()
-            .expect("engine_config accessed before preparation stage completed")
+            .expect("engine_config accessed before preparation stage completed") // INVARIANT: engine_config set by preparation stage; callers run post-preparation
     }
 
     /// Record the wall-clock latency for a completed pipeline stage.

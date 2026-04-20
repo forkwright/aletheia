@@ -142,7 +142,7 @@ pub(crate) fn query_observations(
             clippy::expect_used,
             reason = "bounded subtraction from now is infallible for realistic day counts"
         )]
-        let cutoff = now.checked_sub(span).expect("timestamp subtraction");
+        let cutoff = now.checked_sub(span).expect("timestamp subtraction"); // INVARIANT: span = d*24h from current time; subtraction always valid
         cutoff.as_millisecond()
     });
 

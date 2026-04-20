@@ -40,7 +40,7 @@ pub struct LlmJudgeConfig {
 pub const DEFAULT_JUDGE_MODEL: &str = "gpt-4o";
 
 /// Default LLM-judge endpoint.
-pub const DEFAULT_JUDGE_ENDPOINT: &str = "https://api.openai.com/v1/chat/completions";
+pub(crate) const DEFAULT_JUDGE_ENDPOINT: &str = "https://api.openai.com/v1/chat/completions";
 
 impl Default for LlmJudgeConfig {
     fn default() -> Self {
@@ -55,7 +55,7 @@ impl Default for LlmJudgeConfig {
 }
 
 /// LLM-as-judge evaluator.
-pub struct LlmJudge {
+pub(crate) struct LlmJudge {
     client: reqwest::Client,
     config: LlmJudgeConfig,
 }
@@ -63,7 +63,7 @@ pub struct LlmJudge {
 impl LlmJudge {
     /// Create a new judge with the given configuration.
     #[must_use]
-    pub fn new(config: LlmJudgeConfig) -> Self {
+    pub(crate) fn new(config: LlmJudgeConfig) -> Self {
         Self {
             client: reqwest::Client::new(),
             config,
