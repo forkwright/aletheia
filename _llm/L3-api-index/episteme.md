@@ -71,7 +71,7 @@ impl AdmissionScores {
 
 > Gate that decides whether a fact should enter the knowledge graph.
 > 
-> Implementations range from [`DefaultAdmissionPolicy`] (admit all — current
+> Implementations range from [`DefaultAdmissionPolicy`] (admit all - current
 > behavior) to [`StructuredAdmissionPolicy`] (five-factor A-MAC decision).
 ```rust
 pub trait AdmissionPolicy : Send + Sync {

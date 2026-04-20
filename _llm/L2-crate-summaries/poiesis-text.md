@@ -11,8 +11,8 @@
 
 ## Public API surface
 
-- `poiesis_text::PdfRenderer` — implements `Renderer`, produces PDF bytes (requires `pdf` feature, default on)
-- `poiesis_text::OdtRenderer` — implements `Renderer`, produces ODT bytes (requires `odt` feature, default on)
+- `poiesis_text::PdfRenderer` - implements `Renderer`, produces PDF bytes (requires `pdf` feature, default on)
+- `poiesis_text::OdtRenderer` - implements `Renderer`, produces ODT bytes (requires `odt` feature, default on)
 
 ## When to look here
 

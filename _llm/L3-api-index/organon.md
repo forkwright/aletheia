@@ -26,7 +26,7 @@ pub fn register (registry: &mut ToolRegistry, sandbox: &SandboxConfig) -> Result
 > 
 > When `services` is `Some`, tools that need the orchestrator or store call
 > through to the real energeia subsystem. When `None`, those tools return a
-> structured error indicating the missing dependency — they do not panic.
+> structured error indicating the missing dependency - they do not panic.
 > 
 > Tools that are pure computation (schedion, prographe, diorthosis,
 > dokimasia, epitropos) work regardless of whether services are provided.

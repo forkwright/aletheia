@@ -1,6 +1,6 @@
 # energeia
 
-**Purpose:** Dispatch orchestration for plan execution — actualizes plans into agent sessions with budget tracking, multi-stage escalation, and QA gating.
+**Purpose:** Dispatch orchestration for plan execution - actualizes plans into agent sessions with budget tracking, multi-stage escalation, and QA gating.
 
 ## Key types
 
@@ -14,9 +14,9 @@
 
 ## Public API surface
 
-- `energeia::engine` — `DispatchEngine` trait, `SessionHandle` trait, `SessionSpec`
-- `energeia::types` — `DispatchSpec`, `DispatchResult`, `SessionOutcome`, `Budget`, `ResumePolicy`
-- `energeia::qa` — `QaGate` trait, `QaResult`, `QaVerdict`, `PromptSpec`
+- `energeia::engine` - `DispatchEngine` trait, `SessionHandle` trait, `SessionSpec`
+- `energeia::types` - `DispatchSpec`, `DispatchResult`, `SessionOutcome`, `Budget`, `ResumePolicy`
+- `energeia::qa` - `QaGate` trait, `QaResult`, `QaVerdict`, `PromptSpec`
 
 ## When to look here
 

@@ -14,9 +14,9 @@
 
 ## Public API surface
 
-- `symbolon::auth` — `AuthService`, `JwtManager`, `JwtConfig`
-- `symbolon::credential` — `CredentialChain`, `FileCredentialProvider`, `EnvCredentialProvider`
-- `symbolon::types` — `Claims`, `Role`, `TokenKind`, `Action`
+- `symbolon::auth` - `AuthService`, `JwtManager`, `JwtConfig`
+- `symbolon::credential` - `CredentialChain`, `FileCredentialProvider`, `EnvCredentialProvider`
+- `symbolon::types` - `Claims`, `Role`, `TokenKind`, `Action`
 
 ## When to look here
 

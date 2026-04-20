@@ -14,7 +14,7 @@ Session persistence layer: fjall-backed session/message store with agent portabi
 2. `src/store/fjall_store.rs`: fjall LSM-tree implementation
 3. `src/types.rs`: Session, Message, UsageRecord, SessionStatus, SessionType, Role
 4. `src/portability.rs`: AgentFile format for cross-runtime export/import (data types only)
-5. `src/error.rs`: Error enum — Storage/StoredJson/Io plus engine variants
+5. `src/error.rs`: Error enum - Storage/StoredJson/Io plus engine variants
 
 ## Key types
 
@@ -31,7 +31,7 @@ Session persistence layer: fjall-backed session/message store with agent portabi
 
 ## Storage model
 
-fjall is a pure-Rust LSM-tree — no C dependency, no WAL management to tune. Keys are UTF-8 strings and values are JSON-encoded domain structs. See the docstring in `store/fjall_store.rs` for the exact partition/key layout.
+fjall is a pure-Rust LSM-tree - no C dependency, no WAL management to tune. Keys are UTF-8 strings and values are JSON-encoded domain structs. See the docstring in `store/fjall_store.rs` for the exact partition/key layout.
 
 ## Feature flags
 

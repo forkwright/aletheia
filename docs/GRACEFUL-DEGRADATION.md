@@ -21,7 +21,7 @@ The actor run loop (`crates/nous/src/actor/mod.rs:270`) processes messages seque
 
 ### Cross-Nous Message Handling
 
-**Gap:** `handle_cross_message` (`mod.rs:410-427`) calls `execute_turn` **inline** — it does **not** use `execute_turn_with_panic_boundary`.  A pipeline panic on this path crashes the actor task.  The `NousManager` health poller will eventually detect the dead actor and restart it (`manager.rs:432-434`), but all in-memory session state for that actor is lost.
+**Gap:** `handle_cross_message` (`mod.rs:410-427`) calls `execute_turn` **inline** - it does **not** use `execute_turn_with_panic_boundary`.  A pipeline panic on this path crashes the actor task.  The `NousManager` health poller will eventually detect the dead actor and restart it (`manager.rs:432-434`), but all in-memory session state for that actor is lost.
 
 ### Background Tasks
 
@@ -91,26 +91,26 @@ Tool execution runs inside `organon` builtins.  The sandbox module (`organon/src
 
 See [Daemon Workers](#daemon-workers).  Maintenance tasks inherit the same isolation: per-task `JoinHandle` polling, panic catching, and auto-disable after repeated failures.
 
-## Surface List — Components That Crash the Process
+## Surface List - Components That Crash the Process
 
 The following components can turn a local failure into a process-wide crash:
 
-1. **Krites Datalog engine** — `panic!` on internal invariant violations during query planning and JSON serialization.
-2. **Hermeneus concurrency limiter** — `.expect()` on mutex poisoning; one poisoned lock kills all LLM traffic.
-3. **Pylon signal handler setup** — `.expect()` on signal installation; startup crash in restricted environments.
-4. **Nous actor cross-nous messages** — bypasses the panic boundary; a single bad cross-message kills the actor (process survives, but actor state is lost).
-5. **Nous manager health poller** — fire-and-forget task; if `health_cycle()` panics, health checks stop forever for all actors.
+1. **Krites Datalog engine** - `panic!` on internal invariant violations during query planning and JSON serialization.
+2. **Hermeneus concurrency limiter** - `.expect()` on mutex poisoning; one poisoned lock kills all LLM traffic.
+3. **Pylon signal handler setup** - `.expect()` on signal installation; startup crash in restricted environments.
+4. **Nous actor cross-nous messages** - bypasses the panic boundary; a single bad cross-message kills the actor (process survives, but actor state is lost).
+5. **Nous manager health poller** - fire-and-forget task; if `health_cycle()` panics, health checks stop forever for all actors.
 
 ## Summary Table
 
 | Component | Failure Mode | Blast Radius | Ideal Behavior | Current Gap |
 |---|---|---|---|---|
-| Nous actor — normal turn | Pipeline panic caught as `JoinError` | Request | Actor continues, enter degraded mode if repeated | ✅ None |
-| Nous actor — cross-nous message | `execute_turn` inline, no panic boundary | Actor | Same panic boundary as normal turns | `actor/mod.rs:420` calls `execute_turn` directly |
+| Nous actor - normal turn | Pipeline panic caught as `JoinError` | Request | Actor continues, enter degraded mode if repeated | ✅ None |
+| Nous actor - cross-nous message | `execute_turn` inline, no panic boundary | Actor | Same panic boundary as normal turns | `actor/mod.rs:420` calls `execute_turn` directly |
 | Nous manager health poller | `health_cycle()` panic kills spawned task silently | All actors managed | Supervisor restarts poller on failure | `manager.rs:547` fire-and-forget, no monitoring |
 | Daemon task runner | `JoinError` caught per-task in `check_in_flight` | Task | Task disabled after 3 failures | ✅ None |
 | Daemon maintenance tasks | `spawn_blocking` panics caught as `JoinError` | Task | Same isolation as async tasks | ✅ None |
-| Session store | `tokio::sync::Mutex` — no poisoning | Request | Errors returned to caller | ✅ None |
+| Session store | `tokio::sync::Mutex` - no poisoning | Request | Errors returned to caller | ✅ None |
 | Knowledge store | `fjall` internal concurrency, errors returned | Request | Errors returned to caller | ✅ None |
 | Provider registry | Per-provider health tracker | Provider | Failed provider marked Down, others unaffected | ✅ None |
 | Hermeneus concurrency limiter | `.expect()` on `Mutex` poisoning | Process (all LLM calls) | Use `parking_lot::Mutex` or recover gracefully | `concurrency.rs:165`, `179`, `193`, `225`, `254` |
@@ -124,30 +124,30 @@ The following components can turn a local failure into a process-wide crash:
 ## Detailed Citation Index
 
 ### Krites
-- `crates/krites/src/data/json.rs:76` — `panic!("found bottom")` on `DataValue::Bot` during JSON export.
-- `crates/krites/src/query/graph.rs:127` — `panic!("safe_pending verified non-empty above")` in topological sort.
-- `crates/krites/src/query/graph.rs:205` — `panic!("ids[at] set earlier in dfs")` in SCC computation.
-- `crates/krites/src/query/magic.rs:217` — `panic!("freshly-defaulted MagicRulesOrFixed must be Rules")` in query rewrite.
-- `crates/krites/src/query/stratify.rs:203` — `panic!("graph key must exist in SCC indices")` in stratification.
-- `crates/krites/src/storage/fjall_backend.rs:194` — `unreachable!("INVARIANT: tx is always Some while FjallWriteTx is live")`.
+- `crates/krites/src/data/json.rs:76` - `panic!("found bottom")` on `DataValue::Bot` during JSON export.
+- `crates/krites/src/query/graph.rs:127` - `panic!("safe_pending verified non-empty above")` in topological sort.
+- `crates/krites/src/query/graph.rs:205` - `panic!("ids[at] set earlier in dfs")` in SCC computation.
+- `crates/krites/src/query/magic.rs:217` - `panic!("freshly-defaulted MagicRulesOrFixed must be Rules")` in query rewrite.
+- `crates/krites/src/query/stratify.rs:203` - `panic!("graph key must exist in SCC indices")` in stratification.
+- `crates/krites/src/storage/fjall_backend.rs:194` - `unreachable!("INVARIANT: tx is always Some while FjallWriteTx is live")`.
 
 ### Hermeneus
-- `crates/hermeneus/src/concurrency.rs:165` — `.expect("mutex poisoning: thread panicked, no Result to propagate")`.
-- `crates/hermeneus/src/concurrency.rs:179` — Same `.expect()` pattern.
-- `crates/hermeneus/src/concurrency.rs:193` — Same `.expect()` pattern.
-- `crates/hermeneus/src/concurrency.rs:225` — Same `.expect()` pattern inside `acquire()`.
-- `crates/hermeneus/src/concurrency.rs:254` — Same `.expect()` pattern inside `release()`.
+- `crates/hermeneus/src/concurrency.rs:165` - `.expect("mutex poisoning: thread panicked, no Result to propagate")`.
+- `crates/hermeneus/src/concurrency.rs:179` - Same `.expect()` pattern.
+- `crates/hermeneus/src/concurrency.rs:193` - Same `.expect()` pattern.
+- `crates/hermeneus/src/concurrency.rs:225` - Same `.expect()` pattern inside `acquire()`.
+- `crates/hermeneus/src/concurrency.rs:254` - Same `.expect()` pattern inside `release()`.
 
 ### Nous
-- `crates/nous/src/actor/mod.rs:420` — `handle_cross_message` calls `execute_turn` inline without panic boundary.
-- `crates/nous/src/manager.rs:547` — `start_health_poller` spawns health task with no restart supervision.
+- `crates/nous/src/actor/mod.rs:420` - `handle_cross_message` calls `execute_turn` inline without panic boundary.
+- `crates/nous/src/manager.rs:547` - `start_health_poller` spawns health task with no restart supervision.
 
 ### Pylon
-- `crates/pylon/src/server.rs:365` — `.expect("failed to install SIGHUP handler")`.
-- `crates/pylon/src/server.rs:413` — `.expect("failed to install ctrl+c handler")`.
-- `crates/pylon/src/server.rs:419` — `.expect("failed to install SIGTERM handler")`.
+- `crates/pylon/src/server.rs:365` - `.expect("failed to install SIGHUP handler")`.
+- `crates/pylon/src/server.rs:413` - `.expect("failed to install ctrl+c handler")`.
+- `crates/pylon/src/server.rs:419` - `.expect("failed to install SIGTERM handler")`.
 
 ### Daemon
-- `crates/daemon/src/runner/inflight.rs:92` — `JoinError` from panics caught and logged.
-- `crates/daemon/src/runner/tracking.rs:63` — Auto-disable after 3 consecutive failures.
-- `crates/daemon/src/runner/lifecycle.rs:149` — Tasks spawned via `tokio::spawn` with isolated handles.
+- `crates/daemon/src/runner/inflight.rs:92` - `JoinError` from panics caught and logged.
+- `crates/daemon/src/runner/tracking.rs:63` - Auto-disable after 3 consecutive failures.
+- `crates/daemon/src/runner/lifecycle.rs:149` - Tasks spawned via `tokio::spawn` with isolated handles.

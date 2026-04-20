@@ -14,9 +14,9 @@ acceptance_criteria:
 
 # Standards
 
-- `standards/STANDARDS.md` — universal principles
-- `standards/RUST.md` — Rust-specific rules
-- `AGENTS.md` — build commands, key patterns, where to add things
+- `standards/STANDARDS.md` - universal principles
+- `standards/RUST.md` - Rust-specific rules
+- `AGENTS.md` - build commands, key patterns, where to add things
 
 # Context
 

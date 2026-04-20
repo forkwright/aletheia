@@ -16,10 +16,10 @@ Infrastructure, tooling, CI, or standards work. No product feature changes.
 
 # Standards
 
-- `standards/STANDARDS.md` — repository hygiene, dead weight rules
-- `standards/CI.md` — CI tooling and workflow conventions
-- `standards/SHELL.md` — shell script requirements (set -euo pipefail, quoting)
-- `standards/WRITING.md` — prose standards for documentation edits
+- `standards/STANDARDS.md` - repository hygiene, dead weight rules
+- `standards/CI.md` - CI tooling and workflow conventions
+- `standards/SHELL.md` - shell script requirements (set -euo pipefail, quoting)
+- `standards/WRITING.md` - prose standards for documentation edits
 
 # Context
 
@@ -38,9 +38,9 @@ infrastructure work, that is a separate prompt.
 
 # Acceptance criteria
 
-1. [Primary criterion — e.g., "CI workflow lint job runs and passes"]
-2. [Secondary criterion — e.g., "Script exits 0 on valid input, non-zero on invalid"]
-3. [Standards criterion — e.g., "No information is duplicated between the two docs"]
+1. [Primary criterion - e.g., "CI workflow lint job runs and passes"]
+2. [Secondary criterion - e.g., "Script exits 0 on valid input, non-zero on invalid"]
+3. [Standards criterion - e.g., "No information is duplicated between the two docs"]
 
 # Checklist (infra-specific)
 

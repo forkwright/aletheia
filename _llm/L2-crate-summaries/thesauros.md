@@ -14,9 +14,9 @@
 
 ## Public API surface
 
-- `thesauros::manifest` — `PackManifest`, `ContextEntry`, `Priority`, `PackToolDef`
-- `thesauros::loader` — `LoadedPack`, `PackSection` for resolved context
-- `thesauros::tools` — `ShellToolExecutor`, pack tool registration into `ToolRegistry`
+- `thesauros::manifest` - `PackManifest`, `ContextEntry`, `Priority`, `PackToolDef`
+- `thesauros::loader` - `LoadedPack`, `PackSection` for resolved context
+- `thesauros::tools` - `ShellToolExecutor`, pack tool registration into `ToolRegistry`
 
 ## When to look here
 

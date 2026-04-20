@@ -19,7 +19,7 @@ OpenAI adapter has been tested against:
 | Server      | Status        | Notes                                           |
 |-------------|---------------|-------------------------------------------------|
 | llama.cpp   | recommended   | `llama-server --host 127.0.0.1 --port 8088`     |
-| ollama      | supported     | `ollama serve` — default endpoint `/v1`         |
+| ollama      | supported     | `ollama serve` - default endpoint `/v1`         |
 | vllm        | supported     | `vllm serve MODEL --port 8000`                  |
 
 The adapter tolerates llama.cpp's quirks (missing `code` / `type` on errors,
@@ -32,7 +32,7 @@ Qwen3.5-35B-A3B-Q8_0 on a workstation-class GPU (24 GB VRAM minimum) gives
 parity with Haiku-tier cloud models for most agent tasks. Smaller operators
 can run Qwen3.5-8B-Q8_0 on consumer hardware with a quality cost.
 
-The exact model is not prescriptive — anything that exposes function calling
+The exact model is not prescriptive - anything that exposes function calling
 over the OpenAI wire format will route correctly.
 
 ## Example config
@@ -97,19 +97,19 @@ which facts are allowed to flow to which provider:
 
 Air-gapped deployments should mark every provider `embedded` (same host) or
 `localhosted` (same subnet). Keeping a `cloud` entry alongside is supported
-and does not compromise the local-only path — the router picks based on the
+and does not compromise the local-only path - the router picks based on the
 requested model ID, not on trust level.
 
 ## Observability
 
 Per-provider metrics carry the `name` from the config entry as the
 `provider` label. With two providers registered, Prometheus queries can
-split cost, latency, and error rate by name — useful for operators who want
+split cost, latency, and error rate by name - useful for operators who want
 to prove that a given model never hit the cloud entry.
 
 ## Related issues
 
-- #3424 — OpenAI-compatible provider (this feature)
-- #3414 — Air-gapped mode (this document)
-- #3410 — Prompt cache sovereignty default (already disabled)
-- W3-1 — FactSensitivity filter (consumes `deploymentTarget`)
+- #3424 - OpenAI-compatible provider (this feature)
+- #3414 - Air-gapped mode (this document)
+- #3410 - Prompt cache sovereignty default (already disabled)
+- W3-1 - FactSensitivity filter (consumes `deploymentTarget`)

@@ -14,9 +14,9 @@
 
 ## Public API surface
 
-- `melete::distill` — `DistillEngine`, `DistillConfig`, `DistillResult`
-- `melete::flush` — `MemoryFlush`, `FlushItem` for pre-distillation persistence
-- `melete::similarity` — Jaccard-based near-duplicate pruning
+- `melete::distill` - `DistillEngine`, `DistillConfig`, `DistillResult`
+- `melete::flush` - `MemoryFlush`, `FlushItem` for pre-distillation persistence
+- `melete::similarity` - Jaccard-based near-duplicate pruning
 
 ## When to look here
 

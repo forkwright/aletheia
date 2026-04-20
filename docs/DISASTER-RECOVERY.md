@@ -92,7 +92,7 @@ systemctl --user start aletheia
 aletheia health
 ```
 
-> Backups are created by `aletheia backup` (SQLite) and the daemon’s `FjallBackup` task (file-level copy). `scripts/backup-cron.sh` exports sessions to JSON as an additional safety net.
+> Backups are created by `aletheia backup` (SQLite) and the daemon's `FjallBackup` task (file-level copy). `scripts/backup-cron.sh` exports sessions to JSON as an additional safety net.
 
 ---
 

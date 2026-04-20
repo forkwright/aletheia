@@ -14,9 +14,9 @@
 
 ## Public API surface
 
-- `episteme::extract` — `ExtractionEngine`, `ExtractionProvider` trait
-- `episteme::recall` — `RecallEngine`, `RecallWeights` for configurable scoring
-- `episteme::embedding` — `EmbeddingProvider` trait, `CandelProvider`, `MockEmbeddingProvider`
+- `episteme::extract` - `ExtractionEngine`, `ExtractionProvider` trait
+- `episteme::recall` - `RecallEngine`, `RecallWeights` for configurable scoring
+- `episteme::embedding` - `EmbeddingProvider` trait, `CandelProvider`, `MockEmbeddingProvider`
 
 ## When to look here
 

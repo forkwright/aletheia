@@ -14,9 +14,9 @@
 
 ## Public API surface
 
-- `agora::types` — `ChannelProvider` trait, `InboundMessage`, `SendParams`, `ChannelCapabilities`
-- `agora::registry` — `ChannelRegistry` for provider lookup and dispatch
-- `agora::router` — `MessageRouter`, `RouteDecision` for inbound routing to agents
+- `agora::types` - `ChannelProvider` trait, `InboundMessage`, `SendParams`, `ChannelCapabilities`
+- `agora::registry` - `ChannelRegistry` for provider lookup and dispatch
+- `agora::router` - `MessageRouter`, `RouteDecision` for inbound routing to agents
 
 ## When to look here
 

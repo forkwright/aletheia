@@ -11,8 +11,8 @@
 
 ## Public API surface
 
-- `poiesis_sheet::XlsxRenderer` — implements `Renderer`, produces XLSX bytes
-- `poiesis_sheet::OdsRenderer` — implements `Renderer`, produces ODS bytes
+- `poiesis_sheet::XlsxRenderer` - implements `Renderer`, produces XLSX bytes
+- `poiesis_sheet::OdsRenderer` - implements `Renderer`, produces ODS bytes
 
 ## When to look here
 

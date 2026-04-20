@@ -490,7 +490,7 @@ nous_id = "main"
 
 ## Matrix (optional)
 
-Aletheia can run as a Matrix client against a self-hosted [conduwuit](https://conduwuit.puppyirl.gay/) homeserver. The homeserver binds to `127.0.0.1:6167` and is reached over Tailscale only — no federation, no public exposure.
+Aletheia can run as a Matrix client against a self-hosted [conduwuit](https://conduwuit.puppyirl.gay/) homeserver. The homeserver binds to `127.0.0.1:6167` and is reached over Tailscale only - no federation, no public exposure.
 
 ### Prerequisites
 
@@ -516,7 +516,7 @@ The service restarts on failure and runs with `NoNewPrivileges`, `ProtectSystem`
 
 ### Register the first user
 
-Use the registration token the script printed (also at `~/menos-ops/secrets/conduwuit-registration-token`). Follow conduwuit's current API docs for the exact endpoint — typically via `element` (web client) against `http://menos.lan:6167`, selecting "Create account" and pasting the token when prompted.
+Use the registration token the script printed (also at `~/menos-ops/secrets/conduwuit-registration-token`). Follow conduwuit's current API docs for the exact endpoint - typically via `element` (web client) against `http://menos.lan:6167`, selecting "Create account" and pasting the token when prompted.
 
 ### Connect an Element client
 

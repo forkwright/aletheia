@@ -16,8 +16,8 @@ The `/metrics` endpoint exposes counters, gauges, and histograms from the worksp
 |--------|------|--------|-------------|
 | `aletheia_http_requests_total` | Counter | `method`, `path`, `status` | Total HTTP requests by method, normalized path, and status code |
 | `aletheia_http_request_duration_seconds` | Histogram | `method`, `path` | Request latency distribution |
-| `aletheia_active_sessions` | Gauge | — | Current number of active sessions |
-| `aletheia_uptime_seconds` | Gauge | — | Process uptime in seconds |
+| `aletheia_active_sessions` | Gauge | - | Current number of active sessions |
+| `aletheia_uptime_seconds` | Gauge | - | Process uptime in seconds |
 
 ### LLM providers
 
@@ -58,7 +58,7 @@ The `/metrics` endpoint exposes counters, gauges, and histograms from the worksp
 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
-| `aletheia_watchdog_hung_processes` | Gauge | — | Number of processes currently marked hung |
+| `aletheia_watchdog_hung_processes` | Gauge | - | Number of processes currently marked hung |
 | `aletheia_watchdog_restarts_total` | Counter | `process_id` | Watchdog-initiated restarts |
 | `aletheia_cron_executions_total` | Counter | `task_name`, `status` | Scheduled task runs |
 | `aletheia_cron_duration_seconds` | Histogram | `task_name` | Cron task latency |

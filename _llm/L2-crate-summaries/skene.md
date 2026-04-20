@@ -14,10 +14,10 @@
 
 ## Public API surface
 
-- `skene::api::client` — `ApiClient` for all REST and streaming operations
-- `skene::events` — `StreamEvent` enum for per-turn streaming
-- `skene::sse` — `SseEvent`, `SseStream` wire-level parser
-- `skene::id` — `NousId`, `SessionId`, `TurnId`, `ToolId`, `PlanId` newtypes
+- `skene::api::client` - `ApiClient` for all REST and streaming operations
+- `skene::events` - `StreamEvent` enum for per-turn streaming
+- `skene::sse` - `SseEvent`, `SseStream` wire-level parser
+- `skene::id` - `NousId`, `SessionId`, `TurnId`, `ToolId`, `PlanId` newtypes
 
 ## When to look here
 

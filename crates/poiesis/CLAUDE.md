@@ -12,12 +12,11 @@ Report tooling family: format-agnostic document model, Typst-based PDF primary r
 
 ## Read first
 
-1. `typst/src/lib.rs`: Primary renderer — `render_typst(source, data)`, `render_template(slug, data)`
-2. `typst/README.md`: Typst backend rationale, template slug convention, attribution
-3. `core/src/lib.rs`: Module structure and public re-exports for the Document model
-4. `core/src/renderer.rs`: The `Renderer` trait (used by non-Typst backends)
-5. `core/src/block.rs`: `Block` enum — headings, paragraphs, tables, lists, images, page breaks
-6. `text/src/pdf.rs`: Document-model PDF backend (A4 layout, line wrapping, via `krilla`)
+1. `core/src/lib.rs`: Module structure and public re-exports
+2. `core/src/renderer.rs`: The `Renderer` trait
+3. `core/src/document.rs`: Top-level `Document` type
+4. `core/src/block.rs`: `Block` enum - headings, paragraphs, tables, lists, images, page breaks
+5. `text/src/pdf.rs`: Most complex backend (A4 layout, line wrapping, system font loading)
 
 ## Key types
 

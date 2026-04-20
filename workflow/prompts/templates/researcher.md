@@ -4,7 +4,7 @@ description: "Research: [question or unknowns to resolve]"
 depends_on: []
 model_tier: opus      # research requires Opus for depth and accuracy
 blast_radius:
-  - [list files to READ — researcher does not write code]
+  - [list files to READ - researcher does not write code]
 acceptance_criteria:
   - "Each open question answered with evidence from the codebase or cited external sources"
   - "Architectural recommendation provided if asked"
@@ -18,9 +18,9 @@ enable a subsequent coder or refactor prompt to proceed with confidence.
 
 # Standards
 
-- `standards/STANDARDS.md` — philosophy and naming conventions inform analysis
-- `docs/ARCHITECTURE.md` — crate structure and dependency graph
-- `docs/ARCHITECTURE-QUICK.md` — one-page crate reference for orientation
+- `standards/STANDARDS.md` - philosophy and naming conventions inform analysis
+- `docs/ARCHITECTURE.md` - crate structure and dependency graph
+- `docs/ARCHITECTURE-QUICK.md` - one-page crate reference for orientation
 
 # Context
 

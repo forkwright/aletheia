@@ -1,4 +1,4 @@
-# _llm/ — Multi-Resolution Codebase Representation
+# _llm/ - Multi-Resolution Codebase Representation
 
 On-demand reference for AI agents. Load the level that matches your task's scope; read source only when you need implementation detail.
 
@@ -12,12 +12,12 @@ Agents loading cold into a 23-crate workspace burn tokens on full CLAUDE.md file
 
 | Level | File(s) | Size | Contents |
 |-------|---------|------|----------|
-| L1 | `L1-workspace.md` | ~500 tokens | Crate list, layer grouping, dependency direction — **not yet generated** |
-| L2 | `L2-crate-summaries/<crate>.md` | ~200 tokens each | Purpose, key types, public API surface — **not yet generated** |
+| L1 | `L1-workspace.md` | ~500 tokens | Crate list, layer grouping, dependency direction - **not yet generated** |
+| L2 | `L2-crate-summaries/<crate>.md` | ~200 tokens each | Purpose, key types, public API surface - **not yet generated** |
 | L3 | `L3-api-index/<crate>.md` | 100–22K tokens | All `pub` fn/struct/enum/trait signatures with doc comments, extracted by tree-sitter |
 | L4 | `crates/<crate>/src/` | source size | Full source, read on demand |
 
-L1 and L2 are deferred to a follow-up PR. See Architecture Plan: Multi-Resolution Codebase Representation — Phase 2.
+L1 and L2 are deferred to a follow-up PR. See Architecture Plan: Multi-Resolution Codebase Representation - Phase 2.
 
 ## Loading recipes
 
@@ -47,7 +47,7 @@ These TOML files were the prior representation and remain useful until L1/L2 lan
 
 ## Format
 
-TOML for structured data (token-efficient, machine-parseable). Markdown for L3 (fenced rust blocks for direct rendering). Canonical sources are the `docs/` markdown files and the source itself — these are compressed views, not replacements. When in doubt, read the linked doc.
+TOML for structured data (token-efficient, machine-parseable). Markdown for L3 (fenced rust blocks for direct rendering). Canonical sources are the `docs/` markdown files and the source itself - these are compressed views, not replacements. When in doubt, read the linked doc.
 
 ## Regenerating L3
 

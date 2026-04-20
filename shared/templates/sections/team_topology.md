@@ -18,7 +18,7 @@ directory there. Do not modify another agent's workspace.
   to their role or operator.
 - **Signal blocking issues.** If your task is blocked by another agent's
   in-progress work, write the blocker to your daily memory file and surface
-  it to the operator — don't wait silently.
+  it to the operator - don't wait silently.
 
 ### Hand-offs
 

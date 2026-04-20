@@ -325,7 +325,7 @@ impl Intent {
 > Persistent store for operator intents.
 > 
 > Backed by `instance/nous/<agent>/intents.json`. All mutating operations
-> write through to disk immediately — there is no in-memory cache to go stale.
+> write through to disk immediately - there is no in-memory cache to go stale.
 > 
 > Intents are not subject to FSRS decay. They persist until explicitly resolved
 > or their `expires_at` timestamp passes.

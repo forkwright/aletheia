@@ -14,7 +14,7 @@
 
 ## Public API surface
 
-- No library exports — all integration test files under `tests/`
+- No library exports - all integration test files under `tests/`
 - Run with `cargo test -p integration-tests` or `cargo test --workspace --features test-full`
 
 ## When to look here

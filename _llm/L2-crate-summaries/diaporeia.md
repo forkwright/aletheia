@@ -13,9 +13,9 @@
 
 ## Public API surface
 
-- `diaporeia::server` — `DiaporeiaServer`, `DiaporeiaState`
-- `diaporeia::transport` — Streamable HTTP router (Axum mount at `/mcp`) and stdio transport
-- `diaporeia::tools` — MCP tool implementations grouped by domain
+- `diaporeia::server` - `DiaporeiaServer`, `DiaporeiaState`
+- `diaporeia::transport` - Streamable HTTP router (Axum mount at `/mcp`) and stdio transport
+- `diaporeia::tools` - MCP tool implementations grouped by domain
 
 ## When to look here
 

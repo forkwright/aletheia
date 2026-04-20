@@ -14,9 +14,9 @@
 
 ## Public API surface
 
-- `taxis::config` — `AletheiaConfig` and all nested config types; `AletheiaConfig::load()` entry point
-- `taxis::oikos` — `Oikos` path resolver for instance directory layout
-- `taxis::cascade` — Three-tier file discovery (nous/{id}/ → shared/ → theke/)
+- `taxis::config` - `AletheiaConfig` and all nested config types; `AletheiaConfig::load()` entry point
+- `taxis::oikos` - `Oikos` path resolver for instance directory layout
+- `taxis::cascade` - Three-tier file discovery (nous/{id}/ → shared/ → theke/)
 
 ## When to look here
 
