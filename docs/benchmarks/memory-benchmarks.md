@@ -1,13 +1,13 @@
 # Memory benchmark results: LongMemEval and LoCoMo
 
-**Status:** Harness implemented, awaiting live run. See [Prerequisites](#prerequisites) before executing.
+**Status:** Runner implemented, awaiting live run. See [Prerequisites](#prerequisites) before executing.
 
 **Issue:** [#2854](https://github.com/forkwright/aletheia/issues/2854)
-**Harness PRs:** [#3090](https://github.com/forkwright/aletheia/pull/3090) (dataset parsers + scoring), [#3091](https://github.com/forkwright/aletheia/pull/3091) (live runner)
+**Runner PRs:** [#3090](https://github.com/forkwright/aletheia/pull/3090) (dataset parsers + scoring), [#3091](https://github.com/forkwright/aletheia/pull/3091) (live runner)
 
 ---
 
-## What the harness provides
+## What the runner provides
 
 The `dokimion` crate (`crates/eval/`) implements a full benchmark loop for
 measuring aletheia's memory pipeline against published recall benchmarks.
@@ -45,7 +45,7 @@ not abort the entire run. The runner produces a `BenchmarkReport` with
 
 ### Test coverage (already passing)
 
-The harness has 188 passing tests (`cargo test -p dokimion`):
+The runner has 188 passing tests (`cargo test -p dokimion`):
 
 | Scope | Count | Notes |
 |---|---|---|
@@ -341,7 +341,7 @@ memory pipeline.
 
 ## Issue status
 
-**#2854 is not yet closeable.** The harness is complete and well-tested, but
+**#2854 is not yet closeable.** The runner is complete and well-tested, but
 the live benchmark has not been executed. The blocking requirements are:
 
 1. `aletheia.service` running and healthy

@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # Scan the working tree for PII / secret patterns defined in
 # .github/pii-patterns.txt. Designed to run locally (`scripts/scan-pii.sh`)
 # and in CI. Emits plain-text diagnostics and exits non-zero on any
 # unsuppressed match.
 #
 # Override mechanisms:
-#   * PII_ALLOWLIST_PATHS  — newline-separated regexes of paths to skip
-#   * pii-allow: <reason>  — trailing marker on the same source line
+#   * PII_ALLOWLIST_PATHS  - newline-separated regexes of paths to skip
+#   * pii-allow: <reason>  - trailing marker on the same source line
 #                             (after any comment leader) to suppress one
 #                             match. The reason is not parsed but is
 #                             required by convention.
@@ -15,8 +16,6 @@
 # patterns are reported as-is.
 #
 # Shell standards: bash 5.x, set -euo pipefail, shellcheck-clean.
-
-set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"

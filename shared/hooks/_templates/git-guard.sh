@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# git-guard.sh — inspect tool:called payloads for destructive git operations.
+set -euo pipefail
+# git-guard.sh - inspect tool:called payloads for destructive git operations.
 #
 # Receives the tool:called event payload on stdin as JSON.
 # Exits:
-#   0 — no issue detected
-#   1 — operator-approval required (warns or blocks per ALETHEIA_GIT_GUARD_BLOCK)
-#   2 — permanently blocked operation (always an error)
-set -euo pipefail
+#   0 - no issue detected
+#   1 - operator-approval required (warns or blocks per ALETHEIA_GIT_GUARD_BLOCK)
+#   2 - permanently blocked operation (always an error)
 
 BLOCK_MODE="${ALETHEIA_GIT_GUARD_BLOCK:-0}"
 

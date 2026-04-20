@@ -1,6 +1,6 @@
 # Hot reload classification
 
-This document classifies all `AletheiaConfig` fields as either **Hot** (safe to apply via SIGHUP without restart) or **Cold** (requires process restart to take effect).
+Every `AletheiaConfig` field is classified as either **Hot** (safe to apply via SIGHUP without restart) or **Cold** (requires process restart to take effect).
 
 ## Summary
 

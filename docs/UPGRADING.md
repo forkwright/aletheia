@@ -67,7 +67,7 @@ Both backends use the same path (`data/sessions.db`), but SQLite creates a file
 while fjall creates a directory. Upgrading without preparation causes a startup
 crash.
 
-Additionally, `data/knowledge.fjall` may be incompatible if it was created by an
+`data/knowledge.fjall` may also be incompatible if it was created by an
 older fjall version (the error message will mention `InvalidTag(CompressionType)`).
 
 **Before deploying the new binary:**

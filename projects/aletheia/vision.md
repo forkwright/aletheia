@@ -13,7 +13,7 @@ Aletheia is a self-hosted AI agent runtime with persistent memory. One binary, n
 
 ## Strategic moat
 
-Aletheia's moat is not any single algorithm - it is the integration depth between memory, tools, and agent pipeline that accrues over time. A competitor can replicate any crate, but replicating the whole system plus the operator's accumulated knowledge graph is a migration, not a clone.
+No single algorithm defends Aletheia - the integration depth between memory, tools, and agent pipeline accrues over time. A competitor can replicate any crate, but replicating the whole system plus the operator's accumulated knowledge graph is a migration, not a clone.
 
 ## Aspirational directions
 

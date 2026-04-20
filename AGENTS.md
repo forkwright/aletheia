@@ -28,7 +28,7 @@ Desktop crate (`proskenion`) excluded from workspace - build standalone:
 - **Commits:** `type(scope): description`. Scope = crate name.
 - **Test data:** Synthetic identities only (alice, bob, acme.corp).
 
-## Where to Add Things
+## Where to add things
 
 | Task | Location | Registration |
 |------|----------|-------------|

@@ -1,6 +1,6 @@
 # Feature Flag Matrix
 
-This document lists every feature flag defined in the workspace, how they interact across crates, and common build recipes.
+Every feature flag defined in the workspace, how flags interact across crates, and common build recipes.
 
 ## Feature Table
 
@@ -129,7 +129,7 @@ This document lists every feature flag defined in the workspace, how they intera
 | **poiesis-text** | `pdf` | no | PDF backend | `dep:krilla` |
 | **poiesis-text** | `odt` | no | ODT backend | `dep:zip` |
 
-## Cross-Crate Feature Interactions
+## Cross-crate feature interactions
 
 Some features in one crate cannot be used unless a downstream crate also enables a matching feature. The most important chains are listed below.
 
@@ -184,7 +184,7 @@ aletheia/embed-candle
 | `daemon/knowledge-store` | `episteme/mneme-engine` |
 | `diaporeia/knowledge-store` | `nous/knowledge-store` |
 
-## Test Feature Tiers
+## Test feature tiers
 
 Every workspace crate declares `test-core` and `test-full`. Most crates leave them empty; crates with storage- or ML-dependent tests wire them to the relevant engine features.
 

@@ -4,7 +4,7 @@
 
 Report tooling family: format-agnostic document model plus rendering backends (Typst→PDF, ODT, XLSX, ODS, PPTX) and report-quality checks (prose lint, numeric claim verify). Zero internal dependencies. Entry points: `core/src/lib.rs` (Document, Renderer) and `typst/src/lib.rs` (`render_typst`, `render_template`).
 
-**Typst is the primary renderer.** Prefer `poiesis-typst` for prose-oriented PDF output — it supports templates, math, citations, breakable blocks, cross-references, and JSON data injection, with structured compile diagnostics carrying source locations. The `text/pdf` backend (via `krilla`) remains for the simple document-model path where no template system or data injection is needed.
+**Typst is the primary renderer.** Prefer `poiesis-typst` for prose-oriented PDF output - it supports templates, math, citations, breakable blocks, cross-references, and JSON data injection, with structured compile diagnostics carrying source locations. The `text/pdf` backend (via `krilla`) remains for the document-model path where no template system or data injection is needed.
 
 ## Depth
 
@@ -64,7 +64,7 @@ Current slugs: `default`.
 - **Format-agnostic core**: `Document`, `Block`, and `RichText` are plain data types with zero format-specific code (used by non-Typst backends).
 - **Trait-based backends**: Each non-Typst subcrate implements `Renderer`; callers pass the same `Document` to any backend.
 - **Feature-gated dependencies**: Every backend is behind a Cargo feature so consumers only compile what they need.
-- **Plain-text fallback**: Non-Typst backends that cannot natively express a feature (images in PDF/spreadsheets, rich text in XLSX) degrade to plain text or alt text rather than failing.
+- **Plain-text fallback**: Non-Typst backends that cannot natively express a feature (images in PDF/spreadsheets, rich text in XLSX) degrade to plain text or alt text instead of failing.
 - **ZIP-based packaging**: ODT, XLSX, ODS, and PPTX are all ZIP archives; tests verify the `PK` magic bytes.
 - **In-memory Typst world**: `poiesis-typst` embeds the compiler as a library; source and injected data live in memory (no temp files, no CLI subprocess).
 

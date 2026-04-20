@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # Reproducibility script for LongMemEval and LoCoMo benchmark runs.
 #
 # Usage:
@@ -12,8 +13,6 @@
 # Outputs:
 #   - docs/benchmarks/reports/longmemeval-<timestamp>.json
 #   - docs/benchmarks/reports/locomo-<timestamp>.json
-
-set -euo pipefail
 
 INSTANCE_URL="${INSTANCE_URL:-http://127.0.0.1:18789}"
 NOUS_ID="${NOUS_ID:-benchmark}"
@@ -78,29 +77,29 @@ echo "Building benchmark runner..."
 cargo build --release -p aletheia --quiet
 RUNNER="target/release/aletheia"
 
-MAX_ARG=""
+MAX_ARGS=()
 if [[ -n "$MAX_QUESTIONS" ]]; then
-    MAX_ARG="--max-questions $MAX_QUESTIONS"
+    MAX_ARGS=(--max-questions "$MAX_QUESTIONS")
 fi
 
 # Run LongMemEval
 echo ""
 echo "=== Running LongMemEval ==="
-$RUNNER benchmark longmemeval \
+"$RUNNER" benchmark longmemeval \
     --dataset benchmark-data/longmemeval.json \
     --url "$INSTANCE_URL" \
     --nous-id "$NOUS_ID" \
-    $MAX_ARG \
+    "${MAX_ARGS[@]}" \
     --output "$REPORT_DIR/longmemeval-$TIMESTAMP.json"
 
 # Run LoCoMo
 echo ""
 echo "=== Running LoCoMo ==="
-$RUNNER benchmark locomo \
+"$RUNNER" benchmark locomo \
     --dataset benchmark-data/locomo.json \
     --url "$INSTANCE_URL" \
     --nous-id "$NOUS_ID" \
-    $MAX_ARG \
+    "${MAX_ARGS[@]}" \
     --output "$REPORT_DIR/locomo-$TIMESTAMP.json"
 
 echo ""

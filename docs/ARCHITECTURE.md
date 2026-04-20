@@ -66,7 +66,7 @@ aletheia/                          # git root  -  the platform
 │   │   ├── tools/                #   Nous-only tools
 │   │   ├── skills/               #   Extracted skill patterns
 │   │   ├── hooks/                #   Global event hooks
-│   │   ├── templates/            #   System prompt templates
+│   │   ├── templates/            #   Prompt templates
 │   │   └── coordination/         #   Blackboard, task state
 │   │
 │   ├── nous/                     # Tier 2: individual nous workspaces
@@ -221,7 +221,7 @@ strip = "symbols"
 
 ## Workspace topology metric
 
-A dense dependency graph (many edges per node) signals that new work may fit better as a function inside an existing crate rather than as a new crate. We track the ratio of inter-crate edges to workspace crates:
+A dense dependency graph (many edges per node) signals that new work may fit better as a function inside an existing crate instead of as a new crate. We track the ratio of inter-crate edges to workspace crates:
 
 ```bash
 ./scripts/topology-metric.sh
