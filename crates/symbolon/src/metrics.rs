@@ -110,43 +110,92 @@ mod tests {
         buf
     }
 
+    /// Extract the numeric value of the metric line matching `prefix`.
+    ///
+    /// # WHY
+    ///
+    /// The recording counters are `static LazyLock`s shared across the whole
+    /// test binary. Tests in other modules (notably
+    /// `credential::refresh::refresh_tests::persist_refresh_success_*`)
+    /// legitimately call `record_token_refresh`/`record_credential_write_failure`
+    /// as part of verifying refresh-loop side-effects, so the absolute counter
+    /// value when these tests run is non-deterministic. Instead of asserting
+    /// a fixed value, capture the baseline before the test's recording call
+    /// and assert that the recording increments it by the expected delta.
+    fn counter_value(out: &str, prefix: &str) -> u64 {
+        for line in out.lines() {
+            if let Some(rest) = line.strip_prefix(prefix) {
+                let num = rest.trim();
+                if let Ok(v) = num.parse::<u64>() {
+                    return v;
+                }
+            }
+        }
+        0
+    }
+
     #[test]
     fn register_and_record_auth_attempt() {
         let r = fresh_registry();
+        let before_ok = counter_value(
+            &encode(&r),
+            "aletheia_auth_attempts_total{method=\"_test_method\",status=\"ok\"} ",
+        );
+        let before_err = counter_value(
+            &encode(&r),
+            "aletheia_auth_attempts_total{method=\"_test_method\",status=\"error\"} ",
+        );
         record_auth_attempt("_test_method", true);
         record_auth_attempt("_test_method", false);
         let out = encode(&r);
-        assert!(
-            out.contains("aletheia_auth_attempts_total{method=\"_test_method\",status=\"ok\"} 1"),
-            "got: {out}"
+        let after_ok = counter_value(
+            &out,
+            "aletheia_auth_attempts_total{method=\"_test_method\",status=\"ok\"} ",
         );
-        assert!(
-            out.contains(
-                "aletheia_auth_attempts_total{method=\"_test_method\",status=\"error\"} 1"
-            ),
-            "got: {out}"
+        let after_err = counter_value(
+            &out,
+            "aletheia_auth_attempts_total{method=\"_test_method\",status=\"error\"} ",
+        );
+        assert_eq!(
+            after_ok - before_ok,
+            1,
+            "auth_attempts ok counter must increment by 1; got {out}"
+        );
+        assert_eq!(
+            after_err - before_err,
+            1,
+            "auth_attempts error counter must increment by 1; got {out}"
         );
     }
 
     #[test]
     fn register_and_record_token_refresh() {
         let r = fresh_registry();
+        let before = counter_value(
+            &encode(&r),
+            "aletheia_token_refreshes_total{status=\"ok\"} ",
+        );
         record_token_refresh(true);
         let out = encode(&r);
-        assert!(
-            out.contains("aletheia_token_refreshes_total{status=\"ok\"} 1"),
-            "got: {out}"
+        let after = counter_value(&out, "aletheia_token_refreshes_total{status=\"ok\"} ");
+        assert_eq!(
+            after - before,
+            1,
+            "token_refreshes ok counter must increment by 1; got {out}"
         );
     }
 
     #[test]
     fn register_and_record_credential_write_failure() {
         let r = fresh_registry();
+        let before = counter_value(&encode(&r), "aletheia_credential_write_failures_total ");
         record_credential_write_failure();
         let out = encode(&r);
-        assert!(
-            out.contains("aletheia_credential_write_failures_total 1"),
-            "got: {out}"
+        let after = counter_value(&out, "aletheia_credential_write_failures_total ");
+        assert_eq!(
+            after - before,
+            1,
+            "credential_write_failures counter must increment by 1; got {out}"
         );
     }
 }

@@ -628,3 +628,7 @@ pub fn claude_code_provider_with_config(
     );
     Some(Box::new(FileCredentialProvider::new(path.to_path_buf())))
 }
+
+#[cfg(test)]
+#[path = "refresh_tests.rs"]
+mod refresh_tests;
