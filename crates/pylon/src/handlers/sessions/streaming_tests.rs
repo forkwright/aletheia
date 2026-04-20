@@ -1,7 +1,8 @@
 #![expect(clippy::expect_used, reason = "test assertions")]
 
-use super::*;
 use axum::http::HeaderMap;
+
+use super::*;
 
 /// Default max key length for tests (matches `ApiLimitsConfig::default()`).
 const TEST_MAX_KEY_LEN: usize = 64;

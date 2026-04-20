@@ -75,20 +75,17 @@ fn utf8() {
 #[test]
 fn display_datavalues() {
     // Verify Display trait implementations for DataValue variants
-    assert_eq!(format!("{}", DataValue::Null), "null");
-    assert_eq!(format!("{}", DataValue::from(true)), "true");
-    assert_eq!(format!("{}", DataValue::from(-1)), "-1");
+    assert_eq!(DataValue::Null.to_string(), "null");
+    assert_eq!(DataValue::from(true).to_string(), "true");
+    assert_eq!(DataValue::from(-1).to_string(), "-1");
     assert_eq!(
-        format!("{}", DataValue::from(-1_121_212_121.331_212_f64)),
+        DataValue::from(-1_121_212_121.331_212_f64).to_string(),
         "-1121212121.331212"
     );
     // Special floats display as function calls that reconstruct them
+    assert_eq!(DataValue::from(f64::NAN).to_string(), r#"to_float("NAN")"#);
     assert_eq!(
-        format!("{}", DataValue::from(f64::NAN)),
-        r#"to_float("NAN")"#
-    );
-    assert_eq!(
-        format!("{}", DataValue::from(f64::NEG_INFINITY)),
+        DataValue::from(f64::NEG_INFINITY).to_string(),
         r#"to_float("NEG_INF")"#
     );
 

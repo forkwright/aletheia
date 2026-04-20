@@ -67,6 +67,7 @@ const NS_OFFICE_DOC_RELS: &str =
 
 /// Errors produced by the PPTX renderer.
 #[derive(Debug, Snafu)]
+#[non_exhaustive]
 pub enum PptxError {
     /// An error occurred while generating the presentation.
     #[snafu(display("PPTX error: {message}"))]
@@ -263,7 +264,7 @@ fn write_entry(
 
 /// Escape text for XML character data using `quick-xml`.
 fn xml_escape(s: &str) -> String {
-    format!("{}", escape(s))
+    escape(s).to_string()
 }
 
 fn build_content_types(slides: &[SlideContent]) -> String {
@@ -636,8 +637,9 @@ static THEME: LazyLock<String> = LazyLock::new(|| {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use poiesis_core::{Block, Document, Metadata, RichText, Span};
+
+    use super::*;
 
     fn sample_doc() -> Document {
         Document {

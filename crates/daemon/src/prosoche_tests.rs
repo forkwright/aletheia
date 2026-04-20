@@ -257,8 +257,9 @@ mod knowledge_store_tests {
         fact_id: &str,
         entity_id: &str,
     ) {
-        use episteme::engine::DataValue;
         use std::collections::BTreeMap;
+
+        use episteme::engine::DataValue;
 
         let now = episteme::knowledge::format_timestamp(&jiff::Timestamp::now());
         let mut params = BTreeMap::new();

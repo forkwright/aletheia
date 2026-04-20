@@ -11,9 +11,9 @@
 
 #![expect(clippy::expect_used, reason = "bench setup")]
 
-use criterion::{Criterion, criterion_group, criterion_main};
 use std::hint::black_box;
 
+use criterion::{Criterion, criterion_group, criterion_main};
 use koina::ulid::Ulid;
 use koina::uuid::{Uuid, uuid_v4};
 

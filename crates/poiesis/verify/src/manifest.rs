@@ -42,6 +42,7 @@ pub struct Claim {
 /// A single source backing a claim.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
+#[non_exhaustive]
 pub enum Source {
     /// A SQL query (stored for record-keeping; execution not performed by this crate).
     Sql {

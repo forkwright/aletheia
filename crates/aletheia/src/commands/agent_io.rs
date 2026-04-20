@@ -904,10 +904,11 @@ pub(crate) async fn guard_knowledge_lock(url: &str) -> Result<()> {
 mod tests {
     use std::collections::HashMap;
 
-    use super::*;
     use graphe::portability::{
         AgentFile, ExportedMessage, ExportedNote, ExportedSession, NousInfo, WorkspaceData,
     };
+
+    use super::*;
 
     #[test]
     fn capitalize_first_letter() {

@@ -200,9 +200,15 @@ mod tests {
     #[test]
     fn knowledge_import_result_default_starts_at_zero() {
         let result = KnowledgeImportResult::default();
-        assert_eq!(result.facts_imported, 0);
-        assert_eq!(result.entities_imported, 0);
-        assert_eq!(result.relationships_imported, 0);
+        assert_eq!(result.facts_imported, 0, "default facts_imported must be 0");
+        assert_eq!(
+            result.entities_imported, 0,
+            "default entities_imported must be 0"
+        );
+        assert_eq!(
+            result.relationships_imported, 0,
+            "default relationships_imported must be 0"
+        );
     }
 
     #[test]
@@ -212,8 +218,14 @@ mod tests {
             entities_imported: 3,
             relationships_imported: 2,
         };
-        assert_eq!(result.facts_imported, 5);
-        assert_eq!(result.entities_imported, 3);
-        assert_eq!(result.relationships_imported, 2);
+        assert_eq!(result.facts_imported, 5, "facts_imported should preserve 5");
+        assert_eq!(
+            result.entities_imported, 3,
+            "entities_imported should preserve 3"
+        );
+        assert_eq!(
+            result.relationships_imported, 2,
+            "relationships_imported should preserve 2"
+        );
     }
 }

@@ -419,7 +419,7 @@ fn parse_callback_request(reader: &mut BufReader<&TcpStream>) -> Result<Option<C
                 "state" => data.state = Some(value),
                 "error" => data.error = Some(value),
                 "error_description" => data.error_description = Some(value),
-                _ => {}
+                _ => {} // Ignore unknown query parameters.
             }
         }
     }

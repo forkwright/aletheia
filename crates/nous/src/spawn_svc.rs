@@ -9,6 +9,10 @@ use tokio_util::sync::CancellationToken;
 use tracing::{Instrument, info, warn};
 
 use hermeneus::provider::ProviderRegistry;
+use koina::defaults::{
+    BOOTSTRAP_MAX_TOKENS, CONTEXT_TOKENS, DEFAULT_MODEL, MAX_OUTPUT_TOKENS, MAX_TOOL_ITERATIONS,
+    MAX_TOOL_RESULT_BYTES,
+};
 use organon::registry::ToolRegistry;
 use organon::types::{SpawnRequest, SpawnResult, SpawnService};
 use taxis::oikos::Oikos;
@@ -16,11 +20,6 @@ use taxis::oikos::Oikos;
 use crate::actor;
 use crate::config::{NousConfig, PipelineConfig, StageBudget};
 use crate::roles::Role;
-
-use koina::defaults::{
-    BOOTSTRAP_MAX_TOKENS, CONTEXT_TOKENS, DEFAULT_MODEL, MAX_OUTPUT_TOKENS, MAX_TOOL_ITERATIONS,
-    MAX_TOOL_RESULT_BYTES,
-};
 
 const SONNET_MODEL: &str = DEFAULT_MODEL;
 

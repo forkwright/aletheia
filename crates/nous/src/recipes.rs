@@ -297,7 +297,7 @@ impl RecipeRegistry {
                 None => {
                     best = Some((recipe, score));
                 }
-                _ => {}
+                _ => {} // Lower-scoring candidate; keep current best.
             }
         }
 

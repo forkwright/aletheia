@@ -3,9 +3,9 @@
     reason = "test: vec indices are valid after asserting len"
 )]
 //! Edge case and utility tests.
-use super::*;
-
 use organon::types::ToolDiagnostics;
+
+use super::*;
 
 struct DiagnosticExecutor;
 

@@ -13,9 +13,9 @@
 
 #![expect(clippy::expect_used, reason = "bench setup")]
 
-use criterion::{Criterion, criterion_group, criterion_main};
 use std::hint::black_box;
 
+use criterion::{Criterion, criterion_group, criterion_main};
 use graphe::store::SessionStore;
 use graphe::types::Role;
 use koina::ulid::Ulid;

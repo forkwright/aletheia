@@ -240,6 +240,7 @@ fn format_markdown(findings: &[ResearchFinding]) -> String {
 
 /// Research depth level (0-3), determining how many researchers to dispatch.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[non_exhaustive]
 pub enum ResearchLevel {
     /// Well-understood domain, existing patterns. No research needed.
     Skip,

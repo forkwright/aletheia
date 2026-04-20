@@ -14,7 +14,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use tokio::sync::{Mutex, Notify};
-use tracing::{debug, warn};
+use tracing::{Instrument as _, debug, warn};
 
 /// Default time-to-live for completed turn buffers before they are reaped.
 const DEFAULT_COMPLETED_TTL: Duration = Duration::from_mins(5);
@@ -256,20 +256,23 @@ pub(crate) fn spawn_reaper(
     registry: Arc<TurnBufferRegistry>,
     shutdown: tokio_util::sync::CancellationToken,
 ) {
-    tokio::spawn(async move {
-        let mut interval = tokio::time::interval(Duration::from_mins(1));
-        loop {
-            tokio::select! {
-                _ = interval.tick() => {
-                    registry.reap_expired().await;
-                }
-                () = shutdown.cancelled() => {
-                    debug!("turn buffer reaper shutting down");
-                    return;
+    tokio::spawn(
+        async move {
+            let mut interval = tokio::time::interval(Duration::from_mins(1));
+            loop {
+                tokio::select! {
+                    _ = interval.tick() => {
+                        registry.reap_expired().await;
+                    }
+                    () = shutdown.cancelled() => {
+                        debug!("turn buffer reaper shutting down");
+                        return;
+                    }
                 }
             }
         }
-    });
+        .instrument(tracing::info_span!("pylon.turn_buffer_reaper")),
+    );
 }
 
 #[cfg(test)]

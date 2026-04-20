@@ -35,6 +35,7 @@ pub struct Probe {
 
 /// Which category of flush item a probe targets.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ProbeCategory {
     /// A key decision.
     Decision,

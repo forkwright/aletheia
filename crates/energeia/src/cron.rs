@@ -326,8 +326,9 @@ fn apply_jitter(base: DateTime<Utc>, jitter: Duration) -> DateTime<Utc> {
 mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    use super::*;
     use chrono::TimeZone;
+
+    use super::*;
 
     fn parse_schedule(expr: &str) -> cron::Schedule {
         expr.parse().expect("valid cron expression")

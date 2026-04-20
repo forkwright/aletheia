@@ -613,10 +613,11 @@ impl NousActor {
     /// Degrades gracefully: any I/O or deserialization error is logged and
     /// returns an empty vec so the pipeline is never blocked by intent load failures.
     pub(crate) fn resolve_intent_sections(&self) -> Vec<BootstrapSection> {
-        use crate::bootstrap::{BootstrapSection, SectionPriority};
-        use crate::budget::CharEstimator;
         use dianoia::intent::IntentStore;
         use tracing::warn;
+
+        use crate::bootstrap::{BootstrapSection, SectionPriority};
+        use crate::budget::CharEstimator;
 
         let agent_dir = self.services.oikos.nous_dir(&self.id);
         let store = IntentStore::new(agent_dir);

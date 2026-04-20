@@ -7,9 +7,10 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use proptest::prelude::*;
+
 use crate::knowledge_store::KnowledgeStore;
 use crate::test_fixtures::{make_entity, make_fact, make_relationship, make_store};
-use proptest::prelude::*;
 
 proptest! {
     #[test]

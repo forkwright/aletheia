@@ -56,6 +56,7 @@ pub struct ParameterProposal {
 
 /// Outcome of evaluating a parameter proposal against operator bounds.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum ProposalOutcome {
     /// The proposal was accepted and the parameter was changed.
     Applied {

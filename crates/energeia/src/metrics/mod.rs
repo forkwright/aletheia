@@ -116,8 +116,9 @@ impl std::fmt::Debug for MetricsService {
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 #[expect(clippy::float_cmp, reason = "test assertions compare exact f64 zero")]
 mod tests {
-    use super::*;
     use tempfile::TempDir;
+
+    use super::*;
 
     fn setup() -> (TempDir, MetricsService) {
         let dir = TempDir::new().unwrap();
