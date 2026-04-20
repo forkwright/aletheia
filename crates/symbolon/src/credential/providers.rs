@@ -229,3 +229,7 @@ impl CredentialProvider for CredentialChain {
         "chain"
     }
 }
+
+#[cfg(test)]
+#[path = "providers_tests.rs"]
+mod providers_tests;
