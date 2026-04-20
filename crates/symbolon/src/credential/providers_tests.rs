@@ -1,8 +1,4 @@
-#![expect(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    reason = "test assertions"
-)]
+#![expect(clippy::unwrap_used, clippy::expect_used, reason = "test assertions")]
 
 //! Mutation-hardening tests for `EnvCredentialProvider`, `FileCredentialProvider`,
 //! and `CredentialChain` covering the 16 missed mutants tracked in #3710.
@@ -11,11 +7,6 @@
 //! subset of edge cases, but cargo-mutants still kills mutants in the constructor
 //! bodies, arithmetic (`/ 1000`), the mtime-cache freshness comparison (`<`), and
 //! the `name()` accessors. These tests pin those specific behaviours.
-
-#![expect(
-    clippy::expect_used,
-    reason = "test assertions: panic-on-failure is desirable to surface regressions"
-)]
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
