@@ -1,0 +1,43 @@
+# Forge CI pipeline for forkwright/aletheia.
+#
+# Mirrors harmonia's .kanon-ci.toml with aletheia-specific adjustments:
+# feature flag (test-core) and longer timeouts for the larger workspace.
+#
+# Per-stage build + test concurrency pinned to 8. Without this cap cargo
+# defaults to num_cpus (64 on this Threadripper) and parallel rustc + nextest
+# processes peak well over 100GB RSS, enough to OOM menos when any other
+# fleet work is running. 8 is the budget that keeps a single CI run under
+# ~25GB peak so serial drains don't OOM with aletheia.service + dispatch
+# fleet resident.
+#
+# Keep in sync with:
+# - crates/archeion/src/ci_config.rs::default_rust_gate (upstream default)
+# - .github/workflows/ci.yml (until the GHA check+clippy+test workflow is
+#   disabled as part of the 05e cutover)
+#
+# NOTE: the `kanon lint` stage is intentionally omitted. Aletheia's current
+# lint baseline is 2502 open violations + 126 suppressed, so enforcing it
+# in CI would reject every PR until a dedicated cleanup arc reduces the
+# baseline to zero. GHA CI also never enforced it, so omission preserves
+# parity. Re-add the stage (matching harmonia's) once the baseline is clean.
+# Tracked in the phase plan at
+# `kanon/projects/aletheia/phases/aletheia-05e-forge-cutover.md`.
+
+[pipeline]
+stages = ["cargo fmt", "cargo check", "cargo clippy", "cargo nextest"]
+
+[stages."cargo fmt"]
+cmd = "cargo fmt --all -- --check"
+timeout_secs = 300
+
+[stages."cargo check"]
+cmd = "cargo check --workspace --features test-core --all-targets --jobs 8"
+timeout_secs = 1800
+
+[stages."cargo clippy"]
+cmd = "cargo clippy --workspace --features test-core --all-targets --jobs 8 -- -D warnings"
+timeout_secs = 1800
+
+[stages."cargo nextest"]
+cmd = "cargo nextest run --workspace --features test-core --build-jobs 8 --test-threads 8 --no-fail-fast"
+timeout_secs = 2400
