@@ -305,7 +305,7 @@ fn draw_wrapped(
         clippy::as_conversions,
         reason = "max_width and char_w_approx are positive finite f32 from page constants; ratio fits in usize"
     )]
-    let chars_per_line = (max_width / char_w_approx).max(1.0) as usize;
+    let chars_per_line = (max_width / char_w_approx).max(1.0) as usize; // SAFETY: positive finite f32 clamped to >= 1.0; ratio bounded by page constants
 
     let line_h = font_size * LEADING;
     let baseline_offset = font_size; // PDF baseline is font_size below y

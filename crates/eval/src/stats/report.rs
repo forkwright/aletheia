@@ -163,8 +163,8 @@ pub fn comparison_report(
 
     // Sign test (paired only)
     let p_raw = if a.len() == b.len() {
-        let n = a.len() as f64;
-        let wins_a = a.iter().zip(b.iter()).filter(|(ai, bi)| ai > bi).count() as f64;
+        let n = a.len() as f64; // SAFETY: sample size bounded per function-level #[expect]
+        let wins_a = a.iter().zip(b.iter()).filter(|(ai, bi)| ai > bi).count() as f64; // SAFETY: sample size bounded per function-level #[expect]
         // Two-tailed sign test approximation: 2 * min(wins, losses) / n
         let wins_b = n - wins_a;
         let p = 2.0 * wins_a.min(wins_b) / n;

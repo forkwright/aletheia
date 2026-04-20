@@ -97,7 +97,7 @@ pub fn compute_cost_report(store: &EnergeiaStore, window_days: u32) -> Result<Co
         )]
         let cutoff = now
             .checked_sub(span)
-            .expect("timestamp subtraction within realistic day range");
+            .expect("timestamp subtraction within realistic day range"); // INVARIANT: span bounded to window_days*24h from current time
         Some(cutoff.as_millisecond())
     } else {
         None
@@ -110,7 +110,7 @@ pub fn compute_cost_report(store: &EnergeiaStore, window_days: u32) -> Result<Co
                 clippy::expect_used,
                 reason = "ms from cutoff calculation is a valid timestamp"
             )]
-            jiff::Timestamp::from_millisecond(ms).expect("valid cutoff timestamp")
+            jiff::Timestamp::from_millisecond(ms).expect("valid cutoff timestamp") // INVARIANT: ms derived from a valid jiff Timestamp subtraction
         },
     );
 
@@ -148,7 +148,7 @@ pub fn compute_cost_report(store: &EnergeiaStore, window_days: u32) -> Result<Co
             reason = "u64→f64: total_dispatches bounded by SCAN_LIMIT_DISPATCHES (10_000), well below f64 mantissa 2^53"
         )]
         {
-            total_cost_usd / total_dispatches as f64
+            total_cost_usd / total_dispatches as f64 // SAFETY: total_dispatches <= SCAN_LIMIT_DISPATCHES (10_000), fits in f64 mantissa
         }
     } else {
         0.0
@@ -161,7 +161,7 @@ pub fn compute_cost_report(store: &EnergeiaStore, window_days: u32) -> Result<Co
             reason = "u64→f64: total_sessions bounded by SCAN_LIMIT_SESSIONS (100_000), well below f64 mantissa 2^53"
         )]
         {
-            total_cost_usd / total_sessions as f64
+            total_cost_usd / total_sessions as f64 // SAFETY: total_sessions <= SCAN_LIMIT_SESSIONS (100_000), fits in f64 mantissa
         }
     } else {
         0.0
@@ -227,7 +227,7 @@ fn build_project_costs(
                     reason = "u64→f64: per-project counts bounded by SCAN_LIMIT_DISPATCHES (10_000), well below f64 mantissa 2^53"
                 )]
                 {
-                    acc.completed as f64 / acc.dispatches as f64
+                    acc.completed as f64 / acc.dispatches as f64 // SAFETY: per-project counts <= SCAN_LIMIT_DISPATCHES
                 }
             } else {
                 0.0
@@ -298,7 +298,7 @@ fn build_daily_velocity(
                     reason = "u64→f64: per-day counts bounded by SCAN_LIMIT_DISPATCHES (10_000), well below f64 mantissa 2^53"
                 )]
                 {
-                    acc.completed as f64 / acc.dispatches as f64
+                    acc.completed as f64 / acc.dispatches as f64 // SAFETY: per-day counts <= SCAN_LIMIT_DISPATCHES
                 }
             } else {
                 0.0

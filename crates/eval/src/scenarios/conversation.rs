@@ -96,26 +96,16 @@ impl Scenario for ConversationHistoryReflects {
                     ),
                 )?;
                 // history.messages.len() >= 2 is asserted above
-                #[expect(
-                    clippy::indexing_slicing,
-                    reason = "indices 0 and 1 are valid: history.messages.len() >= 2 is asserted above"
-                )]
-                {
-                    assert_eval(
-                        history.messages[0].role == MessageRole::User,
-                        format!(
-                            "first message should be user, got {:?}",
-                            history.messages[0].role
-                        ),
-                    )?;
-                    assert_eval(
-                        history.messages[1].role == MessageRole::Assistant,
-                        format!(
-                            "second message should be assistant, got {:?}",
-                            history.messages[1].role
-                        ),
-                    )?;
-                }
+                let first_role = history.messages.first().map(|m| &m.role);
+                let second_role = history.messages.get(1).map(|m| &m.role);
+                assert_eval(
+                    first_role == Some(&MessageRole::User),
+                    format!("first message should be user, got {first_role:?}"),
+                )?;
+                assert_eval(
+                    second_role == Some(&MessageRole::Assistant),
+                    format!("second message should be assistant, got {second_role:?}"),
+                )?;
                 let _ = client.close_session(&session.id).await;
                 Ok(())
             }

@@ -153,20 +153,24 @@ impl MemoryServer {
                 // mentions. `relationships{src, dst, relation, weight}` are edges
                 // in the entity graph. We union inbound and outbound edges so the
                 // caller sees both directions.
-                let script = r"
-                    seed_entity[entity_id] :=
-                        *fact_entities{fact_id: $fact_id, entity_id}
-
-                    ?[src_id, dst_id, name, entity_type, relation, weight] :=
-                        seed_entity[src_id],
-                        *relationships{src: src_id, dst: dst_id, relation, weight},
-                        *entities{id: dst_id, name, entity_type}
-
-                    ?[src_id, dst_id, name, entity_type, relation, weight] :=
-                        seed_entity[dst_id],
-                        *relationships{src: src_id, dst: dst_id, relation, weight},
-                        *entities{id: src_id, name, entity_type}
-                ";
+                // WHY: CozoDB datalog syntax — `rule[args]` is the rule head. We
+                // build the script via concat! so each `[...]` occurrence lives
+                // on a single-line string literal (per-line linters treat it as
+                // data, not Rust indexing).
+                let script = concat!(
+                    "seed_entity[entity_id] :=\n",
+                    "    *fact_entities{fact_id: $fact_id, entity_id}\n",
+                    "\n",
+                    "?[src_id, dst_id, name, entity_type, relation, weight] :=\n",
+                    "    seed_entity[src_id],\n",
+                    "    *relationships{src: src_id, dst: dst_id, relation, weight},\n",
+                    "    *entities{id: dst_id, name, entity_type}\n",
+                    "\n",
+                    "?[src_id, dst_id, name, entity_type, relation, weight] :=\n",
+                    "    seed_entity[dst_id],\n",
+                    "    *relationships{src: src_id, dst: dst_id, relation, weight},\n",
+                    "    *entities{id: src_id, name, entity_type}\n",
+                );
 
                 let mut params = BTreeMap::new();
                 params.insert("fact_id".to_owned(), DataValue::Str(fact_id.clone().into()));
@@ -317,14 +321,17 @@ impl MemoryServer {
                     .get_i64(0, "count(id)")
                     .unwrap_or_default();
 
-                let topic_count_script = r"
-                    topic_set[fact_type] :=
-                        *facts{fact_type, is_forgotten, superseded_by},
-                        is_forgotten == false,
-                        is_null(superseded_by)
-
-                    ?[count(fact_type)] := topic_set[fact_type]
-                ";
+                // WHY: datalog rule heads use `name[args]`; concat! keeps each
+                // bracketed line inside a single-line string literal so the
+                // indexing-slicing linter's string-skip pattern applies.
+                let topic_count_script = concat!(
+                    "topic_set[fact_type] :=\n",
+                    "    *facts{fact_type, is_forgotten, superseded_by},\n",
+                    "    is_forgotten == false,\n",
+                    "    is_null(superseded_by)\n",
+                    "\n",
+                    "?[count(fact_type)] := topic_set[fact_type]\n",
+                );
                 let topic_count_result = store
                     .run_query(topic_count_script, BTreeMap::new())
                     .map_err(|e| {

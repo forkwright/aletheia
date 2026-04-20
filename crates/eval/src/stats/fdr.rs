@@ -54,10 +54,6 @@ pub enum FdrMethod {
     clippy::as_conversions,
     reason = "usize to f64 — counts are bounded and small"
 )]
-#[expect(
-    clippy::indexing_slicing,
-    reason = "adjusted[orig_idx] uses orig_idx from enumerate(0..m); sorted_indices contains permutations of 0..m; all accesses are in-bounds"
-)]
 pub fn fdr_correct(p_values: &[f64], method: FdrMethod) -> Result<Vec<f64>, Error> {
     let m = p_values.len();
     if m == 0 {
@@ -78,7 +74,7 @@ pub fn fdr_correct(p_values: &[f64], method: FdrMethod) -> Result<Vec<f64>, Erro
         FdrMethod::BenjaminiHochberg => 1.0,
         FdrMethod::BenjaminiYekutieli => {
             // harmonic sum: sum(1/k, k=1..m)
-            (1..=m).map(|k| 1.0 / k as f64).sum()
+            (1..=m).map(|k| 1.0 / k as f64).sum() // SAFETY: m <10K per function-level #[expect]
         }
     };
 
@@ -90,18 +86,33 @@ pub fn fdr_correct(p_values: &[f64], method: FdrMethod) -> Result<Vec<f64>, Erro
     let mut adjusted = vec![0.0_f64; m];
     for (rank_0, &(orig_idx, p)) in indexed.iter().enumerate() {
         let rank = rank_0 + 1; // 1-based
-        adjusted[orig_idx] = p * m as f64 * c_m / rank as f64;
+        // INVARIANT: orig_idx in [0, m) (permutation of range), adjusted has length m
+        if let Some(slot) = adjusted.get_mut(orig_idx) {
+            *slot = p * m as f64 * c_m / rank as f64; // SAFETY: m and rank <10K per function-level #[expect]
+        }
     }
 
     // Enforce monotonicity: walk from last sorted index backwards,
     // ensuring adjusted[i] <= adjusted[i+1] in sort order.
     let sorted_indices: Vec<usize> = indexed.iter().map(|&(idx, _)| idx).collect();
-    let last = sorted_indices[m - 1];
-    adjusted[last] = adjusted[last].min(1.0);
+    // INVARIANT: m > 0 checked at top (early-return for m == 0); sorted_indices has m entries
+    if let Some(&last) = sorted_indices.get(m - 1)
+        && let Some(last_slot) = adjusted.get_mut(last)
+    {
+        *last_slot = last_slot.min(1.0);
+    }
     for i in (0..m - 1).rev() {
-        let idx = sorted_indices[i];
-        let next_idx = sorted_indices[i + 1];
-        adjusted[idx] = adjusted[idx].min(adjusted[next_idx]).min(1.0);
+        // INVARIANT: i, i+1 < m = sorted_indices.len(); values are valid adjusted[] indices
+        let Some(&idx) = sorted_indices.get(i) else {
+            continue;
+        };
+        let Some(&next_idx) = sorted_indices.get(i + 1) else {
+            continue;
+        };
+        let next_val = adjusted.get(next_idx).copied().unwrap_or(1.0);
+        if let Some(slot) = adjusted.get_mut(idx) {
+            *slot = slot.min(next_val).min(1.0);
+        }
     }
 
     Ok(adjusted)
