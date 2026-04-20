@@ -1,6 +1,6 @@
 # API Versioning Policy
 
-This document describes how the Aletheia HTTP API is versioned, what stability guarantees apply, and how breaking changes are managed.
+Aletheia's HTTP API uses URL-path versioning with strict stability guarantees for `/api/v1/`. Breaking changes ship under a new version prefix; infrastructure endpoints (health, metrics, docs) stay unversioned.
 
 ## Current state
 
@@ -45,4 +45,4 @@ When a new major API version is released (e.g. v2), the previous version (v1) wi
 
 Aletheia uses **URL path-based versioning** only. Clients declare the desired version by calling the appropriate prefixed path (e.g. `/api/v1/sessions`).
 
-The server does **not** negotiate versions via `Accept` headers or custom media types. This keeps routing explicit and caching straightforward.
+The server does **not** negotiate versions via `Accept` headers or custom media types. This keeps routing explicit and caching predictable.

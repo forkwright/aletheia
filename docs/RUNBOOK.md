@@ -634,7 +634,7 @@ Ephemeral sessions use keys prefixed with `spawn:`, `ask:`, or `dispatch:`. They
 
 ### Denied tool calls
 
-Expect a denied result (not an error) when a role's allowlist blocks a tool call. If an agent reports it cannot perform an action, verify the requested tool is in its role's allowlist.
+A role's allowlist returns a denied result, not an error, when it blocks an invocation. If an agent reports it cannot perform an action, verify the requested name appears in its role's allowlist.
 
 ---
 

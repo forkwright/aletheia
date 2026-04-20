@@ -7,7 +7,7 @@ them in the crate's `Cargo.toml` under `[[bench]]`.
 
 ## What gets benched
 
-The bench suite is **not** comprehensive - it tracks the functions that
+The bench suite does **not** target every function - it tracks the functions that
 actually run on every turn or every request. Adding a bench should be
 motivated by one of:
 
@@ -128,5 +128,5 @@ cargo bench -p aletheia-symbolon --bench jwt -- --baseline main
 ```
 
 The CI workflow runs `cargo bench --workspace --no-run` to verify that
-all bench targets compile, but does not currently track regression
+all bench targets compile, but does not track regression
 thresholds. That gate is tracked in #2802 follow-up if needed.

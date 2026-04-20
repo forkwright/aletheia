@@ -12,46 +12,46 @@
 
 ## Nous Actors
 
-### Pipeline Turn Handling
+### Pipeline turn handling
 
-The actor run loop (`crates/nous/src/actor/mod.rs:270`) processes messages sequentially.  Normal turns are wrapped in a **panic boundary**: the pipeline is spawned as a separate `tokio::task` and the `JoinHandle` is awaited inside `handle_pipeline_result` (`crates/nous/src/actor/turn.rs:452`).
+The actor run loop (`crates/nous/src/actor/mod.rs:270`) processes messages sequentially. Normal turns run inside a **panic boundary**: the pipeline spawns as a separate `tokio::task` and the `JoinHandle` is awaited inside `handle_pipeline_result` (`crates/nous/src/actor/turn.rs:452`).
 
-- If the pipeline panics, the actor catches the `JoinError`, increments `pipeline_panic_count`, and returns an error to the caller.  The actor **continues** processing subsequent messages (`turn.rs:460-488`).
+- If the pipeline panics, the actor catches the `JoinError`, increments `pipeline_panic_count`, and returns an error to the caller. The actor **continues** processing subsequent messages (`turn.rs:460-488`).
 - After `degraded_panic_threshold` panics within `degraded_window_secs`, the actor enters `Degraded` mode and rejects new turns with `ServiceDegraded` (`mod.rs:324-328`).
 
-### Cross-Nous Message Handling
+### Cross-nous message handling
 
-**Gap:** `handle_cross_message` (`mod.rs:410-427`) calls `execute_turn` **inline** - it does **not** use `execute_turn_with_panic_boundary`.  A pipeline panic on this path crashes the actor task.  The `NousManager` health poller will eventually detect the dead actor and restart it (`manager.rs:432-434`), but all in-memory session state for that actor is lost.
+**Gap:** `handle_cross_message` (`mod.rs:410-427`) calls `execute_turn` **inline** - it does **not** use `execute_turn_with_panic_boundary`. A pipeline panic on this path crashes the actor task. The `NousManager` health poller will eventually detect the dead actor and restart it (`manager.rs:432-434`), but all in-memory session state for that actor is lost.
 
-### Background Tasks
+### Background tasks
 
-Background tasks (extraction, distillation, skill analysis) are spawned into a `JoinSet` and reaped each loop iteration (`background.rs:31`).  Panics are caught, logged, and counted in `background_panic_count`, but they **do not** trigger degraded mode or actor restart (`background.rs:37-48`).
+Background tasks (extraction, distillation, skill analysis) are spawned into a `JoinSet` and reaped each loop iteration (`background.rs:31`). Panics are caught, logged, and counted in `background_panic_count`, but they **do not** trigger degraded mode or actor restart (`background.rs:37-48`).
 
-### Actor Restart by Manager
+### Actor restart by manager
 
-The manager's `health_cycle` pings actors and restarts dead ones with exponential backoff (`manager.rs:388-434`).  Restart drains the old `JoinHandle` with a timeout (`manager.rs:494`).  Panics during drain are caught as `JoinError` and logged; they do not propagate.
+The manager's `health_cycle` pings actors and restarts dead ones with exponential backoff (`manager.rs:388-434`). Restart drains the old `JoinHandle` with a timeout (`manager.rs:494`). Panics during drain are caught as `JoinError` and logged; they do not propagate.
 
 ## Pylon Handlers
 
-### Per-Request Failure Isolation
+### Per-request failure isolation
 
-Pylon builds an Axum router with standard middleware layers (`router.rs:45`).  There is **no** `catch_panic` layer installed, but Axum's default behavior aborts the request when a handler panics; it does **not** crash the server process.
+Pylon builds an Axum router with standard middleware layers (`router.rs:45`). There is **no** `catch_panic` layer installed, but Axum's default behavior aborts the request when a handler panics; it does **not** crash the server process.
 
-Handler errors are converted to HTTP responses via `ApiError::into_response` (`error.rs`).  The `JoinError` test confirms that a panicked task inside a handler becomes a `500 Internal Server Error` without leaking internals (`error.rs:754-771`).
+Handler errors are converted to HTTP responses via `ApiError::into_response` (`error.rs`). The `JoinError` test confirms that a panicked task inside a handler becomes a `500 Internal Server Error` without leaking internals (`error.rs:754-771`).
 
-### Streaming Turn Spawns
+### Streaming turn spawns
 
-The streaming handler spawns three concurrent tasks (`streaming.rs:281`, `525`, `570`).  The outer handler awaits their completion and maps failures to SSE error events.  Panics in these tasks are caught as `JoinError` and do not escape the request.
+The streaming handler spawns three concurrent tasks (`streaming.rs:281`, `525`, `570`). The outer handler awaits their completion and maps failures to SSE error events. Panics in these tasks are caught as `JoinError` and do not escape the request.
 
-### Signal Handler Startup
+### Signal handler startup
 
-**Gap:** The SIGHUP reload task and shutdown signal future use `.expect()` on signal handler installation (`server.rs:365`, `413`, `419`).  In a restricted container or when file descriptors are exhausted, this **panics the process** during startup.
+**Gap:** The SIGHUP reload task and shutdown signal future use `.expect()` on signal handler installation (`server.rs:365`, `413`, `419`). In a restricted container or when file descriptors are exhausted, this **panics the process** during startup.
 
 ## Daemon Workers
 
-### Task Runner Lifecycle
+### Task runner lifecycle
 
-The daemon `TaskRunner` ticks every second and spawns tasks via `tokio::spawn` (`lifecycle.rs:149`).  Each `JoinHandle` is stored in `in_flight` and polled individually in `check_in_flight` (`inflight.rs:37`).
+The daemon `TaskRunner` ticks every second and spawns tasks via `tokio::spawn` (`lifecycle.rs:149`). Each `JoinHandle` is stored in `in_flight` and polled individually in `check_in_flight` (`inflight.rs:37`).
 
 - **Errors:** Logged and recorded as task failures (`inflight.rs:77-85`).
 - **Panics:** Caught as `JoinError`, logged, and recorded as failures (`inflight.rs:92-94`).
@@ -60,36 +60,36 @@ The daemon `TaskRunner` ticks every second and spawns tasks via `tokio::spawn` (
 
 ### Maintenance Tasks
 
-Maintenance builtins (trace rotation, drift detection, fjall backup, etc.) are dispatched via `tokio::task::spawn_blocking` inside the action (`execution.rs:145`).  Blocking-task panics are caught by the same `check_in_flight` path and do not propagate.
+Maintenance builtins (trace rotation, drift detection, fjall backup, etc.) are dispatched via `tokio::task::spawn_blocking` inside the action (`execution.rs:145`). Blocking-task panics are caught by the same `check_in_flight` path and do not propagate.
 
 ### Graceful Shutdown
 
-Shutdown uses a `CancellationToken` tree: a root token with child tokens per runner (`runtime/mod.rs:661`).  On shutdown, in-flight tasks are aborted (`lifecycle.rs:68`) and the binary-level `TaskTracker` waits with a 10-second timeout (`server/mod.rs:231`).
+Shutdown uses a `CancellationToken` tree: a root token with child tokens per runner (`runtime/mod.rs:661`). On shutdown, in-flight tasks are aborted (`lifecycle.rs:68`) and the binary-level `TaskTracker` waits with a 10-second timeout (`server/mod.rs:231`).
 
 ## Session Store
 
-The session store is a `mneme::store::SessionStore` wrapped in a `tokio::sync::Mutex` (`manager.rs:79`).  Tokio mutexes **do not poison** on panic, so a panic during session CRUD cannot corrupt the store for other actors.  Errors are returned as `Result` and propagated up the call stack.
+Session state lives in a `mneme::store::SessionStore` wrapped in a `tokio::sync::Mutex` (`manager.rs:79`). Tokio mutexes **do not poison** on panic, so a panic during session CRUD cannot corrupt the store for other actors. Errors are returned as `Result` and propagated up the call stack.
 
 ## Knowledge Store
 
-The knowledge store (`mneme::knowledge_store::KnowledgeStore`) is accessed through `Arc<KnowledgeStore>` shared across actors.  It is not guarded by a mutex at the actor level; the underlying `fjall` key-value store handles concurrency.  Failures return errors.  There is no `unwrap()` or `expect()` in the production knowledge-store code path that would crash the process.
+The knowledge store (`mneme::knowledge_store::KnowledgeStore`) is accessed through `Arc<KnowledgeStore>` shared across actors. It is not guarded by a mutex at the actor level; the underlying `fjall` key-value store handles concurrency. Failures return errors. There is no `unwrap()` or `expect()` in the production knowledge-store code path that would crash the process.
 
 ## Provider Registry
 
-The `ProviderRegistry` (`hermeneus/src/provider.rs:280`) holds a `Vec<ProviderEntry>`.  Each entry carries a `ProviderHealthTracker` (`health.rs:82`).
+The `ProviderRegistry` (`hermeneus/src/provider.rs:280`) holds a `Vec<ProviderEntry>`. Each entry carries a `ProviderHealthTracker` (`health.rs:82`).
 
-- **Per-provider health:** `record_success` / `record_error` update state machine (`Up → Degraded → Down`).  A single provider failure does not affect other providers.
+- **Per-provider health:** `record_success` / `record_error` update state machine (`Up → Degraded → Down`). A single provider failure does not affect other providers.
 - **Mutex poisoning handled gracefully:** `health.rs:103-107` uses `unwrap_or_else(PoisonError::into_inner)` to recover stale state.
 
-**Gap:** The `ConcurrencyLimiter` (`hermeneus/src/concurrency.rs`) uses `.expect()` on `std::sync::Mutex` locking (`concurrency.rs:165`, `179`, `193`, `225`, `254`).  If any thread panics while holding this lock, **all subsequent LLM requests across all actors will panic** because the limiter is shared globally via `Arc`.  This is a single-failure-to-global-crash vector.
+**Gap:** The `ConcurrencyLimiter` (`hermeneus/src/concurrency.rs`) uses `.expect()` on `std::sync::Mutex` locking (`concurrency.rs:165`, `179`, `193`, `225`, `254`). If any thread panics while holding this lock, **all subsequent LLM requests across all actors will panic** because the limiter is shared globally via `Arc`. This is a single-failure-to-global-crash vector.
 
 ## Tool Executors
 
-Tool execution runs inside `organon` builtins.  The sandbox module (`organon/src/sandbox/policy.rs`) applies Landlock/seccomp on Linux and is a no-op elsewhere.  Tool errors are returned as `Result` to the caller; panics inside a tool would be caught by the nous pipeline's panic boundary.  There is no `unwrap()` in the production tool-execution path that would crash the process.
+Tool execution runs inside `organon` builtins. The sandbox module (`organon/src/sandbox/policy.rs`) applies Landlock/seccomp on Linux and is a no-op elsewhere. Tool errors are returned as `Result` to the caller; panics inside a tool would be caught by the nous pipeline's panic boundary. There is no `unwrap()` in the production tool-execution path that would crash the process.
 
 ## Maintenance Tasks
 
-See [Daemon Workers](#daemon-workers).  Maintenance tasks inherit the same isolation: per-task `JoinHandle` polling, panic catching, and auto-disable after repeated failures.
+See [Daemon Workers](#daemon-workers). Maintenance tasks inherit the same isolation: per-task `JoinHandle` polling, panic catching, and auto-disable after repeated failures.
 
 ## Surface List - Components That Crash the Process
 
@@ -121,7 +121,7 @@ The following components can turn a local failure into a process-wide crash:
 | Krites query engine | `panic!` on internal invariant violations | Process | Return `Result` error to caller | `data/json.rs:76`, `query/graph.rs:127`, `query/graph.rs:205`, `query/magic.rs:217`, `query/stratify.rs:203` |
 | Krites storage backend | `unreachable!` on assumed-live transaction | Process | Return corruption/error instead of panic | `storage/fjall_backend.rs:194` |
 
-## Detailed Citation Index
+## Detailed citation index
 
 ### Krites
 - `crates/krites/src/data/json.rs:76` - `panic!("found bottom")` on `DataValue::Bot` during JSON export.

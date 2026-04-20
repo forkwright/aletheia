@@ -46,7 +46,7 @@ virtual file at path `data.json`. Templates load it with Typst's built-in
 #let data = json("data.json")
 ```
 
-No bespoke substitution layer — the injection piggybacks on Typst's own file
+No bespoke substitution layer - the injection piggybacks on Typst's own file
 resolution, so templates written against it also work when edited interactively
 against a real `data.json` on disk.
 

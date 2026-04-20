@@ -63,7 +63,7 @@
 
 **GAP-METRIC-1 (queue depth):** No `aletheia_nous_inbox_depth` gauge or histogram. If an actor's inbox fills, the symptom is silent latency increase with no alert surface. The `NousActor` run loop has the inbox capacity (a tokio unbounded channel) but its depth is not measured.
 
-**GAP-METRIC-2 (nous init - `dead_code` note):** `nous/src/metrics.rs` `init()` is annotated `#[cfg_attr(not(test), expect(dead_code, ...))]` with the comment "startup pre-registration, not yet wired into server boot sequence." This means nous metrics are lazy-initialized on first use rather than pre-registered. For counters this is usually fine, but a freshly-started server that has never handled a turn will show nothing on the `/metrics` endpoint for nous metrics until the first event fires.
+**GAP-METRIC-2 (nous init - `dead_code` note):** `nous/src/metrics.rs` `init()` is annotated `#[cfg_attr(not(test), expect(dead_code, ...))]` with the comment "startup pre-registration, not yet wired into server boot sequence." This means nous metrics are lazy-initialized on first use instead of pre-registered. For counters that works, but a freshly-started server that has never handled a turn will show nothing on the `/metrics` endpoint for nous metrics until the first event fires.
 
 ---
 
@@ -92,7 +92,7 @@
 
 **GAP-LOG-1 (pylon nous.rs handlers):** The `recover` handler restarts a nous actor. There is no `warn!/error!` on failure paths in this handler - if the recovery call returns an error it propagates as an `ApiError` (HTTP 500) without a structured log event with context about which nous actor failed and why.
 
-**GAP-LOG-2 (pylon planning.rs):** `get_verification` and `refresh_verification` handlers have no structured logging. Both are stubs returning `501 Not Implemented` - acceptable while unimplemented, but worth noting.
+**GAP-LOG-2 (pylon planning.rs):** `get_verification` and `refresh_verification` handlers have no structured logging. Both are stubs returning `501 Not Implemented` - acceptable while unimplemented.
 
 ---
 

@@ -7,7 +7,11 @@
 
 ## Abstract
 
-Aletheia is a persistent agent runtime that embeds knowledge graph, vector search, full-text retrieval, and kernel-level sandboxing in a single Rust binary. Three design choices distinguish it from existing memory systems. First, it uses Datalog as the knowledge graph substrate instead of property graphs, which enables recursive inference and rule-based reasoning within the recall pipeline. Second, it integrates Landlock LSM, seccomp BPF, and Linux network namespaces into the agent tool loop, providing sandboxing comparable to OpenAI Codex and NVIDIA OpenShell but without external orchestration. Third, it scores memory recall with six signals - vector similarity, BM25 full-text, graph intelligence, temporal decay, epistemic tier, and access frequency - combined through a tunable weighted formula. The system runs as one self-contained process with zero external services. This paper describes the architecture, evaluates the recall pipeline against published benchmarks, and compares Aletheia to Zep, Letta, Hindsight, and Mem0.
+Aletheia is a persistent agent runtime that embeds knowledge graph, vector search, full-text retrieval, and kernel-level sandboxing in a single Rust binary. Three design choices distinguish it from existing memory systems.
+
+First, it uses Datalog as the knowledge graph substrate instead of property graphs, which enables recursive inference and rule-based reasoning within the recall pipeline. Second, it integrates Landlock LSM, seccomp BPF, and Linux network namespaces into the agent tool loop, providing sandboxing comparable to OpenAI Codex and NVIDIA OpenShell but without external orchestration. Third, it scores memory recall with six signals - vector similarity, BM25 full-text, graph intelligence, temporal decay, epistemic tier, and access frequency - combined through a tunable weighted formula.
+
+The system runs as one self-contained process with zero external services. This paper describes the architecture, evaluates the recall pipeline against published benchmarks, and compares Aletheia to Zep, Letta, Hindsight, and Mem0.
 
 ---
 
@@ -17,7 +21,7 @@ Long-term memory is the central problem in agent architecture. Without it, every
 
 The research community has produced several memory systems. Zep [1] pairs property graphs with vector search. MemGPT [2] uses hierarchical memory with explicit management operations. Hindsight [3] provides an upper bound by showing the full conversation at query time. Mem0 [4] layers a memory store over existing LLM APIs. These systems advance the state of the art, but each leaves a gap: none uses Datalog for the knowledge substrate, none integrates kernel-level sandboxing into the agent loop, and none combines more than three signals for recall scoring.
 
-Aletheia closes these gaps. It is a production agent runtime built in Rust with 24 crates and a single-binary deployment model. The memory subsystem (mneme) embeds a Datalog engine (krites) with HNSW vector indexes, full-text search, and graph algorithms. The tool subsystem (organon) runs built-in and external tools inside a Landlock + seccomp + netns sandbox. The recall pipeline (episteme) fuses six scoring signals through operator-tunable weights.
+Aletheia closes these gaps. It is a production agent runtime built in Rust with 24 crates and a single-binary deployment model. Its memory subsystem (mneme) embeds a Datalog engine (krites) with HNSW vector indexes, full-text search, and graph algorithms. Tool execution (organon) runs built-in and external tools inside a Landlock + seccomp + netns sandbox. Recall (episteme) fuses six scoring signals through operator-tunable weights.
 
 This paper makes four contributions:
 
@@ -44,7 +48,7 @@ This paper makes four contributions:
 
 **Letta** (formerly MemGPT) [2] implements a memory hierarchy with explicit `core_memory_replace` and `archival_memory_search` operations. It uses an embedded HNSW index and a custom graph structure. Letta's recall combines vector similarity with recency. It runs as a Python package with optional PostgreSQL.
 
-**Hindsight** [3] provides an upper-bound baseline by presenting the full conversation history at query time. It scores highest on LongMemEval and LoCoMo because it avoids retrieval errors entirely, but it is not a deployable memory system. It serves as a ceiling against which practical systems measure themselves.
+**Hindsight** [3] provides an upper-bound baseline by presenting the full conversation history at query time. It scores highest on LongMemEval and LoCoMo because it avoids retrieval errors entirely, but it is not a deployable memory system. It acts as a ceiling against which practical systems measure themselves.
 
 **Mem0** [4] adds a memory layer to existing LLM applications. It stores key-value memories with metadata filters and pgvector for semantic search. Recall uses vector similarity plus metadata matching. Mem0 offers a hosted cloud API or self-hosted Python server.
 
@@ -52,7 +56,7 @@ None of these systems uses Datalog, integrates kernel sandboxing, or scores reca
 
 ### 2.2 Datalog for knowledge representation
 
-Datalog is a declarative logic language with guaranteed termination under stratified negation. It supports recursive queries (transitive closure, reachability) and rule-based inference (if-then rules over relations). Property graphs require traversals or Cypher queries for the same operations, and recursive graph queries in Cypher are not universally supported.
+As a declarative logic language, Datalog guarantees termination under stratified negation, supports recursive queries (transitive closure, reachability), and provides rule-based inference (if-then rules over relations). Property graphs require traversals or Cypher queries for the same operations, and recursive graph queries in Cypher are not universally supported.
 
 Datalog has been used in program analysis, network configuration, and security policy. Its application to agent memory is new. Aletheia uses Datalog as the native storage format for facts, entities, relationships, and derived rules, not as an external query layer.
 
@@ -62,7 +66,7 @@ Datalog has been used in program analysis, network configuration, and security p
 
 ### 3.1 System overview
 
-Aletheia is a Rust workspace with 24 crates. The binary (`aletheia`) embeds all subsystems. The HTTP gateway (`pylon`) serves an Axum API with SSE streaming. The agent pipeline (`nous`) runs a Tokio actor that processes turns through bootstrap, recall, execution, and finalize stages. The memory subsystem (`mneme`) is a thin facade over four sub-crates: `eidos` (types), `graphe` (SQLite session store), `episteme` (knowledge pipeline), and `krites` (Datalog engine).
+Aletheia is a Rust workspace with 24 crates. A single binary (`aletheia`) embeds all subsystems. HTTP traffic arrives at `pylon`, an Axum API with SSE streaming. Agent turns flow through `nous`, a Tokio actor that processes bootstrap, recall, execution, and finalize stages. The memory subsystem (`mneme`) is a thin facade over four sub-crates: `eidos` (types), `graphe` (SQLite session store), `episteme` (knowledge pipeline), and `krites` (Datalog engine).
 
 ```text
 aletheia binary
@@ -213,7 +217,7 @@ External services are optional. The system runs on a bare server with only the b
 
 ## 4. Evaluation
 
-### 4.1 Benchmark harness
+### 4.1 Benchmark runner
 
 We implemented a benchmark runner in the `dokimion` crate that evaluates Aletheia against two published recall benchmarks: LongMemEval [7] and LoCoMo [8]. The runner:
 
@@ -222,7 +226,7 @@ We implemented a benchmark runner in the `dokimion` crate that evaluates Alethei
 3. Asks the benchmark question via the HTTP API
 4. Scores answers with exact match (EM), token-level F1, and substring containment
 
-The harness has 188 passing unit and integration tests. It supports smoke tests (`--max-questions 5`) and full runs.
+The runner has 188 passing unit and integration tests. It supports smoke tests (`--max-questions 5`) and full runs.
 
 ### 4.2 Benchmark datasets
 
@@ -249,7 +253,7 @@ Published baselines:
 
 ### 4.3 Results
 
-Live benchmark runs are pending completion of the runner integration (issue #2854). The harness is implemented, tested, and ready. Results will be recorded in `docs/benchmarks/memory-benchmarks.md` and summarized here when available.
+Live benchmark runs are pending completion of the runner integration (issue #2854). The runner is implemented, tested, and ready. Results will be recorded in `docs/benchmarks/memory-benchmarks.md` and summarized here when available.
 
 Expected analysis points:
 
@@ -324,7 +328,7 @@ This matters for persistent agents. A long-running agent server that executes hu
 
 - **Datalog expressiveness vs familiarity.** Datalog is powerful but unfamiliar to most practitioners. The generated-query layer hides complexity, but advanced use cases require learning a new language.
 - **Linux-only sandbox.** Landlock and seccomp are Linux kernel interfaces. macOS and Windows builds compile but run without sandbox enforcement.
-- **Benchmark results pending.** The harness is complete but live runs against LongMemEval and LoCoMo have not yet been executed.
+- **Benchmark results pending.** The runner is complete but live runs against LongMemEval and LoCoMo have not yet been executed.
 - **Embedding model.** Current default is BAAI/bge-small-en-v1.5 (384 dims). Larger models would improve retrieval quality at the cost of memory and compute.
 
 ### 6.2 Future work
@@ -352,7 +356,7 @@ The agent-specific venues (AAMAS, agent workshops) are also suitable if the eval
 
 ## 8. Conclusion
 
-Aletheia demonstrates that three unconventional design choices - Datalog for knowledge representation, kernel-level sandboxing in the agent loop, and 6-factor recall scoring - combine into a deployable persistent agent runtime. The system runs as a single binary with no external services, making it suitable for sovereign deployments where data never leaves the operator's machine. The benchmark harness is ready; live evaluation will quantify the recall quality against published baselines. We invite the research community to inspect the open-source implementation and reproduce the results.
+Aletheia demonstrates that three unconventional design choices - Datalog for knowledge representation, kernel-level sandboxing in the agent loop, and 6-factor recall scoring - combine into a deployable persistent agent runtime. The system runs as a single binary with no external services, making it suitable for sovereign deployments where data never leaves the operator's machine. The benchmark runner is ready; live evaluation will quantify the recall quality against published baselines. We invite the research community to inspect the open-source implementation and reproduce the results.
 
 ---
 

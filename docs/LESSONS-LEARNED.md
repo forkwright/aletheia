@@ -40,7 +40,7 @@ Entries are prepended (newest first). Do not reorder existing entries.
 project). No Rust changes; standards and workflow artifacts only.
 
 **What worked:** Deriving the agentic pipeline standard from existing code
-(`crates/energeia`) rather than specifying it independently. The implementation
+(`crates/energeia`) instead of specifying it independently. The implementation
 already embodied the right structure; the standard made it explicit and
 navigable for agents starting cold.
 

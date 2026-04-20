@@ -597,7 +597,7 @@ def write_manifest(
         "# preserves them verbatim across regeneration. See _llm/README.md.",
         "",
         "version = 1",
-        f'generated_at = "{generated_at}"',
+        'generated_at = "' + generated_at + '"',
         "",
     ]
 
@@ -659,9 +659,9 @@ def write_manifest(
     for idx in crate_indices:
         lines.extend([
             "[[crates]]",
-            f'name = "{idx.name}"',
-            f'path = "{idx.path}"',
-            f'source_hash = "{idx.source_hash}"',
+            'name = "' + idx.name + '"',
+            'path = "' + idx.path + '"',
+            'source_hash = "' + idx.source_hash + '"',
             f"l3_token_estimate = {idx.token_estimate}",
             "",
         ])

@@ -150,7 +150,7 @@ if [[ "${DRY_RUN}" -eq 0 ]]; then
         fi
         if (( $(date +%s) > deadline )); then
             echo "[deploy-conduwuit] ERROR: ${HEALTH_URL} did not return 200 within ${HEALTH_TIMEOUT}s" >&2
-            sudo systemctl status "${SERVICE}" --no-pager || true
+            sudo systemctl status "${SERVICE}" --no-pager || true # WHY: diagnostic only; ignore status failure so we still exit 1
             exit 1
         fi
         sleep 2
