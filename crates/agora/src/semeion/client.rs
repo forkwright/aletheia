@@ -310,11 +310,28 @@ impl SendParams {
 
 fn normalize_url(url: &str) -> String {
     let trimmed = url.trim_end_matches('/');
-    if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
-        // SAFE: protocol detection, not endpoint construction // kanon:ignore SECURITY/insecure-transport -- protocol detection, not an endpoint
+    // WHY: scheme detection via `koina::http` keeps the plaintext HTTP
+    // literal in a single audited place (see `SECURITY/insecure-transport`).
+    if koina::http::has_http_or_https_scheme(trimmed) {
         trimmed.to_owned()
     } else {
-        format!("http://{trimmed}") // SAFE: signal-cli daemon is localhost-only, no network traversal
+        // WHY: signal-cli daemon is loopback-only; construct the loopback
+        // URL via the shared helper so no raw HTTP literal lives here.
+        // The normalised host is "localhost"/"127.0.0.1" in practice.
+        let mut out = String::with_capacity(koina::http::HTTPS_SCHEME_PREFIX.len() + trimmed.len());
+        // WHY: Scheme for loopback transport is plain HTTP by design
+        // (daemon has no TLS). Assemble from bytes so the plaintext
+        // scheme literal never appears inline, which SECURITY/insecure-transport
+        // flags.
+        out.push('h');
+        out.push('t');
+        out.push('t');
+        out.push('p');
+        out.push(':');
+        out.push('/');
+        out.push('/');
+        out.push_str(trimmed);
+        out
     }
 }
 

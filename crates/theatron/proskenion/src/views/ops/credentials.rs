@@ -72,11 +72,29 @@ impl CredentialApiEntry {
     }
 }
 
+/// Serialise a `SecretString` by exposing its inner value so the raw
+/// API key reaches the aletheia server during credential creation.
+///
+/// WHY: the HTTP body must carry the actual key; `SecretString`'s default
+/// `Serialize` would emit `"[REDACTED]"` and break the request. The
+/// secret is still zeroised on drop and redacted in `Debug`/`Display`.
+fn serialize_secret_expose<S: serde::Serializer>(
+    secret: &koina::secret::SecretString,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    serializer.serialize_str(secret.expose_secret())
+}
+
 #[derive(Debug, Clone, serde::Serialize)]
 struct AddCredentialRequest {
     provider: String,
     /// Raw key -- cleared from reactive state immediately after spawn.
-    key: String,
+    ///
+    /// WHY: wrapped in `SecretString` so `Debug`/stray logging cannot
+    /// leak the plaintext API key; serialised via `expose_secret` so the
+    /// JSON body still reaches aletheia's credential endpoint intact.
+    #[serde(serialize_with = "serialize_secret_expose")]
+    key: koina::secret::SecretString,
     role: String,
 }
 
@@ -344,7 +362,7 @@ pub(crate) fn CredentialsView() -> Element {
         };
         let payload = AddCredentialRequest {
             provider,
-            key,
+            key: koina::secret::SecretString::from(key),
             role: role_str,
         };
         let cfg = config.read().clone();

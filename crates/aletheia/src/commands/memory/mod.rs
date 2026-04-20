@@ -1200,6 +1200,15 @@ fn sensitivity_dot_color(sensitivity: mneme::knowledge::FactSensitivity) -> &'st
     }
 }
 
+/// `GraphML` XML namespace identifier.
+///
+/// WHY: standardised W3C `GraphML` identifier URI, not an endpoint — every
+/// `GraphML` document must embed this verbatim. Keeping it in a single-line
+/// constant with a `// WHY:` marker lets `SECURITY/insecure-transport`'s
+/// skip-pattern bypass the literal without an ad-hoc ignore.
+#[cfg(feature = "recall")]
+const GRAPHML_NS: &str = "http://graphml.graphdrawing.org/xmlns"; // WHY: standardised GraphML identifier URI, not an endpoint
+
 #[cfg(feature = "recall")]
 fn export_graphml(
     writer: &mut dyn std::io::Write,
@@ -1208,11 +1217,8 @@ fn export_graphml(
 ) -> Result<()> {
     writeln!(writer, r#"<?xml version="1.0" encoding="UTF-8"?>"#)
         .whatever_context("failed to write graphml header")?;
-    writeln!(
-        writer,
-        r#"<graphml xmlns="http://graphml.graphdrawing.org/xmlns">"#
-    )
-    .whatever_context("failed to write graphml root")?;
+    writeln!(writer, r#"<graphml xmlns="{GRAPHML_NS}">"#)
+        .whatever_context("failed to write graphml root")?;
 
     // Keys for node data
     writeln!(

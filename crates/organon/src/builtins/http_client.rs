@@ -152,9 +152,10 @@ impl ToolExecutor for HttpRequestExecutor {
             let body = extract_opt_str(&input.arguments, "body");
             let timeout_secs = extract_opt_u64(&input.arguments, "timeoutSecs").unwrap_or(30);
 
-            // SAFE: validating user-supplied URL scheme, not constructing an endpoint
-            if !url.starts_with("http://") && !url.starts_with("https://") {
-                // kanon:ignore SECURITY/insecure-transport -- scheme validation, not construction
+            // WHY: validating user-supplied URL scheme, not constructing an
+            // endpoint. Delegates to the shared helper so the plaintext HTTP
+            // literal stays in one audited place.
+            if !koina::http::has_http_or_https_scheme(url) {
                 return Ok(ToolResult::error("URL must start with http:// or https://"));
             }
 

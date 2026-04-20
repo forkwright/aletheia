@@ -120,7 +120,7 @@ impl KnowledgeStore {
             )
             .map_err(|e| {
                 crate::error::EngineQuerySnafu {
-                    message: format!("v1->v2 update version: {e}"),
+                    message: format!("v1->v2 version write failed: {e}"),
                 }
                 .build()
             })?;
@@ -252,7 +252,7 @@ impl KnowledgeStore {
             )
             .map_err(|e| {
                 crate::error::EngineQuerySnafu {
-                    message: format!("v2->v3 update version: {e}"),
+                    message: format!("v2->v3 version write failed: {e}"),
                 }
                 .build()
             })?;
@@ -274,7 +274,7 @@ impl KnowledgeStore {
                 .run(ddl, BTreeMap::new(), ScriptMutability::Mutable)
                 .map_err(|e| {
                     crate::error::EngineQuerySnafu {
-                        message: format!("v3->v4 create relation: {e}"),
+                        message: format!("v3->v4 relation DDL failed: {e}"),
                     }
                     .build()
                 })?;
@@ -288,7 +288,7 @@ impl KnowledgeStore {
             )
             .map_err(|e| {
                 crate::error::EngineQuerySnafu {
-                    message: format!("v3->v4 create graph_scores: {e}"),
+                    message: format!("v3->v4 graph_scores DDL failed: {e}"),
                 }
                 .build()
             })?;
@@ -304,7 +304,7 @@ impl KnowledgeStore {
             )
             .map_err(|e| {
                 crate::error::EngineQuerySnafu {
-                    message: format!("v3->v4 update version: {e}"),
+                    message: format!("v3->v4 version write failed: {e}"),
                 }
                 .build()
             })?;
@@ -327,7 +327,7 @@ impl KnowledgeStore {
             )
             .map_err(|e| {
                 crate::error::EngineQuerySnafu {
-                    message: format!("v4->v5 create consolidation_audit: {e}"),
+                    message: format!("v4->v5 consolidation_audit DDL failed: {e}"),
                 }
                 .build()
             })?;
@@ -343,7 +343,7 @@ impl KnowledgeStore {
             )
             .map_err(|e| {
                 crate::error::EngineQuerySnafu {
-                    message: format!("v4->v5 update version: {e}"),
+                    message: format!("v4->v5 version write failed: {e}"),
                 }
                 .build()
             })?;
@@ -364,7 +364,7 @@ impl KnowledgeStore {
             .run(KNOWLEDGE_DDL[6], BTreeMap::new(), ScriptMutability::Mutable)
             .map_err(|e| {
                 crate::error::EngineQuerySnafu {
-                    message: format!("v5->v6 create causal_edges: {e}"),
+                    message: format!("v5->v6 causal_edges DDL failed: {e}"),
                 }
                 .build()
             })?;
@@ -380,7 +380,7 @@ impl KnowledgeStore {
             )
             .map_err(|e| {
                 crate::error::EngineQuerySnafu {
-                    message: format!("v5->v6 update version: {e}"),
+                    message: format!("v5->v6 version write failed: {e}"),
                 }
                 .build()
             })?;
@@ -470,7 +470,7 @@ impl KnowledgeStore {
             )
             .map_err(|e| {
                 crate::error::EngineQuerySnafu {
-                    message: format!("v6->v7 update version: {e}"),
+                    message: format!("v6->v7 version write failed: {e}"),
                 }
                 .build()
             })?;
@@ -503,7 +503,7 @@ impl KnowledgeStore {
             )
             .map_err(|e| {
                 crate::error::EngineQuerySnafu {
-                    message: format!("v8->v9 create fact_multiplicity: {e}"),
+                    message: format!("v8->v9 fact_multiplicity DDL failed: {e}"),
                 }
                 .build()
             })?;
@@ -519,7 +519,7 @@ impl KnowledgeStore {
             )
             .map_err(|e| {
                 crate::error::EngineQuerySnafu {
-                    message: format!("v8->v9 update version: {e}"),
+                    message: format!("v8->v9 version write failed: {e}"),
                 }
                 .build()
             })?;
@@ -549,7 +549,7 @@ impl KnowledgeStore {
                 .run(ddl, BTreeMap::new(), ScriptMutability::Mutable)
                 .map_err(|e| {
                     crate::error::EngineQuerySnafu {
-                        message: format!("v7->v8 create relation: {e}"),
+                        message: format!("v7->v8 relation DDL failed: {e}"),
                     }
                     .build()
                 })?;
@@ -566,7 +566,7 @@ impl KnowledgeStore {
             )
             .map_err(|e| {
                 crate::error::EngineQuerySnafu {
-                    message: format!("v7->v8 update version: {e}"),
+                    message: format!("v7->v8 version write failed: {e}"),
                 }
                 .build()
             })?;

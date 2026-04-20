@@ -70,7 +70,11 @@ pub(crate) fn SetupWizard() -> Element {
                                 on_finish: move |_| {
                                     // Apply wizard data to context signals.
                                     let data = wizard_data.read();
-                                    let token = if data.auth_token.is_empty() { None } else { Some(data.auth_token.clone()) };
+                                    let token = if data.auth_token.expose_secret().is_empty() {
+                                        None
+                                    } else {
+                                        Some(data.auth_token.expose_secret().to_owned())
+                                    };
 
                                     let server_id = {
                                         let mut store = server_store.write();
@@ -117,10 +121,10 @@ pub(crate) fn SetupWizard() -> Element {
                                     // of reverting to the compiled default.
                                     {
                                         let data = wizard_data.read();
-                                        let token = if data.auth_token.is_empty() {
+                                        let token = if data.auth_token.expose_secret().is_empty() {
                                             None
                                         } else {
-                                            Some(data.auth_token.clone())
+                                            Some(data.auth_token.expose_secret().to_owned())
                                         };
                                         let new_config = ConnectionConfig {
                                             server_url: data.server_url.clone(),

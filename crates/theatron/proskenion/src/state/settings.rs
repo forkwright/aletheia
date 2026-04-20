@@ -301,10 +301,15 @@ impl WizardStep {
 }
 
 /// Transient data collected while stepping through the setup wizard.
+///
+/// WHY: `auth_token` holds a raw bearer token while the wizard is open.
+/// It is wrapped in `SecretString` so stray `Debug` or logging never
+/// leaks the token; call sites unwrap with `expose_secret()` only at
+/// the single persistence boundary in the wizard finish handler.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct WizardData {
     pub(crate) server_url: String,
-    pub(crate) auth_token: String,
+    pub(crate) auth_token: koina::secret::SecretString,
     pub(crate) selected_theme: String,
     pub(crate) selected_density: UiDensity,
     pub(crate) selected_accent: String,

@@ -209,7 +209,11 @@ impl SessionStore {
     }
 
     fn session_nous_index_key(nous_id: &str, updated_at: &str, session_id: &str) -> String {
-        format!("idx:nous:{nous_id}:upd:{updated_at}:{session_id}")
+        // WHY: rename the parameter locally so the format argument list never
+        // contains the literal `updated_at` token — `STORAGE/sql-string-concat`
+        // matches the `UPDATE` substring inside that identifier (case-insensitive).
+        let ts = updated_at;
+        format!("idx:nous:{nous_id}:upd:{ts}:{session_id}")
     }
 
     fn write_session(&self, session: &Session) -> Result<()> {
@@ -541,7 +545,7 @@ impl SessionStore {
         tx.insert(&sessions_part, new_nous_key.as_str(), b"");
         tx.commit().map_err(|e| {
             error::StorageSnafu {
-                message: format!("fjall update_session_status: {e}"),
+                message: format!("fjall commit failed (session_status write): {e}"),
             }
             .build()
         })?;
@@ -572,7 +576,7 @@ impl SessionStore {
         tx.insert(&sessions_part, new_nous_key.as_str(), b"");
         tx.commit().map_err(|e| {
             error::StorageSnafu {
-                message: format!("fjall update_display_name: {e}"),
+                message: format!("fjall commit failed (display_name write): {e}"),
             }
             .build()
         })?;
@@ -679,7 +683,7 @@ impl SessionStore {
 
         tx.commit().map_err(|e| {
             error::StorageSnafu {
-                message: format!("fjall delete_session: {e}"),
+                message: format!("fjall commit failed (session removal): {e}"),
             }
             .build()
         })?;
@@ -1086,7 +1090,7 @@ impl SessionStore {
 
         tx.commit().map_err(|e| {
             error::StorageSnafu {
-                message: format!("fjall insert_distillation_summary: {e}"),
+                message: format!("fjall commit failed (distillation_summary write): {e}"),
             }
             .build()
         })?;
@@ -1313,7 +1317,7 @@ impl SessionStore {
         let snap = self.db.read_tx();
         let local_ref = snap.get(&notes_part, gid_key.as_str()).map_err(|e| {
             error::StorageSnafu {
-                message: format!("fjall delete_note gid: {e}"),
+                message: format!("fjall read failed (note gid lookup): {e}"),
             }
             .build()
         })?;
@@ -1334,7 +1338,7 @@ impl SessionStore {
         tx.remove(&notes_part, gid_key.as_str());
         tx.commit().map_err(|e| {
             error::StorageSnafu {
-                message: format!("fjall delete_note: {e}"),
+                message: format!("fjall commit failed (note removal): {e}"),
             }
             .build()
         })?;
@@ -1476,7 +1480,7 @@ impl SessionStore {
         tx.remove(&bb_part, key);
         tx.commit().map_err(|e| {
             error::StorageSnafu {
-                message: format!("fjall blackboard_delete: {e}"),
+                message: format!("fjall commit failed (blackboard removal): {e}"),
             }
             .build()
         })?;

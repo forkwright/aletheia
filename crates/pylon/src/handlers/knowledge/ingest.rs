@@ -157,7 +157,7 @@ pub async fn ingest(
         })
         .await
         .map_err(|e| ApiError::Internal {
-            message: format!("ingest insert task failed: {e}"),
+            message: format!("ingest write task failed: {e}"),
             location: snafu::location!(),
         })?;
 

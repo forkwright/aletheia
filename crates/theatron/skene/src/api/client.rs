@@ -112,9 +112,9 @@ impl ApiClient {
 
     /// Replace the authentication token.
     #[expect(dead_code, reason = "API client methods for TUI/desktop integration")]
-    pub(crate) fn set_token(&mut self, token: String) {
-        // kanon:ignore RUST/pub-visibility RUST/plain-string-secret
-        self.token = Some(SecretString::from(token));
+    pub(crate) fn set_token(&mut self, token: SecretString) {
+        // kanon:ignore RUST/pub-visibility
+        self.token = Some(token);
     }
 
     /// The base URL this client connects to.
