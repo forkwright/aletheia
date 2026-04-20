@@ -20,6 +20,13 @@ pub(crate) enum CcEvent {
     Assistant { message: AssistantMessage },
 
     /// Final result event with usage and cost.
+    ///
+    /// WHY(#3717): `result` is only present on success-shaped events
+    /// (`subtype = "success"`). When CC hits `error_max_turns` or another
+    /// error subtype, it omits `result` entirely and populates `errors`
+    /// (array of messages) + `terminal_reason` instead. Making `result`
+    /// optional + surfacing `errors`/`terminal_reason` keeps the parser
+    /// from dropping the whole event on error-subtype terminations.
     #[serde(rename = "result")]
     Result {
         #[cfg_attr(
@@ -30,7 +37,8 @@ pub(crate) enum CcEvent {
             )
         )]
         subtype: String,
-        result: String,
+        #[serde(default)]
+        result: Option<String>,
         #[serde(default)]
         is_error: bool,
         #[serde(default)]
@@ -41,6 +49,14 @@ pub(crate) enum CcEvent {
         duration_ms: Option<u64>,
         #[serde(default)]
         session_id: Option<String>,
+        /// Error messages emitted when CC terminates before producing a
+        /// final `result` (e.g. `error_max_turns`).
+        #[serde(default)]
+        errors: Vec<String>,
+        /// Terminal reason string (`"max_turns"`, `"error"`, etc.) for
+        /// error-subtype result events.
+        #[serde(default)]
+        terminal_reason: Option<String>,
     },
 
     /// System event (connection info, etc.). Ignored.
@@ -197,7 +213,7 @@ mod tests {
                 ..
             } => {
                 assert_eq!(subtype, "success");
-                assert_eq!(result, "Hello");
+                assert_eq!(result.as_deref(), Some("Hello"));
                 assert!(!is_error);
                 assert_eq!(session_id.as_deref(), Some("sess_123"));
                 let u = usage.unwrap();
@@ -206,6 +222,51 @@ mod tests {
             }
             other => panic!("expected Result, got {other:?}"),
         }
+    }
+
+    // WHY(#3717): regression — when CC hits `error_max_turns` the `result`
+    // field is absent and the event instead carries `errors` + `terminal_reason`.
+    // Before this fix, `result: String` made the whole event fail to parse
+    // with "missing field `result`", dropping it and producing a
+    // pipeline_error upstream.
+    #[test]
+    fn parse_result_event_error_subtype_omits_result_field() {
+        let line = r#"{"type":"result","subtype":"error_max_turns","duration_ms":4065,"duration_api_ms":5062,"is_error":true,"num_turns":2,"stop_reason":"tool_use","session_id":"sess_456","total_cost_usd":0.125,"usage":{"input_tokens":1,"output_tokens":2},"permission_denials":[],"terminal_reason":"max_turns","fast_mode_state":"off","uuid":"u-1","errors":["Reached maximum number of turns (1)"]}"#;
+        let event = parse_event(line).unwrap();
+        match event {
+            CcEvent::Result {
+                subtype,
+                result,
+                is_error,
+                errors,
+                terminal_reason,
+                session_id,
+                ..
+            } => {
+                assert_eq!(subtype, "error_max_turns");
+                assert_eq!(result, None, "error subtype omits the `result` field");
+                assert!(is_error);
+                assert_eq!(
+                    errors,
+                    vec!["Reached maximum number of turns (1)".to_owned()]
+                );
+                assert_eq!(terminal_reason.as_deref(), Some("max_turns"));
+                assert_eq!(session_id.as_deref(), Some("sess_456"));
+            }
+            other => panic!("expected Result, got {other:?}"),
+        }
+    }
+
+    // WHY(#3717): regression — CC's stream-json emits a top-level
+    // `{"type":"user"}` envelope for tool_result messages. The parser must
+    // accept this variant and route it to the ignored `User` arm (the
+    // tool-result content is handled via the Assistant turn that preceded
+    // it; this echo is informational).
+    #[test]
+    fn parse_user_event_with_tool_result_message() {
+        let line = r#"{"type":"user","message":{"role":"user","content":[{"type":"tool_result","content":"File does not exist.","is_error":true,"tool_use_id":"toolu_abc"}]},"parent_tool_use_id":null,"session_id":"s-1","uuid":"u-2","timestamp":"2026-04-19T13:41:32.010Z","tool_use_result":"Error: File does not exist"}"#;
+        let event = parse_event(line).unwrap();
+        assert!(matches!(event, CcEvent::User { .. }));
     }
 
     #[test]
