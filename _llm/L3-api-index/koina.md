@@ -2,7 +2,7 @@
 
 Crate path: `crates/koina`
 
-Public API signatures extracted from source. Doc comments shown above each signature.
+Public API signatures extracted from source. Each signature is preceded by its doc comment.
 For implementation context, read the source directly (`L4`).
 
 ## `src/base64.rs`
@@ -618,6 +618,19 @@ pub const API_V1: &str = "/api/v1";
 > Health check endpoint path.
 ```rust
 pub const API_HEALTH: &str = "/api/health";
+```
+
+> TLS-protected URL scheme, including the `://` separator.
+```rust
+pub const HTTPS_SCHEME_PREFIX: &str = "https://";
+```
+
+```rust
+pub fn has_http_or_https_scheme (url: &str) -> bool
+```
+
+```rust
+pub fn is_plaintext_loopback_url (url: &str) -> bool
 ```
 
 ## `src/id.rs`

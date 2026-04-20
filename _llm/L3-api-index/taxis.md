@@ -2,7 +2,7 @@
 
 Crate path: `crates/taxis`
 
-Public API signatures extracted from source. Doc comments shown above each signature.
+Public API signatures extracted from source. Each signature is preceded by its doc comment.
 For implementation context, read the source directly (`L4`).
 
 ## `src/cascade.rs`
@@ -2331,6 +2331,28 @@ pub fn validate_section (section: &str, value: &Value) -> Result<(), ValidationE
 pub const ALLOW_AUTH_NONE_ENV: &str = "ALETHEIA_ALLOW_AUTH_NONE";
 ```
 
+> Environment variable operators must set to `1` to allow the server to bind
+> to a non-localhost address while running with `gateway.auth.mode = "none"`.
+> 
+> WHY: disabled-auth on localhost is a supported local-dev shape; disabled-auth
+> on a LAN or Tailscale bind is an insecure-by-default posture we refuse to
+> boot into. Operators who genuinely want unauthenticated LAN access must
+> flip this knob explicitly. The variable is distinct from
+> [`ALLOW_AUTH_NONE_ENV`] because disabling auth locally is a meaningfully
+> smaller blast radius than disabling auth and exposing it to the tailnet.
+> (#3716)
+```rust
+pub const ALLOW_AUTH_NONE_LAN_ENV: &str = "ALETHEIA_ALLOW_AUTH_NONE_LAN";
+```
+
+```rust
+pub fn is_loopback_bind (addr: &str) -> bool
+```
+
+```rust
+pub fn auth_none_lan_opt_in_enabled () -> bool
+```
+
 ```rust
 pub fn auth_none_opt_in_enabled () -> bool
 ```
@@ -2339,7 +2361,7 @@ pub fn auth_none_opt_in_enabled () -> bool
 > 
 > Called after the initial config load. Emits a single `warn!` event with the
 > prefix `SECURITY: auth disabled` so operators running with `auth_mode = "none"`
-> - even intentionally - see the consequence in every log aggregator. (#3383)
+>  -  even intentionally  -  see the consequence in every log aggregator. (#3383)
 ```rust
 pub fn warn_if_auth_disabled (config: &AletheiaConfig)
 ```
