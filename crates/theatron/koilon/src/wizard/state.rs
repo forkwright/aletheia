@@ -113,9 +113,15 @@ impl EditState {
 
     pub(crate) fn delete_before(&mut self) {
         if self.cursor > 0 {
-            let prev = self.buffer[..self.cursor]
-                .char_indices()
-                .next_back()
+            // WHY `.get(..cursor)`: cursor is maintained on char
+            // boundaries by construction, so the slice is always valid;
+            // `.get()` returns `None` only for an inconsistent cursor
+            // invariant, and treating that as a no-op is safer than a
+            // panic in a hot-path UI state update.
+            let prev = self
+                .buffer
+                .get(..self.cursor)
+                .and_then(|s| s.char_indices().next_back())
                 .map_or(0, |(i, _)| i);
             self.buffer.remove(prev);
             self.cursor = prev;
@@ -124,9 +130,13 @@ impl EditState {
 
     pub(crate) fn move_left(&mut self) {
         if self.cursor > 0 {
-            self.cursor = self.buffer[..self.cursor]
-                .char_indices()
-                .next_back()
+            // WHY `.get(..cursor)`: see `delete_before` -- `.get()` avoids
+            // the panic surface of direct byte-slicing when cursor drifts
+            // off a char boundary.
+            self.cursor = self
+                .buffer
+                .get(..self.cursor)
+                .and_then(|s| s.char_indices().next_back())
                 .map_or(0, |(i, _)| i);
         }
     }
