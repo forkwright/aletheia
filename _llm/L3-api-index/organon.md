@@ -2,7 +2,7 @@
 
 Crate path: `crates/organon`
 
-Public API signatures extracted from source. Doc comments shown above each signature.
+Public API signatures extracted from source. Each signature is preceded by its doc comment.
 For implementation context, read the source directly (`L4`).
 
 ## `src/builtins/computer_use/executor.rs`
@@ -26,7 +26,7 @@ pub fn register (registry: &mut ToolRegistry, sandbox: &SandboxConfig) -> Result
 > 
 > When `services` is `Some`, tools that need the orchestrator or store call
 > through to the real energeia subsystem. When `None`, those tools return a
-> structured error indicating the missing dependency - they do not panic.
+> structured error indicating the missing dependency  -  they do not panic.
 > 
 > Tools that are pure computation (schedion, prographe, diorthosis,
 > dokimasia, epitropos) work regardless of whether services are provided.
@@ -663,6 +663,12 @@ pub struct ToolServices {
     pub planning: Option<Arc<dyn PlanningService>>,
     pub knowledge: Option<Arc<dyn KnowledgeSearchService>>,
     pub http_client: reqwest::Client,
+    /// In-memory vault for session-scoped secrets (AWS SSO keys, API tokens, etc.).
+    ///
+    /// Referenced via `{{secret:<name>}}` or `$SECRET(<name>)` placeholders in
+    /// tool arguments and substituted at dispatch time so resolved values never
+    /// reach transcripts or outbound LLM payloads.
+    pub secret_vault: SecretVault,
     /// Catalog of lazy tools available for activation via `enable_tool`.
     pub lazy_tool_catalog: Vec<(ToolName, String)>,
     /// Server tool configuration for provider-side tools (web search, code execution).
@@ -856,11 +862,68 @@ impl ToolDiagnostics {
 ```
 
 ```rust
+pub enum ToolOutcome {
+    /// All sub-operations succeeded.
+    #[default]
+    Success,
+    /// Tool returned usable output, but some sub-operations failed or
+    /// emitted warnings. Payload is boxed to keep `ToolOutcome`
+    /// (and therefore `ToolResult`) small so that
+    /// `Result<_, ToolResult>` helpers stay under the
+    /// `clippy::result_large_err` threshold.
+    PartialSuccess(Box<PartialSuccessInfo>),
+    /// Tool failed; no usable output.
+    Failure(Box<FailureInfo>),
+}
+```
+
+```rust
+pub struct PartialSuccessInfo {
+    /// One reason per degraded sub-operation.
+    pub reasons: Vec<String>,
+}
+```
+
+```rust
+pub struct FailureInfo {
+    /// Single human-readable failure reason.
+    pub reason: String,
+}
+```
+
+```rust
+impl ToolOutcome {
+    pub fn partial (reasons: impl IntoIterator<Item = String>) -> Self;
+    pub fn failure (reason: impl Into<String>) -> Self;
+    pub fn is_error (&self) -> bool;
+    pub fn is_success (&self) -> bool;
+    pub fn is_partial (&self) -> bool;
+    pub fn partial_reasons (&self) -> &[String];
+    pub fn failure_reason (&self) -> &str;
+}
+```
+
+```rust
 pub struct ToolResult {
     /// Result content: text or rich content blocks.
     pub content: ToolResultContent,
     /// Whether this result represents an error.
+    ///
+    /// Retained for backward compatibility and wire-format stability
+    /// (serialized LLM-facing envelopes and persisted sessions).
+    /// New code should inspect [`ToolResult::outcome`] for the
+    /// partial-success distinction (#3633); `is_error` stays
+    /// synchronized with it via the constructors and remains a
+    /// faithful binary collapse: `Success` or `PartialSuccess`
+    /// → `false`, `Failure` → `true`.
     pub is_error: bool,
+    /// Rich outcome classification. Defaults to `Success` when a
+    /// legacy payload without this field is deserialized; the
+    /// `is_error` flag is not consulted during deserialization
+    /// because `#[serde(default)]` runs before field population.
+    /// For legacy inputs, call [`ToolResult::normalize`] to reconcile.
+    #[serde(default)]
+    pub outcome: ToolOutcome,
     /// Optional diagnostic metadata from the execution environment.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub diagnostics: Option<ToolDiagnostics>,
@@ -872,6 +935,11 @@ impl ToolResult {
     pub fn text (content: impl Into<String>) -> Self;
     pub fn error (content: impl Into<String>) -> Self;
     pub fn blocks (blocks: Vec<ToolResultBlock>) -> Self;
+    pub fn partial_success (
+        content: impl Into<String>,
+        reasons: impl IntoIterator<Item = String>,
+    ) -> Self;
+    pub fn normalize (mut self) -> Self;
     pub fn with_diagnostics (mut self, diagnostics: ToolDiagnostics) -> Self;
 }
 ```
@@ -892,6 +960,11 @@ pub struct ToolStats {
     pub total_calls: u32,
     pub total_duration_ms: u64,
     pub error_count: u32,
+    /// Count of calls that produced `ToolOutcome::PartialSuccess`
+    /// (see #3633). Separate from `error_count` because partial
+    /// successes deliver usable output even with degraded
+    /// sub-operations.
+    pub partial_count: u32,
     pub calls_by_tool: IndexMap<String, u32>,
 }
 ```
@@ -899,6 +972,7 @@ pub struct ToolStats {
 ```rust
 impl ToolStats {
     pub fn record (&mut self, name: &str, duration_ms: u64, is_error: bool);
+    pub fn record_outcome (&mut self, name: &str, duration_ms: u64, outcome: &ToolOutcome);
     pub fn top_tools (&self, n: usize) -> Vec<(&str, u32)>;
 }
 ```

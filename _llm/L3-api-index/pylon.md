@@ -2,7 +2,7 @@
 
 Crate path: `crates/pylon`
 
-Public API signatures extracted from source. Doc comments shown above each signature.
+Public API signatures extracted from source. Each signature is preceded by its doc comment.
 For implementation context, read the source directly (`L4`).
 
 ## `src/error.rs`
@@ -1589,16 +1589,5 @@ pub struct TurnBufferRegistry {
 impl TurnBufferRegistry {
     pub fn new () -> Self;
     pub async fn reap_expired (&self);
-}
-```
-
-```rust
-impl TurnBufferHandle {
-    pub fn new (buffer: Arc<Mutex<TurnBuffer>>) -> Self;
-    pub async fn record (&self, event_type: &str, data: &str) -> u64;
-    pub async fn mark_completed (&self);
-    pub async fn mark_failed (&self);
-    pub async fn notify_handle (&self) -> Arc<Notify>;
-    pub async fn events_after (&self, after_seq: u64) -> (Vec<BufferedEvent>, TurnState);
 }
 ```

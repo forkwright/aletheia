@@ -2,7 +2,7 @@
 
 Crate path: `crates/theatron`
 
-Public API signatures extracted from source. Doc comments shown above each signature.
+Public API signatures extracted from source. Each signature is preceded by its doc comment.
 For implementation context, read the source directly (`L4`).
 
 ## `koilon/src/app/mod.rs`
@@ -1977,7 +1977,7 @@ pub enum IndicatorColor {
 > 
 > Initialises log-to-file, loads persisted window state, and configures the
 > desktop window before showing it. Closing the window exits the process
-> cleanly - no minimize-to-tray, no hidden background process.
+> cleanly  -  no minimize-to-tray, no hidden background process.
 > 
 > Pass `verbose = true` (e.g. from a `--verbose` CLI flag) to also emit logs
 > to stderr. When `RUST_LOG` is set in the environment stderr output is added
@@ -2826,6 +2826,121 @@ pub enum ThemeMode {
     /// Follow the OS/desktop environment preference.
     System,
 }
+```
+
+## `proskenion/target/debug/build/target-lexicon-a72007252ff2c32a/out/host.rs`
+
+> The `Triple` of the current host.
+```rust
+pub const HOST: Triple = Triple {
+    architecture: Architecture::X86_64,
+    vendor: Vendor::Unknown,
+    operating_system: OperatingSystem::Linux,
+    environment: Environment::Gnu,
+    binary_format: BinaryFormat::Elf,
+};
+```
+
+```rust
+impl Architecture {
+    pub const fn host () -> Self;
+}
+```
+
+```rust
+impl Vendor {
+    pub const fn host () -> Self;
+}
+```
+
+```rust
+impl OperatingSystem {
+    pub const fn host () -> Self;
+}
+```
+
+```rust
+impl Environment {
+    pub const fn host () -> Self;
+}
+```
+
+```rust
+impl BinaryFormat {
+    pub const fn host () -> Self;
+}
+```
+
+```rust
+impl Triple {
+    pub const fn host () -> Self;
+}
+```
+
+## `proskenion/target/debug/build/x11-dl-8c72dbd8a12af642/out/config.rs`
+
+```rust
+pub const xext: Option<&'static str> = Some("/usr/lib64");
+```
+
+```rust
+pub const gl: Option<&'static str> = Some("/usr/lib64");
+```
+
+```rust
+pub const xcursor: Option<&'static str> = Some("/usr/lib64");
+```
+
+```rust
+pub const xxf86vm: Option<&'static str> = None;
+```
+
+```rust
+pub const xft: Option<&'static str> = Some("/usr/lib64");
+```
+
+```rust
+pub const xinerama: Option<&'static str> = Some("/usr/lib64");
+```
+
+```rust
+pub const xi: Option<&'static str> = Some("/usr/lib64");
+```
+
+```rust
+pub const x11: Option<&'static str> = Some("/usr/lib64");
+```
+
+```rust
+pub const xlib_xcb: Option<&'static str> = Some("/usr/lib64");
+```
+
+```rust
+pub const xmu: Option<&'static str> = None;
+```
+
+```rust
+pub const xrandr: Option<&'static str> = Some("/usr/lib64");
+```
+
+```rust
+pub const xtst: Option<&'static str> = Some("/usr/lib64");
+```
+
+```rust
+pub const xrender: Option<&'static str> = Some("/usr/lib64");
+```
+
+```rust
+pub const xpresent: Option<&'static str> = None;
+```
+
+```rust
+pub const xscrnsaver: Option<&'static str> = None;
+```
+
+```rust
+pub const xt: Option<&'static str> = None;
 ```
 
 ## `skene/src/api/client.rs`

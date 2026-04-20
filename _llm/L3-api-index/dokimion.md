@@ -2,7 +2,7 @@
 
 Crate path: `crates/eval`
 
-Public API signatures extracted from source. Doc comments shown above each signature.
+Public API signatures extracted from source. Each signature is preceded by its doc comment.
 For implementation context, read the source directly (`L4`).
 
 ## `src/benchmarks/baselines.rs`
@@ -83,17 +83,13 @@ pub struct LlmJudgeConfig {
 }
 ```
 
-> LLM-as-judge evaluator.
+> Default LLM-judge model. Overridable via [`LlmJudgeConfig::model`].
 ```rust
-pub struct LlmJudge {
-    client: reqwest::Client,
-    config: LlmJudgeConfig,
-}
+pub const DEFAULT_JUDGE_MODEL: &str = "gpt-4o";
 ```
 
 ```rust
 impl LlmJudge {
-    pub fn new (config: LlmJudgeConfig) -> Self;
     pub async fn judge (&self, question: &str, actual: &str, expected: &str) -> Result<JudgeScore>;
 }
 ```
@@ -705,7 +701,7 @@ pub fn append_jsonl (path: &Path, records: &[EvalRecord]) -> Result<()>
 
 > Provider that returns all built-in dokimion scenarios.
 > 
-> This is the default when no custom provider is specified - it wraps
+> This is the default when no custom provider is specified  -  it wraps
 > [`scenarios::all_scenarios()`](crate::scenarios::all_scenarios).
 ```rust
 pub struct BuiltinProvider;

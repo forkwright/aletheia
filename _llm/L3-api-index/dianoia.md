@@ -2,7 +2,7 @@
 
 Crate path: `crates/dianoia`
 
-Public API signatures extracted from source. Doc comments shown above each signature.
+Public API signatures extracted from source. Each signature is preceded by its doc comment.
 For implementation context, read the source directly (`L4`).
 
 ## `src/error.rs`
@@ -318,14 +318,13 @@ impl Intent {
         source: IntentSource,
         expires_at: Option<jiff::Timestamp>,
     ) -> std::result::Result<Self, IntentError>;
-    pub fn is_active (&self) -> bool;
 }
 ```
 
 > Persistent store for operator intents.
 > 
 > Backed by `instance/nous/<agent>/intents.json`. All mutating operations
-> write through to disk immediately - there is no in-memory cache to go stale.
+> write through to disk immediately  -  there is no in-memory cache to go stale.
 > 
 > Intents are not subject to FSRS decay. They persist until explicitly resolved
 > or their `expires_at` timestamp passes.
@@ -341,7 +340,6 @@ impl IntentStore {
     pub fn path_for (instance_root: &Path, agent_id: &str) -> PathBuf;
     pub fn add_intent (&self, intent: Intent) -> Result<Intent>;
     pub fn list_intents (&self) -> Result<Vec<Intent>>;
-    pub fn active_intents (&self) -> Result<Vec<Intent>>;
     pub fn expire_intents (&self) -> Result<usize>;
     pub fn resolve_intent (&self, id: Ulid) -> Result<bool>;
     pub fn render_for_bootstrap (&self) -> Result<Option<String>>;

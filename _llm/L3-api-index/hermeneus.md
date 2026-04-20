@@ -2,7 +2,7 @@
 
 Crate path: `crates/hermeneus`
 
-Public API signatures extracted from source. Doc comments shown above each signature.
+Public API signatures extracted from source. Each signature is preceded by its doc comment.
 For implementation context, read the source directly (`L4`).
 
 ## `src/anthropic/batch.rs`
@@ -413,7 +413,7 @@ pub struct ConcurrencyConfig {
 > # async fn example() {
 > let limiter = Arc::new(AdaptiveConcurrencyLimiter::new("anthropic", ConcurrencyConfig::default()));
 > let permit = limiter.acquire().await;
-> // … call the provider …
+> // ... call the provider ...
 > permit.finish_with_latency(RequestOutcome::Success, Duration::from_secs(2));
 > # }
 > ```
@@ -682,7 +682,7 @@ impl ProviderHealthTracker {
 > 
 > Called once at startup. Counter names registered here drop the `_total`
 > suffix because `prometheus-client` appends it automatically during
-> exposition - register `aletheia_llm_tokens`, not `aletheia_llm_tokens_total`.
+> exposition  -  register `aletheia_llm_tokens`, not `aletheia_llm_tokens_total`.
 ```rust
 pub fn register (registry: &mut Registry)
 ```
@@ -946,6 +946,69 @@ impl ProviderRegistry {
     pub fn find_streaming_provider (&self, model: &str) -> Option<&dyn LlmProvider>;
     pub fn record_error (&self, name: &str, error: &error::Error);
 }
+```
+
+## `src/secret.rs`
+
+```rust
+pub enum SecretError {
+    /// The requested secret is not present in the vault.
+    #[snafu(display("secret `{name}` not in session store"))]
+    MissingSecret {
+        /// Name of the missing secret.
+        name: String,
+    },
+}
+```
+
+```rust
+pub struct SecretVault {
+    inner: RwLock<HashMap<String, SecretString>>,
+}
+```
+
+```rust
+impl SecretVault {
+    pub fn new () -> Self;
+    pub fn store (&self, name: impl Into<String>, value: impl Into<SecretString>);
+    pub fn get (&self, name: &str) -> Option<SecretString>;
+    pub fn remove (&self, name: &str) -> Option<SecretString>;
+    pub fn list_names (&self) -> Vec<String>;
+    pub fn clear (&self);
+    pub fn len (&self) -> usize;
+    pub fn is_empty (&self) -> bool;
+}
+```
+
+> Substitute `{{secret:<name>}}` and `$SECRET(<name>)` placeholders in a
+> JSON value with the corresponding secret from `vault`.
+> 
+> Substitution is recursive: it descends into objects and arrays.
+> If a placeholder references a missing secret, returns [`SecretError::MissingSecret`].
+> 
+> # Security note
+> 
+> This mutates `value` in place. Callers should clone the original if the
+> placeholder-bearing JSON is needed for persistence (e.g. transcript storage).
+```rust
+pub fn substitute_in_json (
+    value: &mut serde_json::Value,
+    vault: &SecretVault,
+) -> Result<(), SecretError>
+```
+
+> Redact likely-secret string values inside a JSON value, replacing them
+> with `"[REDACTED]"`.
+> 
+> This is defense-in-depth: if a secret value leaks into a JSON payload
+> (e.g. via a tool result), the redaction pass prevents it from flowing
+> outward to logs or LLM providers.
+> 
+> The heuristic is conservative: strings longer than 32 characters that
+> contain no whitespace and are not already placeholders are treated as
+> sensitive.
+```rust
+pub fn redact_in_json (value: &mut serde_json::Value)
 ```
 
 ## `src/test_utils.rs`
