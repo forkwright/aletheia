@@ -181,7 +181,11 @@ fn default_similarity_threshold() -> f64 {
 impl Default for DistillConfig {
     fn default() -> Self {
         Self {
-            model: "claude-sonnet-4-20250514".to_owned(),
+            // WHY (#3739): read from koina::defaults::DEFAULT_MODEL instead of a
+            // literal so the default tracks the fleet-wide model pin. Previously
+            // hardcoded to claude-sonnet-4-20250514, which silently routed
+            // distillation to an Anthropic model on local-only deployments.
+            model: koina::defaults::DEFAULT_MODEL.to_owned(),
             max_output_tokens: 4096,
             min_messages: 6,
             include_tool_calls: true,
