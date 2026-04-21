@@ -34,9 +34,6 @@ pub mod planning;
 pub mod poiesis;
 /// Web research tools (web_fetch).
 pub mod research;
-/// Z3 SMT solver tool (z3_solver).
-#[cfg(feature = "z3")]
-pub mod z3_solver;
 /// Issue triage tools (scan, score, stage, approve).
 pub mod triage;
 /// File viewing with multimodal support (images, PDFs, text).
@@ -45,6 +42,9 @@ pub mod view_file;
 pub mod web_search;
 /// File and shell workspace tools (read, write, edit, exec).
 pub mod workspace;
+/// Z3 SMT solver tool (z3_solver).
+#[cfg(feature = "z3")]
+pub mod z3_solver;
 
 use crate::error::Result;
 use crate::registry::ToolRegistry;

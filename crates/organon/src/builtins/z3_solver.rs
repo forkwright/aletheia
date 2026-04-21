@@ -47,9 +47,7 @@ impl ToolExecutor for Z3SolverExecutor {
                     }
                     .build()
                 })?
-                .map_err(|message| {
-                    crate::error::ExecutionFailedSnafu { name, message }.build()
-                })?;
+                .map_err(|message| crate::error::ExecutionFailedSnafu { name, message }.build())?;
 
             Ok(ToolResult::text(result))
         })
@@ -215,7 +213,10 @@ mod tests {
         let result = executor.execute(&input, &ctx).await.expect("execute");
         assert!(!result.is_error, "expected success");
         let text = result.content.text_summary();
-        assert!(text.contains("\"status\":\"sat\""), "expected sat status: {text}");
+        assert!(
+            text.contains("\"status\":\"sat\""),
+            "expected sat status: {text}"
+        );
     }
 
     #[tokio::test]
