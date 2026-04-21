@@ -553,3 +553,87 @@ fn classify_signals_both_server_tools() {
         "should not produce Conversation signal when server tools were used"
     );
 }
+
+// --- Complexity routing wire-in (#3737) ---
+
+#[tokio::test]
+async fn test_routing_disabled_uses_turn_model() {
+    // WHY: default complexity.enabled=false must preserve existing behaviour
+    // exactly — the turn model is the config's `generation.model`, regardless
+    // of message content.
+    let mut providers = ProviderRegistry::new();
+    let mock = MockProvider::with_responses(vec![make_text_response("ok")]).models(&[
+        "test-model",
+        "fast-tier",
+        "mid-tier",
+        "big-tier",
+    ]);
+    providers.register(Box::new(mock));
+
+    let tools = ToolRegistry::new();
+
+    // Use a message that would otherwise route to Opus tier (force-complex marker)
+    let mut ctx = test_pipeline_ctx();
+    ctx.messages[0].content = "think hard about this architecture decision".to_owned();
+
+    let result = execute(
+        &ctx,
+        &test_session(),
+        &test_config(),
+        &providers,
+        &tools,
+        &test_tool_ctx(),
+        None,
+    )
+    .await
+    .expect("execute");
+
+    assert_eq!(result.content, "ok");
+    // WHY: can't inspect request model directly through ProviderRegistry, but
+    // the fact that execute() succeeded proves resolve_provider_checked found
+    // "test-model" — the provider is only registered for that + tier slots,
+    // and routing-disabled path asks for exactly "test-model".
+    assert_eq!(result.usage.llm_calls, 1);
+}
+
+#[tokio::test]
+async fn test_routing_enabled_selects_tier_model() {
+    // WHY: when complexity.enabled=true, a "think hard" message must route
+    // to the opus tier model, not the turn-default model. Verified by
+    // registering only opus-tier as a valid model — if routing fails to
+    // swap the model, provider resolution fails.
+    let mut providers = ProviderRegistry::new();
+    providers.register(Box::new(
+        MockProvider::with_responses(vec![make_text_response("opus answer")])
+            .models(&["opus-tier"]),
+    ));
+
+    let tools = ToolRegistry::new();
+
+    let mut config = test_config();
+    config.generation.complexity = hermeneus::complexity::ComplexityConfig {
+        enabled: true,
+        haiku_model: "haiku-tier".to_owned(),
+        sonnet_model: "sonnet-tier".to_owned(),
+        opus_model: "opus-tier".to_owned(),
+        ..hermeneus::complexity::ComplexityConfig::default()
+    };
+
+    let mut ctx = test_pipeline_ctx();
+    ctx.messages[0].content = "think hard about this architecture decision".to_owned();
+
+    let result = execute(
+        &ctx,
+        &test_session(),
+        &config,
+        &providers,
+        &tools,
+        &test_tool_ctx(),
+        None,
+    )
+    .await
+    .expect("execute should resolve opus-tier via complexity routing");
+
+    assert_eq!(result.content, "opus answer");
+    assert_eq!(result.usage.llm_calls, 1);
+}
