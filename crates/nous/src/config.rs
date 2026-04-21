@@ -2,6 +2,7 @@
 
 use std::sync::Arc;
 
+use hermeneus::complexity::ComplexityConfig;
 use serde::{Deserialize, Serialize};
 use taxis::config::AgentBehaviorDefaults;
 
@@ -49,6 +50,27 @@ pub struct NousGenerationConfig {
     pub chars_per_token: u32,
     /// Model to use for prosoche heartbeat sessions instead of the primary model.
     pub prosoche_model: String,
+    /// Complexity-based model routing.
+    ///
+    /// WHY: when `complexity.enabled == true`, the turn model is chosen per
+    /// message by scoring query complexity and mapping to a configured tier
+    /// (haiku/sonnet/opus). When `false` (the default), `model` is used for
+    /// every turn — preserving existing behaviour.
+    pub complexity: ComplexityConfig,
+    /// Override for the knowledge extraction model (#3740).
+    ///
+    /// Extraction and distillation are obvious "fast tier" workloads that
+    /// should route to a small model (Qwen3-4B class) on local multi-model
+    /// deployments regardless of turn routing. When `None`, extraction falls
+    /// back to the turn model — preserving existing behaviour.
+    #[serde(default)]
+    pub extraction_model: Option<String>,
+    /// Override for the context distillation model (#3740).
+    ///
+    /// See `extraction_model`. Same tier / same fallback shape. When `None`,
+    /// distillation falls back to the turn model.
+    #[serde(default)]
+    pub distillation_model: Option<String>,
 }
 
 impl Default for NousGenerationConfig {
@@ -63,6 +85,9 @@ impl Default for NousGenerationConfig {
             thinking_budget: 10_000,
             chars_per_token: default_chars_per_token(),
             prosoche_model: default_prosoche_model(),
+            complexity: ComplexityConfig::default(),
+            extraction_model: None,
+            distillation_model: None,
         }
     }
 }
@@ -382,6 +407,9 @@ mod tests {
                 thinking_budget: 5_000,
                 chars_per_token: 4,
                 prosoche_model: "claude-haiku-4-5-20251001".to_owned(),
+                complexity: ComplexityConfig::default(),
+                extraction_model: None,
+                distillation_model: None,
             },
             limits: NousLimits {
                 max_tool_iterations: 10,
