@@ -562,8 +562,12 @@ async fn test_routing_disabled_uses_turn_model() {
     // exactly — the turn model is the config's `generation.model`, regardless
     // of message content.
     let mut providers = ProviderRegistry::new();
-    let mock = MockProvider::with_responses(vec![make_text_response("ok")])
-        .models(&["test-model", "fast-tier", "mid-tier", "big-tier"]);
+    let mock = MockProvider::with_responses(vec![make_text_response("ok")]).models(&[
+        "test-model",
+        "fast-tier",
+        "mid-tier",
+        "big-tier",
+    ]);
     providers.register(Box::new(mock));
 
     let tools = ToolRegistry::new();
