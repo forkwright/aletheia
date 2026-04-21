@@ -17,6 +17,8 @@ computer-use = []
 # Energeia capability tools (dromeus, dokimasia, diorthosis, epitropos, parateresis,
 # mathesis, prographe, schedion, metron). Wires to real energeia subsystem.
 energeia = ["dep:energeia"]
+# Z3 SMT solver tool (z3_solver). Bundled so the default build doesn't pull libz3.
+z3 = ["dep:z3"]
 # Gates MockToolExecutor, ToolExecutorSpec, and other test helpers. No test code in release binaries.
 test-support = ["hermeneus/test-support", "dep:rustls"]
 test-core = []
@@ -44,6 +46,7 @@ serde_json = { workspace = true }
 snafu = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
+z3 = { version = "0.20", optional = true, features = ["bundled"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 landlock = "0.4"
