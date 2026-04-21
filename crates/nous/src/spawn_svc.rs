@@ -98,6 +98,7 @@ impl SpawnService for SpawnServiceImpl {
                 thinking_budget: 0,
                 chars_per_token: 4,
                 prosoche_model: "claude-haiku-4-5-20251001".to_owned(),
+                complexity: hermeneus::complexity::ComplexityConfig::default(),
             },
             limits: crate::config::NousLimits {
                 max_tool_iterations: MAX_TOOL_ITERATIONS,

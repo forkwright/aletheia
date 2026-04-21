@@ -2,6 +2,7 @@
 
 use std::sync::Arc;
 
+use hermeneus::complexity::ComplexityConfig;
 use serde::{Deserialize, Serialize};
 use taxis::config::AgentBehaviorDefaults;
 
@@ -49,6 +50,13 @@ pub struct NousGenerationConfig {
     pub chars_per_token: u32,
     /// Model to use for prosoche heartbeat sessions instead of the primary model.
     pub prosoche_model: String,
+    /// Complexity-based model routing.
+    ///
+    /// WHY: when `complexity.enabled == true`, the turn model is chosen per
+    /// message by scoring query complexity and mapping to a configured tier
+    /// (haiku/sonnet/opus). When `false` (the default), `model` is used for
+    /// every turn — preserving existing behaviour.
+    pub complexity: ComplexityConfig,
 }
 
 impl Default for NousGenerationConfig {
@@ -63,6 +71,7 @@ impl Default for NousGenerationConfig {
             thinking_budget: 10_000,
             chars_per_token: default_chars_per_token(),
             prosoche_model: default_prosoche_model(),
+            complexity: ComplexityConfig::default(),
         }
     }
 }
@@ -382,6 +391,7 @@ mod tests {
                 thinking_budget: 5_000,
                 chars_per_token: 4,
                 prosoche_model: "claude-haiku-4-5-20251001".to_owned(),
+                complexity: ComplexityConfig::default(),
             },
             limits: NousLimits {
                 max_tool_iterations: 10,

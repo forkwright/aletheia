@@ -12,6 +12,7 @@ use snafu::ResultExt;
 use tokio::sync::mpsc;
 use tracing::{debug, info, instrument, warn};
 
+use hermeneus::complexity::{ComplexityInput, route_model};
 use hermeneus::health::ProviderHealth;
 use hermeneus::provider::{LlmProvider, ProviderRegistry};
 use hermeneus::types::{
@@ -32,6 +33,40 @@ use crate::hooks::{ToolHookContext, ToolHookResult};
 use crate::pipeline::{LoopDetector, PipelineContext, ToolCall, TurnResult, TurnUsage};
 use crate::session::SessionState;
 use crate::stream::TurnStreamEvent;
+
+/// Resolve the model to use for this turn, applying complexity-based routing when enabled.
+///
+/// WHY: when `complexity.enabled == false` (the default) this returns
+/// `config.generation.model` unchanged, preserving existing behaviour bit-for-bit.
+/// When enabled, the last user message plus available tool count feed into
+/// [`route_model`], which maps a score to a tier model.
+fn resolve_turn_model(ctx: &PipelineContext, config: &NousConfig, tool_count: usize) -> String {
+    if !config.generation.complexity.enabled {
+        return config.generation.model.clone();
+    }
+
+    // WHY: complexity routing scores the most recent user message — the one
+    // driving this turn. Fall back to empty text when no user message exists
+    // so scoring produces a baseline (Haiku) tier rather than panicking.
+    let last_user_text = ctx
+        .messages
+        .iter()
+        .rev()
+        .find(|m| m.role == "user")
+        .map_or("", |m| m.content.as_str());
+
+    let input = ComplexityInput {
+        message_text: last_user_text,
+        tool_count,
+        message_count: ctx.messages.len(),
+        depth: 0,
+        tier_override: None,
+        model_override: None,
+    };
+
+    let decision = route_model(&input, &config.generation.complexity);
+    decision.model
+}
 
 /// Resolve the LLM provider for `model` and verify it is not marked down.
 fn resolve_provider_checked<'a>(
@@ -194,7 +229,18 @@ pub async fn execute(
     tool_ctx: &ToolContext,
     hooks: Option<&HookRegistry>,
 ) -> error::Result<TurnResult> {
-    let provider = resolve_provider_checked(providers, &config.generation.model)?;
+    // WHY: resolve the turn model once — complexity routing pins a tier for
+    // the whole turn so tool-iteration continuations don't oscillate between
+    // models mid-response. Tool count is approximated as the allowlist size
+    // when restricted, else the full registry size; the score only shifts a
+    // tier when tool_count crosses small integer breakpoints, so approximation
+    // here doesn't bend routing off the correct tier.
+    let tool_count = config
+        .tool_allowlist
+        .as_ref()
+        .map_or_else(|| tools.definitions().len(), Vec::len);
+    let turn_model = resolve_turn_model(ctx, config, tool_count);
+    let provider = resolve_provider_checked(providers, &turn_model)?;
 
     let mut messages = build_messages(&ctx.messages);
     let mut all_tool_calls: Vec<ToolCall> = Vec::new();
@@ -246,7 +292,7 @@ pub async fn execute(
         // has refcount > 1 and the underlying Vec is shared across turns, so
         // only this leaf clone pays. Still cheaper than rebuilding every turn.
         let request = CompletionRequest {
-            model: config.generation.model.clone(),
+            model: turn_model.clone(),
             system: ctx.system_prompt.clone(),
             messages: messages.clone(),
             max_tokens: config.generation.max_output_tokens,
@@ -473,13 +519,21 @@ pub async fn execute_streaming(
     stream_tx: &mpsc::Sender<TurnStreamEvent>,
     hooks: Option<&HookRegistry>,
 ) -> error::Result<TurnResult> {
-    let Some(streaming_provider) = providers.find_streaming_provider(&config.generation.model)
-    else {
+    // WHY: resolve the streaming turn model once — same reasoning as execute().
+    // Must come before find_streaming_provider so the streaming provider is
+    // looked up for the actual model the turn will use.
+    let tool_count = config
+        .tool_allowlist
+        .as_ref()
+        .map_or_else(|| tools.definitions().len(), Vec::len);
+    let turn_model = resolve_turn_model(ctx, config, tool_count);
+
+    let Some(streaming_provider) = providers.find_streaming_provider(&turn_model) else {
         // NOTE: fall back to non-streaming execute if no streaming provider is registered
         return execute(ctx, session, config, providers, tools, tool_ctx, hooks).await;
     };
 
-    let provider = resolve_provider_checked(providers, &config.generation.model)?;
+    let provider = resolve_provider_checked(providers, &turn_model)?;
 
     let mut messages = build_messages(&ctx.messages);
     let mut all_tool_calls: Vec<ToolCall> = Vec::new();
@@ -533,7 +587,7 @@ pub async fn execute_streaming(
         let (_active, server_tools) = resolve_active_server_tools(tool_ctx, &config_server_tools);
 
         let request = CompletionRequest {
-            model: config.generation.model.clone(),
+            model: turn_model.clone(),
             system: ctx.system_prompt.clone(),
             messages: messages.clone(),
             max_tokens: config.generation.max_output_tokens,
