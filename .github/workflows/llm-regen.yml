@@ -27,10 +27,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           fetch-depth: 2
-          # WHY: this workflow pushes commits; persisted credentials are required.
-          # The project standard (standards/YAML.md) allows persist-credentials: true
-          # when the workflow explicitly needs to push.
-          persist-credentials: true
+          persist-credentials: false
 
       - name: Detect changed crates
         id: detect
@@ -142,9 +139,12 @@ jobs:
 
       - name: Commit and push updated _llm/
         if: steps.regen.outputs.changed == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
 
+          git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
