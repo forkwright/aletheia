@@ -21,7 +21,7 @@ use std::time::Duration;
 use chrono::{DateTime, Utc};
 use compact_str::CompactString;
 use fjall::Readable;
-use rand::Rng;
+use rand::RngExt;
 use snafu::IntoError;
 use tokio_util::sync::CancellationToken;
 use tracing::Instrument;
