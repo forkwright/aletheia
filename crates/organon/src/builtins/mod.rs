@@ -34,6 +34,9 @@ pub mod planning;
 pub mod poiesis;
 /// Web research tools (web_fetch).
 pub mod research;
+/// Z3 SMT solver tool (z3_solver).
+#[cfg(feature = "z3")]
+pub mod z3_solver;
 /// Issue triage tools (scan, score, stage, approve).
 pub mod triage;
 /// File viewing with multimodal support (images, PDFs, text).
@@ -82,6 +85,8 @@ pub fn register_all_with_sandbox(
     enable_tool::register(registry)?;
     planning::register(registry)?;
     research::register(registry)?;
+    #[cfg(feature = "z3")]
+    z3_solver::register(registry)?;
     web_search::register(registry)?;
     triage::register(registry)?;
     parameters::register(registry)?;
