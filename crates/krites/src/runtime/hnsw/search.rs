@@ -235,7 +235,7 @@ impl SessionTx<'_> {
 mod tests {
     use std::collections::BTreeMap;
 
-    use rand::Rng;
+    use rand::RngExt;
 
     use super::*;
     use crate::DbInstance;

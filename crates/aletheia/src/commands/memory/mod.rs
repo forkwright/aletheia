@@ -527,7 +527,7 @@ fn sample_random<T: Clone>(items: &[T], count: usize) -> Vec<T> {
     if count >= items.len() {
         return items.to_vec();
     }
-    items.choose_multiple(&mut rng, count).cloned().collect()
+    items.sample(&mut rng, count).cloned().collect()
 }
 
 // --- dedup ---

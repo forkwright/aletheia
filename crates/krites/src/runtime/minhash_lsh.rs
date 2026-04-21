@@ -15,7 +15,7 @@ use std::hash::{Hash, Hasher};
 
 use compact_str::CompactString;
 use itertools::Itertools;
-use rand::RngCore;
+use rand::Rng;
 use rustc_hash::FxHashSet;
 use twox_hash::XxHash32;
 

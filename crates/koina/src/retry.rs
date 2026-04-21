@@ -8,7 +8,7 @@ use std::fmt;
 use std::future::Future;
 use std::time::Duration;
 
-use rand::Rng;
+use rand::RngExt;
 
 /// Backoff strategy for computing retry delays between attempts.
 ///

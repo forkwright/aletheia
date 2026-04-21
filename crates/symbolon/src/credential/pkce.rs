@@ -9,7 +9,7 @@ use std::net::{TcpListener, TcpStream};
 use std::time::Duration;
 
 use koina::secret::SecretString;
-use rand::TryRngCore as _;
+use rand::TryRng as _;
 use sha2::{Digest, Sha256};
 use snafu::{ResultExt, Snafu};
 use tracing::{debug, info};
@@ -227,7 +227,7 @@ impl PkcePair {
     fn generate() -> Result<Self> {
         // WHY: RFC 7636 recommends minimum 43 chars, max 128 chars for verifier.
         // We generate 128 bytes of randomness which becomes ~171 chars base64url.
-        let mut rng = rand::rngs::OsRng;
+        let mut rng = rand::rngs::SysRng;
         let mut verifier_bytes = vec![0u8; 128];
         rng.try_fill_bytes(&mut verifier_bytes)
             .map_err(|_e| PkceError::RandomGeneration {
@@ -282,7 +282,7 @@ struct CallbackData {
 
 /// Generate a cryptographically random state parameter for CSRF protection.
 fn generate_state() -> Result<String> {
-    let mut rng = rand::rngs::OsRng;
+    let mut rng = rand::rngs::SysRng;
     let mut bytes = vec![0u8; 32];
     rng.try_fill_bytes(&mut bytes)
         .map_err(|_e| PkceError::RandomGeneration {
