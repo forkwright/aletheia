@@ -19,7 +19,7 @@ use koina::secret::SecretString;
 use crate::anthropic::StreamEvent;
 use crate::error::{self, Result};
 use crate::health::{HealthConfig, ProviderHealthTracker};
-use crate::provider::LlmProvider;
+use crate::provider::{DeploymentTarget, LlmProvider};
 use crate::types::{CompletionRequest, CompletionResponse};
 
 use super::error::{map_error_response, map_request_error};
@@ -63,6 +63,18 @@ pub struct OpenAiProviderConfig {
     /// Maximum retries on transient failures (5xx, timeout, connection
     /// reset). Defaults to 3.
     pub max_retries: u32,
+    /// Where this provider's traffic terminates, gating which
+    /// [`FactSensitivity`](mneme::knowledge::FactSensitivity) the recall
+    /// pipeline is allowed to send to it (#3736, #3404, #3413).
+    ///
+    /// Defaults to [`DeploymentTarget::Cloud`] — the safe assumption that
+    /// matches the trait default so existing TOML configurations without an
+    /// explicit `deployment_target` key keep their Cloud-classified
+    /// behaviour. Operators running a loopback llama.cpp, logismos, or
+    /// ollama endpoint MUST set this to `local_hosted` or `embedded` in
+    /// `aletheia.toml` so the recall filter lets `Internal` /
+    /// `Confidential` facts through to the non-cloud boundary.
+    pub deployment_target: DeploymentTarget,
 }
 
 impl Default for OpenAiProviderConfig {
@@ -74,6 +86,11 @@ impl Default for OpenAiProviderConfig {
             models: Vec::new(),
             request_timeout: Duration::from_mins(2),
             max_retries: 3,
+            // WHY (#3736): the trait default is Cloud and we must mirror it
+            // here so `..Default::default()` in call sites (e.g. the
+            // declarative registration path in aletheia's setup.rs) does
+            // not silently downgrade a caller-specified target.
+            deployment_target: DeploymentTarget::Cloud,
         }
     }
 }
@@ -400,6 +417,16 @@ impl LlmProvider for OpenAiProvider {
         &self.config.name
     }
 
+    /// WHY (#3736): the trait default is Cloud, but OpenAI-compatible
+    /// providers also cover loopback llama.cpp / logismos / ollama
+    /// deployments that should receive `Internal` or `Confidential` facts.
+    /// Returning the configured value propagates the TOML-level
+    /// `deployment_target` all the way to the recall sovereignty filter in
+    /// `nous::recall::filter_by_sensitivity`.
+    fn deployment_target(&self) -> DeploymentTarget {
+        self.config.deployment_target
+    }
+
     fn supports_streaming(&self) -> bool {
         true
     }
@@ -452,5 +479,73 @@ mod tests {
         let provider = OpenAiProvider::new(config).unwrap();
         assert!(provider.supports_model("gpt-4o"));
         assert!(!provider.supports_model("nonexistent"));
+    }
+
+    #[test]
+    fn test_deployment_target_propagates_from_config() {
+        // WHY (#3736): regression for the sovereignty bug where
+        // OpenAiProviderConfig.deployment_target was accepted in TOML,
+        // logged at startup, then silently discarded. The recall
+        // pipeline's sensitivity filter reads this value off the
+        // provider trait, so if it never propagates, every
+        // OpenAI-compat provider — including loopback llama.cpp /
+        // logismos — gets treated as Cloud and has Internal /
+        // Confidential facts stripped.
+
+        // LocalHosted propagates.
+        let local_hosted = OpenAiProvider::new(OpenAiProviderConfig {
+            name: "local-hosted".to_owned(),
+            base_url: "http://127.0.0.1:8088/v1".to_owned(),
+            models: vec!["qwen".to_owned()],
+            deployment_target: DeploymentTarget::LocalHosted,
+            ..Default::default()
+        })
+        .unwrap();
+        assert_eq!(
+            local_hosted.deployment_target(),
+            DeploymentTarget::LocalHosted,
+            "LocalHosted config must propagate through OpenAiProvider::deployment_target()"
+        );
+
+        // Embedded propagates.
+        let embedded = OpenAiProvider::new(OpenAiProviderConfig {
+            name: "embedded".to_owned(),
+            base_url: "http://127.0.0.1:8089/v1".to_owned(),
+            models: vec!["logismos".to_owned()],
+            deployment_target: DeploymentTarget::Embedded,
+            ..Default::default()
+        })
+        .unwrap();
+        assert_eq!(
+            embedded.deployment_target(),
+            DeploymentTarget::Embedded,
+            "Embedded config must propagate through OpenAiProvider::deployment_target()"
+        );
+
+        // Default (no field set) stays Cloud — the safe trait default.
+        let default_cloud = OpenAiProvider::new(OpenAiProviderConfig {
+            name: "cloud".to_owned(),
+            base_url: "https://api.openai.com/v1".to_owned(),
+            models: vec!["gpt-4o".to_owned()],
+            ..Default::default()
+        })
+        .unwrap();
+        assert_eq!(
+            default_cloud.deployment_target(),
+            DeploymentTarget::Cloud,
+            "omitted deployment_target must default to Cloud (sovereignty-safe)"
+        );
+    }
+
+    #[test]
+    fn deployment_target_ordering_is_sovereignty_safe() {
+        // WHY (#3736): the recall admission rule is `sensitivity <=
+        // target` under the ordering `Cloud < LocalHosted < Embedded`.
+        // If a refactor ever reorders the variants, the filter would
+        // admit Internal/Confidential facts to Cloud providers. Guard
+        // the ordering here so any reorder blows up this test loudly
+        // instead of silently leaking data.
+        assert!(DeploymentTarget::Cloud < DeploymentTarget::LocalHosted);
+        assert!(DeploymentTarget::LocalHosted < DeploymentTarget::Embedded);
     }
 }

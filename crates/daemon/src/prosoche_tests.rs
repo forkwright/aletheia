@@ -248,6 +248,7 @@ mod knowledge_store_tests {
                 access_count: 0,
                 last_accessed_at: None,
             },
+            sensitivity: episteme::knowledge::FactSensitivity::Public,
         }
     }
 
