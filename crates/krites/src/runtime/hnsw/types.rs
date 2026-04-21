@@ -4,7 +4,7 @@ use std::num::NonZeroUsize;
 
 use compact_str::CompactString;
 use lru::LruCache;
-use rand::Rng;
+use rand::RngExt;
 
 use crate::DataValue;
 use crate::data::relation::VecElementType;

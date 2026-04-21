@@ -10,7 +10,7 @@ use std::fmt;
 use std::str::FromStr;
 use std::time::SystemTime;
 
-use rand::Rng;
+use rand::RngExt;
 use serde::{Deserialize, Serialize};
 
 /// Crockford base32 alphabet (uppercase).

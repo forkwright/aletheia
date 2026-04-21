@@ -23,7 +23,8 @@ use compact_str::CompactString;
 use itertools::Itertools;
 #[cfg(target_arch = "wasm32")]
 use js_sys::Date;
-use rand::prelude::*;
+use rand::RngExt;
+use rand::seq::IndexedRandom;
 
 use super::arg;
 use crate::data::error::*;

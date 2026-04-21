@@ -6,7 +6,7 @@
 
 use std::time::Duration;
 
-use rand::Rng;
+use rand::RngExt;
 use tracing::instrument;
 
 use crate::error::{self, Result};
