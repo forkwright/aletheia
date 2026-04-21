@@ -632,11 +632,20 @@ impl RuntimeBuilder {
                     hooks: nous::config::HookConfig::default(),
                     behavior: resolved.behavior,
                 };
+                // WHY (#3740): honour the operator-set extraction_model
+                // override if present. Extraction is a "fast tier" workload
+                // (small model) and on local multi-model deployments should
+                // not inherit the turn model. When unset, fall back to the
+                // ExtractionConfig default.
+                let mut extraction_cfg = mneme::extract::ExtractionConfig::default();
+                if let Some(m) = nous_config.generation.extraction_model.as_deref() {
+                    extraction_cfg.model = m.to_owned();
+                }
                 if let Err(e) = nous_manager
                     .spawn(
                         nous_config,
                         PipelineConfig {
-                            extraction: Some(mneme::extract::ExtractionConfig::default()),
+                            extraction: Some(extraction_cfg),
                             training: self.config.training.clone(),
                             ..PipelineConfig::default()
                         },
