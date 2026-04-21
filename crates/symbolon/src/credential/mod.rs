@@ -68,5 +68,12 @@ const FILE_MTIME_CHECK_INTERVAL: Duration = Duration::from_secs(30);
 const OAUTH_TOKEN_PREFIX: &str = "sk-ant-oat";
 
 #[cfg(test)]
-#[path = "../credential_tests.rs"]
-mod tests;
+mod chain_tests;
+#[cfg(test)]
+mod claude_code_tests;
+#[cfg(test)]
+mod credential_file_tests;
+#[cfg(test)]
+mod env_provider_tests;
+#[cfg(test)]
+mod refreshing_tests;

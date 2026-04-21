@@ -625,5 +625,5 @@ fn ls_def() -> ToolDef {
 }
 
 #[cfg(test)]
-#[path = "filesystem_tests.rs"]
+#[path = "filesystem_tests/mod.rs"]
 mod tests;
