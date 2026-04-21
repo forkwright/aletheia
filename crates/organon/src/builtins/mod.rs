@@ -42,6 +42,9 @@ pub mod view_file;
 pub mod web_search;
 /// File and shell workspace tools (read, write, edit, exec).
 pub mod workspace;
+/// Z3 SMT solver tool (z3_solver).
+#[cfg(feature = "z3")]
+pub mod z3_solver;
 
 use crate::error::Result;
 use crate::registry::ToolRegistry;
@@ -82,6 +85,8 @@ pub fn register_all_with_sandbox(
     enable_tool::register(registry)?;
     planning::register(registry)?;
     research::register(registry)?;
+    #[cfg(feature = "z3")]
+    z3_solver::register(registry)?;
     web_search::register(registry)?;
     triage::register(registry)?;
     parameters::register(registry)?;
