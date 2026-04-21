@@ -792,6 +792,116 @@ fn sovereignty_filter_embedded_keeps_all() {
 }
 
 #[test]
+fn test_internal_fact_admitted_to_local_hosted_provider_but_stripped_from_cloud() {
+    // WHY (#3736): end-to-end regression for the OpenAI-compatible
+    // provider's sovereignty wiring. The bug: OpenAiProviderConfig had no
+    // `deployment_target` field and OpenAiProvider did not override the
+    // LlmProvider trait, so operator TOML `deployment_target = "local_hosted"`
+    // was logged at startup then silently discarded. Every OpenAI-compat
+    // provider — including loopback llama.cpp / logismos — reported `Cloud`
+    // via the trait default and the recall filter stripped `Internal` facts
+    // from a locally-hosted model's system prompt.
+    //
+    // This test exercises the wiring from the provider instance through to
+    // the admission filter: if either half regresses (config field removed,
+    // trait override dropped, or `with_deployment_target` call site drops
+    // the provider's value), the assertion fails.
+    use hermeneus::openai::{OpenAiProvider, OpenAiProviderConfig};
+    use hermeneus::provider::{DeploymentTarget, LlmProvider};
+    use mneme::knowledge::FactSensitivity;
+
+    let results = vec![
+        make_knowledge_result_sensitive("public A", 0.1, "f-pub", FactSensitivity::Public),
+        make_knowledge_result_sensitive("internal B", 0.15, "f-int", FactSensitivity::Internal),
+    ];
+
+    // Build an OpenAI-compat provider pointing at loopback llama.cpp with
+    // deployment_target = LocalHosted (the operator-intended configuration
+    // that the bug silently ignored).
+    let local_provider = OpenAiProvider::new(OpenAiProviderConfig {
+        name: "local-llama".to_owned(),
+        base_url: "http://127.0.0.1:8088/v1".to_owned(),
+        models: vec!["qwen-local".to_owned()],
+        deployment_target: DeploymentTarget::LocalHosted,
+        ..Default::default()
+    })
+    .expect("local OpenAiProvider init");
+    assert_eq!(
+        local_provider.deployment_target(),
+        DeploymentTarget::LocalHosted,
+        "provider must report LocalHosted — the regression point"
+    );
+
+    // Admission path: plug the provider's reported target into the recall
+    // stage (mirroring pipeline/stages.rs:108-112) and verify `Internal`
+    // facts survive the sovereignty filter for a local provider.
+    let search_local = MockVectorSearch::new(results.clone());
+    let config = RecallConfig {
+        min_score: 0.0,
+        max_results: 10,
+        ..Default::default()
+    };
+    let local_stage =
+        RecallStage::new(config.clone()).with_deployment_target(local_provider.deployment_target());
+    let local_result = local_stage
+        .run("query", "syn", &mock_embed(), &search_local, 50000)
+        .expect("local recall runs");
+    let local_section = local_result
+        .recall_section
+        .expect("public+internal yields a section on LocalHosted target");
+    assert!(
+        local_section.contains("public A"),
+        "LocalHosted must keep Public; section = {local_section}"
+    );
+    assert!(
+        local_section.contains("internal B"),
+        "LocalHosted must ADMIT Internal — this is the sovereignty guarantee; section = {local_section}"
+    );
+    assert_eq!(
+        local_result.results_injected, 2,
+        "both Public and Internal must be injected on LocalHosted target"
+    );
+
+    // Control: a Cloud-default provider (no deployment_target field in
+    // TOML) still strips Internal — proves the filter itself is wired and
+    // that LocalHosted is not a no-op pass-through.
+    let cloud_provider = OpenAiProvider::new(OpenAiProviderConfig {
+        name: "cloud-openai".to_owned(),
+        base_url: "https://api.openai.com/v1".to_owned(),
+        models: vec!["gpt-4o".to_owned()],
+        ..Default::default()
+    })
+    .expect("cloud OpenAiProvider init");
+    assert_eq!(
+        cloud_provider.deployment_target(),
+        DeploymentTarget::Cloud,
+        "omitted field must default to Cloud (safe)"
+    );
+
+    let search_cloud = MockVectorSearch::new(results);
+    let cloud_stage =
+        RecallStage::new(config).with_deployment_target(cloud_provider.deployment_target());
+    let cloud_result = cloud_stage
+        .run("query", "syn", &mock_embed(), &search_cloud, 50000)
+        .expect("cloud recall runs");
+    let cloud_section = cloud_result
+        .recall_section
+        .expect("public yields a section on Cloud target");
+    assert!(
+        cloud_section.contains("public A"),
+        "Cloud must keep Public; section = {cloud_section}"
+    );
+    assert!(
+        !cloud_section.contains("internal B"),
+        "Cloud must STRIP Internal — the pre-existing sovereignty invariant; section = {cloud_section}"
+    );
+    assert_eq!(
+        cloud_result.results_injected, 1,
+        "only Public must be injected on Cloud target"
+    );
+}
+
+#[test]
 fn sovereignty_filter_default_is_cloud() {
     use mneme::knowledge::FactSensitivity;
 

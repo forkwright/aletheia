@@ -14,7 +14,9 @@ use agora::semeion::client::SignalClient;
 use agora::types::ChannelProvider;
 use hermeneus::anthropic::{AnthropicProvider, ProviderBehavior};
 use hermeneus::openai::{OpenAiProvider, OpenAiProviderConfig};
-use hermeneus::provider::{ProviderConfig, ProviderRegistry};
+use hermeneus::provider::{
+    DeploymentTarget as HermeneusDeploymentTarget, ProviderConfig, ProviderRegistry,
+};
 use koina::credential::{CredentialProvider, CredentialSource};
 use koina::secret::SecretString;
 use mneme::embedding::{
@@ -189,6 +191,29 @@ pub(super) fn build_provider_registry(config: &AletheiaConfig, oikos: &Oikos) ->
     registry
 }
 
+/// Translate the taxis-side [`taxis::config::DeploymentTarget`] to the
+/// hermeneus-side [`HermeneusDeploymentTarget`] (#3736).
+///
+/// Both enums encode the same three boundaries — `Cloud`, `LocalHosted`,
+/// `Embedded` — but live in separate crates so neither depends on the
+/// other. This site is the first place both types are in scope, so the
+/// mapping lives here alongside every other config→provider conversion
+/// done by `register_declared_providers`. Any unknown variant
+/// (`#[non_exhaustive]` guard) falls back to `Cloud`, the sovereignty-safe
+/// default that strips `Internal` / `Confidential` facts rather than
+/// leaking them to an unclassified boundary.
+fn map_deployment_target(src: taxis::config::DeploymentTarget) -> HermeneusDeploymentTarget {
+    use taxis::config::DeploymentTarget as TaxisDeploymentTarget;
+    match src {
+        TaxisDeploymentTarget::LocalHosted => HermeneusDeploymentTarget::LocalHosted,
+        TaxisDeploymentTarget::Embedded => HermeneusDeploymentTarget::Embedded,
+        // WHY: explicit Cloud + wildcard for `#[non_exhaustive]` — any
+        // future variant this code hasn't been taught about is treated as
+        // Cloud so operators cannot accidentally leak classified facts.
+        TaxisDeploymentTarget::Cloud | _ => HermeneusDeploymentTarget::Cloud,
+    }
+}
+
 /// Iterate `config.providers` and register each entry with the provider
 /// registry (#3424, #3414).
 ///
@@ -234,6 +259,14 @@ fn register_declared_providers(registry: &mut ProviderRegistry, config: &Alethei
                     base_url,
                     api_key,
                     models: entry.models.clone(),
+                    // WHY (#3736): the operator-declared deployment target
+                    // was previously logged below but never threaded to the
+                    // provider, so every OpenAI-compat provider silently
+                    // inherited the `Cloud` trait default. That broke the
+                    // air-gap claim in `docs/AIR-GAPPED.md` — the recall
+                    // filter stripped `Internal` / `Confidential` facts
+                    // from traffic bound for loopback llama.cpp / logismos.
+                    deployment_target: map_deployment_target(entry.deployment_target),
                     ..OpenAiProviderConfig::default()
                 };
                 match OpenAiProvider::new(cfg) {
