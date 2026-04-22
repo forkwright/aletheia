@@ -16,6 +16,7 @@ test-core = []
 test-full = []
 
 [dependencies]
+eidos = { path = "../eidos" }
 koina = { path = "../koina" }
 reqwest = { workspace = true }
 regex = { workspace = true }
