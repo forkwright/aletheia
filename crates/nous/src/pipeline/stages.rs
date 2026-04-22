@@ -254,6 +254,7 @@ pub(super) async fn run_history_stage(
             role: "user".to_owned(),
             content: input.content.clone(),
             token_estimate,
+            cache_breakpoint: false,
         });
     }
     let duration_secs = start.elapsed().as_secs_f64();

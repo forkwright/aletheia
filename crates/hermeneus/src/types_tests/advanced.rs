@@ -334,7 +334,7 @@ mod proptests {
             ],
             text in "\\PC{0,200}",
         ) {
-            let msg = Message { role, content: Content::Text(text) };
+            let msg = Message { role, content: Content::Text(text), cache_breakpoint: false };
             let json = serde_json::to_string(&msg).expect("Message should serialize to JSON");
             let back: Message = serde_json::from_str(&json).expect("Message JSON should deserialize back");
             prop_assert_eq!(back.role, msg.role);

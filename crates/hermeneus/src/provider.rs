@@ -409,6 +409,7 @@ mod tests {
             messages: vec![Message {
                 role: Role::User,
                 content: Content::Text("hello".to_owned()),
+                cache_breakpoint: false,
             }],
             max_tokens: 1024,
             tools: vec![],

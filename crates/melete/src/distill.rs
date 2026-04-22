@@ -333,6 +333,7 @@ impl DistillEngine {
             messages: vec![Message {
                 role: Role::User,
                 content: Content::Text(user_content),
+                cache_breakpoint: false,
             }],
             max_tokens: self.config.max_output_tokens,
             tools: vec![],

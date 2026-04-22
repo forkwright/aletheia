@@ -38,6 +38,7 @@ fn test_request() -> CompletionRequest {
         messages: vec![Message {
             role: Role::User,
             content: Content::Text("hello".to_owned()),
+            cache_breakpoint: false,
         }],
         max_tokens: 128,
         tools: vec![],

@@ -195,6 +195,7 @@ mod tests {
         Message {
             role: Role::Assistant,
             content: Content::Text(text.to_owned()),
+            cache_breakpoint: false,
         }
     }
 
@@ -388,6 +389,7 @@ mod tests {
         let msg = Message {
             role: Role::User,
             content: Content::Text("hello world".to_owned()),
+            cache_breakpoint: false,
         };
         assert_eq!(extract_text(&msg), "hello world");
     }
@@ -406,6 +408,7 @@ mod tests {
                     citations: None,
                 },
             ]),
+            cache_breakpoint: false,
         };
         assert_eq!(extract_text(&msg), "first part second part");
     }

@@ -33,6 +33,7 @@ fn basic_request(model: &str) -> CompletionRequest {
         messages: vec![Message {
             role: Role::User,
             content: Content::Text("hi".to_owned()),
+            cache_breakpoint: false,
         }],
         max_tokens: 64,
         ..Default::default()
@@ -107,6 +108,7 @@ async fn tool_use_round_trip_maps_both_directions() {
         messages: vec![Message {
             role: Role::User,
             content: Content::Text("weather in Paris?".to_owned()),
+            cache_breakpoint: false,
         }],
         max_tokens: 64,
         tools: vec![ToolDefinition {
@@ -208,6 +210,7 @@ async fn server_tools_request_is_rejected_before_transport() {
         messages: vec![Message {
             role: Role::User,
             content: Content::Text("search the web".to_owned()),
+            cache_breakpoint: false,
         }],
         max_tokens: 64,
         server_tools: vec![crate::types::ServerToolDefinition {
@@ -267,6 +270,7 @@ async fn air_gapped_registry_routes_to_local_provider() {
         messages: vec![Message {
             role: Role::User,
             content: Content::Text("ping".to_owned()),
+            cache_breakpoint: false,
         }],
         max_tokens: 32,
         ..Default::default()

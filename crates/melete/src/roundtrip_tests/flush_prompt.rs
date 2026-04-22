@@ -18,6 +18,7 @@ fn text_msg(role: Role, text: &str) -> Message {
     Message {
         role,
         content: Content::Text(text.to_owned()),
+        cache_breakpoint: false,
     }
 }
 

@@ -85,6 +85,7 @@ fn wire_request_code_execution_server_tool() {
         messages: vec![Message {
             role: Role::User,
             content: Content::Text("run python".to_owned()),
+            cache_breakpoint: false,
         }],
         max_tokens: 1024,
         server_tools: vec![crate::types::ServerToolDefinition {
@@ -119,6 +120,7 @@ fn wire_request_no_cache_system_is_string() {
         messages: vec![Message {
             role: Role::User,
             content: Content::Text("hi".to_owned()),
+            cache_breakpoint: false,
         }],
         max_tokens: 1024,
         ..Default::default()
@@ -140,14 +142,17 @@ fn cache_turns_marks_text_content_as_blocks() {
             Message {
                 role: Role::User,
                 content: Content::Text("first".to_owned()),
+                cache_breakpoint: false,
             },
             Message {
                 role: Role::Assistant,
                 content: Content::Text("response".to_owned()),
+                cache_breakpoint: false,
             },
             Message {
                 role: Role::User,
                 content: Content::Text("second".to_owned()),
+                cache_breakpoint: false,
             },
         ],
         max_tokens: 1024,
@@ -178,14 +183,17 @@ fn cache_turns_disabled_leaves_content_unchanged() {
             Message {
                 role: Role::User,
                 content: Content::Text("first".to_owned()),
+                cache_breakpoint: false,
             },
             Message {
                 role: Role::Assistant,
                 content: Content::Text("response".to_owned()),
+                cache_breakpoint: false,
             },
             Message {
                 role: Role::User,
                 content: Content::Text("second".to_owned()),
+                cache_breakpoint: false,
             },
         ],
         max_tokens: 1024,
@@ -210,6 +218,7 @@ fn cache_turns_single_message_no_breakpoints() {
         messages: vec![Message {
             role: Role::User,
             content: Content::Text("only one".to_owned()),
+            cache_breakpoint: false,
         }],
         max_tokens: 1024,
         cache_turns: true,
@@ -232,30 +241,37 @@ fn cache_turns_multi_turn_marks_recent_user_messages() {
             Message {
                 role: Role::User,
                 content: Content::Text("turn 1".to_owned()),
+                cache_breakpoint: false,
             },
             Message {
                 role: Role::Assistant,
                 content: Content::Text("reply 1".to_owned()),
+                cache_breakpoint: false,
             },
             Message {
                 role: Role::User,
                 content: Content::Text("turn 2".to_owned()),
+                cache_breakpoint: false,
             },
             Message {
                 role: Role::Assistant,
                 content: Content::Text("reply 2".to_owned()),
+                cache_breakpoint: false,
             },
             Message {
                 role: Role::User,
                 content: Content::Text("turn 3".to_owned()),
+                cache_breakpoint: false,
             },
             Message {
                 role: Role::Assistant,
                 content: Content::Text("reply 3".to_owned()),
+                cache_breakpoint: false,
             },
             Message {
                 role: Role::User,
                 content: Content::Text("turn 4 (current)".to_owned()),
+                cache_breakpoint: false,
             },
         ],
         max_tokens: 1024,
@@ -304,14 +320,17 @@ fn cache_turns_with_block_content() {
                         citations: None,
                     },
                 ]),
+                cache_breakpoint: false,
             },
             Message {
                 role: Role::Assistant,
                 content: Content::Text("ok".to_owned()),
+                cache_breakpoint: false,
             },
             Message {
                 role: Role::User,
                 content: Content::Text("current".to_owned()),
+                cache_breakpoint: false,
             },
         ],
         max_tokens: 1024,
@@ -346,10 +365,12 @@ fn cache_turns_never_marks_current_message() {
             Message {
                 role: Role::User,
                 content: Content::Text("previous".to_owned()),
+                cache_breakpoint: false,
             },
             Message {
                 role: Role::User,
                 content: Content::Text("current".to_owned()),
+                cache_breakpoint: false,
             },
         ],
         max_tokens: 1024,
@@ -410,10 +431,12 @@ fn compute_turn_cache_indices_two_messages() {
         Message {
             role: Role::User,
             content: Content::Text("a".to_owned()),
+            cache_breakpoint: false,
         },
         Message {
             role: Role::User,
             content: Content::Text("b".to_owned()),
+            cache_breakpoint: false,
         },
     ];
     let refs: Vec<&Message> = msgs.iter().collect();
@@ -431,30 +454,37 @@ fn compute_turn_cache_indices_respects_max_breakpoints() {
         Message {
             role: Role::User,
             content: Content::Text("a".to_owned()),
+            cache_breakpoint: false,
         },
         Message {
             role: Role::Assistant,
             content: Content::Text("b".to_owned()),
+            cache_breakpoint: false,
         },
         Message {
             role: Role::User,
             content: Content::Text("c".to_owned()),
+            cache_breakpoint: false,
         },
         Message {
             role: Role::Assistant,
             content: Content::Text("d".to_owned()),
+            cache_breakpoint: false,
         },
         Message {
             role: Role::User,
             content: Content::Text("e".to_owned()),
+            cache_breakpoint: false,
         },
         Message {
             role: Role::Assistant,
             content: Content::Text("f".to_owned()),
+            cache_breakpoint: false,
         },
         Message {
             role: Role::User,
             content: Content::Text("g".to_owned()),
+            cache_breakpoint: false,
         },
     ];
     let refs: Vec<&Message> = msgs.iter().collect();
@@ -475,18 +505,22 @@ fn compute_turn_cache_indices_only_picks_user_messages() {
         Message {
             role: Role::User,
             content: Content::Text("a".to_owned()),
+            cache_breakpoint: false,
         },
         Message {
             role: Role::Assistant,
             content: Content::Text("b".to_owned()),
+            cache_breakpoint: false,
         },
         Message {
             role: Role::Assistant,
             content: Content::Text("c".to_owned()),
+            cache_breakpoint: false,
         },
         Message {
             role: Role::User,
             content: Content::Text("d".to_owned()),
+            cache_breakpoint: false,
         },
     ];
     let refs: Vec<&Message> = msgs.iter().collect();
@@ -605,14 +639,17 @@ fn cache_turns_combined_with_system_and_tools() {
             Message {
                 role: Role::User,
                 content: Content::Text("turn 1".to_owned()),
+                cache_breakpoint: false,
             },
             Message {
                 role: Role::Assistant,
                 content: Content::Text("reply".to_owned()),
+                cache_breakpoint: false,
             },
             Message {
                 role: Role::User,
                 content: Content::Text("turn 2".to_owned()),
+                cache_breakpoint: false,
             },
         ],
         max_tokens: 1024,
@@ -680,6 +717,7 @@ fn wire_request_disable_passthrough_serialized() {
         messages: vec![Message {
             role: Role::User,
             content: Content::Text("hi".to_owned()),
+            cache_breakpoint: false,
         }],
         max_tokens: 1024,
         tools: vec![ToolDefinition {
@@ -706,6 +744,7 @@ fn wire_request_disable_passthrough_none_omitted() {
         messages: vec![Message {
             role: Role::User,
             content: Content::Text("hi".to_owned()),
+            cache_breakpoint: false,
         }],
         max_tokens: 1024,
         tools: vec![ToolDefinition {

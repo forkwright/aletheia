@@ -347,6 +347,7 @@ fn pipeline_message_serde_roundtrip() {
         role: "user".to_owned(),
         content: "Hello world".to_owned(),
         token_estimate: 3,
+        cache_breakpoint: false,
     };
     let json = serde_json::to_string(&msg).expect("serialize message");
     let back: PipelineMessage = serde_json::from_str(&json).expect("deserialize message");

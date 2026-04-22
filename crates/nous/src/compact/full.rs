@@ -107,10 +107,14 @@ pub(crate) fn apply_compaction(
         reason = "usize->i64: summary length fits in i64"
     )]
     let summary_tokens = ((summary.len() as i64) + 3) / 4; // kanon:ignore RUST/as-cast
+    // WHY(#3781): mark the summary message with cache_breakpoint=true so
+    // subsequent turns know to cache up to this point, achieving cache_read
+    // pricing on the next turn after compaction.
     messages.push(PipelineMessage {
         role: "user".to_owned(),
         content: format!("[Conversation summary FROM compaction]\n{summary}"),
         token_estimate: summary_tokens,
+        cache_breakpoint: true,
     });
 
     // NOTE: re-inject critical files before preserved messages
@@ -125,6 +129,7 @@ pub(crate) fn apply_compaction(
                 file.path, file.content
             ),
             token_estimate: file.token_estimate,
+            cache_breakpoint: false,
         });
         restored_files.push(file.path);
     }
@@ -272,6 +277,7 @@ mod tests {
             role: role.to_owned(),
             content: content.to_owned(),
             token_estimate: tokens,
+            cache_breakpoint: false,
         }
     }
 
@@ -281,6 +287,7 @@ mod tests {
             role: "user".to_owned(),
             content: format_tool_result(tool_name, ts, content),
             token_estimate: tokens,
+            cache_breakpoint: false,
         }
     }
 
@@ -520,6 +527,46 @@ mod tests {
             preserved.len(),
             2,
             "should preserve all messages when fewer than threshold"
+        );
+    }
+
+    #[test]
+    fn cached_microcompact_marks_summary_with_cache_breakpoint() {
+        // WHY(#3781): regression test to ensure that when full compaction
+        // produces a distilled summary, it marks that summary with
+        // cache_breakpoint=true so the next turn benefits from cached-read pricing.
+        let config = CompactConfig::default();
+        let preserved = vec![
+            make_text_msg("user", "current question", 50),
+            make_text_msg("assistant", "current answer", 50),
+        ];
+        let critical_files = vec![];
+
+        let result = apply_compaction(
+            "Summary of previous conversation",
+            preserved,
+            critical_files,
+            10_000,
+            &config,
+        );
+
+        // The first message should be the summary
+        assert!(
+            !result.messages.is_empty(),
+            "result should contain at least the summary message"
+        );
+        let summary_msg = &result.messages[0];
+        assert!(
+            summary_msg
+                .content
+                .starts_with("[Conversation summary FROM compaction]"),
+            "first message should be the distilled summary"
+        );
+        // WHY(#3781): the cache_breakpoint flag must be set so that when the
+        // pipeline loads this message again, it knows to enable cache_turns.
+        assert!(
+            summary_msg.cache_breakpoint,
+            "distilled summary should have cache_breakpoint=true for cached-read pricing"
         );
     }
 }

@@ -79,6 +79,7 @@ pub(crate) fn load_history(
             role: "user".to_owned(),
             content: current_message.to_owned(),
             token_estimate: current_tokens,
+            cache_breakpoint: false,
         }];
         return Ok((
             messages,
@@ -133,10 +134,17 @@ pub(crate) fn load_history(
             Role::User | Role::ToolResult | _ => "user",
         };
 
+        // WHY(#3781): Mark distillation summaries as cache breakpoints so
+        // subsequent turns can reuse the cached prefix. Detect by content marker
+        // that was added by apply_compaction().
+        let is_distillation_summary = msg
+            .content
+            .starts_with("[Conversation summary FROM compaction]");
         collected.push(PipelineMessage {
             role: role.to_owned(),
             content: msg.content.clone(),
             token_estimate: msg.token_estimate,
+            cache_breakpoint: is_distillation_summary,
         });
         tokens_consumed += msg.token_estimate;
         loaded_count += 1;
@@ -152,6 +160,7 @@ pub(crate) fn load_history(
         role: "user".to_owned(),
         content: current_message.to_owned(),
         token_estimate: current_tokens,
+        cache_breakpoint: false,
     });
 
     let result = HistoryResult {

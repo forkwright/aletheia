@@ -412,12 +412,14 @@ fn pipeline_message_serde_roundtrip() {
         role: "user".to_owned(),
         content: "Hello world".to_owned(),
         token_estimate: 3,
+        cache_breakpoint: false,
     };
     let json = serde_json::to_string(&msg).expect("serialize message");
     let back: PipelineMessage = serde_json::from_str(&json).expect("deserialize message");
     assert_eq!(msg.role, back.role, "role should roundtrip");
     assert_eq!(msg.content, back.content, "content should roundtrip");
     assert_eq!(msg.token_estimate, back.token_estimate, "token_estimate should roundtrip");
+    assert_eq!(msg.cache_breakpoint, back.cache_breakpoint, "cache_breakpoint should roundtrip");
 }
 
 #[test]
