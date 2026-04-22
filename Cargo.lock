@@ -2344,6 +2344,7 @@ dependencies = [
 name = "episteme"
 version = "0.21.1"
 dependencies = [
+ "async-trait",
  "candle-core",
  "candle-nn",
  "candle-transformers",

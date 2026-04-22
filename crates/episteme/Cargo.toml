@@ -11,8 +11,9 @@ rust-version.workspace = true
 workspace = true
 
 [features]
-default = ["graph-algo"]
+default = ["graph-algo", "reranker"]
 graph-algo = []
+reranker = ["dep:async-trait"]
 test-support = []
 # WHY: mneme-engine brings in the Datalog knowledge store via krites and the
 # tokio blocking-task utilities graphe's engine errors need.
@@ -42,6 +43,7 @@ regex = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 snafu = { workspace = true }
+async-trait = { version = "0.1", optional = true }
 tokio = { workspace = true, optional = true }
 toml = { workspace = true }
 tracing = { workspace = true }
