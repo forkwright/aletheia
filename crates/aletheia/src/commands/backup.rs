@@ -462,6 +462,7 @@ mod tests {
                 transport: None,
                 display_name: None,
             },
+            artefact_meta: None,
         };
         ks.insert("sess-1", serde_json::to_vec(&session).unwrap().as_slice())
             .unwrap();

@@ -3,6 +3,7 @@
 use std::io::Write;
 use std::path::Path;
 
+use eidos::meta::Stamped as _;
 use serde::Serialize;
 use snafu::ResultExt;
 
@@ -91,7 +92,45 @@ pub fn append_jsonl(path: &Path, records: &[EvalRecord]) -> Result<()> {
     Ok(())
 }
 
-fn now_iso8601() -> String {
+/// Append evaluation records from a `RunReport` to a JSONL file and write a
+/// sibling `<path>.meta.json` file with provenance metadata.
+///
+/// The `.meta.json` file is always overwritten (not appended) because it
+/// reflects the provenance of the *most recent* batch of records written to
+/// the JSONL file.
+///
+/// # Errors
+///
+/// Returns `Io` if either file cannot be opened or written to.
+/// Returns `Json` if serialization of records or metadata fails.
+pub fn append_jsonl_stamped(path: &Path, report: &RunReport) -> Result<()> {
+    let records = records_from_report(report);
+    append_jsonl(path, &records)?;
+
+    // Write the sibling .meta.json alongside the JSONL output.
+    let meta = report.stamp();
+    let meta_path = {
+        let mut p = path.to_owned();
+        let ext = match p.extension() {
+            Some(e) => format!("{}.meta.json", e.to_string_lossy()),
+            None => "meta.json".to_owned(),
+        };
+        p.set_extension(ext);
+        p
+    };
+    let meta_json = serde_json::to_vec_pretty(&meta).context(error::JsonSnafu)?;
+    let mut meta_file = std::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(true)
+        .open(&meta_path)
+        .context(error::IoSnafu)?;
+    meta_file.write_all(&meta_json).context(error::IoSnafu)?;
+
+    Ok(())
+}
+
+pub(crate) fn now_iso8601() -> String {
     // WHY: avoid pulling in jiff/chrono for a single timestamp format.
     // Epoch seconds are unambiguous and lightweight.
     let duration = std::time::SystemTime::now()
@@ -318,5 +357,47 @@ mod tests {
     fn millis_from_duration_converts() {
         let d = Duration::from_millis(42);
         assert_eq!(millis_from_duration(&d), 42, "should convert to 42ms");
+    }
+
+    #[test]
+    fn append_jsonl_stamped_writes_meta_sibling() {
+        let dir = std::env::temp_dir().join("aletheia-eval-stamped-test");
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("stamped-test.jsonl");
+        let meta_path = dir.join("stamped-test.jsonl.meta.json");
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(&meta_path);
+
+        let report = RunReport {
+            passed: 2,
+            failed: 1,
+            skipped: 0,
+            total_duration: std::time::Duration::from_millis(300),
+            results: vec![],
+        };
+
+        append_jsonl_stamped(&path, &report).expect("stamped append should succeed");
+
+        assert!(path.exists(), "JSONL file should exist after stamped write");
+        assert!(
+            meta_path.exists(),
+            "meta JSON sibling should exist after stamped write"
+        );
+
+        let meta_content = std::fs::read_to_string(&meta_path).expect("should read meta file");
+        let meta: eidos::meta::ArtefactMeta =
+            serde_json::from_str(&meta_content).expect("meta should be valid JSON");
+        assert!(
+            meta.producer.starts_with("dokimion@"),
+            "producer must start with 'dokimion@'"
+        );
+        assert_eq!(
+            meta.row_counts.get("passed").copied(),
+            Some(2),
+            "meta should carry passed count"
+        );
+
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(&meta_path);
     }
 }

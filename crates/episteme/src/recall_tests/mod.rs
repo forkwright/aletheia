@@ -3,3 +3,4 @@ mod proptests;
 mod ranking;
 mod scoring;
 mod side_query;
+mod stamped;

@@ -85,13 +85,12 @@ pub(crate) async fn run(args: EvalArgs) -> Result<()> {
     }
 
     if let Some(ref path) = jsonl_output {
-        let records = dokimion::persistence::records_from_report(&report);
-        dokimion::persistence::append_jsonl(Path::new(path), &records)
+        dokimion::persistence::append_jsonl_stamped(Path::new(path), &report)
             .whatever_context("failed to write JSONL output")?;
         tracing::info!(
             path = path,
-            records = records.len(),
-            "eval results written to JSONL"
+            scenarios = report.passed + report.failed + report.skipped,
+            "eval results written to JSONL with provenance stamp"
         );
     }
 

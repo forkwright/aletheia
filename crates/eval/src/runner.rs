@@ -2,11 +2,13 @@
 
 use std::time::{Duration, Instant};
 
+use eidos::meta::{ArtefactMeta, Stamped};
 use tracing::{info, warn};
 
 use koina::secret::SecretString;
 
 use crate::client::EvalClient;
+use crate::persistence::now_iso8601;
 use crate::provider::{BuiltinProvider, EvalProvider};
 use crate::scenario::{Scenario, ScenarioOutcome, ScenarioResult};
 
@@ -43,6 +45,26 @@ pub struct RunReport {
     pub total_duration: Duration,
     /// Per-scenario results in run order.
     pub results: Vec<ScenarioResult>,
+}
+
+impl Stamped for RunReport {
+    /// Returns provenance metadata for this eval run report.
+    ///
+    /// `row_counts` carries `"passed"`, `"failed"`, `"skipped"`, and
+    /// `"total"` scenario counts. `generated_at` is the stamp time, not the
+    /// run start time (use `total_duration` for timing).
+    fn stamp(&self) -> ArtefactMeta {
+        let total = u64::try_from(self.passed + self.failed + self.skipped).unwrap_or(u64::MAX);
+        ArtefactMeta::new(
+            concat!("dokimion@", env!("CARGO_PKG_VERSION")),
+            1,
+            now_iso8601(),
+        )
+        .with_count("passed", u64::try_from(self.passed).unwrap_or(u64::MAX))
+        .with_count("failed", u64::try_from(self.failed).unwrap_or(u64::MAX))
+        .with_count("skipped", u64::try_from(self.skipped).unwrap_or(u64::MAX))
+        .with_count("total", total)
+    }
 }
 
 /// Runs behavioral scenarios against a live Aletheia instance.
@@ -320,5 +342,59 @@ mod tests {
         assert_eq!(meta.category, "unit");
         assert!(meta.requires_auth);
         assert!(!meta.requires_nous);
+    }
+
+    fn sample_report() -> RunReport {
+        RunReport {
+            passed: 3,
+            failed: 1,
+            skipped: 2,
+            total_duration: Duration::from_millis(500),
+            results: vec![],
+        }
+    }
+
+    #[test]
+    fn run_report_stamp_producer_prefix() {
+        let report = sample_report();
+        let meta = report.stamp();
+        assert!(
+            meta.producer.starts_with("dokimion@"),
+            "producer must start with 'dokimion@', got: {}",
+            meta.producer
+        );
+    }
+
+    #[test]
+    fn run_report_stamp_schema_version() {
+        let report = sample_report();
+        let meta = report.stamp();
+        assert_eq!(meta.schema_version, 1, "schema_version must be 1");
+    }
+
+    #[test]
+    fn run_report_stamp_row_counts() {
+        let report = sample_report();
+        let meta = report.stamp();
+        assert_eq!(
+            meta.row_counts.get("passed").copied(),
+            Some(3),
+            "passed count should match"
+        );
+        assert_eq!(
+            meta.row_counts.get("failed").copied(),
+            Some(1),
+            "failed count should match"
+        );
+        assert_eq!(
+            meta.row_counts.get("skipped").copied(),
+            Some(2),
+            "skipped count should match"
+        );
+        assert_eq!(
+            meta.row_counts.get("total").copied(),
+            Some(6),
+            "total should be passed + failed + skipped"
+        );
     }
 }
