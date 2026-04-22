@@ -614,6 +614,8 @@ impl RuntimeBuilder {
                         chars_per_token: resolved.limits.chars_per_token,
                         prosoche_model: resolved.prosoche_model.to_string(),
                         complexity: hermeneus::complexity::ComplexityConfig::default(),
+                        extraction_model: None,
+                        distillation_model: None,
                     },
                     limits: nous::config::NousLimits {
                         max_tool_iterations: resolved.capabilities.max_tool_iterations,
