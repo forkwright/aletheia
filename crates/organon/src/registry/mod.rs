@@ -214,6 +214,118 @@ impl ToolRegistry {
             .collect()
     }
 
+    /// Convert tools to LLM wire format with **name + description only** (no `input_schema`).
+    ///
+    /// Used by the `deferred-schemas` feature path.  The full schema for any
+    /// tool is retrievable on demand via the `tool_schema` meta-tool.
+    ///
+    /// # Complexity
+    ///
+    /// O(n) where n is the number of registered tools.
+    #[cfg(feature = "deferred-schemas")]
+    #[must_use]
+    pub fn to_hermeneus_tools_summaries(&self) -> Vec<hermeneus::types::ToolDefinition> {
+        // kanon:ignore RUST/pub-visibility
+        self.tools
+            .values()
+            .map(|t| hermeneus::types::ToolDefinition {
+                name: t.def.name.as_str().to_owned(),
+                description: t.def.description.clone(),
+                // WHY: deferred-schemas mode — omit full input_schema; agents call
+                // `tool_schema` to retrieve the schema before invoking a tool.
+                input_schema: serde_json::json!({"type": "object", "properties": {}, "required": []}),
+                disable_passthrough: None,
+            })
+            .collect()
+    }
+
+    /// Convert tools to LLM wire format with **name + description only**, filtered by
+    /// activation state.
+    ///
+    /// Mirrors [`Self::to_hermeneus_tools_filtered`] but omits `input_schema`.
+    /// Used by the `deferred-schemas` feature path.
+    ///
+    /// # Complexity
+    ///
+    /// O(n) where n is the number of registered tools.
+    #[cfg(feature = "deferred-schemas")]
+    #[must_use]
+    pub fn to_hermeneus_tools_summaries_filtered(
+        // kanon:ignore RUST/pub-visibility
+        &self,
+        active: &HashSet<ToolName>,
+    ) -> Vec<hermeneus::types::ToolDefinition> {
+        self.tools
+            .values()
+            .filter(|t| {
+                t.def.auto_activate
+                    || active.contains(&t.def.name)
+                    || t.def.name.as_str() == "enable_tool"
+            })
+            .map(|t| hermeneus::types::ToolDefinition {
+                name: t.def.name.as_str().to_owned(),
+                description: t.def.description.clone(),
+                input_schema: serde_json::json!({"type": "object", "properties": {}, "required": []}),
+                disable_passthrough: None,
+            })
+            .collect()
+    }
+
+    /// Compute the serialized byte sizes of the eager (full-schema) and deferred
+    /// (name+description-only) tool-declaration payloads.
+    ///
+    /// Returns `(summary_bytes, schema_bytes)` where:
+    /// - `summary_bytes` is the byte count when only name+description are sent.
+    /// - `schema_bytes` is the byte count of the full eager payload.
+    ///
+    /// Emits a `tracing::info!` event with both values and the tool count so
+    /// operators can observe the cost difference at session startup.
+    ///
+    /// # Complexity
+    ///
+    /// O(n) where n is the number of registered tools; two JSON serializations.
+    #[must_use]
+    #[tracing::instrument(skip(self))]
+    pub fn schema_byte_sizes(&self) -> (usize, usize) {
+        // kanon:ignore RUST/pub-visibility
+        let tool_count = self.tools.len();
+
+        let summaries: Vec<serde_json::Value> = self
+            .tools
+            .values()
+            .map(|t| {
+                serde_json::json!({
+                    "name": t.def.name.as_str(),
+                    "description": t.def.description,
+                    "input_schema": {"type": "object", "properties": {}, "required": []}
+                })
+            })
+            .collect();
+        let summary_bytes = serde_json::to_string(&summaries).map_or(0, |s| s.len());
+
+        let full: Vec<serde_json::Value> = self
+            .tools
+            .values()
+            .map(|t| {
+                serde_json::json!({
+                    "name": t.def.name.as_str(),
+                    "description": t.def.description,
+                    "input_schema": t.def.input_schema.to_json_schema()
+                })
+            })
+            .collect();
+        let schema_bytes = serde_json::to_string(&full).map_or(0, |s| s.len());
+
+        tracing::info!(
+            tool_count,
+            summary_bytes,
+            schema_bytes,
+            "organon tool-declaration sizes: eager={schema_bytes}B deferred={summary_bytes}B ({tool_count} tools)"
+        );
+
+        (summary_bytes, schema_bytes)
+    }
+
     /// Convert tools to LLM wire format, filtered by activation state.
     ///
     /// Includes tools where:
