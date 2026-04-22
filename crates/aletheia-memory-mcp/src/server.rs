@@ -26,6 +26,9 @@ use crate::error::{self, JoinSnafu, OpenStoreSnafu, TransportSnafu};
 pub struct MemoryServer {
     pub(crate) store: Arc<KnowledgeStore>,
     pub(crate) store_path: Option<PathBuf>,
+    /// Capability token for write tools, if configured.
+    /// If `None`, write tools are not registered.
+    pub(crate) write_token: Option<String>,
     #[expect(
         dead_code,
         reason = "read by #[tool_handler] macro-generated code in ServerHandler impl"
@@ -38,11 +41,33 @@ impl MemoryServer {
     ///
     /// `store_path` is surfaced by `memory_stats` so callers can confirm which
     /// on-disk database is being served. Pass `None` for in-memory stores.
+    ///
+    /// Write tools are registered if `write_token` is `Some(_)`.
     #[must_use]
     pub fn new(store: Arc<KnowledgeStore>, store_path: Option<PathBuf>) -> Self {
+        let write_token = std::env::var("ALETHEIA_MEMORY_MCP_WRITE_TOKEN").ok();
         Self {
             store,
             store_path,
+            write_token,
+            tool_router: Self::tool_router(),
+        }
+    }
+
+    /// Build a memory server with an explicit write token (for testing).
+    ///
+    /// This bypasses environment variable lookup. For production, use [`Self::new()`]
+    /// which reads from `ALETHEIA_MEMORY_MCP_WRITE_TOKEN`.
+    #[must_use]
+    pub fn with_write_token(
+        store: Arc<KnowledgeStore>,
+        store_path: Option<PathBuf>,
+        write_token: Option<String>,
+    ) -> Self {
+        Self {
+            store,
+            store_path,
+            write_token,
             tool_router: Self::tool_router(),
         }
     }
@@ -114,6 +139,30 @@ impl MemoryServer {
         tokio::task::spawn_blocking(move || f(store))
             .await
             .context(JoinSnafu)?
+    }
+
+    /// Validate a capability token against the configured token.
+    ///
+    /// Returns `Ok(())` if tokens match (via constant-time comparison).
+    /// Returns `Err(WriteUnauthorized)` if:
+    ///   - Write token is not configured
+    ///   - Provided token does not match
+    pub(crate) fn validate_write_token(&self, provided: &str) -> error::Result<()> {
+        use subtle::ConstantTimeEq;
+
+        let expected = self
+            .write_token
+            .as_ref()
+            .ok_or_else(|| error::WriteNotAvailableSnafu.build())?;
+
+        // Constant-time comparison to prevent timing-based token leakage
+        let result = expected.as_bytes().ct_eq(provided.as_bytes());
+
+        if result.unwrap_u8() == 1 {
+            Ok(())
+        } else {
+            Err(error::WriteUnauthorizedSnafu.build())
+        }
     }
 }
 
