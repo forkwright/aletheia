@@ -9,6 +9,9 @@
 pub mod id;
 /// Knowledge graph domain types: facts, entities, relationships, embeddings.
 pub mod knowledge;
+
+/// Re-export canonical finding types at crate root.
+pub use knowledge::finding::{EvidenceLevel, Finding};
 /// Shared test data builders for `Fact`, `Entity`, and `Relationship`.
 #[cfg(any(test, feature = "test-support"))]
 #[expect(
