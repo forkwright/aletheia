@@ -92,6 +92,8 @@ pub struct Db<S> {
     #[cfg(not(target_arch = "wasm32"))]
     pub(crate) event_callbacks: Arc<ShardedLock<EventCallbackRegistry>>,
     pub(crate) relation_locks: Arc<ShardedLock<BTreeMap<CompactString, Arc<ShardedLock<()>>>>>,
+    #[cfg(feature = "hot-reload")]
+    pub(crate) rule_store: Option<Arc<arc_swap::ArcSwap<crate::hot_reload::RuleSet>>>,
 }
 
 impl<S> Debug for Db<S> {
@@ -320,6 +322,8 @@ impl<'s, S: Storage<'s>> Db<S> {
             #[cfg(not(target_arch = "wasm32"))]
             event_callbacks: Default::default(),
             relation_locks: Default::default(),
+            #[cfg(feature = "hot-reload")]
+            rule_store: None,
         };
         Ok(ret)
     }

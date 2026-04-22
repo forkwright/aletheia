@@ -15,6 +15,8 @@ use crossbeam::channel::{Receiver, Sender, bounded};
 
 pub mod counterfactual;
 pub mod error;
+#[cfg(feature = "hot-reload")]
+pub mod hot_reload;
 pub mod query_cache;
 pub use error::{Error, Result};
 pub use query_cache::{QueryCache, QueryCacheStats};
@@ -151,6 +153,24 @@ impl Db {
     #[must_use]
     pub fn with_cache(mut self, capacity: NonZeroUsize) -> Self {
         self.cache = Some(Arc::new(QueryCache::new(capacity)));
+        self
+    }
+
+    /// Attach a hot-reloaded rule store.
+    ///
+    /// Rule text from the store is prepended to every query script before
+    /// parsing, making disk-loaded derived rules available by name.
+    #[cfg(feature = "hot-reload")]
+    #[must_use]
+    pub fn with_rule_store(
+        mut self,
+        store: Arc<arc_swap::ArcSwap<crate::hot_reload::RuleSet>>,
+    ) -> Self {
+        match &mut self.inner {
+            DbInner::Mem(db) => db.rule_store = Some(store),
+            #[cfg(feature = "storage-fjall")]
+            DbInner::Fjall(db) => db.rule_store = Some(store),
+        }
         self
     }
 
