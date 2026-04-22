@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/aletheia",
     "crates/aletheia-classify",
+    "crates/aletheia-lexica",
     "crates/aletheia-memory-mcp",
     "crates/basanos",
     "crates/diaporeia",
@@ -106,6 +107,7 @@ disallowed_methods = "deny"
 disallowed_types = "deny"
 
 [workspace.dependencies]
+aletheia-lexica = { path = "crates/aletheia-lexica" }
 rayon = { version = "1", default-features = false }
 
 # Error handling

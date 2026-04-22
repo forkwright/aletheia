@@ -1287,14 +1287,15 @@ pub fn classify_task_hint(content: &str) -> TaskHint {
     let lower = content.to_lowercase();
 
     // WHY: short messages with greetings are casual conversation, not work tasks
-    if content.split_whitespace().count() <= 5 && score_keywords(&lower, CONVERSATION_KEYWORDS) > 0
+    if content.split_whitespace().count() <= 5
+        && score_keywords(&lower, aletheia_lexica::keywords::CONVERSATION_KEYWORDS) > 0
     {
         return TaskHint::Conversation;
     }
 
-    let coding = score_keywords(&lower, CODING_KEYWORDS);
-    let research = score_keywords(&lower, RESEARCH_KEYWORDS);
-    let planning = score_keywords(&lower, PLANNING_KEYWORDS);
+    let coding = score_keywords(&lower, aletheia_lexica::keywords::CODING_KEYWORDS);
+    let research = score_keywords(&lower, aletheia_lexica::keywords::RESEARCH_KEYWORDS);
+    let planning = score_keywords(&lower, aletheia_lexica::keywords::PLANNING_KEYWORDS);
 
     let max = coding.max(research).max(planning);
     if max == 0 {
@@ -1310,63 +1311,6 @@ pub fn classify_task_hint(content: &str) -> TaskHint {
         TaskHint::Planning
     }
 }
-
-const CODING_KEYWORDS: &[&str] = &[
-    "code",
-    "implement",
-    "fix",
-    "bug",
-    "compile",
-    "test",
-    "refactor",
-    "debug",
-    "build",
-    "error",
-    "function",
-    "struct",
-    "deploy",
-    "lint",
-];
-
-const RESEARCH_KEYWORDS: &[&str] = &[
-    "research",
-    "find",
-    "search",
-    "investigate",
-    "analyze",
-    "review",
-    "compare",
-    "evaluate",
-    "explain",
-    "understand",
-];
-
-const PLANNING_KEYWORDS: &[&str] = &[
-    "plan",
-    "design",
-    "architect",
-    "strategy",
-    "roadmap",
-    "organize",
-    "coordinate",
-    "priority",
-    "goal",
-    "milestone",
-];
-
-const CONVERSATION_KEYWORDS: &[&str] = &[
-    "hello",
-    "hi",
-    "hey",
-    "thanks",
-    "thank you",
-    "ok",
-    "okay",
-    "yes",
-    "no",
-    "sure",
-    "bye",
-];
 
 fn score_keywords(text: &str, keywords: &[&str]) -> usize {
     keywords.iter().filter(|kw| text.contains(**kw)).count()
