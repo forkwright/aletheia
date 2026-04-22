@@ -37,13 +37,10 @@ pub mod dag;
 pub mod engine;
 /// Error types for energeia operations.
 pub mod error;
-<<<<<<< HEAD
 /// Friction capture: parse structured observations from PR bodies.
 pub mod friction;
-=======
 /// Parallel-execution frontier derivation from a [`dag::PromptDag`].
 pub mod frontier;
->>>>>>> 491a2163a (feat(energeia): restore frontier computation for parallel dispatch groups)
 /// Hermeneus-based dispatch engine with prompt caching.
 pub mod hermeneus_engine;
 /// HTTP/SSE dispatch engine: subprocess-based `DispatchEngine` and mock.
