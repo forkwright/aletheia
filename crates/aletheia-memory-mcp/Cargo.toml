@@ -37,9 +37,16 @@ snafu = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 
-# Internal crates: memory facade + path resolver
+# Time
+jiff = { workspace = true }
+
+# Constant-time comparison for capability tokens
+subtle = "2.5"
+
+# Internal crates: memory facade + path resolver + UUID generation
 mneme = { path = "../mneme", features = ["storage-fjall"] }
 taxis = { path = "../taxis" }
+koina = { path = "../koina" }
 
 [dev-dependencies]
 # WHY: the `client` rmcp feature enables the `ClientHandler` blanket impl we

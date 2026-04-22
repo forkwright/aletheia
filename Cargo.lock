@@ -181,12 +181,14 @@ name = "aletheia-memory-mcp"
 version = "0.21.1"
 dependencies = [
  "jiff",
+ "koina",
  "mneme",
  "rmcp",
  "schemars",
  "serde",
  "serde_json",
  "snafu",
+ "subtle",
  "taxis",
  "tempfile",
  "tokio",

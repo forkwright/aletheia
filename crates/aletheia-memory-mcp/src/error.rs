@@ -62,6 +62,28 @@ pub enum Error {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+
+    /// Write tool invoked without capability token configured.
+    #[snafu(display("write tools are not available; capability token not configured"))]
+    WriteNotAvailable {
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Write call rejected due to invalid capability token.
+    #[snafu(display("write authorization failed"))]
+    WriteUnauthorized {
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Fact not found for a write operation.
+    #[snafu(display("fact not found: {id}"))]
+    FactNotFound {
+        id: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
 }
 
 /// Result alias using this crate's [`Error`].
@@ -71,7 +93,10 @@ impl From<Error> for rmcp::ErrorData {
     fn from(err: Error) -> Self {
         let message = err.to_string();
         match &err {
-            Error::InvalidInput { .. } => rmcp::ErrorData::invalid_params(message, None),
+            Error::InvalidInput { .. }
+            | Error::WriteNotAvailable { .. }
+            | Error::WriteUnauthorized { .. }
+            | Error::FactNotFound { .. } => rmcp::ErrorData::invalid_params(message, None),
             Error::OpenStore { .. }
             | Error::KnowledgeStore { .. }
             | Error::Serialization { .. }
