@@ -19,6 +19,7 @@ workspace = true
 test-core = []
 
 [dependencies]
+aletheia-lexica = { workspace = true }
 regex = { workspace = true }
 snafu = { workspace = true }
 

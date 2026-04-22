@@ -356,21 +356,12 @@ fn extract_key_phrases(content: &str) -> Vec<String> {
     phrases
 }
 
-/// Common English stop words to exclude from overlap comparison.
-const STOP_WORDS: &[&str] = &[
-    "the", "and", "for", "are", "but", "not", "you", "all", "can", "had", "her", "was", "one",
-    "our", "out", "has", "his", "how", "its", "may", "new", "now", "old", "see", "way", "who",
-    "did", "get", "let", "say", "she", "too", "use", "will", "with", "this", "that", "from",
-    "have", "been", "some", "they", "were", "what", "when", "your", "each", "make", "like", "into",
-    "just", "over", "such", "than", "them", "then", "also", "more", "should",
-];
-
 /// Tokenize text into lowercase words for overlap comparison, excluding stop words.
 fn tokenize(text: &str) -> Vec<String> {
     text.split(|c: char| !c.is_alphanumeric() && c != '_')
         .filter(|w| w.len() >= 3)
         .map(str::to_lowercase)
-        .filter(|w| !STOP_WORDS.contains(&w.as_str()))
+        .filter(|w| !aletheia_lexica::stopwords::ENGLISH_PROBE_STOP_WORDS.contains(&w.as_str()))
         .collect()
 }
 
