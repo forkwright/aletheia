@@ -148,16 +148,14 @@ impl OpenAiEmbeddingProvider {
             })?;
 
         if let Some(key) = &self.api_key {
-            let value = reqwest::header::HeaderValue::from_str(&format!(
-                "Bearer {}",
-                key.expose_secret()
-            ))
-            .map_err(|e| {
-                EmbedFailedSnafu {
-                    message: format!("invalid API key for header: {e}"),
-                }
-                .build()
-            })?;
+            let value =
+                reqwest::header::HeaderValue::from_str(&format!("Bearer {}", key.expose_secret()))
+                    .map_err(|e| {
+                        EmbedFailedSnafu {
+                            message: format!("invalid API key for header: {e}"),
+                        }
+                        .build()
+                    })?;
             request
                 .headers_mut()
                 .insert(reqwest::header::AUTHORIZATION, value);
