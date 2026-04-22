@@ -10,6 +10,7 @@
 mod causal;
 mod entity;
 mod fact;
+pub mod finding;
 mod path;
 mod scope;
 
