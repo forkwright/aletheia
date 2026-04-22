@@ -288,11 +288,18 @@ pub async fn execute(
         }
 
         let (active, server_tools) = resolve_active_server_tools(tool_ctx, &config_server_tools);
+        #[cfg(feature = "deferred-schemas")]
+        let mut tool_defs = tools.to_hermeneus_tools_summaries_filtered(&active);
+        #[cfg(not(feature = "deferred-schemas"))]
         let mut tool_defs = tools.to_hermeneus_tools_filtered(&active);
 
         if let Some(allowlist) = &config.tool_allowlist {
             tool_defs.retain(|td| allowlist.iter().any(|a| a == &td.name));
         }
+
+        let tool_count = tool_defs.len();
+        let bytes_serialized = serde_json::to_string(&tool_defs).map_or(0, |s| s.len());
+        debug!(tool_count, bytes_serialized, "LLM tool block assembled");
 
         // WHY: CompletionRequest owns a Vec; this clone is the only unavoidable
         // copy (one per iteration). When nothing has changed, the Arc we hold
