@@ -19,6 +19,8 @@ pre-llm-triage = []
 # Test tiers (see docs/test-tiers.md)
 test-core = ["knowledge-store"]
 test-full = ["test-core"]
+# Forward organon's deferred-schemas feature so nous can cfg-switch the execute loop.
+deferred-schemas = ["organon/deferred-schemas"]
 
 [dependencies]
 aletheia-classify = { path = "../aletheia-classify" }
