@@ -62,6 +62,83 @@ fn seed_store() -> Arc<KnowledgeStore> {
     store
 }
 
+/// Seed a fresh in-memory store with two facts for write tests.
+#[expect(
+    clippy::expect_used,
+    reason = "test setup: panic on unexpected store failure is acceptable"
+)]
+fn seed_store_two_facts() -> Arc<KnowledgeStore> {
+    let store = KnowledgeStore::open_mem().expect("open_mem should succeed");
+    let now = jiff::Timestamp::now();
+    let fact1 = Fact {
+        id: FactId::new("f-test-0001").expect("valid fact id"),
+        nous_id: "alice".to_owned(),
+        fact_type: "preference".to_owned(),
+        content: "Alice prefers dark roast coffee with no cream".to_owned(),
+        scope: None,
+        sensitivity: FactSensitivity::Public,
+        temporal: FactTemporal {
+            valid_from: now,
+            valid_to: far_future(),
+            recorded_at: now,
+        },
+        provenance: FactProvenance {
+            confidence: 0.9,
+            tier: EpistemicTier::Inferred,
+            source_session_id: None,
+            stability_hours: default_stability_hours("preference"),
+        },
+        lifecycle: FactLifecycle {
+            superseded_by: None,
+            is_forgotten: false,
+            forgotten_at: None,
+            forget_reason: None,
+        },
+        access: FactAccess {
+            access_count: 0,
+            last_accessed_at: None,
+        },
+    };
+    store
+        .insert_fact(&fact1)
+        .expect("insert_fact should succeed");
+
+    let fact2 = Fact {
+        id: FactId::new("f-test-0002").expect("valid fact id"),
+        nous_id: "alice".to_owned(),
+        fact_type: "preference".to_owned(),
+        content: "Alice prefers espresso".to_owned(),
+        scope: None,
+        sensitivity: FactSensitivity::Public,
+        temporal: FactTemporal {
+            valid_from: now,
+            valid_to: far_future(),
+            recorded_at: now,
+        },
+        provenance: FactProvenance {
+            confidence: 0.95,
+            tier: EpistemicTier::Inferred,
+            source_session_id: None,
+            stability_hours: default_stability_hours("preference"),
+        },
+        lifecycle: FactLifecycle {
+            superseded_by: None,
+            is_forgotten: false,
+            forgotten_at: None,
+            forget_reason: None,
+        },
+        access: FactAccess {
+            access_count: 0,
+            last_accessed_at: None,
+        },
+    };
+    store
+        .insert_fact(&fact2)
+        .expect("insert_fact should succeed");
+
+    store
+}
+
 #[tokio::test]
 #[expect(
     clippy::expect_used,
@@ -219,5 +296,268 @@ async fn memory_tools_end_to_end() {
 
     drop(client);
     // Give the server a moment to observe the client dropping, then clean up.
+    let _ = tokio::time::timeout(std::time::Duration::from_secs(2), server_handle).await;
+}
+
+/// Test that write tools are not found when write token is not configured.
+#[tokio::test]
+#[expect(
+    clippy::expect_used,
+    reason = "test: panics on unexpected protocol failure are acceptable"
+)]
+async fn write_tool_rejected_without_token_env_set() {
+    let store = seed_store();
+    let server = MemoryServer::new(store, None);
+
+    let (server_tx, client_rx) = tokio::io::duplex(4096);
+    let (client_tx, server_rx) = tokio::io::duplex(4096);
+
+    let server_handle = tokio::spawn(async move {
+        server
+            .serve((server_rx, server_tx))
+            .await
+            .expect("server serve")
+            .waiting()
+            .await
+            .expect("server waiting")
+    });
+
+    let client_info = ClientInfo::new(
+        ClientCapabilities::default(),
+        Implementation::new("test-client", "0.1.0"),
+    );
+
+    let client = client_info
+        .serve((client_rx, client_tx))
+        .await
+        .expect("client handshake");
+
+    // Try to call memory_annotate without a token configured — should fail.
+    let result = client
+        .call_tool(
+            CallToolRequestParams::new("memory_annotate").with_arguments(
+                serde_json::json!({
+                    "fact_id": "f-test-0001",
+                    "content": "test annotation",
+                    "write_token": "fake"
+                })
+                .as_object()
+                .expect("object")
+                .clone(),
+            ),
+        )
+        .await;
+
+    // Should get an error because write tools are not available
+    assert!(
+        result.is_err(),
+        "memory_annotate must fail when write token is not configured"
+    );
+
+    drop(client);
+    let _ = tokio::time::timeout(std::time::Duration::from_secs(2), server_handle).await;
+}
+
+/// Test that write tools reject wrong tokens.
+#[tokio::test]
+#[expect(
+    clippy::expect_used,
+    reason = "test: panics on unexpected protocol failure are acceptable"
+)]
+async fn write_tool_rejected_with_wrong_token() {
+    let store = seed_store();
+    // Create server with an explicit write token (avoids env var manipulation)
+    let server = MemoryServer::with_write_token(store, None, Some("correct-token".to_owned()));
+
+    let (server_tx, client_rx) = tokio::io::duplex(4096);
+    let (client_tx, server_rx) = tokio::io::duplex(4096);
+
+    let server_handle = tokio::spawn(async move {
+        server
+            .serve((server_rx, server_tx))
+            .await
+            .expect("server serve")
+            .waiting()
+            .await
+            .expect("server waiting")
+    });
+
+    let client_info = ClientInfo::new(
+        ClientCapabilities::default(),
+        Implementation::new("test-client", "0.1.0"),
+    );
+
+    let client = client_info
+        .serve((client_rx, client_tx))
+        .await
+        .expect("client handshake");
+
+    // Try to call memory_annotate with wrong token
+    let result = client
+        .call_tool(
+            CallToolRequestParams::new("memory_annotate").with_arguments(
+                serde_json::json!({
+                    "fact_id": "f-test-0001",
+                    "content": "test annotation",
+                    "write_token": "wrong-token"
+                })
+                .as_object()
+                .expect("object")
+                .clone(),
+            ),
+        )
+        .await;
+
+    assert!(
+        result.is_err(),
+        "memory_annotate must fail with wrong token"
+    );
+
+    drop(client);
+    let _ = tokio::time::timeout(std::time::Duration::from_secs(2), server_handle).await;
+}
+
+/// Test happy path: write tools work with correct token.
+#[tokio::test]
+#[expect(
+    clippy::expect_used,
+    reason = "test: panics on unexpected protocol failure are acceptable"
+)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "single test for all three write tools to verify happy path"
+)]
+async fn write_tool_accepts_correct_token() {
+    let store = seed_store_two_facts();
+    // Create server with an explicit write token (avoids env var manipulation)
+    let server = MemoryServer::with_write_token(store, None, Some("correct-token".to_owned()));
+
+    let (server_tx, client_rx) = tokio::io::duplex(4096);
+    let (client_tx, server_rx) = tokio::io::duplex(4096);
+
+    let server_handle = tokio::spawn(async move {
+        server
+            .serve((server_rx, server_tx))
+            .await
+            .expect("server serve")
+            .waiting()
+            .await
+            .expect("server waiting")
+    });
+
+    let client_info = ClientInfo::new(
+        ClientCapabilities::default(),
+        Implementation::new("test-client", "0.1.0"),
+    );
+
+    let client = client_info
+        .serve((client_rx, client_tx))
+        .await
+        .expect("client handshake");
+
+    // 1. memory_annotate with correct token should succeed
+    let annotate_result = client
+        .call_tool(
+            CallToolRequestParams::new("memory_annotate").with_arguments(
+                serde_json::json!({
+                    "fact_id": "f-test-0001",
+                    "content": "This fact is well-established",
+                    "session_id": "test-agent",
+                    "write_token": "correct-token"
+                })
+                .as_object()
+                .expect("object")
+                .clone(),
+            ),
+        )
+        .await
+        .expect("memory_annotate call should succeed");
+
+    let annotate_text = annotate_result
+        .content
+        .first()
+        .and_then(|c| c.as_text())
+        .map(|t| t.text.clone())
+        .expect("annotate text content");
+
+    let annotate_json: serde_json::Value =
+        serde_json::from_str(&annotate_text).expect("annotate json parse");
+
+    assert!(
+        annotate_json
+            .get("annotation_id")
+            .and_then(|v| v.as_str())
+            .is_some(),
+        "annotation_id should be present: {annotate_text}"
+    );
+
+    // 2. memory_supersede with correct token should succeed
+    let supersede_result = client
+        .call_tool(
+            CallToolRequestParams::new("memory_supersede").with_arguments(
+                serde_json::json!({
+                    "old_fact_id": "f-test-0001",
+                    "new_fact_id": "f-test-0002",
+                    "reason": "Updated with fresher information",
+                    "write_token": "correct-token"
+                })
+                .as_object()
+                .expect("object")
+                .clone(),
+            ),
+        )
+        .await
+        .expect("memory_supersede call should succeed");
+
+    let supersede_text = supersede_result
+        .content
+        .first()
+        .and_then(|c| c.as_text())
+        .map(|t| t.text.clone())
+        .expect("supersede text content");
+
+    let supersede_json: serde_json::Value =
+        serde_json::from_str(&supersede_text).expect("supersede json parse");
+
+    assert_eq!(
+        supersede_json.get("old_fact_id").and_then(|v| v.as_str()),
+        Some("f-test-0001"),
+        "old_fact_id mismatch"
+    );
+
+    // 3. memory_forget with correct token should succeed
+    let forget_result = client
+        .call_tool(
+            CallToolRequestParams::new("memory_forget").with_arguments(
+                serde_json::json!({
+                    "fact_id": "f-test-0001",
+                    "reason": "Fact is outdated",
+                    "write_token": "correct-token"
+                })
+                .as_object()
+                .expect("object")
+                .clone(),
+            ),
+        )
+        .await
+        .expect("memory_forget call should succeed");
+
+    let forget_text = forget_result
+        .content
+        .first()
+        .and_then(|c| c.as_text())
+        .map(|t| t.text.clone())
+        .expect("forget text content");
+
+    let forget_json: serde_json::Value =
+        serde_json::from_str(&forget_text).expect("forget json parse");
+
+    assert_eq!(
+        forget_json.get("fact_id").and_then(|v| v.as_str()),
+        Some("f-test-0001"),
+        "fact_id mismatch"
+    );
+
+    drop(client);
     let _ = tokio::time::timeout(std::time::Duration::from_secs(2), server_handle).await;
 }
