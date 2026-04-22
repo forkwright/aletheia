@@ -10,7 +10,8 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use super::builtins::{AuditLoggingHook, CostControlHook, ScopeEnforcementHook};
 use super::registry::HookRegistry;
 use super::{
-    HookResult, QueryContext, ToolHookContext, ToolHookResult, TurnContext, TurnHook, TurnUsage,
+    AfterToolContext, CompactionContext, HookResult, QueryContext, SessionStartContext,
+    ToolHookContext, ToolHookResult, TurnContext, TurnHook, TurnUsage,
 };
 use crate::pipeline::{PipelineContext, TurnResult};
 
@@ -67,7 +68,7 @@ impl TurnHook for NoopHook {
     }
 }
 
-/// Hook that always aborts on `before_query`.
+/// Hook that always aborts on any hook point.
 struct AbortingHook;
 
 impl TurnHook for AbortingHook {
@@ -81,6 +82,24 @@ impl TurnHook for AbortingHook {
     ) -> Pin<Box<dyn Future<Output = HookResult> + Send + 'a>> {
         Box::pin(std::future::ready(HookResult::Abort {
             reason: "budget exceeded".to_owned(),
+        }))
+    }
+
+    fn session_start<'a>(
+        &'a self,
+        _context: &'a SessionStartContext<'_>,
+    ) -> Pin<Box<dyn Future<Output = HookResult> + Send + 'a>> {
+        Box::pin(std::future::ready(HookResult::Abort {
+            reason: "session start failed".to_owned(),
+        }))
+    }
+
+    fn before_compact<'a>(
+        &'a self,
+        _context: &'a CompactionContext<'_>,
+    ) -> Pin<Box<dyn Future<Output = HookResult> + Send + 'a>> {
+        Box::pin(std::future::ready(HookResult::Abort {
+            reason: "compaction aborted".to_owned(),
         }))
     }
 }
@@ -173,9 +192,39 @@ fn test_tool_hook_context() -> ToolHookContext<'static> {
     }
 }
 
+fn test_after_tool_context(tool_input: &serde_json::Value) -> AfterToolContext<'_> {
+    AfterToolContext {
+        nous_id: "test-agent",
+        tool_name: "test_tool",
+        tool_input,
+        tool_result: "test result",
+        is_error: false,
+        turn_usage: &DEFAULT_USAGE,
+    }
+}
+
+fn test_session_start_context() -> SessionStartContext<'static> {
+    SessionStartContext {
+        nous_id: "test-agent",
+        session_key: "test-session",
+        timestamp: "2024-01-01T00:00:00Z",
+    }
+}
+
+fn test_compaction_context() -> CompactionContext<'static> {
+    CompactionContext {
+        nous_id: "test-agent",
+        messages_distilled: 10,
+        tokens_before: 5000,
+        tokens_after: 1000,
+        distillation_number: 1,
+    }
+}
+
 // -- Trait tests --
 
 mod audit_config_integration;
 mod cost_and_scope;
+mod new_hooks_tests;
 mod registry_tests;
 mod trait_tests;

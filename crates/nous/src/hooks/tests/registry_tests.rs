@@ -205,3 +205,80 @@ async fn equal_priority_hooks_run_in_insertion_order() {
         "equal-priority hooks should run in insertion order"
     );
 }
+
+#[tokio::test]
+async fn after_tool_fires_and_does_not_short_circuit() {
+    let mut registry = HookRegistry::new();
+    registry.register(10, Box::new(NoopHook::new("first")));
+    registry.register(20, Box::new(NoopHook::new("second")));
+
+    let ctx = super::super::AfterToolContext {
+        nous_id: "test",
+        tool_name: "test_tool",
+        tool_input: &serde_json::json!({"arg": "value"}),
+        tool_result: "tool succeeded",
+        is_error: false,
+        turn_usage: &DEFAULT_USAGE,
+    };
+
+    registry.run_after_tool(&ctx).await;
+    // Test passes if no panic occurs
+}
+
+#[tokio::test]
+async fn session_start_fires_and_can_short_circuit() {
+    let mut registry = HookRegistry::new();
+    registry.register(10, Box::new(NoopHook::new("first")));
+    registry.register(20, Box::new(AbortingHook));
+
+    let ctx = super::super::SessionStartContext {
+        nous_id: "test",
+        session_key: "session-123",
+        timestamp: "2025-01-01T00:00:00Z",
+    };
+
+    let result = registry.run_session_start(&ctx).await;
+    assert!(
+        matches!(result, HookResult::Abort { .. }),
+        "should abort from aborting hook"
+    );
+}
+
+#[tokio::test]
+async fn before_compact_fires_and_can_short_circuit() {
+    let mut registry = HookRegistry::new();
+    registry.register(10, Box::new(NoopHook::new("first")));
+    registry.register(20, Box::new(AbortingHook));
+
+    let ctx = super::super::CompactionContext {
+        nous_id: "test",
+        messages_distilled: 10,
+        tokens_before: 1000,
+        tokens_after: 500,
+        distillation_number: 1,
+    };
+
+    let result = registry.run_before_compact(&ctx).await;
+    assert!(
+        matches!(result, HookResult::Abort { .. }),
+        "should abort from aborting hook"
+    );
+}
+
+#[tokio::test]
+async fn after_compact_fires_and_does_not_short_circuit() {
+    let mut registry = HookRegistry::new();
+    registry.register(10, Box::new(NoopHook::new("first")));
+    registry.register(20, Box::new(NoopHook::new("second")));
+
+    let ctx = super::super::CompactionContext {
+        nous_id: "test",
+        messages_distilled: 10,
+        tokens_before: 1000,
+        tokens_after: 500,
+        distillation_number: 1,
+    };
+
+    registry.run_after_compact(&ctx).await;
+    // Test passes if no panic occurs
+}

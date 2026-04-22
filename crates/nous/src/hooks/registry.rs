@@ -2,7 +2,10 @@
 
 use tracing::{debug, warn};
 
-use super::{HookResult, QueryContext, ToolHookContext, ToolHookResult, TurnContext, TurnHook};
+use super::{
+    AfterToolContext, CompactionContext, HookResult, QueryContext, SessionStartContext,
+    ToolHookContext, ToolHookResult, TurnContext, TurnHook,
+};
 
 /// Entry in the hook registry: a hook with its priority.
 struct HookEntry {
@@ -112,5 +115,80 @@ impl HookRegistry {
             }
         }
         ToolHookResult::Allow
+    }
+
+    /// Run all `after_tool` hooks in priority order.
+    ///
+    /// Does not short-circuit: all hooks run even if one returns Abort,
+    /// because tool execution is already complete and audit hooks should always fire.
+    pub(crate) async fn run_after_tool(&self, context: &AfterToolContext<'_>) {
+        for entry in &self.hooks {
+            let result = entry.hook.after_tool(context).await;
+            if let HookResult::Abort { ref reason } = result {
+                debug!(
+                    hook = entry.hook.name(),
+                    priority = entry.priority,
+                    tool_name = context.tool_name,
+                    reason = reason.as_str(),
+                    "after_tool hook returned abort (ignored, tool already executed)"
+                );
+            }
+        }
+    }
+
+    /// Run all `session_start` hooks in priority order.
+    ///
+    /// Short-circuits on `HookResult::Abort`.
+    pub(crate) async fn run_session_start(&self, context: &SessionStartContext<'_>) -> HookResult {
+        for entry in &self.hooks {
+            let result = entry.hook.session_start(context).await;
+            if let HookResult::Abort { ref reason } = result {
+                warn!(
+                    hook = entry.hook.name(),
+                    priority = entry.priority,
+                    reason = reason.as_str(),
+                    "session_start hook aborted"
+                );
+                return result;
+            }
+        }
+        HookResult::Continue
+    }
+
+    /// Run all `before_compact` hooks in priority order.
+    ///
+    /// Short-circuits on `HookResult::Abort`.
+    pub(crate) async fn run_before_compact(&self, context: &CompactionContext<'_>) -> HookResult {
+        for entry in &self.hooks {
+            let result = entry.hook.before_compact(context).await;
+            if let HookResult::Abort { ref reason } = result {
+                warn!(
+                    hook = entry.hook.name(),
+                    priority = entry.priority,
+                    reason = reason.as_str(),
+                    "before_compact hook aborted compaction"
+                );
+                return result;
+            }
+        }
+        HookResult::Continue
+    }
+
+    /// Run all `after_compact` hooks in priority order.
+    ///
+    /// Does not short-circuit: all hooks run even if one returns Abort,
+    /// because distillation is already complete and audit hooks should always fire.
+    pub(crate) async fn run_after_compact(&self, context: &CompactionContext<'_>) {
+        for entry in &self.hooks {
+            let result = entry.hook.after_compact(context).await;
+            if let HookResult::Abort { ref reason } = result {
+                debug!(
+                    hook = entry.hook.name(),
+                    priority = entry.priority,
+                    reason = reason.as_str(),
+                    "after_compact hook returned abort (ignored, compaction already complete)"
+                );
+            }
+        }
     }
 }
