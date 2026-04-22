@@ -10,6 +10,8 @@ pub mod id;
 /// Knowledge graph domain types: facts, entities, relationships, embeddings.
 pub mod knowledge;
 
+/// Re-export architecture-fact types at crate root.
+pub use knowledge::architecture_fact::{ArchitectureFact, FactError, FactScope, FactStore};
 /// Re-export canonical finding types at crate root.
 pub use knowledge::finding::{EvidenceLevel, Finding};
 /// Shared test data builders for `Fact`, `Entity`, and `Relationship`.

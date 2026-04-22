@@ -25,6 +25,7 @@ test-core = []
 test-full = []
 
 [dependencies]
+eidos = { path = "../eidos" }
 energeia = { path = "../energeia", optional = true, features = [
     "storage-fjall",
 ] }

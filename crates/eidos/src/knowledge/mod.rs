@@ -7,6 +7,7 @@
 //! - **Memory scopes**: team memory sharing model (`User`, `Feedback`, `Project`, `Reference`)
 //! - **Path validation layers**: defense-in-depth security for memory path operations
 
+pub mod architecture_fact;
 mod causal;
 mod entity;
 mod fact;
