@@ -8,15 +8,6 @@ use snafu::ResultExt;
 use crate::error::{self, Result};
 use crate::rules::{Rule, Violation};
 
-/// Adjectives that are unfalsifiable without measurement context.
-const UNFALSIFIABLE_ADJECTIVES: &[&str] = &[
-    "world-class",
-    "production-grade",
-    "best-in-class",
-    "robust",
-    "scalable",
-];
-
 /// Rule: PLANNING/missing-falsifier.
 ///
 /// Ensures every phase PLAN.md has a Falsification section that covers
@@ -183,7 +174,7 @@ fn check_unfalsifiable_adjectives(path: &Path, violations: &mut Vec<Violation>) 
 
     for (idx, line) in content.lines().enumerate() {
         let lower = line.to_lowercase();
-        for adj in UNFALSIFIABLE_ADJECTIVES {
+        for adj in aletheia_lexica::adjectives::UNFALSIFIABLE_ADJECTIVES {
             if lower.contains(adj) {
                 violations.push(Violation {
                     rule: "PLANNING/unfalsifiable-claim".into(),

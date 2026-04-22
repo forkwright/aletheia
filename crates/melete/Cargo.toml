@@ -15,6 +15,7 @@ test-core = []
 test-full = []
 
 [dependencies]
+aletheia-lexica = { workspace = true }
 hermeneus = { path = "../hermeneus" }
 koina = { path = "../koina" }
 futures = { workspace = true }

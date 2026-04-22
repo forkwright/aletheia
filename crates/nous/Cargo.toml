@@ -20,6 +20,7 @@ test-full = ["test-core"]
 
 [dependencies]
 aletheia-classify = { path = "../aletheia-classify" }
+aletheia-lexica = { workspace = true }
 dianoia = { path = "../dianoia" }
 eidos = { path = "../eidos" }
 episteme = { path = "../episteme", default-features = false }

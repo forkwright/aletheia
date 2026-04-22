@@ -242,32 +242,6 @@ impl TurnHook for CorrectionInjector {
 
 // -- Correction detection --
 
-/// Phrases that indicate the user is issuing a behavioral correction.
-///
-/// WHY: Simple keyword matching is intentionally conservative. False negatives
-/// (missed corrections) are preferable to false positives (storing random
-/// sentences as corrections). The operator can always re-state a correction.
-const CORRECTION_PREFIXES: &[&str] = &[
-    "don't ",
-    "do not ",
-    "stop ",
-    "never ",
-    "always ",
-    "from now on",
-    "remember to ",
-    "make sure to ",
-    "please don't ",
-    "please do not ",
-    "please always ",
-    "please never ",
-    "you should always ",
-    "you should never ",
-    "you must always ",
-    "you must never ",
-    "i need you to always ",
-    "i need you to never ",
-];
-
 /// Extract a correction from a user message, if one is detected.
 ///
 /// Returns `Some(correction_text)` if the message contains a correction pattern,
@@ -281,7 +255,7 @@ fn extract_correction(message: &str) -> Option<String> {
         let sentence_lower = sentence.to_lowercase();
         let trimmed = sentence_lower.trim();
 
-        for prefix in CORRECTION_PREFIXES {
+        for prefix in aletheia_lexica::prefixes::CORRECTION_PREFIXES {
             if trimmed.starts_with(prefix) {
                 // Use the original-case sentence as the correction text.
                 return Some(sentence.trim().to_owned());
