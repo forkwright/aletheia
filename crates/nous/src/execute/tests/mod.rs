@@ -77,6 +77,7 @@ fn test_pipeline_ctx() -> PipelineContext {
             role: "user".to_owned(),
             content: "Hello".to_owned(),
             token_estimate: 1,
+            cache_breakpoint: false,
         }],
         ..PipelineContext::default()
     }

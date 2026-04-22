@@ -284,6 +284,7 @@ async fn evaluate_semantic_criteria(
         messages: vec![Message {
             role: Role::User,
             content: Content::Text(qa_prompt_text),
+            cache_breakpoint: false,
         }],
         ..CompletionRequest::default()
     };

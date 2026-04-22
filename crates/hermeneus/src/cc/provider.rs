@@ -336,6 +336,7 @@ mod tests {
             messages: vec![Message {
                 role: Role::User,
                 content: Content::Text("hello world".to_owned()),
+                cache_breakpoint: false,
             }],
             ..Default::default()
         };
@@ -350,14 +351,17 @@ mod tests {
                 Message {
                     role: Role::User,
                     content: Content::Text("What is 2+2?".to_owned()),
+                    cache_breakpoint: false,
                 },
                 Message {
                     role: Role::Assistant,
                     content: Content::Text("4".to_owned()),
+                    cache_breakpoint: false,
                 },
                 Message {
                     role: Role::User,
                     content: Content::Text("And 3+3?".to_owned()),
+                    cache_breakpoint: false,
                 },
             ],
             ..Default::default()

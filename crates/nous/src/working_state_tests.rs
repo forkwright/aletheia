@@ -241,6 +241,7 @@ fn sample_message(text: &str) -> Message {
     Message {
         role: hermeneus::types::Role::User,
         content: hermeneus::types::Content::Text(text.to_owned()),
+        cache_breakpoint: false,
     }
 }
 

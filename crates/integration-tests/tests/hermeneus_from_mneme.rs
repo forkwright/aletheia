@@ -35,6 +35,7 @@ fn convert_message(msg: &m::Message) -> h::Message {
     h::Message {
         role: convert_role(msg.role),
         content,
+        cache_breakpoint: false,
     }
 }
 

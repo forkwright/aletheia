@@ -18,6 +18,7 @@ fn text_msg(role: Role, text: &str) -> Message {
     Message {
         role,
         content: Content::Text(text.to_owned()),
+        cache_breakpoint: false,
     }
 }
 
@@ -449,6 +450,7 @@ async fn distill_when_all_tool_call_messages() {
                     input: serde_json::json!({"path": "/tmp/test.rs"}),
                 },
             ]),
+            cache_breakpoint: false,
         },
         Message {
             role: Role::User,
@@ -457,6 +459,7 @@ async fn distill_when_all_tool_call_messages() {
                 content: ToolResultContent::text("fn main() {}"),
                 is_error: Some(false),
             }]),
+            cache_breakpoint: false,
         },
         Message {
             role: Role::Assistant,
@@ -464,6 +467,7 @@ async fn distill_when_all_tool_call_messages() {
                 text: "Found the file.".to_owned(),
                 citations: None,
             }]),
+            cache_breakpoint: false,
         },
         text_msg(Role::User, "Fix it"),
         text_msg(Role::Assistant, "Done."),
@@ -622,6 +626,7 @@ fn build_prompt_with_system_message() {
         Message {
             role: Role::System,
             content: Content::Text("You are helpful.".to_owned()),
+            cache_breakpoint: false,
         },
         text_msg(Role::User, "Hello"),
         text_msg(Role::Assistant, "Hi"),

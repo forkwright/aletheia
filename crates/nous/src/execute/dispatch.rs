@@ -229,6 +229,7 @@ pub(super) fn build_messages(
                 _ => Role::User,
             },
             content: Content::Text(m.content.clone()),
+            cache_breakpoint: m.cache_breakpoint,
         })
         .collect()
 }

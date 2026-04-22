@@ -40,6 +40,7 @@ impl ExtractionProvider for HermeneusExtractionProvider {
                 messages: vec![Message {
                     role: Role::User,
                     content: Content::Text(user_message.to_owned()),
+                    cache_breakpoint: false,
                 }],
                 max_tokens: 4096,
                 tools: Vec::new(),
@@ -107,6 +108,7 @@ impl SkillExtractionProvider for HermeneusSkillExtractionProvider {
                 messages: vec![Message {
                     role: Role::User,
                     content: Content::Text(user_message.to_owned()),
+                    cache_breakpoint: false,
                 }],
                 max_tokens: 2048,
                 tools: Vec::new(),

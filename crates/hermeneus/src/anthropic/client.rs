@@ -579,6 +579,7 @@ impl AnthropicProvider {
                     content: crate::types::Content::Text(format!(
                         "[System context]\n\n{existing_system}"
                     )),
+                    cache_breakpoint: false,
                 },
             );
         }

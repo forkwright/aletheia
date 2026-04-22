@@ -93,6 +93,7 @@ fn wire_request_extracts_system_prompt() {
         messages: vec![Message {
             role: Role::User,
             content: Content::Text("hello".to_owned()),
+            cache_breakpoint: false,
         }],
         max_tokens: 1024,
         tools: vec![],
@@ -119,10 +120,12 @@ fn wire_request_extracts_system_from_messages() {
             Message {
                 role: Role::System,
                 content: Content::Text("Be concise.".to_owned()),
+                cache_breakpoint: false,
             },
             Message {
                 role: Role::User,
                 content: Content::Text("hello".to_owned()),
+                cache_breakpoint: false,
             },
         ],
         max_tokens: 1024,
@@ -149,6 +152,7 @@ fn wire_request_serializes_thinking_config() {
         messages: vec![Message {
             role: Role::User,
             content: Content::Text("think hard".to_owned()),
+            cache_breakpoint: false,
         }],
         max_tokens: 16384,
         tools: vec![],
@@ -175,6 +179,7 @@ fn wire_request_serializes_tools() {
         messages: vec![Message {
             role: Role::User,
             content: Content::Text("run ls".to_owned()),
+            cache_breakpoint: false,
         }],
         max_tokens: 1024,
         tools: vec![ToolDefinition {
@@ -253,6 +258,7 @@ fn wire_request_cache_system_serializes_as_array() {
         messages: vec![Message {
             role: Role::User,
             content: Content::Text("hello".to_owned()),
+            cache_breakpoint: false,
         }],
         max_tokens: 1024,
         cache_system: true,
@@ -274,6 +280,7 @@ fn wire_request_cache_tools_on_last_tool() {
         messages: vec![Message {
             role: Role::User,
             content: Content::Text("run".to_owned()),
+            cache_breakpoint: false,
         }],
         max_tokens: 1024,
         tools: vec![
@@ -307,6 +314,7 @@ fn wire_request_tool_choice_auto() {
         messages: vec![Message {
             role: Role::User,
             content: Content::Text("hi".to_owned()),
+            cache_breakpoint: false,
         }],
         max_tokens: 1024,
         tool_choice: Some(crate::types::ToolChoice::Auto),
@@ -324,6 +332,7 @@ fn wire_request_tool_choice_specific_tool() {
         messages: vec![Message {
             role: Role::User,
             content: Content::Text("hi".to_owned()),
+            cache_breakpoint: false,
         }],
         max_tokens: 1024,
         tool_choice: Some(crate::types::ToolChoice::Tool {
@@ -344,6 +353,7 @@ fn wire_request_tool_choice_none_omitted() {
         messages: vec![Message {
             role: Role::User,
             content: Content::Text("hi".to_owned()),
+            cache_breakpoint: false,
         }],
         max_tokens: 1024,
         ..Default::default()
@@ -360,6 +370,7 @@ fn wire_request_metadata_serialized() {
         messages: vec![Message {
             role: Role::User,
             content: Content::Text("hi".to_owned()),
+            cache_breakpoint: false,
         }],
         max_tokens: 1024,
         metadata: Some(crate::types::RequestMetadata {
@@ -379,6 +390,7 @@ fn wire_request_citations_serialized() {
         messages: vec![Message {
             role: Role::User,
             content: Content::Text("hi".to_owned()),
+            cache_breakpoint: false,
         }],
         max_tokens: 1024,
         citations: Some(crate::types::CitationConfig { enabled: true }),
@@ -445,6 +457,7 @@ fn wire_request_mixed_user_and_server_tools() {
         messages: vec![Message {
             role: Role::User,
             content: Content::Text("search for rust".to_owned()),
+            cache_breakpoint: false,
         }],
         max_tokens: 1024,
         tools: vec![ToolDefinition {
@@ -544,6 +557,7 @@ fn wire_request_cache_tools_only_on_user_tools() {
         messages: vec![Message {
             role: Role::User,
             content: Content::Text("hi".to_owned()),
+            cache_breakpoint: false,
         }],
         max_tokens: 1024,
         tools: vec![ToolDefinition {

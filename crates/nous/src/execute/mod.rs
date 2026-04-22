@@ -272,6 +272,13 @@ pub async fn execute(
     // lifetime concerns.
     let config_server_tools: Arc<Vec<ServerToolDefinition>> = Arc::new(config.server_tools.clone());
 
+    // WHY(#3781): detect cache breakpoint to enable cached-read pricing on
+    // the turn after distillation. When a message has cache_breakpoint=true,
+    // the prefix up to and including that message should be cached so the
+    // next turn benefits from cache_read pricing instead of repaying the
+    // prefix cost. Enable cache_turns to mark recent turns as cacheable.
+    let has_cache_breakpoint = ctx.messages.iter().any(|m| m.cache_breakpoint);
+
     loop {
         iterations += 1;
 
@@ -303,7 +310,10 @@ pub async fn execute(
             stop_sequences: vec![],
             cache_system: config.cache_enabled,
             cache_tools: config.cache_enabled,
-            cache_turns: config.cache_enabled,
+            // WHY(#3781): when a cache breakpoint (distilled summary) is present,
+            // enable turn caching to allow subsequent turns to benefit from
+            // cached-read pricing on the prefix.
+            cache_turns: config.cache_enabled && has_cache_breakpoint,
             ..Default::default()
         };
 
@@ -359,6 +369,7 @@ pub async fn execute(
         messages.push(Message {
             role: Role::Assistant,
             content: Content::Blocks(response_content),
+            cache_breakpoint: false,
         });
 
         // WHY: belt-and-suspenders enforcement of role tool restrictions at execution time,
@@ -482,6 +493,7 @@ pub async fn execute(
         messages.push(Message {
             role: Role::User,
             content: Content::Blocks(blocks),
+            cache_breakpoint: false,
         });
     }
 
@@ -677,6 +689,7 @@ pub async fn execute_streaming(
         messages.push(Message {
             role: Role::Assistant,
             content: Content::Blocks(response_content),
+            cache_breakpoint: false,
         });
 
         let mut denied_blocks: Vec<ContentBlock> = Vec::new();
@@ -798,6 +811,7 @@ pub async fn execute_streaming(
         messages.push(Message {
             role: Role::User,
             content: Content::Blocks(blocks),
+            cache_breakpoint: false,
         });
     }
 

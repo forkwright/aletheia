@@ -364,6 +364,7 @@ mod tests {
             messages: vec![Message {
                 role: Role::User,
                 content: Content::Text("hi".to_owned()),
+                cache_breakpoint: false,
             }],
             max_tokens: 128,
             ..Default::default()
@@ -385,6 +386,7 @@ mod tests {
             messages: vec![Message {
                 role: Role::User,
                 content: Content::Text("use a tool".to_owned()),
+                cache_breakpoint: false,
             }],
             max_tokens: 128,
             tools: vec![ToolDefinition {
@@ -413,6 +415,7 @@ mod tests {
                 Message {
                     role: Role::User,
                     content: Content::Text("call get_weather".to_owned()),
+                    cache_breakpoint: false,
                 },
                 Message {
                     role: Role::Assistant,
@@ -427,6 +430,7 @@ mod tests {
                             input: serde_json::json!({ "city": "Paris" }),
                         },
                     ]),
+                    cache_breakpoint: false,
                 },
             ],
             max_tokens: 128,
@@ -455,6 +459,7 @@ mod tests {
                     content: ToolResultContent::Text("sunny".to_owned()),
                     is_error: None,
                 }]),
+                cache_breakpoint: false,
             }],
             max_tokens: 128,
             ..Default::default()
@@ -472,6 +477,7 @@ mod tests {
             messages: vec![Message {
                 role: Role::User,
                 content: Content::Text("hi".to_owned()),
+                cache_breakpoint: false,
             }],
             max_tokens: 128,
             thinking: Some(ThinkingConfig {
@@ -494,6 +500,7 @@ mod tests {
             messages: vec![Message {
                 role: Role::User,
                 content: Content::Text("hi".to_owned()),
+                cache_breakpoint: false,
             }],
             max_tokens: 128,
             server_tools: vec![crate::types::ServerToolDefinition {
@@ -518,6 +525,7 @@ mod tests {
             messages: vec![Message {
                 role: Role::User,
                 content: Content::Text("hi".to_owned()),
+                cache_breakpoint: false,
             }],
             max_tokens: 128,
             cache_system: true,
@@ -537,6 +545,7 @@ mod tests {
             messages: vec![Message {
                 role: Role::User,
                 content: Content::Text("hi".to_owned()),
+                cache_breakpoint: false,
             }],
             max_tokens: 128,
             tool_choice: Some(ToolChoice::Any),
@@ -560,6 +569,7 @@ mod tests {
                     name: "f".to_owned(),
                     input: serde_json::json!({ "x": 1 }),
                 }]),
+                cache_breakpoint: false,
             }],
             max_tokens: 64,
             ..Default::default()

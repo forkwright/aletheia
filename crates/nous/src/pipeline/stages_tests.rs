@@ -7,6 +7,7 @@ fn make_msg(role: &str, content: &str) -> PipelineMessage {
         role: role.to_owned(),
         content: content.to_owned(),
         token_estimate: 0,
+        cache_breakpoint: false,
     }
 }
 

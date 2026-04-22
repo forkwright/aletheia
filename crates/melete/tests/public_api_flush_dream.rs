@@ -291,6 +291,7 @@ mod dream {
                 Message {
                     role: Role::User,
                     content: Content::Text("What's the plan?".to_owned()),
+                    cache_breakpoint: false,
                 },
                 Message {
                     role: Role::Assistant,
@@ -298,6 +299,7 @@ mod dream {
                         "## Summary\nPlanning next sprint\n## Key Decisions\n- ship tests"
                             .to_owned(),
                     ),
+                    cache_breakpoint: false,
                 },
             ],
         };
@@ -337,6 +339,7 @@ mod types_reexport {
         let msg: Message = Message {
             role: Role::User,
             content: Content::Text("hi".to_owned()),
+            cache_breakpoint: false,
         };
         let _block = ContentBlock::Text {
             text: "body".to_owned(),
