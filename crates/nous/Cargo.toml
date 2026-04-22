@@ -14,6 +14,8 @@ workspace = true
 knowledge-store = ["mneme/mneme-engine"]
 # Gates mock search implementations and other test helpers. No test code in release binaries.
 test-support = ["hermeneus/test-utils", "organon/test-support"]
+# Pre-LLM triage stage: intent, sensitivity, tier classification (default: on)
+pre-llm-triage = []
 # Test tiers (see docs/test-tiers.md)
 test-core = ["knowledge-store"]
 test-full = ["test-core"]
