@@ -11,9 +11,10 @@ rust-version.workspace = true
 workspace = true
 
 [features]
-default = ["graph-algo", "async"]
+default = ["graph-algo", "async", "hot-reload"]
 graph-algo = []
 async = []
+hot-reload = ["dep:notify", "dep:arc-swap"]
 storage-fjall = ["dep:fjall"]
 test-core = ["storage-fjall"]
 test-full = []
@@ -60,6 +61,10 @@ tracing = { workspace = true }
 
 # Storage backends
 fjall = { version = "3", default-features = false, optional = true }
+
+# Hot-reload
+notify = { workspace = true, optional = true }
+arc-swap = { version = "1", optional = true }
 
 [dependencies.ndarray]
 version = "0.17"

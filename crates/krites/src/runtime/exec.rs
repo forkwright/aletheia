@@ -9,6 +9,7 @@
 //!   store results into relations if requested
 //! - `explain_compiled`: produce a query plan description for `::explain`
 
+use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::Ordering;
 use std::thread;
@@ -55,9 +56,25 @@ impl<'s, S: Storage<'s>> Db<S> {
         params: BTreeMap<String, DataValue>,
         mutability: ScriptMutability,
     ) -> Result<NamedRows> {
+        let payload: Cow<'_, str> = {
+            #[cfg(feature = "hot-reload")]
+            if let Some(store) = &self.rule_store {
+                let rules = store.load();
+                if rules.rules_text.is_empty() {
+                    Cow::Borrowed(payload)
+                } else {
+                    Cow::Owned(format!("{}\n{payload}", rules.rules_text))
+                }
+            } else {
+                Cow::Borrowed(payload)
+            }
+            #[cfg(not(feature = "hot-reload"))]
+            Cow::Borrowed(payload)
+        };
+
         self.run_script_ast(
             parse_script(
-                payload,
+                &payload,
                 &params,
                 &self.get_fixed_rules(),
                 current_validity(),

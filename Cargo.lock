@@ -4512,6 +4512,7 @@ name = "krites"
 version = "0.21.1"
 dependencies = [
  "aho-corasick",
+ "arc-swap",
  "bytemuck",
  "compact_str",
  "crossbeam",
@@ -4524,6 +4525,7 @@ dependencies = [
  "loom",
  "lru 0.17.0",
  "ndarray",
+ "notify",
  "ordered-float 5.3.0",
  "pest",
  "pest_derive",
