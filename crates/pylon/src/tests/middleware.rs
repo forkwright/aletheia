@@ -495,3 +495,95 @@ async fn post_on_health_returns_405() {
     let resp = app.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::METHOD_NOT_ALLOWED);
 }
+
+#[tokio::test]
+async fn deprecation_header_present_for_registered_route() {
+    let (app, _dir) = app().await;
+    let resp = app
+        .oneshot(Request::get("/health").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let deprecation = resp
+        .headers()
+        .get("deprecation")
+        .expect("Deprecation header must be present");
+    assert!(
+        deprecation.to_str().unwrap().starts_with('@'),
+        "Deprecation header must be a timestamp prefixed with @"
+    );
+    assert!(
+        resp.headers().get("sunset").is_some(),
+        "Sunset header must be present"
+    );
+}
+
+#[tokio::test]
+async fn non_deprecated_route_has_no_headers() {
+    let (app, _dir) = app().await;
+    let resp = app
+        .oneshot(Request::get("/api/health").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert!(
+        resp.headers().get("deprecation").is_none(),
+        "non-deprecated route must not have Deprecation header"
+    );
+    assert!(
+        resp.headers().get("sunset").is_none(),
+        "non-deprecated route must not have Sunset header"
+    );
+    assert!(
+        resp.headers().get("link").is_none(),
+        "non-deprecated route must not have Link header"
+    );
+}
+
+#[tokio::test]
+async fn link_header_included_when_set() {
+    let (app, _dir) = app().await;
+    let resp = app
+        .oneshot(Request::get("/health").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let link = resp
+        .headers()
+        .get("link")
+        .expect("Link header must be present for deprecated route with link");
+    assert!(
+        link.to_str().unwrap().contains("rel=\"deprecation\""),
+        "Link header must contain rel=\"deprecation\""
+    );
+}
+
+#[tokio::test]
+async fn sunset_header_format_rfc8594() {
+    let (app, _dir) = app().await;
+    let resp = app
+        .oneshot(Request::get("/health").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let sunset = resp
+        .headers()
+        .get("sunset")
+        .expect("Sunset header must be present");
+    let sunset_str = sunset.to_str().unwrap();
+
+    // RFC 7231 HTTP-date ends with "GMT"
+    let (datetime_part, tz) = sunset_str.rsplit_once(' ').expect("valid HTTP-date format");
+    assert_eq!(tz, "GMT", "Sunset header must use GMT timezone");
+
+    // Verify the datetime portion parses with the expected format
+    let parsed = jiff::civil::DateTime::strptime("%a, %d %b %Y %H:%M:%S", datetime_part);
+    assert!(
+        parsed.is_ok(),
+        "Sunset header must be a valid RFC 7231 HTTP-date"
+    );
+}
