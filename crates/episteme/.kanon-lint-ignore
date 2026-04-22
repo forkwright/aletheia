@@ -85,7 +85,7 @@ RUST/pub-visibility:src/knowledge_store/skills.rs
 RUST/pub-visibility:src/query/builders.rs
 RUST/pub-visibility:src/query/queries.rs
 RUST/pub-visibility:src/query/schema.rs
-RUST/pub-visibility:src/recall.rs
+RUST/pub-visibility:src/recall/mod.rs
 RUST/pub-visibility:src/skill.rs
 RUST/pub-visibility:src/skills/candidate.rs
 RUST/pub-visibility:src/skills/extract.rs
@@ -171,7 +171,7 @@ RUST/string-slice:src/skill.rs
 # clippy::cast_precision_loss)] with reason strings.
 RUST/as-cast:src/instinct.rs
 RUST/as-cast:src/query_rewrite.rs
-RUST/as-cast:src/recall.rs
+RUST/as-cast:src/recall/mod.rs
 RUST/as-cast:src/skills/extract.rs
 RUST/as-cast:src/skills/heuristics.rs
 RUST/as-cast:src/skills/signature.rs
