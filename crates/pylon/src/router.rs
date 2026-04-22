@@ -19,8 +19,9 @@ use koina::http::{API_HEALTH, API_V1};
 use crate::error::{ApiError, ErrorBody, ErrorResponse};
 use crate::handlers::{config, health, knowledge, metrics, nous, planning, sessions};
 use crate::middleware::{
-    CsrfState, RateLimiter, RequestId, UserRateLimiter, enrich_error_response, inject_request_id,
-    per_user_rate_limit, rate_limit, record_http_metrics, require_csrf_header, spawn_stale_cleanup,
+    CsrfState, DeprecationLayer, RateLimiter, RequestId, UserRateLimiter, deprecate,
+    enrich_error_response, inject_request_id, per_user_rate_limit, rate_limit, record_http_metrics,
+    require_csrf_header, spawn_stale_cleanup,
 };
 use crate::openapi;
 use crate::security::SecurityConfig;
@@ -41,6 +42,10 @@ pub fn build_router(state: Arc<AppState>, security: &SecurityConfig) -> Router {
 #[expect(
     clippy::too_many_lines,
     reason = "router construction requires assembling all routes and ordered middleware layers; extraction would obscure the stack ordering"
+)]
+#[expect(
+    deprecated,
+    reason = "deprecated_health_check is intentionally wired as the demonstration endpoint for #3280"
 )]
 pub fn build_router_with(
     state: Arc<AppState>,
@@ -132,7 +137,7 @@ pub fn build_router_with(
     let mut router = Router::new()
         .nest(API_V1, v1)
         .route(API_HEALTH, get(health::check))
-        .route("/health", get(health::check))
+        .route("/health", get(health::deprecated_health_check))
         .route("/api/docs/openapi.json", get(openapi::openapi_json))
         .route("/metrics", get(metrics::expose));
 
@@ -188,6 +193,17 @@ pub fn build_router_with(
     // WARNING: Must be inside compression (body uncompressed) but outside
     // rate_limit and CSRF so their error responses get request_id injected.
     router = router.layer(axum::middleware::from_fn(enrich_error_response));
+
+    let deprecated_at = jiff::Timestamp::now();
+    let sunset_at = deprecated_at
+        .checked_add(jiff::SignedDuration::from_secs(365 * 24 * 60 * 60))
+        .unwrap_or(deprecated_at);
+    router = router.layer(DeprecationLayer::new([deprecate(
+        "GET /health",
+        deprecated_at,
+        sunset_at,
+        Some("https://docs.aletheia.dev/migration/health".to_owned()),
+    )]));
 
     router = router.layer(axum::middleware::from_fn(record_http_metrics));
 

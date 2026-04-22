@@ -253,9 +253,11 @@ pub async fn record_http_metrics(request: Request, next: Next) -> Response {
 /// Each IP gets a fixed window of `window` duration. The window resets when
 /// expired. Uses `std::sync::Mutex` (not tokio): the critical section is
 /// short and contains no `.await` points.
+mod deprecation;
 mod rate_limiter;
 mod user_rate_limiter;
 
+pub use deprecation::{DeprecationInfo, DeprecationLayer, DeprecationMap, deprecate};
 pub use rate_limiter::{RateLimiter, rate_limit};
 pub use user_rate_limiter::{
     EndpointCategory, UserRateLimiter, per_user_rate_limit, spawn_stale_cleanup,

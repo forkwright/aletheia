@@ -109,6 +109,22 @@ pub async fn check(State(state): State<HealthState>) -> impl IntoResponse {
     )
 }
 
+/// GET /health: deprecated unversioned health check.
+///
+/// Use `/api/health` instead.
+#[deprecated = "Use /api/health instead"]
+#[utoipa::path(
+    get,
+    path = "/health",
+    responses(
+        (status = 200, description = "Health status", body = HealthResponse),
+        (status = 503, description = "Service unavailable", body = HealthResponse),
+    ),
+)]
+pub async fn deprecated_health_check(State(state): State<HealthState>) -> impl IntoResponse {
+    check(State(state)).await
+}
+
 /// Run a health check with a per-check timeout. If the check exceeds
 /// [`CHECK_TIMEOUT`], a "timeout" status is returned instead of blocking.
 async fn timed_check(

@@ -22,6 +22,7 @@ use koina::http::CONTENT_TYPE_JSON;
     ),
     paths(
         crate::handlers::health::check,
+        crate::handlers::health::deprecated_health_check,
         crate::handlers::metrics::expose,
         crate::handlers::sessions::list_sessions,
         crate::handlers::sessions::create,
