@@ -17,6 +17,39 @@
 //!    beside the payload (sibling JSON file, sidecar column, or envelope field).
 //! 3. Increment `schema_version` only when the on-disk schema changes in a
 //!    backwards-incompatible way.
+//!
+//! # Mnemosyne alignment
+//!
+//! `ArtefactMeta` carries optional fields that mirror the mnemosyne
+//! `Annotation` type in `kanon::mnemosyne::model`. The table below maps each
+//! field to its mnemosyne counterpart. Fields that exist only on one side are
+//! documented as side-specific.
+//!
+//! | `ArtefactMeta` field  | Mnemosyne `Annotation` field | Notes                                         |
+//! |-----------------------|------------------------------|-----------------------------------------------|
+//! | `producer`            | `agent_id`                   | Different namespacing: crate name vs agent ID |
+//! | `schema_version`      | _(none)_                     | **aletheia-specific** — kanon issue #111      |
+//! | `generated_at`        | `created_at`                 | Both ISO 8601 UTC; different field name       |
+//! | `row_counts`          | _(none)_                     | **aletheia-specific** bulk-count envelope     |
+//! | `actor_id`            | `agent_id`                   | Unified actor identity (replaces `nous_id`)   |
+//! | `session_id`          | `session_id`                 | Identical semantics                           |
+//! | `supersedes`          | `supersedes`                 | Supersede chain reference                     |
+//! | `supersede_reason`    | `supersede_reason`           | Required reason when `supersedes` is set      |
+//! | `confidence`          | _(none)_                     | From episteme `Fact`; no annotation analog    |
+//! | `source_kind`         | `SourceKind` (on `Source`)   | Ingest source kind string                     |
+//! | `source_locator`      | `locator` (on `Source`)      | Canonical ingest URL/path                     |
+//! | `evidence_refs`       | `evidence_chunks`            | Evidence IDs; mnemosyne uses typed `ChunkId`s |
+//!
+//! The [`provenance_adapter`](crate::provenance_adapter) module provides
+//! `from_mnemosyne_annotation` and `to_mnemosyne_compatible` for
+//! cross-layer translation without importing mnemosyne directly.
+//!
+//! ## Future mnemosyne-side alignment
+//!
+//! kanon issue #111 tracks adding `schema_version` to mnemosyne's `Annotation`
+//! type so the `Stamped` trait can be satisfied across both stores. Until
+//! that lands, `schema_version` is carried in `ArtefactMeta` only and
+//! surfaced via `MnemosyneView::schema_version` as an aletheia extension field.
 
 use std::collections::BTreeMap;
 
@@ -55,7 +88,17 @@ pub trait Stamped {
 /// - `row_counts`: named counts for the artefact's primary collections
 ///   (e.g. `"messages"`, `"edges"`, `"scenarios"`). Use canonical names
 ///   per artefact type so tooling can aggregate across producers.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// # Mnemosyne-aligned optional fields
+///
+/// The `actor_id`, `session_id`, `supersedes`, `supersede_reason`,
+/// `confidence`, `source_kind`, `source_locator`, and `evidence_refs` fields
+/// align with the mnemosyne `Annotation` type (kanon). They are all
+/// `Option<T>` so existing `ArtefactMeta::new()` callers remain unchanged
+/// and existing serialized JSON deserializes cleanly.
+///
+/// See the [`meta`](crate::meta) module-level docs for the full field mapping.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct ArtefactMeta {
     /// Crate + version that produced this artefact, e.g. `"graphe@0.21.1"`.
@@ -66,12 +109,73 @@ pub struct ArtefactMeta {
     pub generated_at: String,
     /// Named row/item counts for the primary collections in this artefact.
     pub row_counts: BTreeMap<String, u64>,
+
+    // ── Mnemosyne-aligned optional fields ─────────────────────────────────────
+    /// Unified actor identity. Maps to mnemosyne `Annotation::agent_id` and
+    /// episteme `Fact::nous_id`. Use `"<crate>@<version>"` for automated
+    /// producers; use the agent ID string for nous-authored artefacts.
+    ///
+    /// **Mnemosyne analog**: `agent_id` on `Annotation`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub actor_id: Option<String>,
+
+    /// Session that produced this artefact. Enables grouping related
+    /// artefacts from a single nous session.
+    ///
+    /// **Mnemosyne analog**: `session_id` on `Annotation`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
+
+    /// Reference to the artefact (or annotation) this one supersedes. When
+    /// set, `supersede_reason` must also be set.
+    ///
+    /// **Mnemosyne analog**: `supersedes` on `Annotation`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub supersedes: Option<String>,
+
+    /// Human-readable reason for the supersession. Required when `supersedes`
+    /// is `Some`; ignored otherwise.
+    ///
+    /// **Mnemosyne analog**: `supersede_reason` on `Annotation`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub supersede_reason: Option<String>,
+
+    /// Normalized confidence score in `[0.0, 1.0]`. Carried from episteme
+    /// `Fact::confidence`. No direct mnemosyne `Annotation` analog (annotations
+    /// use evidence chunk count as a proxy instead).
+    ///
+    /// **Episteme analog**: `confidence` on `Fact`.
+    /// **Mnemosyne analog**: none — aletheia-specific.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confidence: Option<f32>,
+
+    /// Source kind that produced the data underlying this artefact
+    /// (e.g. `"git_repo"`, `"source_tree"`, `"markdown_tree"`).
+    ///
+    /// **Mnemosyne analog**: `SourceKind` on `Source` (snake-case string form).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_kind: Option<String>,
+
+    /// Canonical locator for the ingest source (git URL, absolute path, etc.).
+    ///
+    /// **Mnemosyne analog**: `locator` on `Source`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_locator: Option<String>,
+
+    /// Stable IDs of evidence chunks (or facts) supporting this artefact.
+    /// On the mnemosyne side these are typed `ChunkId`s; on the eidos side
+    /// they are stored as opaque strings for cross-layer portability.
+    ///
+    /// **Mnemosyne analog**: `evidence_chunks` on `Annotation` (typed `Vec<ChunkId>`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub evidence_refs: Vec<String>,
 }
 
 impl ArtefactMeta {
-    /// Construct a stamp with required fields; `row_counts` starts empty.
+    /// Construct a stamp with required fields; `row_counts` starts empty and
+    /// all mnemosyne-aligned optional fields are `None`.
     ///
-    /// Chain [`with_count`](Self::with_count) calls to populate row counts.
+    /// Chain builder methods to populate optional fields.
     #[must_use]
     pub fn new(
         producer: impl Into<String>,
@@ -83,6 +187,14 @@ impl ArtefactMeta {
             schema_version,
             generated_at: generated_at.into(),
             row_counts: BTreeMap::new(),
+            actor_id: None,
+            session_id: None,
+            supersedes: None,
+            supersede_reason: None,
+            confidence: None,
+            source_kind: None,
+            source_locator: None,
+            evidence_refs: Vec::new(),
         }
     }
 
@@ -95,6 +207,56 @@ impl ArtefactMeta {
         self.row_counts.insert(name.into(), count);
         self
     }
+
+    /// Set the actor identity and optional session. Aligns with mnemosyne
+    /// `Annotation::agent_id` + `session_id`.
+    #[must_use]
+    pub fn with_actor(mut self, actor_id: impl Into<String>, session_id: Option<String>) -> Self {
+        self.actor_id = Some(actor_id.into());
+        self.session_id = session_id;
+        self
+    }
+
+    /// Set the confidence score. Must be in `[0.0, 1.0]`; values outside that
+    /// range are clamped at store time by consumers — eidos does not clamp here
+    /// to avoid silent data mutation.
+    #[must_use]
+    pub fn with_confidence(mut self, confidence: f32) -> Self {
+        self.confidence = Some(confidence);
+        self
+    }
+
+    /// Set the ingest source kind and locator. Aligns with mnemosyne
+    /// `Source::kind` (as snake-case string) and `Source::locator`.
+    #[must_use]
+    pub fn with_source(mut self, kind: impl Into<String>, locator: impl Into<String>) -> Self {
+        self.source_kind = Some(kind.into());
+        self.source_locator = Some(locator.into());
+        self
+    }
+
+    /// Set evidence references. Aligns with mnemosyne
+    /// `Annotation::evidence_chunks` (stored as opaque strings here).
+    #[must_use]
+    pub fn with_evidence(mut self, refs: impl IntoIterator<Item = impl Into<String>>) -> Self {
+        self.evidence_refs = refs.into_iter().map(Into::into).collect();
+        self
+    }
+
+    /// Set the supersede chain. `supersedes` is the reference to the artefact
+    /// being replaced; `reason` is required when `supersedes` is `Some` and
+    /// is validated by downstream consumers (not enforced here to avoid
+    /// requiring `Result` on a builder).
+    #[must_use]
+    pub fn with_supersede(
+        mut self,
+        supersedes: impl Into<String>,
+        reason: impl Into<String>,
+    ) -> Self {
+        self.supersedes = Some(supersedes.into());
+        self.supersede_reason = Some(reason.into());
+        self
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -104,12 +266,35 @@ impl ArtefactMeta {
 mod tests {
     use super::*;
 
+    // ── Helper ───────────────────────────────────────────────────────────────
+
+    /// Assert two `ArtefactMeta` values are equal field-by-field. We do not
+    /// derive `Eq` because `f32` doesn't implement `Eq`; we use approximate
+    /// equality for `confidence` here.
+    fn assert_meta_eq(a: &ArtefactMeta, b: &ArtefactMeta) {
+        assert_eq!(a.producer, b.producer, "producer");
+        assert_eq!(a.schema_version, b.schema_version, "schema_version");
+        assert_eq!(a.generated_at, b.generated_at, "generated_at");
+        assert_eq!(a.row_counts, b.row_counts, "row_counts");
+        assert_eq!(a.actor_id, b.actor_id, "actor_id");
+        assert_eq!(a.session_id, b.session_id, "session_id");
+        assert_eq!(a.supersedes, b.supersedes, "supersedes");
+        assert_eq!(a.supersede_reason, b.supersede_reason, "supersede_reason");
+        assert_eq!(a.source_kind, b.source_kind, "source_kind");
+        assert_eq!(a.source_locator, b.source_locator, "source_locator");
+        assert_eq!(a.evidence_refs, b.evidence_refs, "evidence_refs");
+        // f32 comparison: must be identical bit-for-bit after serde round-trip.
+        assert_eq!(a.confidence, b.confidence, "confidence");
+    }
+
+    // ── Existing tests (backward-compat) ─────────────────────────────────────
+
     #[test]
     fn artefact_meta_new_round_trip_serde() {
         let meta = ArtefactMeta::new("mneme@0.21.1", 1, "2026-04-22T00:00:00Z");
         let json = serde_json::to_string(&meta).expect("serialize");
         let back: ArtefactMeta = serde_json::from_str(&json).expect("deserialize");
-        assert_eq!(meta, back, "round-trip must be identical");
+        assert_meta_eq(&meta, &back);
     }
 
     #[test]
@@ -166,5 +351,123 @@ mod tests {
         );
         let back: ArtefactMeta = serde_json::from_str(&json).expect("deserialize");
         assert!(back.row_counts.is_empty(), "row_counts should be empty");
+    }
+
+    // ── Backward-compat: old JSON with no optional fields deserializes ─────────
+
+    #[test]
+    fn artefact_meta_legacy_json_deserializes_cleanly() {
+        // Simulates JSON produced before the mnemosyne-aligned fields were added.
+        let legacy = r#"{
+            "producer": "mneme@0.21.0",
+            "schema_version": 1,
+            "generated_at": "2026-04-01T00:00:00Z",
+            "row_counts": {"facts": 100}
+        }"#;
+        let meta: ArtefactMeta = serde_json::from_str(legacy).expect("deserialize legacy JSON");
+        assert_eq!(meta.producer, "mneme@0.21.0");
+        assert_eq!(meta.schema_version, 1);
+        assert!(meta.actor_id.is_none(), "actor_id defaults to None");
+        assert!(meta.session_id.is_none(), "session_id defaults to None");
+        assert!(meta.supersedes.is_none(), "supersedes defaults to None");
+        assert!(
+            meta.supersede_reason.is_none(),
+            "supersede_reason defaults to None"
+        );
+        assert!(meta.confidence.is_none(), "confidence defaults to None");
+        assert!(meta.source_kind.is_none(), "source_kind defaults to None");
+        assert!(
+            meta.source_locator.is_none(),
+            "source_locator defaults to None"
+        );
+        assert!(
+            meta.evidence_refs.is_empty(),
+            "evidence_refs defaults to empty"
+        );
+    }
+
+    // ── New builder tests ─────────────────────────────────────────────────────
+
+    #[test]
+    fn artefact_meta_with_actor_sets_fields() {
+        let meta = ArtefactMeta::new("mneme@0.21.1", 1, "2026-04-22T00:00:00Z")
+            .with_actor("claude-opus-4-7", Some("session-abc".to_owned()));
+        assert_eq!(meta.actor_id.as_deref(), Some("claude-opus-4-7"));
+        assert_eq!(meta.session_id.as_deref(), Some("session-abc"));
+    }
+
+    #[test]
+    fn artefact_meta_with_confidence_sets_field() {
+        let meta =
+            ArtefactMeta::new("mneme@0.21.1", 1, "2026-04-22T00:00:00Z").with_confidence(0.87);
+        assert_eq!(meta.confidence, Some(0.87_f32));
+    }
+
+    #[test]
+    fn artefact_meta_with_source_sets_fields() {
+        let meta = ArtefactMeta::new("mneme@0.21.1", 1, "2026-04-22T00:00:00Z")
+            .with_source("git_repo", "https://github.com/example/repo");
+        assert_eq!(meta.source_kind.as_deref(), Some("git_repo"));
+        assert_eq!(
+            meta.source_locator.as_deref(),
+            Some("https://github.com/example/repo")
+        );
+    }
+
+    #[test]
+    fn artefact_meta_with_evidence_sets_refs() {
+        let refs = ["chunk-id-1", "chunk-id-2"];
+        let meta = ArtefactMeta::new("mneme@0.21.1", 1, "2026-04-22T00:00:00Z").with_evidence(refs);
+        assert_eq!(meta.evidence_refs, &["chunk-id-1", "chunk-id-2"]);
+    }
+
+    #[test]
+    fn artefact_meta_with_supersede_sets_both_fields() {
+        let meta = ArtefactMeta::new("mneme@0.21.1", 1, "2026-04-22T00:00:00Z")
+            .with_supersede("old-artefact-id", "schema upgraded to v2");
+        assert_eq!(meta.supersedes.as_deref(), Some("old-artefact-id"));
+        assert_eq!(
+            meta.supersede_reason.as_deref(),
+            Some("schema upgraded to v2")
+        );
+    }
+
+    // ── Optional fields round-trip ─────────────────────────────────────────────
+
+    #[test]
+    fn artefact_meta_full_optional_fields_round_trip_serde() {
+        let meta = ArtefactMeta::new("mneme@0.21.1", 1, "2026-04-22T00:00:00Z")
+            .with_actor("claude-opus-4-7", Some("sess-1".to_owned()))
+            .with_confidence(0.75)
+            .with_source("git_repo", "https://git.example.com/repo")
+            .with_evidence(["c1".to_owned(), "c2".to_owned()])
+            .with_supersede("prev-id", "data corrected");
+        let json = serde_json::to_string(&meta).expect("serialize");
+        let back: ArtefactMeta = serde_json::from_str(&json).expect("deserialize");
+        assert_meta_eq(&meta, &back);
+    }
+
+    // ── Optional-none fields are absent in JSON (skip_serializing_if) ─────────
+
+    #[test]
+    fn artefact_meta_minimal_serializes_without_optional_keys() {
+        let meta = ArtefactMeta::new("test@1.0.0", 1, "2026-04-22T00:00:00Z");
+        let json = serde_json::to_string(&meta).expect("serialize");
+        assert!(
+            !json.contains("actor_id"),
+            "actor_id should be absent when None"
+        );
+        assert!(
+            !json.contains("confidence"),
+            "confidence should be absent when None"
+        );
+        assert!(
+            !json.contains("evidence_refs"),
+            "evidence_refs should be absent when empty"
+        );
+        assert!(
+            !json.contains("supersedes"),
+            "supersedes should be absent when None"
+        );
     }
 }
