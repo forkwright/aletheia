@@ -18,6 +18,7 @@ fn text_msg(role: Role, text: &str) -> Message {
     Message {
         role,
         content: Content::Text(text.to_owned()),
+        cache_breakpoint: false,
     }
 }
 
@@ -275,6 +276,7 @@ async fn verbatim_tail_preserves_block_content() {
                 signature: None,
             },
         ]),
+        cache_breakpoint: false,
     };
     let messages = vec![
         text_msg(Role::User, "First"),

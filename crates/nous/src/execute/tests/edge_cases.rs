@@ -276,16 +276,19 @@ fn build_messages_maps_roles_correctly() {
             role: "user".to_owned(),
             content: "Hello".to_owned(),
             token_estimate: 1,
+            cache_breakpoint: false,
         },
         PipelineMessage {
             role: "assistant".to_owned(),
             content: "Hi".to_owned(),
             token_estimate: 1,
+            cache_breakpoint: false,
         },
         PipelineMessage {
             role: "unknown".to_owned(),
             content: "?".to_owned(),
             token_estimate: 1,
+            cache_breakpoint: false,
         },
     ];
     let built = build_messages(&msgs);

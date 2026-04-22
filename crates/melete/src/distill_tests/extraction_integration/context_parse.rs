@@ -168,6 +168,7 @@ fn estimate_tokens_includes_tool_use_input() {
             text: "checking".to_owned(),
             citations: None,
         }]),
+        cache_breakpoint: false,
     };
     let msg_with_tool = Message {
         role: Role::Assistant,
@@ -182,6 +183,7 @@ fn estimate_tokens_includes_tool_use_input() {
                 input: serde_json::json!({"path": "/very/long/path/to/some/file.rs"}),
             },
         ]),
+        cache_breakpoint: false,
     };
     let tokens_text = estimate_tokens(vec![msg_text_only].as_slice());
     let tokens_tool = estimate_tokens(vec![msg_with_tool].as_slice());
@@ -200,6 +202,7 @@ fn estimate_tokens_includes_tool_result_content() {
             content: ToolResultContent::text(""),
             is_error: Some(false),
         }]),
+        cache_breakpoint: false,
     };
     let msg_large_result = Message {
         role: Role::User,
@@ -208,6 +211,7 @@ fn estimate_tokens_includes_tool_result_content() {
             content: ToolResultContent::text("x".repeat(400)),
             is_error: Some(false),
         }]),
+        cache_breakpoint: false,
     };
     let tokens_empty = estimate_tokens(vec![msg_empty_result].as_slice());
     let tokens_large = estimate_tokens(vec![msg_large_result].as_slice());

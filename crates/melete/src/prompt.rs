@@ -120,6 +120,7 @@ mod tests {
         Message {
             role,
             content: Content::Text(text.to_owned()),
+            cache_breakpoint: false,
         }
     }
 
@@ -205,6 +206,7 @@ mod tests {
                     input: serde_json::json!({"path": "/tmp/test"}),
                 },
             ]),
+            cache_breakpoint: false,
         }];
         let with_tools = format_messages(&messages, true);
         assert!(with_tools.contains("[Tool call: read_file"));
@@ -222,6 +224,7 @@ mod tests {
                 content: hermeneus::types::ToolResultContent::text("file contents here"),
                 is_error: Some(false),
             }]),
+            cache_breakpoint: false,
         }];
         let with_tools = format_messages(&messages, true);
         assert!(with_tools.contains("[Tool result:"));

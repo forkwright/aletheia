@@ -349,6 +349,7 @@ pub fn convert_to_hermeneus_messages(history: &[mneme::types::Message]) -> Vec<H
             HermeneusMessage {
                 role,
                 content: Content::Text(msg.content.clone()),
+                cache_breakpoint: false,
             }
         })
         .collect()

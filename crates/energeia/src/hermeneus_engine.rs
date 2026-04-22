@@ -71,6 +71,7 @@ impl HermeneusEngine {
             messages: vec![Message {
                 role: Role::User,
                 content: Content::Text(prompt_text),
+                cache_breakpoint: false,
             }],
             max_tokens: options.max_turns.unwrap_or(4096),
             cache_system,
@@ -150,6 +151,7 @@ impl DispatchEngine for HermeneusEngine {
                 messages: vec![Message {
                     role: Role::User,
                     content: Content::Text(prompt.to_owned()),
+                    cache_breakpoint: false,
                 }],
                 max_tokens: options.max_turns.unwrap_or(4096),
                 ..CompletionRequest::default()

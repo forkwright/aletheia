@@ -235,6 +235,7 @@ mod tests {
             role: "user".to_owned(),
             content: format_tool_result(tool_name, created_at, content),
             token_estimate,
+            cache_breakpoint: false,
         }
     }
 
@@ -243,6 +244,7 @@ mod tests {
             role: role.to_owned(),
             content: content.to_owned(),
             token_estimate: tokens,
+            cache_breakpoint: false,
         }
     }
 
@@ -464,6 +466,7 @@ mod tests {
             role: "user".to_owned(),
             content: format!("{CLEARED_MARKER_PREFIX}FileOperation, age 300s]"),
             token_estimate: 10,
+            cache_breakpoint: false,
         };
         assert!(is_cleared(&cleared), "should detect cleared message");
 
@@ -471,6 +474,7 @@ mod tests {
             role: "user".to_owned(),
             content: "normal content".to_owned(),
             token_estimate: 10,
+            cache_breakpoint: false,
         };
         assert!(!is_cleared(&normal), "should not detect normal message");
     }
@@ -483,6 +487,7 @@ mod tests {
             role: "user".to_owned(),
             content: formatted,
             token_estimate: 100,
+            cache_breakpoint: false,
         };
         let parsed = parse_tool_result_metadata(&msg);
         assert!(

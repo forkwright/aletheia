@@ -165,6 +165,7 @@ mod distill_engine {
         Message {
             role,
             content: Content::Text(text.to_owned()),
+            cache_breakpoint: false,
         }
     }
 

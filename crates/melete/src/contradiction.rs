@@ -114,6 +114,7 @@ pub(crate) async fn detect_contradictions(
         messages: vec![Message {
             role: Role::User,
             content: Content::Text(format!("Facts to review:\n{numbered}")),
+            cache_breakpoint: false,
         }],
         max_tokens: 1024,
         temperature: Some(0.0),

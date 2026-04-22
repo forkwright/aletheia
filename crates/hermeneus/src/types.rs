@@ -82,6 +82,12 @@ pub struct Message {
     pub role: Role,
     /// Message content (text or structured blocks).
     pub content: Content,
+    /// WHY(#3781): when true, this message is a cache breakpoint where
+    /// the prefix up to and including this message should be cached
+    /// via `cache_control: ephemeral`. Typically set on distilled
+    /// summary messages so subsequent turns reuse the cached context.
+    #[serde(default)]
+    pub cache_breakpoint: bool,
 }
 
 /// Message role.

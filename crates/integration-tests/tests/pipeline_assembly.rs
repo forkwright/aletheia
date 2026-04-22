@@ -112,6 +112,7 @@ fn pipeline_message_serde() {
         role: "user".to_owned(),
         content: "hello".to_owned(),
         token_estimate: 5,
+        cache_breakpoint: false,
     };
     let json = serde_json::to_string(&msg).expect("PipelineMessage serializes to JSON");
     let back: PipelineMessage =

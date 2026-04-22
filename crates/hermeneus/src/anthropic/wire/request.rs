@@ -181,7 +181,9 @@ impl<'a> WireRequest<'a> {
             .iter()
             .enumerate()
             .map(|(i, m)| {
-                let content = if cached_indices.contains(&i) {
+                // WHY(#3781): apply cache_control to messages marked as cache breakpoints
+                // (post-compaction) or to indices selected by the cache_turns strategy
+                let content = if m.cache_breakpoint || cached_indices.contains(&i) {
                     WireContent::WithCacheControl(content_with_cache_control(&m.content)?)
                 } else {
                     WireContent::Borrowed(&m.content)

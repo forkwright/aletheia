@@ -93,6 +93,11 @@ pub struct PipelineMessage {
     pub content: String,
     /// Estimated tokens.
     pub token_estimate: i64,
+    /// WHY(#3781): when true, this message marks a cache breakpoint where
+    /// the prefix up to and including this message should be cached.
+    /// Typically set on the distilled summary message after compaction.
+    #[serde(default)]
+    pub cache_breakpoint: bool,
 }
 
 /// Guard stage result.
