@@ -2214,7 +2214,10 @@ dependencies = [
  "jiff",
  "serde",
  "serde_json",
+ "snafu",
  "tempfile",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -5527,6 +5530,7 @@ dependencies = [
 name = "organon"
 version = "0.21.1"
 dependencies = [
+ "eidos",
  "energeia",
  "fjall",
  "hermeneus",
