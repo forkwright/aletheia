@@ -20,6 +20,12 @@ use tracing::instrument;
 
 use crate::knowledge::{EpistemicTier, FactType};
 
+#[cfg(feature = "reranker")]
+pub mod reranker;
+
+/// Type alias for a recall candidate used by rerankers.
+pub type RecallCandidate = ScoredResult;
+
 /// Tunable weights for the multi-factor recall scoring formula.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RecallWeights {
@@ -129,11 +135,31 @@ pub struct ScoredResult {
 }
 
 /// The recall engine.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct RecallEngine {
     weights: RecallWeights,
     /// Maximum access count for frequency normalization.
     max_access_count: f64,
+    /// Optional reranker applied to the top-K after baseline scoring.
+    #[cfg(feature = "reranker")]
+    pub reranker: Option<std::sync::Arc<dyn reranker::Reranker>>,
+    /// Number of top candidates to pass to the reranker.
+    #[cfg(feature = "reranker")]
+    pub reranker_top_k: usize,
+}
+
+impl std::fmt::Debug for RecallEngine {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut d = f.debug_struct("RecallEngine");
+        d.field("weights", &self.weights)
+            .field("max_access_count", &self.max_access_count);
+        #[cfg(feature = "reranker")]
+        {
+            d.field("reranker", &self.reranker.as_ref().map(|r| r.name()));
+            d.field("reranker_top_k", &self.reranker_top_k);
+        }
+        d.finish()
+    }
 }
 
 impl RecallEngine {
@@ -148,6 +174,10 @@ impl RecallEngine {
         Self {
             weights: RecallWeights::default(),
             max_access_count: 100.0,
+            #[cfg(feature = "reranker")]
+            reranker: None,
+            #[cfg(feature = "reranker")]
+            reranker_top_k: 20,
         }
     }
 
@@ -172,6 +202,67 @@ impl RecallEngine {
     pub(crate) fn with_max_access_count(mut self, count: f64) -> Self {
         self.max_access_count = count;
         self
+    }
+
+    /// Attach an optional reranker to the engine.
+    #[cfg(feature = "reranker")]
+    #[must_use]
+    #[instrument(skip(self, reranker))]
+    pub fn with_reranker(
+        mut self,
+        reranker: Option<std::sync::Arc<dyn reranker::Reranker>>,
+    ) -> Self {
+        self.reranker = reranker;
+        self
+    }
+
+    /// Set how many top candidates are passed to the reranker.
+    #[cfg(feature = "reranker")]
+    #[must_use]
+    #[instrument(skip(self))]
+    pub fn with_reranker_top_k(mut self, top_k: usize) -> Self {
+        self.reranker_top_k = top_k;
+        self
+    }
+
+    /// Baseline rank followed by an optional reranker pass.
+    ///
+    /// When [`Self::reranker`] is `None` this is identical to [`Self::rank`].
+    /// When it is `Some`, the top [`Self::reranker_top_k`] candidates are
+    /// forwarded to the reranker and the result is concatenated with the
+    /// remaining tail.
+    #[cfg(feature = "reranker")]
+    #[must_use]
+    #[instrument(skip(self, candidates), fields(count = candidates.len()))]
+    pub async fn rank_and_rerank(
+        &self,
+        query: &str,
+        candidates: Vec<ScoredResult>,
+    ) -> Vec<ScoredResult> {
+        let mut ranked = self.rank(candidates);
+        if let Some(ref reranker) = self.reranker {
+            let top_k = self.reranker_top_k.min(ranked.len());
+            if top_k == 0 {
+                return ranked;
+            }
+            let tail = ranked.split_off(top_k);
+            let top_for_rerank = ranked.clone();
+            match reranker.rerank(query, top_for_rerank).await {
+                Ok(mut reranked_top) => {
+                    reranked_top.extend(tail);
+                    ranked = reranked_top;
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        error = ?e,
+                        reranker = reranker.name(),
+                        "reranker failed; falling back to baseline ranking for top-k"
+                    );
+                    ranked.extend(tail);
+                }
+            }
+        }
+        ranked
     }
 
     /// Compute the vector similarity score from cosine distance.
@@ -563,5 +654,5 @@ pub fn pre_filter_by_side_query<S: BuildHasher>(
 }
 
 #[cfg(test)]
-#[path = "recall_tests/mod.rs"]
+#[path = "../recall_tests/mod.rs"]
 mod test_suite;
