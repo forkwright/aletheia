@@ -36,7 +36,9 @@
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
+use aletheia_classify::Classifier;
 // Re-export types from eidos for convenience
 pub use eidos::training::{
     RecallSignals, RecalledFact, TRAINING_RECORD_SCHEMA_VERSION, ToolOutcome, TrainingConfig,
@@ -394,6 +396,11 @@ impl TrainingManifest {
 /// current shard exceeds [`TrainingConfig::max_shard_bytes`], the writer
 /// rotates to a new shard. A [`TrainingManifest`] is persisted after each
 /// write for crash recovery.
+///
+/// If an author classifier is configured, turns are additionally filtered
+/// at an authorship gate: if the user message is classified as non-user-authored
+/// with confidence >= the configured threshold, the turn is rejected and logged
+/// rather than written to training storage.
 pub struct TrainingCapture {
     /// Training data directory.
     dir: PathBuf,
@@ -407,6 +414,11 @@ pub struct TrainingCapture {
     max_shard_bytes: u64,
     /// Whether to apply PII redaction before writing each record.
     pii_filter_enabled: bool,
+    /// Optional author classifier for filtering non-user-authored text.
+    ///
+    /// If `Some`, applies an authorship gate before writing.
+    /// If `None`, no authorship filtering is applied.
+    classifier: Option<Arc<Classifier>>,
 }
 
 impl TrainingCapture {
@@ -499,6 +511,7 @@ impl TrainingCapture {
             manifest,
             max_shard_bytes: config.max_shard_bytes,
             pii_filter_enabled: config.pii_filter_enabled,
+            classifier: None,
         })
     }
 
@@ -683,6 +696,42 @@ impl TrainingCapture {
             return false;
         }
 
+        // NEW: authorship gate filters non-user-authored text (AI-generated,
+        // system scaffolding, templates) to prevent training data contamination.
+        // Confidence threshold is configurable; default is 0.85 (conservative).
+        // Threshold is hardcoded to 0.85 for v1; could be made configurable later.
+        const AUTHORSHIP_FILTER_CONFIDENCE_THRESHOLD: f32 = 0.85;
+
+        if let Some(classifier) = &self.classifier {
+            match classifier.classify(input.user_message) {
+                Ok(probs) => {
+                    let class = probs.argmax();
+                    let confidence = probs.confidence();
+
+                    if class != aletheia_classify::AuthorClass::User
+                        && confidence >= AUTHORSHIP_FILTER_CONFIDENCE_THRESHOLD
+                    {
+                        debug!(
+                            session_id = input.session_id,
+                            class = class.as_str(),
+                            confidence = confidence,
+                            "training capture skipped: authorship gate rejected non-user text"
+                        );
+                        return false;
+                    }
+                }
+                Err(e) => {
+                    // WHY: classifier failures must not block the pipeline.
+                    // Log the error and continue with capture (graceful degradation).
+                    warn!(
+                        error = %e,
+                        session_id = input.session_id,
+                        "authorship classification failed; continuing without filter"
+                    );
+                }
+            }
+        }
+
         // WHY compute quality before PII filtering: quality_score is
         // derived from signals (tool outcomes, recall, stop reason,
         // correction flag) not from text content, so redaction order
@@ -757,6 +806,15 @@ impl TrainingCapture {
     #[must_use]
     pub fn manifest(&self) -> &TrainingManifest {
         &self.manifest
+    }
+
+    /// Set the author classifier for this capture session.
+    ///
+    /// If `Some`, the classifier is used to filter non-user-authored text
+    /// from training capture via the authorship gate in `maybe_capture`.
+    /// If `None`, no authorship filtering is applied.
+    pub fn set_classifier(&mut self, classifier: Option<Arc<Classifier>>) {
+        self.classifier = classifier;
     }
 }
 
