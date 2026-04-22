@@ -274,6 +274,7 @@ fn create_provider_mock_config() {
         model: Some("custom-model".to_owned()),
         dimension: Some(768),
         api_key: None,
+        base_url: None,
     };
     let provider = create_provider(&config).expect("create mock provider with full config");
     assert_eq!(

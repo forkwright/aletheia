@@ -384,6 +384,7 @@ impl LazyEmbeddingProvider {
                     model: self.settings.model.clone(),
                     dimension: Some(self.settings.dimension),
                     api_key: None,
+                    base_url: None,
                 };
                 #[expect(
                     clippy::as_conversions,

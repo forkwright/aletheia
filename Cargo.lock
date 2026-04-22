@@ -2391,6 +2391,8 @@ dependencies = [
  "proptest",
  "rand 0.10.1",
  "regex",
+ "reqwest 0.13.2",
+ "rustls",
  "serde",
  "serde_json",
  "snafu",
@@ -2401,6 +2403,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "unicode-normalization",
+ "wiremock",
 ]
 
 [[package]]
