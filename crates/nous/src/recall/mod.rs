@@ -511,5 +511,5 @@ fn max_sensitivity_for(target: DeploymentTarget) -> FactSensitivity {
 }
 
 #[cfg(test)]
-#[path = "../recall_tests.rs"]
+#[path = "../recall_tests/mod.rs"]
 mod tests;

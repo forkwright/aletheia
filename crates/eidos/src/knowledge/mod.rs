@@ -70,5 +70,5 @@ display_via_as_str!(
 );
 
 #[cfg(test)]
-#[path = "knowledge_test.rs"]
+#[path = "knowledge_tests/mod.rs"]
 mod tests;
