@@ -64,6 +64,8 @@ pub struct PipelineContext {
     pub working_state: Option<WorkingState>,
     /// Compaction metrics from the most recent compaction pass.
     pub compaction_metrics: Option<CompactionMetrics>,
+    /// Pre-LLM triage result (intent, sensitivity, tier), if triage was run.
+    pub triage_result: Option<triage::TriageResult>,
 }
 
 impl Default for PipelineContext {
@@ -80,6 +82,7 @@ impl Default for PipelineContext {
             history_result: None,
             working_state: None,
             compaction_metrics: None,
+            triage_result: None,
         }
     }
 }
@@ -848,6 +851,18 @@ pub(crate) async fn run_pipeline(
         .await?;
         stages_completed += 1;
 
+        // Run pre-LLM triage: classify intent, sensitivity, and complexity tier.
+        let triage_result = triage::TriageStage::classify(&input.content);
+        tracing::info!(
+            intent = %triage_result.intent,
+            sensitivity = triage_result.sensitivity.as_str(),
+            tier = %triage_result.tier,
+            input_len = triage_result.input_len,
+            "pre_llm_triage"
+        );
+        ctx.triage_result = Some(triage_result);
+        stages_completed += 1;
+
         run_recall_stage(
             config,
             pipeline_config,
@@ -1160,6 +1175,9 @@ pub(crate) async fn run_pipeline(
 
 /// Typed pipeline events for the internal event system.
 pub(crate) mod events;
+
+/// Pre-LLM triage stage: intent, sensitivity, and complexity classification.
+pub mod triage;
 
 /// Context stage: assemble bootstrap and system prompt.
 mod stages;
