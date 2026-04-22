@@ -23,6 +23,10 @@ z3 = ["dep:z3"]
 test-support = ["hermeneus/test-support", "dep:rustls"]
 test-core = []
 test-full = []
+# Deferred tool schemas: only tool name+description in LLM requests; full schemas
+# fetched on demand via the `tool_schema` meta-tool. Default OFF so active agents
+# are unaffected; operators flip this per-deployment after the flag soaks.
+deferred-schemas = []
 
 [dependencies]
 eidos = { path = "../eidos" }
