@@ -49,6 +49,8 @@ pub mod metrics;
 pub mod orchestrator;
 /// 4-stage dispatch pipeline: preparation → execution → post-processing.
 pub(crate) mod pipeline;
+/// Predictive budget allocation from prompt characteristics.
+pub mod predictive_budget;
 /// Prompt loading from YAML frontmatter files.
 pub mod prompt;
 /// Prompt cache optimization: static prefix / dynamic suffix split.
