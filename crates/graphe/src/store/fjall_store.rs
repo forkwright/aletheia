@@ -38,6 +38,8 @@ use serde::{Deserialize, Serialize};
 use snafu::ResultExt;
 use tracing::{debug, info, instrument, warn};
 
+use eidos::meta::Stamped as _;
+
 use crate::error::{self, Result};
 use crate::metrics;
 use crate::types::{
@@ -218,7 +220,10 @@ impl SessionStore {
 
     fn write_session(&self, session: &Session) -> Result<()> {
         let sessions = self.partition("sessions")?;
-        let data = serde_json::to_vec(session).context(error::StoredJsonSnafu)?;
+        // Stamp provenance before serialising — metadata travels with the record.
+        let mut stamped = session.clone();
+        stamped.artefact_meta = Some(stamped.stamp());
+        let data = serde_json::to_vec(&stamped).context(error::StoredJsonSnafu)?;
 
         let mut tx = self.db.write_tx();
         tx.insert(&sessions, session.id.as_str(), data.as_slice());
@@ -339,6 +344,7 @@ impl SessionStore {
                 transport: None,
                 display_name: None,
             },
+            artefact_meta: None,
         };
 
         // Check for uniqueness on (nous_id, session_key).
@@ -446,6 +452,7 @@ impl SessionStore {
                 transport: None,
                 display_name: None,
             },
+            artefact_meta: None,
         };
 
         self.write_session(&session)?;

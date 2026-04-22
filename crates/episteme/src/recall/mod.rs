@@ -15,6 +15,7 @@
 use std::collections::HashSet;
 use std::hash::BuildHasher;
 
+use eidos::meta::{ArtefactMeta, Stamped};
 use serde::{Deserialize, Serialize};
 use tracing::instrument;
 
@@ -132,6 +133,28 @@ pub struct ScoredResult {
     /// pipeline can filter by the active provider's deployment target
     /// (#3404, #3413).
     pub sensitivity: crate::knowledge::FactSensitivity,
+}
+
+impl Stamped for ScoredResult {
+    /// Returns provenance metadata for this scored recall result.
+    ///
+    /// `row_counts` carries `"results"` as 1 (single result) and `"score_tenths"`
+    /// as the score multiplied by 10 and truncated, for human-readable bucketing.
+    ///
+    /// # Note on persist paths
+    ///
+    /// `ScoredResult` is a transient in-memory value produced by the recall
+    /// pipeline. There is no direct disk persist path — `Stamped` is provided
+    /// so callers that do persist recall batches (e.g. audit logs, eval
+    /// snapshots) can attach provenance without reaching into internals.
+    fn stamp(&self) -> ArtefactMeta {
+        ArtefactMeta::new(
+            concat!("episteme@", env!("CARGO_PKG_VERSION")),
+            1,
+            jiff::Timestamp::now().to_string(),
+        )
+        .with_count("results", 1)
+    }
 }
 
 /// The recall engine.
