@@ -77,6 +77,7 @@ pub(crate) async fn run(
         model: config.embedding.model.clone(),
         dimension: Some(config.embedding.dimension),
         api_key: None,
+        base_url: None,
     };
     let embedder: Arc<dyn EmbeddingProvider> = match create_provider(&embedding_config) {
         Ok(p) => {

@@ -2,6 +2,7 @@
 //!
 //! Defines the interface for text→vector embedding. Multiple backends:
 //! - `candle` (local, pure Rust, no C++ deps, default for development)
+//! - `openai-compat` (HTTP, any OpenAI-compatible endpoint; requires `openai-embed` feature)
 //! - Voyage AI (production quality, API key required)
 //! - Future: Ollama local models
 //!
@@ -422,6 +423,11 @@ mod candle_provider {
 #[cfg(feature = "embed-candle")]
 pub use candle_provider::CandelProvider;
 
+#[cfg(feature = "openai-embed")]
+mod openai;
+#[cfg(feature = "openai-embed")]
+pub use openai::{OpenAiCompatConfig, OpenAiEmbeddingProvider};
+
 /// Embedding provider configuration.
 ///
 /// Available providers:
@@ -429,7 +435,7 @@ pub use candle_provider::CandelProvider;
 /// - `"candle"`: local pure-Rust embeddings via candle (requires `embed-candle` feature)
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct EmbeddingConfig {
-    /// Provider type: `mock`, `candle`, `voyage`.
+    /// Provider type: `mock`, `candle`, `openai-compat`, `voyage`.
     pub provider: String,
     /// Model name (provider-specific).
     pub model: Option<String>,
@@ -437,6 +443,8 @@ pub struct EmbeddingConfig {
     pub dimension: Option<usize>,
     /// API key (for cloud providers).
     pub api_key: Option<koina::secret::SecretString>,
+    /// Base URL for OpenAI-compatible endpoints (e.g. `http://127.0.0.1:5005/v1`).
+    pub base_url: Option<String>,
 }
 
 impl Default for EmbeddingConfig {
@@ -446,6 +454,7 @@ impl Default for EmbeddingConfig {
             model: None,
             dimension: Some(384),
             api_key: None,
+            base_url: None,
         }
     }
 }
@@ -507,6 +516,29 @@ pub fn create_provider(config: &EmbeddingConfig) -> EmbeddingResult<Box<dyn Embe
             let model = config.model.as_deref();
             Ok(Box::new(CandelProvider::new(model)?))
         }
+        #[cfg(feature = "openai-embed")]
+        "openai-compat" => {
+            let base_url = config
+                .base_url
+                .as_deref()
+                .unwrap_or("http://127.0.0.1:5005/v1")
+                .to_owned();
+            let model = config.model.clone().unwrap_or_else(|| "default".to_owned());
+            let dim = config.dimension.unwrap_or(384);
+            let cfg = OpenAiCompatConfig {
+                base_url,
+                api_key: config.api_key.clone(),
+                model,
+                dimension: dim,
+            };
+            Ok(Box::new(OpenAiEmbeddingProvider::new(&cfg)?))
+        }
+        #[cfg(not(feature = "openai-embed"))]
+        "openai-compat" => InitFailedSnafu {
+            message: "openai-embed feature not enabled — build with --features openai-embed"
+                .to_owned(),
+        }
+        .fail(),
         #[cfg(not(feature = "embed-candle"))]
         "candle" => InitFailedSnafu {
             message: "embed-candle feature not enabled — build with --features embed-candle"

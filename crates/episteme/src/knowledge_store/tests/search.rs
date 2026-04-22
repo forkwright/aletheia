@@ -41,6 +41,7 @@ fn knowledge_store_builds_and_bm25_works_with_degraded_embedding() {
         model: None,
         dimension: Some(4),
         api_key: None,
+        base_url: None,
     };
     assert!(
         create_provider(&bad_config).is_err(),
