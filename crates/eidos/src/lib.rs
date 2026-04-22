@@ -9,11 +9,15 @@
 pub mod id;
 /// Knowledge graph domain types: facts, entities, relationships, embeddings.
 pub mod knowledge;
+/// Uniform provenance metadata for fleet artefacts.
+pub mod meta;
 
 /// Re-export architecture-fact types at crate root.
 pub use knowledge::architecture_fact::{ArchitectureFact, FactError, FactScope, FactStore};
 /// Re-export canonical finding types at crate root.
 pub use knowledge::finding::{EvidenceLevel, Finding};
+/// Re-export provenance types at crate root.
+pub use meta::{ArtefactMeta, Stamped};
 /// Shared test data builders for `Fact`, `Entity`, and `Relationship`.
 #[cfg(any(test, feature = "test-support"))]
 #[expect(

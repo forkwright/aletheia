@@ -1,5 +1,6 @@
 //! Core types for the session store.
 
+use eidos::meta::{ArtefactMeta, Stamped};
 use serde::{Deserialize, Serialize};
 
 /// Lifecycle status of a session.
@@ -166,6 +167,30 @@ pub struct Session {
     /// External origin and identity metadata.
     #[serde(flatten)]
     pub origin: SessionOrigin,
+    /// Provenance stamp written at persistence time.
+    ///
+    /// `None` for sessions created before the `Stamped` arc (additive field;
+    /// existing JSON deserializes with `None` and is not broken).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub artefact_meta: Option<ArtefactMeta>,
+}
+
+impl Stamped for Session {
+    /// Returns provenance metadata for this session at the moment of persistence.
+    ///
+    /// `row_counts` includes `"messages"` (from `metrics.message_count`) and
+    /// `"distillations"` (from `metrics.distillation_count`).
+    fn stamp(&self) -> ArtefactMeta {
+        let msg_count = u64::try_from(self.metrics.message_count).unwrap_or(0);
+        let distillation_count = u64::try_from(self.metrics.distillation_count).unwrap_or(0);
+        ArtefactMeta::new(
+            concat!("graphe@", env!("CARGO_PKG_VERSION")),
+            1,
+            &self.updated_at,
+        )
+        .with_count("messages", msg_count)
+        .with_count("distillations", distillation_count)
+    }
 }
 
 /// A single message within a session's conversation history.
@@ -334,6 +359,7 @@ mod tests {
                 transport: Some("signal".to_owned()),
                 display_name: Some("My Session".to_owned()),
             },
+            artefact_meta: None,
         };
         let json = serde_json::to_string(&session).expect("Session is serializable");
         let back: Session = serde_json::from_str(&json).expect("round-trip JSON is valid");
@@ -341,6 +367,88 @@ mod tests {
         assert_eq!(session.status, back.status);
         assert_eq!(session.session_type, back.session_type);
         assert_eq!(session.origin.display_name, back.origin.display_name);
+    }
+
+    fn sample_session() -> Session {
+        Session {
+            id: "ses-test".to_owned(),
+            nous_id: "syn".to_owned(),
+            session_key: "main".to_owned(),
+            status: SessionStatus::Active,
+            model: None,
+            session_type: SessionType::Primary,
+            created_at: "2026-04-22T00:00:00Z".to_owned(),
+            updated_at: "2026-04-22T01:00:00Z".to_owned(),
+            metrics: SessionMetrics {
+                token_count_estimate: 100,
+                message_count: 5,
+                last_input_tokens: 50,
+                bootstrap_hash: None,
+                distillation_count: 1,
+                last_distilled_at: None,
+                computed_context_tokens: 80,
+            },
+            origin: SessionOrigin {
+                parent_session_id: None,
+                thread_id: None,
+                transport: None,
+                display_name: None,
+            },
+            artefact_meta: None,
+        }
+    }
+
+    #[test]
+    fn session_stamp_producer_and_schema_version() {
+        let session = sample_session();
+        let meta = session.stamp();
+        assert!(
+            meta.producer.starts_with("graphe@"),
+            "producer must start with 'graphe@', got: {}",
+            meta.producer
+        );
+        assert_eq!(meta.schema_version, 1, "schema_version must be 1");
+    }
+
+    #[test]
+    fn session_stamp_row_counts() {
+        let session = sample_session();
+        let meta = session.stamp();
+        assert_eq!(
+            meta.row_counts.get("messages").copied(),
+            Some(5),
+            "messages row_count should match metrics.message_count"
+        );
+        assert_eq!(
+            meta.row_counts.get("distillations").copied(),
+            Some(1),
+            "distillations row_count should match metrics.distillation_count"
+        );
+    }
+
+    #[test]
+    fn session_artefact_meta_is_additive_on_serde() {
+        // Sessions without artefact_meta in JSON (e.g. old records) must
+        // deserialize without error and produce artefact_meta == None.
+        let json = r#"{
+            "id": "ses-old",
+            "nous_id": "syn",
+            "session_key": "main",
+            "status": "active",
+            "session_type": "primary",
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "token_count_estimate": 0,
+            "message_count": 0,
+            "last_input_tokens": 0,
+            "distillation_count": 0,
+            "computed_context_tokens": 0
+        }"#;
+        let session: Session = serde_json::from_str(json).expect("old sessions must deserialize");
+        assert!(
+            session.artefact_meta.is_none(),
+            "artefact_meta should default to None for old sessions"
+        );
     }
 
     #[test]

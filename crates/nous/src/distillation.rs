@@ -390,6 +390,7 @@ mod tests {
                 transport: None,
                 display_name: None,
             },
+            artefact_meta: None,
         };
         overrides(&mut session);
         session
