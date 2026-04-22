@@ -37,6 +37,8 @@ pub mod dag;
 pub mod engine;
 /// Error types for energeia operations.
 pub mod error;
+/// Friction capture: parse structured observations from PR bodies.
+pub mod friction;
 /// Hermeneus-based dispatch engine with prompt caching.
 pub mod hermeneus_engine;
 /// HTTP/SSE dispatch engine: subprocess-based `DispatchEngine` and mock.
