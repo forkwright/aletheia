@@ -210,5 +210,5 @@ impl TaskRunner {
 }
 
 #[cfg(test)]
-#[path = "../runner_tests.rs"]
+#[path = "../runner_tests/mod.rs"]
 mod tests;

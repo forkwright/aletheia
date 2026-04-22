@@ -562,5 +562,5 @@ pub fn apply_sandbox(
 // inside would be cfg'd out, leaving the module-level #![expect(...)]
 // attributes unfulfilled.
 #[cfg(all(test, target_os = "linux"))]
-#[path = "policy_tests.rs"]
+#[path = "policy_tests/mod.rs"]
 mod policy_tests;

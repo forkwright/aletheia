@@ -323,5 +323,5 @@ impl Default for SignalAccountConfig {
 }
 
 #[cfg(test)]
-#[path = "config_tests.rs"]
+#[path = "config_tests/mod.rs"]
 mod tests;
