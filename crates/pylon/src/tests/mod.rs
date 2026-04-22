@@ -13,6 +13,7 @@
 )]
 
 mod auth;
+mod config;
 mod error;
 mod error_envelope;
 mod handler_doc;
