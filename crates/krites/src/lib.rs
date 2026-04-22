@@ -19,6 +19,11 @@ pub mod query_cache;
 pub use error::{Error, Result};
 pub use query_cache::{QueryCache, QueryCacheStats};
 
+#[cfg(feature = "async")]
+pub mod async_surface;
+#[cfg(feature = "async")]
+pub use async_surface::AsyncDb;
+
 pub use crate::data::value::{DataValue, ValidityTs, Vector};
 pub use crate::fixed_rule::{FixedRule, FixedRuleInputRelation, FixedRulePayload};
 pub use crate::runtime::callback::CallbackOp;

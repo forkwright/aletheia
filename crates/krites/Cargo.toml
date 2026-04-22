@@ -11,8 +11,9 @@ rust-version.workspace = true
 workspace = true
 
 [features]
-default = ["graph-algo"]
+default = ["graph-algo", "async"]
 graph-algo = []
+async = []
 storage-fjall = ["dep:fjall"]
 test-core = ["storage-fjall"]
 test-full = []
