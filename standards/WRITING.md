@@ -510,6 +510,53 @@ Don't use semicolons. Write two sentences. Semicolons signal that two ideas are 
 
 ---
 
+## Documentation layers and writing discipline
+
+Technical documentation is organized into layers, each with its own vocabulary discipline enforced by linters.
+
+### Layers and language rules
+
+| Layer | Files | Purpose | Allowed vocabulary |
+|-------|-------|---------|-------------------|
+| **Vision** | `vision.md`, `ROADMAP.md`, planning/STATE.md | Why the project exists, philosophy, aspirations | Purpose language, aspirational adjectives, marketing vocabulary |
+| **Technical** | `CLAUDE.md`, `ARCHITECTURE.md`, README, implementation guides | How the system works, capabilities, design decisions | Concrete descriptions, capability statements, avoid purpose language |
+| **Code comments** | `//`, `///`, `//!` in .rs/.py/.ts | Why code exists, non-obvious decisions, safety contracts | Clear explanations of decisions, avoid marketing language |
+
+**Rule WRITING/purpose-in-technical-doc**: Flags aspirational language in technical layers (CLAUDE.md, ARCHITECTURE.md, README). Move such language to vision docs or rewrite as capability descriptions.
+
+Example violations and corrections:
+
+| Violation | Layer | Fix |
+|-----------|-------|-----|
+| "This feature helps you manage sessions" | Technical | "The session store manages sessions and exposes them via X, Y, Z methods." |
+| "An intuitive API" | Technical | "The API follows convention X; its methods are named per pattern Y." |
+| "Designed for ease of use" | Technical | "The API surface is minimal: one struct, three methods." |
+
+Exception: Vision docs explicitly allow purpose language. Exclude files from this rule via `// kanon-lint-ignore: WRITING/purpose-in-technical-doc` on the line before the violation.
+
+### Citation as compression
+
+References in technical documentation must pass the compression test: a reader should understand the statement without following the reference. A reference is valid if it is either:
+
+1. **Compressed inline**: "Keats called it negative capability" — reader doesn't need to know Keats to understand.
+2. **With context**: "Per #1981 (which requires ATOMIC operations), we revalidate..."
+3. **In a reference section**: "## See also" or "## References" sections allow bare references.
+
+**Rule WRITING/reference-must-compress**: Flags bare references that fail the compression test. Violations include:
+
+- `Per #1981 we revalidate the path` — reader must look up the issue to understand
+- `See RUST.md` — reader must consult another file
+- `[1]` — bare citation number with no context
+
+Corrections:
+
+| Violation | Fix |
+|-----------|-----|
+| `Per #1981 we revalidate the path` | `Per #1981 (which requires ATOMIC operations), we revalidate the path` OR `We revalidate the path, checking ATOMIC invariants (see #1981)` |
+| `See RUST.md` | `Per the Rust standards (error handling), we use snafu` |
+
+---
+
 ## Documentation modes
 
 Every document serves one of four purposes. Don't mix them.
