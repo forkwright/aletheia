@@ -2,6 +2,8 @@
 
 /// Agent coordination tools (spawn, dispatch).
 pub mod agent;
+/// Architecture-fact query/write tool (architecture_fact).
+pub mod architecture_fact;
 /// Bookkeeper tools (prompt archival and worktree cleanup).
 #[cfg(feature = "energeia")]
 pub mod bookkeeper;
@@ -85,6 +87,7 @@ pub fn register_all_with_sandbox(
     enable_tool::register(registry)?;
     planning::register(registry)?;
     research::register(registry)?;
+    architecture_fact::register(registry)?;
     #[cfg(feature = "z3")]
     z3_solver::register(registry)?;
     web_search::register(registry)?;

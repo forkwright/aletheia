@@ -21,7 +21,10 @@ test-support = []
 jiff = { workspace = true, features = ["serde"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
+snafu = { workspace = true }
+tracing = { workspace = true }
 
 [dev-dependencies]
 serde_json = { workspace = true }
 tempfile = { workspace = true }
+tokio = { workspace = true, features = ["rt", "macros"] }

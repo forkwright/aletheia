@@ -33,3 +33,6 @@ If this PR adds a new module, function, or abstraction:
 - [ ] No secrets or credentials in the diff
 - [ ] Commit message follows convention (`type(scope): description`)
 - [ ] Binary decisions preserve informative tension (see `docs/ARCHITECTURE.md#preserving-informative-tension`)
+- [ ] Architecture facts touched (list fact IDs below; if none, confirm via `kanon mcp architecture_fact list --scope <crate>`)
+
+<!-- List any architecture fact IDs added or updated, e.g.: aletheia.spawn.model, aletheia.eidos.dependency-direction -->

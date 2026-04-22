@@ -1,10 +1,14 @@
 //! Lint rules for basanos.
 
+pub mod architecture;
 pub mod planning;
 
 use crate::error::Result;
 
-/// A single violation found by a rule.
+/// A single lint violation found by a rule.
+///
+/// The `message` may begin with `[warn]` or `[error]` to indicate severity.
+/// For v1, `ARCHITECTURE/fact-required` emits `[warn]` messages.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Violation {
     /// Rule identifier, e.g. `PLANNING/missing-falsifier`.
@@ -28,5 +32,8 @@ pub trait Rule {
 
 /// All registered rules.
 pub fn all_rules() -> Vec<Box<dyn Rule>> {
-    vec![Box::new(planning::MissingFalsifierRule)]
+    vec![
+        Box::new(planning::MissingFalsifierRule),
+        Box::new(architecture::fact_required::FactRequiredRule),
+    ]
 }
