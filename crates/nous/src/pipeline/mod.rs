@@ -3,6 +3,7 @@
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
+use jiff;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 use tokio::sync::mpsc;
@@ -22,7 +23,7 @@ use crate::config::{NousConfig, PipelineConfig};
 use crate::error;
 use crate::history::HistoryResult;
 use crate::hooks::registry::HookRegistry;
-use crate::hooks::{QueryContext, TurnContext};
+use crate::hooks::{CompactionContext, QueryContext, SessionStartContext, TurnContext};
 use crate::session::SessionState;
 use crate::stream::TurnStreamEvent;
 use crate::working_state::WorkingState;
@@ -809,6 +810,20 @@ pub(crate) async fn run_pipeline(
     async move {
         let mut stages_completed: u32 = 0;
 
+        // WHY: fire session_start hooks at the beginning of the pipeline.
+        // If this is a new session (turn == 1), hooks can initialize session-level state.
+        if let Some(hook_registry) = hooks {
+            if input.session.turn == 1 {
+                let now = jiff::Timestamp::now().to_string();
+                let session_start_ctx = SessionStartContext {
+                    nous_id: &config.id,
+                    session_key: &input.session.session_key,
+                    timestamp: &now,
+                };
+                let _ = hook_registry.run_session_start(&session_start_ctx).await;
+            }
+        }
+
         let mut ctx = PipelineContext::default();
         let task_hint = classify_task_hint(&input.content);
         let recipe =
@@ -845,11 +860,47 @@ pub(crate) async fn run_pipeline(
         run_history_stage(config, &mut ctx, &input, session_store, emitter).await?;
         stages_completed += 1;
 
+        // WHY: Fire before_compact hooks before any compaction happens.
+        if let Some(hook_registry) = hooks {
+            let initial_message_count = ctx.messages.len();
+            // NOTE: distillation_number is not available yet in the pipeline context,
+            // so we use a placeholder value of 1 for the structural compaction phase.
+            let compact_ctx = CompactionContext {
+                nous_id: &config.id,
+                messages_distilled: initial_message_count,
+                tokens_before: ctx
+                    .messages
+                    .iter()
+                    .map(|m| m.token_estimate.max(0) as u64)
+                    .sum(),
+                tokens_after: 0, // Not known until after compaction
+                distillation_number: 1,
+            };
+            let _ = hook_registry.run_before_compact(&compact_ctx).await;
+        }
+
         run_microcompact_stage(config, &mut ctx, emitter);
         stages_completed += 1;
 
         run_full_compact_stage(config, &mut ctx, emitter);
         stages_completed += 1;
+
+        // WHY: Fire after_compact hooks after compaction completes.
+        if let Some(hook_registry) = hooks {
+            let tokens_after = ctx
+                .messages
+                .iter()
+                .map(|m| m.token_estimate.max(0) as u64)
+                .sum();
+            let compact_ctx = CompactionContext {
+                nous_id: &config.id,
+                messages_distilled: ctx.messages.len(),
+                tokens_before: 0, // Would need to track from before
+                tokens_after,
+                distillation_number: 1,
+            };
+            hook_registry.run_after_compact(&compact_ctx).await;
+        }
 
         run_guard_stage(&input.session, config, emitter)?;
         stages_completed += 1;
