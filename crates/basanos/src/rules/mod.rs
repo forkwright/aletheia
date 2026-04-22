@@ -2,6 +2,7 @@
 
 pub mod architecture;
 pub mod planning;
+pub mod writing;
 
 use crate::error::Result;
 
@@ -35,5 +36,7 @@ pub fn all_rules() -> Vec<Box<dyn Rule>> {
     vec![
         Box::new(planning::MissingFalsifierRule),
         Box::new(architecture::fact_required::FactRequiredRule),
+        Box::new(writing::PurposeInTechnicalDocRule),
+        Box::new(writing::ReferenceMustCompressRule),
     ]
 }
