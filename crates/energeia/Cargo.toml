@@ -13,9 +13,10 @@ workspace = true
 [features]
 test-core = ["storage-fjall"]
 test-full = []
-storage-fjall = ["dep:fjall", "koina/fjall"]
+storage-fjall = ["dep:fjall", "koina/fjall", "aletheia-routing/storage-fjall"]
 
 [dependencies]
+aletheia-routing = { path = "../aletheia-routing" }
 compact_str = { workspace = true }
 chrono = "0.4"
 cron = "=0.15.0"

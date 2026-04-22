@@ -1,0 +1,34 @@
+[package]
+name = "aletheia-routing"
+version.workspace = true
+description = "Shared routing trait and empirical success-rate storage for dispatch and interactive paths"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+# WHY: fjall is a pure-Rust LSM-tree embedded store. Gated behind a feature so
+# crates that only need the trait or in-memory storage don't pull in fjall's
+# build footprint.
+storage-fjall = ["dep:fjall"]
+# Test tiers (see docs/test-tiers.md)
+test-core = ["storage-fjall"]
+test-full = ["test-core"]
+
+[dependencies]
+jiff = { workspace = true, features = ["serde"] }
+fjall = { version = "3", default-features = false, optional = true }
+futures = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+snafu = { workspace = true }
+tokio = { workspace = true, features = ["io-util"] }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+tokio = { workspace = true }

@@ -143,7 +143,6 @@ pub(crate) enum ToolHookResult {
 /// logging, filtering, and configuration. Useful for operators to understand
 /// which hooks are available and in what order they fire.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[expect(dead_code, reason = "enum is part of the public hook infrastructure")]
 pub(crate) enum HookPoint {
     /// Fires before each model call. Can modify system prompt or inject messages.
     BeforeQuery,
@@ -165,7 +164,7 @@ impl HookPoint {
     /// Human-readable name for this hook point.
     #[must_use]
     #[expect(dead_code, reason = "method is part of the public hook infrastructure")]
-    pub(crate) fn name(&self) -> &'static str {
+    pub(crate) fn name(self) -> &'static str {
         match self {
             Self::BeforeQuery => "before_query",
             Self::OnTurnComplete => "on_turn_complete",

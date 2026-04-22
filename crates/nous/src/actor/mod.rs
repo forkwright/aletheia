@@ -20,6 +20,8 @@ use organon::registry::ToolRegistry;
 use organon::types::ToolServices;
 use taxis::oikos::Oikos;
 
+use aletheia_routing::{NoOpRouter, Router};
+
 use crate::bootstrap::{BootstrapFileCache, BootstrapSection};
 use crate::config::{NousConfig, PipelineConfig};
 use crate::cross::CrossNousEnvelope;
@@ -74,6 +76,14 @@ pub(crate) struct ActorServices {
     /// // reused instead of re-opening per turn. `None` when the feature is
     /// // disabled in taxis config.
     pub(crate) audit_log: Option<Arc<crate::audit::PromptAuditLog>>,
+    /// Empirical router for recording after-action outcomes.
+    ///
+    /// WHY: the router is injected into the actor (not the config) because it
+    /// is a runtime service — it holds `Arc<AfterActionStore>` which is backed
+    /// by fjall or in-memory storage. Config is serde-deserializable and cannot
+    /// hold a runtime object. Defaults to [`NoOpRouter`] when no empirical
+    /// backend is configured.
+    pub(crate) router: Arc<dyn Router>,
 }
 
 /// Data stores for sessions, knowledge, and search.
@@ -178,6 +188,7 @@ impl NousActor {
         turn_started_at_ms: Arc<AtomicU64>,
         nous_behavior: taxis::config::NousBehaviorConfig,
         audit_log: Option<Arc<crate::audit::PromptAuditLog>>,
+        router: Option<Arc<dyn Router>>,
     ) -> Self {
         #[cfg(feature = "knowledge-store")]
         let skill_loader = knowledge_store
@@ -219,6 +230,14 @@ impl NousActor {
                     nous_behavior.bootstrap_cache_ttl_secs,
                 )),
                 audit_log,
+                // WHY: default to NoOpRouter when no empirical backend is injected.
+                // The default provider string is arbitrary for the no-op case; it
+                // is never used for routing, only satisfies the type.
+                router: router.unwrap_or_else(|| {
+                    Arc::new(NoOpRouter {
+                        provider: Arc::from(String::new()),
+                    })
+                }),
             },
             stores: ActorStores {
                 session_store,

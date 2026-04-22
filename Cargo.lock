@@ -197,6 +197,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "aletheia-routing"
+version = "0.21.1"
+dependencies = [
+ "fjall",
+ "futures",
+ "jiff",
+ "serde",
+ "serde_json",
+ "snafu",
+ "tempfile",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "alloca"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2282,6 +2297,7 @@ dependencies = [
 name = "energeia"
 version = "0.21.1"
 dependencies = [
+ "aletheia-routing",
  "chrono",
  "compact_str",
  "cron",
@@ -5297,6 +5313,7 @@ version = "0.21.1"
 dependencies = [
  "aletheia-classify",
  "aletheia-lexica",
+ "aletheia-routing",
  "criterion",
  "dianoia",
  "eidos",

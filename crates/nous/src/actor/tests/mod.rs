@@ -76,7 +76,8 @@ fn spawn_test_actor() -> (NousHandle, tokio::task::JoinHandle<()>, tempfile::Tem
         None,
         CancellationToken::new(),
         taxis::config::NousBehaviorConfig::default(),
-        None,
+        None, // audit_log
+        None, // empirical router
     );
     (handle, join, dir)
 }
@@ -137,7 +138,8 @@ fn spawn_panicking_actor() -> (NousHandle, tokio::task::JoinHandle<()>, tempfile
         None,
         CancellationToken::new(),
         taxis::config::NousBehaviorConfig::default(),
-        None,
+        None, // audit_log
+        None, // empirical router
     );
     (handle, join, dir)
 }
@@ -167,7 +169,8 @@ fn spawn_test_actor_with_store(
         None,
         CancellationToken::new(),
         taxis::config::NousBehaviorConfig::default(),
-        None,
+        None, // audit_log
+        None, // empirical router
     );
     (handle, join, dir)
 }
@@ -211,7 +214,8 @@ fn make_test_actor(
         active_turn,
         turn_started_at_ms,
         taxis::config::NousBehaviorConfig::default(),
-        None,
+        None, // audit_log
+        None, // empirical router
     );
     (actor, tx, dir)
 }
@@ -236,6 +240,7 @@ fn make_turn_result(
         stop_reason: "end_turn".to_owned(),
         degraded: None,
         reasoning: String::new(),
+        model_used: "test-model".to_owned(),
     }
 }
 
@@ -280,7 +285,8 @@ fn spawn_test_actor_with_cross() -> (
         Some(cross_rx),
         CancellationToken::new(),
         taxis::config::NousBehaviorConfig::default(),
-        None,
+        None, // audit_log
+        None, // empirical router
     );
     (handle, join, cross_tx, dir)
 }
@@ -315,7 +321,8 @@ fn spawn_panicking_actor_with_cross() -> (
         Some(cross_rx),
         CancellationToken::new(),
         taxis::config::NousBehaviorConfig::default(),
-        None,
+        None, // audit_log
+        None, // empirical router
     );
     (handle, join, cross_tx, dir)
 }

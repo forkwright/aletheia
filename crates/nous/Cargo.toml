@@ -24,6 +24,7 @@ deferred-schemas = ["organon/deferred-schemas"]
 
 [dependencies]
 aletheia-classify = { path = "../aletheia-classify" }
+aletheia-routing = { path = "../aletheia-routing" }
 aletheia-lexica = { workspace = true }
 dianoia = { path = "../dianoia" }
 eidos = { path = "../eidos" }

@@ -661,6 +661,11 @@ impl TrainingCapture {
     /// warnings and do not propagate: training capture must never
     /// block the pipeline.
     pub fn maybe_capture(&mut self, input: CaptureInput<'_>) -> bool {
+        // WHY: authorship gate confidence threshold — filters non-user-authored text
+        // (AI-generated, system scaffolding, templates) to prevent training data
+        // contamination. Threshold is 0.85 (conservative).
+        const AUTHORSHIP_FILTER_CONFIDENCE_THRESHOLD: f32 = 0.85;
+
         // WHY: empty and whitespace-only responses teach the model to produce
         // vacuous output. `.trim().is_empty()` catches both `""` and `"  \n"`.
         if input.assistant_response.trim().is_empty() {
@@ -696,12 +701,9 @@ impl TrainingCapture {
             return false;
         }
 
-        // NEW: authorship gate filters non-user-authored text (AI-generated,
+        // WHY: authorship gate filters non-user-authored text (AI-generated,
         // system scaffolding, templates) to prevent training data contamination.
         // Confidence threshold is configurable; default is 0.85 (conservative).
-        // Threshold is hardcoded to 0.85 for v1; could be made configurable later.
-        const AUTHORSHIP_FILTER_CONFIDENCE_THRESHOLD: f32 = 0.85;
-
         if let Some(classifier) = &self.classifier {
             match classifier.classify(input.user_message) {
                 Ok(probs) => {

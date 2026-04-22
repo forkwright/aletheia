@@ -177,6 +177,10 @@ impl SpawnService for SpawnServiceImpl {
                     ephemeral_cancel,
                     taxis::config::NousBehaviorConfig::default(),
                     None,
+                    // WHY: ephemeral sub-agents don't record after-action outcomes;
+                    // they are short-lived and their results are captured by the
+                    // parent actor's router.
+                    None,
                 );
 
                 info!(session_key = %session_key, "ephemeral actor started");

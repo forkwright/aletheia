@@ -453,15 +453,14 @@ pub async fn execute(
         // WHY: fire after_tool hooks for each tool executed in this iteration.
         // Hooks run in priority order but do not short-circuit (tool is already executed).
         if let Some(hook_registry) = hooks {
-            for tool_call in &all_tool_calls[all_tool_calls_before..] {
+            for tool_call in all_tool_calls.get(all_tool_calls_before..).unwrap_or(&[]) {
                 let after_tool_ctx = AfterToolContext {
                     nous_id: &session.nous_id,
                     tool_name: &tool_call.name,
                     tool_input: effective_tool_uses
                         .iter()
                         .find(|(_, name, _)| name == &tool_call.name)
-                        .map(|(_, _, input)| input)
-                        .unwrap_or(&serde_json::Value::Null),
+                        .map_or(&serde_json::Value::Null, |(_, _, input)| input),
                     tool_result: tool_call.result.as_deref().unwrap_or(""),
                     is_error: tool_call.is_error,
                     turn_usage: &total_usage,
@@ -527,6 +526,7 @@ pub async fn execute(
         stop_reason: final_stop_reason,
         degraded: None,
         reasoning: reasoning_parts.join("\n"),
+        model_used: turn_model,
     })
 }
 
@@ -771,15 +771,14 @@ pub async fn execute_streaming(
         // WHY: fire after_tool hooks for each tool executed in this iteration.
         // Hooks run in priority order but do not short-circuit (tool is already executed).
         if let Some(hook_registry) = hooks {
-            for tool_call in &all_tool_calls[all_tool_calls_before..] {
+            for tool_call in all_tool_calls.get(all_tool_calls_before..).unwrap_or(&[]) {
                 let after_tool_ctx = AfterToolContext {
                     nous_id: &session.nous_id,
                     tool_name: &tool_call.name,
                     tool_input: effective_tool_uses
                         .iter()
                         .find(|(_, name, _)| name == &tool_call.name)
-                        .map(|(_, _, input)| input)
-                        .unwrap_or(&serde_json::Value::Null),
+                        .map_or(&serde_json::Value::Null, |(_, _, input)| input),
                     tool_result: tool_call.result.as_deref().unwrap_or(""),
                     is_error: tool_call.is_error,
                     turn_usage: &total_usage,
@@ -845,5 +844,6 @@ pub async fn execute_streaming(
         stop_reason: final_stop_reason,
         degraded: None,
         reasoning: reasoning_parts.join("\n"),
+        model_used: turn_model,
     })
 }

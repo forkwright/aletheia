@@ -122,6 +122,7 @@ pub fn build_degraded_response(
                 status_banner: banner,
             }),
             reasoning: String::new(),
+            model_used: String::new(),
         }
     } else {
         let banner = "Operating in degraded mode — LLM unavailable. \
@@ -148,6 +149,7 @@ pub fn build_degraded_response(
                 status_banner: banner,
             }),
             reasoning: String::new(),
+            model_used: String::new(),
         }
     }
 }

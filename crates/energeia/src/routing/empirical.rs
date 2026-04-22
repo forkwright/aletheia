@@ -4,9 +4,15 @@
 // it defers to the StaticRouter fallback.  The threshold check (winner_rate -
 // static_rate >= confidence_threshold) prevents oscillation when one provider
 // has only marginally more data than another.
+//
+// Implements `aletheia_routing::Router` so that the same trait drives both
+// dispatch (this crate) and interactive (nous) after-action recording.
 
 use std::sync::Arc;
 use std::time::Duration;
+
+use aletheia_routing::types::{RequestFeatures, TurnOutcome};
+use aletheia_routing::{BoxFuture, Router, RouterError, RoutingDecision};
 
 use super::store::AfterActionStore;
 use super::{ProviderId, StaticRouter, TaskCategory};
@@ -21,6 +27,10 @@ use super::{ProviderId, StaticRouter, TaskCategory};
 /// - the winning provider is already the static choice, or
 /// - the confidence gap between winner and static choice is below
 ///   `confidence_threshold`.
+///
+/// Implements [`Router`] from `aletheia-routing` so that `after_action` calls
+/// from both the dispatch path (energeia) and the interactive path (nous)
+/// feed into the same [`AfterActionStore`].
 pub(crate) struct EmpiricalRouter {
     store: Arc<AfterActionStore>,
     fallback: StaticRouter,
@@ -37,7 +47,8 @@ impl EmpiricalRouter {
     ///
     /// # Arguments
     ///
-    /// * `store` — shared read cache over after-action JSONL logs
+    /// * `store` — shared read/write cache over after-action JSONL logs and
+    ///   direct interactive-path outcomes
     /// * `fallback` — static router used when data is insufficient
     /// * `min_samples` — minimum records before empirical choice is made (default 5)
     /// * `window` — rolling window for record weighting (default 7 days)
@@ -66,10 +77,6 @@ impl EmpiricalRouter {
     ///
     /// Returns the static fallback provider when empirical data is absent or
     /// insufficient.  If `candidates` is empty the static default is returned.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "binary wiring invokes pick (follow-up #3455)")
-    )]
     pub(crate) async fn pick(
         &self,
         task_category: &TaskCategory,
@@ -97,7 +104,6 @@ impl EmpiricalRouter {
             };
 
             if stats.total < self.min_samples {
-                // Insufficient data — fall through to static.
                 tracing::debug!(
                     provider = %provider,
                     category = %task_category,
@@ -178,6 +184,53 @@ impl EmpiricalRouter {
 }
 
 // ---------------------------------------------------------------------------
+// Router trait implementation
+// ---------------------------------------------------------------------------
+
+impl Router for EmpiricalRouter {
+    /// Route using the empirical success-rate model.
+    ///
+    /// Delegates to [`pick`](Self::pick) using candidates and category from
+    /// `features`. Returns the static fallback with `confidence: None` when
+    /// data is insufficient; returns `confidence: Some(rate)` when the
+    /// empirical winner was selected.
+    fn route<'a>(&'a self, features: &'a RequestFeatures) -> BoxFuture<'a, RoutingDecision> {
+        Box::pin(async move {
+            let category = features.effective_category();
+            let chosen = self.pick(&category, &features.candidates).await;
+            // Attach confidence when we have stats for the chosen provider.
+            let confidence = self
+                .store
+                .rolling_stats(&chosen, &category, self.window)
+                .await
+                .and_then(|s| s.success_rate());
+            RoutingDecision::new(chosen.0.clone(), confidence)
+        })
+    }
+
+    /// Record an after-action outcome into the shared store.
+    ///
+    /// Both dispatch turns (via energeia) and interactive turns (via nous)
+    /// call this method, ensuring learnings are pooled in a single backend.
+    fn after_action(
+        &self,
+        _decision: &RoutingDecision,
+        outcome: &TurnOutcome,
+    ) -> Result<(), RouterError> {
+        // WHY: record_outcome is async (takes the write lock), but `after_action`
+        // on the trait is sync to keep the trait object-safe without boxing
+        // every future. We spawn a fire-and-forget task for the store write
+        // so the hot response path is never blocked.
+        let store = Arc::clone(&self.store);
+        let outcome = outcome.clone();
+        tokio::spawn(async move {
+            store.record_outcome(&outcome).await;
+        });
+        Ok(())
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -251,14 +304,13 @@ mod tests {
         let router = make_router(tmp.path(), "provider-b", 5, 0.1).await;
         let candidates = vec![ProviderId::new("provider-a"), ProviderId::new("provider-b")];
         let chosen = router.pick(&TaskCategory::Feature, &candidates).await;
-        assert_eq!(chosen.0, "provider-a");
+        assert_eq!(&*chosen.0, "provider-a");
     }
 
     /// Below `min_samples` → fall through to static fallback.
     #[tokio::test]
     async fn router_falls_through_when_below_min_samples() {
         let tmp = tempfile::tempdir().unwrap();
-        // Only 3 records for provider-a, min_samples = 5
         let lines: Vec<_> = (0..3)
             .map(|_| session_line("provider-a", "success", "feature"))
             .collect();
@@ -267,7 +319,7 @@ mod tests {
         let router = make_router(tmp.path(), "fallback-provider", 5, 0.1).await;
         let candidates = vec![ProviderId::new("provider-a")];
         let chosen = router.pick(&TaskCategory::Feature, &candidates).await;
-        assert_eq!(chosen.0, "fallback-provider");
+        assert_eq!(&*chosen.0, "fallback-provider");
     }
 
     /// Empty candidates → returns static default.
@@ -276,7 +328,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let router = make_router(tmp.path(), "default", 5, 0.1).await;
         let chosen = router.pick(&TaskCategory::Feature, &[]).await;
-        assert_eq!(chosen.0, "default");
+        assert_eq!(&*chosen.0, "default");
     }
 
     /// Confidence gap below threshold → use static choice.
@@ -284,14 +336,12 @@ mod tests {
     async fn router_uses_static_when_gap_below_threshold() {
         let tmp = tempfile::tempdir().unwrap();
         let mut lines = vec![];
-        // provider-a: 7/10 (0.70)
         for _ in 0..7 {
             lines.push(session_line("provider-a", "success", "feature"));
         }
         for _ in 0..3 {
             lines.push(session_line("provider-a", "failed", "feature"));
         }
-        // static-choice: 6/10 (0.60)
         for _ in 0..6 {
             lines.push(session_line("static-choice", "success", "feature"));
         }
@@ -307,10 +357,10 @@ mod tests {
             ProviderId::new("static-choice"),
         ];
         let chosen = router.pick(&TaskCategory::Feature, &candidates).await;
-        assert_eq!(chosen.0, "static-choice");
+        assert_eq!(&*chosen.0, "static-choice");
     }
 
-    /// [`success_rate`](EmpiricalRouter::success_rate) returns `None` when no data.
+    /// `success_rate` returns `None` when no data.
     #[tokio::test]
     async fn success_rate_returns_none_for_unknown_provider() {
         let tmp = tempfile::tempdir().unwrap();
@@ -321,7 +371,7 @@ mod tests {
         assert!(rate.is_none());
     }
 
-    /// [`success_rate`](EmpiricalRouter::success_rate) returns correct value when data present.
+    /// `success_rate` returns correct value when data present.
     #[tokio::test]
     async fn success_rate_returns_correct_value() {
         let tmp = tempfile::tempdir().unwrap();
@@ -339,5 +389,37 @@ mod tests {
             .success_rate(&ProviderId::new("provider-x"), &TaskCategory::Bug)
             .await;
         assert!((rate.unwrap() - 0.8).abs() < 0.001);
+    }
+
+    /// Router trait impl: `route` returns the empirical winner with confidence.
+    #[tokio::test]
+    async fn router_trait_route_returns_winner_with_confidence() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut lines = vec![];
+        for _ in 0..9 {
+            lines.push(session_line("winner", "success", "feature"));
+        }
+        lines.push(session_line("winner", "failed", "feature"));
+        for _ in 0..2 {
+            lines.push(session_line("loser", "success", "feature"));
+        }
+        for _ in 0..8 {
+            lines.push(session_line("loser", "failed", "feature"));
+        }
+        write_jsonl(tmp.path(), "2026-04-17.jsonl", &lines);
+
+        let router = make_router(tmp.path(), "loser", 5, 0.1).await;
+        let features = RequestFeatures::new(
+            vec![ProviderId::new("winner"), ProviderId::new("loser")],
+            Some(TaskCategory::Feature),
+            None,
+        );
+        let decision = router.route(&features).await;
+        assert_eq!(&*decision.provider, "winner");
+        assert!(
+            decision.confidence.is_some(),
+            "confidence should be present when empirical data exists"
+        );
+        assert!(decision.confidence.unwrap() > 0.8);
     }
 }
