@@ -1,0 +1,18 @@
+[package]
+name = "aletheia-classify"
+version = "0.1.0"
+edition = "2024"
+license = "AGPL-3.0-or-later"
+repository = "https://github.com/forkwright/aletheia"
+
+[dependencies]
+jiff = { workspace = true }
+ort = "2.0.0-rc.12"
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+snafu = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full"] }
