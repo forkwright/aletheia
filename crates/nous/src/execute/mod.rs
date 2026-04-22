@@ -29,7 +29,7 @@ use self::dispatch::{
 use crate::config::NousConfig;
 use crate::error;
 use crate::hooks::registry::HookRegistry;
-use crate::hooks::{ToolHookContext, ToolHookResult};
+use crate::hooks::{AfterToolContext, ToolHookContext, ToolHookResult};
 use crate::pipeline::{LoopDetector, PipelineContext, ToolCall, TurnResult, TurnUsage};
 use crate::session::SessionState;
 use crate::stream::TurnStreamEvent;
@@ -417,6 +417,7 @@ pub async fn execute(
             effective_tool_uses
         };
 
+        let all_tool_calls_before = all_tool_calls.len();
         let DispatchResult {
             mut blocks,
             loop_warning,
@@ -430,6 +431,26 @@ pub async fn execute(
             config.limits.max_tool_result_bytes,
         )
         .await?;
+
+        // WHY: fire after_tool hooks for each tool executed in this iteration.
+        // Hooks run in priority order but do not short-circuit (tool is already executed).
+        if let Some(hook_registry) = hooks {
+            for tool_call in &all_tool_calls[all_tool_calls_before..] {
+                let after_tool_ctx = AfterToolContext {
+                    nous_id: &session.nous_id,
+                    tool_name: &tool_call.name,
+                    tool_input: effective_tool_uses
+                        .iter()
+                        .find(|(_, name, _)| name == &tool_call.name)
+                        .map(|(_, _, input)| input)
+                        .unwrap_or(&serde_json::Value::Null),
+                    tool_result: tool_call.result.as_deref().unwrap_or(""),
+                    is_error: tool_call.is_error,
+                    turn_usage: &total_usage,
+                };
+                hook_registry.run_after_tool(&after_tool_ctx).await;
+            }
+        }
 
         blocks.extend(denied_blocks);
 
@@ -711,6 +732,7 @@ pub async fn execute_streaming(
             effective_tool_uses
         };
 
+        let all_tool_calls_before = all_tool_calls.len();
         let DispatchResult {
             mut blocks,
             loop_warning,
@@ -725,6 +747,26 @@ pub async fn execute_streaming(
             config.limits.max_tool_result_bytes,
         )
         .await?;
+
+        // WHY: fire after_tool hooks for each tool executed in this iteration.
+        // Hooks run in priority order but do not short-circuit (tool is already executed).
+        if let Some(hook_registry) = hooks {
+            for tool_call in &all_tool_calls[all_tool_calls_before..] {
+                let after_tool_ctx = AfterToolContext {
+                    nous_id: &session.nous_id,
+                    tool_name: &tool_call.name,
+                    tool_input: effective_tool_uses
+                        .iter()
+                        .find(|(_, name, _)| name == &tool_call.name)
+                        .map(|(_, _, input)| input)
+                        .unwrap_or(&serde_json::Value::Null),
+                    tool_result: tool_call.result.as_deref().unwrap_or(""),
+                    is_error: tool_call.is_error,
+                    turn_usage: &total_usage,
+                };
+                hook_registry.run_after_tool(&after_tool_ctx).await;
+            }
+        }
 
         blocks.extend(denied_blocks);
 
