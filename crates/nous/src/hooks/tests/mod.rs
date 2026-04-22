@@ -173,6 +173,7 @@ fn test_turn_result() -> TurnResult {
         stop_reason: "end_turn".to_owned(),
         degraded: None,
         reasoning: String::new(),
+        model_used: "test-model".to_owned(),
     }
 }
 

@@ -13,6 +13,7 @@ use tokio::task::{JoinHandle, JoinSet};
 use tokio_util::sync::CancellationToken;
 use tracing::{Instrument, debug, error, info, warn};
 
+use aletheia_routing::Router;
 use hermeneus::provider::ProviderRegistry;
 use mneme::embedding::EmbeddingProvider;
 #[cfg(feature = "knowledge-store")]
@@ -91,6 +92,12 @@ pub struct NousManager {
     nous_behavior: taxis::config::NousBehaviorConfig,
     /// Prompt audit log shared across all actors (#3411).
     audit_log: Option<Arc<crate::audit::PromptAuditLog>>,
+    /// Empirical router shared across all actors.
+    ///
+    /// WHY: shared so all agents contribute learnings to the same
+    /// `AfterActionStore` backend. `None` when empirical routing is disabled
+    /// (the default); actors fall back to [`NoOpRouter`](aletheia_routing::NoOpRouter).
+    empirical_router: Option<Arc<dyn Router>>,
 }
 
 impl NousManager {
@@ -132,6 +139,7 @@ impl NousManager {
             cancel: CancellationToken::new(),
             nous_behavior,
             audit_log: None,
+            empirical_router: None,
         }
     }
 
@@ -142,6 +150,20 @@ impl NousManager {
     #[must_use]
     pub fn with_audit_log(mut self, audit_log: Arc<crate::audit::PromptAuditLog>) -> Self {
         self.audit_log = Some(audit_log);
+        self
+    }
+
+    /// Attach a shared empirical router to the manager.
+    ///
+    /// All subsequently spawned actors share the same [`Router`] instance so
+    /// that dispatch-path and interactive-path outcomes feed a single
+    /// `AfterActionStore`. Call once at startup before spawning agents.
+    ///
+    /// WHY: `Arc<dyn Router>` is cloned per-actor (pointer bump only), not
+    /// per-turn, so the cost is one allocation per agent at spawn time.
+    #[must_use]
+    pub fn with_empirical_router(mut self, router: Arc<dyn Router>) -> Self {
+        self.empirical_router = Some(router);
         self
     }
 
@@ -255,6 +277,7 @@ impl NousManager {
             child_cancel,
             self.nous_behavior.clone(),
             self.audit_log.clone(),
+            self.empirical_router.clone(),
         );
 
         info!(nous_id = %id, "actor spawned");

@@ -2,128 +2,25 @@
 // config) and empirical (historical success-rate). Keeping them co-located
 // means the EmpiricalRouter can depend on StaticRouter as its fallback without
 // introducing a cross-module cycle.
+//
+// Types that are shared with the interactive path (nous) have been hoisted to
+// the `aletheia-routing` crate. This module re-exports them under the original
+// paths so existing energeia call-sites remain unchanged.
 
 /// After-action record read-side aggregation and rolling statistics.
+///
+/// Thin wrapper — the implementation lives in `aletheia-routing::store` so it
+/// can be shared with the interactive path without coupling nous to energeia.
 pub(crate) mod store;
 
 /// Empirical provider router: selects providers by historical success rate.
 pub(crate) mod empirical;
 
 // ---------------------------------------------------------------------------
-// TaskCategory
+// Re-exports from aletheia-routing (shared types)
 // ---------------------------------------------------------------------------
 
-/// High-level category inferred from a task prompt.
-///
-/// Used as the aggregation key for per-provider success-rate statistics.
-/// Inference is heuristic (keyword matching) and intentionally coarse —
-/// the follow-up PR (#3455) introduces persona-aware refinement.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
-#[non_exhaustive]
-pub(crate) enum TaskCategory {
-    /// Code restructuring without behaviour change.
-    Refactor,
-    /// New product feature.
-    Feature,
-    /// Defect correction.
-    Bug,
-    /// Documentation or comment changes.
-    Docs,
-    /// Tests and test infrastructure.
-    Test,
-    /// Housekeeping, dependency updates, CI.
-    Chore,
-}
-
-impl TaskCategory {
-    /// Infer a category from a prompt body or description via keyword matching.
-    ///
-    /// Returns `TaskCategory::Feature` when no keywords match.
-    ///
-    /// WHY heuristic: full NLP classification would require an LLM call inside
-    /// the router's hot path. Keyword matching is O(n) and zero-latency. The
-    /// follow-up PR (#3455) replaces this with persona-aware routing that
-    /// operates on richer metadata.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "binary wiring consumes from_prompt (follow-up #3455)"
-        )
-    )]
-    pub(crate) fn from_prompt(text: &str) -> Self {
-        let lower = text.to_lowercase();
-        if lower.contains("refactor") || lower.contains("restructure") || lower.contains("rename") {
-            return Self::Refactor;
-        }
-        if lower.contains("fix")
-            || lower.contains("bug")
-            || lower.contains("defect")
-            || lower.contains("regression")
-        {
-            return Self::Bug;
-        }
-        if lower.contains("test") || lower.contains("spec") || lower.contains("coverage") {
-            return Self::Test;
-        }
-        if lower.contains("doc") || lower.contains("comment") || lower.contains("readme") {
-            return Self::Docs;
-        }
-        if lower.contains("chore")
-            || lower.contains("dependency")
-            || lower.contains("deps")
-            || lower.contains("ci")
-            || lower.contains("lint")
-        {
-            return Self::Chore;
-        }
-        Self::Feature
-    }
-}
-
-impl std::fmt::Display for TaskCategory {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Refactor => write!(f, "refactor"),
-            Self::Feature => write!(f, "feature"),
-            Self::Bug => write!(f, "bug"),
-            Self::Docs => write!(f, "docs"),
-            Self::Test => write!(f, "test"),
-            Self::Chore => write!(f, "chore"),
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// ProviderId
-// ---------------------------------------------------------------------------
-
-/// Opaque provider identifier (e.g. `"claude"`, `"kimi"`, `"local"`).
-///
-/// Intentionally a newtype around `String` rather than an enum so that new
-/// providers can be added at runtime from configuration without code changes.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
-pub(crate) struct ProviderId(pub(crate) String);
-
-impl ProviderId {
-    /// Create a new provider ID from any string-like value.
-    pub(crate) fn new(id: impl Into<String>) -> Self {
-        Self(id.into())
-    }
-}
-
-impl std::fmt::Display for ProviderId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl std::ops::Deref for ProviderId {
-    type Target = str;
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
+pub(crate) use aletheia_routing::types::{ProviderId, TaskCategory};
 
 // ---------------------------------------------------------------------------
 // StaticRouter
@@ -285,8 +182,8 @@ mod tests {
     #[test]
     fn static_router_always_returns_default() {
         let router = StaticRouter::new(ProviderId::new("claude"));
-        assert_eq!(router.pick(TaskCategory::Bug).0, "claude");
-        assert_eq!(router.pick(TaskCategory::Refactor).0, "claude");
+        assert_eq!(&*router.pick(TaskCategory::Bug).0, "claude");
+        assert_eq!(&*router.pick(TaskCategory::Refactor).0, "claude");
     }
 
     #[test]

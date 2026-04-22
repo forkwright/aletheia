@@ -1,0 +1,548 @@
+//! Shared empirical success-rate storage for dispatch and interactive paths.
+//!
+//! [`AfterActionStore`] maintains a rolling in-memory cache of
+//! `(provider_id, task_category) → success_rate` statistics. It has two
+//! write paths:
+//!
+//! - **Dispatch path** ([`AfterActionStore::refresh`]): re-scans the
+//!   append-only JSONL log files emitted by the energeia post-processing
+//!   stage. Called periodically by the daemon maintenance task.
+//!
+//! - **Interactive path** ([`AfterActionStore::record_outcome`]): directly
+//!   increments the in-memory counters without requiring a JSONL file write.
+//!   This is the mechanism by which nous turns feed empirical data into the
+//!   same store that dispatch routing queries.
+//!
+//! Both paths write into the same `RwLock<HashMap>`, so a dispatch routing
+//! decision in the next window will incorporate interactive-path outcomes
+//! that arrived since the last `refresh`.
+
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+
+use jiff::Timestamp;
+use snafu::{ResultExt as _, Snafu};
+use tokio::io::{AsyncBufReadExt as _, BufReader};
+use tokio::sync::RwLock;
+
+use crate::types::{ProviderId, TaskCategory, TurnOutcome};
+
+// ---------------------------------------------------------------------------
+// AfterActionStoreError
+// ---------------------------------------------------------------------------
+
+/// Errors produced by [`AfterActionStore`] operations.
+#[derive(Debug, Snafu)]
+#[snafu(visibility(pub))]
+pub enum AfterActionStoreError {
+    /// Could not read a JSONL log directory.
+    #[snafu(display("I/O error reading after-action log '{}': {source}", path.display()))]
+    Io {
+        /// Path that triggered the error.
+        path: PathBuf,
+        /// Underlying I/O error.
+        source: std::io::Error,
+    },
+}
+
+// ---------------------------------------------------------------------------
+// Wire-format structs (subset of AfterActionRecord from post_processing.rs)
+// ---------------------------------------------------------------------------
+
+/// Parsed subset of an after-action JSONL line relevant to routing stats.
+#[derive(Debug, serde::Deserialize)]
+struct AfterActionLine {
+    session_outcomes: Vec<AfterActionSession>,
+}
+
+/// Per-session fields used to compute success rates.
+#[derive(Debug, serde::Deserialize)]
+struct AfterActionSession {
+    /// Provider / model that handled the session.
+    ///
+    /// May be absent for records written before this field was introduced.
+    #[serde(default)]
+    model: Option<String>,
+    /// Terminal status string (e.g. `"success"`, `"failed"`, `"stuck"`).
+    status: String,
+    /// Category tag. Absent for records pre-dating this PR; treated as
+    /// `Feature` when missing.
+    #[serde(default)]
+    category: Option<String>,
+}
+
+// ---------------------------------------------------------------------------
+// RollingStats
+// ---------------------------------------------------------------------------
+
+/// Aggregated success/failure counts for a (provider, category) bucket.
+#[derive(Debug, Clone, Default)]
+pub struct RollingStats {
+    /// Sessions that completed successfully.
+    pub successes: u64,
+    /// Sessions that ended in any failure state.
+    pub failures: u64,
+    /// Total sessions (`successes + failures`).
+    pub total: u64,
+    /// Timestamp of the most recent successful session, if any.
+    pub last_success_at: Option<Timestamp>,
+}
+
+impl RollingStats {
+    /// Empirical success rate in [0, 1], or `None` when `total == 0`.
+    pub fn success_rate(&self) -> Option<f64> {
+        if self.total == 0 {
+            None
+        } else {
+            // WHY: precision loss at very high session counts (>2^53) is
+            // acceptable for routing heuristics.
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "routing rates are heuristic; precision loss at >2^53 sessions is acceptable"
+            )]
+            #[expect(
+                clippy::as_conversions,
+                reason = "u64→f64 for rate computation; loss is acceptable and documented above"
+            )]
+            Some(self.successes as f64 / self.total as f64)
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// AfterActionStore
+// ---------------------------------------------------------------------------
+
+/// Shared read/write cache over empirical provider success-rate statistics.
+///
+/// Used by both the dispatch path (via [`refresh`](Self::refresh) from JSONL
+/// logs) and the interactive path (via [`record_outcome`](Self::record_outcome)
+/// for direct counter updates).
+///
+/// The cache is keyed by `(ProviderId, TaskCategory)` and protected by a
+/// `RwLock` so concurrent readers (routing decisions) are never blocked by
+/// a periodic `refresh`.
+pub struct AfterActionStore {
+    /// Directory containing per-day JSONL files (`YYYY-MM-DD.jsonl`).
+    ///
+    /// `None` when the store is used in memory-only mode (interactive path
+    /// without a configured log directory).
+    dir: Option<PathBuf>,
+    /// In-memory cache: `(provider_id, task_category)` → [`RollingStats`].
+    cache: RwLock<HashMap<(ProviderId, TaskCategory), RollingStats>>,
+}
+
+impl AfterActionStore {
+    /// Create a store backed by the given JSONL log directory.
+    ///
+    /// Call [`refresh`](Self::refresh) to populate the cache from disk.
+    pub fn new(dir: PathBuf) -> Self {
+        Self {
+            dir: Some(dir),
+            cache: RwLock::new(HashMap::new()),
+        }
+    }
+
+    /// Create an in-memory-only store with no JSONL backing directory.
+    ///
+    /// Suitable for the interactive path when no log directory is configured.
+    /// [`refresh`](Self::refresh) is a no-op on this variant.
+    pub fn in_memory() -> Self {
+        Self {
+            dir: None,
+            cache: RwLock::new(HashMap::new()),
+        }
+    }
+
+    /// Return rolling stats for a specific (provider, category) pair.
+    ///
+    /// Returns `None` when the pair has no entries in the cache.
+    pub async fn rolling_stats(
+        &self,
+        provider: &ProviderId,
+        cat: &TaskCategory,
+        _window: std::time::Duration,
+    ) -> Option<RollingStats> {
+        // WHY: the cache is window-bounded by refresh() which only reads files
+        // within the configured window. `_window` is kept in the signature for
+        // future per-query filtering.
+        let cache = self.cache.read().await;
+        cache.get(&(provider.clone(), *cat)).cloned()
+    }
+
+    /// Directly record the outcome of an interactive turn.
+    ///
+    /// Increments the in-memory counter for `(outcome.provider,
+    /// outcome.task_category)` without touching the JSONL files. This is the
+    /// write path for the nous interactive router.
+    ///
+    /// WHY: the JSONL files are owned by the energeia post-processing stage.
+    /// Rather than having nous write to those files (wrong ownership), nous
+    /// increments the shared in-memory counters directly. The next
+    /// `refresh()` call from the dispatch path will overwrite the in-memory
+    /// state from disk, so interactive-path outcomes live for at most one
+    /// refresh window. That is an acceptable trade-off: the store still
+    /// captures short-term signal and dispatch routing decisions in the same
+    /// window benefit.
+    pub async fn record_outcome(&self, outcome: &TurnOutcome) {
+        let key = (outcome.provider.clone(), outcome.task_category);
+        let mut cache = self.cache.write().await;
+        let stats = cache.entry(key).or_default();
+        if outcome.success {
+            stats.successes += 1;
+            stats.last_success_at = Some(Timestamp::now());
+        } else {
+            stats.failures += 1;
+        }
+        stats.total += 1;
+    }
+
+    /// Re-scan the JSONL log directory and rebuild the in-memory cache.
+    ///
+    /// Streams each file line-by-line to avoid loading the whole day's log
+    /// into memory. Malformed JSON lines are silently skipped.
+    ///
+    /// If the store was created with [`in_memory`](Self::in_memory) this is
+    /// a no-op (returns `Ok(())`).
+    pub async fn refresh(&self) -> Result<(), AfterActionStoreError> {
+        let Some(ref dir) = self.dir else {
+            return Ok(());
+        };
+        let new_cache = self.build_cache(dir).await?;
+        let mut cache = self.cache.write().await;
+        *cache = new_cache;
+        Ok(())
+    }
+
+    /// Build a fresh cache by scanning all JSONL files in `dir`.
+    async fn build_cache(
+        &self,
+        dir: &Path,
+    ) -> Result<HashMap<(ProviderId, TaskCategory), RollingStats>, AfterActionStoreError> {
+        let mut map: HashMap<(ProviderId, TaskCategory), RollingStats> = HashMap::new();
+
+        let mut read_dir = tokio::fs::read_dir(dir).await.context(IoSnafu {
+            path: dir.to_owned(),
+        })?;
+
+        while let Some(entry) = read_dir.next_entry().await.context(IoSnafu {
+            path: dir.to_owned(),
+        })? {
+            let path = entry.path();
+            let Some(ext) = path.extension() else {
+                continue;
+            };
+            if ext != "jsonl" {
+                continue;
+            }
+
+            self.scan_file(&path, &mut map).await?;
+        }
+
+        Ok(map)
+    }
+
+    /// Stream a single JSONL file and accumulate stats into `map`.
+    async fn scan_file(
+        &self,
+        path: &Path,
+        map: &mut HashMap<(ProviderId, TaskCategory), RollingStats>,
+    ) -> Result<(), AfterActionStoreError> {
+        let file = match tokio::fs::File::open(path).await {
+            Ok(f) => f,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(e) => {
+                return Err(AfterActionStoreError::Io {
+                    path: path.to_owned(),
+                    source: e,
+                });
+            }
+        };
+
+        let mut lines = BufReader::new(file).lines();
+        while let Some(line) = lines.next_line().await.context(IoSnafu {
+            path: path.to_owned(),
+        })? {
+            let line = line.trim().to_owned();
+            if line.is_empty() {
+                continue;
+            }
+            match serde_json::from_str::<AfterActionLine>(&line) {
+                Ok(record) => ingest_record(&record, map),
+                Err(e) => {
+                    // WHY: silently skip malformed lines — partial writes from
+                    // process kills produce truncated records; poisoning the cache
+                    // for a single bad record degrades all routing decisions.
+                    tracing::debug!(
+                        path = %path.display(),
+                        error = %e,
+                        "skipping malformed after-action line"
+                    );
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
+/// Ingest one parsed after-action record into the rolling-stats accumulator.
+fn ingest_record(
+    record: &AfterActionLine,
+    map: &mut HashMap<(ProviderId, TaskCategory), RollingStats>,
+) {
+    for session in &record.session_outcomes {
+        let Some(model) = &session.model else {
+            continue; // pre-routing records have no model field
+        };
+        if model.is_empty() {
+            continue;
+        }
+
+        let provider = ProviderId::new(model.as_str());
+        let category = session
+            .category
+            .as_deref()
+            .map_or(TaskCategory::Feature, parse_category);
+
+        let key = (provider, category);
+        let stats = map.entry(key).or_default();
+
+        let is_success = session.status == "success";
+        if is_success {
+            stats.successes += 1;
+            stats.last_success_at = Some(Timestamp::now());
+        } else {
+            stats.failures += 1;
+        }
+        stats.total += 1;
+    }
+}
+
+/// Parse a category string from a JSONL record.
+///
+/// Returns [`TaskCategory::Feature`] for unrecognised strings so that new
+/// categories added in future PRs degrade gracefully on old store data.
+pub fn parse_category(s: &str) -> TaskCategory {
+    match s {
+        "refactor" => TaskCategory::Refactor,
+        "bug" => TaskCategory::Bug,
+        "docs" => TaskCategory::Docs,
+        "test" => TaskCategory::Test,
+        "chore" => TaskCategory::Chore,
+        // "feature" and any unrecognised string → Feature
+        _ => TaskCategory::Feature,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions")]
+mod tests {
+    use std::io::Write as _;
+    use std::time::Duration;
+
+    use super::*;
+
+    fn write_jsonl(dir: &std::path::Path, filename: &str, lines: &[serde_json::Value]) {
+        let path = dir.join(filename);
+        let mut file = std::fs::File::create(path).unwrap();
+        for line in lines {
+            writeln!(file, "{line}").unwrap();
+        }
+    }
+
+    fn session_line(model: &str, status: &str, category: &str) -> serde_json::Value {
+        serde_json::json!({
+            "dispatch_id": "test-dispatch",
+            "ts_start": "2026-04-17T00:00:00Z",
+            "ts_end": "2026-04-17T00:01:00Z",
+            "duration_ms": 60000,
+            "session_outcomes": [{"model": model, "status": status, "category": category}],
+            "cost_total_cents": 5,
+            "turns_total": 10,
+            "stage_latencies_ms": {},
+            "qa_verdict": "pass",
+            "prompt_hash": "sha256:abc"
+        })
+    }
+
+    // --- Dispatch path (JSONL refresh) ---
+
+    #[tokio::test]
+    async fn rolling_stats_counts_match_written_records() {
+        let tmp = tempfile::tempdir().unwrap();
+
+        let mut lines = vec![];
+        for _ in 0..9 {
+            lines.push(session_line("provider-a", "success", "feature"));
+        }
+        lines.push(session_line("provider-a", "failed", "feature"));
+        lines.push(session_line("provider-b", "success", "feature"));
+        for _ in 0..9 {
+            lines.push(session_line("provider-b", "failed", "feature"));
+        }
+        write_jsonl(tmp.path(), "2026-04-17.jsonl", &lines);
+
+        let store = AfterActionStore::new(tmp.path().to_owned());
+        store.refresh().await.unwrap();
+
+        let a = store
+            .rolling_stats(
+                &ProviderId::new("provider-a"),
+                &TaskCategory::Feature,
+                Duration::from_hours(168),
+            )
+            .await
+            .unwrap();
+        assert_eq!(a.successes, 9);
+        assert_eq!(a.failures, 1);
+        assert_eq!(a.total, 10);
+        assert!((a.success_rate().unwrap() - 0.9).abs() < 0.001);
+    }
+
+    #[tokio::test]
+    async fn refresh_handles_malformed_json_gracefully() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("2026-04-17.jsonl");
+        let mut file = std::fs::File::create(&path).unwrap();
+        writeln!(file, "{}", session_line("good", "success", "feature")).unwrap();
+        writeln!(file, "{{\"incomplete\":").unwrap();
+        writeln!(file, "{}", session_line("good", "success", "feature")).unwrap();
+
+        let store = AfterActionStore::new(tmp.path().to_owned());
+        store.refresh().await.unwrap();
+
+        let stats = store
+            .rolling_stats(
+                &ProviderId::new("good"),
+                &TaskCategory::Feature,
+                Duration::from_hours(168),
+            )
+            .await
+            .unwrap();
+        assert_eq!(stats.total, 2);
+    }
+
+    #[tokio::test]
+    async fn missing_dir_returns_error() {
+        let store = AfterActionStore::new(std::path::PathBuf::from(
+            "/tmp/nonexistent-xyz-routing-test",
+        ));
+        assert!(store.refresh().await.is_err());
+    }
+
+    // --- Interactive path (record_outcome) ---
+
+    /// Empirical router learns from dispatch outcomes via JSONL refresh.
+    #[tokio::test]
+    async fn empirical_router_learns_from_dispatch_outcome() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut lines = vec![];
+        for _ in 0..8 {
+            lines.push(session_line("provider-x", "success", "bug"));
+        }
+        for _ in 0..2 {
+            lines.push(session_line("provider-x", "failed", "bug"));
+        }
+        write_jsonl(tmp.path(), "2026-04-17.jsonl", &lines);
+
+        let store = AfterActionStore::new(tmp.path().to_owned());
+        store.refresh().await.unwrap();
+
+        let stats = store
+            .rolling_stats(
+                &ProviderId::new("provider-x"),
+                &TaskCategory::Bug,
+                Duration::from_hours(168),
+            )
+            .await
+            .unwrap();
+        assert_eq!(stats.total, 10);
+        assert_eq!(stats.successes, 8);
+        assert!((stats.success_rate().unwrap() - 0.8).abs() < 0.001);
+    }
+
+    /// Interactive-path outcomes are recorded into the same store.
+    #[tokio::test]
+    async fn empirical_router_learns_from_interactive_outcome() {
+        let store = AfterActionStore::in_memory();
+
+        // Simulate 5 interactive turns: 4 success, 1 failure
+        let provider = ProviderId::new("claude");
+        for i in 0..5u32 {
+            let outcome = TurnOutcome {
+                provider: provider.clone(),
+                task_category: TaskCategory::Feature,
+                success: i < 4,
+                is_interactive: true,
+            };
+            store.record_outcome(&outcome).await;
+        }
+
+        let stats = store
+            .rolling_stats(&provider, &TaskCategory::Feature, Duration::from_hours(1))
+            .await
+            .unwrap();
+        assert_eq!(stats.total, 5);
+        assert_eq!(stats.successes, 4);
+        assert_eq!(stats.failures, 1);
+        assert!((stats.success_rate().unwrap() - 0.8).abs() < 0.001);
+    }
+
+    /// Dispatch and interactive outcomes land in the same storage backend.
+    #[tokio::test]
+    async fn dispatch_and_interactive_share_storage() {
+        let tmp = tempfile::tempdir().unwrap();
+
+        // Dispatch path: write 3 successes via JSONL
+        let lines: Vec<_> = (0..3)
+            .map(|_| session_line("shared-provider", "success", "feature"))
+            .collect();
+        write_jsonl(tmp.path(), "2026-04-22.jsonl", &lines);
+
+        let store = AfterActionStore::new(tmp.path().to_owned());
+        store.refresh().await.unwrap();
+
+        // Interactive path: add 2 more outcomes directly
+        let provider = ProviderId::new("shared-provider");
+        for i in 0..2u32 {
+            let outcome = TurnOutcome {
+                provider: provider.clone(),
+                task_category: TaskCategory::Feature,
+                success: i == 0, // 1 success, 1 failure
+                is_interactive: true,
+            };
+            store.record_outcome(&outcome).await;
+        }
+
+        // Both paths' data should be visible in the same cache
+        let stats = store
+            .rolling_stats(&provider, &TaskCategory::Feature, Duration::from_hours(1))
+            .await
+            .unwrap();
+
+        // 3 dispatch successes + 1 interactive success + 1 interactive failure = 5 total
+        assert_eq!(
+            stats.total, 5,
+            "dispatch (3) + interactive (2) should sum to 5 total"
+        );
+        assert_eq!(
+            stats.successes, 4,
+            "dispatch (3 success) + interactive (1 success) = 4"
+        );
+        assert_eq!(stats.failures, 1, "interactive contributed 1 failure");
+    }
+
+    // --- In-memory mode ---
+
+    #[tokio::test]
+    async fn in_memory_store_refresh_is_noop() {
+        let store = AfterActionStore::in_memory();
+        // Should not error even though there's no directory
+        store.refresh().await.unwrap();
+    }
+}

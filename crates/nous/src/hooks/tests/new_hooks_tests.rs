@@ -1,4 +1,4 @@
-//! Tests for the new hook points: after_tool, session_start, before_compact, after_compact.
+//! Tests for the new hook points: `after_tool`, `session_start`, `before_compact`, `after_compact`.
 
 use super::*;
 
@@ -239,7 +239,7 @@ fn session_start_hook_can_abort() {
         HookResult::Abort { reason } => {
             assert_eq!(reason, "session initialization failed");
         }
-        _ => panic!("expected Abort"),
+        HookResult::Continue => panic!("expected Abort"),
     }
 }
 
