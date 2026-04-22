@@ -48,6 +48,279 @@ pub struct ConfigReloadResponse {
     pub changed: Vec<String>,
 }
 
+pub use section_schemas::*;
+
+#[expect(missing_docs, reason = "OpenAPI schema mirrors taxis config shapes")]
+mod section_schemas {
+    use crate::error::{ApiError, FieldError};
+    use axum::body::Body;
+    use axum::extract::FromRequest;
+    use serde_json::Value;
+    use std::collections::HashMap;
+    use utoipa::PartialSchema;
+
+    // ---------------------------------------------------------------------------
+    // OpenAPI schema types for config sections
+    // ---------------------------------------------------------------------------
+    // WHY(#3269): taxis config types do not derive `utoipa::ToSchema`. We define
+    // lightweight local mirrors so the OpenAPI spec shows typed shapes instead of
+    // an opaque `serde_json::Value` object.
+
+    /// Schema for the `agents` config section.
+    #[derive(serde::Deserialize, utoipa::ToSchema)]
+    #[serde(rename_all = "camelCase")]
+    pub struct AgentsConfig {
+        #[schema(value_type = Object)]
+        pub defaults: Option<Value>,
+        pub list: Option<Vec<Value>>,
+    }
+
+    /// Schema for the `gateway` config section.
+    #[derive(serde::Deserialize, utoipa::ToSchema)]
+    #[serde(rename_all = "camelCase")]
+    pub struct GatewayConfig {
+        pub port: Option<u16>,
+        pub bind: Option<String>,
+        #[schema(value_type = Object)]
+        pub auth: Option<Value>,
+        #[schema(value_type = Object)]
+        pub tls: Option<Value>,
+        #[schema(value_type = Object)]
+        pub cors: Option<Value>,
+        #[schema(value_type = Object)]
+        pub body_limit: Option<Value>,
+        #[schema(value_type = Object)]
+        pub csrf: Option<Value>,
+        #[schema(value_type = Object)]
+        pub rate_limit: Option<Value>,
+    }
+
+    /// Schema for the `channels` config section.
+    #[derive(serde::Deserialize, utoipa::ToSchema)]
+    #[serde(rename_all = "camelCase")]
+    pub struct ChannelsConfig {
+        #[schema(value_type = Object)]
+        pub signal: Option<Value>,
+        #[schema(value_type = Object)]
+        pub matrix: Option<Value>,
+    }
+
+    /// Schema for a single channel binding entry.
+    #[derive(serde::Deserialize, utoipa::ToSchema)]
+    #[serde(rename_all = "camelCase")]
+    pub struct ChannelBinding {
+        pub channel: Option<String>,
+        pub source: Option<String>,
+        pub nous_id: Option<String>,
+        pub session_key: Option<String>,
+    }
+
+    /// Schema for the `embedding` config section.
+    #[derive(serde::Deserialize, utoipa::ToSchema)]
+    #[serde(rename_all = "camelCase")]
+    pub struct EmbeddingSettings {
+        pub provider: Option<String>,
+        pub model: Option<String>,
+        pub dimension: Option<usize>,
+    }
+
+    /// Schema for the `data` config section.
+    #[derive(serde::Deserialize, utoipa::ToSchema)]
+    #[serde(rename_all = "camelCase")]
+    pub struct DataConfig {
+        #[schema(value_type = Object)]
+        pub retention: Option<Value>,
+    }
+
+    /// Schema for the `maintenance` config section.
+    #[derive(serde::Deserialize, utoipa::ToSchema)]
+    #[serde(rename_all = "camelCase")]
+    pub struct MaintenanceConfig {
+        #[schema(value_type = Object)]
+        pub trace_rotation: Option<Value>,
+        #[schema(value_type = Object)]
+        pub drift_detection: Option<Value>,
+        #[schema(value_type = Object)]
+        pub db_monitoring: Option<Value>,
+        #[schema(value_type = Object)]
+        pub disk_space: Option<Value>,
+        #[schema(value_type = Object)]
+        pub sqlite_recovery: Option<Value>,
+        #[schema(value_type = Object)]
+        pub retention: Option<Value>,
+        pub knowledge_maintenance_enabled: Option<bool>,
+        #[schema(value_type = Object)]
+        pub watchdog: Option<Value>,
+        #[schema(value_type = Object)]
+        pub cron_tasks: Option<Value>,
+        #[schema(value_type = Object)]
+        pub backup: Option<Value>,
+    }
+
+    /// Schema for a single pricing entry.
+    #[derive(serde::Deserialize, utoipa::ToSchema)]
+    #[serde(rename_all = "camelCase")]
+    pub struct ModelPricing {
+        pub input_cost_per_mtok: Option<f64>,
+        pub output_cost_per_mtok: Option<f64>,
+    }
+
+    /// Typed payload for `PUT /api/v1/config/{section}`.
+    ///
+    /// The variant is determined by the `{section}` path parameter at the API
+    /// boundary. Each variant wraps the raw JSON value so the underlying deep-merge
+    /// semantics are preserved unchanged.
+    #[derive(Debug)]
+    #[non_exhaustive]
+    pub enum ConfigSectionPayload {
+        Agents(Value),
+        Gateway(Value),
+        Channels(Value),
+        Bindings(Value),
+        Embedding(Value),
+        Data(Value),
+        Packs(Value),
+        Maintenance(Value),
+        Pricing(Value),
+    }
+
+    impl utoipa::PartialSchema for ConfigSectionPayload {
+        fn schema() -> utoipa::openapi::RefOr<utoipa::openapi::schema::Schema> {
+            utoipa::openapi::schema::OneOfBuilder::new()
+                .item(AgentsConfig::schema())
+                .item(GatewayConfig::schema())
+                .item(ChannelsConfig::schema())
+                .item(Vec::<ChannelBinding>::schema())
+                .item(EmbeddingSettings::schema())
+                .item(DataConfig::schema())
+                .item(Vec::<String>::schema())
+                .item(MaintenanceConfig::schema())
+                .item(HashMap::<String, ModelPricing>::schema())
+                .into()
+        }
+    }
+
+    impl utoipa::ToSchema for ConfigSectionPayload {
+        fn schemas(
+            schemas: &mut Vec<(
+                String,
+                utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>,
+            )>,
+        ) {
+            schemas.push((AgentsConfig::name().into(), AgentsConfig::schema()));
+            schemas.push((GatewayConfig::name().into(), GatewayConfig::schema()));
+            schemas.push((ChannelsConfig::name().into(), ChannelsConfig::schema()));
+            schemas.push((ChannelBinding::name().into(), ChannelBinding::schema()));
+            schemas.push((
+                EmbeddingSettings::name().into(),
+                EmbeddingSettings::schema(),
+            ));
+            schemas.push((DataConfig::name().into(), DataConfig::schema()));
+            schemas.push((
+                MaintenanceConfig::name().into(),
+                MaintenanceConfig::schema(),
+            ));
+            schemas.push((ModelPricing::name().into(), ModelPricing::schema()));
+        }
+    }
+
+    impl<S> FromRequest<S> for ConfigSectionPayload
+    where
+        S: Send + Sync,
+    {
+        type Rejection = ApiError;
+
+        async fn from_request(
+            req: axum::http::Request<Body>,
+            _state: &S,
+        ) -> Result<Self, Self::Rejection> {
+            let (parts, body) = req.into_parts();
+
+            let content_type = parts
+                .headers
+                .get(axum::http::header::CONTENT_TYPE)
+                .and_then(|v| v.to_str().ok());
+            if !matches!(content_type, Some(ct) if ct == "application/json" || ct.starts_with("application/json;"))
+            {
+                return Err(ApiError::BadRequest {
+                    message: "expected Content-Type: application/json".to_owned(),
+                    location: snafu::location!(),
+                });
+            }
+
+            let bytes = axum::body::to_bytes(body, 10 * 1024 * 1024)
+                .await
+                .map_err(|e| ApiError::BadRequest {
+                    message: format!("failed to read request body: {e}"),
+                    location: snafu::location!(),
+                })?;
+
+            let path = parts.uri.path();
+            let section = path.rsplit('/').next().unwrap_or("");
+
+            let value: Value =
+                serde_json::from_slice(&bytes).map_err(|e| ApiError::ValidationFailed {
+                    errors: vec![FieldError {
+                        field: "_body".to_owned(),
+                        code: "format".to_owned(),
+                        message: e.to_string(),
+                    }],
+                    location: snafu::location!(),
+                })?;
+
+            // Validate structural shape at the boundary by deserializing into the
+            // section's typed config. The original Value is preserved for the merge
+            // so no downstream behaviour changes.
+            let result = match section {
+                "agents" => serde_json::from_value::<taxis::config::AgentsConfig>(value.clone())
+                    .map(|_| Self::Agents(value)),
+                "gateway" => serde_json::from_value::<taxis::config::GatewayConfig>(value.clone())
+                    .map(|_| Self::Gateway(value)),
+                "channels" => {
+                    serde_json::from_value::<taxis::config::ChannelsConfig>(value.clone())
+                        .map(|_| Self::Channels(value))
+                }
+                "bindings" => {
+                    serde_json::from_value::<Vec<taxis::config::ChannelBinding>>(value.clone())
+                        .map(|_| Self::Bindings(value))
+                }
+                "embedding" => {
+                    serde_json::from_value::<taxis::config::EmbeddingSettings>(value.clone())
+                        .map(|_| Self::Embedding(value))
+                }
+                "data" => Ok(Self::Data(value)),
+                "packs" => serde_json::from_value::<Vec<std::path::PathBuf>>(value.clone())
+                    .map(|_| Self::Packs(value)),
+                "maintenance" => {
+                    serde_json::from_value::<taxis::config::MaintenanceSettings>(value.clone())
+                        .map(|_| Self::Maintenance(value))
+                }
+                "pricing" => {
+                    serde_json::from_value::<HashMap<String, taxis::config::ModelPricing>>(
+                        value.clone(),
+                    )
+                    .map(|_| Self::Pricing(value))
+                }
+                _ => {
+                    return Err(ApiError::NotFound {
+                        path: path.to_owned(),
+                        location: snafu::location!(),
+                    });
+                }
+            };
+
+            result.map_err(|e| ApiError::ValidationFailed {
+                errors: vec![FieldError {
+                    field: "_body".to_owned(),
+                    code: "format".to_owned(),
+                    message: e.to_string(),
+                }],
+                location: snafu::location!(),
+            })
+        }
+    }
+}
+
 /// GET /api/v1/config: full redacted config.
 #[utoipa::path(
     get,
@@ -194,7 +467,7 @@ pub async fn reload_config(
     put,
     path = "/api/v1/config/{section}",
     params(("section" = String, Path, description = "Config section name")),
-    request_body = Value,
+    request_body = ConfigSectionPayload,
     responses(
         (status = 200, description = "Updated config section", body = ConfigUpdateResponse),
         (status = 404, description = "Unknown section"),
@@ -207,7 +480,7 @@ pub async fn update_section(
     State(state): State<ConfigState>,
     claims: Claims,
     Path(section): Path<String>,
-    Json(body): Json<Value>,
+    body: ConfigSectionPayload,
 ) -> Result<impl IntoResponse, ApiError> {
     require_role(&claims, Role::Operator)?;
     if !VALID_SECTIONS.contains(&section.as_str()) {
@@ -217,7 +490,19 @@ pub async fn update_section(
         });
     }
 
-    if let Err(err) = taxis::validate::validate_section(&section, &body) {
+    let body_value = match body {
+        ConfigSectionPayload::Agents(v)
+        | ConfigSectionPayload::Gateway(v)
+        | ConfigSectionPayload::Channels(v)
+        | ConfigSectionPayload::Bindings(v)
+        | ConfigSectionPayload::Embedding(v)
+        | ConfigSectionPayload::Data(v)
+        | ConfigSectionPayload::Packs(v)
+        | ConfigSectionPayload::Maintenance(v)
+        | ConfigSectionPayload::Pricing(v) => v,
+    };
+
+    if let Err(err) = taxis::validate::validate_section(&section, &body_value) {
         return Err(ApiError::ValidationFailed {
             errors: err
                 .errors
@@ -242,7 +527,7 @@ pub async fn update_section(
         let existing = root
             .entry(section.clone())
             .or_insert_with(|| Value::Object(serde_json::Map::default()));
-        deep_merge(existing, body);
+        deep_merge(existing, body_value);
     }
 
     // WHY: Deserialize back to verify structural validity.
