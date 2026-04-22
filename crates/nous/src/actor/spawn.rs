@@ -13,6 +13,7 @@ use mneme::embedding::EmbeddingProvider;
 use mneme::knowledge_store::KnowledgeStore;
 use mneme::store::SessionStore;
 
+use aletheia_routing::Router;
 use hermeneus::provider::ProviderRegistry;
 use organon::registry::ToolRegistry;
 use taxis::cascade;
@@ -53,6 +54,7 @@ pub(crate) fn spawn(
     cancel: CancellationToken,
     nous_behavior: taxis::config::NousBehaviorConfig,
     audit_log: Option<Arc<crate::audit::PromptAuditLog>>,
+    router: Option<Arc<dyn Router>>,
 ) -> (
     NousHandle,
     tokio::task::JoinHandle<()>,
@@ -87,6 +89,7 @@ pub(crate) fn spawn(
         Arc::clone(&turn_started_at_ms),
         nous_behavior,
         audit_log,
+        router,
     );
 
     let span = tracing::info_span!("nous_actor", nous.id = %id);
@@ -164,6 +167,7 @@ pub fn spawn_for_daemon(
         cancel,
         taxis::config::NousBehaviorConfig::default(),
         None, // WHY: daemon child agents share the parent's audit log via binary crate wiring
+        None, // WHY: daemon child agents use the NoOpRouter; binary crate wires empirical router
     )
 }
 

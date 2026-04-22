@@ -81,6 +81,7 @@ fn turn_result_with_tool_calls() {
         signals: vec![InteractionSignal::ToolExecution],
         stop_reason: "end_turn".to_owned(),
         degraded: None,
+        model_used: "test-model".to_owned(),
     };
 
     assert_eq!(result.tool_calls.len(), 1);

@@ -9,6 +9,9 @@ use organon::types::ToolContext;
 use tokio::sync::mpsc;
 use tracing::{Instrument, debug, error, warn};
 
+use aletheia_routing::RoutingDecision;
+use aletheia_routing::types::{ProviderId, TaskCategory, TurnOutcome};
+
 use super::{NousActor, NousLifecycle};
 use crate::drift::{DriftConfig, DriftDetector, TurnMetrics};
 use crate::pipeline::TurnResult;
@@ -71,6 +74,14 @@ impl NousActor {
             // before any async work begins.
             self.record_drift_metrics(session_key, turn_result);
 
+            // WHY: record the turn outcome in the empirical router so both the
+            // dispatch path (energeia) and the interactive path benefit from the
+            // same success-rate signal. The success heuristic is: the turn
+            // completed without degradation (i.e. the LLM was reachable and
+            // returned a result). A more precise signal (e.g. user acceptance)
+            // requires a future hook.
+            self.record_router_outcome(content, turn_result);
+
             self.maybe_spawn_extraction(
                 content,
                 &turn_result.content,
@@ -130,6 +141,42 @@ impl NousActor {
         let _drift_events = detector.record(metrics);
         // NOTE: drift events are already logged at warn level by the detector.
         // Future work: store drift_events in session metadata for API exposure.
+    }
+
+    /// Record the turn outcome in the empirical router.
+    ///
+    /// Called from `finalize_turn` after a successful turn. Uses heuristic
+    /// category inference from the user message text and treats any non-degraded
+    /// turn as a success (coarse signal; good enough for routing calibration).
+    ///
+    /// WHY fire-and-forget via the trait: `Router::after_action` is sync and
+    /// internally spawns the store write as a background task so the response
+    /// path is never blocked by the write lock.
+    #[tracing::instrument(skip(self, content, turn_result), fields(model = %turn_result.model_used))]
+    fn record_router_outcome(&self, content: &str, turn_result: &TurnResult) {
+        if turn_result.model_used.is_empty() {
+            // Degraded-mode turns have no model; skip.
+            return;
+        }
+
+        let task_category = TaskCategory::from_prompt(content);
+        // WHY: a non-degraded turn that reached the LLM is a routing success.
+        // Degraded turns are excluded by the early return above.
+        let outcome = TurnOutcome::new(
+            ProviderId::new(turn_result.model_used.as_str()),
+            task_category,
+            turn_result.degraded.is_none(),
+            true, // is_interactive
+        );
+
+        // The decision struct carries the provider selected for this turn.
+        // Confidence is not available at finalize time (the store was queried
+        // during execute, not here).
+        let decision = RoutingDecision::new(Arc::from(turn_result.model_used.as_str()), None);
+
+        if let Err(e) = self.services.router.after_action(&decision, &outcome) {
+            tracing::warn!(error = %e, "empirical router after_action failed");
+        }
     }
 
     /// # Cancel safety

@@ -251,6 +251,7 @@ mod tests {
             signals: vec![],
             degraded: None,
             reasoning: String::new(),
+            model_used: "test-model".to_owned(),
         }
     }
 
@@ -276,6 +277,7 @@ mod tests {
             signals: vec![],
             degraded: None,
             reasoning: String::new(),
+            model_used: "test-model".to_owned(),
         }
     }
 

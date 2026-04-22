@@ -398,6 +398,7 @@ async fn detector_returns_continue() {
         stop_reason: "end_turn".to_owned(),
         degraded: None,
         reasoning: String::new(),
+        model_used: "test-model".to_owned(),
     };
     let ctx = crate::hooks::TurnContext {
         result: &turn_result,
