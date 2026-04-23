@@ -7,6 +7,9 @@ pub mod planning;
 pub mod vocabulary;
 pub mod writing;
 
+// Re-export for audit_component checks.
+pub use derive_vs_declare::DeriveVsDeclareRule;
+
 use crate::error::Result;
 
 /// A single lint violation found by a rule.
