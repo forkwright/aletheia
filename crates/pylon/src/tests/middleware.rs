@@ -587,3 +587,110 @@ async fn sunset_header_format_rfc8594() {
         "Sunset header must be a valid RFC 7231 HTTP-date"
     );
 }
+
+#[tokio::test]
+async fn etag_set_on_200_get_response() {
+    let (app, _dir) = app().await;
+    let resp = app.oneshot(authed_get("/api/v1/nous")).await.unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let etag = resp
+        .headers()
+        .get("etag")
+        .expect("ETag header must be present on GET 200");
+    assert!(
+        etag.to_str().unwrap().starts_with('"'),
+        "ETag must be a strong quoted string"
+    );
+}
+
+#[tokio::test]
+async fn if_none_match_returns_304_on_match() {
+    let (app, _dir) = app().await;
+
+    // First request to capture the ETag.
+    let first = app
+        .clone()
+        .oneshot(authed_get("/api/v1/nous"))
+        .await
+        .unwrap();
+    assert_eq!(first.status(), StatusCode::OK);
+    let etag = first
+        .headers()
+        .get("etag")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_owned();
+
+    // Replay with If-None-Match.
+    let req = Request::get("/api/v1/nous")
+        .header("authorization", format!("Bearer {}", default_token()))
+        .header("if-none-match", &etag)
+        .body(Body::empty())
+        .unwrap();
+    let second = app.oneshot(req).await.unwrap();
+    assert_eq!(second.status(), StatusCode::NOT_MODIFIED);
+    assert_eq!(body_string(second).await, "", "304 must have empty body");
+}
+
+#[tokio::test]
+async fn if_none_match_returns_200_on_mismatch() {
+    let (app, _dir) = app().await;
+
+    let req = Request::get("/api/v1/nous")
+        .header("authorization", format!("Bearer {}", default_token()))
+        .header("if-none-match", "\"stale-etag-value\"")
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let etag = resp.headers().get("etag").expect("ETag must be present");
+    assert_ne!(etag.to_str().unwrap(), "\"stale-etag-value\"");
+}
+
+#[tokio::test]
+async fn etag_stable_for_identical_body() {
+    let (app, _dir) = app().await;
+
+    let req1 = authed_get("/api/v1/nous");
+    let resp1 = app.clone().oneshot(req1).await.unwrap();
+    assert_eq!(resp1.status(), StatusCode::OK);
+    let etag1 = resp1
+        .headers()
+        .get("etag")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_owned();
+
+    let req2 = authed_get("/api/v1/nous");
+    let resp2 = app.oneshot(req2).await.unwrap();
+    assert_eq!(resp2.status(), StatusCode::OK);
+    let etag2 = resp2
+        .headers()
+        .get("etag")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_owned();
+
+    assert_eq!(etag1, etag2, "identical body must produce identical ETag");
+}
+
+#[tokio::test]
+async fn sse_endpoint_unaffected() {
+    let (app, _dir) = app().await;
+    let resp = app.oneshot(authed_get("/api/v1/events")).await.unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert!(
+        resp.headers().get("etag").is_none(),
+        "SSE endpoint must not have ETag header"
+    );
+    let ct = resp
+        .headers()
+        .get("content-type")
+        .expect("SSE must have content-type");
+    assert!(ct.to_str().unwrap().starts_with("text/event-stream"));
+}

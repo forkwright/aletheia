@@ -19,7 +19,7 @@ use koina::http::{API_HEALTH, API_V1};
 use crate::error::{ApiError, ErrorBody, ErrorResponse};
 use crate::handlers::{config, health, knowledge, metrics, nous, planning, sessions};
 use crate::middleware::{
-    CsrfState, DeprecationLayer, RateLimiter, RequestId, UserRateLimiter, deprecate,
+    CsrfState, DeprecationLayer, ETagLayer, RateLimiter, RequestId, UserRateLimiter, deprecate,
     enrich_error_response, inject_request_id, per_user_rate_limit, rate_limit, record_http_metrics,
     require_csrf_header, spawn_stale_cleanup,
 };
@@ -206,6 +206,8 @@ pub fn build_router_with(
     )]));
 
     router = router.layer(axum::middleware::from_fn(record_http_metrics));
+
+    router = router.layer(ETagLayer::new());
 
     router = router.layer(CompressionLayer::new());
 
