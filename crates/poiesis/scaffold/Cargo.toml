@@ -1,0 +1,20 @@
+[package]
+name = "poiesis-scaffold"
+version.workspace = true
+description = "Project-template scaffolder for poiesis report projects"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+poiesis-core = { path = "../core" }
+poiesis-sheet = { path = "../sheet", default-features = false, features = ["xlsx"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+snafu = { workspace = true }
+tracing = { workspace = true }

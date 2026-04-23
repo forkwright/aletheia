@@ -5676,6 +5676,7 @@ dependencies = [
  "poiesis-core",
  "poiesis-intake",
  "poiesis-lint",
+ "poiesis-scaffold",
  "poiesis-sheet",
  "poiesis-text",
  "poiesis-typst",
@@ -6110,6 +6111,18 @@ dependencies = [
  "serde",
  "serde_json",
  "snafu",
+]
+
+[[package]]
+name = "poiesis-scaffold"
+version = "0.21.1"
+dependencies = [
+ "poiesis-core",
+ "poiesis-sheet",
+ "serde",
+ "serde_json",
+ "snafu",
+ "tracing",
 ]
 
 [[package]]
