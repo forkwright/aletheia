@@ -34,17 +34,7 @@ pub struct IntakeRequest {
     pub requirements: Vec<String>,
 }
 
-/// A single file in a generated scaffold.
-///
-/// WHY: Local definition while `poiesis-scaffold` (#3703) is in flight.
-/// Reconcile via a shared trait once both PRs land.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ScaffoldFile {
-    /// Relative path for the file.
-    pub path: String,
-    /// File content (UTF-8).
-    pub content: String,
-}
+pub use poiesis_scaffold::ScaffoldFile;
 
 /// Errors from intake parsing or scaffold generation.
 #[derive(Debug, Snafu)]
@@ -200,39 +190,30 @@ pub fn generate_scaffold(req: &IntakeRequest) -> Result<Vec<ScaffoldFile>> {
     let slug = &req.slug;
     let files = match req.kind {
         RequestKind::Analysis => vec![
-            ScaffoldFile {
-                path: format!("{slug}.md"),
-                content: analysis_template(&req.description, &req.requirements),
-            },
-            ScaffoldFile {
-                path: format!("{slug}_data.md"),
-                content: "# Data sources\n\n".to_owned(),
-            },
+            ScaffoldFile::new(
+                format!("{slug}.md"),
+                analysis_template(&req.description, &req.requirements).into_bytes(),
+            ),
+            ScaffoldFile::new(format!("{slug}_data.md"), b"# Data sources\n\n".to_vec()),
         ],
         RequestKind::Report => vec![
-            ScaffoldFile {
-                path: format!("{slug}.md"),
-                content: report_template(&req.description, &req.requirements),
-            },
-            ScaffoldFile {
-                path: format!("{slug}_appendix.md"),
-                content: "# Appendix\n\n".to_owned(),
-            },
+            ScaffoldFile::new(
+                format!("{slug}.md"),
+                report_template(&req.description, &req.requirements).into_bytes(),
+            ),
+            ScaffoldFile::new(format!("{slug}_appendix.md"), b"# Appendix\n\n".to_vec()),
         ],
         RequestKind::Dashboard => vec![
-            ScaffoldFile {
-                path: format!("{slug}.md"),
-                content: dashboard_template(&req.description, &req.requirements),
-            },
-            ScaffoldFile {
-                path: format!("{slug}_data.md"),
-                content: "# Data model\n\n".to_owned(),
-            },
+            ScaffoldFile::new(
+                format!("{slug}.md"),
+                dashboard_template(&req.description, &req.requirements).into_bytes(),
+            ),
+            ScaffoldFile::new(format!("{slug}_data.md"), b"# Data model\n\n".to_vec()),
         ],
-        RequestKind::Unclassified => vec![ScaffoldFile {
-            path: format!("{slug}.md"),
-            content: generic_template(&req.description, &req.requirements),
-        }],
+        RequestKind::Unclassified => vec![ScaffoldFile::new(
+            format!("{slug}.md"),
+            generic_template(&req.description, &req.requirements).into_bytes(),
+        )],
     };
     Ok(files)
 }

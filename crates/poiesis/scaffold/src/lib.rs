@@ -48,12 +48,21 @@ pub struct ScaffoldFile {
 }
 
 impl ScaffoldFile {
+    /// Build a [`ScaffoldFile`] from any path and raw byte contents.
+    ///
+    /// Required to construct the type outside of `poiesis-scaffold`
+    /// because the struct is `#[non_exhaustive]` (kanon #108 discipline).
     #[must_use]
-    fn from_str(path: impl Into<PathBuf>, contents: &str) -> Self {
+    pub fn new(path: impl Into<PathBuf>, contents: impl Into<Vec<u8>>) -> Self {
         Self {
             path: path.into(),
-            contents: contents.as_bytes().to_vec(),
+            contents: contents.into(),
         }
+    }
+
+    #[must_use]
+    fn from_str(path: impl Into<PathBuf>, contents: &str) -> Self {
+        Self::new(path, contents.as_bytes().to_vec())
     }
 }
 
