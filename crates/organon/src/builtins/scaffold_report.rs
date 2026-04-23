@@ -26,7 +26,9 @@ fn extract_str<'a>(
 }
 
 fn extract_bool(args: &serde_json::Value, key: &str, default: bool) -> bool {
-    args.get(key).and_then(serde_json::Value::as_bool).unwrap_or(default)
+    args.get(key)
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(default)
 }
 
 struct ScaffoldReportExecutor;
@@ -60,11 +62,11 @@ impl ToolExecutor for ScaffoldReportExecutor {
                 }
             };
 
-            let files = match poiesis_scaffold::scaffold_report(slug, description, format, confidential)
-            {
-                Ok(f) => f,
-                Err(e) => return Ok(ToolResult::error(e.to_string())),
-            };
+            let files =
+                match poiesis_scaffold::scaffold_report(slug, description, format, confidential) {
+                    Ok(f) => f,
+                    Err(e) => return Ok(ToolResult::error(e.to_string())),
+                };
 
             if let Some(dir) = extract_opt_str(args, "directory") {
                 if let Err(e) = tokio::fs::create_dir_all(dir).await {

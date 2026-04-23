@@ -26,6 +26,8 @@ pub mod fs_ops;
 pub mod git_ops;
 /// Generic HTTP client (POST/PUT/DELETE/PATCH with headers + body).
 pub mod http_client;
+/// Intake report tool: parse Slack-style text into a structured scaffold.
+pub mod intake_report;
 /// Knowledge graph and session memory tools (remember, recall).
 pub mod memory;
 /// Parameter registry query tool (discover tunable parameters).
@@ -35,12 +37,12 @@ pub mod planning;
 /// Poiesis report tools: generate_document, lint_report, verify_report,
 /// render_typst_report, render_docx_report.
 pub mod poiesis;
-/// Intake report tool: parse Slack-style text into a structured scaffold.
-pub mod intake_report;
 /// Scaffold report tool: generates a new report project from embedded templates.
 pub mod scaffold_report;
 /// DOCX report rendering tool (render_docx_report).
 pub mod render_docx_report;
+/// Render a JSON slide descriptor to PPTX.
+pub mod render_pptx_report;
 /// Web research tools (web_fetch).
 pub mod research;
 /// `tool_schema` meta-tool: fetch full JSON schema for any named tool on demand.
@@ -179,5 +181,6 @@ pub(crate) fn register_domain_tools(
     intake_report::register(registry)?;
     scaffold_report::register(registry)?;
     render_docx_report::register(registry)?;
+    render_pptx_report::register(registry)?;
     Ok(())
 }
