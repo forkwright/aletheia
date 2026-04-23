@@ -57,6 +57,12 @@ prometheus-client = { workspace = true }
 # Cryptographic random number generation (CSRF token generation)
 rand = { workspace = true }
 
+# Hashing for ETag computation
+sha2 = { workspace = true }
+
+# Body stream utilities for ETag middleware
+http-body-util = "0.1"
+
 # Internal crates
 koina = { path = "../koina" }
 taxis = { path = "../taxis" }
