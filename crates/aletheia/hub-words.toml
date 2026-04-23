@@ -1,0 +1,14 @@
+[memory]
+canonical = "the mneme facade — eidos types + episteme pipeline + krites engine + graphe sessions"
+implementations = ["mneme", "episteme", "krites", "eidos", "graphe"]
+forbidden_synonyms = ["storage", "cache"]
+
+[session]
+canonical = "graphe::Session — a conversation thread persisted in the session store"
+implementations = ["graphe::types::Session", "nous::session::SessionState"]
+forbidden_synonyms = ["connection", "thread", "context"]
+
+[tool]
+canonical = "organon::ToolExecutor implementation registered with ToolRegistry"
+implementations = ["organon::registry::ToolRegistry"]
+forbidden_synonyms = ["utility", "function", "plugin"]
