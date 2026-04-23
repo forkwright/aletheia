@@ -38,6 +38,7 @@ poiesis-core = { path = "../poiesis/core" }
 poiesis-text = { path = "../poiesis/text" }
 poiesis-sheet = { path = "../poiesis/sheet" }
 poiesis-lint = { path = "../poiesis/lint" }
+poiesis-slides = { path = "../poiesis/slides" }
 poiesis-typst = { path = "../poiesis/typst" }
 poiesis-scaffold = { path = "../poiesis/scaffold" }
 poiesis-verify = { path = "../poiesis/verify" }

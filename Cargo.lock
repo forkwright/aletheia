@@ -700,6 +700,7 @@ dependencies = [
  "aletheia-lexica",
  "regex",
  "serde",
+ "serde_json",
  "snafu",
  "tempfile",
  "toml 1.1.2+spec-1.1.0",
@@ -5690,8 +5691,11 @@ dependencies = [
  "landlock",
  "poiesis-core",
  "poiesis-doc",
+ "poiesis-intake",
  "poiesis-lint",
+ "poiesis-scaffold",
  "poiesis-sheet",
+ "poiesis-slides",
  "poiesis-text",
  "poiesis-typst",
  "poiesis-verify",
@@ -6121,12 +6125,35 @@ dependencies = [
 ]
 
 [[package]]
+name = "poiesis-intake"
+version = "0.21.1"
+dependencies = [
+ "aletheia-lexica",
+ "serde",
+ "serde_json",
+ "snafu",
+ "tracing",
+]
+
+[[package]]
 name = "poiesis-lint"
 version = "0.21.1"
 dependencies = [
  "serde",
  "serde_json",
  "snafu",
+]
+
+[[package]]
+name = "poiesis-scaffold"
+version = "0.21.1"
+dependencies = [
+ "poiesis-core",
+ "poiesis-sheet",
+ "serde",
+ "serde_json",
+ "snafu",
+ "tracing",
 ]
 
 [[package]]
@@ -6145,7 +6172,10 @@ version = "0.21.1"
 dependencies = [
  "poiesis-core",
  "quick-xml 0.39.2",
+ "serde",
+ "serde_json",
  "snafu",
+ "tracing",
  "zip 8.5.1",
 ]
 
