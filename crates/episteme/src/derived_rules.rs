@@ -69,6 +69,13 @@ is_a[child, ancestor] :=
 ///
 /// The output feeds into the `:put derived_facts` write in
 /// [`KnowledgeStore::materialize_ontological_rules`].
+#[cfg_attr(
+    not(feature = "mneme-engine"),
+    expect(
+        dead_code,
+        reason = "materialization query consumed by knowledge_store::derived_rules with mneme-engine feature"
+    )
+)]
 pub(crate) const ONTOLOGICAL_MATERIALIZATION: &str = r"
 is_a[child, parent] :=
     *type_hierarchy{child_type: child, parent_type: parent}
@@ -97,6 +104,13 @@ is_a[child, ancestor] :=
 /// WHY: replaces the application-level BFS in `propagate_confidence`. The
 /// Datalog engine evaluates recursive rules to fixpoint in one query; the
 /// application no longer needs to iteratively fetch edges.
+#[cfg_attr(
+    not(feature = "mneme-engine"),
+    expect(
+        dead_code,
+        reason = "materialization query consumed by knowledge_store::derived_rules with mneme-engine feature"
+    )
+)]
 pub(crate) const CAUSAL_CHAIN_MATERIALIZATION: &str = r"
 causal_chain[cause, effect, conf] :=
     *causal_edges{cause: cause, effect: effect, confidence: conf}
@@ -166,6 +180,13 @@ active_default[entity_id, content, conf] :=
 /// `CozoDB` `not` is stratified negation: the `defaults` and `facts` base
 /// relations must be fully evaluated before the outer rule fires. This holds
 /// here because neither relation is derived by this script.
+#[cfg_attr(
+    not(feature = "mneme-engine"),
+    expect(
+        dead_code,
+        reason = "materialization query consumed by knowledge_store::derived_rules with mneme-engine feature"
+    )
+)]
 pub(crate) const DEFEASIBLE_SCOPED_MATERIALIZATION: &str = r"
 verified_for_entity[entity_id, tag] :=
     *fact_entities{fact_id: fid, entity_id: entity_id},
