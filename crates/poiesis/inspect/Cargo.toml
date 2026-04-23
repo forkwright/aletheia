@@ -1,0 +1,18 @@
+[package]
+name = "poiesis-inspect"
+version.workspace = true
+description = "Text extraction from PDF, XLSX, and PPTX documents"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+snafu = { workspace = true }
+tracing = { workspace = true }
+zip = "8"
+pdf-extract = "0.10"
