@@ -34,6 +34,8 @@ pub mod parameters;
 pub mod planning;
 /// Poiesis report tools: generate_document, lint_report, verify_report.
 pub mod poiesis;
+/// Intake report tool: parse Slack-style text into a structured scaffold.
+pub mod intake_report;
 /// Web research tools (web_fetch).
 pub mod research;
 /// `tool_schema` meta-tool: fetch full JSON schema for any named tool on demand.
@@ -169,5 +171,6 @@ pub(crate) fn register_domain_tools(
     #[cfg(feature = "energeia")]
     bookkeeper::register(registry)?;
     poiesis::register(registry)?;
+    intake_report::register(registry)?;
     Ok(())
 }
