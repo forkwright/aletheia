@@ -1,0 +1,17 @@
+[package]
+name = "poiesis-diff"
+version.workspace = true
+description = "Cell-level diff for XLSX and PPTX documents"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+snafu = { workspace = true }
+tracing = { workspace = true }
+zip = "8"

@@ -12,6 +12,8 @@ pub mod communication;
 /// Computer use: screen capture, action dispatch, sandboxed execution.
 #[cfg(feature = "computer-use")]
 pub mod computer_use;
+/// Diff report tool: compare documents and report changes.
+pub mod diff_report;
 /// Dynamic tool activation meta-tool.
 pub mod enable_tool;
 /// Energeia capability tools (dromeus, dokimasia, diorthosis, epitropos, parateresis,
@@ -26,6 +28,8 @@ pub mod fs_ops;
 pub mod git_ops;
 /// Generic HTTP client (POST/PUT/DELETE/PATCH with headers + body).
 pub mod http_client;
+/// Inspect report tool: extract text from documents.
+pub mod inspect_report;
 /// Intake report tool: parse Slack-style text into a structured scaffold.
 pub mod intake_report;
 /// Knowledge graph and session memory tools (remember, recall).
@@ -185,5 +189,7 @@ pub(crate) fn register_domain_tools(
     render_docx_report::register(registry)?;
     render_pptx_report::register(registry)?;
     render_xlsx_report::register(registry)?;
+    diff_report::register(registry)?;
+    inspect_report::register(registry)?;
     Ok(())
 }
