@@ -20,6 +20,7 @@ test-core = []
 test-full = []
 
 [dependencies]
+eidos = { path = "../eidos" }
 episteme = { path = "../episteme", default-features = false }
 energeia = { path = "../energeia", optional = true }
 koina = { path = "../koina", features = ["fjall"] }
