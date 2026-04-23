@@ -16,6 +16,31 @@ pub(crate) mod store;
 /// Empirical provider router: selects providers by historical success rate.
 pub(crate) mod empirical;
 
+/// Persona-aware router: model-tier + role selection on top of empirical routing.
+///
+/// Recovers the persona dispatch capability from the phronesis migration
+/// (issue #3453). The classifier (commit 2, `persona_classifier.rs`) supplies
+/// a `(ModelTier, PersonaRole)` hint; the router carries it in `PersonaDecision`.
+pub(crate) mod persona;
+
+/// AST-style prompt classifier for persona-based routing.
+///
+/// Replaces the keyword heuristic in [`aletheia_routing::types::TaskCategory::from_prompt`]
+/// with a markdown-structure-aware scorer. Heading keywords are weighted 2×
+/// body keywords (phronesis design). Returns `None` when confidence is below
+/// the threshold so callers can fall back to the keyword heuristic.
+pub(crate) mod persona_classifier;
+
+/// Expertise-affinity router: prefers providers with historical success in the
+/// requested [`TaskCategory`].
+///
+/// Extends [`PersonaRouter`](persona::PersonaRouter) with a four-dimension
+/// weighted affinity score (category match 40%, consistency 30%, breadth 20%,
+/// recency 10%) that acts as a tiebreaker when the empirical confidence gap is
+/// narrow. Restores the session×TaskCategory affinity tracking from the
+/// phronesis migration (issue #3456).
+pub(crate) mod affinity;
+
 // ---------------------------------------------------------------------------
 // Re-exports from aletheia-routing (shared types)
 // ---------------------------------------------------------------------------
