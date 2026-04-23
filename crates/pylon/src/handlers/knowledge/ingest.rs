@@ -130,6 +130,7 @@ pub async fn ingest(
     #[cfg(feature = "knowledge-store")]
     if let Some(ref store) = state.knowledge_store {
         let store = std::sync::Arc::clone(store);
+        let event_bus = std::sync::Arc::clone(&state.event_bus);
         let result = tokio::task::spawn_blocking(move || {
             let mut inserted = 0usize;
             let mut skipped = 0usize;
@@ -137,7 +138,17 @@ pub async fn ingest(
 
             for (index, fact) in facts.iter().enumerate() {
                 match store.insert_fact(fact) {
-                    Ok(()) => inserted += 1,
+                    Ok(()) => {
+                        inserted += 1;
+                        event_bus.publish(crate::event_bus::DomainEvent::new(
+                            "fact.created",
+                            serde_json::json!({
+                                "fact_id": fact.id.as_str(),
+                                "nous_id": fact.nous_id.as_str(),
+                                "content_preview": truncate(&fact.content, 200),
+                            }),
+                        ));
+                    }
                     Err(e) => {
                         errors.push(IngestFactError {
                             index,
@@ -176,4 +187,21 @@ pub async fn ingest(
         message: "knowledge store not available".to_owned(),
         location: snafu::location!(),
     })
+}
+
+/// Truncate a string to `max_len` bytes, adding an ellipsis if truncated.
+fn truncate(s: &str, max_len: usize) -> String {
+    if s.len() <= max_len {
+        s.to_owned()
+    } else {
+        let mut result = String::with_capacity(max_len + 3);
+        for ch in s.chars() {
+            if result.len() + ch.len_utf8() > max_len.saturating_sub(1) {
+                result.push('…');
+                break;
+            }
+            result.push(ch);
+        }
+        result
+    }
 }

@@ -25,6 +25,8 @@ pub struct GatewayConfig {
     pub csrf: CsrfConfig,
     /// Rate limiting settings.
     pub rate_limit: RateLimitConfig,
+    /// SSE heartbeat interval for event subscription streams, in seconds.
+    pub sse_heartbeat_interval_secs: u64,
 }
 
 impl Default for GatewayConfig {
@@ -38,6 +40,7 @@ impl Default for GatewayConfig {
             body_limit: BodyLimitConfig::default(),
             csrf: CsrfConfig::default(),
             rate_limit: RateLimitConfig::default(),
+            sse_heartbeat_interval_secs: 30,
         }
     }
 }

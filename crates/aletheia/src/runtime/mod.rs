@@ -816,6 +816,7 @@ impl RuntimeBuilder {
             embedding_provider: Some(Arc::clone(&embedding_provider)),
             turn_buffer_registry: Arc::new(pylon::turn_buffer::TurnBufferRegistry::new()),
             metrics_registry,
+            event_bus: Arc::new(pylon::event_bus::EventBus::new(256)),
         });
 
         Ok(Runtime {
