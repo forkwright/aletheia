@@ -42,6 +42,7 @@ poiesis-typst = { path = "../poiesis/typst" }
 poiesis-scaffold = { path = "../poiesis/scaffold" }
 poiesis-verify = { path = "../poiesis/verify" }
 poiesis-intake = { path = "../poiesis/intake" }
+poiesis-doc = { path = "../poiesis/doc" }
 koina = { path = "../koina" }
 taxis = { path = "../taxis" }
 indexmap = { workspace = true }

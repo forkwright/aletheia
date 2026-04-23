@@ -1,0 +1,30 @@
+[package]
+name = "poiesis-doc"
+version.workspace = true
+description = "DOCX write and inspect backend for poiesis"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+# DOCX write backend — Apache-2.0, permissive
+docx-rs = "0.4"
+
+# DOCX inspect backend — ZIP archive text extraction
+zip = { version = "8", default-features = false, features = ["deflate"] }
+
+# XML parsing for inspect
+quick-xml = "0.39"
+
+serde = { workspace = true }
+serde_json = { workspace = true }
+snafu = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
