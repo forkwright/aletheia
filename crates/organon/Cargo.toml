@@ -40,6 +40,7 @@ poiesis-sheet = { path = "../poiesis/sheet" }
 poiesis-lint = { path = "../poiesis/lint" }
 poiesis-typst = { path = "../poiesis/typst" }
 poiesis-verify = { path = "../poiesis/verify" }
+poiesis-intake = { path = "../poiesis/intake" }
 koina = { path = "../koina" }
 taxis = { path = "../taxis" }
 indexmap = { workspace = true }

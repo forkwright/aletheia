@@ -1,0 +1,21 @@
+[package]
+name = "poiesis-intake"
+version.workspace = true
+description = "Parse Slack-style request text into a structured report scaffold"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+aletheia-lexica = { workspace = true }
+serde = { workspace = true }
+snafu = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
