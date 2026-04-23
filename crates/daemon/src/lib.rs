@@ -33,6 +33,11 @@ pub mod metrics;
 pub mod probe;
 /// Prosoche (directed attention) periodic check-in for calendar, tasks, and system health.
 pub mod prosoche;
+/// Prosoche self-audit framework: five structured attention-quality checks + audit runner.
+///
+/// Implements Phase 05 REQ-01 (check types) and REQ-02 (audit runner + persistence).
+/// The audit runner is wired into the existing `SelfAudit` builtin heartbeat slot.
+pub mod prosoche_audit;
 /// Per-nous background task runner with cron scheduling, failure tracking, and graceful shutdown.
 pub mod runner;
 /// Scheduling primitives: cron, interval, one-shot, jitter, and active time windows.
@@ -63,5 +68,6 @@ mod assertions {
         assert_send::<super::coordination::Coordinator>();
         assert_send_sync::<super::triggers::TriggerRouter>();
         assert_send_sync::<super::self_prompt::SelfPromptConfig>();
+        assert_send::<super::prosoche_audit::ProsocheAuditRunner>();
     };
 }
