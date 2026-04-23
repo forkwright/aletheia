@@ -41,8 +41,6 @@ pub mod planning;
 /// Poiesis report tools: generate_document, lint_report, verify_report,
 /// render_typst_report, render_docx_report.
 pub mod poiesis;
-/// Scaffold report tool: generates a new report project from embedded templates.
-pub mod scaffold_report;
 /// DOCX report rendering tool (render_docx_report).
 pub mod render_docx_report;
 /// Render a JSON slide descriptor to PPTX.
@@ -51,6 +49,8 @@ pub mod render_pptx_report;
 pub mod render_xlsx_report;
 /// Web research tools (web_fetch).
 pub mod research;
+/// Scaffold report tool: generates a new report project from embedded templates.
+pub mod scaffold_report;
 /// `tool_schema` meta-tool: fetch full JSON schema for any named tool on demand.
 ///
 /// Always compiled (not feature-gated) so the tool is available even when

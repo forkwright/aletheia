@@ -157,10 +157,7 @@ fn contains_any(haystack: &str, needles: &[&str]) -> bool {
 
 /// Generate a URL-safe slug from the first few words of a description.
 fn slugify(description: &str) -> String {
-    let words: Vec<&str> = description
-        .split_whitespace()
-        .take(8)
-        .collect();
+    let words: Vec<&str> = description.split_whitespace().take(8).collect();
     let raw = words.join(" ");
     raw.to_lowercase()
         .replace(|c: char| !c.is_alphanumeric() && c != ' ', "-")
