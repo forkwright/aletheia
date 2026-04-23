@@ -2,13 +2,13 @@
 
 ## At a glance
 
-Report tooling family: format-agnostic document model plus rendering backends (Typst→PDF, ODT, XLSX, ODS, PPTX) and report-quality checks (prose lint, numeric claim verify). Zero internal dependencies. Entry points: `core/src/lib.rs` (Document, Renderer) and `typst/src/lib.rs` (`render_typst`, `render_template`).
+Report tooling family: format-agnostic document model plus rendering backends (Typst→PDF, ODT, XLSX, ODS, PPTX, DOCX) and report-quality checks (prose lint, numeric claim verify). Zero internal dependencies. Entry points: `core/src/lib.rs` (Document, Renderer) and `typst/src/lib.rs` (`render_typst`, `render_template`).
 
 **Typst is the primary renderer.** Prefer `poiesis-typst` for prose-oriented PDF output - it supports templates, math, citations, breakable blocks, cross-references, and JSON data injection, with structured compile diagnostics carrying source locations. The `text/pdf` backend (via `krilla`) remains for the document-model path where no template system or data injection is needed.
 
 ## Depth
 
-Report tooling family: format-agnostic document model, Typst-based PDF primary renderer, format-specific backends (ODT/XLSX/ODS/PPTX), and report-quality checks (lint + verify). ~2K lines.
+Report tooling family: format-agnostic document model, Typst-based PDF primary renderer, format-specific backends (ODT/XLSX/ODS/PPTX/DOCX), and report-quality checks (lint + verify). ~2K lines.
 
 ## Read first
 
@@ -36,6 +36,9 @@ Report tooling family: format-agnostic document model, Typst-based PDF primary r
 | `XlsxRenderer` | `sheet/src/xlsx.rs` | Excel backend via `rust_xlsxwriter` |
 | `OdsRenderer` | `sheet/src/ods.rs` | ODS backend via `spreadsheet-ods` |
 | `PptxRenderer` | `slides/src/pptx.rs` | PowerPoint backend via hand-rolled ZIP/XML emitter |
+| `render_docx` | `doc/src/lib.rs` | DOCX backend via `docx-rs`: JSON descriptor → DOCX bytes |
+| `inspect_docx` | `doc/src/lib.rs` | Extract paragraph text from DOCX ZIP via `zip` + `quick-xml` |
+| `DocxSummary` | `doc/src/lib.rs` | Text summary of an inspected DOCX file |
 | `Linter` | `lint/src/lib.rs` | Report prose linter (banned words, citations, structure) |
 | `Verifier` | `verify/src/lib.rs` | Numeric-claim verifier (arithmetic eval, cross-claim refs) |
 
@@ -57,6 +60,7 @@ Current slugs: `default`.
 | `xlsx` | `poiesis-sheet` | yes | Excel output via `rust_xlsxwriter` |
 | `ods` | `poiesis-sheet` | yes | ODS output via `spreadsheet-ods` |
 | `pptx` | `poiesis-slides` | yes | PPTX output via hand-rolled ZIP/XML emitter |
+| `docx` | `poiesis-doc` | yes | DOCX output via `docx-rs` |
 
 ## Patterns
 
@@ -82,5 +86,5 @@ Current slugs: `default`.
 
 ## Dependencies
 
-Uses: jiff, snafu, typst + typst-pdf + comemo + parking_lot (typst backend), krilla (optional), zip (optional), quick-xml (optional), rust_xlsxwriter (optional), spreadsheet-ods (optional)
+Uses: jiff, snafu, typst + typst-pdf + comemo + parking_lot (typst backend), krilla (optional), zip (optional), quick-xml (optional), rust_xlsxwriter (optional), spreadsheet-ods (optional), docx-rs (optional)
 Used by: organon (as report tools)
