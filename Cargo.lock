@@ -699,8 +699,10 @@ version = "0.21.1"
 dependencies = [
  "aletheia-lexica",
  "regex",
+ "serde",
  "snafu",
  "tempfile",
+ "toml 1.1.2+spec-1.1.0",
  "tracing",
 ]
 
@@ -5514,6 +5516,7 @@ name = "oikonomos"
 version = "0.21.1"
 dependencies = [
  "axum 0.8.9",
+ "eidos",
  "energeia",
  "episteme",
  "fjall",
@@ -5671,6 +5674,7 @@ dependencies = [
  "koina",
  "landlock",
  "poiesis-core",
+ "poiesis-intake",
  "poiesis-lint",
  "poiesis-sheet",
  "poiesis-text",
@@ -6086,6 +6090,17 @@ version = "0.21.1"
 dependencies = [
  "jiff",
  "snafu",
+]
+
+[[package]]
+name = "poiesis-intake"
+version = "0.21.1"
+dependencies = [
+ "aletheia-lexica",
+ "serde",
+ "serde_json",
+ "snafu",
+ "tracing",
 ]
 
 [[package]]
@@ -6532,6 +6547,7 @@ dependencies = [
  "reqwest 0.13.2",
  "serde",
  "serde_json",
+ "sha2 0.11.0",
  "snafu",
  "symbolon",
  "taxis",
