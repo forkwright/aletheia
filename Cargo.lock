@@ -699,10 +699,8 @@ version = "0.21.1"
 dependencies = [
  "aletheia-lexica",
  "regex",
- "serde",
  "snafu",
  "tempfile",
- "toml 1.1.2+spec-1.1.0",
  "tracing",
 ]
 
@@ -5516,7 +5514,6 @@ name = "oikonomos"
 version = "0.21.1"
 dependencies = [
  "axum 0.8.9",
- "eidos",
  "energeia",
  "episteme",
  "fjall",
@@ -6535,7 +6532,6 @@ dependencies = [
  "reqwest 0.13.2",
  "serde",
  "serde_json",
- "sha2 0.11.0",
  "snafu",
  "symbolon",
  "taxis",

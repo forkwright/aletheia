@@ -580,6 +580,65 @@ Each module declares its public surface explicitly. Consumers import from the pu
 - **Validate parameters at public boundaries.** Public functions validate their arguments. Private functions may rely on invariants established by callers.
 - **Defensive copy at API boundaries.** Copy mutable data received from and returned to callers. Never let callers alias internal mutable state.
 
+### Derivation Before Declaration
+
+**Exhibit subsystem state; derive aggregate status; never announce.** If an endpoint returns a status field (health, readiness, version), that status must be *derived* from per-subsystem observations, never *declared* as a hardcoded value.
+
+The principle applies to all aggregate summaries: health checks, version responses, feature flags, capability assertions, and readiness signals. The pattern is identical for all: exhibit the building blocks, and the consumer (or the next layer) derives the aggregate.
+
+**Bad: declared health.**
+```rust
+async fn health() -> Json<HealthResponse> {
+    Json(json!({"status": "healthy"}))  // ← announced, not derived
+}
+```
+
+**Good: derived health.**
+```rust
+async fn health(state: State<HealthState>) -> Json<HealthResponse> {
+    let db_ok = state.db.ping().await.is_ok();
+    let cache_ok = state.cache.ping().await.is_ok();
+    let storage_ok = state.storage.is_accessible();
+
+    let checks = vec![
+        HealthCheck { name: "database", status: if db_ok { "pass" } else { "fail" } },
+        HealthCheck { name: "cache", status: if cache_ok { "pass" } else { "fail" } },
+        HealthCheck { name: "storage", status: if storage_ok { "pass" } else { "fail" } },
+    ];
+
+    let status = if checks.iter().any(|c| c.status == "fail") {
+        "unhealthy"
+    } else {
+        "healthy"
+    };
+
+    Json(HealthResponse { status, checks })
+}
+```
+
+**Bad: declared version.**
+```rust
+async fn version() -> Json<VersionResponse> {
+    Json(json!({"version": "0.1.0"}))  // ← no context, no derivation
+}
+```
+
+**Good: derived version.**
+```rust
+async fn version() -> Json<VersionResponse> {
+    Json(json!({
+        "version": env!("CARGO_PKG_VERSION"),
+        "git_sha": env!("GIT_COMMIT_SHA"),      // ← from build
+        "build_timestamp": env!("BUILD_TIME"), // ← when binary was built
+        "rust_version": env!("CARGO_PKG_RUST_VERSION"),
+    }))
+}
+```
+
+The rule: if a field name suggests an aggregate or interpretation (status, health, ready, ok, pass, degraded), include the evidence. Single-field responses (only `"status"`, only `"version"`) are always declarations without derivation and violate this standard. Multi-field responses that include per-check details or metadata are derivations and comply.
+
+**basanos lint rule:** `STANDARDS/declare-without-derive` detects endpoints that return single-field aggregates without per-check evidence and flags them for refactoring.
+
 ### Deprecation
 
 Mark deprecated code with the language's mechanism (`#[deprecated]`, `@Deprecated`, `@warnings.deprecated`). Document the replacement. Set a removal version or date. Remove it when the time comes. Dead deprecation warnings that persist indefinitely are noise.
