@@ -577,3 +577,29 @@ Every document serves one of four purposes. Don't mix them.
 **Explanation** earns opinions. Discuss history, tradeoffs, alternatives, the "why."
 
 Mixing modes is the most common structural mistake. A tutorial that stops to explain theory loses the learner. A reference that includes how-to steps becomes unreliable for lookup.
+
+---
+
+## Hub-words discipline
+
+High-impact concepts where synonym drift causes confusion are declared as **hub words** in `crates/aletheia/hub-words.toml`. Each entry defines:
+
+- `canonical`: the precise term or phrase to use in prose
+- `implementations`: crates, types, or modules that legitimately implement the concept
+- `forbidden_synonyms`: words that must not be used when the canonical concept is meant
+
+### Rule NAMING/hub-word-fragmented-meaning
+
+`basanos` scans technical documentation (`.md`) and Rust doc-comments for forbidden synonyms. When a synonym appears in a context where the canonical term is expected, the rule emits a warning.
+
+**Severity:** Warn for v1.
+
+**Exemptions:** `vision.md` and `ROADMAP.md` are exempt, same as other writing rules.
+
+**Disabling a word:** Omit the hub word from `hub-words.toml` or configure the rule to skip it.
+
+### Extending the registry
+
+1. Add a new `[word]` section to `hub-words.toml`.
+2. Define `canonical`, `implementations`, and `forbidden_synonyms`.
+3. Run `cargo nextest run -p basanos` to verify the rule behavior.
