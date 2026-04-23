@@ -15,30 +15,38 @@
     )
 )]
 
-use std::collections::{BTreeMap, BinaryHeap, HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, HashSet};
+
+#[cfg(feature = "mneme-engine")]
+use std::collections::{BTreeMap, BinaryHeap, VecDeque};
 
 #[cfg(feature = "mneme-engine")]
 use snafu::ResultExt;
 
+#[cfg(feature = "mneme-engine")]
 /// Wrapper for `(cost, node)` that implements `Ord` so it can live in a
 /// `BinaryHeap` for Dijkstra's algorithm.
 #[derive(Debug, Clone)]
 struct DistState(f64, String);
 
+#[cfg(feature = "mneme-engine")]
 impl PartialEq for DistState {
     fn eq(&self, other: &Self) -> bool {
         self.0.to_bits() == other.0.to_bits() && self.1 == other.1
     }
 }
 
+#[cfg(feature = "mneme-engine")]
 impl Eq for DistState {}
 
+#[cfg(feature = "mneme-engine")]
 impl PartialOrd for DistState {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
 
+#[cfg(feature = "mneme-engine")]
 impl Ord for DistState {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.0
