@@ -58,7 +58,11 @@ impl ToolExecutor for IntakeReportExecutor {
             for f in &files {
                 let _ = std::fmt::Write::write_fmt(
                     &mut output,
-                    format_args!("\n--- {} ---\n{}", f.path, f.content),
+                    format_args!(
+                        "\n--- {} ---\n{}",
+                        f.path.display(),
+                        String::from_utf8_lossy(&f.contents)
+                    ),
                 );
             }
 

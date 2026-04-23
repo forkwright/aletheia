@@ -30,6 +30,7 @@ deferred-schemas = []
 
 [dependencies]
 eidos = { path = "../eidos" }
+gnosis = { path = "../gnosis" }
 energeia = { path = "../energeia", optional = true, features = [
     "storage-fjall",
 ] }
