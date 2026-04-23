@@ -1,6 +1,7 @@
 //! Lint rules for basanos.
 
 pub mod architecture;
+pub mod derive_vs_declare;
 pub mod planning;
 pub mod vocabulary;
 pub mod writing;
@@ -40,5 +41,6 @@ pub fn all_rules() -> Vec<Box<dyn Rule>> {
         Box::new(writing::PurposeInTechnicalDocRule),
         Box::new(vocabulary::HubWordDisciplineRule::new()),
         Box::new(writing::ReferenceMustCompressRule),
+        Box::new(derive_vs_declare::DeriveVsDeclareRule),
     ]
 }
