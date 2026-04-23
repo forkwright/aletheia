@@ -1,0 +1,106 @@
+#![deny(missing_docs)]
+//! poiesis-inspect: text extraction from PDF, XLSX, and PPTX documents.
+//!
+//! Provides functions to read and extract text content from common document
+//! formats, allowing agents to inspect their own generated outputs.
+
+mod error;
+mod pdf;
+mod pptx;
+mod xlsx;
+
+pub use error::{InspectError, Result};
+
+use tracing::instrument;
+
+/// Summary of extracted text and metadata from a PDF document.
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PdfSummary {
+    /// Number of pages in the PDF.
+    pub pages: usize,
+    /// Extracted text snippets from each page.
+    pub text_snippets: Vec<String>,
+}
+
+/// Summary of extracted text and metadata from an XLSX workbook.
+///
+/// This mirrors the structure from sibling crates if they expose it;
+/// otherwise it is defined locally here.
+#[non_exhaustive]
+#[derive(Debug, Clone)]
+pub struct WorkbookSummary {
+    /// Sheet names and their extracted text content.
+    pub sheets: std::collections::BTreeMap<String, String>,
+}
+
+/// Summary of extracted text and metadata from a PPTX presentation.
+///
+/// This mirrors the structure from sibling crates if they expose it;
+/// otherwise it is defined locally here.
+#[non_exhaustive]
+#[derive(Debug, Clone)]
+pub struct PresentationSummary {
+    /// Slide text content (indexed by slide number).
+    pub slides: Vec<String>,
+}
+
+/// Extract text from a PDF document.
+///
+/// # Errors
+///
+/// Returns an error if the input bytes cannot be parsed as a valid PDF or if
+/// text extraction fails.
+#[instrument(skip_all, fields(bytes = bytes.len()))]
+pub fn inspect_pdf(bytes: &[u8]) -> Result<PdfSummary> {
+    pdf::inspect_pdf_impl(bytes)
+}
+
+/// Extract text from an XLSX workbook.
+///
+/// # Errors
+///
+/// Returns an error if the input bytes cannot be parsed as a valid XLSX.
+#[instrument(skip_all, fields(bytes = bytes.len()))]
+pub fn inspect_xlsx(bytes: &[u8]) -> Result<WorkbookSummary> {
+    xlsx::inspect_xlsx_impl(bytes)
+}
+
+/// Extract text from a PPTX presentation.
+///
+/// # Errors
+///
+/// Returns an error if the input bytes cannot be parsed as a valid PPTX.
+#[instrument(skip_all, fields(bytes = bytes.len()))]
+pub fn inspect_pptx(bytes: &[u8]) -> Result<PresentationSummary> {
+    pptx::inspect_pptx_impl(bytes)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_inspect_pdf_handles_invalid_input() {
+        let malformed = b"not a pdf";
+        let result = inspect_pdf(malformed);
+        // Should error gracefully
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_inspect_xlsx_handles_invalid_input() {
+        let invalid = b"not xlsx";
+        let result = inspect_xlsx(invalid);
+        // Should error on invalid ZIP
+        let _ = result;
+    }
+
+    #[test]
+    fn test_inspect_pptx_handles_invalid_input() {
+        let invalid = b"not pptx";
+        let result = inspect_pptx(invalid);
+        // Should error on invalid ZIP
+        let _ = result;
+    }
+}

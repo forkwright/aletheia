@@ -41,6 +41,8 @@ members = [
     "crates/poiesis/verify",
     "crates/poiesis/intake",
     "crates/poiesis/doc",
+    "crates/poiesis/diff",
+    "crates/poiesis/inspect",
 ]
 # WHY: proskenion requires GTK3/webkit2gtk system libraries (via Dioxus
 # desktop/webview) which are not available in CI. Excluded from workspace to
@@ -172,6 +174,9 @@ bytes = { version = "1", default-features = false }
 # melete distillation panic boundary). Stripping `std` would remove the
 # unwind-safe future combinator we depend on.
 futures = { version = "0.3", default-features = false, features = ["std"] }
+
+# Encoding
+base64 = "0.22"
 
 # Async
 tokio = { version = "1", default-features = false, features = [

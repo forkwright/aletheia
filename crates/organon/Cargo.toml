@@ -44,8 +44,11 @@ poiesis-scaffold = { path = "../poiesis/scaffold" }
 poiesis-verify = { path = "../poiesis/verify" }
 poiesis-intake = { path = "../poiesis/intake" }
 poiesis-doc = { path = "../poiesis/doc" }
+poiesis-diff = { path = "../poiesis/diff" }
+poiesis-inspect = { path = "../poiesis/inspect" }
 koina = { path = "../koina" }
 taxis = { path = "../taxis" }
+base64 = { workspace = true }
 indexmap = { workspace = true }
 jiff = { workspace = true }
 prometheus-client = { workspace = true }
