@@ -159,7 +159,9 @@ fn xlsx_files(
     };
 
     let renderer = poiesis_sheet::XlsxRenderer::new();
-    let bytes = renderer.render(&doc).map_err(|e| Error::XlsxRender { source: e })?;
+    let bytes = renderer
+        .render(&doc)
+        .map_err(|e| Error::XlsxRender { source: e })?;
 
     Ok(vec![ScaffoldFile {
         path: PathBuf::from("report.xlsx"),
@@ -204,8 +206,8 @@ mod tests {
     #[test]
     #[expect(clippy::expect_used, reason = "test assertion")]
     fn scaffold_with_confidential_injects_header() {
-        let files =
-            scaffold_report("secret", "Top secret", Format::Typst, true).expect("scaffold must succeed");
+        let files = scaffold_report("secret", "Top secret", Format::Typst, true)
+            .expect("scaffold must succeed");
         let typst = files
             .iter()
             .find(|f| f.path == PathBuf::from("report.typ"))
