@@ -18,6 +18,7 @@ use aletheia_routing::{BoxFuture, Router, RouterError, RoutingDecision};
 use tracing::instrument;
 
 use super::empirical::EmpiricalRouter;
+use super::persona_classifier;
 
 // ---------------------------------------------------------------------------
 // ModelTier
@@ -29,10 +30,6 @@ use super::empirical::EmpiricalRouter;
 /// underlying provider config can evolve without changing routing logic.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "persona_classifier.rs (commit 2) uses ModelTier")
-)]
 pub(crate) enum ModelTier {
     /// Lightweight model for mechanical, low-complexity work.
     ///
@@ -71,10 +68,6 @@ impl std::fmt::Display for ModelTier {
 /// inject the appropriate role context when building the prompt prefix.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "persona_classifier.rs (commit 2) uses PersonaRole")
-)]
 pub(crate) enum PersonaRole {
     /// Architect — strategic, multi-crate, cross-cutting concerns.
     ///
@@ -111,10 +104,6 @@ impl std::fmt::Display for PersonaRole {
 /// use either the unified `Router` trait or the richer persona decision.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "binary wiring uses PersonaDecision")
-)]
 pub(crate) struct PersonaDecision {
     /// Underlying provider + empirical confidence.
     pub(crate) base: RoutingDecision,
@@ -123,15 +112,17 @@ pub(crate) struct PersonaDecision {
     /// Selected persona role.
     pub(crate) persona_role: PersonaRole,
     /// Human-readable rationale for the persona selection.
+    ///
+    /// Never read within this crate — carried for binary wiring and logging.
+    /// WHY: The `tracing::debug!` in `route_with_persona` uses the local
+    /// variable `rationale` (before `PersonaDecision::new` consumes it), not
+    /// the struct field. The field exists solely for consumers outside this crate.
+    #[expect(dead_code, reason = "binary wiring reads PersonaDecision::rationale")]
     pub(crate) rationale: String,
 }
 
 impl PersonaDecision {
     /// Construct a new persona decision.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "binary wiring constructs PersonaDecision")
-    )]
     pub(crate) fn new(
         base: RoutingDecision,
         model_tier: ModelTier,
@@ -178,7 +169,10 @@ impl PersonaRouter {
     /// Create a new persona router wrapping the given empirical router.
     #[cfg_attr(
         not(test),
-        expect(dead_code, reason = "binary wiring constructs PersonaRouter (follow-up wiring)")
+        expect(
+            dead_code,
+            reason = "binary wiring constructs PersonaRouter (follow-up wiring)"
+        )
     )]
     pub(crate) fn new(inner: EmpiricalRouter) -> Self {
         Self { inner }
@@ -187,16 +181,15 @@ impl PersonaRouter {
     /// Route with full persona decision: provider + model tier + role.
     ///
     /// If `persona_hint` is `Some`, that tier/role pair is used directly
-    /// (classifier-supplied). If `None`, the tier defaults to
-    /// [`ModelTier::Standard`] + [`PersonaRole::Engineer`].
+    /// (caller-supplied, e.g. from an outer dispatch loop). If `None`, the
+    /// router invokes [`persona_classifier::classify_prompt`] on `prompt_text`
+    /// from `features`; when the classifier returns `None` (low confidence) the
+    /// router falls back to [`ModelTier::Standard`] + [`PersonaRole::Engineer`].
     ///
-    /// WHY: Separating persona hint injection from routing allows the
-    /// classifier (commit 2) to be swapped independently without modifying
-    /// the router.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "binary wiring calls route_with_persona")
-    )]
+    /// WHY: Wiring the classifier directly into the router means callers that
+    /// have access to `RequestFeatures.prompt_text` get automatic persona
+    /// selection without extra glue code. Callers that need to override the
+    /// classifier output (e.g. explicit frontmatter) pass a hint.
     #[instrument(skip(self), fields(
         persona_hint_tier = ?persona_hint.as_ref().map(|(t, _)| t),
         persona_hint_role = ?persona_hint.as_ref().map(|(_, r)| r),
@@ -211,14 +204,33 @@ impl PersonaRouter {
 
         let (model_tier, persona_role, rationale) = if let Some((tier, role)) = persona_hint {
             let rationale = format!(
-                "classifier-assigned tier={tier} role={role} for provider={}",
+                "hint-assigned tier={tier} role={role} for provider={}",
                 base.provider
             );
             (tier, role, rationale)
+        } else if let Some(prompt) = features.prompt_text.as_deref() {
+            // Try the AST classifier on the prompt text.
+            if let Some(classified) = persona_classifier::classify_prompt(prompt) {
+                let rationale = format!(
+                    "classifier-assigned tier={} role={} conf={:.2} for provider={}",
+                    classified.model_tier,
+                    classified.persona_role,
+                    classified.confidence,
+                    base.provider
+                );
+                (classified.model_tier, classified.persona_role, rationale)
+            } else {
+                // Classifier returned None (low confidence) — default tier.
+                let rationale = format!(
+                    "classifier-deferred (low confidence) → standard/engineer for provider={}",
+                    base.provider
+                );
+                (ModelTier::Standard, PersonaRole::Engineer, rationale)
+            }
         } else {
-            // No classifier result: fall back to standard tier.
+            // No prompt text available — default tier.
             let rationale = format!(
-                "default tier=standard role=engineer for provider={}",
+                "no prompt text → default tier=standard role=engineer for provider={}",
                 base.provider
             );
             (ModelTier::Standard, PersonaRole::Engineer, rationale)

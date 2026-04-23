@@ -23,6 +23,14 @@ pub(crate) mod empirical;
 /// a `(ModelTier, PersonaRole)` hint; the router carries it in `PersonaDecision`.
 pub(crate) mod persona;
 
+/// AST-style prompt classifier for persona-based routing.
+///
+/// Replaces the keyword heuristic in [`aletheia_routing::types::TaskCategory::from_prompt`]
+/// with a markdown-structure-aware scorer. Heading keywords are weighted 2×
+/// body keywords (phronesis design). Returns `None` when confidence is below
+/// the threshold so callers can fall back to the keyword heuristic.
+pub(crate) mod persona_classifier;
+
 // ---------------------------------------------------------------------------
 // Re-exports from aletheia-routing (shared types)
 // ---------------------------------------------------------------------------
