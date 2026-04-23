@@ -36,6 +36,8 @@ pub mod planning;
 pub mod poiesis;
 /// Intake report tool: parse Slack-style text into a structured scaffold.
 pub mod intake_report;
+/// Scaffold report tool: generates a new report project from embedded templates.
+pub mod scaffold_report;
 /// Web research tools (web_fetch).
 pub mod research;
 /// `tool_schema` meta-tool: fetch full JSON schema for any named tool on demand.
@@ -172,5 +174,6 @@ pub(crate) fn register_domain_tools(
     bookkeeper::register(registry)?;
     poiesis::register(registry)?;
     intake_report::register(registry)?;
+    scaffold_report::register(registry)?;
     Ok(())
 }

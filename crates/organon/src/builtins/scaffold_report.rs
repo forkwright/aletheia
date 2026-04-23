@@ -1,0 +1,195 @@
+//! Scaffold report tool: generates a new report project from embedded templates.
+
+use std::future::Future;
+use std::pin::Pin;
+
+use indexmap::IndexMap;
+
+use crate::error::Result;
+use crate::registry::{ToolExecutor, ToolRegistry};
+use crate::types::{
+    InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
+    ToolInput, ToolResult,
+};
+
+fn extract_opt_str<'a>(args: &'a serde_json::Value, key: &str) -> Option<&'a str> {
+    args.get(key).and_then(serde_json::Value::as_str)
+}
+
+fn extract_str<'a>(
+    args: &'a serde_json::Value,
+    key: &str,
+) -> std::result::Result<&'a str, ToolResult> {
+    args.get(key)
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| ToolResult::error(format!("missing required argument: {key}")))
+}
+
+fn extract_bool(args: &serde_json::Value, key: &str, default: bool) -> bool {
+    args.get(key).and_then(serde_json::Value::as_bool).unwrap_or(default)
+}
+
+struct ScaffoldReportExecutor;
+
+impl ToolExecutor for ScaffoldReportExecutor {
+    fn execute<'a>(
+        &'a self,
+        input: &'a ToolInput,
+        _ctx: &'a ToolContext,
+    ) -> Pin<Box<dyn Future<Output = Result<ToolResult>> + Send + 'a>> {
+        Box::pin(async move {
+            let args = &input.arguments;
+
+            let slug = match extract_str(args, "slug") {
+                Ok(s) => s,
+                Err(e) => return Ok(e),
+            };
+            let description = extract_opt_str(args, "description").unwrap_or("");
+            let format_str = match extract_str(args, "format") {
+                Ok(s) => s,
+                Err(e) => return Ok(e),
+            };
+            let confidential = extract_bool(args, "confidential", false);
+
+            let format = match format_str.to_lowercase().as_str() {
+                "typst" => poiesis_scaffold::Format::Typst,
+                "xlsx" => poiesis_scaffold::Format::Xlsx,
+                "both" => poiesis_scaffold::Format::Both,
+                other => {
+                    return Ok(ToolResult::error(format!("unsupported format: {other}")));
+                }
+            };
+
+            let files = match poiesis_scaffold::scaffold_report(slug, description, format, confidential)
+            {
+                Ok(f) => f,
+                Err(e) => return Ok(ToolResult::error(e.to_string())),
+            };
+
+            if let Some(dir) = extract_opt_str(args, "directory") {
+                if let Err(e) = tokio::fs::create_dir_all(dir).await {
+                    return Ok(ToolResult::error(format!(
+                        "failed to create directory {dir:?}: {e}"
+                    )));
+                }
+                for file in &files {
+                    let path = std::path::Path::new(dir).join(&file.path);
+                    if let Some(parent) = path.parent() {
+                        if let Err(e) = tokio::fs::create_dir_all(parent).await {
+                            return Ok(ToolResult::error(format!(
+                                "failed to create parent directory for {:?}: {e}",
+                                file.path
+                            )));
+                        }
+                    }
+                    if let Err(e) = tokio::fs::write(&path, &file.contents).await {
+                        return Ok(ToolResult::error(format!(
+                            "failed to write {:?}: {e}",
+                            file.path
+                        )));
+                    }
+                }
+                return Ok(ToolResult::text(format!(
+                    "Scaffolded {} files to {}",
+                    files.len(),
+                    dir
+                )));
+            }
+
+            // Return JSON manifest with base64-encoded contents.
+            let manifest: Vec<serde_json::Value> = files
+                .iter()
+                .map(|f| {
+                    serde_json::json!({
+                        "path": f.path.to_string_lossy(),
+                        "contents_base64": koina::base64::encode(&f.contents),
+                    })
+                })
+                .collect();
+
+            match serde_json::to_string_pretty(&manifest) {
+                Ok(json) => Ok(ToolResult::text(json)),
+                Err(e) => Ok(ToolResult::error(format!(
+                    "failed to serialize manifest: {e}"
+                ))),
+            }
+        })
+    }
+}
+
+fn scaffold_report_def() -> ToolDef {
+    ToolDef {
+        name: koina::id::ToolName::from_static("scaffold_report"),
+        description:
+            "Generate a report project scaffold (Typst, XLSX, or both) from embedded templates."
+                .to_owned(),
+        extended_description: Some(
+            "Returns a JSON list of files (path + base64 contents) unless `directory` is provided, \
+             in which case files are written to disk and a summary is returned."
+                .to_owned(),
+        ),
+        input_schema: InputSchema {
+            properties: IndexMap::from([
+                (
+                    "slug".to_owned(),
+                    PropertyDef {
+                        property_type: PropertyType::String,
+                        description: "Project slug / short name (used for filenames)".to_owned(),
+                        enum_values: None,
+                        default: None,
+                    },
+                ),
+                (
+                    "description".to_owned(),
+                    PropertyDef {
+                        property_type: PropertyType::String,
+                        description: "Project description".to_owned(),
+                        enum_values: None,
+                        default: Some(serde_json::json!("")),
+                    },
+                ),
+                (
+                    "format".to_owned(),
+                    PropertyDef {
+                        property_type: PropertyType::String,
+                        description: "Output format: typst, xlsx, or both".to_owned(),
+                        enum_values: Some(vec![
+                            "typst".to_owned(),
+                            "xlsx".to_owned(),
+                            "both".to_owned(),
+                        ]),
+                        default: Some(serde_json::json!("typst")),
+                    },
+                ),
+                (
+                    "confidential".to_owned(),
+                    PropertyDef {
+                        property_type: PropertyType::Boolean,
+                        description: "Inject CONFIDENTIAL headers/footers".to_owned(),
+                        enum_values: None,
+                        default: Some(serde_json::json!(false)),
+                    },
+                ),
+                (
+                    "directory".to_owned(),
+                    PropertyDef {
+                        property_type: PropertyType::String,
+                        description: "Optional directory to write scaffolded files to".to_owned(),
+                        enum_values: None,
+                        default: None,
+                    },
+                ),
+            ]),
+            required: vec!["slug".to_owned(), "format".to_owned()],
+        },
+        category: ToolCategory::Workspace,
+        reversibility: Reversibility::FullyReversible,
+        auto_activate: false,
+    }
+}
+
+/// Register the scaffold report tool.
+pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
+    registry.register(scaffold_report_def(), Box::new(ScaffoldReportExecutor))?;
+    Ok(())
+}
