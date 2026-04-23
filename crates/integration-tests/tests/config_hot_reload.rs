@@ -112,6 +112,7 @@ impl TestHarness {
             embedding_provider: None,
             turn_buffer_registry: std::sync::Arc::new(pylon::turn_buffer::TurnBufferRegistry::new()),
             metrics_registry,
+            event_bus: std::sync::Arc::new(pylon::event_bus::EventBus::new(256)),
         });
 
         Self { state, _tmp: dir }

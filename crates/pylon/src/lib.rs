@@ -6,6 +6,8 @@
 pub mod discovery;
 /// API error types with Axum HTTP status code mapping.
 pub(crate) mod error;
+/// In-process broadcast bus for domain events.
+pub mod event_bus;
 /// JWT auth extractor for Bearer token validation.
 pub mod extract;
 /// HTTP request handlers for health, nous, and session endpoints.

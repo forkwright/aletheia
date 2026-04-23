@@ -18,6 +18,8 @@
 
 /// Runtime configuration read/write.
 pub mod config;
+/// Domain event subscription and discovery.
+pub mod events;
 /// System health and readiness check.
 pub mod health;
 /// Knowledge graph browsing and management.

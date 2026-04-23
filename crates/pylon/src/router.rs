@@ -17,7 +17,7 @@ use tracing::info_span;
 use koina::http::{API_HEALTH, API_V1};
 
 use crate::error::{ApiError, ErrorBody, ErrorResponse};
-use crate::handlers::{config, health, knowledge, metrics, nous, planning, sessions};
+use crate::handlers::{config, events, health, knowledge, metrics, nous, planning, sessions};
 use crate::middleware::{
     CsrfState, DeprecationLayer, ETagLayer, RateLimiter, RequestId, UserRateLimiter, deprecate,
     enrich_error_response, inject_request_id, per_user_rate_limit, rate_limit, record_http_metrics,
@@ -87,6 +87,8 @@ pub fn build_router_with(
         )
         .route("/sessions/{id}/history", get(sessions::history))
         .route("/events", get(sessions::events))
+        .route("/events/subscribe", get(events::subscribe))
+        .route("/events/discovery", get(events::discovery))
         .route("/nous", get(nous::list).post(nous::create))
         .route("/nous/{id}", get(nous::get_status))
         .route("/nous/{id}/tools", get(nous::tools))
