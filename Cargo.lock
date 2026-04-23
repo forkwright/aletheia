@@ -6283,6 +6283,7 @@ name = "poiesis-intake"
 version = "0.21.1"
 dependencies = [
  "aletheia-lexica",
+ "poiesis-scaffold",
  "serde",
  "serde_json",
  "snafu",
