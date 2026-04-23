@@ -185,16 +185,16 @@ fn scan_content(
 
 /// Determine whether a path points to a documentation file.
 fn is_documentation_file(path: &Path) -> bool {
-    matches!(
-        path.extension().and_then(|e| e.to_str()),
-        Some("md" | "rs")
-    )
+    matches!(path.extension().and_then(|e| e.to_str()), Some("md" | "rs"))
 }
 
 /// Determine whether a file is exempt from hub-word checks.
 fn is_exempt(path: &Path) -> bool {
-    path.file_name()
-        .is_some_and(|n| EXEMPT_FILES.iter().any(|e| n.to_string_lossy().eq_ignore_ascii_case(e)))
+    path.file_name().is_some_and(|n| {
+        EXEMPT_FILES
+            .iter()
+            .any(|e| n.to_string_lossy().eq_ignore_ascii_case(e))
+    })
 }
 
 /// Recursively collect documentation files.

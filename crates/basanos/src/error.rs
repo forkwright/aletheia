@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use snafu::Snafu;
 
-/// Errors that can occur during linting.
+/// Errors that can occur during linting or auditing.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
 #[non_exhaustive]
@@ -31,6 +31,24 @@ pub enum Error {
         #[snafu(implicit)]
         /// Source location captured by snafu.
         location: snafu::Location,
+    },
+
+    /// Lint violations found.
+    #[snafu(display("lint violations found"))]
+    LintViolations,
+
+    /// Unknown crate.
+    #[snafu(display("crate not found: {crate_name}"))]
+    UnknownCrate {
+        /// The crate name that was not found.
+        crate_name: String,
+    },
+
+    /// Failed to serialize JSON.
+    #[snafu(display("failed to serialize audit report: {source}"))]
+    SerializeJson {
+        /// The underlying JSON serialization error.
+        source: serde_json::Error,
     },
 }
 

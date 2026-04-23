@@ -2,5 +2,6 @@
 
 #![deny(clippy::unwrap_used)]
 
+pub mod commands;
 pub mod error;
 pub mod rules;
