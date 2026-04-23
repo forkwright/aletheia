@@ -1,5 +1,6 @@
 //! Lint rules for basanos.
 
+pub mod api_consistency;
 pub mod architecture;
 pub mod derive_vs_declare;
 pub mod planning;
@@ -36,6 +37,8 @@ pub trait Rule {
 /// All registered rules.
 pub fn all_rules() -> Vec<Box<dyn Rule>> {
     vec![
+        Box::new(api_consistency::FieldCasingRule),
+        Box::new(api_consistency::ErrorVariantNamingRule),
         Box::new(planning::MissingFalsifierRule),
         Box::new(architecture::fact_required::FactRequiredRule),
         Box::new(writing::PurposeInTechnicalDocRule),
