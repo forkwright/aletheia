@@ -148,7 +148,8 @@ bind = "localhost"
 
     let jwt_manager = test_jwt_manager();
 
-    let default_config = taxis::config::AletheiaConfig::default();
+    let mut default_config = taxis::config::AletheiaConfig::default();
+    default_config.gateway.sse_heartbeat_interval_secs = 1;
     let (config_tx, _config_rx) = tokio::sync::watch::channel(default_config.clone());
 
     // WHY: pylon's /metrics handler requires a registry; tests need pylon's
@@ -175,6 +176,7 @@ bind = "localhost"
         embedding_provider: Some(Arc::new(MockEmbeddingProvider::new(384))),
         turn_buffer_registry: Arc::new(crate::turn_buffer::TurnBufferRegistry::new()),
         metrics_registry,
+        event_bus: Arc::new(crate::event_bus::EventBus::new(256)),
     });
 
     (state, dir)

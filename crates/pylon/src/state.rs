@@ -19,6 +19,7 @@ use symbolon::jwt::JwtManager;
 use taxis::config::AletheiaConfig;
 use taxis::oikos::Oikos;
 
+use crate::event_bus::EventBus;
 use crate::idempotency::IdempotencyCache;
 use crate::turn_buffer::TurnBufferRegistry;
 
@@ -72,6 +73,8 @@ pub struct AppState {
     /// Crates register their metric families here at startup; the `/metrics`
     /// handler holds this to encode scrapes.
     pub metrics_registry: MetricsRegistry,
+    /// In-process broadcast bus for domain events.
+    pub event_bus: Arc<EventBus>,
 }
 
 impl AppState {
@@ -202,6 +205,8 @@ pub struct SessionsState {
     pub config: Arc<tokio::sync::RwLock<AletheiaConfig>>,
     /// Per-turn event buffer registry for SSE client recovery (#3276).
     pub turn_buffer_registry: Arc<TurnBufferRegistry>,
+    /// In-process broadcast bus for domain events.
+    pub event_bus: Arc<EventBus>,
 }
 
 impl FromRef<Arc<AppState>> for SessionsState {
@@ -214,6 +219,7 @@ impl FromRef<Arc<AppState>> for SessionsState {
             idempotency_cache: Arc::clone(&state.idempotency_cache),
             config: Arc::clone(&state.config),
             turn_buffer_registry: Arc::clone(&state.turn_buffer_registry),
+            event_bus: Arc::clone(&state.event_bus),
         }
     }
 }
@@ -226,6 +232,8 @@ pub struct KnowledgeState {
     pub knowledge_store: Option<Arc<KnowledgeStore>>,
     /// Runtime configuration for API limit reads.
     pub config: Arc<tokio::sync::RwLock<AletheiaConfig>>,
+    /// In-process broadcast bus for domain events.
+    pub event_bus: Arc<EventBus>,
 }
 
 impl FromRef<Arc<AppState>> for KnowledgeState {
@@ -234,6 +242,7 @@ impl FromRef<Arc<AppState>> for KnowledgeState {
             #[cfg(feature = "knowledge-store")]
             knowledge_store: state.knowledge_store.clone(),
             config: Arc::clone(&state.config),
+            event_bus: Arc::clone(&state.event_bus),
         }
     }
 }
@@ -243,6 +252,24 @@ const _: fn() = || {
     fn assert<T: Send + Sync>() {}
     assert::<AppState>();
 };
+
+/// State slice for the domain-event subscription handler.
+#[derive(Clone)]
+pub struct EventBusState {
+    /// In-process broadcast bus for domain events.
+    pub event_bus: Arc<EventBus>,
+    /// Runtime configuration for heartbeat interval reads.
+    pub config: Arc<tokio::sync::RwLock<AletheiaConfig>>,
+}
+
+impl FromRef<Arc<AppState>> for EventBusState {
+    fn from_ref(state: &Arc<AppState>) -> Self {
+        Self {
+            event_bus: Arc::clone(&state.event_bus),
+            config: Arc::clone(&state.config),
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -256,5 +283,6 @@ mod tests {
         assert::<ConfigState>();
         assert::<SessionsState>();
         assert::<KnowledgeState>();
+        assert::<EventBusState>();
     };
 }

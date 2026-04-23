@@ -278,6 +278,7 @@ pub async fn send_message(
     );
     let shutdown_token = state.shutdown.child_token();
     let buf_handle_task = buf_handle.clone();
+    let event_bus = Arc::clone(&state.event_bus);
     let turn_handle = tokio::spawn(
         async move {
             // WHY(#2113): Emit an immediate acknowledgment so the client never sees an empty
@@ -315,6 +316,17 @@ pub async fn send_message(
                     )
                     .await;
                     buf_handle_task.mark_completed().await;
+
+                    event_bus.publish(crate::event_bus::DomainEvent::new(
+                        "turn.complete",
+                        serde_json::json!({
+                            "session_id": sid,
+                            "nous_id": session.nous_id,
+                            "turn_id": turn_id,
+                            "input_tokens": result.usage.input_tokens,
+                            "output_tokens": result.usage.output_tokens,
+                        }),
+                    ));
 
                     // NOTE: Store the turn summary so cache-hit replays return real data.
                     if let Some(ref key) = idem_key {
@@ -567,6 +579,7 @@ pub async fn stream_turn(
 
     let shutdown_token = state.shutdown.child_token();
     let buf_handle_task = buf_handle.clone();
+    let event_bus = Arc::clone(&state.event_bus);
     let stream_turn_handle = tokio::spawn(
         async move {
             // WHY: cancel the in-flight turn when the server shuts down so Axum's graceful
@@ -596,7 +609,7 @@ pub async fn stream_turn(
                     let event = PylonTurnStreamEvent::MessageComplete {
                         outcome: TurnOutcome {
                             text: result.content.clone(),
-                            nous_id: aid,
+                            nous_id: aid.clone(),
                             session_id: sid.clone(),
                             model,
                             tool_calls: result.tool_calls.len(),
@@ -609,6 +622,17 @@ pub async fn stream_turn(
                     let seq = record_turn_event(&buf_handle_task, &event).await;
                     let _ = turn_tx.send((seq, event)).await;
                     buf_handle_task.mark_completed().await;
+
+                    event_bus.publish(crate::event_bus::DomainEvent::new(
+                        "turn.complete",
+                        serde_json::json!({
+                            "session_id": sid,
+                            "nous_id": aid,
+                            "turn_id": turn_id,
+                            "input_tokens": result.usage.input_tokens,
+                            "output_tokens": result.usage.output_tokens,
+                        }),
+                    ));
                 }
                 Err(err) => {
                     // WHY: Log full error internally; span carries session/nous context (#844).

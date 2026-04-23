@@ -124,5 +124,6 @@ fn minimal_app_state() -> Arc<AppState> {
         embedding_provider: None,
         turn_buffer_registry: Arc::new(crate::turn_buffer::TurnBufferRegistry::new()),
         metrics_registry,
+        event_bus: Arc::new(crate::event_bus::EventBus::new(256)),
     })
 }
