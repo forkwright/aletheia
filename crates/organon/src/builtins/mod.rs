@@ -7,6 +7,8 @@ pub mod architecture_fact;
 /// Bookkeeper tools (prompt archival and worktree cleanup).
 #[cfg(feature = "energeia")]
 pub mod bookkeeper;
+/// Machine-derived code-graph symbol-level queries (code_graph_query).
+pub mod code_graph_query;
 /// Inter-agent communication tools (send_message, broadcast).
 pub mod communication;
 /// Computer use: screen capture, action dispatch, sandboxed execution.
@@ -171,6 +173,7 @@ pub(crate) fn register_domain_tools(
     planning::register(registry)?;
     research::register(registry)?;
     architecture_fact::register(registry)?;
+    code_graph_query::register(registry)?;
     #[cfg(feature = "z3")]
     z3_solver::register(registry)?;
     web_search::register(registry)?;
