@@ -16,6 +16,13 @@ pub(crate) mod store;
 /// Empirical provider router: selects providers by historical success rate.
 pub(crate) mod empirical;
 
+/// Persona-aware router: model-tier + role selection on top of empirical routing.
+///
+/// Recovers the persona dispatch capability from the phronesis migration
+/// (issue #3453). The classifier (commit 2, `persona_classifier.rs`) supplies
+/// a `(ModelTier, PersonaRole)` hint; the router carries it in `PersonaDecision`.
+pub(crate) mod persona;
+
 // ---------------------------------------------------------------------------
 // Re-exports from aletheia-routing (shared types)
 // ---------------------------------------------------------------------------
