@@ -323,10 +323,22 @@ mod tests {
         };
         let files = generate_scaffold(&req).expect("scaffold");
         assert!(!files.is_empty());
-        assert!(files.iter().any(|f| f.path == "q3-revenue.md"));
-        assert!(files.iter().any(|f| f.path == "q3-revenue_data.md"));
+        assert!(
+            files
+                .iter()
+                .any(|f| f.path == std::path::Path::new("q3-revenue.md"))
+        );
+        assert!(
+            files
+                .iter()
+                .any(|f| f.path == std::path::Path::new("q3-revenue_data.md"))
+        );
         for f in &files {
-            assert!(!f.content.is_empty(), "{} must have content", f.path);
+            assert!(
+                !f.contents.is_empty(),
+                "{} must have content",
+                f.path.display()
+            );
         }
     }
 
