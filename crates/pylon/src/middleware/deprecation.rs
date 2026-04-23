@@ -122,12 +122,12 @@ where
             let mut response = inner.call(request).await?;
 
             if let Some(info) = info {
-                let _span = tracing::info_span!(
+                let span = tracing::info_span!(
                     "deprecation_middleware",
                     http.path = %key,
                     http.method = %method,
                 );
-                let _guard = _span.enter();
+                let _guard = span.enter();
 
                 // RFC 8594: Deprecation: @<unix-timestamp>
                 let deprecation_value = format!("@{}", info.deprecated_at.as_second());
