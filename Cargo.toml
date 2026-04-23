@@ -36,6 +36,7 @@ members = [
     "crates/poiesis/sheet",
     "crates/poiesis/slides",
     "crates/poiesis/lint",
+    "crates/poiesis/scaffold",
     "crates/poiesis/typst",
     "crates/poiesis/verify",
     "crates/poiesis/intake",
