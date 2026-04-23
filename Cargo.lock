@@ -699,8 +699,11 @@ version = "0.21.1"
 dependencies = [
  "aletheia-lexica",
  "regex",
+ "serde",
  "snafu",
  "tempfile",
+ "toml 1.1.2+spec-1.1.0",
+ "tracing",
 ]
 
 [[package]]
