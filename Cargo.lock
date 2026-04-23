@@ -5516,6 +5516,7 @@ name = "oikonomos"
 version = "0.21.1"
 dependencies = [
  "axum 0.8.9",
+ "eidos",
  "energeia",
  "episteme",
  "fjall",
