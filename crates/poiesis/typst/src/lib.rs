@@ -212,4 +212,93 @@ The marker is #d.marker.
         let pdf = render_typst(source, &data).expect("must render");
         assert!(pdf.starts_with(b"%PDF-"));
     }
+
+    #[test]
+    fn eval_report_template_renders_sample_fixture() {
+        let data = serde_json::json!({
+            "summary": {
+                "passed": 42,
+                "failed": 3,
+                "skipped": 2,
+                "total_duration_ms": 5000
+            },
+            "benchmarks": [
+                {
+                    "id": "test_coherence_basic",
+                    "category": "coherence",
+                    "outcome": "passed",
+                    "duration_ms": 1200,
+                    "error": null,
+                    "skip_reason": null
+                },
+                {
+                    "id": "test_memory_overflow",
+                    "category": "memory",
+                    "outcome": "failed",
+                    "duration_ms": 800,
+                    "error": "assertion failed: count < max",
+                    "skip_reason": null
+                },
+                {
+                    "id": "test_deprecated_api",
+                    "category": "compatibility",
+                    "outcome": "skipped",
+                    "duration_ms": null,
+                    "error": null,
+                    "skip_reason": "API deprecated in v2"
+                }
+            ]
+        });
+        let pdf = render_template(templates::EVAL_REPORT, &data)
+            .expect("eval-report template must render");
+        assert!(pdf.starts_with(b"%PDF-"), "output must be PDF");
+        assert!(pdf.len() > 500, "template PDF should be >500 bytes");
+        assert!(pdf.len() < 5_000_000, "template PDF should be <5MB");
+    }
+
+    #[test]
+    fn graph_audit_template_renders_sample_fixture() {
+        let data = serde_json::json!({
+            "summary": {
+                "total": 3,
+                "by_scope": {
+                    "crate": 1,
+                    "module": 1,
+                    "concept": 1,
+                    "boundary": 0
+                }
+            },
+            "facts": [
+                {
+                    "id": "aletheia.spawn.model",
+                    "scope": "crate",
+                    "claim": "Spawn model is configured via environment variable ALETHEIA_MODEL.",
+                    "evidence": ["crates/aletheia/src/spawn.rs", "PR-3789"],
+                    "updated_at": "2026-04-21T14:30:00Z",
+                    "updated_by": "PR-3789"
+                },
+                {
+                    "id": "aletheia.providers.isolation",
+                    "scope": "module",
+                    "claim": "Each provider is isolated by a channel-based request/response boundary.",
+                    "evidence": ["crates/aletheia/src/providers/mod.rs"],
+                    "updated_at": "2026-04-20T10:00:00Z",
+                    "updated_by": "PR-3750"
+                },
+                {
+                    "id": "aletheia.memory.bi_temporal",
+                    "scope": "concept",
+                    "claim": "Memory facts use bi-temporal versioning with valid_from and valid_to timestamps.",
+                    "evidence": ["crates/eidos/src/knowledge/fact.rs", "docs/temporal.md"],
+                    "updated_at": "2026-03-15T09:00:00Z",
+                    "updated_by": "session_abc123"
+                }
+            ]
+        });
+        let pdf = render_template(templates::GRAPH_AUDIT, &data)
+            .expect("graph-audit template must render");
+        assert!(pdf.starts_with(b"%PDF-"), "output must be PDF");
+        assert!(pdf.len() > 500, "template PDF should be >500 bytes");
+        assert!(pdf.len() < 5_000_000, "template PDF should be <5MB");
+    }
 }

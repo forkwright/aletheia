@@ -137,6 +137,69 @@ pub fn print_report_json(report: &RunReport) {
     }
 }
 
+/// Render an eval report to PDF via poiesis-typst using the `eval-report` template.
+///
+/// Transforms the `RunReport` into a JSON schema suitable for the Typst template
+/// and returns PDF bytes.
+///
+/// # Errors
+///
+/// Returns an error if JSON serialization fails or if the Typst render fails.
+#[tracing::instrument(skip_all)]
+pub fn emit_eval_report(report: &RunReport) -> crate::error::Result<Vec<u8>> {
+    let json_report = JsonReport {
+        passed: report.passed,
+        failed: report.failed,
+        skipped: report.skipped,
+        total_duration_ms: u64::try_from(report.total_duration.as_millis()).unwrap_or(u64::MAX),
+        results: report
+            .results
+            .iter()
+            .map(|r| JsonScenarioResult {
+                id: r.meta.id.to_owned(),
+                category: r.meta.category.to_owned(),
+                outcome: match &r.outcome {
+                    ScenarioOutcome::Passed { .. } => OutcomeKind::Passed,
+                    ScenarioOutcome::Failed { .. } => OutcomeKind::Failed,
+                    ScenarioOutcome::Skipped { .. } => OutcomeKind::Skipped,
+                },
+                duration_ms: match &r.outcome {
+                    ScenarioOutcome::Passed { duration }
+                    | ScenarioOutcome::Failed { duration, .. } => {
+                        Some(u64::try_from(duration.as_millis()).unwrap_or(u64::MAX))
+                    }
+                    ScenarioOutcome::Skipped { .. } => None,
+                },
+                error: match &r.outcome {
+                    ScenarioOutcome::Failed { error, .. } => Some(error.to_string()),
+                    _ => None,
+                },
+                skip_reason: match &r.outcome {
+                    ScenarioOutcome::Skipped { reason } => Some(reason.clone()),
+                    _ => None,
+                },
+            })
+            .collect(),
+    };
+
+    let data = serde_json::json!({
+        "summary": {
+            "passed": json_report.passed,
+            "failed": json_report.failed,
+            "skipped": json_report.skipped,
+            "total_duration_ms": json_report.total_duration_ms,
+        },
+        "benchmarks": json_report.results
+    });
+
+    poiesis_typst::render_template("eval-report", &data).map_err(|e| {
+        crate::error::BenchmarkSnafu {
+            message: format!("eval report render failed: {e}"),
+        }
+        .build()
+    })
+}
+
 /// Typed outcome kind for JSON serialization: avoids bare "passed"/"failed"/"skipped" strings.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -280,5 +343,14 @@ mod tests {
         assert_eq!(OutcomeKind::Passed, OutcomeKind::Passed);
         assert_ne!(OutcomeKind::Passed, OutcomeKind::Failed);
         assert_ne!(OutcomeKind::Failed, OutcomeKind::Skipped);
+    }
+
+    #[test]
+    fn emit_eval_report_round_trip() {
+        let report = sample_report();
+        let pdf_bytes = emit_eval_report(&report).expect("emit_eval_report must not fail");
+        assert!(pdf_bytes.starts_with(b"%PDF-"), "output must be PDF magic");
+        assert!(pdf_bytes.len() > 500, "PDF must be >500 bytes");
+        assert!(pdf_bytes.len() < 5_000_000, "PDF must be <5MB");
     }
 }

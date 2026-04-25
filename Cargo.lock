@@ -2256,6 +2256,7 @@ dependencies = [
  "koina",
  "organon",
  "owo-colors",
+ "poiesis-typst",
  "regex",
  "reqwest 0.13.2",
  "rustls",

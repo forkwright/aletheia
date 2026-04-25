@@ -45,6 +45,10 @@ pub mod planning;
 pub mod poiesis;
 /// DOCX report rendering tool (render_docx_report).
 pub mod render_docx_report;
+/// Render a JSON eval report to PDF (render_eval_report).
+pub mod render_eval_report;
+/// Render a JSON graph audit to PDF (render_graph_audit).
+pub mod render_graph_audit;
 /// Render a JSON slide descriptor to PPTX.
 pub mod render_pptx_report;
 /// JSON-first XLSX report tool (`render_xlsx_report`).
@@ -192,6 +196,8 @@ pub(crate) fn register_domain_tools(
     render_docx_report::register(registry)?;
     render_pptx_report::register(registry)?;
     render_xlsx_report::register(registry)?;
+    render_eval_report::register(registry)?;
+    render_graph_audit::register(registry)?;
     diff_report::register(registry)?;
     inspect_report::register(registry)?;
     Ok(())

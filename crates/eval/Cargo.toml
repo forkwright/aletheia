@@ -18,6 +18,7 @@ test-full = []
 [dependencies]
 eidos = { path = "../eidos" }
 koina = { path = "../koina" }
+poiesis-typst = { path = "../poiesis/typst" }
 reqwest = { workspace = true }
 regex = { workspace = true }
 serde = { workspace = true }
