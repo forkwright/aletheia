@@ -10,7 +10,7 @@ aletheia                         (port 18789)  -- Rust binary, API
 +-- daemon (oikonomos)           (in-process)  -- heartbeats, scheduled tasks, prosoche
 ```
 
-Memory (embedded engine, candle, SQLite) is embedded in the binary. No external databases or sidecars required.
+Memory (embedded engine, candle, fjall) is embedded in the binary. No external databases or sidecars required.
 
 ## Quick health check
 
@@ -98,39 +98,38 @@ systemctl --user enable --now aletheia-health.timer
 
 ## Backup automation
 
-`scripts/backup-cron.sh` exports the session store to JSON and prunes old copies.
+## Backup automation
+
+The daemon's `FjallBackup` maintenance task creates periodic file-level snapshots of the knowledge store (`knowledge.fjall`). Configure it in `instance/config/aletheia.toml`:
+
+```toml
+[maintenance.backup]
+enabled = true
+interval_hours = 24
+retention_count = 7
+```
+
+## Manual backup
 
 ```bash
-# One-off backup (keeps 7 copies, writes to $ALETHEIA_ROOT/backups/):
-scripts/backup-cron.sh
-
-# Keep 14 copies in a custom directory:
-scripts/backup-cron.sh --keep 14 --output-dir /mnt/backup/aletheia
+aletheia backup          # create a fjall snapshot
+aletheia backup --list   # list snapshots
 ```
 
 ## Cron setup (daily at 02:00)
 
 ```cron
-0 2 * * * /path/to/scripts/backup-cron.sh >> /var/log/aletheia-backup.log 2>&1
+0 2 * * * /usr/bin/aletheia backup >> /var/log/aletheia-backup.log 2>&1
 ```
 
-## Environment overrides
-
-| Variable | Default | Purpose |
-|----------|---------|---------|
-| `ALETHEIA_ROOT` | `~/aletheia/instance` | Instance root |
-| `ALETHEIA_BINARY` | `~/aletheia/bin/aletheia` | Binary path |
-| `BACKUP_KEEP` | `7` | Number of backup files to retain |
-| `BACKUP_OUTPUT_DIR` | `$ALETHEIA_ROOT/backups` | Backup output directory |
-
-The script uses `flock` to prevent concurrent runs. Backup files are named `sessions-<timestamp>.json`.
+> `scripts/backup-cron.sh` is legacy. It references the removed `--export-json` flag and is non-functional since the SQLite-to-fjall migration (#3446).
 
 ## Manual restore
 
-Backup files are plain JSON exported by `aletheia backup --export-json`. To inspect:
+Backups are fjall directory snapshots. To inspect a snapshot:
 
 ```bash
-jq '.sessions | length' ~/aletheia/instance/backups/sessions-*.json | tail -1
+aletheia backup verify /path/to/snapshot
 ```
 
 ---
@@ -193,7 +192,7 @@ Router auto-failover handles 429/5xx across providers. Expired OAuth tokens need
 | Path | Purpose |
 |------|---------|
 | `instance/config/aletheia.toml` | Main config |
-| `instance/data/sessions.db` | SQLite session store |
+| `instance/data/sessions.db` | fjall session store (historical path name; see [DATA.md](DATA.md)) |
 | `instance/data/engine/` | Knowledge graph (embedded Datalog engine) |
 | `instance/nous/<id>/` | Agent workspaces |
 
@@ -203,83 +202,43 @@ Always run `aletheia health` before restarting. Fix reported failures first - re
 
 ---
 
-## DB inspection queries
+## DB inspection
 
-The session store is a SQLite database at `instance/data/sessions.db`.
+The session store is a binary fjall LSM-tree at `instance/data/sessions.db`. There is no ad-hoc SQL interface. See [DATA.md](DATA.md) for the storage backend authority.
+
+### Active session count per agent
 
 ```bash
-sqlite3 instance/data/sessions.db
+aletheia status
 ```
 
-## Active session count per agent
+### Recent sessions with message counts
 
-```sql
-SELECT nous_id, COUNT(*) AS active_sessions
-FROM sessions
-WHERE status = 'active'
-GROUP BY nous_id;
+Use the HTTP API (`GET /api/v1/sessions`) or `aletheia status`.
+
+### Token usage by model over the last 7 days
+
+No CLI equivalent exists since the SQLite-to-fjall migration (#3446). Scrape Prometheus metrics (`aletheia_llm_input_tokens_total`, `aletheia_llm_output_tokens_total`) or query the store after stopping the service.
+
+### Large sessions (over 50k tokens)
+
+No CLI equivalent exists. Use the HTTP API or Prometheus metrics.
+
+### Recent agent notes
+
+No CLI equivalent exists.
+
+### Distillation history
+
+No CLI equivalent exists. Check logs:
+
+```bash
+journalctl --user -u aletheia --since "1 hour ago" | grep distill
 ```
 
-## Recent sessions with message counts
+### Orphaned messages (no parent session)
 
-```sql
-SELECT id, nous_id, status, message_count, token_count_estimate, created_at
-FROM sessions
-ORDER BY created_at DESC
-LIMIT 20;
-```
-
-## Token usage by model over the last 7 days
-
-```sql
-SELECT model,
-       SUM(input_tokens)       AS total_input,
-       SUM(output_tokens)      AS total_output,
-       SUM(cache_read_tokens)  AS cache_hits,
-       SUM(cache_write_tokens) AS cache_writes,
-       COUNT(*)                AS turns
-FROM usage
-WHERE created_at >= datetime('now', '-7 days')
-GROUP BY model
-ORDER BY total_output DESC;
-```
-
-## Large sessions (over 50k tokens)
-
-```sql
-SELECT id, nous_id, token_count_estimate, message_count, status, created_at
-FROM sessions
-WHERE token_count_estimate > 50000
-ORDER BY token_count_estimate DESC;
-```
-
-## Recent agent notes
-
-```sql
-SELECT n.nous_id, n.category, n.content, n.created_at
-FROM agent_notes n
-ORDER BY n.created_at DESC
-LIMIT 20;
-```
-
-## Distillation history
-
-```sql
-SELECT session_id, messages_before, messages_after,
-       tokens_before, tokens_after, facts_extracted, model, created_at
-FROM distillations
-ORDER BY created_at DESC
-LIMIT 10;
-```
-
-## Orphaned messages (no parent session)
-
-```sql
-SELECT COUNT(*) AS orphan_count
-FROM messages m
-LEFT JOIN sessions s ON s.id = m.session_id
-WHERE s.id IS NULL;
-```
+No CLI equivalent exists.
 
 ---
 
@@ -338,15 +297,7 @@ aletheia health          # LLM connectivity and cost
 
 ## Identify slow sessions
 
-Sessions with high token counts can slow LLM round-trips. Find them:
-
-```sql
--- In sqlite3 instance/data/sessions.db
-SELECT id, nous_id, token_count_estimate, message_count, status
-FROM sessions
-WHERE status = 'active' AND token_count_estimate > 30000
-ORDER BY token_count_estimate DESC;
-```
+Sessions with high token counts can slow LLM round-trips. No CLI equivalent exists since the SQLite-to-fjall migration (#3446). Use `aletheia status` or Prometheus metrics.
 
 Archive overloaded sessions:
 
@@ -395,7 +346,7 @@ journalctl --user -u aletheia --since "1 hour ago" | grep -E "latency|slow|timeo
 
 ```bash
 aletheia backup
-# Writes instance/data/backups/sessions_<timestamp>.db
+# Writes instance/data/backups/fjall/<timestamp>/
 ```
 
 ## List available backups
@@ -407,11 +358,11 @@ aletheia backup --list --json    # machine-readable
 
 ## Restore from backup
 
-Restoring requires the complete SQLite copy from backup:
+Restoring requires a complete fjall snapshot. The backup command only covers the knowledge store (`knowledge.fjall`). For the session store (`sessions.db`), stop the service and copy the directory.
 
 ```bash
 systemctl --user stop aletheia
-cp instance/data/backups/sessions_<timestamp>.db instance/data/sessions.db
+cp -a instance/data/backups/fjall/<timestamp> instance/data/knowledge.fjall
 systemctl --user start aletheia
 aletheia health
 ```
@@ -425,16 +376,12 @@ aletheia backup --prune --keep 5 --yes    # skip confirmation
 
 ## Export sessions as JSON (before deletion)
 
-```bash
-aletheia backup --export-json
-# Writes to instance/data/archive/sessions/
-```
+No built-in JSON export exists since the SQLite-to-fjall migration (#3446). Archived sessions are already JSON in `instance/data/archive/sessions/`.
 
 ## Verify backup integrity
 
 ```bash
-sqlite3 instance/data/backups/sessions_<timestamp>.db "PRAGMA integrity_check;"
-sqlite3 instance/data/backups/sessions_<timestamp>.db "SELECT COUNT(*) FROM sessions;"
+aletheia backup verify instance/data/backups/fjall/<timestamp>
 ```
 
 ---
@@ -756,24 +703,7 @@ Distillation never runs on ephemeral sessions (keys prefixed `ask:`, `spawn:`, o
 
 ### Check distillation history
 
-```bash
-sqlite3 instance/data/sessions.db
-```
-
-```sql
--- Recent distillation events:
-SELECT session_id, messages_before, messages_after,
-       tokens_before, tokens_after, model, created_at
-FROM distillations
-ORDER BY created_at DESC
-LIMIT 10;
-
--- Sessions by distillation count and size:
-SELECT id, distillation_count, last_distilled_at, token_count_estimate, message_count
-FROM sessions
-WHERE status = 'active'
-ORDER BY token_count_estimate DESC;
-```
+No CLI equivalent exists since the SQLite-to-fjall migration (#3446). Check logs:
 
 ### Diagnose failures
 

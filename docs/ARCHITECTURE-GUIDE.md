@@ -21,7 +21,7 @@ When you run `aletheia`, the `main.rs` entrypoint performs a sequential initiali
 1. **Oikos discovery**: finds the instance directory (`./instance`, `ALETHEIA_ROOT`, or `--instance-root`)
 2. **Config cascade**: loads compiled defaults, then YAML file, then environment variables (taxis crate)
 3. **Domain packs**: loads external knowledge packs declared in config (thesauros crate)
-4. **Session store**: opens SQLite database at `instance/data/sessions.db` (mneme crate)
+4. **Session store**: opens fjall LSM-tree at `instance/data/sessions.db` (mneme crate; path name is historical). See [DATA.md](DATA.md) for storage details.
 5. **JWT manager**: initializes authentication (symbolon crate)
 6. **Provider registry**: registers LLM providers (Anthropic if `ANTHROPIC_API_KEY` is set) (hermeneus crate)
 7. **Tool registry**: registers built-in tools: write, edit, exec, web_search, etc. (organon crate)
@@ -59,7 +59,7 @@ Once a message reaches a NousActor, it flows through sequential pipeline stages:
 1. **Context assembly**: loads bootstrap files (SOUL.md, IDENTITY.md, GOALS.md) from the agent's workspace, assembles the system prompt within token budget
 2. **Recall**: embeds the user message via candle, searches the knowledge store for relevant facts, injects them into context
 3. **Execute**: calls the LLM (Anthropic API). If the model returns tool calls, executes them via the tool registry and feeds results back. Loops until the model stops requesting tools or hits the iteration limit.
-4. **Finalize**: persists messages to SQLite, records token usage, extracts knowledge facts for future recall
+4. **Finalize**: persists messages to fjall, records token usage, extracts knowledge facts for future recall
 
 The response flows back through the channel (Signal reply or HTTP response).
 
@@ -77,8 +77,8 @@ Crates are organized in layers. Lower layers know nothing about higher layers.
 
 - **taxis**: configuration and paths. Loads the TOML config cascade (owned loader: defaults → TOML → env), resolves the oikos instance directory structure.
 - **hermeneus**: LLM provider abstraction. The Anthropic streaming client lives here. Handles retries, cost tracking, model routing.
-- **symbolon**: authentication: JWT tokens, bearer validation, RBAC. Depends on koina; uses its own SQLite for token storage.
-- **mneme**: memory engine. SQLite session store, embedded Datalog engine for knowledge graphs and vector search, candle for local embeddings, LLM-driven fact extraction.
+- **symbolon**: authentication: JWT tokens, bearer validation, RBAC. Depends on koina; uses its own fjall store for token storage.
+- **mneme**: memory engine. fjall session store, embedded Datalog engine for knowledge graphs and vector search, candle for local embeddings, LLM-driven fact extraction.
 
 ### Mid (depends on lower layers)
 
@@ -108,7 +108,7 @@ The instance directory is the boundary between platform code (git-tracked) and d
 ```
 instance/
 ├── config/         Configuration (aletheia.toml, credentials, TLS certs)
-├── data/           SQLite databases, backups
+├── data/           fjall stores, backups
 ├── logs/           Trace files
 ├── nous/           Agent workspaces (SOUL.md, MEMORY.md per agent)
 ├── shared/         Shared tools, coordination, hooks (agent-only)

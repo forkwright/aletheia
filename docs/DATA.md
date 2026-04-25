@@ -6,7 +6,7 @@ What Aletheia stores, where it lives, and how to control it.
 
 | Data | Location | Format | Description |
 |------|----------|--------|-------------|
-| Sessions & messages | `instance/data/sessions.db` | SQLite (WAL) | Conversation history, usage stats, agent notes |
+| Sessions & messages | `instance/data/sessions.db` | fjall LSM-tree | Conversation history, usage stats, agent notes (path name is historical) |
 | Knowledge graph | `instance/data/engine/` | Embedded Datalog engine | Entities, relationships, facts, embeddings |
 | Workspace files | `instance/nous/{id}/` | Mixed | Per-agent identity, memory, tools, hooks |
 | Shared resources | `instance/shared/` | Mixed | Cross-agent tools, skills, coordination |
@@ -15,7 +15,7 @@ What Aletheia stores, where it lives, and how to control it.
 | Credentials | `instance/config/credentials/` | Various | API keys, OAuth tokens |
 | Signal data | `instance/signal/` | signal-cli | Phone account, contacts, message state |
 | Logs | `instance/logs/` | Text | Runtime logs |
-| Backups | `instance/data/backups/` | SQLite | Point-in-time session database copies |
+| Backups | `instance/data/backups/fjall/` | fjall | Point-in-time knowledge store snapshots |
 | Archives | `instance/data/archive/` | JSON | Retained session exports before deletion |
 
 ## Storage locations
@@ -27,9 +27,9 @@ instance/
 ├── config/aletheia.toml     # Main config
 ├── config/credentials/      # API keys
 ├── data/
-│   ├── sessions.db          # Session store (SQLite, WAL mode)
+│   ├── sessions.db          # Session store (fjall LSM-tree; .db suffix is historical)
 │   ├── engine/              # Knowledge graph (embedded Datalog engine)
-│   ├── backups/             # Database backups
+│   ├── backups/fjall/       # Knowledge store snapshots (fjall)
 │   └── archive/sessions/    # Archived session JSON files
 ├── nous/{id}/               # Per-agent workspaces
 ├── shared/                  # Cross-agent shared resources
@@ -43,9 +43,9 @@ instance/
 ```text
 Inbound message
   → Channel (Signal, HTTP)
-  → Session store (sessions.db: session + messages)
+  → Session store (sessions.db (fjall): session + messages)
   → Nous pipeline (LLM call)
-  → Response stored (messages table)
+  → Response stored (messages partition)
   → Knowledge extraction (entities, relationships, facts)
   → Knowledge graph (embedded Datalog engine)
   → Recall pipeline (vector search + graph traversal)
@@ -77,7 +77,7 @@ When `archiveBeforeDelete` is true, each session is exported to `instance/data/a
 aletheia backup
 ```
 
-Creates a point-in-time SQLite backup at `instance/data/backups/sessions_{timestamp}.db` using `VACUUM INTO` (no locking, safe while running).
+Creates a point-in-time fjall backup of the knowledge store at `instance/data/backups/fjall/{timestamp}/` using a file-level snapshot (safe while running). The session store (`sessions.db`) has no built-in backup command; stop the service and copy the directory if you need a session backup.
 
 ### List backups
 
@@ -95,38 +95,28 @@ Keeps the 5 most recent backups, deletes the rest.
 
 ### Export as JSON
 
-```bash
-aletheia backup --export-json
-```
-
-Exports every session as an individual JSON file to `instance/data/archive/sessions/`.
-Each file contains session metadata, all messages, and export timestamp.
+No built-in JSON export exists for the session store since the SQLite-to-fjall migration (#3446). Archived sessions are already JSON in `instance/data/archive/sessions/`.
 
 ## Deletion
 
 ### Delete a specific session
 
-```sql
--- Connect to instance/data/sessions.db
-DELETE FROM agent_notes WHERE session_id = 'SESSION_ID';
-DELETE FROM distillations WHERE session_id = 'SESSION_ID';
-DELETE FROM usage WHERE session_id = 'SESSION_ID';
-DELETE FROM messages WHERE session_id = 'SESSION_ID';
-DELETE FROM sessions WHERE id = 'SESSION_ID';
+Ad-hoc SQL is not available; the session store is a binary LSM-tree. Archive the session via the API:
+
+```bash
+curl -sf -X POST http://localhost:18789/api/v1/sessions/SESSION_ID/archive \
+  -H "Authorization: Bearer <token>"
 ```
+
+To delete permanently, stop the service and remove the store directory.
 
 ### Delete all data for a specific agent
 
-```sql
--- Get all session IDs for the agent
-DELETE FROM agent_notes WHERE session_id IN (SELECT id FROM sessions WHERE nous_id = 'AGENT_ID');
-DELETE FROM distillations WHERE session_id IN (SELECT id FROM sessions WHERE nous_id = 'AGENT_ID');
-DELETE FROM usage WHERE session_id IN (SELECT id FROM sessions WHERE nous_id = 'AGENT_ID');
-DELETE FROM messages WHERE session_id IN (SELECT id FROM sessions WHERE nous_id = 'AGENT_ID');
-DELETE FROM sessions WHERE nous_id = 'AGENT_ID';
-```
+No single command exists for this. Remove the agent's workspace:
 
-Also remove the agent's workspace: `rm -rf instance/nous/AGENT_ID/`
+```bash
+rm -rf instance/nous/AGENT_ID/
+```
 
 ### Delete everything
 
@@ -136,7 +126,7 @@ rm -rf instance/data/engine/
 rm -rf instance/nous/*/memory/
 ```
 
-The database will be recreated on next startup with the migration framework.
+The store will be recreated on next startup.
 
 ## Third-party data flows
 
@@ -152,4 +142,4 @@ The database will be recreated on next startup with the migration framework.
 - **No telemetry.** No usage data, analytics, or crash reports.
 - **No phone-home.** No update checks, license validation, or beacon requests.
 - **All data local.** Unless you configure an external channel (Signal) or LLM provider, nothing leaves the instance directory.
-- **You own the data.** Export, back up, or delete it - standard tools (SQLite CLI, filesystem operations) or the built-in backup command.
+- **You own the data.** Export, back up, or delete it - standard tools (filesystem operations) or the built-in backup command.
