@@ -1,3 +1,9 @@
+<!--
+scope: aletheia repo conventions (cognition-server crates, recipes, organon tools, theatron UI)
+defers_to: ~/menos-ops/CLAUDE.md for machine topology; ~/.claude/CLAUDE.md for operator principles (including "build the system you'd trust to run without you")
+tightens: per-crate CLAUDE.md files under crates/*/ can narrow conventions within their blast radius
+-->
+
 # CLAUDE.md
 
 ## At a glance
@@ -5,10 +11,6 @@
 Repo-level conventions for AI coding agents working on Aletheia. Key crates: aletheia, nous, pylon, mneme. Entry point: `crates/aletheia/src/main.rs`.
 
 ## Depth
-
-Build the system you'd trust to run without you.
-
-Project conventions for AI coding agents working on this codebase.
 
 See also [AGENTS.md](AGENTS.md) for a cross-tool quick-reference (build commands, crate selection flowchart, common mistakes).
 
