@@ -8,8 +8,14 @@ use zip::ZipArchive;
 use crate::CellDiff;
 use crate::error::Result;
 
+/// Map of cell coordinates to their string values within a single sheet.
+type SheetCells = BTreeMap<(u32, u32), String>;
+
+/// Map of sheet names to their cell data across a workbook.
+type WorkbookData = BTreeMap<String, SheetCells>;
+
 /// Parse cell value from XML worksheet using simple string matching.
-fn extract_cells_from_worksheet(xml_data: &str) -> Result<BTreeMap<(u32, u32), String>> {
+fn extract_cells_from_worksheet(xml_data: &str) -> SheetCells {
     let mut cells = BTreeMap::new();
 
     // Simple regex-free approach: split on <row> and <c> tags
@@ -17,51 +23,54 @@ fn extract_cells_from_worksheet(xml_data: &str) -> Result<BTreeMap<(u32, u32), S
 
     for row_chunk in xml_data.split("<row") {
         // Extract row number from r="N" attribute
-        if let Some(r_start) = row_chunk.find("r=\"") {
-            if let Some(r_end) = row_chunk[r_start + 3..].find('"') {
-                if let Ok(r) = row_chunk[r_start + 3..r_start + 3 + r_end].parse::<u32>() {
-                    current_row = r.saturating_sub(1);
-                }
-            }
+        if let Some(r_start) = row_chunk.find("r=\"")
+            && let Some(rest) = row_chunk.get(r_start + 3..)
+            && let Some(r_end) = rest.find('"')
+            && let Some(num_str) = rest.get(..r_end)
+            && let Ok(r) = num_str.parse::<u32>()
+        {
+            current_row = r.saturating_sub(1);
         }
 
         // Extract cells from this row
         for cell_chunk in row_chunk.split("<c") {
             // Extract cell reference and value
-            if let Some(r_start) = cell_chunk.find("r=\"") {
-                if let Some(r_end) = cell_chunk[r_start + 3..].find('"') {
-                    let cell_ref = &cell_chunk[r_start + 3..r_start + 3 + r_end];
-                    // Parse column from cell reference
-                    let col_idx = cell_ref
-                        .chars()
-                        .take_while(|c| c.is_alphabetic())
-                        .fold(0u32, |acc, c| {
-                            acc * 26 + (c.to_ascii_uppercase() as u32 - b'A' as u32 + 1)
-                        })
-                        .saturating_sub(1);
+            if let Some(r_start) = cell_chunk.find("r=\"")
+                && let Some(rest) = cell_chunk.get(r_start + 3..)
+                && let Some(r_end) = rest.find('"')
+                && let Some(cell_ref) = rest.get(..r_end)
+            {
+                // Parse column from cell reference
+                let col_idx = cell_ref
+                    .chars()
+                    .take_while(|c| c.is_alphabetic())
+                    .fold(0u32, |acc, c| {
+                        acc * 26 + (u32::from(c.to_ascii_uppercase()) - u32::from(b'A') + 1)
+                    })
+                    .saturating_sub(1);
 
-                    // Extract value from <v>...</v>
-                    if let Some(v_start) = cell_chunk.find("<v>") {
-                        if let Some(v_end) = cell_chunk[v_start + 3..].find("</v>") {
-                            let value = cell_chunk[v_start + 3..v_start + 3 + v_end].to_string();
-                            cells.insert((current_row, col_idx), value);
-                        }
-                    }
+                // Extract value from <v>...</v>
+                if let Some(v_start) = cell_chunk.find("<v>")
+                    && let Some(rest) = cell_chunk.get(v_start + 3..)
+                    && let Some(v_end) = rest.find("</v>")
+                    && let Some(value) = rest.get(..v_end)
+                {
+                    cells.insert((current_row, col_idx), value.to_string());
                 }
             }
         }
     }
 
-    Ok(cells)
+    cells
 }
 
 /// Extract sheet names and cell data from XLSX archive.
-fn read_workbook(bytes: &[u8]) -> Result<BTreeMap<String, BTreeMap<(u32, u32), String>>> {
+fn read_workbook(bytes: &[u8]) -> Result<WorkbookData> {
     let cursor = Cursor::new(bytes);
     let mut archive =
         ZipArchive::new(cursor).map_err(|e| crate::DiffError::ZipError { source: e })?;
 
-    let mut workbook_data: BTreeMap<String, BTreeMap<(u32, u32), String>> = BTreeMap::new();
+    let mut workbook_data: WorkbookData = BTreeMap::new();
 
     // Read workbook.xml to get sheet names
     let workbook_xml = {
@@ -76,27 +85,25 @@ fn read_workbook(bytes: &[u8]) -> Result<BTreeMap<String, BTreeMap<(u32, u32), S
 
     // Simple extraction of sheet names
     for line in workbook_xml.lines() {
-        if line.contains("<sheet") {
-            if let Some(start) = line.find("name=\"") {
-                if let Some(end) = line[start + 6..].find('"') {
-                    let sheet_name = &line[start + 6..start + 6 + end];
-                    workbook_data.insert(sheet_name.to_string(), BTreeMap::new());
-                }
-            }
+        if line.contains("<sheet")
+            && let Some(start) = line.find("name=\"")
+            && let Some(rest) = line.get(start + 6..)
+            && let Some(end) = rest.find('"')
+            && let Some(sheet_name) = rest.get(..end)
+        {
+            workbook_data.insert(sheet_name.to_string(), BTreeMap::new());
         }
     }
 
     // Read worksheet files (xl/worksheets/sheet1.xml, etc.)
-    let mut sheet_idx = 1;
-    for (_sheet_name, cell_map) in &mut workbook_data {
-        let worksheet_path = format!("xl/worksheets/sheet{}.xml", sheet_idx);
+    for (sheet_idx, cell_map) in (1..).zip(workbook_data.values_mut()) {
+        let worksheet_path = format!("xl/worksheets/sheet{sheet_idx}.xml");
         if let Ok(mut file) = archive.by_name(&worksheet_path) {
             let mut content = String::new();
             std::io::Read::read_to_string(&mut file, &mut content)
                 .map_err(|e| crate::DiffError::Io { source: e })?;
-            *cell_map = extract_cells_from_worksheet(&content)?;
+            *cell_map = extract_cells_from_worksheet(&content);
         }
-        sheet_idx += 1;
     }
 
     Ok(workbook_data)

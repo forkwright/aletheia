@@ -124,8 +124,8 @@ const TYPST_TEMPLATE: &str = include_str!("templates/report.typ");
 const TYPST_DATA_STUB: &str = include_str!("templates/data.json");
 const CONFIDENTIAL_HEADER: &str = r#"#align(center)[#text(12pt, weight: "bold", fill: red)[CONFIDENTIAL]]
 "#;
-const CONFIDENTIAL_FOOTER: &str = r#"#align(center)[#text(9pt, fill: red)[CONFIDENTIAL — DO NOT DISTRIBUTE]]
-"#;
+const CONFIDENTIAL_FOOTER: &str = r"#align(center)[#text(9pt, fill: red)[CONFIDENTIAL — DO NOT DISTRIBUTE]]
+";
 
 // ── XLSX scaffold ───────────────────────────────────────────────────────────
 
@@ -183,7 +183,11 @@ mod tests {
     use super::*;
 
     #[test]
-    #[expect(clippy::expect_used, reason = "test assertion")]
+    #[expect(
+        clippy::expect_used,
+        clippy::unwrap_used,
+        reason = "test assertions on synthetic data"
+    )]
     fn scaffold_typst_returns_expected_files() {
         let files = scaffold_report("q1-review", "Quarterly review", Format::Typst, false)
             .expect("scaffold must succeed");
@@ -193,7 +197,11 @@ mod tests {
     }
 
     #[test]
-    #[expect(clippy::expect_used, reason = "test assertion")]
+    #[expect(
+        clippy::expect_used,
+        clippy::unwrap_used,
+        reason = "test assertions on synthetic data"
+    )]
     fn scaffold_xlsx_returns_expected_files() {
         let files = scaffold_report("q1-review", "Quarterly review", Format::Xlsx, false)
             .expect("scaffold must succeed");
@@ -202,7 +210,11 @@ mod tests {
     }
 
     #[test]
-    #[expect(clippy::expect_used, reason = "test assertion")]
+    #[expect(
+        clippy::expect_used,
+        clippy::unwrap_used,
+        reason = "test assertions on synthetic data"
+    )]
     fn scaffold_both_combines_formats() {
         let files = scaffold_report("q1-review", "Quarterly review", Format::Both, false)
             .expect("scaffold must succeed");
@@ -219,13 +231,14 @@ mod tests {
             .expect("scaffold must succeed");
         let typst = files
             .iter()
-            .find(|f| f.path == PathBuf::from("report.typ"))
+            .find(|f| f.path == std::path::Path::new("report.typ"))
             .expect("report.typ must be present");
         let text = std::str::from_utf8(&typst.contents).expect("report.typ must be valid utf-8");
         assert!(text.contains("CONFIDENTIAL"));
     }
 
     #[test]
+    #[expect(clippy::unwrap_used, reason = "test assertion")]
     fn scaffold_with_empty_slug_errors() {
         let err = scaffold_report("", "desc", Format::Typst, false).unwrap_err();
         assert!(matches!(err, Error::EmptySlug));
