@@ -741,6 +741,8 @@ mod training_config {
             path: "var/training/custom".to_owned(),
             max_shard_bytes: 100 * 1024 * 1024,
             pii_filter_enabled: false,
+            author_classifier_enabled: true,
+            author_classifier_threshold: 0.9,
         };
         let json = serde_json::to_string(&cfg).expect("serialize");
         let back: TrainingConfig = serde_json::from_str(&json).expect("deserialize");
@@ -748,5 +750,10 @@ mod training_config {
         assert_eq!(back.path, cfg.path);
         assert_eq!(back.max_shard_bytes, cfg.max_shard_bytes);
         assert_eq!(back.pii_filter_enabled, cfg.pii_filter_enabled);
+        assert_eq!(
+            back.author_classifier_enabled,
+            cfg.author_classifier_enabled
+        );
+        assert!((back.author_classifier_threshold - cfg.author_classifier_threshold).abs() < 1e-6);
     }
 }

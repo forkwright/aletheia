@@ -419,6 +419,11 @@ pub struct TrainingCapture {
     /// If `Some`, applies an authorship gate before writing.
     /// If `None`, no authorship filtering is applied.
     classifier: Option<Arc<Classifier>>,
+    /// Confidence threshold for the authorship gate.
+    ///
+    /// User messages where the top non-user class exceeds this threshold
+    /// are rejected from training data.
+    classifier_threshold: f32,
 }
 
 impl TrainingCapture {
@@ -504,6 +509,12 @@ impl TrainingCapture {
 
         debug!(path = %dir.display(), shards = manifest.shards.len(), "training capture initialized");
 
+        let classifier = if config.author_classifier_enabled {
+            Some(Arc::new(aletheia_classify::Classifier::new()))
+        } else {
+            None
+        };
+
         Ok(Self {
             dir,
             current_shard,
@@ -511,7 +522,8 @@ impl TrainingCapture {
             manifest,
             max_shard_bytes: config.max_shard_bytes,
             pii_filter_enabled: config.pii_filter_enabled,
-            classifier: None,
+            classifier,
+            classifier_threshold: config.author_classifier_threshold,
         })
     }
 
@@ -661,11 +673,6 @@ impl TrainingCapture {
     /// warnings and do not propagate: training capture must never
     /// block the pipeline.
     pub fn maybe_capture(&mut self, input: CaptureInput<'_>) -> bool {
-        // WHY: authorship gate confidence threshold — filters non-user-authored text
-        // (AI-generated, system scaffolding, templates) to prevent training data
-        // contamination. Threshold is 0.85 (conservative).
-        const AUTHORSHIP_FILTER_CONFIDENCE_THRESHOLD: f32 = 0.85;
-
         // WHY: empty and whitespace-only responses teach the model to produce
         // vacuous output. `.trim().is_empty()` catches both `""` and `"  \n"`.
         if input.assistant_response.trim().is_empty() {
@@ -711,13 +718,17 @@ impl TrainingCapture {
                     let confidence = probs.confidence();
 
                     if class != aletheia_classify::AuthorClass::User
-                        && confidence >= AUTHORSHIP_FILTER_CONFIDENCE_THRESHOLD
+                        && confidence >= self.classifier_threshold
                     {
                         debug!(
                             session_id = input.session_id,
                             class = class.as_str(),
                             confidence = confidence,
                             "training capture skipped: authorship gate rejected non-user text"
+                        );
+                        crate::metrics::record_training_capture_rejected(
+                            input.nous_id,
+                            class.as_str(),
                         );
                         return false;
                     }

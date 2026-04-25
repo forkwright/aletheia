@@ -1100,22 +1100,55 @@ pub(crate) async fn run_pipeline(
         // extractor because the pipeline task has no persistent actor state.
         // Session IDs are ULID-based and globally unique. Closes #3421.
         if pipeline_config.training.enabled {
-            let dpo_dir = oikos.root().join(&pipeline_config.training.path);
-            if let Ok(writer) = crate::training::DpoWriter::new(&dpo_dir)
-                && let Some(pair) = crate::training::dpo::process_turn_global(
-                    &input.session.id,
-                    input.session.turn,
-                    &input.content,
-                    &result.content,
-                    correction_signal.is_correction,
-                )
-            {
-                match writer.write_pair(&pair) {
-                    Ok(()) => {
-                        crate::training::dpo::record_dpo_pair_captured(&config.id);
+            // Authorship gate for DPO: skip agent-authored turns to prevent
+            // preference pairs derived from AI-generated text. (#3786)
+            let dpo_passes_authorship = if pipeline_config.training.author_classifier_enabled {
+                let classifier = aletheia_classify::Classifier::new();
+                match classifier.classify(&input.content) {
+                    Ok(probs) => {
+                        let class = probs.argmax();
+                        let confidence = probs.confidence();
+                        let passes = class == aletheia_classify::AuthorClass::User
+                            || confidence < pipeline_config.training.author_classifier_threshold;
+                        if !passes {
+                            crate::metrics::record_training_capture_rejected(
+                                &config.id,
+                                class.as_str(),
+                            );
+                        }
+                        passes
                     }
                     Err(e) => {
-                        tracing::warn!(error = %e, "DPO pair write failed");
+                        tracing::warn!(
+                            error = %e,
+                            session_id = %input.session.id,
+                            "DPO authorship classification failed; continuing without filter"
+                        );
+                        true
+                    }
+                }
+            } else {
+                true
+            };
+
+            if dpo_passes_authorship {
+                let dpo_dir = oikos.root().join(&pipeline_config.training.path);
+                if let Ok(writer) = crate::training::DpoWriter::new(&dpo_dir)
+                    && let Some(pair) = crate::training::dpo::process_turn_global(
+                        &input.session.id,
+                        input.session.turn,
+                        &input.content,
+                        &result.content,
+                        correction_signal.is_correction,
+                    )
+                {
+                    match writer.write_pair(&pair) {
+                        Ok(()) => {
+                            crate::training::dpo::record_dpo_pair_captured(&config.id);
+                        }
+                        Err(e) => {
+                            tracing::warn!(error = %e, "DPO pair write failed");
+                        }
                     }
                 }
             }
