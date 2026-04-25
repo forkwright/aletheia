@@ -179,10 +179,6 @@ impl From<(i64, bool)> for Validity {
 /// `Regex`, `Set`, `Validity`, and `Bot` are engine-internal: they never appear
 /// in user-facing query results. `Bot` is the bottom sentinel used as the
 /// upper-bound key in range scans.
-#[expect(
-    clippy::unsafe_derive_deserialize,
-    reason = "DataValue has no unsafe code; clippy false positive from Vector serde impl in same module"
-)]
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, serde::Deserialize, serde::Serialize, Hash)]
 #[non_exhaustive]
 pub enum DataValue {
