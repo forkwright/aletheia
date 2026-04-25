@@ -106,6 +106,80 @@ fn specific_encode() {
     assert_eq!(b, DataValue::from("MSS"));
 }
 
+/// Roundtrip well-formed UTF-8 strings through `encode_datavalue` /
+/// `decode_from_key`. Mixes ASCII, multi-byte codepoints, empties, and a
+/// length that straddles the `decode_bytes` continuation boundary — the
+/// decode path that was previously `unsafe { String::from_utf8_unchecked }`.
+///
+/// Miri-safe: no mmap, no FFI, no OS resources.
+#[cfg_attr(miri, test)]
+#[test]
+fn str_decode_roundtrips_across_utf8_shapes() {
+    let cases: &[&str] = &[
+        "",
+        "ascii only",
+        "two-byte \u{00e9}\u{00f1}",                           // é ñ
+        "three-byte \u{3053}\u{3093}\u{306b}\u{3061}\u{306f}", // こんにちは
+        "four-byte emoji \u{1f98a}\u{1f680}",                  // 🦊 🚀
+        "mixed \u{00e9} ascii \u{1f600} tail",                 // é + 😀
+    ];
+    for s in cases {
+        let mut enc: Vec<u8> = vec![];
+        enc.encode_datavalue(&DataValue::from(*s));
+        let (decoded, rest) = DataValue::decode_from_key(&enc);
+        assert!(rest.is_empty(), "trailing bytes after str decode: {s:?}");
+        assert_eq!(
+            decoded,
+            DataValue::from(*s),
+            "str roundtrip mismatch for {s:?}"
+        );
+    }
+}
+
+/// Corrupt-payload simulation: construct a key whose `encode_bytes` framing
+/// is well-formed but whose *payload* bytes are deliberately non-UTF-8 (a
+/// bare 0xFF continuation byte and a lone 0xC0 start byte). This is the
+/// exact invariant boundary that the former `unsafe { String::from_utf8_unchecked }`
+/// relied on — "payload bytes are valid UTF-8 because we wrote them from a
+/// `&str`". A bit-rot or tamper at the bytes layer would have triggered UB.
+/// After the audit, decode uses `String::from_utf8_lossy`, so invalid bytes
+/// become U+FFFD and the function remains total/safe.
+///
+/// Miri-safe: no mmap, no FFI, no OS resources.
+#[cfg_attr(miri, test)]
+#[test]
+fn str_decode_tolerates_corrupt_utf8_without_ub() {
+    use crate::data::memcmp::MemCmpEncoder;
+
+    // 0xFF and 0xC0 are both invalid as UTF-8 lead bytes.
+    let invalid_utf8: &[u8] = &[0x68, 0xFF, 0xC0, 0x69]; // "h?\u{?}i"
+    // Build a key whose framing parses (STR_TAG + encode_bytes) but whose
+    // contents are not valid UTF-8.
+    let mut enc: Vec<u8> = vec![];
+    // 0x06 = STR_TAG — replicate the encoder's on-wire layout.
+    enc.push(0x06);
+    enc.encode_bytes(invalid_utf8);
+
+    let (decoded, rest) = DataValue::decode_from_key(&enc);
+    assert!(rest.is_empty(), "trailing bytes after corrupt-str decode");
+
+    // Must decode to a Str, not panic. Payload must contain the replacement
+    // character where bytes were invalid, and preserve valid ASCII elsewhere.
+    match decoded {
+        DataValue::Str(s) => {
+            // Both ASCII ends survive; replacement char occupies the invalid
+            // region (the exact count of U+FFFD depends on lossy grouping).
+            assert!(s.starts_with('h'), "valid leading ASCII preserved: {s:?}");
+            assert!(s.ends_with('i'), "valid trailing ASCII preserved: {s:?}");
+            assert!(
+                s.contains('\u{FFFD}'),
+                "invalid UTF-8 replaced with U+FFFD: {s:?}"
+            );
+        }
+        other => panic!("expected DataValue::Str, got {other:?}"),
+    }
+}
+
 #[test]
 fn encode_decode_datavalues() {
     let mut dv = vec![

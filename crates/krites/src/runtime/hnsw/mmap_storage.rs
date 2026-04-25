@@ -14,10 +14,6 @@
     dead_code,
     reason = "infrastructure for future HNSW storage integration"
 )]
-#![expect(
-    unsafe_code,
-    reason = "mmap requires unsafe FFI calls via rustix::mm for memory-mapped I/O"
-)]
 
 use std::fs::{File, OpenOptions};
 use std::path::{Path, PathBuf};
@@ -35,7 +31,13 @@ fn borrow_fd(file: &File) -> rustix::fd::BorrowedFd<'_> {
     // SAFETY: `file` is an open `std::fs::File`, so `as_raw_fd()` returns a
     // valid fd. The returned `BorrowedFd` borrows `file` (via the `'_` lifetime
     // tied to the function parameter), preventing use-after-close.
-    unsafe { rustix::fd::BorrowedFd::borrow_raw(file.as_raw_fd()) }
+    #[expect(
+        unsafe_code,
+        reason = "BorrowedFd::borrow_raw is the documented path to go from std::fs::File to rustix fd APIs"
+    )]
+    unsafe {
+        rustix::fd::BorrowedFd::borrow_raw(file.as_raw_fd())
+    }
 }
 
 /// Access hint for mmap advisory calls.
@@ -116,7 +118,15 @@ enum StorageInner {
 // `Send` is sound for the same reason: the owning `MmapVectorStorage` enforces
 // exclusive access during mutation, so transferring ownership between threads
 // never races with an active borrower.
+#[expect(
+    unsafe_code,
+    reason = "raw *mut u8 defaults to !Send; soundness documented in the SAFETY block above (4 invariants)"
+)]
 unsafe impl Send for StorageInner {}
+#[expect(
+    unsafe_code,
+    reason = "raw *mut u8 defaults to !Sync; soundness documented in the SAFETY block above (4 invariants)"
+)]
 unsafe impl Sync for StorageInner {}
 
 impl Drop for StorageInner {
@@ -125,9 +135,24 @@ impl Drop for StorageInner {
         if let StorageInner::Mmap { ptr, len } = *self
             && len > 0
         {
-            // SAFETY: ptr and len are from a successful mmap call.
+            // SAFETY: Invariants for `rustix::mm::munmap`:
+            //   1. `ptr` and `len` come from a successful `mmap` (in
+            //      `create_inner` or `remap`) and are stored in
+            //      `StorageInner::Mmap { ptr, len }` as a coherent pair.
+            //   2. `Drop` runs when the value is uniquely owned (by the Rust
+            //      borrow checker), so no other thread holds a reference to
+            //      this mapping — see invariant #4 of the `Send`/`Sync` SAFETY
+            //      block above.
+            //   3. After `munmap`, the struct is dropped, so the `ptr`/`len`
+            //      fields cannot be read again (use-after-unmap is impossible).
+            //   4. `munmap` failure during `Drop` is non-recoverable (we cannot
+            //      propagate an error out of `Drop`); `.ok()` is deliberate.
+            #[expect(
+                unsafe_code,
+                reason = "paired with the mmap calls in create_inner/remap; Drop runs under unique ownership"
+            )]
             unsafe {
-                rustix::mm::munmap(ptr.cast(), len).ok(); // WHY: munmap failure during Drop is non-recoverable
+                rustix::mm::munmap(ptr.cast(), len).ok();
             }
         }
     }
@@ -226,7 +251,25 @@ impl MmapVectorStorage {
         }
 
         let fd = borrow_fd(file);
-        // SAFETY: file is open read-write, offset 0, len matches file size.
+        // SAFETY: Invariants for `rustix::mm::mmap`:
+        //   1. `addr = null_mut()` — kernel picks the mapping location, so we
+        //      do not clobber an existing mapping.
+        //   2. `len > 0` — caller short-circuits the `len == 0` case above; a
+        //      zero-length mmap is EINVAL on Linux.
+        //   3. `prot = READ | WRITE` — matches the `OpenOptions::new().read(true).write(true)`
+        //      on `file`, so the kernel will grant the requested access.
+        //   4. `flags = SHARED` — required for `msync`/`set_len` to propagate to
+        //      the backing file; no `ANONYMOUS` or `PRIVATE` means the file
+        //      descriptor is the authority for the mapping's contents.
+        //   5. `fd` is a live `BorrowedFd<'_>` whose lifetime outlives this
+        //      syscall (it borrows from the caller-owned `file`).
+        //   6. `offset = 0` — the entire file is mapped; offset is page-aligned.
+        // Returned pointer is stored in `StorageInner::Mmap` and unmapped via
+        // `munmap` in `Drop` (site #4).
+        #[expect(
+            unsafe_code,
+            reason = "rustix::mm::mmap is the FFI for establishing a file-backed memory mapping; 6 invariants enumerated above"
+        )]
         let ptr = unsafe {
             rustix::mm::mmap(
                 std::ptr::null_mut(),
@@ -275,7 +318,15 @@ impl MmapVectorStorage {
         }
 
         let fd = borrow_fd(&self.file);
-        // SAFETY: file is open read-write, offset 0, new_len matches file size.
+        // SAFETY: Same invariants as `create_inner`'s `mmap` (see site above):
+        // null addr, non-zero len, READ|WRITE matches file mode, SHARED flag,
+        // live BorrowedFd, offset 0. Additionally, the previous mapping was
+        // released by the `std::mem::replace` + `Drop` sequence a few lines
+        // above, so this syscall never double-maps the same file region.
+        #[expect(
+            unsafe_code,
+            reason = "rustix::mm::mmap is the FFI for establishing a file-backed memory mapping; invariants match create_inner"
+        )]
         let ptr = unsafe {
             rustix::mm::mmap(
                 std::ptr::null_mut(),
@@ -322,9 +373,23 @@ impl MmapVectorStorage {
                 AccessHint::Sequential => rustix::mm::Advice::Sequential,
                 AccessHint::Random => rustix::mm::Advice::Random,
             };
-            // SAFETY: ptr and len are from a valid mmap region.
+            // SAFETY: Invariants for `rustix::mm::madvise`:
+            //   1. `ptr` + `len` came from a live mmap (still in
+            //      `StorageInner::Mmap`) and are paired coherently.
+            //   2. `len > 0` is checked on the line above; zero-length madvise
+            //      would be EINVAL but has no correctness impact here.
+            //   3. `madvise` is purely advisory — a failure does not invalidate
+            //      the mapping, does not touch memory, and does not affect
+            //      correctness of subsequent reads/writes. `.ok()` is correct.
+            //   4. This runs under `&self`; no other thread can be inside
+            //      `&mut self` (`remap`/`push`), so `ptr`/`len` cannot be
+            //      swapped under us.
+            #[expect(
+                unsafe_code,
+                reason = "madvise is a hint-only FFI call; mmap region validity documented above"
+            )]
             unsafe {
-                rustix::mm::madvise(ptr.cast(), len, advice).ok(); // WHY: madvise is a hint; failure does not affect correctness
+                rustix::mm::madvise(ptr.cast(), len, advice).ok();
             }
         }
     }
@@ -359,8 +424,36 @@ impl MmapVectorStorage {
                 if *len == 0 {
                     return &[];
                 }
-                // SAFETY: ptr and len are from a valid mmap region.
-                unsafe { std::slice::from_raw_parts(*ptr, *len) }
+                // SAFETY: Invariants for `slice::from_raw_parts`:
+                //   1. `ptr` is non-null and points to `len` contiguous bytes —
+                //      it was returned by a successful `mmap` in `create_inner`
+                //      or `remap` (both sites above) and stored in
+                //      `StorageInner::Mmap { ptr, len }`. The variant enforces
+                //      the pair stays coherent: we never mutate `ptr` or `len`
+                //      independently; the Mmap struct is replaced atomically in
+                //      `remap` via `std::mem::replace`.
+                //   2. The bytes are initialized — mmap of a regular file with
+                //      `MAP_SHARED` returns initialized memory (the file's
+                //      contents, including any set_len extension which the
+                //      kernel zero-fills).
+                //   3. The region is valid for reads for the duration of the
+                //      returned `&[u8]` — the `&self` borrow on `MmapVectorStorage`
+                //      prevents any concurrent `remap` (which requires `&mut
+                //      self`), so the mapping cannot be unmapped mid-borrow.
+                //   4. `len <= isize::MAX` — enforced by the filesystem/OS cap
+                //      on mmap size; a larger mapping would have failed at the
+                //      mmap syscall.
+                //   5. No alias to a `&mut` slice exists — this struct never
+                //      hands out `&mut` into the mapped region; writes go
+                //      through `File::write_at` + `remap`, not through a
+                //      `&mut [u8]` slice.
+                #[expect(
+                    unsafe_code,
+                    reason = "slice::from_raw_parts is the only way to expose mmap memory as &[u8]; 5 invariants documented above"
+                )]
+                unsafe {
+                    std::slice::from_raw_parts(*ptr, *len)
+                }
             }
             StorageInner::Heap(buf) => buf,
         }
@@ -445,7 +538,20 @@ impl MmapVectorStorage {
         if let StorageInner::Mmap { ptr, len } = self.inner
             && len > 0
         {
-            // SAFETY: ptr and len are from a valid mmap region.
+            // SAFETY: Invariants for `rustix::mm::msync`:
+            //   1. `ptr` + `len` are from a live mmap held in
+            //      `StorageInner::Mmap` and paired coherently.
+            //   2. `len > 0` checked above; zero-length msync is EINVAL.
+            //   3. `MsyncFlags::SYNC` requests synchronous writeback — the
+            //      call returns after dirty pages are in stable storage. This
+            //      is a read-only operation from the mapping's perspective; it
+            //      does not modify or invalidate the pages.
+            //   4. `&self` borrow excludes any concurrent `&mut self` path
+            //      (`remap`/`push`), so `ptr`/`len` cannot race with unmap.
+            #[expect(
+                unsafe_code,
+                reason = "msync is an FFI call; mmap region validity documented above"
+            )]
             unsafe {
                 rustix::mm::msync(ptr.cast(), len, rustix::mm::MsyncFlags::SYNC)
                     .map_err(|e| io_err("mmap_storage", format!("msync failed: {e}")))?;

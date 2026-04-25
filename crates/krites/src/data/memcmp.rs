@@ -1,9 +1,5 @@
 //! Memory-comparable encoding for composite keys.
 #![expect(
-    unsafe_code,
-    reason = "memcmp decoding uses from_utf8_unchecked for strings known to be valid UTF-8 from encoding"
-)]
-#![expect(
     clippy::indexing_slicing,
     reason = "memcmp encoding indices are structurally bounded by length prefix parsing"
 )]
@@ -32,8 +28,18 @@ use std::cmp::Reverse;
 use std::collections::BTreeSet;
 use std::io::Write;
 use std::str::FromStr;
+use std::sync::LazyLock;
 
 use regex::Regex;
+
+// WHY: Matches nothing. Used as the corruption-fallback for `REGEX_TAG` decode
+// so `decode_from_key` remains infallible even when storage bytes are tampered
+// or bit-rotted. `(?!)` is a negative lookahead on the empty string, which is
+// never satisfiable — the compiled regex matches no input by construction.
+static MATCH_NOTHING_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::from_str(r"(?!)")
+        .unwrap_or_else(|_| unreachable!("INVARIANT: match-nothing pattern `(?!)` always compiles"))
+});
 
 use crate::data::json::JsonValue;
 use crate::data::value::{
@@ -313,10 +319,14 @@ impl DataValue {
             }
             STR_TAG => {
                 let (bytes, remaining) = decode_bytes(remaining);
-                // SAFETY: These bytes were produced by `encode_datavalue` for a
-                // `DataValue::Str`, which called `s.as_bytes()` on a valid Rust `&str`.
-                // UTF-8 validity is therefore guaranteed by the encoding invariant.
-                let s = unsafe { String::from_utf8_unchecked(bytes) };
+                // WHY: The encoder writes `s.as_bytes()` from a valid Rust `&str`,
+                // so well-formed keys always decode losslessly. If the backing
+                // store was corrupted (bit rot, partial write, external tamper),
+                // `from_utf8` would return UB under `from_utf8_unchecked`; the
+                // lossy variant replaces bad bytes with U+FFFD and keeps the
+                // query infallible — the same signature `decode_from_key` has
+                // always exposed to callers.
+                let s = String::from_utf8_lossy(&bytes).into_owned();
                 (DataValue::Str(s.into()), remaining)
             }
             JSON_TAG => {
@@ -342,15 +352,16 @@ impl DataValue {
             }
             REGEX_TAG => {
                 let (bytes, remaining) = decode_bytes(remaining);
-                // SAFETY: These bytes were produced by `encode_datavalue` for a
-                // `DataValue::Regex`, which serialised the regex source string via
-                // `s.as_bytes()`. The original source is a valid Rust `&str`, so
-                // UTF-8 validity is guaranteed by the encoding invariant.
-                let s = unsafe { String::from_utf8_unchecked(bytes) };
-                // INVARIANT: regex source was serialized from a valid Regex
-                let rx = Regex::from_str(&s).unwrap_or_else(|_| {
-                    unreachable!("INVARIANT: regex source was serialized from a valid Regex")
-                });
+                // WHY: The encoder writes the regex source via `s.as_bytes()`
+                // from a valid Rust `&str`; well-formed keys always decode
+                // losslessly. Under storage corruption we replace invalid bytes
+                // with U+FFFD rather than trigger UB via `from_utf8_unchecked`.
+                let s = String::from_utf8_lossy(&bytes).into_owned();
+                // INVARIANT: regex source was serialized from a valid Regex.
+                // If the disk bytes were corrupted (U+FFFD substituted above),
+                // the regex source may no longer parse — fall back to a match-
+                // nothing pattern so decode remains infallible for the hot path.
+                let rx = Regex::from_str(&s).unwrap_or_else(|_| MATCH_NOTHING_REGEX.clone());
                 (DataValue::Regex(RegexWrapper(rx)), remaining)
             }
             LIST_TAG => {
