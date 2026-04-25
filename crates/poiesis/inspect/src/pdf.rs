@@ -9,7 +9,7 @@ pub(crate) fn inspect_pdf_impl(bytes: &[u8]) -> Result<PdfSummary> {
     // Use pdf-extract's memory-based API
     let text =
         extract_text_from_mem(bytes).map_err(|e| crate::InspectError::PdfExtractionError {
-            detail: format!("{:?}", e),
+            detail: format!("{e:?}"),
         })?;
 
     // Split text by newlines to get snippets per page/section
@@ -17,7 +17,7 @@ pub(crate) fn inspect_pdf_impl(bytes: &[u8]) -> Result<PdfSummary> {
         .split('\n')
         .filter(|line| !line.trim().is_empty())
         .take(100) // Limit to first 100 snippets
-        .map(|s| s.to_string())
+        .map(std::string::ToString::to_string)
         .collect();
 
     // Estimate page count (rough heuristic: split by form feed or every ~2000 chars)

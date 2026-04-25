@@ -9,7 +9,7 @@ use crate::WorkbookSummary;
 use crate::error::Result;
 
 /// Extract text content from worksheet XML using simple string matching.
-fn extract_text_from_worksheet(xml_data: &str) -> Result<String> {
+fn extract_text_from_worksheet(xml_data: &str) -> String {
     let mut text_content = String::new();
 
     // Simple approach: find all <v>...</v> tags (cell values)
@@ -21,8 +21,9 @@ fn extract_text_from_worksheet(xml_data: &str) -> Result<String> {
         for cell_chunk in chunk.split("<c") {
             // Find value tags
             for value_chunk in cell_chunk.split("<v>") {
-                if let Some(end) = value_chunk.find("</v>") {
-                    let value = &value_chunk[..end];
+                if let Some(end) = value_chunk.find("</v>")
+                    && let Some(value) = value_chunk.get(..end)
+                {
                     text_content.push_str(value);
                     text_content.push('\t');
                 }
@@ -34,7 +35,7 @@ fn extract_text_from_worksheet(xml_data: &str) -> Result<String> {
         }
     }
 
-    Ok(text_content)
+    text_content
 }
 
 pub(crate) fn inspect_xlsx_impl(bytes: &[u8]) -> Result<WorkbookSummary> {
@@ -58,14 +59,23 @@ pub(crate) fn inspect_xlsx_impl(bytes: &[u8]) -> Result<WorkbookSummary> {
     // Extract sheet names from workbook.xml
     let mut sheet_names = Vec::new();
     for line in workbook_xml.lines() {
-        if line.contains("<sheet") {
-            if let Some(start) = line.find("name=\"") {
-                if let Some(end) = line[start + 6..].find('"') {
-                    let sheet_name = line[start + 6..start + 6 + end].to_string();
-                    sheet_names.push(sheet_name);
-                }
-            }
+        if !line.contains("<sheet") {
+            continue;
         }
+        let Some(start) = line.find("name=\"") else {
+            continue;
+        };
+        let after_name = start + 6;
+        let Some(rest) = line.get(after_name..) else {
+            continue;
+        };
+        let Some(end) = rest.find('"') else {
+            continue;
+        };
+        let Some(sheet_name) = rest.get(..end) else {
+            continue;
+        };
+        sheet_names.push(sheet_name.to_string());
     }
 
     // Read worksheet files
@@ -75,7 +85,7 @@ pub(crate) fn inspect_xlsx_impl(bytes: &[u8]) -> Result<WorkbookSummary> {
             let mut content = String::new();
             std::io::Read::read_to_string(&mut file, &mut content)
                 .map_err(|e| crate::InspectError::Io { source: e })?;
-            let text = extract_text_from_worksheet(&content)?;
+            let text = extract_text_from_worksheet(&content);
             sheets.insert(sheet_name, text);
         }
     }
