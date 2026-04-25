@@ -88,6 +88,9 @@ static CACHE_CREATION_TOKENS_TOTAL: LazyLock<Family<NousLabels, Counter>> =
 static DPO_PAIRS_CAPTURED_TOTAL: LazyLock<Family<NousLabels, Counter>> =
     LazyLock::new(Family::default);
 
+static TRAINING_CAPTURE_REJECTED_TOTAL: LazyLock<Family<NousReasonLabels, Counter>> =
+    LazyLock::new(Family::default);
+
 static HEALTH_POLLER_RESTARTS_TOTAL: LazyLock<Counter> = LazyLock::new(Counter::default);
 
 // ---------------------------------------------------------------------------
@@ -140,6 +143,11 @@ pub fn register(registry: &mut Registry) {
         "aletheia_dpo_pairs_captured",
         "Total DPO preference pairs captured from correction turns",
         DPO_PAIRS_CAPTURED_TOTAL.clone(),
+    );
+    registry.register(
+        "aletheia_training_capture_rejected",
+        "Total training records rejected by the authorship gate",
+        TRAINING_CAPTURE_REJECTED_TOTAL.clone(),
     );
     registry.register(
         "aletheia_nous_health_poller_restarts",
@@ -217,6 +225,20 @@ pub(crate) fn record_dpo_pair(nous_id: &str) {
     DPO_PAIRS_CAPTURED_TOTAL
         .get_or_create(&NousLabels {
             nous_id: nous_id.to_owned(),
+        })
+        .inc();
+}
+
+/// Record a training record rejected by the authorship gate.
+///
+/// WHY: Operators need visibility into decontamination rates.
+/// `reason` is the author class that triggered rejection
+/// (e.g. "subagent", "system_scaffolding"). Closes #3786.
+pub(crate) fn record_training_capture_rejected(nous_id: &str, reason: &str) {
+    TRAINING_CAPTURE_REJECTED_TOTAL
+        .get_or_create(&NousReasonLabels {
+            nous_id: nous_id.to_owned(),
+            reason: reason.to_owned(),
         })
         .inc();
 }
@@ -313,6 +335,7 @@ mod tests {
             "aletheia_nous_background_task_failures_total",
             "aletheia_tool_failures_total",
             "aletheia_stream_events_dropped_total",
+            "aletheia_training_capture_rejected_total",
             "aletheia_nous_health_poller_restarts_total",
         ] {
             assert!(out.contains(metric), "missing `{metric}` in: {out}");

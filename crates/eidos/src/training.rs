@@ -33,6 +33,20 @@ pub struct TrainingConfig {
     /// running a trusted local-only pipeline can disable explicitly.
     #[serde(default = "default_pii_filter_enabled")]
     pub pii_filter_enabled: bool,
+    /// Whether to apply the author classifier gate to training capture.
+    ///
+    /// When `true`, user messages classified as non-user-authored with
+    /// confidence >= `author_classifier_threshold` are rejected from the
+    /// training corpus. Default: `false` (regression-safe).
+    #[serde(default = "default_author_classifier_enabled")]
+    pub author_classifier_enabled: bool,
+    /// Confidence threshold for the authorship gate.
+    ///
+    /// User messages where the top non-user class exceeds this threshold
+    /// are filtered from training data. Range: [0.0, 1.0].
+    /// Default: 0.85.
+    #[serde(default = "default_author_classifier_threshold")]
+    pub author_classifier_threshold: f32,
 }
 
 /// Returns the default value for [`TrainingConfig::max_shard_bytes`].
@@ -45,6 +59,16 @@ fn default_pii_filter_enabled() -> bool {
     true
 }
 
+/// Default value for [`TrainingConfig::author_classifier_enabled`]: `false`.
+fn default_author_classifier_enabled() -> bool {
+    false
+}
+
+/// Default value for [`TrainingConfig::author_classifier_threshold`]: 0.85.
+fn default_author_classifier_threshold() -> f32 {
+    0.85
+}
+
 impl Default for TrainingConfig {
     fn default() -> Self {
         Self {
@@ -52,6 +76,8 @@ impl Default for TrainingConfig {
             path: "data/training".to_owned(),
             max_shard_bytes: DEFAULT_MAX_SHARD_BYTES,
             pii_filter_enabled: true,
+            author_classifier_enabled: false,
+            author_classifier_threshold: 0.85,
         }
     }
 }
@@ -219,6 +245,8 @@ mod tests {
         assert_eq!(config.path, "data/training");
         assert_eq!(config.max_shard_bytes, 50 * 1024 * 1024);
         assert!(config.pii_filter_enabled);
+        assert!(!config.author_classifier_enabled);
+        assert!((config.author_classifier_threshold - 0.85).abs() < f32::EPSILON);
     }
 
     #[test]

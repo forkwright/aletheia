@@ -29,15 +29,11 @@ pub enum ClassifyError {
     #[snafu(display("failed to parse classifier metadata: {source}"))]
     InvalidMetadata { source: serde_json::Error },
 
-    /// ONNX model inference failed.
-    #[snafu(display("ONNX inference failed: {source}"))]
-    InferenceFailed { source: ort::Error },
-
     /// Input text is too long for classification.
     #[snafu(display("text too long for classification (max 100000 chars): {len} chars"))]
     TextTooLong { len: usize },
 
-    /// ONNX model produced invalid output shape.
+    /// Model produced invalid output shape.
     #[snafu(display(
         "classification produced invalid output shape (expected 4-element array, got {len} elements)"
     ))]

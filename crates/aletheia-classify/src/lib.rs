@@ -4,22 +4,19 @@
 //! Author-classifier inference handler for training data decontamination.
 //!
 //! This crate provides the aletheia-side runtime for filtering AI-generated
-//! text from the training-data capture pipeline. It loads an ONNX model and
-//! metadata sidecar produced by gnomon research, and exposes a simple
-//! classification interface for use in the `nous::training::capture` gate.
+//! text from the training-data capture pipeline. It uses a lightweight
+//! heuristic rule bank (surface-feature scoring) that requires no external
+//! model artifacts, and exposes a simple classification interface for use in
+//! the `nous::training::capture` gate.
 //!
 //! See the design doc at `forkwright/aletheia#3786` for the full specification
 //! and artifact contract.
 //!
 //! # Artifact contract
 //!
-//! The classifier expects two files in a directory:
-//!
-//! - `model.onnx` — ONNX binary model (typically TF-IDF + logistic regression)
-//! - `metadata.json` — artifact metadata with schema version, producer, and evaluation results
-//!
-//! The default artifact location is `/data/models/author-classifier/v1/`, but this
-//! is configurable at daemon startup.
+//! The optional `Classifier::load` path expects `metadata.json` in a directory
+//! for observability and version tracking, but no model file is required.
+//! The heuristic engine is fully embedded.
 //!
 //! # Example
 //!
@@ -41,7 +38,7 @@
 pub use classifier::{AuthorClass, AuthorProbs, Classifier};
 pub use error::{ClassifyError, Result};
 
-/// ONNX-based author classification and inference.
+/// Heuristic rule-bank author classification and inference.
 pub mod classifier;
 /// Error types for author classifier operations.
 pub mod error;

@@ -39,6 +39,8 @@ fn test_config_no_pii(path: &str, max_shard_bytes: u64) -> TrainingConfig {
         path: path.to_owned(),
         max_shard_bytes,
         pii_filter_enabled: false,
+        author_classifier_enabled: false,
+        author_classifier_threshold: 0.85,
     }
 }
 
@@ -523,6 +525,8 @@ fn pii_filter_redacts_user_message_when_enabled() {
         path: "training".to_owned(),
         max_shard_bytes: 50 * 1024 * 1024,
         pii_filter_enabled: true,
+        author_classifier_enabled: false,
+        author_classifier_threshold: 0.85,
     };
     let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
@@ -549,6 +553,8 @@ fn pii_filter_preserves_clean_content() {
         path: "training".to_owned(),
         max_shard_bytes: 50 * 1024 * 1024,
         pii_filter_enabled: true,
+        author_classifier_enabled: false,
+        author_classifier_threshold: 0.85,
     };
     let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
@@ -574,6 +580,8 @@ fn pii_filter_disabled_passes_through() {
         path: "training".to_owned(),
         max_shard_bytes: 50 * 1024 * 1024,
         pii_filter_enabled: false,
+        author_classifier_enabled: false,
+        author_classifier_threshold: 0.85,
     };
     let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
@@ -654,4 +662,75 @@ fn training_record_serde_roundtrip() {
     assert_eq!(back.tokens, record.tokens);
     assert_eq!(back.turn_type, Some("planning".to_owned()));
     assert!(back.is_correction.is_none());
+}
+
+// -- Authorship gate ---------------------------------------------------------
+
+fn test_config_with_classifier(path: &str, max_shard_bytes: u64) -> TrainingConfig {
+    TrainingConfig {
+        enabled: true,
+        path: path.to_owned(),
+        max_shard_bytes,
+        pii_filter_enabled: false,
+        author_classifier_enabled: true,
+        author_classifier_threshold: 0.85,
+    }
+}
+
+#[test]
+fn authorship_gate_rejects_agent_text() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let config = test_config_with_classifier("training", 50 * 1024 * 1024);
+    let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
+
+    let captured = capture.maybe_capture(CaptureInput {
+        user_message: "As an AI language model, I don't have personal experiences.",
+        assistant_response: "Understood.",
+        ..good_input()
+    });
+    assert!(
+        !captured,
+        "agent-authored user message should be rejected by authorship gate"
+    );
+}
+
+#[test]
+fn authorship_gate_accepts_human_text() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let config = test_config_with_classifier("training", 50 * 1024 * 1024);
+    let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
+
+    let captured = capture.maybe_capture(CaptureInput {
+        user_message: "lol thanks for the help! can you check this?",
+        assistant_response: "Sure, I'll take a look.",
+        ..good_input()
+    });
+    assert!(
+        captured,
+        "human-authored user message should pass authorship gate"
+    );
+
+    let content = std::fs::read_to_string(capture.file_path()).expect("read");
+    assert_eq!(content.lines().count(), 1);
+}
+
+#[test]
+fn authorship_gate_disabled_is_noop() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let config = test_config_no_pii("training", 50 * 1024 * 1024);
+    let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
+
+    // Even agent-looking text is captured when the gate is disabled.
+    let captured = capture.maybe_capture(CaptureInput {
+        user_message: "As an AI language model, I don't have personal experiences.",
+        assistant_response: "Understood.",
+        ..good_input()
+    });
+    assert!(
+        captured,
+        "authorship gate disabled: agent text should be captured"
+    );
+
+    let content = std::fs::read_to_string(capture.file_path()).expect("read");
+    assert_eq!(content.lines().count(), 1);
 }
