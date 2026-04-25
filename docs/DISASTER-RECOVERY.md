@@ -2,7 +2,7 @@
 
 Operational recovery procedures for Aletheia after service failure, data corruption, machine loss, or credential compromise.
 
-For day-to-day operations, see [RUNBOOK.md](RUNBOOK.md). For deployment details, see [DEPLOYMENT.md](DEPLOYMENT.md).
+For day-to-day operations, see [RUNBOOK.md](RUNBOOK.md). Deployment details are in [DEPLOYMENT.md](DEPLOYMENT.md). The storage backend reference is [DATA.md](DATA.md).
 
 ---
 
@@ -11,9 +11,9 @@ For day-to-day operations, see [RUNBOOK.md](RUNBOOK.md). For deployment details,
 | Target | Value | Basis |
 |--------|-------|-------|
 | **RTO** | 30–60 minutes | Binary deploy + health check is ~30–45 s; reinstall + full NAS restore dominates the window |
-| **RPO** | 24 hours | Default fjall backup interval (`interval_hours = 24`, see `FjallBackupConfig`) and daily `backup-cron.sh` |
+| **RPO** | 24 hours | Default fjall backup interval (`interval_hours = 24`, see `FjallBackupConfig`) |
 
-> If you need tighter RPO, reduce `interval_hours` in config or run `scripts/backup-cron.sh` on a shorter cron schedule.
+> If you need tighter RPO, reduce `interval_hours` in config or run `aletheia backup` more frequently.
 
 ---
 
@@ -49,7 +49,7 @@ fuser -k 18789/tcp   # only if the PID is not aletheia
 
 ## Scenario 2: DB corruption → restore from fjall backup
 
-**Symptom:** `aletheia health` reports session-store or knowledge-store failures; SQLite `PRAGMA integrity_check;` returns errors.
+**Symptom:** `aletheia health` reports session-store or knowledge-store failures; the store fails to open or returns read errors.
 
 ### Recovery sequence
 
@@ -58,10 +58,10 @@ fuser -k 18789/tcp   # only if the PID is not aletheia
 systemctl --user stop aletheia
 
 # 2. List available fjall backups
-aletheia backup --fjall --list
+aletheia backup --list
 
 # 3. Identify the most recent good backup
-LATEST=$(aletheia backup --fjall --list --json | jq -r '.[0].name')
+LATEST=$(aletheia backup --list --json | jq -r '.[0].name')
 echo "Restoring from: $LATEST"
 
 # 4. Move corrupted store aside (do not delete until recovery is confirmed)
@@ -77,22 +77,22 @@ systemctl --user start aletheia
 aletheia health
 ```
 
-### SQLite session-store corruption
+### Session-store corruption
 
-If `instance/data/sessions.db` is corrupt:
+`sessions.db` is also a fjall LSM-tree. There is no built-in backup for the session store; the `aletheia backup` command only covers `knowledge.fjall`. If the session store is corrupt, your options are:
+
+1. Restore from a filesystem snapshot (restic, ZFS, etc.) taken while the service was stopped.
+2. Delete the directory and let the service recreate it on startup. Session history will be lost.
 
 ```bash
 systemctl --user stop aletheia
-
-# Find the most recent SQLite backup in data/backups/
-BACKUP=$(ls -1t "${ALETHEIA_ROOT:-$HOME/aletheia/instance}/data/backups/"*.db 2>/dev/null | head -1)
-cp -- "$BACKUP" "${ALETHEIA_ROOT:-$HOME/aletheia/instance}/data/sessions.db"
-
+mv "${ALETHEIA_ROOT:-$HOME/aletheia/instance}/data/sessions.db" \
+   "${ALETHEIA_ROOT:-$HOME/aletheia/instance}/data/sessions.db.corrupt.$(date -u +%Y%m%dT%H%M%SZ)"
 systemctl --user start aletheia
 aletheia health
 ```
 
-> Backups are created by `aletheia backup` (SQLite) and the daemon's `FjallBackup` task (file-level copy). `scripts/backup-cron.sh` exports sessions to JSON as an additional safety net.
+> The daemon's `FjallBackup` task only backs up `knowledge.fjall`. `scripts/backup-cron.sh` is legacy and references a removed CLI flag.
 
 ---
 
@@ -195,8 +195,8 @@ Run these checks before declaring recovery complete:
 | 3 | Daemon / agent status looks normal | `aletheia status` |
 | 4 | Health monitor script passes | `scripts/health-monitor.sh` |
 | 5 | Metrics endpoint responds | `curl -sf http://localhost:18789/metrics \| head` |
-| 6 | SQLite integrity check passes | `sqlite3 "$ALETHEIA_ROOT/data/sessions.db" "PRAGMA integrity_check;"` |
-| 7 | Session store has expected data | `sqlite3 "$ALETHEIA_ROOT/data/sessions.db" "SELECT COUNT(*) FROM sessions;"` |
+| 6 | Session store opens without errors | `aletheia status` shows expected session counts |
+| 7 | Knowledge store backup directory exists | `ls -ld "$ALETHEIA_ROOT/data/backups/fjall"` |
 | 8 | Fjall backup directory exists and is writable | `ls -ld "$ALETHEIA_ROOT/data/backups/fjall"` |
 | 9 | Create a test session (if auth is enabled) | See API smoke test in [DEPLOYMENT.md](DEPLOYMENT.md) |
 | 10 | No recent errors in logs | `journalctl --user -u aletheia --since "5 minutes ago" --priority err..warning` |
@@ -212,7 +212,7 @@ Restore to a **test instance** at least once a month to prove the procedure and 
 TMP_INSTANCE=$(mktemp -d)
 
 # 2. Restore the latest fjall backup into it
-cp -a "$ALETHEIA_ROOT/data/backups/fjall/$(aletheia backup --fjall --list --json | jq -r '.[0].name')" \
+cp -a "$ALETHEIA_ROOT/data/backups/fjall/$(aletheia backup --list --json | jq -r '.[0].name')" \
       "$TMP_INSTANCE/knowledge.fjall"
 
 # 3. Start aletheia against the test instance
@@ -240,7 +240,7 @@ rm -rf "$TMP_INSTANCE"
 | `scripts/deploy.sh --rollback` | Roll back to the most recent binary backup |
 | `scripts/rollback.sh` | Manual rollback (lighter-weight, no build step) |
 | `scripts/health-monitor.sh` | Service health, token expiry, and metrics monitor |
-| `scripts/backup-cron.sh` | Daily JSON export of the SQLite session store |
+| `scripts/backup-cron.sh` | Legacy script (non-functional; references removed `--export-json` flag) |
 | `scripts/smoke-test.sh` | Offline CLI smoke test (good after reinstall) |
 | `crates/daemon/src/maintenance/fjall_backup.rs` | Fjall knowledge store file-level backup implementation |
 | `instance.example/services/aletheia.service` | Systemd unit template |
