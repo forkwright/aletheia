@@ -82,23 +82,27 @@
   --selection-fg: #e8e6e3;
 
   /* ------------------------------------------------------------------ */
-  /* Dye palette — Greek-named semantic colors                          */
+  /* Dye palette — iron-mordanted botanical dyes                        */
+  /* Restored from ardent-site canonical (forkwright/ardent-site).      */
+  /* Dark-mode values lift lightness/saturation hue-faithfully for      */
+  /* legibility on warm-dark bg. See kanon/basanos DESIGN-TOKENS.md     */
+  /* §Aesthetic Anchors and §Dye Palette.                               */
   /* ------------------------------------------------------------------ */
 
-  /* Aima (blood) — critical, destructive, danger */
-  --aima: #9B4444;
-  --aima-bg: #261818;
+  /* Aima (αἷμα — blood) — critical, destructive, "cost of continuity" */
+  --aima: #B85052;
+  --aima-bg: #2A1818;
 
-  /* Thanatochromia (death) — terminal, finalized, archived */
-  --thanatochromia: #6B5B6B;
-  --thanatochromia-bg: #1E1A1E;
+  /* Thanatochromia (θανατοχρωμία) — "color death leaves behind", archived */
+  --thanatochromia: #6F5B8A;
+  --thanatochromia-bg: #1F1A2A;
 
-  /* Aporia (uncertainty) — pending, ambiguous, needs attention */
-  --aporia: #B8923B;
-  --aporia-bg: #261F14;
+  /* Aporia (ἀπορία) — sage green, "sitting with uncertainty", pending */
+  --aporia: #7AA582;
+  --aporia-bg: #182018;
 
-  /* Natural (undyed leather) — neutral, default, organic */
-  --natural: #A08060;
+  /* Natural — undyed leather, saddle tan, neutral baseline */
+  --natural: #B07840;
   --natural-bg: #221C14;
 }
 
@@ -107,18 +111,19 @@
 /* ===================================================================== */
 
 [data-theme="light"] {
-  /* Backgrounds — warm parchment */
-  --bg: #F5F0E8;
+  /* Backgrounds — warm parchment, ardent-site canonical
+     ("archival cotton rag paper") */
+  --bg: #F7F3E8;
   --bg-surface: #EDE8E0;
   --bg-surface-bright: #FDFAF5;
   --bg-surface-dim: #E4DFD7;
-  --bg-overlay: rgb(245 240 232 / 0.85);
+  --bg-overlay: rgb(247 243 232 / 0.85);
 
   /* Text — deep warm brown */
   --text-primary: #2C2418;
   --text-secondary: #5C5248;
   --text-muted: #6E665E; /* WHY: raised contrast from #8A8078 (2.82:1) to meet WCAG AA (4.5:1) */
-  --text-inverse: #F5F0E8;
+  --text-inverse: #F7F3E8;
 
   /* Borders */
   --border: #D4CFC7;
@@ -184,16 +189,16 @@
   --shadow-glow: 0 0 0 3px rgb(107 90 56 / 0.25);
   --shadow-inner-highlight: inset 0 1px 0 rgb(255 255 255 / 0.5);
 
-  /* Dye palette — same hues, adapted for light background */
-  --aima: #8A3030;
-  --aima-bg: #F5E0E0;
+  /* Dye palette — ardent canonical (designed for parchment bg) */
+  --aima: #581523;
+  --aima-bg: #F0DDE0;
 
-  --thanatochromia: #5C4C5C;
-  --thanatochromia-bg: #EDE0ED;
+  --thanatochromia: #2C1B3A;
+  --thanatochromia-bg: #E8DEED;
 
-  --aporia: #9A7A2E;
-  --aporia-bg: #F5EDD8;
+  --aporia: #4A7A52;
+  --aporia-bg: #DEE8E0;
 
-  --natural: #8A6A44;
-  --natural-bg: #EDE4D8;
+  --natural: #8B5A2B;
+  --natural-bg: #ECE0D0;
 }
