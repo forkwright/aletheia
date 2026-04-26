@@ -34,7 +34,7 @@ const DIALOG_STYLE: &str = "\
 const TITLE_STYLE: &str = "\
     font-size: var(--text-xl); \
     font-weight: var(--weight-bold); \
-    color: var(--text-heading, var(--text-primary)); \
+    color: var(--text-primary); \
     margin: 0 0 var(--space-4) 0;\
 ";
 
