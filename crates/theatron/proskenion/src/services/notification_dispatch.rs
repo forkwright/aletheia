@@ -27,7 +27,7 @@ use crate::platform::notifications::{NotificationPayload, NotificationUrgency};
 use crate::state::notifications::{
     DndState, NotificationCategory, NotificationEntry, NotificationPreferences,
 };
-use crate::state::toasts::Severity;
+use crate::state::toasts::ToastSeverity;
 
 /// Maximum notifications dispatched per minute per category (sliding window).
 const RATE_LIMIT_PER_MINUTE: usize = 5;
@@ -97,7 +97,7 @@ impl NotificationDispatch {
         dnd: &DndState,
         window_focused: bool,
         on_sent: &mut impl FnMut(NotificationEntry),
-        toast_fallback: &mut impl FnMut(Severity, &str),
+        toast_fallback: &mut impl FnMut(ToastSeverity, &str),
     ) {
         // Flush expired pending groups before processing the new event.
         self.flush_expired_groups(prefs, dnd, window_focused, on_sent, toast_fallback);
@@ -156,7 +156,7 @@ impl NotificationDispatch {
         dnd: &DndState,
         focused: bool,
         on_sent: &mut impl FnMut(NotificationEntry),
-        fallback: &mut impl FnMut(Severity, &str),
+        fallback: &mut impl FnMut(ToastSeverity, &str),
     ) {
         if !prefs.category_enabled(NotificationCategory::AgentCompletion) {
             return;
@@ -189,7 +189,7 @@ impl NotificationDispatch {
         dnd: &DndState,
         focused: bool,
         on_sent: &mut impl FnMut(NotificationEntry),
-        fallback: &mut impl FnMut(Severity, &str),
+        fallback: &mut impl FnMut(ToastSeverity, &str),
     ) {
         if !prefs.category_enabled(NotificationCategory::Error) {
             return;
@@ -224,7 +224,7 @@ impl NotificationDispatch {
         dnd: &DndState,
         focused: bool,
         on_sent: &mut impl FnMut(NotificationEntry),
-        fallback: &mut impl FnMut(Severity, &str),
+        fallback: &mut impl FnMut(ToastSeverity, &str),
     ) {
         if !prefs.category_enabled(NotificationCategory::ConnectionStatus) {
             return;
@@ -251,7 +251,7 @@ impl NotificationDispatch {
         dnd: &DndState,
         focused: bool,
         on_sent: &mut impl FnMut(NotificationEntry),
-        fallback: &mut impl FnMut(Severity, &str),
+        fallback: &mut impl FnMut(ToastSeverity, &str),
     ) {
         let Some(at) = self.disconnect_at else {
             return;
@@ -295,7 +295,7 @@ impl NotificationDispatch {
         prefs: &NotificationPreferences,
         dnd: &DndState,
         on_sent: &mut impl FnMut(NotificationEntry),
-        fallback: &mut impl FnMut(Severity, &str),
+        fallback: &mut impl FnMut(ToastSeverity, &str),
     ) {
         let now = Instant::now();
 
@@ -339,7 +339,7 @@ impl NotificationDispatch {
         _dnd: &DndState,
         _focused: bool,
         _on_sent: &mut impl FnMut(NotificationEntry),
-        _fallback: &mut impl FnMut(Severity, &str),
+        _fallback: &mut impl FnMut(ToastSeverity, &str),
     ) {
         let now = Instant::now();
         self.pending_groups
@@ -360,7 +360,7 @@ impl NotificationDispatch {
         _prefs: &NotificationPreferences,
         dnd: &DndState,
         on_sent: &mut impl FnMut(NotificationEntry),
-        fallback: &mut impl FnMut(Severity, &str),
+        fallback: &mut impl FnMut(ToastSeverity, &str),
     ) {
         // NOTE: Tool approval bypasses DND (time-sensitive).
         if category != NotificationCategory::ToolApproval && dnd.is_suppressing() {
@@ -412,12 +412,12 @@ impl NotificationDispatch {
 }
 
 /// Map a notification category to an in-app toast severity for fallback.
-fn severity_for(category: NotificationCategory) -> Severity {
+fn severity_for(category: NotificationCategory) -> ToastSeverity {
     match category {
-        NotificationCategory::AgentCompletion => Severity::Info,
-        NotificationCategory::ToolApproval => Severity::Warning,
-        NotificationCategory::Error => Severity::Error,
-        NotificationCategory::ConnectionStatus => Severity::Info,
+        NotificationCategory::AgentCompletion => ToastSeverity::Info,
+        NotificationCategory::ToolApproval => ToastSeverity::Warning,
+        NotificationCategory::Error => ToastSeverity::Error,
+        NotificationCategory::ConnectionStatus => ToastSeverity::Info,
     }
 }
 
@@ -453,7 +453,7 @@ mod tests {
         SessionId::from(id)
     }
 
-    fn no_fallback(_sev: Severity, _title: &str) {}
+    fn no_fallback(_sev: ToastSeverity, _title: &str) {}
 
     // -- Dispatch: event routing ---------------------------------------------
 

@@ -3,8 +3,14 @@
 //! Provides non-blocking notifications for connection events, SSE
 //! lifecycle changes, and user-facing feedback. Components read
 //! `Signal<ToastStore>` to render the toast stack.
+//!
+//! `Toast`, `ToastAction`, `ToastId`, and `ToastSeverity` are the canonical
+//! types from `theatron_components`. `ToastStore` is proskenion-local state
+//! management built on top of those types.
 
 use std::time::Duration;
+
+pub use theatron_components::{Toast, ToastAction, ToastId, ToastSeverity};
 
 /// Auto-dismiss duration for informational toasts.
 const DEFAULT_DISMISS_MS: u64 = 5_000;
@@ -15,89 +21,11 @@ const ERROR_DISMISS_MS: u64 = 10_000;
 /// Maximum visible toasts before oldest are evicted.
 const MAX_VISIBLE: usize = 5;
 
-/// Severity level controlling visual styling and auto-dismiss behavior.
-#[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Severity {
-    /// Neutral information (dye: natural).
-    Info,
-    /// Positive outcome (dye: green).
-    Success,
-    /// Non-critical warning (dye: aporia).
-    Warning,
-    /// Critical failure (dye: aima).
-    Error,
-}
-
-impl Severity {
-    /// CSS-compatible color for this severity.
-    #[must_use]
-    pub(crate) fn css_color(self) -> &'static str {
-        match self {
-            Self::Info => "var(--status-info)",
-            Self::Success => "var(--status-success)",
-            Self::Warning => "var(--status-warning)",
-            Self::Error => "var(--status-error)",
-        }
-    }
-
-    /// CSS-compatible background color for this severity.
-    #[must_use]
-    pub(crate) fn css_bg(self) -> &'static str {
-        match self {
-            Self::Info => "var(--status-info-bg)",
-            Self::Success => "var(--status-success-bg)",
-            Self::Warning => "var(--status-warning-bg)",
-            Self::Error => "var(--status-error-bg)",
-        }
-    }
-
-    /// Default auto-dismiss duration. Returns `None` for toasts with actions
-    /// (caller handles that logic).
-    #[must_use]
-    pub(crate) fn auto_dismiss_duration(self) -> Duration {
-        match self {
-            Self::Error => Duration::from_millis(ERROR_DISMISS_MS),
-            _ => Duration::from_millis(DEFAULT_DISMISS_MS),
-        }
-    }
-}
-
-/// Unique identifier for a toast, monotonically increasing.
-pub(crate) type ToastId = u64;
-
-/// Optional action button on a toast.
-#[derive(Debug, Clone, PartialEq)]
-pub struct ToastAction {
-    /// Button label text.
-    pub label: String,
-    /// Action identifier dispatched when clicked.
-    pub action_id: String,
-}
-
-/// A single toast notification.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Toast {
-    /// Unique identifier.
-    pub id: ToastId,
-    /// Visual severity.
-    pub severity: Severity,
-    /// Short title text.
-    pub title: String,
-    /// Optional extended body text.
-    pub body: Option<String>,
-    /// Optional action button.
-    pub action: Option<ToastAction>,
-    /// Auto-dismiss duration. `None` means manual dismiss only (used for
-    /// action toasts).
-    pub auto_dismiss: Option<Duration>,
-}
-
 /// Reactive store holding the visible toast stack.
 #[derive(Debug, Clone, Default)]
 pub struct ToastStore {
     toasts: Vec<Toast>,
-    next_id: ToastId,
+    next_id: u64,
 }
 
 impl ToastStore {
@@ -112,19 +40,19 @@ impl ToastStore {
 
     /// Push a new toast, evicting the oldest if over capacity.
     /// Returns the assigned toast ID.
-    pub(crate) fn push(&mut self, severity: Severity, title: impl Into<String>) -> ToastId {
+    pub(crate) fn push(&mut self, severity: ToastSeverity, title: impl Into<String>) -> ToastId {
         self.push_full(severity, title.into(), None, None)
     }
 
     /// Push a toast with optional body and action.
     pub(crate) fn push_full(
         &mut self,
-        severity: Severity,
+        severity: ToastSeverity,
         title: String,
         body: Option<String>,
         action: Option<ToastAction>,
     ) -> ToastId {
-        let id = self.next_id;
+        let id = ToastId(self.next_id);
         self.next_id += 1;
 
         // WHY: Action toasts should not auto-dismiss since the user needs
@@ -132,7 +60,11 @@ impl ToastStore {
         let auto_dismiss = if action.is_some() {
             None
         } else {
-            Some(severity.auto_dismiss_duration())
+            let ms = match severity {
+                ToastSeverity::Error => ERROR_DISMISS_MS,
+                _ => DEFAULT_DISMISS_MS,
+            };
+            Some(Duration::from_millis(ms))
         };
 
         self.toasts.push(Toast {
@@ -178,7 +110,7 @@ mod tests {
     #[test]
     fn push_and_dismiss() {
         let mut store = ToastStore::new();
-        let id = store.push(Severity::Info, "hello");
+        let id = store.push(ToastSeverity::Info, "hello");
         assert_eq!(store.toasts().len(), 1);
         assert_eq!(store.toasts()[0].title, "hello");
 
@@ -189,8 +121,8 @@ mod tests {
     #[test]
     fn dismiss_nonexistent_is_noop() {
         let mut store = ToastStore::new();
-        store.push(Severity::Info, "a");
-        store.dismiss(999);
+        store.push(ToastSeverity::Info, "a");
+        store.dismiss(ToastId(999));
         assert_eq!(store.toasts().len(), 1);
     }
 
@@ -198,7 +130,7 @@ mod tests {
     fn max_visible_evicts_oldest() {
         let mut store = ToastStore::new();
         for i in 0..7 {
-            store.push(Severity::Info, format!("toast {i}"));
+            store.push(ToastSeverity::Info, format!("toast {i}"));
         }
         assert_eq!(store.toasts().len(), MAX_VISIBLE);
         assert_eq!(store.toasts()[0].title, "toast 2");
@@ -208,9 +140,9 @@ mod tests {
     #[test]
     fn ids_are_monotonic() {
         let mut store = ToastStore::new();
-        let id1 = store.push(Severity::Info, "a");
-        let id2 = store.push(Severity::Info, "b");
-        let id3 = store.push(Severity::Info, "c");
+        let id1 = store.push(ToastSeverity::Info, "a");
+        let id2 = store.push(ToastSeverity::Info, "b");
+        let id3 = store.push(ToastSeverity::Info, "c");
         assert!(id1 < id2);
         assert!(id2 < id3);
     }
@@ -219,7 +151,7 @@ mod tests {
     fn action_toast_no_auto_dismiss() {
         let mut store = ToastStore::new();
         store.push_full(
-            Severity::Info,
+            ToastSeverity::Info,
             "open file".to_string(),
             None,
             Some(ToastAction {
@@ -233,35 +165,25 @@ mod tests {
 
     #[test]
     fn error_auto_dismiss_is_longer() {
-        let info_dur = Severity::Info.auto_dismiss_duration();
-        let error_dur = Severity::Error.auto_dismiss_duration();
+        let mut store = ToastStore::new();
+        store.push(ToastSeverity::Info, "info");
+        store.push(ToastSeverity::Error, "error");
+        let info_dur = store.toasts()[0].auto_dismiss.expect("info has auto-dismiss");
+        let error_dur = store.toasts()[1].auto_dismiss.expect("error has auto-dismiss");
         assert!(error_dur > info_dur);
-    }
-
-    #[test]
-    fn severity_colors_are_valid() {
-        for severity in [
-            Severity::Info,
-            Severity::Success,
-            Severity::Warning,
-            Severity::Error,
-        ] {
-            assert!(severity.css_color().starts_with("var(--"));
-            assert!(severity.css_bg().starts_with("var(--"));
-        }
     }
 
     #[test]
     fn push_full_with_body() {
         let mut store = ToastStore::new();
         store.push_full(
-            Severity::Warning,
+            ToastSeverity::Warning,
             "disk space".to_string(),
             Some("Only 2GB remaining".to_string()),
             None,
         );
         let toast = &store.toasts()[0];
-        assert_eq!(toast.severity, Severity::Warning);
+        assert_eq!(toast.severity, ToastSeverity::Warning);
         assert_eq!(toast.body.as_deref(), Some("Only 2GB remaining"));
         assert!(toast.auto_dismiss.is_some());
     }

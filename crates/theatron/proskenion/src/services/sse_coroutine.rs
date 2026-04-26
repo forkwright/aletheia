@@ -14,7 +14,7 @@ use crate::services::sse::SseEventRouter;
 use crate::state::connection::ConnectionConfig;
 use crate::state::events::{EventState, SseConnectionState};
 use crate::state::notifications::{DndState, NotificationHistory, NotificationPreferences};
-use crate::state::toasts::{Severity, ToastStore};
+use crate::state::toasts::{ToastSeverity, ToastStore};
 
 /// Provide SSE-derived state signals and start the SSE coroutine.
 ///
@@ -99,14 +99,14 @@ fn emit_connection_toasts(was_connected: bool, is_connected: bool) {
             if let Some(mut store) = try_consume_context::<Signal<ToastStore>>() {
                 store
                     .write()
-                    .push(Severity::Warning, "Server connection lost");
+                    .push(ToastSeverity::Warning, "Server connection lost");
             }
         }
         (false, true) => {
             if let Some(mut store) = try_consume_context::<Signal<ToastStore>>() {
                 store
                     .write()
-                    .push(Severity::Success, "Server connection restored");
+                    .push(ToastSeverity::Success, "Server connection restored");
             }
         }
         _ => {} // NOTE: other SSE event types require no UI-level handling
