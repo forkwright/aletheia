@@ -17,7 +17,7 @@ use crate::state::connection::ConnectionState;
 use crate::state::notifications::{DndState, NotificationHistory};
 use crate::state::platform::{CloseBehavior, HotkeyState, QuickInputState, TrayState, WindowState};
 use crate::state::tool_metrics::DateRange;
-use crate::theme::ThemeProvider;
+use theatron_core::theme::ThemeProvider;
 use crate::views::chat::Chat;
 use crate::views::connect::ConnectView;
 use crate::views::files::Files;
@@ -100,9 +100,9 @@ pub(crate) fn App() -> Element {
 
     // NOTE: Read saved theme preference; default to Dark if unset.
     let initial_theme = match appearance.read().theme.as_str() {
-        "light" => crate::theme::ThemeMode::Light,
-        "system" => crate::theme::ThemeMode::System,
-        _ => crate::theme::ThemeMode::Dark,
+        "light" => theatron_core::theme::ThemeMode::Light,
+        "system" => theatron_core::theme::ThemeMode::System,
+        _ => theatron_core::theme::ThemeMode::Dark,
     };
 
     // NOTE: Provide signals as context so all views can access them.

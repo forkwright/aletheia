@@ -8,7 +8,7 @@ use dioxus::prelude::*;
 
 use crate::services::settings_config;
 use crate::state::settings::{ACCENT_PRESETS, AppearanceSettings, UiDensity};
-use crate::theme::ThemeMode;
+use theatron_core::theme::ThemeMode;
 
 // WHY: Section card styling uses theme tokens so appearance settings are
 // visually consistent with the rest of the app and respond to theme changes.
@@ -200,5 +200,8 @@ fn mode_str(mode: ThemeMode) -> &'static str {
         ThemeMode::Dark => "dark",
         ThemeMode::Light => "light",
         ThemeMode::System => "system",
+        // ThemeMode is #[non_exhaustive] from theatron-core; future
+        // variants degrade to "system" gracefully.
+        _ => "system",
     }
 }
