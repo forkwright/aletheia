@@ -29,7 +29,7 @@ const OVERLAY_PANEL: &str = "\
     background: var(--bg-surface); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-lg); \
-    box-shadow: var(--shadow-lg); \
+    box-shadow: var(--shadow-float); \
     padding: var(--space-4); \
     display: flex; \
     flex-direction: column; \

@@ -24,7 +24,7 @@ const PALETTE_OVERLAY_STYLE: &str = "\
     max-height: 260px; \
     overflow-y: auto; \
     z-index: 100; \
-    box-shadow: var(--shadow-lg);\
+    box-shadow: var(--shadow-float);\
 ";
 
 const PALETTE_HEADER_STYLE: &str = "\

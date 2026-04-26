@@ -53,7 +53,7 @@ const BRAND_STYLE: &str = "\
     font-weight: var(--weight-bold); \
     padding: var(--space-2) var(--space-4); \
     margin-bottom: var(--space-2); \
-    color: var(--text-heading, var(--text-primary));\
+    color: var(--text-primary);\
 ";
 
 const NAV_LINK_STYLE: &str = "\
