@@ -3507,6 +3507,7 @@ dependencies = [
  "snafu",
  "syntect",
  "tempfile",
+ "theatron-components",
  "theatron-core",
  "tokio",
  "tokio-util",
@@ -4602,9 +4603,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "theatron-components"
+version = "0.1.0"
+source = "git+http://127.0.0.1:7878/forkwright/theatron.git?rev=4a440a4#4a440a4f42fa32fc0d306975d65b9a17fe7c5309"
+dependencies = [
+ "dioxus",
+ "pulldown-cmark",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "theatron-core"
 version = "0.1.0"
-source = "git+http://127.0.0.1:7878/forkwright/theatron.git?rev=52ddd0c#52ddd0cc8881a830da29928143d4873b7a130a10"
+source = "git+http://127.0.0.1:7878/forkwright/theatron.git?rev=4a440a4#4a440a4f42fa32fc0d306975d65b9a17fe7c5309"
 dependencies = [
  "dioxus",
  "serde",

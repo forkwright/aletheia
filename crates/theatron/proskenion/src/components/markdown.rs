@@ -4,7 +4,7 @@ use dioxus::prelude::*;
 use pulldown_cmark::{Alignment, CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
 
 use super::code_block::CodeBlock;
-use super::table::MdTable;
+use theatron_components::MdTable;
 
 /// Render markdown text as Dioxus RSX elements.
 #[component]

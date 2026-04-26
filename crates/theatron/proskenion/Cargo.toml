@@ -19,11 +19,12 @@ skene = { path = "../skene" }
 koina = { path = "../../koina" }
 
 # Fleet desktop UI infrastructure — theme provider, components, etc.
-# WHY: chalkeion plan Phase 1+2 — proskenion consumes theatron incrementally;
-# first surface is the theme provider (replaces this crate's local theme.rs).
+# WHY: chalkeion plan Phase 1+2 — proskenion consumes theatron incrementally.
+# Theme module landed in PR #19; this commit adds toast/table/virtual_list.
 # AGPL-3.0+ proskenion can consume Apache-2.0 OR MIT theatron via the
 # Apache-2.0 path — license-compatible.
-theatron-core = { git = "http://127.0.0.1:7878/forkwright/theatron.git", rev = "52ddd0c" }
+theatron-core = { git = "http://127.0.0.1:7878/forkwright/theatron.git", rev = "4a440a4" }
+theatron-components = { git = "http://127.0.0.1:7878/forkwright/theatron.git", rev = "4a440a4" }
 
 # UI framework
 dioxus = { version = "0.7", features = ["desktop", "router"] }

@@ -28,7 +28,8 @@ pub(crate) mod resize_handle;
 /// Transparent routing indicator for neurodivergent UX (#2411).
 pub(crate) mod routing_indicator;
 pub mod session_tabs;
-pub(crate) mod table;
+// table module extracted to theatron-components::MdTable (chalkeion plan
+// Phase 1+2 W1). See `theatron_components::table`.
 pub(crate) mod theme_toggle;
 pub(crate) mod thinking;
 /// Reusable horizontal timeline with zoom, pan, and dependency arrows.
@@ -42,6 +43,6 @@ pub(crate) mod tool_panel;
 pub(crate) mod tool_status;
 /// Top bar with brand, agent status pills, and connection/theme controls.
 pub(crate) mod topbar;
-/// Virtual scrolling utilities for large lists.
-pub(crate) mod virtual_list;
+// virtual_list module extracted to theatron-components (chalkeion plan
+// Phase 1+2 W1). See `theatron_components::virtual_list`.
 pub(crate) mod wave_band;
