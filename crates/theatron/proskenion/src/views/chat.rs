@@ -131,9 +131,9 @@ pub(crate) fn Chat() -> Element {
         container_height(),
         total_messages,
         ESTIMATED_MSG_HEIGHT,
-        crate::components::virtual_list::DEFAULT_OVERSCAN,
+        theatron_components::DEFAULT_OVERSCAN,
     );
-    let (pad_top, pad_bottom) = crate::components::virtual_list::spacer_heights(
+    let (pad_top, pad_bottom) = theatron_components::spacer_heights(
         range_start,
         range_end,
         total_messages,
@@ -807,5 +807,5 @@ fn format_tool_call(tc: &crate::state::events::ToolCallInfo) -> String {
     }
 }
 
-// NOTE: visible_range tests have moved to components::virtual_list.
-pub(crate) use crate::components::virtual_list::visible_range;
+// NOTE: visible_range tests live in theatron-components.
+pub(crate) use theatron_components::visible_range;
