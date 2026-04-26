@@ -32,7 +32,7 @@ use crate::state::commands::CommandStore;
 use crate::state::connection::ConnectionConfig;
 use crate::state::input::InputState;
 use crate::state::pipeline::{PipelineStage, RoutingState};
-use crate::state::toasts::{Severity, ToastStore};
+use crate::state::toasts::{ToastSeverity, ToastStore};
 use crate::state::view_preservation::{PreservedViewState, ViewKey, ViewPreservationStore};
 
 /// Estimated message height in pixels for virtual scroll calculations.
@@ -165,7 +165,7 @@ pub(crate) fn Chat() -> Element {
             if let Some(mut toast_store) = try_consume_context::<Signal<ToastStore>>() {
                 toast_store
                     .write()
-                    .push(Severity::Warning, "Select an agent first \u{2014} click a pill in the top bar");
+                    .push(ToastSeverity::Warning, "Select an agent first \u{2014} click a pill in the top bar");
             }
             return;
         }
@@ -187,7 +187,7 @@ pub(crate) fn Chat() -> Element {
             if !known {
                 if let Some(mut toast_store) = try_consume_context::<Signal<ToastStore>>() {
                     toast_store.write().push(
-                        Severity::Warning,
+                        ToastSeverity::Warning,
                         format!("Unknown command: /{cmd_name}"),
                     );
                 }
@@ -318,7 +318,7 @@ pub(crate) fn Chat() -> Element {
                         let body = file_watcher::truncate_path(&change.path, 60);
                         let action_id = format!("open_diff:{}", change.path);
                         store.write().push_full(
-                            Severity::Info,
+                            ToastSeverity::Info,
                             title.to_string(),
                             Some(body),
                             Some(crate::state::toasts::ToastAction {

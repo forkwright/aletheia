@@ -36,7 +36,8 @@ pub(crate) mod thinking;
 pub(crate) mod timeline;
 /// Dual-handle timeline scrubber for selecting a date range.
 pub(crate) mod timeline_scrubber;
-pub(crate) mod toast;
+// toast module extracted to theatron-components::ToastItem (chalkeion plan
+// Phase 1+2 W1). See `theatron_components::toast`.
 pub(crate) mod toast_container;
 pub(crate) mod tool_approval;
 pub(crate) mod tool_panel;

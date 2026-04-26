@@ -11,7 +11,7 @@ use crate::components::chat::ChatState;
 use crate::services::export::messages_to_markdown;
 use crate::state::chat::ChatMessage;
 use crate::state::commands::{CommandCategory, CommandStore};
-use crate::state::toasts::{Severity, ToastStore};
+use crate::state::toasts::{ToastSeverity, ToastStore};
 
 const PALETTE_OVERLAY_STYLE: &str = "\
     position: absolute; \
@@ -116,7 +116,7 @@ fn dispatch_command(
                 if let Some(mut toast_store) = try_consume_context::<Signal<ToastStore>>() {
                     toast_store
                         .write()
-                        .push(Severity::Warning, "Navigate to Chat first to export a conversation");
+                        .push(ToastSeverity::Warning, "Navigate to Chat first to export a conversation");
                 }
                 return;
             };
@@ -130,7 +130,7 @@ fn dispatch_command(
                 if let Some(mut toast_store) = try_consume_context::<Signal<ToastStore>>() {
                     toast_store
                         .write()
-                        .push(Severity::Warning, "Nothing to export — start a conversation first");
+                        .push(ToastSeverity::Warning, "Nothing to export — start a conversation first");
                 }
                 return;
             }
@@ -143,7 +143,7 @@ fn dispatch_command(
                     if let Some(mut toast_store) = try_consume_context::<Signal<ToastStore>>() {
                         toast_store
                             .write()
-                            .push(Severity::Success, "Conversation copied to clipboard");
+                            .push(ToastSeverity::Success, "Conversation copied to clipboard");
                     }
                 });
             }

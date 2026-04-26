@@ -4,10 +4,10 @@
 //! root layout so toasts appear above all content.
 
 use dioxus::prelude::*;
+use theatron_components::{ToastAction, ToastId, ToastItem};
 
+use crate::state::navigation::{self, NavAction};
 use crate::state::toasts::ToastStore;
-
-use super::toast::ToastItem;
 
 const CONTAINER_STYLE: &str = "\
     position: fixed; \
@@ -30,7 +30,7 @@ const ITEM_WRAPPER_STYLE: &str = "pointer-events: auto;";
 /// [`provide_toast_context`](crate::services::toast::provide_toast_context)).
 #[component]
 pub(crate) fn ToastContainer() -> Element {
-    let store = use_context::<Signal<ToastStore>>();
+    let mut store = use_context::<Signal<ToastStore>>();
     let toasts = store.read();
 
     if toasts.is_empty() {
@@ -45,9 +45,19 @@ pub(crate) fn ToastContainer() -> Element {
             aria_label: "Notifications",
             for toast in toasts.toasts().iter().cloned() {
                 div {
-                    key: "{toast.id}",
+                    key: "{toast.id.0}",
                     style: "{ITEM_WRAPPER_STYLE}",
-                    ToastItem { toast }
+                    ToastItem {
+                        toast,
+                        on_dismiss: move |id: ToastId| { store.write().dismiss(id); },
+                        on_action: move |action: ToastAction| {
+                            if let Some(nav) = navigation::parse_action_id(&action.action_id) {
+                                if let Some(mut sig) = try_consume_context::<Signal<Option<NavAction>>>() {
+                                    sig.set(Some(nav));
+                                }
+                            }
+                        },
+                    }
                 }
             }
         }
