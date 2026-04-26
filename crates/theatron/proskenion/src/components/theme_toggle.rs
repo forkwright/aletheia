@@ -3,7 +3,7 @@
 use dioxus::prelude::*;
 
 use crate::state::settings::{AppearanceSettings, KeybindingStore, ServerConfigStore};
-use crate::theme::ThemeMode;
+use theatron_core::theme::ThemeMode;
 
 /// Cycles between Dark, Light, and System theme modes.
 ///

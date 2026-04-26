@@ -18,6 +18,13 @@ skene = { path = "../skene" }
 # WHY: secret-wrapping for auth tokens and raw API keys handled in UI state.
 koina = { path = "../../koina" }
 
+# Fleet desktop UI infrastructure — theme provider, components, etc.
+# WHY: chalkeion plan Phase 1+2 — proskenion consumes theatron incrementally;
+# first surface is the theme provider (replaces this crate's local theme.rs).
+# AGPL-3.0+ proskenion can consume Apache-2.0 OR MIT theatron via the
+# Apache-2.0 path — license-compatible.
+theatron-core = { git = "http://127.0.0.1:7878/forkwright/theatron.git", rev = "52ddd0c" }
+
 # UI framework
 dioxus = { version = "0.7", features = ["desktop", "router"] }
 
