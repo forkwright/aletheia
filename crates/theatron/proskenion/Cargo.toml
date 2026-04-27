@@ -27,7 +27,13 @@ theatron-core = { git = "http://127.0.0.1:7878/forkwright/theatron.git", rev = "
 theatron-components = { git = "http://127.0.0.1:7878/forkwright/theatron.git", rev = "d1361d8" }
 
 # UI framework
-dioxus = { version = "0.7", features = ["desktop", "router"] }
+# WHY: Pinned to the same exact patch theatron's workspace pins (=0.7.6).
+# Dioxus EventHandler<T> and other types parameterized over user types are
+# different concrete types at every patch — divergent patches across the
+# theatron-components / proskenion boundary break trait resolution even
+# though each compiles in isolation. Bumping is a deliberate fleet
+# action (theatron-side first, then mirror here), never auto-resolution.
+dioxus = { version = "=0.7.6", features = ["desktop", "router"] }
 
 # Async runtime
 tokio = { version = "1", features = [
