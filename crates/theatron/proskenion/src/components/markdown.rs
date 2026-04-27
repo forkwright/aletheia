@@ -418,12 +418,18 @@ fn render_block(block: MdBlock, key: usize) -> Element {
             headers,
             rows,
             alignments,
-        } => rsx! {
-            MdTable {
-                key: "{key}",
-                headers,
-                rows,
-                alignments,
+        } => {
+            // theatron-components decoupled MdTable from pulldown_cmark
+            // (theatron PR #4) — convert at the boundary.
+            let alignments: Vec<theatron_components::TableAlignment> =
+                alignments.into_iter().map(Into::into).collect();
+            rsx! {
+                MdTable {
+                    key: "{key}",
+                    headers,
+                    rows,
+                    alignments,
+                }
             }
         },
         MdBlock::HorizontalRule => rsx! {
