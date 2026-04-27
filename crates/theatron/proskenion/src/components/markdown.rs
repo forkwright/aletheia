@@ -3,8 +3,7 @@
 use dioxus::prelude::*;
 use pulldown_cmark::{Alignment, CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
 
-use super::code_block::CodeBlock;
-use theatron_components::MdTable;
+use theatron_components::{CodeBlock, MdTable};
 
 /// Render markdown text as Dioxus RSX elements.
 #[component]

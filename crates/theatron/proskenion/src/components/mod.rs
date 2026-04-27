@@ -4,7 +4,8 @@
 pub(crate) mod chart;
 pub mod chat;
 pub(crate) mod checkpoint_card;
-pub(crate) mod code_block;
+// code_block module extracted to theatron-components::CodeBlock and
+// theatron-markdown::highlight_code (chalkeion plan W3).
 pub mod command_palette;
 /// Confidence bar with color-coded thresholds (green/amber/red).
 pub(crate) mod confidence_bar;
