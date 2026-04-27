@@ -1,7 +1,7 @@
 //! Chat view: session tabs, virtualized message list, streaming indicator,
 //! command palette, distillation indicator, and input bar.
 //!
-//! Virtual scrolling uses the shared [`crate::components::virtual_list`] utilities.
+//! Virtual scrolling uses the shared [`theatron_components::virtual_list`] utilities.
 //! The streaming typing cursor blinks via the `cursor-blink` CSS animation defined
 //! in `assets/styles/base.css`.
 

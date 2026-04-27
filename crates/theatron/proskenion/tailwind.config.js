@@ -108,10 +108,11 @@ module.exports = {
         full: "var(--radius-full)",
       },
       boxShadow: {
-        sm: "var(--shadow-sm)",
-        md: "var(--shadow-md)",
-        lg: "var(--shadow-lg)",
-        inset: "var(--shadow-inset)",
+        // Canonical names match DESIGN-TOKENS.md.
+        card: "var(--shadow-card)",
+        float: "var(--shadow-float)",
+        modal: "var(--shadow-modal)",
+        glow: "var(--shadow-glow)",
       },
       transitionDuration: {
         quick: "150ms",
