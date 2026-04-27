@@ -72,7 +72,7 @@
   --accent: #9A7B4F;
   --accent-hover: #B08E5C;
   --accent-dim: #7A6340;
-  --accent-muted: rgba(154, 123, 79, 0.25);
+  --accent-muted: rgba(154, 123, 79, 0.4);
 
   /* ------------------------------------------------------------------ */
   /* Surface elevation — semantic aliases for bg tokens                  */

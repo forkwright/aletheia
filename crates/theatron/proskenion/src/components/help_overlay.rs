@@ -28,7 +28,7 @@ const DIALOG_STYLE: &str = "\
     width: 90vw; \
     max-height: 80vh; \
     overflow-y: auto; \
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);\
+    box-shadow: var(--shadow-modal);\
 ";
 
 const TITLE_STYLE: &str = "\
