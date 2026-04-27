@@ -1,0 +1,42 @@
+[package]
+name = "aletheia-sessions-migrate"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+description = "One-shot SQLite v32 → fjall sessions-store migrator for legacy aletheia 0.15.x instances"
+publish = false
+
+[[bin]]
+name = "aletheia-sessions-migrate"
+path = "src/main.rs"
+
+# WHY: rusqlite is pinned to 0.31 to match the only other workspace user
+# (`gnosis`). Cargo's `links = "sqlite3"` constraint forbids two
+# different versions of `libsqlite3-sys` in the same dep graph; the
+# alternative would be a major-version bump in gnosis, which is out of
+# scope for this migrator. PR #3446 removed rusqlite from graphe / symbolon /
+# daemon — gnosis is the remaining holder, so we align to its version.
+# `bundled` vendors libsqlite3-sys so the build is deterministic and
+# does not require a system libsqlite3.
+[dependencies]
+graphe = { path = "../graphe" }
+eidos = { path = "../eidos" }
+fjall = { version = "3", default-features = false }
+koina = { path = "../koina", features = ["fjall"] }
+rusqlite = { version = "0.31", features = ["bundled"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+snafu = { workspace = true }
+clap = { version = "4", features = ["derive"] }
+anyhow = "1"
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+sha2 = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[lints]
+workspace = true
