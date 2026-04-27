@@ -44,6 +44,7 @@ members = [
     "crates/poiesis/diff",
     "crates/poiesis/inspect",
     "crates/gnosis",
+    "crates/aletheia-sessions-migrate",
 ]
 # WHY: proskenion requires GTK3/webkit2gtk system libraries (via Dioxus
 # desktop/webview) which are not available in CI. Excluded from workspace to

@@ -220,6 +220,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "aletheia-sessions-migrate"
+version = "0.21.1"
+dependencies = [
+ "anyhow",
+ "clap",
+ "eidos",
+ "fjall",
+ "graphe",
+ "koina",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "snafu",
+ "tempfile",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "alloca"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
