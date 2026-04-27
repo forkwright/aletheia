@@ -2,7 +2,8 @@
 
 use dioxus::prelude::*;
 
-use crate::components::code_block::highlight_code;
+use theatron_markdown::highlight_code;
+
 use crate::state::diff::{ChangeType, DiffLine, WordSpan};
 
 const LINE_STYLE: &str = "\
