@@ -1,108 +1,46 @@
-//! Connection indicator component.
+//! SSE connection indicator wrapper.
 //!
-//! Small UI indicator showing SSE stream health. Reads
-//! `Signal<SseConnectionState>` from context and renders a colored dot
-//! with label.
-//!
-//! ```text
-//! ● Connected          (green)
-//! ● Reconnecting (2)   (yellow)
-//! ● Disconnected       (red)
-//! ```
+//! Maps proskenion's [`SseConnectionState`] onto theatron-components'
+//! canonical [`ConnectionIndicator`] (W2 extraction). Visual + token
+//! handling lives in theatron — this module only owns the
+//! state-to-props mapping for the proskenion-specific connection type.
 
 use dioxus::prelude::*;
+use theatron_components::{ConnectionIndicator, IndicatorTone};
 
 use crate::state::events::SseConnectionState;
 
-/// Visual properties for the connection indicator, derived from
-/// [`SseConnectionState`]. Components read this to render without
-/// matching on the enum directly.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ConnectionIndicator {
-    /// Semantic color for the indicator dot.
-    pub color: IndicatorColor,
-    /// Short human-readable label.
-    pub label: String,
-    /// Tooltip or extended description.
-    pub tooltip: String,
-}
-
-/// Semantic color for the connection indicator.
-#[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum IndicatorColor {
-    /// Healthy connection.
-    Green,
-    /// Degraded or reconnecting.
-    Yellow,
-    /// Disconnected or failed.
-    Red,
-}
-
-impl IndicatorColor {
-    /// CSS-compatible color string using theme tokens.
-    #[must_use]
-    pub(crate) fn css(self) -> &'static str {
-        match self {
-            Self::Green => "var(--status-success)",
-            Self::Yellow => "var(--status-warning)",
-            Self::Red => "var(--status-error)",
-        }
+fn props_for(state: &SseConnectionState) -> (IndicatorTone, String, String) {
+    match state {
+        SseConnectionState::Connected => (
+            IndicatorTone::Healthy,
+            "Connected".to_string(),
+            "Receiving live events from the server".to_string(),
+        ),
+        SseConnectionState::Reconnecting { attempt } => (
+            IndicatorTone::Degraded,
+            format!("Reconnecting ({attempt})"),
+            format!("Connection lost. Reconnection attempt {attempt} in progress."),
+        ),
+        SseConnectionState::Disconnected => (
+            IndicatorTone::Failed,
+            "Disconnected".to_string(),
+            "Not connected to the event stream".to_string(),
+        ),
     }
 }
-
-impl ConnectionIndicator {
-    /// Derive indicator state from the SSE connection state.
-    #[must_use]
-    pub(crate) fn from_state(state: &SseConnectionState) -> Self {
-        match state {
-            SseConnectionState::Connected => Self {
-                color: IndicatorColor::Green,
-                label: "Connected".to_string(),
-                tooltip: "Receiving live events from the server".to_string(),
-            },
-            SseConnectionState::Reconnecting { attempt } => Self {
-                color: IndicatorColor::Yellow,
-                label: format!("Reconnecting ({attempt})"),
-                tooltip: format!("Connection lost. Reconnection attempt {attempt} in progress."),
-            },
-            SseConnectionState::Disconnected => Self {
-                color: IndicatorColor::Red,
-                label: "Disconnected".to_string(),
-                tooltip: "Not connected to the event stream".to_string(),
-            },
-        }
-    }
-}
-
-const INDICATOR_STYLE: &str = "\
-    display: flex; \
-    align-items: center; \
-    gap: 6px; \
-    padding: 4px 8px; \
-    font-size: var(--text-xs, 0.75rem); \
-    opacity: 0.85;\
-";
 
 /// Render the SSE connection indicator.
 ///
-/// Reads `Signal<SseConnectionState>` from context (provided in app root).
+/// Reads `Signal<SseConnectionState>` from context (provided in app
+/// root) and forwards a [`(tone, label, tooltip)`](IndicatorTone) tuple
+/// into the canonical [`ConnectionIndicator`].
 #[component]
 pub(crate) fn ConnectionIndicatorView() -> Element {
     let sse_state = use_context::<Signal<SseConnectionState>>();
-    let indicator = ConnectionIndicator::from_state(&sse_state.read());
-    let color = indicator.color.css();
-
+    let (tone, label, tooltip) = props_for(&sse_state.read());
     rsx! {
-        div {
-            style: "{INDICATOR_STYLE}",
-            title: "{indicator.tooltip}",
-            span {
-                style: "color: {color}; font-size: var(--text-xs);",
-                "●"
-            }
-            span { "{indicator.label}" }
-        }
+        ConnectionIndicator { tone, label, tooltip: Some(tooltip) }
     }
 }
 
@@ -111,31 +49,25 @@ mod tests {
     use super::*;
 
     #[test]
-    fn connected_indicator() {
-        let ind = ConnectionIndicator::from_state(&SseConnectionState::Connected);
-        assert_eq!(ind.color, IndicatorColor::Green);
-        assert_eq!(ind.label, "Connected");
+    fn connected_maps_to_healthy() {
+        let (tone, label, _) = props_for(&SseConnectionState::Connected);
+        assert_eq!(tone, IndicatorTone::Healthy);
+        assert_eq!(label, "Connected");
     }
 
     #[test]
-    fn reconnecting_indicator() {
-        let ind = ConnectionIndicator::from_state(&SseConnectionState::Reconnecting { attempt: 3 });
-        assert_eq!(ind.color, IndicatorColor::Yellow);
-        assert_eq!(ind.label, "Reconnecting (3)");
-        assert!(ind.tooltip.contains('3'));
+    fn reconnecting_maps_to_degraded_with_attempt() {
+        let (tone, label, tooltip) =
+            props_for(&SseConnectionState::Reconnecting { attempt: 3 });
+        assert_eq!(tone, IndicatorTone::Degraded);
+        assert_eq!(label, "Reconnecting (3)");
+        assert!(tooltip.contains('3'));
     }
 
     #[test]
-    fn disconnected_indicator() {
-        let ind = ConnectionIndicator::from_state(&SseConnectionState::Disconnected);
-        assert_eq!(ind.color, IndicatorColor::Red);
-        assert_eq!(ind.label, "Disconnected");
-    }
-
-    #[test]
-    fn indicator_color_css() {
-        assert_eq!(IndicatorColor::Green.css(), "var(--status-success)");
-        assert_eq!(IndicatorColor::Yellow.css(), "var(--status-warning)");
-        assert_eq!(IndicatorColor::Red.css(), "var(--status-error)");
+    fn disconnected_maps_to_failed() {
+        let (tone, label, _) = props_for(&SseConnectionState::Disconnected);
+        assert_eq!(tone, IndicatorTone::Failed);
+        assert_eq!(label, "Disconnected");
     }
 }
