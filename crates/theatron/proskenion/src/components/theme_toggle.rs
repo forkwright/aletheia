@@ -1,32 +1,25 @@
-//! Theme toggle component.
+//! Theme toggle wrapper — wires proskenion's settings persistence into
+//! the canonical [`theatron_core::ThemeToggle`] component.
+//!
+//! The visual + interaction logic lives in theatron-core (W2 extraction).
+//! This wrapper exists only to inject `on_change` with proskenion's
+//! save-state plumbing so the user's theme preference survives restart.
 
 use dioxus::prelude::*;
+use theatron_core::{ThemeMode, ThemeToggle as CoreThemeToggle};
 
 use crate::state::settings::{AppearanceSettings, KeybindingStore, ServerConfigStore};
-use theatron_core::theme::ThemeMode;
 
-/// Cycles between Dark, Light, and System theme modes.
-///
-/// Reads `Signal<ThemeMode>` from context (provided by `ThemeProvider`)
-/// and advances to the next mode on click. Persists the choice to the
-/// settings config so it survives restarts.
+/// Persistence-aware theme toggle for proskenion.
 #[component]
 pub(crate) fn ThemeToggle() -> Element {
-    let mut mode = use_context::<Signal<ThemeMode>>();
     let mut appearance = use_context::<Signal<AppearanceSettings>>();
     let server_store = use_context::<Signal<ServerConfigStore>>();
     let keybindings = use_context::<Signal<KeybindingStore>>();
-    let current = mode();
-    let icon = current.icon();
-    let label = current.label();
 
     rsx! {
-        button {
-            r#type: "button",
-            onclick: move |_| {
-                let next = mode().next();
-                mode.set(next);
-                // Persist to settings so it survives restart
+        CoreThemeToggle {
+            on_change: move |next: ThemeMode| {
                 appearance.write().theme = next.label().to_lowercase();
                 crate::services::settings_config::save_state(
                     &server_store.read(),
@@ -34,26 +27,6 @@ pub(crate) fn ThemeToggle() -> Element {
                     &keybindings.read(),
                 );
             },
-            title: "Theme: {label}",
-            "aria-label": "Switch theme, current: {label}",
-            style: "
-                display: inline-flex;
-                align-items: center;
-                gap: var(--space-2);
-                padding: var(--space-1) var(--space-3);
-                border: 1px solid var(--border);
-                border-radius: var(--radius-md);
-                background: var(--bg-surface);
-                color: var(--text-secondary);
-                font-family: var(--font-body);
-                font-size: var(--text-sm);
-                cursor: pointer;
-                transition: border-color var(--transition-quick),
-                            color var(--transition-quick),
-                            background-color var(--transition-quick);
-            ",
-            span { "{icon}" }
-            span { "{label}" }
         }
     }
 }

@@ -23,8 +23,8 @@ koina = { path = "../../koina" }
 # Theme module landed in PR #19; this commit adds toast/table/virtual_list.
 # AGPL-3.0+ proskenion can consume Apache-2.0 OR MIT theatron via the
 # Apache-2.0 path — license-compatible.
-theatron-core = { git = "http://127.0.0.1:7878/forkwright/theatron.git", rev = "d1361d8" }
-theatron-components = { git = "http://127.0.0.1:7878/forkwright/theatron.git", rev = "d1361d8" }
+theatron-core = { git = "http://127.0.0.1:7878/forkwright/theatron.git", rev = "7489730" }
+theatron-components = { git = "http://127.0.0.1:7878/forkwright/theatron.git", rev = "7489730" }
 
 # UI framework
 # WHY: Pinned to the same exact patch theatron's workspace pins (=0.7.6).
