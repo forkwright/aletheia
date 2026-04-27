@@ -2,10 +2,11 @@
 
 use dioxus::prelude::*;
 
+use theatron_components::DiffHunkView;
+use theatron_markdown::diff::{DiffFile, DiffViewMode, parse_unified_diff};
+
 use crate::api::client::authenticated_client;
-use crate::components::diff_hunk::DiffHunkView;
 use crate::state::connection::ConnectionConfig;
-use crate::state::diff::{DiffFile, DiffViewMode, parse_unified_diff};
 use crate::state::fetch::FetchState;
 
 const TOOLBAR_STYLE: &str = "\

@@ -11,10 +11,10 @@ pub mod command_palette;
 pub(crate) mod confidence_bar;
 pub mod connection_indicator;
 pub(crate) mod coverage_bar;
-pub(crate) mod diff_hunk;
+// diff_hunk and diff_line modules extracted to
+// theatron-components::{DiffHunkView, DiffLineView} (chalkeion plan W3).
 /// Help overlay listing all keyboard shortcuts (F1).
 pub(crate) mod help_overlay;
-pub(crate) mod diff_line;
 pub mod distillation;
 pub(crate) mod input_bar;
 pub(crate) mod markdown;

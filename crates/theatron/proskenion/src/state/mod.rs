@@ -14,7 +14,7 @@ pub mod commands;
 pub mod connection;
 /// Credential management state for the ops view.
 pub(crate) mod credentials;
-pub(crate) mod diff;
+// diff state extracted to theatron-markdown::diff (chalkeion plan W3).
 /// Discussion state for planning gray-area questions.
 pub(crate) mod discussion;
 pub mod events;
