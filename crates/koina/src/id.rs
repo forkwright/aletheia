@@ -198,13 +198,16 @@ impl SessionId {
         Self(Uuid::new_v4())
     }
 
-    /// Parse from a UUID string (hyphenated) or ULID string (Crockford base32).
+    /// Parse from a UUID string (hyphenated), ULID string (Crockford base32),
+    /// or the legacy `ses_<24hex>` format produced by aletheia ≤ 0.15.
     ///
-    /// Accepts both formats for backwards compatibility: newer sessions use UUID,
-    /// older sessions may have ULID-format IDs in the database (#3101).
+    /// Accepts all three for backwards compatibility: newer sessions use UUID,
+    /// some historical sessions used ULID (#3101), and pre-ULID sessions
+    /// migrated from the SQLite v32 schema carry `ses_<24hex>` IDs that this
+    /// parser must accept so migrated 0.15 instances stay queryable.
     ///
     /// # Errors
-    /// Returns an error if the string is neither a valid UUID nor a valid ULID.
+    /// Returns an error if the string matches none of the three formats.
     #[must_use = "returns a parsed session identifier that should not be discarded"]
     pub fn parse(s: &str) -> Result<Self, IdError> {
         // Try UUID first (most common in current code).
@@ -217,10 +220,22 @@ impl SessionId {
             // u128 as UUID bytes to produce a stable, round-trippable ID.
             return Ok(Self(Uuid::from_u128(ulid.as_u128())));
         }
+        // Legacy `ses_<24hex>` format — pre-ULID aletheia (≤ 0.15). The 24
+        // hex chars encode 96 bits; left-pad with 32 zero bits to land in
+        // 128 bits and reinterpret as UUID. Deterministic and collision-free
+        // within a given DB because the legacy 96-bit space was unique.
+        if let Some(rest) = s.strip_prefix("ses_")
+            && rest.len() == 24
+            && rest.chars().all(|c| c.is_ascii_hexdigit())
+            && let Ok(low) = u128::from_str_radix(rest, 16)
+        {
+            return Ok(Self(Uuid::from_u128(low)));
+        }
         Err(IdError::InvalidFormat {
             kind: "SessionId",
             value: s.to_owned(),
-            reason: "invalid session ID (expected UUID or ULID format)".to_owned(),
+            reason: "invalid session ID (expected UUID, ULID, or legacy ses_<24hex> format)"
+                .to_owned(),
         })
     }
 }

@@ -83,10 +83,26 @@ pub(crate) enum CcEvent {
 }
 
 /// Assistant message body.
-#[derive(Debug, Deserialize)]
+///
+/// Two on-wire shapes coexist depending on `claude` CLI version:
+///
+/// 1. **Legacy** (CC ≤ 1.x): the message envelope itself carries `text`:
+///    `{"type":"assistant","message":{"type":"text","text":"…"}}`
+///
+/// 2. **Current** (CC 2.x, `2.1.119` confirmed): the envelope wraps an
+///    Anthropic-API-shaped message whose `content` is an array of blocks,
+///    of which a `text`-typed block carries the actual text:
+///    `{"type":"assistant","message":{"type":"message","role":"assistant",
+///      "content":[{"type":"text","text":"…"}], …}}`
+///
+/// `Self::deserialize` accepts both. The flattened text is exposed on
+/// `Self::text` regardless of which shape arrived. Without this, CC 2.x's
+/// nested `content[0].text` lands as an empty string, the `on_delta`
+/// guard at `process.rs:531` skips emitting `TextDelta`, and TUIs that
+/// render incrementally see nothing until the final `result` event.
+#[derive(Debug)]
 pub(crate) struct AssistantMessage {
-    /// Message type (typically "text").
-    #[serde(rename = "type")]
+    /// Message type kept for forward compat / debugging.
     #[cfg_attr(
         not(test),
         expect(
@@ -95,9 +111,61 @@ pub(crate) struct AssistantMessage {
         )
     )]
     pub message_type: String,
-    /// The text content.
-    #[serde(default)]
+    /// The text content, flattened from whichever wire shape arrived.
     pub text: String,
+}
+
+impl<'de> Deserialize<'de> for AssistantMessage {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum WireShape {
+            /// CC 2.x — Anthropic-API-shaped envelope with a content-block array.
+            New {
+                #[serde(rename = "type")]
+                message_type: String,
+                content: Vec<ContentBlock>,
+            },
+            /// CC ≤ 1.x — text directly on the envelope.
+            Legacy {
+                #[serde(rename = "type")]
+                message_type: String,
+                #[serde(default)]
+                text: String,
+            },
+        }
+
+        #[derive(Deserialize)]
+        struct ContentBlock {
+            #[serde(rename = "type")]
+            block_type: String,
+            #[serde(default)]
+            text: String,
+        }
+
+        match WireShape::deserialize(deserializer)? {
+            WireShape::New {
+                message_type,
+                content,
+            } => {
+                // Concatenate every text-typed block's text. A normal
+                // assistant turn has exactly one `text` block; tool-use
+                // turns have a `text` block plus `tool_use` blocks
+                // whose text we ignore here (they go through the
+                // tool-stream channel, not the text-delta channel).
+                let text = content
+                    .into_iter()
+                    .filter(|b| b.block_type == "text")
+                    .map(|b| b.text)
+                    .collect::<String>();
+                Ok(Self { message_type, text })
+            }
+            WireShape::Legacy { message_type, text } => Ok(Self { message_type, text }),
+        }
+    }
 }
 
 /// Usage stats from the CC result event.
