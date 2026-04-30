@@ -845,3 +845,99 @@ impl MemoryServer {
         )]))
     }
 }
+
+#[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn memory_search_params_round_trip() {
+        let json = r#"{"query":"fleet dispatch config","limit":10}"#;
+        let params: MemorySearchParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.query, "fleet dispatch config");
+        assert_eq!(params.limit, Some(10));
+
+        let out = serde_json::to_string(&params).unwrap();
+        let back: MemorySearchParams = serde_json::from_str(&out).unwrap();
+        assert_eq!(back.query, "fleet dispatch config");
+        assert_eq!(back.limit, Some(10));
+    }
+
+    #[test]
+    fn memory_search_params_default_limit() {
+        let json = r#"{"query":"foo"}"#;
+        let params: MemorySearchParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.query, "foo");
+        assert_eq!(params.limit, None);
+    }
+
+    #[test]
+    fn search_limit_clamping() {
+        // Default is applied when limit is None
+        assert_eq!(DEFAULT_SEARCH_LIMIT.min(MAX_SEARCH_LIMIT), 20);
+        // Within-range limit is preserved
+        assert_eq!(5_usize.min(MAX_SEARCH_LIMIT), 5);
+        // Over-max limit is clamped
+        assert_eq!(500_usize.min(MAX_SEARCH_LIMIT), 200);
+    }
+
+    #[test]
+    fn memory_neighbors_params_round_trip() {
+        let json = r#"{"fact_id":"f-abc-123"}"#;
+        let params: MemoryNeighborsParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.fact_id, "f-abc-123");
+
+        let out = serde_json::to_string(&params).unwrap();
+        let back: MemoryNeighborsParams = serde_json::from_str(&out).unwrap();
+        assert_eq!(back.fact_id, "f-abc-123");
+    }
+
+    #[test]
+    fn memory_annotate_params_requires_write_token() {
+        let json = r#"{"fact_id":"f-abc-123","content":"note"}"#;
+        let result = serde_json::from_str::<MemoryAnnotateParams>(json);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn memory_annotate_params_round_trip() {
+        let json = r#"{"session_id":"agent-uuid","fact_id":"f-abc-123","content":"verified","write_token":"sekrit"}"#;
+        let params: MemoryAnnotateParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.session_id, Some("agent-uuid".to_owned()));
+        assert_eq!(params.fact_id, "f-abc-123");
+        assert_eq!(params.content, "verified");
+        assert_eq!(params.write_token, "sekrit");
+
+        let out = serde_json::to_string(&params).unwrap();
+        let back: MemoryAnnotateParams = serde_json::from_str(&out).unwrap();
+        assert_eq!(back.write_token, "sekrit");
+    }
+
+    #[test]
+    fn memory_supersede_params_round_trip() {
+        let json = r#"{"old_fact_id":"f-old","new_fact_id":"f-new","reason":"updated","write_token":"sekrit"}"#;
+        let params: MemorySupersedeParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.old_fact_id, "f-old");
+        assert_eq!(params.new_fact_id, "f-new");
+        assert_eq!(params.reason, "updated");
+        assert_eq!(params.write_token, "sekrit");
+
+        let out = serde_json::to_string(&params).unwrap();
+        let back: MemorySupersedeParams = serde_json::from_str(&out).unwrap();
+        assert_eq!(back.new_fact_id, "f-new");
+    }
+
+    #[test]
+    fn memory_forget_params_round_trip() {
+        let json = r#"{"fact_id":"f-abc-123","reason":"stale","write_token":"sekrit"}"#;
+        let params: MemoryForgetParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.fact_id, "f-abc-123");
+        assert_eq!(params.reason, "stale");
+        assert_eq!(params.write_token, "sekrit");
+
+        let out = serde_json::to_string(&params).unwrap();
+        let back: MemoryForgetParams = serde_json::from_str(&out).unwrap();
+        assert_eq!(back.write_token, "sekrit");
+    }
+}

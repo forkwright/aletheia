@@ -188,3 +188,42 @@ impl rmcp::handler::server::ServerHandler for MemoryServer {
             )
     }
 }
+
+#[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validate_write_token_accepts_match() {
+        let store = KnowledgeStore::open_mem().unwrap();
+        let server = MemoryServer::with_write_token(store, None, Some("secret-token".to_owned()));
+        assert!(server.validate_write_token("secret-token").is_ok());
+    }
+
+    #[test]
+    fn validate_write_token_rejects_mismatch() {
+        let store = KnowledgeStore::open_mem().unwrap();
+        let server = MemoryServer::with_write_token(store, None, Some("secret-token".to_owned()));
+        let result = server.validate_write_token("wrong-token");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, crate::error::Error::WriteUnauthorized { .. }));
+    }
+
+    #[test]
+    fn write_not_available_when_no_token_configured() {
+        let store = KnowledgeStore::open_mem().unwrap();
+        let server = MemoryServer::with_write_token(store, None, None);
+        let result = server.validate_write_token("any-token");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, crate::error::Error::WriteNotAvailable { .. }));
+    }
+
+    #[test]
+    fn open_in_memory_creates_server() {
+        let server = MemoryServer::open_in_memory().unwrap();
+        assert!(server.store_path.is_none());
+    }
+}
