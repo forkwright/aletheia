@@ -5,12 +5,12 @@
 //! `Signal<ToastStore>` to render the toast stack.
 //!
 //! `Toast`, `ToastAction`, `ToastId`, and `ToastSeverity` are the canonical
-//! types from `theatron_components`. `ToastStore` is proskenion-local state
+//! types from `skeue`. `ToastStore` is proskenion-local state
 //! management built on top of those types.
 
 use std::time::Duration;
 
-pub use theatron_components::{Toast, ToastAction, ToastId, ToastSeverity};
+pub use skeue::{Toast, ToastAction, ToastId, ToastSeverity};
 
 /// Auto-dismiss duration for informational toasts.
 const DEFAULT_DISMISS_MS: u64 = 5_000;

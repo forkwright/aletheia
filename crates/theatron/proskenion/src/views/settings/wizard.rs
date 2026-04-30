@@ -10,7 +10,7 @@ use crate::state::connection::ConnectionConfig;
 use crate::state::settings::{
     ACCENT_PRESETS, AppearanceSettings, ServerConfigStore, UiDensity, WizardData, WizardStep,
 };
-use theatron_core::theme::ThemeMode;
+use themelion::theme::ThemeMode;
 
 /// Setup wizard root.
 #[component]

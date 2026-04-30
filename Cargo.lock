@@ -4953,6 +4953,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "keryx"
+version = "0.1.0"
+source = "git+http://127.0.0.1:7878/forkwright/theatron.git?rev=9bf1e9e#9bf1e9e67e99882881554b9546a7cd5046b0aa03"
+dependencies = [
+ "bytes",
+ "dioxus",
+ "eventsource-stream",
+ "futures-core",
+ "futures-util",
+ "reqwest 0.13.2",
+ "serde",
+ "serde_json",
+ "snafu",
+ "tokio",
+]
+
+[[package]]
 name = "keyboard-types"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8985,6 +9002,7 @@ dependencies = [
  "bytes",
  "futures-core",
  "futures-util",
+ "keryx",
  "koina",
  "pulldown-cmark",
  "reqwest 0.13.2",
@@ -8992,7 +9010,6 @@ dependencies = [
  "serde",
  "serde_json",
  "snafu",
- "theatron-net",
  "tokio",
  "tracing",
 ]
@@ -9606,23 +9623,6 @@ name = "theatron"
 version = "0.21.1"
 dependencies = [
  "skene",
-]
-
-[[package]]
-name = "theatron-net"
-version = "0.1.0"
-source = "git+http://127.0.0.1:7878/forkwright/theatron.git?rev=1a1a5f6#1a1a5f6f5149876a84c5abf8cf8b472ad2aa547b"
-dependencies = [
- "bytes",
- "dioxus",
- "eventsource-stream",
- "futures-core",
- "futures-util",
- "reqwest 0.13.2",
- "serde",
- "serde_json",
- "snafu",
- "tokio",
 ]
 
 [[package]]

@@ -1,12 +1,12 @@
 //! Theme toggle wrapper — wires proskenion's settings persistence into
-//! the canonical [`theatron_core::ThemeToggle`] component.
+//! the canonical [`themelion::ThemeToggle`] component.
 //!
-//! The visual + interaction logic lives in theatron-core (W2 extraction).
+//! The visual + interaction logic lives in themelion (W2 extraction).
 //! This wrapper exists only to inject `on_change` with proskenion's
 //! save-state plumbing so the user's theme preference survives restart.
 
 use dioxus::prelude::*;
-use theatron_core::{ThemeMode, ThemeToggle as CoreThemeToggle};
+use themelion::{ThemeMode, ThemeToggle as CoreThemeToggle};
 
 use crate::state::settings::{AppearanceSettings, KeybindingStore, ServerConfigStore};
 

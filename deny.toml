@@ -76,7 +76,7 @@ skip = [
     # Blocked until ring releases a version using windows-sys 0.61.
     { name = "windows-sys", version = "=0.52.0" },
 
-    # WHY: arboard 3.6 (via theatron-tui) pins windows-sys 0.60.
+    # WHY: arboard 3.6 (via parodos) pins windows-sys 0.60.
     # Blocked until arboard releases a version using windows-sys 0.61.
     { name = "windows-sys", version = "=0.60.2" },
 

@@ -3,7 +3,7 @@
 use dioxus::prelude::*;
 use pulldown_cmark::{Alignment, CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
 
-use theatron_components::{CodeBlock, MdTable};
+use skeue::{CodeBlock, MdTable};
 
 /// Render markdown text as Dioxus RSX elements.
 #[component]
@@ -418,9 +418,9 @@ fn render_block(block: MdBlock, key: usize) -> Element {
             rows,
             alignments,
         } => {
-            // theatron-components decoupled MdTable from pulldown_cmark
+            // skeue decoupled MdTable from pulldown_cmark
             // (theatron PR #4) — convert at the boundary.
-            let alignments: Vec<theatron_components::TableAlignment> =
+            let alignments: Vec<skeue::TableAlignment> =
                 alignments.into_iter().map(Into::into).collect();
             rsx! {
                 MdTable {

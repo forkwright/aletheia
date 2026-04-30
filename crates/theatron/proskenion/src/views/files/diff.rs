@@ -2,8 +2,8 @@
 
 use dioxus::prelude::*;
 
-use theatron_components::DiffHunkView;
-use theatron_markdown::diff::{DiffFile, DiffViewMode, parse_unified_diff};
+use skeue::DiffHunkView;
+use gramma::diff::{DiffFile, DiffViewMode, parse_unified_diff};
 
 use crate::api::client::authenticated_client;
 use crate::state::connection::ConnectionConfig;

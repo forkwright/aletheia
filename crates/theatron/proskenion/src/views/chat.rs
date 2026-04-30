@@ -1,7 +1,7 @@
 //! Chat view: session tabs, virtualized message list, streaming indicator,
 //! command palette, distillation indicator, and input bar.
 //!
-//! Virtual scrolling uses the shared [`theatron_components::virtual_list`] utilities.
+//! Virtual scrolling uses the shared [`skeue::virtual_list`] utilities.
 //! The streaming typing cursor blinks via the `cursor-blink` CSS animation defined
 //! in `assets/styles/base.css`.
 
@@ -131,9 +131,9 @@ pub(crate) fn Chat() -> Element {
         container_height(),
         total_messages,
         ESTIMATED_MSG_HEIGHT,
-        theatron_components::DEFAULT_OVERSCAN,
+        skeue::DEFAULT_OVERSCAN,
     );
-    let (pad_top, pad_bottom) = theatron_components::spacer_heights(
+    let (pad_top, pad_bottom) = skeue::spacer_heights(
         range_start,
         range_end,
         total_messages,
@@ -807,5 +807,5 @@ fn format_tool_call(tc: &crate::state::events::ToolCallInfo) -> String {
     }
 }
 
-// NOTE: visible_range tests live in theatron-components.
-pub(crate) use theatron_components::visible_range;
+// NOTE: visible_range tests live in skeue.
+pub(crate) use skeue::visible_range;
