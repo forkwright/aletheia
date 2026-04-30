@@ -24,7 +24,7 @@
 # `kanon/projects/aletheia/phases/aletheia-05e-forge-cutover.md`.
 
 [pipeline]
-stages = ["cargo fmt", "cargo check", "cargo clippy", "cargo nextest", "theatron-lint"]
+stages = ["cargo fmt", "cargo check", "cargo clippy", "cargo nextest", "dokimasia"]
 
 [stages."cargo fmt"]
 cmd = "cargo fmt --all -- --check"
@@ -45,10 +45,10 @@ timeout_secs = 2400
 # Design-token enforcement: every var(--token) reference in CSS or Rust
 # source must resolve to a declaration in DESIGN-TOKENS.md.
 #
-# Binary lives at /usr/local/bin/theatron-lint (installed from
+# Binary lives at /usr/local/bin/dokimasia (installed from
 # forkwright/theatron). Updated via:
-#   cargo build --release -p theatron-lint --manifest-path ~/dev/theatron/Cargo.toml
-#   sudo install -m 755 ~/dev/theatron/target/release/theatron-lint /usr/local/bin/
-[stages."theatron-lint"]
-cmd = "theatron-lint --design-tokens /home/ck/dev/kanon/crates/basanos/standards/DESIGN-TOKENS.md crates/"
+#   cargo build --release -p dokimasia --manifest-path ~/dev/theatron/Cargo.toml
+#   sudo install -m 755 ~/dev/theatron/target/release/dokimasia /usr/local/bin/
+[stages."dokimasia"]
+cmd = "dokimasia --design-tokens /home/ck/dev/kanon/crates/basanos/standards/DESIGN-TOKENS.md crates/"
 timeout_secs = 60

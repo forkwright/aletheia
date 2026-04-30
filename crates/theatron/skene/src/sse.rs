@@ -1,8 +1,8 @@
-//! SSE (Server-Sent Events) parser — re-exported from theatron-net.
+//! SSE (Server-Sent Events) parser — re-exported from `keryx`.
 //!
-//! The owned SSE parser was extracted to `theatron_net::sse` (W4
-//! chalkeion plan). This module is now a thin re-export so existing
-//! `skene::sse` paths continue to work; consumers may switch to
-//! `theatron_net::sse` directly at any time.
+//! The owned SSE parser lives in `keryx::sse` (theatron's networking
+//! crate). This module is a thin re-export so existing `skene::sse`
+//! paths keep working; consumers may switch to `keryx::sse` directly
+//! at any time.
 
-pub use theatron_net::sse::{SseEvent, SseStream};
+pub use keryx::sse::{SseEvent, SseStream};

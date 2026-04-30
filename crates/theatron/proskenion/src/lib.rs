@@ -21,8 +21,8 @@ pub mod state;
 
 pub(crate) mod app;
 pub(crate) mod layout;
-// theme module extracted to theatron-core (chalkeion plan Phase 1+2 W1).
-// See theatron-core::theme for ThemeMode, ThemeProvider, ResolvedTheme.
+// theme module extracted to themelion (chalkeion plan Phase 1+2 W1).
+// See themelion::theme for ThemeMode, ThemeProvider, ResolvedTheme.
 pub(crate) mod views;
 
 /// Launch the desktop application.

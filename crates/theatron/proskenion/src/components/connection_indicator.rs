@@ -1,12 +1,12 @@
 //! SSE connection indicator wrapper.
 //!
-//! Maps proskenion's [`SseConnectionState`] onto theatron-components'
+//! Maps proskenion's [`SseConnectionState`] onto skeue'
 //! canonical [`ConnectionIndicator`] (W2 extraction). Visual + token
 //! handling lives in theatron — this module only owns the
 //! state-to-props mapping for the proskenion-specific connection type.
 
 use dioxus::prelude::*;
-use theatron_components::{ConnectionIndicator, IndicatorTone};
+use skeue::{ConnectionIndicator, IndicatorTone};
 
 use crate::state::events::SseConnectionState;
 

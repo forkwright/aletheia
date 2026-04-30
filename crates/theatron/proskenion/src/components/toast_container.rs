@@ -4,7 +4,7 @@
 //! root layout so toasts appear above all content.
 
 use dioxus::prelude::*;
-use theatron_components::{ToastAction, ToastId, ToastItem};
+use skeue::{ToastAction, ToastId, ToastItem};
 
 use crate::state::navigation::{self, NavAction};
 use crate::state::toasts::ToastStore;
