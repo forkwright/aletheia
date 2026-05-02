@@ -203,7 +203,7 @@ impl SessionId {
     ///
     /// Accepts all three for backwards compatibility: newer sessions use UUID,
     /// some historical sessions used ULID (#3101), and pre-ULID sessions
-    /// migrated from the SQLite v32 schema carry `ses_<24hex>` IDs that this
+    /// migrated from the `SQLite` v32 schema carry `ses_<24hex>` IDs that this
     /// parser must accept so migrated 0.15 instances stay queryable.
     ///
     /// # Errors

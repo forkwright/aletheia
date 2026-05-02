@@ -40,6 +40,7 @@ impl QaGate for AlwaysPassQaGate {
                 QaVerdict::Pass,
                 vec![],
                 vec![],
+                vec![],
                 0.0,
                 jiff::Timestamp::now(),
                 false,

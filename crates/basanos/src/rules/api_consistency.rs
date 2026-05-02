@@ -11,9 +11,14 @@ use regex::Regex;
 use crate::error::Result;
 use crate::rules::{Rule, Violation};
 
+/// Build a regex from a static pattern (infallible for literals).
+fn regex(pattern: &str) -> Regex {
+    Regex::new(pattern).unwrap_or_else(|_| unreachable!("static regex {pattern} is valid"))
+}
+
 /// Rule: API/field-casing
 ///
-/// Detect when types in the same crate use both snake_case and camelCase serde aliases.
+/// Detect when types in the same crate use both `snake_case` and camelCase serde aliases.
 /// Example: one struct uses `#[serde(rename = "userId")]` while another uses `#[serde(rename = "user_id")]`.
 pub struct FieldCasingRule;
 
@@ -50,7 +55,7 @@ impl Rule for ErrorVariantNamingRule {
 /// Scan a crate for field casing inconsistencies.
 ///
 /// Walk all Rust source files and look for struct/enum definitions with serde renames.
-/// Flag if the same crate mixes snake_case and camelCase field renames.
+/// Flag if the same crate mixes `snake_case` and camelCase field renames.
 fn check_crate_field_casing(project_root: &str, violations: &mut Vec<Violation>) {
     let root = Path::new(project_root);
     let src_dir = root.join("src");
@@ -60,17 +65,17 @@ fn check_crate_field_casing(project_root: &str, violations: &mut Vec<Violation>)
     }
 
     // Regex to find serde rename attributes: #[serde(rename = "...")]
-    let rename_re = Regex::new(r#"#\[serde\(rename\s*=\s*"([^"]+)"\)"#).expect("valid regex");
+    let rename_re = regex(r#"#\[serde\(rename\s*=\s*"([^"]+)"\)"#);
 
     let mut all_renames = Vec::new();
 
     // Walk all Rust source files.
     collect_rs_files(&src_dir, &mut |content| {
         for line in content.lines() {
-            if let Some(captures) = rename_re.captures(line) {
-                if let Some(value) = captures.get(1) {
-                    all_renames.push(value.as_str().to_string());
-                }
+            if let Some(captures) = rename_re.captures(line)
+                && let Some(value) = captures.get(1)
+            {
+                all_renames.push(value.as_str().to_string());
             }
         }
     });
@@ -99,34 +104,33 @@ fn check_crate_field_casing(project_root: &str, violations: &mut Vec<Violation>)
     if has_snake && has_camel {
         // Find line numbers by scanning files again
         collect_rs_files(&src_dir, &mut |content| {
-            let rename_re =
-                Regex::new(r#"#\[serde\(rename\s*=\s*"([^"]+)"\)"#).expect("valid regex");
+            let rename_re = regex(r#"#\[serde\(rename\s*=\s*"([^"]+)"\)"#);
             for (idx, line) in content.lines().enumerate() {
-                if let Some(captures) = rename_re.captures(line) {
-                    if let Some(value) = captures.get(1) {
-                        let rename_value = value.as_str();
-                        if let Some(ref example) = snake_example {
-                            if rename_value == example {
-                                violations.push(Violation {
-                                    rule: "API/field-casing".into(),
-                                    path: "src/lib.rs".into(), // simplified: actual path tracking would be needed
-                                    line: idx + 1,
-                                    message: "snake_case field rename found, but crate also uses camelCase; standardize on one convention"
-                                        .into(),
-                                });
-                            }
-                        }
-                        if let Some(ref example) = camel_example {
-                            if rename_value == example {
-                                violations.push(Violation {
-                                    rule: "API/field-casing".into(),
-                                    path: "src/lib.rs".into(), // simplified: actual path tracking would be needed
-                                    line: idx + 1,
-                                    message: "camelCase field rename found, but crate also uses snake_case; standardize on one convention"
-                                        .into(),
-                                });
-                            }
-                        }
+                if let Some(captures) = rename_re.captures(line)
+                    && let Some(value) = captures.get(1)
+                {
+                    let rename_value = value.as_str();
+                    if let Some(ref example) = snake_example
+                        && rename_value == example
+                    {
+                        violations.push(Violation {
+                            rule: "API/field-casing".into(),
+                            path: "src/lib.rs".into(), // simplified: actual path tracking would be needed
+                            line: idx + 1,
+                            message: "snake_case field rename found, but crate also uses camelCase; standardize on one convention"
+                                .into(),
+                        });
+                    }
+                    if let Some(ref example) = camel_example
+                        && rename_value == example
+                    {
+                        violations.push(Violation {
+                            rule: "API/field-casing".into(),
+                            path: "src/lib.rs".into(), // simplified: actual path tracking would be needed
+                            line: idx + 1,
+                            message: "camelCase field rename found, but crate also uses snake_case; standardize on one convention"
+                                .into(),
+                        });
                     }
                 }
             }
@@ -150,8 +154,8 @@ fn check_error_variant_patterns(project_root: &str, violations: &mut Vec<Violati
     // - error enum declarations: pub enum ...Error { ... }
     // - variant names that start with adjectives: NotFound, InvalidUser, etc.
     // - variant names with "DoesNotExist" or "Does" patterns
-    let error_enum_re = Regex::new(r"^\s*pub\s+enum\s+(\w+Error)\s*\{").expect("valid regex");
-    let variant_re = Regex::new(r"^\s*(\w+)\s*(?:\{|,|\()").expect("valid regex");
+    let error_enum_re = regex(r"^\s*pub\s+enum\s+(\w+Error)\s*\{");
+    let variant_re = regex(r"^\s*(\w+)\s*(?:\{|,|\()");
 
     collect_rs_files(&src_dir, &mut |content| {
         let mut current_enum: Option<String> = None;
@@ -183,27 +187,30 @@ fn check_error_variant_patterns(project_root: &str, violations: &mut Vec<Violati
                     brace_depth.saturating_sub(line.chars().filter(|&c| c == '}').count());
 
                 // Collect variant names.
-                if brace_depth > 0 && !line.trim().starts_with("//") {
-                    if let Some(caps) = variant_re.captures(line.trim()) {
-                        let variant_name = &caps[1];
-                        // Skip common keywords and comments.
-                        if !matches!(
-                            variant_name,
-                            "pub" | "enum" | "struct" | "impl" | "#[" | "derive"
-                        ) {
-                            enum_variants.push((variant_name.to_string(), line_no));
-                        }
+                if brace_depth > 0
+                    && !line.trim().starts_with("//")
+                    && let Some(caps) = variant_re.captures(line.trim())
+                {
+                    let variant_name = &caps[1];
+                    // Skip common keywords and comments.
+                    if !matches!(
+                        variant_name,
+                        "pub" | "enum" | "struct" | "impl" | "#[" | "derive"
+                    ) {
+                        enum_variants.push((variant_name.to_string(), line_no));
                     }
                 }
 
                 // If we've closed the enum, analyze it.
-                if brace_depth == 0 && line.contains('}') && in_enum {
-                    if let Some(ref name) = current_enum {
-                        analyze_error_variants(name, &enum_variants, violations);
-                        enum_variants.clear();
-                        current_enum = None;
-                        in_enum = false;
-                    }
+                if brace_depth == 0
+                    && line.contains('}')
+                    && in_enum
+                    && let Some(ref name) = current_enum
+                {
+                    analyze_error_variants(name, &enum_variants, violations);
+                    enum_variants.clear();
+                    current_enum = None;
+                    in_enum = false;
                 }
             }
         }
@@ -229,10 +236,8 @@ fn analyze_error_variants(
     let mut has_adjective = false;
     let mut has_noun_based = false;
 
-    let does_not_exist_re = Regex::new(r"(?i:DoesNotExist|IsNot|DoesNo)").expect("valid regex");
-    let adjective_re =
-        Regex::new(r"^(Not|Invalid|Unauthorized|Forbidden|Conflict|Timeout|Missing)")
-            .expect("valid regex");
+    let does_not_exist_re = regex(r"(?i:DoesNotExist|IsNot|DoesNo)");
+    let adjective_re = regex(r"^(Not|Invalid|Unauthorized|Forbidden|Conflict|Timeout|Missing)");
 
     for (variant, _) in variants {
         if does_not_exist_re.is_match(variant) {
@@ -248,7 +253,7 @@ fn analyze_error_variants(
     }
 
     // Flag if we see mixed patterns.
-    if (has_does_not_exist as u8 + has_adjective as u8 + has_noun_based as u8) >= 2 {
+    if (u8::from(has_does_not_exist) + u8::from(has_adjective) + u8::from(has_noun_based)) >= 2 {
         for (variant, line_no) in variants {
             // Report the first variant of each type.
             if (does_not_exist_re.is_match(variant) && has_adjective)
@@ -316,7 +321,6 @@ where
 }
 
 #[cfg(test)]
-#[expect(clippy::indexing_slicing, reason = "test assertions")]
 mod tests {
     use super::*;
 
@@ -336,13 +340,13 @@ pub struct B {{
         );
 
         // Simulate the check by counting renames directly
-        let rename_re = Regex::new(r#"#\[serde\(rename\s*=\s*"([^"]+)"\)"#).expect("valid regex");
+        let rename_re = regex(r#"#\[serde\(rename\s*=\s*"([^"]+)"\)"#);
         let mut renames = Vec::new();
         for line in content.lines() {
-            if let Some(captures) = rename_re.captures(line) {
-                if let Some(value) = captures.get(1) {
-                    renames.push(value.as_str().to_string());
-                }
+            if let Some(captures) = rename_re.captures(line)
+                && let Some(value) = captures.get(1)
+            {
+                renames.push(value.as_str().to_string());
             }
         }
 
@@ -384,8 +388,8 @@ pub enum ApiError {
     ItemDoesNotExist,
 }";
 
-        let error_enum_re = Regex::new(r"^\s*pub\s+enum\s+(\w+Error)\s*\{").expect("valid regex");
-        let variant_re = Regex::new(r"^\s*(\w+)\s*(?:\{|,|\()").expect("valid regex");
+        let error_enum_re = regex(r"^\s*pub\s+enum\s+(\w+Error)\s*\{");
+        let variant_re = regex(r"^\s*(\w+)\s*(?:\{|,|\()");
 
         let mut variants = Vec::new();
         let mut in_enum = false;
@@ -400,25 +404,24 @@ pub enum ApiError {
                 brace_depth =
                     brace_depth.saturating_sub(line.chars().filter(|&c| c == '}').count());
 
-                if brace_depth > 0 && !line.trim().starts_with("//") {
-                    if let Some(caps) = variant_re.captures(line.trim()) {
-                        let variant_name = &caps[1];
-                        if !matches!(
-                            variant_name,
-                            "pub" | "enum" | "struct" | "impl" | "#[" | "derive"
-                        ) {
-                            variants.push(variant_name.to_string());
-                        }
+                if brace_depth > 0
+                    && !line.trim().starts_with("//")
+                    && let Some(caps) = variant_re.captures(line.trim())
+                {
+                    let variant_name = &caps[1];
+                    if !matches!(
+                        variant_name,
+                        "pub" | "enum" | "struct" | "impl" | "#[" | "derive"
+                    ) {
+                        variants.push(variant_name.to_string());
                     }
                 }
             }
         }
 
         // Check if mixed patterns exist
-        let does_not_exist_re = Regex::new(r"(?i:DoesNotExist|IsNot|DoesNo)").expect("valid regex");
-        let adjective_re =
-            Regex::new(r"^(Not|Invalid|Unauthorized|Forbidden|Conflict|Timeout|Missing)")
-                .expect("valid regex");
+        let does_not_exist_re = regex(r"(?i:DoesNotExist|IsNot|DoesNo)");
+        let adjective_re = regex(r"^(Not|Invalid|Unauthorized|Forbidden|Conflict|Timeout|Missing)");
 
         let has_does_not_exist = variants.iter().any(|v| does_not_exist_re.is_match(v));
         let has_adjective = variants.iter().any(|v| adjective_re.is_match(v));
@@ -439,10 +442,8 @@ pub enum ApiError {
     Unauthorized,
 }";
 
-        let adjective_re =
-            Regex::new(r"^(Not|Invalid|Unauthorized|Forbidden|Conflict|Timeout|Missing)")
-                .expect("valid regex");
-        let variant_re = Regex::new(r"^\s*(\w+)\s*(?:\{|,|\()").expect("valid regex");
+        let adjective_re = regex(r"^(Not|Invalid|Unauthorized|Forbidden|Conflict|Timeout|Missing)");
+        let variant_re = regex(r"^\s*(\w+)\s*(?:\{|,|\()");
 
         let mut variants = Vec::new();
         for line in content.lines() {

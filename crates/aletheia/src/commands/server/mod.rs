@@ -93,7 +93,9 @@ pub(crate) async fn run(args: Args) -> Result<()> {
             shutdown: runtime.shutdown_token.clone(),
             // WHY: pass the same KnowledgeStore Arc that pylon uses so the
             // MCP knowledge tools access the identical in-process instance.
-            #[cfg(feature = "knowledge-store")]
+            // The cfg matches AppState's knowledge_store gate (`recall`),
+            // not a non-existent aletheia "knowledge-store" feature.
+            #[cfg(feature = "recall")]
             knowledge_store: runtime.state.knowledge_store.clone(),
         });
         let mcp_router = diaporeia::transport::streamable_http_router(diaporeia_state);
