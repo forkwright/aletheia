@@ -5,7 +5,7 @@
 # === Legacy paths ===
 /theke/
 /projects/*
-!/projects/aletheia/
+!/projects/README.md
 /archive/
 nous/*/
 shared/memory/
