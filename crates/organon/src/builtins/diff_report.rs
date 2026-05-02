@@ -1,5 +1,6 @@
 //! Diff report tool: compare two documents and report changes.
 
+use std::fmt::Write;
 use std::future::Future;
 use std::pin::Pin;
 
@@ -29,14 +30,12 @@ impl ToolExecutor for DiffReportExecutor {
                 .and_then(serde_json::Value::as_str)
                 .unwrap_or("xlsx");
 
-            let before_b64 = match args.get("before").and_then(serde_json::Value::as_str) {
-                Some(s) => s,
-                None => return Ok(ToolResult::error("missing required argument: before")),
+            let Some(before_b64) = args.get("before").and_then(serde_json::Value::as_str) else {
+                return Ok(ToolResult::error("missing required argument: before"));
             };
 
-            let after_b64 = match args.get("after").and_then(serde_json::Value::as_str) {
-                Some(s) => s,
-                None => return Ok(ToolResult::error("missing required argument: after")),
+            let Some(after_b64) = args.get("after").and_then(serde_json::Value::as_str) else {
+                return Ok(ToolResult::error("missing required argument: after"));
             };
 
             let before_bytes = match base64_decode(before_b64) {
@@ -54,19 +53,19 @@ impl ToolExecutor for DiffReportExecutor {
                     Ok(diffs) => {
                         let mut summary = format!("Found {} cell changes:\n", diffs.len());
                         for diff in diffs.iter().take(20) {
-                            summary.push_str(&format!(
-                                "  {}.{}({},{}): {} -> {}\n",
+                            let _ = writeln!(
+                                summary,
+                                "  {}.{}({},{}): {} -> {}",
                                 diff.sheet,
                                 col_index_to_letter(diff.col),
                                 diff.row + 1,
                                 col_index_to_letter(diff.col),
                                 diff.before.as_deref().unwrap_or("(empty)"),
                                 diff.after.as_deref().unwrap_or("(empty)")
-                            ));
+                            );
                         }
                         if diffs.len() > 20 {
-                            summary
-                                .push_str(&format!("... and {} more changes\n", diffs.len() - 20));
+                            let _ = writeln!(summary, "... and {} more changes", diffs.len() - 20);
                         }
                         summary
                     }
@@ -76,16 +75,16 @@ impl ToolExecutor for DiffReportExecutor {
                     Ok(diffs) => {
                         let mut summary = format!("Found {} slide changes:\n", diffs.len());
                         for diff in diffs.iter().take(10) {
-                            summary.push_str(&format!(
-                                "  Slide {}: {} -> {}\n",
+                            let _ = writeln!(
+                                summary,
+                                "  Slide {}: {} -> {}",
                                 diff.slide_index + 1,
                                 diff.before.as_deref().unwrap_or("(empty)"),
                                 diff.after.as_deref().unwrap_or("(empty)")
-                            ));
+                            );
                         }
                         if diffs.len() > 10 {
-                            summary
-                                .push_str(&format!("... and {} more changes\n", diffs.len() - 10));
+                            let _ = writeln!(summary, "... and {} more changes", diffs.len() - 10);
                         }
                         summary
                     }
@@ -111,7 +110,7 @@ fn col_index_to_letter(col: u32) -> String {
     let mut n = col + 1;
     while n > 0 {
         n -= 1;
-        result.insert(0, (b'A' + (n % 26) as u8) as char);
+        result.insert(0, char::from(b'A' + u8::try_from(n % 26).unwrap_or(0)));
         n /= 26;
     }
     result

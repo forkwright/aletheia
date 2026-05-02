@@ -299,7 +299,11 @@ mod tests {
         });
         let bytes = render_pptx(&data).expect("render must succeed");
         assert!(!bytes.is_empty(), "PPTX must not be empty");
-        assert_eq!(&bytes[..2], b"PK", "PPTX must be a valid ZIP");
+        assert_eq!(
+            bytes.get(..2).expect("at least 2 bytes"),
+            b"PK",
+            "PPTX must be a valid ZIP"
+        );
     }
 
     #[test]
@@ -329,13 +333,22 @@ mod tests {
         });
         let bytes = render_pptx(&data).expect("render must succeed");
         assert!(!bytes.is_empty());
-        assert_eq!(&bytes[..2], b"PK");
+        assert_eq!(bytes.get(..2).expect("at least 2 bytes"), b"PK");
 
         let summary = inspect_pptx(&bytes).expect("inspect must succeed");
         assert_eq!(summary.slide_count, 3, "must have 3 slides");
-        assert_eq!(summary.slides[0].title, "First Slide");
-        assert_eq!(summary.slides[1].title, "Second Slide");
-        assert_eq!(summary.slides[2].title, "Third Slide");
+        assert_eq!(
+            summary.slides.first().expect("first slide").title,
+            "First Slide"
+        );
+        assert_eq!(
+            summary.slides.get(1).expect("second slide").title,
+            "Second Slide"
+        );
+        assert_eq!(
+            summary.slides.get(2).expect("third slide").title,
+            "Third Slide"
+        );
     }
 
     #[test]
@@ -355,9 +368,26 @@ mod tests {
         let summary = inspect_pptx(&bytes).expect("inspect must succeed");
 
         assert_eq!(summary.slide_count, 1);
-        assert_eq!(summary.slides[0].title, "Inspection Test");
-        assert!(summary.slides[0].bullets.contains(&"Alpha".to_owned()));
-        assert!(summary.slides[0].bullets.contains(&"Beta".to_owned()));
+        assert_eq!(
+            summary.slides.first().expect("first slide").title,
+            "Inspection Test"
+        );
+        assert!(
+            summary
+                .slides
+                .first()
+                .expect("first slide")
+                .bullets
+                .contains(&"Alpha".to_owned())
+        );
+        assert!(
+            summary
+                .slides
+                .first()
+                .expect("first slide")
+                .bullets
+                .contains(&"Beta".to_owned())
+        );
     }
 
     #[test]

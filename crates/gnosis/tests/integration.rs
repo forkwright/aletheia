@@ -42,7 +42,7 @@ mod workspace_integration {
     /// execute without error.
     ///
     /// The original acceptance criterion ("≥10 callers") was written for a
-    /// planned v2 that captures type-use call sites at symbol_refs level.
+    /// planned v2 that captures type-use call sites at `symbol_refs` level.
     /// Filed as a follow-up to #3357: extend gnosis index to capture
     /// type-use references from fn bodies.
     #[test]

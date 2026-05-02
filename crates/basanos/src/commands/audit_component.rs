@@ -9,10 +9,11 @@
 //! 3. Dimensional coherence — declare-without-derive findings
 //! 4. Component count — pub types/fns/impls
 //! 5. Dependencies — inbound/outbound
-//! 6-8. Stubs for v1: indirection layers, error space, grounding
+//!    6-8. Stubs for v1: indirection layers, error space, grounding
 //!
 //! Output: JSON (default) or markdown via `--format markdown`.
 
+use std::fmt::Write;
 use std::fs;
 use std::path::Path;
 
@@ -98,7 +99,7 @@ pub fn run_audit_component(crate_name: &str, project_root: &str, format: &str) -
         .filter(|c| c.result == CheckResult::Pass)
         .count();
     // Maximum 8 checks, so min(pass_count, 8) is always valid for u8.
-    let overall_score = (pass_count.min(8)) as u8;
+    let overall_score = u8::try_from(pass_count.min(8)).unwrap_or(0);
 
     let report = AuditReport {
         crate_name: crate_name.to_string(),
@@ -107,7 +108,7 @@ pub fn run_audit_component(crate_name: &str, project_root: &str, format: &str) -
     };
 
     match format {
-        "markdown" => format_markdown(&report),
+        "markdown" => Ok(format_markdown(&report)),
         _ => format_json(&report),
     }
 }
@@ -127,23 +128,21 @@ fn check_generic_vs_specific(crate_path: &Path) -> AuditCheck {
     let mut boilerplate_count = 0;
     let mut total_lines = 0;
 
-    for entry in walkdir_recursively(&src_path) {
-        if let Ok(entry) = entry {
-            if entry.path().extension().and_then(|e| e.to_str()) == Some("rs") {
-                if let Ok(content) = fs::read_to_string(entry.path()) {
-                    for line in content.lines() {
-                        total_lines += 1;
-                        let trimmed = line.trim();
+    for entry in walkdir_recursively(&src_path).into_iter().flatten() {
+        if entry.path().extension().and_then(|e| e.to_str()) == Some("rs")
+            && let Ok(content) = fs::read_to_string(entry.path())
+        {
+            for line in content.lines() {
+                total_lines += 1;
+                let trimmed = line.trim();
 
-                        // Count boilerplate patterns: generic error handling, Result wrapping.
-                        if trimmed.contains("Result<")
-                            || trimmed.contains(".context(")
-                            || trimmed.contains("snafu::")
-                            || trimmed.contains("WithContext")
-                        {
-                            boilerplate_count += 1;
-                        }
-                    }
+                // Count boilerplate patterns: generic error handling, Result wrapping.
+                if trimmed.contains("Result<")
+                    || trimmed.contains(".context(")
+                    || trimmed.contains("snafu::")
+                    || trimmed.contains("WithContext")
+                {
+                    boilerplate_count += 1;
                 }
             }
         }
@@ -196,29 +195,27 @@ fn check_map_vs_angle(crate_path: &Path) -> AuditCheck {
     let mut tautological_count = 0;
     let mut doc_count = 0;
 
-    for entry in walkdir_recursively(&src_path) {
-        if let Ok(entry) = entry {
-            if entry.path().extension().and_then(|e| e.to_str()) == Some("rs") {
-                if let Ok(content) = fs::read_to_string(entry.path()) {
-                    for line in content.lines() {
-                        let trimmed = line.trim();
+    for entry in walkdir_recursively(&src_path).into_iter().flatten() {
+        if entry.path().extension().and_then(|e| e.to_str()) == Some("rs")
+            && let Ok(content) = fs::read_to_string(entry.path())
+        {
+            for line in content.lines() {
+                let trimmed = line.trim();
 
-                        // Count documentation lines.
-                        if trimmed.starts_with("///") {
-                            doc_count += 1;
+                // Count documentation lines.
+                if trimmed.starts_with("///") {
+                    doc_count += 1;
 
-                            // Detect tautological docs: "Returns X", "Does Y", "Checks Z".
-                            let lower = trimmed.to_lowercase();
-                            if lower.contains("returns")
-                                || (lower.contains("does") && !lower.contains("does not"))
-                                || lower.contains("checks")
-                                || (lower.contains("takes") && lower.contains("as parameter"))
-                            {
-                                // Check if it's pure description without behavior.
-                                if trimmed.chars().filter(|c| c.is_alphanumeric()).count() < 40 {
-                                    tautological_count += 1;
-                                }
-                            }
+                    // Detect tautological docs: "Returns X", "Does Y", "Checks Z".
+                    let lower = trimmed.to_lowercase();
+                    if lower.contains("returns")
+                        || (lower.contains("does") && !lower.contains("does not"))
+                        || lower.contains("checks")
+                        || (lower.contains("takes") && lower.contains("as parameter"))
+                    {
+                        // Check if it's pure description without behavior.
+                        if trimmed.chars().filter(|c| c.is_alphanumeric()).count() < 40 {
+                            tautological_count += 1;
                         }
                     }
                 }
@@ -329,25 +326,23 @@ fn check_component_count(crate_path: &Path) -> AuditCheck {
     let mut pub_fn_count = 0;
     let mut pub_impl_count = 0;
 
-    for entry in walkdir_recursively(&src_path) {
-        if let Ok(entry) = entry {
-            if entry.path().extension().and_then(|e| e.to_str()) == Some("rs") {
-                if let Ok(content) = fs::read_to_string(entry.path()) {
-                    for line in content.lines() {
-                        let trimmed = line.trim();
+    for entry in walkdir_recursively(&src_path).into_iter().flatten() {
+        if entry.path().extension().and_then(|e| e.to_str()) == Some("rs")
+            && let Ok(content) = fs::read_to_string(entry.path())
+        {
+            for line in content.lines() {
+                let trimmed = line.trim();
 
-                        if trimmed.starts_with("pub ") || trimmed.starts_with("pub(") {
-                            if trimmed.contains("struct ")
-                                || trimmed.contains("enum ")
-                                || trimmed.contains("type ")
-                            {
-                                pub_type_count += 1;
-                            } else if trimmed.contains("fn ") {
-                                pub_fn_count += 1;
-                            } else if trimmed.contains("impl ") {
-                                pub_impl_count += 1;
-                            }
-                        }
+                if trimmed.starts_with("pub ") || trimmed.starts_with("pub(") {
+                    if trimmed.contains("struct ")
+                        || trimmed.contains("enum ")
+                        || trimmed.contains("type ")
+                    {
+                        pub_type_count += 1;
+                    } else if trimmed.contains("fn ") {
+                        pub_fn_count += 1;
+                    } else if trimmed.contains("impl ") {
+                        pub_impl_count += 1;
                     }
                 }
             }
@@ -463,23 +458,21 @@ fn format_json(report: &AuditReport) -> Result<String> {
 }
 
 /// Format the report as markdown.
-fn format_markdown(report: &AuditReport) -> Result<String> {
+fn format_markdown(report: &AuditReport) -> String {
     let mut output = String::new();
-    output.push_str(&format!("# Audit Report: {}\n\n", report.crate_name));
-    output.push_str(&format!(
-        "**Overall Score**: {}/8\n\n",
-        report.overall_score
-    ));
+    let _ = write!(output, "# Audit Report: {}\n\n", report.crate_name);
+    let _ = write!(output, "**Overall Score**: {}/8\n\n", report.overall_score);
 
     output.push_str("## Checks\n\n");
     for check in &report.checks {
-        output.push_str(&format!(
+        let _ = write!(
+            output,
             "### {}\n\n**Result**: {}\n\n**Evidence**: {}\n\n",
             check.id, check.result, check.evidence
-        ));
+        );
     }
 
-    Ok(output)
+    output
 }
 
 /// Recursively walk a directory, yielding entries.
@@ -509,22 +502,49 @@ mod tests {
         assert!(result.is_err());
     }
 
-    #[test]
-    fn test_audit_component_on_known_crate_returns_report() {
-        let result = run_audit_component("eidos", ".", "json");
-        assert!(result.is_ok());
+    /// Walk up from the basanos crate dir to find the workspace root
+    /// (the directory containing both `crates/eidos` and `Cargo.toml`).
+    /// Tests need this because cargo sets cwd to the package dir, not
+    /// the workspace root, when running per-package.
+    #[expect(
+        clippy::expect_used,
+        reason = "test helper — CARGO_MANIFEST_DIR layout is invariant at compile time"
+    )]
+    fn workspace_root() -> std::path::PathBuf {
+        let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        // crates/basanos -> crates -> workspace root
+        manifest_dir
+            .parent()
+            .expect("CARGO_MANIFEST_DIR must have a parent (crates/)")
+            .parent()
+            .expect("crates/ must have a parent (workspace root)")
+            .to_path_buf()
+    }
 
-        let json_str = result.unwrap();
-        let report: AuditReport = serde_json::from_str(&json_str).expect("valid JSON");
+    #[test]
+    #[expect(
+        clippy::expect_used,
+        reason = "test helper — UTF-8 invariant on workspace path"
+    )]
+    fn test_audit_component_on_known_crate_returns_report()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let root = workspace_root();
+        let json_str = run_audit_component(
+            "eidos",
+            root.to_str().expect("workspace root path is valid UTF-8"),
+            "json",
+        )?;
+        let report: AuditReport = serde_json::from_str(&json_str)?;
 
         // Eidos should have a good audit score.
         assert_eq!(report.crate_name, "eidos");
         assert!(!report.checks.is_empty());
         assert_eq!(report.checks.len(), 8);
+        Ok(())
     }
 
     #[test]
-    fn test_report_json_round_trip() {
+    fn test_report_json_round_trip() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let report = AuditReport {
             crate_name: "test".into(),
             overall_score: 5,
@@ -535,12 +555,13 @@ mod tests {
             }],
         };
 
-        let json_str = serde_json::to_string(&report).expect("serialization");
-        let deserialized: AuditReport = serde_json::from_str(&json_str).expect("deserialization");
+        let json_str = serde_json::to_string(&report)?;
+        let deserialized: AuditReport = serde_json::from_str(&json_str)?;
 
         assert_eq!(report.crate_name, deserialized.crate_name);
         assert_eq!(report.overall_score, deserialized.overall_score);
         assert_eq!(report.checks.len(), deserialized.checks.len());
+        Ok(())
     }
 
     #[test]
@@ -551,13 +572,21 @@ mod tests {
     }
 
     #[test]
-    fn test_audit_component_markdown_format() {
-        let result = run_audit_component("eidos", ".", "markdown");
-        assert!(result.is_ok());
-
-        let markdown = result.unwrap();
+    #[expect(
+        clippy::expect_used,
+        reason = "test helper — UTF-8 invariant on workspace path"
+    )]
+    fn test_audit_component_markdown_format() -> std::result::Result<(), Box<dyn std::error::Error>>
+    {
+        let root = workspace_root();
+        let markdown = run_audit_component(
+            "eidos",
+            root.to_str().expect("workspace root path is valid UTF-8"),
+            "markdown",
+        )?;
         assert!(markdown.contains("# Audit Report:"));
         assert!(markdown.contains("eidos"));
         assert!(markdown.contains("Overall Score"));
+        Ok(())
     }
 }

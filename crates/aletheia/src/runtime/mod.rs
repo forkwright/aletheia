@@ -689,7 +689,7 @@ impl RuntimeBuilder {
                 let db = koina::fjall::FjallDb::open(&db_path, &["cron_locks"])
                     .with_whatever_context(|_| "failed to open cron lock store")?;
                 let lock_store = Arc::new(
-                    energeia::cron::CronLockStore::open(&db.db)
+                    energeia::cron::CronLockStore::open(Arc::new(db.db))
                         .with_whatever_context(|_| "failed to open cron lock partition")?,
                 );
                 let mut tasks = Vec::with_capacity(self.config.dispatch.cron_tasks.len());

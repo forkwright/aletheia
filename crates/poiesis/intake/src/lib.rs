@@ -347,8 +347,14 @@ mod tests {
         let text = "analyze the data\n- must include charts\n- compare with last year";
         let req = parse_intake(text).expect("parse");
         assert_eq!(req.requirements.len(), 2);
-        assert_eq!(req.requirements[0], "must include charts");
-        assert_eq!(req.requirements[1], "compare with last year");
+        assert_eq!(
+            req.requirements.first().expect("first requirement"),
+            "must include charts"
+        );
+        assert_eq!(
+            req.requirements.get(1).expect("second requirement"),
+            "compare with last year"
+        );
     }
 
     #[test]

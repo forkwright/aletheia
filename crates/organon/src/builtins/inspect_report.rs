@@ -1,5 +1,6 @@
 //! Inspect report tool: extract text content from PDF, XLSX, or PPTX documents.
 
+use std::fmt::Write;
 use std::future::Future;
 use std::pin::Pin;
 
@@ -29,9 +30,9 @@ impl ToolExecutor for InspectReportExecutor {
                 .and_then(serde_json::Value::as_str)
                 .unwrap_or("pdf");
 
-            let document_b64 = match args.get("document").and_then(serde_json::Value::as_str) {
-                Some(s) => s,
-                None => return Ok(ToolResult::error("missing required argument: document")),
+            let Some(document_b64) = args.get("document").and_then(serde_json::Value::as_str)
+            else {
+                return Ok(ToolResult::error("missing required argument: document"));
             };
 
             let document_bytes = match base64_decode(document_b64) {
@@ -42,17 +43,18 @@ impl ToolExecutor for InspectReportExecutor {
             let inspect_result = match format.to_lowercase().as_str() {
                 "pdf" => match inspect_pdf(&document_bytes) {
                     Ok(summary) => {
-                        let mut text = format!("PDF Summary:\n");
-                        text.push_str(&format!("  Pages: {}\n", summary.pages));
+                        let mut text = "PDF Summary:\n".to_string();
+                        let _ = writeln!(text, "  Pages: {}", summary.pages);
                         text.push_str("  Text snippets:\n");
                         for snippet in summary.text_snippets.iter().take(20) {
-                            text.push_str(&format!("    {}\n", snippet));
+                            let _ = writeln!(text, "    {snippet}");
                         }
                         if summary.text_snippets.len() > 20 {
-                            text.push_str(&format!(
-                                "  ... and {} more snippets\n",
+                            let _ = writeln!(
+                                text,
+                                "  ... and {} more snippets",
                                 summary.text_snippets.len() - 20
-                            ));
+                            );
                         }
                         text
                     }
@@ -60,19 +62,20 @@ impl ToolExecutor for InspectReportExecutor {
                 },
                 "xlsx" => match inspect_xlsx(&document_bytes) {
                     Ok(summary) => {
-                        let mut text = format!("Workbook Summary:\n");
+                        let mut text = "Workbook Summary:\n".to_string();
                         for (sheet_name, content) in summary.sheets.iter().take(10) {
-                            text.push_str(&format!("  Sheet: {}\n", sheet_name));
+                            let _ = writeln!(text, "  Sheet: {sheet_name}");
                             let lines: Vec<&str> = content.lines().take(5).collect();
                             for line in lines {
-                                text.push_str(&format!("    {}\n", line));
+                                let _ = writeln!(text, "    {line}");
                             }
                         }
                         if summary.sheets.len() > 10 {
-                            text.push_str(&format!(
-                                "  ... and {} more sheets\n",
+                            let _ = writeln!(
+                                text,
+                                "  ... and {} more sheets",
                                 summary.sheets.len() - 10
-                            ));
+                            );
                         }
                         text
                     }
@@ -80,19 +83,20 @@ impl ToolExecutor for InspectReportExecutor {
                 },
                 "pptx" => match inspect_pptx(&document_bytes) {
                     Ok(summary) => {
-                        let mut text = format!("Presentation Summary:\n");
+                        let mut text = "Presentation Summary:\n".to_string();
                         for (idx, slide_text) in summary.slides.iter().enumerate().take(10) {
-                            text.push_str(&format!("  Slide {}:\n", idx + 1));
+                            let _ = writeln!(text, "  Slide {}:", idx + 1);
                             let lines: Vec<&str> = slide_text.lines().take(3).collect();
                             for line in lines {
-                                text.push_str(&format!("    {}\n", line));
+                                let _ = writeln!(text, "    {line}");
                             }
                         }
                         if summary.slides.len() > 10 {
-                            text.push_str(&format!(
-                                "  ... and {} more slides\n",
+                            let _ = writeln!(
+                                text,
+                                "  ... and {} more slides",
                                 summary.slides.len() - 10
-                            ));
+                            );
                         }
                         text
                     }

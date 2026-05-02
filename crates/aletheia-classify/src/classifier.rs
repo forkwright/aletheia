@@ -349,7 +349,7 @@ fn heuristic_probabilities(text: &str) -> [f32; 4] {
         .filter(|l| {
             let t = l.trim_start();
             t.len() > 2
-                && t.as_bytes().first().map_or(false, u8::is_ascii_digit)
+                && t.as_bytes().first().is_some_and(u8::is_ascii_digit)
                 && t.as_bytes().get(1) == Some(&b'.')
         })
         .count();
@@ -369,7 +369,7 @@ fn heuristic_probabilities(text: &str) -> [f32; 4] {
             let t = l.trim_start().to_lowercase();
             t.starts_with("step ")
                 && t.len() > 6
-                && t.as_bytes().get(5).map_or(false, u8::is_ascii_digit)
+                && t.as_bytes().get(5).is_some_and(u8::is_ascii_digit)
         })
         .count();
     #[expect(

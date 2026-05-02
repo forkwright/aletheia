@@ -76,18 +76,18 @@ impl ToolExecutor for ScaffoldReportExecutor {
                 }
                 for file in &files {
                     let path = std::path::Path::new(dir).join(&file.path);
-                    if let Some(parent) = path.parent() {
-                        if let Err(e) = tokio::fs::create_dir_all(parent).await {
-                            return Ok(ToolResult::error(format!(
-                                "failed to create parent directory for {:?}: {e}",
-                                file.path
-                            )));
-                        }
+                    if let Some(parent) = path.parent()
+                        && let Err(e) = tokio::fs::create_dir_all(parent).await
+                    {
+                        return Ok(ToolResult::error(format!(
+                            "failed to create parent directory for {}: {e}",
+                            file.path.display()
+                        )));
                     }
                     if let Err(e) = tokio::fs::write(&path, &file.contents).await {
                         return Ok(ToolResult::error(format!(
-                            "failed to write {:?}: {e}",
-                            file.path
+                            "failed to write {}: {e}",
+                            file.path.display()
                         )));
                     }
                 }

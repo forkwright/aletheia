@@ -233,7 +233,7 @@ pub(crate) fn record_dpo_pair(nous_id: &str) {
 ///
 /// WHY: Operators need visibility into decontamination rates.
 /// `reason` is the author class that triggered rejection
-/// (e.g. "subagent", "system_scaffolding"). Closes #3786.
+/// (e.g. "subagent", `system_scaffolding`). Closes #3786.
 pub(crate) fn record_training_capture_rejected(nous_id: &str, reason: &str) {
     TRAINING_CAPTURE_REJECTED_TOTAL
         .get_or_create(&NousReasonLabels {
@@ -323,6 +323,7 @@ mod tests {
         record_background_failure("n1", "extract");
         record_tool_failure("n1", "read");
         record_stream_event_dropped("n1", "full");
+        record_training_capture_rejected("n1", "non_authored");
         record_health_poller_restart();
 
         let out = encode(&r);

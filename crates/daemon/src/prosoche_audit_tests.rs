@@ -63,10 +63,20 @@ async fn consistency_check_detects_negation_pair() {
         "contradicting facts should produce findings"
     );
     assert!(
-        findings[0].finding_id.starts_with("PROSOCHE-CONSISTENCY"),
+        findings
+            .first()
+            .expect("at least one finding")
+            .finding_id
+            .starts_with("PROSOCHE-CONSISTENCY"),
         "finding_id should match check kind"
     );
-    assert_eq!(findings[0].evidence_level, EvidenceLevel::Exploratory);
+    assert_eq!(
+        findings
+            .first()
+            .expect("at least one finding")
+            .evidence_level,
+        EvidenceLevel::Exploratory
+    );
 }
 
 #[tokio::test]
@@ -93,8 +103,20 @@ async fn staleness_check_flags_stale_fact() {
     state.facts = vec![fact("f-001", "old fact content", 120.0)]; // 120 days > 90-day threshold
     let findings = check.check(&state).await;
     assert_eq!(findings.len(), 1, "should flag one stale fact");
-    assert!(findings[0].finding_id.contains("STALENESS-FACT"));
-    assert_eq!(findings[0].evidence_level, EvidenceLevel::Exploratory);
+    assert!(
+        findings
+            .first()
+            .expect("at least one finding")
+            .finding_id
+            .contains("STALENESS-FACT")
+    );
+    assert_eq!(
+        findings
+            .first()
+            .expect("at least one finding")
+            .evidence_level,
+        EvidenceLevel::Exploratory
+    );
 }
 
 #[tokio::test]
@@ -117,8 +139,20 @@ async fn staleness_check_flags_large_incomplete_session() {
         1,
         "should flag one stale incomplete session"
     );
-    assert!(findings[0].finding_id.contains("STALENESS-SESSION"));
-    assert_eq!(findings[0].evidence_level, EvidenceLevel::Interpretive);
+    assert!(
+        findings
+            .first()
+            .expect("at least one finding")
+            .finding_id
+            .contains("STALENESS-SESSION")
+    );
+    assert_eq!(
+        findings
+            .first()
+            .expect("at least one finding")
+            .evidence_level,
+        EvidenceLevel::Interpretive
+    );
 }
 
 // ── GoalAlignmentCheck ────────────────────────────────────────────────────────
@@ -165,8 +199,20 @@ async fn goal_alignment_check_unrelated_session_flagged() {
     }];
     let findings = check.check(&state).await;
     assert_eq!(findings.len(), 1, "unaligned session should be flagged");
-    assert!(findings[0].finding_id.contains("GOAL-ALIGNMENT"));
-    assert_eq!(findings[0].evidence_level, EvidenceLevel::Interpretive);
+    assert!(
+        findings
+            .first()
+            .expect("at least one finding")
+            .finding_id
+            .contains("GOAL-ALIGNMENT")
+    );
+    assert_eq!(
+        findings
+            .first()
+            .expect("at least one finding")
+            .evidence_level,
+        EvidenceLevel::Interpretive
+    );
 }
 
 // ── SessionQualityCheck ───────────────────────────────────────────────────────
@@ -183,8 +229,20 @@ async fn session_quality_check_high_error_rate_flagged() {
         1,
         "high error rate should produce one finding"
     );
-    assert!(findings[0].finding_id.contains("SESSION-QUALITY"));
-    assert_eq!(findings[0].evidence_level, EvidenceLevel::Exploratory);
+    assert!(
+        findings
+            .first()
+            .expect("at least one finding")
+            .finding_id
+            .contains("SESSION-QUALITY")
+    );
+    assert_eq!(
+        findings
+            .first()
+            .expect("at least one finding")
+            .evidence_level,
+        EvidenceLevel::Exploratory
+    );
 }
 
 #[tokio::test]
@@ -230,12 +288,19 @@ async fn instinct_patterns_check_stub_returns_speculative_finding() {
     let findings = check.check(&state).await;
     assert_eq!(findings.len(), 1, "stub should return exactly one finding");
     assert_eq!(
-        findings[0].evidence_level,
+        findings
+            .first()
+            .expect("at least one finding")
+            .evidence_level,
         EvidenceLevel::Speculative,
         "stub finding must be Speculative"
     );
     assert!(
-        findings[0].finding_id.contains("INSTINCT-STUB"),
+        findings
+            .first()
+            .expect("at least one finding")
+            .finding_id
+            .contains("INSTINCT-STUB"),
         "stub finding ID should include INSTINCT-STUB"
     );
 }
@@ -317,8 +382,8 @@ async fn audit_runner_persists_report_to_disk() {
     // At least one JSON file should exist in the audit dir.
     let entries: Vec<_> = std::fs::read_dir(dir.path())
         .expect("read dir")
-        .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().map_or(false, |ext| ext == "json"))
+        .filter_map(std::result::Result::ok)
+        .filter(|e| e.path().extension().is_some_and(|ext| ext == "json"))
         .collect();
     assert_eq!(
         entries.len(),
@@ -327,7 +392,8 @@ async fn audit_runner_persists_report_to_disk() {
     );
 
     // The JSON file should deserialise back to an AuditReport.
-    let content = std::fs::read_to_string(entries[0].path()).expect("read file");
+    let content = std::fs::read_to_string(entries.first().expect("at least one entry").path())
+        .expect("read file");
     let back: AuditReport = serde_json::from_str(&content).expect("deserialise report");
     assert_eq!(back.nous_id, report.nous_id);
     assert_eq!(back.audited_at, report.audited_at);
