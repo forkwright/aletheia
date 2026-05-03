@@ -5002,6 +5002,7 @@ dependencies = [
  "jiff",
  "koina",
  "open",
+ "parodos",
  "pulldown-cmark",
  "ratatui",
  "regex",
@@ -6568,6 +6569,22 @@ dependencies = [
  "redox_syscall",
  "smallvec",
  "windows-link",
+]
+
+[[package]]
+name = "parodos"
+version = "0.1.0"
+source = "git+http://127.0.0.1:7878/forkwright/theatron.git?rev=4846ef4#4846ef41b9d813b575294b3bca5b8a3c6c658ee1"
+dependencies = [
+ "arboard",
+ "base64 0.22.1",
+ "crossterm",
+ "image",
+ "ratatui",
+ "regex",
+ "serde",
+ "syntect",
+ "tracing",
 ]
 
 [[package]]
@@ -9465,6 +9482,7 @@ dependencies = [
  "flate2",
  "fnv",
  "once_cell",
+ "onig",
  "plist",
  "regex-syntax",
  "serde",

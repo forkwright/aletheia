@@ -400,6 +400,9 @@ pub(crate) fn handle_clipboard_paste(app: &mut App) {
                 });
         }
         crate::clipboard::ClipboardContent::Empty => {}
+        // WHY: parodos::clipboard::ClipboardContent is #[non_exhaustive].
+        // Treat unknown future variants as no-op pastes -- safer than panic.
+        _ => {}
     }
 }
 
