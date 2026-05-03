@@ -22,9 +22,9 @@ koina = { path = "../../koina" }
 # WHY: chalkeion plan Phase 1+2 — proskenion consumes theatron incrementally.
 # AGPL-3.0+ proskenion can consume Apache-2.0 OR MIT theatron via the
 # Apache-2.0 path — license-compatible.
-themelion = { git = "http://127.0.0.1:7878/forkwright/theatron.git", rev = "9bf1e9e" }
-skeue = { git = "http://127.0.0.1:7878/forkwright/theatron.git", rev = "9bf1e9e" }
-gramma = { git = "http://127.0.0.1:7878/forkwright/theatron.git", rev = "9bf1e9e" }
+themelion = { git = "http://127.0.0.1:7878/forkwright/theatron.git", tag = "v1.0.0" }
+skeue = { git = "http://127.0.0.1:7878/forkwright/theatron.git", tag = "v1.0.0" }
+gramma = { git = "http://127.0.0.1:7878/forkwright/theatron.git", tag = "v1.0.0" }
 
 # UI framework
 # WHY: Pinned to the same exact patch theatron's workspace pins (=0.7.6).
