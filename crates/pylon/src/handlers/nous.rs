@@ -23,11 +23,13 @@ use crate::state::NousState;
     ),
     security(("bearer_auth" = []))
 )]
-pub async fn list(State(state): State<NousState>, _claims: Claims) -> Json<NousListResponse> {
+pub async fn list(State(state): State<NousState>, claims: Claims) -> Json<NousListResponse> {
+    let include_private = claims.role >= Role::Operator;
     let nous: Vec<NousSummary> = state
         .nous_manager
         .configs()
         .into_iter()
+        .filter(|c| include_private || !c.private)
         .map(|c| NousSummary {
             id: c.id.to_string(),
             name: c.name.clone().unwrap_or_else(|| c.id.to_string()),

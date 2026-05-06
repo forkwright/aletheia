@@ -64,6 +64,8 @@ pub struct ResolvedNousConfig {
     pub capabilities: AgentCapabilities,
     /// Resolved workspace directory path.
     pub workspace: String,
+    /// Whether this agent's workspace is hidden from public discovery.
+    pub private: bool,
     /// Merged set of permitted filesystem roots.
     pub allowed_roots: Vec<String>,
     /// Knowledge domains this agent covers.
@@ -138,6 +140,7 @@ pub fn resolve_nous(config: &AletheiaConfig, nous_id: &str) -> ResolvedNousConfi
 
     let domains = agent.map(|a| a.domains.clone()).unwrap_or_default();
     let name = agent.and_then(|a| a.name.clone());
+    let private = agent.is_some_and(|a| a.private);
 
     // NOTE: Agent-level recall overrides; falls back to shared defaults.
     let recall = agent
@@ -190,6 +193,7 @@ pub fn resolve_nous(config: &AletheiaConfig, nous_id: &str) -> ResolvedNousConfi
             cache_enabled: defaults.caching.enabled && defaults.caching.strategy != "disabled",
         },
         workspace,
+        private,
         allowed_roots,
         domains,
         recall,

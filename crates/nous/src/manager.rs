@@ -642,8 +642,25 @@ impl NousManager {
     /// Cancel-safe. Partial results are discarded if cancelled; no state is
     /// mutated.
     pub async fn list(&self) -> Vec<NousStatus> {
+        self.list_visible(false).await
+    }
+
+    /// Query status from all actors, including private nouses.
+    ///
+    /// # Cancel safety
+    ///
+    /// Cancel-safe. Partial results are discarded if cancelled; no state is
+    /// mutated.
+    pub async fn list_all(&self) -> Vec<NousStatus> {
+        self.list_visible(true).await
+    }
+
+    async fn list_visible(&self, include_private: bool) -> Vec<NousStatus> {
         let mut statuses = Vec::with_capacity(self.actors.len());
         for entry in self.actors.values() {
+            if !include_private && entry.config.private {
+                continue;
+            }
             match entry.handle.status().await {
                 Ok(status) => statuses.push(status),
                 Err(_) => {

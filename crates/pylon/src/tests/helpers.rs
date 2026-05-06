@@ -46,27 +46,45 @@ pub(super) fn test_jwt_manager() -> Arc<JwtManager> {
 }
 
 pub(super) fn default_token() -> String {
+    token_for_role(symbolon::types::Role::Operator)
+}
+
+pub(super) fn token_for_role(role: symbolon::types::Role) -> String {
     test_jwt_manager()
-        .issue_access("test-user", symbolon::types::Role::Operator, None)
+        .issue_access("test-user", role, None)
         .expect("test token")
 }
 
 pub(super) async fn test_state() -> (Arc<AppState>, tempfile::TempDir) {
-    test_state_with_provider(true).await
+    test_state_with_provider_and_private(true, false).await
+}
+
+pub(super) async fn test_state_with_provider(
+    with_provider: bool,
+) -> (Arc<AppState>, tempfile::TempDir) {
+    test_state_with_provider_and_private(with_provider, false).await
+}
+
+pub(super) async fn test_state_with_private_nous() -> (Arc<AppState>, tempfile::TempDir) {
+    test_state_with_provider_and_private(true, true).await
 }
 
 #[expect(
     clippy::too_many_lines,
     reason = "test harness setup is inherently linear — splitting adds indirection without reducing reader burden"
 )]
-pub(super) async fn test_state_with_provider(
+async fn test_state_with_provider_and_private(
     with_provider: bool,
+    include_private_nous: bool,
 ) -> (Arc<AppState>, tempfile::TempDir) {
     let dir = tempfile::TempDir::new().expect("tmpdir");
     let root = dir.path();
 
     // WHY: Create oikos directory structure required by the actor pipeline
     std::fs::create_dir_all(root.join("nous/syn")).expect("mkdir nous/syn");
+    if include_private_nous {
+        std::fs::create_dir_all(root.join("nous/hidden")).expect("mkdir nous/hidden");
+    }
     std::fs::create_dir_all(root.join("shared")).expect("mkdir shared");
     std::fs::create_dir_all(root.join("theke")).expect("mkdir theke");
     std::fs::create_dir_all(root.join("data")).expect("mkdir data");
@@ -104,6 +122,17 @@ bind = "localhost"
     )]
     std::fs::write(root.join("nous/syn/SOUL.md"), "I am Syn, a test agent.")
         .expect("write SOUL.md");
+    if include_private_nous {
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "pylon test helpers write private nous fixtures to temp directories; synchronous I/O is required in test setup"
+        )]
+        std::fs::write(
+            root.join("nous/hidden/SOUL.md"),
+            "I am Hidden, a private test agent.",
+        )
+        .expect("write hidden SOUL.md");
+    }
 
     let store = SessionStore::open_in_memory().expect("in-memory store");
     let session_store = Arc::new(Mutex::new(store));
@@ -145,6 +174,21 @@ bind = "localhost"
         .spawn(nous_config, PipelineConfig::default())
         .await
         .expect("spawn nous in test harness");
+    if include_private_nous {
+        let hidden_config = NousConfig {
+            id: Arc::from("hidden"),
+            private: true,
+            generation: nous::config::NousGenerationConfig {
+                model: "mock-model".to_owned(),
+                ..Default::default()
+            },
+            ..NousConfig::default()
+        };
+        nous_manager
+            .spawn(hidden_config, PipelineConfig::default())
+            .await
+            .expect("spawn private nous in test harness");
+    }
 
     let jwt_manager = test_jwt_manager();
 
@@ -231,7 +275,11 @@ pub(super) fn authed_request(
 }
 
 pub(super) fn authed_get(uri: &str) -> Request<Body> {
-    let token = default_token();
+    authed_get_as(uri, symbolon::types::Role::Operator)
+}
+
+pub(super) fn authed_get_as(uri: &str, role: symbolon::types::Role) -> Request<Body> {
+    let token = token_for_role(role);
     Request::get(uri)
         .header("authorization", format!("{BEARER_PREFIX}{token}"))
         .body(Body::empty())

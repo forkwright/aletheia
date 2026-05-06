@@ -751,7 +751,9 @@ pub async fn assemble_context_conditional_with_cache(
     if let Some(cache) = cache {
         assembler = assembler.with_cache(cache);
     }
-    assembler = assembler.with_llm_recipe(recipe);
+    assembler = assembler
+        .with_private_workspace(nous_config.private)
+        .with_llm_recipe(recipe);
     let result = assembler
         .assemble_conditional_with_recipe(
             &nous_config.id,

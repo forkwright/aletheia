@@ -274,6 +274,7 @@ fn resolve_merges_agent_overrides() {
         allowed_roots: Vec::new(),
         domains: vec!["code".to_owned()],
         default: false,
+        private: false,
         recall: None,
         recall_profile: None,
     });
@@ -327,6 +328,7 @@ fn resolve_merges_allowed_roots() {
         allowed_roots: vec!["/extra".to_owned(), "/shared".to_owned()],
         domains: Vec::new(),
         default: false,
+        private: false,
         recall: None,
         recall_profile: None,
     });
@@ -352,6 +354,7 @@ fn resolve_thinking_override() {
         allowed_roots: Vec::new(),
         domains: Vec::new(),
         default: false,
+        private: false,
         recall: None,
         recall_profile: None,
     });
@@ -564,6 +567,7 @@ fn resolve_agency_unrestricted_sets_high_iterations() {
         allowed_roots: Vec::new(),
         domains: Vec::new(),
         default: false,
+        private: false,
         recall: None,
         recall_profile: None,
     });
@@ -593,6 +597,7 @@ fn resolve_agency_restricted_uses_old_defaults() {
         allowed_roots: Vec::new(),
         domains: Vec::new(),
         default: false,
+        private: false,
         recall: None,
         recall_profile: None,
     });
@@ -623,6 +628,7 @@ fn resolve_agency_per_agent_overrides_global() {
         allowed_roots: Vec::new(),
         domains: Vec::new(),
         default: false,
+        private: false,
         recall: None,
         recall_profile: None,
     });

@@ -292,6 +292,29 @@ async fn assemble_cascade_theke_fallback() {
 }
 
 #[tokio::test]
+async fn private_workspace_skips_theke_fallback() {
+    let (_dir, oikos) = setup_oikos(
+        "syn",
+        &[("SOUL.md", "identity"), ("theke:USER.md", "Alice T.")],
+    );
+    let assembler = BootstrapAssembler::new(&oikos).with_private_workspace(true);
+    let mut budget = default_budget();
+
+    let result = assembler
+        .assemble("syn", &mut budget)
+        .await
+        .expect("assemble should succeed");
+    assert!(
+        !result.system_prompt.contains("Alice T."),
+        "private workspace should not read USER.md from the theke tier"
+    );
+    assert!(
+        !result.sections_included.contains(&"USER.md".to_owned()),
+        "private workspace should include only nous-local workspace files"
+    );
+}
+
+#[tokio::test]
 async fn assemble_nous_overrides_theke() {
     let dir = TempDir::new().expect("create temp dir");
     let root = dir.path();
