@@ -59,6 +59,9 @@ fn config_returns_same_config() {
         max_relationships: 7,
         max_facts: 50,
         enabled: false,
+        extract_self_facts: true,
+        events_only_prompt: false,
+        default_tier: crate::knowledge::EpistemicTier::Inferred,
     };
     let engine = ExtractionEngine::new(config);
     let got = engine.config();

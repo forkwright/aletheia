@@ -3,9 +3,13 @@
 //! Provides a [`Reranker`] trait and a lightweight [`NaiveReranker`]
 //! implementation based on a simplified BM25 keyword-match score.
 //!
+//! Also provides an [`HttpReranker`] that forwards candidates to an external
+//! HTTP endpoint for cross-encoder or model-based scoring.
+//!
 //! Gated behind the `reranker` feature (enabled by default).
 
 use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
 use snafu::Snafu;
 use tracing::instrument;
 
@@ -141,6 +145,148 @@ impl Reranker for NaiveReranker {
     }
 }
 
+/// A lightweight DTO for a recall candidate sent to the HTTP reranker.
+#[derive(Debug, Serialize)]
+struct RerankCandidate<'a> {
+    content: &'a str,
+    source_id: &'a str,
+    source_type: &'a str,
+    nous_id: &'a str,
+    score: f64,
+}
+
+/// Request body sent to the HTTP reranker endpoint.
+#[derive(Debug, Serialize)]
+struct RerankRequest<'a> {
+    query: &'a str,
+    candidates: Vec<RerankCandidate<'a>>,
+}
+
+/// Response body from the HTTP reranker endpoint.
+#[derive(Debug, Deserialize)]
+struct RerankResponse {
+    scores: Vec<f64>,
+}
+
+/// An HTTP-based reranker that delegates scoring to a remote endpoint.
+///
+/// POSTs the query and candidate list as JSON and expects a JSON response
+/// containing a parallel `scores` array.  On any HTTP or parse error the
+/// trait method returns [`EpistemeError::RerankerFailed`]; callers such as
+/// [`RecallEngine::rank_and_rerank`] fall back to the baseline ranking.
+#[derive(Debug, Clone)]
+pub struct HttpReranker {
+    client: reqwest::Client,
+    url: String,
+}
+
+impl HttpReranker {
+    /// Create a new HTTP reranker pointing at `url`.
+    #[must_use]
+    pub fn new(url: impl Into<String>) -> Self {
+        // WHY: workspace reqwest uses rustls-no-provider, so callers must install
+        // the crypto provider before constructing an HTTP client.
+        if let Err(err) = rustls::crypto::ring::default_provider().install_default() {
+            tracing::trace!(?err, "rustls crypto provider already installed");
+        }
+
+        Self {
+            client: reqwest::Client::new(),
+            url: url.into(),
+        }
+    }
+}
+
+#[async_trait]
+impl Reranker for HttpReranker {
+    #[instrument(skip(self, candidates))]
+    async fn rerank(
+        &self,
+        query: &str,
+        mut candidates: Vec<RecallCandidate>,
+    ) -> Result<Vec<RecallCandidate>, EpistemeError> {
+        if candidates.is_empty() {
+            return Ok(candidates);
+        }
+
+        let req_body = RerankRequest {
+            query,
+            candidates: candidates
+                .iter()
+                .map(|c| RerankCandidate {
+                    content: &c.content,
+                    source_id: &c.source_id,
+                    source_type: &c.source_type,
+                    nous_id: &c.nous_id,
+                    score: c.score,
+                })
+                .collect(),
+        };
+
+        let response = self
+            .client
+            .post(&self.url)
+            .json(&req_body)
+            .send()
+            .await
+            .map_err(|e| {
+                RerankerFailedSnafu {
+                    message: format!("HTTP request failed: {e}"),
+                }
+                .build()
+            })?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let body = match response.text().await {
+                Ok(body) => body,
+                Err(err) => format!("<failed to read error body: {err}>"),
+            };
+            return Err(RerankerFailedSnafu {
+                message: format!("HTTP {status}: {body}"),
+            }
+            .build());
+        }
+
+        let resp_body: RerankResponse = response.json().await.map_err(|e| {
+            RerankerFailedSnafu {
+                message: format!("failed to parse reranker response: {e}"),
+            }
+            .build()
+        })?;
+
+        if resp_body.scores.len() != candidates.len() {
+            return Err(RerankerFailedSnafu {
+                message: format!(
+                    "score count mismatch: expected {}, got {}",
+                    candidates.len(),
+                    resp_body.scores.len()
+                ),
+            }
+            .build());
+        }
+
+        for (candidate, score) in candidates.iter_mut().zip(resp_body.scores) {
+            candidate.score = score;
+        }
+
+        let mut indexed: Vec<(usize, RecallCandidate)> =
+            candidates.into_iter().enumerate().collect();
+        indexed.sort_by(|(ia, a), (ib, b)| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| ia.cmp(ib))
+        });
+
+        Ok(indexed.into_iter().map(|(_, c)| c).collect())
+    }
+
+    fn name(&self) -> &'static str {
+        "http-reranker"
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #![expect(clippy::expect_used, reason = "test assertions")]
@@ -255,6 +401,158 @@ mod tests {
             reranked[0].source_id, "query term exact match",
             "naive reranker should reorder top-k based on keyword match"
         );
+    }
+
+    #[tokio::test]
+    async fn http_reranker_reorders_by_remote_scores() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/rerank"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "scores": [0.1, 0.9]
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let reranker = HttpReranker::new(format!("{}/rerank", server.uri()));
+        let candidates = vec![
+            make_candidate("foo bar baz", 0.5),
+            make_candidate("query term exact match", 0.5),
+        ];
+
+        let result = reranker
+            .rerank("query term", candidates)
+            .await
+            .expect("HTTP reranker should succeed");
+
+        assert_eq!(result.len(), 2);
+        assert_eq!(
+            result[0].source_id, "query term exact match",
+            "higher remote score should be first"
+        );
+        assert_eq!(result[1].source_id, "foo bar baz");
+    }
+
+    #[tokio::test]
+    async fn http_reranker_preserves_order_on_equal_scores() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/rerank"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "scores": [0.5, 0.5, 0.5]
+            })))
+            .mount(&server)
+            .await;
+
+        let reranker = HttpReranker::new(format!("{}/rerank", server.uri()));
+        let candidates = vec![
+            make_candidate("aaa bbb ccc", 0.5),
+            make_candidate("ddd eee fff", 0.5),
+            make_candidate("ggg hhh iii", 0.5),
+        ];
+
+        let result = reranker
+            .rerank("xyz unrelated", candidates.clone())
+            .await
+            .expect("HTTP reranker should not fail");
+
+        assert_eq!(result.len(), 3);
+        assert_eq!(result[0].source_id, candidates[0].source_id);
+        assert_eq!(result[1].source_id, candidates[1].source_id);
+        assert_eq!(result[2].source_id, candidates[2].source_id);
+    }
+
+    #[tokio::test]
+    async fn http_reranker_returns_err_on_http_error() {
+        use wiremock::matchers::method;
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(503))
+            .mount(&server)
+            .await;
+
+        let reranker = HttpReranker::new(server.uri());
+        let candidates = vec![make_candidate("foo bar baz", 0.5)];
+
+        let result = reranker.rerank("query", candidates).await;
+        assert!(
+            matches!(result, Err(EpistemeError::RerankerFailed { .. })),
+            "HTTP error should yield RerankerFailed"
+        );
+    }
+
+    #[tokio::test]
+    async fn http_reranker_returns_err_on_score_count_mismatch() {
+        use wiremock::matchers::method;
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "scores": [0.5]
+            })))
+            .mount(&server)
+            .await;
+
+        let reranker = HttpReranker::new(server.uri());
+        let candidates = vec![
+            make_candidate("foo bar baz", 0.5),
+            make_candidate("query term exact match", 0.5),
+        ];
+
+        let result = reranker.rerank("query", candidates).await;
+        assert!(
+            matches!(result, Err(EpistemeError::RerankerFailed { .. })),
+            "score count mismatch should yield RerankerFailed"
+        );
+    }
+
+    #[tokio::test]
+    async fn http_reranker_empty_candidates_short_circuits() {
+        let reranker = HttpReranker::new("http://localhost:9999/rerank");
+        let result = reranker
+            .rerank("query", vec![])
+            .await
+            .expect("empty candidates should short-circuit without network call");
+        assert!(result.is_empty());
+    }
+
+    #[tokio::test]
+    async fn recall_pipeline_with_reranker_http_falls_back_on_error() {
+        use wiremock::matchers::method;
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(503))
+            .mount(&server)
+            .await;
+
+        let engine = RecallEngine::new()
+            .with_reranker(Some(Arc::new(HttpReranker::new(server.uri()))))
+            .with_reranker_top_k(20);
+
+        let candidates = vec![
+            make_candidate("foo bar baz", 0.9),
+            make_candidate("query term exact match", 0.1),
+        ];
+
+        let baseline = engine.rank(candidates.clone());
+        let reranked = engine.rank_and_rerank("query term", candidates).await;
+
+        assert_eq!(baseline.len(), reranked.len());
+        for (b, r) in baseline.iter().zip(reranked.iter()) {
+            assert_eq!(b.source_id, r.source_id);
+        }
     }
 
     #[test]
