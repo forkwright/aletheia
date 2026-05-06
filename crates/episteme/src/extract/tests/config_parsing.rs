@@ -25,6 +25,11 @@ fn config_default() {
     );
     assert_eq!(cfg.max_facts, 50, "default max_facts should be 50");
     assert!(cfg.enabled, "extraction should be enabled by default");
+    assert_eq!(
+        cfg.provider,
+        BookkeepingProviderKind::Llm,
+        "default bookkeeping provider should be llm"
+    );
     assert!(
         cfg.extract_self_facts,
         "extract_self_facts should be true by default"
@@ -38,6 +43,43 @@ fn config_default() {
         crate::knowledge::EpistemicTier::Inferred,
         "default_tier should be Inferred by default"
     );
+}
+
+#[cfg(not(feature = "gliner"))]
+#[tokio::test]
+async fn gliner_provider_falls_back_to_llm_when_feature_disabled() {
+    struct MockProvider;
+
+    impl ExtractionProvider for MockProvider {
+        fn complete<'a>(
+            &'a self,
+            _system: &'a str,
+            _user_message: &'a str,
+        ) -> std::pin::Pin<
+            Box<dyn std::future::Future<Output = Result<String, ExtractionError>> + Send + 'a>,
+        > {
+            Box::pin(async {
+                Ok(r#"{"entities":[],"relationships":[],"facts":[{"subject":"Alice","predicate":"uses","object":"Aletheia","confidence":0.99}]}"#.to_owned())
+            })
+        }
+    }
+
+    let engine = ExtractionEngine::new(ExtractionConfig {
+        provider: BookkeepingProviderKind::Gliner,
+        ..ExtractionConfig::default()
+    });
+    let messages = [ConversationMessage {
+        role: "user".to_owned(),
+        tool_calls: None,
+        reasoning: None,
+        content: "Alice uses Aletheia for persistent memory across sessions.".to_owned(),
+    }];
+
+    let extraction = engine
+        .extract(&messages, &MockProvider)
+        .await
+        .expect("feature-off GLiNER provider selection should fall back to LLM");
+    assert_eq!(extraction.facts[0].subject, "Alice");
 }
 
 #[test]

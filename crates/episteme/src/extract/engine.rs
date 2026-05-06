@@ -1,6 +1,10 @@
+#[cfg(feature = "gliner")]
+use eidos::bookkeeping::BookkeepingProvider;
 use snafu::IntoError;
 use tracing::instrument;
 
+#[cfg(feature = "gliner")]
+use super::error::LlmCallSnafu;
 #[cfg(feature = "mneme-engine")]
 use super::error::PersistSnafu;
 use super::error::{ExtractionError, ParseResponseSnafu};
@@ -9,11 +13,14 @@ use super::refinement;
 #[cfg(feature = "mneme-engine")]
 use super::types::PersistResult;
 use super::types::{
-    ConversationMessage, Extraction, ExtractionConfig, ExtractionPrompt, RefinedExtraction,
+    BookkeepingProviderKind, ConversationMessage, Extraction, ExtractionConfig, ExtractionPrompt,
+    RefinedExtraction,
 };
 #[cfg(feature = "mneme-engine")]
 use super::utils::slugify;
 use super::utils::strip_code_fences;
+#[cfg(feature = "gliner")]
+use crate::bookkeeping::GlinerExtractionProvider;
 use crate::bookkeeping::LlmBookkeepingProvider;
 use crate::causal;
 
@@ -216,8 +223,7 @@ Rules:
             });
         }
 
-        LlmBookkeepingProvider::new(self, provider)
-            .extract_messages(messages)
+        self.extract_with_selected_provider(messages, provider, None)
             .await
     }
 
@@ -283,8 +289,8 @@ Rules:
                     acc
                 });
         let turn_type = refinement::classify_turn(&combined);
-        let mut extraction = LlmBookkeepingProvider::new(self, provider)
-            .extract_messages_with_turn_type(messages, turn_type)
+        let mut extraction = self
+            .extract_with_selected_provider(messages, provider, Some(turn_type))
             .await?;
         let correction = refinement::detect_correction(&combined);
         let boost = turn_type.confidence_boost() + correction.confidence_boost;
@@ -612,4 +618,70 @@ Rules:
 
         Ok(result)
     }
+
+    async fn extract_with_selected_provider(
+        &self,
+        messages: &[ConversationMessage],
+        provider: &dyn ExtractionProvider,
+        turn_type: Option<refinement::TurnType>,
+    ) -> Result<Extraction, ExtractionError> {
+        match self.config.provider {
+            BookkeepingProviderKind::Llm => {
+                let bookkeeping = LlmBookkeepingProvider::new(self, provider);
+                if let Some(turn_type) = turn_type {
+                    bookkeeping
+                        .extract_messages_with_turn_type(messages, turn_type)
+                        .await
+                } else {
+                    bookkeeping.extract_messages(messages).await
+                }
+            }
+            BookkeepingProviderKind::Gliner => {
+                #[cfg(feature = "gliner")]
+                {
+                    let bookkeeping = GlinerExtractionProvider::new(self, provider)
+                        .map_err(|err| bookkeeping_to_extraction_error(&err))?;
+                    if let Some(turn_type) = turn_type {
+                        bookkeeping
+                            .extract_messages_with_turn_type(
+                                messages,
+                                turn_type,
+                                &self.config.schema(),
+                            )
+                            .await
+                            .map_err(|err| bookkeeping_to_extraction_error(&err))
+                    } else {
+                        bookkeeping
+                            .extract_knowledge(messages, &self.config.schema())
+                            .await
+                            .map_err(|err| bookkeeping_to_extraction_error(&err))
+                    }
+                }
+                #[cfg(not(feature = "gliner"))]
+                {
+                    tracing::warn!(
+                        "GLiNER bookkeeping provider requested but episteme/gliner is disabled; falling back to LLM"
+                    );
+                    let bookkeeping = LlmBookkeepingProvider::new(self, provider);
+                    if let Some(turn_type) = turn_type {
+                        bookkeeping
+                            .extract_messages_with_turn_type(messages, turn_type)
+                            .await
+                    } else {
+                        bookkeeping.extract_messages(messages).await
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[cfg(feature = "gliner")]
+fn bookkeeping_to_extraction_error(
+    error: &eidos::bookkeeping::BookkeepingError,
+) -> ExtractionError {
+    LlmCallSnafu {
+        message: error.to_string(),
+    }
+    .build()
 }

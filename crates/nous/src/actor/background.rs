@@ -87,7 +87,30 @@ impl NousActor {
             return;
         }
 
-        let config = extraction_config.clone();
+        #[cfg(feature = "gliner")]
+        let mut config = extraction_config.clone();
+        #[cfg(not(feature = "gliner"))]
+        let mut config = extraction_config.clone();
+        config.provider = match self.config.behavior.knowledge_extraction_provider {
+            taxis::config::BookkeepingProviderKind::Llm => {
+                episteme::extract::BookkeepingProviderKind::Llm
+            }
+            taxis::config::BookkeepingProviderKind::Gliner => {
+                episteme::extract::BookkeepingProviderKind::Gliner
+            }
+            _ => episteme::extract::BookkeepingProviderKind::Llm,
+        };
+        #[cfg(not(feature = "gliner"))]
+        if matches!(
+            config.provider,
+            episteme::extract::BookkeepingProviderKind::Gliner
+        ) {
+            warn!(
+                nous_id = %self.id,
+                "GLiNER extraction provider requested but nous/gliner is disabled; falling back to LLM"
+            );
+            config.provider = episteme::extract::BookkeepingProviderKind::Llm;
+        }
         let providers = Arc::clone(&self.services.providers);
         let nous_id = self.id.clone();
         let user = user_content.to_owned();
@@ -574,7 +597,7 @@ async fn run_skill_extraction(
 
 /// Run distillation as a background task. Loads history, calls LLM, applies results.
 async fn run_background_distillation(
-    store: Arc<Mutex<SessionStore>>,
+    store: Arc<Mutex<SessionStore>>, // kanon:ignore RUST/no-arc-mutex-anti-pattern
     providers: Arc<ProviderRegistry>,
     session_id: String,
     nous_id: String,

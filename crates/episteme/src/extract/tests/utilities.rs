@@ -59,6 +59,7 @@ fn config_returns_same_config() {
         max_relationships: 7,
         max_facts: 50,
         enabled: false,
+        provider: BookkeepingProviderKind::Llm,
         extract_self_facts: true,
         events_only_prompt: false,
         default_tier: crate::knowledge::EpistemicTier::Inferred,
@@ -615,14 +616,20 @@ mod proptests {
         #[test]
         fn parse_never_panics_on_arbitrary_input(input in "\\PC{0,500}") {
             let engine = ExtractionEngine::new(ExtractionConfig::default());
-            // INVARIANT: Must return Ok or Err, never panic
-            let _ = engine.parse_response(&input);
+            let result = engine.parse_response(&input);
+            prop_assert!(
+                result.is_ok() || result.is_err(),
+                "parse_response must return instead of panicking"
+            );
         }
 
         #[test]
         fn strip_code_fences_never_panics(input in "\\PC{0,500}") {
-            // INVARIANT: Must return a string, never panic
-            let _ = utils::strip_code_fences(&input);
+            let stripped = utils::strip_code_fences(&input);
+            prop_assert!(
+                stripped.len() <= input.len(),
+                "strip_code_fences should only remove fence text"
+            );
         }
 
         #[test]

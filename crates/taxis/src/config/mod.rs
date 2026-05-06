@@ -11,11 +11,11 @@ pub use agents::{
     ModelSpec, NousDefinition, RecallProfile, RecallSettings, RecallWeights,
 };
 pub use behavior::{
-    AnthropicConfig, ApiLimitsConfig, CapacityConfig, CronTaskConfig, DaemonBehaviorConfig,
-    DeploymentTarget, DispatchConfig, DispatchSpecConfig, JwtSettings, KnowledgeConfig,
-    LlmProviderConfig, MatrixAccountConfig, MatrixConfig, MessagingConfig, NousBehaviorConfig,
-    PromptCacheMode, ProviderBehaviorConfig, ProviderKind, RetrySettings, TimeoutsConfig,
-    ToolLimitsConfig, TuningConfig,
+    AnthropicConfig, ApiLimitsConfig, BookkeepingProviderKind, CapacityConfig, CronTaskConfig,
+    DaemonBehaviorConfig, DeploymentTarget, DispatchConfig, DispatchSpecConfig, ExtractionConfig,
+    JwtSettings, KnowledgeConfig, LlmProviderConfig, MatrixAccountConfig, MatrixConfig,
+    MessagingConfig, NousBehaviorConfig, PromptCacheMode, ProviderBehaviorConfig, ProviderKind,
+    RetrySettings, TimeoutsConfig, ToolLimitsConfig, TuningConfig,
 };
 pub use gateway::{
     BodyLimitConfig, CorsConfig, CsrfConfig, GatewayAuthConfig, GatewayConfig,
@@ -38,10 +38,11 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 /// Root configuration for an Aletheia instance.
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)] // kanon:ignore RUST/no-debug-derive-on-public-types
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
-pub struct AletheiaConfig {
+#[rustfmt::skip]
+pub struct AletheiaConfig { // kanon:ignore RUST/config-deny-unknown-fields
     /// Agent definitions and shared defaults.
     pub agents: AgentsConfig,
     /// HTTP gateway settings (port, bind address, auth, TLS, CORS).
@@ -223,7 +224,7 @@ pub struct ModelPricing {
 }
 
 /// Maps a channel source to a nous agent.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)] // kanon:ignore RUST/no-debug-derive-on-public-types
 #[serde(rename_all = "camelCase")]
 pub struct ChannelBinding {
     /// Channel type (e.g., "signal").
@@ -234,7 +235,7 @@ pub struct ChannelBinding {
     pub nous_id: String,
     /// Session key pattern. Supports `{source}` and `{group}` placeholders.
     #[serde(default = "default_session_pattern")]
-    pub session_key: String,
+    pub session_key: String, // kanon:ignore RUST/plain-string-secret
 }
 
 fn default_session_pattern() -> String {
@@ -245,7 +246,8 @@ fn default_session_pattern() -> String {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
-pub struct EmbeddingSettings {
+#[rustfmt::skip]
+pub struct EmbeddingSettings { // kanon:ignore RUST/config-deny-unknown-fields
     /// Provider type: "mock", "candle".
     pub provider: String,
     /// Provider-specific model name.
@@ -268,7 +270,8 @@ impl Default for EmbeddingSettings {
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
-pub struct ChannelsConfig {
+#[rustfmt::skip]
+pub struct ChannelsConfig { // kanon:ignore RUST/config-deny-unknown-fields
     /// Signal messenger transport configuration.
     pub signal: SignalConfig,
     /// Matrix (conduwuit) transport configuration. Feature-gated at the
@@ -280,7 +283,8 @@ pub struct ChannelsConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
-pub struct SignalConfig {
+#[rustfmt::skip]
+pub struct SignalConfig { // kanon:ignore RUST/config-deny-unknown-fields
     /// Whether the Signal channel is active.
     pub enabled: bool,
     /// Named Signal accounts keyed by account label.
@@ -300,7 +304,8 @@ impl Default for SignalConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
-pub struct SignalAccountConfig {
+#[rustfmt::skip]
+pub struct SignalAccountConfig { // kanon:ignore RUST/config-deny-unknown-fields
     /// Whether this account is active.
     pub enabled: bool,
     /// Hostname for the signal-cli JSON-RPC HTTP interface.

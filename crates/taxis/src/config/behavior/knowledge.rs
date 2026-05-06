@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 pub struct KnowledgeConfig {
     /// Maximum LLM calls per fact during conflict resolution. Default: 3.
     /// Mirrors `episteme::conflict::MAX_LLM_CALLS_PER_FACT`.
@@ -39,6 +40,8 @@ pub struct KnowledgeConfig {
     pub extraction_min_fact_length: usize,
     /// Maximum character length for an extracted fact. Default: 500.
     pub extraction_max_fact_length: usize,
+    /// Provider selection for the extraction bookkeeping pass.
+    pub extraction: ExtractionConfig,
     /// Minimum tool calls before operational instinct scoring fires. Default: 5.
     /// Mirrors `episteme::ops_facts::MIN_TOOL_CALLS`.
     pub instinct_min_tool_calls: u64,
@@ -98,6 +101,7 @@ impl Default for KnowledgeConfig {
             extraction_confidence_threshold: 0.3,
             extraction_min_fact_length: 10,
             extraction_max_fact_length: 500,
+            extraction: ExtractionConfig::default(),
             instinct_min_tool_calls: 5,
             instinct_max_param_value_len: 200,
             instinct_max_context_summary_len: 100,
@@ -113,4 +117,34 @@ impl Default for KnowledgeConfig {
             surprise_ema_alpha: 0.3,
         }
     }
+}
+
+/// Provider-specific extraction configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+#[serde(deny_unknown_fields)]
+pub struct ExtractionConfig {
+    /// Bookkeeping provider implementation. Default: `llm`.
+    pub provider: BookkeepingProviderKind,
+}
+
+impl Default for ExtractionConfig {
+    fn default() -> Self {
+        Self {
+            provider: BookkeepingProviderKind::Llm,
+        }
+    }
+}
+
+/// Bookkeeping provider selected for extraction.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+#[non_exhaustive]
+pub enum BookkeepingProviderKind {
+    /// Compatibility LLM prompt + parser path.
+    #[default]
+    Llm,
+    /// `GLiNER` ONNX entity adapter with LLM fallback.
+    Gliner,
 }
