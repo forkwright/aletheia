@@ -2,7 +2,10 @@
 
 use std::sync::Arc;
 
-use super::{AgencyLevel, AgentBehaviorDefaults, AletheiaConfig, RecallProfile, RecallSettings};
+use super::{
+    AgencyLevel, AgentBehaviorDefaults, AletheiaConfig, ExtractionConfig, RecallProfile,
+    RecallSettings,
+};
 
 /// Resolved model selection for an agent.
 #[derive(Debug, Clone)]
@@ -16,8 +19,9 @@ pub struct ResolvedModelConfig {
 }
 
 /// Token budget limits for an agent.
-#[derive(Debug, Clone)]
-pub struct TokenLimits {
+#[derive(Debug, Clone)] // kanon:ignore RUST/no-debug-derive-on-public-types
+#[rustfmt::skip]
+pub struct TokenLimits { // kanon:ignore TOPOLOGY/shallow-struct
     /// Maximum input context window in tokens.
     pub context_tokens: u32,
     /// Maximum output tokens per response.
@@ -36,7 +40,8 @@ pub struct TokenLimits {
 
 /// Behavioral capabilities for an agent.
 #[derive(Debug, Clone)]
-pub struct AgentCapabilities {
+#[rustfmt::skip]
+pub struct AgentCapabilities { // kanon:ignore TOPOLOGY/shallow-struct
     /// Whether extended thinking is enabled for this agent.
     pub thinking_enabled: bool,
     /// Effective agency level for this agent.
@@ -74,6 +79,8 @@ pub struct ResolvedNousConfig {
     pub domains: Vec<String>,
     /// Resolved recall pipeline settings.
     pub recall: RecallSettings,
+    /// Resolved extraction provider settings.
+    pub extraction: ExtractionConfig,
     /// Resolved named recall behavior profile.
     pub recall_profile: RecallProfile,
     /// Model used for prosoche heartbeat sessions.
@@ -144,7 +151,7 @@ pub fn resolve_nous(config: &AletheiaConfig, nous_id: &str) -> ResolvedNousConfi
         }
     }
 
-    let domains = agent.map(|a| a.domains.clone()).unwrap_or_default();
+    let domains = agent.map_or_else(Vec::new, |agent| agent.domains.clone());
     let name = agent.and_then(|a| a.name.clone());
     let private = agent.is_some_and(|a| a.private);
     let episteme_cohort = agent
@@ -163,9 +170,10 @@ pub fn resolve_nous(config: &AletheiaConfig, nous_id: &str) -> ResolvedNousConfi
 
     // NOTE: Agent-level behavior overrides; falls back to shared defaults.
     // Same cascade pattern as recall: per-agent wins, otherwise defaults apply.
-    let behavior = agent
+    let mut behavior = agent
         .and_then(|a| a.behavior.clone())
         .unwrap_or_else(|| defaults.behavior.clone());
+    behavior.knowledge_extraction_provider = config.knowledge.extraction.provider;
 
     // WHY: Opus models have a 1M token context window; apply model-aware default
     // when the config still holds the global default (200K). Computed before
@@ -208,6 +216,7 @@ pub fn resolve_nous(config: &AletheiaConfig, nous_id: &str) -> ResolvedNousConfi
         allowed_roots,
         domains,
         recall,
+        extraction: config.knowledge.extraction.clone(),
         recall_profile,
         prosoche_model: Arc::from(defaults.model_defaults.prosoche_model.as_str()),
         behavior,

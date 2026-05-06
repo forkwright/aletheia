@@ -7,8 +7,11 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 
-[lints]
-workspace = true
+# WHY: token estimation runs on every system prompt assembly and history
+# truncation; surface regressions early.
+[[bench]]
+name = "budget"
+harness = false
 
 [features]
 knowledge-store = ["mneme/mneme-engine"]
@@ -20,6 +23,8 @@ pre-llm-triage = []
 # Disabled by default to avoid pulling in reqwest + rustls for builds that
 # do not need recall reranking.
 reranker = ["episteme/reranker"]
+# Enables episteme's in-process GLiNER ONNX bookkeeping provider.
+gliner = ["episteme/gliner"]
 # Test tiers (see docs/test-tiers.md)
 test-core = ["knowledge-store"]
 test-full = ["test-core"]
@@ -64,8 +69,5 @@ indexmap = { workspace = true }
 proptest = { workspace = true }
 tempfile = { workspace = true }
 
-# WHY: token estimation runs on every system prompt assembly and history
-# truncation; surface regressions early.
-[[bench]]
-name = "budget"
-harness = false
+[lints]
+workspace = true

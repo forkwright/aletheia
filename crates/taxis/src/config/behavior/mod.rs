@@ -17,7 +17,7 @@ pub use api::ApiLimitsConfig;
 pub use daemon::DaemonBehaviorConfig;
 pub use dispatch::{CronTaskConfig, DispatchConfig, DispatchSpecConfig};
 pub use jwt::JwtSettings;
-pub use knowledge::KnowledgeConfig;
+pub use knowledge::{BookkeepingProviderKind, ExtractionConfig, KnowledgeConfig};
 pub use matrix::{MatrixAccountConfig, MatrixConfig};
 pub use messaging::MessagingConfig;
 pub use nous::NousBehaviorConfig;

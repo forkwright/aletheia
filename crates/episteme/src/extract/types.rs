@@ -23,6 +23,9 @@ pub struct ExtractionConfig {
     pub max_facts: usize,
     /// Whether extraction is active.
     pub enabled: bool,
+    /// Bookkeeping provider used by the extraction engine.
+    #[serde(default)]
+    pub provider: BookkeepingProviderKind,
     /// Whether to extract facts whose subject is a first-person self-reference.
     ///
     /// When `false`, facts with subjects like "I" or obvious assistant
@@ -56,6 +59,7 @@ impl Default for ExtractionConfig {
             max_relationships: 30,
             max_facts: 50,
             enabled: true,
+            provider: BookkeepingProviderKind::Llm,
             extract_self_facts: true,
             events_only_prompt: false,
             default_tier: EpistemicTier::Inferred,
@@ -73,6 +77,18 @@ impl ExtractionConfig {
             max_facts: self.max_facts,
         }
     }
+}
+
+/// Bookkeeping provider implementation selected for extraction.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+#[non_exhaustive]
+pub enum BookkeepingProviderKind {
+    /// Compatibility LLM prompt + parser path.
+    #[default]
+    Llm,
+    /// `GLiNER` ONNX entity adapter with LLM fallback for facts and relationships.
+    Gliner,
 }
 
 /// The system prompt and user message for an extraction LLM call.

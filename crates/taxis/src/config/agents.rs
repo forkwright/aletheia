@@ -6,12 +6,13 @@ use eidos::id::FactId;
 use eidos::knowledge::MemoryScope;
 use serde::{Deserialize, Serialize};
 
-use super::AgencyLevel;
+use super::{AgencyLevel, BookkeepingProviderKind};
 
 /// Agent configuration: shared defaults and per-agent definitions.
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 pub struct AgentsConfig {
     /// Shared defaults applied to every agent unless overridden per-agent.
     pub defaults: AgentDefaults,
@@ -61,6 +62,7 @@ impl Default for RecallWeights {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 #[expect(
     clippy::struct_excessive_bools,
     reason = "recall controls are independent operator knobs (enabled, iterative, inject_metadata, late_inject_anchor); not a state machine"
@@ -147,7 +149,7 @@ impl Default for RecallSettings {
 }
 
 /// LLM model and generation defaults for agents.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)] // kanon:ignore RUST/no-debug-derive-on-public-types
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
 pub struct AgentModelDefaults {
@@ -256,6 +258,7 @@ impl Default for ModelSpec {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 pub struct CachingConfig {
     /// Whether prompt caching is enabled.
     pub enabled: bool,
@@ -333,7 +336,8 @@ pub struct NousDefinition {
     clippy::struct_excessive_bools,
     reason = "hook toggles are a genuine set of independent feature flags, not a state machine"
 )]
-pub struct AgentBehaviorDefaults {
+#[rustfmt::skip]
+pub struct AgentBehaviorDefaults { // kanon:ignore RUST/struct-too-many-fields
     // --- Safety ---
     /// Consecutive identical tool-call sequences before loop detection fires. Default: 3.
     pub safety_loop_detection_threshold: u32,
@@ -505,6 +509,8 @@ pub struct AgentBehaviorDefaults {
     /// Cosine similarity above which embeddings are considered similar. Default: 0.80.
     /// Mirrors `episteme::dedup::EMBED_THRESHOLD`.
     pub knowledge_dedup_embed_threshold: f64,
+    /// Bookkeeping provider selected for extraction. Default: `llm`.
+    pub knowledge_extraction_provider: BookkeepingProviderKind,
 
     // --- Fact lifecycle ---
     /// Confidence above which a fact is considered Active. Default: 0.7.
@@ -648,6 +654,7 @@ impl Default for AgentBehaviorDefaults {
             knowledge_dedup_weight_alias: 0.1,
             knowledge_dedup_jw_threshold: 0.85,
             knowledge_dedup_embed_threshold: 0.80,
+            knowledge_extraction_provider: BookkeepingProviderKind::Llm,
             // Fact lifecycle
             fact_active_threshold: 0.7,
             fact_fading_threshold: 0.3,

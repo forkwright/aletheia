@@ -1,5 +1,3 @@
-//! (Split from `config_tests.rs` — see parent mod.)
-
 #![expect(clippy::expect_used, reason = "test assertions")]
 
 use super::super::*;
@@ -18,6 +16,16 @@ fn resolve_nous_uses_defaults_when_no_override() {
     let config = AletheiaConfig::default();
     let resolved = resolve_nous(&config, "test-agent");
     assert_eq!(resolved.recall_profile, RecallProfile::Default);
+    assert_eq!(
+        resolved.extraction.provider,
+        BookkeepingProviderKind::Llm,
+        "unknown agents should default to LLM extraction"
+    );
+    assert_eq!(
+        resolved.behavior.knowledge_extraction_provider,
+        BookkeepingProviderKind::Llm,
+        "resolved behavior should carry the default extraction provider"
+    );
     assert!(
         !resolved.private,
         "unknown agents should default to public discovery"
@@ -156,6 +164,7 @@ fn new_deployment_sections_survive_serde_roundtrip() {
     let mut config = AletheiaConfig::default();
     config.nous_behavior.degraded_panic_threshold = 10;
     config.knowledge.conflict_max_candidates = 8;
+    config.knowledge.extraction.provider = BookkeepingProviderKind::Gliner;
     config.provider_behavior.complexity_low_threshold = 25;
     config.api_limits.max_history_limit = 500;
     config.daemon_behavior.prosoche_anomaly_sample_size = 20;
@@ -172,6 +181,11 @@ fn new_deployment_sections_survive_serde_roundtrip() {
     assert_eq!(
         back.knowledge.conflict_max_candidates, 8,
         "knowledge survives roundtrip"
+    );
+    assert_eq!(
+        back.knowledge.extraction.provider,
+        BookkeepingProviderKind::Gliner,
+        "knowledge extraction provider survives roundtrip"
     );
     assert_eq!(
         back.provider_behavior.complexity_low_threshold, 25,

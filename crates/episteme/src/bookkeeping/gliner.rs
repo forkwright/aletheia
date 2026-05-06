@@ -207,6 +207,53 @@ impl<'a> GlinerExtractionProvider<'a> {
             .await?;
         Ok(())
     }
+
+    pub(crate) async fn extract_messages(
+        &self,
+        messages: &[ConversationMessage],
+        schema: &ExtractionSchema,
+    ) -> BookkeepingResult<Extraction> {
+        let text = join_messages(messages);
+        let gliner_entities = match self.extract_entities(&text).await {
+            Ok(entities) => entities,
+            Err(err) => {
+                warn!(error = %err, "GLiNER extraction failed; falling back to LLM");
+                return self.fallback.extract_knowledge(messages, schema).await;
+            }
+        };
+
+        let mut extraction = self.fallback.extract_knowledge(messages, schema).await?;
+        merge_entities(&mut extraction.entities, gliner_entities);
+        Ok(extraction)
+    }
+
+    pub(crate) async fn extract_messages_with_turn_type(
+        &self,
+        messages: &[ConversationMessage],
+        turn_type: crate::extract::refinement::TurnType,
+        _schema: &ExtractionSchema,
+    ) -> BookkeepingResult<Extraction> {
+        let text = join_messages(messages);
+        let gliner_entities = match self.extract_entities(&text).await {
+            Ok(entities) => entities,
+            Err(err) => {
+                warn!(error = %err, "GLiNER extraction failed; falling back to LLM");
+                return self
+                    .fallback
+                    .extract_messages_with_turn_type(messages, turn_type)
+                    .await
+                    .map_err(|err| provider_failed("fallback_extract_knowledge", err));
+            }
+        };
+
+        let mut extraction = self
+            .fallback
+            .extract_messages_with_turn_type(messages, turn_type)
+            .await
+            .map_err(|err| provider_failed("fallback_extract_knowledge", err))?;
+        merge_entities(&mut extraction.entities, gliner_entities);
+        Ok(extraction)
+    }
 }
 
 impl BookkeepingProvider for GlinerExtractionProvider<'_> {
@@ -217,20 +264,7 @@ impl BookkeepingProvider for GlinerExtractionProvider<'_> {
     ) -> std::pin::Pin<
         Box<dyn std::future::Future<Output = BookkeepingResult<Extraction>> + Send + 'b>,
     > {
-        Box::pin(async move {
-            let text = join_messages(messages);
-            let gliner_entities = match self.extract_entities(&text).await {
-                Ok(entities) => entities,
-                Err(err) => {
-                    warn!(error = %err, "GLiNER extraction failed; falling back to LLM");
-                    return self.fallback.extract_knowledge(messages, schema).await;
-                }
-            };
-
-            let mut extraction = self.fallback.extract_knowledge(messages, schema).await?;
-            merge_entities(&mut extraction.entities, gliner_entities);
-            Ok(extraction)
-        })
+        Box::pin(async move { self.extract_messages(messages, schema).await })
     }
 
     fn extract_facts<'b>(

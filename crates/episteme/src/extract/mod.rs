@@ -24,8 +24,9 @@ pub use engine::ExtractionEngine;
 pub use error::{ExtractionError, LlmCallSnafu, ParseResponseSnafu, PersistSnafu};
 pub use provider::ExtractionProvider;
 pub use types::{
-    ConversationMessage, ExtractedEntity, ExtractedFact, ExtractedRelationship, ExtractedToolCall,
-    Extraction, ExtractionConfig, ExtractionPrompt, PersistResult, RefinedExtraction,
+    BookkeepingProviderKind, ConversationMessage, ExtractedEntity, ExtractedFact,
+    ExtractedRelationship, ExtractedToolCall, Extraction, ExtractionConfig, ExtractionPrompt,
+    PersistResult, RefinedExtraction,
 };
 
 #[cfg(test)]
