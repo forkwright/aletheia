@@ -627,6 +627,7 @@ impl RuntimeBuilder {
                         max_consecutive_tool_only_iterations: 3,
                     },
                     domains,
+                    private: resolved.private,
                     server_tools: Vec::new(),
                     cache_enabled: resolved.capabilities.cache_enabled,
                     recall: resolved.recall.into(),

@@ -500,6 +500,8 @@ pub struct BootstrapAssembler<'a> {
     cache: Option<&'a BootstrapFileCache>,
     /// Recipe for loading `_llm/` content. `None` skips _llm/ entirely.
     llm_recipe: LlmRecipe,
+    /// When true, resolve only this nous's workspace files and skip shared/theke fallback.
+    private_workspace: bool,
 }
 
 impl<'a> BootstrapAssembler<'a> {
@@ -514,6 +516,7 @@ impl<'a> BootstrapAssembler<'a> {
             min_truncation_budget,
             cache: None,
             llm_recipe: LlmRecipe::default(),
+            private_workspace: false,
         }
     }
 
@@ -531,6 +534,7 @@ impl<'a> BootstrapAssembler<'a> {
             min_truncation_budget,
             cache: None,
             llm_recipe: LlmRecipe::default(),
+            private_workspace: false,
         }
     }
 
@@ -552,6 +556,16 @@ impl<'a> BootstrapAssembler<'a> {
     #[must_use]
     pub fn with_llm_recipe(mut self, recipe: LlmRecipe) -> Self {
         self.llm_recipe = recipe;
+        self
+    }
+
+    /// Restrict workspace resolution to this nous's own directory.
+    ///
+    /// Private nouses still read their own bootstrap files, but do not borrow
+    /// cross-nous discovery sources from `shared/` or `theke/`.
+    #[must_use]
+    pub fn with_private_workspace(mut self, private_workspace: bool) -> Self {
+        self.private_workspace = private_workspace;
         self
     }
 
@@ -797,7 +811,7 @@ impl<'a> BootstrapAssembler<'a> {
                 continue;
             }
 
-            let Some(p) = cascade::resolve(self.oikos, nous_id, spec.filename, None) else {
+            let Some(p) = self.resolve_workspace_path(nous_id, spec.filename) else {
                 if spec.priority == SectionPriority::Required {
                     return Err(error::ContextAssemblySnafu {
                         message: format!("required file {} not found in cascade", spec.filename),
@@ -910,6 +924,15 @@ impl<'a> BootstrapAssembler<'a> {
         debug!("injected output-style section ({style_tokens} tokens)");
 
         Ok((sections, filtered))
+    }
+
+    fn resolve_workspace_path(&self, nous_id: &str, filename: &str) -> Option<PathBuf> {
+        if self.private_workspace {
+            let path = self.oikos.nous_dir(nous_id).join(filename);
+            return path.exists().then_some(path);
+        }
+
+        cascade::resolve(self.oikos, nous_id, filename, None)
     }
 
     /// Resolve `_llm/` content into bootstrap sections based on the recipe.

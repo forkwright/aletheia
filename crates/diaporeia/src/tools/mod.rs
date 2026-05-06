@@ -392,7 +392,11 @@ impl DiaporeiaServer {
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Cheap)?;
         let show_reliability = is_operator_or_above(self, &context).await;
-        let statuses = self.state.nous_manager.list().await;
+        let statuses = if show_reliability {
+            self.state.nous_manager.list_all().await
+        } else {
+            self.state.nous_manager.list().await
+        };
 
         let list: Vec<serde_json::Value> = statuses
             .iter()

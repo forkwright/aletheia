@@ -301,6 +301,9 @@ pub struct NousDefinition {
     /// Whether this is the default agent for unrouted messages.
     #[serde(default)]
     pub default: bool,
+    /// Whether this agent's workspace is hidden from public discovery.
+    #[serde(default)]
+    pub private: bool,
     /// Recall pipeline override; when `None`, inherits from [`AgentDefaults::recall`].
     #[serde(default)]
     pub recall: Option<RecallSettings>,

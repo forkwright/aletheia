@@ -18,6 +18,10 @@ fn resolve_nous_uses_defaults_when_no_override() {
     let config = AletheiaConfig::default();
     let resolved = resolve_nous(&config, "test-agent");
     assert_eq!(resolved.recall_profile, RecallProfile::Default);
+    assert!(
+        !resolved.private,
+        "unknown agents should default to public discovery"
+    );
     assert_eq!(
         resolved.behavior.distillation_context_token_trigger, 120_000,
         "default behavior should be used when no per-agent override is set"
@@ -41,6 +45,7 @@ fn resolve_nous_per_agent_override_wins() {
         allowed_roots: Vec::new(),
         domains: Vec::new(),
         default: false,
+        private: false,
         recall: None,
         recall_profile: None,
         behavior: Some(AgentBehaviorDefaults {
@@ -73,6 +78,7 @@ fn resolve_nous_non_overriding_agent_uses_defaults() {
         allowed_roots: Vec::new(),
         domains: Vec::new(),
         default: false,
+        private: false,
         recall: None,
         recall_profile: None,
         behavior: None,
@@ -97,6 +103,7 @@ fn resolve_nous_recall_profile_override_wins() {
         allowed_roots: Vec::new(),
         domains: Vec::new(),
         default: false,
+        private: true,
         recall: None,
         recall_profile: Some(RecallProfile::IdentityContinuity),
         behavior: None,
@@ -105,6 +112,10 @@ fn resolve_nous_recall_profile_override_wins() {
     let resolved = resolve_nous(&config, "identity");
 
     assert_eq!(resolved.recall_profile, RecallProfile::IdentityContinuity);
+    assert!(
+        resolved.private,
+        "per-agent private flag should propagate into resolved config"
+    );
 }
 
 #[test]

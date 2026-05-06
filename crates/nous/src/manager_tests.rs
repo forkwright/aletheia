@@ -72,6 +72,13 @@ fn demiurge_config() -> NousConfig {
     }
 }
 
+fn private_demiurge_config() -> NousConfig {
+    NousConfig {
+        private: true,
+        ..demiurge_config()
+    }
+}
+
 #[tokio::test]
 async fn spawn_returns_handle() {
     let (_dir, oikos) = make_oikos();
@@ -183,25 +190,54 @@ async fn configs_returns_all() {
 }
 
 #[tokio::test]
-async fn list_returns_all_statuses() {
+async fn list_hides_private_statuses() {
     let (_dir, oikos) = make_oikos();
     let mut mgr = make_manager(oikos);
 
     mgr.spawn(syn_config(), PipelineConfig::default())
         .await
         .expect("spawn");
-    mgr.spawn(demiurge_config(), PipelineConfig::default())
+    mgr.spawn(private_demiurge_config(), PipelineConfig::default())
         .await
         .expect("spawn");
 
     let statuses = mgr.list().await;
-    assert_eq!(statuses.len(), 2, "should list two actors");
+    assert_eq!(statuses.len(), 1, "public list should hide private actors");
+
+    let ids: Vec<&str> = statuses.iter().map(|s| s.id.as_str()).collect();
+    assert!(ids.contains(&"syn"), "statuses should include syn");
+    assert!(
+        !ids.contains(&"demiurge"),
+        "statuses should hide private demiurge"
+    );
+
+    mgr.shutdown_all().await;
+}
+
+#[tokio::test]
+async fn list_all_includes_private_statuses() {
+    let (_dir, oikos) = make_oikos();
+    let mut mgr = make_manager(oikos);
+
+    mgr.spawn(syn_config(), PipelineConfig::default())
+        .await
+        .expect("spawn");
+    mgr.spawn(private_demiurge_config(), PipelineConfig::default())
+        .await
+        .expect("spawn");
+
+    let statuses = mgr.list_all().await;
+    assert_eq!(
+        statuses.len(),
+        2,
+        "operator list should include private actors"
+    );
 
     let ids: Vec<&str> = statuses.iter().map(|s| s.id.as_str()).collect();
     assert!(ids.contains(&"syn"), "statuses should include syn");
     assert!(
         ids.contains(&"demiurge"),
-        "statuses should include demiurge"
+        "statuses should include private demiurge"
     );
 
     mgr.shutdown_all().await;

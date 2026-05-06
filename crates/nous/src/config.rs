@@ -225,6 +225,9 @@ pub struct NousConfig {
     /// Domain tags for this agent (static config + pack overlays).
     #[serde(default)]
     pub domains: Vec<String>,
+    /// Whether this agent's workspace is hidden from public discovery.
+    #[serde(default)]
+    pub private: bool,
     /// Server-side tools to include in API requests (e.g., web search).
     #[serde(default)]
     pub server_tools: Vec<hermeneus::types::ServerToolDefinition>,
@@ -328,6 +331,7 @@ impl Default for NousConfig {
             generation: NousGenerationConfig::default(),
             limits: NousLimits::default(),
             domains: Vec::new(),
+            private: false,
             server_tools: Vec::new(),
             cache_enabled: true,
             recall: RecallConfig::default(),
@@ -576,6 +580,7 @@ mod tests {
                 max_consecutive_tool_only_iterations: 3,
             },
             domains: vec!["medical".to_owned()],
+            private: true,
             server_tools: Vec::new(),
             cache_enabled: false,
             recall: RecallConfig::default(),
@@ -587,6 +592,7 @@ mod tests {
         assert_eq!(config.name.as_deref(), Some("Analyst"));
         assert!(config.generation.thinking_enabled);
         assert_eq!(config.domains.len(), 1);
+        assert!(config.private);
         assert!(!config.cache_enabled);
     }
 

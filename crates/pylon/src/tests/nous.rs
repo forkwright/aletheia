@@ -5,6 +5,7 @@
 use std::sync::Arc;
 
 use axum::http::StatusCode;
+use symbolon::types::Role;
 use tower::ServiceExt;
 
 use super::helpers::*;
@@ -19,6 +20,42 @@ async fn list_nous_returns_agents() {
     let agents = body["nous"].as_array().unwrap();
     assert_eq!(agents.len(), 1);
     assert_eq!(agents[0]["id"], "syn");
+}
+
+#[tokio::test]
+async fn list_nous_hides_private_agents_from_readonly_callers() {
+    let (state, _dir) = test_state_with_private_nous().await;
+    let router = build_router(Arc::clone(&state), &test_security_config());
+
+    let resp = router
+        .oneshot(authed_get_as("/api/v1/nous", Role::Readonly))
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    let agents = body["nous"].as_array().unwrap();
+    assert_eq!(agents.len(), 1);
+    assert_eq!(agents[0]["id"], "syn");
+}
+
+#[tokio::test]
+async fn list_nous_includes_private_agents_for_operators() {
+    let (state, _dir) = test_state_with_private_nous().await;
+    let router = build_router(Arc::clone(&state), &test_security_config());
+
+    let resp = router.oneshot(authed_get("/api/v1/nous")).await.unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    let agents = body["nous"].as_array().unwrap();
+    let ids: Vec<&str> = agents
+        .iter()
+        .filter_map(|agent| agent["id"].as_str())
+        .collect();
+    assert_eq!(agents.len(), 2);
+    assert!(ids.contains(&"syn"));
+    assert!(ids.contains(&"hidden"));
 }
 
 #[tokio::test]

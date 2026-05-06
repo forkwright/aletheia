@@ -112,6 +112,7 @@ impl SpawnService for SpawnServiceImpl {
                 max_consecutive_tool_only_iterations: 3,
             },
             domains: Vec::new(),
+            private: false,
             server_tools: Vec::new(),
             cache_enabled: true,
             recall: crate::recall::RecallConfig::default(),
