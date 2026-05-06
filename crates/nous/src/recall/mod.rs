@@ -434,6 +434,10 @@ impl RecallStage {
                 // layer so the sovereignty filter in `finalize_results` sees
                 // per-fact classification rather than assuming `Public`.
                 sensitivity: r.sensitivity,
+                // WHY: eidos raw recall results do not carry visibility yet;
+                // treat imported candidates conservatively until R722 wires
+                // visibility through the storage/search boundary.
+                visibility: mneme::knowledge::Visibility::Private,
             })
             .collect()
     }

@@ -19,7 +19,7 @@ use eidos::meta::{ArtefactMeta, Stamped};
 use serde::{Deserialize, Serialize};
 use tracing::instrument;
 
-use crate::knowledge::{EpistemicTier, FactType};
+use crate::knowledge::{EpistemicTier, FactType, Visibility};
 
 #[cfg(feature = "reranker")]
 pub mod reranker;
@@ -133,6 +133,12 @@ pub struct ScoredResult {
     /// pipeline can filter by the active provider's deployment target
     /// (#3404, #3413).
     pub sensitivity: crate::knowledge::FactSensitivity,
+    /// Visibility level controlling which nous / consumers may see this result.
+    ///
+    /// `Private` is visible only to the owning nous; `Shared` and `Published`
+    /// are broadly visible; `Restricted` is retained only for the owning nous
+    /// until an access-list model is wired (#R722).
+    pub visibility: Visibility,
 }
 
 impl Stamped for ScoredResult {
@@ -673,6 +679,41 @@ pub fn pre_filter_by_side_query<S: BuildHasher>(
     candidates
         .into_iter()
         .filter(|c| selected_ids.contains(&c.source_id))
+        .collect()
+}
+
+/// Filter recall candidates by visibility relative to the querying nous.
+///
+/// Semantics:
+/// - `Private` — retained only when the candidate's `nous_id` matches `query_nous_id`.
+/// - `Shared` / `Published` — always retained.
+/// - `Restricted` — retained only for the owning nous (same as `Private` until an
+///   access-list model exists).
+///
+/// This is a pure, stateless helper designed for use in the recall pipeline
+/// after retrieval and before ranking. It does not consult any access-list
+/// storage.
+///
+/// # Complexity
+///
+/// O(C) where C is the number of candidates.
+#[must_use]
+pub fn filter_by_visibility(
+    candidates: Vec<ScoredResult>,
+    query_nous_id: &str,
+) -> Vec<ScoredResult> {
+    candidates
+        .into_iter()
+        .filter(|c| match c.visibility {
+            Visibility::Private | Visibility::Restricted => c.nous_id == query_nous_id,
+            Visibility::Shared | Visibility::Published => true,
+            _ => {
+                // WHY: `Visibility` is `#[non_exhaustive]`. Future variants
+                // are conservatively treated as Private until the spec defines
+                // otherwise.
+                c.nous_id == query_nous_id
+            }
+        })
         .collect()
 }
 

@@ -101,6 +101,7 @@ fn make_scored(content: &str, score: f64) -> ScoredResult {
         factors: FactorScores::default(),
         score,
         sensitivity: mneme::knowledge::FactSensitivity::Public,
+        visibility: mneme::knowledge::Visibility::Private,
     }
 }
 

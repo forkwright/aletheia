@@ -328,9 +328,12 @@ impl NousActor {
 }
 
 /// Run extraction as a background task. Logs results, never panics.
-#[expect(
-    clippy::too_many_arguments,
-    reason = "background extraction async runner: config + providers + ids + content + tool_calls + reasoning + optional store"
+#[cfg_attr(
+    feature = "knowledge-store",
+    expect(
+        clippy::too_many_arguments,
+        reason = "background extraction async runner: config + providers + ids + content + tool_calls + reasoning + optional store"
+    )
 )]
 async fn run_extraction(
     config: &mneme::extract::ExtractionConfig,
