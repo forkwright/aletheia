@@ -151,6 +151,7 @@ mod epistemic_tier {
         // WHY: serde renames to lowercase; as_str() must agree so that
         // Datalog ingestion and JSON round-trips stay aligned.
         assert_eq!(EpistemicTier::Verified.as_str(), "verified");
+        assert_eq!(EpistemicTier::Reflected.as_str(), "reflected");
         assert_eq!(EpistemicTier::Inferred.as_str(), "inferred");
         assert_eq!(EpistemicTier::Assumed.as_str(), "assumed");
         assert_eq!(EpistemicTier::Training.as_str(), "training");
@@ -159,6 +160,7 @@ mod epistemic_tier {
     #[test]
     fn display_matches_as_str() {
         assert_eq!(EpistemicTier::Verified.to_string(), "verified");
+        assert_eq!(EpistemicTier::Reflected.to_string(), "reflected");
         assert_eq!(EpistemicTier::Training.to_string(), "training");
     }
 
@@ -177,6 +179,10 @@ mod epistemic_tier {
         );
         assert!(
             EpistemicTier::Verified.stability_multiplier()
+                < EpistemicTier::Reflected.stability_multiplier()
+        );
+        assert!(
+            EpistemicTier::Reflected.stability_multiplier()
                 < EpistemicTier::Training.stability_multiplier()
         );
     }
@@ -186,6 +192,15 @@ mod epistemic_tier {
         let tier = EpistemicTier::Verified;
         let json = serde_json::to_string(&tier).expect("serialize");
         assert_eq!(json, r#""verified""#);
+        let back: EpistemicTier = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(back, tier);
+    }
+
+    #[test]
+    fn reflected_serde_roundtrip() {
+        let tier = EpistemicTier::Reflected;
+        let json = serde_json::to_string(&tier).expect("serialize");
+        assert_eq!(json, r#""reflected""#);
         let back: EpistemicTier = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(back, tier);
     }

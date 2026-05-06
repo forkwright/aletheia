@@ -207,19 +207,19 @@ fn embedded_chunk_fields() {
 #[test]
 fn epistemic_tier_ordering() {
     let verified_score = match EpistemicTier::Verified {
-        EpistemicTier::Verified => 3,
+        EpistemicTier::Verified | EpistemicTier::Reflected => 3,
         EpistemicTier::Inferred => 2,
         EpistemicTier::Assumed => 1,
         EpistemicTier::Training => 4,
     };
     let inferred_score = match EpistemicTier::Inferred {
-        EpistemicTier::Verified => 3,
+        EpistemicTier::Verified | EpistemicTier::Reflected => 3,
         EpistemicTier::Inferred => 2,
         EpistemicTier::Assumed => 1,
         EpistemicTier::Training => 4,
     };
     let assumed_score = match EpistemicTier::Assumed {
-        EpistemicTier::Verified => 3,
+        EpistemicTier::Verified | EpistemicTier::Reflected => 3,
         EpistemicTier::Inferred => 2,
         EpistemicTier::Assumed => 1,
         EpistemicTier::Training => 4,
