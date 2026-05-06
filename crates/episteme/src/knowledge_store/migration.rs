@@ -574,4 +574,46 @@ impl KnowledgeStore {
         tracing::info!("knowledge schema migration v7 -> v8 complete");
         Ok(())
     }
+
+    /// Migrate v9 → v10: add `published_facts` and `provenance` relations.
+    ///
+    /// R716 Phase 3 introduces multi-agent verification + provenance tracking.
+    /// Both relations are additive; no existing data is migrated.
+    pub(super) fn migrate_v9_to_v10(&self) -> crate::error::Result<()> {
+        use std::collections::BTreeMap;
+
+        use crate::engine::{DataValue, ScriptMutability};
+        tracing::info!("migrating knowledge schema v9 -> v10");
+
+        // KNOWLEDGE_DDL[10] = published_facts, [11] = provenance.
+        for ddl in &KNOWLEDGE_DDL[10..=11] {
+            self.db
+                .run(ddl, BTreeMap::new(), ScriptMutability::Mutable)
+                .map_err(|e| {
+                    crate::error::EngineQuerySnafu {
+                        message: format!("v9->v10 relation DDL failed: {e}"),
+                    }
+                    .build()
+                })?;
+        }
+
+        let mut params = BTreeMap::new();
+        params.insert("key".to_owned(), DataValue::Str("schema".into()));
+        params.insert("version".to_owned(), DataValue::from(Self::SCHEMA_VERSION));
+        self.db
+            .run(
+                r"?[key, version] <- [[$key, $version]] :put schema_version { key => version }",
+                params,
+                ScriptMutability::Mutable,
+            )
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: format!("v9->v10 version write failed: {e}"),
+                }
+                .build()
+            })?;
+
+        tracing::info!("knowledge schema migration v9 -> v10 complete");
+        Ok(())
+    }
 }

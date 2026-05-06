@@ -85,6 +85,9 @@ pub mod surprise;
 /// Structured tracing subscriber that captures operational events as Datalog facts.
 pub mod trace_ingest;
 /// Relationship type normalization and validation for knowledge graph extraction.
+/// Multi-agent verification protocol per R716 Phase 3.
+pub mod verification;
+
 pub mod vocab;
 
 /// Shared test fixtures for knowledge store tests (DRY helpers).

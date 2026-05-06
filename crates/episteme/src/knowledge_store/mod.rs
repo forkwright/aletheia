@@ -154,6 +154,23 @@ pub const KNOWLEDGE_DDL: &[&str] = &[
         confidence: Float,
         created_at: String
     }",
+    // Index 10 — published_facts (added in schema v10, R716 Phase 3)
+    r":create published_facts {
+        id: String =>
+        original_fact_id: String,
+        published_by: String,
+        published_at: String,
+        verification_count: Int default 0,
+        contested_by: String,
+        contest_reason: String?
+    }",
+    // Index 11 — provenance (added in schema v10, R716 Phase 3)
+    r":create provenance {
+        published_fact_id: String, contributor: String =>
+        contribution_type: String,
+        confidence: Float,
+        contributed_at: String
+    }",
 ];
 
 /// Datalog DDL for the embeddings relation. Dimension is parameterized.
@@ -480,7 +497,7 @@ pub struct KnowledgeStore {
 
 #[cfg(feature = "mneme-engine")]
 impl KnowledgeStore {
-    const SCHEMA_VERSION: i64 = 9;
+    const SCHEMA_VERSION: i64 = 10;
 
     /// Open an in-memory knowledge store with default configuration.
     ///
@@ -706,6 +723,9 @@ impl KnowledgeStore {
             }
             if current_version < 9 {
                 self.migrate_v8_to_v9()?;
+            }
+            if current_version < 10 {
+                self.migrate_v9_to_v10()?;
             }
             return Ok(());
         }
