@@ -17,6 +17,8 @@ pub use graphe::error;
 
 /// Memory admission control: structured decision gate for knowledge graph insertion.
 pub mod admission;
+/// Bookkeeping provider implementations for extraction and classifier work.
+pub mod bookkeeping;
 /// Causal edge store: directed graph of causal relationships between facts.
 pub mod causal;
 /// Conflict detection pipeline for fact insertion.

@@ -1,10 +1,3 @@
-#![cfg_attr(
-    feature = "mneme-engine",
-    expect(
-        clippy::indexing_slicing,
-        reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-    )
-)]
 use snafu::IntoError;
 use tracing::instrument;
 
@@ -21,6 +14,7 @@ use super::types::{
 #[cfg(feature = "mneme-engine")]
 use super::utils::slugify;
 use super::utils::strip_code_fences;
+use crate::bookkeeping::LlmBookkeepingProvider;
 use crate::causal;
 
 /// Small heuristic for first-person / assistant self-reference in fact subjects.
@@ -222,11 +216,9 @@ Rules:
             });
         }
 
-        let prompt = self.build_prompt(messages);
-        let response = provider
-            .complete(&prompt.system, &prompt.user_message)
-            .await?;
-        self.parse_response(&response)
+        LlmBookkeepingProvider::new(self, provider)
+            .extract_messages(messages)
+            .await
     }
 
     /// Run extraction with context-dependent refinement.
@@ -291,11 +283,9 @@ Rules:
                     acc
                 });
         let turn_type = refinement::classify_turn(&combined);
-        let prompt = self.build_prompt_with_turn_type(messages, Some(turn_type));
-        let response = provider
-            .complete(&prompt.system, &prompt.user_message)
+        let mut extraction = LlmBookkeepingProvider::new(self, provider)
+            .extract_messages_with_turn_type(messages, turn_type)
             .await?;
-        let mut extraction = self.parse_response(&response)?;
         let correction = refinement::detect_correction(&combined);
         let boost = turn_type.confidence_boost() + correction.confidence_boost;
         let mut filtered_count = 0;
@@ -408,36 +398,35 @@ Rules:
         let now = jiff::Timestamp::now();
         let mut result = PersistResult::default();
 
-        let entities = if extraction.entities.len() > self.config.max_entities {
+        if extraction.entities.len() > self.config.max_entities {
             tracing::warn!(
                 count = extraction.entities.len(),
                 limit = self.config.max_entities,
                 "extraction entity limit exceeded, truncating"
             );
-            &extraction.entities[..self.config.max_entities]
-        } else {
-            &extraction.entities
-        };
-        let relationships = if extraction.relationships.len() > self.config.max_relationships {
+        }
+        let entities = extraction.entities.iter().take(self.config.max_entities);
+
+        if extraction.relationships.len() > self.config.max_relationships {
             tracing::warn!(
                 count = extraction.relationships.len(),
                 limit = self.config.max_relationships,
                 "extraction relationship limit exceeded, truncating"
             );
-            &extraction.relationships[..self.config.max_relationships]
-        } else {
-            &extraction.relationships
-        };
-        let facts = if extraction.facts.len() > self.config.max_facts {
+        }
+        let relationships = extraction
+            .relationships
+            .iter()
+            .take(self.config.max_relationships);
+
+        if extraction.facts.len() > self.config.max_facts {
             tracing::warn!(
                 count = extraction.facts.len(),
                 limit = self.config.max_facts,
                 "extraction fact limit exceeded, truncating"
             );
-            &extraction.facts[..self.config.max_facts]
-        } else {
-            &extraction.facts
-        };
+        }
+        let facts = extraction.facts.iter().take(self.config.max_facts);
 
         for entity in entities {
             // WHY: reject entities with empty names — they cannot be referenced or queried.
@@ -544,7 +533,7 @@ Rules:
             result.relationships_inserted += 1;
         }
 
-        for (i, fact) in facts.iter().enumerate() {
+        for (i, fact) in facts.enumerate() {
             // WHY: guard against empty triple fields reaching the knowledge store —
             // the extraction pipeline should have caught these, but persist is the
             // last line of defense.

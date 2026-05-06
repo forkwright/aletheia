@@ -1,10 +1,12 @@
 #![deny(missing_docs)]
 //! aletheia-eidos: shared knowledge types for the Aletheia memory layer
 //!
-//! Eidos (εἶδος): "form, essence." Pure data types with zero internal
-//! dependencies -- the foundational shapes that the rest of the knowledge
-//! pipeline builds upon.
+//! Eidos (εἶδος): "form, essence." Shared data types and provider contracts
+//! with zero internal dependencies -- the foundational shapes that the rest of
+//! the knowledge pipeline builds upon.
 
+/// Shared bookkeeping provider contracts and extraction DTOs.
+pub mod bookkeeping;
 /// Newtype wrappers for knowledge-domain identifiers.
 pub mod id;
 /// Knowledge graph domain types: facts, entities, relationships, embeddings.
@@ -14,6 +16,12 @@ pub mod meta;
 /// Cross-layer provenance translation between eidos and the mnemosyne JSON shape.
 pub mod provenance_adapter;
 
+/// Re-export bookkeeping provider contracts and DTOs at crate root.
+pub use bookkeeping::{
+    BookkeepingError, BookkeepingProvider, BookkeepingResult, ConversationMessage, EntityType,
+    ExtractedEntity, ExtractedFact, ExtractedRelationship, ExtractedToolCall, Extraction,
+    ExtractionSchema, Intent,
+};
 /// Re-export architecture-fact types at crate root.
 pub use knowledge::architecture_fact::{ArchitectureFact, FactError, FactScope, FactStore};
 /// Re-export canonical finding types at crate root.
