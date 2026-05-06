@@ -9,13 +9,13 @@ use tokio::sync::{RwLock, mpsc, oneshot};
 use tracing::{instrument, warn};
 
 use crate::error::{
-    self, AskCycleDetectedSnafu, AskTimeoutSnafu, DeliveryFailedSnafu, NousNotFoundSnafu,
-    ReplyNotFoundSnafu,
+    self, AddressRejectedSnafu, AskCycleDetectedSnafu, AskTimeoutSnafu, DeliveryFailedSnafu,
+    NousNotFoundSnafu, ReplyNotFoundSnafu,
 };
 
 use super::{
-    AskGraph, CrossNousEnvelope, CrossNousMessage, CrossNousReply, DEFAULT_MAX_LOG_ENTRIES,
-    DEFAULT_REPLY_TIMEOUT, DeliveryEntry, DeliveryLog, DeliveryState,
+    AddressMask, AskGraph, CrossNousEnvelope, CrossNousMessage, CrossNousReply,
+    DEFAULT_MAX_LOG_ENTRIES, DEFAULT_REPLY_TIMEOUT, DeliveryEntry, DeliveryLog, DeliveryState,
 };
 
 /// Routes messages between nous actors using their IDs as keys.
@@ -35,6 +35,9 @@ pub struct CrossNousRouter {
     /// Invariant: an edge exists iff a pending ask is outstanding between
     /// the two nodes; removed when the reply arrives or the ask times out.
     pub(super) ask_graph: Arc<RwLock<AskGraph>>,
+    /// Inbound address policy keyed by target nous id. Missing entries use
+    /// [`AddressMask::Public`].
+    address_masks: Arc<RwLock<HashMap<String, AddressMask>>>,
 }
 
 impl Clone for CrossNousRouter {
@@ -44,6 +47,7 @@ impl Clone for CrossNousRouter {
             pending_replies: Arc::clone(&self.pending_replies),
             delivery_log: Arc::clone(&self.delivery_log),
             ask_graph: Arc::clone(&self.ask_graph),
+            address_masks: Arc::clone(&self.address_masks),
         }
     }
 }
@@ -63,6 +67,7 @@ impl CrossNousRouter {
             pending_replies: Arc::new(RwLock::new(HashMap::new())),
             delivery_log: Arc::new(RwLock::new(DeliveryLog::new(max_log_entries))),
             ask_graph: Arc::new(RwLock::new(AskGraph::new())),
+            address_masks: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -92,6 +97,22 @@ impl CrossNousRouter {
         self.routes.write().await.remove(nous_id);
     }
 
+    /// Set or update the inbound address policy for a target nous.
+    ///
+    /// Missing entries are treated as [`AddressMask::Public`], so callers only
+    /// need to set masks for restricted targets.
+    #[instrument(skip(self))]
+    pub async fn set_address_mask(
+        &self,
+        nous_id: impl Into<String> + std::fmt::Debug,
+        mask: AddressMask,
+    ) {
+        self.address_masks
+            .write()
+            .await
+            .insert(nous_id.into(), mask);
+    }
+
     /// Fire-and-forget send. Returns `Delivered` on success.
     ///
     /// # Cancel safety
@@ -115,6 +136,8 @@ impl CrossNousRouter {
             return NousNotFoundSnafu { nous_id: to }.fail();
         };
         drop(routes);
+
+        self.enforce_address_mask(&message).await?;
 
         let envelope = CrossNousEnvelope { message };
 
@@ -199,6 +222,8 @@ impl CrossNousRouter {
         };
         drop(routes);
 
+        self.enforce_address_mask(message).await?;
+
         let (reply_tx, reply_rx) = oneshot::channel();
         let msg_id = message.id;
 
@@ -265,7 +290,9 @@ impl CrossNousRouter {
             }
             .fail();
         };
-        let _ = tx.send(reply);
+        if tx.send(reply).is_err() {
+            warn!(message_id = %msg_id, "reply receiver dropped before reply delivery");
+        }
         Ok(())
     }
 
@@ -276,6 +303,38 @@ impl CrossNousRouter {
     /// Cancel-safe. Uses a single `RwLock::read`. No partial state on cancellation.
     pub async fn registered(&self) -> Vec<String> {
         self.routes.read().await.keys().cloned().collect()
+    }
+
+    #[cfg(test)]
+    pub(super) async fn pending_reply_count(&self) -> usize {
+        self.pending_replies.read().await.len()
+    }
+
+    async fn enforce_address_mask(&self, message: &CrossNousMessage) -> error::Result<()> {
+        let mask = self
+            .address_masks
+            .read()
+            .await
+            .get(&message.to)
+            .cloned()
+            .unwrap_or_default();
+
+        if mask.permits(&message.from) {
+            return Ok(());
+        }
+
+        let state = DeliveryState::Failed {
+            reason: format!(
+                "address rejected by target '{}' for sender '{}'",
+                message.to, message.from
+            ),
+        };
+        self.log_delivery(message, &state).await;
+        AddressRejectedSnafu {
+            from: message.from.clone(),
+            to: message.to.clone(),
+        }
+        .fail()
     }
 
     async fn log_delivery(&self, message: &CrossNousMessage, state: &DeliveryState) {
