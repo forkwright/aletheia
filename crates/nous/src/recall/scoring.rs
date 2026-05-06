@@ -1,5 +1,9 @@
 //! Recall configuration, weights, and token estimation.
 
+use std::collections::HashMap;
+
+use eidos::id::FactId;
+use eidos::knowledge::MemoryScope;
 use serde::{Deserialize, Serialize};
 
 use mneme::recall::ScoredResult;
@@ -43,6 +47,10 @@ impl Default for RecallWeights {
 
 /// Configuration for the recall stage.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "recall controls are independent operator knobs (enabled, iterative, inject_metadata, late_inject_anchor); not a state machine"
+)]
 pub struct RecallConfig {
     /// Whether recall is enabled.
     pub enabled: bool,
@@ -65,6 +73,19 @@ pub struct RecallConfig {
     /// LLM can weight its reasoning by provenance quality.
     #[serde(default)]
     pub inject_metadata: bool,
+    /// Fact IDs that should be recalled first when they appear in candidates.
+    #[serde(default)]
+    pub pinned_facts: Vec<FactId>,
+    /// When true, append recalled knowledge as a system message at the end of
+    /// the conversation context instead of injecting it into the system prompt.
+    #[serde(default)]
+    pub late_inject_anchor: bool,
+    /// Per-scope minimum result counts with slack-fill.
+    #[serde(default)]
+    pub scope_quotas: HashMap<MemoryScope, usize>,
+    /// URL for an HTTP cross-encoder reranker.
+    #[serde(default)]
+    pub reranker_url: Option<String>,
     /// Characters per token for recall budget estimation.
     ///
     /// Wired from `agents.defaults.chars_per_token` at startup.
@@ -88,6 +109,10 @@ impl Default for RecallConfig {
             max_cycles: 2,
             weights: RecallWeights::default(),
             inject_metadata: false,
+            pinned_facts: Vec::new(),
+            late_inject_anchor: false,
+            scope_quotas: HashMap::new(),
+            reranker_url: None,
             chars_per_token: default_chars_per_token(),
         }
     }
@@ -111,6 +136,10 @@ impl From<taxis::config::RecallSettings> for RecallConfig {
                 graph_importance: s.weights.graph_importance,
             },
             inject_metadata: s.inject_metadata,
+            pinned_facts: s.pinned_facts,
+            late_inject_anchor: s.late_inject_anchor,
+            scope_quotas: s.scope_quotas,
+            reranker_url: s.reranker_url,
             // NOTE: chars_per_token is forwarded separately from AgentDefaults
             //       via NousConfig; the From conversion cannot carry it since
             //       RecallSettings does not own that field.
