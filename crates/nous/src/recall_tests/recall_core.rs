@@ -277,3 +277,164 @@ fn estimate_tokens_divisor_clamp() {
 fn vector_search_trait_is_object_safe() {
     fn _assert_object_safe(_: &dyn VectorSearch) {}
 }
+
+#[test]
+fn recall_config_defaults() {
+    let config = RecallConfig::default();
+    assert!(
+        config.pinned_facts.is_empty(),
+        "default pinned_facts should be empty"
+    );
+    assert!(
+        !config.late_inject_anchor,
+        "default late_inject_anchor should be false"
+    );
+    assert!(
+        config.scope_quotas.is_empty(),
+        "default scope_quotas should be empty"
+    );
+    assert!(
+        config.reranker_url.is_none(),
+        "default reranker_url should be None"
+    );
+}
+
+#[test]
+fn recall_from_settings_propagation() {
+    use eidos::id::FactId;
+    use eidos::knowledge::MemoryScope;
+
+    let settings = taxis::config::RecallSettings {
+        pinned_facts: vec![
+            FactId::new("fact-a").expect("valid"),
+            FactId::new("fact-b").expect("valid"),
+        ],
+        late_inject_anchor: true,
+        scope_quotas: {
+            let mut m = std::collections::HashMap::new();
+            m.insert(MemoryScope::Project, 2);
+            m
+        },
+        reranker_url: Some("http://localhost:9999/rerank".to_owned()),
+        ..taxis::config::RecallSettings::default()
+    };
+    let config = RecallConfig::from(settings);
+    assert_eq!(config.pinned_facts.len(), 2);
+    assert!(
+        config
+            .pinned_facts
+            .first()
+            .is_some_and(|f| f.as_str() == "fact-a")
+    );
+    assert!(config.late_inject_anchor);
+    assert_eq!(config.scope_quotas.get(&MemoryScope::Project), Some(&2));
+    assert_eq!(
+        config.reranker_url,
+        Some("http://localhost:9999/rerank".to_owned())
+    );
+}
+
+#[test]
+fn recall_pinned_facts_before_budgeted() {
+    let pinned_id = "pinned-1";
+    let results: Vec<KnowledgeRecallResult> = vec![
+        make_knowledge_result_with_id("budgeted A", 0.1, "other-1"),
+        make_knowledge_result_with_id("budgeted B", 0.1, "other-2"),
+        make_knowledge_result_with_id("pinned fact", 0.1, pinned_id),
+    ];
+    let config = RecallConfig {
+        max_results: 2,
+        min_score: 0.0,
+        pinned_facts: vec![eidos::id::FactId::new(pinned_id).expect("valid")],
+        ..Default::default()
+    };
+    let stage = RecallStage::new(config);
+    let result = stage
+        .run(
+            "query",
+            "syn",
+            &mock_embed(),
+            &MockVectorSearch::new(results),
+            10000,
+        )
+        .expect("recall should succeed");
+
+    assert_eq!(result.results_injected, 3, "pinned + 2 budgeted should fit");
+    let section = result.recall_section.expect("should have section");
+    let pinned_pos = section
+        .find("pinned fact")
+        .expect("pinned should be present");
+    let a_pos = section.find("budgeted A").expect("A should be present");
+    let b_pos = section.find("budgeted B").expect("B should be present");
+    assert!(
+        pinned_pos < a_pos && pinned_pos < b_pos,
+        "pinned fact should appear before budgeted results"
+    );
+}
+
+#[test]
+fn recall_pinned_facts_deduplicated() {
+    let pinned_id = "pinned-dup";
+    let results: Vec<KnowledgeRecallResult> = vec![
+        make_knowledge_result_with_id("first", 0.1, pinned_id),
+        make_knowledge_result_with_id("duplicate", 0.1, pinned_id),
+    ];
+    let config = RecallConfig {
+        max_results: 5,
+        min_score: 0.0,
+        pinned_facts: vec![eidos::id::FactId::new(pinned_id).expect("valid")],
+        ..Default::default()
+    };
+    let stage = RecallStage::new(config);
+    let result = stage
+        .run(
+            "query",
+            "syn",
+            &mock_embed(),
+            &MockVectorSearch::new(results),
+            10000,
+        )
+        .expect("recall should succeed");
+
+    assert_eq!(
+        result.results_injected, 1,
+        "duplicate pinned facts should be deduplicated"
+    );
+    let section = result.recall_section.expect("should have section");
+    assert!(
+        section.matches("pinned-dup").count() <= 2,
+        "should only reference the pinned fact once or twice (score + source)"
+    );
+}
+
+#[test]
+fn recall_scope_quotas_noop() {
+    let results: Vec<KnowledgeRecallResult> = (0..5)
+        .map(|i| make_knowledge_result(&format!("fact {i}"), 0.1))
+        .collect();
+    let mut quotas = std::collections::HashMap::new();
+    quotas.insert(MemoryScope::Project, 10);
+    let config = RecallConfig {
+        max_results: 5,
+        min_score: 0.0,
+        scope_quotas: quotas,
+        ..Default::default()
+    };
+    let stage = RecallStage::new(config);
+    let result = stage
+        .run(
+            "query",
+            "syn",
+            &mock_embed(),
+            &MockVectorSearch::new(results),
+            10000,
+        )
+        .expect("recall should succeed");
+
+    // Scope quotas are a no-op because ScoredResult lacks a scope field.
+    // The test documents this current limitation.
+    assert_eq!(
+        result.results_injected, 5,
+        "scope quotas should not alter results yet"
+    );
+}

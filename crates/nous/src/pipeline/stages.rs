@@ -145,7 +145,7 @@ pub(super) async fn run_recall_stage(
             let recall_stage = crate::recall::RecallStage::new(config.recall.clone())
                 .with_deployment_target(deployment_target);
             let result = recall_stage.run_bm25(content, &config.id, ts, budget);
-            apply_recall_result(result, ctx, &span);
+            apply_recall_result(result, ctx, &span, config.recall.late_inject_anchor);
         } else {
             span.record("status", "skipped");
             emitter.emit(&StageSkipped {
@@ -182,7 +182,7 @@ pub(super) async fn run_recall_stage(
         };
 
         if let Some(result) = recall_result_opt {
-            apply_recall_result(result, ctx, &span);
+            apply_recall_result(result, ctx, &span, config.recall.late_inject_anchor);
         }
     } else {
         span.record("status", "skipped");
@@ -838,11 +838,24 @@ fn apply_recall_result(
     result: error::Result<crate::recall::RecallStageResult>,
     ctx: &mut PipelineContext,
     span: &tracing::Span,
+    late_inject_anchor: bool,
 ) {
     match result {
         Ok(recall_result) => {
             if let Some(ref section) = recall_result.recall_section {
-                if let Some(ref mut prompt) = ctx.system_prompt {
+                if late_inject_anchor {
+                    ctx.messages.push(PipelineMessage {
+                        role: "system".to_owned(),
+                        content: section.clone(),
+                        #[expect(
+                            clippy::cast_possible_wrap,
+                            clippy::as_conversions,
+                            reason = "u64→i64: recall tokens fit in i64"
+                        )]
+                        token_estimate: recall_result.tokens_consumed as i64, // kanon:ignore RUST/as-cast
+                        cache_breakpoint: false,
+                    });
+                } else if let Some(ref mut prompt) = ctx.system_prompt {
                     prompt.push_str("\n\n");
                     prompt.push_str(section);
                 }

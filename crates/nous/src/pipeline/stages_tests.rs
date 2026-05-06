@@ -194,3 +194,62 @@ async fn reflection_stage_timeout_path() {
         .expect("reflection_result should be set");
     assert_eq!(result.status, ReflectionStatus::NoStore);
 }
+
+#[test]
+fn apply_recall_result_injects_into_system_prompt_by_default() {
+    let mut ctx = PipelineContext {
+        system_prompt: Some("base prompt".to_owned()),
+        messages: vec![make_msg("user", "hello")],
+        remaining_tokens: 100,
+        ..PipelineContext::default()
+    };
+    let recall = crate::recall::RecallStageResult {
+        candidates_found: 1,
+        results_injected: 1,
+        tokens_consumed: 10,
+        recall_section: Some("## Recalled Knowledge\n- fact".to_owned()),
+        fact_ids: vec!["f1".to_owned()],
+    };
+    let span = tracing::info_span!("test");
+    super::apply_recall_result(Ok(recall), &mut ctx, &span, false);
+    assert!(
+        ctx.system_prompt
+            .as_ref()
+            .is_some_and(|p| p.contains("Recalled Knowledge")),
+        "recall should be appended to system prompt"
+    );
+    assert_eq!(ctx.messages.len(), 1, "messages should not grow");
+    assert_eq!(ctx.remaining_tokens, 90, "tokens should be deducted");
+}
+
+#[test]
+fn apply_recall_result_late_inject_appends_system_message() {
+    let mut ctx = PipelineContext {
+        system_prompt: Some("base prompt".to_owned()),
+        messages: vec![make_msg("user", "hello")],
+        remaining_tokens: 100,
+        ..PipelineContext::default()
+    };
+    let recall = crate::recall::RecallStageResult {
+        candidates_found: 1,
+        results_injected: 1,
+        tokens_consumed: 10,
+        recall_section: Some("## Recalled Knowledge\n- fact".to_owned()),
+        fact_ids: vec!["f1".to_owned()],
+    };
+    let span = tracing::info_span!("test");
+    super::apply_recall_result(Ok(recall), &mut ctx, &span, true);
+    assert!(
+        !ctx.system_prompt
+            .as_ref()
+            .is_some_and(|p| p.contains("Recalled Knowledge")),
+        "recall should NOT be appended to system prompt"
+    );
+    assert_eq!(ctx.messages.len(), 2, "messages should grow by 1");
+    assert!(
+        ctx.messages
+            .get(1)
+            .is_some_and(|m| m.role == "system" && m.content.contains("Recalled Knowledge"))
+    );
+    assert_eq!(ctx.remaining_tokens, 90, "tokens should be deducted");
+}

@@ -4,8 +4,10 @@ mod reranking;
 mod scoring;
 mod search;
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
+use eidos::id::FactId;
+use eidos::knowledge::MemoryScope;
 use tracing::{debug, info, instrument};
 
 use hermeneus::provider::DeploymentTarget;
@@ -78,6 +80,16 @@ pub struct RecallStage {
     /// not thread `with_deployment_target` never leak `Internal` or
     /// `Confidential` facts.
     deployment_target: DeploymentTarget,
+    /// Pinned fact IDs (fast lookup set derived from config).
+    pinned_facts: HashSet<String>,
+    /// When true, recalled knowledge is appended as a system message at the
+    /// end of the conversation context rather than injected into the system
+    /// prompt.
+    late_inject_anchor: bool,
+    /// Per-scope minimum result counts with slack-fill.
+    scope_quotas: HashMap<MemoryScope, usize>,
+    /// Optional URL for an HTTP cross-encoder reranker.
+    reranker_url: Option<String>,
 }
 
 impl RecallStage {
@@ -89,11 +101,26 @@ impl RecallStage {
     /// source of truth rather than mirroring the struct in taxis.
     #[must_use]
     pub fn new(config: RecallConfig) -> Self {
+        let engine = Self::engine_with_reranker_url(config.reranker_url.as_deref());
+
+        let pinned_facts: HashSet<String> = config
+            .pinned_facts
+            .iter()
+            .map(|f| f.as_str().to_owned())
+            .collect();
+        let late_inject_anchor = config.late_inject_anchor;
+        let scope_quotas = config.scope_quotas.clone();
+        let reranker_url = config.reranker_url.clone();
+
         Self {
-            engine: RecallEngine::with_weights(mneme::recall::RecallWeights::default()),
+            engine,
             config,
             side_query_ids: None,
             deployment_target: DeploymentTarget::Cloud,
+            pinned_facts,
+            late_inject_anchor,
+            scope_quotas,
+            reranker_url,
         }
     }
 
@@ -117,6 +144,63 @@ impl RecallStage {
     pub fn with_deployment_target(mut self, target: DeploymentTarget) -> Self {
         self.deployment_target = target;
         self
+    }
+
+    /// Set pinned fact IDs for priority recall.
+    ///
+    /// Pinned facts are slotted before non-pinned results when they appear in
+    /// the ranked candidate list. They bypass the `max_results` budget but are
+    /// still subject to the token budget.
+    #[must_use]
+    pub fn with_pinned_facts(mut self, facts: &[FactId]) -> Self {
+        self.pinned_facts = facts.iter().map(|f| f.as_str().to_owned()).collect();
+        self
+    }
+
+    /// Set whether recalled knowledge is injected as a late system message.
+    #[must_use]
+    pub fn with_late_inject_anchor(mut self, enabled: bool) -> Self {
+        self.late_inject_anchor = enabled;
+        self
+    }
+
+    /// Set per-scope minimum quotas with slack-fill.
+    #[must_use]
+    pub fn with_scope_quotas(mut self, quotas: HashMap<MemoryScope, usize>) -> Self {
+        self.scope_quotas = quotas;
+        self
+    }
+
+    /// Set the URL for an HTTP cross-encoder reranker.
+    #[must_use]
+    pub fn with_reranker_url(mut self, url: Option<String>) -> Self {
+        self.engine = Self::engine_with_reranker_url(url.as_deref());
+        self.reranker_url = url;
+        self
+    }
+
+    #[cfg(feature = "reranker")]
+    fn engine_with_reranker_url(url: Option<&str>) -> RecallEngine {
+        let engine = RecallEngine::with_weights(mneme::recall::RecallWeights::default());
+        // WHY: Wire reranker only when the episteme reranker feature is present.
+        // A configured URL uses the HTTP cross-encoder; otherwise NaiveReranker
+        // preserves an in-process fallback for feature-enabled deployments.
+        let reranker: Option<std::sync::Arc<dyn episteme::recall::reranker::Reranker>> =
+            if let Some(url) = url {
+                Some(std::sync::Arc::new(
+                    episteme::recall::reranker::HttpReranker::new(url.to_owned()),
+                ))
+            } else {
+                Some(std::sync::Arc::new(
+                    episteme::recall::reranker::NaiveReranker,
+                ))
+            };
+        engine.with_reranker(reranker)
+    }
+
+    #[cfg(not(feature = "reranker"))]
+    fn engine_with_reranker_url(_url: Option<&str>) -> RecallEngine {
+        RecallEngine::with_weights(mneme::recall::RecallWeights::default())
     }
 
     /// Rank candidates, applying side-query pre-filter when configured.
@@ -328,9 +412,26 @@ impl RecallStage {
         // default to `Public` and pass through unchanged.
         let ranked = self.filter_by_sensitivity(ranked);
 
-        let filtered = self.filter(ranked);
+        // Extract pinned facts first (they bypass max_results but are still
+        // subject to the token budget).
+        let (pinned, rest): (Vec<ScoredResult>, Vec<ScoredResult>) = ranked
+            .into_iter()
+            .partition(|r| self.pinned_facts.contains(&r.source_id));
 
-        if filtered.is_empty() {
+        // Deduplicate pinned facts while preserving their ranked order.
+        let mut seen_pinned = HashSet::new();
+        let pinned: Vec<ScoredResult> = pinned
+            .into_iter()
+            .filter(|r| seen_pinned.insert(r.source_id.clone()))
+            .collect();
+
+        // Apply scope quotas to non-pinned results (currently no-op because
+        // ScoredResult does not yet carry a MemoryScope field).
+        let rest = self.apply_scope_quotas(rest);
+
+        let filtered = self.filter(rest);
+
+        if pinned.is_empty() && filtered.is_empty() {
             debug!(candidates_found, "all candidates below min_score");
             return RecallStageResult {
                 candidates_found,
@@ -339,8 +440,9 @@ impl RecallStage {
         }
 
         let budget = remaining_budget.min(self.config.max_recall_tokens);
+        let combined: Vec<ScoredResult> = pinned.into_iter().chain(filtered).collect();
         let (results_injected, section, tokens, fact_ids) =
-            self.format_within_budget(&filtered, budget);
+            self.format_within_budget(&combined, budget);
 
         debug!(
             candidates_found,
@@ -360,6 +462,17 @@ impl RecallStage {
             },
             fact_ids,
         }
+    }
+
+    /// Apply per-scope minimum quotas with slack-fill.
+    ///
+    /// NOTE: This is currently a no-op because [`ScoredResult`] does not yet
+    /// carry a [`MemoryScope`] field. Once R722 wires scope through the
+    /// storage/search boundary, this helper should partition results by scope,
+    /// enforce configured minimums, and redistribute unused quota.
+    fn apply_scope_quotas(&self, results: Vec<ScoredResult>) -> Vec<ScoredResult> {
+        let _ = &self.scope_quotas;
+        results
     }
 
     /// Drop candidates whose sensitivity exceeds the active deployment target.

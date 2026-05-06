@@ -444,6 +444,22 @@ fn pricing_defaults_empty() {
         config.pricing.is_empty(),
         "pricing map should be empty in default config"
     );
+    assert!(
+        config.agents.defaults.recall.pinned_facts.is_empty(),
+        "default pinned_facts should be empty"
+    );
+    assert!(
+        !config.agents.defaults.recall.late_inject_anchor,
+        "default late_inject_anchor should be false"
+    );
+    assert!(
+        config.agents.defaults.recall.scope_quotas.is_empty(),
+        "default scope_quotas should be empty"
+    );
+    assert!(
+        config.agents.defaults.recall.reranker_url.is_none(),
+        "default reranker_url should be None"
+    );
 }
 
 #[test]

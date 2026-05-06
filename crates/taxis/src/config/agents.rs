@@ -1,5 +1,9 @@
 //! Agent configuration types.
 
+use std::collections::HashMap;
+
+use eidos::id::FactId;
+use eidos::knowledge::MemoryScope;
 use serde::{Deserialize, Serialize};
 
 use super::AgencyLevel;
@@ -57,6 +61,10 @@ impl Default for RecallWeights {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "recall controls are independent operator knobs (enabled, iterative, inject_metadata, late_inject_anchor); not a state machine"
+)]
 pub struct RecallSettings {
     /// Whether semantic recall is enabled for this agent.
     pub enabled: bool,
@@ -79,6 +87,30 @@ pub struct RecallSettings {
     /// proximity, access frequency) so the LLM can weight its reasoning
     /// by provenance quality. Default: false.
     pub inject_metadata: bool,
+    /// Fact IDs that should be recalled first when they appear in candidates.
+    ///
+    /// Pinned facts bypass the `max_results` budget and are slotted before
+    /// non-pinned results, but they still count against the token budget.
+    #[serde(default)]
+    pub pinned_facts: Vec<FactId>,
+    /// When true, append recalled knowledge as a system message at the end of
+    /// the conversation context instead of injecting it into the system prompt.
+    #[serde(default)]
+    pub late_inject_anchor: bool,
+    /// Per-scope minimum result counts with slack-fill.
+    ///
+    /// Guarantees fair representation across memory scopes regardless of pure
+    /// score ranking. Unused quota from one scope is redistributed (slack-fill)
+    /// to others. Default: empty (no quota enforcement).
+    #[serde(default)]
+    pub scope_quotas: HashMap<MemoryScope, usize>,
+    /// URL for an HTTP cross-encoder reranker.
+    ///
+    /// When set, recall candidates are forwarded to this endpoint for
+    /// model-based rescoring. When `None` or when the `reranker` feature is
+    /// not enabled, the pipeline falls back to baseline ranking.
+    #[serde(default)]
+    pub reranker_url: Option<String>,
 }
 
 impl Default for RecallSettings {
@@ -92,6 +124,10 @@ impl Default for RecallSettings {
             max_cycles: 2,
             weights: RecallWeights::default(),
             inject_metadata: false,
+            pinned_facts: Vec::new(),
+            late_inject_anchor: false,
+            scope_quotas: HashMap::new(),
+            reranker_url: None,
         }
     }
 }

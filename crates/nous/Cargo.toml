@@ -16,6 +16,10 @@ knowledge-store = ["mneme/mneme-engine"]
 test-support = ["hermeneus/test-utils", "organon/test-support"]
 # Pre-LLM triage stage: intent, sensitivity, tier classification (default: on)
 pre-llm-triage = []
+# Enable episteme's async reranker trait (HttpReranker / NaiveReranker).
+# Disabled by default to avoid pulling in reqwest + rustls for builds that
+# do not need recall reranking.
+reranker = ["episteme/reranker"]
 # Test tiers (see docs/test-tiers.md)
 test-core = ["knowledge-store"]
 test-full = ["test-core"]

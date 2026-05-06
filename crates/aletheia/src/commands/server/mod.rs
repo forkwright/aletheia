@@ -59,9 +59,9 @@ pub(crate) async fn run(args: Args) -> Result<()> {
 
     let oikos_arc = Arc::new(oikos);
 
-    let runtime = RuntimeBuilder::production(Arc::clone(&oikos_arc), config.clone())
-        .build()
-        .await?;
+    let runtime =
+        Box::pin(RuntimeBuilder::production(Arc::clone(&oikos_arc), config.clone()).build())
+            .await?;
 
     spawn_log_retention(
         log_dir.clone(),
