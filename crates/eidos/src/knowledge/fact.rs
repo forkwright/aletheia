@@ -156,6 +156,52 @@ impl std::str::FromStr for FactSensitivity {
     }
 }
 
+/// Visibility level for a fact within the knowledge graph.
+///
+/// Controls how broadly a fact may be shared across agents, sessions,
+/// and external systems. Ordered from most restrictive to least.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum Visibility {
+    /// Visible only to the originating agent / user.
+    #[default]
+    Private,
+    /// Visible to agents within the same team or project scope.
+    Shared,
+    /// Visible to a defined allow-list of consumers.
+    Restricted,
+    /// Visible to any authorized consumer, including external integrations.
+    Published,
+}
+
+impl Visibility {
+    /// Return the `snake_case` string representation.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Private => "private",
+            Self::Shared => "shared",
+            Self::Restricted => "restricted",
+            Self::Published => "published",
+        }
+    }
+}
+
+impl std::str::FromStr for Visibility {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s {
+            "private" => Ok(Self::Private),
+            "shared" => Ok(Self::Shared),
+            "restricted" => Ok(Self::Restricted),
+            "published" => Ok(Self::Published),
+            other => Err(format!("unknown fact visibility: {other}")),
+        }
+    }
+}
+
 /// Epistemic confidence tier.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -163,6 +209,8 @@ impl std::str::FromStr for FactSensitivity {
 pub enum EpistemicTier {
     /// Checked against ground truth.
     Verified,
+    /// Produced by self-reflection or meta-cognitive review.
+    Reflected,
     /// Reasoned from context.
     Inferred,
     /// Unchecked assumption.
@@ -177,6 +225,7 @@ impl EpistemicTier {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Verified => "verified",
+            Self::Reflected => "reflected",
             Self::Inferred => "inferred",
             Self::Assumed => "assumed",
             Self::Training => "training",
@@ -188,6 +237,7 @@ impl EpistemicTier {
     /// | Tier | Multiplier | Why |
     /// |------|------------|-----|
     /// | `Verified` | 2.0 | Ground-truth-checked facts deserve slower decay. |
+    /// | `Reflected` | 2.5 | Self-reflected facts are durable but not ground-truth. |
     /// | `Inferred` | 1.0 | Baseline for reasoned-but-unverified facts. |
     /// | `Assumed` | 0.5 | Unchecked assumptions decay faster to limit risk. |
     /// | `Training` | 4.0 | Training data is a permanent record of session outcomes; |
@@ -196,6 +246,7 @@ impl EpistemicTier {
     pub fn stability_multiplier(self) -> f64 {
         match self {
             Self::Verified => 2.0,
+            Self::Reflected => 2.5,
             Self::Inferred => 1.0,
             Self::Assumed => 0.5,
             // WHY: training data is a permanent record of session outcomes,
