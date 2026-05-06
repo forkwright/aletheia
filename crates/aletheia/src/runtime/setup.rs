@@ -475,34 +475,39 @@ impl LazyEmbeddingProvider {
 }
 
 #[cfg(feature = "recall")]
-pub(super) fn open_knowledge_store(
+pub(super) fn open_knowledge_stores(
     oikos: &Oikos,
-) -> Result<Option<Arc<mneme::knowledge_store::KnowledgeStore>>> {
-    let kb_path = oikos.knowledge_db();
-    if let Some(parent) = kb_path.parent() {
-        std::fs::create_dir_all(parent)
-            .whatever_context("failed to CREATE knowledge store directory")?;
-    }
-    let store = match mneme::knowledge_store::KnowledgeStore::open_fjall(
-        &kb_path,
-        mneme::knowledge_store::KnowledgeConfig::default(),
-    ) {
-        Ok(s) => s,
-        Err(e) => {
-            let msg = e.to_string();
-            if msg.contains("InvalidTag") || msg.contains("CompressionType") {
-                tracing::error!(
-                    path = %kb_path.display(),
-                    "Knowledge store format incompatible (written by older fjall version). \
-                     Back up data/knowledge.fjall and delete it to start fresh. \
-                     Session data in sessions.db is NOT affected."
-                );
-            }
-            return Err(e).whatever_context("failed to open knowledge store");
+    cohorts: impl IntoIterator<Item = String>,
+) -> Result<std::collections::HashMap<String, Arc<mneme::knowledge_store::KnowledgeStore>>> {
+    let mut stores = std::collections::HashMap::new();
+    for cohort in cohorts {
+        let kb_path = oikos.knowledge_cohort_db(&cohort);
+        if let Some(parent) = kb_path.parent() {
+            std::fs::create_dir_all(parent)
+                .whatever_context("failed to CREATE knowledge store directory")?;
         }
-    };
-    info!(path = %kb_path.display(), dim = 384, "knowledge store opened (fjall)");
-    Ok(Some(store))
+        let store = match mneme::knowledge_store::KnowledgeStore::open_fjall(
+            &kb_path,
+            mneme::knowledge_store::KnowledgeConfig::default(),
+        ) {
+            Ok(s) => s,
+            Err(e) => {
+                let msg = e.to_string();
+                if msg.contains("InvalidTag") || msg.contains("CompressionType") {
+                    tracing::error!(
+                        path = %kb_path.display(),
+                        "Knowledge store format incompatible (written by older fjall version). \
+                         Back up data/knowledge.fjall and delete it to start fresh. \
+                         Session data in sessions.db is NOT affected."
+                    );
+                }
+                return Err(e).whatever_context("failed to open knowledge store");
+            }
+        };
+        info!(cohort = %cohort, path = %kb_path.display(), dim = 384, "knowledge store opened (fjall)");
+        stores.insert(cohort, store);
+    }
+    Ok(stores)
 }
 
 /// Build the Matrix channel provider when `channels.matrix.enabled` is true.

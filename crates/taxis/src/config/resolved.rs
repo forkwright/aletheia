@@ -66,6 +66,8 @@ pub struct ResolvedNousConfig {
     pub workspace: String,
     /// Whether this agent's workspace is hidden from public discovery.
     pub private: bool,
+    /// Episteme knowledge-store cohort for this agent.
+    pub episteme_cohort: Arc<str>,
     /// Merged set of permitted filesystem roots.
     pub allowed_roots: Vec<String>,
     /// Knowledge domains this agent covers.
@@ -85,6 +87,10 @@ pub struct ResolvedNousConfig {
 /// Merges `agents.defaults` with the matching entry from `agents.list`.
 /// If no matching agent is found, returns defaults with the given id.
 #[must_use]
+#[expect(
+    clippy::too_many_lines,
+    reason = "single config-cascade function keeps resolved fields in one auditable place"
+)]
 pub fn resolve_nous(config: &AletheiaConfig, nous_id: &str) -> ResolvedNousConfig {
     let defaults = &config.agents.defaults;
     let agent = config.agents.list.iter().find(|a| a.id == nous_id);
@@ -141,6 +147,10 @@ pub fn resolve_nous(config: &AletheiaConfig, nous_id: &str) -> ResolvedNousConfi
     let domains = agent.map(|a| a.domains.clone()).unwrap_or_default();
     let name = agent.and_then(|a| a.name.clone());
     let private = agent.is_some_and(|a| a.private);
+    let episteme_cohort = agent
+        .and_then(|a| a.episteme_cohort.as_deref())
+        .filter(|cohort| !cohort.is_empty())
+        .unwrap_or("shared");
 
     // NOTE: Agent-level recall overrides; falls back to shared defaults.
     let recall = agent
@@ -194,6 +204,7 @@ pub fn resolve_nous(config: &AletheiaConfig, nous_id: &str) -> ResolvedNousConfi
         },
         workspace,
         private,
+        episteme_cohort: Arc::from(episteme_cohort),
         allowed_roots,
         domains,
         recall,

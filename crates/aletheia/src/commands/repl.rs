@@ -62,9 +62,9 @@ fn run_repl(instance_root: Option<&PathBuf>) -> Result<()> {
     use snafu::prelude::*;
 
     let oikos = super::resolve_oikos(instance_root)?;
-    let knowledge_path = oikos.knowledge_db();
+    let knowledge_path = oikos.knowledge_cohort_db("shared");
 
-    if !knowledge_path.exists() {
+    if !knowledge_path.exists() && !oikos.knowledge_db().exists() {
         snafu::whatever!(
             "knowledge store not found at {}\n  \
              Has this instance been initialized with recall enabled?",

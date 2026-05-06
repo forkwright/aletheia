@@ -72,6 +72,10 @@ fn oikos_data_subpaths_are_under_data_directory() {
         oikos.knowledge_db(),
         PathBuf::from("/srv/instance/data/knowledge.fjall")
     );
+    assert_eq!(
+        oikos.knowledge_cohort_db("shared"),
+        PathBuf::from("/srv/instance/data/knowledge.fjall/shared")
+    );
     assert_eq!(oikos.backups(), PathBuf::from("/srv/instance/data/backups"));
     assert_eq!(oikos.archive(), PathBuf::from("/srv/instance/data/archive"));
 }
@@ -185,6 +189,7 @@ fn validate_startup_rejects_agent_with_nonexistent_workspace() {
         domains: Vec::new(),
         default: false,
         private: false,
+        episteme_cohort: None,
         recall: None,
         recall_profile: None,
         behavior: None,
@@ -212,6 +217,7 @@ fn validate_startup_accepts_agent_with_real_workspace_directory() {
         domains: Vec::new(),
         default: false,
         private: false,
+        episteme_cohort: None,
         recall: None,
         recall_profile: None,
         behavior: None,

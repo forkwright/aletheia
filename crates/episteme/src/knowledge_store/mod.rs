@@ -532,6 +532,8 @@ impl KnowledgeStore {
         path: impl AsRef<std::path::Path>,
         config: KnowledgeConfig,
     ) -> crate::error::Result<std::sync::Arc<Self>> {
+        let path = path.as_ref();
+        Self::migrate_to_cohort_layout(path)?;
         let db = crate::engine::Db::open_fjall(path).map_err(|e| {
             crate::error::EngineInitSnafu {
                 message: e.to_string(),
@@ -546,6 +548,114 @@ impl KnowledgeStore {
         };
         store.init_schema()?;
         Ok(std::sync::Arc::new(store))
+    }
+
+    #[cfg(feature = "storage-fjall")]
+    fn migrate_to_cohort_layout(path: &std::path::Path) -> crate::error::Result<()> {
+        if path.file_name().and_then(std::ffi::OsStr::to_str) != Some("shared") {
+            return Ok(());
+        }
+
+        let Some(base) = path.parent() else {
+            return Ok(());
+        };
+        if !base.exists() || path.exists() {
+            return Ok(());
+        }
+
+        let entries = std::fs::read_dir(base).map_err(|e| {
+            crate::error::EngineInitSnafu {
+                message: format!(
+                    "failed to inspect legacy knowledge store at {}: {e}",
+                    base.display()
+                ),
+            }
+            .build()
+        })?;
+        std::fs::create_dir_all(path).map_err(|e| {
+            crate::error::EngineInitSnafu {
+                message: format!("failed to create shared cohort at {}: {e}", path.display()),
+            }
+            .build()
+        })?;
+
+        for entry in entries {
+            let entry = entry.map_err(|e| {
+                crate::error::EngineInitSnafu {
+                    message: format!(
+                        "failed to read legacy knowledge store entry at {}: {e}",
+                        base.display()
+                    ),
+                }
+                .build()
+            })?;
+            if entry.file_name() == std::ffi::OsStr::new("shared") {
+                continue;
+            }
+            let source = entry.path();
+            let target = path.join(entry.file_name());
+            Self::copy_legacy_entry(&source, &target)?;
+        }
+        Ok(())
+    }
+
+    #[cfg(feature = "storage-fjall")]
+    fn copy_legacy_entry(
+        source: &std::path::Path,
+        target: &std::path::Path,
+    ) -> crate::error::Result<()> {
+        let metadata = std::fs::metadata(source).map_err(|e| {
+            crate::error::EngineInitSnafu {
+                message: format!(
+                    "failed to stat legacy knowledge entry {}: {e}",
+                    source.display()
+                ),
+            }
+            .build()
+        })?;
+        if metadata.is_dir() {
+            std::fs::create_dir_all(target).map_err(|e| {
+                crate::error::EngineInitSnafu {
+                    message: format!(
+                        "failed to create migrated knowledge directory {}: {e}",
+                        target.display()
+                    ),
+                }
+                .build()
+            })?;
+            for child in std::fs::read_dir(source).map_err(|e| {
+                crate::error::EngineInitSnafu {
+                    message: format!(
+                        "failed to read legacy knowledge directory {}: {e}",
+                        source.display()
+                    ),
+                }
+                .build()
+            })? {
+                let child = child.map_err(|e| {
+                    crate::error::EngineInitSnafu {
+                        message: format!(
+                            "failed to read legacy knowledge child in {}: {e}",
+                            source.display()
+                        ),
+                    }
+                    .build()
+                })?;
+                Self::copy_legacy_entry(&child.path(), &target.join(child.file_name()))?;
+            }
+        } else {
+            std::fs::copy(source, target).map_err(|e| {
+                crate::error::EngineInitSnafu {
+                    message: format!(
+                        "failed to copy legacy knowledge entry {} to {}: {e}",
+                        source.display(),
+                        target.display()
+                    ),
+                }
+                .build()
+            })?;
+        }
+        Ok(())
     }
 
     #[expect(

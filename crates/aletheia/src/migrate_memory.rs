@@ -105,7 +105,7 @@ pub(crate) async fn run(
     } else {
         let path = knowledge_path
             .cloned()
-            .unwrap_or_else(|| oikos.knowledge_db());
+            .unwrap_or_else(|| oikos.knowledge_cohort_db("shared"));
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)
                 .whatever_context("failed to create knowledge store directory")?;

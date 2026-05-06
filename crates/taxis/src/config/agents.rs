@@ -304,6 +304,9 @@ pub struct NousDefinition {
     /// Whether this agent's workspace is hidden from public discovery.
     #[serde(default)]
     pub private: bool,
+    /// Episteme knowledge-store cohort for this agent.
+    #[serde(default)]
+    pub episteme_cohort: Option<String>,
     /// Recall pipeline override; when `None`, inherits from [`AgentDefaults::recall`].
     #[serde(default)]
     pub recall: Option<RecallSettings>,

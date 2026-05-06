@@ -79,7 +79,7 @@ pub struct NousManager {
     vector_search: Option<Arc<dyn crate::recall::VectorSearch>>,
     session_store: Option<Arc<TokioMutex<SessionStore>>>,
     #[cfg(feature = "knowledge-store")]
-    knowledge_store: Option<Arc<KnowledgeStore>>,
+    knowledge_stores: HashMap<String, Arc<KnowledgeStore>>,
     packs: Arc<Vec<LoadedPack>>,
     router: Option<Arc<crate::cross::CrossNousRouter>>,
     tool_services: Option<Arc<ToolServices>>,
@@ -114,7 +114,9 @@ impl NousManager {
         embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
         vector_search: Option<Arc<dyn crate::recall::VectorSearch>>,
         session_store: Option<Arc<TokioMutex<SessionStore>>>,
-        #[cfg(feature = "knowledge-store")] knowledge_store: Option<Arc<KnowledgeStore>>,
+        #[cfg(feature = "knowledge-store")] knowledge_stores: Option<
+            HashMap<String, Arc<KnowledgeStore>>,
+        >,
         packs: Arc<Vec<LoadedPack>>,
         router: Option<Arc<crate::cross::CrossNousRouter>>,
         tool_services: Option<Arc<ToolServices>>,
@@ -130,7 +132,7 @@ impl NousManager {
             vector_search,
             session_store,
             #[cfg(feature = "knowledge-store")]
-            knowledge_store,
+            knowledge_stores: knowledge_stores.unwrap_or_default(),
             packs,
             router,
             tool_services,
@@ -261,6 +263,28 @@ impl NousManager {
         };
 
         let child_cancel = self.cancel.child_token();
+        #[cfg(feature = "knowledge-store")]
+        let knowledge_store = self
+            .knowledge_stores
+            .get(config.episteme_cohort.as_ref())
+            .cloned()
+            .or_else(|| self.knowledge_stores.get("shared").cloned());
+        #[cfg(feature = "knowledge-store")]
+        #[expect(
+            clippy::as_conversions,
+            reason = "coercion to dyn trait object: required to satisfy Arc<dyn Trait> type annotation"
+        )]
+        let vector_search = knowledge_store.as_ref().map_or_else(
+            || self.vector_search.clone(),
+            |store| {
+                Some(
+                    Arc::new(crate::recall::KnowledgeVectorSearch::new(Arc::clone(store)))
+                        as Arc<dyn crate::recall::VectorSearch>,
+                )
+            },
+        );
+        #[cfg(not(feature = "knowledge-store"))]
+        let vector_search = self.vector_search.clone();
         let (handle, join_handle, active_turn, turn_started_at_ms) = actor::spawn(
             config.clone(),
             pipeline_config.clone(),
@@ -268,10 +292,10 @@ impl NousManager {
             Arc::clone(&self.tools),
             Arc::clone(&self.oikos),
             self.embedding_provider.clone(),
-            self.vector_search.clone(),
+            vector_search,
             self.session_store.clone(),
             #[cfg(feature = "knowledge-store")]
-            self.knowledge_store.clone(),
+            knowledge_store,
             self.tool_services.clone(),
             extra_bootstrap,
             cross_rx,
@@ -900,7 +924,14 @@ impl NousManager {
     #[cfg(feature = "knowledge-store")]
     #[must_use]
     pub fn knowledge_store(&self) -> Option<&Arc<KnowledgeStore>> {
-        self.knowledge_store.as_ref()
+        self.knowledge_store_for_cohort("shared")
+    }
+
+    /// Access the knowledge store for a specific episteme cohort, if configured.
+    #[cfg(feature = "knowledge-store")]
+    #[must_use]
+    pub fn knowledge_store_for_cohort(&self, cohort: &str) -> Option<&Arc<KnowledgeStore>> {
+        self.knowledge_stores.get(cohort)
     }
 }
 

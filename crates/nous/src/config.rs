@@ -228,6 +228,9 @@ pub struct NousConfig {
     /// Whether this agent's workspace is hidden from public discovery.
     #[serde(default)]
     pub private: bool,
+    /// Episteme knowledge-store cohort for this agent.
+    #[serde(default = "default_episteme_cohort", with = "arc_str")]
+    pub episteme_cohort: Arc<str>,
     /// Server-side tools to include in API requests (e.g., web search).
     #[serde(default)]
     pub server_tools: Vec<hermeneus::types::ServerToolDefinition>,
@@ -303,6 +306,10 @@ fn default_cache_enabled() -> bool {
     true
 }
 
+fn default_episteme_cohort() -> Arc<str> {
+    Arc::from("shared")
+}
+
 fn default_session_token_cap() -> u64 {
     500_000
 }
@@ -332,6 +339,7 @@ impl Default for NousConfig {
             limits: NousLimits::default(),
             domains: Vec::new(),
             private: false,
+            episteme_cohort: default_episteme_cohort(),
             server_tools: Vec::new(),
             cache_enabled: true,
             recall: RecallConfig::default(),
@@ -581,6 +589,7 @@ mod tests {
             },
             domains: vec!["medical".to_owned()],
             private: true,
+            episteme_cohort: std::sync::Arc::from("shared"),
             server_tools: Vec::new(),
             cache_enabled: false,
             recall: RecallConfig::default(),
