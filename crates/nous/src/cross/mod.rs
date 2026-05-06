@@ -5,6 +5,8 @@ use std::time::Duration;
 
 use koina::ulid::Ulid;
 
+pub mod knowledge;
+
 pub(super) const DEFAULT_REPLY_TIMEOUT: Duration = Duration::from_secs(30);
 pub(super) const DEFAULT_MAX_LOG_ENTRIES: usize = 1000;
 const OPERATOR_SENDER_ID: &str = "operator";
@@ -67,6 +69,8 @@ pub struct CrossNousMessage {
     pub target_session: String,
     /// Message text payload.
     pub content: String,
+    /// Optional typed payload — see [`knowledge::KnowledgePayload`].
+    pub payload: Option<knowledge::KnowledgePayload>,
     /// Whether the sender expects a [`CrossNousReply`].
     pub expects_reply: bool,
     /// How long to wait for a reply before timing out.
@@ -87,6 +91,7 @@ impl CrossNousMessage {
             to: to.into(),
             target_session: "main".to_owned(),
             content: content.into(),
+            payload: None,
             expects_reply: false,
             reply_timeout: None,
             created_at: jiff::Timestamp::now(),
@@ -106,6 +111,13 @@ impl CrossNousMessage {
     pub fn with_reply(mut self, timeout: Duration) -> Self {
         self.expects_reply = true;
         self.reply_timeout = Some(timeout);
+        self
+    }
+
+    /// Attach a typed [`knowledge::KnowledgePayload`].
+    #[must_use]
+    pub fn with_payload(mut self, payload: knowledge::KnowledgePayload) -> Self {
+        self.payload = Some(payload);
         self
     }
 }
@@ -783,3 +795,6 @@ mod tests {
         assert_eq!(router.ask_graph.read().await.edge_count(), 0);
     }
 }
+
+#[cfg(test)]
+mod knowledge_tests;
