@@ -197,9 +197,10 @@ impl NousManager {
     /// sequential startup, never in a `select!`.
     pub async fn spawn(
         &mut self,
-        config: NousConfig,
-        pipeline_config: PipelineConfig,
+        mut config: NousConfig,
+        mut pipeline_config: PipelineConfig,
     ) -> crate::error::Result<NousHandle> {
+        config.apply_recall_profile(&mut pipeline_config);
         let id = config.id.to_string();
 
         if let Some(old) = self.actors.remove(&id) {

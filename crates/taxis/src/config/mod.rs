@@ -8,7 +8,7 @@ mod resolved;
 
 pub use agents::{
     AgentBehaviorDefaults, AgentDefaults, AgentModelDefaults, AgentsConfig, CachingConfig,
-    ModelSpec, NousDefinition, RecallSettings, RecallWeights,
+    ModelSpec, NousDefinition, RecallProfile, RecallSettings, RecallWeights,
 };
 pub use behavior::{
     AnthropicConfig, ApiLimitsConfig, CapacityConfig, CronTaskConfig, DaemonBehaviorConfig,

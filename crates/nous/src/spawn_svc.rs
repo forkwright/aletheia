@@ -115,6 +115,7 @@ impl SpawnService for SpawnServiceImpl {
             server_tools: Vec::new(),
             cache_enabled: true,
             recall: crate::recall::RecallConfig::default(),
+            recall_profile: crate::config::RecallProfile::Default,
             tool_allowlist,
             hooks: crate::config::HookConfig::default(),
             behavior: taxis::config::AgentBehaviorDefaults::default(),

@@ -290,6 +290,7 @@ fn resolve_merges_agent_overrides() {
         domains: vec!["code".to_owned()],
         default: false,
         recall: None,
+        recall_profile: None,
         behavior: None,
     });
 
@@ -344,6 +345,7 @@ fn resolve_merges_allowed_roots() {
         domains: Vec::new(),
         default: false,
         recall: None,
+        recall_profile: None,
         behavior: None,
     });
 
@@ -369,6 +371,7 @@ fn resolve_thinking_override() {
         domains: Vec::new(),
         default: false,
         recall: None,
+        recall_profile: None,
         behavior: None,
     });
 
