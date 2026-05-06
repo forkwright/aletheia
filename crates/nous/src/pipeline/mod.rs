@@ -66,6 +66,8 @@ pub struct PipelineContext {
     pub compaction_metrics: Option<CompactionMetrics>,
     /// Pre-LLM triage result (intent, sensitivity, tier), if triage was run.
     pub triage_result: Option<triage::TriageResult>,
+    /// Reflection stage output, if reflection was run.
+    pub reflection_result: Option<ReflectionResult>,
 }
 
 impl Default for PipelineContext {
@@ -83,6 +85,7 @@ impl Default for PipelineContext {
             working_state: None,
             compaction_metrics: None,
             triage_result: None,
+            reflection_result: None,
         }
     }
 }
@@ -517,6 +520,38 @@ pub enum InteractionSignal {
     Planning,
     /// Error recovery.
     ErrorRecovery,
+}
+
+/// Result from the optional reflection stage.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReflectionResult {
+    /// Why the stage ended the way it did.
+    pub status: ReflectionStatus,
+    /// Number of facts emitted (reflected) during this stage.
+    pub facts_emitted: u32,
+}
+
+/// Reflection stage completion status.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum ReflectionStatus {
+    /// Stage skipped because reflection is disabled.
+    Skipped,
+    /// Stage skipped because no `KnowledgeStore` is available in the pipeline.
+    NoStore,
+    /// Reflection completed and facts were emitted.
+    Completed,
+}
+
+impl ReflectionResult {
+    /// Create a new reflection result.
+    #[must_use]
+    pub fn new(status: ReflectionStatus, facts_emitted: u32) -> Self {
+        Self {
+            status,
+            facts_emitted,
+        }
+    }
 }
 
 /// Turn result: the output of processing one turn.
@@ -989,7 +1024,10 @@ pub(crate) async fn run_pipeline(
         run_finalize_stage(config, &input, &result, session_store, emitter).await;
         stages_completed += 1;
 
-        // WHY: training capture runs after finalize so only persisted, successful
+        run_reflection_stage(config, pipeline_config, &mut ctx, emitter).await;
+        stages_completed += 1;
+
+        // WHY: training capture runs after finalize (and optional reflection) so only persisted, successful
         // turns enter the training corpus. Errors are logged, never propagated:
         // training capture must never block the pipeline.
         //
@@ -1224,6 +1262,7 @@ mod stages;
 use stages::{
     run_context_stage, run_execute_stage, run_finalize_stage, run_full_compact_stage,
     run_guard_stage, run_history_stage, run_microcompact_stage, run_recall_stage,
+    run_reflection_stage,
 };
 
 #[cfg(test)]

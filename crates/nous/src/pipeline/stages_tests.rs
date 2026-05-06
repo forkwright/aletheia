@@ -1,6 +1,11 @@
+#![expect(clippy::expect_used, reason = "test assertions may panic on failure")]
+
+use koina::event::EventEmitter;
+
 use super::*;
 use crate::compact::CompactConfig;
-use crate::pipeline::PipelineMessage;
+use crate::config::{NousConfig, PipelineConfig, StageBudget};
+use crate::pipeline::{PipelineMessage, ReflectionStatus};
 
 fn make_msg(role: &str, content: &str) -> PipelineMessage {
     PipelineMessage {
@@ -127,4 +132,65 @@ fn structural_summary_preserve_exactly_equals_len() {
     let config = config_with_preserve(2);
     let summary = build_structural_summary(&msgs, &config);
     assert!(summary.contains("0 messages summarized"));
+}
+
+// --- Reflection stage tests ---
+
+#[tokio::test]
+async fn reflection_stage_disabled_skips() {
+    let config = NousConfig::default();
+    let pipeline_config = PipelineConfig::default();
+    let mut ctx = PipelineContext::default();
+    let emitter = EventEmitter::new();
+
+    run_reflection_stage(&config, &pipeline_config, &mut ctx, &emitter).await;
+
+    let result = ctx
+        .reflection_result
+        .expect("reflection_result should be set");
+    assert_eq!(result.status, ReflectionStatus::Skipped);
+    assert_eq!(result.facts_emitted, 0);
+}
+
+#[tokio::test]
+async fn reflection_stage_enabled_no_store() {
+    let config = NousConfig::default();
+    let pipeline_config = PipelineConfig {
+        reflection_enabled: true,
+        ..PipelineConfig::default()
+    };
+    let mut ctx = PipelineContext::default();
+    let emitter = EventEmitter::new();
+
+    run_reflection_stage(&config, &pipeline_config, &mut ctx, &emitter).await;
+
+    let result = ctx
+        .reflection_result
+        .expect("reflection_result should be set");
+    assert_eq!(result.status, ReflectionStatus::NoStore);
+    assert_eq!(result.facts_emitted, 0);
+}
+
+#[tokio::test]
+async fn reflection_stage_timeout_path() {
+    let config = NousConfig::default();
+    let pipeline_config = PipelineConfig {
+        reflection_enabled: true,
+        stage_budget: StageBudget {
+            reflection_secs: 1,
+            ..StageBudget::default()
+        },
+        ..PipelineConfig::default()
+    };
+    let mut ctx = PipelineContext::default();
+    let emitter = EventEmitter::new();
+
+    // With the current no-op implementation the timeout never fires,
+    // but the timeout wrapper is exercised and the stage completes.
+    run_reflection_stage(&config, &pipeline_config, &mut ctx, &emitter).await;
+
+    let result = ctx
+        .reflection_result
+        .expect("reflection_result should be set");
+    assert_eq!(result.status, ReflectionStatus::NoStore);
 }

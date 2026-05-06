@@ -63,6 +63,10 @@ fn pipeline_context_default() {
         ctx.working_state.is_none(),
         "default working_state should be None"
     );
+    assert!(
+        ctx.reflection_result.is_none(),
+        "default reflection_result should be None"
+    );
 }
 
 #[test]

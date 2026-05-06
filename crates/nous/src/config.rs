@@ -284,6 +284,9 @@ pub struct PipelineConfig {
     /// Training data capture configuration.
     #[serde(default)]
     pub training: crate::training::TrainingConfig,
+    /// Whether the reflection stage runs after finalize.
+    #[serde(default)]
+    pub reflection_enabled: bool,
 }
 
 impl Default for PipelineConfig {
@@ -293,6 +296,7 @@ impl Default for PipelineConfig {
             extraction: None,
             stage_budget: StageBudget::default(),
             training: crate::training::TrainingConfig::default(),
+            reflection_enabled: false,
         }
     }
 }
@@ -317,6 +321,9 @@ pub struct StageBudget {
     pub execute_secs: u32,
     /// Finalization stage limit.
     pub finalize_secs: u32,
+    /// Reflection stage limit.
+    #[serde(default = "default_reflection_secs")]
+    pub reflection_secs: u32,
     /// Hard cap on total pipeline wall-clock time.
     pub total_secs: u32,
 }
@@ -330,9 +337,14 @@ impl Default for StageBudget {
             guard_secs: 2,
             execute_secs: 0,
             finalize_secs: 10,
+            reflection_secs: default_reflection_secs(),
             total_secs: 300,
         }
     }
+}
+
+const fn default_reflection_secs() -> u32 {
+    30
 }
 
 #[cfg(test)]
@@ -363,6 +375,10 @@ mod tests {
         assert!(config.extraction.is_none());
         assert!(!config.training.enabled);
         assert_eq!(config.training.path, "data/training");
+        assert!(
+            !config.reflection_enabled,
+            "reflection should be disabled by default"
+        );
     }
 
     #[test]
@@ -382,6 +398,10 @@ mod tests {
         assert!((back.history_budget_ratio - 0.6).abs() < f64::EPSILON);
         assert!(back.extraction.is_none());
         assert!(!back.training.enabled);
+        assert!(
+            !back.reflection_enabled,
+            "serde roundtrip should preserve reflection_enabled=false"
+        );
     }
 
     #[test]
@@ -389,6 +409,10 @@ mod tests {
         let budget = StageBudget::default();
         assert_eq!(budget.context_secs, 10);
         assert_eq!(budget.recall_secs, 15);
+        assert_eq!(
+            budget.reflection_secs, 30,
+            "default reflection budget should be 30s"
+        );
         assert_eq!(budget.execute_secs, 0);
         assert_eq!(budget.total_secs, 300);
     }
