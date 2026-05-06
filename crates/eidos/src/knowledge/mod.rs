@@ -28,10 +28,12 @@ pub use entity::{EmbeddedChunk, Entity, RecallResult, Relationship};
 #[cfg(test)]
 pub(crate) use fact::is_far_future;
 pub use fact::{
-    EpistemicTier, Fact, FactAccess, FactDiff, FactLifecycle, FactProvenance, FactSensitivity,
-    FactTemporal, FactType, ForgetReason, KnowledgeStage, MAX_CONTENT_LENGTH, StageTransition,
-    VerificationRecord, VerificationSource, VerificationStatus, Visibility,
-    default_stability_hours, far_future, format_timestamp, parse_timestamp,
+    ConflictResolution, EpistemicTier, Fact, FactAccess, FactAccessGrant, FactDiff, FactLifecycle,
+    FactProvenance, FactSensitivity, FactTemporal, FactType, ForgetReason, KnowledgeStage,
+    MAX_CONTENT_LENGTH, PublishedFact, PublishedFactId, StageTransition, VerificationProposal,
+    VerificationRecord, VerificationSource, VerificationStatus, VerificationVerdict,
+    VerificationVote, Visibility, default_stability_hours, far_future, format_timestamp,
+    parse_timestamp,
 };
 
 // ── Re-exports: path ─────────────────────────────────────────────────────

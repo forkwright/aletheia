@@ -13,6 +13,7 @@ mod ids;
 mod path_validation;
 mod scopes;
 mod validate_memory_path;
+mod verification;
 
 pub(super) fn test_timestamp(s: &str) -> jiff::Timestamp {
     parse_timestamp(s).expect("valid test timestamp")

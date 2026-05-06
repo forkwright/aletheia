@@ -2812,6 +2812,7 @@ name = "eidos"
 version = "0.21.1"
 dependencies = [
  "jiff",
+ "koina",
  "serde",
  "serde_json",
  "snafu",

@@ -758,3 +758,153 @@ pub struct FactDiff {
     /// Facts whose `valid_to` fell within the interval.
     pub removed: Vec<Fact>,
 }
+
+/// Identifier for a published fact (a copy-on-publish derivative of a private fact).
+///
+/// Per R716 design: when a nous publishes a fact, the original stays scoped
+/// to the publisher and a `PublishedFact` is created with cross-nous visibility.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct PublishedFactId(pub String);
+
+/// A fact that has been published for cross-nous visibility, retaining a link
+/// to its original (publisher-private) source.
+///
+/// Verification and contestation are tracked here; the original `Fact` is
+/// untouched. See R716 Phase 3 design (`planning/research/knowledge-sharing.md`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PublishedFact {
+    /// Stable identifier for this published fact.
+    pub id: PublishedFactId,
+    /// The original (publisher-private) fact this was copied from.
+    pub original_fact_id: FactId,
+    /// Nous that published the fact.
+    pub published_by: koina::id::NousId,
+    /// When the fact was published.
+    pub published_at: jiff::Timestamp,
+    /// Number of independent nouses that have voted Accept on this fact.
+    pub verification_count: u32,
+    /// Nouses that have contested this fact.
+    pub contested_by: Vec<koina::id::NousId>,
+    /// Free-text reason associated with the most recent contest, if any.
+    pub contest_reason: Option<String>,
+}
+
+/// Per-nous access grant for a fact under restricted visibility.
+///
+/// Schema-only ACL bookkeeping for the `Visibility::Restricted` case
+/// (R716 Phase 1 carry-over; not enforced at recall time yet — Phase 4).
+///
+/// **NOTE:** distinct from [`FactAccess`] (access-counter struct above).
+/// Named with `Grant` suffix to avoid the type collision.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FactAccessGrant {
+    /// Fact this grant applies to.
+    pub fact_id: FactId,
+    /// Nous granted read access.
+    pub grantee: koina::id::NousId,
+    /// When the grant was issued.
+    pub granted_at: jiff::Timestamp,
+}
+
+/// A pending verification proposal on a published fact.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VerificationProposal {
+    /// The fact under verification.
+    pub fact_id: FactId,
+    /// Nous that initiated the proposal.
+    pub proposing_nous: koina::id::NousId,
+    /// Tier the proposing nous wants to promote the fact to (typically `Verified`).
+    pub proposed_tier: EpistemicTier,
+    /// Votes cast so far.
+    pub votes: Vec<VerificationVote>,
+}
+
+/// A single vote on a verification proposal.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VerificationVote {
+    /// Voter nous.
+    pub voter: koina::id::NousId,
+    /// Verdict cast.
+    pub verdict: VerificationVerdict,
+    /// When the vote was cast.
+    pub at: jiff::Timestamp,
+}
+
+/// Verdict a voter casts on a verification proposal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+#[non_exhaustive]
+pub enum VerificationVerdict {
+    /// Voter agrees the fact merits the proposed tier.
+    Accept,
+    /// Voter disagrees and contests the fact.
+    Contest,
+    /// Voter declines to opine.
+    Abstain,
+}
+
+/// Resolution of a cross-nous fact conflict.
+///
+/// Composite scoring per R716 design:
+/// `score = 0.4 * confidence + 0.3 * tier_score + 0.2 * recency + 0.1 * supporter_count`
+/// where:
+/// - `confidence` ∈ [0.0, 1.0] is the fact's `FactProvenance::confidence`
+/// - `tier_score` ∈ [0.0, 1.0] maps tier → numeric weight (Verified=1.0, Inferred=0.66, Assumed=0.33, Training=0.5)
+/// - `recency` ∈ [0.0, 1.0] is `1.0` for facts recorded within the last 24h, decaying linearly to `0.0` at 30 days
+/// - `supporter_count` is normalized as `min(1.0, supporters / 5.0)` (5 supporters saturates the term)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConflictResolution {
+    /// Winning fact ID.
+    pub winner: FactId,
+    /// Losing fact ID(s); they retain `contested_by` provenance and are not deleted.
+    pub losers: Vec<FactId>,
+    /// Composite score that selected the winner.
+    pub winning_score: f64,
+    /// When the resolution was computed.
+    pub resolved_at: jiff::Timestamp,
+}
+
+impl ConflictResolution {
+    /// Compute the composite resolution score for a fact.
+    ///
+    /// `supporters` is the count of distinct nouses that have independently
+    /// extracted or accepted this fact (typically `verification_count + 1`
+    /// to include the publisher).
+    ///
+    /// `now` is the reference timestamp for recency normalization (callers
+    /// pass `jiff::Timestamp::now()` in production; tests pass a fixed value
+    /// for determinism).
+    #[must_use]
+    pub fn compute_score(fact: &Fact, supporters: u32, now: jiff::Timestamp) -> f64 {
+        let confidence = fact.provenance.confidence.clamp(0.0, 1.0);
+        let tier_score = match fact.provenance.tier {
+            EpistemicTier::Verified => 1.0,
+            EpistemicTier::Reflected => 0.83,
+            EpistemicTier::Inferred => 0.66,
+            EpistemicTier::Training => 0.5,
+            EpistemicTier::Assumed => 0.33,
+        };
+        let recency = recency_score(fact.temporal.recorded_at, now);
+        let supporter_norm = (f64::from(supporters) / 5.0).min(1.0);
+        0.4 * confidence + 0.3 * tier_score + 0.2 * recency + 0.1 * supporter_norm
+    }
+}
+
+/// Linearly decaying recency factor. `1.0` if `now - recorded_at` ≤ 24h,
+/// `0.0` if ≥ 30 days, linear in between. Negative deltas (future timestamps)
+/// clamp to `1.0`.
+fn recency_score(recorded_at: jiff::Timestamp, now: jiff::Timestamp) -> f64 {
+    let delta = now.duration_since(recorded_at);
+    if delta.is_negative() {
+        return 1.0;
+    }
+    let hours = delta.as_secs_f64() / 3600.0;
+    if hours <= 24.0 {
+        1.0
+    } else if hours >= 24.0 * 30.0 {
+        0.0
+    } else {
+        let span = 24.0 * 30.0 - 24.0;
+        ((24.0 * 30.0) - hours) / span
+    }
+}
