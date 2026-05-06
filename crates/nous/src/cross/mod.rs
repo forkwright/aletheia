@@ -7,6 +7,30 @@ use koina::ulid::Ulid;
 
 pub(super) const DEFAULT_REPLY_TIMEOUT: Duration = Duration::from_secs(30);
 pub(super) const DEFAULT_MAX_LOG_ENTRIES: usize = 1000;
+const OPERATOR_SENDER_ID: &str = "operator";
+
+/// Inbound address policy for a target nous.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum AddressMask {
+    /// Any sender may deliver to this target.
+    #[default]
+    Public,
+    /// Only the operator sender may deliver to this target.
+    OperatorOnly,
+    /// Only the listed senders may deliver to this target.
+    AllowList(Vec<String>),
+}
+
+impl AddressMask {
+    fn permits(&self, sender: &str) -> bool {
+        match self {
+            Self::Public => true,
+            Self::OperatorOnly => sender == OPERATOR_SENDER_ID,
+            Self::AllowList(allowed) => allowed.iter().any(|id| id == sender),
+        }
+    }
+}
 
 /// Lifecycle state of a cross-nous message.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -250,6 +274,72 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn address_mask_default_public_permits_send() {
+        let (router, mut rx) = setup_router().await;
+        let msg = CrossNousMessage::new("sender", "target", "hello");
+        let state = router.send(msg).await.unwrap();
+        assert_eq!(state, DeliveryState::Delivered);
+
+        let envelope = rx.recv().await.unwrap();
+        assert_eq!(envelope.message.from, "sender");
+        assert_eq!(envelope.message.to, "target");
+    }
+
+    #[tokio::test]
+    async fn address_mask_operator_only_rejects_non_operator_and_permits_operator() {
+        let (router, mut rx) = setup_router().await;
+        router
+            .set_address_mask("target", AddressMask::OperatorOnly)
+            .await;
+
+        let rejected = CrossNousMessage::new("sender", "target", "hello");
+        let err = router.send(rejected).await.unwrap_err();
+        assert!(err.to_string().contains("address rejected"));
+        assert!(matches!(
+            rx.try_recv(),
+            Err(mpsc::error::TryRecvError::Empty)
+        ));
+
+        let log = router.delivery_log.read().await;
+        let entries = log.recent(1);
+        assert!(matches!(
+            entries[0].state,
+            DeliveryState::Failed { ref reason } if reason.contains("address rejected")
+        ));
+        drop(log);
+
+        let allowed = CrossNousMessage::new("operator", "target", "hello");
+        let state = router.send(allowed).await.unwrap();
+        assert_eq!(state, DeliveryState::Delivered);
+
+        let envelope = rx.recv().await.unwrap();
+        assert_eq!(envelope.message.from, "operator");
+    }
+
+    #[tokio::test]
+    async fn address_mask_allow_list_permits_listed_sender_and_rejects_unlisted_sender() {
+        let (router, mut rx) = setup_router().await;
+        router
+            .set_address_mask("target", AddressMask::AllowList(vec!["alice".to_owned()]))
+            .await;
+
+        let allowed = CrossNousMessage::new("alice", "target", "hello");
+        let state = router.send(allowed).await.unwrap();
+        assert_eq!(state, DeliveryState::Delivered);
+
+        let envelope = rx.recv().await.unwrap();
+        assert_eq!(envelope.message.from, "alice");
+
+        let rejected = CrossNousMessage::new("bob", "target", "hello");
+        let err = router.send(rejected).await.unwrap_err();
+        assert!(err.to_string().contains("address rejected"));
+        assert!(matches!(
+            rx.try_recv(),
+            Err(mpsc::error::TryRecvError::Empty)
+        ));
+    }
+
+    #[tokio::test]
     async fn send_to_unknown_returns_error() {
         let router = CrossNousRouter::default();
         let msg = CrossNousMessage::new("sender", "ghost", "hello");
@@ -442,6 +532,33 @@ mod tests {
         let err = router.ask(msg).await;
         assert!(err.is_err());
         assert!(err.unwrap_err().to_string().contains("ghost"));
+    }
+
+    #[tokio::test]
+    async fn address_mask_ask_rejection_cleans_state_and_does_not_deliver() {
+        let (router, mut rx) = setup_router().await;
+        router
+            .set_address_mask("target", AddressMask::OperatorOnly)
+            .await;
+
+        let msg = CrossNousMessage::new("sender", "target", "question")
+            .with_reply(Duration::from_secs(1));
+        let err = router.ask(msg).await.unwrap_err();
+        assert!(err.to_string().contains("address rejected"));
+
+        assert_eq!(router.ask_graph.read().await.edge_count(), 0);
+        assert_eq!(router.pending_reply_count().await, 0);
+        assert!(matches!(
+            rx.try_recv(),
+            Err(mpsc::error::TryRecvError::Empty)
+        ));
+
+        let log = router.delivery_log.read().await;
+        let entries = log.recent(1);
+        assert!(matches!(
+            entries[0].state,
+            DeliveryState::Failed { ref reason } if reason.contains("address rejected")
+        ));
     }
 
     #[tokio::test]

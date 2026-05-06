@@ -139,6 +139,15 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// Cross-nous address policy rejected the sender.
+    #[snafu(display("address rejected: '{from}' may not deliver to '{to}'"))]
+    AddressRejected {
+        from: String,
+        to: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// Cross-nous ask timed out waiting for reply.
     #[snafu(display("ask to '{nous_id}' timed out after {timeout_secs}s"))]
     AskTimeout {
@@ -287,6 +296,7 @@ impl koina::error_class::Classifiable for Error {
             Error::ContextAssembly { .. } => ErrorClass::Permanent,
             Error::ContextAssemblyIo { .. } => ErrorClass::Permanent,
             Error::NousNotFound { .. } => ErrorClass::Permanent,
+            Error::AddressRejected { .. } => ErrorClass::Permanent,
             Error::GuardRejected { .. } => ErrorClass::Permanent,
             Error::LoopDetected { .. } => ErrorClass::Permanent,
             Error::AskCycleDetected { .. } => ErrorClass::Permanent,
@@ -348,6 +358,9 @@ impl koina::error_class::Classifiable for Error {
             },
             Error::NousNotFound { nous_id, .. } => ErrorAction::Surface {
                 user_message: format!("Agent '{nous_id}' not found."),
+            },
+            Error::AddressRejected { to, .. } => ErrorAction::Surface {
+                user_message: format!("Agent '{to}' rejected this sender."),
             },
 
             // Everything else: escalate for operator visibility
