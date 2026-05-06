@@ -25,8 +25,8 @@ use crate::stream::TurnStreamEvent;
 
 use super::events::{StageCompleted, StageError, StageSkipped, StageTimeout};
 use super::{
-    GuardResult, PipelineContext, PipelineInput, PipelineMessage, TurnResult,
-    assemble_context_conditional_with_cache, check_guard,
+    GuardResult, PipelineContext, PipelineInput, PipelineMessage, ReflectionResult,
+    ReflectionStatus, TurnResult, assemble_context_conditional_with_cache, check_guard,
 };
 
 #[expect(
@@ -722,6 +722,99 @@ pub(super) async fn run_finalize_stage(
     emitter.emit(&StageCompleted {
         nous_id: config.id.to_string(),
         stage: "finalize",
+        duration_secs,
+    });
+}
+
+/// Reflection stage: read recent facts and emit reflected ones.
+///
+/// NOTE(#PR5): This is a conservative no-op today because [`KnowledgeStore`]
+/// is not threaded through [`run_pipeline`].  When a store handle becomes
+/// available the stage should:
+///
+/// 1. Read recent session facts for this `nous_id`.
+/// 2. Emit promoted facts at [`eidos::knowledge::EpistemicTier::Reflected`].
+///
+/// Until then the stage records [`ReflectionStatus::Skipped`] when disabled
+/// or [`ReflectionStatus::NoStore`] when enabled, so observability can
+/// distinguish the two cases.
+pub(super) async fn run_reflection_stage(
+    config: &NousConfig,
+    pipeline_config: &PipelineConfig,
+    ctx: &mut PipelineContext,
+    emitter: &EventEmitter,
+) {
+    let span = info_span!(
+        "pipeline_stage",
+        stage = "reflection",
+        duration_ms = tracing::field::Empty,
+        status = tracing::field::Empty,
+        facts_emitted = tracing::field::Empty,
+    );
+    let start = Instant::now();
+
+    if !pipeline_config.reflection_enabled {
+        span.record("status", "skipped");
+        emitter.emit(&StageSkipped {
+            nous_id: config.id.to_string(),
+            stage: "reflection",
+            reason: "reflection disabled".to_owned(),
+        });
+        ctx.reflection_result = Some(ReflectionResult::new(ReflectionStatus::Skipped, 0));
+        let duration_secs = start.elapsed().as_secs_f64();
+        record_stage_duration(&span, &start);
+        crate::metrics::record_stage(&config.id, "reflection", duration_secs);
+        emitter.emit(&StageCompleted {
+            nous_id: config.id.to_string(),
+            stage: "reflection",
+            duration_secs,
+        });
+        return;
+    }
+
+    let reflection_timeout_secs = pipeline_config.stage_budget.reflection_secs;
+
+    let reflection_fut = async {
+        // WHY: no-op — KnowledgeStore is not in the pipeline signature today.
+        // Do not invent global state or fake facts.
+    }
+    .instrument(span.clone());
+
+    if reflection_timeout_secs > 0 {
+        match tokio::time::timeout(
+            Duration::from_secs(u64::from(reflection_timeout_secs)),
+            reflection_fut,
+        )
+        .await
+        {
+            Ok(()) => {}
+            Err(_elapsed) => {
+                span.record("status", "timeout");
+                emitter.emit(&StageTimeout {
+                    nous_id: config.id.to_string(),
+                    stage: "reflection",
+                    timeout_secs: reflection_timeout_secs,
+                });
+                ctx.reflection_result = Some(ReflectionResult::new(ReflectionStatus::NoStore, 0));
+                let duration_secs = start.elapsed().as_secs_f64();
+                record_stage_duration(&span, &start);
+                crate::metrics::record_stage(&config.id, "reflection", duration_secs);
+                return;
+            }
+        }
+    } else {
+        reflection_fut.await;
+    }
+
+    span.record("status", "no_store");
+    ctx.reflection_result = Some(ReflectionResult::new(ReflectionStatus::NoStore, 0));
+
+    let duration_secs = start.elapsed().as_secs_f64();
+    record_stage_duration(&span, &start);
+    crate::metrics::record_stage(&config.id, "reflection", duration_secs);
+    emitter.emit(&StageCompleted {
+        nous_id: config.id.to_string(),
+        stage: "reflection",
         duration_secs,
     });
 }
