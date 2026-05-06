@@ -73,5 +73,5 @@ fn resolve_store_path() -> PathBuf {
     if let Ok(explicit) = std::env::var("ALETHEIA_MEMORY_MCP_STORE") {
         return PathBuf::from(explicit);
     }
-    Oikos::discover().knowledge_db()
+    Oikos::discover().knowledge_cohort_db("shared")
 }

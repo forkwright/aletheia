@@ -175,6 +175,15 @@ use taxis::oikos::Oikos;
 
 use graphe::types::Role;
 
+#[cfg(feature = "recall")]
+fn knowledge_path_for_nous(oikos: &Oikos, nous_id: &str) -> PathBuf {
+    let cohort = taxis::loader::load_config(oikos).ok().map_or_else(
+        || std::sync::Arc::from("shared"),
+        |config| taxis::config::resolve_nous(&config, nous_id).episteme_cohort,
+    );
+    oikos.knowledge_cohort_db(cohort.as_ref())
+}
+
 pub(crate) fn export_agent(_instance_root: Option<&PathBuf>, _args: &ExportArgs) -> Result<()> {
     // WHY: the SQLite export pipeline was removed alongside rusqlite (#3446).
     // A fjall-backed agent export/import round trip needs to be re-implemented
@@ -625,7 +634,7 @@ pub(crate) async fn export_skills(
             Some(root) => Oikos::from_root(root),
             None => Oikos::discover(),
         };
-        let knowledge_path = oikos.knowledge_db();
+        let knowledge_path = knowledge_path_for_nous(&oikos, &args.nous_id);
 
         let config = mneme::knowledge_store::KnowledgeConfig::default();
         let store =
@@ -658,11 +667,10 @@ pub(crate) async fn export_skills(
             }
         }
 
-        let domain_tags: Vec<&str> = args
-            .domain
-            .as_deref()
-            .map(|d| d.split(',').map(str::trim).collect())
-            .unwrap_or_default();
+        let domain_tags: Vec<&str> = match args.domain.as_deref() {
+            Some(domain) => domain.split(',').map(str::trim).collect(),
+            None => Vec::new(),
+        };
         let filter = if domain_tags.is_empty() {
             None
         } else {
@@ -715,7 +723,7 @@ pub(crate) async fn review_skills(
             Some(root) => Oikos::from_root(root),
             None => Oikos::discover(),
         };
-        let knowledge_path = oikos.knowledge_db();
+        let knowledge_path = knowledge_path_for_nous(&oikos, &args.nous_id);
 
         let config = mneme::knowledge_store::KnowledgeConfig::default();
         let store =

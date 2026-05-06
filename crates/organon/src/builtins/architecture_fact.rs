@@ -425,7 +425,7 @@ mod tests {
         let list_input = ToolInput {
             name: ToolName::from_static("architecture_fact"),
             tool_use_id: "toolu_list".to_owned(),
-            arguments: serde_json::json!({ "op": "list" }),
+            arguments: serde_json::json!({ "op": "list", "scope": "crate" }),
         };
         let result = executor
             .execute(&list_input, &ctx)

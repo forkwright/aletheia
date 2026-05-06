@@ -34,8 +34,8 @@ pub(crate) async fn run(args: &IngestArgs, instance_root: Option<&PathBuf>) -> R
     #[cfg(feature = "recall")]
     {
         let oikos = super::resolve_oikos(instance_root)?;
-        let knowledge_path = oikos.knowledge_db();
-        if !knowledge_path.exists() {
+        let knowledge_path = oikos.knowledge_cohort_db("shared");
+        if !knowledge_path.exists() && !oikos.knowledge_db().exists() {
             whatever!(
                 "knowledge store not found at {}\n  \
                  Has this instance been initialized with recall enabled?",

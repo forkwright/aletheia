@@ -113,6 +113,7 @@ impl SpawnService for SpawnServiceImpl {
             },
             domains: Vec::new(),
             private: false,
+            episteme_cohort: std::sync::Arc::from("shared"),
             server_tools: Vec::new(),
             cache_enabled: true,
             recall: crate::recall::RecallConfig::default(),

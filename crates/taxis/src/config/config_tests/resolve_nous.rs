@@ -23,6 +23,11 @@ fn resolve_nous_uses_defaults_when_no_override() {
         "unknown agents should default to public discovery"
     );
     assert_eq!(
+        resolved.episteme_cohort.as_ref(),
+        "shared",
+        "unknown agents should use the shared episteme cohort"
+    );
+    assert_eq!(
         resolved.behavior.distillation_context_token_trigger, 120_000,
         "default behavior should be used when no per-agent override is set"
     );
@@ -46,6 +51,7 @@ fn resolve_nous_per_agent_override_wins() {
         domains: Vec::new(),
         default: false,
         private: false,
+        episteme_cohort: None,
         recall: None,
         recall_profile: None,
         behavior: Some(AgentBehaviorDefaults {
@@ -79,6 +85,7 @@ fn resolve_nous_non_overriding_agent_uses_defaults() {
         domains: Vec::new(),
         default: false,
         private: false,
+        episteme_cohort: None,
         recall: None,
         recall_profile: None,
         behavior: None,
@@ -104,6 +111,7 @@ fn resolve_nous_recall_profile_override_wins() {
         domains: Vec::new(),
         default: false,
         private: true,
+        episteme_cohort: None,
         recall: None,
         recall_profile: Some(RecallProfile::IdentityContinuity),
         behavior: None,
@@ -116,6 +124,31 @@ fn resolve_nous_recall_profile_override_wins() {
         resolved.private,
         "per-agent private flag should propagate into resolved config"
     );
+}
+
+#[test]
+fn resolve_nous_episteme_cohort_override_wins() {
+    let mut config = AletheiaConfig::default();
+    config.agents.list.push(NousDefinition {
+        id: "identity".to_owned(),
+        name: None,
+        model: None,
+        workspace: "/tmp/nous/identity".to_owned(),
+        thinking_enabled: None,
+        agency: None,
+        allowed_roots: Vec::new(),
+        domains: Vec::new(),
+        default: false,
+        private: false,
+        episteme_cohort: Some("identity".to_owned()),
+        recall: None,
+        recall_profile: None,
+        behavior: None,
+    });
+
+    let resolved = resolve_nous(&config, "identity");
+
+    assert_eq!(resolved.episteme_cohort.as_ref(), "identity");
 }
 
 #[test]

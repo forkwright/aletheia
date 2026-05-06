@@ -1,5 +1,7 @@
 //! [`RuntimeBuilder`]: single-site construction of all server subsystems.
 
+#[cfg(feature = "recall")]
+use std::collections::BTreeSet;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -468,13 +470,20 @@ impl RuntimeBuilder {
             (None, None, None, None, None, None)
         };
 
-        // Knowledge store
+        // Knowledge stores
         #[cfg(feature = "recall")]
-        let knowledge_store = if self.embedding {
-            open_knowledge_store(&self.oikos)?
+        let knowledge_stores = if self.embedding {
+            let mut cohorts = BTreeSet::from(["shared".to_owned()]);
+            for agent_def in &self.config.agents.list {
+                let resolved = resolve_nous(&self.config, &agent_def.id);
+                cohorts.insert(resolved.episteme_cohort.to_string());
+            }
+            open_knowledge_stores(&self.oikos, cohorts)?
         } else {
-            None
+            std::collections::HashMap::new()
         };
+        #[cfg(feature = "recall")]
+        let shared_knowledge_store = knowledge_stores.get("shared").cloned();
 
         // Vector search
         #[cfg(feature = "recall")]
@@ -483,7 +492,7 @@ impl RuntimeBuilder {
             reason = "coercion to dyn trait object: required to satisfy Arc<dyn Trait> type annotation"
         )]
         let vector_search: Option<Arc<dyn nous::recall::VectorSearch>> =
-            knowledge_store.as_ref().map(|ks| {
+            shared_knowledge_store.as_ref().map(|ks| {
                 Arc::new(nous::recall::KnowledgeVectorSearch::new(Arc::clone(ks)))
                     as Arc<dyn nous::recall::VectorSearch>
             });
@@ -529,7 +538,7 @@ impl RuntimeBuilder {
             reason = "coercion to dyn trait object: required to satisfy Arc<dyn Trait> type annotation"
         )]
         let knowledge_search: Option<Arc<dyn organon::types::KnowledgeSearchService>> =
-            knowledge_store.as_ref().map(|ks| {
+            shared_knowledge_store.as_ref().map(|ks| {
                 Arc::new(crate::knowledge_adapter::KnowledgeSearchAdapter::new(
                     Arc::clone(ks),
                     Arc::clone(&embedding_provider),
@@ -553,9 +562,9 @@ impl RuntimeBuilder {
             server_tool_config: organon::types::ServerToolConfig::default(),
         });
 
-        // Clone knowledge_store Arc before moving INTO NousManager
+        // Clone shared store Arc before moving cohort stores into NousManager
         #[cfg(feature = "recall")]
-        let knowledge_store_for_daemon = knowledge_store.clone();
+        let knowledge_store_for_daemon = shared_knowledge_store.clone();
 
         // WHY(#3411): shared prompt audit log written once per turn across
         // all actors. Path defaults to `{instance}/logs/prompt-audit/` when
@@ -579,7 +588,7 @@ impl RuntimeBuilder {
             vector_search,
             Some(Arc::clone(&session_store)),
             #[cfg(feature = "recall")]
-            knowledge_store,
+            Some(knowledge_stores),
             Arc::clone(&packs),
             Some(Arc::clone(&cross_router)),
             Some(tool_services),
@@ -628,6 +637,7 @@ impl RuntimeBuilder {
                     },
                     domains,
                     private: resolved.private,
+                    episteme_cohort: resolved.episteme_cohort,
                     server_tools: Vec::new(),
                     cache_enabled: resolved.capabilities.cache_enabled,
                     recall: resolved.recall.into(),
@@ -840,7 +850,7 @@ mod tool_adapters;
 #[cfg(feature = "matrix")]
 use setup::build_matrix_provider;
 #[cfg(feature = "recall")]
-use setup::open_knowledge_store;
+use setup::open_knowledge_stores;
 use setup::{
     LazyEmbeddingProvider, build_provider_registry, build_signal_provider, build_tool_registry,
     start_inbound_dispatch,

@@ -214,6 +214,12 @@ impl Oikos {
         self.root.join("data").join("knowledge.fjall")
     }
 
+    /// The knowledge store directory for a single episteme cohort.
+    #[must_use]
+    pub fn knowledge_cohort_db(&self, cohort: &str) -> PathBuf {
+        self.knowledge_db().join(cohort)
+    }
+
     /// The backups directory.
     #[must_use]
     pub fn backups(&self) -> PathBuf {
