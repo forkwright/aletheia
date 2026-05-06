@@ -101,6 +101,7 @@ fn recall_formats_section_with_metadata() {
         },
         score: 0.87,
         sensitivity: mneme::knowledge::FactSensitivity::Public,
+        visibility: mneme::knowledge::Visibility::Private,
     };
     let b = ScoredResult {
         content: "Project deadline is March 15".to_owned(),
@@ -118,6 +119,7 @@ fn recall_formats_section_with_metadata() {
         },
         score: 0.72,
         sensitivity: mneme::knowledge::FactSensitivity::Public,
+        visibility: mneme::knowledge::Visibility::Private,
     };
     let refs: Vec<&ScoredResult> = vec![&a, &b];
     let section = format_section(&refs, true);

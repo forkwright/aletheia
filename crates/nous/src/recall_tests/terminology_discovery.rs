@@ -16,6 +16,7 @@ fn terminology_discovery_finds_novel_terms() {
             factors: FactorScores::default(),
             score: 0.8,
             sensitivity: mneme::knowledge::FactSensitivity::Public,
+            visibility: mneme::knowledge::Visibility::Private,
         },
         ScoredResult {
             content: "quantum computing leverages superposition states".to_owned(),
@@ -25,6 +26,7 @@ fn terminology_discovery_finds_novel_terms() {
             factors: FactorScores::default(),
             score: 0.7,
             sensitivity: mneme::knowledge::FactSensitivity::Public,
+            visibility: mneme::knowledge::Visibility::Private,
         },
     ];
 
@@ -46,6 +48,7 @@ fn terminology_discovery_ignores_stopwords() {
         factors: FactorScores::default(),
         score: 0.5,
         sensitivity: mneme::knowledge::FactSensitivity::Public,
+        visibility: mneme::knowledge::Visibility::Private,
     }];
 
     let terms = discover_terminology(&results, "test query");
@@ -71,6 +74,7 @@ fn terminology_discovery_skips_short_words() {
         factors: FactorScores::default(),
         score: 0.5,
         sensitivity: mneme::knowledge::FactSensitivity::Public,
+        visibility: mneme::knowledge::Visibility::Private,
     }];
 
     let terms = discover_terminology(&results, "test");
@@ -91,6 +95,7 @@ fn gap_detection_finds_capitalized_phrases() {
         factors: FactorScores::default(),
         score: 0.8,
         sensitivity: mneme::knowledge::FactSensitivity::Public,
+        visibility: mneme::knowledge::Visibility::Private,
     }];
 
     let gaps = detect_gaps(&results);
@@ -111,6 +116,7 @@ fn gap_detection_finds_quoted_strings() {
         factors: FactorScores::default(),
         score: 0.7,
         sensitivity: mneme::knowledge::FactSensitivity::Public,
+        visibility: mneme::knowledge::Visibility::Private,
     }];
 
     let gaps = detect_gaps(&results);

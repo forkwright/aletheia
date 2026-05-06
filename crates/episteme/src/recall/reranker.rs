@@ -313,6 +313,7 @@ mod tests {
             },
             score: 0.0,
             sensitivity: FactSensitivity::Public,
+            visibility: crate::knowledge::Visibility::Private,
         }
     }
 

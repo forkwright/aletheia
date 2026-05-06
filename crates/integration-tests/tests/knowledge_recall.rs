@@ -29,6 +29,7 @@ fn fact_to_scored(fact: &Fact, engine: &RecallEngine, query_nous: &str) -> Score
         },
         score: 0.0,
         sensitivity: mneme::knowledge::FactSensitivity::Public,
+        visibility: mneme::knowledge::Visibility::Private,
     }
 }
 

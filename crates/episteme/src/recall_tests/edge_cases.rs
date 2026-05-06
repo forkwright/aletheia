@@ -322,6 +322,7 @@ fn rank_preserves_equal_scores() {
             factors: factors.clone(),
             score: 0.0,
             sensitivity: crate::knowledge::FactSensitivity::Public,
+            visibility: crate::knowledge::Visibility::Private,
         },
         ScoredResult {
             content: "second".to_owned(),
@@ -331,6 +332,7 @@ fn rank_preserves_equal_scores() {
             factors,
             score: 0.0,
             sensitivity: crate::knowledge::FactSensitivity::Public,
+            visibility: crate::knowledge::Visibility::Private,
         },
     ];
     let ranked = e.rank(candidates);
@@ -364,6 +366,7 @@ fn rank_large_input() {
                 },
                 score: 0.0,
                 sensitivity: crate::knowledge::FactSensitivity::Public,
+                visibility: crate::knowledge::Visibility::Private,
             }
         })
         .collect();
@@ -684,6 +687,7 @@ fn integration_full_recall_with_decay() {
             },
             score: 0.0,
             sensitivity: crate::knowledge::FactSensitivity::Public,
+            visibility: crate::knowledge::Visibility::Private,
         },
         ScoredResult {
             content: "old observation".to_owned(),
@@ -701,6 +705,7 @@ fn integration_full_recall_with_decay() {
             },
             score: 0.0,
             sensitivity: crate::knowledge::FactSensitivity::Public,
+            visibility: crate::knowledge::Visibility::Private,
         },
     ];
 

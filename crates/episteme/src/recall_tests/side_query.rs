@@ -113,6 +113,7 @@ fn make_scored_result(source_id: &str, score: f64) -> ScoredResult {
         factors: FactorScores::default(),
         score,
         sensitivity: crate::knowledge::FactSensitivity::Public,
+        visibility: crate::knowledge::Visibility::Private,
     }
 }
 
