@@ -1,8 +1,14 @@
 //! Bookkeeping provider implementations for the knowledge pipeline.
 
+#[cfg(feature = "gliner")]
+mod gliner;
+
 use eidos::bookkeeping::{
     BookkeepingProvider, BookkeepingResult, Extraction, ExtractionSchema, ProviderFailedSnafu,
 };
+
+#[cfg(feature = "gliner")]
+pub use gliner::{GlinerExtractionProvider, GlinerProviderConfig};
 
 use crate::extract::engine::ExtractionEngine;
 use crate::extract::refinement::TurnType;
