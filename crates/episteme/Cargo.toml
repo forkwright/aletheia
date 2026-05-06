@@ -14,6 +14,7 @@ workspace = true
 default = ["graph-algo", "reranker"]
 graph-algo = []
 reranker = ["dep:async-trait", "dep:reqwest", "dep:rustls", "dep:tokio"]
+gliner = ["dep:ort", "dep:tokio", "dep:tokenizers"]
 test-support = []
 # WHY: mneme-engine brings in the Datalog knowledge store via krites and the
 # tokio blocking-task utilities graphe's engine errors need.
@@ -58,6 +59,7 @@ candle-transformers = { version = "=0.10.2", optional = true }
 tokenizers = { version = "0.22", optional = true, default-features = false, features = [
     "fancy-regex",
 ] }
+ort = { version = "2.0.0-rc.12", optional = true }
 # WHY: only "ureq" needed — code uses hf_hub::api::sync::Api (blocking).
 # The "tokio" feature pulled in reqwest 0.12 alongside workspace reqwest 0.13,
 # compiling two full HTTP client stacks. Switching to ureq resolved the reqwest
