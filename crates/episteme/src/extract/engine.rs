@@ -23,6 +23,14 @@ use super::utils::slugify;
 use super::utils::strip_code_fences;
 use crate::causal;
 
+/// Small heuristic for first-person / assistant self-reference in fact subjects.
+fn is_self_reference(subject: &str) -> bool {
+    matches!(
+        subject.trim().to_lowercase().as_str(),
+        "i" | "me" | "myself" | "assistant"
+    )
+}
+
 /// Drives the extraction pipeline: prompt building, LLM calling, response parsing.
 ///
 /// # Examples
@@ -112,6 +120,13 @@ Rules:
         if let Some(tt) = turn_type {
             system.push_str("\n\nContext-specific instructions:\n");
             system.push_str(tt.prompt_appendix());
+        }
+
+        if self.config.events_only_prompt {
+            system.push_str(
+                "\n\nAdditional rule: extraction must capture only concrete events and observations. \
+                 Do NOT emit self-descriptive facts, preferences, identity claims, or meta-relational facts.\n",
+            );
         }
 
         let mut conversation = String::new();
@@ -314,6 +329,15 @@ Rules:
                     return None;
                 }
 
+                if !self.config.extract_self_facts && is_self_reference(&fact.subject) {
+                    filtered_count += 1;
+                    tracing::debug!(
+                        subject = %fact.subject,
+                        "fact filtered out: self-reference"
+                    );
+                    return None;
+                }
+
                 let fact_content = format!("{} {} {}", fact.subject, fact.predicate, fact.object);
                 let classified_type = refinement::classify_fact(&fact_content);
                 fact.fact_type = Some(classified_type.as_str().to_owned());
@@ -377,8 +401,8 @@ Rules:
         nous_id: &str,
     ) -> Result<PersistResult, ExtractionError> {
         use crate::knowledge::{
-            Entity, EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactTemporal,
-            Relationship, far_future,
+            Entity, Fact, FactAccess, FactLifecycle, FactProvenance, FactTemporal, Relationship,
+            far_future,
         };
 
         let now = jiff::Timestamp::now();
@@ -572,7 +596,7 @@ Rules:
                 },
                 provenance: FactProvenance {
                     confidence,
-                    tier: EpistemicTier::Inferred,
+                    tier: self.config.default_tier,
                     source_session_id: Some(source.to_owned()),
                     stability_hours: classified_type.base_stability_hours(),
                 },

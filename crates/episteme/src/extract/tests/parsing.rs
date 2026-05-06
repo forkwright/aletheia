@@ -491,3 +491,41 @@ fn persist_accepts_novel_type() {
         "novel relationship MENTORS should be stored as-is"
     );
 }
+
+#[cfg(feature = "mneme-engine")]
+#[test]
+fn persist_uses_configured_default_tier() {
+    let store = crate::knowledge_store::KnowledgeStore::open_mem()
+        .expect("in-memory knowledge store should open successfully");
+    let engine = ExtractionEngine::new(ExtractionConfig {
+        default_tier: crate::knowledge::EpistemicTier::Verified,
+        ..ExtractionConfig::default()
+    });
+
+    let extraction = Extraction {
+        entities: vec![],
+        relationships: vec![],
+        facts: vec![ExtractedFact {
+            subject: "Aletheia".to_owned(),
+            predicate: "is".to_owned(),
+            object: "a memory system".to_owned(),
+            confidence: 0.9,
+            is_correction: false,
+            fact_type: None,
+        }],
+    };
+
+    engine
+        .persist(&extraction, &store, "session:test", "syn")
+        .expect("persist should succeed");
+
+    let facts = store
+        .query_facts("syn", "2099-01-01T00:00:00Z", 100)
+        .expect("query_facts should return results");
+    assert_eq!(facts.len(), 1, "should persist 1 fact");
+    assert_eq!(
+        facts[0].provenance.tier,
+        crate::knowledge::EpistemicTier::Verified,
+        "persisted fact should use configured default tier"
+    );
+}

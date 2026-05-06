@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::refinement;
-use crate::knowledge::CausalRelationType;
+use crate::knowledge::{CausalRelationType, EpistemicTier};
 
 /// Extracted knowledge from a conversation segment.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -76,6 +76,28 @@ pub struct ExtractionConfig {
     pub max_facts: usize,
     /// Whether extraction is active.
     pub enabled: bool,
+    /// Whether to extract facts whose subject is a first-person self-reference.
+    ///
+    /// When `false`, facts with subjects like "I" or obvious assistant
+    /// self-references are filtered out during `extract_refined`.
+    #[serde(default = "default_true")]
+    pub extract_self_facts: bool,
+    /// When `true`, the extraction prompt instructs the LLM to capture only
+    /// concrete events and observations, excluding self-descriptive,
+    /// preference, identity, or meta-relational facts.
+    #[serde(default)]
+    pub events_only_prompt: bool,
+    /// Default epistemic tier assigned to persisted facts.
+    #[serde(default = "default_tier_inferred")]
+    pub default_tier: EpistemicTier,
+}
+
+const fn default_true() -> bool {
+    true
+}
+
+const fn default_tier_inferred() -> EpistemicTier {
+    EpistemicTier::Inferred
 }
 
 impl Default for ExtractionConfig {
@@ -87,6 +109,9 @@ impl Default for ExtractionConfig {
             max_relationships: 30,
             max_facts: 50,
             enabled: true,
+            extract_self_facts: true,
+            events_only_prompt: false,
+            default_tier: EpistemicTier::Inferred,
         }
     }
 }

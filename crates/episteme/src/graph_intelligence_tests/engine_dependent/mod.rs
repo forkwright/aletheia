@@ -5,7 +5,10 @@
 //! `mneme-engine`; the standalone `louvain_*`, `pagerank_*`, `bfs_*`, and
 //! `graph_dirty_*` tests at the bottom live in `top_level`.
 
-#![expect(clippy::expect_used, reason = "test assertions")]
+#![cfg_attr(
+    feature = "mneme-engine",
+    expect(clippy::expect_used, reason = "test assertions")
+)]
 #![expect(
     clippy::indexing_slicing,
     reason = "test: vec indices are valid after asserting len"

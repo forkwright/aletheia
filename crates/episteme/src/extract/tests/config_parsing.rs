@@ -25,6 +25,19 @@ fn config_default() {
     );
     assert_eq!(cfg.max_facts, 50, "default max_facts should be 50");
     assert!(cfg.enabled, "extraction should be enabled by default");
+    assert!(
+        cfg.extract_self_facts,
+        "extract_self_facts should be true by default"
+    );
+    assert!(
+        !cfg.events_only_prompt,
+        "events_only_prompt should be false by default"
+    );
+    assert_eq!(
+        cfg.default_tier,
+        crate::knowledge::EpistemicTier::Inferred,
+        "default_tier should be Inferred by default"
+    );
 }
 
 #[test]
@@ -235,6 +248,135 @@ async fn extract_calls_provider() {
         result.facts[0].subject, "Dr. Chen",
         "fact subject should be Dr. Chen"
     );
+}
+
+#[test]
+fn build_prompt_includes_events_only_rule_when_enabled() {
+    let config = ExtractionConfig {
+        events_only_prompt: true,
+        ..ExtractionConfig::default()
+    };
+    let engine = ExtractionEngine::new(config);
+    let messages = vec![ConversationMessage {
+        role: "user".to_owned(),
+        tool_calls: None,
+        reasoning: None,
+        content: "Alice builds Aletheia in Rust.".to_owned(),
+    }];
+    let prompt = engine.build_prompt(&messages);
+    assert!(
+        prompt.system.contains("concrete events and observations"),
+        "prompt should contain events-only rule when enabled"
+    );
+}
+
+#[test]
+fn build_prompt_omits_events_only_rule_when_disabled() {
+    let config = ExtractionConfig {
+        events_only_prompt: false,
+        ..ExtractionConfig::default()
+    };
+    let engine = ExtractionEngine::new(config);
+    let messages = vec![ConversationMessage {
+        role: "user".to_owned(),
+        tool_calls: None,
+        reasoning: None,
+        content: "Alice builds Aletheia in Rust.".to_owned(),
+    }];
+    let prompt = engine.build_prompt(&messages);
+    assert!(
+        !prompt.system.contains("concrete events and observations"),
+        "prompt should not contain events-only rule when disabled"
+    );
+}
+
+#[tokio::test]
+async fn extract_refined_filters_self_facts_when_disabled() {
+    struct SelfFactProvider;
+    impl ExtractionProvider for SelfFactProvider {
+        fn complete<'a>(
+            &'a self,
+            _: &'a str,
+            _: &'a str,
+        ) -> std::pin::Pin<
+            Box<dyn std::future::Future<Output = Result<String, ExtractionError>> + Send + 'a>,
+        > {
+            Box::pin(async {
+                Ok(r#"{"entities":[],"relationships":[],"facts":[{"subject":"I","predicate":"like","object":"Rust","confidence":0.9},{"subject":"Alice","predicate":"likes","object":"Rust","confidence":0.9}]}"#.to_owned())
+            })
+        }
+    }
+
+    let config = ExtractionConfig {
+        extract_self_facts: false,
+        min_message_length: 1,
+        ..ExtractionConfig::default()
+    };
+    let engine = ExtractionEngine::new(config);
+    let messages = vec![ConversationMessage {
+        role: "user".to_owned(),
+        tool_calls: None,
+        reasoning: None,
+        content: "I like Rust and Alice likes Rust too.".to_owned(),
+    }];
+
+    let result = engine
+        .extract_refined(&messages, &SelfFactProvider)
+        .await
+        .expect("extraction should succeed");
+    assert_eq!(
+        result.extraction.facts.len(),
+        1,
+        "only the non-self-reference fact should remain"
+    );
+    assert_eq!(result.extraction.facts[0].subject, "Alice");
+    assert_eq!(
+        result.facts_filtered, 1,
+        "one fact should be filtered for self-reference"
+    );
+}
+
+#[tokio::test]
+async fn extract_refined_allows_self_facts_when_enabled() {
+    struct SelfFactProvider;
+    impl ExtractionProvider for SelfFactProvider {
+        fn complete<'a>(
+            &'a self,
+            _: &'a str,
+            _: &'a str,
+        ) -> std::pin::Pin<
+            Box<dyn std::future::Future<Output = Result<String, ExtractionError>> + Send + 'a>,
+        > {
+            Box::pin(async {
+                Ok(r#"{"entities":[],"relationships":[],"facts":[{"subject":"I","predicate":"like","object":"Rust","confidence":0.9}]}"#.to_owned())
+            })
+        }
+    }
+
+    let config = ExtractionConfig {
+        extract_self_facts: true,
+        min_message_length: 1,
+        ..ExtractionConfig::default()
+    };
+    let engine = ExtractionEngine::new(config);
+    let messages = vec![ConversationMessage {
+        role: "user".to_owned(),
+        tool_calls: None,
+        reasoning: None,
+        content: "I like Rust.".to_owned(),
+    }];
+
+    let result = engine
+        .extract_refined(&messages, &SelfFactProvider)
+        .await
+        .expect("extraction should succeed");
+    assert_eq!(
+        result.extraction.facts.len(),
+        1,
+        "self-reference fact should be allowed when extract_self_facts is true"
+    );
+    assert_eq!(result.extraction.facts[0].subject, "I");
+    assert_eq!(result.facts_filtered, 0, "no facts should be filtered");
 }
 
 #[test]
