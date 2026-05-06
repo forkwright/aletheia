@@ -14,7 +14,7 @@ pub mod refinement;
 /// PR lesson extraction from training data (violations/lint JSONL) with quality gates.
 pub mod training;
 
-mod engine;
+pub(crate) mod engine;
 mod error;
 mod provider;
 mod types;
