@@ -185,6 +185,7 @@ fn validate_startup_rejects_agent_with_nonexistent_workspace() {
         domains: Vec::new(),
         default: false,
         recall: None,
+        recall_profile: None,
         behavior: None,
     });
 
@@ -210,6 +211,7 @@ fn validate_startup_accepts_agent_with_real_workspace_directory() {
         domains: Vec::new(),
         default: false,
         recall: None,
+        recall_profile: None,
         behavior: None,
     });
     assert!(validate_startup(&config, &oikos).is_ok());

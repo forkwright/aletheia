@@ -98,6 +98,7 @@ fn resolve_nous_agent_model_override_replaces_defaults() {
         domains: vec!["code".to_owned()],
         default: false,
         recall: None,
+        recall_profile: None,
         behavior: None,
     });
 
@@ -121,6 +122,7 @@ fn resolve_nous_unrestricted_agency_sets_10k_tool_iterations() {
         domains: Vec::new(),
         default: false,
         recall: None,
+        recall_profile: None,
         behavior: None,
     });
 
@@ -143,6 +145,7 @@ fn resolve_nous_restricted_agency_sets_50_tool_iterations() {
         domains: Vec::new(),
         default: false,
         recall: None,
+        recall_profile: None,
         behavior: None,
     });
 

@@ -17,6 +17,7 @@ fn default_config_validates() {
 fn resolve_nous_uses_defaults_when_no_override() {
     let config = AletheiaConfig::default();
     let resolved = resolve_nous(&config, "test-agent");
+    assert_eq!(resolved.recall_profile, RecallProfile::Default);
     assert_eq!(
         resolved.behavior.distillation_context_token_trigger, 120_000,
         "default behavior should be used when no per-agent override is set"
@@ -41,6 +42,7 @@ fn resolve_nous_per_agent_override_wins() {
         domains: Vec::new(),
         default: false,
         recall: None,
+        recall_profile: None,
         behavior: Some(AgentBehaviorDefaults {
             competence_correction_penalty: 0.10,
             ..Default::default()
@@ -72,6 +74,7 @@ fn resolve_nous_non_overriding_agent_uses_defaults() {
         domains: Vec::new(),
         default: false,
         recall: None,
+        recall_profile: None,
         behavior: None,
     });
     let resolved = resolve_nous(&config, "plain");
@@ -79,6 +82,29 @@ fn resolve_nous_non_overriding_agent_uses_defaults() {
         resolved.behavior.corrections_max_corrections, 50,
         "agent without behavior override should use shared defaults"
     );
+}
+
+#[test]
+fn resolve_nous_recall_profile_override_wins() {
+    let mut config = AletheiaConfig::default();
+    config.agents.list.push(NousDefinition {
+        id: "identity".to_owned(),
+        name: None,
+        model: None,
+        workspace: "/tmp/nous/identity".to_owned(),
+        thinking_enabled: None,
+        agency: None,
+        allowed_roots: Vec::new(),
+        domains: Vec::new(),
+        default: false,
+        recall: None,
+        recall_profile: Some(RecallProfile::IdentityContinuity),
+        behavior: None,
+    });
+
+    let resolved = resolve_nous(&config, "identity");
+
+    assert_eq!(resolved.recall_profile, RecallProfile::IdentityContinuity);
 }
 
 #[test]

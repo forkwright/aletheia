@@ -68,6 +68,7 @@ fn resolve_agency_unrestricted_sets_high_iterations() {
         domains: Vec::new(),
         default: false,
         recall: None,
+        recall_profile: None,
         behavior: None,
     });
 
@@ -97,6 +98,7 @@ fn resolve_agency_restricted_uses_old_defaults() {
         domains: Vec::new(),
         default: false,
         recall: None,
+        recall_profile: None,
         behavior: None,
     });
 
@@ -127,6 +129,7 @@ fn resolve_agency_per_agent_overrides_global() {
         domains: Vec::new(),
         default: false,
         recall: None,
+        recall_profile: None,
         behavior: None,
     });
 

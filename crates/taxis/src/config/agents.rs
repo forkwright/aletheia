@@ -113,6 +113,20 @@ pub struct RecallSettings {
     pub reranker_url: Option<String>,
 }
 
+/// Named recall behavior profile for a nous agent.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[non_exhaustive]
+pub enum RecallProfile {
+    /// Preserve the explicit recall/extraction/pipeline settings.
+    #[default]
+    Default,
+    /// Favor broad project/reference recall for archival work.
+    Archival,
+    /// Favor stable identity continuity across turns and sessions.
+    IdentityContinuity,
+}
+
 impl Default for RecallSettings {
     fn default() -> Self {
         Self {
@@ -290,6 +304,9 @@ pub struct NousDefinition {
     /// Recall pipeline override; when `None`, inherits from [`AgentDefaults::recall`].
     #[serde(default)]
     pub recall: Option<RecallSettings>,
+    /// Named recall behavior profile; when `None`, resolves to [`RecallProfile::Default`].
+    #[serde(default)]
+    pub recall_profile: Option<RecallProfile>,
     /// Per-agent behavioral override; when `None`, inherits from [`AgentDefaults::behavior`].
     #[serde(default)]
     pub behavior: Option<AgentBehaviorDefaults>,

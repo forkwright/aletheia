@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use super::{AgencyLevel, AgentBehaviorDefaults, AletheiaConfig, RecallSettings};
+use super::{AgencyLevel, AgentBehaviorDefaults, AletheiaConfig, RecallProfile, RecallSettings};
 
 /// Resolved model selection for an agent.
 #[derive(Debug, Clone)]
@@ -70,6 +70,8 @@ pub struct ResolvedNousConfig {
     pub domains: Vec<String>,
     /// Resolved recall pipeline settings.
     pub recall: RecallSettings,
+    /// Resolved named recall behavior profile.
+    pub recall_profile: RecallProfile,
     /// Model used for prosoche heartbeat sessions.
     pub prosoche_model: Arc<str>,
     /// Resolved per-agent behavioral parameters (safety, hooks, distillation, etc.).
@@ -142,6 +144,10 @@ pub fn resolve_nous(config: &AletheiaConfig, nous_id: &str) -> ResolvedNousConfi
         .and_then(|a| a.recall.clone())
         .unwrap_or_else(|| defaults.recall.clone());
 
+    let recall_profile = agent
+        .and_then(|a| a.recall_profile)
+        .unwrap_or(RecallProfile::Default);
+
     // NOTE: Agent-level behavior overrides; falls back to shared defaults.
     // Same cascade pattern as recall: per-agent wins, otherwise defaults apply.
     let behavior = agent
@@ -187,6 +193,7 @@ pub fn resolve_nous(config: &AletheiaConfig, nous_id: &str) -> ResolvedNousConfi
         allowed_roots,
         domains,
         recall,
+        recall_profile,
         prosoche_model: Arc::from(defaults.model_defaults.prosoche_model.as_str()),
         behavior,
     }

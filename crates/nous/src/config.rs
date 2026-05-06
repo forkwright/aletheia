@@ -1,7 +1,9 @@
 //! Nous agent configuration.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
+use eidos::knowledge::{EpistemicTier, MemoryScope};
 use hermeneus::complexity::ComplexityConfig;
 use serde::{Deserialize, Serialize};
 use taxis::config::AgentBehaviorDefaults;
@@ -142,6 +144,69 @@ impl Default for NousLimits {
     }
 }
 
+/// Named recall behavior profile for a nous agent.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum RecallProfile {
+    /// Preserve explicit recall/extraction/pipeline settings.
+    #[default]
+    Default,
+    /// Favor broad project/reference recall for archival work.
+    Archival,
+    /// Favor identity continuity using late anchors, curated pins, and reflection.
+    IdentityContinuity,
+}
+
+impl From<taxis::config::RecallProfile> for RecallProfile {
+    fn from(value: taxis::config::RecallProfile) -> Self {
+        match value {
+            taxis::config::RecallProfile::Archival => Self::Archival,
+            taxis::config::RecallProfile::IdentityContinuity => Self::IdentityContinuity,
+            _ => Self::Default,
+        }
+    }
+}
+
+impl RecallProfile {
+    /// Apply this profile to recall, extraction, and pipeline configuration.
+    pub fn apply(
+        self,
+        recall: &mut RecallConfig,
+        extraction: &mut mneme::extract::ExtractionConfig,
+        pipeline: &mut PipelineConfig,
+    ) {
+        match self {
+            Self::Default => {}
+            Self::Archival => {
+                recall.iterative = true;
+                recall.max_results = recall.max_results.max(12);
+                recall.max_recall_tokens = recall.max_recall_tokens.max(4_000);
+                recall.scope_quotas =
+                    HashMap::from([(MemoryScope::Project, 4), (MemoryScope::Reference, 4)]);
+            }
+            Self::IdentityContinuity => {
+                recall.late_inject_anchor = true;
+                recall.max_results = recall.max_results.max(8);
+                recall.pinned_facts.truncate(3);
+                recall.scope_quotas = HashMap::from([
+                    (MemoryScope::User, 3),
+                    (MemoryScope::Feedback, 2),
+                    (MemoryScope::Project, 1),
+                ]);
+                extraction.extract_self_facts = false;
+                extraction.events_only_prompt = false;
+                extraction.default_tier = EpistemicTier::Reflected;
+                pipeline.reflection_enabled = true;
+            }
+        }
+    }
+
+    const fn needs_extraction(self) -> bool {
+        matches!(self, Self::IdentityContinuity)
+    }
+}
+
 /// Configuration for a single nous agent.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NousConfig {
@@ -169,6 +234,9 @@ pub struct NousConfig {
     /// Per-agent recall pipeline configuration.
     #[serde(default)]
     pub recall: RecallConfig,
+    /// Named recall behavior profile.
+    #[serde(default)]
+    pub recall_profile: RecallProfile,
     /// Tool allowlist for sub-agent role enforcement.
     ///
     /// When `Some`, only the listed tool names are available during execution.
@@ -263,9 +331,28 @@ impl Default for NousConfig {
             server_tools: Vec::new(),
             cache_enabled: true,
             recall: RecallConfig::default(),
+            recall_profile: RecallProfile::Default,
             tool_allowlist: None,
             hooks: HookConfig::default(),
             behavior: AgentBehaviorDefaults::default(),
+        }
+    }
+}
+
+impl NousConfig {
+    /// Apply the configured recall profile to this agent's pipeline settings.
+    pub fn apply_recall_profile(&mut self, pipeline: &mut PipelineConfig) {
+        let had_extraction = pipeline.extraction.is_some();
+        let mut extraction;
+        if let Some(config) = pipeline.extraction.take() {
+            extraction = config;
+        } else {
+            extraction = mneme::extract::ExtractionConfig::default();
+        }
+        self.recall_profile
+            .apply(&mut self.recall, &mut extraction, pipeline);
+        if had_extraction || self.recall_profile.needs_extraction() {
+            pipeline.extraction = Some(extraction);
         }
     }
 }
@@ -348,7 +435,11 @@ const fn default_reflection_secs() -> u32 {
 }
 
 #[cfg(test)]
-#[expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]
+#[expect(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    reason = "test assertions may panic on failure"
+)]
 mod tests {
     use super::*;
 
@@ -379,6 +470,46 @@ mod tests {
             !config.reflection_enabled,
             "reflection should be disabled by default"
         );
+    }
+
+    #[test]
+    fn identity_continuity_profile_applies_recall_extraction_and_reflection_knobs() {
+        let mut recall = RecallConfig {
+            pinned_facts: vec![
+                eidos::id::FactId::new("identity-pin-1").expect("valid"),
+                eidos::id::FactId::new("identity-pin-2").expect("valid"),
+                eidos::id::FactId::new("identity-pin-3").expect("valid"),
+                eidos::id::FactId::new("identity-pin-4").expect("valid"),
+            ],
+            ..RecallConfig::default()
+        };
+        let mut extraction = mneme::extract::ExtractionConfig::default();
+        let mut pipeline = PipelineConfig::default();
+
+        RecallProfile::IdentityContinuity.apply(&mut recall, &mut extraction, &mut pipeline);
+
+        assert!(recall.late_inject_anchor);
+        assert_eq!(
+            recall.pinned_facts.len(),
+            3,
+            "identity profile should use the operator-curated top three pins"
+        );
+        assert_eq!(recall.scope_quotas.get(&MemoryScope::User), Some(&3));
+        assert_eq!(recall.scope_quotas.get(&MemoryScope::Feedback), Some(&2));
+        assert!(!extraction.extract_self_facts);
+        assert_eq!(extraction.default_tier, EpistemicTier::Reflected);
+        assert!(pipeline.reflection_enabled);
+    }
+
+    #[test]
+    fn apply_recall_profile_preserves_absent_extraction_for_default_profile() {
+        let mut config = NousConfig::default();
+        let mut pipeline = PipelineConfig::default();
+
+        config.apply_recall_profile(&mut pipeline);
+
+        assert!(pipeline.extraction.is_none());
+        assert!(!pipeline.reflection_enabled);
     }
 
     #[test]
@@ -448,6 +579,7 @@ mod tests {
             server_tools: Vec::new(),
             cache_enabled: false,
             recall: RecallConfig::default(),
+            recall_profile: RecallProfile::Default,
             tool_allowlist: None,
             hooks: HookConfig::default(),
             behavior: AgentBehaviorDefaults::default(),

@@ -630,6 +630,7 @@ impl RuntimeBuilder {
                     server_tools: Vec::new(),
                     cache_enabled: resolved.capabilities.cache_enabled,
                     recall: resolved.recall.into(),
+                    recall_profile: resolved.recall_profile.into(),
                     tool_allowlist: None,
                     hooks: nous::config::HookConfig::default(),
                     behavior: resolved.behavior,

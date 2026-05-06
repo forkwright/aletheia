@@ -275,6 +275,7 @@ fn resolve_merges_agent_overrides() {
         domains: vec!["code".to_owned()],
         default: false,
         recall: None,
+        recall_profile: None,
     });
 
     let resolved = resolve_nous(&config, "syn");
@@ -327,6 +328,7 @@ fn resolve_merges_allowed_roots() {
         domains: Vec::new(),
         default: false,
         recall: None,
+        recall_profile: None,
     });
 
     let resolved = resolve_nous(&config, "syn");
@@ -351,6 +353,7 @@ fn resolve_thinking_override() {
         domains: Vec::new(),
         default: false,
         recall: None,
+        recall_profile: None,
     });
 
     let resolved = resolve_nous(&config, "thinker");
@@ -562,6 +565,7 @@ fn resolve_agency_unrestricted_sets_high_iterations() {
         domains: Vec::new(),
         default: false,
         recall: None,
+        recall_profile: None,
     });
 
     let resolved = resolve_nous(&config, "free");
@@ -590,6 +594,7 @@ fn resolve_agency_restricted_uses_old_defaults() {
         domains: Vec::new(),
         default: false,
         recall: None,
+        recall_profile: None,
     });
 
     let resolved = resolve_nous(&config, "safe");
@@ -619,6 +624,7 @@ fn resolve_agency_per_agent_overrides_global() {
         domains: Vec::new(),
         default: false,
         recall: None,
+        recall_profile: None,
     });
 
     let resolved = resolve_nous(&config, "override");

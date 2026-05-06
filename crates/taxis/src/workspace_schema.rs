@@ -359,6 +359,7 @@ mod tests {
             domains: Vec::new(),
             default: false,
             recall: None,
+            recall_profile: None,
             behavior: None,
         });
 
@@ -395,6 +396,7 @@ mod tests {
             domains: Vec::new(),
             default: false,
             recall: None,
+            recall_profile: None,
             behavior: None,
         });
 
@@ -435,6 +437,7 @@ mod tests {
             domains: Vec::new(),
             default: false,
             recall: None,
+            recall_profile: None,
             behavior: None,
         });
 
