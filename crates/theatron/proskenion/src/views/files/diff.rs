@@ -147,6 +147,7 @@ pub(crate) fn DiffViewer(path: String, on_back: EventHandler<()>) -> Element {
                         match mode {
                             DiffViewMode::Unified => "Switch to Side-by-Side",
                             DiffViewMode::SideBySide => "Switch to Unified",
+                            _ => "Switch view",
                         }
                     }
                 }

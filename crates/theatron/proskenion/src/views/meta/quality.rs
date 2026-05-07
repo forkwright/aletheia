@@ -36,54 +36,61 @@ pub(super) fn ConversationQualitySection(store: QualityStore) -> Element {
     rsx! {
         // NOTE: Quality indicator charts.
         h3 { style: "font-size: var(--text-base); color: var(--text-secondary); margin: 0 0 var(--space-3) 0;", "Quality Indicators" }
-        div {
-            style: "{GRID_STYLE}",
+        if store.charts_endpoint_available {
             div {
-                style: "{CARD_STYLE} flex: 1; min-width: 280px;",
-                div { style: "{CARD_LABEL} margin-bottom: var(--space-2);", "Avg Turn Length" }
-                LineChart {
-                    data: store.avg_turn_length.clone(),
-                    width: 300.0,
-                    height: 150.0,
-                    color: "#4a9aff",
-                    show_labels: true,
+                style: "{GRID_STYLE}",
+                div {
+                    style: "{CARD_STYLE} flex: 1; min-width: 280px;",
+                    div { style: "{CARD_LABEL} margin-bottom: var(--space-2);", "Avg Turn Length" }
+                    LineChart {
+                        data: store.avg_turn_length.clone(),
+                        width: 300.0,
+                        height: 150.0,
+                        color: "#4a9aff",
+                        show_labels: true,
+                    }
+                }
+                div {
+                    style: "{CARD_STYLE} flex: 1; min-width: 280px;",
+                    div { style: "{CARD_LABEL} margin-bottom: var(--space-2);", "Response-to-Question Ratio" }
+                    LineChart {
+                        data: store.response_to_question_ratio.clone(),
+                        width: 300.0,
+                        height: 150.0,
+                        color: "var(--status-success)",
+                        show_labels: true,
+                    }
                 }
             }
             div {
-                style: "{CARD_STYLE} flex: 1; min-width: 280px;",
-                div { style: "{CARD_LABEL} margin-bottom: var(--space-2);", "Response-to-Question Ratio" }
-                LineChart {
-                    data: store.response_to_question_ratio.clone(),
-                    width: 300.0,
-                    height: 150.0,
-                    color: "var(--status-success)",
-                    show_labels: true,
+                style: "{GRID_STYLE} margin-top: var(--space-3);",
+                div {
+                    style: "{CARD_STYLE} flex: 1; min-width: 280px;",
+                    div { style: "{CARD_LABEL} margin-bottom: var(--space-2);", "Tool Call Density" }
+                    LineChart {
+                        data: store.tool_call_density.clone(),
+                        width: 300.0,
+                        height: 150.0,
+                        color: "var(--status-warning)",
+                        show_labels: true,
+                    }
+                }
+                div {
+                    style: "{CARD_STYLE} flex: 1; min-width: 280px;",
+                    div { style: "{CARD_LABEL} margin-bottom: var(--space-2);", "Thinking Time Ratio" }
+                    LineChart {
+                        data: store.thinking_time_ratio.clone(),
+                        width: 300.0,
+                        height: 150.0,
+                        color: "#8b5cf6",
+                        show_labels: true,
+                    }
                 }
             }
-        }
-        div {
-            style: "{GRID_STYLE} margin-top: var(--space-3);",
+        } else {
             div {
-                style: "{CARD_STYLE} flex: 1; min-width: 280px;",
-                div { style: "{CARD_LABEL} margin-bottom: var(--space-2);", "Tool Call Density" }
-                LineChart {
-                    data: store.tool_call_density.clone(),
-                    width: 300.0,
-                    height: 150.0,
-                    color: "var(--status-warning)",
-                    show_labels: true,
-                }
-            }
-            div {
-                style: "{CARD_STYLE} flex: 1; min-width: 280px;",
-                div { style: "{CARD_LABEL} margin-bottom: var(--space-2);", "Thinking Time Ratio" }
-                LineChart {
-                    data: store.thinking_time_ratio.clone(),
-                    width: 300.0,
-                    height: 150.0,
-                    color: "#8b5cf6",
-                    show_labels: true,
-                }
+                style: "{MUTED_TEXT} margin-bottom: var(--space-4);",
+                "Conversation quality time-series endpoint not available on this pylon instance."
             }
         }
 
