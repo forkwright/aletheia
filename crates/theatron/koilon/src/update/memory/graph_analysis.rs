@@ -64,7 +64,8 @@ pub(super) fn compute_graph_stats(app: &mut App) {
         .iter()
         .filter(|s| s.relationship_count == 0)
         .count();
-    let stale_count = count_stale_entities(entities);
+    let now = jiff::Timestamp::now();
+    let stale_count = count_stale_entities(entities, now);
     let isolated_cluster_count = community_sizes
         .values()
         .filter(|&&size| size < ISOLATED_CLUSTER_THRESHOLD)
@@ -99,7 +100,8 @@ pub(super) fn compute_drift_analysis(app: &mut App) {
                 reason: "orphaned: no relationships".into(),
             });
         }
-        if is_entity_stale(&stat.entity) {
+        let now = jiff::Timestamp::now();
+        if is_entity_stale(&stat.entity, now) {
             stale.push(stat.entity.name.clone());
             if stat.relationship_count == 0 {
                 suggestions.push(DriftSuggestion {
@@ -281,7 +283,7 @@ fn invert_communities(communities: &HashMap<String, u32>) -> BTreeMap<u32, Vec<S
     result
 }
 
-fn is_entity_stale(entity: &MemoryEntity) -> bool {
+fn is_entity_stale(entity: &MemoryEntity, now: jiff::Timestamp) -> bool {
     if entity.updated_at.is_empty() {
         return !entity.created_at.is_empty();
     }
@@ -294,9 +296,9 @@ fn is_entity_stale(entity: &MemoryEntity) -> bool {
     if date_str.len() < 10 {
         return false;
     }
-    let now_approx = "2026-03-22";
+    let now_approx = now.strftime("%Y-%m-%d").to_string();
     date_str < &now_approx[..date_str.len().min(10)]
-        && days_between_approx(date_str, now_approx) > STALE_THRESHOLD_DAYS
+        && days_between_approx(date_str, &now_approx) > STALE_THRESHOLD_DAYS
 }
 
 pub(super) fn days_between_approx(a: &str, b: &str) -> u64 {
@@ -317,6 +319,58 @@ pub(super) fn days_between_approx(a: &str, b: &str) -> u64 {
     }
 }
 
-fn count_stale_entities(entities: &[MemoryEntity]) -> usize {
-    entities.iter().filter(|e| is_entity_stale(e)).count()
+fn count_stale_entities(entities: &[MemoryEntity], now: jiff::Timestamp) -> usize {
+    entities.iter().filter(|e| is_entity_stale(e, now)).count()
+}
+
+#[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]
+mod tests {
+    use super::*;
+
+    fn entity_with_updated_at(updated_at: &str) -> MemoryEntity {
+        MemoryEntity {
+            id: "e1".into(),
+            name: "Test".into(),
+            entity_type: "test".into(),
+            aliases: Vec::new(),
+            created_at: "2024-01-01T00:00:00Z".into(),
+            updated_at: updated_at.into(),
+        }
+    }
+
+    #[test]
+    fn staleness_reclassifies_as_clock_advances() {
+        // Entity last updated on 2025-01-01
+        let entity = entity_with_updated_at("2025-01-01T00:00:00Z");
+
+        // Clock at 2025-01-15 → 14 days old, NOT stale
+        let early = jiff::Timestamp::from_second(1_736_899_200).unwrap();
+        assert!(!is_entity_stale(&entity, early));
+
+        // Clock at 2026-03-22 → ~446 days old, stale
+        let later = jiff::Timestamp::from_second(1_774_137_600).unwrap();
+        assert!(is_entity_stale(&entity, later));
+    }
+
+    #[test]
+    fn empty_updated_at_uses_created_at() {
+        let entity = MemoryEntity {
+            id: "e2".into(),
+            name: "Test".into(),
+            entity_type: "test".into(),
+            aliases: Vec::new(),
+            created_at: "2025-01-01T00:00:00Z".into(),
+            updated_at: String::new(),
+        };
+        let now = jiff::Timestamp::from_second(1_774_137_600).unwrap();
+        assert!(is_entity_stale(&entity, now));
+    }
+
+    #[test]
+    fn short_date_str_returns_not_stale() {
+        let entity = entity_with_updated_at("2025-01");
+        let now = jiff::Timestamp::from_second(1_774_137_600).unwrap();
+        assert!(!is_entity_stale(&entity, now));
+    }
 }
