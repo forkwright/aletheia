@@ -4,6 +4,9 @@
 ///
 /// Sourced from `nous/src/bootstrap/mod.rs`.
 pub const CODING_KEYWORDS: &[&str] = &[
+    "write",
+    "create",
+    "generate",
     "code",
     "implement",
     "fix",
@@ -24,6 +27,7 @@ pub const CODING_KEYWORDS: &[&str] = &[
 ///
 /// Sourced from `nous/src/bootstrap/mod.rs`.
 pub const RESEARCH_KEYWORDS: &[&str] = &[
+    "what",
     "research",
     "find",
     "search",
@@ -34,6 +38,7 @@ pub const RESEARCH_KEYWORDS: &[&str] = &[
     "evaluate",
     "explain",
     "understand",
+    "tell me",
 ];
 
 /// Keywords that suggest a planning or design task.
@@ -48,6 +53,7 @@ pub const PLANNING_KEYWORDS: &[&str] = &[
     "organize",
     "coordinate",
     "priority",
+    "prioritize",
     "goal",
     "milestone",
 ];

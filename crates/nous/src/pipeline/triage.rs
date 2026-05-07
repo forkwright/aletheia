@@ -22,34 +22,28 @@ use hermeneus::complexity::ModelTier;
 
 #[expect(
     clippy::expect_used,
-    reason = "compile-time-constant regex literals cannot fail"
+    reason = "keyword lists contain only regex-safe literals"
 )]
-static CODE_WRITE_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)\b(write|implement|code|create|generate|build|fix|refactor|debug|test)\b")
-        .expect("compile-time-constant regex literals cannot fail")
-});
+fn keyword_regex(keywords: &[&str]) -> Regex {
+    let pattern = format!(
+        r"(?i)\b({})\b",
+        keywords
+            .iter()
+            .map(|kw| regex::escape(kw).replace(' ', r"\s+"))
+            .collect::<Vec<_>>()
+            .join("|")
+    );
+    Regex::new(&pattern).expect("keyword list yields a valid regex")
+}
 
-#[expect(
-    clippy::expect_used,
-    reason = "compile-time-constant regex literals cannot fail"
-)]
-static RESEARCH_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(
-        r"(?i)\b(what|research|find|search|investigate|analyze|explain|tell me|compare|review)\b",
-    )
-    .expect("compile-time-constant regex literals cannot fail")
-});
+static CODE_WRITE_PATTERN: LazyLock<Regex> =
+    LazyLock::new(|| keyword_regex(keywords::CODING_KEYWORDS));
 
-#[expect(
-    clippy::expect_used,
-    reason = "compile-time-constant regex literals cannot fail"
-)]
-static PLANNING_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(
-        r"(?i)\b(plan|design|architect|strategy|roadmap|organize|prioritize|goal|milestone)\b",
-    )
-    .expect("compile-time-constant regex literals cannot fail")
-});
+static RESEARCH_PATTERN: LazyLock<Regex> =
+    LazyLock::new(|| keyword_regex(keywords::RESEARCH_KEYWORDS));
+
+static PLANNING_PATTERN: LazyLock<Regex> =
+    LazyLock::new(|| keyword_regex(keywords::PLANNING_KEYWORDS));
 
 #[expect(
     clippy::expect_used,
@@ -278,14 +272,38 @@ mod tests {
     }
 
     #[test]
+    fn triage_classifies_code_write_from_create() {
+        let result = TriageStage::classify("create a new module for auth");
+        assert_eq!(result.intent, Intent::CodeWrite);
+    }
+
+    #[test]
+    fn triage_classifies_code_write_from_generate() {
+        let result = TriageStage::classify("generate a random uuid");
+        assert_eq!(result.intent, Intent::CodeWrite);
+    }
+
+    #[test]
     fn triage_classifies_research_intent() {
         let result = TriageStage::classify("what is machine learning");
         assert_eq!(result.intent, Intent::Research);
     }
 
     #[test]
+    fn triage_classifies_research_from_tell_me() {
+        let result = TriageStage::classify("tell me about rust memory safety");
+        assert_eq!(result.intent, Intent::Research);
+    }
+
+    #[test]
     fn triage_classifies_planning_intent() {
         let result = TriageStage::classify("design a microservice architecture");
+        assert_eq!(result.intent, Intent::Planning);
+    }
+
+    #[test]
+    fn triage_classifies_planning_from_prioritize() {
+        let result = TriageStage::classify("prioritize the sprint backlog");
         assert_eq!(result.intent, Intent::Planning);
     }
 
