@@ -12,6 +12,10 @@ publish = false
 name = "aletheia"
 path = "src/main.rs"
 
+[[bin]]
+name = "seed_psyche_facts"
+path = "src/bin/seed_psyche_facts.rs"
+
 [features]
 # WARNING: embed-candle must remain in defaults. It has been accidentally
 # removed three times: #1263, #1326, #1378. A compile-time test in
