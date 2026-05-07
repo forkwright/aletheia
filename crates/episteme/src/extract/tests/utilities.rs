@@ -63,6 +63,7 @@ fn config_returns_same_config() {
         extract_self_facts: true,
         events_only_prompt: false,
         default_tier: crate::knowledge::EpistemicTier::Inferred,
+        detect_conflict: false,
     };
     let engine = ExtractionEngine::new(config);
     let got = engine.config();

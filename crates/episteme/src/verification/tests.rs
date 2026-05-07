@@ -227,3 +227,116 @@ fn fresh_store_migrates_to_v10() {
         probe_prov.err()
     );
 }
+
+#[cfg(feature = "mneme-engine")]
+mod detect_conflict_tests {
+    use eidos::bookkeeping::ExtractedFact;
+
+    use crate::knowledge_store::KnowledgeStore;
+    use crate::test_fixtures::make_fact;
+    use crate::verification::{ConflictKind, detect_conflict};
+
+    #[test]
+    fn same_content_same_cohort_detects_duplicate() {
+        let store = KnowledgeStore::open_mem().expect("open_mem");
+        let existing = make_fact("f-dup", "alice", "Alice likes Rust programming");
+        store.insert_fact(&existing).expect("insert");
+
+        let extracted = ExtractedFact {
+            subject: "Alice".to_owned(),
+            predicate: "likes".to_owned(),
+            object: "Rust programming".to_owned(),
+            confidence: 0.9,
+            is_correction: false,
+            fact_type: None,
+        };
+
+        let conflict =
+            detect_conflict(&extracted, &store, "alice").expect("detect_conflict should not error");
+
+        assert!(
+            conflict.is_some(),
+            "same content in same cohort should produce a conflict"
+        );
+        let c = conflict.expect("conflict must be Some after assertion");
+        assert_eq!(c.kind, ConflictKind::Duplicate);
+        assert_eq!(c.existing.to_string(), "f-dup");
+    }
+
+    #[test]
+    fn same_content_different_cohort_no_conflict() {
+        let store = KnowledgeStore::open_mem().expect("open_mem");
+        // Fact belongs to "bob" cohort.
+        let existing = make_fact("f-bob", "bob", "Alice likes Rust programming");
+        store.insert_fact(&existing).expect("insert");
+
+        let extracted = ExtractedFact {
+            subject: "Alice".to_owned(),
+            predicate: "likes".to_owned(),
+            object: "Rust programming".to_owned(),
+            confidence: 0.9,
+            is_correction: false,
+            fact_type: None,
+        };
+
+        // Querying as "alice" should NOT find bob's fact.
+        let conflict =
+            detect_conflict(&extracted, &store, "alice").expect("detect_conflict should not error");
+
+        assert!(
+            conflict.is_none(),
+            "same content in different cohorts must NOT produce a conflict"
+        );
+    }
+
+    #[test]
+    fn different_content_same_cohort_no_conflict() {
+        let store = KnowledgeStore::open_mem().expect("open_mem");
+        let existing = make_fact("f-diff", "alice", "Alice likes Python scripting");
+        store.insert_fact(&existing).expect("insert");
+
+        let extracted = ExtractedFact {
+            subject: "Alice".to_owned(),
+            predicate: "likes".to_owned(),
+            object: "Rust programming".to_owned(),
+            confidence: 0.9,
+            is_correction: false,
+            fact_type: None,
+        };
+
+        let conflict =
+            detect_conflict(&extracted, &store, "alice").expect("detect_conflict should not error");
+
+        assert!(
+            conflict.is_none(),
+            "different content in same cohort must NOT produce a conflict"
+        );
+    }
+
+    #[test]
+    fn contradictory_content_same_cohort_detects_contradiction() {
+        let store = KnowledgeStore::open_mem().expect("open_mem");
+        let existing = make_fact("f-true", "alice", "Rust is safe");
+        store.insert_fact(&existing).expect("insert");
+
+        let extracted = ExtractedFact {
+            subject: "Rust".to_owned(),
+            predicate: "is".to_owned(),
+            object: "not safe".to_owned(),
+            confidence: 0.9,
+            is_correction: false,
+            fact_type: None,
+        };
+
+        let conflict =
+            detect_conflict(&extracted, &store, "alice").expect("detect_conflict should not error");
+
+        assert!(
+            conflict.is_some(),
+            "contradictory content in same cohort should produce a conflict"
+        );
+        let c = conflict.expect("conflict must be Some after assertion");
+        assert_eq!(c.kind, ConflictKind::Contradiction);
+        assert_eq!(c.existing.to_string(), "f-true");
+    }
+}

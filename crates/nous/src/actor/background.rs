@@ -120,6 +120,7 @@ impl NousActor {
         let span = tracing::info_span!("extraction", nous.id = %nous_id);
         #[cfg(feature = "knowledge-store")]
         let knowledge_store = self.stores.knowledge_store.clone();
+        let cross_tx = self.channel.cross_tx.clone();
 
         if self.runtime.background_tasks.len() >= MAX_SPAWNED_TASKS {
             warn!(nous_id = %self.id, limit = MAX_SPAWNED_TASKS, current = self.runtime.background_tasks.len(), task_type = "extraction", "background task limit reached, skipping");
@@ -146,6 +147,7 @@ impl NousActor {
                         &reasoning,
                         #[cfg(feature = "knowledge-store")]
                         knowledge_store.as_ref(),
+                        cross_tx,
                     ) => {}
                 }
             }
@@ -351,12 +353,13 @@ impl NousActor {
 }
 
 /// Run extraction as a background task. Logs results, never panics.
-#[cfg_attr(
-    feature = "knowledge-store",
-    expect(
-        clippy::too_many_arguments,
-        reason = "background extraction async runner: config + providers + ids + content + tool_calls + reasoning + optional store"
-    )
+#[expect(
+    clippy::too_many_arguments,
+    reason = "background extraction async runner: config + providers + ids + content + tool_calls + reasoning + optional store + cross_tx"
+)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "background extraction pipeline: build prompt, call LLM, parse, conflict detect, persist — sequential by design"
 )]
 async fn run_extraction(
     config: &mneme::extract::ExtractionConfig,
@@ -367,8 +370,12 @@ async fn run_extraction(
     tool_calls: &[crate::pipeline::ToolCall],
     reasoning: &str,
     #[cfg(feature = "knowledge-store")] knowledge_store: Option<&Arc<KnowledgeStore>>,
+    cross_tx: Option<tokio::sync::mpsc::Sender<crate::cross::CrossNousEnvelope>>,
 ) {
     use mneme::extract::{ConversationMessage, ExtractedToolCall, ExtractionEngine};
+
+    #[cfg(not(feature = "knowledge-store"))]
+    let _ = cross_tx;
 
     let engine = ExtractionEngine::new(config.clone());
     let provider = crate::extraction::HermeneusExtractionProvider::new(providers, &config.model);
@@ -418,6 +425,41 @@ async fn run_extraction(
 
             #[cfg(feature = "knowledge-store")]
             if let Some(store) = knowledge_store {
+                // Run cohort-scoped conflict detection when enabled.
+                if config.detect_conflict {
+                    for fact in &refined.extraction.facts {
+                        match episteme::verification::detect_conflict(fact, store, nous_id) {
+                            Ok(Some(conflict)) => {
+                                tracing::info!(
+                                    nous_id = %nous_id,
+                                    existing_fact_id = %conflict.existing,
+                                    conflict_kind = ?conflict.kind,
+                                    "conflict detected during extraction"
+                                );
+                                if let Some(ref tx) = cross_tx {
+                                    let msg = crate::cross::knowledge::contest_message(
+                                        nous_id,
+                                        "broadcast",
+                                        conflict.existing.clone(),
+                                        format!(
+                                            "conflict detected during extraction: {:?}",
+                                            conflict.kind
+                                        ),
+                                    );
+                                    let envelope = crate::cross::CrossNousEnvelope { message: msg };
+                                    if let Err(e) = tx.send(envelope).await {
+                                        tracing::warn!(nous_id = %nous_id, error = %e, "failed to emit contest event");
+                                    }
+                                }
+                            }
+                            Ok(None) => {}
+                            Err(e) => {
+                                tracing::warn!(nous_id = %nous_id, error = %e, "conflict detection failed");
+                            }
+                        }
+                    }
+                }
+
                 match engine.persist(&refined.extraction, store, "background", nous_id) {
                     Ok(result) => {
                         info!(

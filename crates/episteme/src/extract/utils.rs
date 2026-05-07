@@ -35,7 +35,7 @@ pub(super) fn strip_code_fences(s: &str) -> &str {
 /// with different codepoint sequences (e.g. composed vs decomposed "café") produce the
 /// same slug.
 #[cfg(any(feature = "mneme-engine", test))]
-pub(super) fn slugify(s: &str) -> String {
+pub(crate) fn slugify(s: &str) -> String {
     use unicode_normalization::UnicodeNormalization as _;
     let normalized: String = s.nfc().collect();
     normalized

@@ -74,6 +74,7 @@ fn spawn_test_actor() -> (NousHandle, tokio::task::JoinHandle<()>, tempfile::Tem
         None,
         Vec::new(),
         None,
+        None,
         CancellationToken::new(),
         taxis::config::NousBehaviorConfig::default(),
         None, // audit_log
@@ -136,6 +137,7 @@ fn spawn_panicking_actor() -> (NousHandle, tokio::task::JoinHandle<()>, tempfile
         None,
         Vec::new(),
         None,
+        None,
         CancellationToken::new(),
         taxis::config::NousBehaviorConfig::default(),
         None, // audit_log
@@ -166,6 +168,7 @@ fn spawn_test_actor_with_store(
         None,
         None,
         Vec::new(),
+        None,
         None,
         CancellationToken::new(),
         taxis::config::NousBehaviorConfig::default(),
@@ -199,6 +202,7 @@ fn make_test_actor(
         config,
         pipeline_config,
         rx,
+        None,
         None,
         CancellationToken::new(),
         providers,
@@ -283,6 +287,7 @@ fn spawn_test_actor_with_cross() -> (
         None,
         Vec::new(),
         Some(cross_rx),
+        Some(cross_tx.clone()),
         CancellationToken::new(),
         taxis::config::NousBehaviorConfig::default(),
         None, // audit_log
@@ -319,6 +324,7 @@ fn spawn_panicking_actor_with_cross() -> (
         None,
         Vec::new(),
         Some(cross_rx),
+        Some(cross_tx.clone()),
         CancellationToken::new(),
         taxis::config::NousBehaviorConfig::default(),
         None, // audit_log

@@ -10,6 +10,10 @@ pub use eidos::bookkeeping::{
 /// Configuration for the knowledge extraction pipeline.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "extraction config bools are independent feature knobs"
+)]
 pub struct ExtractionConfig {
     /// LLM model to use for extraction.
     pub model: String,
@@ -40,6 +44,10 @@ pub struct ExtractionConfig {
     /// Default epistemic tier assigned to persisted facts.
     #[serde(default = "default_tier_inferred")]
     pub default_tier: EpistemicTier,
+    /// Whether to run cohort-respecting conflict detection against the
+    /// knowledge store after extraction.
+    #[serde(default)]
+    pub detect_conflict: bool,
 }
 
 const fn default_true() -> bool {
@@ -63,6 +71,7 @@ impl Default for ExtractionConfig {
             extract_self_facts: true,
             events_only_prompt: false,
             default_tier: EpistemicTier::Inferred,
+            detect_conflict: false,
         }
     }
 }
