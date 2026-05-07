@@ -300,6 +300,41 @@ enum LoadTier {
     Conditional,
 }
 
+/// Role-axis classification for a workspace file. Orthogonal to [`SectionPriority`]
+/// (which expresses importance) and [`LoadTier`] (which expresses load timing).
+///
+/// Precedence order (when assembled): `Identity` → `SoulPersona` → `OperatorProfile` →
+/// `Prosoche` → `Team` → `Goals` → `Tools` → `Checklist` → `Memory` → `Context`.
+///
+/// External design prior: HKUDS/DeepTutor `BOOTSTRAP_FILES` order.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum BootstrapSlot {
+    /// Agent's identity record — name, emoji, avatar metadata. (IDENTITY.md)
+    Identity = 0,
+    /// Workspace-local persona — operator-curated, per-instance. (SOUL.md)
+    SoulPersona = 1,
+    /// Operator's profile — what the operator brings, attested. (USER.md)
+    OperatorProfile = 2,
+    /// Heartbeat / attention checklist. (PROSOCHE.md)
+    Prosoche = 3,
+    /// Team topology — who else is in the workspace. (AGENTS.md)
+    Team = 4,
+    /// Active / completed / deferred goals. (GOALS.md)
+    Goals = 5,
+    /// Registered tool surface. (TOOLS.md)
+    Tools = 6,
+    /// Work procedures / checklist. (CHECKLIST.md)
+    Checklist = 7,
+    /// Operational memory — accumulated knowledge over time. (MEMORY.md)
+    Memory = 8,
+    /// Runtime config / auto-generated context. (CONTEXT.md)
+    Context = 9,
+}
+
 /// A section of the bootstrap system prompt.
 #[derive(Debug, Clone)]
 pub struct BootstrapSection {
@@ -313,6 +348,8 @@ pub struct BootstrapSection {
     pub tokens: u64,
     /// Whether this section can be truncated (vs dropped entirely).
     pub truncatable: bool,
+    /// Role slot — precedence axis orthogonal to priority.
+    pub slot: BootstrapSlot,
 }
 
 /// Result of bootstrap assembly.
@@ -341,6 +378,8 @@ struct WorkspaceFileSpec {
     truncatable: bool,
     /// Whether this file loads unconditionally or based on task hint.
     load_tier: LoadTier,
+    /// Role slot for precedence ordering.
+    slot: BootstrapSlot,
 }
 
 /// Ordered list of workspace files resolved through the oikos cascade.
@@ -367,12 +406,14 @@ const WORKSPACE_FILES: &[WorkspaceFileSpec] = &[
         priority: SectionPriority::Required,
         truncatable: false,
         load_tier: LoadTier::Always,
+        slot: BootstrapSlot::SoulPersona,
     },
     WorkspaceFileSpec {
         filename: "USER.md",
         priority: SectionPriority::Important,
         truncatable: false,
         load_tier: LoadTier::Always,
+        slot: BootstrapSlot::OperatorProfile,
     },
     // --- Conditionally-loaded (operational tier) ---
     WorkspaceFileSpec {
@@ -380,30 +421,35 @@ const WORKSPACE_FILES: &[WorkspaceFileSpec] = &[
         priority: SectionPriority::Important,
         truncatable: false,
         load_tier: LoadTier::Conditional,
+        slot: BootstrapSlot::Team,
     },
     WorkspaceFileSpec {
         filename: "GOALS.md",
         priority: SectionPriority::Important,
         truncatable: true,
         load_tier: LoadTier::Conditional,
+        slot: BootstrapSlot::Goals,
     },
     WorkspaceFileSpec {
         filename: "TOOLS.md",
         priority: SectionPriority::Important,
         truncatable: true,
         load_tier: LoadTier::Conditional,
+        slot: BootstrapSlot::Tools,
     },
     WorkspaceFileSpec {
         filename: "CHECKLIST.md",
         priority: SectionPriority::Flexible,
         truncatable: true,
         load_tier: LoadTier::Conditional,
+        slot: BootstrapSlot::Checklist,
     },
     WorkspaceFileSpec {
         filename: "MEMORY.md",
         priority: SectionPriority::Flexible,
         truncatable: true,
         load_tier: LoadTier::Conditional,
+        slot: BootstrapSlot::Memory,
     },
     // --- Always-loaded (identity tier, continued) ---
     WorkspaceFileSpec {
@@ -411,12 +457,14 @@ const WORKSPACE_FILES: &[WorkspaceFileSpec] = &[
         priority: SectionPriority::Flexible,
         truncatable: false,
         load_tier: LoadTier::Always,
+        slot: BootstrapSlot::Identity,
     },
     WorkspaceFileSpec {
         filename: "PROSOCHE.md",
         priority: SectionPriority::Flexible,
         truncatable: false,
         load_tier: LoadTier::Always,
+        slot: BootstrapSlot::Prosoche,
     },
     // --- Conditionally-loaded (operational tier, continued) ---
     WorkspaceFileSpec {
@@ -424,6 +472,7 @@ const WORKSPACE_FILES: &[WorkspaceFileSpec] = &[
         priority: SectionPriority::Flexible,
         truncatable: true,
         load_tier: LoadTier::Conditional,
+        slot: BootstrapSlot::Context,
     },
 ];
 
@@ -699,8 +748,8 @@ impl<'a> BootstrapAssembler<'a> {
         let llm_sections = self.resolve_llm_sections(recipe).await;
         sections.extend(llm_sections);
 
-        // NOTE: stable sort preserves declaration order within same priority
-        sections.sort_by_key(|s| s.priority);
+        // NOTE: stable sort preserves declaration order within same (slot, priority)
+        sections.sort_by_key(|s| (s.slot, s.priority));
 
         let mut included: Vec<BootstrapSection> = Vec::new();
         let mut truncated_names: Vec<String> = Vec::new();
@@ -841,6 +890,7 @@ impl<'a> BootstrapAssembler<'a> {
                     content,
                     tokens,
                     truncatable: spec.truncatable,
+                    slot: spec.slot,
                 });
                 continue;
             }
@@ -884,6 +934,7 @@ impl<'a> BootstrapAssembler<'a> {
                         content,
                         tokens,
                         truncatable: spec.truncatable,
+                        slot: spec.slot,
                     });
                 }
                 Err(e) => {
@@ -923,6 +974,7 @@ impl<'a> BootstrapAssembler<'a> {
             content: style_section,
             tokens: style_tokens,
             truncatable: false,
+            slot: BootstrapSlot::Context,
         });
         debug!("injected output-style section ({style_tokens} tokens)");
 
@@ -1035,6 +1087,7 @@ impl<'a> BootstrapAssembler<'a> {
                             content,
                             tokens,
                             truncatable: l1_truncatable,
+                            slot: BootstrapSlot::Context,
                         });
                     }
                     Err(e) => {
@@ -1088,6 +1141,7 @@ impl<'a> BootstrapAssembler<'a> {
                                 content,
                                 tokens,
                                 truncatable: l3_truncatable,
+                                slot: BootstrapSlot::Context,
                             });
                         }
                         Err(e) => {
@@ -1181,6 +1235,7 @@ impl<'a> BootstrapAssembler<'a> {
             content: result,
             tokens: final_tokens,
             truncatable: section.truncatable,
+            slot: section.slot,
         }
     }
 
@@ -1218,6 +1273,7 @@ impl<'a> BootstrapAssembler<'a> {
                 content,
                 tokens: final_tokens,
                 truncatable: section.truncatable,
+                slot: section.slot,
             };
         }
 
@@ -1238,6 +1294,7 @@ impl<'a> BootstrapAssembler<'a> {
             content: result,
             tokens: final_tokens,
             truncatable: section.truncatable,
+            slot: section.slot,
         }
     }
 }
@@ -1367,6 +1424,7 @@ pub fn pack_sections_to_bootstrap(
                 content: s.content.clone(),
                 tokens: estimator.estimate(&s.content),
                 truncatable: s.truncatable,
+                slot: BootstrapSlot::Context,
             }
         })
         .collect()
