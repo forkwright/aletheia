@@ -272,6 +272,28 @@ fn handle_search_backspace_on_empty_closes() {
     assert!(!app.layout.memory.search.search_active);
 }
 
+#[tokio::test]
+async fn handle_search_submit_shows_unavailable_toast() {
+    let mut app = test_app();
+    handle_search_open(&mut app);
+    handle_search_input(&mut app, 't');
+    handle_search_input(&mut app, 'e');
+    handle_search_input(&mut app, 's');
+    handle_search_input(&mut app, 't');
+
+    handle_search_submit(&mut app).await;
+
+    assert!(!app.layout.memory.search.search_active);
+    assert!(app.layout.memory.search.search_results.is_empty());
+    assert!(
+        app.viewport
+            .error_toast
+            .as_ref()
+            .is_some_and(|t| t.message.contains("not available")),
+        "toast should say API is unavailable"
+    );
+}
+
 #[test]
 fn handle_action_result_sets_toast() {
     let mut app = test_app();

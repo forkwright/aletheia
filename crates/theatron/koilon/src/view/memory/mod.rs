@@ -601,7 +601,7 @@ fn render_memory_status(app: &App, frame: &mut Frame, area: Rect, theme: &Theme)
     spans.push(Span::styled("Enter", theme.style_accent()));
     spans.push(Span::styled(" detail  ", theme.style_dim()));
     spans.push(Span::styled("/", theme.style_accent()));
-    spans.push(Span::styled(" search  ", theme.style_dim()));
+    spans.push(Span::styled(" search (unavailable)  ", theme.style_dim()));
     spans.push(Span::styled("f", theme.style_accent()));
     spans.push(Span::styled(" filter  ", theme.style_dim()));
     spans.push(Span::styled("Esc", theme.style_accent()));
