@@ -394,6 +394,7 @@ impl RecallEngine {
     pub fn score_epistemic_tier(&self, tier: &str) -> f64 {
         match tier {
             "verified" => 1.0,
+            "reflected" => 0.8,
             "inferred" => 0.6,
             // NOTE: assumed or unknown tiers get lowest weight
             _ => 0.3,
@@ -644,11 +645,18 @@ pub(crate) fn compute_effective_stability(
         reason = "FSRS stability recomputation for knowledge store maintenance"
     )
 )]
+#[expect(
+    clippy::match_same_arms,
+    reason = "explicit assumed arm documents the full tier surface; wildcard is a defensive fallback"
+)]
 pub(crate) fn refresh_stability_hours(fact_type: &str, tier: &str, access_count: u32) -> f64 {
     let ft = FactType::from_str_lossy(fact_type);
     let et = match tier {
         "verified" => EpistemicTier::Verified,
+        "reflected" => EpistemicTier::Reflected,
         "inferred" => EpistemicTier::Inferred,
+        "assumed" => EpistemicTier::Assumed,
+        "training" => EpistemicTier::Training,
         _ => EpistemicTier::Assumed,
     };
     compute_effective_stability(ft, et, access_count)

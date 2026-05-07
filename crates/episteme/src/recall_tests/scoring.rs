@@ -264,6 +264,79 @@ fn epistemic_verified_highest() {
 }
 
 #[test]
+fn epistemic_reflected_between_verified_and_inferred() {
+    let eng = engine();
+    let verified = eng.score_epistemic_tier("verified");
+    let reflected = eng.score_epistemic_tier("reflected");
+    let inferred = eng.score_epistemic_tier("inferred");
+    let assumed = eng.score_epistemic_tier("assumed");
+    assert!(
+        verified > reflected,
+        "verified ({verified}) should score higher than reflected ({reflected})"
+    );
+    assert!(
+        reflected > inferred,
+        "reflected ({reflected}) should score higher than inferred ({inferred})"
+    );
+    assert!(
+        inferred > assumed,
+        "inferred ({inferred}) should score higher than assumed ({assumed})"
+    );
+}
+
+#[test]
+fn epistemic_all_five_tiers_distinct_or_ordered() {
+    let eng = engine();
+    assert!(
+        (eng.score_epistemic_tier("verified") - 1.0).abs() < f64::EPSILON,
+        "verified should be 1.0"
+    );
+    assert!(
+        (eng.score_epistemic_tier("reflected") - 0.8).abs() < f64::EPSILON,
+        "reflected should be 0.8"
+    );
+    assert!(
+        (eng.score_epistemic_tier("inferred") - 0.6).abs() < f64::EPSILON,
+        "inferred should be 0.6"
+    );
+    assert!(
+        (eng.score_epistemic_tier("assumed") - 0.3).abs() < f64::EPSILON,
+        "assumed should be 0.3"
+    );
+    assert!(
+        (eng.score_epistemic_tier("training") - 0.3).abs() < f64::EPSILON,
+        "training (unknown arm) should fall through to 0.3"
+    );
+}
+
+#[test]
+fn refresh_stability_all_five_tiers() {
+    let ft = "event";
+    let access = 0;
+    let training = refresh_stability_hours(ft, "training", access);
+    let reflected = refresh_stability_hours(ft, "reflected", access);
+    let verified = refresh_stability_hours(ft, "verified", access);
+    let inferred = refresh_stability_hours(ft, "inferred", access);
+    let assumed = refresh_stability_hours(ft, "assumed", access);
+    assert!(
+        training > reflected,
+        "training stability ({training}) should exceed reflected ({reflected})"
+    );
+    assert!(
+        reflected > verified,
+        "reflected stability ({reflected}) should exceed verified ({verified})"
+    );
+    assert!(
+        verified > inferred,
+        "verified stability ({verified}) should exceed inferred ({inferred})"
+    );
+    assert!(
+        inferred > assumed,
+        "inferred stability ({inferred}) should exceed assumed ({assumed})"
+    );
+}
+
+#[test]
 fn proximity_direct_neighbor() {
     let e = engine();
     assert!(
