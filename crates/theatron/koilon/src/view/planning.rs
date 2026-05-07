@@ -127,20 +127,15 @@ fn render_phases(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     ]));
     lines.push(Line::raw(""));
 
-    if app.layout.overlay.is_none() {
-        lines.push(Line::from(vec![
-            Span::raw("    "),
-            Span::styled("No pending checkpoint approvals.", theme.style_dim()),
-        ]));
-    } else {
-        lines.push(Line::from(vec![
-            Span::raw("    "),
-            Span::styled(
-                "\u{25b8} 1 approval pending",
-                Style::default().fg(theme.status.warning),
-            ),
-        ]));
-    }
+    // WHY(#170): Checkpoint API does not yet exist in pylon. Show truthful
+    // fallback instead of deriving state from local UI overlay presence.
+    lines.push(Line::from(vec![
+        Span::raw("    "),
+        Span::styled(
+            "Checkpoint API not available — pending pylon support.",
+            theme.style_dim(),
+        ),
+    ]));
 
     lines.push(Line::raw(""));
 

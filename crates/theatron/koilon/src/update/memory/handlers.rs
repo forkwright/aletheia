@@ -2,7 +2,7 @@
 
 use crate::app::App;
 use crate::msg::ErrorToast;
-use crate::state::memory::{MemorySearchResult, MemoryTab};
+use crate::state::memory::MemoryTab;
 use crate::state::view_stack::View;
 
 use super::data_loading;
@@ -288,55 +288,13 @@ pub(crate) async fn handle_search_submit(app: &mut App) {
         return;
     }
     app.layout.memory.search.search_active = false;
-    // NOTE: local fuzzy filtering: server-side semantic search not yet wired in
-    let query = app.layout.memory.search.search_query.to_lowercase();
-    let terms: Vec<&str> = query.split_whitespace().collect();
-
-    let results: Vec<MemorySearchResult> = app
-        .layout
-        .memory
-        .fact_list
-        .facts
-        .iter()
-        .filter(|f| !f.lifecycle.is_forgotten)
-        .filter_map(|f| {
-            let content_lower = f.content.to_lowercase();
-            let mut score = 0.0_f64;
-            for term in &terms {
-                if content_lower.contains(term) {
-                    score += 1.0;
-                }
-            }
-            if score > 0.0 {
-                score *= f.confidence;
-                Some(MemorySearchResult {
-                    id: f.id.clone(),
-                    content: f.content.clone(),
-                    confidence: f.confidence,
-                    tier: f.tier.clone(),
-                    fact_type: f.fact_type.clone(),
-                    score,
-                })
-            } else {
-                None
-            }
-        })
-        .collect();
-
-    app.layout.memory.search.search_results = results;
-    if !app.layout.memory.search.search_results.is_empty() {
-        let msg = format!(
-            "{} results for '{}'",
-            app.layout.memory.search.search_results.len(),
-            app.layout.memory.search.search_query
-        );
-        app.viewport.error_toast = Some(ErrorToast::new(msg));
-    } else {
-        app.viewport.error_toast = Some(ErrorToast::new(format!(
-            "No results for '{}'",
-            app.layout.memory.search.search_query
-        )));
-    }
+    // WHY(#175): Semantic recall endpoint (/api/v1/nous/{id}/recall) is not
+    // yet wired in pylon. Show truthful fallback instead of local substring
+    // match against the capped 500-fact buffer.
+    app.layout.memory.search.search_results.clear();
+    app.viewport.error_toast = Some(ErrorToast::new(
+        "Semantic recall API not available — pending pylon support.".into(),
+    ));
 }
 
 pub(crate) fn handle_search_close(app: &mut App) {
