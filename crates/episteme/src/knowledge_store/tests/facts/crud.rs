@@ -90,6 +90,30 @@ fn insert_fact_and_retrieve() {
 }
 
 #[test]
+fn insert_fact_with_scope_and_visibility_roundtrips() {
+    let store = make_store();
+    let mut fact = make_fact("f-scoped", "agent-a", "Scoped fact content");
+    fact.scope = Some(crate::knowledge::MemoryScope::Project);
+    fact.visibility = crate::knowledge::Visibility::Shared;
+    store.insert_fact(&fact).expect("insert fact");
+
+    let results = store
+        .query_facts("agent-a", "2026-06-01", 10)
+        .expect("query facts");
+    assert_eq!(results.len(), 1, "should retrieve exactly one fact");
+    assert_eq!(
+        results[0].scope,
+        Some(crate::knowledge::MemoryScope::Project),
+        "scope should roundtrip through storage"
+    );
+    assert_eq!(
+        results[0].visibility,
+        crate::knowledge::Visibility::Shared,
+        "visibility should roundtrip through storage"
+    );
+}
+
+#[test]
 fn insert_multiple_facts_and_retrieve() {
     let store = make_store();
     for i in 0..5 {

@@ -232,6 +232,7 @@ fn fact_scope_none_omitted_in_json() {
             last_accessed_at: None,
         },
         sensitivity: FactSensitivity::Public,
+        visibility: Visibility::Private,
     };
     let json = serde_json::to_string(&fact).expect("Fact serialization is infallible");
     assert!(
@@ -276,6 +277,7 @@ fn fact_scope_some_included_in_json() {
             last_accessed_at: None,
         },
         sensitivity: FactSensitivity::Public,
+        visibility: Visibility::Private,
     };
     let json = serde_json::to_string(&fact).expect("Fact serialization is infallible");
     assert!(
@@ -352,6 +354,7 @@ fn fact_scope_all_variants_roundtrip() {
                 last_accessed_at: None,
             },
             sensitivity: FactSensitivity::Public,
+            visibility: Visibility::Private,
         };
         let json = serde_json::to_string(&fact).expect("Fact serialization is infallible");
         let back: Fact =

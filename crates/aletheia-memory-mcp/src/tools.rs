@@ -516,6 +516,7 @@ impl MemoryServer {
                     content,
                     scope: None,
                     sensitivity: mneme::knowledge::FactSensitivity::Public,
+                    visibility: mneme::knowledge::Visibility::Private,
                     temporal: mneme::knowledge::FactTemporal {
                         valid_from: now,
                         valid_to: mneme::knowledge::far_future(),
@@ -691,6 +692,7 @@ impl MemoryServer {
                     content: record_content,
                     scope: None,
                     sensitivity: mneme::knowledge::FactSensitivity::Public,
+                    visibility: mneme::knowledge::Visibility::Private,
                     temporal: mneme::knowledge::FactTemporal {
                         valid_from: now,
                         valid_to: mneme::knowledge::far_future(),

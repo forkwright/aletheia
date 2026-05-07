@@ -66,6 +66,7 @@ fn make_fact_with_tier(
             last_accessed_at: None,
         },
         sensitivity: FactSensitivity::Public,
+        visibility: crate::knowledge::Visibility::Private,
         scope: None,
     };
     store
@@ -206,6 +207,7 @@ fn causal_chain_direct_edge_appears_in_derived_facts() {
             last_accessed_at: None,
         },
         sensitivity: FactSensitivity::Public,
+        visibility: crate::knowledge::Visibility::Private,
         scope: None,
     };
 
@@ -272,6 +274,7 @@ fn causal_chain_transitive_confidence_is_product() {
             last_accessed_at: None,
         },
         sensitivity: FactSensitivity::Public,
+        visibility: crate::knowledge::Visibility::Private,
         scope: None,
     };
 
@@ -339,6 +342,7 @@ fn causal_chain_low_confidence_pruned() {
             last_accessed_at: None,
         },
         sensitivity: FactSensitivity::Public,
+        visibility: crate::knowledge::Visibility::Private,
         scope: None,
     };
 
@@ -559,6 +563,7 @@ fn query_derived_facts_by_rule_prefix_filters_correctly() {
             last_accessed_at: None,
         },
         sensitivity: FactSensitivity::Public,
+        visibility: crate::knowledge::Visibility::Private,
         scope: None,
     };
     store

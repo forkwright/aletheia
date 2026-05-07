@@ -247,7 +247,7 @@ impl RecallStage {
 
         let candidates = self.build_candidates(raw, nous_id);
         let ranked = self.rank_candidates(candidates);
-        Ok(self.finalize_results(ranked, remaining_budget))
+        Ok(self.finalize_results(ranked, remaining_budget, nous_id))
     }
 
     /// Run the recall stage.
@@ -323,7 +323,7 @@ impl RecallStage {
 
         let candidates = self.build_candidates(raw, nous_id);
         let ranked = self.rank_candidates(candidates);
-        Ok(self.finalize_results(ranked, remaining_budget))
+        Ok(self.finalize_results(ranked, remaining_budget, nous_id))
     }
 
     fn run_iterative(
@@ -352,7 +352,7 @@ impl RecallStage {
 
         if terms.is_empty() && gaps.is_empty() {
             debug!("no novel terms or gaps discovered, skipping cycle 2");
-            return Ok(self.finalize_results(ranked_c1, remaining_budget));
+            return Ok(self.finalize_results(ranked_c1, remaining_budget, nous_id));
         }
 
         let mut refined = String::from(query);
@@ -395,13 +395,14 @@ impl RecallStage {
 
         let candidates = self.build_candidates(merged, nous_id);
         let ranked = self.rank_candidates(candidates);
-        Ok(self.finalize_results(ranked, remaining_budget))
+        Ok(self.finalize_results(ranked, remaining_budget, nous_id))
     }
 
     fn finalize_results(
         &self,
         ranked: Vec<ScoredResult>,
         remaining_budget: u64,
+        _nous_id: &str,
     ) -> RecallStageResult {
         let candidates_found = ranked.len();
 
@@ -411,6 +412,16 @@ impl RecallStage {
         // contribute to the recall section sent to the LLM. Non-fact sources
         // default to `Public` and pass through unchanged.
         let ranked = self.filter_by_sensitivity(ranked);
+
+        // WHY (#208): visibility filter. Default to Private so callers who
+        // do not explicitly configure visibility continue to see only their
+        // own facts. Existing data backfilled to Private passes through
+        // unchanged.
+        let ranked =
+            mneme::recall::filter_by_visibility(ranked, mneme::knowledge::Visibility::Private);
+        // TODO(#208) [deliberate-prudent]: wire `filter_by_cohort_visibility` once
+        // `build_candidates` populates `nous_id` from the search layer instead of
+        // `String::new()`.
 
         // Extract pinned facts first (they bypass max_results but are still
         // subject to the token budget).
@@ -425,8 +436,7 @@ impl RecallStage {
             .filter(|r| seen_pinned.insert(r.source_id.clone()))
             .collect();
 
-        // Apply scope quotas to non-pinned results (currently no-op because
-        // ScoredResult does not yet carry a MemoryScope field).
+        // Apply scope quotas to non-pinned results.
         let rest = self.apply_scope_quotas(rest);
 
         let filtered = self.filter(rest);
@@ -466,13 +476,64 @@ impl RecallStage {
 
     /// Apply per-scope minimum quotas with slack-fill.
     ///
-    /// NOTE: This is currently a no-op because [`ScoredResult`] does not yet
-    /// carry a [`MemoryScope`] field. Once R722 wires scope through the
-    /// storage/search boundary, this helper should partition results by scope,
-    /// enforce configured minimums, and redistribute unused quota.
+    /// Two-pass algorithm:
+    ///
+    /// 1. **Reserve**: For each scope with a quota, extract up to `quota` of
+    ///    the highest-scored candidates belonging to that scope.
+    /// 2. **Fill**: Append the remaining candidates sorted by overall score.
+    ///
+    /// If a scope has fewer candidates than its quota, the deficit becomes
+    /// slack that the general pool absorbs automatically. The output is
+    /// deterministic and does not mutate the input scores.
+    ///
+    /// # Complexity
+    ///
+    /// O(n log n) where n is the number of candidates (dominated by sorting).
     fn apply_scope_quotas(&self, results: Vec<ScoredResult>) -> Vec<ScoredResult> {
-        let _ = &self.scope_quotas;
-        results
+        if self.scope_quotas.is_empty() {
+            return results;
+        }
+
+        // Group candidates by scope.
+        let mut by_scope: std::collections::HashMap<Option<MemoryScope>, Vec<ScoredResult>> =
+            std::collections::HashMap::new();
+        for r in results {
+            by_scope.entry(r.scope).or_default().push(r);
+        }
+
+        // Pass 1: reserve quota slots per scope.
+        let mut reserved = Vec::new();
+        let mut pool = Vec::new();
+        for (scope, mut candidates) in by_scope {
+            candidates.sort_by(|a, b| {
+                b.score
+                    .partial_cmp(&a.score)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
+            if let Some(&quota) = scope.and_then(|s| self.scope_quotas.get(&s)) {
+                let take = candidates.len().min(quota);
+                reserved.extend(candidates.drain(..take));
+                pool.extend(candidates);
+            } else {
+                pool.extend(candidates);
+            }
+        }
+
+        // Sort reserved and pool by score descending.
+        reserved.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        pool.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+
+        // Pass 2: append the general pool.
+        reserved.extend(pool);
+        reserved
     }
 
     /// Drop candidates whose sensitivity exceeds the active deployment target.
@@ -547,10 +608,8 @@ impl RecallStage {
                 // layer so the sovereignty filter in `finalize_results` sees
                 // per-fact classification rather than assuming `Public`.
                 sensitivity: r.sensitivity,
-                // WHY: eidos raw recall results do not carry visibility yet;
-                // treat imported candidates conservatively until R722 wires
-                // visibility through the storage/search boundary.
-                visibility: mneme::knowledge::Visibility::Private,
+                scope: r.scope,
+                visibility: r.visibility,
             })
             .collect()
     }

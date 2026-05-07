@@ -90,6 +90,17 @@ pub(super) fn fact_to_params(
             None => DataValue::Null,
         },
     );
+    p.insert(
+        "scope".to_owned(),
+        match &fact.scope {
+            Some(s) => DataValue::Str(s.as_str().into()),
+            None => DataValue::Null,
+        },
+    );
+    p.insert(
+        "visibility".to_owned(),
+        DataValue::Str(fact.visibility.as_str().into()),
+    );
     p
 }
 
@@ -347,6 +358,17 @@ pub(super) fn rows_to_facts(
             .and_then(|v| extract_optional_str(v).ok())
             .unwrap_or(None)
             .and_then(|s| s.parse::<crate::knowledge::ForgetReason>().ok());
+        let scope = row
+            .get(17)
+            .and_then(|v| extract_optional_str(v).ok())
+            .unwrap_or(None)
+            .and_then(|s| s.parse::<crate::knowledge::MemoryScope>().ok());
+        let visibility = row
+            .get(18)
+            .and_then(|v| extract_str(v).ok())
+            .unwrap_or_default()
+            .parse::<crate::knowledge::Visibility>()
+            .unwrap_or_default();
 
         let fact_id = crate::id::FactId::new(id).context(crate::error::InvalidIdSnafu)?;
         let superseded_by_id = superseded_by
@@ -362,7 +384,8 @@ pub(super) fn rows_to_facts(
             },
             content,
             fact_type,
-            scope: None,
+            scope,
+            visibility,
             temporal: crate::knowledge::FactTemporal {
                 valid_from: crate::knowledge::parse_timestamp(&valid_from)
                     .unwrap_or(jiff::Timestamp::UNIX_EPOCH),
@@ -492,6 +515,17 @@ pub(super) fn rows_to_raw_facts(
             .and_then(|v| extract_optional_str(v).ok())
             .unwrap_or(None)
             .and_then(|s| s.parse::<crate::knowledge::ForgetReason>().ok());
+        let scope = row
+            .get(17)
+            .and_then(|v| extract_optional_str(v).ok())
+            .unwrap_or(None)
+            .and_then(|s| s.parse::<crate::knowledge::MemoryScope>().ok());
+        let visibility = row
+            .get(18)
+            .and_then(|v| extract_str(v).ok())
+            .unwrap_or_default()
+            .parse::<crate::knowledge::Visibility>()
+            .unwrap_or_default();
         let fact_id = crate::id::FactId::new(id).context(crate::error::InvalidIdSnafu)?;
         let superseded_by_id = superseded_by
             .map(crate::id::FactId::new)
@@ -502,7 +536,8 @@ pub(super) fn rows_to_raw_facts(
             nous_id,
             content,
             fact_type,
-            scope: None,
+            scope,
+            visibility,
             temporal: crate::knowledge::FactTemporal {
                 valid_from: crate::knowledge::parse_timestamp(&valid_from)
                     .unwrap_or(jiff::Timestamp::UNIX_EPOCH),
@@ -573,6 +608,7 @@ pub(super) fn rows_to_facts_partial(
             content,
             fact_type: String::new(),
             scope: None,
+            visibility: crate::knowledge::Visibility::Private,
             temporal: crate::knowledge::FactTemporal {
                 valid_from: jiff::Timestamp::UNIX_EPOCH,
                 valid_to: crate::knowledge::far_future(),
@@ -638,6 +674,17 @@ pub(super) fn rows_to_recall_results(
             .build()
         })?)?;
 
+        let scope = row
+            .get(5)
+            .and_then(|v| extract_optional_str(v).ok())
+            .unwrap_or(None)
+            .and_then(|s| s.parse::<crate::knowledge::MemoryScope>().ok());
+        let visibility = row
+            .get(6)
+            .and_then(|v| extract_str(v).ok())
+            .unwrap_or_default()
+            .parse::<crate::knowledge::Visibility>()
+            .unwrap_or_default();
         out.push(RecallResult {
             content,
             distance,
@@ -648,6 +695,8 @@ pub(super) fn rows_to_recall_results(
             // table before results reach the recall scorer.
             sensitivity: crate::knowledge::FactSensitivity::Public,
             graph_importance: 0.0,
+            scope,
+            visibility,
         });
     }
     Ok(out)

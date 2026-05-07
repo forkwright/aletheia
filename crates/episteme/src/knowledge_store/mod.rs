@@ -90,7 +90,9 @@ pub const KNOWLEDGE_DDL: &[&str] = &[
         fact_type: String,
         is_forgotten: Bool default false,
         forgotten_at: String?,
-        forget_reason: String?
+        forget_reason: String?,
+        scope: String?,
+        visibility: String default 'private'
     }",
     r":create entities {
         id: String =>
@@ -497,7 +499,7 @@ pub struct KnowledgeStore {
 
 #[cfg(feature = "mneme-engine")]
 impl KnowledgeStore {
-    const SCHEMA_VERSION: i64 = 10;
+    const SCHEMA_VERSION: i64 = 11;
 
     /// Open an in-memory knowledge store with default configuration.
     ///
@@ -726,6 +728,9 @@ impl KnowledgeStore {
             }
             if current_version < 10 {
                 self.migrate_v9_to_v10()?;
+            }
+            if current_version < 11 {
+                self.migrate_v10_to_v11()?;
             }
             return Ok(());
         }
@@ -1060,7 +1065,7 @@ impl KnowledgeStore {
                 *facts{id, valid_from, content, nous_id, confidence, tier,
                        valid_to, superseded_by, source_session_id, recorded_at,
                        access_count, last_accessed_at, stability_hours, fact_type,
-                       is_forgotten, forgotten_at, forget_reason},
+                       is_forgotten, forgotten_at, forget_reason, scope, visibility},
                 id = $id
         ";
         let mut params = BTreeMap::new();

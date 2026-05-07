@@ -375,6 +375,7 @@ pub fn store_audit_report(
                 last_accessed_at: None,
             },
             sensitivity: mneme::knowledge::FactSensitivity::Public,
+            visibility: mneme::knowledge::Visibility::Private,
         };
 
         knowledge_store

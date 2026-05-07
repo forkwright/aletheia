@@ -83,4 +83,21 @@ pub struct RecallResult {
     /// entities directly (#3432).
     #[serde(default)]
     pub graph_importance: f64,
+    /// Memory sharing scope for the underlying fact, carried from
+    /// [`Fact::scope`] so the recall pipeline can apply per-scope quotas.
+    /// `None` for facts created before the team memory model was introduced
+    /// or for non-fact sources.
+    ///
+    /// [`Fact::scope`]: super::fact::Fact::scope
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scope: Option<super::scope::MemoryScope>,
+    /// Visibility level for the underlying fact, carried from
+    /// [`Fact::visibility`] so the recall pipeline can filter by visibility.
+    /// Defaults to [`Visibility::Private`] for facts persisted before
+    /// visibility tracking or for non-fact sources.
+    ///
+    /// [`Fact::visibility`]: super::fact::Fact::visibility
+    /// [`Visibility::Private`]: super::fact::Visibility::Private
+    #[serde(default)]
+    pub visibility: super::fact::Visibility,
 }

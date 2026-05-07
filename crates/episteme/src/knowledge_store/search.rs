@@ -70,6 +70,12 @@ impl KnowledgeStore {
         let rows = self.run_read(queries::SEMANTIC_SEARCH, params)?;
         let mut results = rows_to_recall_results(rows)?;
 
+        // WHY: Semantic search returns from the embeddings relation, which does
+        // not carry scope or visibility. Hydrate these fields from the facts
+        // table for fact-type results so downstream quota and visibility
+        // filters see accurate values.
+        self.hydrate_recall_scope_visibility(&mut results);
+
         // WHY: Filter out forgotten facts; the HNSW index does not carry is_forgotten.
         let forgotten_ids = {
             let ids: Vec<&str> = results
@@ -198,6 +204,43 @@ impl KnowledgeStore {
         Ok(())
     }
 
+    /// Hydrate recall results with `scope` and `visibility` from the `facts` relation.
+    ///
+    /// Semantic search returns from the `embeddings` relation, which does not
+    /// carry these fields. This enrichment looks them up from `facts` for
+    /// `source_type == "fact"` results so downstream quota and visibility
+    /// filters see accurate values.
+    fn hydrate_recall_scope_visibility(&self, results: &mut [crate::knowledge::RecallResult]) {
+        for result in results.iter_mut().filter(|r| r.source_type == "fact") {
+            let script = r"
+                ?[scope, visibility] :=
+                    *facts{id: $fid, scope, visibility}
+            ";
+            let mut params = std::collections::BTreeMap::new();
+            params.insert(
+                "fid".to_owned(),
+                crate::engine::DataValue::Str(result.source_id.as_str().into()),
+            );
+            let Ok(rows) = self.run_read(script, params) else {
+                continue;
+            };
+            if let Some(row) = rows.rows.first() {
+                if let Some(scope_str) = row.first().and_then(|v| v.get_str())
+                    && !scope_str.is_empty()
+                {
+                    result.scope = scope_str.parse::<crate::knowledge::MemoryScope>().ok();
+                }
+                if let Some(vis_str) = row.get(1).and_then(|v| v.get_str())
+                    && !vis_str.is_empty()
+                {
+                    result.visibility = vis_str
+                        .parse::<crate::knowledge::Visibility>()
+                        .unwrap_or_default();
+                }
+            }
+        }
+    }
+
     /// Expand recall results with cluster-mate facts.
     ///
     /// Takes the top results, finds their Louvain clusters, and queries for
@@ -293,6 +336,8 @@ impl KnowledgeStore {
                     source_id: fact_id.to_owned(),
                     sensitivity: crate::knowledge::FactSensitivity::Public,
                     graph_importance: 0.0,
+                    scope: None,
+                    visibility: crate::knowledge::Visibility::Private,
                 });
                 added += 1;
                 if added >= limit {

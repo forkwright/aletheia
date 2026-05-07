@@ -33,6 +33,8 @@ fn recall_with_mock_vectors_end_to_end() {
                 source_id: "f-1".to_owned(),
                 sensitivity: mneme::knowledge::FactSensitivity::Public,
                 graph_importance: 0.0,
+                scope: None,
+                visibility: mneme::knowledge::Visibility::Private,
             },
             KnowledgeRecallResult {
                 content: "Aletheia uses Tokio actors".to_owned(),
@@ -40,6 +42,8 @@ fn recall_with_mock_vectors_end_to_end() {
                 source_type: "fact".to_owned(),
                 source_id: "f-2".to_owned(),
                 sensitivity: mneme::knowledge::FactSensitivity::Public,
+                scope: None,
+                visibility: mneme::knowledge::Visibility::Private,
                 graph_importance: 0.0,
             },
         ],

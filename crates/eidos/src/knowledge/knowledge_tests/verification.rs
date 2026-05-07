@@ -37,6 +37,7 @@ fn make_test_fact(tier: EpistemicTier, recorded_at: jiff::Timestamp) -> Fact {
             last_accessed_at: None,
         },
         sensitivity: FactSensitivity::Public,
+        visibility: Visibility::Private,
     }
 }
 

@@ -574,6 +574,7 @@ pub(crate) fn seed_skills(args: &SeedSkillsArgs) -> Result<()> {
                     last_accessed_at: None,
                 },
                 sensitivity: mneme::knowledge::FactSensitivity::Public,
+                visibility: mneme::knowledge::Visibility::Private,
             };
 
             store

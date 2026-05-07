@@ -63,6 +63,7 @@ fn make_fact(id: &str, nous_id: &str, content: &str) -> Fact {
             last_accessed_at: None,
         },
         sensitivity: mneme::knowledge::FactSensitivity::Public,
+        visibility: mneme::knowledge::Visibility::Private,
     }
 }
 

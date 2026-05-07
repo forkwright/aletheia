@@ -17,6 +17,7 @@ fn make_result(content: &str, nous_id: &str, factors: FactorScores) -> ScoredRes
         score: 0.0,
         sensitivity: mneme::knowledge::FactSensitivity::Public,
         visibility: mneme::knowledge::Visibility::Private,
+        scope: None,
     }
 }
 

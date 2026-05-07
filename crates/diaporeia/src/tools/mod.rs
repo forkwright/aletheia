@@ -721,6 +721,7 @@ impl DiaporeiaServer {
                 content: params.content.clone(),
                 scope: None,
                 sensitivity,
+                visibility: mneme::knowledge::Visibility::Private,
                 temporal: FactTemporal {
                     valid_from: now,
                     valid_to: far_future(),

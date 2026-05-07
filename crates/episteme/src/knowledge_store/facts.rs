@@ -610,11 +610,11 @@ impl KnowledgeStore {
             ?[id, valid_from, content, nous_id, confidence, tier, valid_to,
               superseded_by, source_session_id, recorded_at,
               access_count, last_accessed_at, stability_hours, fact_type,
-              is_forgotten, forgotten_at, forget_reason] :=
+              is_forgotten, forgotten_at, forget_reason, scope, visibility] :=
                 *facts{id, valid_from, content, nous_id, confidence, tier,
                        valid_to, superseded_by, source_session_id, recorded_at,
                        access_count, last_accessed_at, stability_hours, fact_type,
-                       is_forgotten, forgotten_at, forget_reason}
+                       is_forgotten, forgotten_at, forget_reason, scope, visibility}
             :order -recorded_at
             :limit $limit
         ";
@@ -852,11 +852,11 @@ impl KnowledgeStore {
             ?[id, valid_from, content, nous_id, confidence, tier, valid_to,
               superseded_by, source_session_id, recorded_at,
               access_count, last_accessed_at, stability_hours, fact_type,
-              is_forgotten, forgotten_at, forget_reason] :=
+              is_forgotten, forgotten_at, forget_reason, scope, visibility] :=
                 *facts{id, valid_from, content, nous_id, confidence, tier,
                        valid_to, superseded_by, source_session_id, recorded_at,
                        access_count, last_accessed_at, stability_hours, fact_type,
-                       is_forgotten, forgotten_at, forget_reason},
+                       is_forgotten, forgotten_at, forget_reason, scope, visibility},
                 nous_id == $nous_id,
                 fact_type == $fact_type,
                 is_forgotten == false

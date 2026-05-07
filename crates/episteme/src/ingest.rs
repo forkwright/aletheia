@@ -297,6 +297,7 @@ fn chunk_to_fact(
             last_accessed_at: None,
         },
         sensitivity: FactSensitivity::Public,
+        visibility: crate::knowledge::Visibility::Private,
     })
 }
 

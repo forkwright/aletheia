@@ -46,6 +46,7 @@ fn make_temporal_fact(
             last_accessed_at: None,
         },
         sensitivity: crate::knowledge::FactSensitivity::Public,
+        visibility: crate::knowledge::Visibility::Private,
         scope: None,
     }
 }

@@ -236,7 +236,10 @@ pub mod knowledge_store {
 /// [`RecallWeights`](recall::RecallWeights),
 /// [`ScoredResult`](recall::ScoredResult)
 pub mod recall {
-    pub use episteme::recall::{FactorScores, RecallEngine, RecallWeights, ScoredResult};
+    pub use episteme::recall::{
+        FactorScores, RecallEngine, RecallWeights, ScoredResult, filter_by_cohort_visibility,
+        filter_by_visibility,
+    };
 }
 
 /// Skill storage helpers and SKILL.md parser.

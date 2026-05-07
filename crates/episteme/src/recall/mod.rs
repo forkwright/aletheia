@@ -139,6 +139,11 @@ pub struct ScoredResult {
     /// are broadly visible; `Restricted` is retained only for the owning nous
     /// until an access-list model is wired (#R722).
     pub visibility: Visibility,
+    /// Memory sharing scope for team-memory quota enforcement.
+    ///
+    /// `None` for results from non-fact sources or facts created before the
+    /// team memory model was introduced.
+    pub scope: Option<crate::knowledge::MemoryScope>,
 }
 
 impl Stamped for ScoredResult {
@@ -706,7 +711,7 @@ pub fn pre_filter_by_side_query<S: BuildHasher>(
 ///
 /// O(C) where C is the number of candidates.
 #[must_use]
-pub fn filter_by_visibility(
+pub fn filter_by_cohort_visibility(
     candidates: Vec<ScoredResult>,
     query_nous_id: &str,
 ) -> Vec<ScoredResult> {
@@ -722,6 +727,31 @@ pub fn filter_by_visibility(
                 c.nous_id == query_nous_id
             }
         })
+        .collect()
+}
+
+/// Filter recall candidates by visibility level.
+///
+/// Retains candidates whose visibility is **at most** `min` according to the
+/// ordering `Private < Shared < Restricted < Published`. This is an
+/// upper-bound filter: more visible (less restrictive) facts are excluded
+/// when a low `min` is set.
+///
+/// | `min`          | Facts retained                          |
+/// |----------------|----------------------------------------|
+/// | `Private`      | `Private` only                         |
+/// | `Shared`       | `Private`, `Shared`                    |
+/// | `Restricted`   | `Private`, `Shared`, `Restricted`      |
+/// | `Published`    | all visibility levels                  |
+///
+/// # Complexity
+///
+/// O(C) where C is the number of candidates.
+#[must_use]
+pub fn filter_by_visibility(candidates: Vec<ScoredResult>, min: Visibility) -> Vec<ScoredResult> {
+    candidates
+        .into_iter()
+        .filter(|c| c.visibility >= min)
         .collect()
 }
 
