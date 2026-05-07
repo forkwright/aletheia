@@ -37,11 +37,11 @@ pub(super) fn assemble_meta_data(
             },
             avg_tokens_per_response: 0.0,
             tool_calls_per_session: 0.0,
-            tool_success_rate: 0.85,
+            tool_success_rate: 0.0,
             distillation_frequency: 0.0,
             avg_context_before_distill: 0.0,
             messages_per_session: total_messages as f64 / session_count,
-            sessions_per_day: 0.0,
+            sessions_per_day: compute_sessions_per_day(&agent_sessions),
             errors_per_session: 0.0,
         });
     }
@@ -50,6 +50,7 @@ pub(super) fn assemble_meta_data(
         scorecards,
         anomalies: Vec::new(),
         tokens_per_response_series: HashMap::new(),
+        endpoint_available: false,
     };
 
     // -- Quality --
@@ -69,6 +70,7 @@ pub(super) fn assemble_meta_data(
         thinking_time_ratio: Vec::new(),
         depth_distribution: depth,
         top_topics: Vec::new(),
+        charts_endpoint_available: false,
     };
 
     // -- Knowledge growth --
@@ -246,6 +248,7 @@ pub(super) fn assemble_meta_data(
         heatmap,
         efficiency,
         journal: Vec::new(),
+        journal_endpoint_available: false,
     };
 
     MetaData {
@@ -255,6 +258,24 @@ pub(super) fn assemble_meta_data(
         health: mem_health,
         reflection,
     }
+}
+
+/// Compute average sessions per active day from session timestamps.
+fn compute_sessions_per_day(sessions: &[&SessionEntry]) -> f64 {
+    let count = sessions.len() as f64;
+    if count < 1.0 {
+        return 0.0;
+    }
+    let mut unique_dates = std::collections::HashSet::new();
+    for s in sessions {
+        if let Some(date) = s.created_at.get(..10) {
+            unique_dates.insert(date.to_string());
+        }
+    }
+    if unique_dates.is_empty() {
+        return 0.0;
+    }
+    count / unique_dates.len() as f64
 }
 
 /// Extract (day_of_week, hour) from an ISO 8601 timestamp string.

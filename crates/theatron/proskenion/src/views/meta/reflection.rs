@@ -94,7 +94,14 @@ pub(super) fn SystemReflectionSection(store: SystemReflectionStore) -> Element {
             style: "font-size: var(--text-base); color: var(--text-secondary); margin: var(--space-4) 0 var(--space-3) 0;",
             "System Journal"
         }
-        SystemJournal { events: store.journal.clone() }
+        if store.journal_endpoint_available {
+            SystemJournal { events: store.journal.clone() }
+        } else {
+            div {
+                style: "{MUTED_TEXT}",
+                "System journal endpoint not available on this pylon instance."
+            }
+        }
     }
 }
 
@@ -241,7 +248,7 @@ fn EfficiencyPanel(
                 div { style: "{CARD_VALUE}", {
                     #[expect(clippy::as_conversions, reason = "f64 to u64 for token display formatting")]
                     let tokens = tokens_per_entity as u64;
-                    format!("{}", format_tokens(tokens))
+                    format_tokens(tokens)
                 } }
                 div { style: "{CARD_LABEL}", "Tokens / Entity" }
                 div { style: "{CARD_SUB}", "Conversation cost per knowledge node" }

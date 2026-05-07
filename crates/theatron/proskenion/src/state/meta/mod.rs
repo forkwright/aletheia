@@ -171,6 +171,8 @@ pub(crate) struct AgentPerformanceStore {
     pub scorecards: Vec<AgentScorecard>,
     pub anomalies: Vec<Anomaly>,
     pub tokens_per_response_series: HashMap<String, Vec<DataPoint>>,
+    /// Whether the server exposes a per-agent performance metrics endpoint.
+    pub endpoint_available: bool,
 }
 
 impl AgentPerformanceStore {
@@ -192,6 +194,8 @@ pub(crate) struct QualityStore {
     pub thinking_time_ratio: Vec<DataPoint>,
     pub depth_distribution: DepthDistribution,
     pub top_topics: Vec<TopicEntry>,
+    /// Whether the server exposes a conversation-quality time-series endpoint.
+    pub charts_endpoint_available: bool,
 }
 
 impl QualityStore {
@@ -510,6 +514,8 @@ pub(crate) struct SystemReflectionStore {
     pub heatmap: Vec<HeatmapCell>,
     pub efficiency: EfficiencyMetrics,
     pub journal: Vec<JournalEvent>,
+    /// Whether the server exposes a queryable system-journal endpoint.
+    pub journal_endpoint_available: bool,
 }
 
 impl SystemReflectionStore {

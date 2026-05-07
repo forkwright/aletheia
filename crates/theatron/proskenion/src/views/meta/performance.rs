@@ -40,32 +40,49 @@ const ALERT_STYLE: &str = "\
 #[component]
 pub(super) fn AgentPerformanceSection(store: AgentPerformanceStore) -> Element {
     rsx! {
-        // NOTE: Anomaly alerts at the top.
-        if !store.anomalies.is_empty() {
+        if !store.endpoint_available {
             div {
-                style: "display: flex; flex-direction: column; gap: var(--space-2); margin-bottom: var(--space-4);",
-                for anomaly in &store.anomalies {
-                    AnomalyCard { anomaly: anomaly.clone() }
+                style: "{MUTED_TEXT} margin-bottom: var(--space-4);",
+                "Agent performance metrics endpoint not available on this pylon instance."
+            }
+
+            if !store.scorecards.is_empty() {
+                h3 { style: "font-size: var(--text-base); color: var(--text-secondary); margin: 0 0 var(--space-3) 0;", "Agent Scorecards" }
+                div {
+                    style: "{GRID_STYLE}",
+                    for card in &store.scorecards {
+                        SimplifiedScorecardCard { scorecard: card.clone() }
+                    }
                 }
             }
-        }
-
-        if store.scorecards.is_empty() {
-            div { style: "{MUTED_TEXT}", "No agent data available" }
         } else {
-            // NOTE: Radar chart (comparative).
-            div {
-                style: "margin-bottom: var(--space-4);",
-                h3 { style: "font-size: var(--text-base); color: var(--text-secondary); margin: 0 0 var(--space-3) 0;", "Comparative Radar" }
-                RadarChart { scorecards: store.scorecards.clone() }
+            // NOTE: Anomaly alerts at the top.
+            if !store.anomalies.is_empty() {
+                div {
+                    style: "display: flex; flex-direction: column; gap: var(--space-2); margin-bottom: var(--space-4);",
+                    for anomaly in &store.anomalies {
+                        AnomalyCard { anomaly: anomaly.clone() }
+                    }
+                }
             }
 
-            // NOTE: Individual scorecards.
-            h3 { style: "font-size: var(--text-base); color: var(--text-secondary); margin: 0 0 var(--space-3) 0;", "Agent Scorecards" }
-            div {
-                style: "{GRID_STYLE}",
-                for card in &store.scorecards {
-                    ScorecardCard { scorecard: card.clone() }
+            if store.scorecards.is_empty() {
+                div { style: "{MUTED_TEXT}", "No agent data available" }
+            } else {
+                // NOTE: Radar chart (comparative).
+                div {
+                    style: "margin-bottom: var(--space-4);",
+                    h3 { style: "font-size: var(--text-base); color: var(--text-secondary); margin: 0 0 var(--space-3) 0;", "Comparative Radar" }
+                    RadarChart { scorecards: store.scorecards.clone() }
+                }
+
+                // NOTE: Individual scorecards.
+                h3 { style: "font-size: var(--text-base); color: var(--text-secondary); margin: 0 0 var(--space-3) 0;", "Agent Scorecards" }
+                div {
+                    style: "{GRID_STYLE}",
+                    for card in &store.scorecards {
+                        FullScorecardCard { scorecard: card.clone() }
+                    }
                 }
             }
         }
@@ -73,7 +90,28 @@ pub(super) fn AgentPerformanceSection(store: AgentPerformanceStore) -> Element {
 }
 
 #[component]
-fn ScorecardCard(scorecard: AgentScorecard) -> Element {
+fn SimplifiedScorecardCard(scorecard: AgentScorecard) -> Element {
+    rsx! {
+        div {
+            style: "{SCORECARD_STYLE}",
+            div {
+                style: "font-size: var(--text-md); font-weight: var(--weight-semibold); color: var(--text-primary); margin-bottom: var(--space-3);",
+                "{scorecard.agent_name}"
+            }
+            MetricRow {
+                label: "Msgs/session",
+                value: format!("{:.1}", scorecard.messages_per_session),
+            }
+            MetricRow {
+                label: "Sessions/day",
+                value: format!("{:.1}", scorecard.sessions_per_day),
+            }
+        }
+    }
+}
+
+#[component]
+fn FullScorecardCard(scorecard: AgentScorecard) -> Element {
     rsx! {
         div {
             style: "{SCORECARD_STYLE}",
@@ -229,7 +267,7 @@ fn RadarChart(scorecards: Vec<AgentScorecard>) -> Element {
                             .map(|i| {
                                 #[expect(clippy::as_conversions, reason = "axis index to f64 for radar chart angle")]
                                 let angle = (i as f64 * angle_step) - std::f64::consts::FRAC_PI_2;
-                                let r = RADAR_RADIUS * axes[i];
+                                let r = RADAR_RADIUS * axes.get(i).copied().unwrap_or(0.0);
                                 let x = RADAR_CENTER + r * angle.cos();
                                 let y = RADAR_CENTER + r * angle.sin();
                                 format!("{x:.1},{y:.1}")
