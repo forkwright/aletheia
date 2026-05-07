@@ -7,11 +7,11 @@ use koina::id::ToolName;
 /// Errors from tool registry operations.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
-#[non_exhaustive]
 #[expect(
     missing_docs,
     reason = "snafu error variant fields (name, source, location, reason, message, path) are self-documenting via display format"
 )]
+#[non_exhaustive]
 pub enum Error {
     /// Requested tool does not exist in the registry.
     #[snafu(display("tool not found: {name}"))]
@@ -54,6 +54,14 @@ pub enum Error {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+
+    /// File-ref interpolation failed during tool argument expansion.
+    #[snafu(display("file-ref interpolation failed: {source}"))]
+    InterpError {
+        source: crate::interp::InterpError,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
 }
 
 /// Convenience alias.
@@ -69,11 +77,11 @@ pub type Result<T> = std::result::Result<T, Error>; // kanon:ignore RUST/pub-vis
 /// collisions with `PlanningAdapterError` variants in the same module.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
-#[non_exhaustive]
 #[expect(
     missing_docs,
     reason = "snafu error variant fields (entity, id, context, source, message) are self-documenting via display format"
 )]
+#[non_exhaustive]
 pub enum StoreError {
     // kanon:ignore RUST/pub-visibility
     /// The requested entity was not found.
@@ -103,11 +111,11 @@ pub enum StoreError {
 /// Typed errors for `PlanningService` adapter implementations.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
-#[non_exhaustive]
 #[expect(
     missing_docs,
     reason = "snafu error variant fields (message, source, location, mode, name, kind, id) are self-documenting via display format"
 )]
+#[non_exhaustive]
 pub enum PlanningAdapterError {
     // kanon:ignore RUST/pub-visibility
     #[snafu(display("failed to access workspace: {message}"))]
@@ -193,11 +201,11 @@ pub enum PlanningAdapterError {
 /// Typed errors for `KnowledgeSearchService` adapter implementations.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
-#[non_exhaustive]
 #[expect(
     missing_docs,
     reason = "snafu error variant fields (message, location, reason) are self-documenting via display format"
 )]
+#[non_exhaustive]
 pub enum KnowledgeAdapterError {
     // kanon:ignore RUST/pub-visibility
     #[snafu(display("embedding failed: {message}"))]

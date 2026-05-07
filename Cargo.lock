@@ -6589,6 +6589,7 @@ dependencies = [
  "poiesis-verify",
  "prometheus-client",
  "proptest",
+ "regex",
  "reqwest 0.13.2",
  "rustix",
  "rustls",

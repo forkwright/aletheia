@@ -5,11 +5,11 @@ use snafu::Snafu;
 /// Errors from nous operations.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
-#[non_exhaustive]
 #[expect(
     missing_docs,
     reason = "snafu error variant fields (source, location, message, file, session_id, etc.) are self-documenting via display format"
 )]
+#[non_exhaustive]
 pub enum Error {
     /// Session store error.
     #[snafu(display("session store error: {source}"))]
@@ -44,6 +44,14 @@ pub enum Error {
     ContextAssemblyIo {
         file: String,
         source: std::io::Error,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// File-ref interpolation failed during bootstrap assembly.
+    #[snafu(display("file-ref interpolation failed: {source}"))]
+    InterpError {
+        source: organon::interp::InterpError,
         #[snafu(implicit)]
         location: snafu::Location,
     },
@@ -295,6 +303,7 @@ impl koina::error_class::Classifiable for Error {
             Error::WorkspaceValidation { .. } => ErrorClass::Permanent,
             Error::ContextAssembly { .. } => ErrorClass::Permanent,
             Error::ContextAssemblyIo { .. } => ErrorClass::Permanent,
+            Error::InterpError { .. } => ErrorClass::Permanent,
             Error::NousNotFound { .. } => ErrorClass::Permanent,
             Error::AddressRejected { .. } => ErrorClass::Permanent,
             Error::GuardRejected { .. } => ErrorClass::Permanent,

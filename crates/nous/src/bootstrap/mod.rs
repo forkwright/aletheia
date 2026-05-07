@@ -749,6 +749,9 @@ impl<'a> BootstrapAssembler<'a> {
                 acc
             });
 
+        let system_prompt = organon::interp::expand_file_refs(&system_prompt, self.oikos.root())
+            .map_err(|e| crate::error::InterpSnafu.into_error(e))?;
+
         let section_names: Vec<String> = included.iter().map(|s| s.name.clone()).collect();
         let total_tokens = budget.consumed();
 

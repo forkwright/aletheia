@@ -12,6 +12,8 @@
 pub mod builtins;
 /// Organon-specific error types and result alias.
 pub mod error;
+/// `{{file:path:start:end}}` template interpolation.
+pub mod interp;
 /// Prometheus metrics for tool execution counts, latency, and error rates.
 pub mod metrics;
 /// RAII guard for subprocess lifecycle: kills and reaps on drop.

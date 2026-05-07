@@ -6,7 +6,7 @@ use std::pin::Pin;
 use std::time::Instant;
 
 use indexmap::IndexMap;
-use snafu::ensure;
+use snafu::{IntoError as _, ensure};
 use tracing::{Instrument, info_span};
 
 use koina::id::ToolName;
@@ -136,6 +136,14 @@ impl ToolRegistry {
             }
             .build()
         })?;
+
+        // Expand file refs in tool arguments before dispatch.
+        let expanded_args =
+            crate::interp::expand_file_refs_in_json(&input.arguments, &ctx.workspace)
+                .map_err(|e| error::InterpSnafu.into_error(e))?;
+        let mut expanded_input = input.clone();
+        expanded_input.arguments = expanded_args;
+
         let span = info_span!("tool_execute",
             tool.name = %input.name,
             tool.reversibility = %tool.def.reversibility,
@@ -150,7 +158,7 @@ impl ToolRegistry {
         // causes incorrect parent attribution for concurrent tasks (#3384).
         let result = tool
             .executor
-            .execute(input, ctx)
+            .execute(&expanded_input, ctx)
             .instrument(span.clone())
             .await;
         let duration_ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
