@@ -27,6 +27,8 @@ pub mod error;
 pub mod fallback;
 /// Provider health state machine (Up / Degraded / Down) with automatic recovery.
 pub mod health;
+/// Doom-loop detection for multi-tool MCP dispatch (Phase 7).
+pub mod loop_detector;
 /// Prometheus metrics for LLM request counts, latency, and token usage.
 pub mod metrics;
 /// Model constants and API configuration defaults.
