@@ -1,4 +1,4 @@
-//! (Split from `bootstrap_tests/mod.rs` — see parent mod.)
+//! Pack section bootstrap assembly tests.
 
 #![expect(clippy::expect_used, reason = "test assertions")]
 
@@ -16,6 +16,7 @@ async fn assemble_with_extra_includes_pack_sections() {
         content: "Domain logic from pack.".to_owned(),
         tokens: 6,
         truncatable: false,
+        slot: BootstrapSlot::Context,
     }];
 
     let result = assembler
@@ -52,6 +53,7 @@ async fn assemble_with_extra_respects_priority_ordering() {
             content: "optional".to_owned(),
             tokens: 2,
             truncatable: true,
+            slot: BootstrapSlot::Context,
         },
         BootstrapSection {
             name: "important-pack".to_owned(),
@@ -59,6 +61,7 @@ async fn assemble_with_extra_respects_priority_ordering() {
             content: "important".to_owned(),
             tokens: 2,
             truncatable: false,
+            slot: BootstrapSlot::Context,
         },
     ];
 

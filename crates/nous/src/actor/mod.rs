@@ -639,7 +639,7 @@ impl NousActor {
         use dianoia::intent::IntentStore;
         use tracing::warn;
 
-        use crate::bootstrap::{BootstrapSection, SectionPriority};
+        use crate::bootstrap::{BootstrapSection, BootstrapSlot, SectionPriority};
         use crate::budget::CharEstimator;
 
         let agent_dir = self.services.oikos.nous_dir(&self.id);
@@ -656,6 +656,7 @@ impl NousActor {
                     content,
                     tokens,
                     truncatable: false,
+                    slot: BootstrapSlot::Goals,
                 }]
             }
             Ok(None) => vec![],

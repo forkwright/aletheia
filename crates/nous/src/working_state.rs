@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use hermeneus::types::{Message, ThinkingConfig, ToolDefinition};
 
-use crate::bootstrap::{BootstrapSection, SectionPriority};
+use crate::bootstrap::{BootstrapSection, BootstrapSlot, SectionPriority};
 
 /// What kind of operation the agent is waiting for.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -434,6 +434,7 @@ impl WorkingState {
             content,
             tokens: token_estimate,
             truncatable: true,
+            slot: BootstrapSlot::Context,
         })
     }
 

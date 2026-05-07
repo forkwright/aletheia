@@ -1,4 +1,4 @@
-//! (Split from `bootstrap_tests/mod.rs` — see parent mod.)
+//! Basic bootstrap assembly tests.
 
 #![expect(
     clippy::indexing_slicing,
@@ -362,6 +362,7 @@ fn truncate_section_aware() {
             .to_owned(),
         tokens: 100,
         truncatable: true,
+        slot: BootstrapSlot::Memory,
     };
 
     let truncated = assembler.truncate_section(&section, 10);
@@ -390,6 +391,7 @@ fn truncate_falls_back_to_lines() {
         content: "Line one\nLine two\nLine three\nLine four\nLine five".to_owned(),
         tokens: 100,
         truncatable: true,
+        slot: BootstrapSlot::Memory,
     };
 
     let truncated = assembler.truncate_by_lines(&section, 5);

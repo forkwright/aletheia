@@ -105,7 +105,7 @@ use mneme::knowledge::Fact;
 use mneme::knowledge_store::KnowledgeStore;
 
 #[cfg(any(feature = "knowledge-store", test))]
-use crate::bootstrap::{BootstrapSection, SectionPriority};
+use crate::bootstrap::{BootstrapSection, BootstrapSlot, SectionPriority};
 #[cfg(any(feature = "knowledge-store", test))]
 use crate::budget::CharEstimator;
 
@@ -256,6 +256,7 @@ pub(crate) fn fact_to_section(fact: &Fact) -> BootstrapSection {
         content,
         tokens,
         truncatable: true,
+        slot: BootstrapSlot::Tools,
     }
 }
 
