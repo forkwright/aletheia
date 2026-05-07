@@ -15,7 +15,7 @@ use organon::types::ToolContext;
 use taxis::oikos::Oikos;
 
 use crate::bootstrap::{BootstrapFileCache, BootstrapSection, LlmRecipe, TaskHint};
-use crate::compact::CompactConfig;
+use crate::compact::{CompactConfig, CompactReason, select_prompt};
 use crate::config::{NousConfig, PipelineConfig};
 use crate::error;
 use crate::history::{self, HistoryConfig};
@@ -375,8 +375,9 @@ pub(super) fn run_full_compact_stage(
 
     let critical_files =
         crate::compact::full::identify_critical_files(&ctx.messages, &compact_config);
+    let prompt = select_prompt(CompactReason::TokenBudget);
     let (_request, preserved) =
-        crate::compact::full::build_summary_request(&ctx.messages, &compact_config);
+        crate::compact::full::build_summary_request(&ctx.messages, &compact_config, prompt);
 
     // TODO(#2261): spawn background task via task registry for model summarization.
     // For now, build a structural summary from message roles and content snippets.

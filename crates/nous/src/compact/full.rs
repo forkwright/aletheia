@@ -16,26 +16,16 @@ use super::{CompactConfig, CriticalFile};
 #[derive(Debug, Clone)]
 pub(crate) struct FullCompactionResult {
     /// Updated message list (summary + preserved tail + critical files).
-    pub messages: Vec<PipelineMessage>,
+    pub(crate) messages: Vec<PipelineMessage>,
     /// Compaction metrics.
-    pub metrics: CompactionMetrics,
+    pub(crate) metrics: CompactionMetrics,
     /// Critical files that were re-injected.
     #[cfg_attr(
         not(test),
         expect(dead_code, reason = "read in tests and future pipeline telemetry")
     )]
-    pub critical_files_restored: Vec<String>,
+    pub(crate) critical_files_restored: Vec<String>,
 }
-
-/// The summarization prompt sent to the model for full compaction.
-const SUMMARIZATION_PROMPT: &str = "\
-Summarize the following conversation history concisely. Preserve:
-- Key decisions and their rationale
-- File paths and code changes made
-- Current task state and next steps
-- Any errors encountered and how they were resolved
-
-Be concise but retain all actionable information. Output only the summary.";
 
 /// Check whether full compaction should trigger based on token usage.
 ///
@@ -67,6 +57,7 @@ pub(crate) fn should_trigger(
 pub(crate) fn build_summary_request(
     messages: &[PipelineMessage],
     config: &CompactConfig,
+    prompt: &str,
 ) -> (String, Vec<PipelineMessage>) {
     // WHY: preserve the most recent turns because they contain active context
     let preserve_count = config.preserve_turns.min(messages.len());
@@ -83,7 +74,7 @@ pub(crate) fn build_summary_request(
         history_text.push('\n');
     }
 
-    let request = format!("{SUMMARIZATION_PROMPT}\n\n---\n\n{history_text}");
+    let request = format!("{prompt}\n\n---\n\n{history_text}");
     (request, to_preserve)
 }
 
@@ -218,10 +209,6 @@ pub(crate) fn identify_critical_files(
 /// Extract a file path FROM a tool result message.
 ///
 /// Looks for file operation tool results that contain path information.
-#[expect(
-    clippy::string_slice,
-    reason = "metadata prefix is ASCII-only ([tool:<name>@<timestamp>]), byte indices are safe"
-)]
 fn extract_file_path(content: &str) -> Option<String> {
     // WHY: tool results formatted by format_tool_result have structure:
     // [tool:<name>@<timestamp>] <content>
@@ -229,9 +216,9 @@ fn extract_file_path(content: &str) -> Option<String> {
         return None;
     }
     let end_bracket = content.find(']')?;
-    let metadata = &content[6..end_bracket];
+    let metadata = content.get(6..end_bracket)?;
     let at_pos = metadata.find('@')?;
-    let tool_name = &metadata[..at_pos];
+    let tool_name = metadata.get(..at_pos)?;
 
     // NOTE: only extract paths FROM file operations
     let tool_type = hermeneus::types::ToolResultType::classify(tool_name);
@@ -251,13 +238,9 @@ fn extract_file_path(content: &str) -> Option<String> {
 }
 
 /// Extract file content FROM a tool result (everything after the header).
-#[expect(
-    clippy::string_slice,
-    reason = "bracket_end is from find('] ') which is ASCII, byte index is safe"
-)]
 fn extract_file_content(content: &str) -> String {
     if let Some(bracket_end) = content.find("] ") {
-        content[bracket_end + 2..].to_owned()
+        content.get(bracket_end + 2..).unwrap_or("").to_owned()
     } else {
         content.to_owned()
     }
@@ -347,7 +330,7 @@ mod tests {
             make_text_msg("assistant", "recent reply", 50),
         ];
 
-        let (request, preserved) = build_summary_request(&messages, &config);
+        let (request, preserved) = build_summary_request(&messages, &config, "test prompt");
         assert_eq!(preserved.len(), 2, "should preserve last 2 messages");
         assert_eq!(
             preserved[0].content, "recent message",
@@ -504,10 +487,10 @@ mod tests {
     fn build_summary_request_handles_empty_messages() {
         let config = CompactConfig::default();
         let messages: Vec<PipelineMessage> = Vec::new();
-        let (request, preserved) = build_summary_request(&messages, &config);
+        let (request, preserved) = build_summary_request(&messages, &config, "test prompt");
         assert!(preserved.is_empty(), "preserved should be empty");
         assert!(
-            request.contains(SUMMARIZATION_PROMPT),
+            request.contains("test prompt"),
             "request should contain the prompt"
         );
     }
@@ -522,7 +505,7 @@ mod tests {
             make_text_msg("user", "msg1", 10),
             make_text_msg("assistant", "msg2", 10),
         ];
-        let (_request, preserved) = build_summary_request(&messages, &config);
+        let (_request, preserved) = build_summary_request(&messages, &config, "test prompt");
         assert_eq!(
             preserved.len(),
             2,
