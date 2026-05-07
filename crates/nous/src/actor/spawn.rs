@@ -51,6 +51,7 @@ pub(crate) fn spawn(
     tool_services: Option<Arc<organon::types::ToolServices>>,
     extra_bootstrap: Vec<BootstrapSection>,
     cross_rx: Option<mpsc::Receiver<CrossNousEnvelope>>,
+    cross_tx: Option<mpsc::Sender<CrossNousEnvelope>>,
     cancel: CancellationToken,
     nous_behavior: taxis::config::NousBehaviorConfig,
     audit_log: Option<Arc<crate::audit::PromptAuditLog>>,
@@ -74,6 +75,7 @@ pub(crate) fn spawn(
         pipeline_config,
         rx,
         cross_rx,
+        cross_tx,
         cancel,
         providers,
         tools,
@@ -164,6 +166,7 @@ pub fn spawn_for_daemon(
         params.tool_services,
         params.extra_bootstrap,
         None, // WHY: daemon-spawned children don't use cross-nous messaging
+        None, // cross_tx
         cancel,
         taxis::config::NousBehaviorConfig::default(),
         None, // WHY: daemon child agents share the parent's audit log via binary crate wiring

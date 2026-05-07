@@ -178,6 +178,7 @@ impl SpawnService for SpawnServiceImpl {
                     None,
                     Vec::new(),
                     None,
+                    None,
                     ephemeral_cancel,
                     taxis::config::NousBehaviorConfig::default(),
                     None,

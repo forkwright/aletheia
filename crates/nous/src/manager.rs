@@ -254,12 +254,12 @@ impl NousManager {
             sections
         };
 
-        let cross_rx = if let Some(ref router) = self.router {
+        let (cross_tx, cross_rx) = if let Some(ref router) = self.router {
             let (cross_tx, cross_rx) = tokio::sync::mpsc::channel(32);
-            router.register(&id, cross_tx).await;
-            Some(cross_rx)
+            router.register(&id, cross_tx.clone()).await;
+            (Some(cross_tx), Some(cross_rx))
         } else {
-            None
+            (None, None)
         };
 
         let child_cancel = self.cancel.child_token();
@@ -299,6 +299,7 @@ impl NousManager {
             self.tool_services.clone(),
             extra_bootstrap,
             cross_rx,
+            cross_tx,
             child_cancel,
             self.nous_behavior.clone(),
             self.audit_log.clone(),

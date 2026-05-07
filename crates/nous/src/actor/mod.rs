@@ -49,6 +49,8 @@ pub(crate) const MAX_SESSIONS: usize = 1000;
 pub(crate) struct ActorChannel {
     inbox: mpsc::Receiver<NousMessage>,
     cross_rx: Option<mpsc::Receiver<CrossNousEnvelope>>,
+    /// Sender for emitting cross-nous messages (e.g. `KnowledgePayload::Contest`).
+    cross_tx: Option<mpsc::Sender<CrossNousEnvelope>>,
     /// Token signalling a graceful shutdown request from the manager.
     cancel: CancellationToken,
     status: NousLifecycle,
@@ -174,6 +176,7 @@ impl NousActor {
         pipeline_config: PipelineConfig,
         inbox: mpsc::Receiver<NousMessage>,
         cross_rx: Option<mpsc::Receiver<CrossNousEnvelope>>,
+        cross_tx: Option<mpsc::Sender<CrossNousEnvelope>>,
         cancel: CancellationToken,
         providers: Arc<ProviderRegistry>,
         tools: Arc<ToolRegistry>,
@@ -211,6 +214,7 @@ impl NousActor {
             channel: ActorChannel {
                 inbox,
                 cross_rx,
+                cross_tx,
                 cancel,
                 status: NousLifecycle::Idle,
             },
