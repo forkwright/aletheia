@@ -240,6 +240,7 @@ fn register_single_tool(
         category: ToolCategory::Research,
         reversibility: Reversibility::FullyReversible,
         auto_activate: false,
+        groups: vec![],
     };
 
     let executor = ExternalToolExecutor {

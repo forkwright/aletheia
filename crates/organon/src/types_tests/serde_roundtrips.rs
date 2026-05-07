@@ -31,6 +31,7 @@ fn tool_def_serde_roundtrip() {
         category: ToolCategory::Workspace,
         reversibility: Reversibility::Irreversible,
         auto_activate: false,
+        groups: vec![ToolGroupId::Read],
     };
     let json = serde_json::to_string(&def).expect("serialize");
     let back: ToolDef = serde_json::from_str(&json).expect("deserialize");
@@ -398,6 +399,7 @@ fn test_tool_def_auto_activate_stored_correctly() {
         category: ToolCategory::Workspace,
         reversibility: Reversibility::Irreversible,
         auto_activate: true,
+        groups: vec![ToolGroupId::Read],
     };
     assert!(def.auto_activate, "expected def.auto_activate to be true");
 }

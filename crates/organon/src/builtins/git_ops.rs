@@ -38,7 +38,7 @@ use crate::process_guard::ProcessGuard;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
     InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
-    ToolDiagnostics, ToolInput, ToolResult,
+    ToolDiagnostics, ToolGroupId, ToolInput, ToolResult,
 };
 
 use super::workspace::{extract_opt_bool, extract_opt_str, extract_opt_u64, extract_str};
@@ -391,6 +391,7 @@ fn git_status_def() -> ToolDef {
         category: ToolCategory::Workspace,
         reversibility: Reversibility::FullyReversible,
         auto_activate: true,
+        groups: vec![ToolGroupId::Read],
     }
 }
 
@@ -426,6 +427,7 @@ fn git_log_def() -> ToolDef {
         category: ToolCategory::Workspace,
         reversibility: Reversibility::FullyReversible,
         auto_activate: true,
+        groups: vec![ToolGroupId::Read],
     }
 }
 
@@ -470,6 +472,7 @@ fn git_diff_def() -> ToolDef {
         category: ToolCategory::Workspace,
         reversibility: Reversibility::FullyReversible,
         auto_activate: true,
+        groups: vec![ToolGroupId::Read],
     }
 }
 
@@ -485,6 +488,7 @@ fn git_branch_def() -> ToolDef {
         category: ToolCategory::Workspace,
         reversibility: Reversibility::FullyReversible,
         auto_activate: true,
+        groups: vec![ToolGroupId::Read],
     }
 }
 
@@ -524,6 +528,7 @@ fn git_checkout_def() -> ToolDef {
         // branch, so long as we never force-discard changes.
         reversibility: Reversibility::Reversible,
         auto_activate: true,
+        groups: vec![ToolGroupId::Command],
     }
 }
 

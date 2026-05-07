@@ -15,7 +15,7 @@ use crate::error::Result;
 use crate::registry::ToolExecutor;
 use crate::types::{
     InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
-    ToolInput, ToolResult,
+    ToolGroupId, ToolInput, ToolResult,
 };
 
 use super::shared::{opt_bool, require_str, to_json_text};
@@ -68,6 +68,7 @@ pub(super) fn epitropos_def() -> ToolDef {
         category: ToolCategory::Agent,
         reversibility: Reversibility::Irreversible,
         auto_activate: false,
+        groups: vec![ToolGroupId::Plan, ToolGroupId::Verify],
     }
 }
 

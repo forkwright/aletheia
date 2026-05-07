@@ -128,6 +128,8 @@ pub struct RoleTemplate {
     pub system_prompt: &'static str,
     /// Tool access restrictions.
     pub tool_policy: ToolPolicy,
+    /// Allowed tool groups for role-based gating.
+    pub tool_groups: Vec<organon::types::ToolGroupId>,
     /// Preferred model identifier.
     pub model: &'static str,
 }
@@ -152,6 +154,12 @@ fn coder_template() -> RoleTemplate {
             "memory_search".into(),
             "note".into(),
         ]),
+        tool_groups: vec![
+            organon::types::ToolGroupId::Read,
+            organon::types::ToolGroupId::Edit,
+            organon::types::ToolGroupId::Command,
+            organon::types::ToolGroupId::Verify,
+        ],
         model: SONNET_MODEL,
     }
 }
@@ -170,6 +178,11 @@ fn researcher_template() -> RoleTemplate {
             "memory_search".into(),
             "note".into(),
         ]),
+        tool_groups: vec![
+            organon::types::ToolGroupId::Read,
+            organon::types::ToolGroupId::Mcp,
+            organon::types::ToolGroupId::Plan,
+        ],
         model: SONNET_MODEL,
     }
 }
@@ -186,6 +199,11 @@ fn reviewer_template() -> RoleTemplate {
             "view_file".into(),
             "memory_search".into(),
         ]),
+        tool_groups: vec![
+            organon::types::ToolGroupId::Read,
+            organon::types::ToolGroupId::Verify,
+            organon::types::ToolGroupId::Mcp,
+        ],
         model: OPUS_MODEL,
     }
 }
@@ -201,6 +219,10 @@ fn explorer_template() -> RoleTemplate {
             "ls".into(),
             "view_file".into(),
         ]),
+        tool_groups: vec![
+            organon::types::ToolGroupId::Read,
+            organon::types::ToolGroupId::Plan,
+        ],
         model: HAIKU_MODEL,
     }
 }
@@ -217,6 +239,11 @@ fn runner_template() -> RoleTemplate {
             "ls".into(),
             "view_file".into(),
         ]),
+        tool_groups: vec![
+            organon::types::ToolGroupId::Read,
+            organon::types::ToolGroupId::Command,
+            organon::types::ToolGroupId::Verify,
+        ],
         model: HAIKU_MODEL,
     }
 }

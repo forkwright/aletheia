@@ -11,7 +11,7 @@ use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
     DocumentSource, ImageSource, InputSchema, PropertyDef, PropertyType, Reversibility,
-    ToolCategory, ToolContext, ToolDef, ToolInput, ToolResult, ToolResultBlock,
+    ToolCategory, ToolContext, ToolDef, ToolGroupId, ToolInput, ToolResult, ToolResultBlock,
 };
 
 use super::workspace::{extract_opt_u64, extract_str, validate_path};
@@ -285,6 +285,7 @@ fn view_file_def() -> crate::types::ToolDef {
         category: ToolCategory::Workspace,
         reversibility: Reversibility::FullyReversible,
         auto_activate: true,
+        groups: vec![ToolGroupId::Read],
     }
 }
 

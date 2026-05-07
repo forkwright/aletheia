@@ -13,7 +13,7 @@ use indexmap::IndexMap;
 use koina::id::ToolName;
 use organon::testing::{MockToolExecutor, ToolExecutorSpec, make_test_context};
 use organon::types::{
-    InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolDef,
+    InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolDef, ToolGroupId,
 };
 
 fn echo_def() -> ToolDef {
@@ -28,6 +28,7 @@ fn echo_def() -> ToolDef {
         category: ToolCategory::System,
         reversibility: Reversibility::Irreversible,
         auto_activate: false,
+        groups: vec![ToolGroupId::Read],
     }
 }
 
@@ -53,6 +54,7 @@ fn note_def() -> ToolDef {
         category: ToolCategory::Memory,
         reversibility: Reversibility::Irreversible,
         auto_activate: false,
+        groups: vec![ToolGroupId::Read],
     }
 }
 

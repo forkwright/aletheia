@@ -14,7 +14,7 @@ use koina::id::ToolName;
 use crate::error::{self, Result};
 use crate::types::{
     ApprovalRequirement, Reversibility, ToolCallMetadata, ToolCategory, ToolContext, ToolDef,
-    ToolInput, ToolResult,
+    ToolGroupId, ToolInput, ToolResult,
 };
 
 /// The trait tool implementations must satisfy.
@@ -175,6 +175,43 @@ impl ToolRegistry {
         result
     }
 
+    /// Execute a tool by name, checking that the tool's groups intersect the
+    /// allowed groups for the calling role.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::ToolGroupViolation`] if the tool's groups do not
+    /// intersect the allowed groups.
+    pub async fn execute_checked(
+        &self,
+        input: &ToolInput,
+        ctx: &ToolContext,
+        role: &str,
+        allowed_groups: &[ToolGroupId],
+    ) -> Result<ToolResult> {
+        let tool = self.tools.get(&input.name).ok_or_else(|| {
+            error::ToolNotFoundSnafu {
+                name: input.name.clone(),
+            }
+            .build()
+        })?;
+
+        if !allowed_groups.is_empty() && !tool.def.groups.is_empty() {
+            let intersects = tool.def.groups.iter().any(|g| allowed_groups.contains(g));
+            if !intersects {
+                return Err(error::ToolGroupViolationSnafu {
+                    role: role.to_owned(),
+                    tool: input.name.as_str().to_owned(),
+                    allowed: allowed_groups.to_vec(),
+                    tool_groups: tool.def.groups.clone(),
+                }
+                .build());
+            }
+        }
+
+        self.execute(input, ctx).await
+    }
+
     /// All registered tool definitions, in insertion order.
     ///
     /// # Complexity
@@ -201,6 +238,29 @@ impl ToolRegistry {
             .collect()
     }
 
+    /// Tool definitions filtered by allowed tool groups.
+    ///
+    /// Returns only tools whose `groups` intersect the provided `allowed_groups`.
+    /// When `allowed_groups` is empty, returns all tools (legacy fallback).
+    ///
+    /// # Complexity
+    ///
+    /// O(n) where n is the number of registered tools.
+    #[must_use]
+    pub fn definitions_for_groups(&self, allowed_groups: &[ToolGroupId]) -> Vec<&ToolDef> {
+        // kanon:ignore RUST/pub-visibility
+        if allowed_groups.is_empty() {
+            return self.definitions();
+        }
+        self.tools
+            .values()
+            .filter(|t| {
+                t.def.groups.is_empty() || t.def.groups.iter().any(|g| allowed_groups.contains(g))
+            })
+            .map(|t| &t.def)
+            .collect()
+    }
+
     /// Convert registered tools to the LLM wire format.
     ///
     /// Produces `ToolDefinition` structs suitable for `CompletionRequest::tools`.
@@ -213,6 +273,36 @@ impl ToolRegistry {
         // kanon:ignore RUST/pub-visibility
         self.tools
             .values()
+            .map(|t| hermeneus::types::ToolDefinition {
+                name: t.def.name.as_str().to_owned(),
+                description: t.def.description.clone(),
+                input_schema: t.def.input_schema.to_json_schema(),
+                disable_passthrough: None,
+            })
+            .collect()
+    }
+
+    /// Convert registered tools to the LLM wire format, filtered by allowed groups.
+    ///
+    /// When `allowed_groups` is empty, returns all tools (legacy fallback).
+    ///
+    /// # Complexity
+    ///
+    /// O(n) where n is the number of registered tools.
+    #[must_use]
+    pub fn to_hermeneus_tools_for_groups(
+        &self,
+        allowed_groups: &[ToolGroupId],
+    ) -> Vec<hermeneus::types::ToolDefinition> {
+        // kanon:ignore RUST/pub-visibility
+        if allowed_groups.is_empty() {
+            return self.to_hermeneus_tools();
+        }
+        self.tools
+            .values()
+            .filter(|t| {
+                t.def.groups.is_empty() || t.def.groups.iter().any(|g| allowed_groups.contains(g))
+            })
             .map(|t| hermeneus::types::ToolDefinition {
                 name: t.def.name.as_str().to_owned(),
                 description: t.def.description.clone(),
@@ -248,6 +338,35 @@ impl ToolRegistry {
     }
 
     /// Convert tools to LLM wire format with **name + description only**, filtered by
+    /// allowed groups.
+    ///
+    /// When `allowed_groups` is empty, returns all tools (legacy fallback).
+    #[cfg(feature = "deferred-schemas")]
+    #[must_use]
+    pub fn to_hermeneus_tools_summaries_for_groups(
+        &self,
+        allowed_groups: &[ToolGroupId],
+    ) -> Vec<hermeneus::types::ToolDefinition> {
+        // kanon:ignore RUST/pub-visibility
+        if allowed_groups.is_empty() {
+            return self.to_hermeneus_tools_summaries();
+        }
+        self.tools
+            .values()
+            .filter(|t| {
+                t.def.groups.is_empty()
+                    || t.def.groups.iter().any(|g| allowed_groups.contains(g))
+            })
+            .map(|t| hermeneus::types::ToolDefinition {
+                name: t.def.name.as_str().to_owned(),
+                description: t.def.description.clone(),
+                input_schema: serde_json::json!({"type": "object", "properties": {}, "required": []}),
+                disable_passthrough: None,
+            })
+            .collect()
+    }
+
+    /// Convert tools to LLM wire format with **name + description only**, filtered by
     /// activation state.
     ///
     /// Mirrors [`Self::to_hermeneus_tools_filtered`] but omits `input_schema`.
@@ -269,6 +388,40 @@ impl ToolRegistry {
                 t.def.auto_activate
                     || active.contains(&t.def.name)
                     || t.def.name.as_str() == "enable_tool"
+            })
+            .map(|t| hermeneus::types::ToolDefinition {
+                name: t.def.name.as_str().to_owned(),
+                description: t.def.description.clone(),
+                input_schema: serde_json::json!({"type": "object", "properties": {}, "required": []}),
+                disable_passthrough: None,
+            })
+            .collect()
+    }
+
+    /// Convert tools to LLM wire format with **name + description only**, filtered by
+    /// activation state and allowed groups.
+    ///
+    /// When `allowed_groups` is empty, returns all activation-filtered tools (legacy fallback).
+    #[cfg(feature = "deferred-schemas")]
+    #[must_use]
+    pub fn to_hermeneus_tools_summaries_filtered_for_groups(
+        &self,
+        active: &HashSet<ToolName>,
+        allowed_groups: &[ToolGroupId],
+    ) -> Vec<hermeneus::types::ToolDefinition> {
+        // kanon:ignore RUST/pub-visibility
+        if allowed_groups.is_empty() {
+            return self.to_hermeneus_tools_summaries_filtered(active);
+        }
+        self.tools
+            .values()
+            .filter(|t| {
+                let active_ok = t.def.auto_activate
+                    || active.contains(&t.def.name)
+                    || t.def.name.as_str() == "enable_tool";
+                let group_ok = t.def.groups.is_empty()
+                    || t.def.groups.iter().any(|g| allowed_groups.contains(g));
+                active_ok && group_ok
             })
             .map(|t| hermeneus::types::ToolDefinition {
                 name: t.def.name.as_str().to_owned(),
@@ -356,6 +509,38 @@ impl ToolRegistry {
                 t.def.auto_activate
                     || active.contains(&t.def.name)
                     || t.def.name.as_str() == "enable_tool"
+            })
+            .map(|t| hermeneus::types::ToolDefinition {
+                name: t.def.name.as_str().to_owned(),
+                description: t.def.description.clone(),
+                input_schema: t.def.input_schema.to_json_schema(),
+                disable_passthrough: None,
+            })
+            .collect()
+    }
+
+    /// Convert tools to LLM wire format, filtered by activation state and allowed groups.
+    ///
+    /// When `allowed_groups` is empty, returns all activation-filtered tools (legacy fallback).
+    #[must_use]
+    pub fn to_hermeneus_tools_filtered_for_groups(
+        &self,
+        active: &HashSet<ToolName>,
+        allowed_groups: &[ToolGroupId],
+    ) -> Vec<hermeneus::types::ToolDefinition> {
+        // kanon:ignore RUST/pub-visibility
+        if allowed_groups.is_empty() {
+            return self.to_hermeneus_tools_filtered(active);
+        }
+        self.tools
+            .values()
+            .filter(|t| {
+                let active_ok = t.def.auto_activate
+                    || active.contains(&t.def.name)
+                    || t.def.name.as_str() == "enable_tool";
+                let group_ok = t.def.groups.is_empty()
+                    || t.def.groups.iter().any(|g| allowed_groups.contains(g));
+                active_ok && group_ok
             })
             .map(|t| hermeneus::types::ToolDefinition {
                 name: t.def.name.as_str().to_owned(),

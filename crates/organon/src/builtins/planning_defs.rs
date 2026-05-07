@@ -4,7 +4,9 @@ use indexmap::IndexMap;
 
 use koina::id::ToolName;
 
-use crate::types::{InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolDef};
+use crate::types::{
+    InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolDef, ToolGroupId,
+};
 
 pub(super) fn plan_create_def() -> ToolDef {
     ToolDef {
@@ -72,6 +74,7 @@ pub(super) fn plan_create_def() -> ToolDef {
         category: ToolCategory::Planning,
         reversibility: Reversibility::Reversible,
         auto_activate: false,
+        groups: vec![ToolGroupId::Plan],
     }
 }
 
@@ -106,6 +109,7 @@ pub(super) fn plan_research_def() -> ToolDef {
         category: ToolCategory::Planning,
         reversibility: Reversibility::Reversible,
         auto_activate: false,
+        groups: vec![ToolGroupId::Plan],
     }
 }
 
@@ -140,6 +144,7 @@ pub(super) fn plan_requirements_def() -> ToolDef {
         category: ToolCategory::Planning,
         reversibility: Reversibility::Reversible,
         auto_activate: false,
+        groups: vec![ToolGroupId::Plan],
     }
 }
 
@@ -196,6 +201,7 @@ pub(super) fn plan_roadmap_def() -> ToolDef {
         category: ToolCategory::Planning,
         reversibility: Reversibility::Reversible,
         auto_activate: false,
+        groups: vec![ToolGroupId::Plan],
     }
 }
 
@@ -230,6 +236,7 @@ pub(super) fn plan_discuss_def() -> ToolDef {
         category: ToolCategory::Planning,
         reversibility: Reversibility::Reversible,
         auto_activate: false,
+        groups: vec![ToolGroupId::Plan],
     }
 }
 
@@ -270,6 +277,7 @@ pub(super) fn plan_execute_def() -> ToolDef {
         category: ToolCategory::Planning,
         reversibility: Reversibility::PartiallyReversible,
         auto_activate: false,
+        groups: vec![ToolGroupId::Plan],
     }
 }
 
@@ -318,6 +326,7 @@ pub(super) fn plan_verify_def() -> ToolDef {
         category: ToolCategory::Planning,
         reversibility: Reversibility::PartiallyReversible,
         auto_activate: false,
+        groups: vec![ToolGroupId::Plan],
     }
 }
 
@@ -341,6 +350,7 @@ pub(super) fn plan_status_def() -> ToolDef {
         category: ToolCategory::Planning,
         reversibility: Reversibility::FullyReversible,
         auto_activate: false,
+        groups: vec![ToolGroupId::Plan],
     }
 }
 
@@ -397,6 +407,7 @@ pub(super) fn plan_step_complete_def() -> ToolDef {
         category: ToolCategory::Planning,
         reversibility: Reversibility::PartiallyReversible,
         auto_activate: false,
+        groups: vec![ToolGroupId::Plan],
     }
 }
 
@@ -455,6 +466,7 @@ pub(super) fn plan_verify_criteria_def() -> ToolDef {
         category: ToolCategory::Planning,
         reversibility: Reversibility::FullyReversible,
         auto_activate: false,
+        groups: vec![ToolGroupId::Plan],
     }
 }
 
@@ -512,5 +524,6 @@ pub(super) fn plan_step_fail_def() -> ToolDef {
         category: ToolCategory::Planning,
         reversibility: Reversibility::PartiallyReversible,
         auto_activate: false,
+        groups: vec![ToolGroupId::Plan],
     }
 }

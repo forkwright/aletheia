@@ -10,8 +10,8 @@ use poiesis_diff::{diff_presentations, diff_workbooks};
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
-    InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolInput,
-    ToolResult,
+    InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolGroupId,
+    ToolInput, ToolResult,
 };
 
 struct DiffReportExecutor;
@@ -162,6 +162,7 @@ fn diff_report_def() -> crate::types::ToolDef {
         category: ToolCategory::Workspace,
         reversibility: Reversibility::FullyReversible,
         auto_activate: false,
+        groups: vec![ToolGroupId::Read, ToolGroupId::Verify],
     }
 }
 

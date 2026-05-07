@@ -16,6 +16,45 @@ use serde::{Deserialize, Serialize};
 pub use hermeneus::types::{DocumentSource, ImageSource, ToolResultBlock, ToolResultContent};
 use koina::id::ToolName;
 
+/// Machine-checkable tool groups for role-based gating.
+///
+/// Each tool declares which groups it belongs to; roles declare which groups
+/// they are allowed to use.  The registry filters the tool surface presented
+/// to the LLM and rejects out-of-group calls at dispatch time.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum ToolGroupId {
+    /// File/code reading tools (`read`, `grep`, `find`, `ls`, `view_file`, ...).
+    Read,
+    /// File/code mutation tools (`write`, `edit`, `mkdir`, `mv`, `cp`, `rm`, ...).
+    Edit,
+    /// Shell/cargo execution (`exec`, `git_checkout`, `computer_use`, ...).
+    Command,
+    /// MCP tool invocation and external API calls (`web_fetch`, `http_request`, ...).
+    Mcp,
+    /// Spawning sub-agents (`sessions_spawn`, `sessions_dispatch`, ...).
+    SpawnSubtask,
+    /// Planning and design tools (`plan_create`, `plan_roadmap`, ...).
+    Plan,
+    /// Tests, lint, fmt, and verification tools (`lint_report`, `verify_report`, ...).
+    Verify,
+}
+
+impl std::fmt::Display for ToolGroupId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Read => f.write_str("read"),
+            Self::Edit => f.write_str("edit"),
+            Self::Command => f.write_str("command"),
+            Self::Mcp => f.write_str("mcp"),
+            Self::SpawnSubtask => f.write_str("spawn_subtask"),
+            Self::Plan => f.write_str("plan"),
+            Self::Verify => f.write_str("verify"),
+        }
+    }
+}
+
 /// Tool definition: the rich metadata that organon tracks internally.
 ///
 /// Converted to `hermeneus::types::ToolDefinition` (the lean LLM wire format)
@@ -24,7 +63,7 @@ use koina::id::ToolName;
 /// # Examples
 ///
 /// ```no_run
-/// use organon::types::{ToolDef, InputSchema, ToolCategory, Reversibility};
+/// use organon::types::{ToolDef, InputSchema, ToolCategory, Reversibility, ToolGroupId};
 /// use koina::id::ToolName;
 ///
 /// let def = ToolDef {
@@ -38,6 +77,7 @@ use koina::id::ToolName;
 ///     category: ToolCategory::Workspace,
 ///     reversibility: Reversibility::FullyReversible,
 ///     auto_activate: true,
+///     groups: vec![ToolGroupId::Read],
 /// };
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -57,6 +97,9 @@ pub struct ToolDef {
     pub reversibility: Reversibility,
     /// Whether the tool activates automatically by domain without explicit config.
     pub auto_activate: bool,
+    /// Tool groups this tool belongs to.  Used for role-based gating.
+    #[serde(default)]
+    pub groups: Vec<ToolGroupId>,
 }
 
 /// JSON Schema for tool input parameters.

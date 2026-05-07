@@ -25,7 +25,7 @@ use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
     InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
-    ToolInput, ToolResult,
+    ToolGroupId, ToolInput, ToolResult,
 };
 
 use prompt_gen::generate_prompt;
@@ -634,6 +634,7 @@ fn issue_scan_def() -> ToolDef {
         category: ToolCategory::Planning,
         reversibility: Reversibility::FullyReversible,
         auto_activate: false,
+        groups: vec![ToolGroupId::Read, ToolGroupId::Plan],
     }
 }
 
@@ -697,6 +698,7 @@ fn issue_triage_def() -> ToolDef {
         category: ToolCategory::Planning,
         reversibility: Reversibility::PartiallyReversible,
         auto_activate: false,
+        groups: vec![ToolGroupId::Read, ToolGroupId::Plan],
     }
 }
 
@@ -753,6 +755,7 @@ fn issue_approve_def() -> ToolDef {
         category: ToolCategory::Planning,
         reversibility: Reversibility::PartiallyReversible,
         auto_activate: false,
+        groups: vec![ToolGroupId::Verify, ToolGroupId::Plan],
     }
 }
 

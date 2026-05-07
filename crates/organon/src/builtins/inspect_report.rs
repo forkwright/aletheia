@@ -10,8 +10,8 @@ use poiesis_inspect::{inspect_pdf, inspect_pptx, inspect_xlsx};
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
-    InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolInput,
-    ToolResult,
+    InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolGroupId,
+    ToolInput, ToolResult,
 };
 
 struct InspectReportExecutor;
@@ -157,6 +157,7 @@ fn inspect_report_def() -> crate::types::ToolDef {
         category: ToolCategory::Workspace,
         reversibility: Reversibility::FullyReversible,
         auto_activate: false,
+        groups: vec![ToolGroupId::Read],
     }
 }
 

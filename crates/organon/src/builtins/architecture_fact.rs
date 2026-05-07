@@ -36,7 +36,7 @@ use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
     InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
-    ToolInput, ToolResult,
+    ToolGroupId, ToolInput, ToolResult,
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -283,6 +283,7 @@ fn architecture_fact_def() -> ToolDef {
         category: ToolCategory::Research,
         reversibility: Reversibility::Reversible,
         auto_activate: true,
+        groups: vec![ToolGroupId::Read, ToolGroupId::Plan],
     }
 }
 
