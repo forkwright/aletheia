@@ -7,8 +7,20 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 
-[lints]
-workspace = true
+[[test]]
+name = "proptest_registry"
+path = "tests/proptest_registry.rs"
+required-features = ["test-support"]
+
+[[test]]
+name = "spec_validation"
+path = "tests/spec_validation.rs"
+required-features = ["test-support"]
+
+[[test]]
+name = "energeia_tools"
+path = "tests/energeia_tools.rs"
+required-features = ["energeia"]
 
 [features]
 # Computer use tool: screen capture, action dispatch, Landlock sandbox.
@@ -27,6 +39,8 @@ test-full = []
 # fetched on demand via the `tool_schema` meta-tool. Default OFF so active agents
 # are unaffected; operators flip this per-deployment after the flag soaks.
 deferred-schemas = []
+# Allow absolute paths in `{{file:...}}` interpolation. Default OFF for safety.
+allow-absolute-file-refs = []
 
 [dependencies]
 eidos = { path = "../eidos" }
@@ -55,16 +69,12 @@ jiff = { workspace = true }
 prometheus-client = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
+regex = { workspace = true }
 serde_json = { workspace = true }
 snafu = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 z3 = { version = "0.20", optional = true, features = ["bundled"] }
-
-[target.'cfg(target_os = "linux")'.dependencies]
-landlock = "0.4"
-rustix = { workspace = true, features = ["process", "thread"] }
-seccompiler = "0.5"
 
 [dependencies.rustls]
 workspace = true
@@ -80,17 +90,10 @@ snafu = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true }
 
-[[test]]
-name = "proptest_registry"
-path = "tests/proptest_registry.rs"
-required-features = ["test-support"]
+[target.'cfg(target_os = "linux")'.dependencies]
+landlock = "0.4"
+rustix = { workspace = true, features = ["process", "thread"] }
+seccompiler = "0.5"
 
-[[test]]
-name = "spec_validation"
-path = "tests/spec_validation.rs"
-required-features = ["test-support"]
-
-[[test]]
-name = "energeia_tools"
-path = "tests/energeia_tools.rs"
-required-features = ["energeia"]
+[lints]
+workspace = true
