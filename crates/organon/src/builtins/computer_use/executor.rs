@@ -12,7 +12,7 @@ use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::sandbox::{SandboxConfig, SandboxEnforcement};
 use crate::types::{
     InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
-    ToolInput, ToolResult,
+    ToolGroupId, ToolInput, ToolResult,
 };
 
 use super::sandbox::{ComputerUseSessionConfig, execute_sandboxed_action};
@@ -234,6 +234,7 @@ fn computer_use_def() -> ToolDef {
         category: ToolCategory::System,
         reversibility: Reversibility::Irreversible,
         auto_activate: false,
+        groups: vec![ToolGroupId::Command, ToolGroupId::Edit],
     }
 }
 

@@ -79,6 +79,10 @@ impl SpawnService for SpawnServiceImpl {
             .clone()
             .or_else(|| template.as_ref().and_then(|t| t.tool_policy.to_allowlist()));
 
+        let tool_groups = template
+            .as_ref()
+            .map_or_else(Vec::new, |t| t.tool_groups.clone());
+
         let timeout = Duration::from_secs(request.timeout_secs);
         let task = request.task.clone();
         let session_key = format!(
@@ -119,6 +123,7 @@ impl SpawnService for SpawnServiceImpl {
             recall: crate::recall::RecallConfig::default(),
             recall_profile: crate::config::RecallProfile::Default,
             tool_allowlist,
+            tool_groups,
             hooks: crate::config::HookConfig::default(),
             behavior: taxis::config::AgentBehaviorDefaults::default(),
         };

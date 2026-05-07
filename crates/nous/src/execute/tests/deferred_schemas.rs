@@ -67,6 +67,7 @@ fn make_big_schema_tool_def(name: &str) -> ToolDef {
         category: ToolCategory::Workspace,
         reversibility: organon::types::Reversibility::Irreversible,
         auto_activate: true,
+        groups: vec![organon::types::ToolGroupId::Read],
     }
 }
 

@@ -34,7 +34,7 @@ use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
     InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
-    ToolInput, ToolResult,
+    ToolGroupId, ToolInput, ToolResult,
 };
 
 // ── Executor ─────────────────────────────────────────────────────────────────
@@ -119,6 +119,7 @@ fn tool_schema_def() -> ToolDef {
         // bootstrap: the first unknown tool they want to call requires schema
         // retrieval, so it must be available unconditionally.
         auto_activate: true,
+        groups: vec![ToolGroupId::Read],
     }
 }
 

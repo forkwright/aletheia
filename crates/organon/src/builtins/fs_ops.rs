@@ -24,7 +24,7 @@ use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
     InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
-    ToolInput, ToolResult,
+    ToolGroupId, ToolInput, ToolResult,
 };
 
 use super::workspace::{extract_opt_bool, extract_str, validate_path};
@@ -391,6 +391,7 @@ fn mkdir_def() -> ToolDef {
         category: ToolCategory::Workspace,
         reversibility: Reversibility::Reversible,
         auto_activate: true,
+        groups: vec![ToolGroupId::Edit],
     }
 }
 
@@ -425,6 +426,7 @@ fn mv_def() -> ToolDef {
         category: ToolCategory::Workspace,
         reversibility: Reversibility::Reversible,
         auto_activate: true,
+        groups: vec![ToolGroupId::Edit],
     }
 }
 
@@ -468,6 +470,7 @@ fn cp_def() -> ToolDef {
         category: ToolCategory::Workspace,
         reversibility: Reversibility::Reversible,
         auto_activate: true,
+        groups: vec![ToolGroupId::Edit],
     }
 }
 
@@ -507,6 +510,7 @@ fn rm_def() -> ToolDef {
         // gate it appropriately.
         reversibility: Reversibility::Irreversible,
         auto_activate: true,
+        groups: vec![ToolGroupId::Edit],
     }
 }
 

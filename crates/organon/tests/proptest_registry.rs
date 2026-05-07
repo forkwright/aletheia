@@ -18,7 +18,7 @@ use indexmap::IndexMap;
 use koina::id::ToolName;
 use organon::registry::ToolRegistry;
 use organon::testing::{MockToolExecutor, make_test_context, make_tool_input};
-use organon::types::{InputSchema, Reversibility, ToolCategory, ToolDef};
+use organon::types::{InputSchema, Reversibility, ToolCategory, ToolDef, ToolGroupId};
 use proptest::prelude::*;
 
 fn valid_tool_name() -> impl Strategy<Value = String> {
@@ -38,6 +38,7 @@ fn make_def(name: &str) -> ToolDef {
         category: ToolCategory::System,
         reversibility: Reversibility::Irreversible,
         auto_activate: false,
+        groups: vec![ToolGroupId::Read],
     }
 }
 

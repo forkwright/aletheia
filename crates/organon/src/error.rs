@@ -62,6 +62,19 @@ pub enum Error {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+
+    /// Tool call rejected because the tool's groups do not intersect the role's allowed groups.
+    #[snafu(display(
+        "tool group violation: role {role} cannot call tool {tool}: allowed groups {allowed:?}, tool groups {tool_groups:?}"
+    ))]
+    ToolGroupViolation {
+        role: String,
+        tool: String,
+        allowed: Vec<crate::types::ToolGroupId>,
+        tool_groups: Vec<crate::types::ToolGroupId>,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
 }
 
 /// Convenience alias.

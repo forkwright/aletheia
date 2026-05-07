@@ -28,7 +28,7 @@ use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
     InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
-    ToolInput, ToolResult,
+    ToolGroupId, ToolInput, ToolResult,
 };
 
 use super::workspace::{extract_opt_u64, extract_str};
@@ -198,6 +198,7 @@ fn web_search_def() -> ToolDef {
         category: ToolCategory::Research,
         reversibility: Reversibility::FullyReversible,
         auto_activate: false,
+        groups: vec![ToolGroupId::Read, ToolGroupId::Mcp],
     }
 }
 

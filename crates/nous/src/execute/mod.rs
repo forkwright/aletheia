@@ -1,20 +1,18 @@
 //! Execute stage: LLM call and tool iteration loop.
 
 mod dispatch;
+mod resolve;
 
 #[cfg(test)]
 mod tests;
 
-use std::collections::HashSet;
 use std::sync::Arc;
 
 use snafu::ResultExt;
 use tokio::sync::mpsc;
 use tracing::{debug, info, instrument, warn};
 
-use hermeneus::complexity::{ComplexityInput, route_model};
-use hermeneus::health::ProviderHealth;
-use hermeneus::provider::{LlmProvider, ProviderRegistry};
+use hermeneus::provider::ProviderRegistry;
 use hermeneus::types::{
     CompletionRequest, Content, ContentBlock, Message, Role, ServerToolDefinition, StopReason,
     ThinkingConfig, ToolResultContent,
@@ -26,6 +24,10 @@ use organon::types::ToolContext;
 use self::dispatch::{
     DispatchResult, build_messages, classify_signals, dispatch_tools, dispatch_tools_streaming,
 };
+use self::resolve::{
+    process_response_blocks, resolve_active_server_tools, resolve_provider_checked,
+    resolve_turn_model,
+};
 use crate::config::NousConfig;
 use crate::error;
 use crate::hooks::registry::HookRegistry;
@@ -33,173 +35,6 @@ use crate::hooks::{AfterToolContext, ToolHookContext, ToolHookResult};
 use crate::pipeline::{LoopDetector, PipelineContext, ToolCall, TurnResult, TurnUsage};
 use crate::session::SessionState;
 use crate::stream::TurnStreamEvent;
-
-/// Resolve the model to use for this turn, applying complexity-based routing when enabled.
-///
-/// WHY: when `complexity.enabled == false` (the default) this returns
-/// `config.generation.model` unchanged, preserving existing behaviour bit-for-bit.
-/// When enabled, the last user message plus available tool count feed into
-/// [`route_model`], which maps a score to a tier model.
-fn resolve_turn_model(ctx: &PipelineContext, config: &NousConfig, tool_count: usize) -> String {
-    if !config.generation.complexity.enabled {
-        return config.generation.model.clone();
-    }
-
-    // WHY: complexity routing scores the most recent user message — the one
-    // driving this turn. Fall back to empty text when no user message exists
-    // so scoring produces a baseline (Haiku) tier rather than panicking.
-    let last_user_text = ctx
-        .messages
-        .iter()
-        .rev()
-        .find(|m| m.role == "user")
-        .map_or("", |m| m.content.as_str());
-
-    let input = ComplexityInput {
-        message_text: last_user_text,
-        tool_count,
-        message_count: ctx.messages.len(),
-        depth: 0,
-        tier_override: None,
-        model_override: None,
-    };
-
-    let decision = route_model(&input, &config.generation.complexity);
-    decision.model
-}
-
-/// Resolve the LLM provider for `model` and verify it is not marked down.
-fn resolve_provider_checked<'a>(
-    providers: &'a ProviderRegistry,
-    model: &str,
-) -> error::Result<&'a dyn LlmProvider> {
-    let provider = providers.find_provider(model).ok_or_else(|| {
-        error::PipelineStageSnafu {
-            stage: "execute",
-            message: format!("no provider for model: {model}"),
-        }
-        .build()
-    })?;
-
-    if let Some(health) = providers.provider_health(provider.name())
-        && matches!(health, ProviderHealth::Down { .. })
-    {
-        return Err(error::PipelineStageSnafu {
-            stage: "execute",
-            message: format!("provider '{}' is currently unavailable", provider.name()),
-        }
-        .build());
-    }
-
-    Ok(provider)
-}
-
-/// Read the current active-tools set and derive server-tool definitions.
-///
-/// Returns `(active_set, server_tools)` so callers can filter local tool
-/// definitions against the same snapshot of `active` while reusing the
-/// server-tool `Arc` when nothing changed (#3389).
-///
-/// The `config_server_tools` argument is an `Arc` of the config's static
-/// server-tool list, hoisted out of the per-iteration loop by the caller so
-/// the backward-compatibility clone pays once per turn instead of once per
-/// LLM iteration. When the session has no dynamically-activated server tools
-/// and the call site has no [`ToolServices`], the same `Arc` is returned
-/// without allocation.
-fn resolve_active_server_tools(
-    tool_ctx: &ToolContext,
-    config_server_tools: &Arc<Vec<ServerToolDefinition>>,
-) -> (Arc<HashSet<ToolName>>, Arc<Vec<ServerToolDefinition>>) {
-    // WHY: the std::sync::RwLock is held only long enough to clone the inner
-    // HashSet into an Arc. Downstream iteration reads the Arc without the lock,
-    // which means enable_tool can take the write lock without blocking on
-    // long-running tool iterations.
-    let active_snapshot = tool_ctx
-        .active_tools
-        .read()
-        .unwrap_or_else(|poisoned| {
-            warn!("active_tools lock poisoned by prior panic, recovering with last value");
-            poisoned.into_inner()
-        })
-        .clone();
-    let active = Arc::new(active_snapshot);
-
-    // WHY: fast path — no ToolServices means server tools come solely from
-    // static config, which we already hold as an Arc. Skip the Vec allocation
-    // and return the shared handle unchanged.
-    let Some(services) = tool_ctx.services.as_deref() else {
-        return (active, Arc::clone(config_server_tools));
-    };
-
-    let dynamic = services.server_tool_config.active_definitions(&active);
-
-    // WHY: fast path — no dynamically-activated server tools (the common case
-    // when no enable_tool call has fired) reuses the config Arc as-is.
-    if dynamic.is_empty() {
-        return (active, Arc::clone(config_server_tools));
-    }
-
-    // WHY: combine dynamic and static definitions in a fresh Vec exactly when
-    // the dynamic list is non-empty. Wrapping in Arc keeps the return type
-    // uniform so callers don't branch on cardinality.
-    let mut combined = dynamic;
-    combined.extend_from_slice(config_server_tools.as_slice());
-    (active, Arc::new(combined))
-}
-
-/// Extracted text, tool uses, server-tool flags, and reasoning from a single LLM response.
-struct ResponseExtract {
-    text_parts: Vec<String>,
-    tool_uses: Vec<(String, String, serde_json::Value)>,
-    saw_server_web_search: bool,
-    saw_server_code_execution: bool,
-    reasoning_parts: Vec<String>,
-}
-
-/// Process response content blocks into text, tool-use tuples, and server-tool flags.
-fn process_response_blocks(content: &[ContentBlock]) -> ResponseExtract {
-    let mut extract = ResponseExtract {
-        text_parts: Vec::new(),
-        tool_uses: Vec::new(),
-        saw_server_web_search: false,
-        saw_server_code_execution: false,
-        reasoning_parts: Vec::new(),
-    };
-
-    for block in content {
-        match block {
-            ContentBlock::Text { text, .. } => extract.text_parts.push(text.clone()),
-            ContentBlock::ToolUse { id, name, input } => {
-                extract
-                    .tool_uses
-                    .push((id.clone(), name.clone(), input.clone()));
-            }
-            ContentBlock::Thinking { thinking, .. } => {
-                debug!(len = thinking.len(), "thinking block received");
-                extract.reasoning_parts.push(thinking.clone());
-            }
-            ContentBlock::ServerToolUse { name, .. } if name == "web_search" => {
-                extract.saw_server_web_search = true;
-            }
-            ContentBlock::ServerToolUse { name, .. } if name == "code_execution" => {
-                extract.saw_server_code_execution = true;
-            }
-            ContentBlock::CodeExecutionResult {
-                code, return_code, ..
-            } => {
-                extract.saw_server_code_execution = true;
-                debug!(
-                    code_len = code.len(),
-                    return_code, "server code execution result received"
-                );
-            }
-            // NOTE: other content block types (images, etc.) are not tracked in extraction
-            _ => {}
-        }
-    }
-
-    extract
-}
 
 /// Execute stage: calls the LLM and iterates on tool use.
 ///
@@ -235,10 +70,10 @@ pub async fn execute(
     // when restricted, else the full registry size; the score only shifts a
     // tier when tool_count crosses small integer breakpoints, so approximation
     // here doesn't bend routing off the correct tier.
-    let tool_count = config
-        .tool_allowlist
-        .as_ref()
-        .map_or_else(|| tools.definitions().len(), Vec::len);
+    let tool_count = config.tool_allowlist.as_ref().map_or_else(
+        || tools.definitions_for_groups(&config.tool_groups).len(),
+        Vec::len,
+    );
     let turn_model = resolve_turn_model(ctx, config, tool_count);
     let provider = resolve_provider_checked(providers, &turn_model)?;
 
@@ -289,9 +124,11 @@ pub async fn execute(
 
         let (active, server_tools) = resolve_active_server_tools(tool_ctx, &config_server_tools);
         #[cfg(feature = "deferred-schemas")]
-        let mut tool_defs = tools.to_hermeneus_tools_summaries_filtered(&active);
+        let mut tool_defs =
+            tools.to_hermeneus_tools_summaries_filtered_for_groups(&active, &config.tool_groups);
         #[cfg(not(feature = "deferred-schemas"))]
-        let mut tool_defs = tools.to_hermeneus_tools_filtered(&active);
+        let mut tool_defs =
+            tools.to_hermeneus_tools_filtered_for_groups(&active, &config.tool_groups);
 
         if let Some(allowlist) = &config.tool_allowlist {
             tool_defs.retain(|td| allowlist.iter().any(|a| a == &td.name));
@@ -403,6 +240,46 @@ pub async fn execute(
             allowed
         } else {
             extracted.tool_uses
+        };
+
+        // WHY: tool-group gating — reject calls whose tool groups do not intersect
+        // the role's allowed groups.  Empty allowed_groups is legacy fallback.
+        let effective_tool_uses: Vec<_> = if config.tool_groups.is_empty() {
+            effective_tool_uses
+        } else {
+            let (allowed, denied): (Vec<_>, Vec<_>) =
+                effective_tool_uses.into_iter().partition(|(_, name, _)| {
+                    ToolName::new(name)
+                        .ok()
+                        .and_then(|n| tools.get_def(&n))
+                        .is_none_or(|def| {
+                            def.groups.is_empty()
+                                || def.groups.iter().any(|g| config.tool_groups.contains(g))
+                        })
+                });
+
+            for (id, name, _) in &denied {
+                warn!(
+                    tool = %name,
+                    tool_use_id = %id,
+                    "tool call denied by group policy"
+                );
+                denied_blocks.push(ContentBlock::ToolResult {
+                    tool_use_id: id.clone(),
+                    content: ToolResultContent::Text(format!(
+                        "Tool '{name}' is not in your allowed tool groups. Allowed groups: {}",
+                        config
+                            .tool_groups
+                            .iter()
+                            .map(std::string::ToString::to_string)
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )),
+                    is_error: Some(true),
+                });
+            }
+
+            allowed
         };
 
         // WHY: before_tool hooks run after allowlist filtering but before dispatch,
@@ -562,10 +439,10 @@ pub async fn execute_streaming(
     // WHY: resolve the streaming turn model once — same reasoning as execute().
     // Must come before find_streaming_provider so the streaming provider is
     // looked up for the actual model the turn will use.
-    let tool_count = config
-        .tool_allowlist
-        .as_ref()
-        .map_or_else(|| tools.definitions().len(), Vec::len);
+    let tool_count = config.tool_allowlist.as_ref().map_or_else(
+        || tools.definitions_for_groups(&config.tool_groups).len(),
+        Vec::len,
+    );
     let turn_model = resolve_turn_model(ctx, config, tool_count);
 
     let Some(streaming_provider) = providers.find_streaming_provider(&turn_model) else {
@@ -599,7 +476,7 @@ pub async fn execute_streaming(
             budget_tokens: config.generation.thinking_budget,
         });
 
-    let mut tool_defs = tools.to_hermeneus_tools();
+    let mut tool_defs = tools.to_hermeneus_tools_for_groups(&config.tool_groups);
     if let Some(allowlist) = &config.tool_allowlist {
         tool_defs.retain(|td| allowlist.iter().any(|a| a == &td.name));
     }
@@ -721,6 +598,46 @@ pub async fn execute_streaming(
             allowed
         } else {
             extracted.tool_uses
+        };
+
+        // WHY: tool-group gating — reject calls whose tool groups do not intersect
+        // the role's allowed groups.  Empty allowed_groups is legacy fallback.
+        let effective_tool_uses: Vec<_> = if config.tool_groups.is_empty() {
+            effective_tool_uses
+        } else {
+            let (allowed, denied): (Vec<_>, Vec<_>) =
+                effective_tool_uses.into_iter().partition(|(_, name, _)| {
+                    ToolName::new(name)
+                        .ok()
+                        .and_then(|n| tools.get_def(&n))
+                        .is_none_or(|def| {
+                            def.groups.is_empty()
+                                || def.groups.iter().any(|g| config.tool_groups.contains(g))
+                        })
+                });
+
+            for (id, name, _) in &denied {
+                warn!(
+                    tool = %name,
+                    tool_use_id = %id,
+                    "tool call denied by group policy"
+                );
+                denied_blocks.push(ContentBlock::ToolResult {
+                    tool_use_id: id.clone(),
+                    content: ToolResultContent::Text(format!(
+                        "Tool '{name}' is not in your allowed tool groups. Allowed groups: {}",
+                        config
+                            .tool_groups
+                            .iter()
+                            .map(std::string::ToString::to_string)
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )),
+                    is_error: Some(true),
+                });
+            }
+
+            allowed
         };
 
         // WHY: before_tool hooks filter tool calls before streaming dispatch

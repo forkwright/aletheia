@@ -10,7 +10,7 @@ use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
     InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
-    ToolInput, ToolResult,
+    ToolGroupId, ToolInput, ToolResult,
 };
 
 struct RenderDocxReportExecutor;
@@ -114,6 +114,7 @@ fn render_docx_report_def() -> ToolDef {
         category: ToolCategory::Workspace,
         reversibility: Reversibility::FullyReversible,
         auto_activate: false,
+        groups: vec![ToolGroupId::Edit],
     }
 }
 

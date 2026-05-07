@@ -271,6 +271,7 @@ fn prepare_tool(
         category: ToolCategory::Domain,
         reversibility: organon::types::Reversibility::Irreversible,
         auto_activate: false,
+        groups: vec![],
     };
 
     let executor = Box::new(ShellToolExecutor {

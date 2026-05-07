@@ -11,7 +11,7 @@ use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
     InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
-    ToolInput, ToolResult,
+    ToolGroupId, ToolInput, ToolResult,
 };
 
 use crate::builtins::workspace::{extract_opt_u64, extract_str};
@@ -146,6 +146,7 @@ fn blackboard_def() -> ToolDef {
         category: ToolCategory::Memory,
         reversibility: Reversibility::Reversible,
         auto_activate: true,
+        groups: vec![ToolGroupId::Read, ToolGroupId::Edit],
     }
 }
 

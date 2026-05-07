@@ -11,7 +11,7 @@ use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
     InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
-    ToolInput, ToolResult,
+    ToolGroupId, ToolInput, ToolResult,
 };
 
 use crate::builtins::workspace::extract_str;
@@ -198,6 +198,7 @@ fn datalog_query_def() -> ToolDef {
         category: ToolCategory::Memory,
         reversibility: Reversibility::FullyReversible,
         auto_activate: false,
+        groups: vec![ToolGroupId::Read],
     }
 }
 

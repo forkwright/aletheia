@@ -55,6 +55,7 @@ fn make_def(name: &str, category: ToolCategory) -> ToolDef {
         category,
         reversibility: Reversibility::Irreversible,
         auto_activate: false,
+        groups: vec![ToolGroupId::Read],
     }
 }
 
@@ -211,6 +212,7 @@ fn to_hermeneus_tools_produces_valid_definitions() {
         category: ToolCategory::Workspace,
         reversibility: Reversibility::Irreversible,
         auto_activate: false,
+        groups: vec![ToolGroupId::Read],
     };
     reg.register(def, exec).expect("register");
 
@@ -300,6 +302,7 @@ fn make_def_with_activate(name: &str, category: ToolCategory, auto_activate: boo
         category,
         reversibility: Reversibility::Irreversible,
         auto_activate,
+        groups: vec![ToolGroupId::Read],
     }
 }
 
@@ -455,6 +458,7 @@ fn schema_includes_required_fields() {
         category: ToolCategory::Workspace,
         reversibility: Reversibility::Irreversible,
         auto_activate: false,
+        groups: vec![ToolGroupId::Read],
     };
     reg.register(def, exec).expect("register");
     let tools = reg.to_hermeneus_tools();
@@ -488,6 +492,7 @@ fn schema_includes_enum_values() {
         category: ToolCategory::Workspace,
         reversibility: Reversibility::Irreversible,
         auto_activate: false,
+        groups: vec![ToolGroupId::Read],
     };
     reg.register(def, exec).expect("register");
     let tools = reg.to_hermeneus_tools();
@@ -520,6 +525,7 @@ fn schema_includes_default_values() {
         category: ToolCategory::Workspace,
         reversibility: Reversibility::Irreversible,
         auto_activate: false,
+        groups: vec![ToolGroupId::Read],
     };
     reg.register(def, exec).expect("register");
     let tools = reg.to_hermeneus_tools();
@@ -546,6 +552,7 @@ fn lazy_catalog_includes_description() {
             category: ToolCategory::Research,
             reversibility: Reversibility::Irreversible,
             auto_activate: false,
+            groups: vec![ToolGroupId::Read],
         },
         exec,
     )
@@ -619,4 +626,146 @@ fn lazy_tool_catalog_excludes_auto_activate_and_enable_tool() {
         "web_search",
         "expected catalog[0].0.as_str() to equal \"web_search\""
     );
+}
+
+#[test]
+fn definitions_for_groups_filters_by_intersection() {
+    let mut reg = ToolRegistry::new();
+    let (e1, _) = mock_executor("ok");
+    let (e2, _) = mock_executor("ok");
+    let (e3, _) = mock_executor("ok");
+
+    let mut read_def = make_def("read", ToolCategory::Workspace);
+    read_def.groups = vec![ToolGroupId::Read];
+    reg.register(read_def, e1).expect("register");
+
+    let mut edit_def = make_def("write", ToolCategory::Workspace);
+    edit_def.groups = vec![ToolGroupId::Edit];
+    reg.register(edit_def, e2).expect("register");
+
+    let mut multi_def = make_def("exec", ToolCategory::Workspace);
+    multi_def.groups = vec![ToolGroupId::Read, ToolGroupId::Command];
+    reg.register(multi_def, e3).expect("register");
+
+    let read_only = reg.definitions_for_groups(&[ToolGroupId::Read]);
+    let names: Vec<&str> = read_only.iter().map(|d| d.name.as_str()).collect();
+    assert!(names.contains(&"read"), "read should be in read-only set");
+    assert!(
+        !names.contains(&"write"),
+        "write should not be in read-only set"
+    );
+    assert!(
+        names.contains(&"exec"),
+        "exec should be in read-only set (has Read)"
+    );
+
+    let edit_cmd = reg.definitions_for_groups(&[ToolGroupId::Edit, ToolGroupId::Command]);
+    let names: Vec<&str> = edit_cmd.iter().map(|d| d.name.as_str()).collect();
+    assert!(
+        !names.contains(&"read"),
+        "read should not be in edit+command set"
+    );
+    assert!(
+        names.contains(&"write"),
+        "write should be in edit+command set"
+    );
+    assert!(
+        names.contains(&"exec"),
+        "exec should be in edit+command set (has Command)"
+    );
+}
+
+#[test]
+fn definitions_for_groups_empty_fallback() {
+    let mut reg = ToolRegistry::new();
+    let (e1, _) = mock_executor("ok");
+    let mut def = make_def("read", ToolCategory::Workspace);
+    def.groups = vec![ToolGroupId::Read];
+    reg.register(def, e1).expect("register");
+
+    let all = reg.definitions_for_groups(&[]);
+    assert_eq!(all.len(), 1, "empty allowed groups should return all tools");
+}
+
+#[test]
+fn definitions_for_groups_ignores_tools_with_empty_groups() {
+    let mut reg = ToolRegistry::new();
+    let (e1, _) = mock_executor("ok");
+    let mut def = make_def("legacy", ToolCategory::Workspace);
+    def.groups = vec![];
+    reg.register(def, e1).expect("register");
+
+    let filtered = reg.definitions_for_groups(&[ToolGroupId::Read]);
+    assert_eq!(
+        filtered.len(),
+        1,
+        "tools with empty groups should always be included"
+    );
+}
+
+#[tokio::test]
+async fn execute_checked_allows_tool_in_group() {
+    let mut reg = ToolRegistry::new();
+    let (exec, calls) = mock_executor("hello");
+    let mut def = make_def("read", ToolCategory::Workspace);
+    def.groups = vec![ToolGroupId::Read];
+    reg.register(def, exec).expect("register");
+
+    let input = ToolInput {
+        name: ToolName::from_static("read"),
+        tool_use_id: "toolu_1".to_owned(),
+        arguments: serde_json::json!({}),
+    };
+    let result = reg
+        .execute_checked(&input, &mock_ctx(), "coder", &[ToolGroupId::Read])
+        .await
+        .expect("execute_checked should succeed");
+    assert_eq!(result.content.text_summary(), "hello");
+    assert!(!result.is_error);
+    let call_count = calls.lock().expect("lock poisoned").len();
+    assert_eq!(call_count, 1);
+}
+
+#[tokio::test]
+async fn execute_checked_denies_tool_outside_group() {
+    let mut reg = ToolRegistry::new();
+    let (exec, _) = mock_executor("hello");
+    let mut def = make_def("write", ToolCategory::Workspace);
+    def.groups = vec![ToolGroupId::Edit];
+    reg.register(def, exec).expect("register");
+
+    let input = ToolInput {
+        name: ToolName::from_static("write"),
+        tool_use_id: "toolu_1".to_owned(),
+        arguments: serde_json::json!({}),
+    };
+    let err = reg
+        .execute_checked(&input, &mock_ctx(), "explorer", &[ToolGroupId::Read])
+        .await
+        .expect_err("execute_checked should fail for out-of-group tool");
+    assert!(
+        err.to_string().contains("tool group violation"),
+        "error should mention tool group violation: {err}"
+    );
+}
+
+#[tokio::test]
+async fn execute_checked_legacy_empty_groups_allows_all() {
+    let mut reg = ToolRegistry::new();
+    let (exec, _) = mock_executor("hello");
+    let mut def = make_def("write", ToolCategory::Workspace);
+    def.groups = vec![ToolGroupId::Edit];
+    reg.register(def, exec).expect("register");
+
+    let input = ToolInput {
+        name: ToolName::from_static("write"),
+        tool_use_id: "toolu_1".to_owned(),
+        arguments: serde_json::json!({}),
+    };
+    // Empty allowed_groups is legacy fallback — should allow the tool
+    let result = reg
+        .execute_checked(&input, &mock_ctx(), "legacy", &[])
+        .await
+        .expect("execute_checked should succeed with empty allowed groups");
+    assert_eq!(result.content.text_summary(), "hello");
 }

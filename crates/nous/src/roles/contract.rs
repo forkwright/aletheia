@@ -14,6 +14,8 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info, warn};
 
+use organon::types::ToolGroupId;
+
 use crate::error::{self, Result};
 use crate::roles::Role;
 
@@ -32,6 +34,9 @@ pub struct RoleContract {
     pub behaviors: Vec<String>,
     /// Constraints: what this role MUST NOT do.
     pub constraints: Vec<String>,
+    /// Allowed tool groups.  Empty means all tools (legacy fallback).
+    #[serde(default)]
+    pub tool_groups: Vec<ToolGroupId>,
 }
 
 impl RoleContract {
@@ -40,15 +45,25 @@ impl RoleContract {
     /// Produces a markdown-formatted block suitable for injection into
     /// the bootstrap system prompt.
     #[must_use]
+    #[expect(
+        clippy::format_push_string,
+        reason = "push_str with format is clearer than write!+expect for infallible String writes"
+    )]
     pub fn to_prompt_section(&self) -> String {
-        use std::fmt::Write;
-
         let mut out = format!("## Role Contract: {} (v{})\n\n", self.role, self.version);
 
         if !self.behaviors.is_empty() {
             out.push_str("### Expected Behaviors\n\n");
             for behavior in &self.behaviors {
-                let _ = writeln!(out, "- {behavior}");
+                out.push_str(&format!("- {behavior}\n"));
+            }
+            out.push('\n');
+        }
+
+        if !self.tool_groups.is_empty() {
+            out.push_str("### Allowed Tool Groups\n\n");
+            for group in &self.tool_groups {
+                out.push_str(&format!("- {group}\n"));
             }
             out.push('\n');
         }
@@ -56,7 +71,7 @@ impl RoleContract {
         if !self.constraints.is_empty() {
             out.push_str("### Constraints\n\n");
             for constraint in &self.constraints {
-                let _ = writeln!(out, "- MUST NOT: {constraint}");
+                out.push_str(&format!("- MUST NOT: {constraint}\n"));
             }
             out.push('\n');
         }
@@ -90,6 +105,8 @@ struct RoleContractToml {
     behaviors: Vec<String>,
     #[serde(default)]
     constraints: Vec<String>,
+    #[serde(default)]
+    tool_groups: Vec<ToolGroupId>,
 }
 
 /// Registry of role contracts, keyed by role name.
@@ -161,12 +178,21 @@ impl ContractRegistry {
                 version: toml_contract.version,
                 behaviors: toml_contract.behaviors,
                 constraints: toml_contract.constraints,
+                tool_groups: toml_contract.tool_groups,
             };
+            if contract.tool_groups.is_empty() {
+                warn!(
+                    role = %role_name,
+                    "role contract has no tool_groups; allowing all tools (legacy fallback). \
+                     File a follow-up issue to populate explicit tool_groups."
+                );
+            }
             info!(
                 role = %role_name,
                 version = contract.version,
                 behaviors = contract.behaviors.len(),
                 constraints = contract.constraints.len(),
+                tool_groups = contract.tool_groups.len(),
                 "loaded role contract from file"
             );
             registry.contracts.insert(role_name, contract);
@@ -237,6 +263,12 @@ fn coder_contract() -> RoleContract {
             "Ask clarifying questions instead of making conservative choices".to_owned(),
             "Leave the build broken".to_owned(),
         ],
+        tool_groups: vec![
+            ToolGroupId::Read,
+            ToolGroupId::Edit,
+            ToolGroupId::Command,
+            ToolGroupId::Verify,
+        ],
     }
 }
 
@@ -258,6 +290,7 @@ fn researcher_contract() -> RoleContract {
             "Omit source citations".to_owned(),
             "Modify files or execute commands".to_owned(),
         ],
+        tool_groups: vec![ToolGroupId::Read, ToolGroupId::Mcp, ToolGroupId::Plan],
     }
 }
 
@@ -279,6 +312,7 @@ fn reviewer_contract() -> RoleContract {
             "Invent problems to appear thorough".to_owned(),
             "Provide vague feedback without specific locations".to_owned(),
         ],
+        tool_groups: vec![ToolGroupId::Read, ToolGroupId::Verify, ToolGroupId::Mcp],
     }
 }
 
@@ -297,6 +331,7 @@ fn explorer_contract() -> RoleContract {
             "Dump entire file contents without summarizing".to_owned(),
             "Report findings without file paths".to_owned(),
         ],
+        tool_groups: vec![ToolGroupId::Read, ToolGroupId::Plan],
     }
 }
 
@@ -316,6 +351,7 @@ fn runner_contract() -> RoleContract {
             "Add extra commands not requested".to_owned(),
             "Retry commands unless instructed".to_owned(),
         ],
+        tool_groups: vec![ToolGroupId::Read, ToolGroupId::Command, ToolGroupId::Verify],
     }
 }
 
@@ -439,6 +475,7 @@ constraints = ["Execute plans"]
             version: 2,
             behaviors: vec!["Write code".to_owned(), "Run tests".to_owned()],
             constraints: vec!["Break the build".to_owned()],
+            tool_groups: vec![ToolGroupId::Read, ToolGroupId::Edit],
         };
 
         let section = contract.to_prompt_section();
@@ -460,6 +497,7 @@ constraints = ["Execute plans"]
             version: 1,
             behaviors: Vec::new(),
             constraints: Vec::new(),
+            tool_groups: Vec::new(),
         };
         let section = contract.to_prompt_section();
         assert!(
@@ -507,6 +545,7 @@ constraints = ["Custom constraint"]
             version: 2,
             behaviors: vec!["Write code".to_owned()],
             constraints: vec!["Break things".to_owned()],
+            tool_groups: vec![ToolGroupId::Read, ToolGroupId::Edit],
         };
         let json = serde_json::to_string(&contract).unwrap();
         let back: RoleContract = serde_json::from_str(&json).unwrap();
@@ -534,5 +573,92 @@ constraints = ["Custom constraint"]
                 "registry key should match contract.role"
             );
         }
+    }
+
+    #[test]
+    fn default_contracts_have_tool_groups() {
+        let registry = ContractRegistry::defaults();
+        for (name, contract) in registry.all() {
+            assert!(
+                !contract.tool_groups.is_empty(),
+                "contract for {name} should have non-empty tool_groups"
+            );
+        }
+    }
+
+    #[test]
+    fn coder_has_edit_and_command_groups() {
+        let registry = ContractRegistry::defaults();
+        let coder = registry.get("coder").unwrap();
+        assert!(coder.tool_groups.contains(&ToolGroupId::Read));
+        assert!(coder.tool_groups.contains(&ToolGroupId::Edit));
+        assert!(coder.tool_groups.contains(&ToolGroupId::Command));
+        assert!(coder.tool_groups.contains(&ToolGroupId::Verify));
+    }
+
+    #[test]
+    fn explorer_is_read_only_plus_plan() {
+        let registry = ContractRegistry::defaults();
+        let explorer = registry.get("explorer").unwrap();
+        assert!(explorer.tool_groups.contains(&ToolGroupId::Read));
+        assert!(explorer.tool_groups.contains(&ToolGroupId::Plan));
+        assert!(!explorer.tool_groups.contains(&ToolGroupId::Edit));
+        assert!(!explorer.tool_groups.contains(&ToolGroupId::Command));
+    }
+
+    #[test]
+    fn to_prompt_section_includes_tool_groups() {
+        let contract = RoleContract {
+            role: "coder".to_owned(),
+            version: 1,
+            behaviors: vec!["Write code".to_owned()],
+            constraints: vec!["Break things".to_owned()],
+            tool_groups: vec![ToolGroupId::Read, ToolGroupId::Edit],
+        };
+        let section = contract.to_prompt_section();
+        assert!(
+            section.contains("Allowed Tool Groups"),
+            "prompt section should list allowed tool groups"
+        );
+        assert!(
+            section.contains("- read"),
+            "prompt section should contain 'read'"
+        );
+        assert!(
+            section.contains("- edit"),
+            "prompt section should contain 'edit'"
+        );
+    }
+
+    #[test]
+    fn to_prompt_section_omits_tool_groups_when_empty() {
+        let contract = RoleContract {
+            role: "empty".to_owned(),
+            version: 1,
+            behaviors: vec!["Behave".to_owned()],
+            constraints: vec!["Misbehave".to_owned()],
+            tool_groups: Vec::new(),
+        };
+        let section = contract.to_prompt_section();
+        assert!(
+            !section.contains("Allowed Tool Groups"),
+            "prompt section should omit tool groups when empty"
+        );
+    }
+
+    #[test]
+    fn from_toml_parses_tool_groups() {
+        let toml = r#"
+[coder]
+version = 2
+behaviors = ["Write code"]
+constraints = ["Break the build"]
+tool_groups = ["read", "edit"]
+"#;
+        let registry = ContractRegistry::from_toml(toml).unwrap();
+        let coder = registry.get("coder").unwrap();
+        assert_eq!(coder.tool_groups.len(), 2);
+        assert!(coder.tool_groups.contains(&ToolGroupId::Read));
+        assert!(coder.tool_groups.contains(&ToolGroupId::Edit));
     }
 }

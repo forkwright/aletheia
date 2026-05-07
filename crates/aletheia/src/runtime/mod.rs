@@ -643,6 +643,7 @@ impl RuntimeBuilder {
                     recall: resolved.recall.into(),
                     recall_profile: resolved.recall_profile.into(),
                     tool_allowlist: None,
+                    tool_groups: Vec::new(),
                     hooks: nous::config::HookConfig::default(),
                     behavior: resolved.behavior,
                 };

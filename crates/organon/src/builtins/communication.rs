@@ -12,7 +12,7 @@ use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
     InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
-    ToolInput, ToolResult,
+    ToolGroupId, ToolInput, ToolResult,
 };
 
 /// Fallback default; runtime reads `ctx.tool_config.message_max_len`.
@@ -210,6 +210,7 @@ fn message_def() -> ToolDef {
         category: ToolCategory::Communication,
         reversibility: Reversibility::Irreversible,
         auto_activate: true,
+        groups: vec![ToolGroupId::Mcp],
     }
 }
 
@@ -262,6 +263,7 @@ fn sessions_ask_def() -> ToolDef {
         category: ToolCategory::Communication,
         reversibility: Reversibility::Reversible,
         auto_activate: true,
+        groups: vec![ToolGroupId::Mcp],
     }
 }
 
@@ -305,6 +307,7 @@ fn sessions_send_def() -> ToolDef {
         category: ToolCategory::Communication,
         reversibility: Reversibility::Irreversible,
         auto_activate: true,
+        groups: vec![ToolGroupId::Mcp],
     }
 }
 
