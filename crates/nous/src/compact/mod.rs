@@ -20,6 +20,7 @@ use hermeneus::types::ToolResultType;
 
 pub(crate) mod full;
 pub(crate) mod micro;
+pub(crate) mod prompts;
 
 /// Per-tool-type TTL configuration for microcompaction.
 ///
@@ -69,12 +70,51 @@ impl Default for CompactConfig {
 #[derive(Debug, Clone)]
 pub(crate) struct CriticalFile {
     /// File path.
-    pub path: String,
+    pub(crate) path: String,
     /// Content to re-inject.
-    pub content: String,
+    pub(crate) content: String,
     /// Token estimate for the content.
-    pub token_estimate: i64,
+    pub(crate) token_estimate: i64,
 }
+
+/// Reason a compaction pass was triggered.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum CompactReason {
+    /// Mid-session token cap hit.
+    TokenBudget,
+    /// Session-end checkpoint.
+    SessionBoundary,
+    /// Operator-issued compact (defaults to terse).
+    OperatorRequest,
+    /// Background consolidation pass (#95).
+    DreamConsolidation,
+}
+
+#[expect(
+    dead_code,
+    reason = "keeps all CompactReason variants alive for exhaustive-match maintenance"
+)]
+fn touch_all_compact_reasons() {
+    let _ = CompactReason::TokenBudget;
+    let _ = CompactReason::SessionBoundary;
+    let _ = CompactReason::OperatorRequest;
+    let _ = CompactReason::DreamConsolidation;
+}
+
+/// Select the appropriate prompt for a given compaction reason.
+#[must_use]
+pub fn select_prompt(reason: CompactReason) -> &'static str {
+    match reason {
+        CompactReason::TokenBudget | CompactReason::OperatorRequest => prompts::COMPACT_PROMPT,
+        CompactReason::SessionBoundary | CompactReason::DreamConsolidation => {
+            prompts::RESTORE_PROMPT
+        }
+    }
+}
+
+#[cfg(test)]
+mod prompt_tests;
 
 #[cfg(test)]
 #[expect(
