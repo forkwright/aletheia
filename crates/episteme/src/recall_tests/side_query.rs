@@ -114,6 +114,7 @@ fn make_scored_result(source_id: &str, score: f64) -> ScoredResult {
         score,
         sensitivity: crate::knowledge::FactSensitivity::Public,
         visibility: crate::knowledge::Visibility::Private,
+        scope: None,
     }
 }
 

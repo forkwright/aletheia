@@ -45,6 +45,7 @@ fn make_skill_fact(id: &str, nous_id: &str, skill_name: &str, domain_tags: &[&st
             last_accessed_at: None,
         },
         sensitivity: crate::knowledge::FactSensitivity::Public,
+        visibility: crate::knowledge::Visibility::Private,
         scope: None,
     }
 }

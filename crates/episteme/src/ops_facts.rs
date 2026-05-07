@@ -173,6 +173,7 @@ fn build_ops_fact(
                 last_accessed_at: None,
             },
             sensitivity: crate::knowledge::FactSensitivity::Public,
+            visibility: crate::knowledge::Visibility::Private,
         },
     })
 }

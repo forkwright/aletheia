@@ -58,11 +58,11 @@ impl KnowledgeStore {
         let script = r"?[id, content, confidence, tier, recorded_at, nous_id,
               valid_from, valid_to, superseded_by, source_session_id,
               access_count, last_accessed_at, stability_hours, fact_type,
-              is_forgotten, forgotten_at, forget_reason] :=
+              is_forgotten, forgotten_at, forget_reason, scope, visibility] :=
             *facts{id, valid_from, content, nous_id, confidence, tier, valid_to,
                    superseded_by, source_session_id, recorded_at,
                    access_count, last_accessed_at, stability_hours, fact_type,
-                   is_forgotten, forgotten_at, forget_reason},
+                   is_forgotten, forgotten_at, forget_reason, scope, visibility},
             nous_id = $nous_id,
             fact_type = 'skill',
             is_null(superseded_by),
@@ -101,12 +101,12 @@ impl KnowledgeStore {
             ?[id, content, confidence, tier, recorded_at, nous_id,
               valid_from, valid_to, superseded_by, source_session_id,
               access_count, last_accessed_at, stability_hours, fact_type,
-              is_forgotten, forgotten_at, forget_reason] :=
+              is_forgotten, forgotten_at, forget_reason, scope, visibility] :=
                 candidates[id, _score],
                 *facts{id, valid_from, content, nous_id, confidence, tier, valid_to,
                        superseded_by, source_session_id, recorded_at,
                        access_count, last_accessed_at, stability_hours, fact_type,
-                       is_forgotten, forgotten_at, forget_reason},
+                       is_forgotten, forgotten_at, forget_reason, scope, visibility},
                 nous_id = $nous_id,
                 fact_type = 'skill',
                 is_null(superseded_by),
@@ -155,11 +155,11 @@ impl KnowledgeStore {
         let script = r"?[id, content, confidence, tier, recorded_at, nous_id,
               valid_from, valid_to, superseded_by, source_session_id,
               access_count, last_accessed_at, stability_hours, fact_type,
-              is_forgotten, forgotten_at, forget_reason] :=
+              is_forgotten, forgotten_at, forget_reason, scope, visibility] :=
             *facts{id, valid_from, content, nous_id, confidence, tier, valid_to,
                    superseded_by, source_session_id, recorded_at,
                    access_count, last_accessed_at, stability_hours, fact_type,
-                   is_forgotten, forgotten_at, forget_reason},
+                   is_forgotten, forgotten_at, forget_reason, scope, visibility},
             nous_id = $nous_id,
             fact_type = 'skill_pending',
             is_null(superseded_by),
@@ -238,6 +238,7 @@ impl KnowledgeStore {
                 last_accessed_at: None,
             },
             sensitivity: crate::knowledge::FactSensitivity::Public,
+            visibility: crate::knowledge::Visibility::Private,
         };
 
         self.insert_fact(&approved_fact)?;

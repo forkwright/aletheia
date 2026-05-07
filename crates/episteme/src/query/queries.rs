@@ -35,6 +35,8 @@ pub(crate) fn upsert_fact() -> String {
             IsForgotten,
             ForgottenAt,
             ForgetReason,
+            Scope,
+            Visibility,
         ])
         .done()
         .build_script()
@@ -68,6 +70,8 @@ pub(crate) fn current_facts() -> String {
         .bind(IsForgotten)
         .bind(ForgottenAt)
         .bind(ForgetReason)
+        .bind(Scope)
+        .bind(Visibility)
         .filter("nous_id = $nous_id")
         .filter("valid_from <= $now")
         .filter("valid_to > $now")
@@ -104,6 +108,8 @@ pub(crate) fn full_current_facts() -> String {
             IsForgotten,
             ForgottenAt,
             ForgetReason,
+            Scope,
+            Visibility,
         ])
         .bind(Id)
         .bind(ValidFrom)
@@ -122,6 +128,8 @@ pub(crate) fn full_current_facts() -> String {
         .bind(IsForgotten)
         .bind(ForgottenAt)
         .bind(ForgetReason)
+        .bind(Scope)
+        .bind(Visibility)
         .filter("nous_id = $nous_id")
         .filter("valid_from <= $now")
         .filter("valid_to > $now")
@@ -147,6 +155,8 @@ pub(crate) fn facts_at_time() -> String {
         .bind(Tier)
         .bind(ValidTo)
         .bind(IsForgotten)
+        .bind(Scope)
+        .bind(Visibility)
         .filter("valid_from <= $time")
         .filter("valid_to > $time")
         .filter("is_forgotten == false")
@@ -181,6 +191,8 @@ pub(crate) fn supersede_fact() -> String {
             IsForgotten,
             ForgottenAt,
             ForgetReason,
+            Scope,
+            Visibility,
         ])
         .row(&[
             "$old_id",
@@ -200,6 +212,8 @@ pub(crate) fn supersede_fact() -> String {
             "$old_is_forgotten",
             "$old_forgotten_at",
             "$old_forget_reason",
+            "$old_scope",
+            "$old_visibility",
         ])
         .row(&[
             "$new_id",
@@ -219,6 +233,8 @@ pub(crate) fn supersede_fact() -> String {
             "false",
             "null",
             "null",
+            "$scope",
+            "$visibility",
         ])
         .done()
         .build_script()
@@ -282,9 +298,9 @@ pub(crate) const ENTITY_NEIGHBORHOOD: &str = r"
 pub(crate) const BM25_RECALL: &str = r"
     bm25[id, score] := ~facts:content_fts{id | query: $query_text, k: $k, score_kind: 'bm25', bind_score: score}
 
-    ?[id, content, source_type, source_id, dist] :=
+    ?[id, content, source_type, source_id, dist, scope, visibility] :=
         bm25[id, bm25_score],
-        *facts{id, content, is_forgotten, superseded_by},
+        *facts{id, content, is_forgotten, superseded_by, scope, visibility},
         is_forgotten == false,
         is_null(superseded_by),
         source_type = 'fact',
@@ -360,6 +376,8 @@ pub(crate) fn temporal_facts() -> String {
             IsForgotten,
             ForgottenAt,
             ForgetReason,
+            Scope,
+            Visibility,
         ])
         .bind(Id)
         .bind(ValidFrom)
@@ -378,6 +396,8 @@ pub(crate) fn temporal_facts() -> String {
         .bind(IsForgotten)
         .bind(ForgottenAt)
         .bind(ForgetReason)
+        .bind(Scope)
+        .bind(Visibility)
         .filter("nous_id = $nous_id")
         .filter("is_forgotten == false")
         .filter("valid_from <= $at_time")
@@ -393,11 +413,11 @@ pub(crate) const TEMPORAL_FACTS_FILTERED: &str = r"
     ?[id, content, confidence, tier, recorded_at, nous_id, valid_from, valid_to,
       superseded_by, source_session_id,
       access_count, last_accessed_at, stability_hours, fact_type,
-      is_forgotten, forgotten_at, forget_reason] :=
+      is_forgotten, forgotten_at, forget_reason, scope, visibility] :=
         *facts{id, valid_from, content, nous_id, confidence, tier, valid_to,
                superseded_by, source_session_id, recorded_at,
                access_count, last_accessed_at, stability_hours, fact_type,
-               is_forgotten, forgotten_at, forget_reason},
+               is_forgotten, forgotten_at, forget_reason, scope, visibility},
         nous_id = $nous_id,
         is_forgotten == false,
         valid_from <= $at_time,
@@ -414,11 +434,11 @@ pub(crate) const TEMPORAL_DIFF_ADDED: &str = r"
     ?[id, content, confidence, tier, recorded_at, nous_id, valid_from, valid_to,
       superseded_by, source_session_id,
       access_count, last_accessed_at, stability_hours, fact_type,
-      is_forgotten, forgotten_at, forget_reason] :=
+      is_forgotten, forgotten_at, forget_reason, scope, visibility] :=
         *facts{id, valid_from, content, nous_id, confidence, tier, valid_to,
                superseded_by, source_session_id, recorded_at,
                access_count, last_accessed_at, stability_hours, fact_type,
-               is_forgotten, forgotten_at, forget_reason},
+               is_forgotten, forgotten_at, forget_reason, scope, visibility},
         nous_id = $nous_id,
         is_forgotten == false,
         valid_from > $from_time,
@@ -431,11 +451,11 @@ pub(crate) const TEMPORAL_DIFF_REMOVED: &str = r"
     ?[id, content, confidence, tier, recorded_at, nous_id, valid_from, valid_to,
       superseded_by, source_session_id,
       access_count, last_accessed_at, stability_hours, fact_type,
-      is_forgotten, forgotten_at, forget_reason] :=
+      is_forgotten, forgotten_at, forget_reason, scope, visibility] :=
         *facts{id, valid_from, content, nous_id, confidence, tier, valid_to,
                superseded_by, source_session_id, recorded_at,
                access_count, last_accessed_at, stability_hours, fact_type,
-               is_forgotten, forgotten_at, forget_reason},
+               is_forgotten, forgotten_at, forget_reason, scope, visibility},
         nous_id = $nous_id,
         is_forgotten == false,
         valid_to > $from_time,
@@ -467,6 +487,8 @@ pub(crate) fn forgotten_facts() -> String {
             IsForgotten,
             ForgottenAt,
             ForgetReason,
+            Scope,
+            Visibility,
         ])
         .bind(Id)
         .bind(ValidFrom)
@@ -485,6 +507,8 @@ pub(crate) fn forgotten_facts() -> String {
         .bind(IsForgotten)
         .bind(ForgottenAt)
         .bind(ForgetReason)
+        .bind(Scope)
+        .bind(Visibility)
         .filter("nous_id = $nous_id")
         .filter("is_forgotten == true")
         .order("-forgotten_at")
@@ -518,6 +542,8 @@ pub(crate) fn audit_all_facts() -> String {
             IsForgotten,
             ForgottenAt,
             ForgetReason,
+            Scope,
+            Visibility,
         ])
         .bind(Id)
         .bind(ValidFrom)
@@ -536,6 +562,8 @@ pub(crate) fn audit_all_facts() -> String {
         .bind(IsForgotten)
         .bind(ForgottenAt)
         .bind(ForgetReason)
+        .bind(Scope)
+        .bind(Visibility)
         .filter("nous_id = $nous_id")
         .order("-recorded_at")
         .limit("$limit")

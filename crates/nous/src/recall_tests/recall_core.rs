@@ -102,6 +102,7 @@ fn recall_formats_section_with_metadata() {
         score: 0.87,
         sensitivity: mneme::knowledge::FactSensitivity::Public,
         visibility: mneme::knowledge::Visibility::Private,
+        scope: None,
     };
     let b = ScoredResult {
         content: "Project deadline is March 15".to_owned(),
@@ -120,6 +121,7 @@ fn recall_formats_section_with_metadata() {
         score: 0.72,
         sensitivity: mneme::knowledge::FactSensitivity::Public,
         visibility: mneme::knowledge::Visibility::Private,
+        scope: None,
     };
     let refs: Vec<&ScoredResult> = vec![&a, &b];
     let section = format_section(&refs, true);
@@ -408,14 +410,24 @@ fn recall_pinned_facts_deduplicated() {
 }
 
 #[test]
-fn recall_scope_quotas_noop() {
-    let results: Vec<KnowledgeRecallResult> = (0..5)
-        .map(|i| make_knowledge_result(&format!("fact {i}"), 0.1))
-        .collect();
+fn recall_scope_quotas_reserves_minimum_per_scope() {
+    // Build candidates across three scopes with distinct scores.
+    let results: Vec<KnowledgeRecallResult> = vec![
+        make_knowledge_result_with_scope("project-a", 0.95, Some(MemoryScope::Project)),
+        make_knowledge_result_with_scope("project-b", 0.90, Some(MemoryScope::Project)),
+        make_knowledge_result_with_scope("project-c", 0.85, Some(MemoryScope::Project)),
+        make_knowledge_result_with_scope("user-a", 0.80, Some(MemoryScope::User)),
+        make_knowledge_result_with_scope("user-b", 0.75, Some(MemoryScope::User)),
+        make_knowledge_result_with_scope("ref-a", 0.70, Some(MemoryScope::Reference)),
+    ];
+
     let mut quotas = std::collections::HashMap::new();
-    quotas.insert(MemoryScope::Project, 10);
+    quotas.insert(MemoryScope::Project, 2);
+    quotas.insert(MemoryScope::User, 1);
+    // Reference has no quota — falls to general pool.
+
     let config = RecallConfig {
-        max_results: 5,
+        max_results: 10,
         min_score: 0.0,
         scope_quotas: quotas,
         ..Default::default()
@@ -431,10 +443,100 @@ fn recall_scope_quotas_noop() {
         )
         .expect("recall should succeed");
 
-    // Scope quotas are a no-op because ScoredResult lacks a scope field.
-    // The test documents this current limitation.
+    let section = result.recall_section.expect("should have section");
+    // Project quota = 2 → project-a and project-b (higher scores)
+    assert!(
+        section.contains("project-a"),
+        "Project quota should include highest-scoring project fact"
+    );
+    assert!(
+        section.contains("project-b"),
+        "Project quota should include second project fact"
+    );
+    // User quota = 1 → user-a
+    assert!(
+        section.contains("user-a"),
+        "User quota should include highest-scoring user fact"
+    );
+    // Remaining pool ordered by score: project-c (0.85), user-b (0.75), ref-a (0.70)
+    assert!(
+        section.contains("project-c"),
+        "project-c should fill from general pool"
+    );
+}
+
+#[test]
+fn recall_scope_quotas_underfilled_scope_slack_absorbed() {
+    // User scope has only 1 candidate but quota is 5 — slack goes to general pool.
+    let results: Vec<KnowledgeRecallResult> = vec![
+        make_knowledge_result_with_scope("user-only", 0.60, Some(MemoryScope::User)),
+        make_knowledge_result_with_scope("proj-a", 0.95, Some(MemoryScope::Project)),
+        make_knowledge_result_with_scope("proj-b", 0.90, Some(MemoryScope::Project)),
+    ];
+
+    let mut quotas = std::collections::HashMap::new();
+    quotas.insert(MemoryScope::User, 5); // underfilled
+    quotas.insert(MemoryScope::Project, 1);
+
+    let config = RecallConfig {
+        max_results: 10,
+        min_score: 0.0,
+        scope_quotas: quotas,
+        ..Default::default()
+    };
+    let stage = RecallStage::new(config);
+    let result = stage
+        .run(
+            "query",
+            "syn",
+            &mock_embed(),
+            &MockVectorSearch::new(results),
+            10000,
+        )
+        .expect("recall should succeed");
+
+    let section = result.recall_section.expect("should have section");
+    assert!(
+        section.contains("user-only"),
+        "underfilled User scope should still appear"
+    );
+    assert!(
+        section.contains("proj-a"),
+        "Project quota should include top project fact"
+    );
+    assert!(
+        section.contains("proj-b"),
+        "proj-b should appear from slack/general pool"
+    );
+}
+
+#[test]
+fn recall_scope_quotas_noop_when_empty_quotas() {
+    let results: Vec<KnowledgeRecallResult> = (0..3)
+        .map(|i| {
+            make_knowledge_result_with_scope(&format!("fact {i}"), 0.5 + f64::from(i) * 0.1, None)
+        })
+        .collect();
+
+    let config = RecallConfig {
+        max_results: 5,
+        min_score: 0.0,
+        scope_quotas: std::collections::HashMap::new(),
+        ..Default::default()
+    };
+    let stage = RecallStage::new(config);
+    let result = stage
+        .run(
+            "query",
+            "syn",
+            &mock_embed(),
+            &MockVectorSearch::new(results),
+            10000,
+        )
+        .expect("recall should succeed");
+
     assert_eq!(
-        result.results_injected, 5,
-        "scope quotas should not alter results yet"
+        result.results_injected, 3,
+        "empty scope quotas should not alter results"
     );
 }

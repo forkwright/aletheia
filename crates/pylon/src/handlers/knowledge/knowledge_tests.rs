@@ -39,6 +39,7 @@ fn make_fact(id: &str, content: &str, confidence: f64) -> mneme::knowledge::Fact
         },
         sensitivity: mneme::knowledge::FactSensitivity::Public,
         scope: None,
+        visibility: mneme::knowledge::Visibility::Private,
     }
 }
 

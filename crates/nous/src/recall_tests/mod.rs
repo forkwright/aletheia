@@ -74,6 +74,8 @@ fn make_knowledge_result(content: &str, distance: f64) -> KnowledgeRecallResult 
         source_id: format!("fact-{}", content.len()),
         sensitivity: mneme::knowledge::FactSensitivity::Public,
         graph_importance: 0.0,
+        scope: None,
+        visibility: mneme::knowledge::Visibility::Private,
     }
 }
 
@@ -89,6 +91,25 @@ fn make_knowledge_result_with_id(
         source_id: source_id.to_owned(),
         sensitivity: mneme::knowledge::FactSensitivity::Public,
         graph_importance: 0.0,
+        scope: None,
+        visibility: mneme::knowledge::Visibility::Private,
+    }
+}
+
+fn make_knowledge_result_with_scope(
+    content: &str,
+    distance: f64,
+    scope: Option<mneme::knowledge::MemoryScope>,
+) -> KnowledgeRecallResult {
+    KnowledgeRecallResult {
+        content: content.to_owned(),
+        distance,
+        source_type: "fact".to_owned(),
+        source_id: format!("fact-{}", content.len()),
+        sensitivity: mneme::knowledge::FactSensitivity::Public,
+        graph_importance: 0.0,
+        scope,
+        visibility: mneme::knowledge::Visibility::Private,
     }
 }
 
@@ -102,6 +123,7 @@ fn make_scored(content: &str, score: f64) -> ScoredResult {
         score,
         sensitivity: mneme::knowledge::FactSensitivity::Public,
         visibility: mneme::knowledge::Visibility::Private,
+        scope: None,
     }
 }
 

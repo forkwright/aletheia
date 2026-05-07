@@ -106,7 +106,7 @@ fn run(args: Args) -> anyhow::Result<()> {
     use mneme::id::FactId;
     use mneme::knowledge::{
         Fact, FactAccess, FactLifecycle, FactProvenance, FactSensitivity, FactTemporal,
-        MemoryScope, far_future,
+        MemoryScope, Visibility, far_future,
     };
     use mneme::knowledge_store::{KnowledgeConfig, KnowledgeStore};
 
@@ -162,6 +162,7 @@ fn run(args: Args) -> anyhow::Result<()> {
             fact_type: spec.fact_type.clone(),
             scope: Some(scope),
             sensitivity,
+            visibility: Visibility::Private,
             temporal: FactTemporal {
                 valid_from: now,
                 valid_to: far_future(),

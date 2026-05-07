@@ -598,6 +598,7 @@ async fn run_skill_extraction(
                                 last_accessed_at: None,
                             },
                             sensitivity: mneme::knowledge::FactSensitivity::Public,
+                            visibility: mneme::knowledge::Visibility::Private,
                         };
 
                         match store.insert_fact(&fact) {

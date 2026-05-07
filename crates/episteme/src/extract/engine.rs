@@ -606,6 +606,7 @@ Rules:
                     last_accessed_at: None,
                 },
                 sensitivity: crate::knowledge::FactSensitivity::Public,
+                visibility: crate::knowledge::Visibility::Private,
             };
             store.insert_fact(&f).map_err(|e| {
                 PersistSnafu {

@@ -68,6 +68,8 @@ pub enum FactsField {
     IsForgotten,
     ForgottenAt,
     ForgetReason,
+    Scope,
+    Visibility,
 }
 
 /// Fields in the `entities` relation.

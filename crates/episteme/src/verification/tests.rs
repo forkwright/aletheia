@@ -23,6 +23,7 @@ fn make_fact(id: &str, confidence: f64, tier: EpistemicTier, recorded_at: Timest
         content: format!("test fact {id}"),
         scope: None,
         sensitivity: FactSensitivity::Public,
+        visibility: crate::knowledge::Visibility::Private,
         temporal: FactTemporal {
             valid_from: recorded_at,
             valid_to: recorded_at,

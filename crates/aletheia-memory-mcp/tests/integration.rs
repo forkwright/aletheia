@@ -12,7 +12,7 @@ use aletheia_memory_mcp::server::MemoryServer;
 use mneme::id::FactId;
 use mneme::knowledge::{
     EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactSensitivity, FactTemporal,
-    default_stability_hours, far_future,
+    Visibility, default_stability_hours, far_future,
 };
 use mneme::knowledge_store::KnowledgeStore;
 use rmcp::ServiceExt;
@@ -34,6 +34,7 @@ fn seed_store() -> Arc<KnowledgeStore> {
         content: "Alice prefers dark roast coffee with no cream".to_owned(),
         scope: None,
         sensitivity: FactSensitivity::Public,
+        visibility: Visibility::Private,
         temporal: FactTemporal {
             valid_from: now,
             valid_to: far_future(),
@@ -77,6 +78,7 @@ fn seed_store_two_facts() -> Arc<KnowledgeStore> {
         content: "Alice prefers dark roast coffee with no cream".to_owned(),
         scope: None,
         sensitivity: FactSensitivity::Public,
+        visibility: Visibility::Private,
         temporal: FactTemporal {
             valid_from: now,
             valid_to: far_future(),
@@ -110,6 +112,7 @@ fn seed_store_two_facts() -> Arc<KnowledgeStore> {
         content: "Alice prefers espresso".to_owned(),
         scope: None,
         sensitivity: FactSensitivity::Public,
+        visibility: Visibility::Private,
         temporal: FactTemporal {
             valid_from: now,
             valid_to: far_future(),

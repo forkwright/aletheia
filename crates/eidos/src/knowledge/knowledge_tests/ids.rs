@@ -117,6 +117,7 @@ fn fact_serde_roundtrip() {
             last_accessed_at: None,
         },
         sensitivity: FactSensitivity::Public,
+        visibility: Visibility::Private,
     };
     let json = serde_json::to_string(&fact).expect("Fact serialization is infallible");
     let back: Fact =
@@ -261,6 +262,8 @@ fn recall_result_serde_roundtrip() {
         source_id: "fact-1".to_owned(),
         sensitivity: FactSensitivity::Public,
         graph_importance: 0.0,
+        scope: None,
+        visibility: Visibility::Private,
     };
     let json = serde_json::to_string(&result).expect("RecallResult serialization is infallible");
     let back: RecallResult =
@@ -305,6 +308,7 @@ fn fact_with_empty_content() {
             last_accessed_at: None,
         },
         sensitivity: FactSensitivity::Public,
+        visibility: Visibility::Private,
     };
     let json =
         serde_json::to_string(&fact).expect("Fact with empty content serializes successfully");
@@ -346,6 +350,7 @@ fn fact_with_unicode_content() {
             last_accessed_at: None,
         },
         sensitivity: FactSensitivity::Public,
+        visibility: Visibility::Private,
     };
     let json =
         serde_json::to_string(&fact).expect("Fact with unicode content serializes successfully");

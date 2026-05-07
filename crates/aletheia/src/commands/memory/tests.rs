@@ -3,7 +3,7 @@ use std::sync::Arc;
 use mneme::id::{EntityId, FactId};
 use mneme::knowledge::{
     Entity, EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactTemporal,
-    far_future,
+    Visibility, far_future,
 };
 use mneme::knowledge_store::KnowledgeStore;
 
@@ -40,6 +40,7 @@ fn make_fact(id: &str, nous_id: &str, content: &str) -> Fact {
             last_accessed_at: None,
         },
         sensitivity: mneme::knowledge::FactSensitivity::Public,
+        visibility: Visibility::Private,
         scope: None,
     }
 }

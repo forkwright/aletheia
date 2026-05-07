@@ -30,6 +30,7 @@ fn fact_to_scored(fact: &Fact, engine: &RecallEngine, query_nous: &str) -> Score
         score: 0.0,
         sensitivity: mneme::knowledge::FactSensitivity::Public,
         visibility: mneme::knowledge::Visibility::Private,
+        scope: None,
     }
 }
 
@@ -63,6 +64,7 @@ fn sample_fact(id: &str, nous_id: &str, tier: EpistemicTier) -> Fact {
             last_accessed_at: None,
         },
         sensitivity: mneme::knowledge::FactSensitivity::Public,
+        visibility: mneme::knowledge::Visibility::Private,
         scope: None,
     }
 }
@@ -138,6 +140,8 @@ fn knowledge_types_all_serialize() {
         source_id: "f-1".to_owned(),
         sensitivity: mneme::knowledge::FactSensitivity::Public,
         graph_importance: 0.0,
+        scope: None,
+        visibility: mneme::knowledge::Visibility::Private,
     };
 
     assert!(serde_json::to_string(&fact).is_ok());

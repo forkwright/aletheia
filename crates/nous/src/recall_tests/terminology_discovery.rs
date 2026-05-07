@@ -17,6 +17,7 @@ fn terminology_discovery_finds_novel_terms() {
             score: 0.8,
             sensitivity: mneme::knowledge::FactSensitivity::Public,
             visibility: mneme::knowledge::Visibility::Private,
+            scope: None,
         },
         ScoredResult {
             content: "quantum computing leverages superposition states".to_owned(),
@@ -27,6 +28,7 @@ fn terminology_discovery_finds_novel_terms() {
             score: 0.7,
             sensitivity: mneme::knowledge::FactSensitivity::Public,
             visibility: mneme::knowledge::Visibility::Private,
+            scope: None,
         },
     ];
 
@@ -49,6 +51,7 @@ fn terminology_discovery_ignores_stopwords() {
         score: 0.5,
         sensitivity: mneme::knowledge::FactSensitivity::Public,
         visibility: mneme::knowledge::Visibility::Private,
+        scope: None,
     }];
 
     let terms = discover_terminology(&results, "test query");
@@ -75,6 +78,7 @@ fn terminology_discovery_skips_short_words() {
         score: 0.5,
         sensitivity: mneme::knowledge::FactSensitivity::Public,
         visibility: mneme::knowledge::Visibility::Private,
+        scope: None,
     }];
 
     let terms = discover_terminology(&results, "test");
@@ -96,6 +100,7 @@ fn gap_detection_finds_capitalized_phrases() {
         score: 0.8,
         sensitivity: mneme::knowledge::FactSensitivity::Public,
         visibility: mneme::knowledge::Visibility::Private,
+        scope: None,
     }];
 
     let gaps = detect_gaps(&results);
@@ -117,6 +122,7 @@ fn gap_detection_finds_quoted_strings() {
         score: 0.7,
         sensitivity: mneme::knowledge::FactSensitivity::Public,
         visibility: mneme::knowledge::Visibility::Private,
+        scope: None,
     }];
 
     let gaps = detect_gaps(&results);
@@ -205,6 +211,8 @@ fn make_knowledge_result_sensitive(
         source_id: source_id.to_owned(),
         sensitivity,
         graph_importance: 0.0,
+        scope: None,
+        visibility: mneme::knowledge::Visibility::Private,
     }
 }
 

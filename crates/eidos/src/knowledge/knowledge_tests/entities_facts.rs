@@ -264,6 +264,7 @@ fn fact_with_supersession() {
             last_accessed_at: None,
         },
         sensitivity: FactSensitivity::Public,
+        visibility: Visibility::Private,
     };
     assert_eq!(
         fact.lifecycle.superseded_by.as_ref().map(FactId::as_str),
@@ -311,6 +312,7 @@ fn fact_with_session_source() {
             last_accessed_at: Some(test_timestamp("2026-03-05T12:00:00Z")),
         },
         sensitivity: FactSensitivity::Public,
+        visibility: Visibility::Private,
     };
     assert_eq!(
         fact.provenance.source_session_id.as_deref(),

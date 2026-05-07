@@ -225,6 +225,7 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
                     last_accessed_at: None,
                 },
                 sensitivity: mneme::knowledge::FactSensitivity::Public,
+                visibility: mneme::knowledge::Visibility::Private,
             };
             self.store.insert_fact(&new_fact).map_err(|e| {
                 MutateStoreSnafu {

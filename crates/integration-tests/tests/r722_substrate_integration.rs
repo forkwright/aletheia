@@ -120,6 +120,7 @@ fn make_test_fact(id: &str, nous_id: &str, content: &str) -> Fact {
         content: content.to_owned(),
         scope: None,
         sensitivity: FactSensitivity::Public,
+        visibility: mneme::knowledge::Visibility::Private,
         temporal: FactTemporal {
             valid_from: now,
             valid_to: far_future(),

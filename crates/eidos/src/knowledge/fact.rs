@@ -91,6 +91,14 @@ pub struct Fact {
     #[serde(default)]
     pub sensitivity: FactSensitivity,
 
+    /// Visibility level controlling how broadly this fact may be shared
+    /// across agents, sessions, and external systems.
+    ///
+    /// Defaults to [`Visibility::Private`] via `#[serde(default)]` so
+    /// facts persisted before visibility tracking deserialize unchanged.
+    #[serde(default)]
+    pub visibility: Visibility,
+
     /// Bi-temporal validity and recording timestamps.
     #[serde(flatten)]
     pub temporal: FactTemporal,
@@ -160,7 +168,7 @@ impl std::str::FromStr for FactSensitivity {
 ///
 /// Controls how broadly a fact may be shared across agents, sessions,
 /// and external systems. Ordered from most restrictive to least.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum Visibility {
