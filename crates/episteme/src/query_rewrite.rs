@@ -1,7 +1,3 @@
-#![allow(
-    dead_code,
-    reason = "module not yet wired into recall pipeline; lint fires in lib but not test target"
-)]
 //! LLM-powered query rewriting for the recall pipeline.
 //!
 //! Rewrites natural language queries into multiple search variants before
@@ -15,7 +11,7 @@ use tracing::instrument;
 ///
 /// Keeps mneme independent of hermeneus. The nous layer bridges this trait
 /// to the full `LlmProvider` + `CompletionRequest` API.
-pub(crate) trait RewriteProvider: Send + Sync {
+pub trait RewriteProvider: Send + Sync {
     /// Generate a completion from a system prompt and user message.
     fn complete(&self, system: &str, user_message: &str) -> Result<String, RewriteError>;
 }
@@ -69,43 +65,39 @@ pub struct RewriteResult {
 }
 
 /// LLM-powered query rewriter for the recall pipeline.
-pub(crate) struct QueryRewriter {
+pub struct QueryRewriter {
     config: RewriteConfig,
 }
 
 impl QueryRewriter {
     /// Create a new query rewriter with the given configuration.
     #[must_use]
-    pub(crate) fn new(config: RewriteConfig) -> Self {
+    pub fn new(config: RewriteConfig) -> Self {
         Self { config }
     }
 
     /// Create a query rewriter with default configuration.
     #[must_use]
-    pub(crate) fn with_defaults() -> Self {
+    pub fn with_defaults() -> Self {
         Self::new(RewriteConfig::default())
     }
 
     /// Rewrite a query into multiple search variants using an LLM.
     ///
-    /// Returns the original query plus generated variants. Never fails;
-    /// falls back to the original query on any error.
+    /// Returns the original query plus generated variants.
+    ///
+    /// Failures are returned to the caller so recall telemetry can distinguish
+    /// "nothing matched" from "rewrite provider failed."
     #[instrument(skip(self, provider, context))]
-    pub(crate) fn rewrite(
+    pub fn rewrite(
         &self,
         query: &str,
         context: Option<&str>,
         provider: &dyn RewriteProvider,
-    ) -> RewriteResult {
+    ) -> Result<RewriteResult, RewriteError> {
         let start = Instant::now();
 
-        let variants = match self.try_rewrite(query, context, provider) {
-            Ok(v) => v,
-            Err(e) => {
-                tracing::warn!(error = %e, "query rewrite failed, falling back to original");
-                vec![query.to_owned()]
-            }
-        };
+        let variants = self.try_rewrite(query, context, provider)?;
 
         let latency_ms = start.elapsed().as_millis().try_into().unwrap_or(u64::MAX);
 
@@ -116,11 +108,11 @@ impl QueryRewriter {
             "query rewrite complete"
         );
 
-        RewriteResult {
+        Ok(RewriteResult {
             original: query.to_owned(),
             variants,
             latency_ms,
-        }
+        })
     }
 
     /// Attempt the rewrite, returning an error on failure.
@@ -221,7 +213,7 @@ impl Default for TieredSearchConfig {
     fn default() -> Self {
         Self {
             fast_path_min_results: 3,
-            fast_path_score_threshold: 0.5,
+            fast_path_score_threshold: 0.03,
             enhanced_min_results: 3,
             enhanced_score_threshold: 0.3,
             graph_expansion_limit: 5,
@@ -335,11 +327,6 @@ pub(crate) trait HasId {
 
 /// Trait for types that have a mutable RRF score.
 pub(crate) trait HasRrfScore {
-    #[expect(
-        dead_code,
-        reason = "trait API completeness; only set_rrf_score used by merge"
-    )]
-    fn rrf_score(&self) -> f64;
     fn set_rrf_score(&mut self, score: f64);
 }
 
@@ -385,7 +372,9 @@ mod tests {
             r#"["Cody truck vehicle", "Cummins diesel specifications", "vehicle equipment modifications"]"#,
         );
 
-        let result = rewriter.rewrite("What's Cody's truck?", None, &provider);
+        let result = rewriter
+            .rewrite("What's Cody's truck?", None, &provider)
+            .expect("rewrite should produce variants");
 
         assert_eq!(result.original, "What's Cody's truck?");
         assert_eq!(result.variants.len(), 4);
@@ -404,40 +393,48 @@ mod tests {
             r#"["What's Cody's truck?", "Cody truck vehicle", "Cody truck vehicle"]"#,
         );
 
-        let result = rewriter.rewrite("What's Cody's truck?", None, &provider);
+        let result = rewriter
+            .rewrite("What's Cody's truck?", None, &provider)
+            .expect("rewrite should deduplicate variants");
 
         assert_eq!(result.variants.len(), 2);
     }
 
     #[test]
-    fn rewrite_fallback_on_llm_failure() {
+    fn rewrite_returns_error_on_llm_failure() {
         let rewriter = QueryRewriter::with_defaults();
         let result = rewriter.rewrite("test query", None, &FailingProvider);
 
-        assert_eq!(result.variants.len(), 1);
-        assert_eq!(result.variants[0], "test query");
+        assert!(
+            matches!(result, Err(RewriteError::LlmCall(_))),
+            "LLM failure should return a typed rewrite error"
+        );
     }
 
     #[test]
-    fn rewrite_fallback_on_invalid_json() {
+    fn rewrite_returns_error_on_invalid_json() {
         let rewriter = QueryRewriter::with_defaults();
         let provider = MockProvider::with_response("this is not json");
 
         let result = rewriter.rewrite("test query", None, &provider);
 
-        assert_eq!(result.variants.len(), 1);
-        assert_eq!(result.variants[0], "test query");
+        assert!(
+            matches!(result, Err(RewriteError::ParseResponse(_))),
+            "invalid JSON should return a parse error instead of fallback success"
+        );
     }
 
     #[test]
-    fn rewrite_fallback_on_empty_array() {
+    fn rewrite_returns_error_on_empty_array() {
         let rewriter = QueryRewriter::with_defaults();
         let provider = MockProvider::with_response("[]");
 
         let result = rewriter.rewrite("test query", None, &provider);
 
-        assert_eq!(result.variants.len(), 1);
-        assert_eq!(result.variants[0], "test query");
+        assert!(
+            matches!(result, Err(RewriteError::ParseResponse(_))),
+            "empty rewrite array should return a parse error"
+        );
     }
 
     #[test]
@@ -445,11 +442,13 @@ mod tests {
         let rewriter = QueryRewriter::with_defaults();
         let provider = MockProvider::with_response(r#"["Cody truck", "vehicle maintenance"]"#);
 
-        let result = rewriter.rewrite(
-            "What's the truck?",
-            Some("We were discussing Cody's vehicles"),
-            &provider,
-        );
+        let result = rewriter
+            .rewrite(
+                "What's the truck?",
+                Some("We were discussing Cody's vehicles"),
+                &provider,
+            )
+            .expect("rewrite with context should succeed");
 
         assert!(!result.variants.is_empty());
         assert!(result.latency_ms < 5000); // validation: latency is within acceptable bounds
@@ -465,7 +464,9 @@ mod tests {
         let provider =
             MockProvider::with_response(r#"["variant 1", "variant 2", "variant 3", "variant 4"]"#);
 
-        let result = rewriter.rewrite("query", None, &provider);
+        let result = rewriter
+            .rewrite("query", None, &provider)
+            .expect("rewrite should respect max variants");
 
         assert!(result.variants.len() <= 3);
     }
@@ -475,7 +476,9 @@ mod tests {
         let rewriter = QueryRewriter::with_defaults();
         let provider = MockProvider::with_response("```json\n[\"variant 1\", \"variant 2\"]\n```");
 
-        let result = rewriter.rewrite("query", None, &provider);
+        let result = rewriter
+            .rewrite("query", None, &provider)
+            .expect("rewrite should strip code fences");
 
         assert!(result.variants.len() >= 2);
     }
@@ -489,7 +492,9 @@ mod tests {
         let rewriter = QueryRewriter::new(config);
         let provider = MockProvider::with_response(r#"["variant 1", "variant 2"]"#);
 
-        let result = rewriter.rewrite("original query", None, &provider);
+        let result = rewriter
+            .rewrite("original query", None, &provider)
+            .expect("rewrite should succeed without original variant");
 
         assert_eq!(result.variants.len(), 2);
         assert!(!result.variants.contains(&"original query".to_owned()));
@@ -500,7 +505,9 @@ mod tests {
         let rewriter = QueryRewriter::with_defaults();
         let provider = MockProvider::with_response(r#"["", "variant 1", "", "variant 2"]"#);
 
-        let result = rewriter.rewrite("query", None, &provider);
+        let result = rewriter
+            .rewrite("query", None, &provider)
+            .expect("rewrite should filter empty variants");
 
         assert!(result.variants.iter().all(|v| !v.is_empty()));
     }
@@ -510,7 +517,9 @@ mod tests {
         let rewriter = QueryRewriter::with_defaults();
         let provider = MockProvider::with_response(r#"["v1", "v2"]"#);
 
-        let result = rewriter.rewrite("query", None, &provider);
+        let result = rewriter
+            .rewrite("query", None, &provider)
+            .expect("rewrite should track latency");
 
         assert!(result.latency_ms < 1000);
     }
@@ -561,9 +570,6 @@ mod tests {
     }
 
     impl HasRrfScore for TestResult {
-        fn rrf_score(&self) -> f64 {
-            self.score
-        }
         fn set_rrf_score(&mut self, score: f64) {
             self.score = score;
         }
@@ -693,10 +699,22 @@ mod tests {
     fn tiered_config_defaults() {
         let config = TieredSearchConfig::default();
         assert_eq!(config.fast_path_min_results, 3);
-        assert!((config.fast_path_score_threshold - 0.5).abs() < f64::EPSILON);
+        assert!((config.fast_path_score_threshold - 0.03).abs() < f64::EPSILON);
         assert_eq!(config.enhanced_min_results, 3);
         assert!((config.enhanced_score_threshold - 0.3).abs() < f64::EPSILON);
         assert_eq!(config.graph_expansion_limit, 5);
+    }
+
+    #[test]
+    fn fast_path_threshold_is_reachable_for_three_signal_rrf() {
+        let config = TieredSearchConfig::default();
+        let best_possible_raw_rrf = 3.0 * (1.0 / 61.0);
+
+        assert!(
+            config.fast_path_score_threshold <= best_possible_raw_rrf,
+            "fast-path threshold {} must be reachable by raw three-signal RRF max {best_possible_raw_rrf}",
+            config.fast_path_score_threshold
+        );
     }
 
     #[test]

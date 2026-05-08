@@ -475,9 +475,6 @@ impl crate::query_rewrite::HasId for HybridResult {
 
 #[cfg(feature = "mneme-engine")]
 impl crate::query_rewrite::HasRrfScore for HybridResult {
-    fn rrf_score(&self) -> f64 {
-        self.rrf_score
-    }
     fn set_rrf_score(&mut self, score: f64) {
         self.rrf_score = score;
     }
@@ -1061,7 +1058,7 @@ impl KnowledgeStore {
             ?[id, valid_from, content, nous_id, confidence, tier, valid_to,
               superseded_by, source_session_id, recorded_at,
               access_count, last_accessed_at, stability_hours, fact_type,
-              is_forgotten, forgotten_at, forget_reason] :=
+              is_forgotten, forgotten_at, forget_reason, scope, visibility] :=
                 *facts{id, valid_from, content, nous_id, confidence, tier,
                        valid_to, superseded_by, source_session_id, recorded_at,
                        access_count, last_accessed_at, stability_hours, fact_type,

@@ -40,14 +40,16 @@ pub(crate) const DEFAULT_CACHE_CAPACITY: usize = 64;
 
 /// Errors from side-query operations.
 #[derive(Debug, Snafu)]
-#[snafu(visibility(pub(crate)))]
+#[snafu(visibility(pub))]
 #[non_exhaustive]
-pub(crate) enum SideQueryError {
+pub enum SideQueryError {
     /// The ranking model call failed.
     #[snafu(display("side-query ranker failed: {message}"))]
     RankerFailed {
+        /// Provider or parser failure message.
         message: String,
         #[snafu(implicit)]
+        /// Source location captured by Snafu.
         location: snafu::Location,
     },
 }
@@ -59,7 +61,7 @@ pub(crate) enum SideQueryError {
 /// match the existing recall pipeline's sync trait pattern
 /// ([`EmbeddingProvider`](crate::embedding::EmbeddingProvider),
 /// [`VectorSearch`]).
-pub(crate) trait SideQueryRanker: Send + Sync {
+pub trait SideQueryRanker: Send + Sync {
     /// Rank memory entries by relevance to the query.
     ///
     /// # Arguments
@@ -200,24 +202,17 @@ impl RelevanceCache {
 /// Wraps a [`SideQueryRanker`] with `already_surfaced` tracking and LRU
 /// caching. Designed to run as a pre-filter stage before the 6-factor
 /// recall scoring in [`RecallEngine`](crate::recall::RecallEngine).
-pub(crate) struct SideQuerySelector {
+pub struct SideQuerySelector {
     config: SideQueryConfig,
     // WHY: std::sync::Mutex — lock never held across .await.
     already_surfaced: Mutex<HashSet<String>>,
     cache: Mutex<RelevanceCache>,
 }
 
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "impl used from tests; production wiring lands with recall pipeline integration"
-    )
-)]
 impl SideQuerySelector {
     /// Create a new selector with the given configuration.
     #[must_use]
-    pub(crate) fn new(config: SideQueryConfig) -> Self {
+    pub fn new(config: SideQueryConfig) -> Self {
         let cache = RelevanceCache::new(
             config.cache_capacity,
             Duration::from_secs(config.cache_ttl_secs),
@@ -240,7 +235,7 @@ impl SideQuerySelector {
     /// result is available.
     #[must_use = "selection result should be used for pre-filtering"]
     #[instrument(skip_all, fields(manifest_len = manifest.len()))]
-    pub(crate) fn select(
+    pub fn select(
         &self,
         query: &str,
         manifest: &MemoryManifest,
@@ -296,7 +291,7 @@ impl SideQuerySelector {
     }
 
     /// Mark source IDs as surfaced so they won't be re-selected.
-    pub(crate) fn mark_surfaced(&self, ids: &[String]) {
+    pub fn mark_surfaced(&self, ids: &[String]) {
         let mut surfaced = self.already_surfaced.lock();
         for id in ids {
             surfaced.insert(id.clone());
@@ -305,13 +300,13 @@ impl SideQuerySelector {
 
     /// Check whether a source ID has already been surfaced.
     #[must_use]
-    pub(crate) fn is_surfaced(&self, id: &str) -> bool {
+    pub fn is_surfaced(&self, id: &str) -> bool {
         self.already_surfaced.lock().contains(id)
     }
 
     /// Number of entries in the relevance cache.
     #[must_use]
-    pub(crate) fn cache_len(&self) -> usize {
+    pub fn cache_len(&self) -> usize {
         self.cache.lock().len()
     }
 

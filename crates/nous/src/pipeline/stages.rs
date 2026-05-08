@@ -7,6 +7,7 @@ use tokio::sync::mpsc;
 use tracing::{Instrument, debug, error, info_span};
 
 use hermeneus::provider::ProviderRegistry;
+use hermeneus::types::{CompletionRequest, Content, ContentBlock, Message, Role};
 use koina::event::EventEmitter;
 use mneme::embedding::EmbeddingProvider;
 use mneme::store::SessionStore;
@@ -28,6 +29,85 @@ use super::{
     GuardResult, PipelineContext, PipelineInput, PipelineMessage, ReflectionResult,
     ReflectionStatus, TurnResult, assemble_context_conditional_with_cache, check_guard,
 };
+
+struct ProviderRecallBridge<'a> {
+    providers: &'a ProviderRegistry,
+    model: &'a str,
+}
+
+impl ProviderRecallBridge<'_> {
+    fn complete_blocking(&self, system: &str, user_message: &str) -> Result<String, String> {
+        let provider = self
+            .providers
+            .find_provider(self.model)
+            .ok_or_else(|| format!("no provider registered for model {}", self.model))?;
+        let request = CompletionRequest {
+            model: self.model.to_owned(),
+            system: Some(system.to_owned()),
+            messages: vec![Message {
+                role: Role::User,
+                content: Content::Text(user_message.to_owned()),
+                cache_breakpoint: false,
+            }],
+            max_tokens: 512,
+            temperature: Some(0.0),
+            ..CompletionRequest::default()
+        };
+        let response = tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(provider.complete(&request))
+        })
+        .map_err(|e| e.to_string())?;
+        let text = response
+            .content
+            .iter()
+            .filter_map(|block| match block {
+                ContentBlock::Text { text, .. } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        if text.trim().is_empty() {
+            Err("provider returned no text content".to_owned())
+        } else {
+            Ok(text)
+        }
+    }
+}
+
+impl episteme::query_rewrite::RewriteProvider for ProviderRecallBridge<'_> {
+    fn complete(
+        &self,
+        system: &str,
+        user_message: &str,
+    ) -> Result<String, episteme::query_rewrite::RewriteError> {
+        self.complete_blocking(system, user_message)
+            .map_err(episteme::query_rewrite::RewriteError::LlmCall)
+    }
+}
+
+impl episteme::side_query::SideQueryRanker for ProviderRecallBridge<'_> {
+    fn rank_memories(
+        &self,
+        query: &str,
+        manifest_text: &str,
+        max_results: usize,
+    ) -> Result<Vec<String>, episteme::side_query::SideQueryError> {
+        let system = format!(
+            "Select up to {max_results} relevant memory source IDs for the query. Respond with only a JSON array of source ID strings."
+        );
+        let user = format!("Query: {query}\n\nMemory manifest:\n{manifest_text}");
+        let text = self
+            .complete_blocking(&system, &user)
+            .map_err(|message| episteme::side_query::RankerFailedSnafu { message }.build())?;
+        let ids: Vec<String> = serde_json::from_str(text.trim()).map_err(|e| {
+            episteme::side_query::RankerFailedSnafu {
+                message: e.to_string(),
+            }
+            .build()
+        })?;
+        Ok(ids.into_iter().take(max_results).collect())
+    }
+}
 
 #[expect(
     clippy::too_many_arguments,
@@ -86,7 +166,8 @@ pub(super) async fn run_context_stage(
 /// Recall stage: retrieve relevant knowledge from vector/BM25 search.
 #[expect(
     clippy::too_many_arguments,
-    reason = "stage receives all search dependencies plus event emitter"
+    clippy::too_many_lines,
+    reason = "stage receives all search dependencies and owns recall branch lifecycle"
 )]
 pub(super) async fn run_recall_stage(
     config: &NousConfig,
@@ -157,12 +238,26 @@ pub(super) async fn run_recall_stage(
     } else if let (Some(ep), Some(vs)) = (embedding_provider, vector_search) {
         let recall_stage = crate::recall::RecallStage::new(config.recall.clone())
             .with_deployment_target(deployment_target);
+        let recall_bridge = ProviderRecallBridge {
+            providers,
+            model: &config.generation.model,
+        };
 
         let recall_result_opt = if recall_timeout_secs > 0 {
             match tokio::time::timeout(
                 Duration::from_secs(u64::from(recall_timeout_secs)),
-                async { recall_stage.run(content, &config.id, ep, vs, budget) }
-                    .instrument(span.clone()),
+                async {
+                    recall_stage.run_with_recall_enhancements(
+                        content,
+                        &config.id,
+                        ep,
+                        vs,
+                        budget,
+                        Some(&recall_bridge),
+                        Some(&recall_bridge),
+                    )
+                }
+                .instrument(span.clone()),
             )
             .await
             {
@@ -178,7 +273,15 @@ pub(super) async fn run_recall_stage(
                 }
             }
         } else {
-            Some(recall_stage.run(content, &config.id, ep, vs, budget))
+            Some(recall_stage.run_with_recall_enhancements(
+                content,
+                &config.id,
+                ep,
+                vs,
+                budget,
+                Some(&recall_bridge),
+                Some(&recall_bridge),
+            ))
         };
 
         if let Some(result) = recall_result_opt {
@@ -379,7 +482,7 @@ pub(super) fn run_full_compact_stage(
     let (_request, preserved) =
         crate::compact::full::build_summary_request(&ctx.messages, &compact_config, prompt);
 
-    // TODO(#2261): spawn background task via task registry for model summarization.
+    // TODO(#2261) [deliberate-prudent]: spawn background task via task registry for model summarization.
     // For now, build a structural summary from message roles and content snippets.
     let summary = build_structural_summary(&ctx.messages, &compact_config);
 

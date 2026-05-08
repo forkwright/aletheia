@@ -78,6 +78,34 @@ pub(super) fn spawn_log_retention(log_dir: PathBuf, retention_days: u32, token: 
     );
 }
 
+/// Flush trace-ingest operational events into the knowledge store until shutdown.
+#[cfg(feature = "recall")]
+pub(super) fn spawn_trace_ingest_flush(
+    layer: episteme::trace_ingest::TraceIngestLayer,
+    store: std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
+    token: CancellationToken,
+) {
+    let span = tracing::info_span!("trace_ingest_flush");
+    tokio::spawn(
+        async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(30));
+            loop {
+                tokio::select! {
+                    biased;
+                    () = token.cancelled() => {
+                        layer.flush(&store);
+                        break;
+                    }
+                    _ = interval.tick() => {
+                        layer.flush(&store);
+                    }
+                }
+            }
+        }
+        .instrument(span),
+    );
+}
+
 /// Initialise the global tracing subscriber with dual output:
 ///
 /// - **Console**: human-readable (or JSON) at `log_level`, respecting
@@ -93,6 +121,7 @@ pub(super) fn init_tracing(
     log_dir: &Path,
     file_level: &str,
     redaction: &taxis::config::RedactionSettings,
+    trace_ingest: Option<episteme::trace_ingest::TraceIngestLayer>,
 ) -> Result<WorkerGuard> {
     // NOTE: Respects RUST_LOG env var; falls back to the CLI level.
     let console_filter = EnvFilter::try_from_default_env()
@@ -137,6 +166,7 @@ pub(super) fn init_tracing(
             .with(json_console)
             .with(text_console)
             .with(redacting)
+            .with(trace_ingest)
             .try_init()
             .whatever_context("failed to set global tracing subscriber")?;
     } else {
@@ -151,6 +181,7 @@ pub(super) fn init_tracing(
             .with(json_console)
             .with(text_console)
             .with(file_layer)
+            .with(trace_ingest)
             .try_init()
             .whatever_context("failed to set global tracing subscriber")?;
     }

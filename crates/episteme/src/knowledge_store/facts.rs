@@ -298,10 +298,11 @@ impl KnowledgeStore {
             ?[id, valid_from, content, nous_id, confidence, tier, valid_to,
               superseded_by, source_session_id, recorded_at,
               access_count, last_accessed_at, stability_hours, fact_type,
-              is_forgotten, forgotten_at, forget_reason] :=
+              is_forgotten, forgotten_at, forget_reason, scope, visibility] :=
                 *facts{id, valid_from, content, nous_id, confidence, tier,
                        valid_to, superseded_by, source_session_id, recorded_at,
-                       access_count, last_accessed_at, stability_hours, fact_type},
+                       access_count, last_accessed_at, stability_hours, fact_type,
+                       scope, visibility},
                 id = $id,
                 is_forgotten = true,
                 forgotten_at = $now,
@@ -309,7 +310,7 @@ impl KnowledgeStore {
             :put facts {id, valid_from => content, nous_id, confidence, tier,
                         valid_to, superseded_by, source_session_id, recorded_at,
                         access_count, last_accessed_at, stability_hours, fact_type,
-                        is_forgotten, forgotten_at, forget_reason}
+                        is_forgotten, forgotten_at, forget_reason, scope, visibility}
         ";
         let mut params = std::collections::BTreeMap::new();
         params.insert(
@@ -355,10 +356,11 @@ impl KnowledgeStore {
             ?[id, valid_from, content, nous_id, confidence, tier, valid_to,
               superseded_by, source_session_id, recorded_at,
               access_count, last_accessed_at, stability_hours, fact_type,
-              is_forgotten, forgotten_at, forget_reason] :=
+              is_forgotten, forgotten_at, forget_reason, scope, visibility] :=
                 *facts{id, valid_from, content, nous_id, confidence, tier,
                        valid_to, superseded_by, source_session_id, recorded_at,
-                       access_count, last_accessed_at, stability_hours, fact_type},
+                       access_count, last_accessed_at, stability_hours, fact_type,
+                       scope, visibility},
                 id = $id,
                 is_forgotten = false,
                 forgotten_at = null,
@@ -366,7 +368,7 @@ impl KnowledgeStore {
             :put facts {id, valid_from => content, nous_id, confidence, tier,
                         valid_to, superseded_by, source_session_id, recorded_at,
                         access_count, last_accessed_at, stability_hours, fact_type,
-                        is_forgotten, forgotten_at, forget_reason}
+                        is_forgotten, forgotten_at, forget_reason, scope, visibility}
         ";
         let mut params = std::collections::BTreeMap::new();
         params.insert(

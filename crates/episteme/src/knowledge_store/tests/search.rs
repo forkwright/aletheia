@@ -118,6 +118,25 @@ fn insert_embedding_and_search() {
 }
 
 #[test]
+fn search_enhanced_errors_when_every_variant_fails() {
+    let store = make_store();
+    let query = crate::knowledge_store::HybridQuery {
+        text: "rust".to_owned(),
+        embedding: vec![1.0],
+        seed_entities: Vec::new(),
+        limit: 3,
+        ef: 10,
+    };
+
+    let result = store.search_enhanced(&query, &["rust memory".to_owned()]);
+
+    assert!(
+        matches!(result, Err(crate::error::Error::EnhancedSearch { .. })),
+        "all failed enhanced-search variants must return typed error, got {result:?}"
+    );
+}
+
+#[test]
 fn search_vectors_empty_store_returns_empty() {
     let store = make_store();
     let results = store

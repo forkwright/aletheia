@@ -29,6 +29,8 @@ pub use search::VectorSearch;
 #[cfg(test)]
 use reranking::is_stopword;
 use reranking::{detect_gaps, discover_terminology};
+#[cfg(feature = "knowledge-store")]
+use search::vector_search_tiered;
 use search::{embed, vector_search};
 
 /// Output of the recall pipeline stage.
@@ -74,6 +76,9 @@ pub struct RecallStage {
     config: RecallConfig,
     /// Optional side-query selected IDs for pre-filtering before 6-factor scoring.
     side_query_ids: Option<HashSet<String>>,
+    /// Production side-query selector used to turn the raw recall manifest into
+    /// a prefilter for 6-factor scoring.
+    side_query_selector: episteme::side_query::SideQuerySelector,
     /// Data-sovereignty target: gates which facts may leave the instance
     /// through this recall pass (#3404, #3413). Defaults to
     /// [`DeploymentTarget::Cloud`] — the safe assumption so callers who do
@@ -116,6 +121,9 @@ impl RecallStage {
             engine,
             config,
             side_query_ids: None,
+            side_query_selector: episteme::side_query::SideQuerySelector::new(
+                episteme::side_query::SideQueryConfig::default(),
+            ),
             deployment_target: DeploymentTarget::Cloud,
             pinned_facts,
             late_inject_anchor,
@@ -205,9 +213,17 @@ impl RecallStage {
 
     /// Rank candidates, applying side-query pre-filter when configured.
     fn rank_candidates(&self, candidates: Vec<ScoredResult>) -> Vec<ScoredResult> {
-        match &self.side_query_ids {
-            Some(ids) => self.engine.rank_with_prefilter(candidates, ids),
-            None => self.engine.rank(candidates),
+        self.rank_candidates_with_side_ids(candidates, self.side_query_ids.as_ref())
+    }
+
+    fn rank_candidates_with_side_ids(
+        &self,
+        candidates: Vec<ScoredResult>,
+        side_ids: Option<&HashSet<String>>,
+    ) -> Vec<ScoredResult> {
+        match side_ids {
+            Some(ids) if !ids.is_empty() => self.engine.rank_with_prefilter(candidates, ids),
+            None | Some(_) => self.engine.rank(candidates),
         }
     }
 
@@ -280,6 +296,32 @@ impl RecallStage {
         vector_search: &dyn VectorSearch,
         remaining_budget: u64,
     ) -> error::Result<RecallStageResult> {
+        self.run_with_recall_enhancements(
+            query,
+            nous_id,
+            embedding_provider,
+            vector_search,
+            remaining_budget,
+            None,
+            None,
+        )
+    }
+
+    /// Run recall with production side-query and query-rewrite/tiered-search hooks.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "production recall needs independent provider hooks for side-query and rewrite"
+    )]
+    pub fn run_with_recall_enhancements(
+        &self,
+        query: &str,
+        nous_id: &str,
+        embedding_provider: &dyn EmbeddingProvider,
+        vector_search: &dyn VectorSearch,
+        remaining_budget: u64,
+        side_ranker: Option<&dyn episteme::side_query::SideQueryRanker>,
+        rewrite_provider: Option<&dyn episteme::query_rewrite::RewriteProvider>,
+    ) -> error::Result<RecallStageResult> {
         if !self.config.enabled {
             debug!("recall disabled");
             return Ok(RecallStageResult::empty());
@@ -292,6 +334,8 @@ impl RecallStage {
                 embedding_provider,
                 vector_search,
                 remaining_budget,
+                side_ranker,
+                rewrite_provider,
             )
         } else {
             self.run_single(
@@ -300,10 +344,16 @@ impl RecallStage {
                 embedding_provider,
                 vector_search,
                 remaining_budget,
+                side_ranker,
+                rewrite_provider,
             )
         }
     }
 
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "internal recall branch receives same enhancement hooks as public entry point"
+    )]
     fn run_single(
         &self,
         query: &str,
@@ -311,9 +361,20 @@ impl RecallStage {
         embedding_provider: &dyn EmbeddingProvider,
         vs: &dyn VectorSearch,
         remaining_budget: u64,
+        side_ranker: Option<&dyn episteme::side_query::SideQueryRanker>,
+        rewrite_provider: Option<&dyn episteme::query_rewrite::RewriteProvider>,
     ) -> error::Result<RecallStageResult> {
         let k = self.config.max_results * 3;
+        #[cfg(not(feature = "knowledge-store"))]
+        let _ = rewrite_provider;
         let query_vec = embed(query, embedding_provider)?;
+        #[cfg(feature = "knowledge-store")]
+        let raw = if let Some(provider) = rewrite_provider {
+            vector_search_tiered(vs, query, query_vec, k, provider)?
+        } else {
+            vector_search(vs, query_vec, k)?
+        };
+        #[cfg(not(feature = "knowledge-store"))]
         let raw = vector_search(vs, query_vec, k)?;
 
         if raw.is_empty() {
@@ -321,11 +382,19 @@ impl RecallStage {
             return Ok(RecallStageResult::empty());
         }
 
+        let side_ids = side_ranker.and_then(|ranker| self.side_query_ids(query, &raw, ranker));
         let candidates = self.build_candidates(raw, nous_id);
-        let ranked = self.rank_candidates(candidates);
+        let ranked = self.rank_candidates_with_side_ids(
+            candidates,
+            self.side_query_ids.as_ref().or(side_ids.as_ref()),
+        );
         Ok(self.finalize_results(ranked, remaining_budget, nous_id))
     }
 
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "internal recall branch receives same enhancement hooks as public entry point"
+    )]
     fn run_iterative(
         &self,
         query: &str,
@@ -333,10 +402,21 @@ impl RecallStage {
         embedding_provider: &dyn EmbeddingProvider,
         vs: &dyn VectorSearch,
         remaining_budget: u64,
+        side_ranker: Option<&dyn episteme::side_query::SideQueryRanker>,
+        rewrite_provider: Option<&dyn episteme::query_rewrite::RewriteProvider>,
     ) -> error::Result<RecallStageResult> {
         let k = self.config.max_results * 3;
+        #[cfg(not(feature = "knowledge-store"))]
+        let _ = rewrite_provider;
 
         let query_vec = embed(query, embedding_provider)?;
+        #[cfg(feature = "knowledge-store")]
+        let raw_cycle1 = if let Some(provider) = rewrite_provider {
+            vector_search_tiered(vs, query, query_vec, k, provider)?
+        } else {
+            vector_search(vs, query_vec, k)?
+        };
+        #[cfg(not(feature = "knowledge-store"))]
         let raw_cycle1 = vector_search(vs, query_vec, k)?;
 
         if raw_cycle1.is_empty() {
@@ -345,7 +425,9 @@ impl RecallStage {
         }
 
         let candidates_c1 = self.build_candidates(raw_cycle1.clone(), nous_id);
-        let ranked_c1 = self.engine.rank(candidates_c1);
+        let side_ids_c1 =
+            side_ranker.and_then(|ranker| self.side_query_ids(query, &raw_cycle1, ranker));
+        let ranked_c1 = self.rank_candidates_with_side_ids(candidates_c1, side_ids_c1.as_ref());
 
         let terms = discover_terminology(&ranked_c1, query);
         let gaps = detect_gaps(&ranked_c1);
@@ -396,6 +478,38 @@ impl RecallStage {
         let candidates = self.build_candidates(merged, nous_id);
         let ranked = self.rank_candidates(candidates);
         Ok(self.finalize_results(ranked, remaining_budget, nous_id))
+    }
+
+    fn side_query_ids(
+        &self,
+        query: &str,
+        raw: &[KnowledgeRecallResult],
+        ranker: &dyn episteme::side_query::SideQueryRanker,
+    ) -> Option<HashSet<String>> {
+        let headers = raw
+            .iter()
+            .enumerate()
+            .map(|(idx, result)| {
+                let description: String = result.content.chars().take(240).collect();
+                episteme::manifest::MemoryHeader::new(
+                    result.source_id.clone(),
+                    result.source_type.clone(),
+                    i64::try_from(raw.len().saturating_sub(idx)).unwrap_or(i64::MAX),
+                )
+                .with_description(description)
+            })
+            .collect();
+        let manifest = episteme::manifest::MemoryManifest::from_headers(headers);
+        match self.side_query_selector.select(query, &manifest, ranker) {
+            Ok(result) if !result.selected_ids.is_empty() => {
+                Some(result.selected_ids.into_iter().collect())
+            }
+            Ok(_) => None,
+            Err(e) => {
+                tracing::warn!(error = %e, "side-query recall ranker failed; continuing without prefilter");
+                None
+            }
+        }
     }
 
     fn finalize_results(
@@ -453,6 +567,7 @@ impl RecallStage {
         let combined: Vec<ScoredResult> = pinned.into_iter().chain(filtered).collect();
         let (results_injected, section, tokens, fact_ids) =
             self.format_within_budget(&combined, budget);
+        self.side_query_selector.mark_surfaced(&fact_ids);
 
         debug!(
             candidates_found,

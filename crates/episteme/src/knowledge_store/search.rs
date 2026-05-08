@@ -228,7 +228,15 @@ impl KnowledgeStore {
                 if let Some(scope_str) = row.first().and_then(|v| v.get_str())
                     && !scope_str.is_empty()
                 {
-                    result.scope = scope_str.parse::<crate::knowledge::MemoryScope>().ok();
+                    match scope_str.parse::<crate::knowledge::MemoryScope>() {
+                        Ok(scope) => result.scope = Some(scope),
+                        Err(error) => tracing::warn!(
+                            %error,
+                            fact_id = %result.source_id,
+                            scope = scope_str,
+                            "failed to parse recall result memory scope"
+                        ),
+                    }
                 }
                 if let Some(vis_str) = row.get(1).and_then(|v| v.get_str())
                     && !vis_str.is_empty()
@@ -424,7 +432,7 @@ impl KnowledgeStore {
     ///
     /// O(V * (log n * ef + Q*(log T + D))) where V is query variants. RRF merge
     /// across variants is O(V * R log R) where R is results per variant.
-    pub(crate) fn search_enhanced(
+    pub fn search_enhanced(
         &self,
         base_query: &HybridQuery,
         query_variants: &[String],
@@ -448,7 +456,10 @@ impl KnowledgeStore {
         }
 
         if results_per_query.is_empty() {
-            return Ok(vec![]);
+            return Err(crate::error::EnhancedSearchSnafu {
+                message: format!("{} variants failed", query_variants.len()),
+            }
+            .build());
         }
 
         Ok(rrf_merge(&results_per_query, 60.0))
@@ -463,7 +474,7 @@ impl KnowledgeStore {
     ///
     /// Best case O(log n * ef) for fast path. Worst case adds query rewriting
     /// O(RW) plus enhanced search O(V * `search_hybrid`) plus graph expansion O(E).
-    pub(crate) fn search_tiered(
+    pub fn search_tiered(
         &self,
         base_query: &HybridQuery,
         rewriter: &crate::query_rewrite::QueryRewriter,
@@ -488,7 +499,14 @@ impl KnowledgeStore {
             });
         }
 
-        let rewrite_result = rewriter.rewrite(&base_query.text, context, provider);
+        let rewrite_result = rewriter
+            .rewrite(&base_query.text, context, provider)
+            .map_err(|e| {
+                crate::error::QueryRewriteSnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })?;
         let enhanced_results = self.search_enhanced(base_query, &rewrite_result.variants)?;
         let sufficient = enhanced_results.len() >= config.enhanced_min_results
             && enhanced_results
@@ -517,6 +535,50 @@ impl KnowledgeStore {
             results: final_results,
             query_variants: Some(rewrite_result.variants),
             total_latency_ms: start.elapsed().as_millis().try_into().unwrap_or(u64::MAX),
+        })
+    }
+
+    /// Tiered search with hydrated recall rows for the production recall pipeline.
+    ///
+    /// This is the bridge from the low-level tiered retrieval orchestration
+    /// (which operates on IDs and RRF scores) to `RecallResult` records that
+    /// nous can score, filter, and inject.
+    pub fn search_tiered_for_recall(
+        &self,
+        base_query: &HybridQuery,
+        rewriter: &crate::query_rewrite::QueryRewriter,
+        provider: &dyn crate::query_rewrite::RewriteProvider,
+        context: Option<&str>,
+        config: &crate::query_rewrite::TieredSearchConfig,
+    ) -> crate::error::Result<
+        crate::query_rewrite::TieredSearchResult<crate::knowledge::RecallResult>,
+    > {
+        let tiered = self.search_tiered(base_query, rewriter, provider, context, config)?;
+        let mut recalled = Vec::with_capacity(tiered.results.len());
+        for result in &tiered.results {
+            for fact in self.read_facts_by_id(result.id.as_str())? {
+                if fact.lifecycle.is_forgotten || fact.lifecycle.superseded_by.is_some() {
+                    continue;
+                }
+                recalled.push(crate::knowledge::RecallResult {
+                    content: fact.content,
+                    distance: (1.0 - result.rrf_score).max(0.0),
+                    source_type: "fact".to_owned(),
+                    source_id: fact.id.as_str().to_owned(),
+                    sensitivity: fact.sensitivity,
+                    graph_importance: 0.0,
+                    scope: fact.scope,
+                    visibility: fact.visibility,
+                });
+                break;
+            }
+        }
+
+        Ok(crate::query_rewrite::TieredSearchResult {
+            tier: tiered.tier,
+            results: recalled,
+            query_variants: tiered.query_variants,
+            total_latency_ms: tiered.total_latency_ms,
         })
     }
 
@@ -598,41 +660,6 @@ impl KnowledgeStore {
         }
 
         graph_results
-    }
-
-    /// Async tiered search: wraps sync call in `spawn_blocking`.
-    ///
-    /// Note: the `RewriteProvider` must be `Send + Sync + 'static` for async usage.
-    ///
-    /// # Complexity
-    ///
-    /// Same as `search_tiered`: depends on tier reached.
-    #[instrument(skip(self, rewriter, provider, context, config))]
-    #[expect(
-        dead_code,
-        reason = "async wrapper for search_tiered; kept crate-private until first caller wires it in"
-    )]
-    pub(crate) async fn search_tiered_async(
-        self: &std::sync::Arc<Self>,
-        base_query: HybridQuery,
-        rewriter: std::sync::Arc<crate::query_rewrite::QueryRewriter>,
-        provider: std::sync::Arc<dyn crate::query_rewrite::RewriteProvider>,
-        context: Option<String>,
-        config: crate::query_rewrite::TieredSearchConfig,
-    ) -> crate::error::Result<crate::query_rewrite::TieredSearchResult<HybridResult>> {
-        use snafu::ResultExt;
-        let this = std::sync::Arc::clone(self);
-        tokio::task::spawn_blocking(move || {
-            this.search_tiered(
-                &base_query,
-                &rewriter,
-                provider.as_ref(),
-                context.as_deref(),
-                &config,
-            )
-        })
-        .await
-        .context(crate::error::JoinSnafu)?
     }
 
     /// Search for facts relevant to a query, as they existed at a specific time.

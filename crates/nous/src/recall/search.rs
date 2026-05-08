@@ -26,6 +26,19 @@ pub trait VectorSearch: Send + Sync {
         k: usize,
         ef: usize,
     ) -> error::Result<Vec<KnowledgeRecallResult>>;
+
+    /// Run tiered query-rewrite search when the backing store supports it.
+    #[cfg(feature = "knowledge-store")]
+    fn search_tiered(
+        &self,
+        _query: &str,
+        _query_vec: Vec<f32>,
+        _k: usize,
+        _ef: usize,
+        _rewrite_provider: &dyn episteme::query_rewrite::RewriteProvider,
+    ) -> Option<error::Result<Vec<KnowledgeRecallResult>>> {
+        None
+    }
 }
 
 // Trait implementations and adapter types are in a separate module
@@ -57,4 +70,24 @@ pub(super) fn vector_search(
         }
         .build()
     })
+}
+
+/// Run tiered search when available, otherwise fall back to vector search.
+#[cfg(feature = "knowledge-store")]
+pub(super) fn vector_search_tiered(
+    search: &dyn VectorSearch,
+    query: &str,
+    query_vec: Vec<f32>,
+    k: usize,
+    rewrite_provider: &dyn episteme::query_rewrite::RewriteProvider,
+) -> error::Result<Vec<KnowledgeRecallResult>> {
+    if let Some(result) = search.search_tiered(query, query_vec.clone(), k, 50, rewrite_provider) {
+        return result.map_err(|e| {
+            error::RecallSearchSnafu {
+                message: e.to_string(),
+            }
+            .build()
+        });
+    }
+    vector_search(search, query_vec, k)
 }
