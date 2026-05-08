@@ -144,3 +144,34 @@ pub const ENGLISH_PROBE_STOP_WORDS: &[&str] = &[
     "have", "been", "some", "they", "were", "what", "when", "your", "each", "make", "like", "into",
     "just", "over", "such", "than", "them", "then", "also", "more", "should",
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn all_stopword_lists_are_well_formed() {
+        for list in [ENGLISH_STOPWORDS, ENGLISH_PROBE_STOP_WORDS] {
+            assert!(!list.is_empty(), "list must be non-empty");
+            let set: std::collections::HashSet<_> = list.iter().copied().collect();
+            assert_eq!(set.len(), list.len(), "no duplicates");
+            for entry in list {
+                assert!(!entry.is_empty(), "no empty strings");
+                assert_eq!(entry.trim(), *entry, "no leading/trailing whitespace");
+                assert!(
+                    entry
+                        .chars()
+                        .all(|c| !c.is_alphabetic() || c.is_lowercase()),
+                    "expected lowercase: {entry}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn stopwords_consumer_shape() {
+        assert!(ENGLISH_STOPWORDS.contains(&"the"));
+        assert!(ENGLISH_STOPWORDS.contains(&"and"));
+        assert!(ENGLISH_PROBE_STOP_WORDS.contains(&"with"));
+    }
+}

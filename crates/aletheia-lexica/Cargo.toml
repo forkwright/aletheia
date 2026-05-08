@@ -5,7 +5,7 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-description = "Centralized pattern lists for Aletheia"
+description = "Static lexicon and data constants for Aletheia"
 
 [lints]
 workspace = true
