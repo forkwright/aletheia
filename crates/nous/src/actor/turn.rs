@@ -7,7 +7,7 @@ use std::time::Duration;
 use koina::id::{NousId, SessionId};
 use organon::types::ToolContext;
 use tokio::sync::mpsc;
-use tracing::{Instrument, debug, error, warn};
+use tracing::{Instrument, debug, error, info, warn};
 
 use aletheia_routing::RoutingDecision;
 use aletheia_routing::types::{ProviderId, TaskCategory, TurnOutcome};
@@ -40,6 +40,16 @@ impl NousActor {
         self.channel.status = NousLifecycle::Active;
         self.active_session = Some(session_key.to_owned());
         self.runtime.active_turn.store(true, Ordering::Release);
+
+        // WHY: reset consecutive-mistake brake on operator intervention (new turn).
+        // The brake is not a permanent terminator; any new user message clears it.
+        if let Some(session) = self.sessions.get_mut(session_key)
+            && session.brake_tripped
+        {
+            info!(session_key = %session_key, "brake reset by operator intervention");
+            session.consecutive_no_progress_count = 0;
+            session.brake_tripped = false;
+        }
         // WHY: record when the turn started so the health check can detect turns
         // stuck longer than `stuck_turn_timeout_secs`, even when active_turn is
         // true. Uses millis-since-started_at to avoid wrapping issues. (#3254)
@@ -99,6 +109,73 @@ impl NousActor {
         }
         self.runtime.active_turn.store(false, Ordering::Release);
         self.runtime.turn_started_at_ms.store(0, Ordering::Release);
+    }
+
+    /// Apply the consecutive-mistake brake to a turn result.
+    ///
+    /// Increments the global counter on no-progress turns, resets it on tool-use
+    /// turns, and increments per-tool-group counters for failed tools. When the
+    /// global limit is reached, the turn content is replaced with an intervention
+    /// message and the brake is tripped. The brake resets on the next user turn.
+    /// Closes #187.
+    pub(super) fn apply_mistake_brake(
+        &mut self,
+        session_key: &str,
+        result: &mut crate::error::Result<TurnResult>,
+    ) {
+        let Ok(turn_result) = result else { return };
+        let Some(session) = self.sessions.get_mut(session_key) else {
+            return;
+        };
+
+        if turn_result.tool_calls.is_empty() {
+            session.consecutive_no_progress_count += 1;
+        } else {
+            session.consecutive_no_progress_count = 0;
+            for tc in &turn_result.tool_calls {
+                if !tc.is_error
+                    && let Some(def) = koina::id::ToolName::new(&tc.name)
+                        .ok()
+                        .and_then(|n| self.services.tools.get_def(&n))
+                {
+                    for group in &def.groups {
+                        session.consecutive_mistake_counts.remove(group);
+                    }
+                }
+            }
+        }
+
+        for tc in &turn_result.tool_calls {
+            if tc.is_error
+                && let Some(def) = koina::id::ToolName::new(&tc.name)
+                    .ok()
+                    .and_then(|n| self.services.tools.get_def(&n))
+            {
+                for group in &def.groups {
+                    *session
+                        .consecutive_mistake_counts
+                        .entry(*group)
+                        .or_insert(0) += 1;
+                }
+            }
+        }
+
+        let limit = self.config.limits.consecutive_mistake_limit;
+        if session.consecutive_no_progress_count >= limit {
+            warn!(
+                session_key = %session_key,
+                count = session.consecutive_no_progress_count,
+                limit,
+                "consecutive no-progress brake fired"
+            );
+            turn_result.content = format!(
+                "[System: No progress detected for {} consecutive turns. \
+                 The agent has not used any tools. Please provide guidance \
+                 or clarification to continue.]",
+                session.consecutive_no_progress_count
+            );
+            session.brake_tripped = true;
+        }
     }
 
     /// Extract quality metrics from a turn result and feed them to the
@@ -200,7 +277,7 @@ impl NousActor {
     ) {
         self.mark_turn_active(&session_key);
 
-        let result = self
+        let mut result = self
             .execute_turn_with_panic_boundary(
                 &session_key,
                 session_id.as_deref(),
@@ -209,6 +286,7 @@ impl NousActor {
             )
             .await;
 
+        self.apply_mistake_brake(&session_key, &mut result);
         self.finalize_turn(&session_key, &content, &result).await;
 
         // WHY: ignore send error: caller may have dropped the receiver
@@ -236,7 +314,7 @@ impl NousActor {
 
         self.mark_turn_active(&session_key);
 
-        let result = self
+        let mut result = self
             .execute_streaming_turn_with_panic_boundary(
                 &session_key,
                 session_id.as_deref(),
@@ -246,6 +324,7 @@ impl NousActor {
             )
             .await;
 
+        self.apply_mistake_brake(&session_key, &mut result);
         self.finalize_turn(&session_key, &content, &result).await;
 
         // WHY: ignore send error: caller may have dropped the receiver

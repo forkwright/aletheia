@@ -1,5 +1,14 @@
 //! (Split from `actor/tests.rs` — see parent mod.)
 
+#![expect(
+    clippy::indexing_slicing,
+    reason = "test: indices are valid after asserting len"
+)]
+#![expect(
+    clippy::unwrap_used,
+    reason = "test assertions may unwrap after prior checks"
+)]
+
 use super::*;
 
 #[test]
@@ -177,4 +186,89 @@ fn record_background_panic_does_not_enter_degraded() {
         "background panics must not enter degraded mode"
     );
     assert_eq!(actor.runtime.background_panic_count, 10);
+}
+
+// ── turn.rs: apply_mistake_brake ─────────────────────────────────────────────
+
+#[test]
+fn apply_mistake_brake_increments_on_no_progress() {
+    let (mut actor, _tx, _dir) = make_test_actor(PipelineConfig::default());
+    actor.sessions.insert(
+        "s".to_owned(),
+        SessionState::new("ses-1".to_owned(), "s".to_owned(), &test_config()),
+    );
+    let mut result = Ok(make_turn_result(50, vec![]));
+    actor.apply_mistake_brake("s", &mut result);
+    assert_eq!(actor.sessions["s"].consecutive_no_progress_count, 1);
+    assert!(!actor.sessions["s"].brake_tripped);
+}
+
+#[test]
+fn apply_mistake_brake_fires_at_limit() {
+    let (mut actor, _tx, _dir) = make_test_actor(PipelineConfig::default());
+    actor.sessions.insert(
+        "s".to_owned(),
+        SessionState::new("ses-1".to_owned(), "s".to_owned(), &test_config()),
+    );
+    actor.config.limits.consecutive_mistake_limit = 3;
+
+    for _ in 0..2 {
+        let mut result = Ok(make_turn_result(50, vec![]));
+        actor.apply_mistake_brake("s", &mut result);
+    }
+    assert_eq!(actor.sessions["s"].consecutive_no_progress_count, 2);
+    assert!(!actor.sessions["s"].brake_tripped);
+
+    let mut result = Ok(make_turn_result(50, vec![]));
+    actor.apply_mistake_brake("s", &mut result);
+    assert_eq!(actor.sessions["s"].consecutive_no_progress_count, 3);
+    assert!(actor.sessions["s"].brake_tripped);
+    assert!(
+        result.unwrap().content.contains("No progress detected"),
+        "turn content should contain intervention message"
+    );
+}
+
+#[test]
+fn apply_mistake_brake_resets_on_tool_use() {
+    let (mut actor, _tx, _dir) = make_test_actor(PipelineConfig::default());
+    actor.sessions.insert(
+        "s".to_owned(),
+        SessionState::new("ses-1".to_owned(), "s".to_owned(), &test_config()),
+    );
+    actor.config.limits.consecutive_mistake_limit = 3;
+
+    for _ in 0..2 {
+        let mut result = Ok(make_turn_result(50, vec![]));
+        actor.apply_mistake_brake("s", &mut result);
+    }
+    assert_eq!(actor.sessions["s"].consecutive_no_progress_count, 2);
+
+    let mut result = Ok(make_turn_result(
+        50,
+        vec![make_tool_call("read_file", false)],
+    ));
+    actor.apply_mistake_brake("s", &mut result);
+    assert_eq!(actor.sessions["s"].consecutive_no_progress_count, 0);
+    assert!(!actor.sessions["s"].brake_tripped);
+}
+
+#[test]
+fn mark_turn_active_resets_brake_when_tripped() {
+    let (mut actor, _tx, _dir) = make_test_actor(PipelineConfig::default());
+    actor.sessions.insert(
+        "s".to_owned(),
+        SessionState::new("ses-1".to_owned(), "s".to_owned(), &test_config()),
+    );
+    actor.sessions.get_mut("s").unwrap().brake_tripped = true;
+    actor
+        .sessions
+        .get_mut("s")
+        .unwrap()
+        .consecutive_no_progress_count = 5;
+
+    actor.mark_turn_active("s");
+
+    assert!(!actor.sessions["s"].brake_tripped);
+    assert_eq!(actor.sessions["s"].consecutive_no_progress_count, 0);
 }

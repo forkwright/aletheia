@@ -26,6 +26,10 @@ fn test_config() -> NousConfig {
             model: "test-model".to_owned(),
             ..crate::config::NousGenerationConfig::default()
         },
+        limits: crate::config::NousLimits {
+            consecutive_mistake_limit: 100,
+            ..crate::config::NousLimits::default()
+        },
         ..NousConfig::default()
     }
 }

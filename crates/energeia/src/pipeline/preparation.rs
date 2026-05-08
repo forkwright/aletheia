@@ -146,7 +146,7 @@ impl PipelineStage for PreparationStage {
             });
         }
         #[cfg(not(feature = "storage-fjall"))]
-        let _ = ();
+        let () = ();
 
         ctx.record_stage_latency(self.name(), t0.elapsed());
         Ok(())

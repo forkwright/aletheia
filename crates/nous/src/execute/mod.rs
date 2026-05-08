@@ -2,6 +2,7 @@
 
 mod dispatch;
 mod resolve;
+mod spawn_guard;
 
 #[cfg(test)]
 mod tests;
@@ -185,12 +186,18 @@ pub async fn execute(
         total_usage.cache_write_tokens += usage.cache_write_tokens;
         total_usage.llm_calls += 1;
 
-        let extracted = process_response_blocks(&response_content);
+        let mut extracted = process_response_blocks(&response_content);
         used_server_web_search |= extracted.saw_server_web_search;
         used_server_code_execution |= extracted.saw_server_code_execution;
         final_content = extracted.text_parts.join("");
         reasoning_parts.extend(extracted.reasoning_parts);
         final_stop_reason = stop_reason.to_string();
+
+        let mut denied_blocks: Vec<ContentBlock> = Vec::new();
+
+        // WHY: spawn-class isolation guard — spawn tools must be the last tool in a turn.
+        // If a spawn tool is followed by other tools, truncate and inject errors.
+        spawn_guard::enforce_spawn_isolation(&mut extracted.tool_uses, &mut denied_blocks, tools);
 
         // WHY: only break on no local tool uses: server tool results don't require client tool_result
         if extracted.tool_uses.is_empty() || stop_reason != StopReason::ToolUse {
@@ -218,7 +225,6 @@ pub async fn execute(
 
         // WHY: belt-and-suspenders enforcement of role tool restrictions at execution time,
         // in addition to the presentation-level filtering above
-        let mut denied_blocks: Vec<ContentBlock> = Vec::new();
         let effective_tool_uses: Vec<_> = if let Some(allowlist) = &config.tool_allowlist {
             let (allowed, denied): (Vec<_>, Vec<_>) = extracted
                 .tool_uses
@@ -549,12 +555,17 @@ pub async fn execute_streaming(
         total_usage.cache_write_tokens += usage.cache_write_tokens;
         total_usage.llm_calls += 1;
 
-        let extracted = process_response_blocks(&response_content);
+        let mut extracted = process_response_blocks(&response_content);
         used_server_web_search |= extracted.saw_server_web_search;
         used_server_code_execution |= extracted.saw_server_code_execution;
         final_content = extracted.text_parts.join("");
         reasoning_parts.extend(extracted.reasoning_parts);
         final_stop_reason = stop_reason.to_string();
+
+        let mut denied_blocks: Vec<ContentBlock> = Vec::new();
+
+        // WHY: spawn-class isolation guard — spawn tools must be the last tool in a turn.
+        spawn_guard::enforce_spawn_isolation(&mut extracted.tool_uses, &mut denied_blocks, tools);
 
         if extracted.tool_uses.is_empty() || stop_reason != StopReason::ToolUse {
             break;
@@ -576,7 +587,7 @@ pub async fn execute_streaming(
             cache_breakpoint: false,
         });
 
-        let mut denied_blocks: Vec<ContentBlock> = Vec::new();
+        // WHY: belt-and-suspenders enforcement of role tool restrictions at execution time
         let effective_tool_uses: Vec<_> = if let Some(allowlist) = &config.tool_allowlist {
             let (allowed, denied): (Vec<_>, Vec<_>) = extracted
                 .tool_uses

@@ -1,8 +1,10 @@
 //! Session manager: creates, finds, and manages agent sessions.
 
+use std::collections::HashMap;
 use std::time::Instant;
 
 use koina::ulid::Ulid;
+use organon::types::ToolGroupId;
 use tracing::{info, instrument};
 
 use crate::config::NousConfig;
@@ -32,6 +34,12 @@ pub struct SessionState {
     pub bootstrap_hash: Option<String>,
     /// Last time the session was accessed. Used for LRU eviction.
     pub last_accessed: Instant,
+    /// Consecutive turns with no tool calls (global no-progress counter).
+    pub consecutive_no_progress_count: u32,
+    /// Per-tool-group consecutive mistake counters.
+    pub consecutive_mistake_counts: HashMap<ToolGroupId, u32>,
+    /// Whether the consecutive-mistake brake is currently tripped for this session.
+    pub brake_tripped: bool,
 }
 
 impl SessionState {
@@ -52,6 +60,9 @@ impl SessionState {
             bootstrap_hash: None,
             cumulative_tokens: 0,
             last_accessed: Instant::now(),
+            consecutive_no_progress_count: 0,
+            consecutive_mistake_counts: HashMap::new(),
+            brake_tripped: false,
         }
     }
 
