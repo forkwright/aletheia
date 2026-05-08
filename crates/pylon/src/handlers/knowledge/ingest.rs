@@ -190,6 +190,7 @@ pub async fn ingest(
 }
 
 /// Truncate a string to `max_len` bytes, adding an ellipsis if truncated.
+#[cfg(feature = "knowledge-store")]
 fn truncate(s: &str, max_len: usize) -> String {
     if s.len() <= max_len {
         s.to_owned()

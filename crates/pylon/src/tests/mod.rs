@@ -20,6 +20,7 @@ mod handler_doc;
 mod health;
 mod helpers;
 mod idempotency;
+mod insights;
 mod knowledge;
 mod message;
 mod middleware;

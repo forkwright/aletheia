@@ -22,6 +22,8 @@ pub mod config;
 pub mod events;
 /// System health and readiness check.
 pub mod health;
+/// Meta-insights: agent performance, quality metrics, system journal.
+pub mod insights;
 /// Knowledge graph browsing and management.
 pub mod knowledge;
 /// Prometheus metrics exposition endpoint.
