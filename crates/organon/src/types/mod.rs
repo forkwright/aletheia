@@ -7,7 +7,7 @@ pub use context::{ServerToolConfig, ToolContext, ToolServices};
 pub use services::{
     BlackboardEntry, BlackboardStore, CrossNousService, DatalogResult, FactSummary,
     KnowledgeSearchService, MemoryResult, MessageService, NoteEntry, NoteStore, PlanningService,
-    SpawnRequest, SpawnResult, SpawnService,
+    SpawnRequest, SpawnResult, SpawnService, WorkingCheckpoint, WorkingCheckpointStore,
 };
 
 use indexmap::IndexMap;

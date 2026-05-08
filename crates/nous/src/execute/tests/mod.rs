@@ -62,6 +62,7 @@ fn test_tool_ctx() -> ToolContext {
     ToolContext {
         nous_id: NousId::new("test-agent").expect("valid"),
         session_id: SessionId::new(),
+        turn_number: 0,
         workspace: PathBuf::from("/tmp/test"),
         allowed_roots: vec![PathBuf::from("/tmp")],
         services: None,

@@ -146,6 +146,7 @@ fn test_ctx() -> ToolContext {
     ToolContext {
         nous_id: NousId::new("test-agent").expect("valid"),
         session_id: SessionId::new(),
+        turn_number: 0,
         workspace: PathBuf::from("/tmp/test"),
         allowed_roots: vec![PathBuf::from("/tmp")],
         services: None,
@@ -162,9 +163,11 @@ fn ctx_with_services(
     ToolContext {
         nous_id: NousId::new("test-agent").expect("valid"),
         session_id: SessionId::new(),
+        turn_number: 0,
         workspace: PathBuf::from("/tmp/test"),
         allowed_roots: vec![PathBuf::from("/tmp")],
         services: Some(Arc::new(ToolServices {
+            working_checkpoint_store: None,
             cross_nous: None,
             messenger: None,
             note_store: Some(note_store),
@@ -453,6 +456,7 @@ async fn blackboard_delete_only_author() {
     let other_ctx = ToolContext {
         nous_id: NousId::new("other-agent").expect("valid"),
         session_id: SessionId::new(),
+        turn_number: 0,
         workspace: PathBuf::from("/tmp/test"),
         allowed_roots: vec![PathBuf::from("/tmp")],
         services: ctx.services.clone(),

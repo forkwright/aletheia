@@ -12,6 +12,8 @@ async fn before_query_returns_continue() {
     let mut ctx = QueryContext {
         pipeline: &mut pipeline,
         nous_id: "test",
+        session_id: "ses-test",
+        turn_number: 1,
         user_message: "hello",
     };
 
@@ -30,7 +32,10 @@ async fn on_turn_complete_returns_continue() {
     let ctx = TurnContext {
         result: &turn_result,
         nous_id: "test",
+        session_id: "ses-test",
+        turn_number: 1,
         session_tokens: 150,
+        reinject_identity: false,
     };
 
     let result = hook.on_turn_complete(&ctx).await;
@@ -71,11 +76,11 @@ fn register_all_builtins_from_default_config() {
     let dir = tempfile::tempdir().expect("create temp dir");
     let mut registry = HookRegistry::new();
     let config = HookConfig::default();
-    register_builtin_hooks(&mut registry, &config, dir.path());
+    register_builtin_hooks(&mut registry, &config, dir.path(), None);
     assert_eq!(
         registry.len(),
-        5,
-        "default config should register 5 built-in hooks (cost, scope, correction_injector, correction_detector, audit)"
+        6,
+        "default config should register 6 built-in hooks (cost, scope, correction_injector, correction_detector, working_checkpoint, audit)"
     );
 }
 
@@ -88,9 +93,10 @@ fn disabling_hooks_reduces_count() {
         scope_enforcement_enabled: false,
         correction_hooks_enabled: false,
         audit_logging_enabled: true,
+        working_checkpoint_enabled: false,
         turn_token_budget: 0,
     };
-    register_builtin_hooks(&mut registry, &config, dir.path());
+    register_builtin_hooks(&mut registry, &config, dir.path(), None);
     assert_eq!(
         registry.len(),
         1,
@@ -107,9 +113,10 @@ fn all_hooks_disabled_gives_empty_registry() {
         scope_enforcement_enabled: false,
         correction_hooks_enabled: false,
         audit_logging_enabled: false,
+        working_checkpoint_enabled: false,
         turn_token_budget: 0,
     };
-    register_builtin_hooks(&mut registry, &config, dir.path());
+    register_builtin_hooks(&mut registry, &config, dir.path(), None);
     assert_eq!(
         registry.len(),
         0,
@@ -143,7 +150,7 @@ use crate::hooks::builtins::register_builtin_hooks;
 async fn full_hook_lifecycle_with_builtins() {
     let dir = tempfile::tempdir().expect("create temp dir");
     let mut registry = HookRegistry::new();
-    register_builtin_hooks(&mut registry, &HookConfig::default(), dir.path());
+    register_builtin_hooks(&mut registry, &HookConfig::default(), dir.path(), None);
 
     // before_query should succeed
     let mut pipeline = PipelineContext {
@@ -154,6 +161,8 @@ async fn full_hook_lifecycle_with_builtins() {
     let mut query_ctx = QueryContext {
         pipeline: &mut pipeline,
         nous_id: "test-agent",
+        session_id: "ses-test",
+        turn_number: 1,
         user_message: "hello",
     };
     let result = registry.run_before_query(&mut query_ctx).await;
@@ -184,7 +193,10 @@ async fn full_hook_lifecycle_with_builtins() {
     let turn_ctx = TurnContext {
         result: &turn_result,
         nous_id: "test-agent",
+        session_id: "ses-test",
+        turn_number: 1,
         session_tokens: 150,
+        reinject_identity: false,
     };
     registry.run_on_turn_complete(&turn_ctx).await;
 }
@@ -194,7 +206,7 @@ async fn scope_enforcement_denies_through_registry() {
     let dir = tempfile::tempdir().expect("create temp dir");
     let allowlist = vec!["read".to_owned()];
     let mut registry = HookRegistry::new();
-    register_builtin_hooks(&mut registry, &HookConfig::default(), dir.path());
+    register_builtin_hooks(&mut registry, &HookConfig::default(), dir.path(), None);
 
     let usage = TurnUsage::default();
     let tool_ctx = ToolHookContext {
@@ -221,9 +233,10 @@ async fn cost_control_denies_through_registry() {
         scope_enforcement_enabled: false,
         correction_hooks_enabled: false,
         audit_logging_enabled: false,
+        working_checkpoint_enabled: false,
     };
     let mut registry = HookRegistry::new();
-    register_builtin_hooks(&mut registry, &config, dir.path());
+    register_builtin_hooks(&mut registry, &config, dir.path(), None);
 
     let usage = TurnUsage {
         input_tokens: 80,

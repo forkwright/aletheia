@@ -4,13 +4,16 @@ mod audit_logging;
 pub(crate) mod correction;
 mod cost_control;
 mod scope_enforcement;
+mod working_checkpoint;
 
 pub(crate) use audit_logging::AuditLoggingHook;
 pub(crate) use correction::{CorrectionDetector, CorrectionInjector};
 pub(crate) use cost_control::CostControlHook;
 pub(crate) use scope_enforcement::ScopeEnforcementHook;
+pub(crate) use working_checkpoint::WorkingCheckpointInjector;
 
 use std::path::Path;
+use std::sync::Arc;
 
 use super::registry::HookRegistry;
 use crate::config::HookConfig;
@@ -21,11 +24,14 @@ use crate::config::HookConfig;
 /// prevent any further processing. Scope enforcement (20) runs next
 /// to block disallowed tools before execution. Correction injector (30)
 /// runs after scope enforcement so corrections cannot bypass scope rules.
-/// Correction detector (90) runs late in `on_turn_complete` since it only
-/// logs. Audit logging (100) runs last to capture the final state of the turn.
+/// Working checkpoint injector (40) runs after corrections so operator
+/// intent still takes precedence. Correction detector (90) runs late in
+/// `on_turn_complete` since it only logs. Audit logging (100) runs last
+/// to capture the final state of the turn.
 pub(crate) const COST_CONTROL_PRIORITY: i32 = 10;
 pub(crate) const SCOPE_ENFORCEMENT_PRIORITY: i32 = 20;
 pub(crate) const CORRECTION_INJECTOR_PRIORITY: i32 = 30;
+pub(crate) const WORKING_CHECKPOINT_PRIORITY: i32 = 40;
 pub(crate) const CORRECTION_DETECTOR_PRIORITY: i32 = 90;
 pub(crate) const AUDIT_LOGGING_PRIORITY: i32 = 100;
 
@@ -33,10 +39,13 @@ pub(crate) const AUDIT_LOGGING_PRIORITY: i32 = 100;
 ///
 /// `workspace` is the agent's workspace directory (e.g. `oikos.nous_dir(id)`).
 /// Required for hooks that persist state to the filesystem.
+/// `working_checkpoint_store` is an optional shared store for agent-curated
+/// working checkpoints.
 pub(crate) fn register_builtin_hooks(
     registry: &mut HookRegistry,
     config: &HookConfig,
     workspace: &Path,
+    working_checkpoint_store: Option<Arc<dyn organon::types::WorkingCheckpointStore>>,
 ) {
     if config.cost_control_enabled {
         registry.register(
@@ -57,6 +66,13 @@ pub(crate) fn register_builtin_hooks(
         registry.register(
             CORRECTION_DETECTOR_PRIORITY,
             Box::new(CorrectionDetector::new(workspace.to_path_buf())),
+        );
+    }
+
+    if config.working_checkpoint_enabled {
+        registry.register(
+            WORKING_CHECKPOINT_PRIORITY,
+            Box::new(WorkingCheckpointInjector::new(working_checkpoint_store)),
         );
     }
 

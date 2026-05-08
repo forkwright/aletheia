@@ -100,6 +100,7 @@ pub struct ToolServices {
     pub spawn: Option<Arc<dyn SpawnService>>,
     pub planning: Option<Arc<dyn PlanningService>>,
     pub knowledge: Option<Arc<dyn KnowledgeSearchService>>,
+    pub working_checkpoint_store: Option<Arc<dyn crate::types::WorkingCheckpointStore>>,
     pub http_client: reqwest::Client,
     /// In-memory vault for session-scoped secrets (AWS SSO keys, API tokens, etc.).
     ///
@@ -123,6 +124,10 @@ impl std::fmt::Debug for ToolServices {
             .field("spawn", &self.spawn.is_some())
             .field("planning", &self.planning.is_some())
             .field("knowledge", &self.knowledge.is_some())
+            .field(
+                "working_checkpoint_store",
+                &self.working_checkpoint_store.is_some(),
+            )
             .field("secret_vault_len", &self.secret_vault.len())
             .field("lazy_tool_catalog_len", &self.lazy_tool_catalog.len())
             .field("server_tool_config", &self.server_tool_config)
@@ -137,6 +142,8 @@ pub struct ToolContext {
     pub nous_id: NousId,
     /// Current session.
     pub session_id: SessionId,
+    /// Current turn number within the session.
+    pub turn_number: u64,
     /// Agent workspace root.
     pub workspace: PathBuf,
     /// Allowed filesystem roots for sandboxing.

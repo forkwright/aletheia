@@ -344,6 +344,7 @@ mod tests {
         ToolContext {
             nous_id: NousId::new("test-agent").expect("valid"),
             session_id: SessionId::new(),
+            turn_number: 0,
             workspace: PathBuf::from("/tmp/test"),
             allowed_roots: vec![PathBuf::from("/tmp")],
             services: None,
@@ -357,6 +358,7 @@ mod tests {
         ToolContext {
             nous_id: NousId::new("test-agent").expect("valid"),
             session_id: SessionId::new(),
+            turn_number: 0,
             workspace: PathBuf::from("/tmp/test"),
             allowed_roots: vec![PathBuf::from("/tmp")],
             services: Some(Arc::new(services)),
@@ -539,6 +541,7 @@ mod tests {
         install_crypto_provider();
         let messenger = Arc::new(MockMessenger::default());
         let ctx = mock_ctx_with_services(ToolServices {
+            working_checkpoint_store: None,
             cross_nous: None,
             note_store: None,
             blackboard_store: None,
@@ -572,6 +575,7 @@ mod tests {
         let messenger = Arc::new(MockMessenger::default());
         let messenger_ref = Arc::clone(&messenger);
         let ctx = mock_ctx_with_services(ToolServices {
+            working_checkpoint_store: None,
             cross_nous: None,
             note_store: None,
             blackboard_store: None,
@@ -620,6 +624,7 @@ mod tests {
         let cross = Arc::new(MockCrossNous::default());
         let cross_ref = Arc::clone(&cross);
         let ctx = mock_ctx_with_services(ToolServices {
+            working_checkpoint_store: None,
             cross_nous: Some(cross),
             messenger: None,
             note_store: None,
@@ -666,6 +671,7 @@ mod tests {
         let cross = Arc::new(MockCrossNous::default());
         let cross_ref = Arc::clone(&cross);
         let ctx = mock_ctx_with_services(ToolServices {
+            working_checkpoint_store: None,
             cross_nous: Some(cross),
             messenger: None,
             note_store: None,
@@ -701,6 +707,7 @@ mod tests {
         let cross = Arc::new(MockCrossNous::default());
         *cross.ask_reply.lock().unwrap() = Some(Ok("the answer is 42".to_owned()));
         let ctx = mock_ctx_with_services(ToolServices {
+            working_checkpoint_store: None,
             cross_nous: Some(cross),
             messenger: None,
             note_store: None,
@@ -735,6 +742,7 @@ mod tests {
         let cross = Arc::new(MockCrossNous::default());
         *cross.ask_reply.lock().unwrap() = Some(Err("timed out after 120s".to_owned()));
         let ctx = mock_ctx_with_services(ToolServices {
+            working_checkpoint_store: None,
             cross_nous: Some(cross),
             messenger: None,
             note_store: None,

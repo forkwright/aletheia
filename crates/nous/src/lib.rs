@@ -83,5 +83,7 @@ pub mod tuning;
 pub mod uncertainty;
 /// User-facing error formatting for display in chat responses.
 pub mod user_error;
+/// Working-memory checkpoint persistence.
+pub mod working_memory;
 /// Working state management: task stack, focus context, wait state.
 pub mod working_state;

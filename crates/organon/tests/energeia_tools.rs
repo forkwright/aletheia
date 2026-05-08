@@ -90,6 +90,7 @@ fn make_ctx() -> ToolContext {
     ToolContext {
         nous_id: NousId::new("test").unwrap(),
         session_id: SessionId::new(),
+        turn_number: 0,
         workspace: std::path::PathBuf::from("/tmp"),
         allowed_roots: vec![std::path::PathBuf::from("/tmp")],
         services: None,

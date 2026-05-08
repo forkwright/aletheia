@@ -229,3 +229,4 @@ mod cost_and_scope;
 mod new_hooks_tests;
 mod registry_tests;
 mod trait_tests;
+mod working_checkpoint;

@@ -18,6 +18,8 @@ fn default_before_query_returns_continue() {
     let mut ctx = QueryContext {
         pipeline: &mut pipeline,
         nous_id: "test",
+        session_id: "ses-test",
+        turn_number: 1,
         user_message: "hello",
     };
     let result = rt.block_on(hook.before_query(&mut ctx));
@@ -44,7 +46,10 @@ fn default_on_turn_complete_returns_continue() {
     let ctx = TurnContext {
         result: &result,
         nous_id: "test",
+        session_id: "ses-test",
+        turn_number: 1,
         session_tokens: 0,
+        reinject_identity: false,
     };
     let hook_result = rt.block_on(hook.on_turn_complete(&ctx));
     assert_eq!(

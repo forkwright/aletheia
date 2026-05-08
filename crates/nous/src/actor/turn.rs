@@ -538,6 +538,7 @@ impl NousActor {
         let tool_ctx = ToolContext {
             nous_id,
             session_id,
+            turn_number: session.turn,
             workspace: self.services.oikos.nous_dir(&self.id),
             allowed_roots: vec![self.services.oikos.root().to_path_buf()],
             services: self.services.tool_services.clone(),
@@ -554,10 +555,16 @@ impl NousActor {
         // WHY: create hook registry from config so hooks run inside the spawned pipeline task
         let mut hook_registry = crate::hooks::registry::HookRegistry::new();
         let workspace = self.services.oikos.nous_dir(&self.id);
+        let working_checkpoint_store = self
+            .services
+            .tool_services
+            .as_ref()
+            .and_then(|ts| ts.working_checkpoint_store.clone());
         crate::hooks::builtins::register_builtin_hooks(
             &mut hook_registry,
             &self.config.hooks,
             &workspace,
+            working_checkpoint_store,
         );
 
         let oikos = Arc::clone(&self.services.oikos);

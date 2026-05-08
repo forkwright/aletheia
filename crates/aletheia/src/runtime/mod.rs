@@ -554,6 +554,7 @@ impl RuntimeBuilder {
         let knowledge_search: Option<Arc<dyn organon::types::KnowledgeSearchService>> = None;
 
         let tool_services = Arc::new(ToolServices {
+            working_checkpoint_store: None,
             cross_nous,
             messenger,
             note_store,

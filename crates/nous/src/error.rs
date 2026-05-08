@@ -273,6 +273,14 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// Working checkpoint store error.
+    #[snafu(display("working checkpoint store error: {message}"))]
+    WorkingCheckpointStore {
+        message: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// Model cited a receipt not present in the ledger or with mismatched HMAC.
     #[snafu(display("hallucination detected: {details}"))]
     HallucinationDetected {
@@ -321,6 +329,7 @@ impl koina::error_class::Classifiable for Error {
             Error::PipelinePanic { .. } => ErrorClass::Permanent,
             Error::CompetenceStore { .. } => ErrorClass::Permanent,
             Error::UncertaintyStore { .. } => ErrorClass::Permanent,
+            Error::WorkingCheckpointStore { .. } => ErrorClass::Permanent,
             Error::RoleContract { .. } => ErrorClass::Permanent,
             Error::RecipeLoading { .. } => ErrorClass::Permanent,
             Error::HallucinationDetected { .. } => ErrorClass::Permanent,
