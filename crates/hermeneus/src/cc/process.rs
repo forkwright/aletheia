@@ -7,7 +7,6 @@ use std::path::PathBuf;
 use std::process::Stdio;
 use std::time::Duration;
 
-use koina::system::{Environment, RealSystem};
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWriteExt, BufReader};
 use tokio::process::Command;
 use tracing::{debug, warn};
@@ -40,6 +39,7 @@ const MAX_SYSTEM_PROMPT_BYTES: usize = 100 * 1024; // 100 KB
 ///
 /// Separated from I/O so it can be unit-tested without touching the real filesystem
 /// or the process environment.
+#[cfg(test)]
 fn parse_oauth_token_from_json(content: &str) -> std::io::Result<String> {
     let parsed: serde_json::Value =
         serde_json::from_str(content).map_err(|e| std::io::Error::other(e.to_string()))?;
@@ -54,18 +54,28 @@ fn parse_oauth_token_from_json(content: &str) -> std::io::Result<String> {
         .ok_or_else(|| std::io::Error::other("no accessToken in credentials"))
 }
 
-/// Read the OAuth access token from CC's credential file.
-///
-/// WHY: CC's `--bare` mode disables OAuth. Instead of `--bare`, we inject
-/// the token via `CLAUDE_CODE_OAUTH_TOKEN` env var, which CC accepts as an
-/// override even without bare mode.
-fn read_oauth_token() -> std::io::Result<String> {
-    let home = RealSystem
-        .var("HOME")
-        .ok_or_else(|| std::io::Error::other("HOME is not set"))?;
-    let path = std::path::Path::new(&home).join(".claude/.credentials.json");
-    let content = std::fs::read_to_string(&path)?;
-    parse_oauth_token_from_json(&content)
+fn scrub_cc_auth_env(cmd: &mut Command) {
+    // WHY: Clear auth-related env vars so the CLI uses its own credential store.
+    // The parent process may have ANTHROPIC_AUTH_TOKEN or CLAUDE_CODE_OAUTH_TOKEN
+    // set (e.g. from a systemd EnvironmentFile). If the CLI inherits these, it
+    // can send raw OAuth tokens to the API, which rejects them with 401. The CLI
+    // handles OAuth exchange correctly through its own credential management.
+    cmd.env_remove("ANTHROPIC_AUTH_TOKEN")
+        .env_remove("ANTHROPIC_API_KEY")
+        .env_remove("CLAUDE_CODE_OAUTH_TOKEN");
+}
+
+fn ensure_max_tokens_supported(max_tokens: u32) -> Result<()> {
+    if max_tokens == 0 {
+        return Ok(());
+    }
+
+    Err(error::ApiRequestSnafu {
+        message: format!(
+            "CC subprocess cannot enforce max_tokens={max_tokens}: claude CLI does not expose a max output token flag"
+        ),
+    }
+    .build())
 }
 
 /// Outcome of a CC subprocess invocation.
@@ -116,9 +126,11 @@ pub(crate) async fn run_completion(
     model: &str,
     system_prompt: Option<&str>,
     prompt: &str,
-    _max_tokens: u32,
+    max_tokens: u32,
     timeout: Duration,
 ) -> Result<CcOutput> {
+    ensure_max_tokens_supported(max_tokens)?;
+
     let mut cmd = Command::new(cc_binary);
     cmd.arg("-p")
         .arg("--verbose")
@@ -141,14 +153,7 @@ pub(crate) async fn run_completion(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
-    // WHY: Clear auth-related env vars so the CLI uses its own credential store.
-    // The parent process may have ANTHROPIC_AUTH_TOKEN or CLAUDE_CODE_OAUTH_TOKEN
-    // set (e.g. from a systemd EnvironmentFile). If the CLI inherits these, it
-    // sends the raw OAuth token to the API, which rejects it with 401. The CLI
-    // handles OAuth exchange correctly through its own credential management.
-    cmd.env_remove("ANTHROPIC_AUTH_TOKEN")
-        .env_remove("ANTHROPIC_API_KEY")
-        .env_remove("CLAUDE_CODE_OAUTH_TOKEN");
+    scrub_cc_auth_env(&mut cmd);
 
     if let Some(sys) = system_prompt {
         if sys.len() > MAX_SYSTEM_PROMPT_BYTES {
@@ -398,10 +403,12 @@ pub(crate) async fn run_streaming(
     model: &str,
     system_prompt: Option<&str>,
     prompt: &str,
-    _max_tokens: u32,
+    max_tokens: u32,
     timeout: Duration,
     on_delta: &mut (dyn FnMut(&str) + Send),
 ) -> Result<CcOutput> {
+    ensure_max_tokens_supported(max_tokens)?;
+
     let mut cmd = Command::new(cc_binary);
     cmd.arg("-p")
         .arg("--verbose")
@@ -419,10 +426,7 @@ pub(crate) async fn run_streaming(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
-    // WHY: Same OAuth injection as run_completion.
-    if let Ok(token) = read_oauth_token() {
-        cmd.env("CLAUDE_CODE_OAUTH_TOKEN", &token);
-    }
+    scrub_cc_auth_env(&mut cmd);
 
     if let Some(sys) = system_prompt {
         if sys.len() > MAX_SYSTEM_PROMPT_BYTES {

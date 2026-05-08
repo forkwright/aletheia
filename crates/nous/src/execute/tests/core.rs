@@ -4,6 +4,79 @@
 )]
 //! Core execute loop tests.
 use super::*;
+use std::sync::{Arc, Mutex};
+
+use hermeneus::error as llm_error;
+use hermeneus::provider::LlmProvider;
+
+struct FallbackSequenceProvider {
+    responses: Mutex<Vec<hermeneus::error::Result<CompletionResponse>>>,
+    models: Mutex<Vec<String>>,
+    supported_models: &'static [&'static str],
+    provider_name: &'static str,
+}
+
+struct ArcProvider(Arc<FallbackSequenceProvider>);
+
+impl FallbackSequenceProvider {
+    fn new(
+        provider_name: &'static str,
+        supported_models: &'static [&'static str],
+        responses: Vec<hermeneus::error::Result<CompletionResponse>>,
+    ) -> Self {
+        Self {
+            responses: Mutex::new(responses),
+            models: Mutex::new(Vec::new()),
+            supported_models,
+            provider_name,
+        }
+    }
+
+    fn called_models(&self) -> Vec<String> {
+        self.models.lock().expect("models lock").clone()
+    }
+}
+
+impl LlmProvider for FallbackSequenceProvider {
+    fn complete<'a>(
+        &'a self,
+        request: &'a hermeneus::types::CompletionRequest,
+    ) -> Pin<Box<dyn Future<Output = hermeneus::error::Result<CompletionResponse>> + Send + 'a>>
+    {
+        self.models
+            .lock()
+            .expect("models lock")
+            .push(request.model.clone());
+        let result = self.responses.lock().expect("responses lock").remove(0);
+        Box::pin(async move { result })
+    }
+
+    fn supported_models(&self) -> &[&str] {
+        self.supported_models
+    }
+
+    fn name(&self) -> &str {
+        self.provider_name
+    }
+}
+
+impl LlmProvider for ArcProvider {
+    fn complete<'a>(
+        &'a self,
+        request: &'a hermeneus::types::CompletionRequest,
+    ) -> Pin<Box<dyn Future<Output = hermeneus::error::Result<CompletionResponse>> + Send + 'a>>
+    {
+        self.0.complete(request)
+    }
+
+    fn supported_models(&self) -> &[&str] {
+        self.0.supported_models()
+    }
+
+    fn name(&self) -> &str {
+        self.0.name()
+    }
+}
 
 #[tokio::test]
 async fn simple_text_response() {
@@ -53,6 +126,140 @@ async fn simple_text_response() {
     assert!(
         result.signals.contains(&InteractionSignal::Conversation),
         "text-only response should produce Conversation signal"
+    );
+}
+
+#[tokio::test]
+async fn configured_fallback_models_are_used_for_retryable_primary_failure() {
+    let primary = Arc::new(FallbackSequenceProvider::new(
+        "primary",
+        &["test-model"],
+        vec![Err(llm_error::RateLimitedSnafu {
+            retry_after_ms: 100_u64,
+        }
+        .build())],
+    ));
+    let secondary = Arc::new(FallbackSequenceProvider::new(
+        "secondary",
+        &["fallback-model"],
+        vec![Ok(make_text_response("fallback answer"))],
+    ));
+    let tertiary = Arc::new(FallbackSequenceProvider::new(
+        "tertiary",
+        &["unused-fallback"],
+        vec![Ok(make_text_response("unused"))],
+    ));
+    let mut providers = ProviderRegistry::new();
+    providers.register(Box::new(ArcProvider(Arc::clone(&primary))));
+    providers.register(Box::new(ArcProvider(Arc::clone(&secondary))));
+    providers.register(Box::new(ArcProvider(Arc::clone(&tertiary))));
+
+    let mut config = test_config();
+    config.generation.fallback_models =
+        vec!["fallback-model".to_owned(), "unused-fallback".to_owned()];
+    config.generation.retries_before_fallback = 1;
+
+    let result = execute(
+        &test_pipeline_ctx(),
+        &test_session(),
+        &config,
+        &providers,
+        &ToolRegistry::new(),
+        &test_tool_ctx(),
+        None,
+    )
+    .await
+    .expect("execute");
+
+    assert_eq!(result.content, "fallback answer");
+    assert_eq!(result.usage.llm_calls, 1);
+    assert_eq!(primary.called_models(), ["test-model"]);
+    assert_eq!(secondary.called_models(), ["fallback-model"]);
+    assert!(
+        tertiary.called_models().is_empty(),
+        "fallback chain should stop after first success"
+    );
+}
+
+#[tokio::test]
+async fn configured_fallback_reports_aggregate_when_all_models_fail() {
+    let primary = Arc::new(FallbackSequenceProvider::new(
+        "primary",
+        &["test-model"],
+        vec![Err(llm_error::RateLimitedSnafu {
+            retry_after_ms: 100_u64,
+        }
+        .build())],
+    ));
+    let secondary = Arc::new(FallbackSequenceProvider::new(
+        "secondary",
+        &["fallback-model"],
+        vec![Err(llm_error::ApiSnafu {
+            status: 503_u16,
+            message: "fallback unavailable".to_owned(),
+            context: llm_error::ApiErrorContext::empty(),
+        }
+        .build())],
+    ));
+    let mut providers = ProviderRegistry::new();
+    providers.register(Box::new(ArcProvider(Arc::clone(&primary))));
+    providers.register(Box::new(ArcProvider(Arc::clone(&secondary))));
+
+    let mut config = test_config();
+    config.generation.fallback_models = vec!["fallback-model".to_owned()];
+    config.generation.retries_before_fallback = 1;
+
+    let err = execute(
+        &test_pipeline_ctx(),
+        &test_session(),
+        &config,
+        &providers,
+        &ToolRegistry::new(),
+        &test_tool_ctx(),
+        None,
+    )
+    .await
+    .expect_err("all fallback models should fail");
+
+    let msg = err.to_string();
+    assert!(
+        msg.contains("all models in fallback chain failed")
+            && msg.contains("test-model")
+            && msg.contains("fallback-model"),
+        "error should aggregate failed models, got: {msg}"
+    );
+}
+
+#[tokio::test]
+async fn single_provider_config_does_not_attempt_fallback() {
+    let provider = Arc::new(FallbackSequenceProvider::new(
+        "primary",
+        &["test-model"],
+        vec![Err(llm_error::RateLimitedSnafu {
+            retry_after_ms: 100_u64,
+        }
+        .build())],
+    ));
+    let mut providers = ProviderRegistry::new();
+    providers.register(Box::new(ArcProvider(Arc::clone(&provider))));
+
+    let err = execute(
+        &test_pipeline_ctx(),
+        &test_session(),
+        &test_config(),
+        &providers,
+        &ToolRegistry::new(),
+        &test_tool_ctx(),
+        None,
+    )
+    .await
+    .expect_err("primary failure should not try fallback without config");
+
+    assert!(err.to_string().contains("rate limited"));
+    assert_eq!(
+        provider.called_models(),
+        ["test-model"],
+        "single-provider config should attempt only the primary model"
     );
 }
 

@@ -27,8 +27,8 @@ pub struct FallbackConfig {
 ///
 /// # Errors
 ///
-/// Returns the last error if all models in the chain fail, or the first
-/// non-retryable error encountered.
+/// Returns an aggregate error if all models in the chain fail with retryable
+/// errors, or the first non-retryable error encountered.
 ///
 /// # Cancel safety
 ///
@@ -43,6 +43,7 @@ pub async fn complete_with_fallback(
 ) -> Result<CompletionResponse> {
     let primary = &request.model;
     let mut last_error = None;
+    let mut attempt_errors = Vec::new();
 
     for attempt in 0..config.retries_before_fallback.max(1) {
         if attempt > 0 {
@@ -65,6 +66,7 @@ pub async fn complete_with_fallback(
                     error = %e,
                     "primary model failed with retryable error"
                 );
+                attempt_errors.push(format!("{primary}: {e}"));
                 last_error = Some(e);
             }
         }
@@ -92,6 +94,7 @@ pub async fn complete_with_fallback(
                     error = %e,
                     "fallback model failed with retryable error"
                 );
+                attempt_errors.push(format!("{fallback_model}: {e}"));
                 last_error = Some(e);
             }
         }
@@ -100,6 +103,16 @@ pub async fn complete_with_fallback(
     // SAFETY: the retry loop executes at least once because retries_before_fallback
     // is clamped to max(1). last_error is populated on every retryable failure.
     // The unwrap_or_else is a defensive fallback that should never trigger.
+    if !attempt_errors.is_empty() && !config.fallback_models.is_empty() {
+        return Err(crate::error::ApiRequestSnafu {
+            message: format!(
+                "connection unavailable: all models in fallback chain failed: {}",
+                attempt_errors.join("; ")
+            ),
+        }
+        .build());
+    }
+
     Err(last_error.unwrap_or_else(|| {
         crate::error::ApiRequestSnafu {
             message: "all models in fallback chain failed".to_owned(),
@@ -288,7 +301,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn all_models_fail_returns_last_error() {
+    async fn all_models_fail_returns_aggregate_error() {
         let provider =
             MockFallbackProvider::new(vec![retryable_error(), retryable_error(), server_error()]);
         let config = FallbackConfig {
@@ -302,7 +315,14 @@ mod tests {
 
         assert!(
             err.is_retryable(),
-            "last error should be the retryable server error"
+            "aggregate fallback error should remain retryable"
+        );
+        let msg = err.to_string();
+        assert!(
+            msg.contains("all models in fallback chain failed")
+                && msg.contains("primary-model")
+                && msg.contains("fallback-1"),
+            "aggregate fallback error should name the failed models"
         );
         assert_eq!(provider.call_count(), 3);
     }

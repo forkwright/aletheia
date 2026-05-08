@@ -38,6 +38,10 @@ mod arc_str {
 pub struct NousGenerationConfig {
     /// Default model for this agent.
     pub model: String,
+    /// Ordered fallback models to try after the primary model fails transiently.
+    pub fallback_models: Vec<String>,
+    /// Number of primary-model attempts before moving to the fallback chain.
+    pub retries_before_fallback: u32,
     /// Maximum context window tokens.
     pub context_window: u32,
     /// Maximum output tokens per turn.
@@ -80,6 +84,8 @@ impl Default for NousGenerationConfig {
         use koina::defaults as d;
         Self {
             model: "claude-opus-4-20250514".to_owned(),
+            fallback_models: Vec::new(),
+            retries_before_fallback: 2,
             context_window: d::CONTEXT_TOKENS,
             max_output_tokens: d::MAX_OUTPUT_TOKENS,
             bootstrap_max_tokens: d::BOOTSTRAP_MAX_TOKENS,
@@ -600,6 +606,8 @@ mod tests {
             name: Some("Analyst".to_owned()),
             generation: NousGenerationConfig {
                 model: "claude-haiku-4-5-20251001".to_owned(),
+                fallback_models: Vec::new(),
+                retries_before_fallback: 2,
                 context_window: 100_000,
                 max_output_tokens: 8_192,
                 bootstrap_max_tokens: 20_000,

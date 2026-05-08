@@ -1,6 +1,7 @@
 //! Execute stage: LLM call and tool iteration loop.
 
 mod dispatch;
+mod model_fallback;
 mod resolve;
 mod spawn_guard;
 
@@ -13,6 +14,7 @@ use snafu::ResultExt;
 use tokio::sync::mpsc;
 use tracing::{debug, info, instrument, warn};
 
+use hermeneus::fallback::FallbackConfig;
 use hermeneus::provider::ProviderRegistry;
 use hermeneus::types::{
     CompletionRequest, Content, ContentBlock, Message, Role, ServerToolDefinition, StopReason,
@@ -76,7 +78,6 @@ pub async fn execute(
         Vec::len,
     );
     let turn_model = resolve_turn_model(ctx, config, tool_count);
-    let provider = resolve_provider_checked(providers, &turn_model)?;
 
     let mut messages = build_messages(&ctx.messages);
     let mut all_tool_calls: Vec<ToolCall> = Vec::new();
@@ -101,6 +102,10 @@ pub async fn execute(
             enabled: true,
             budget_tokens: config.generation.thinking_budget,
         });
+    let fallback_config = (!config.generation.fallback_models.is_empty()).then(|| FallbackConfig {
+        fallback_models: config.generation.fallback_models.clone(),
+        retries_before_fallback: config.generation.retries_before_fallback,
+    });
 
     // WHY: hoist the config server_tools Vec into an Arc once per turn so the
     // per-iteration backward-compat clone becomes a pointer bump (#3389).
@@ -162,13 +167,28 @@ pub async fn execute(
             ..Default::default()
         };
 
-        let response = match provider.complete(&request).await {
+        let completion = if let Some(fallback_config) = &fallback_config {
+            model_fallback::complete_with_registry_fallback(providers, &request, fallback_config)
+                .await
+        } else {
+            let provider = resolve_provider_checked(providers, &turn_model)?;
+            provider.complete(&request).await
+        };
+
+        let response = match completion {
             Ok(resp) => {
-                providers.record_success(provider.name());
+                if fallback_config.is_none() {
+                    let provider = resolve_provider_checked(providers, &turn_model)?;
+                    providers.record_success(provider.name());
+                }
                 resp
             }
             Err(e) => {
-                providers.record_error(provider.name(), &e);
+                if fallback_config.is_none()
+                    && let Ok(provider) = resolve_provider_checked(providers, &turn_model)
+                {
+                    providers.record_error(provider.name(), &e);
+                }
                 return Err(e).context(error::LlmSnafu);
             }
         };
