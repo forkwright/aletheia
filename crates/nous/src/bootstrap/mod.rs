@@ -18,6 +18,9 @@
 /// Tool summary generation for inclusion in the bootstrap system prompt.
 pub mod tools;
 
+/// Pre-injection scan for workspace bootstrap files.
+pub mod preinject_scan;
+
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::RwLock;
@@ -551,6 +554,9 @@ pub struct BootstrapAssembler<'a> {
     llm_recipe: LlmRecipe,
     /// When true, resolve only this nous's workspace files and skip shared/theke fallback.
     private_workspace: bool,
+    /// When true, pre-injection scan failures are fatal. Defaults to the
+    /// `KOINA_PREINJECT_SCAN_STRICT` env var (false when absent).
+    preinject_strict: bool,
 }
 
 impl<'a> BootstrapAssembler<'a> {
@@ -566,6 +572,7 @@ impl<'a> BootstrapAssembler<'a> {
             cache: None,
             llm_recipe: LlmRecipe::default(),
             private_workspace: false,
+            preinject_strict: preinject_scan::strict_mode(),
         }
     }
 
@@ -584,6 +591,7 @@ impl<'a> BootstrapAssembler<'a> {
             cache: None,
             llm_recipe: LlmRecipe::default(),
             private_workspace: false,
+            preinject_strict: preinject_scan::strict_mode(),
         }
     }
 
@@ -615,6 +623,17 @@ impl<'a> BootstrapAssembler<'a> {
     #[must_use]
     pub fn with_private_workspace(mut self, private_workspace: bool) -> Self {
         self.private_workspace = private_workspace;
+        self
+    }
+
+    /// Set whether pre-injection scan failures are fatal.
+    ///
+    /// When `true`, a workspace file that fails the invisible-Unicode or
+    /// threat-pattern scan causes bootstrap assembly to return an error.
+    /// When `false` (default), the file is logged and skipped.
+    #[must_use]
+    pub fn with_preinject_strict(mut self, strict: bool) -> Self {
+        self.preinject_strict = strict;
         self
     }
 
@@ -884,6 +903,21 @@ impl<'a> BootstrapAssembler<'a> {
                     debug!(file = spec.filename, "skipping empty file (cached)");
                     continue;
                 }
+                if let Err(e) = preinject_scan::scan_workspace_content(&content, &p) {
+                    if self.preinject_strict {
+                        return Err(error::ContextAssemblySnafu {
+                            message: format!("pre-injection scan failed for {}: {e}", p.display()),
+                        }
+                        .build());
+                    }
+                    warn!(
+                        file = spec.filename,
+                        path = %p.display(),
+                        error = %e,
+                        "pre-injection scan rejected workspace file, skipping"
+                    );
+                    continue;
+                }
                 sections.push(BootstrapSection {
                     name: spec.filename.to_owned(),
                     priority: spec.priority,
@@ -913,6 +947,24 @@ impl<'a> BootstrapAssembler<'a> {
                                 self.estimator.chars_per_token(),
                             );
                         }
+                        continue;
+                    }
+                    if let Err(e) = preinject_scan::scan_workspace_content(&content, &p) {
+                        if self.preinject_strict {
+                            return Err(error::ContextAssemblySnafu {
+                                message: format!(
+                                    "pre-injection scan failed for {}: {e}",
+                                    p.display()
+                                ),
+                            }
+                            .build());
+                        }
+                        warn!(
+                            file = spec.filename,
+                            path = %p.display(),
+                            error = %e,
+                            "pre-injection scan rejected workspace file, skipping"
+                        );
                         continue;
                     }
                     let tokens = self.estimator.estimate(&content);
@@ -1433,3 +1485,6 @@ pub fn pack_sections_to_bootstrap(
 #[cfg(test)]
 #[path = "bootstrap_tests/mod.rs"]
 mod tests;
+
+#[cfg(test)]
+mod preinject_tests;
