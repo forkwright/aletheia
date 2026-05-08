@@ -41,6 +41,37 @@ async fn assemble_with_extra_includes_pack_sections() {
 }
 
 #[tokio::test]
+async fn assemble_with_extra_includes_system_prompt_additions() {
+    let (_dir, oikos) = setup_oikos("test", &[("SOUL.md", "I am a test agent.")]);
+    let assembler = BootstrapAssembler::new(&oikos);
+    let mut budget = default_budget();
+
+    let extra = vec![BootstrapSection {
+        name: "[pack] system-prompt".to_owned(),
+        priority: SectionPriority::Important,
+        content: "Always cite sources.".to_owned(),
+        tokens: 4,
+        truncatable: false,
+        slot: BootstrapSlot::Context,
+    }];
+
+    let result = assembler
+        .assemble_with_extra("test", &mut budget, extra)
+        .await
+        .expect("assemble_with_extra should succeed");
+    assert!(
+        result.system_prompt.contains("Always cite sources."),
+        "system prompt should include system-prompt addition content"
+    );
+    assert!(
+        result
+            .sections_included
+            .contains(&"[pack] system-prompt".to_owned()),
+        "system-prompt addition should be listed in sections_included"
+    );
+}
+
+#[tokio::test]
 async fn assemble_with_extra_respects_priority_ordering() {
     let (_dir, oikos) = setup_oikos("test", &[("SOUL.md", "identity")]);
     let assembler = BootstrapAssembler::new(&oikos);

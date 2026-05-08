@@ -23,7 +23,7 @@ Domain pack loader: parses pack.toml manifests, resolves context files, register
 | `ContextEntry` | `manifest.rs` | Context file reference: path, priority, agent filter, truncatable flag |
 | `Priority` | `manifest.rs` | Bootstrap priority: Required, Important, Flexible, Optional |
 | `PackToolDef` | `manifest.rs` | Tool declared in a pack: name, description, command, input schema |
-| `AgentOverlay` | `manifest.rs` | Per-agent config overlay (model, agency, system prompt additions) |
+| `AgentOverlay` | `manifest.rs` | Per-agent overlay: domains, model, agency, system_prompt_additions |
 | `LoadedPack` | `loader.rs` | Fully resolved pack: manifest, sections with file content read, root path |
 | `PackSection` | `loader.rs` | Resolved context section: name, content, priority, agent filter, pack name |
 | `PackInputSchema` | `manifest.rs` | Tool input schema: type, properties, required fields |

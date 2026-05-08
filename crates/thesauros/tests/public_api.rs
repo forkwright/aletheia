@@ -414,6 +414,43 @@ domains = ["healthcare", "sql"]
         );
         assert!(pack.domains_for_agent("nonexistent-agent").is_empty());
     }
+
+    #[test]
+    fn overlay_fields_merge_correctly() {
+        // WHY: AgentOverlay supports model, agency, and system_prompt_additions
+        // overrides that must be retrievable per-agent.
+        let toml = r#"
+name = "overlay-full"
+version = "1.0"
+
+[overlays.psyche]
+domains = ["research"]
+model = "anubis-70b"
+agency = "unrestricted"
+system_prompt_additions = ["Cite sources."]
+"#;
+        let dir = write_pack(&[("pack.toml", toml)]);
+        let packs = load_packs(&[dir.path().to_path_buf()]);
+        let pack = packs.first().expect("loaded");
+
+        assert_eq!(
+            pack.model_for_agent("psyche"),
+            Some("anubis-70b".to_owned())
+        );
+        assert_eq!(
+            pack.agency_for_agent("psyche"),
+            Some("unrestricted".to_owned())
+        );
+        assert_eq!(
+            pack.system_prompt_additions_for_agent("psyche"),
+            vec!["Cite sources.".to_owned()]
+        );
+
+        // Unknown agents return None / empty
+        assert_eq!(pack.model_for_agent("hermes"), None);
+        assert_eq!(pack.agency_for_agent("hermes"), None);
+        assert!(pack.system_prompt_additions_for_agent("hermes").is_empty());
+    }
 }
 
 // --- Error type ---

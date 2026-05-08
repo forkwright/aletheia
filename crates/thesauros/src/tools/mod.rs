@@ -5,7 +5,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::process::{Command, Stdio};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use indexmap::IndexMap;
 use koina::defaults::MAX_OUTPUT_BYTES;
@@ -45,6 +45,7 @@ impl ToolExecutor for ShellToolExecutor {
                 String::new()
             });
             let timeout = Duration::from_millis(self.timeout_ms);
+            let start = Instant::now();
 
             // WHY: retry on ETXTBSY (errno 26): benign race between writing/chmod and exec
             let mut guard = {
@@ -176,7 +177,7 @@ impl ToolExecutor for ShellToolExecutor {
                     Some(String::from_utf8_lossy(&output_result.stderr).into_owned())
                 },
                 sandbox_violations: Vec::new(),
-                duration_ms: 0,
+                duration_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
             };
 
             if is_error {

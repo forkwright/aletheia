@@ -25,7 +25,7 @@ use taxis::oikos::Oikos;
 use thesauros::loader::LoadedPack;
 
 use crate::actor;
-use crate::bootstrap::pack_sections_to_bootstrap;
+use crate::bootstrap::{BootstrapSection, pack_sections_to_bootstrap};
 use crate::budget::CharEstimator;
 use crate::config::{NousConfig, PipelineConfig};
 use crate::handle::NousHandle;
@@ -247,6 +247,17 @@ impl NousManager {
             for pack in self.packs.iter() {
                 let agent_sections = pack.sections_for_agent_or_domains(&id, &config.domains);
                 sections.extend(pack_sections_to_bootstrap(&agent_sections, &estimator));
+                for addition in pack.system_prompt_additions_for_agent(&id) {
+                    let tokens = estimator.estimate(&addition);
+                    sections.push(BootstrapSection {
+                        name: format!("[{}] system-prompt", pack.manifest.name),
+                        priority: crate::bootstrap::SectionPriority::Important,
+                        content: addition,
+                        tokens,
+                        truncatable: false,
+                        slot: crate::bootstrap::BootstrapSlot::Context,
+                    });
+                }
             }
             if !sections.is_empty() {
                 info!(nous_id = %id, sections = sections.len(), "domain pack sections resolved");

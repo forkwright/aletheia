@@ -536,6 +536,48 @@ async fn shell_executor_timeout_returns_error() {
 }
 
 #[tokio::test]
+async fn shell_executor_records_nonzero_duration() {
+    let dir = setup_pack_dir(&[("tools/sleep.sh", "#!/bin/sh\nsleep 0.05")]);
+    make_executable(&dir, "tools/sleep.sh");
+
+    let executor = ShellToolExecutor {
+        command_path: dir
+            .path()
+            .join("tools/sleep.sh")
+            .canonicalize()
+            .expect("canonicalize sleep.sh path"),
+        pack_root: dir.path().to_path_buf(),
+        timeout_ms: 5000,
+    };
+
+    let input = ToolInput {
+        name: ToolName::new("sleep_tool").expect("sleep_tool is a valid tool name"),
+        tool_use_id: "toolu_dur".to_owned(),
+        arguments: serde_json::json!({}),
+    };
+    let ctx = ToolContext {
+        nous_id: koina::id::NousId::new("test").expect("test is a valid nous id"),
+        session_id: koina::id::SessionId::new(),
+        workspace: dir.path().to_path_buf(),
+        allowed_roots: vec![],
+        services: None,
+        active_tools: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashSet::new())),
+        tool_config: std::sync::Arc::new(taxis::config::ToolLimitsConfig::default()),
+    };
+
+    let result = executor
+        .execute(&input, &ctx)
+        .await
+        .expect("duration executor should succeed");
+    let diagnostics = result.diagnostics.expect("diagnostics should be present");
+    assert!(
+        diagnostics.duration_ms >= 10,
+        "expected duration >= 10 ms, got {} ms",
+        diagnostics.duration_ms
+    );
+}
+
+#[tokio::test]
 async fn shell_executor_truncates_at_char_boundary() {
     // NOTE: U+2026 (3 bytes: 0xE2 0x80 0xA6) is placed straddling MAX_OUTPUT_BYTES
     // so that naive truncate() would panic on the invalid byte boundary

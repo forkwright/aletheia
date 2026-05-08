@@ -318,8 +318,13 @@ impl RuntimeBuilder {
             .whatever_context("JWT key security check failed")?;
 
         // Domain packs
+        // WHY: load_packs performs synchronous file I/O; wrap in spawn_blocking
+        // so the async runtime thread is not stalled during pack discovery.
         let loaded_packs = if self.domain_packs {
-            thesauros::loader::load_packs(&self.config.packs)
+            let packs = self.config.packs.clone();
+            tokio::task::spawn_blocking(move || thesauros::loader::load_packs(&packs))
+                .await
+                .whatever_context("pack loading task panicked")?
         } else {
             Vec::new()
         };
@@ -602,11 +607,32 @@ impl RuntimeBuilder {
                 let resolved = resolve_nous(&self.config, &agent_def.id);
 
                 let mut domains = resolved.domains.clone();
+                let mut model = resolved.model.primary.to_string();
+                let mut max_tool_iterations = resolved.capabilities.max_tool_iterations;
                 for pack in packs.iter() {
                     for d in pack.domains_for_agent(&agent_def.id) {
                         if !domains.contains(&d) {
                             domains.push(d);
                         }
+                    }
+                    if let Some(m) = pack.model_for_agent(&agent_def.id) {
+                        model = m;
+                    }
+                    if let Some(a) = pack.agency_for_agent(&agent_def.id) {
+                        max_tool_iterations = match a.as_str() {
+                            "unrestricted" => 10_000,
+                            "standard" => koina::defaults::MAX_TOOL_ITERATIONS,
+                            "restricted" => 50,
+                            other => {
+                                warn!(
+                                    agent = %agent_def.id,
+                                    agency = %other,
+                                    pack = %pack.manifest.name,
+                                    "unknown agency level in pack overlay, skipping"
+                                );
+                                continue;
+                            }
+                        };
                     }
                 }
 
@@ -614,7 +640,7 @@ impl RuntimeBuilder {
                     id: resolved.id,
                     name: resolved.name,
                     generation: nous::config::NousGenerationConfig {
-                        model: resolved.model.primary.to_string(),
+                        model,
                         context_window: resolved.limits.context_tokens,
                         max_output_tokens: resolved.limits.max_output_tokens,
                         bootstrap_max_tokens: resolved.limits.bootstrap_max_tokens,
@@ -627,7 +653,7 @@ impl RuntimeBuilder {
                         distillation_model: None,
                     },
                     limits: nous::config::NousLimits {
-                        max_tool_iterations: resolved.capabilities.max_tool_iterations,
+                        max_tool_iterations,
                         loop_detection_threshold: 3,
                         consecutive_error_threshold: 4,
                         loop_max_warnings: 2,
