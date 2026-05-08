@@ -42,6 +42,8 @@ pub(crate) mod hooks;
 pub(crate) mod instinct;
 /// Lifecycle manager for spawning and addressing nous actors.
 pub mod manager;
+/// Memory types for structured conversation representation.
+pub mod memory;
 /// Actor inbox message types.
 pub(crate) mod message;
 /// Prometheus metrics for nous pipeline: turn counts, latency, and token usage.
