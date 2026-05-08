@@ -1,4 +1,4 @@
-//! Unified channel listener: merges inbound messages from all providers.
+//! Unified channel listener: merges inbound messages from channel providers.
 
 use std::future::Future;
 use std::sync::Arc;
@@ -9,8 +9,7 @@ use tracing::{Instrument, info_span, instrument};
 
 use tokio_util::sync::CancellationToken;
 
-use crate::semeion::SignalProvider;
-use crate::types::InboundMessage;
+use crate::types::{ChannelProvider, InboundMessage};
 
 fn redact_phone(phone: &str) -> String {
     if phone.len() > 4 {
@@ -22,44 +21,80 @@ fn redact_phone(phone: &str) -> String {
 
 /// Listens on registered channels, merging inbound messages into a single stream.
 ///
-/// Cleanup is registered at construction time via [`CleanupRegistry`](koina::cleanup::CleanupRegistry): dropping
-/// the listener aborts all background polling tasks unless
-/// [`into_receiver`](Self::into_receiver) was called first (which disarms the
-/// registry).
+/// Dropping the listener aborts all background polling tasks through
+/// [`JoinSet`]'s drop behavior unless [`into_receiver`](Self::into_receiver)
+/// was called first, which transfers the receiver and handles to the caller.
 pub struct ChannelListener {
     rx: Option<mpsc::Receiver<InboundMessage>>,
     handles: JoinSet<()>,
-    /// Abort callbacks registered at task-spawn time; disarmed by `into_receiver`.
-    cleanup: koina::cleanup::CleanupRegistry,
     /// Maximum concurrent inbound-message handler tasks.
     max_concurrent_handlers: usize,
 }
 
 impl ChannelListener {
-    /// Start listening on a Signal provider.
+    /// Start listening on a channel provider.
     ///
-    /// Spawns polling tasks for all accounts registered on the provider
-    /// and merges their messages into a single receiver. When the `cancel`
-    /// token is cancelled, polling tasks exit promptly.
+    /// Spawns provider-specific polling tasks and merges their messages into a
+    /// single receiver. When the `cancel` token is cancelled, polling tasks
+    /// exit promptly.
     #[must_use]
-    pub fn start(
-        signal_provider: &SignalProvider,
+    pub fn start<P>(
+        provider: &P,
         poll_interval: Option<std::time::Duration>,
         cancel: CancellationToken,
-    ) -> Self {
-        let (rx, handles) = signal_provider.listen(poll_interval, cancel);
+    ) -> Self
+    where
+        P: ChannelProvider + ?Sized,
+    {
+        let (rx, handles) = provider.listen(poll_interval, cancel);
         Self::from_parts(rx, handles)
     }
 
     /// Start listening with explicit config for handler concurrency.
     #[must_use]
-    pub fn start_with_config(
-        signal_provider: &SignalProvider,
+    pub fn start_with_config<P>(
+        provider: &P,
         poll_interval: Option<std::time::Duration>,
         cancel: CancellationToken,
         max_concurrent_handlers: usize,
-    ) -> Self {
-        let (rx, handles) = signal_provider.listen(poll_interval, cancel);
+    ) -> Self
+    where
+        P: ChannelProvider + ?Sized,
+    {
+        let (rx, handles) = provider.listen(poll_interval, cancel);
+        Self::from_parts_with_config(rx, handles, max_concurrent_handlers)
+    }
+
+    /// Start listening on multiple channel providers and merge their streams.
+    #[must_use]
+    pub fn start_many<'a, I>(
+        providers: I,
+        poll_interval: Option<std::time::Duration>,
+        cancel: &CancellationToken,
+    ) -> Self
+    where
+        I: IntoIterator<Item = &'a dyn ChannelProvider>,
+    {
+        Self::start_many_with_config(
+            providers,
+            poll_interval,
+            cancel,
+            Self::DEFAULT_MAX_CONCURRENT_HANDLERS,
+        )
+    }
+
+    /// Start listening on multiple providers with explicit handler concurrency.
+    #[must_use]
+    pub fn start_many_with_config<'a, I>(
+        providers: I,
+        poll_interval: Option<std::time::Duration>,
+        cancel: &CancellationToken,
+        max_concurrent_handlers: usize,
+    ) -> Self
+    where
+        I: IntoIterator<Item = &'a dyn ChannelProvider>,
+    {
+        let (rx, handles) = Self::merge_providers(providers, poll_interval, cancel);
         Self::from_parts_with_config(rx, handles, max_concurrent_handlers)
     }
 
@@ -86,7 +121,6 @@ impl ChannelListener {
         Self {
             rx: Some(rx),
             handles,
-            cleanup: koina::cleanup::CleanupRegistry::new(),
             max_concurrent_handlers,
         }
     }
@@ -159,31 +193,129 @@ impl ChannelListener {
             .rx
             .take()
             .expect("into_receiver called on consumed listener");
-        // Disarm cleanup so the caller takes responsibility for the handles.
-        self.cleanup.disarm();
         (rx, self.handles)
     }
 
-    /// Stop all polling tasks.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "explicit stop for channel listener polling tasks")
-    )]
-    pub(crate) fn stop(self) {
-        drop(self);
+    fn merge_providers<'a, I>(
+        providers: I,
+        poll_interval: Option<std::time::Duration>,
+        cancel: &CancellationToken,
+    ) -> (mpsc::Receiver<InboundMessage>, JoinSet<()>)
+    where
+        I: IntoIterator<Item = &'a dyn ChannelProvider>,
+    {
+        let (merged_tx, merged_rx) = mpsc::channel(64);
+        let mut merged_handles = JoinSet::new();
+
+        for provider in providers {
+            let (mut provider_rx, mut provider_handles) =
+                provider.listen(poll_interval, cancel.clone());
+            let tx = merged_tx.clone();
+            merged_handles.spawn(async move {
+                while let Some(message) = provider_rx.recv().await {
+                    if tx.send(message).await.is_err() {
+                        break;
+                    }
+                }
+
+                while provider_handles.join_next().await.is_some() {}
+            });
+        }
+
+        drop(merged_tx);
+        (merged_rx, merged_handles)
     }
 }
-
-// NOTE: No Drop impl -- cleanup is registered at setup time via CleanupRegistry.
-// The registry fires abort callbacks (LIFO) on drop. `into_receiver` disarms
-// the registry so the caller can manage the handles directly.
 
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
+    use std::pin::Pin;
+
     use tracing::Instrument;
 
     use super::*;
+
+    static TEST_CAPABILITIES: crate::types::ChannelCapabilities =
+        crate::types::ChannelCapabilities {
+            threads: false,
+            reactions: false,
+            typing: false,
+            media: false,
+            streaming: false,
+            rich_formatting: false,
+            max_text_length: 1000,
+        };
+
+    struct TestProvider {
+        channel: &'static str,
+        messages: Vec<InboundMessage>,
+    }
+
+    impl TestProvider {
+        fn new(channel: &'static str, text: &str) -> Self {
+            Self {
+                channel,
+                messages: vec![InboundMessage {
+                    channel: channel.to_owned(),
+                    sender: format!("{channel}-sender"),
+                    sender_name: None,
+                    group_id: None,
+                    text: text.to_owned(),
+                    timestamp: 100,
+                    attachments: vec![],
+                    raw: None,
+                }],
+            }
+        }
+    }
+
+    impl ChannelProvider for TestProvider {
+        fn id(&self) -> &str {
+            self.channel
+        }
+
+        fn name(&self) -> &str {
+            self.channel
+        }
+
+        fn capabilities(&self) -> &crate::types::ChannelCapabilities {
+            &TEST_CAPABILITIES
+        }
+
+        fn send<'a>(
+            &'a self,
+            _params: &'a crate::types::SendParams,
+        ) -> Pin<Box<dyn Future<Output = crate::types::SendResult> + Send + 'a>> {
+            Box::pin(async { crate::types::SendResult::ok() })
+        }
+
+        fn listen(
+            &self,
+            _poll_interval: Option<std::time::Duration>,
+            _cancel: CancellationToken,
+        ) -> (mpsc::Receiver<InboundMessage>, JoinSet<()>) {
+            let (tx, rx) = mpsc::channel(16);
+            for message in &self.messages {
+                tx.try_send(message.clone()).expect("send test message");
+            }
+            drop(tx);
+            (rx, JoinSet::new())
+        }
+
+        fn probe<'a>(
+            &'a self,
+        ) -> Pin<Box<dyn Future<Output = crate::types::ProbeResult> + Send + 'a>> {
+            Box::pin(async {
+                crate::types::ProbeResult {
+                    ok: true,
+                    latency_ms: None,
+                    error: None,
+                    details: None,
+                }
+            })
+        }
+    }
 
     #[test]
     fn redact_phone_long_number() {
@@ -232,6 +364,30 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn listener_merges_multiple_providers() {
+        let signal = TestProvider::new("signal", "from signal");
+        let slack = TestProvider::new("slack", "from slack");
+        let providers: [&dyn ChannelProvider; 2] = [&signal, &slack];
+        let cancel = CancellationToken::new();
+        let listener = ChannelListener::start_many(providers, None, &cancel);
+
+        let (mut rx, _handles) = listener.into_receiver();
+        let mut received = Vec::new();
+        while let Some(message) = rx.recv().await {
+            received.push((message.channel, message.text));
+        }
+        received.sort();
+
+        assert_eq!(
+            received,
+            vec![
+                ("signal".to_owned(), "from signal".to_owned()),
+                ("slack".to_owned(), "from slack".to_owned())
+            ]
+        );
+    }
+
+    #[tokio::test]
     async fn listener_run_dispatches_to_handler() {
         let (tx, rx) = mpsc::channel(16);
         let listener = ChannelListener::from_parts(rx, JoinSet::new());
@@ -265,27 +421,6 @@ mod tests {
             .await;
 
         assert_eq!(count.load(std::sync::atomic::Ordering::Relaxed), 3);
-    }
-
-    #[tokio::test]
-    async fn listener_stop_aborts_tasks() {
-        let (_tx, rx) = mpsc::channel::<InboundMessage>(16);
-
-        let handle = tokio::spawn(
-            async {
-                tokio::time::sleep(std::time::Duration::from_mins(5)).await;
-            }
-            .instrument(tracing::info_span!("test_sleep_task")),
-        );
-
-        let mut handles = JoinSet::new();
-        handles.spawn(async move {
-            if let Err(e) = handle.await {
-                tracing::warn!(error = %e, "spawned task failed");
-            }
-        });
-        let listener = ChannelListener::from_parts(rx, handles);
-        listener.stop();
     }
 
     #[tokio::test]
