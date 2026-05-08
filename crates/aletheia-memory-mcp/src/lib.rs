@@ -2,10 +2,9 @@
 //! aletheia-memory-mcp: standalone stdio MCP server for Aletheia's memory layer.
 //!
 //! External agents (Claude Code, Cursor, `OpenHands`, etc.) spawn this binary to
-//! query the knowledge graph directly over stdio JSON-RPC. It exposes a
-//! read-only subset of the memory API — search, graph traversal, topic
-//! enumeration, and health stats — with no session, tool-execution, or write
-//! surface.
+//! query the nous local knowledge graph directly over stdio JSON-RPC. It exposes
+//! Aletheia's session-scoped knowledge-store surface: search, graph traversal,
+//! topic enumeration, health stats, and token-gated writes.
 //!
 //! # Why a separate crate from diaporeia
 //!
@@ -20,13 +19,18 @@
 //!
 //! # Tools exposed
 //!
-//! - `memory_search` — BM25 text search over current facts.
-//! - `memory_neighbors` — one-hop graph traversal from a fact's entities.
-//! - `memory_list_topics` — enumerate fact-type buckets with counts.
-//! - `memory_stats` — fact count, topic count, schema version, open path.
+//! - `nous_search` — BM25 text search over current facts.
+//! - `nous_neighbors` — one-hop graph traversal from a fact's entities.
+//! - `nous_list_topics` — enumerate fact-type buckets with counts.
+//! - `nous_stats` — fact count, topic count, schema version, open path.
+//! - `nous_annotate` — token-gated annotation linked to a target fact.
+//! - `nous_supersede` — token-gated supersession marker.
+//! - `nous_forget` — token-gated soft deletion.
 //!
-//! All tools are read-only. Writes (annotate, supersede, forget) are deferred
-//! behind an auth model review; see issue tracker for the follow-up.
+//! This surface is distinct from kanon mnemosyne: it serves Aletheia nous local
+//! knowledge with session-scoped semantics, not kanon's durable corpus store.
+//! Write tools are registered only when `ALETHEIA_MEMORY_MCP_WRITE_TOKEN` is set
+//! and each write call must present that token.
 //!
 //! # Feature gating
 //!

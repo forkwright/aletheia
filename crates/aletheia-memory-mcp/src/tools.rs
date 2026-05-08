@@ -1,9 +1,9 @@
 //! MCP tool implementations for the memory server.
 //!
-//! Read tools (`memory_search`, `memory_neighbors`, `memory_list_topics`, `memory_stats`)
+//! Read tools (`nous_search`, `nous_neighbors`, `nous_list_topics`, `nous_stats`)
 //! are always available.
 //!
-//! Write tools (`memory_annotate`, `memory_supersede`, `memory_forget`) are only
+//! Write tools (`nous_annotate`, `nous_supersede`, `nous_forget`) are only
 //! registered if the `ALETHEIA_MEMORY_MCP_WRITE_TOKEN` environment variable is
 //! set at server startup. Each write call must include a `write_token` field
 //! that matches the configured token (via constant-time comparison).
@@ -18,13 +18,16 @@ use serde::{Deserialize, Serialize};
 use snafu::ResultExt as _;
 
 use mneme::engine::DataValue;
+use mneme::id::{EntityId, FactId};
+use mneme::knowledge::{Entity, Fact, ForgetReason, Relationship};
+use mneme::knowledge_store::KnowledgeStore;
 
 use crate::error::{InvalidInputSnafu, KnowledgeStoreSnafu, SerializationSnafu};
 use crate::server::MemoryServer;
 
-/// Parameters for `memory_search`.
+/// Parameters for `nous_search`.
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
-pub struct MemorySearchParams {
+pub struct NousSearchParams {
     /// Free-text query string; matched via BM25 against current fact content.
     pub query: String,
     /// Maximum number of results to return. Defaults to 20 when omitted.
@@ -32,17 +35,17 @@ pub struct MemorySearchParams {
     pub limit: Option<usize>,
 }
 
-/// Parameters for `memory_neighbors`.
+/// Parameters for `nous_neighbors`.
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
-pub struct MemoryNeighborsParams {
+pub struct NousNeighborsParams {
     /// ID of the seed fact whose entity neighbors should be returned.
     pub fact_id: String,
 }
 
-/// Parameters for `memory_annotate`.
+/// Parameters for `nous_annotate`.
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 #[non_exhaustive]
-pub struct MemoryAnnotateParams {
+pub struct NousAnnotateParams {
     /// Session ID for the annotation (identifies the agent or source).
     pub session_id: Option<String>,
     /// Fact ID to annotate.
@@ -53,10 +56,10 @@ pub struct MemoryAnnotateParams {
     pub write_token: String,
 }
 
-/// Parameters for `memory_supersede`.
+/// Parameters for `nous_supersede`.
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 #[non_exhaustive]
-pub struct MemorySupersedeParams {
+pub struct NousSupersedeParams {
     /// ID of the fact being superseded.
     pub old_fact_id: String,
     /// ID of the new fact that supersedes it.
@@ -67,10 +70,10 @@ pub struct MemorySupersedeParams {
     pub write_token: String,
 }
 
-/// Parameters for `memory_forget`.
+/// Parameters for `nous_forget`.
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 #[non_exhaustive]
-pub struct MemoryForgetParams {
+pub struct NousForgetParams {
     /// ID of the fact to forget.
     pub fact_id: String,
     /// Reason for forgetting.
@@ -83,6 +86,158 @@ pub struct MemoryForgetParams {
 const DEFAULT_SEARCH_LIMIT: usize = 20;
 /// Cap on per-call result size to avoid unbounded payloads.
 const MAX_SEARCH_LIMIT: usize = 200;
+fn fact_entity_id(fact_id: &str) -> crate::error::Result<EntityId> {
+    EntityId::new(format!("fact:{fact_id}")).map_err(|e| {
+        InvalidInputSnafu {
+            message: format!("failed to create fact entity id: {e}"),
+        }
+        .build()
+    })
+}
+
+fn insert_fact_entity_link(
+    store: &KnowledgeStore,
+    fact_id: &FactId,
+    entity_id: &EntityId,
+    timestamp: jiff::Timestamp,
+) -> crate::error::Result<()> {
+    let mut params = BTreeMap::new();
+    params.insert(
+        "fact_id".to_owned(),
+        DataValue::Str(fact_id.as_str().into()),
+    );
+    params.insert(
+        "entity_id".to_owned(),
+        DataValue::Str(entity_id.as_str().into()),
+    );
+    params.insert(
+        "created_at".to_owned(),
+        DataValue::Str(mneme::knowledge::format_timestamp(&timestamp).into()),
+    );
+
+    let script = r"
+        ?[fact_id, entity_id, created_at] <- [[$fact_id, $entity_id, $created_at]]
+        :put fact_entities {fact_id, entity_id => created_at}
+    ";
+    store.run_mut_query(script, params).map_err(|e| {
+        KnowledgeStoreSnafu {
+            message: e.to_string(),
+        }
+        .build()
+    })?;
+    Ok(())
+}
+
+fn link_annotation_to_target(
+    store: &KnowledgeStore,
+    annotation_id: &FactId,
+    target_id: &FactId,
+    timestamp: jiff::Timestamp,
+) -> crate::error::Result<()> {
+    let annotation_entity_id = fact_entity_id(annotation_id.as_str())?;
+    let target_entity_id = fact_entity_id(target_id.as_str())?;
+    for (entity_id, fact_id) in [
+        (&annotation_entity_id, annotation_id.as_str()),
+        (&target_entity_id, target_id.as_str()),
+    ] {
+        store
+            .insert_entity(&Entity {
+                id: entity_id.clone(),
+                name: fact_id.to_owned(),
+                entity_type: "fact".to_owned(),
+                aliases: Vec::new(),
+                created_at: timestamp,
+                updated_at: timestamp,
+            })
+            .map_err(|e| {
+                KnowledgeStoreSnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })?;
+    }
+
+    insert_fact_entity_link(store, annotation_id, &annotation_entity_id, timestamp)?;
+    insert_fact_entity_link(store, target_id, &target_entity_id, timestamp)?;
+
+    store
+        .insert_relationship(&Relationship {
+            src: annotation_entity_id,
+            dst: target_entity_id,
+            relation: "annotates".to_owned(),
+            weight: 1.0,
+            created_at: timestamp,
+        })
+        .map_err(|e| {
+            KnowledgeStoreSnafu {
+                message: e.to_string(),
+            }
+            .build()
+        })?;
+    Ok(())
+}
+
+fn forget_fact_with_current_schema(
+    store: &KnowledgeStore,
+    fact_id: &FactId,
+    reason: ForgetReason,
+) -> crate::error::Result<Fact> {
+    let existing = store.read_facts_by_id(fact_id.as_str()).map_err(|e| {
+        KnowledgeStoreSnafu {
+            message: e.to_string(),
+        }
+        .build()
+    })?;
+    if existing.is_empty() {
+        return Err(KnowledgeStoreSnafu {
+            message: format!("fact not found: {}", fact_id.as_str()),
+        }
+        .build());
+    }
+
+    let now = mneme::knowledge::format_timestamp(&jiff::Timestamp::now());
+    let script = r"
+        ?[id, valid_from, content, nous_id, confidence, tier, valid_to,
+          superseded_by, source_session_id, recorded_at,
+          access_count, last_accessed_at, stability_hours, fact_type,
+          scope, visibility, is_forgotten, forgotten_at, forget_reason] :=
+            *facts{id, valid_from, content, nous_id, confidence, tier,
+                   valid_to, superseded_by, source_session_id, recorded_at,
+                   access_count, last_accessed_at, stability_hours, fact_type,
+                   scope, visibility},
+            id = $id,
+            is_forgotten = true,
+            forgotten_at = $now,
+            forget_reason = $reason
+        :put facts {id, valid_from => content, nous_id, confidence, tier,
+                    valid_to, superseded_by, source_session_id, recorded_at,
+                    access_count, last_accessed_at, stability_hours, fact_type,
+                    scope, visibility, is_forgotten, forgotten_at, forget_reason}
+    ";
+    let mut params = BTreeMap::new();
+    params.insert("id".to_owned(), DataValue::Str(fact_id.as_str().into()));
+    params.insert("now".to_owned(), DataValue::Str(now.into()));
+    params.insert("reason".to_owned(), DataValue::Str(reason.as_str().into()));
+    store.run_mut_query(script, params).map_err(|e| {
+        KnowledgeStoreSnafu {
+            message: e.to_string(),
+        }
+        .build()
+    })?;
+
+    let facts = store.read_facts_by_id(fact_id.as_str()).map_err(|e| {
+        KnowledgeStoreSnafu {
+            message: e.to_string(),
+        }
+        .build()
+    })?;
+    facts.into_iter().next().ok_or_else(|| {
+        KnowledgeStoreSnafu {
+            message: format!("fact not found after forget: {}", fact_id.as_str()),
+        }
+        .build()
+    })
+}
 
 #[tool_router(vis = "pub(crate)")]
 impl MemoryServer {
@@ -96,15 +251,18 @@ impl MemoryServer {
     ///
     /// ```json
     /// {
-    ///   "name": "memory_search",
+    ///   "name": "nous_search",
     ///   "arguments": { "query": "fleet dispatch config", "limit": 10 }
     /// }
     /// ```
-    #[tool(description = "BM25 text search across active facts. \
-                       Returns ranked matches with fact ID, content, and score.")]
-    async fn memory_search(
+    #[tool(
+        name = "nous_search",
+        description = "BM25 text search across active facts in the aletheia nous local knowledge store, session-scoped; not kanon mnemosyne's durable corpus. \
+                       Returns ranked matches with fact ID, content, and score."
+    )]
+    async fn nous_search(
         &self,
-        Parameters(params): Parameters<MemorySearchParams>,
+        Parameters(params): Parameters<NousSearchParams>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         if params.query.trim().is_empty() {
             return Err(InvalidInputSnafu {
@@ -156,25 +314,26 @@ impl MemoryServer {
     /// One-hop graph traversal from a seed fact's linked entities.
     ///
     /// Resolves every entity attached to `fact_id` via the `fact_entities`
-    /// relation, then returns their direct neighbors along with the
-    /// relationship type and edge weight. Use this to walk outward from a
-    /// known fact into the wider knowledge graph.
+    /// relation, then returns their direct neighbors. Each neighbor row carries
+    /// `src_id`, `dst_id`, `name`, `entity_type`, `relation`, and `weight`. Use
+    /// this to walk outward from a known fact into the wider knowledge graph.
     ///
     /// # Example
     ///
     /// ```json
     /// {
-    ///   "name": "memory_neighbors",
+    ///   "name": "nous_neighbors",
     ///   "arguments": { "fact_id": "f-abc-123" }
     /// }
     /// ```
     #[tool(
-        description = "Return one-hop graph neighbors (entities + relations) for a fact. \
-                       Useful for walking outward from a known fact."
+        name = "nous_neighbors",
+        description = "Return one-hop graph neighbors for a fact in the aletheia nous local knowledge store, session-scoped; not kanon mnemosyne's durable corpus. \
+                       Each row includes src_id, dst_id, name, entity_type, relation, and weight."
     )]
-    async fn memory_neighbors(
+    async fn nous_neighbors(
         &self,
-        Parameters(params): Parameters<MemoryNeighborsParams>,
+        Parameters(params): Parameters<NousNeighborsParams>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         if params.fact_id.trim().is_empty() {
             return Err(InvalidInputSnafu {
@@ -265,15 +424,17 @@ impl MemoryServer {
     ///
     /// ```json
     /// {
-    ///   "name": "memory_list_topics",
+    ///   "name": "nous_list_topics",
     ///   "arguments": {}
     /// }
     /// ```
     #[tool(
-        description = "List all topic buckets (fact_type values) with active-fact counts. \
-                       Use as a discovery starting point for memory_search."
+        name = "nous_list_topics",
+        description = "List all topic buckets in the aletheia nous local knowledge store, session-scoped; not kanon mnemosyne's durable corpus. \
+                       Returns fact_type values with active-fact counts. \
+                       Use as a discovery starting point for nous_search."
     )]
-    async fn memory_list_topics(&self) -> Result<CallToolResult, rmcp::ErrorData> {
+    async fn nous_list_topics(&self) -> Result<CallToolResult, rmcp::ErrorData> {
         let topics = self
             .run_blocking(|store| {
                 // WHY: aggregate by fact_type. Filter out forgotten and superseded
@@ -323,21 +484,22 @@ impl MemoryServer {
     ///
     /// Returns total active fact count, distinct topic count, schema version,
     /// the on-disk path (when opened from disk), and the most recent
-    /// `recorded_at` timestamp across facts — the "last updated" signal.
+    /// `recorded_at` timestamp across active facts — the "last updated" signal.
     ///
     /// # Example
     ///
     /// ```json
     /// {
-    ///   "name": "memory_stats",
+    ///   "name": "nous_stats",
     ///   "arguments": {}
     /// }
     /// ```
     #[tool(
-        description = "Return knowledge-graph health stats: fact count, topic count, \
+        name = "nous_stats",
+        description = "Return health stats for the aletheia nous local knowledge store, session-scoped; not kanon mnemosyne's durable corpus: fact count, topic count, \
                        schema version, store path, and last updated timestamp."
     )]
-    async fn memory_stats(&self) -> Result<CallToolResult, rmcp::ErrorData> {
+    async fn nous_stats(&self) -> Result<CallToolResult, rmcp::ErrorData> {
         let store_path = self.store_path.as_ref().map(|p| p.display().to_string());
 
         let stats = self
@@ -388,8 +550,9 @@ impl MemoryServer {
 
                 let last_updated_script = r"
                     ?[max(recorded_at)] :=
-                        *facts{recorded_at, is_forgotten},
-                        is_forgotten == false
+                        *facts{recorded_at, is_forgotten, superseded_by},
+                        is_forgotten == false,
+                        is_null(superseded_by)
                 ";
                 let last_updated_result = store
                     .run_query(last_updated_script, BTreeMap::new())
@@ -438,7 +601,7 @@ impl MemoryServer {
     ///
     /// ```json
     /// {
-    ///   "name": "memory_annotate",
+    ///   "name": "nous_annotate",
     ///   "arguments": {
     ///     "fact_id": "f-abc-123",
     ///     "content": "This fact was verified against external source X",
@@ -447,12 +610,15 @@ impl MemoryServer {
     ///   }
     /// }
     /// ```
-    #[tool(description = "Create an annotation on an existing fact. \
-                         Requires write capability token. Returns the created annotation ID.")]
-    #[tracing::instrument(skip(self), fields(tool = "memory_annotate", fact_id = %params.fact_id))]
-    async fn memory_annotate(
+    #[tool(
+        name = "nous_annotate",
+        description = "Create an annotation on an existing fact in the aletheia nous local knowledge store, session-scoped; not kanon mnemosyne's durable corpus. \
+                         Requires write capability token. Returns the created annotation ID."
+    )]
+    #[tracing::instrument(skip(self), fields(tool = "nous_annotate", fact_id = %params.fact_id))]
+    async fn nous_annotate(
         &self,
-        Parameters(params): Parameters<MemoryAnnotateParams>,
+        Parameters(params): Parameters<NousAnnotateParams>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         // Validate write authorization first, before any side effects
         self.validate_write_token(&params.write_token)
@@ -508,7 +674,7 @@ impl MemoryServer {
                 let now = jiff::Timestamp::now();
 
                 let annotation_fact = mneme::knowledge::Fact {
-                    id: annotation_id,
+                    id: annotation_id.clone(),
                     nous_id: session_id
                         .clone()
                         .unwrap_or_else(|| "mcp-client".to_owned()),
@@ -546,6 +712,13 @@ impl MemoryServer {
                     }
                     .build()
                 })?;
+                let target_id = mneme::id::FactId::new(fact_id.clone()).map_err(|e| {
+                    InvalidInputSnafu {
+                        message: format!("failed to create target fact id: {e}"),
+                    }
+                    .build()
+                })?;
+                link_annotation_to_target(&store, &annotation_id, &target_id, now)?;
 
                 Ok(annotation_id_str)
             })
@@ -554,7 +727,7 @@ impl MemoryServer {
 
         // Audit log for successful write
         tracing::info!(
-            tool = "memory_annotate",
+            tool = "nous_annotate",
             target_fact_id = %params.fact_id,
             annotation_id = %result,
             "memory-mcp write"
@@ -581,7 +754,7 @@ impl MemoryServer {
     ///
     /// ```json
     /// {
-    ///   "name": "memory_supersede",
+    ///   "name": "nous_supersede",
     ///   "arguments": {
     ///     "old_fact_id": "f-abc-123",
     ///     "new_fact_id": "f-abc-124",
@@ -590,12 +763,15 @@ impl MemoryServer {
     ///   }
     /// }
     /// ```
-    #[tool(description = "Mark one fact as superseded by another. \
-                         Requires write capability token. Returns the supersession record ID.")]
-    #[tracing::instrument(skip(self), fields(tool = "memory_supersede", old_id = %params.old_fact_id, new_id = %params.new_fact_id))]
-    async fn memory_supersede(
+    #[tool(
+        name = "nous_supersede",
+        description = "Mark one fact as superseded by another in the aletheia nous local knowledge store, session-scoped; not kanon mnemosyne's durable corpus. \
+                         Requires write capability token. Returns the supersession record ID."
+    )]
+    #[tracing::instrument(skip(self), fields(tool = "nous_supersede", old_id = %params.old_fact_id, new_id = %params.new_fact_id))]
+    async fn nous_supersede(
         &self,
-        Parameters(params): Parameters<MemorySupersedeParams>,
+        Parameters(params): Parameters<NousSupersedeParams>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         // Validate write authorization first
         self.validate_write_token(&params.write_token)
@@ -730,7 +906,7 @@ impl MemoryServer {
 
         // Audit log for successful write
         tracing::info!(
-            tool = "memory_supersede",
+            tool = "nous_supersede",
             old_fact_id = %params.old_fact_id,
             new_fact_id = %params.new_fact_id,
             record_id = %record_id,
@@ -759,7 +935,7 @@ impl MemoryServer {
     ///
     /// ```json
     /// {
-    ///   "name": "memory_forget",
+    ///   "name": "nous_forget",
     ///   "arguments": {
     ///     "fact_id": "f-abc-123",
     ///     "reason": "Fact is no longer valid",
@@ -767,12 +943,15 @@ impl MemoryServer {
     ///   }
     /// }
     /// ```
-    #[tool(description = "Soft-delete a fact (mark as forgotten). \
-                         Requires write capability token. Returns forgotten_at timestamp.")]
-    #[tracing::instrument(skip(self), fields(tool = "memory_forget", fact_id = %params.fact_id))]
-    async fn memory_forget(
+    #[tool(
+        name = "nous_forget",
+        description = "Soft-delete a fact in the aletheia nous local knowledge store, session-scoped; not kanon mnemosyne's durable corpus. \
+                         Requires write capability token. Returns forgotten_at timestamp."
+    )]
+    #[tracing::instrument(skip(self), fields(tool = "nous_forget", fact_id = %params.fact_id))]
+    async fn nous_forget(
         &self,
-        Parameters(params): Parameters<MemoryForgetParams>,
+        Parameters(params): Parameters<NousForgetParams>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         // Validate write authorization first
         self.validate_write_token(&params.write_token)
@@ -816,21 +995,26 @@ impl MemoryServer {
                     _ => mneme::knowledge::ForgetReason::UserRequested,
                 };
 
-                let forgotten_fact = store.forget_fact(&fact_id, forget_reason).map_err(|e| {
-                    KnowledgeStoreSnafu {
-                        message: e.to_string(),
-                    }
-                    .build()
-                })?;
+                let forgotten_fact =
+                    forget_fact_with_current_schema(&store, &fact_id, forget_reason)?;
 
-                Ok(forgotten_fact.temporal.recorded_at.to_string())
+                forgotten_fact
+                    .lifecycle
+                    .forgotten_at
+                    .map(|ts| ts.to_string())
+                    .ok_or_else(|| {
+                        KnowledgeStoreSnafu {
+                            message: "forgotten fact is missing forgotten_at timestamp".to_owned(),
+                        }
+                        .build()
+                    })
             })
             .await
             .map_err(rmcp::ErrorData::from)?;
 
         // Audit log for successful write
         tracing::info!(
-            tool = "memory_forget",
+            tool = "nous_forget",
             fact_id = %params.fact_id,
             "memory-mcp write"
         );
@@ -854,22 +1038,22 @@ mod tests {
     use super::*;
 
     #[test]
-    fn memory_search_params_round_trip() {
+    fn nous_search_params_round_trip() {
         let json = r#"{"query":"fleet dispatch config","limit":10}"#;
-        let params: MemorySearchParams = serde_json::from_str(json).unwrap();
+        let params: NousSearchParams = serde_json::from_str(json).unwrap();
         assert_eq!(params.query, "fleet dispatch config");
         assert_eq!(params.limit, Some(10));
 
         let out = serde_json::to_string(&params).unwrap();
-        let back: MemorySearchParams = serde_json::from_str(&out).unwrap();
+        let back: NousSearchParams = serde_json::from_str(&out).unwrap();
         assert_eq!(back.query, "fleet dispatch config");
         assert_eq!(back.limit, Some(10));
     }
 
     #[test]
-    fn memory_search_params_default_limit() {
+    fn nous_search_params_default_limit() {
         let json = r#"{"query":"foo"}"#;
-        let params: MemorySearchParams = serde_json::from_str(json).unwrap();
+        let params: NousSearchParams = serde_json::from_str(json).unwrap();
         assert_eq!(params.query, "foo");
         assert_eq!(params.limit, None);
     }
@@ -885,61 +1069,61 @@ mod tests {
     }
 
     #[test]
-    fn memory_neighbors_params_round_trip() {
+    fn nous_neighbors_params_round_trip() {
         let json = r#"{"fact_id":"f-abc-123"}"#;
-        let params: MemoryNeighborsParams = serde_json::from_str(json).unwrap();
+        let params: NousNeighborsParams = serde_json::from_str(json).unwrap();
         assert_eq!(params.fact_id, "f-abc-123");
 
         let out = serde_json::to_string(&params).unwrap();
-        let back: MemoryNeighborsParams = serde_json::from_str(&out).unwrap();
+        let back: NousNeighborsParams = serde_json::from_str(&out).unwrap();
         assert_eq!(back.fact_id, "f-abc-123");
     }
 
     #[test]
-    fn memory_annotate_params_requires_write_token() {
+    fn nous_annotate_params_requires_write_token() {
         let json = r#"{"fact_id":"f-abc-123","content":"note"}"#;
-        let result = serde_json::from_str::<MemoryAnnotateParams>(json);
+        let result = serde_json::from_str::<NousAnnotateParams>(json);
         assert!(result.is_err());
     }
 
     #[test]
-    fn memory_annotate_params_round_trip() {
+    fn nous_annotate_params_round_trip() {
         let json = r#"{"session_id":"agent-uuid","fact_id":"f-abc-123","content":"verified","write_token":"sekrit"}"#;
-        let params: MemoryAnnotateParams = serde_json::from_str(json).unwrap();
+        let params: NousAnnotateParams = serde_json::from_str(json).unwrap();
         assert_eq!(params.session_id, Some("agent-uuid".to_owned()));
         assert_eq!(params.fact_id, "f-abc-123");
         assert_eq!(params.content, "verified");
         assert_eq!(params.write_token, "sekrit");
 
         let out = serde_json::to_string(&params).unwrap();
-        let back: MemoryAnnotateParams = serde_json::from_str(&out).unwrap();
+        let back: NousAnnotateParams = serde_json::from_str(&out).unwrap();
         assert_eq!(back.write_token, "sekrit");
     }
 
     #[test]
-    fn memory_supersede_params_round_trip() {
+    fn nous_supersede_params_round_trip() {
         let json = r#"{"old_fact_id":"f-old","new_fact_id":"f-new","reason":"updated","write_token":"sekrit"}"#;
-        let params: MemorySupersedeParams = serde_json::from_str(json).unwrap();
+        let params: NousSupersedeParams = serde_json::from_str(json).unwrap();
         assert_eq!(params.old_fact_id, "f-old");
         assert_eq!(params.new_fact_id, "f-new");
         assert_eq!(params.reason, "updated");
         assert_eq!(params.write_token, "sekrit");
 
         let out = serde_json::to_string(&params).unwrap();
-        let back: MemorySupersedeParams = serde_json::from_str(&out).unwrap();
+        let back: NousSupersedeParams = serde_json::from_str(&out).unwrap();
         assert_eq!(back.new_fact_id, "f-new");
     }
 
     #[test]
-    fn memory_forget_params_round_trip() {
+    fn nous_forget_params_round_trip() {
         let json = r#"{"fact_id":"f-abc-123","reason":"stale","write_token":"sekrit"}"#;
-        let params: MemoryForgetParams = serde_json::from_str(json).unwrap();
+        let params: NousForgetParams = serde_json::from_str(json).unwrap();
         assert_eq!(params.fact_id, "f-abc-123");
         assert_eq!(params.reason, "stale");
         assert_eq!(params.write_token, "sekrit");
 
         let out = serde_json::to_string(&params).unwrap();
-        let back: MemoryForgetParams = serde_json::from_str(&out).unwrap();
+        let back: NousForgetParams = serde_json::from_str(&out).unwrap();
         assert_eq!(back.write_token, "sekrit");
     }
 }

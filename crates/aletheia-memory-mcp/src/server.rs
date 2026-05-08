@@ -29,28 +29,37 @@ pub struct MemoryServer {
     /// Capability token for write tools, if configured.
     /// If `None`, write tools are not registered.
     pub(crate) write_token: Option<String>,
-    #[expect(
-        dead_code,
-        reason = "read by #[tool_handler] macro-generated code in ServerHandler impl"
-    )]
     tool_router: ToolRouter<Self>,
 }
 
 impl MemoryServer {
+    const WRITE_TOOLS: [&'static str; 3] = ["nous_annotate", "nous_supersede", "nous_forget"];
+
+    fn router_for(write_token: Option<&String>) -> ToolRouter<Self> {
+        let mut tool_router = Self::tool_router();
+        if write_token.is_none() {
+            for name in Self::WRITE_TOOLS {
+                tool_router.remove_route(name);
+            }
+        }
+        tool_router
+    }
+
     /// Build a memory server from a pre-opened knowledge store.
     ///
-    /// `store_path` is surfaced by `memory_stats` so callers can confirm which
+    /// `store_path` is surfaced by `nous_stats` so callers can confirm which
     /// on-disk database is being served. Pass `None` for in-memory stores.
     ///
     /// Write tools are registered if `write_token` is `Some(_)`.
     #[must_use]
     pub fn new(store: Arc<KnowledgeStore>, store_path: Option<PathBuf>) -> Self {
         let write_token = std::env::var("ALETHEIA_MEMORY_MCP_WRITE_TOKEN").ok();
+        let tool_router = Self::router_for(write_token.as_ref());
         Self {
             store,
             store_path,
             write_token,
-            tool_router: Self::tool_router(),
+            tool_router,
         }
     }
 
@@ -64,11 +73,12 @@ impl MemoryServer {
         store_path: Option<PathBuf>,
         write_token: Option<String>,
     ) -> Self {
+        let tool_router = Self::router_for(write_token.as_ref());
         Self {
             store,
             store_path,
             write_token,
-            tool_router: Self::tool_router(),
+            tool_router,
         }
     }
 
@@ -171,7 +181,7 @@ type ServerInfo = InitializeResult;
 
 /// rmcp `ServerHandler` binding. The macro expands to a routing table over
 /// the `#[tool]` methods on `MemoryServer` (defined in `tools.rs`).
-#[tool_handler]
+#[tool_handler(router = self.tool_router)]
 impl rmcp::handler::server::ServerHandler for MemoryServer {
     fn get_info(&self) -> ServerInfo {
         InitializeResult::new(ServerCapabilities::builder().enable_tools().build())
@@ -180,11 +190,12 @@ impl rmcp::handler::server::ServerHandler for MemoryServer {
                 env!("CARGO_PKG_VERSION"),
             ))
             .with_instructions(
-                "Read-only MCP surface for Aletheia's knowledge graph. \
-                 Use memory_search for recall, memory_neighbors for graph \
-                 traversal, memory_list_topics for fact-type enumeration, \
-                 and memory_stats for health and counts. Writes are not \
-                 exposed in this surface.",
+                "MCP surface for Aletheia's nous local knowledge store \
+                 (session-scoped, distinct from kanon mnemosyne's durable corpus). \
+                 Use nous_search for recall, nous_neighbors for graph \
+                 traversal, nous_list_topics for fact-type enumeration, \
+                 and nous_stats for health and counts. Write tools are exposed \
+                 only when ALETHEIA_MEMORY_MCP_WRITE_TOKEN is configured.",
             )
     }
 }
