@@ -127,6 +127,16 @@ pub struct NousLimits {
     /// to explain its reasoning before making more tool calls. Set to `0` to
     /// disable. Default: 3. Closes #1980.
     pub max_consecutive_tool_only_iterations: u32,
+    /// Consecutive no-progress turn limit before the mistake brake fires.
+    ///
+    /// A turn with zero tool calls increments the counter; a turn with any
+    /// tool call resets it to zero. When the limit is reached, execution
+    /// pauses and the agent asks the operator for intervention. The counter
+    /// resets on the next user message.
+    ///
+    /// Operator-tunable via `KOINA_CONSECUTIVE_MISTAKE_LIMIT` environment
+    /// variable. Default: 5. Closes #187.
+    pub consecutive_mistake_limit: u32,
 }
 
 impl Default for NousLimits {
@@ -140,6 +150,7 @@ impl Default for NousLimits {
             session_token_cap: default_session_token_cap(),
             max_tool_result_bytes: default_max_tool_result_bytes(),
             max_consecutive_tool_only_iterations: 3,
+            consecutive_mistake_limit: default_consecutive_mistake_limit(),
         }
     }
 }
@@ -335,6 +346,13 @@ fn default_prosoche_model() -> String {
 
 fn default_max_tool_result_bytes() -> u32 {
     koina::defaults::MAX_TOOL_RESULT_BYTES
+}
+
+fn default_consecutive_mistake_limit() -> u32 {
+    std::env::var("KOINA_CONSECUTIVE_MISTAKE_LIMIT")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(koina::defaults::DEFAULT_CONSECUTIVE_MISTAKE_LIMIT)
 }
 
 impl Default for NousConfig {
@@ -594,6 +612,7 @@ mod tests {
                 session_token_cap: 250_000,
                 max_tool_result_bytes: 32_768,
                 max_consecutive_tool_only_iterations: 3,
+                consecutive_mistake_limit: 5,
             },
             domains: vec!["medical".to_owned()],
             private: true,

@@ -7,6 +7,195 @@ use organon::types::ToolDiagnostics;
 
 use super::*;
 
+use crate::execute::spawn_guard::enforce_spawn_isolation;
+
+// ── spawn-class isolation guard (#186) ───────────────────────────────────────
+
+struct NoopExecutor;
+
+impl ToolExecutor for NoopExecutor {
+    fn execute<'a>(
+        &'a self,
+        _input: &'a ToolInput,
+        _ctx: &'a ToolContext,
+    ) -> Pin<Box<dyn Future<Output = organon::error::Result<ToolResult>> + Send + 'a>> {
+        Box::pin(async { Ok(ToolResult::text("ok")) })
+    }
+}
+
+fn make_spawn_def(name: &str) -> ToolDef {
+    ToolDef {
+        name: ToolName::new(name).expect("valid"),
+        description: format!("Test tool: {name}"),
+        extended_description: None,
+        input_schema: InputSchema {
+            properties: indexmap::IndexMap::default(),
+            required: vec![],
+        },
+        category: ToolCategory::Workspace,
+        reversibility: organon::types::Reversibility::Irreversible,
+        auto_activate: false,
+        groups: vec![organon::types::ToolGroupId::SpawnSubtask],
+        tags: vec![],
+    }
+}
+
+fn make_read_def(name: &str) -> ToolDef {
+    ToolDef {
+        name: ToolName::new(name).expect("valid"),
+        description: format!("Test tool: {name}"),
+        extended_description: None,
+        input_schema: InputSchema {
+            properties: indexmap::IndexMap::default(),
+            required: vec![],
+        },
+        category: ToolCategory::Workspace,
+        reversibility: organon::types::Reversibility::Irreversible,
+        auto_activate: false,
+        groups: vec![organon::types::ToolGroupId::Read],
+        tags: vec![],
+    }
+}
+
+fn make_spawn_registry() -> ToolRegistry {
+    let mut registry = ToolRegistry::new();
+    registry
+        .register(make_spawn_def("spawn_subagent"), Box::new(NoopExecutor))
+        .expect("register");
+    registry
+        .register(make_read_def("read_file"), Box::new(NoopExecutor))
+        .expect("register");
+    registry
+        .register(make_read_def("write_file"), Box::new(NoopExecutor))
+        .expect("register");
+    registry
+}
+
+#[test]
+fn spawn_isolation_truncates_after_spawn() {
+    let mut tool_uses = vec![
+        (
+            "tu_1".to_owned(),
+            "read_file".to_owned(),
+            serde_json::json!({}),
+        ),
+        (
+            "tu_2".to_owned(),
+            "spawn_subagent".to_owned(),
+            serde_json::json!({}),
+        ),
+        (
+            "tu_3".to_owned(),
+            "write_file".to_owned(),
+            serde_json::json!({}),
+        ),
+    ];
+    let mut denied = Vec::new();
+    let tools = make_spawn_registry();
+
+    enforce_spawn_isolation(&mut tool_uses, &mut denied, &tools);
+
+    assert_eq!(tool_uses.len(), 2);
+    assert_eq!(tool_uses[0].1, "read_file");
+    assert_eq!(tool_uses[1].1, "spawn_subagent");
+    assert_eq!(denied.len(), 1);
+    match &denied[0] {
+        hermeneus::types::ContentBlock::ToolResult {
+            tool_use_id,
+            content,
+            is_error,
+        } => {
+            assert_eq!(tool_use_id, "tu_3");
+            match content {
+                hermeneus::types::ToolResultContent::Text(text) => {
+                    assert_eq!(
+                        text,
+                        "Tool call dropped: spawn-class tool calls cannot co-occur with other tool calls in the same turn."
+                    );
+                }
+                _ => panic!("expected Text content"),
+            }
+            assert_eq!(*is_error, Some(true));
+        }
+        _ => panic!("expected ToolResult block"),
+    }
+}
+
+#[test]
+fn spawn_isolation_passes_through_when_spawn_is_last() {
+    let mut tool_uses = vec![
+        (
+            "tu_1".to_owned(),
+            "read_file".to_owned(),
+            serde_json::json!({}),
+        ),
+        (
+            "tu_2".to_owned(),
+            "spawn_subagent".to_owned(),
+            serde_json::json!({}),
+        ),
+    ];
+    let mut denied = Vec::new();
+    let tools = make_spawn_registry();
+
+    enforce_spawn_isolation(&mut tool_uses, &mut denied, &tools);
+
+    assert_eq!(tool_uses.len(), 2);
+    assert!(denied.is_empty());
+}
+
+#[test]
+fn spawn_isolation_passes_through_when_no_spawn() {
+    let mut tool_uses = vec![
+        (
+            "tu_1".to_owned(),
+            "read_file".to_owned(),
+            serde_json::json!({}),
+        ),
+        (
+            "tu_2".to_owned(),
+            "write_file".to_owned(),
+            serde_json::json!({}),
+        ),
+    ];
+    let mut denied = Vec::new();
+    let tools = make_spawn_registry();
+
+    enforce_spawn_isolation(&mut tool_uses, &mut denied, &tools);
+
+    assert_eq!(tool_uses.len(), 2);
+    assert!(denied.is_empty());
+}
+
+#[test]
+fn spawn_isolation_truncates_multiple_after_spawn() {
+    let mut tool_uses = vec![
+        (
+            "tu_1".to_owned(),
+            "spawn_subagent".to_owned(),
+            serde_json::json!({}),
+        ),
+        (
+            "tu_2".to_owned(),
+            "read_file".to_owned(),
+            serde_json::json!({}),
+        ),
+        (
+            "tu_3".to_owned(),
+            "write_file".to_owned(),
+            serde_json::json!({}),
+        ),
+    ];
+    let mut denied = Vec::new();
+    let tools = make_spawn_registry();
+
+    enforce_spawn_isolation(&mut tool_uses, &mut denied, &tools);
+
+    assert_eq!(tool_uses.len(), 1);
+    assert_eq!(tool_uses[0].1, "spawn_subagent");
+    assert_eq!(denied.len(), 2);
+}
+
 struct DiagnosticExecutor;
 
 impl ToolExecutor for DiagnosticExecutor {

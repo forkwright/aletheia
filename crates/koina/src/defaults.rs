@@ -40,3 +40,6 @@ pub const CHARS_PER_TOKEN: u32 = 4;
 
 /// Maximum output bytes returned by a single tool call.
 pub const MAX_OUTPUT_BYTES: usize = 50 * 1024;
+
+/// Default limit for consecutive no-progress turns before the mistake brake fires.
+pub const DEFAULT_CONSECUTIVE_MISTAKE_LIMIT: u32 = 5;

@@ -45,6 +45,8 @@ Agent session pipeline: bootstrap, recall, execute, finalize. 22K lines. The age
 - **Token budget**: `CharEstimator` (chars_per_token=4). History gets 60% of remaining budget.
 - **Distillation triggers**: context >= 120K tokens, messages >= 150, 7+ day stale sessions.
 - **Session types**: primary (long-lived), ephemeral (`ask:`, `spawn:` prefix), background (`prosoche`).
+- **Spawn isolation**: Spawn-class tools (`SpawnSubtask` group) must be the last tool in a turn. If followed by other tools, subsequent calls are truncated and synthetic error results are injected (#186).
+- **Mistake brake**: Consecutive no-progress turns (zero tool calls) increment a per-session counter. At the configured limit (default 5, tunable via `KOINA_CONSECUTIVE_MISTAKE_LIMIT`), execution pauses and requests operator intervention (#187).
 
 ## Common tasks
 

@@ -114,6 +114,7 @@ impl SpawnService for SpawnServiceImpl {
                 session_token_cap: 500_000,
                 max_tool_result_bytes: MAX_TOOL_RESULT_BYTES,
                 max_consecutive_tool_only_iterations: 3,
+                consecutive_mistake_limit: koina::defaults::DEFAULT_CONSECUTIVE_MISTAKE_LIMIT,
             },
             domains: Vec::new(),
             private: false,
