@@ -246,6 +246,14 @@ struct SingleToolOutcome {
 /// Execute one tool call: substitute secrets, invoke the executor,
 /// truncate + log + build the (`ToolCall`, `ContentBlock::ToolResult`)
 /// pair. Loop-detection bookkeeping is handled by the caller.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "dispatch needs tool id, name, input, registry, context, limits, and receipt infra"
+)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "single-tool dispatch: secret substitution, execution, diagnostics, truncation, receipt signing, and loop detection"
+)]
 async fn dispatch_single_tool(
     tool_id: &str,
     tool_name: &str,
@@ -253,6 +261,8 @@ async fn dispatch_single_tool(
     tools: &ToolRegistry,
     tool_ctx: &ToolContext,
     max_tool_result_bytes: u32,
+    receipt_signer: Option<&organon::receipts::ReceiptSigner>,
+    receipt_ledger: Option<&std::sync::Mutex<organon::receipts::ReceiptLedger>>,
 ) -> error::Result<SingleToolOutcome> {
     let tool_name_id = ToolName::new(tool_name).map_err(|_err| {
         error::PipelineStageSnafu {
@@ -280,6 +290,7 @@ async fn dispatch_single_tool(
                 result: Some(msg.clone()),
                 is_error: true,
                 duration_ms: 0,
+                receipt: None,
             },
             result_block: ContentBlock::ToolResult {
                 tool_use_id: tool_id.to_owned(),
@@ -338,6 +349,41 @@ async fn dispatch_single_tool(
         debug!(tool = tool_name, duration_ms, "tool executed");
     }
 
+    let (content, receipt) = if let Some(signer) = receipt_signer {
+        let ts = jiff::Timestamp::now();
+        let result_text = content.text_summary();
+        let receipt_str = signer.sign(tool_name, &tool_input.to_string(), &result_text, ts);
+        if let Some(ledger) = receipt_ledger {
+            let mut guard = ledger.lock().unwrap_or_else(|poisoned| {
+                tracing::warn!("receipt_ledger lock poisoned, recovering with last value");
+                poisoned.into_inner()
+            });
+            guard.record(
+                receipt_str.clone(),
+                tool_name.to_owned(),
+                tool_input.to_string(),
+                result_text.clone(),
+                ts,
+            );
+        }
+        let tagged = match content {
+            ToolResultContent::Text(text) => {
+                ToolResultContent::Text(format!("{text}\n\n[receipt:{receipt_str}]"))
+            }
+            ToolResultContent::Blocks(mut blocks) => {
+                blocks.push(ToolResultBlock::Text {
+                    text: format!("\n\n[receipt:{receipt_str}]"),
+                });
+                ToolResultContent::Blocks(blocks)
+            }
+            // WHY: ToolResultContent is #[non_exhaustive]; forward-compatibility arm.
+            other => other,
+        };
+        (tagged, Some(receipt_str))
+    } else {
+        (content, None)
+    };
+
     let call = ToolCall {
         id: tool_id.to_owned(),
         name: tool_name.to_owned(),
@@ -345,6 +391,7 @@ async fn dispatch_single_tool(
         result: Some(content.text_summary()),
         is_error,
         duration_ms,
+        receipt,
     };
 
     let result_block = ContentBlock::ToolResult {
@@ -369,6 +416,10 @@ async fn dispatch_single_tool(
 /// Per-tool work lives in [`dispatch_single_tool`]; this function owns the
 /// iteration over `tool_uses` and the loop-detection branch that can halt
 /// or warn before subsequent tools run.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "dispatch needs tool uses, registry, context, detector, calls, iterations, limits, and receipt infra"
+)]
 pub(super) async fn dispatch_tools(
     tool_uses: &[(String, String, serde_json::Value)],
     tools: &ToolRegistry,
@@ -377,6 +428,8 @@ pub(super) async fn dispatch_tools(
     all_tool_calls: &mut Vec<ToolCall>,
     iterations: u32,
     max_tool_result_bytes: u32,
+    receipt_signer: Option<&organon::receipts::ReceiptSigner>,
+    receipt_ledger: Option<&std::sync::Mutex<organon::receipts::ReceiptLedger>>,
 ) -> error::Result<DispatchResult> {
     let mut tool_results: Vec<ContentBlock> = Vec::new();
 
@@ -388,6 +441,8 @@ pub(super) async fn dispatch_tools(
             tools,
             tool_ctx,
             max_tool_result_bytes,
+            receipt_signer,
+            receipt_ledger,
         )
         .await?;
 
@@ -437,6 +492,8 @@ pub(super) async fn dispatch_tools_streaming(
     iterations: u32,
     stream_tx: &mpsc::Sender<TurnStreamEvent>,
     max_tool_result_bytes: u32,
+    receipt_signer: Option<&organon::receipts::ReceiptSigner>,
+    receipt_ledger: Option<&std::sync::Mutex<organon::receipts::ReceiptLedger>>,
 ) -> error::Result<DispatchResult> {
     let mut tool_results: Vec<ContentBlock> = Vec::new();
 
@@ -464,6 +521,7 @@ pub(super) async fn dispatch_tools_streaming(
                 result: Some(format!("Tool error: {e}")),
                 is_error: true,
                 duration_ms: 0,
+                receipt: None,
             });
             tool_results.push(ContentBlock::ToolResult {
                 tool_use_id: tool_id.clone(),
@@ -538,6 +596,42 @@ pub(super) async fn dispatch_tools_streaming(
         };
 
         let content = truncate_tool_result(content, max_tool_result_bytes);
+
+        let (content, receipt) = if let Some(signer) = receipt_signer {
+            let ts = jiff::Timestamp::now();
+            let result_text = content.text_summary();
+            let receipt_str = signer.sign(tool_name, &tool_input.to_string(), &result_text, ts);
+            if let Some(ledger) = receipt_ledger {
+                let mut guard = ledger.lock().unwrap_or_else(|poisoned| {
+                    tracing::warn!("receipt_ledger lock poisoned, recovering with last value");
+                    poisoned.into_inner()
+                });
+                guard.record(
+                    receipt_str.clone(),
+                    tool_name.to_owned(),
+                    tool_input.to_string(),
+                    result_text.clone(),
+                    ts,
+                );
+            }
+            let tagged = match content {
+                ToolResultContent::Text(text) => {
+                    ToolResultContent::Text(format!("{text}\n\n[receipt:{receipt_str}]"))
+                }
+                ToolResultContent::Blocks(mut blocks) => {
+                    blocks.push(ToolResultBlock::Text {
+                        text: format!("\n\n[receipt:{receipt_str}]"),
+                    });
+                    ToolResultContent::Blocks(blocks)
+                }
+                // WHY: ToolResultContent is #[non_exhaustive]; forward-compatibility arm.
+                other => other,
+            };
+            (tagged, Some(receipt_str))
+        } else {
+            (content, None)
+        };
+
         let result_summary = content.text_summary();
 
         if is_error {
@@ -590,6 +684,7 @@ pub(super) async fn dispatch_tools_streaming(
             result: Some(result_summary),
             is_error,
             duration_ms,
+            receipt,
         });
 
         tool_results.push(ContentBlock::ToolResult {

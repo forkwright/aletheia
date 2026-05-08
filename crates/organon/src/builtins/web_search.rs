@@ -61,6 +61,10 @@ struct BraveResult {
     description: String,
 }
 
+#[expect(
+    clippy::result_large_err,
+    reason = "ToolResult grew by receipt field; boxing would change public API"
+)]
 fn require_http_client(ctx: &ToolContext) -> std::result::Result<reqwest::Client, ToolResult> {
     ctx.services
         .as_deref()

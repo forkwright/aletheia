@@ -195,6 +195,18 @@ pub async fn execute(
 
         let mut denied_blocks: Vec<ContentBlock> = Vec::new();
 
+        // WHY: active hallucination detection — verify any receipt citations in the
+        // assistant message before dispatching new tool calls. A fabricated receipt
+        // means the model is narrating a fake tool call; halt immediately.
+        {
+            let ledger = session.receipt_ledger.lock().unwrap_or_else(|poisoned| {
+                tracing::warn!("receipt_ledger lock poisoned, recovering with last value");
+                poisoned.into_inner()
+            });
+            organon::receipts::scan_and_verify(&session.receipt_signer, &ledger, &final_content)
+                .map_err(|details| error::HallucinationDetectedSnafu { details }.build())?;
+        }
+
         // WHY: spawn-class isolation guard — spawn tools must be the last tool in a turn.
         // If a spawn tool is followed by other tools, truncate and inject errors.
         spawn_guard::enforce_spawn_isolation(&mut extracted.tool_uses, &mut denied_blocks, tools);
@@ -330,6 +342,8 @@ pub async fn execute(
             &mut all_tool_calls,
             iterations,
             config.limits.max_tool_result_bytes,
+            Some(&session.receipt_signer),
+            Some(&*session.receipt_ledger),
         )
         .await?;
 
@@ -564,6 +578,18 @@ pub async fn execute_streaming(
 
         let mut denied_blocks: Vec<ContentBlock> = Vec::new();
 
+        // WHY: active hallucination detection — verify any receipt citations in the
+        // assistant message before dispatching new tool calls. A fabricated receipt
+        // means the model is narrating a fake tool call; halt immediately.
+        {
+            let ledger = session.receipt_ledger.lock().unwrap_or_else(|poisoned| {
+                tracing::warn!("receipt_ledger lock poisoned, recovering with last value");
+                poisoned.into_inner()
+            });
+            organon::receipts::scan_and_verify(&session.receipt_signer, &ledger, &final_content)
+                .map_err(|details| error::HallucinationDetectedSnafu { details }.build())?;
+        }
+
         // WHY: spawn-class isolation guard — spawn tools must be the last tool in a turn.
         spawn_guard::enforce_spawn_isolation(&mut extracted.tool_uses, &mut denied_blocks, tools);
 
@@ -693,6 +719,8 @@ pub async fn execute_streaming(
             iterations,
             stream_tx,
             config.limits.max_tool_result_bytes,
+            Some(&session.receipt_signer),
+            Some(&*session.receipt_ledger),
         )
         .await?;
 

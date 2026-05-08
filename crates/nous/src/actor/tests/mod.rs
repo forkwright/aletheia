@@ -260,6 +260,7 @@ fn make_tool_call(name: &str, is_error: bool) -> crate::pipeline::ToolCall {
         result: None,
         is_error,
         duration_ms: 10,
+        receipt: None,
     }
 }
 

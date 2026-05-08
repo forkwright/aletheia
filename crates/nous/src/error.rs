@@ -272,6 +272,14 @@ pub enum Error {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+
+    /// Model cited a receipt not present in the ledger or with mismatched HMAC.
+    #[snafu(display("hallucination detected: {details}"))]
+    HallucinationDetected {
+        details: organon::receipts::HallucinationDetected,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
 }
 
 /// Convenience alias for results with [`Error`].
@@ -315,6 +323,7 @@ impl koina::error_class::Classifiable for Error {
             Error::UncertaintyStore { .. } => ErrorClass::Permanent,
             Error::RoleContract { .. } => ErrorClass::Permanent,
             Error::RecipeLoading { .. } => ErrorClass::Permanent,
+            Error::HallucinationDetected { .. } => ErrorClass::Permanent,
 
             // Unknown: incomplete information — escalate
             Error::DeliveryFailed { .. } => ErrorClass::Unknown,

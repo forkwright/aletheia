@@ -17,6 +17,10 @@ use defs::{
     plan_verify_criteria_def, plan_verify_def,
 };
 
+#[expect(
+    clippy::result_large_err,
+    reason = "ToolResult grew by receipt field; boxing would change public API"
+)]
 fn require_planning(
     ctx: &ToolContext,
 ) -> std::result::Result<&Arc<dyn PlanningService>, ToolResult> {

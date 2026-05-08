@@ -1,9 +1,11 @@
 //! Session manager: creates, finds, and manages agent sessions.
 
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use koina::ulid::Ulid;
+use organon::receipts::{ReceiptLedger, ReceiptSigner};
 use organon::types::ToolGroupId;
 use tracing::{info, instrument};
 
@@ -40,6 +42,10 @@ pub struct SessionState {
     pub consecutive_mistake_counts: HashMap<ToolGroupId, u32>,
     /// Whether the consecutive-mistake brake is currently tripped for this session.
     pub brake_tripped: bool,
+    /// Per-session ephemeral HMAC-SHA256 signer for tool-call receipts.
+    pub receipt_signer: ReceiptSigner,
+    /// Per-session in-memory ledger of all emitted tool receipts.
+    pub receipt_ledger: Arc<Mutex<ReceiptLedger>>,
 }
 
 impl SessionState {
@@ -63,6 +69,8 @@ impl SessionState {
             consecutive_no_progress_count: 0,
             consecutive_mistake_counts: HashMap::new(),
             brake_tripped: false,
+            receipt_signer: ReceiptSigner::new_session(),
+            receipt_ledger: Arc::new(Mutex::new(ReceiptLedger::default())),
         }
     }
 
