@@ -1,21 +1,21 @@
 # aletheia-memory-mcp
 
-Standalone stdio MCP server exposing Aletheia's memory and knowledge graph to external agents (Claude Code, Cursor, OpenHands, etc.) without requiring the full Aletheia runtime.
+Standalone stdio MCP server exposing Aletheia's nous local knowledge store to external agents (Claude Code, Cursor, OpenHands, etc.) without requiring the full Aletheia runtime. This is the session-scoped Aletheia nous store, not kanon mnemosyne's durable corpus.
 
 ## Tools
 
 ### Read Tools (Always Available)
 
-- `memory_search` — BM25 text search across active facts
-- `memory_neighbors` — one-hop graph traversal from a fact's entities
-- `memory_list_topics` — enumerate fact-type buckets with counts
-- `memory_stats` — knowledge graph health metrics (fact count, schema version, last updated)
+- `nous_search` — BM25 text search across active facts in the Aletheia nous local knowledge store
+- `nous_neighbors` — one-hop graph traversal from a fact's entities; neighbor rows include `src_id`, `dst_id`, `name`, `entity_type`, `relation`, and `weight`
+- `nous_list_topics` — enumerate fact-type buckets with counts
+- `nous_stats` — knowledge graph health metrics (fact count, schema version, last updated)
 
 ### Write Tools (Capability Token Gated)
 
-- `memory_annotate` — create an annotation on an existing fact
-- `memory_supersede` — mark one fact as superseded by another
-- `memory_forget` — soft-delete a fact (mark as forgotten)
+- `nous_annotate` — create an annotation on an existing fact and link it back to the target fact
+- `nous_supersede` — mark one fact as superseded by another
+- `nous_forget` — soft-delete a fact (mark as forgotten)
 
 ## Configuration
 
@@ -32,9 +32,9 @@ Write tools are protected by a **per-process capability token** passed via envir
 
 ### How It Works
 
-1. **Server Startup**: The spawning process (aletheia daemon or operator) generates a random token and sets it in the child's environment as `ALETHEIA_MEMORY_MCP_WRITE_TOKEN`.
+1. **Server Startup**: The spawning process (aletheia daemon or operator) generates a random token and sets it in the child's environment as `ALETHEIA_MEMORY_MCP_WRITE_TOKEN`. If this variable is unset, write tools are not registered or listed by MCP discovery.
 2. **Token Validation**: Each write tool call includes a `write_token` field in its input. The server compares it against the configured token using constant-time comparison (via `subtle::ConstantTimeEq`).
-3. **Authorization**: If tokens match, the write proceeds. If they don't match or no token is configured, the call returns an "unauthorized" error.
+3. **Authorization**: If tokens match, the write proceeds. If they don't match, the call returns an "unauthorized" error.
 4. **Audit Logging**: Successful writes are logged at INFO level to stderr with the tool name and affected fact IDs.
 
 ### Token Generation
@@ -58,7 +58,7 @@ aletheia-memory-mcp  # server inherits the token
 
 ```json
 {
-  "name": "memory_annotate",
+  "name": "nous_annotate",
   "arguments": {
     "fact_id": "f-abc-123",
     "content": "Verified against external source X",
