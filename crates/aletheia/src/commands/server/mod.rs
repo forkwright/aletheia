@@ -47,7 +47,7 @@ pub(crate) async fn run(args: Args) -> Result<()> {
     let trace_ingest_layer = config
         .observability
         .trace_ingest
-        .then(episteme::trace_ingest::TraceIngestLayer::new);
+        .then(mneme::trace_ingest::TraceIngestLayer::new);
 
     // WARNING: The returned guard must live for the entire process lifetime
     // to flush the non-blocking writer on exit.

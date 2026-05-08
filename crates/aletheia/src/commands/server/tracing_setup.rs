@@ -81,7 +81,7 @@ pub(super) fn spawn_log_retention(log_dir: PathBuf, retention_days: u32, token: 
 /// Flush trace-ingest operational events into the knowledge store until shutdown.
 #[cfg(feature = "recall")]
 pub(super) fn spawn_trace_ingest_flush(
-    layer: episteme::trace_ingest::TraceIngestLayer,
+    layer: mneme::trace_ingest::TraceIngestLayer,
     store: std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
     token: CancellationToken,
 ) {
@@ -121,7 +121,7 @@ pub(super) fn init_tracing(
     log_dir: &Path,
     file_level: &str,
     redaction: &taxis::config::RedactionSettings,
-    trace_ingest: Option<episteme::trace_ingest::TraceIngestLayer>,
+    trace_ingest: Option<mneme::trace_ingest::TraceIngestLayer>,
 ) -> Result<WorkerGuard> {
     // NOTE: Respects RUST_LOG env var; falls back to the CLI level.
     let console_filter = EnvFilter::try_from_default_env()

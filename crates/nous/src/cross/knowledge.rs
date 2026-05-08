@@ -11,9 +11,9 @@
 
 use std::time::Duration;
 
-use eidos::id::FactId;
-use eidos::knowledge::VerificationVerdict;
 use koina::id::NousId;
+use mneme::id::FactId;
+use mneme::knowledge::VerificationVerdict;
 
 use super::CrossNousMessage;
 

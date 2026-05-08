@@ -86,7 +86,7 @@ impl VectorSearch for KnowledgeVectorSearch {
         query_vec: Vec<f32>,
         k: usize,
         ef: usize,
-        rewrite_provider: &dyn episteme::query_rewrite::RewriteProvider,
+        rewrite_provider: &dyn mneme::query_rewrite::RewriteProvider,
     ) -> Option<error::Result<Vec<KnowledgeRecallResult>>> {
         let hybrid = mneme::knowledge_store::HybridQuery {
             text: query.to_owned(),
@@ -95,8 +95,8 @@ impl VectorSearch for KnowledgeVectorSearch {
             limit: k,
             ef,
         };
-        let rewriter = episteme::query_rewrite::QueryRewriter::with_defaults();
-        let config = episteme::query_rewrite::TieredSearchConfig::default();
+        let rewriter = mneme::query_rewrite::QueryRewriter::with_defaults();
+        let config = mneme::query_rewrite::TieredSearchConfig::default();
         Some(
             self.store
                 .search_tiered_for_recall(&hybrid, &rewriter, rewrite_provider, None, &config)

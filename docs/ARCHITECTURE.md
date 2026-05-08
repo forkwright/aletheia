@@ -143,16 +143,24 @@ The oikos hierarchy is described in [CONFIGURATION.md](CONFIGURATION.md).
 
 ### Mneme facade
 
-Mneme was decomposed into four sub-crates. The `mneme` crate is now a thin facade that re-exports their public APIs:
+Mneme was decomposed into four sub-crates. The `mneme` crate is a thin facade
+over their downstream-facing APIs. Application crates should import memory,
+session, recall, verification, tracing, and knowledge-store types through
+`mneme` so the sub-crate layout can move without changing their imports. Direct
+sub-crate imports are reserved for the sub-crates themselves and for specialized
+tools that intentionally own a lower-level boundary.
 
 | Sub-crate | Re-exports | Feature gate |
 |-----------|------------|--------------|
-| `eidos` | `id`, `knowledge` | always |
-| `graphe` | `backup`, `error`, `export`, `import`, `migration`, `portability`, `recovery`, `retention`, `schema`, `store`, `types` | `sqlite` (default) for most |
-| `episteme` | `conflict`, `consolidation`, `embedding`, `extract`, `hnsw_index`, `instinct`, `knowledge_portability`, `knowledge_store`, `query`, `recall`, `skill`, `skills`, `vocab` | some behind `mneme-engine` or `hnsw_rs` |
+| `eidos` | `bookkeeping`, `id`, `knowledge`, `training` | always |
+| `graphe` | `error`, `metrics`, `portability`, `store`, `types` | always |
+| `episteme` | `consolidation`, `embedding`, `embedding_eval`, `extract`, `ingest`, `instinct`, `manifest`, `metrics`, `query_rewrite`, `recall`, `side_query`, `skill`, `skills`, `trace_ingest`, `verification` | `reranker` for reranker implementations |
+| `episteme` | `knowledge_store` | `mneme-engine` |
 | `krites` | `engine` | `mneme-engine` |
 
-Downstream crates depend on `mneme` and get the full API surface without knowing about the decomposition.
+Downstream application crates depend on `mneme` for this public surface. When a
+new downstream use needs a sub-crate item, add an explicit `mneme` re-export
+instead of reaching through to the sub-crate from the application layer.
 
 ### Dependency graph
 

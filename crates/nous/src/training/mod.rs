@@ -40,11 +40,11 @@ use std::sync::Arc;
 
 use aletheia_classify::Classifier;
 // Re-export types from eidos for convenience
-pub use eidos::training::{
+use jiff::Timestamp;
+pub use mneme::training::{
     RecallSignals, RecalledFact, TRAINING_RECORD_SCHEMA_VERSION, ToolOutcome, TrainingConfig,
     TrainingRecord,
 };
-use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 use snafu::{ResultExt, Snafu};
 use tracing::{debug, warn};

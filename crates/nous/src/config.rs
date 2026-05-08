@@ -3,8 +3,8 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use eidos::knowledge::{EpistemicTier, MemoryScope};
 use hermeneus::complexity::ComplexityConfig;
+use mneme::knowledge::{EpistemicTier, MemoryScope};
 use serde::{Deserialize, Serialize};
 use taxis::config::AgentBehaviorDefaults;
 
@@ -527,10 +527,10 @@ mod tests {
     fn identity_continuity_profile_applies_recall_extraction_and_reflection_knobs() {
         let mut recall = RecallConfig {
             pinned_facts: vec![
-                eidos::id::FactId::new("identity-pin-1").expect("valid"),
-                eidos::id::FactId::new("identity-pin-2").expect("valid"),
-                eidos::id::FactId::new("identity-pin-3").expect("valid"),
-                eidos::id::FactId::new("identity-pin-4").expect("valid"),
+                mneme::id::FactId::new("identity-pin-1").expect("valid"),
+                mneme::id::FactId::new("identity-pin-2").expect("valid"),
+                mneme::id::FactId::new("identity-pin-3").expect("valid"),
+                mneme::id::FactId::new("identity-pin-4").expect("valid"),
             ],
             ..RecallConfig::default()
         };

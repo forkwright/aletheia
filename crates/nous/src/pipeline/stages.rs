@@ -74,33 +74,33 @@ impl ProviderRecallBridge<'_> {
     }
 }
 
-impl episteme::query_rewrite::RewriteProvider for ProviderRecallBridge<'_> {
+impl mneme::query_rewrite::RewriteProvider for ProviderRecallBridge<'_> {
     fn complete(
         &self,
         system: &str,
         user_message: &str,
-    ) -> Result<String, episteme::query_rewrite::RewriteError> {
+    ) -> Result<String, mneme::query_rewrite::RewriteError> {
         self.complete_blocking(system, user_message)
-            .map_err(episteme::query_rewrite::RewriteError::LlmCall)
+            .map_err(mneme::query_rewrite::RewriteError::LlmCall)
     }
 }
 
-impl episteme::side_query::SideQueryRanker for ProviderRecallBridge<'_> {
+impl mneme::side_query::SideQueryRanker for ProviderRecallBridge<'_> {
     fn rank_memories(
         &self,
         query: &str,
         manifest_text: &str,
         max_results: usize,
-    ) -> Result<Vec<String>, episteme::side_query::SideQueryError> {
+    ) -> Result<Vec<String>, mneme::side_query::SideQueryError> {
         let system = format!(
             "Select up to {max_results} relevant memory source IDs for the query. Respond with only a JSON array of source ID strings."
         );
         let user = format!("Query: {query}\n\nMemory manifest:\n{manifest_text}");
         let text = self
             .complete_blocking(&system, &user)
-            .map_err(|message| episteme::side_query::RankerFailedSnafu { message }.build())?;
+            .map_err(|message| mneme::side_query::RankerFailedSnafu { message }.build())?;
         let ids: Vec<String> = serde_json::from_str(text.trim()).map_err(|e| {
-            episteme::side_query::RankerFailedSnafu {
+            mneme::side_query::RankerFailedSnafu {
                 message: e.to_string(),
             }
             .build()
@@ -837,7 +837,7 @@ pub(super) async fn run_finalize_stage(
 /// available the stage should:
 ///
 /// 1. Read recent session facts for this `nous_id`.
-/// 2. Emit promoted facts at [`eidos::knowledge::EpistemicTier::Reflected`].
+/// 2. Emit promoted facts at [`mneme::knowledge::EpistemicTier::Reflected`].
 ///
 /// Until then the stage records [`ReflectionStatus::Skipped`] when disabled
 /// or [`ReflectionStatus::NoStore`] when enabled, so observability can
