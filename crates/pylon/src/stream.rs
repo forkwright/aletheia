@@ -21,17 +21,6 @@ pub(crate) enum SseEvent {
     #[serde(rename = "text_delta")]
     TextDelta { text: String },
 
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "SSE schema variant for extended-thinking, not yet emitted"
-        )
-    )]
-    /// Incremental extended-thinking output.
-    #[serde(rename = "thinking_delta")]
-    ThinkingDelta { thinking: String },
-
     /// The assistant is invoking a tool.
     #[serde(rename = "tool_use")]
     ToolUse {
@@ -85,7 +74,6 @@ impl SseEvent {
         match self {
             Self::MessageStart { .. } => "message_start",
             Self::TextDelta { .. } => "text_delta",
-            Self::ThinkingDelta { .. } => "thinking_delta",
             Self::ToolUse { .. } => "tool_use",
             Self::ToolResult { .. } => "tool_result",
             Self::MessageComplete { .. } => "message_complete",

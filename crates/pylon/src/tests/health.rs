@@ -208,6 +208,51 @@ async fn openapi_spec_has_all_paths() {
     assert!(paths.contains_key("/api/v1/nous"));
     assert!(paths.contains_key("/api/v1/nous/{id}"));
     assert!(paths.contains_key("/api/v1/nous/{id}/tools"));
+    assert!(paths.contains_key("/api/v1/nous/{id}/recover"));
+    assert!(paths.contains_key("/api/v1/events/subscribe"));
+    assert!(paths.contains_key("/api/v1/events/discovery"));
+    let nous_path = paths["/api/v1/nous"].as_object().unwrap();
+    assert!(nous_path.contains_key("post"));
+}
+
+#[tokio::test]
+async fn openapi_spec_advertises_bearer_auth_in_token_mode() {
+    let (app, _dir) = app().await;
+    let resp = app
+        .oneshot(
+            Request::get("/api/docs/openapi.json")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let body = body_json(resp).await;
+    assert!(
+        body["components"]["securitySchemes"]
+            .get("bearer_auth")
+            .is_some()
+    );
+}
+
+#[tokio::test]
+async fn openapi_spec_omits_bearer_auth_in_none_mode() {
+    let (app, _dir) = app_with_auth_mode("none").await;
+    let resp = app
+        .oneshot(
+            Request::get("/api/docs/openapi.json")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let body = body_json(resp).await;
+    assert!(
+        body["components"]["securitySchemes"]
+            .get("bearer_auth")
+            .is_none()
+    );
 }
 
 #[tokio::test]
@@ -243,4 +288,7 @@ async fn openapi_spec_has_schemas() {
     assert!(schemas.contains_key("ErrorResponse"));
     assert!(schemas.contains_key("HealthResponse"));
     assert!(schemas.contains_key("NousStatus"));
+    assert!(schemas.contains_key("AgentDefinition"));
+    assert!(schemas.contains_key("CreateAgentResponse"));
+    assert!(schemas.contains_key("RecoverResponse"));
 }

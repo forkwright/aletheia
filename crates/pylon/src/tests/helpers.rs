@@ -56,26 +56,33 @@ pub(super) fn token_for_role(role: symbolon::types::Role) -> String {
 }
 
 pub(super) async fn test_state() -> (Arc<AppState>, tempfile::TempDir) {
-    test_state_with_provider_and_private(true, false).await
+    test_state_with_provider_private_and_auth_mode(true, false, "token").await
 }
 
 pub(super) async fn test_state_with_provider(
     with_provider: bool,
 ) -> (Arc<AppState>, tempfile::TempDir) {
-    test_state_with_provider_and_private(with_provider, false).await
+    test_state_with_provider_private_and_auth_mode(with_provider, false, "token").await
 }
 
 pub(super) async fn test_state_with_private_nous() -> (Arc<AppState>, tempfile::TempDir) {
-    test_state_with_provider_and_private(true, true).await
+    test_state_with_provider_private_and_auth_mode(true, true, "token").await
+}
+
+pub(super) async fn test_state_with_auth_mode(
+    auth_mode: &str,
+) -> (Arc<AppState>, tempfile::TempDir) {
+    test_state_with_provider_private_and_auth_mode(true, false, auth_mode).await
 }
 
 #[expect(
     clippy::too_many_lines,
     reason = "test harness setup is inherently linear — splitting adds indirection without reducing reader burden"
 )]
-async fn test_state_with_provider_and_private(
+async fn test_state_with_provider_private_and_auth_mode(
     with_provider: bool,
     include_private_nous: bool,
+    auth_mode: &str,
 ) -> (Arc<AppState>, tempfile::TempDir) {
     let dir = tempfile::TempDir::new().expect("tmpdir");
     let root = dir.path();
@@ -209,7 +216,7 @@ bind = "localhost"
         oikos,
         jwt_manager,
         start_time: Instant::now(),
-        auth_mode: "token".to_owned(),
+        auth_mode: auth_mode.to_owned(),
         none_role: "admin".to_owned(),
         config: Arc::new(tokio::sync::RwLock::new(default_config)),
         config_tx,
@@ -233,6 +240,11 @@ pub(super) async fn app() -> (axum::Router, tempfile::TempDir) {
 
 pub(super) async fn app_no_providers() -> (axum::Router, tempfile::TempDir) {
     let (state, dir) = test_state_with_provider(false).await;
+    (build_router(state, &test_security_config()), dir)
+}
+
+pub(super) async fn app_with_auth_mode(auth_mode: &str) -> (axum::Router, tempfile::TempDir) {
+    let (state, dir) = test_state_with_auth_mode(auth_mode).await;
     (build_router(state, &test_security_config()), dir)
 }
 

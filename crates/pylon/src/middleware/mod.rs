@@ -1,7 +1,9 @@
 //! Custom middleware layers for pylon.
 
 use axum::body::Body;
-use axum::extract::Request;
+use std::sync::Arc;
+
+use axum::extract::{FromRequestParts, Request, State};
 use axum::http::{Method, StatusCode};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
@@ -9,7 +11,9 @@ use tracing::warn;
 
 use koina::http::CONTENT_TYPE_JSON;
 
-use crate::error::{ErrorBody, ErrorResponse};
+use crate::error::{ApiError, ErrorBody, ErrorResponse};
+use crate::extract::Claims;
+use crate::state::AppState;
 
 /// CSRF protection state stored as a router extension.
 #[derive(Debug, Clone)]
@@ -18,6 +22,21 @@ pub struct CsrfState {
     pub header_name: String,
     /// Expected header value (e.g. `"aletheia"`).
     pub header_value: String,
+}
+
+/// Middleware that validates bearer auth for an entire router subtree.
+///
+/// The validated claims are cached in request extensions so handlers that also
+/// extract [`Claims`] do not re-validate the same token.
+pub async fn require_bearer_auth(
+    State(state): State<Arc<AppState>>,
+    request: Request,
+    next: Next,
+) -> Result<Response, ApiError> {
+    let (mut parts, body) = request.into_parts();
+    let claims = Claims::from_request_parts(&mut parts, &state).await?;
+    parts.extensions.insert(claims);
+    Ok(next.run(Request::from_parts(parts, body)).await)
 }
 
 /// Middleware that requires a custom header on state-changing requests.

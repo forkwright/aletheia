@@ -99,20 +99,7 @@ pub async fn ingest(
         .build());
     }
 
-    let format = if body.format.is_empty() {
-        mneme::ingest::IngestFormat::PlainText
-    } else {
-        mneme::ingest::parse_format(&body.format).ok_or_else(|| {
-            BadRequestSnafu {
-                message: format!(
-                    "unsupported format '{}': valid values are markdown, text, json, jsonl",
-                    body.format
-                ),
-            }
-            .build()
-        })?
-    };
-
+    let format = parse_ingest_format(&body.format)?;
     let config = mneme::ingest::IngestConfig::default();
     let facts = tokio::task::spawn_blocking(move || {
         mneme::ingest::ingest_content(&body.content, format, &config, &body.nous_id)
@@ -126,6 +113,8 @@ pub async fn ingest(
         message: e.to_string(),
         location: snafu::location!(),
     })?;
+    #[cfg(not(feature = "knowledge-store"))]
+    let _ = &facts;
 
     #[cfg(feature = "knowledge-store")]
     if let Some(ref store) = state.knowledge_store {
@@ -186,6 +175,21 @@ pub async fn ingest(
     Err(ApiError::ServiceUnavailable {
         message: "knowledge store not available".to_owned(),
         location: snafu::location!(),
+    })
+}
+
+fn parse_ingest_format(format: &str) -> Result<mneme::ingest::IngestFormat, ApiError> {
+    if format.is_empty() {
+        return Ok(mneme::ingest::IngestFormat::PlainText);
+    }
+
+    mneme::ingest::parse_format(format).ok_or_else(|| {
+        BadRequestSnafu {
+            message: format!(
+                "unsupported format '{format}': valid values are markdown, text, json, jsonl"
+            ),
+        }
+        .build()
     })
 }
 

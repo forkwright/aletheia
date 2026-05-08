@@ -12,14 +12,6 @@ fn sse_event_type_text_delta() {
 }
 
 #[test]
-fn sse_event_type_thinking_delta() {
-    let event = crate::stream::SseEvent::ThinkingDelta {
-        thinking: "hmm".to_owned(),
-    };
-    assert_eq!(event.event_type(), "thinking_delta");
-}
-
-#[test]
 fn sse_event_type_tool_use() {
     let event = crate::stream::SseEvent::ToolUse {
         id: "t1".to_owned(),

@@ -379,6 +379,10 @@ fn check_credential_validity(
     clock_skew_leeway: u64,
     expiry_warning_threshold: u64,
 ) -> HealthCheck {
+    if let Some(check) = provider_credential_scope_check(state) {
+        return check;
+    }
+
     // Check for API key in environment
     let env_key = RealSystem.var("ANTHROPIC_API_KEY").or_else(|| {
         tracing::debug!("ANTHROPIC_API_KEY not set");
@@ -488,6 +492,46 @@ fn check_credential_validity(
             message: Some("no credentials found (ANTHROPIC_API_KEY not set, no credential file, no Claude Code credentials)".to_owned()),
         }
     }
+}
+
+fn provider_credential_scope_check(state: &HealthState) -> Option<HealthCheck> {
+    let provider_names: Vec<&str> = state
+        .provider_registry
+        .providers()
+        .into_iter()
+        .map(hermeneus::provider::LlmProvider::name)
+        .collect();
+
+    if provider_names.is_empty() {
+        return Some(HealthCheck {
+            name: "credential_validity",
+            status: "warn",
+            message: Some(
+                "no providers registered; credential validity cannot be checked".to_owned(),
+            ),
+        });
+    }
+
+    if provider_names
+        .iter()
+        .any(|name| provider_uses_anthropic_credentials(name))
+    {
+        return None;
+    }
+
+    Some(HealthCheck {
+        name: "credential_validity",
+        status: "pass",
+        message: Some(format!(
+            "registered providers do not use pylon-managed Anthropic credentials: {}",
+            provider_names.join(", ")
+        )),
+    })
+}
+
+fn provider_uses_anthropic_credentials(name: &str) -> bool {
+    let normalized = name.to_ascii_lowercase();
+    normalized.contains("anthropic") || normalized.contains("claude")
 }
 
 /// Check if the data directory is writable.
@@ -705,6 +749,15 @@ mod tests {
         let json = serde_json::to_value(&check).unwrap();
         assert_eq!(json["status"], "fail");
         assert_eq!(json["message"], "no LLM providers registered");
+    }
+
+    #[test]
+    fn credential_check_only_uses_anthropic_credentials_for_anthropic_providers() {
+        assert!(provider_uses_anthropic_credentials("anthropic"));
+        assert!(provider_uses_anthropic_credentials("claude-code"));
+        assert!(!provider_uses_anthropic_credentials("openai"));
+        assert!(!provider_uses_anthropic_credentials("local"));
+        assert!(!provider_uses_anthropic_credentials("mock"));
     }
 
     #[test]
