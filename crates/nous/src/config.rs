@@ -306,6 +306,12 @@ pub struct HookConfig {
     pub correction_hooks_enabled: bool,
     /// Enable the audit logging hook (priority 100).
     pub audit_logging_enabled: bool,
+    /// Enable the working checkpoint hook (priority 40).
+    ///
+    /// When enabled, agent-curated `<key_info>` checkpoints written via
+    /// `update_working_checkpoint` are injected into the system prompt at
+    /// the start of each turn.
+    pub working_checkpoint_enabled: bool,
 }
 
 impl Default for HookConfig {
@@ -316,6 +322,7 @@ impl Default for HookConfig {
             scope_enforcement_enabled: true,
             correction_hooks_enabled: true,
             audit_logging_enabled: true,
+            working_checkpoint_enabled: true,
         }
     }
 }

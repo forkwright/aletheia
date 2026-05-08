@@ -16,9 +16,11 @@ fn test_ctx() -> ToolContext {
     ToolContext {
         nous_id: NousId::new("test-agent").expect("valid"),
         session_id: SessionId::new(),
+        turn_number: 0,
         workspace: std::path::PathBuf::from("/tmp/test"),
         allowed_roots: vec![std::path::PathBuf::from("/tmp")],
         services: Some(Arc::new(ToolServices {
+            working_checkpoint_store: None,
             cross_nous: None,
             messenger: None,
             note_store: None,
@@ -245,6 +247,7 @@ async fn scan_requires_services() {
     let ctx = ToolContext {
         nous_id: NousId::new("test").expect("valid"),
         session_id: SessionId::new(),
+        turn_number: 0,
         workspace: std::path::PathBuf::from("/tmp"),
         allowed_roots: vec![],
         services: None,

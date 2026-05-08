@@ -332,6 +332,52 @@ pub struct SpawnResult {
     pub output_tokens: u64,
 }
 
+/// Working checkpoint storage for agent-curated session memory.
+///
+/// Agents call `update_working_checkpoint` to persist structured key-info
+/// that survives context compaction and is reinjected on subsequent turns.
+pub trait WorkingCheckpointStore: Send + Sync {
+    /// Persist a checkpoint for the given session and turn.
+    ///
+    /// # Errors
+    ///
+    /// Returns `StoreError` on persistence failure.
+    fn write_checkpoint(
+        &self,
+        session_id: &str,
+        turn_number: u64,
+        content: &str,
+    ) -> std::result::Result<(), crate::error::StoreError>;
+
+    /// Read the most recent checkpoint for a session.
+    ///
+    /// Returns `None` if no checkpoint exists.
+    fn read_latest(
+        &self,
+        session_id: &str,
+    ) -> std::result::Result<Option<WorkingCheckpoint>, crate::error::StoreError>;
+
+    /// Read up to `limit` most recent checkpoints for a session, newest first.
+    fn read_recent(
+        &self,
+        session_id: &str,
+        limit: usize,
+    ) -> std::result::Result<Vec<WorkingCheckpoint>, crate::error::StoreError>;
+}
+
+/// A single agent-curated working checkpoint.
+#[derive(Debug, Clone)]
+pub struct WorkingCheckpoint {
+    /// Session identifier.
+    pub session_id: String,
+    /// Turn number when the checkpoint was written.
+    pub turn_number: u64,
+    /// Structured key-info content.
+    pub content: String,
+    /// ISO-8601 timestamp of the write.
+    pub created_at: String,
+}
+
 /// Ephemeral sub-agent spawning for tool executors.
 pub trait SpawnService: Send + Sync {
     /// Spawn an ephemeral actor, run one turn, collect the result, shut down.

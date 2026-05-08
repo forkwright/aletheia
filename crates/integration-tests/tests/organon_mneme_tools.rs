@@ -61,9 +61,11 @@ fn ctx_with_notes_bb(store: &Arc<Mutex<SessionStore>>) -> ToolContext {
     ToolContext {
         nous_id: NousId::new("alice").expect("valid"),
         session_id,
+        turn_number: 0,
         workspace: PathBuf::from("/tmp/test"),
         allowed_roots: vec![PathBuf::from("/tmp")],
         services: Some(Arc::new(ToolServices {
+            working_checkpoint_store: None,
             cross_nous: None,
             messenger: None,
             note_store: Some(note_adapter),
@@ -417,9 +419,11 @@ fn ctx_with_knowledge(svc: Arc<StubKnowledgeService>) -> ToolContext {
     ToolContext {
         nous_id: NousId::new("alice").expect("valid"),
         session_id: SessionId::new(),
+        turn_number: 0,
         workspace: PathBuf::from("/tmp/test"),
         allowed_roots: vec![PathBuf::from("/tmp")],
         services: Some(Arc::new(ToolServices {
+            working_checkpoint_store: None,
             cross_nous: None,
             messenger: None,
             note_store: None,

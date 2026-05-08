@@ -46,6 +46,8 @@ async fn before_query_runs_all_hooks_in_order() {
     let mut ctx = QueryContext {
         pipeline: &mut pipeline,
         nous_id: "test",
+        session_id: "ses-test",
+        turn_number: 1,
         user_message: "hello",
     };
 
@@ -84,6 +86,8 @@ async fn before_query_short_circuits_on_abort() {
     let mut ctx = QueryContext {
         pipeline: &mut pipeline,
         nous_id: "test",
+        session_id: "ses-test",
+        turn_number: 1,
         user_message: "hello",
     };
 
@@ -152,7 +156,10 @@ async fn on_turn_complete_runs_all_hooks_without_short_circuit() {
     let ctx = TurnContext {
         result: &result,
         nous_id: "test",
+        session_id: "ses-test",
+        turn_number: 1,
         session_tokens: 100,
+        reinject_identity: false,
     };
 
     registry.run_on_turn_complete(&ctx).await;
@@ -193,6 +200,8 @@ async fn equal_priority_hooks_run_in_insertion_order() {
     let mut ctx = QueryContext {
         pipeline: &mut pipeline,
         nous_id: "test",
+        session_id: "ses-test",
+        turn_number: 1,
         user_message: "hello",
     };
 

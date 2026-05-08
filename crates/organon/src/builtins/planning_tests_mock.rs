@@ -15,6 +15,7 @@ pub(super) fn test_ctx() -> ToolContext {
     ToolContext {
         nous_id: NousId::new("test-agent").expect("valid"),
         session_id: SessionId::new(),
+        turn_number: 0,
         workspace: PathBuf::from("/tmp/test"),
         allowed_roots: vec![PathBuf::from("/tmp")],
         services: None,
@@ -28,9 +29,11 @@ pub(super) fn test_ctx_with_planning(planning: Arc<dyn PlanningService>) -> Tool
     ToolContext {
         nous_id: NousId::new("test-agent").expect("valid"),
         session_id: SessionId::new(),
+        turn_number: 0,
         workspace: PathBuf::from("/tmp/test"),
         allowed_roots: vec![PathBuf::from("/tmp")],
         services: Some(Arc::new(ToolServices {
+            working_checkpoint_store: None,
             cross_nous: None,
             messenger: None,
             note_store: None,

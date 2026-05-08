@@ -276,6 +276,8 @@ async fn injector_appends_to_system_prompt() {
     let mut ctx = crate::hooks::QueryContext {
         pipeline: &mut pipeline,
         nous_id: "test-agent",
+        session_id: "ses-test",
+        turn_number: 1,
         user_message: "hello",
     };
 
@@ -306,6 +308,8 @@ async fn injector_detects_and_persists_new_correction() {
     let mut ctx = crate::hooks::QueryContext {
         pipeline: &mut pipeline,
         nous_id: "test-agent",
+        session_id: "ses-test",
+        turn_number: 1,
         user_message: "Never use unwrap in production code",
     };
 
@@ -335,6 +339,8 @@ async fn injector_skips_when_no_corrections() {
     let mut ctx = crate::hooks::QueryContext {
         pipeline: &mut pipeline,
         nous_id: "test-agent",
+        session_id: "ses-test",
+        turn_number: 1,
         user_message: "What does this function do?",
     };
 
@@ -372,6 +378,8 @@ async fn injector_skips_when_insufficient_budget() {
     let mut ctx = crate::hooks::QueryContext {
         pipeline: &mut pipeline,
         nous_id: "test-agent",
+        session_id: "ses-test",
+        turn_number: 1,
         user_message: "hello",
     };
 
@@ -403,7 +411,10 @@ async fn detector_returns_continue() {
     let ctx = crate::hooks::TurnContext {
         result: &turn_result,
         nous_id: "test-agent",
+        session_id: "ses-test",
+        turn_number: 1,
         session_tokens: 0,
+        reinject_identity: false,
     };
 
     let result = hook.on_turn_complete(&ctx).await;

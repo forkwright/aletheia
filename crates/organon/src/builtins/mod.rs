@@ -72,6 +72,8 @@ pub mod triage;
 pub mod view_file;
 /// Web search via Brave Search API (requires BRAVE_SEARCH_API_KEY).
 pub mod web_search;
+/// Agent-curated working-memory checkpoint tool (update_working_checkpoint).
+pub mod working_checkpoint;
 /// File and shell workspace tools (read, write, edit, exec).
 pub mod workspace;
 /// Z3 SMT solver tool (z3_solver).
@@ -201,6 +203,7 @@ pub(crate) fn register_domain_tools(
     render_eval_report::register(registry)?;
     render_graph_audit::register(registry)?;
     skill_read::register(registry)?;
+    working_checkpoint::register(registry)?;
     diff_report::register(registry)?;
     inspect_report::register(registry)?;
     Ok(())

@@ -13,6 +13,7 @@ fn test_ctx(dir: &std::path::Path) -> ToolContext {
     ToolContext {
         nous_id: NousId::new("alice").expect("valid"),
         session_id: SessionId::new(),
+        turn_number: 0,
         workspace: dir.to_path_buf(),
         allowed_roots: vec![dir.to_path_buf()],
         services: None,

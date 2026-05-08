@@ -307,6 +307,7 @@ pub fn make_test_context() -> ToolContext {
     ToolContext {
         nous_id: NousId::new("alice").expect("valid nous id"), // kanon:ignore RUST/expect
         session_id: SessionId::new(),
+        turn_number: 0,
         workspace: PathBuf::from("/tmp/aletheia-test"),
         allowed_roots: vec![PathBuf::from("/tmp")],
         services: None,

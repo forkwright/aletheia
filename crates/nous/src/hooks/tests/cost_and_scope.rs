@@ -14,6 +14,8 @@ async fn allows_when_budget_is_zero() {
     let mut ctx = QueryContext {
         pipeline: &mut pipeline,
         nous_id: "test",
+        session_id: "ses-test",
+        turn_number: 1,
         user_message: "hello",
     };
 
@@ -35,6 +37,8 @@ async fn allows_when_tokens_sufficient() {
     let mut ctx = QueryContext {
         pipeline: &mut pipeline,
         nous_id: "test",
+        session_id: "ses-test",
+        turn_number: 1,
         user_message: "hello",
     };
 
@@ -56,6 +60,8 @@ async fn aborts_when_nearly_exhausted() {
     let mut ctx = QueryContext {
         pipeline: &mut pipeline,
         nous_id: "test",
+        session_id: "ses-test",
+        turn_number: 1,
         user_message: "hello",
     };
 

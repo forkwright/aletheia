@@ -12,6 +12,7 @@ fn test_ctx(dir: &Path) -> ToolContext {
     ToolContext {
         nous_id: NousId::new("test-agent").expect("valid"),
         session_id: SessionId::new(),
+        turn_number: 0,
         workspace: dir.to_path_buf(),
         allowed_roots: vec![dir.to_path_buf()],
         services: None,
@@ -252,6 +253,7 @@ fn test_validate_path_tilde_expands_to_home_before_resolution() {
         let ctx = ToolContext {
             nous_id: koina::id::NousId::new("test-agent").expect("valid"),
             session_id: koina::id::SessionId::new(),
+            turn_number: 0,
             workspace: home_path.clone(),
             allowed_roots: vec![home_path.clone()],
             services: None,
@@ -282,6 +284,7 @@ fn test_validate_path_relative_resolves_inside_workspace() {
     let ctx = ToolContext {
         nous_id: koina::id::NousId::new("test-agent").expect("valid"),
         session_id: koina::id::SessionId::new(),
+        turn_number: 0,
         workspace: canonical_dir.clone(),
         allowed_roots: vec![canonical_dir.clone()],
         services: None,
@@ -354,6 +357,7 @@ fn test_validate_path_accepts_canonical_root_with_symlinked_input() {
         let ctx = ToolContext {
             nous_id: NousId::new("test-agent").expect("valid"),
             session_id: SessionId::new(),
+            turn_number: 0,
             workspace: canonical_root.clone(),
             allowed_roots: vec![canonical_root],
             services: None,
@@ -382,6 +386,7 @@ fn test_validate_path_trailing_slash_in_root() {
     let ctx = ToolContext {
         nous_id: NousId::new("test-agent").expect("valid"),
         session_id: SessionId::new(),
+        turn_number: 0,
         workspace: dir.path().to_path_buf(),
         allowed_roots: vec![root_with_slash],
         services: None,
@@ -411,6 +416,7 @@ fn test_validate_path_root_exact_match() {
     let ctx = ToolContext {
         nous_id: NousId::new("test-agent").expect("valid"),
         session_id: SessionId::new(),
+        turn_number: 0,
         workspace: canonical.clone(),
         allowed_roots: vec![canonical.clone()],
         services: None,

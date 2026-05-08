@@ -32,6 +32,10 @@ pub(crate) struct QueryContext<'a> {
     pub pipeline: &'a mut PipelineContext,
     /// Agent identifier.
     pub nous_id: &'a str,
+    /// Session identifier.
+    pub session_id: &'a str,
+    /// Current turn number within the session.
+    pub turn_number: u64,
     /// The user's message content for this turn.
     pub user_message: &'a str,
 }
@@ -43,8 +47,14 @@ pub(crate) struct TurnContext<'a> {
     pub result: &'a TurnResult,
     /// Agent identifier.
     pub nous_id: &'a str,
+    /// Session identifier.
+    pub session_id: &'a str,
+    /// Turn number that just completed.
+    pub turn_number: u64,
     /// Cumulative token usage for this session.
     pub session_tokens: u64,
+    /// When true, the next turn-start should also re-inject identity-pinned facts.
+    pub reinject_identity: bool,
 }
 
 /// Context passed to `before_tool` hooks.

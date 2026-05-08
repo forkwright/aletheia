@@ -1054,6 +1054,8 @@ pub(crate) async fn run_pipeline(
             let mut query_ctx = QueryContext {
                 pipeline: &mut ctx,
                 nous_id: &config.id,
+                session_id: &input.session.id,
+                turn_number: input.session.turn,
                 user_message: &input.content,
             };
             if let crate::hooks::HookResult::Abort { reason } =
@@ -1280,7 +1282,10 @@ pub(crate) async fn run_pipeline(
             let turn_ctx = TurnContext {
                 result: &result,
                 nous_id: &config.id,
+                session_id: &input.session.id,
+                turn_number: input.session.turn,
                 session_tokens: input.session.cumulative_tokens,
+                reinject_identity: (input.session.turn + 1).is_multiple_of(10),
             };
             hook_registry.run_on_turn_complete(&turn_ctx).await;
         }
