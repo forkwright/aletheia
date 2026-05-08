@@ -87,4 +87,49 @@ mod tests {
         // May error (invalid PPTX), but shouldn't panic
         let _ = result;
     }
+
+    #[test]
+    #[expect(clippy::expect_used, reason = "test assertions")]
+    fn diff_detects_changes_on_correct_sheet_with_non_alphabetical_names() {
+        let before = serde_json::json!({
+            "sheets": [
+                {
+                    "name": "Zebra",
+                    "columns": [{ "header": "A" }],
+                    "rows": [["old"]]
+                },
+                {
+                    "name": "Apple",
+                    "columns": [{ "header": "B" }],
+                    "rows": [["stable"]]
+                }
+            ]
+        });
+        let after = serde_json::json!({
+            "sheets": [
+                {
+                    "name": "Zebra",
+                    "columns": [{ "header": "A" }],
+                    "rows": [["new"]]
+                },
+                {
+                    "name": "Apple",
+                    "columns": [{ "header": "B" }],
+                    "rows": [["stable"]]
+                }
+            ]
+        });
+
+        let bytes_a = poiesis_sheet::render_xlsx(&before).expect("render a");
+        let bytes_b = poiesis_sheet::render_xlsx(&after).expect("render b");
+
+        let diffs = diff_workbooks(&bytes_a, &bytes_b).expect("diff must succeed");
+        assert_eq!(diffs.len(), 1, "expected exactly one diff");
+        let diff = diffs.first().expect("one diff");
+        assert_eq!(diff.sheet, "Zebra", "diff must be on Zebra sheet");
+        assert_eq!(diff.row, 1);
+        assert_eq!(diff.col, 0);
+        assert_eq!(diff.before.as_deref(), Some("old"));
+        assert_eq!(diff.after.as_deref(), Some("new"));
+    }
 }

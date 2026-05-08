@@ -143,7 +143,8 @@ fn build_meta(doc: &Document) -> String {
 }
 
 fn build_styles() -> &'static str {
-    // Minimal ODF 1.2 style sheet defining Heading_1 … Heading_3 and Text_Body.
+    // Minimal ODF 1.2 style sheet defining Heading_1 … Heading_3, Text_Body,
+    // and inline span styles Bold, Italic, and Code.
     r#"<?xml version="1.0" encoding="UTF-8"?>
 <office:document-styles
   xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
@@ -168,6 +169,15 @@ fn build_styles() -> &'static str {
       <style:paragraph-properties fo:margin-bottom="4pt"/>
       <style:text-properties fo:font-size="11pt"/>
     </style:style>
+    <style:style style:name="Bold" style:family="text">
+      <style:text-properties fo:font-weight="bold"/>
+    </style:style>
+    <style:style style:name="Italic" style:family="text">
+      <style:text-properties fo:font-style="italic"/>
+    </style:style>
+    <style:style style:name="Code" style:family="text">
+      <style:text-properties fo:font-family="monospace" style:font-name="monospace"/>
+    </style:style>
   </office:styles>
 </office:document-styles>"#
 }
@@ -186,6 +196,7 @@ fn build_content(doc: &Document) -> String {
   xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0"
   xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0"
   xmlns:fo="urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0"
+  xmlns:xlink="http://www.w3.org/1999/xlink"
   office:version="1.2">
   <office:body>
     <office:text>
@@ -384,6 +395,63 @@ mod tests {
         assert_eq!(
             xml_escape("a&b<c>d\"e'f"),
             "a&amp;b&lt;c&gt;d&quot;e&apos;f"
+        );
+    }
+
+    #[test]
+    #[expect(clippy::expect_used, reason = "test assertions")]
+    fn odt_includes_span_styles_and_xlink_ns() {
+        use std::io::Read;
+
+        let doc = Document {
+            metadata: Metadata {
+                title: "Styles Test".to_owned(),
+                author: None,
+                created: None,
+            },
+            content: vec![Block::Paragraph(RichText {
+                spans: vec![
+                    Span::Bold("bold text".to_owned()),
+                    Span::Italic("italic text".to_owned()),
+                    Span::Code("code text".to_owned()),
+                    Span::Link {
+                        text: "link".to_owned(),
+                        url: "https://example.com".to_owned(),
+                    },
+                ],
+            })],
+        };
+        let bytes = OdtRenderer::new().render(&doc).expect("render");
+        let mut archive = zip::ZipArchive::new(std::io::Cursor::new(&bytes)).expect("zip");
+
+        let mut styles_xml = String::new();
+        archive
+            .by_name("styles.xml")
+            .expect("styles.xml")
+            .read_to_string(&mut styles_xml)
+            .expect("read");
+        assert!(
+            styles_xml.contains("style:name=\"Bold\""),
+            "must declare Bold style"
+        );
+        assert!(
+            styles_xml.contains("style:name=\"Italic\""),
+            "must declare Italic style"
+        );
+        assert!(
+            styles_xml.contains("style:name=\"Code\""),
+            "must declare Code style"
+        );
+
+        let mut content_xml = String::new();
+        archive
+            .by_name("content.xml")
+            .expect("content.xml")
+            .read_to_string(&mut content_xml)
+            .expect("read");
+        assert!(
+            content_xml.contains("xmlns:xlink=\"http://www.w3.org/1999/xlink\""),
+            "must declare xlink namespace"
         );
     }
 }

@@ -71,7 +71,15 @@ impl ToolExecutor for GenerateDocumentExecutor {
                 }
             };
 
-            let blocks: Vec<Block> = raw_blocks.iter().filter_map(parse_block).collect();
+            let blocks: Vec<Block> = match raw_blocks
+                .iter()
+                .enumerate()
+                .map(|(i, v)| parse_block(v, i))
+                .collect::<std::result::Result<Vec<_>, _>>()
+            {
+                Ok(b) => b,
+                Err(e) => return Ok(ToolResult::error(e)),
+            };
 
             let doc = Document {
                 metadata: Metadata {
@@ -129,8 +137,11 @@ impl ToolExecutor for GenerateDocumentExecutor {
 }
 
 /// Parse a JSON block object into a `poiesis_core::Block`.
-fn parse_block(v: &serde_json::Value) -> Option<Block> {
-    let kind = v.get("type").and_then(serde_json::Value::as_str)?;
+fn parse_block(v: &serde_json::Value, index: usize) -> std::result::Result<Block, String> {
+    let kind = v
+        .get("type")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| format!("block {index}: missing or non-string 'type' field"))?;
     match kind {
         "heading" => {
             let level = v
@@ -143,7 +154,7 @@ fn parse_block(v: &serde_json::Value) -> Option<Block> {
                     .and_then(serde_json::Value::as_str)
                     .unwrap_or(""),
             );
-            Some(Block::Heading { level, text })
+            Ok(Block::Heading { level, text })
         }
         "paragraph" => {
             let text = plain(
@@ -151,10 +162,10 @@ fn parse_block(v: &serde_json::Value) -> Option<Block> {
                     .and_then(serde_json::Value::as_str)
                     .unwrap_or(""),
             );
-            Some(Block::Paragraph(text))
+            Ok(Block::Paragraph(text))
         }
-        "page_break" => Some(Block::PageBreak),
-        _ => None,
+        "page_break" => Ok(Block::PageBreak),
+        other => Err(format!("block {index}: unsupported block type '{other}'")),
     }
 }
 

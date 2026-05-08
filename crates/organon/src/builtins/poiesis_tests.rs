@@ -10,6 +10,9 @@ use std::sync::{Arc, RwLock};
 use koina::id::{NousId, SessionId, ToolName};
 
 use super::*;
+use crate::builtins::render_docx_report::RenderDocxReportExecutor;
+use crate::builtins::render_pptx_report::RenderPptxReportExecutor;
+use crate::builtins::render_xlsx_report::RenderXlsxReportExecutor;
 
 fn test_ctx(dir: &std::path::Path) -> ToolContext {
     ToolContext {
@@ -159,4 +162,72 @@ async fn render_typst_report_malformed_typst_is_error() {
         .await
         .expect("exec");
     assert!(result.is_error, "malformed typst must error");
+}
+
+#[tokio::test]
+async fn generate_document_unsupported_block_is_error() {
+    let dir = tempfile::tempdir().expect("tmpdir");
+    let ctx = test_ctx(dir.path());
+
+    let input = tool_input(
+        "generate_document",
+        serde_json::json!({
+            "content": serde_json::json!([
+                {"type": "heading", "level": 1, "text": "Title"},
+                {"type": "unsupported_foo", "text": "drop me"}
+            ]).to_string()
+        }),
+    );
+    let result = GenerateDocumentExecutor
+        .execute(&input, &ctx)
+        .await
+        .expect("exec");
+    assert!(
+        result.is_error,
+        "unsupported block must error, got: {result:?}"
+    );
+    let text = result.content.text_summary();
+    assert!(
+        text.contains("unsupported"),
+        "error must mention unsupported type: {text}"
+    );
+}
+
+#[tokio::test]
+async fn render_docx_report_missing_data_is_error() {
+    let dir = tempfile::tempdir().expect("tmpdir");
+    let ctx = test_ctx(dir.path());
+
+    let input = tool_input("render_docx_report", serde_json::json!({}));
+    let result = RenderDocxReportExecutor
+        .execute(&input, &ctx)
+        .await
+        .expect("exec");
+    assert!(result.is_error, "missing data must error");
+}
+
+#[tokio::test]
+async fn render_pptx_report_missing_data_is_error() {
+    let dir = tempfile::tempdir().expect("tmpdir");
+    let ctx = test_ctx(dir.path());
+
+    let input = tool_input("render_pptx_report", serde_json::json!({}));
+    let result = RenderPptxReportExecutor
+        .execute(&input, &ctx)
+        .await
+        .expect("exec");
+    assert!(result.is_error, "missing data must error");
+}
+
+#[tokio::test]
+async fn render_xlsx_report_missing_data_is_error() {
+    let dir = tempfile::tempdir().expect("tmpdir");
+    let ctx = test_ctx(dir.path());
+
+    let input = tool_input("render_xlsx_report", serde_json::json!({}));
+    let result = RenderXlsxReportExecutor
+        .execute(&input, &ctx)
+        .await
+        .expect("exec");
+    assert!(result.is_error, "missing data must error");
 }

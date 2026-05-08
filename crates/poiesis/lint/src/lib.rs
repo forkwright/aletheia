@@ -122,10 +122,12 @@ impl Linter {
         // WHY: structural and banned-word checks run on non-comment lines only.
         // Citation checks run on all lines because source markers may appear
         // adjacent to comment lines.
-        let effective: Vec<(usize, &str)> = all_lines
-            .iter()
-            .copied()
-            .filter(|(_, l)| !l.trim_start().starts_with("//"))
+        let cleaned = strip_comments(text);
+        let effective: Vec<(usize, &str)> = cleaned
+            .lines()
+            .enumerate()
+            .map(|(i, l)| (i + 1, l))
+            .filter(|(_, l)| !l.trim().is_empty())
             .collect();
 
         let mut findings: Vec<Finding> = Vec::new();
@@ -223,6 +225,94 @@ impl Linter {
 impl Default for Linter {
     fn default() -> Self {
         Self::new(LintConfig::default())
+    }
+}
+
+/// Return a copy of `text` with Rust/Typst line comments and block comments
+/// replaced by spaces, preserving line lengths and newline structure so that
+/// line numbers stay aligned.
+///
+/// Preserves `//` inside URLs (e.g. `http://`) by checking whether the
+/// preceding character is `:`.
+fn strip_comments(text: &str) -> String {
+    let mut result = String::with_capacity(text.len());
+    let mut in_block = false;
+
+    for line in text.lines() {
+        if in_block {
+            if let Some(end) = line.find("*/") {
+                in_block = false;
+                let spaces = " ".repeat(end + 2);
+                result.push_str(&spaces);
+                if let Some(tail) = line.get(end + 2..) {
+                    result.push_str(tail);
+                }
+                result.push('\n');
+            } else {
+                result.push_str(&" ".repeat(line.len()));
+                result.push('\n');
+            }
+            continue;
+        }
+
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("//!") || trimmed.starts_with("///") {
+            result.push_str(&" ".repeat(line.len()));
+            result.push('\n');
+            continue;
+        }
+
+        let mut cleaned = String::with_capacity(line.len());
+        let bytes = line.as_bytes();
+        let mut i = 0;
+        while i < bytes.len() {
+            if i + 1 < bytes.len() {
+                let here = bytes.get(i).copied();
+                let next = bytes.get(i + 1).copied();
+                if here == Some(b'/') && next == Some(b'*') {
+                    if let Some(remaining) = line.get(i + 2..)
+                        && let Some(end) = remaining.find("*/")
+                    {
+                        cleaned.push_str(&" ".repeat(2 + end + 2));
+                        i += 2 + end + 2;
+                        continue;
+                    }
+                    in_block = true;
+                    cleaned.push_str(&" ".repeat(line.len() - i));
+                    break;
+                }
+                if here == Some(b'/') && next == Some(b'/') {
+                    // Avoid stripping // inside URLs like http://
+                    let prev = if i >= 1 {
+                        bytes.get(i - 1).copied()
+                    } else {
+                        None
+                    };
+                    if prev == Some(b':') {
+                        cleaned.push('/');
+                        cleaned.push('/');
+                        i += 2;
+                        continue;
+                    }
+                    cleaned.push_str(&" ".repeat(line.len() - i));
+                    break;
+                }
+            }
+            if let Some(b) = bytes.get(i).copied() {
+                cleaned.push(char::from(b));
+            }
+            i += 1;
+        }
+
+        result.push_str(&cleaned);
+        result.push('\n');
+    }
+
+    if text.ends_with('\n') || result.is_empty() {
+        result
+    } else {
+        result.pop();
+        result
     }
 }
 
@@ -325,5 +415,55 @@ mod tests {
         let line = "Clean prose here.";
         let result = replace_first_case_insensitive(line, "utilize", "use");
         assert_eq!(result, line, "no match must return line unchanged");
+    }
+
+    #[test]
+    fn comment_lines_are_filtered() {
+        let linter = Linter::default();
+        let text =
+            "// this is a line comment\n/// doc comment\n//! inner doc\nrobust prose here.\n";
+        let findings = linter.check(text);
+        assert!(
+            findings.iter().any(|f| f.message.contains("robust")),
+            "must still flag banned word in prose"
+        );
+        assert_eq!(
+            findings
+                .iter()
+                .filter(|f| f.message.contains("robust"))
+                .count(),
+            1,
+            "must flag exactly one 'robust' in prose, not in comments"
+        );
+    }
+
+    #[test]
+    fn block_comments_are_filtered() {
+        let linter = Linter::default();
+        let text = "/* robust block comment */\nprose robust here.\n/* multi\nrobust line\n*/\nmore prose.\n";
+        let findings = linter.check(text);
+        assert!(
+            findings.iter().any(|f| f.message.contains("robust")),
+            "must flag banned word in prose"
+        );
+        assert_eq!(
+            findings
+                .iter()
+                .filter(|f| f.message.contains("robust"))
+                .count(),
+            1,
+            "must flag exactly one 'robust' in prose, not in block comments"
+        );
+    }
+
+    #[test]
+    fn url_double_slash_is_preserved() {
+        let linter = Linter::default();
+        let text = "Visit https://example.com/robust for details.\n";
+        let findings = linter.check(text);
+        assert!(
+            findings.iter().any(|f| f.message.contains("robust")),
+            "must flag banned word inside URL path"
+        );
     }
 }

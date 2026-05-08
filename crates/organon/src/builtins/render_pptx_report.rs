@@ -16,7 +16,7 @@ use crate::types::{
     ToolGroupId, ToolInput, ToolResult, ToolTag,
 };
 
-struct RenderPptxReportExecutor;
+pub(crate) struct RenderPptxReportExecutor;
 
 impl ToolExecutor for RenderPptxReportExecutor {
     fn execute<'a>(
@@ -27,17 +27,27 @@ impl ToolExecutor for RenderPptxReportExecutor {
         Box::pin(async move {
             let args = &input.arguments;
 
-            let data: serde_json::Value =
-                if let Some(raw) = args.get("data").and_then(serde_json::Value::as_str) {
-                    match serde_json::from_str(raw) {
-                        Ok(v) => v,
-                        Err(e) => {
-                            return Ok(ToolResult::error(format!("data must be valid JSON: {e}")));
+            let data = match args.get("data") {
+                Some(v) => {
+                    if let Some(raw) = v.as_str() {
+                        match serde_json::from_str(raw) {
+                            Ok(parsed) => parsed,
+                            Err(e) => {
+                                return Ok(ToolResult::error(format!(
+                                    "data must be valid JSON: {e}"
+                                )));
+                            }
                         }
+                    } else {
+                        v.clone()
                     }
-                } else {
-                    serde_json::json!({})
-                };
+                }
+                None => {
+                    return Ok(ToolResult::error(
+                        "missing required argument: data".to_owned(),
+                    ));
+                }
+            };
 
             let pptx_bytes = match poiesis_slides::render_pptx(&data) {
                 Ok(b) => b,
@@ -103,7 +113,7 @@ fn render_pptx_report_def() -> ToolDef {
                     },
                 ),
             ]),
-            required: vec![],
+            required: vec!["data".to_owned()],
         },
         category: ToolCategory::Workspace,
         reversibility: Reversibility::FullyReversible,

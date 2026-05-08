@@ -20,8 +20,10 @@ pub(crate) fn inspect_pdf_impl(bytes: &[u8]) -> Result<PdfSummary> {
         .map(std::string::ToString::to_string)
         .collect();
 
-    // Estimate page count (rough heuristic: split by form feed or every ~2000 chars)
-    let pages = (bytes.len() / 2000).max(1).min(text_snippets.len());
+    // Real page count via lopdf
+    let pages = lopdf::Document::load_mem(bytes)
+        .map_or(1, |doc| doc.get_pages().len())
+        .max(1);
 
     Ok(PdfSummary {
         pages,
