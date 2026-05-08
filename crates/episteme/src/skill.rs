@@ -104,6 +104,13 @@ pub struct SkillContent {
     pub domain_tags: Vec<String>,
     /// How this skill was created: `"manual"`, `"seeded"`, or `"extracted"`.
     pub origin: String,
+    /// Trigger keywords that hint this skill should be loaded.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub triggers: Vec<String>,
+    /// Whether this skill is always injected into the system prompt.
+    /// When `false` (default), the skill is lazy-loaded via `skill_read`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub always: bool,
 }
 
 /// Errors from SKILL.md parsing.
@@ -140,6 +147,8 @@ pub fn parse_skill_md(source: &str, slug: &str) -> Result<SkillContent, SkillPar
 
     let mut fm_tools: Vec<String> = Vec::new();
     let mut fm_domains: Vec<String> = Vec::new();
+    let mut fm_triggers: Vec<String> = Vec::new();
+    let mut fm_always = false;
     if let Some(fm) = frontmatter {
         for line in fm.lines() {
             let line = line.trim();
@@ -147,6 +156,10 @@ pub fn parse_skill_md(source: &str, slug: &str) -> Result<SkillContent, SkillPar
                 fm_tools = parse_yaml_array(rest);
             } else if let Some(rest) = line.strip_prefix("domains:") {
                 fm_domains = parse_yaml_array(rest);
+            } else if let Some(rest) = line.strip_prefix("triggers:") {
+                fm_triggers = parse_yaml_array(rest);
+            } else if let Some(rest) = line.strip_prefix("always:") {
+                fm_always = rest.trim().eq_ignore_ascii_case("true");
             }
         }
     }
@@ -223,6 +236,8 @@ pub fn parse_skill_md(source: &str, slug: &str) -> Result<SkillContent, SkillPar
         tools_used,
         domain_tags,
         origin: "seeded".to_owned(),
+        triggers: fm_triggers,
+        always: fm_always,
     })
 }
 
@@ -396,7 +411,7 @@ pub(crate) fn slugify(name: &str) -> String {
 /// - <tool>
 /// ```
 #[must_use]
-pub(crate) fn format_skill_md(skill: &SkillContent) -> String {
+pub fn format_skill_md(skill: &SkillContent) -> String {
     use std::fmt::Write as _;
     let mut md = String::with_capacity(512);
 
@@ -418,6 +433,12 @@ pub(crate) fn format_skill_md(skill: &SkillContent) -> String {
     }
     if !skill.domain_tags.is_empty() {
         let _ = writeln!(md, "domains: [{}]", skill.domain_tags.join(", "));
+    }
+    if !skill.triggers.is_empty() {
+        let _ = writeln!(md, "triggers: [{}]", skill.triggers.join(", "));
+    }
+    if skill.always {
+        let _ = writeln!(md, "always: true");
     }
     md.push_str("---\n\n");
 

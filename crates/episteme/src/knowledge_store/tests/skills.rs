@@ -16,6 +16,8 @@ fn make_skill_fact(id: &str, nous_id: &str, skill_name: &str, domain_tags: &[&st
         tools_used: vec!["Read".to_owned()],
         domain_tags: domain_tags.iter().map(|t| (*t).to_owned()).collect(),
         origin: "seeded".to_owned(),
+        triggers: vec![],
+        always: false,
     })
     .expect("skill content serializes to JSON");
     Fact {

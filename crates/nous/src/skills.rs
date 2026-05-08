@@ -145,6 +145,7 @@ impl SkillLoader {
         nous_id: &str,
         task_context: &str,
         max_skills: usize,
+        user_content: &str,
     ) -> Vec<BootstrapSection> {
         let span = tracing::info_span!(
             "skill_loader.resolve_skills",
@@ -156,7 +157,7 @@ impl SkillLoader {
         let start = std::time::Instant::now();
 
         let sections = self
-            .do_resolve(nous_id, task_context, max_skills)
+            .do_resolve(nous_id, task_context, max_skills, user_content)
             .instrument(span.clone())
             .await;
 
@@ -177,6 +178,7 @@ impl SkillLoader {
         nous_id: &str,
         task_context: &str,
         max_skills: usize,
+        user_content: &str,
     ) -> Vec<BootstrapSection> {
         if task_context.is_empty() || max_skills == 0 {
             return vec![];
@@ -213,7 +215,9 @@ impl SkillLoader {
         let ranked = rank_skills(candidates);
         let selected: Vec<Fact> = ranked.into_iter().take(max_skills).collect();
 
-        let sections: Vec<BootstrapSection> = selected.iter().map(fact_to_section).collect();
+        log_trigger_hints(user_content, &selected);
+
+        let sections: Vec<BootstrapSection> = facts_to_sections(&selected);
 
         // WHY: background increment avoids blocking the pipeline
         if !selected.is_empty() {
@@ -235,28 +239,93 @@ impl SkillLoader {
     }
 }
 
-/// Convert a skill [`Fact`] to a [`BootstrapSection`].
+/// Convert a slice of skill [`Fact`]s into bootstrap sections with always-vs-lazy
+/// partitioning.
 ///
-/// Tries to parse `content` as JSON [`SkillContent`] and format it as markdown.
-/// Falls back to the raw content string if parsing fails (e.g. plain-text skills).
+/// - **Always skills** (`always == true`): injected verbatim at [`BootstrapSlot::SkillsAlways`].
+/// - **Lazy skills** (`always == false`): collapsed into a single index section at
+///   [`BootstrapSlot::SkillsLazyIndex`] containing one-line summaries.
+/// - **Plain-text skills** (unparseable JSON): treated as always-injected for backward
+///   compatibility.
 #[cfg(any(feature = "knowledge-store", test))]
-pub(crate) fn fact_to_section(fact: &Fact) -> BootstrapSection {
-    let content =
+pub(crate) fn facts_to_sections(facts: &[Fact]) -> Vec<BootstrapSection> {
+    let mut always_sections = Vec::new();
+    let mut lazy_lines = Vec::new();
+
+    for fact in facts {
         if let Ok(skill) = serde_json::from_str::<mneme::skill::SkillContent>(&fact.content) {
-            format_skill_as_markdown(&skill)
+            if skill.always {
+                let content = format_skill_as_markdown(&skill);
+                let tokens = CharEstimator::default().estimate(&content);
+                always_sections.push(BootstrapSection {
+                    name: format!("[skill] {}", fact.id),
+                    priority: SectionPriority::Flexible,
+                    content,
+                    tokens,
+                    truncatable: true,
+                    slot: BootstrapSlot::SkillsAlways,
+                });
+            } else {
+                lazy_lines.push(format!(
+                    "- {}: {} (use skill_read {} to load)",
+                    skill.name, skill.description, skill.name
+                ));
+            }
         } else {
-            fact.content.clone()
-        };
+            // Plain-text fallback: treat as always-injected
+            let content = fact.content.clone();
+            let tokens = CharEstimator::default().estimate(&content);
+            always_sections.push(BootstrapSection {
+                name: format!("[skill] {}", fact.id),
+                priority: SectionPriority::Flexible,
+                content,
+                tokens,
+                truncatable: true,
+                slot: BootstrapSlot::SkillsAlways,
+            });
+        }
+    }
 
-    let tokens = CharEstimator::default().estimate(&content);
+    let mut sections = always_sections;
+    if !lazy_lines.is_empty() {
+        let content = lazy_lines.join("\n");
+        let tokens = CharEstimator::default().estimate(&content);
+        sections.push(BootstrapSection {
+            name: "lazy-skills-index".to_owned(),
+            priority: SectionPriority::Flexible,
+            content,
+            tokens,
+            truncatable: true,
+            slot: BootstrapSlot::SkillsLazyIndex,
+        });
+    }
+    sections
+}
 
-    BootstrapSection {
-        name: format!("[skill] {}", fact.id), // kanon:ignore RUST/indexing-slicing
-        priority: SectionPriority::Flexible,
-        content,
-        tokens,
-        truncatable: true,
-        slot: BootstrapSlot::Tools,
+/// Log trigger hints for lazy skills whose triggers match the user message.
+///
+/// Emits a `tracing::debug!` event for each match so operators can observe
+/// which skills the agent might want to load. Does **not** inject the skill
+/// body — that is the agent's decision.
+#[cfg(any(feature = "knowledge-store", test))]
+pub(crate) fn log_trigger_hints(content: &str, facts: &[Fact]) {
+    let lower = content.to_lowercase();
+    for fact in facts {
+        if let Ok(skill) = serde_json::from_str::<mneme::skill::SkillContent>(&fact.content) {
+            if skill.always || skill.triggers.is_empty() {
+                continue;
+            }
+            for trigger in &skill.triggers {
+                if lower.contains(&trigger.to_lowercase()) {
+                    tracing::debug!(
+                        skill_name = %skill.name,
+                        trigger = %trigger,
+                        "consider skill_read {name}",
+                        name = skill.name,
+                    );
+                }
+            }
+        }
     }
 }
 
@@ -350,6 +419,28 @@ mod tests {
         assert_eq!(sanitize_fts_query("?!@#$%"), "");
     }
 
+    // Legacy helper: kept in tests module for unit-test coverage of the
+    // single-fact conversion path.
+    fn fact_to_section(fact: &Fact) -> BootstrapSection {
+        let content =
+            if let Ok(skill) = serde_json::from_str::<mneme::skill::SkillContent>(&fact.content) {
+                format_skill_as_markdown(&skill)
+            } else {
+                fact.content.clone()
+            };
+
+        let tokens = CharEstimator::default().estimate(&content);
+
+        BootstrapSection {
+            name: format!("[skill] {}", fact.id),
+            priority: SectionPriority::Flexible,
+            content,
+            tokens,
+            truncatable: true,
+            slot: BootstrapSlot::Tools,
+        }
+    }
+
     #[test]
     fn extract_task_context_returns_content() {
         let ctx = extract_task_context("Implement a retry loop in Rust");
@@ -423,6 +514,8 @@ mod tests {
             tools_used: vec!["cargo".to_owned(), "rustc".to_owned()],
             domain_tags: vec!["rust".to_owned(), "errors".to_owned()],
             origin: "manual".to_owned(),
+            triggers: vec![],
+            always: false,
         }
     }
 
@@ -601,5 +694,137 @@ mod tests {
         assert!(ids.contains(&"a"));
         assert!(ids.contains(&"b"));
         assert!(ids.contains(&"c"));
+    }
+
+    fn skill_with_always(always: bool) -> mneme::skill::SkillContent {
+        mneme::skill::SkillContent {
+            name: "test-skill".to_owned(),
+            description: "A test skill.".to_owned(),
+            steps: vec!["step 1".to_owned()],
+            tools_used: vec![],
+            domain_tags: vec![],
+            origin: "manual".to_owned(),
+            triggers: vec![],
+            always,
+        }
+    }
+
+    #[test]
+    fn facts_to_sections_partitions_always_and_lazy() {
+        let always_skill = serde_json::to_string(&skill_with_always(true)).expect("serialize");
+        let lazy_skill = serde_json::to_string(&skill_with_always(false)).expect("serialize");
+        let facts = vec![
+            make_fact("f-always", &always_skill, 0.9, 0),
+            make_fact("f-lazy", &lazy_skill, 0.8, 0),
+        ];
+        let sections = facts_to_sections(&facts);
+        assert_eq!(sections.len(), 2, "one always section + one lazy index");
+
+        let always_sec = sections
+            .iter()
+            .find(|s| s.slot == BootstrapSlot::SkillsAlways)
+            .expect("always section present");
+        assert!(always_sec.content.contains("test-skill"));
+
+        let lazy_sec = sections
+            .iter()
+            .find(|s| s.slot == BootstrapSlot::SkillsLazyIndex)
+            .expect("lazy index present");
+        assert!(
+            lazy_sec
+                .content
+                .contains("use skill_read test-skill to load")
+        );
+    }
+
+    #[test]
+    fn facts_to_sections_all_lazy_produces_index_only() {
+        let lazy = serde_json::to_string(&skill_with_always(false)).expect("serialize");
+        let facts = vec![
+            make_fact("f1", &lazy, 0.9, 0),
+            make_fact("f2", &lazy, 0.8, 0),
+        ];
+        let sections = facts_to_sections(&facts);
+        assert_eq!(sections.len(), 1, "single lazy index for all lazy skills");
+        assert_eq!(sections[0].slot, BootstrapSlot::SkillsLazyIndex);
+        assert!(sections[0].content.contains("skill_read"));
+    }
+
+    #[test]
+    fn facts_to_sections_all_always_no_lazy_index() {
+        let always = serde_json::to_string(&skill_with_always(true)).expect("serialize");
+        let facts = vec![
+            make_fact("f1", &always, 0.9, 0),
+            make_fact("f2", &always, 0.8, 0),
+        ];
+        let sections = facts_to_sections(&facts);
+        assert_eq!(sections.len(), 2, "two always sections");
+        assert!(
+            sections
+                .iter()
+                .all(|s| s.slot == BootstrapSlot::SkillsAlways),
+            "all sections at SkillsAlways"
+        );
+        assert!(
+            !sections
+                .iter()
+                .any(|s| s.slot == BootstrapSlot::SkillsLazyIndex),
+            "no lazy index when all skills are always"
+        );
+    }
+
+    #[test]
+    fn facts_to_sections_empty_returns_empty() {
+        let sections = facts_to_sections(&[]);
+        assert!(sections.is_empty());
+    }
+
+    #[test]
+    fn facts_to_sections_plain_text_treated_as_always() {
+        let facts = vec![make_fact("f-plain", "plain text skill", 0.7, 0)];
+        let sections = facts_to_sections(&facts);
+        assert_eq!(sections.len(), 1);
+        assert_eq!(sections[0].slot, BootstrapSlot::SkillsAlways);
+        assert_eq!(sections[0].content, "plain text skill");
+    }
+
+    #[test]
+    fn log_trigger_hints_matches_trigger() {
+        let mut skill = skill_with_always(false);
+        skill.triggers = vec!["refactor".to_owned()];
+        let fact = make_fact(
+            "f1",
+            &serde_json::to_string(&skill).expect("serialize"),
+            0.9,
+            0,
+        );
+        // Smoke: should not panic and should log when trigger matches
+        log_trigger_hints("please refactor this code", &[fact]);
+    }
+
+    #[test]
+    fn log_trigger_hints_no_match_no_panic() {
+        let mut skill = skill_with_always(false);
+        skill.triggers = vec!["refactor".to_owned()];
+        let fact = make_fact(
+            "f1",
+            &serde_json::to_string(&skill).expect("serialize"),
+            0.9,
+            0,
+        );
+        log_trigger_hints("nothing relevant here", &[fact]);
+    }
+
+    #[test]
+    fn log_trigger_hints_always_skills_ignored() {
+        let mut skill = skill_with_always(true);
+        skill.triggers = vec!["refactor".to_owned()];
+        let fact = make_fact(
+            "f1",
+            &serde_json::to_string(&skill).expect("serialize"),
+            0.9,
+            0,
+        );
+        log_trigger_hints("please refactor this code", &[fact]);
     }
 }

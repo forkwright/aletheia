@@ -612,7 +612,7 @@ impl NousActor {
                     "resolve_skill_sections: max_skills from behavior"
                 );
                 return loader
-                    .resolve_skills(&self.id, &task_context, max_skills)
+                    .resolve_skills(&self.id, &task_context, max_skills, content)
                     .await;
             }
         }

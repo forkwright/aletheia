@@ -57,6 +57,8 @@ pub mod render_xlsx_report;
 pub mod research;
 /// Scaffold report tool: generates a new report project from embedded templates.
 pub mod scaffold_report;
+/// Read a lazy-loaded skill by name from the knowledge store (skill_read).
+pub mod skill_read;
 /// `tool_schema` meta-tool: fetch full JSON schema for any named tool on demand.
 ///
 /// Always compiled (not feature-gated) so the tool is available even when
@@ -198,6 +200,7 @@ pub(crate) fn register_domain_tools(
     render_xlsx_report::register(registry)?;
     render_eval_report::register(registry)?;
     render_graph_audit::register(registry)?;
+    skill_read::register(registry)?;
     diff_report::register(registry)?;
     inspect_report::register(registry)?;
     Ok(())

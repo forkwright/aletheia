@@ -659,6 +659,8 @@ mod parse_skill_md {
             tools_used: vec!["t".to_owned()],
             domain_tags: vec!["tag".to_owned()],
             origin: "manual".to_owned(),
+            triggers: vec![],
+            always: false,
         };
         assert_eq!(sc.name, "n");
         assert_eq!(sc.steps.len(), 1);
