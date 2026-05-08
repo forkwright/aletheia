@@ -37,6 +37,23 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+/// Runtime observability feature toggles.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+pub struct ObservabilitySettings {
+    /// Install the episteme trace-ingest subscriber layer and flush ops facts
+    /// into the knowledge store. Default: true.
+    #[serde(alias = "trace_ingest")]
+    pub trace_ingest: bool,
+}
+
+impl Default for ObservabilitySettings {
+    fn default() -> Self {
+        Self { trace_ingest: true }
+    }
+}
+
 /// Root configuration for an Aletheia instance.
 #[derive(Debug, Default, Clone, Serialize, Deserialize)] // kanon:ignore RUST/no-debug-derive-on-public-types
 #[serde(rename_all = "camelCase")]
@@ -65,6 +82,8 @@ pub struct AletheiaConfig { // kanon:ignore RUST/config-deny-unknown-fields
     pub credential: CredentialConfig,
     /// Structured file logging configuration.
     pub logging: LoggingSettings,
+    /// Runtime observability feature toggles.
+    pub observability: ObservabilitySettings,
     /// MCP server configuration.
     pub mcp: McpConfig,
     /// Training data capture configuration.

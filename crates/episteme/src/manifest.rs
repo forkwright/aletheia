@@ -55,21 +55,10 @@ impl From<MemoryHeaderRaw> for MemoryHeader {
     }
 }
 
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "test-only constructors; MemoryHeader is built via serde in lib builds"
-    )
-)]
 impl MemoryHeader {
     /// Create a new header with the required fields.
     #[must_use]
-    pub(crate) fn new(
-        source_id: impl Into<String>,
-        name: impl Into<String>,
-        mtime_ms: i64,
-    ) -> Self {
+    pub fn new(source_id: impl Into<String>, name: impl Into<String>, mtime_ms: i64) -> Self {
         Self {
             source_id: source_id.into(),
             name: name.into(),
@@ -80,7 +69,7 @@ impl MemoryHeader {
 
     /// Set the description (builder pattern).
     #[must_use]
-    pub(crate) fn with_description(mut self, description: impl Into<String>) -> Self {
+    pub fn with_description(mut self, description: impl Into<String>) -> Self {
         self.description = Some(description.into());
         self
     }
@@ -112,7 +101,7 @@ impl MemoryManifest {
     /// Sorts by modification time descending and enforces the
     /// [`MAX_MEMORY_ENTRIES`] cap.
     #[must_use]
-    pub(crate) fn from_headers(mut headers: Vec<MemoryHeader>) -> Self {
+    pub fn from_headers(mut headers: Vec<MemoryHeader>) -> Self {
         headers.sort_by_key(|h| std::cmp::Reverse(h.mtime_ms));
         headers.truncate(MAX_MEMORY_ENTRIES);
         Self { headers }
@@ -124,7 +113,7 @@ impl MemoryManifest {
     /// `- <source_id> <name>: <description>` (with description)
     /// `- <source_id> <name>` (without description)
     #[must_use]
-    pub(crate) fn format(&self) -> String {
+    pub fn format(&self) -> String {
         use std::fmt::Write;
         let mut out = String::with_capacity(self.headers.len() * 80);
         for h in &self.headers {

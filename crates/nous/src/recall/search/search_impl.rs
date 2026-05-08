@@ -79,4 +79,34 @@ impl VectorSearch for KnowledgeVectorSearch {
                 .build()
             })
     }
+
+    fn search_tiered(
+        &self,
+        query: &str,
+        query_vec: Vec<f32>,
+        k: usize,
+        ef: usize,
+        rewrite_provider: &dyn episteme::query_rewrite::RewriteProvider,
+    ) -> Option<error::Result<Vec<KnowledgeRecallResult>>> {
+        let hybrid = mneme::knowledge_store::HybridQuery {
+            text: query.to_owned(),
+            embedding: query_vec,
+            seed_entities: Vec::new(),
+            limit: k,
+            ef,
+        };
+        let rewriter = episteme::query_rewrite::QueryRewriter::with_defaults();
+        let config = episteme::query_rewrite::TieredSearchConfig::default();
+        Some(
+            self.store
+                .search_tiered_for_recall(&hybrid, &rewriter, rewrite_provider, None, &config)
+                .map(|r| r.results)
+                .map_err(|e| {
+                    error::RecallSearchSnafu {
+                        message: e.to_string(),
+                    }
+                    .build()
+                }),
+        )
+    }
 }

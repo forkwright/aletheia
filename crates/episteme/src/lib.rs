@@ -65,7 +65,7 @@ pub mod ops_facts;
 #[cfg(feature = "mneme-engine")]
 pub mod query;
 /// LLM-powered query rewriting for recall pipeline enhancement.
-pub(crate) mod query_rewrite;
+pub mod query_rewrite;
 /// 6-factor recall scoring engine for knowledge retrieval ranking.
 pub mod recall;
 /// Steward rule proposal generation from observed tool-usage patterns.

@@ -201,14 +201,14 @@ fn resolve_conflict_picks_highest_score() {
 
 #[cfg(feature = "mneme-engine")]
 #[test]
-fn fresh_store_migrates_to_v10() {
+fn fresh_store_migrates_to_current_schema() {
     use std::collections::BTreeMap;
 
     use crate::knowledge_store::KnowledgeStore;
 
     let store = KnowledgeStore::open_mem().expect("open_mem should succeed");
     let v = store.schema_version().expect("read schema version");
-    assert_eq!(v, 10, "fresh store should initialize at SCHEMA_VERSION 10");
+    assert_eq!(v, 11, "fresh store should initialize at schema version 11");
 
     // Probe the new relations exist by querying them (empty result is fine).
     let probe_pubs = store.run_query("?[id] := *published_facts{id}", BTreeMap::new());

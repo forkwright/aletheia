@@ -44,6 +44,11 @@ pub(crate) async fn run(args: Args) -> Result<()> {
     let log_dir = resolve_log_dir(&oikos, config.logging.log_dir.as_deref());
     std::fs::create_dir_all(&log_dir).whatever_context("failed to create log directory")?;
 
+    let trace_ingest_layer = config
+        .observability
+        .trace_ingest
+        .then(episteme::trace_ingest::TraceIngestLayer::new);
+
     // WARNING: The returned guard must live for the entire process lifetime
     // to flush the non-blocking writer on exit.
     let _log_guard = init_tracing(
@@ -52,6 +57,7 @@ pub(crate) async fn run(args: Args) -> Result<()> {
         &log_dir,
         &config.logging.level,
         &config.logging.redaction,
+        trace_ingest_layer.clone(),
     )
     .whatever_context("failed to initialise file logging")?;
 
@@ -68,6 +74,11 @@ pub(crate) async fn run(args: Args) -> Result<()> {
         config.logging.retention_days,
         runtime.shutdown_token.child_token(),
     );
+    #[cfg(feature = "recall")]
+    if let (Some(layer), Some(store)) = (trace_ingest_layer, runtime.state.knowledge_store.clone())
+    {
+        spawn_trace_ingest_flush(layer, store, runtime.shutdown_token.child_token());
+    }
 
     let security = pylon::security::SecurityConfig::from_gateway(&config.gateway);
 
@@ -278,4 +289,6 @@ pub(crate) async fn run(args: Args) -> Result<()> {
 
 mod tracing_setup;
 
+#[cfg(feature = "recall")]
+use tracing_setup::spawn_trace_ingest_flush;
 use tracing_setup::{init_tracing, resolve_log_dir, shutdown_signal, spawn_log_retention};

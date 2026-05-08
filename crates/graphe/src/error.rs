@@ -79,6 +79,24 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// Query rewrite failed while running enhanced recall.
+    #[cfg(feature = "mneme-engine")]
+    #[snafu(display("query rewrite failed: {message}"))]
+    QueryRewrite {
+        message: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Enhanced search could not complete any rewritten query variant.
+    #[cfg(feature = "mneme-engine")]
+    #[snafu(display("enhanced search failed for every query variant: {message}"))]
+    EnhancedSearch {
+        message: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// Query exceeded the configured timeout duration.
     #[cfg(feature = "mneme-engine")]
     #[snafu(display("query timed out after {secs:.1}s"))]

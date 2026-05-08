@@ -1434,7 +1434,7 @@ pub fn classify_task_hint(content: &str) -> TaskHint {
     }
 
     let coding = score_keywords(&lower, aletheia_lexica::keywords::CODING_KEYWORDS);
-    let research = score_keywords(&lower, aletheia_lexica::keywords::RESEARCH_KEYWORDS);
+    let research = score_research_keywords(&lower);
     let planning = score_keywords(&lower, aletheia_lexica::keywords::PLANNING_KEYWORDS);
 
     let max = coding.max(research).max(planning);
@@ -1454,6 +1454,14 @@ pub fn classify_task_hint(content: &str) -> TaskHint {
 
 fn score_keywords(text: &str, keywords: &[&str]) -> usize {
     keywords.iter().filter(|kw| text.contains(**kw)).count()
+}
+
+fn score_research_keywords(text: &str) -> usize {
+    let mut score = score_keywords(text, aletheia_lexica::keywords::RESEARCH_KEYWORDS);
+    if score == 1 && text.contains("what") {
+        score = 0;
+    }
+    score
 }
 
 /// Convert domain pack sections into bootstrap sections.

@@ -504,6 +504,7 @@ pub(super) fn open_knowledge_stores(
                 return Err(e).whatever_context("failed to open knowledge store");
             }
         };
+        episteme::trace_ingest::ensure_ops_schema(&store);
         info!(cohort = %cohort, path = %kb_path.display(), dim = 384, "knowledge store opened (fjall)");
         stores.insert(cohort, store);
     }
