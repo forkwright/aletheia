@@ -8,7 +8,7 @@
 //!
 //! Answers questions that grep + ARCHITECTURE.md cannot:
 //!
-//! - **`symbol_rdeps`** — "which (crate, symbol) entries reference `Message`?"
+//! - **`symbol_rdeps`** — "which symbols implement or re-export `Message`?"
 //! - **`impl_search`** — "which types implement `Stamped`?"
 //! - **`reexport_chain`** — "which crates re-export `Message` via `pub use`?"
 //! - **`crate_deps`** — "what workspace crates does `nous` depend on?"
@@ -55,7 +55,7 @@ use parking_lot::Mutex;
 use rusqlite::Connection;
 use snafu::ResultExt;
 
-use crate::error::{CreateCacheDirSnafu, Result, SqliteSnafu};
+use crate::error::{CreateCacheDirSnafu, RemoveCacheFileSnafu, Result, SqliteSnafu};
 use crate::query::QueryRow;
 use crate::schema::SCHEMA_VERSION;
 
@@ -127,8 +127,9 @@ impl CodeGraph {
             );
             // Drop all tables by closing and re-opening (truncate).
             drop(conn);
-            // Remove the stale db; errors are non-fatal (next open will fail).
-            let _ = std::fs::remove_file(db_path);
+            std::fs::remove_file(db_path).with_context(|_| RemoveCacheFileSnafu {
+                path: db_path.to_owned(),
+            })?;
             let conn = Connection::open(db_path).context(SqliteSnafu)?;
             schema::init(&conn)?;
             conn.execute_batch(&format!("PRAGMA user_version = {SCHEMA_VERSION}"))
@@ -213,7 +214,7 @@ impl CodeGraph {
 
     // ── Queries ───────────────────────────────────────────────────────────────
 
-    /// Which (crate, module, symbol) entries reference `symbol_name`?
+    /// Which symbols implement or re-export `symbol_name`?
     ///
     /// Optionally filter to refs where `to_crate = target_crate`.
     ///
@@ -305,8 +306,8 @@ mod tests {
 
     #[test]
     fn open_creates_db_and_schema() {
-        let (_graph, _tmp) = open_tmp_graph();
-        // If we get here without panic, schema init succeeded.
+        let (_graph, tmp) = open_tmp_graph();
+        assert!(tmp.path().join("gnosis.sqlite").exists());
     }
 
     #[test]

@@ -5,7 +5,7 @@
 //! - `symbols` — one row per public-ish definition (fn, struct, enum, trait,
 //!   type alias, const) with crate + module path, name, kind, file, and line.
 //! - `symbol_refs` — directed edges from one symbol site to a named target
-//!   (call, reexport, impl, type-use).
+//!   (`impl`, `reexport` in v1; call-site and type-use edges are deferred to v2).
 //! - `crate_edges` — workspace-level crate dependency edges, loaded from
 //!   `cargo metadata` and used for `crate_deps` queries.
 //! - `file_hashes` — SHA-256 of each indexed file for incremental rebuilds.
@@ -24,9 +24,9 @@
 //! lock the mutex for the duration of the call.
 
 use rusqlite::Connection;
+use snafu::ResultExt;
 
 use crate::error::{Result, SqliteSnafu};
-use snafu::ResultExt;
 
 /// Schema version embedded in `SQLite` `user_version`.
 pub(crate) const SCHEMA_VERSION: u32 = 1;

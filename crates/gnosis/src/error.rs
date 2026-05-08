@@ -42,6 +42,13 @@ pub enum GnosisError {
         source: std::io::Error,
     },
 
+    /// The stale index cache file could not be removed.
+    #[snafu(display("failed to remove stale cache file {}: {source}", path.display()))]
+    RemoveCacheFile {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+
     /// A query was passed an unsupported operation string.
     #[snafu(display("unknown query operation: '{op}'"))]
     UnknownOp { op: String },

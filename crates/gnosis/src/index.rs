@@ -36,6 +36,8 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+use sha2::{Digest, Sha256};
+
 use cargo_metadata::MetadataCommand;
 use proc_macro2::Span;
 use rusqlite::{Connection, params};
@@ -44,29 +46,23 @@ use syn::visit::Visit;
 
 use crate::error::{CargoMetadataSnafu, ParseSnafu, ReadSourceSnafu, Result, SqliteSnafu};
 
-// ── SHA-256 helper (std only, no extra dep) ──────────────────────────────────
+// ── SHA-256 helper ───────────────────────────────────────────────────────────
 
-/// Compute a hex SHA-256 digest of `data` using the stdlib `DefaultHasher`
-/// fallback.
-///
-/// WHY: gnosis carries no crypto dep.  We need stable file-change detection,
-/// not cryptographic security.  We use a FNV-1a-style 64-bit hash folded into
-/// a hex string; collisions are extremely unlikely for source files and
-/// acceptable for an incremental build cache.  If this ever causes false-
-/// negative skips the worst outcome is a stale index entry — not a security
-/// issue.  A full rebuild (delete cache file) recovers immediately.
+/// Compute a hex SHA-256 digest of `data`.
 fn file_hash(data: &[u8]) -> String {
-    use std::hash::{Hash, Hasher};
-    // Use two separate hashers seeded differently to reduce collision probability.
-    let mut h1 = std::collections::hash_map::DefaultHasher::new();
-    let mut h2 = std::collections::hash_map::DefaultHasher::new();
-    data.hash(&mut h1);
-    // Second pass: hash length + content reversed to differentiate prefixes.
-    data.len().hash(&mut h2);
-    for chunk in data.chunks(64).rev() {
-        chunk.hash(&mut h2);
-    }
-    format!("{:016x}{:016x}", h1.finish(), h2.finish())
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut hasher = Sha256::new();
+    hasher.update(data);
+    hasher
+        .finalize()
+        .iter()
+        .fold(String::with_capacity(64), |mut acc, b| {
+            let hi = HEX.get(usize::from(b >> 4)).copied().unwrap_or(b'0');
+            let lo = HEX.get(usize::from(b & 0x0f)).copied().unwrap_or(b'0');
+            acc.push(char::from(hi));
+            acc.push(char::from(lo));
+            acc
+        })
 }
 
 // ── Visitor ──────────────────────────────────────────────────────────────────
@@ -81,11 +77,16 @@ struct IndexVisitor<'a> {
 }
 
 impl<'a> IndexVisitor<'a> {
-    fn new(conn: &'a Connection, crate_name: &'a str, file_path: &'a str) -> Self {
+    fn new(
+        conn: &'a Connection,
+        crate_name: &'a str,
+        file_path: &'a str,
+        module_path: String,
+    ) -> Self {
         Self {
             conn,
             crate_name,
-            module_path: String::new(),
+            module_path,
             file_path,
         }
     }
@@ -147,6 +148,18 @@ impl<'a> IndexVisitor<'a> {
     }
 }
 
+/// Resolve a slice of path segments to (crate, module, symbol) strings.
+fn decompose_segments(segs: &[String]) -> (String, String, String) {
+    match segs.split_last() {
+        None => (String::new(), String::new(), String::new()),
+        Some((sym, [])) => (String::new(), String::new(), sym.clone()),
+        Some((sym, [crate_name])) => (crate_name.clone(), String::new(), sym.clone()),
+        Some((sym, [crate_name, module @ ..])) => {
+            (crate_name.clone(), module.join("::"), sym.clone())
+        }
+    }
+}
+
 /// Resolve a `syn::Path` to (crate, module, symbol) strings.
 ///
 /// For a path like `hermeneus::types::Message`:
@@ -158,26 +171,7 @@ impl<'a> IndexVisitor<'a> {
 /// decides how to handle workspace-internal references.
 fn decompose_path(path: &syn::Path) -> (String, String, String) {
     let segs: Vec<String> = path.segments.iter().map(|s| s.ident.to_string()).collect();
-    let n = segs.len();
-    match n {
-        0 => (String::new(), String::new(), String::new()),
-        1 => (
-            String::new(),
-            String::new(),
-            segs.first().cloned().unwrap_or_default(),
-        ),
-        2 => (
-            segs.first().cloned().unwrap_or_default(),
-            String::new(),
-            segs.get(1).cloned().unwrap_or_default(),
-        ),
-        _ => {
-            let crate_name = segs.first().cloned().unwrap_or_default();
-            let sym = segs.last().cloned().unwrap_or_default();
-            let module = segs.get(1..n - 1).unwrap_or_default().join("::");
-            (crate_name, module, sym)
-        }
-    }
+    decompose_segments(&segs)
 }
 
 /// Extract the line number from a `proc_macro2::Span`.
@@ -284,7 +278,7 @@ impl<'ast> Visit<'ast> for IndexVisitor<'_> {
     fn visit_item_use(&mut self, node: &'ast syn::ItemUse) {
         // Only track `pub use ...` (public re-exports).
         if matches!(node.vis, syn::Visibility::Public(_)) {
-            extract_reexports(&node.tree, self, 0);
+            extract_reexports(&node.tree, self, &mut Vec::new());
         }
         syn::visit::visit_item_use(self, node);
     }
@@ -313,32 +307,44 @@ fn type_name_from_type(ty: &syn::Type) -> String {
 
 /// Recursively walk a `UseTree` and insert a `reexport` symbol + ref for
 /// every leaf that is not a glob.
-fn extract_reexports(tree: &syn::UseTree, visitor: &mut IndexVisitor<'_>, depth: u32) {
-    // Guard against degenerate trees.
-    if depth > 16 {
+///
+/// `prefix` accumulates the path segments from the root of the use tree.
+fn extract_reexports(
+    tree: &syn::UseTree,
+    visitor: &mut IndexVisitor<'_>,
+    prefix: &mut Vec<String>,
+) {
+    if prefix.len() > 16 {
         return;
     }
     match tree {
         syn::UseTree::Path(p) => {
-            extract_reexports(&p.tree, visitor, depth + 1);
+            prefix.push(p.ident.to_string());
+            extract_reexports(&p.tree, visitor, prefix);
+            prefix.pop();
         }
         syn::UseTree::Name(n) => {
             let sym = n.ident.to_string();
             let line = span_line(n.ident.span());
             visitor.insert_symbol(&sym, "reexport", line);
             if let Some(id) = visitor.last_symbol_id() {
-                // We record the symbol name as a reexport edge; the full
-                // origin path is not resolved at AST level — only the leaf
-                // name is captured.  Agents can follow the chain via
-                // `reexport_chain` queries.
-                visitor.insert_ref(id, "", "", &sym, "reexport");
+                prefix.push(sym.clone());
+                let (to_crate, to_module, to_sym) = decompose_segments(prefix);
+                visitor.insert_ref(id, &to_crate, &to_module, &to_sym, "reexport");
+                prefix.pop();
             }
         }
         syn::UseTree::Rename(r) => {
-            // `use foo::Bar as Baz` — record the alias.
             let alias = r.rename.to_string();
             let line = span_line(r.rename.span());
             visitor.insert_symbol(&alias, "reexport", line);
+            if let Some(id) = visitor.last_symbol_id() {
+                let original = r.ident.to_string();
+                prefix.push(original);
+                let (to_crate, to_module, to_sym) = decompose_segments(prefix);
+                visitor.insert_ref(id, &to_crate, &to_module, &to_sym, "reexport");
+                prefix.pop();
+            }
         }
         syn::UseTree::Glob(_) => {
             // Glob re-exports (`pub use foo::*`) are not individually tracked
@@ -346,9 +352,45 @@ fn extract_reexports(tree: &syn::UseTree, visitor: &mut IndexVisitor<'_>, depth:
         }
         syn::UseTree::Group(g) => {
             for item in &g.items {
-                extract_reexports(item, visitor, depth + 1);
+                extract_reexports(item, visitor, prefix);
             }
         }
+    }
+}
+
+/// Derive the dot-separated module path from a file path relative to `src_dir`.
+///
+/// | File path              | Module path |
+/// |------------------------|-------------|
+/// | `src/lib.rs`           | `""`        |
+/// | `src/main.rs`          | `""`        |
+/// | `src/foo.rs`           | `"foo"`     |
+/// | `src/foo/mod.rs`       | `"foo"`     |
+/// | `src/foo/bar.rs`       | `"foo::bar"`|
+/// | `src/foo/bar/mod.rs`   | `"foo::bar"`|
+fn module_path_from_file_path(src_dir: &Path, file_path: &Path) -> String {
+    let rel = file_path.strip_prefix(src_dir).unwrap_or(file_path);
+    let mut components: Vec<&str> = rel
+        .components()
+        .filter_map(|c| match c {
+            std::path::Component::Normal(s) => s.to_str(),
+            _ => None,
+        })
+        .collect();
+
+    if let Some(last) = components.pop() {
+        if last == "lib.rs" || last == "main.rs" {
+            String::new()
+        } else if last == "mod.rs" {
+            components.join("::")
+        } else if let Some(stem) = last.strip_suffix(".rs") {
+            components.push(stem);
+            components.join("::")
+        } else {
+            String::new()
+        }
+    } else {
+        String::new()
     }
 }
 
@@ -359,7 +401,12 @@ fn extract_reexports(tree: &syn::UseTree, visitor: &mut IndexVisitor<'_>, depth:
 /// Errors during parsing are logged at WARN and skipped — they do not abort
 /// the overall index build.
 #[tracing::instrument(skip(conn), fields(crate_name, file = file_path))]
-fn index_file(conn: &Connection, crate_name: &str, file_path: &str) -> Result<()> {
+fn index_file(
+    conn: &Connection,
+    crate_name: &str,
+    file_path: &str,
+    module_path: &str,
+) -> Result<()> {
     let content = std::fs::read_to_string(file_path).with_context(|_| ReadSourceSnafu {
         path: PathBuf::from(file_path),
     })?;
@@ -375,8 +422,45 @@ fn index_file(conn: &Connection, crate_name: &str, file_path: &str) -> Result<()
     )
     .context(SqliteSnafu)?;
 
-    let mut visitor = IndexVisitor::new(conn, crate_name, file_path);
+    let mut visitor = IndexVisitor::new(conn, crate_name, file_path, module_path.to_owned());
     visitor.visit_file(&file);
+
+    Ok(())
+}
+
+/// Populate `crate_edges` from `cargo metadata` dependency graph.
+fn populate_crate_edges(
+    conn: &Connection,
+    metadata: &cargo_metadata::Metadata,
+) -> rusqlite::Result<()> {
+    conn.execute("DELETE FROM crate_edges", [])?;
+
+    let workspace_ids: HashMap<_, _> = metadata
+        .workspace_members
+        .iter()
+        .filter_map(|id| {
+            metadata
+                .packages
+                .iter()
+                .find(|p| &p.id == id)
+                .map(|p| (id.clone(), p.name.clone()))
+        })
+        .collect();
+
+    for pkg in &metadata.packages {
+        if !workspace_ids.contains_key(&pkg.id) {
+            continue;
+        }
+        let from_name = pkg.name.as_str();
+        for dep in &pkg.dependencies {
+            if workspace_ids.values().any(|n| n == dep.name.as_str()) {
+                conn.execute(
+                    "INSERT OR IGNORE INTO crate_edges (from_crate, to_crate) VALUES (?1, ?2)",
+                    params![from_name, dep.name.as_str()],
+                )?;
+            }
+        }
+    }
 
     Ok(())
 }
@@ -391,6 +475,9 @@ fn index_file(conn: &Connection, crate_name: &str, file_path: &str) -> Result<()
 /// 3. Walk every `*.rs` file in each workspace member's `src/`.
 /// 4. Skip files whose hash matches the stored value (incremental).
 /// 5. Update `file_hashes` for all processed files.
+///
+/// Time: O(P + F + B), where P is workspace packages, F is source files, and B
+/// is bytes read from changed files. Space: O(F) for the present-file set.
 #[tracing::instrument(skip(conn))]
 pub(crate) fn rebuild(conn: &Connection, workspace_root: &Path) -> Result<()> {
     tracing::info!(workspace = %workspace_root.display(), "gnosis: starting index rebuild");
@@ -409,42 +496,12 @@ pub(crate) fn rebuild(conn: &Connection, workspace_root: &Path) -> Result<()> {
         .context(CargoMetadataSnafu)?;
 
     // ── 2. Populate crate_edges ───────────────────────────────────────────────
-    conn.execute("DELETE FROM crate_edges", [])
-        .context(SqliteSnafu)?;
-
-    // Build a map from package_id → package_name for workspace members.
-    let workspace_ids: HashMap<_, _> = metadata_full
-        .workspace_members
-        .iter()
-        .filter_map(|id| {
-            metadata_full
-                .packages
-                .iter()
-                .find(|p| &p.id == id)
-                .map(|p| (id.clone(), p.name.clone()))
-        })
-        .collect();
-
-    for pkg in &metadata_full.packages {
-        if !workspace_ids.contains_key(&pkg.id) {
-            continue;
-        }
-        let from_name = pkg.name.as_str();
-        for dep in &pkg.dependencies {
-            // Only record edges to other workspace members.
-            if workspace_ids.values().any(|n| n == dep.name.as_str()) {
-                conn.execute(
-                    "INSERT OR IGNORE INTO crate_edges (from_crate, to_crate) VALUES (?1, ?2)",
-                    params![from_name, dep.name.as_str()],
-                )
-                .context(SqliteSnafu)?;
-            }
-        }
-    }
+    populate_crate_edges(conn, &metadata_full).context(SqliteSnafu)?;
 
     // ── 3. Walk workspace source files ───────────────────────────────────────
     let mut total_files = 0usize;
     let mut skipped = 0usize;
+    let mut all_present_paths: Vec<String> = Vec::new();
 
     for pkg in &metadata.packages {
         if !metadata.workspace_members.contains(&pkg.id) {
@@ -464,35 +521,45 @@ pub(crate) fn rebuild(conn: &Connection, workspace_root: &Path) -> Result<()> {
         let rs_files = collect_rs_files(&src_dir);
         for file_path in rs_files {
             total_files += 1;
-            let path_str = file_path.to_string_lossy().into_owned();
+            let present_path = file_path.to_string_lossy().into_owned();
+            let path_str = present_path.as_str();
 
             // Read for hashing first.
             let content = match std::fs::read(&file_path) {
                 Ok(c) => c,
                 Err(e) => {
                     tracing::warn!(file = %file_path.display(), error = %e, "gnosis: cannot read file, skipping");
+                    all_present_paths.push(present_path);
                     continue;
                 }
             };
             let hash = file_hash(&content);
 
             // Check stored hash.
-            let stored_hash: Option<String> = conn
-                .query_row(
-                    "SELECT sha256 FROM file_hashes WHERE file_path = ?1",
-                    params![path_str],
-                    |row| row.get(0),
-                )
-                .ok();
+            let stored_hash: Option<String> = match conn.query_row(
+                "SELECT sha256 FROM file_hashes WHERE file_path = ?1",
+                params![path_str],
+                |row| row.get(0),
+            ) {
+                Ok(h) => Some(h),
+                Err(rusqlite::Error::QueryReturnedNoRows) => None,
+                Err(e) => {
+                    tracing::warn!(file = %path_str, error = %e, "gnosis: failed to read stored hash");
+                    None
+                }
+            };
 
             if stored_hash.as_deref() == Some(hash.as_str()) {
                 skipped += 1;
+                all_present_paths.push(present_path);
                 continue;
             }
 
             // Parse and index.
-            if let Err(e) = index_file(conn, crate_name, &path_str) {
+            let module_path = module_path_from_file_path(&src_dir, &file_path);
+            if let Err(e) = index_file(conn, crate_name, path_str, &module_path) {
                 tracing::warn!(file = %path_str, error = %e, "gnosis: parse error, skipping file");
+                all_present_paths.push(present_path);
                 continue;
             }
 
@@ -502,8 +569,12 @@ pub(crate) fn rebuild(conn: &Connection, workspace_root: &Path) -> Result<()> {
                 params![path_str, hash],
             )
             .context(SqliteSnafu)?;
+            all_present_paths.push(present_path);
         }
     }
+
+    // ── 4. Prune deleted files ────────────────────────────────────────────────
+    prune_deleted_files(conn, &all_present_paths)?;
 
     tracing::info!(
         total_files,
@@ -512,6 +583,36 @@ pub(crate) fn rebuild(conn: &Connection, workspace_root: &Path) -> Result<()> {
         "gnosis: index rebuild complete"
     );
 
+    Ok(())
+}
+
+/// Remove symbols and `file_hashes` for source files no longer on disk.
+fn prune_deleted_files(conn: &Connection, present: &[String]) -> Result<()> {
+    conn.execute(
+        "CREATE TEMP TABLE IF NOT EXISTS present_files (path TEXT PRIMARY KEY)",
+        [],
+    )
+    .context(SqliteSnafu)?;
+    conn.execute("DELETE FROM present_files", [])
+        .context(SqliteSnafu)?;
+    {
+        let mut stmt = conn
+            .prepare("INSERT OR IGNORE INTO present_files (path) VALUES (?1)")
+            .context(SqliteSnafu)?;
+        for path in present {
+            stmt.execute([path]).context(SqliteSnafu)?;
+        }
+    }
+    conn.execute(
+        "DELETE FROM symbols WHERE NOT EXISTS (SELECT 1 FROM present_files WHERE path = file_path)",
+        [],
+    )
+    .context(SqliteSnafu)?;
+    conn.execute(
+        "DELETE FROM file_hashes WHERE NOT EXISTS (SELECT 1 FROM present_files WHERE path = file_path)",
+        [],
+    )
+    .context(SqliteSnafu)?;
     Ok(())
 }
 
@@ -540,140 +641,5 @@ fn collect_rs_recursive(dir: &Path, out: &mut Vec<PathBuf>) {
 
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
-mod tests {
-    use super::*;
-    use crate::schema;
-
-    fn open_test_db() -> Connection {
-        let conn = Connection::open_in_memory().expect("in-memory db");
-        schema::init(&conn).expect("schema init");
-        conn
-    }
-
-    #[test]
-    fn file_hash_is_deterministic() {
-        let data = b"hello world";
-        let h1 = file_hash(data);
-        let h2 = file_hash(data);
-        assert_eq!(h1, h2, "hash must be deterministic");
-        assert_eq!(h1.len(), 32, "hash must be 32 hex chars (2 x u64)");
-    }
-
-    #[test]
-    fn file_hash_differs_for_different_content() {
-        assert_ne!(file_hash(b"foo"), file_hash(b"bar"));
-        assert_ne!(file_hash(b"abc"), file_hash(b"cba"));
-    }
-
-    #[test]
-    fn index_simple_fn() {
-        let conn = open_test_db();
-        let src = r"
-            pub fn greet(name: &str) -> String {
-                format!('Hello, {name}!')
-            }
-        ";
-        // Write to a temp file.
-        let tmp = tempfile::NamedTempFile::new().expect("tempfile");
-        std::fs::write(tmp.path(), src.replace('\'', "\"")).expect("write");
-        let path_str = tmp.path().to_string_lossy().into_owned();
-
-        index_file(&conn, "test_crate", &path_str).expect("index");
-
-        let count: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM symbols WHERE symbol_name = 'greet' AND symbol_kind = 'fn'",
-                [],
-                |r| r.get(0),
-            )
-            .expect("query");
-        assert_eq!(count, 1, "expected 1 'greet' fn symbol");
-    }
-
-    #[test]
-    fn index_struct_and_impl_trait() {
-        let conn = open_test_db();
-        let src = r"
-            pub struct Foo;
-            pub trait Bar {}
-            impl Bar for Foo {}
-        ";
-        let tmp = tempfile::NamedTempFile::new().expect("tempfile");
-        std::fs::write(tmp.path(), src).expect("write");
-        let path_str = tmp.path().to_string_lossy().into_owned();
-
-        index_file(&conn, "my_crate", &path_str).expect("index");
-
-        let struct_count: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM symbols WHERE symbol_name = 'Foo' AND symbol_kind = 'struct'",
-                [],
-                |r| r.get(0),
-            )
-            .expect("query struct");
-        assert_eq!(struct_count, 1, "expected Foo struct");
-
-        let impl_count: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM symbols WHERE symbol_kind = 'impl'",
-                [],
-                |r| r.get(0),
-            )
-            .expect("query impl");
-        assert_eq!(impl_count, 1, "expected 1 impl block");
-    }
-
-    #[test]
-    fn reindex_clears_old_symbols() {
-        let conn = open_test_db();
-        let tmp = tempfile::NamedTempFile::new().expect("tempfile");
-        let path_str = tmp.path().to_string_lossy().into_owned();
-
-        std::fs::write(tmp.path(), "pub fn alpha() {}").expect("write v1");
-        index_file(&conn, "krate", &path_str).expect("index v1");
-
-        let c1: i64 = conn
-            .query_row("SELECT COUNT(*) FROM symbols", [], |r| r.get(0))
-            .expect("count v1");
-        assert_eq!(c1, 1);
-
-        // Overwrite with different content.
-        std::fs::write(tmp.path(), "pub fn beta() {} pub fn gamma() {}").expect("write v2");
-        index_file(&conn, "krate", &path_str).expect("index v2");
-
-        let c2: i64 = conn
-            .query_row("SELECT COUNT(*) FROM symbols", [], |r| r.get(0))
-            .expect("count v2");
-        assert_eq!(c2, 2, "old symbols must be cleared on re-index");
-
-        // Verify alpha is gone.
-        let alpha: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM symbols WHERE symbol_name = 'alpha'",
-                [],
-                |r| r.get(0),
-            )
-            .expect("count alpha");
-        assert_eq!(alpha, 0, "alpha should have been removed");
-    }
-
-    #[test]
-    fn pub_use_produces_reexport_symbol() {
-        let conn = open_test_db();
-        let src = "pub use other_crate::SomeType;";
-        let tmp = tempfile::NamedTempFile::new().expect("tempfile");
-        std::fs::write(tmp.path(), src).expect("write");
-        let path_str = tmp.path().to_string_lossy().into_owned();
-
-        index_file(&conn, "re_crate", &path_str).expect("index");
-
-        let count: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM symbols WHERE symbol_kind = 'reexport'",
-                [],
-                |r| r.get(0),
-            )
-            .expect("query");
-        assert_eq!(count, 1, "expected 1 reexport symbol for 'pub use'");
-    }
-}
+#[path = "index_tests.rs"]
+mod tests;

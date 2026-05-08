@@ -8,7 +8,7 @@
 //!
 //! | Query            | Answers                                                        |
 //! |------------------|----------------------------------------------------------------|
-//! | `symbol_rdeps`   | Which (crate, module, symbol) entries reference a target symbol? |
+//! | `symbol_rdeps`   | Which symbols implement or re-export a target symbol?    |
 //! | `impl_search`    | Which types implement a given trait?                            |
 //! | `reexport_chain` | Which crates re-export a given symbol name?                     |
 //! | `crate_deps`     | What crates does a given crate directly depend on?              |
@@ -55,7 +55,9 @@ pub struct QueryRow {
     /// 1-based line number of the definition.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub line_start: Option<i64>,
-    /// Reference kind for edge-type results (`call`, `reexport`, `impl`, `type_use`).
+    /// Reference kind for edge-type results (`impl`, `reexport`).
+    /// In v1 only `impl` and `reexport` edges are indexed; call-site and
+    /// type-use edges are deferred to v2.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ref_kind: Option<String>,
     /// Provenance: `"gnosis@<schema_version>"`.
@@ -79,8 +81,8 @@ impl QueryRow {
 
 // ── Query: symbol_rdeps ───────────────────────────────────────────────────────
 
-/// Return every symbol that references `symbol_name` (optionally filtered to
-/// a specific target `crate_name`).
+/// Return symbols that implement or re-export `symbol_name` (optionally filtered
+/// to a specific target `crate_name`).
 ///
 /// Corresponds to the `symbol_rdeps` MCP operation.
 ///
@@ -100,6 +102,7 @@ pub(crate) fn symbol_rdeps(
          FROM symbol_refs r
          JOIN symbols s ON s.id = r.from_symbol
          WHERE r.to_symbol = ?1 AND r.to_crate = ?2
+           AND r.ref_kind IN ('impl', 'reexport')
          ORDER BY s.crate_name, s.module_path, s.symbol_name"
     } else {
         "SELECT s.crate_name, s.module_path, s.symbol_name, s.symbol_kind,
@@ -107,6 +110,7 @@ pub(crate) fn symbol_rdeps(
          FROM symbol_refs r
          JOIN symbols s ON s.id = r.from_symbol
          WHERE r.to_symbol = ?1
+           AND r.ref_kind IN ('impl', 'reexport')
          ORDER BY s.crate_name, s.module_path, s.symbol_name"
     };
 
@@ -305,9 +309,10 @@ fn map_symbol_row(row: &rusqlite::Row<'_>) -> std::result::Result<QueryRow, rusq
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
+    use rusqlite::Connection;
+
     use super::*;
     use crate::schema;
-    use rusqlite::Connection;
 
     fn open_db() -> Connection {
         let conn = Connection::open_in_memory().expect("in-memory db");
@@ -379,7 +384,7 @@ mod tests {
             "nous/src/execute.rs",
             10,
         );
-        insert_ref(&conn, sym_id, "hermeneus", "types", "Message", "type_use");
+        insert_ref(&conn, sym_id, "hermeneus", "types", "Message", "impl");
 
         let rows = symbol_rdeps(&conn, "Message", None).expect("query");
         assert_eq!(rows.len(), 1);
@@ -392,9 +397,9 @@ mod tests {
     fn symbol_rdeps_filters_by_target_crate() {
         let conn = open_db();
         let id1 = insert_symbol(&conn, "nous", "", "fn_a", "fn", "a.rs", 1);
-        insert_ref(&conn, id1, "hermeneus", "types", "Message", "type_use");
+        insert_ref(&conn, id1, "hermeneus", "types", "Message", "reexport");
         let id2 = insert_symbol(&conn, "melete", "", "fn_b", "fn", "b.rs", 2);
-        insert_ref(&conn, id2, "other", "", "Message", "type_use");
+        insert_ref(&conn, id2, "other", "", "Message", "impl");
 
         let all = symbol_rdeps(&conn, "Message", None).expect("query all");
         assert_eq!(all.len(), 2);
@@ -402,6 +407,42 @@ mod tests {
         let filtered = symbol_rdeps(&conn, "Message", Some("hermeneus")).expect("query filtered");
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].crate_name.as_deref(), Some("nous"));
+    }
+
+    #[test]
+    #[expect(clippy::indexing_slicing, reason = "test assertion: len checked above")]
+    fn symbol_rdeps_includes_reexports_with_target_crate_filter() {
+        let conn = open_db();
+        let id1 = insert_symbol(
+            &conn, "organon", "prelude", "Message", "reexport", "a.rs", 1,
+        );
+        insert_ref(&conn, id1, "hermeneus", "types", "Message", "reexport");
+
+        let all = symbol_rdeps(&conn, "Message", None).expect("query all");
+        assert_eq!(all.len(), 1);
+
+        let filtered = symbol_rdeps(&conn, "Message", Some("hermeneus")).expect("query filtered");
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].symbol_name.as_deref(), Some("Message"));
+        assert_eq!(filtered[0].ref_kind.as_deref(), Some("reexport"));
+
+        let none = symbol_rdeps(&conn, "Message", Some("other")).expect("query other");
+        assert!(none.is_empty());
+    }
+
+    #[test]
+    fn symbol_rdeps_excludes_unindexed_edge_kinds() {
+        let conn = open_db();
+        let id1 = insert_symbol(&conn, "nous", "", "fn_a", "fn", "a.rs", 1);
+        insert_ref(&conn, id1, "hermeneus", "types", "Message", "type_use");
+        let id2 = insert_symbol(&conn, "melete", "", "fn_b", "fn", "b.rs", 2);
+        insert_ref(&conn, id2, "hermeneus", "types", "Message", "call");
+
+        let rows = symbol_rdeps(&conn, "Message", None).expect("query all");
+        assert!(
+            rows.is_empty(),
+            "symbol_rdeps v1 must expose only indexed impl and reexport edges"
+        );
     }
 
     // ── impl_search ──────────────────────────────────────────────────────────

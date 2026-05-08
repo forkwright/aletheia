@@ -9,7 +9,7 @@ Answers questions that grep and `ARCHITECTURE.md` cannot:
 
 | Query            | Question answered                                               |
 |------------------|-----------------------------------------------------------------|
-| `symbol_rdeps`   | Which (crate, symbol) entries reference `Message`?              |
+| `symbol_rdeps`   | Which symbols implement or re-export `Message`?                 |
 | `impl_search`    | Which types implement `Stamped`?                                |
 | `reexport_chain` | Which crates re-export `Message` via `pub use`?                 |
 | `crate_deps`     | What workspace crates does `nous` directly depend on?           |
@@ -20,7 +20,7 @@ Answers questions that grep and `ARCHITECTURE.md` cannot:
 
 **Replace `architecture_fact`.** That layer holds human-curated, `EpistemicTier::Verified`
 claims (`"eidos has zero internal aletheia dependencies"`). gnosis is machine-derived
-(`EpistemicTier::Inferred`) — it reflects what the code currently does, not what the
+(`EpistemicTier::Inferred`). It reflects the indexed code, not what the
 architecture mandates. They coexist:
 
 ```
@@ -67,7 +67,7 @@ The next rebuild will re-parse all workspace source files.
 ## Example queries (MCP tool)
 
 ```jsonc
-// Which crates / symbols reference Message?
+// Which symbols implement or re-export Message?
 { "op": "symbol_rdeps", "symbol": "Message" }
 
 // Which types implement Stamped?
@@ -91,17 +91,17 @@ The next rebuild will re-parse all workspace source files.
 
 ## Architecture
 
-- **`CodeGraph`** — public API handle; wraps a `Mutex<rusqlite::Connection>`.
-- **`crates/gnosis/src/index.rs`** — walks workspace via `cargo metadata`, parses each
-  `*.rs` with `syn::visit`, populates the SQLite index. Incremental via SHA-256 file hashes.
-- **`crates/gnosis/src/query.rs`** — query impls against the SQLite tables.
-- **`crates/gnosis/src/schema.rs`** — DDL for `symbols`, `symbol_refs`, `crate_edges`,
+- **`CodeGraph`** - public API handle; wraps a `Mutex<rusqlite::Connection>`.
+- **`crates/gnosis/src/index.rs`** - walks workspace via `cargo metadata`, parses each
+  `*.rs` with `syn::visit`, and populates the SQLite index. Incremental rebuilds use the SHA-256 digest stored in `file_hashes`.
+- **`crates/gnosis/src/query.rs`** - query impls against the SQLite tables.
+- **`crates/gnosis/src/schema.rs`** - DDL for `symbols`, `symbol_refs`, `crate_edges`,
   `file_hashes` tables.
-- **`crates/organon/src/builtins/code_graph_query.rs`** — MCP tool executor.
+- **`crates/organon/src/builtins/code_graph_query.rs`** - MCP tool executor.
 
 ## Limitations (v1)
 
 - Macro-expanded code is not indexed (syn operates pre-expansion).
 - Function call sites inside macro arguments are not captured.
-- Only direct `pub use` re-exports are tracked; transitive chains require multiple hops.
-- No background daemon — index is rebuilt on demand.
+- gnosis tracks only direct `pub use` re-exports. Transitive chains require multiple hops.
+- No background daemon. The index rebuilds on demand.
