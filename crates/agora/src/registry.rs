@@ -46,16 +46,6 @@ impl ChannelRegistry {
         Ok(())
     }
 
-    /// Look up a provider by channel ID.
-    #[must_use]
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "channel registry provider dispatch")
-    )]
-    pub(crate) fn get(&self, channel_id: &str) -> Option<&Arc<dyn ChannelProvider>> {
-        self.providers.get(channel_id)
-    }
-
     /// Send a message through a specific channel.
     ///
     /// Provider-level failures are captured in [`SendResult::error`].
@@ -89,40 +79,6 @@ impl ChannelRegistry {
             results.insert(id.clone(), result);
         }
         results
-    }
-
-    /// List all registered channel IDs, in insertion order.
-    ///
-    /// # Complexity
-    ///
-    /// O(c) where c is the number of registered channels.
-    #[must_use]
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "channel registry provider dispatch")
-    )]
-    pub(crate) fn channels(&self) -> Vec<&str> {
-        self.providers.keys().map(String::as_str).collect()
-    }
-
-    /// Number of registered channels.
-    #[must_use]
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "channel registry provider dispatch")
-    )]
-    pub(crate) fn len(&self) -> usize {
-        self.providers.len()
-    }
-
-    /// Whether the registry is empty.
-    #[must_use]
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "channel registry infrastructure")
-    )]
-    pub(crate) fn is_empty(&self) -> bool {
-        self.providers.is_empty()
     }
 }
 
@@ -206,6 +162,18 @@ mod tests {
         fn probe<'a>(&'a self) -> Pin<Box<dyn Future<Output = ProbeResult> + Send + 'a>> {
             Box::pin(async { self.probe_result.clone() })
         }
+
+        fn listen(
+            &self,
+            _poll_interval: Option<std::time::Duration>,
+            _cancel: tokio_util::sync::CancellationToken,
+        ) -> (
+            tokio::sync::mpsc::Receiver<crate::types::InboundMessage>,
+            tokio::task::JoinSet<()>,
+        ) {
+            let (_tx, rx) = tokio::sync::mpsc::channel(1);
+            (rx, tokio::task::JoinSet::new())
+        }
     }
 
     fn test_params(to: &str) -> SendParams {
@@ -218,15 +186,14 @@ mod tests {
         }
     }
 
-    #[test]
-    fn register_and_lookup() {
+    #[tokio::test]
+    async fn register_and_send() {
         let mut reg = ChannelRegistry::new();
         let provider = Arc::new(MockProvider::new("signal"));
         reg.register(provider).expect("register");
 
-        let found = reg.get("signal").expect("found");
-        assert_eq!(found.id(), "signal");
-        assert_eq!(found.name(), "Mock signal");
+        let result = reg.send("signal", &test_params("+1234567890")).await;
+        assert!(result.expect("send").sent);
     }
 
     #[test]
@@ -295,33 +262,5 @@ mod tests {
         assert_eq!(results.len(), 2);
         assert!(results["signal"].ok);
         assert!(!results["slack"].ok);
-    }
-
-    #[test]
-    fn channels_lists_registered_ids() {
-        let mut reg = ChannelRegistry::new();
-        reg.register(Arc::new(MockProvider::new("signal")))
-            .expect("register");
-        reg.register(Arc::new(MockProvider::new("slack")))
-            .expect("register");
-        reg.register(Arc::new(MockProvider::new("discord")))
-            .expect("register");
-
-        let channels = reg.channels();
-        assert_eq!(channels, vec!["signal", "slack", "discord"]);
-    }
-
-    #[test]
-    fn empty_registry() {
-        let reg = ChannelRegistry::new();
-        assert!(reg.is_empty());
-        assert_eq!(reg.len(), 0);
-        assert!(reg.channels().is_empty());
-    }
-
-    #[test]
-    fn lookup_missing_returns_none() {
-        let reg = ChannelRegistry::new();
-        assert!(reg.get("nonexistent").is_none());
     }
 }

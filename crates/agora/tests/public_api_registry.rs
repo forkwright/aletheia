@@ -86,6 +86,18 @@ impl ChannelProvider for TestProvider {
         let result = self.probe_result.clone();
         Box::pin(async move { result })
     }
+
+    fn listen(
+        &self,
+        _poll_interval: Option<std::time::Duration>,
+        _cancel: CancellationToken,
+    ) -> (
+        tokio::sync::mpsc::Receiver<InboundMessage>,
+        tokio::task::JoinSet<()>,
+    ) {
+        let (_tx, rx) = tokio::sync::mpsc::channel(1);
+        (rx, tokio::task::JoinSet::new())
+    }
 }
 
 #[test]

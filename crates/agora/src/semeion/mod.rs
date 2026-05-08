@@ -67,8 +67,8 @@ pub fn parse_target(to: &str) -> SignalTarget {
 
 static SIGNAL_CAPABILITIES: ChannelCapabilities = ChannelCapabilities {
     threads: false,
-    reactions: true,
-    typing: true,
+    reactions: false,
+    typing: false,
     media: true,
     streaming: false,
     rich_formatting: false,
@@ -335,6 +335,14 @@ impl ChannelProvider for SignalProvider {
         })
     }
 
+    fn listen(
+        &self,
+        poll_interval: Option<Duration>,
+        cancel: CancellationToken,
+    ) -> (mpsc::Receiver<InboundMessage>, JoinSet<()>) {
+        SignalProvider::listen(self, poll_interval, cancel)
+    }
+
     fn probe<'a>(&'a self) -> Pin<Box<dyn Future<Output = ProbeResult> + Send + 'a>> {
         Box::pin(async move {
             if self.clients.is_empty() {
@@ -586,8 +594,8 @@ mod tests {
     #[test]
     fn signal_capabilities() {
         assert!(!SIGNAL_CAPABILITIES.threads);
-        assert!(SIGNAL_CAPABILITIES.reactions);
-        assert!(SIGNAL_CAPABILITIES.typing);
+        assert!(!SIGNAL_CAPABILITIES.reactions);
+        assert!(!SIGNAL_CAPABILITIES.typing);
         assert!(SIGNAL_CAPABILITIES.media);
         assert!(!SIGNAL_CAPABILITIES.streaming);
         assert!(!SIGNAL_CAPABILITIES.rich_formatting);

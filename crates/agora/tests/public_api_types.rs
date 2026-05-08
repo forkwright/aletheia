@@ -33,8 +33,8 @@ fn channel_capabilities_default_values() {
     // Changing these silently alters what consumers can expect from the Signal provider.
     let caps = ChannelCapabilities {
         threads: false,
-        reactions: true,
-        typing: true,
+        reactions: false,
+        typing: false,
         media: true,
         streaming: false,
         rich_formatting: false,
@@ -42,8 +42,8 @@ fn channel_capabilities_default_values() {
     };
 
     assert!(!caps.threads);
-    assert!(caps.reactions);
-    assert!(caps.typing);
+    assert!(!caps.reactions);
+    assert!(!caps.typing);
     assert!(caps.media);
     assert!(!caps.streaming);
     assert!(!caps.rich_formatting);

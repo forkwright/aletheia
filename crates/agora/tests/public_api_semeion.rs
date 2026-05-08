@@ -83,8 +83,8 @@ fn signal_provider_capabilities() {
     let caps = provider.capabilities();
 
     assert!(!caps.threads);
-    assert!(caps.reactions);
-    assert!(caps.typing);
+    assert!(!caps.reactions);
+    assert!(!caps.typing);
     assert!(caps.media);
     assert!(!caps.streaming);
     assert!(!caps.rich_formatting);

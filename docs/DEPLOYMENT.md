@@ -488,9 +488,11 @@ nous_id = "main"
 
 ---
 
-## Matrix (optional)
+## Matrix (Phase 3 - not yet wired)
 
-Aletheia can run as a Matrix client against a self-hosted [conduwuit](https://conduwuit.puppyirl.gay/) homeserver. The homeserver binds to `127.0.0.1:6167` and is reached over Tailscale only - no federation, no public exposure.
+Aletheia does not currently ship a Matrix channel provider. The notes below
+are development scaffolding for a future Phase 3 implementation against a
+self-hosted [conduwuit](https://conduwuit.puppyirl.gay/) homeserver.
 
 ### Prerequisites
 
@@ -522,12 +524,7 @@ Use the registration token the script printed (also at `~/menos-ops/secrets/cond
 
 Point Element (desktop or web) at `http://menos.lan:6167`. Sign in as the user you registered. Over Tailscale this URL resolves and authenticates end-to-end.
 
-### Wire the aletheia MatrixProvider (Phase 3)
+### Aletheia provider status
 
-The `MatrixProvider` scaffold is gated behind the `matrix` Cargo feature. Build with:
-
-```bash
-cargo build --release --features matrix
-```
-
-Then configure `[channels.matrix]` in `aletheia.toml` (see Phase 3 for full syntax). In Phase 2 the provider can be loaded but only `probe()` is wired; `send()` returns an error until Phase 3.
+No `[channels.matrix]` config surface or `matrix` Cargo feature is exposed
+until Phase 3 has real send and receive behavior.

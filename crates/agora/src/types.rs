@@ -3,8 +3,12 @@
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
+use tokio::sync::mpsc;
+use tokio::task::JoinSet;
+use tokio_util::sync::CancellationToken;
 
 /// What a channel supports.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -133,6 +137,13 @@ pub trait ChannelProvider: Send + Sync {
         &'a self,
         params: &'a SendParams,
     ) -> Pin<Box<dyn Future<Output = SendResult> + Send + 'a>>;
+
+    /// Start listening for inbound messages from this channel.
+    fn listen(
+        &self,
+        poll_interval: Option<Duration>,
+        cancel: CancellationToken,
+    ) -> (mpsc::Receiver<InboundMessage>, JoinSet<()>);
 
     /// Health probe for this channel.
     fn probe<'a>(&'a self) -> Pin<Box<dyn Future<Output = ProbeResult> + Send + 'a>>;

@@ -422,14 +422,6 @@ impl RuntimeBuilder {
             None
         };
 
-        // Matrix provider (Phase 2 scaffold — feature-gated). See issue #3557.
-        #[cfg(feature = "matrix")]
-        let _matrix_provider = if self.tool_services {
-            build_matrix_provider(&self.config.channels.matrix, &self.oikos).await
-        } else {
-            None
-        };
-
         // Tool services
         let (cross_nous, messenger, note_store, blackboard_store, spawn, planning) = if self
             .tool_services
@@ -781,7 +773,7 @@ impl RuntimeBuilder {
             ready_rx,
             signal_provider.as_ref(),
             &shutdown_token,
-        );
+        )?;
 
         // Per-agent daemon runners (need Arc<NousManager>)
         if self.daemons {
@@ -881,8 +873,6 @@ use validate::{validate_external_tools, validate_jwt};
 mod setup;
 mod tool_adapters;
 
-#[cfg(feature = "matrix")]
-use setup::build_matrix_provider;
 #[cfg(feature = "recall")]
 use setup::open_knowledge_stores;
 use setup::{

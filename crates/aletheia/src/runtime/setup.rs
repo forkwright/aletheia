@@ -510,77 +510,6 @@ pub(super) fn open_knowledge_stores(
     Ok(stores)
 }
 
-/// Build the Matrix channel provider when `channels.matrix.enabled` is true.
-///
-/// Mirrors [`build_signal_provider`]: returns `None` when the feature is
-/// disabled or the config does not carry Matrix accounts. Safe to call when
-/// the `matrix` feature is compiled in; the non-feature stub returns `None`.
-#[cfg(feature = "matrix")]
-pub(super) async fn build_matrix_provider(
-    matrix_config: &taxis::config::MatrixConfig,
-    oikos: &Oikos,
-) -> Option<Arc<agora::matrix::MatrixProvider>> {
-    use agora::matrix::{AccountBinding, FjallCryptoStore, MatrixProvider};
-
-    if !matrix_config.enabled {
-        info!("matrix channel disabled");
-        return None;
-    }
-
-    if matrix_config.accounts.is_empty() {
-        tracing::debug!("matrix enabled but no accounts configured");
-        return None;
-    }
-
-    // WHY: the crypto store lives under oikos.data() so it is covered by the
-    // same backup/restic policy as other stateful stores (symbolon, graphe).
-    // Nested `matrix-crypto/<agent>/` keeps per-agent keyspaces isolated.
-    let store_path = oikos.data().join(&matrix_config.crypto_store_path);
-
-    // WHY: we use user_id as the crypto-store namespace — matches Matrix's
-    // per-user device isolation. If Phase 3 splits per-agent devices, the
-    // nous_id becomes the namespace instead.
-    let store = match FjallCryptoStore::open(&store_path, &matrix_config.user_id).await {
-        Ok(s) => Arc::new(s),
-        Err(e) => {
-            warn!(
-                path = %store_path.display(),
-                user = %matrix_config.user_id,
-                error = %e,
-                "failed to open matrix crypto store"
-            );
-            return None;
-        }
-    };
-
-    let mut provider = match MatrixProvider::new(
-        &matrix_config.homeserver_url,
-        &matrix_config.user_id,
-        &matrix_config.device_display_name,
-        store,
-    ) {
-        Ok(p) => p,
-        Err(e) => {
-            warn!(
-                homeserver = %matrix_config.homeserver_url,
-                error = %e,
-                "failed to build MatrixProvider"
-            );
-            return None;
-        }
-    };
-
-    for account in &matrix_config.accounts {
-        provider.add_account(AccountBinding {
-            nous_id: account.nous_id.clone(),
-            room: account.room.clone(),
-        });
-        info!(nous = %account.nous_id, room = %account.room, "matrix binding added");
-    }
-
-    Some(Arc::new(provider))
-}
-
 pub(super) fn build_signal_provider(
     signal_config: &taxis::config::SignalConfig,
     messaging_config: &taxis::config::MessagingConfig,
@@ -624,7 +553,7 @@ pub(super) fn start_inbound_dispatch(
     ready_rx: tokio::sync::watch::Receiver<bool>,
     signal_provider: Option<&Arc<SignalProvider>>,
     shutdown_token: &CancellationToken,
-) -> (Arc<ChannelRegistry>, Option<tokio::task::JoinHandle<()>>) {
+) -> Result<(Arc<ChannelRegistry>, Option<tokio::task::JoinHandle<()>>)> {
     let mut channel_registry = ChannelRegistry::new();
 
     if let Some(provider) = signal_provider {
@@ -632,9 +561,10 @@ pub(super) fn start_inbound_dispatch(
             clippy::as_conversions,
             reason = "coercion to dyn ChannelProvider trait object: required by registry API"
         )]
-        channel_registry
-            .register(Arc::clone(provider) as Arc<dyn ChannelProvider>)
-            .unwrap_or_default();
+        register_channel_provider(
+            &mut channel_registry,
+            Arc::clone(provider) as Arc<dyn ChannelProvider>,
+        )?;
     }
     let channel_registry = Arc::new(channel_registry);
 
@@ -643,7 +573,7 @@ pub(super) fn start_inbound_dispatch(
             config.messaging.poll_interval_ms,
         ));
         let listener = ChannelListener::start_with_config(
-            provider,
+            provider.as_ref(),
             poll_interval,
             shutdown_token.child_token(),
             config.messaging.max_concurrent_handlers,
@@ -671,5 +601,100 @@ pub(super) fn start_inbound_dispatch(
         None
     };
 
-    (channel_registry, handle)
+    Ok((channel_registry, handle))
+}
+
+fn register_channel_provider(
+    channel_registry: &mut ChannelRegistry,
+    provider: Arc<dyn ChannelProvider>,
+) -> Result<()> {
+    let channel_id = provider.id().to_owned();
+    channel_registry
+        .register(provider)
+        .with_whatever_context(|_| format!("failed to register channel provider '{channel_id}'"))
+}
+
+#[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
+mod tests {
+    use std::error::Error as _;
+    use std::future::Future;
+    use std::pin::Pin;
+
+    use agora::types::{ChannelCapabilities, InboundMessage, ProbeResult, SendParams, SendResult};
+    use tokio::sync::mpsc;
+    use tokio::task::JoinSet;
+
+    use super::*;
+
+    static TEST_CAPABILITIES: ChannelCapabilities = ChannelCapabilities {
+        threads: false,
+        reactions: false,
+        typing: false,
+        media: false,
+        streaming: false,
+        rich_formatting: false,
+        max_text_length: 1000,
+    };
+
+    struct TestProvider {
+        id: &'static str,
+    }
+
+    impl ChannelProvider for TestProvider {
+        fn id(&self) -> &str {
+            self.id
+        }
+
+        fn name(&self) -> &str {
+            self.id
+        }
+
+        fn capabilities(&self) -> &ChannelCapabilities {
+            &TEST_CAPABILITIES
+        }
+
+        fn send<'a>(
+            &'a self,
+            _params: &'a SendParams,
+        ) -> Pin<Box<dyn Future<Output = SendResult> + Send + 'a>> {
+            Box::pin(async { SendResult::ok() })
+        }
+
+        fn listen(
+            &self,
+            _poll_interval: Option<std::time::Duration>,
+            _cancel: CancellationToken,
+        ) -> (mpsc::Receiver<InboundMessage>, JoinSet<()>) {
+            let (_tx, rx) = mpsc::channel(1);
+            (rx, JoinSet::new())
+        }
+
+        fn probe<'a>(&'a self) -> Pin<Box<dyn Future<Output = ProbeResult> + Send + 'a>> {
+            Box::pin(async {
+                ProbeResult {
+                    ok: true,
+                    latency_ms: None,
+                    error: None,
+                    details: None,
+                }
+            })
+        }
+    }
+
+    #[test]
+    fn register_channel_provider_surfaces_duplicate_errors() {
+        let mut registry = ChannelRegistry::new();
+        register_channel_provider(&mut registry, Arc::new(TestProvider { id: "signal" }))
+            .expect("first registration succeeds");
+
+        let error =
+            register_channel_provider(&mut registry, Arc::new(TestProvider { id: "signal" }))
+                .expect_err("duplicate registration should fail");
+
+        let message = error.to_string();
+        assert!(message.contains("failed to register channel provider 'signal'"));
+        let source = error.source().expect("duplicate channel source");
+        assert!(source.to_string().contains("duplicate channel: signal"));
+    }
 }
