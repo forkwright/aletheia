@@ -21,6 +21,7 @@ mod planning_adapter;
 #[cfg(feature = "recall")]
 mod recall_sources;
 mod runtime;
+mod session_retention;
 mod status;
 
 use anyhow::Result;

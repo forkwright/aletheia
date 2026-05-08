@@ -43,6 +43,15 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// Blackboard TTL could not be represented as an expiration timestamp.
+    #[snafu(display("blackboard TTL overflow: {ttl_secs} seconds: {source}"))]
+    TtlOverflow {
+        ttl_secs: i64,
+        source: jiff::Error,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// Filesystem I/O error (archive, backup, or store open).
     #[snafu(display("I/O error at {}: {source}", path.display()))]
     Io {

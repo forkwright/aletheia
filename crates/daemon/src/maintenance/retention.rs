@@ -25,6 +25,9 @@ pub struct RetentionSummary {
     pub sessions_cleaned: u32,
     /// Number of expired messages removed.
     pub messages_cleaned: u32,
+    /// Number of expired blackboard entries removed.
+    #[serde(default)]
+    pub blackboard_entries_cleaned: u32,
     /// Total bytes reclaimed from storage.
     pub bytes_freed: u64,
 }
@@ -62,6 +65,7 @@ mod tests {
             summary: RetentionSummary {
                 sessions_cleaned: 5,
                 messages_cleaned: 100,
+                blackboard_entries_cleaned: 7,
                 bytes_freed: 1024,
             },
         };
@@ -69,6 +73,7 @@ mod tests {
         let result = executor.execute_retention().expect("should succeed");
         assert_eq!(result.sessions_cleaned, 5);
         assert_eq!(result.messages_cleaned, 100);
+        assert_eq!(result.blackboard_entries_cleaned, 7);
         assert_eq!(result.bytes_freed, 1024);
     }
 
@@ -89,6 +94,7 @@ mod tests {
         let summary = RetentionSummary::default();
         assert_eq!(summary.sessions_cleaned, 0);
         assert_eq!(summary.messages_cleaned, 0);
+        assert_eq!(summary.blackboard_entries_cleaned, 0);
         assert_eq!(summary.bytes_freed, 0);
     }
 
