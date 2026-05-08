@@ -95,6 +95,8 @@ impl SpawnService for SpawnServiceImpl {
             name: None,
             generation: crate::config::NousGenerationConfig {
                 model,
+                fallback_models: Vec::new(),
+                retries_before_fallback: 2,
                 context_window: CONTEXT_TOKENS,
                 max_output_tokens: MAX_OUTPUT_TOKENS,
                 bootstrap_max_tokens: BOOTSTRAP_MAX_TOKENS,

@@ -634,6 +634,13 @@ impl RuntimeBuilder {
                     name: resolved.name,
                     generation: nous::config::NousGenerationConfig {
                         model,
+                        fallback_models: resolved
+                            .model
+                            .fallbacks
+                            .iter()
+                            .map(ToString::to_string)
+                            .collect(),
+                        retries_before_fallback: resolved.model.retries_before_fallback,
                         context_window: resolved.limits.context_tokens,
                         max_output_tokens: resolved.limits.max_output_tokens,
                         bootstrap_max_tokens: resolved.limits.bootstrap_max_tokens,

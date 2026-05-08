@@ -316,6 +316,37 @@ fn parse_oauth_token_fails_on_empty_input() {
     assert!(!err.to_string().is_empty());
 }
 
+#[test]
+fn scrub_cc_auth_env_marks_token_env_for_removal() {
+    let mut cmd = tokio::process::Command::new("claude");
+    cmd.env("ANTHROPIC_AUTH_TOKEN", "raw-oauth-token")
+        .env("ANTHROPIC_API_KEY", "raw-api-key")
+        .env("CLAUDE_CODE_OAUTH_TOKEN", "raw-cc-token");
+
+    scrub_cc_auth_env(&mut cmd);
+
+    let mut envs: Vec<_> = cmd
+        .as_std_mut()
+        .get_envs()
+        .filter_map(|(key, value)| {
+            key.to_str()
+                .filter(|name| name.contains("TOKEN") || name.contains("API_KEY"))
+                .map(|name| (name.to_owned(), value.map(std::borrow::ToOwned::to_owned)))
+        })
+        .collect();
+    envs.sort_by(|a, b| a.0.cmp(&b.0));
+
+    assert_eq!(
+        envs,
+        vec![
+            ("ANTHROPIC_API_KEY".to_owned(), None),
+            ("ANTHROPIC_AUTH_TOKEN".to_owned(), None),
+            ("CLAUDE_CODE_OAUTH_TOKEN".to_owned(), None),
+        ],
+        "CC subprocesses must remove inherited raw auth tokens"
+    );
+}
+
 // ── run_completion ────────────────────────────────────────────────────────
 
 #[tokio::test]
@@ -328,7 +359,7 @@ async fn run_completion_spawn_failure_reports_binary_path() {
         "claude-test-model",
         None,
         "hello",
-        1024,
+        0,
         Duration::from_secs(5),
     )
     .await
@@ -342,6 +373,27 @@ async fn run_completion_spawn_failure_reports_binary_path() {
     assert!(
         msg.contains("provider init failed"),
         "error must be ProviderInit variant, got: {msg}"
+    );
+}
+
+#[tokio::test]
+async fn run_completion_errors_when_max_tokens_requested() {
+    let binary = PathBuf::from("/bin/echo");
+    let err = run_completion(
+        &binary,
+        "claude-test-model",
+        None,
+        "hello",
+        1024,
+        Duration::from_secs(5),
+    )
+    .await
+    .unwrap_err();
+
+    let msg = err.to_string();
+    assert!(
+        msg.contains("cannot enforce max_tokens=1024"),
+        "error must explain unsupported max token limit, got: {msg}"
     );
 }
 
@@ -364,7 +416,7 @@ printf '{"type":"result","subtype":"success","result":"hello world","is_error":f
         "claude-test-model",
         None,
         "prompt text",
-        1024,
+        0,
         Duration::from_secs(10),
     )
     .await
@@ -396,7 +448,7 @@ printf '{"type":"result","subtype":"success","result":"sys ok","is_error":false}
         "claude-test-model",
         Some("You are a helpful assistant."),
         "prompt",
-        512,
+        0,
         Duration::from_secs(10),
     )
     .await
@@ -417,7 +469,7 @@ async fn run_completion_timeout_returns_error() {
         "claude-test-model",
         None,
         "prompt",
-        1024,
+        0,
         Duration::from_millis(100),
     )
     .await
@@ -455,7 +507,7 @@ exit 1"#,
         "claude-test-model",
         None,
         "prompt",
-        1024,
+        0,
         Duration::from_secs(10),
     )
     .await
@@ -482,7 +534,7 @@ async fn run_streaming_spawn_failure_reports_binary_path() {
         "claude-test-model",
         None,
         "hello",
-        1024,
+        0,
         Duration::from_secs(5),
         &mut on_delta,
     )
@@ -497,6 +549,29 @@ async fn run_streaming_spawn_failure_reports_binary_path() {
     assert!(
         msg.contains("provider init failed"),
         "error must be ProviderInit variant, got: {msg}"
+    );
+}
+
+#[tokio::test]
+async fn run_streaming_errors_when_max_tokens_requested() {
+    let binary = PathBuf::from("/bin/echo");
+    let mut on_delta = |_: &str| {};
+    let err = run_streaming(
+        &binary,
+        "claude-test-model",
+        None,
+        "hello",
+        2048,
+        Duration::from_secs(5),
+        &mut on_delta,
+    )
+    .await
+    .unwrap_err();
+
+    let msg = err.to_string();
+    assert!(
+        msg.contains("cannot enforce max_tokens=2048"),
+        "error must explain unsupported streaming max token limit, got: {msg}"
     );
 }
 
@@ -522,7 +597,7 @@ printf '{"type":"result","subtype":"success","result":"chunk1chunk2chunk3","is_e
         "claude-test-model",
         None,
         "prompt",
-        1024,
+        0,
         Duration::from_secs(10),
         &mut on_delta,
     )
@@ -552,7 +627,7 @@ async fn run_streaming_timeout_returns_error() {
         "claude-test-model",
         None,
         "prompt",
-        1024,
+        0,
         Duration::from_millis(100),
         &mut on_delta,
     )
@@ -626,7 +701,7 @@ async fn run_completion_rejects_oversized_system_prompt() {
         "test-model",
         Some(&big_prompt),
         "hello",
-        1024,
+        0,
         Duration::from_secs(5),
     )
     .await
@@ -649,7 +724,7 @@ async fn run_streaming_rejects_oversized_system_prompt() {
         "test-model",
         Some(&big_prompt),
         "hello",
-        1024,
+        0,
         Duration::from_secs(5),
         &mut on_delta,
     )
