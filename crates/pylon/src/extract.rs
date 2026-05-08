@@ -33,6 +33,10 @@ impl FromRequestParts<Arc<AppState>> for Claims {
         parts: &mut Parts,
         state: &Arc<AppState>,
     ) -> Result<Self, Self::Rejection> {
+        if let Some(claims) = parts.extensions.get::<Claims>() {
+            return Ok(claims.clone());
+        }
+
         if state.auth_mode == "none" {
             let role = state.none_role.parse::<Role>().unwrap_or(Role::Readonly);
             return Ok(Self {

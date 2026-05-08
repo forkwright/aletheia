@@ -23,7 +23,7 @@ use crate::handlers::{
 use crate::middleware::{
     CsrfState, DeprecationLayer, ETagLayer, RateLimiter, RequestId, UserRateLimiter, deprecate,
     enrich_error_response, inject_request_id, per_user_rate_limit, rate_limit, record_http_metrics,
-    require_csrf_header, spawn_stale_cleanup,
+    require_bearer_auth, require_csrf_header, spawn_stale_cleanup,
 };
 use crate::openapi;
 use crate::security::SecurityConfig;
@@ -64,6 +64,35 @@ pub fn build_router_with(
     // The user_rate_limiter cleanup task needs it after .with_state() consumes the Arc.
     let shutdown = state.shutdown.clone();
 
+    let knowledge_routes = Router::new()
+        .route("/facts", get(knowledge::list_facts))
+        .route("/facts/import", post(knowledge::import_facts))
+        .route("/ingest", post(knowledge::ingest))
+        .route("/ingest/webhook", post(knowledge::webhook_ingest))
+        .route("/facts/{id}", get(knowledge::get_fact))
+        .route("/facts/{id}/forget", post(knowledge::forget_fact))
+        .route("/facts/{id}/restore", post(knowledge::restore_fact))
+        .route(
+            "/facts/{id}/confidence",
+            axum::routing::put(knowledge::update_confidence),
+        )
+        .route(
+            "/facts/{id}/sensitivity",
+            axum::routing::put(knowledge::update_sensitivity),
+        )
+        .route("/entities", get(knowledge::list_entities))
+        .route(
+            "/entities/{id}/relationships",
+            get(knowledge::entity_relationships),
+        )
+        .route("/search", get(knowledge::search))
+        .route("/timeline", get(knowledge::timeline))
+        .route("/check", get(knowledge::check_graph_health))
+        .route_layer(axum::middleware::from_fn_with_state(
+            Arc::clone(&state),
+            require_bearer_auth,
+        ));
+
     let v1 = Router::new()
         .route(
             "/sessions",
@@ -101,32 +130,7 @@ pub fn build_router_with(
             "/config/{section}",
             get(config::get_section).put(config::update_section),
         )
-        .route("/knowledge/facts", get(knowledge::list_facts))
-        .route("/knowledge/facts/import", post(knowledge::import_facts))
-        .route("/knowledge/ingest", post(knowledge::ingest))
-        .route("/knowledge/ingest/webhook", post(knowledge::webhook_ingest))
-        .route("/knowledge/facts/{id}", get(knowledge::get_fact))
-        .route("/knowledge/facts/{id}/forget", post(knowledge::forget_fact))
-        .route(
-            "/knowledge/facts/{id}/restore",
-            post(knowledge::restore_fact),
-        )
-        .route(
-            "/knowledge/facts/{id}/confidence",
-            axum::routing::put(knowledge::update_confidence),
-        )
-        .route(
-            "/knowledge/facts/{id}/sensitivity",
-            axum::routing::put(knowledge::update_sensitivity),
-        )
-        .route("/knowledge/entities", get(knowledge::list_entities))
-        .route(
-            "/knowledge/entities/{id}/relationships",
-            get(knowledge::entity_relationships),
-        )
-        .route("/knowledge/search", get(knowledge::search))
-        .route("/knowledge/timeline", get(knowledge::timeline))
-        .route("/knowledge/check", get(knowledge::check_graph_health))
+        .nest("/knowledge", knowledge_routes)
         .route("/metrics/agents", get(insights::get_agent_perf))
         .route("/metrics/agents/{id}", get(insights::get_agent_perf_one))
         .route("/metrics/quality", get(insights::get_quality_metrics))

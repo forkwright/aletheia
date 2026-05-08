@@ -1,6 +1,7 @@
 //! Knowledge endpoint error handling tests.
 
-use axum::http::StatusCode;
+use axum::body::Body;
+use axum::http::{Request, StatusCode};
 use tower::ServiceExt;
 
 use super::helpers::*;
@@ -37,6 +38,55 @@ async fn list_facts_invalid_sort_returns_400() {
             .unwrap()
             .contains("invalid sort field")
     );
+}
+
+#[tokio::test]
+async fn knowledge_read_routes_reject_missing_bearer_token_in_token_mode() {
+    let (app, _dir) = app().await;
+    let routes = [
+        "/api/v1/knowledge/facts",
+        "/api/v1/knowledge/facts/nonexistent-fact-id",
+        "/api/v1/knowledge/entities",
+        "/api/v1/knowledge/entities/some-id/relationships",
+        "/api/v1/knowledge/search?q=memory",
+        "/api/v1/knowledge/timeline",
+        "/api/v1/knowledge/check",
+    ];
+
+    for route in routes {
+        let resp = app
+            .clone()
+            .oneshot(Request::get(route).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED, "{route}");
+    }
+}
+
+#[tokio::test]
+async fn knowledge_read_route_accepts_valid_bearer_token_in_token_mode() {
+    let (app, _dir) = app().await;
+    let resp = app
+        .oneshot(authed_get("/api/v1/knowledge/facts"))
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn knowledge_read_route_allows_missing_bearer_token_in_none_mode() {
+    let (app, _dir) = app_with_auth_mode("none").await;
+    let resp = app
+        .oneshot(
+            Request::get("/api/v1/knowledge/facts")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
 }
 
 /// Error path: `list_facts` with invalid order parameter returns 400 Bad Request.
@@ -155,9 +205,9 @@ async fn check_graph_health_without_knowledge_store_returns_503() {
     assert_eq!(body["error"]["code"], "service_unavailable");
 }
 
-/// Error path: `entity_relationships` returns empty list when knowledge store not enabled.
+/// Error path: `entity_relationships` returns 503 when knowledge store not enabled.
 #[tokio::test]
-async fn entity_relationships_without_knowledge_store_returns_empty() {
+async fn entity_relationships_without_knowledge_store_returns_503() {
     let (app, _dir) = app().await;
     let resp = app
         .oneshot(authed_get(
@@ -166,10 +216,9 @@ async fn entity_relationships_without_knowledge_store_returns_empty() {
         .await
         .unwrap();
 
-    // This endpoint returns empty array when store not available
-    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
     let body = body_json(resp).await;
-    assert!(body["relationships"].is_array());
+    assert_eq!(body["error"]["code"], "service_unavailable");
 }
 
 /// Error path: `list_entities` returns empty list when knowledge store not enabled.

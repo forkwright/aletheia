@@ -5,12 +5,17 @@
 )]
 #![allow(clippy::needless_for_each)] // triggered by utoipa OpenApi derive macro
 
+use axum::extract::State;
 use axum::http::header;
 use axum::response::IntoResponse;
 
 use utoipa::OpenApi;
 
 use koina::http::CONTENT_TYPE_JSON;
+
+use std::sync::Arc;
+
+use crate::state::AppState;
 
 /// Utoipa `OpenAPI` spec root -- aggregates all API paths and schemas.
 #[derive(OpenApi)]
@@ -36,9 +41,13 @@ use koina::http::CONTENT_TYPE_JSON;
         crate::handlers::sessions::streaming::events,
         crate::handlers::sessions::streaming::reconnect_turn,
         crate::handlers::sessions::history,
+        crate::handlers::events::subscribe,
+        crate::handlers::events::discovery,
         crate::handlers::nous::list,
         crate::handlers::nous::get_status,
         crate::handlers::nous::tools,
+        crate::handlers::nous::recover,
+        crate::handlers::nous::create,
         crate::handlers::config::get_config,
         crate::handlers::config::get_section,
         crate::handlers::config::update_section,
@@ -81,6 +90,9 @@ use koina::http::CONTENT_TYPE_JSON;
         crate::handlers::nous::NousStatus,
         crate::handlers::nous::ToolsResponse,
         crate::handlers::nous::ToolSummary,
+        crate::handlers::nous::AgentDefinition,
+        crate::handlers::nous::CreateAgentResponse,
+        crate::handlers::nous::RecoverResponse,
         crate::handlers::config::ConfigUpdateResponse,
         crate::handlers::config::ConfigReloadResponse,
         crate::handlers::config::ConfigSectionPayload,
@@ -108,7 +120,7 @@ use koina::http::CONTENT_TYPE_JSON;
         crate::types::insights::TimeSeriesPoint,
         crate::types::insights::JournalEvent,
     )),
-    modifiers(&VersionFromCrate, &SecurityAddon),
+    modifiers(&VersionFromCrate),
 )]
 pub(crate) struct ApiDoc;
 
@@ -122,21 +134,60 @@ impl utoipa::Modify for VersionFromCrate {
     }
 }
 
-struct SecurityAddon;
+fn auth_requires_bearer(auth_mode: &str) -> bool {
+    auth_mode != "none"
+}
 
-impl utoipa::Modify for SecurityAddon {
-    fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
-        if let Some(components) = openapi.components.as_mut() {
-            components.add_security_scheme(
-                "bearer_auth",
-                utoipa::openapi::security::SecurityScheme::Http(
-                    utoipa::openapi::security::Http::new(
-                        utoipa::openapi::security::HttpAuthScheme::Bearer,
-                    ),
-                ),
-            );
+fn add_bearer_auth_scheme(value: &mut serde_json::Value) {
+    let components = value
+        .as_object_mut()
+        .expect("OpenAPI JSON root must be an object")
+        .entry("components")
+        .or_insert_with(|| serde_json::json!({}));
+    let security_schemes = components
+        .as_object_mut()
+        .expect("OpenAPI components must be an object")
+        .entry("securitySchemes")
+        .or_insert_with(|| serde_json::json!({}));
+    security_schemes
+        .as_object_mut()
+        .expect("OpenAPI securitySchemes must be an object")
+        .insert(
+            "bearer_auth".to_owned(),
+            serde_json::json!({
+                "type": "http",
+                "scheme": "bearer"
+            }),
+        );
+}
+
+fn remove_operation_security(value: &mut serde_json::Value) {
+    let Some(paths) = value
+        .get_mut("paths")
+        .and_then(serde_json::Value::as_object_mut)
+    else {
+        return;
+    };
+    for path_item in paths.values_mut() {
+        let Some(operations) = path_item.as_object_mut() else {
+            continue;
+        };
+        for operation in operations.values_mut() {
+            if let Some(operation) = operation.as_object_mut() {
+                operation.remove("security");
+            }
         }
     }
+}
+
+pub(crate) fn openapi_value_for_auth_mode(auth_mode: &str) -> serde_json::Value {
+    let mut value = serde_json::to_value(ApiDoc::openapi()).expect("OpenAPI spec serialization");
+    if auth_requires_bearer(auth_mode) {
+        add_bearer_auth_scheme(&mut value);
+    } else {
+        remove_operation_security(&mut value);
+    }
+    value
 }
 
 /// Serve the generated `OpenAPI` specification as JSON.
@@ -145,9 +196,8 @@ impl utoipa::Modify for SecurityAddon {
 ///
 /// Cancel-safe. Axum handler; cancellation drops the future with no
 /// side effects beyond not returning a response.
-pub async fn openapi_json() -> impl IntoResponse {
-    let spec = ApiDoc::openapi()
-        .to_json()
+pub async fn openapi_json(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let spec = serde_json::to_string(&openapi_value_for_auth_mode(&state.auth_mode))
         .expect("OpenAPI spec serialization");
     ([(header::CONTENT_TYPE, CONTENT_TYPE_JSON)], spec)
 }
@@ -159,8 +209,7 @@ mod tests {
     #[test]
     fn openapi_spec_serializes_without_panic() {
         #[expect(clippy::expect_used, reason = "test assertion")]
-        let json = ApiDoc::openapi()
-            .to_json()
+        let json = serde_json::to_string(&openapi_value_for_auth_mode("token"))
             .expect("OpenAPI spec serialization must not fail");
         assert!(!json.is_empty());
     }
@@ -178,12 +227,52 @@ mod tests {
     #[test]
     fn openapi_spec_json_contains_api_health_path() {
         #[expect(clippy::expect_used, reason = "test assertion")]
-        let json = ApiDoc::openapi()
-            .to_json()
+        let json = serde_json::to_string(&openapi_value_for_auth_mode("token"))
             .expect("OpenAPI spec serialization must not fail");
         assert!(
             json.contains("/api/health"),
             "spec JSON must include the health endpoint path"
+        );
+    }
+
+    #[test]
+    fn openapi_spec_omits_bearer_auth_when_auth_mode_none() {
+        let spec = openapi_value_for_auth_mode("none");
+        let components = spec
+            .get("components")
+            .and_then(serde_json::Value::as_object)
+            .expect("components object");
+        let security_schemes = components
+            .get("securitySchemes")
+            .and_then(serde_json::Value::as_object);
+        assert!(
+            security_schemes.is_none_or(|schemes| schemes.get("bearer_auth").is_none()),
+            "auth_mode=none must not advertise bearer_auth"
+        );
+        let paths = spec
+            .get("paths")
+            .and_then(serde_json::Value::as_object)
+            .expect("paths object");
+        for path_item in paths.values() {
+            for operation in path_item.as_object().expect("path item object").values() {
+                assert!(
+                    operation.get("security").is_none(),
+                    "auth_mode=none must not mark operations as bearer-secured"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn openapi_spec_advertises_bearer_auth_when_auth_mode_token() {
+        let spec = openapi_value_for_auth_mode("token");
+        let bearer_auth = spec
+            .get("components")
+            .and_then(|components| components.get("securitySchemes"))
+            .and_then(|schemes| schemes.get("bearer_auth"));
+        assert!(
+            bearer_auth.is_some(),
+            "token auth must advertise bearer_auth"
         );
     }
 }

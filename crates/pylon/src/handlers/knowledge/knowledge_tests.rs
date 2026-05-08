@@ -130,6 +130,89 @@ fn facts_query_default_values() {
     assert!(!q.include_forgotten);
 }
 
+#[cfg(feature = "knowledge-store")]
+#[test]
+fn entity_relationships_queries_store_for_inbound_and_outbound_edges() {
+    use std::sync::Arc;
+
+    use mneme::id::EntityId;
+    use mneme::knowledge::{Entity, Relationship};
+
+    let store = mneme::knowledge_store::KnowledgeStore::open_mem().unwrap();
+    let now = jiff::Timestamp::UNIX_EPOCH;
+    let entity_a = EntityId::new("entity-a").unwrap();
+    let entity_b = EntityId::new("entity-b").unwrap();
+    let entity_c = EntityId::new("entity-c").unwrap();
+
+    for entity in [
+        Entity {
+            id: entity_a.clone(),
+            name: "A".to_owned(),
+            entity_type: "concept".to_owned(),
+            aliases: Vec::new(),
+            created_at: now,
+            updated_at: now,
+        },
+        Entity {
+            id: entity_b.clone(),
+            name: "B".to_owned(),
+            entity_type: "concept".to_owned(),
+            aliases: Vec::new(),
+            created_at: now,
+            updated_at: now,
+        },
+        Entity {
+            id: entity_c.clone(),
+            name: "C".to_owned(),
+            entity_type: "concept".to_owned(),
+            aliases: Vec::new(),
+            created_at: now,
+            updated_at: now,
+        },
+    ] {
+        store.insert_entity(&entity).unwrap();
+    }
+
+    for relationship in [
+        Relationship {
+            src: entity_a.clone(),
+            dst: entity_b,
+            relation: "depends_on".to_owned(),
+            weight: 0.8,
+            created_at: now,
+        },
+        Relationship {
+            src: entity_c,
+            dst: entity_a,
+            relation: "supports".to_owned(),
+            weight: 0.6,
+            created_at: now,
+        },
+    ] {
+        store.insert_relationship(&relationship).unwrap();
+    }
+
+    let config = taxis::config::AletheiaConfig::default();
+    let state = KnowledgeState {
+        knowledge_store: Some(store),
+        config: Arc::new(tokio::sync::RwLock::new(config)),
+        event_bus: Arc::new(crate::event_bus::EventBus::new(16)),
+    };
+
+    let relationships = get_entity_relationships(&state, "entity-a").unwrap();
+    assert_eq!(relationships.len(), 2);
+    assert!(
+        relationships
+            .iter()
+            .any(|r| r.src.as_str() == "entity-a" && r.relation == "depends_on")
+    );
+    assert!(
+        relationships
+            .iter()
+            .any(|r| r.dst.as_str() == "entity-a" && r.relation == "supports")
+    );
+}
+
 #[test]
 fn default_limit_is_capped_at_max() {
     let config = taxis::config::ApiLimitsConfig::default();

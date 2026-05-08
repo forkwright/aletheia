@@ -247,10 +247,69 @@ pub(super) fn get_fact_relationships(
 }
 
 pub(super) fn get_entity_relationships(
-    _state: &KnowledgeState,
-    _entity_id: &str,
-) -> Vec<mneme::knowledge::Relationship> {
-    Vec::new()
+    state: &KnowledgeState,
+    entity_id: &str,
+) -> Result<Vec<mneme::knowledge::Relationship>, ApiError> {
+    #[cfg(feature = "knowledge-store")]
+    if let Some(ref store) = state.knowledge_store {
+        use std::collections::BTreeMap;
+
+        use mneme::engine::DataValue;
+
+        let script = r"
+            ?[src, dst, relation, weight, created_at] :=
+                *relationships{src, dst, relation, weight, created_at},
+                src == $entity_id
+            ?[src, dst, relation, weight, created_at] :=
+                *relationships{src, dst, relation, weight, created_at},
+                dst == $entity_id
+        ";
+        let mut params = BTreeMap::new();
+        params.insert("entity_id".to_owned(), DataValue::Str(entity_id.into()));
+        let result = store
+            .run_query(script, params)
+            .map_err(|e| ApiError::Internal {
+                message: e.to_string(),
+                location: snafu::location!(),
+            })?;
+        let mut relationships = Vec::with_capacity(result.row_count());
+        for i in 0..result.row_count() {
+            let src_str = result.get_string(i, "src").unwrap_or_default();
+            let dst_str = result.get_string(i, "dst").unwrap_or_default();
+            let relation = result.get_string(i, "relation").unwrap_or_default();
+            let weight = result.get_f64(i, "weight").unwrap_or(1.0);
+            let created_at = mneme::knowledge::parse_timestamp(
+                &result.get_string(i, "created_at").unwrap_or_default(),
+            )
+            .unwrap_or_else(jiff::Timestamp::now);
+
+            let src = mneme::id::EntityId::new(&src_str).map_err(|e| ApiError::Internal {
+                message: format!("invalid relationship src id in store: {e}"),
+                location: snafu::location!(),
+            })?;
+            let dst = mneme::id::EntityId::new(&dst_str).map_err(|e| ApiError::Internal {
+                message: format!("invalid relationship dst id in store: {e}"),
+                location: snafu::location!(),
+            })?;
+
+            relationships.push(mneme::knowledge::Relationship {
+                src,
+                dst,
+                relation,
+                weight,
+                created_at,
+            });
+        }
+        return Ok(relationships);
+    }
+
+    #[cfg(not(feature = "knowledge-store"))]
+    let _ = (state, entity_id);
+
+    Err(ApiError::ServiceUnavailable {
+        message: "knowledge store not enabled on this server".to_owned(),
+        location: snafu::location!(),
+    })
 }
 
 #[cfg(feature = "knowledge-store")]

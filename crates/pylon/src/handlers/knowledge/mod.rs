@@ -279,9 +279,8 @@ fn validate_sort_order(sort: &str, order: &str) -> Result<(), ApiError> {
 /// GET /api/v1/knowledge/facts
 ///
 /// List facts with sorting, filtering, and pagination.
-/// The knowledge store may not be available (feature-gated), so we return
-/// synthetic demo data when the store is absent, ensuring the TUI always
-/// has something to display.
+/// When the knowledge store is absent or unavailable, the endpoint returns an
+/// empty fact list.
 #[utoipa::path(
     get,
     path = "/api/v1/knowledge/facts",
@@ -475,6 +474,7 @@ pub async fn list_entities(
     responses(
         (status = 200, description = "Entity relationships"),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 503, description = "Knowledge store not enabled", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = []))
 )]
@@ -482,7 +482,7 @@ pub async fn entity_relationships(
     State(state): State<KnowledgeState>,
     Path(id): Path<String>,
 ) -> Result<Json<RelationshipsResponse>, ApiError> {
-    let relationships = get_entity_relationships(&state, &id);
+    let relationships = get_entity_relationships(&state, &id)?;
     Ok(Json(RelationshipsResponse { relationships }))
 }
 
