@@ -26,6 +26,9 @@ pub struct MaintenanceReport {
 /// Daemon crate defines it, binary crate implements it where `KnowledgeStore`
 /// is available. All methods are blocking: the runner wraps in `spawn_blocking`.
 pub trait KnowledgeMaintenanceExecutor: Send + Sync {
+    /// Insert a single fact into the durable knowledge store.
+    fn insert_fact(&self, fact: &episteme::knowledge::Fact) -> crate::error::Result<()>;
+
     /// Refresh temporal decay scores for all entities/edges.
     fn refresh_decay_scores(&self, nous_id: &str) -> crate::error::Result<MaintenanceReport>;
 
@@ -98,6 +101,10 @@ mod tests {
     struct MockExecutor;
 
     impl KnowledgeMaintenanceExecutor for MockExecutor {
+        fn insert_fact(&self, _fact: &episteme::knowledge::Fact) -> crate::error::Result<()> {
+            Ok(())
+        }
+
         fn refresh_decay_scores(&self, _nous_id: &str) -> crate::error::Result<MaintenanceReport> {
             Ok(MaintenanceReport {
                 items_processed: 10,

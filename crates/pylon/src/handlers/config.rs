@@ -145,8 +145,6 @@ mod section_schemas {
         #[schema(value_type = Object)]
         pub disk_space: Option<Value>,
         #[schema(value_type = Object)]
-        pub sqlite_recovery: Option<Value>,
-        #[schema(value_type = Object)]
         pub retention: Option<Value>,
         pub knowledge_maintenance_enabled: Option<bool>,
         #[schema(value_type = Object)]

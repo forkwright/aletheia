@@ -89,6 +89,10 @@ impl crate::maintenance::RetentionExecutor for MockRetention {
 struct MockKnowledge;
 
 impl crate::maintenance::KnowledgeMaintenanceExecutor for MockKnowledge {
+    fn insert_fact(&self, _fact: &episteme::knowledge::Fact) -> Result<()> {
+        Ok(())
+    }
+
     fn refresh_decay_scores(&self, _nous_id: &str) -> Result<MaintenanceReport> {
         Ok(MaintenanceReport {
             items_processed: 7,
@@ -117,6 +121,83 @@ impl crate::maintenance::KnowledgeMaintenanceExecutor for MockKnowledge {
     fn run_skill_decay(&self, _nous_id: &str) -> Result<MaintenanceReport> {
         Ok(MaintenanceReport::default())
     }
+}
+
+struct RealKnowledge {
+    store: std::sync::Arc<episteme::knowledge_store::KnowledgeStore>,
+}
+
+impl RealKnowledge {
+    fn open(
+        dir: &std::path::Path,
+    ) -> (
+        Arc<dyn crate::maintenance::KnowledgeMaintenanceExecutor>,
+        std::sync::Arc<episteme::knowledge_store::KnowledgeStore>,
+    ) {
+        let store = episteme::knowledge_store::KnowledgeStore::open_fjall(
+            dir.join("knowledge"),
+            episteme::knowledge_store::KnowledgeConfig::default(),
+        )
+        .expect("open real fjall knowledge store");
+        let executor: Arc<dyn crate::maintenance::KnowledgeMaintenanceExecutor> = Arc::new(Self {
+            store: Arc::clone(&store),
+        });
+        (executor, store)
+    }
+}
+
+impl crate::maintenance::KnowledgeMaintenanceExecutor for RealKnowledge {
+    fn insert_fact(&self, fact: &episteme::knowledge::Fact) -> Result<()> {
+        self.store.insert_fact(fact).map_err(|e| {
+            error::TaskFailedSnafu {
+                task_id: "test-fact-persistence".to_owned(),
+                reason: e.to_string(),
+            }
+            .build()
+        })
+    }
+
+    fn refresh_decay_scores(&self, _nous_id: &str) -> Result<MaintenanceReport> {
+        Ok(MaintenanceReport::default())
+    }
+
+    fn deduplicate_entities(&self, _nous_id: &str) -> Result<MaintenanceReport> {
+        Ok(MaintenanceReport::default())
+    }
+
+    fn recompute_graph_scores(&self, _nous_id: &str) -> Result<MaintenanceReport> {
+        Ok(MaintenanceReport::default())
+    }
+
+    fn refresh_embeddings(&self, _nous_id: &str) -> Result<MaintenanceReport> {
+        Ok(MaintenanceReport::default())
+    }
+
+    fn garbage_collect(&self, _nous_id: &str) -> Result<MaintenanceReport> {
+        Ok(MaintenanceReport::default())
+    }
+
+    fn maintain_indexes(&self, _nous_id: &str) -> Result<MaintenanceReport> {
+        Ok(MaintenanceReport::default())
+    }
+
+    fn health_check(&self, _nous_id: &str) -> Result<MaintenanceReport> {
+        Ok(MaintenanceReport::default())
+    }
+
+    fn run_skill_decay(&self, _nous_id: &str) -> Result<MaintenanceReport> {
+        Ok(MaintenanceReport::default())
+    }
+}
+
+fn current_facts(
+    store: &episteme::knowledge_store::KnowledgeStore,
+    nous_id: &str,
+) -> Vec<episteme::knowledge::Fact> {
+    let now = episteme::knowledge::format_timestamp(&jiff::Timestamp::now());
+    store
+        .query_facts(nous_id, &now, 100)
+        .expect("query persisted facts")
 }
 
 // --- execute_command ---
@@ -426,4 +507,124 @@ fn cron_execution_counters_increment_on_record() {
     assert_eq!(crate::metrics::cron_executions_ok(), ok_before + 1);
     assert_eq!(crate::metrics::cron_executions_error(), err_before + 1);
     assert_eq!(crate::metrics::cron_executions_total(), total_before + 2);
+}
+
+#[tokio::test]
+async fn ops_fact_extraction_persists_all_extracted_facts_to_real_fjall() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let (executor, store) = RealKnowledge::open(dir.path());
+
+    for _ in 0..5 {
+        crate::metrics::record_cron_execution("_test_ops_persist_success", 0.1, true);
+    }
+
+    let result = execute_builtin(
+        &BuiltinTask::OpsFactExtraction,
+        "alice",
+        None,
+        None,
+        None,
+        Some(executor),
+    )
+    .await
+    .expect("ops fact extraction should persist");
+
+    assert!(result.success);
+    assert_eq!(
+        result.output.as_deref(),
+        Some("3 operational facts extracted, 3 inserted")
+    );
+
+    let facts = current_facts(&store, "alice");
+    assert_eq!(facts.len(), 3, "all extracted ops facts are retrievable");
+    let contents: Vec<&str> = facts.iter().map(|fact| fact.content.as_str()).collect();
+    assert!(
+        contents
+            .iter()
+            .any(|content| content.contains("active sessions")),
+        "session count fact should be persisted: {contents:?}"
+    );
+    assert!(
+        contents
+            .iter()
+            .any(|content| content.contains("tool success rate")),
+        "tool success-rate fact should be persisted: {contents:?}"
+    );
+    assert!(
+        contents
+            .iter()
+            .any(|content| content.contains("error count")),
+        "error-count fact should be persisted: {contents:?}"
+    );
+}
+
+#[tokio::test]
+async fn lesson_extraction_persists_training_facts_to_real_fjall() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let training = dir.path().join("training");
+    std::fs::create_dir_all(&training).expect("create training dir");
+    let (executor, store) = RealKnowledge::open(dir.path());
+
+    let violations = [
+        r#"{"type":"violation","schema_version":2,"ts":"2026-03-25T15:43:30Z","rule":"RUST/expect","file":"/src/lib.rs","line":10,"snippet":".expect(\"msg\")","project":"","pr_number":42,"sha":"abc123"}"#,
+        r#"{"type":"violation","schema_version":2,"ts":"2026-03-25T15:43:30Z","rule":"RUST/expect","file":"/src/main.rs","line":20,"snippet":".expect(\"other\")","project":"","pr_number":null,"sha":null}"#,
+    ];
+    tokio::fs::write(training.join("violations.jsonl"), violations.join("\n"))
+        .await
+        .expect("write violations");
+
+    let result = execute_lesson_extraction_from_dir("alice", &training, executor.as_ref())
+        .expect("lesson extraction should persist");
+
+    assert!(result.success);
+    assert!(
+        result
+            .output
+            .as_deref()
+            .unwrap_or_default()
+            .contains("2 facts produced, 2 inserted"),
+        "unexpected output: {:?}",
+        result.output
+    );
+
+    let facts = current_facts(&store, "alice");
+    assert_eq!(facts.len(), 2, "all lesson facts are retrievable");
+    assert!(
+        facts
+            .iter()
+            .all(|fact| fact.provenance.source_session_id.as_deref()
+                == Some("daemon:lesson-extraction")),
+        "lesson facts should carry daemon provenance: {facts:?}"
+    );
+    assert!(
+        facts
+            .iter()
+            .any(|fact| fact.content.contains("was fixed in PR")),
+        "fixed lesson content should be persisted: {facts:?}"
+    );
+    assert!(
+        facts
+            .iter()
+            .any(|fact| fact.content.contains("recurs across scans")),
+        "recurring lesson content should be persisted: {facts:?}"
+    );
+}
+
+#[tokio::test]
+async fn fact_extraction_without_store_returns_error() {
+    let err = execute_builtin(
+        &BuiltinTask::OpsFactExtraction,
+        "alice",
+        None,
+        None,
+        None,
+        None,
+    )
+    .await
+    .expect_err("missing persistence target should error");
+
+    assert!(
+        err.to_string().contains("no knowledge executor configured"),
+        "unexpected error: {err}"
+    );
 }
