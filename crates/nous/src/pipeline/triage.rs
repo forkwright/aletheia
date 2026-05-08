@@ -15,8 +15,8 @@ use serde::{Deserialize, Serialize};
 use tracing::instrument;
 
 use aletheia_lexica::keywords;
-use eidos::knowledge::FactSensitivity;
 use hermeneus::complexity::ModelTier;
+use mneme::knowledge::FactSensitivity;
 
 // --- Intent classifier regexes ---
 

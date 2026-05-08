@@ -15,6 +15,10 @@ workspace = true
 # session store API; mneme-engine layers the Datalog knowledge store on top.
 default = ["graph-algo", "mneme-engine"]
 graph-algo = ["episteme/graph-algo"]
+# Optional HTTP cross-encoder reranker support from episteme.
+reranker = ["episteme/reranker"]
+# Optional GLiNER bookkeeping provider support from episteme.
+gliner = ["episteme/gliner"]
 # Gates MockEmbeddingProvider and other test helpers. No test code in release binaries.
 test-support = ["episteme/test-support"]
 embed-candle = ["episteme/embed-candle"]

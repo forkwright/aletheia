@@ -16,9 +16,9 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use eidos::bookkeeping::BookkeepingProvider as _;
 use hermeneus::provider::{LlmProvider, ProviderRegistry};
 use hermeneus::types::{CompletionRequest, CompletionResponse, ContentBlock, StopReason, Usage};
+use mneme::bookkeeping::BookkeepingProvider as _;
 use mneme::knowledge::{
     EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactSensitivity, FactTemporal,
     far_future,
@@ -259,14 +259,14 @@ async fn identity_continuity_reflection_flag_is_set_but_stage_is_no_op() {
 #[tokio::test]
 async fn extract_self_facts_false_rejects_self_descriptive_facts() {
     struct SelfFactProvider;
-    impl episteme::extract::ExtractionProvider for SelfFactProvider {
+    impl mneme::extract::ExtractionProvider for SelfFactProvider {
         fn complete<'a>(
             &'a self,
             _system: &'a str,
             _user_message: &'a str,
         ) -> std::pin::Pin<
             Box<
-                dyn std::future::Future<Output = Result<String, episteme::extract::ExtractionError>>
+                dyn std::future::Future<Output = Result<String, mneme::extract::ExtractionError>>
                     + Send
                     + 'a,
             >,
@@ -277,12 +277,12 @@ async fn extract_self_facts_false_rejects_self_descriptive_facts() {
         }
     }
 
-    let engine = episteme::extract::ExtractionEngine::new(episteme::extract::ExtractionConfig {
+    let engine = mneme::extract::ExtractionEngine::new(mneme::extract::ExtractionConfig {
         extract_self_facts: false,
         min_message_length: 1,
-        ..episteme::extract::ExtractionConfig::default()
+        ..mneme::extract::ExtractionConfig::default()
     });
-    let messages = vec![episteme::extract::ConversationMessage {
+    let messages = vec![mneme::extract::ConversationMessage {
         role: "user".to_owned(),
         tool_calls: None,
         reasoning: None,
@@ -304,12 +304,11 @@ async fn extract_self_facts_false_rejects_self_descriptive_facts() {
     );
 
     // Verify the opposite: when true, it is accepted.
-    let engine_allowed =
-        episteme::extract::ExtractionEngine::new(episteme::extract::ExtractionConfig {
-            extract_self_facts: true,
-            min_message_length: 1,
-            ..episteme::extract::ExtractionConfig::default()
-        });
+    let engine_allowed = mneme::extract::ExtractionEngine::new(mneme::extract::ExtractionConfig {
+        extract_self_facts: true,
+        min_message_length: 1,
+        ..mneme::extract::ExtractionConfig::default()
+    });
     let result_allowed = engine_allowed
         .extract_refined(&messages, &SelfFactProvider)
         .await
@@ -447,14 +446,14 @@ fn cohort_isolation_facts_in_one_store_not_recallable_from_another() {
 #[test]
 fn bookkeeping_provider_routes_llm_by_default() {
     struct MockExtractionProvider;
-    impl episteme::extract::ExtractionProvider for MockExtractionProvider {
+    impl mneme::extract::ExtractionProvider for MockExtractionProvider {
         fn complete<'a>(
             &'a self,
             _system: &'a str,
             _user_message: &'a str,
         ) -> std::pin::Pin<
             Box<
-                dyn std::future::Future<Output = Result<String, episteme::extract::ExtractionError>>
+                dyn std::future::Future<Output = Result<String, mneme::extract::ExtractionError>>
                     + Send
                     + 'a,
             >,
@@ -463,14 +462,14 @@ fn bookkeeping_provider_routes_llm_by_default() {
         }
     }
 
-    let engine = episteme::extract::ExtractionEngine::new(episteme::extract::ExtractionConfig {
-        provider: episteme::extract::BookkeepingProviderKind::Llm,
-        ..episteme::extract::ExtractionConfig::default()
+    let engine = mneme::extract::ExtractionEngine::new(mneme::extract::ExtractionConfig {
+        provider: mneme::extract::BookkeepingProviderKind::Llm,
+        ..mneme::extract::ExtractionConfig::default()
     });
 
     // LlmBookkeepingProvider can be constructed from the engine + a mock provider.
     let provider =
-        episteme::bookkeeping::LlmBookkeepingProvider::new(&engine, &MockExtractionProvider);
+        mneme::bookkeeping::LlmBookkeepingProvider::new(&engine, &MockExtractionProvider);
     assert_eq!(provider.name(), "llm");
 }
 
@@ -480,16 +479,16 @@ fn bookkeeping_provider_gliner_fallback_when_feature_disabled() {
     // at the architectural boundary (nous/src/actor/background.rs). We verify the
     // episteme-level config mapping here; the full actor wiring is covered by
     // the background.rs unit tests.
-    let config = episteme::extract::ExtractionConfig {
-        provider: episteme::extract::BookkeepingProviderKind::Gliner,
-        ..episteme::extract::ExtractionConfig::default()
+    let config = mneme::extract::ExtractionConfig {
+        provider: mneme::extract::BookkeepingProviderKind::Gliner,
+        ..mneme::extract::ExtractionConfig::default()
     };
 
     // In a build without gliner, the provider enum still accepts Gliner,
     // but the actor background task will log a warning and overwrite to Llm.
     assert_eq!(
         config.provider,
-        episteme::extract::BookkeepingProviderKind::Gliner,
+        mneme::extract::BookkeepingProviderKind::Gliner,
         "config should preserve the requested provider kind"
     );
 
@@ -504,14 +503,14 @@ async fn extract_self_facts_false_backstop_in_engine() {
     // Architectural backstop: even if a caller forgets the config-flag check,
     // the ExtractionEngine filter removes self-references.
     struct SelfFactProvider;
-    impl episteme::extract::ExtractionProvider for SelfFactProvider {
+    impl mneme::extract::ExtractionProvider for SelfFactProvider {
         fn complete<'a>(
             &'a self,
             _system: &'a str,
             _user_message: &'a str,
         ) -> std::pin::Pin<
             Box<
-                dyn std::future::Future<Output = Result<String, episteme::extract::ExtractionError>>
+                dyn std::future::Future<Output = Result<String, mneme::extract::ExtractionError>>
                     + Send
                     + 'a,
             >,
@@ -522,12 +521,12 @@ async fn extract_self_facts_false_backstop_in_engine() {
         }
     }
 
-    let engine = episteme::extract::ExtractionEngine::new(episteme::extract::ExtractionConfig {
+    let engine = mneme::extract::ExtractionEngine::new(mneme::extract::ExtractionConfig {
         extract_self_facts: false,
         min_message_length: 1,
-        ..episteme::extract::ExtractionConfig::default()
+        ..mneme::extract::ExtractionConfig::default()
     });
-    let messages = vec![episteme::extract::ConversationMessage {
+    let messages = vec![mneme::extract::ConversationMessage {
         role: "user".to_owned(),
         tool_calls: None,
         reasoning: None,
@@ -552,10 +551,10 @@ fn verification_protocol_promotes_fact_when_threshold_met() {
     let fact = make_test_fact("vf-1", "agent-0", "Rust is memory-safe.");
 
     let published =
-        episteme::verification::publish_fact(&fact, &koina::id::NousId::new("agent-0").unwrap());
+        mneme::verification::publish_fact(&fact, &koina::id::NousId::new("agent-0").unwrap());
     assert_eq!(published.verification_count, 0);
 
-    let mut proposal = eidos::knowledge::VerificationProposal {
+    let mut proposal = mneme::knowledge::VerificationProposal {
         fact_id: published.original_fact_id.clone(),
         proposing_nous: koina::id::NousId::new("agent-0").unwrap(),
         proposed_tier: EpistemicTier::Verified,
@@ -564,23 +563,20 @@ fn verification_protocol_promotes_fact_when_threshold_met() {
 
     // 3 distinct Accept votes → promotion.
     for voter in ["agent-1", "agent-2", "agent-3"] {
-        let vote = eidos::knowledge::VerificationVote {
+        let vote = mneme::knowledge::VerificationVote {
             voter: koina::id::NousId::new(voter).unwrap(),
-            verdict: eidos::knowledge::VerificationVerdict::Accept,
+            verdict: mneme::knowledge::VerificationVerdict::Accept,
             at: now,
         };
-        let outcome = episteme::verification::vote_on_proposal(&mut proposal, vote, 3);
+        let outcome = mneme::verification::vote_on_proposal(&mut proposal, vote, 3);
         if voter == "agent-3" {
             assert!(
-                matches!(outcome, episteme::verification::VerificationOutcome::Promoted { new_tier } if new_tier == EpistemicTier::Verified),
+                matches!(outcome, mneme::verification::VerificationOutcome::Promoted { new_tier } if new_tier == EpistemicTier::Verified),
                 "N=3 accepts should promote to Verified, got {outcome:?}"
             );
         } else {
             assert!(
-                matches!(
-                    outcome,
-                    episteme::verification::VerificationOutcome::Pending
-                ),
+                matches!(outcome, mneme::verification::VerificationOutcome::Pending),
                 "before threshold should be Pending, got {outcome:?}"
             );
         }
@@ -592,9 +588,9 @@ fn verification_protocol_contest_prevents_promotion() {
     let now = jiff::Timestamp::now();
     let fact = make_test_fact("vf-2", "agent-0", "Rust is fast.");
     let published =
-        episteme::verification::publish_fact(&fact, &koina::id::NousId::new("agent-0").unwrap());
+        mneme::verification::publish_fact(&fact, &koina::id::NousId::new("agent-0").unwrap());
 
-    let mut proposal = eidos::knowledge::VerificationProposal {
+    let mut proposal = mneme::knowledge::VerificationProposal {
         fact_id: published.original_fact_id.clone(),
         proposing_nous: koina::id::NousId::new("agent-0").unwrap(),
         proposed_tier: EpistemicTier::Verified,
@@ -603,21 +599,21 @@ fn verification_protocol_contest_prevents_promotion() {
 
     // 2 Accept + 1 Contest → contested (no promotion).
     for (voter, verdict) in [
-        ("agent-1", eidos::knowledge::VerificationVerdict::Accept),
-        ("agent-2", eidos::knowledge::VerificationVerdict::Accept),
-        ("agent-3", eidos::knowledge::VerificationVerdict::Contest),
+        ("agent-1", mneme::knowledge::VerificationVerdict::Accept),
+        ("agent-2", mneme::knowledge::VerificationVerdict::Accept),
+        ("agent-3", mneme::knowledge::VerificationVerdict::Contest),
     ] {
-        let vote = eidos::knowledge::VerificationVote {
+        let vote = mneme::knowledge::VerificationVote {
             voter: koina::id::NousId::new(voter).unwrap(),
             verdict,
             at: now,
         };
-        let outcome = episteme::verification::vote_on_proposal(&mut proposal, vote, 3);
+        let outcome = mneme::verification::vote_on_proposal(&mut proposal, vote, 3);
         if voter == "agent-3" {
             assert!(
                 matches!(
                     outcome,
-                    episteme::verification::VerificationOutcome::Contested { .. }
+                    mneme::verification::VerificationOutcome::Contested { .. }
                 ),
                 "a single contest should block promotion, got {outcome:?}"
             );
@@ -634,7 +630,7 @@ fn detect_conflict_finds_contradiction_in_same_cohort() {
     let fact_a = make_test_fact("cf-a", "agent-z", "Alice likes tea.");
     store.insert_fact(&fact_a).expect("insert a");
 
-    let extracted = eidos::bookkeeping::ExtractedFact {
+    let extracted = mneme::bookkeeping::ExtractedFact {
         subject: "Alice".to_owned(),
         predicate: "likes".to_owned(),
         object: "coffee".to_owned(),
@@ -644,7 +640,7 @@ fn detect_conflict_finds_contradiction_in_same_cohort() {
     };
 
     let conflict =
-        episteme::verification::detect_conflict(&extracted, &store, "agent-z").expect("no error");
+        mneme::verification::detect_conflict(&extracted, &store, "agent-z").expect("no error");
 
     // Because the content strings differ ("Alice likes tea." vs "Alice likes coffee"),
     // and the BM25 search returns the existing fact as a near match, the conflict
@@ -652,7 +648,7 @@ fn detect_conflict_finds_contradiction_in_same_cohort() {
     if let Some(c) = conflict {
         assert_eq!(
             c.kind,
-            episteme::verification::ConflictKind::Contradiction,
+            mneme::verification::ConflictKind::Contradiction,
             "different content for same subject should be a contradiction"
         );
     }
@@ -666,7 +662,7 @@ fn detect_conflict_honors_cohort_isolation() {
     let fact_z = make_test_fact("cf-z", "agent-z", "Alice likes tea.");
     store_z.insert_fact(&fact_z).expect("insert z");
 
-    let extracted = eidos::bookkeeping::ExtractedFact {
+    let extracted = mneme::bookkeeping::ExtractedFact {
         subject: "Alice".to_owned(),
         predicate: "likes".to_owned(),
         object: "coffee".to_owned(),
@@ -677,7 +673,7 @@ fn detect_conflict_honors_cohort_isolation() {
 
     // Querying with a DIFFERENT nous_id should skip the fact because
     // detect_conflict filters by nous_id in the Datalog post-filter.
-    let conflict = episteme::verification::detect_conflict(&extracted, &store_z, "agent-other")
+    let conflict = mneme::verification::detect_conflict(&extracted, &store_z, "agent-other")
         .expect("no error");
     assert!(
         conflict.is_none(),
@@ -690,8 +686,8 @@ fn conflict_resolution_compute_score_formula() {
     let now = jiff::Timestamp::now();
     let fact = make_test_fact("score-1", "test", "Test fact.");
 
-    let score = eidos::knowledge::ConflictResolution::compute_score(&fact, 1, now);
-    let score_5 = eidos::knowledge::ConflictResolution::compute_score(&fact, 5, now);
+    let score = mneme::knowledge::ConflictResolution::compute_score(&fact, 1, now);
+    let score_5 = mneme::knowledge::ConflictResolution::compute_score(&fact, 5, now);
 
     // More supporters → higher score (all else equal).
     assert!(
@@ -702,8 +698,8 @@ fn conflict_resolution_compute_score_formula() {
     // Verified tier should outrank Inferred at equal supporter counts.
     let mut inferred = fact.clone();
     inferred.provenance.tier = EpistemicTier::Inferred;
-    let score_verified = eidos::knowledge::ConflictResolution::compute_score(&fact, 1, now);
-    let score_inferred = eidos::knowledge::ConflictResolution::compute_score(&inferred, 1, now);
+    let score_verified = mneme::knowledge::ConflictResolution::compute_score(&fact, 1, now);
+    let score_inferred = mneme::knowledge::ConflictResolution::compute_score(&inferred, 1, now);
     assert!(
         score_verified > score_inferred,
         "Verified should outrank Inferred: {score_verified} > {score_inferred}"

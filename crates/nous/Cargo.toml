@@ -19,12 +19,12 @@ knowledge-store = ["mneme/mneme-engine"]
 test-support = ["hermeneus/test-utils", "organon/test-support"]
 # Pre-LLM triage stage: intent, sensitivity, tier classification (default: on)
 pre-llm-triage = []
-# Enable episteme's async reranker trait (HttpReranker / NaiveReranker).
+# Enable mneme's async reranker facade (HttpReranker / NaiveReranker).
 # Disabled by default to avoid pulling in reqwest + rustls for builds that
 # do not need recall reranking.
-reranker = ["episteme/reranker"]
-# Enables episteme's in-process GLiNER ONNX bookkeeping provider.
-gliner = ["episteme/gliner"]
+reranker = ["mneme/reranker"]
+# Enables mneme's in-process GLiNER ONNX bookkeeping provider facade.
+gliner = ["mneme/gliner"]
 # Test tiers (see docs/test-tiers.md)
 test-core = ["knowledge-store"]
 test-full = ["test-core"]
@@ -36,8 +36,6 @@ aletheia-classify = { path = "../aletheia-classify" }
 aletheia-routing = { path = "../aletheia-routing" }
 aletheia-lexica = { workspace = true }
 dianoia = { path = "../dianoia" }
-eidos = { path = "../eidos" }
-episteme = { path = "../episteme", default-features = false }
 hermeneus = { path = "../hermeneus" }
 koina = { path = "../koina", features = ["fjall"] }
 melete = { path = "../melete" }

@@ -11,13 +11,13 @@
 //!
 //! # Why this crate exists (facade justification)
 //!
-//! Mneme is a pure re-export layer with no logic of its own (~270 lines).
+//! Mneme is a pure re-export layer with no logic of its own (~300 lines).
 //! It earns its place through three concrete benefits:
 //!
-//! 1. **API stability**: 7+ downstream crates import from `mneme` instead of
-//!    from `eidos`/`graphe`/`episteme`/`krites` directly. If sub-crates are
-//!    reorganized (as happened in Phase 03), downstream `use` statements do
-//!    not change.
+//! 1. **API stability**: downstream application crates import from `mneme`
+//!    instead of from `eidos`/`graphe`/`episteme`/`krites` directly. If
+//!    sub-crates are reorganized (as happened in Phase 03), downstream `use`
+//!    statements do not change.
 //!
 //! 2. **Feature gating**: mneme gates `krites` behind the `mneme-engine`
 //!    feature flag. Without the facade, every consuming crate would need to
@@ -38,6 +38,18 @@
 pub use eidos::id;
 /// Knowledge graph domain types: facts, entities, relationships, embeddings (re-exported from `eidos`).
 pub use eidos::knowledge;
+
+/// Bookkeeping provider contracts, DTOs, and pipeline adapters.
+pub mod bookkeeping {
+    pub use eidos::bookkeeping::{
+        BookkeepingError, BookkeepingProvider, BookkeepingResult, ConversationMessage, EntityType,
+        ExtractedEntity, ExtractedFact, ExtractedRelationship, ExtractedToolCall, Extraction,
+        ExtractionSchema, Intent,
+    };
+    pub use episteme::bookkeeping::LlmBookkeepingProvider;
+    #[cfg(feature = "gliner")]
+    pub use episteme::bookkeeping::{GlinerExtractionProvider, GlinerProviderConfig};
+}
 
 // ── Path validation (eidos) ───────────────────────────────────────────────
 
@@ -78,9 +90,16 @@ pub mod error {
 ///
 /// # Facade surface
 ///
-/// [`AgentFile`](portability::AgentFile)
+/// [`AgentFile`](portability::AgentFile),
+/// [`ExportedMessage`](portability::ExportedMessage),
+/// [`ExportedNote`](portability::ExportedNote),
+/// [`ExportedSession`](portability::ExportedSession),
+/// [`NousInfo`](portability::NousInfo),
+/// [`WorkspaceData`](portability::WorkspaceData)
 pub mod portability {
-    pub use graphe::portability::AgentFile;
+    pub use graphe::portability::{
+        AgentFile, ExportedMessage, ExportedNote, ExportedSession, NousInfo, WorkspaceData,
+    };
 }
 
 /// Session store — fjall LSM-tree backend.
@@ -96,6 +115,8 @@ pub mod store {
 ///
 /// # Facade surface
 ///
+/// [`AgentNote`](types::AgentNote),
+/// [`BlackboardRow`](types::BlackboardRow),
 /// [`Message`](types::Message),
 /// [`Role`](types::Role),
 /// [`Session`](types::Session),
@@ -106,8 +127,8 @@ pub mod store {
 /// [`UsageRecord`](types::UsageRecord)
 pub mod types {
     pub use graphe::types::{
-        Message, Role, Session, SessionMetrics, SessionOrigin, SessionStatus, SessionType,
-        UsageRecord,
+        AgentNote, BlackboardRow, Message, Role, Session, SessionMetrics, SessionOrigin,
+        SessionStatus, SessionType, UsageRecord,
     };
 }
 
@@ -126,7 +147,10 @@ pub mod types {
 /// [`TrainingRecord`](training::TrainingRecord),
 /// [`TRAINING_RECORD_SCHEMA_VERSION`](training::TRAINING_RECORD_SCHEMA_VERSION)
 pub mod training {
-    pub use eidos::training::{TRAINING_RECORD_SCHEMA_VERSION, TrainingConfig, TrainingRecord};
+    pub use eidos::training::{
+        RecallSignals, RecalledFact, TRAINING_RECORD_SCHEMA_VERSION, ToolOutcome, TrainingConfig,
+        TrainingRecord,
+    };
 }
 
 // ── Knowledge pipeline (episteme) ──────────────────────────────────────────
@@ -144,11 +168,13 @@ pub mod consolidation {
 ///
 /// # Facade surface
 ///
+/// [`EmbeddingError`](embedding::EmbeddingError),
 /// [`EmbeddingProvider`](embedding::EmbeddingProvider),
-/// [`MockEmbeddingProvider`](embedding::MockEmbeddingProvider),
+/// [`MockEmbeddingProvider`](embedding::MockEmbeddingProvider) (requires `test-support` feature),
 /// [`DegradedEmbeddingProvider`](embedding::DegradedEmbeddingProvider),
 /// [`EmbeddingConfig`](embedding::EmbeddingConfig),
-/// [`create_provider`](embedding::create_provider)
+/// [`create_provider`](embedding::create_provider),
+/// [`is_degraded_provider`](embedding::is_degraded_provider)
 pub mod embedding {
     pub use episteme::embedding::{
         DegradedEmbeddingProvider, EmbeddingConfig, EmbeddingError, EmbeddingProvider,
@@ -175,10 +201,14 @@ pub mod embedding_eval {
 /// # Facade surface
 ///
 /// [`IngestFormat`](ingest::IngestFormat),
+/// [`parse_format`](ingest::parse_format),
+/// [`IngestChunk`](ingest::IngestChunk),
 /// [`IngestConfig`](ingest::IngestConfig),
 /// [`ingest_content`](ingest::ingest_content)
 pub mod ingest {
-    pub use episteme::ingest::*;
+    pub use episteme::ingest::{
+        IngestChunk, IngestConfig, IngestFormat, ingest_content, parse_format,
+    };
 }
 
 /// LLM-driven knowledge extraction pipeline (entities, relationships, facts).
@@ -190,11 +220,12 @@ pub mod ingest {
 /// [`ExtractionEngine`](extract::ExtractionEngine),
 /// [`ExtractionError`](extract::ExtractionError),
 /// [`ExtractionProvider`](extract::ExtractionProvider),
+/// [`ExtractedToolCall`](extract::ExtractedToolCall),
 /// [`LlmCallSnafu`](extract::LlmCallSnafu)
 pub mod extract {
     pub use episteme::extract::{
-        ConversationMessage, ExtractedToolCall, ExtractionConfig, ExtractionEngine,
-        ExtractionError, ExtractionProvider, LlmCallSnafu,
+        BookkeepingProviderKind, ConversationMessage, ExtractedToolCall, ExtractionConfig,
+        ExtractionEngine, ExtractionError, ExtractionProvider, LlmCallSnafu, refinement,
     };
 }
 
@@ -224,7 +255,33 @@ pub mod instinct {
 /// [`KnowledgeStore`](knowledge_store::KnowledgeStore)
 #[cfg(feature = "mneme-engine")]
 pub mod knowledge_store {
-    pub use episteme::knowledge_store::{HybridQuery, KnowledgeConfig, KnowledgeStore};
+    pub use episteme::knowledge_store::{
+        HybridQuery, KnowledgeConfig, KnowledgeStore, QueryResult,
+    };
+}
+
+/// Operational metrics registration for knowledge and session storage.
+///
+/// # Facade surface
+///
+/// [`register_knowledge`](metrics::register_knowledge),
+/// [`register_sessions`](metrics::register_sessions)
+pub mod metrics {
+    pub use episteme::metrics::register as register_knowledge;
+    pub use graphe::metrics::register as register_sessions;
+}
+
+/// Memory manifest types used by side-query selection.
+pub mod manifest {
+    pub use episteme::manifest::{MemoryHeader, MemoryManifest};
+}
+
+/// Query rewriting for recall search.
+pub mod query_rewrite {
+    pub use episteme::query_rewrite::{
+        QueryRewriter, RewriteConfig, RewriteError, RewriteProvider, RewriteResult, SearchTier,
+        TieredSearchConfig, TieredSearchResult,
+    };
 }
 
 /// 6-factor recall scoring engine for knowledge retrieval ranking.
@@ -239,6 +296,22 @@ pub mod recall {
     pub use episteme::recall::{
         FactorScores, RecallEngine, RecallWeights, ScoredResult, filter_by_cohort_visibility,
         filter_by_visibility,
+    };
+
+    /// Optional reranker implementations and trait.
+    #[cfg(feature = "reranker")]
+    pub mod reranker {
+        pub use episteme::recall::reranker::{
+            EpistemeError, HttpReranker, NaiveReranker, Reranker,
+        };
+    }
+}
+
+/// Side-query memory relevance selector.
+pub mod side_query {
+    pub use episteme::side_query::{
+        RankerFailedSnafu, SideQueryConfig, SideQueryError, SideQueryRanker, SideQueryResult,
+        SideQuerySelector,
     };
 }
 
@@ -285,6 +358,19 @@ pub mod skills {
             LlmCallSnafu, PendingSkill, SkillExtractionError, SkillExtractionProvider,
         };
     }
+}
+
+/// Structured tracing subscriber that captures operational events as Datalog facts.
+pub mod trace_ingest {
+    pub use episteme::trace_ingest::{OPS_DDL, TraceEvent, TraceIngestLayer, ensure_ops_schema};
+}
+
+/// Multi-agent verification protocol.
+pub mod verification {
+    pub use episteme::verification::{
+        Conflict, ConflictKind, DEFAULT_VERIFICATION_THRESHOLD, ResolveError, VerificationOutcome,
+        detect_conflict, publish_fact, resolve_conflict, vote_on_proposal,
+    };
 }
 
 #[cfg(all(test, feature = "mneme-engine"))]

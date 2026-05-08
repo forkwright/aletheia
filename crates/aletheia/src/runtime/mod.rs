@@ -900,8 +900,8 @@ fn register_all_metrics(registry: &koina::metrics::MetricsRegistry) {
     registry.with_registry(|r| {
         agora::metrics::register(r);
         dianoia::metrics::register(r);
-        episteme::metrics::register(r);
-        graphe::metrics::register(r);
+        mneme::metrics::register_knowledge(r);
+        mneme::metrics::register_sessions(r);
         hermeneus::metrics::register(r);
         melete::metrics::register(r);
         nous::metrics::register(r);

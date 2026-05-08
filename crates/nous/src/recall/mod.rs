@@ -6,8 +6,8 @@ mod search;
 
 use std::collections::{HashMap, HashSet};
 
-use eidos::id::FactId;
-use eidos::knowledge::MemoryScope;
+use mneme::id::FactId;
+use mneme::knowledge::MemoryScope;
 use tracing::{debug, info, instrument};
 
 use hermeneus::provider::DeploymentTarget;
@@ -78,7 +78,7 @@ pub struct RecallStage {
     side_query_ids: Option<HashSet<String>>,
     /// Production side-query selector used to turn the raw recall manifest into
     /// a prefilter for 6-factor scoring.
-    side_query_selector: episteme::side_query::SideQuerySelector,
+    side_query_selector: mneme::side_query::SideQuerySelector,
     /// Data-sovereignty target: gates which facts may leave the instance
     /// through this recall pass (#3404, #3413). Defaults to
     /// [`DeploymentTarget::Cloud`] — the safe assumption so callers who do
@@ -121,8 +121,8 @@ impl RecallStage {
             engine,
             config,
             side_query_ids: None,
-            side_query_selector: episteme::side_query::SideQuerySelector::new(
-                episteme::side_query::SideQueryConfig::default(),
+            side_query_selector: mneme::side_query::SideQuerySelector::new(
+                mneme::side_query::SideQueryConfig::default(),
             ),
             deployment_target: DeploymentTarget::Cloud,
             pinned_facts,
@@ -193,15 +193,13 @@ impl RecallStage {
         // WHY: Wire reranker only when the episteme reranker feature is present.
         // A configured URL uses the HTTP cross-encoder; otherwise NaiveReranker
         // preserves an in-process fallback for feature-enabled deployments.
-        let reranker: Option<std::sync::Arc<dyn episteme::recall::reranker::Reranker>> =
+        let reranker: Option<std::sync::Arc<dyn mneme::recall::reranker::Reranker>> =
             if let Some(url) = url {
                 Some(std::sync::Arc::new(
-                    episteme::recall::reranker::HttpReranker::new(url.to_owned()),
+                    mneme::recall::reranker::HttpReranker::new(url.to_owned()),
                 ))
             } else {
-                Some(std::sync::Arc::new(
-                    episteme::recall::reranker::NaiveReranker,
-                ))
+                Some(std::sync::Arc::new(mneme::recall::reranker::NaiveReranker))
             };
         engine.with_reranker(reranker)
     }
@@ -319,8 +317,8 @@ impl RecallStage {
         embedding_provider: &dyn EmbeddingProvider,
         vector_search: &dyn VectorSearch,
         remaining_budget: u64,
-        side_ranker: Option<&dyn episteme::side_query::SideQueryRanker>,
-        rewrite_provider: Option<&dyn episteme::query_rewrite::RewriteProvider>,
+        side_ranker: Option<&dyn mneme::side_query::SideQueryRanker>,
+        rewrite_provider: Option<&dyn mneme::query_rewrite::RewriteProvider>,
     ) -> error::Result<RecallStageResult> {
         if !self.config.enabled {
             debug!("recall disabled");
@@ -361,8 +359,8 @@ impl RecallStage {
         embedding_provider: &dyn EmbeddingProvider,
         vs: &dyn VectorSearch,
         remaining_budget: u64,
-        side_ranker: Option<&dyn episteme::side_query::SideQueryRanker>,
-        rewrite_provider: Option<&dyn episteme::query_rewrite::RewriteProvider>,
+        side_ranker: Option<&dyn mneme::side_query::SideQueryRanker>,
+        rewrite_provider: Option<&dyn mneme::query_rewrite::RewriteProvider>,
     ) -> error::Result<RecallStageResult> {
         let k = self.config.max_results * 3;
         #[cfg(not(feature = "knowledge-store"))]
@@ -402,8 +400,8 @@ impl RecallStage {
         embedding_provider: &dyn EmbeddingProvider,
         vs: &dyn VectorSearch,
         remaining_budget: u64,
-        side_ranker: Option<&dyn episteme::side_query::SideQueryRanker>,
-        rewrite_provider: Option<&dyn episteme::query_rewrite::RewriteProvider>,
+        side_ranker: Option<&dyn mneme::side_query::SideQueryRanker>,
+        rewrite_provider: Option<&dyn mneme::query_rewrite::RewriteProvider>,
     ) -> error::Result<RecallStageResult> {
         let k = self.config.max_results * 3;
         #[cfg(not(feature = "knowledge-store"))]
@@ -484,14 +482,14 @@ impl RecallStage {
         &self,
         query: &str,
         raw: &[KnowledgeRecallResult],
-        ranker: &dyn episteme::side_query::SideQueryRanker,
+        ranker: &dyn mneme::side_query::SideQueryRanker,
     ) -> Option<HashSet<String>> {
         let headers = raw
             .iter()
             .enumerate()
             .map(|(idx, result)| {
                 let description: String = result.content.chars().take(240).collect();
-                episteme::manifest::MemoryHeader::new(
+                mneme::manifest::MemoryHeader::new(
                     result.source_id.clone(),
                     result.source_type.clone(),
                     i64::try_from(raw.len().saturating_sub(idx)).unwrap_or(i64::MAX),
@@ -499,7 +497,7 @@ impl RecallStage {
                 .with_description(description)
             })
             .collect();
-        let manifest = episteme::manifest::MemoryManifest::from_headers(headers);
+        let manifest = mneme::manifest::MemoryManifest::from_headers(headers);
         match self.side_query_selector.select(query, &manifest, ranker) {
             Ok(result) if !result.selected_ids.is_empty() => {
                 Some(result.selected_ids.into_iter().collect())

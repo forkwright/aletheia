@@ -18,10 +18,10 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use eidos::knowledge::MemoryScope;
 use hermeneus::provider::{LlmProvider, ProviderRegistry};
 use hermeneus::test_utils::MockProvider;
 use hermeneus::types::{CompletionRequest, CompletionResponse, ContentBlock, StopReason, Usage};
+use mneme::knowledge::MemoryScope;
 use mneme::knowledge::{
     EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactSensitivity, FactTemporal,
     Visibility, far_future,
@@ -410,14 +410,14 @@ async fn identity_continuity_pins_top_three_facts_and_late_injects_anchor() {
 #[tokio::test]
 async fn extract_self_facts_false_rejects_self_descriptive_facts_in_canary() {
     struct SelfFactProvider;
-    impl episteme::extract::ExtractionProvider for SelfFactProvider {
+    impl mneme::extract::ExtractionProvider for SelfFactProvider {
         fn complete<'a>(
             &'a self,
             _system: &'a str,
             _user_message: &'a str,
         ) -> std::pin::Pin<
             Box<
-                dyn std::future::Future<Output = Result<String, episteme::extract::ExtractionError>>
+                dyn std::future::Future<Output = Result<String, mneme::extract::ExtractionError>>
                     + Send
                     + 'a,
             >,
@@ -428,12 +428,12 @@ async fn extract_self_facts_false_rejects_self_descriptive_facts_in_canary() {
         }
     }
 
-    let engine = episteme::extract::ExtractionEngine::new(episteme::extract::ExtractionConfig {
+    let engine = mneme::extract::ExtractionEngine::new(mneme::extract::ExtractionConfig {
         extract_self_facts: false,
         min_message_length: 1,
-        ..episteme::extract::ExtractionConfig::default()
+        ..mneme::extract::ExtractionConfig::default()
     });
-    let messages = vec![episteme::extract::ConversationMessage {
+    let messages = vec![mneme::extract::ConversationMessage {
         role: "user".to_owned(),
         tool_calls: None,
         reasoning: None,
@@ -713,10 +713,10 @@ fn verification_protocol_promotes_fact_when_threshold_met() {
     let fact = make_test_fact("vf-1", "agent-0", "Rust is memory-safe.");
 
     let published =
-        episteme::verification::publish_fact(&fact, &koina::id::NousId::new("agent-0").unwrap());
+        mneme::verification::publish_fact(&fact, &koina::id::NousId::new("agent-0").unwrap());
     assert_eq!(published.verification_count, 0);
 
-    let mut proposal = eidos::knowledge::VerificationProposal {
+    let mut proposal = mneme::knowledge::VerificationProposal {
         fact_id: published.original_fact_id.clone(),
         proposing_nous: koina::id::NousId::new("agent-0").unwrap(),
         proposed_tier: EpistemicTier::Verified,
@@ -725,23 +725,20 @@ fn verification_protocol_promotes_fact_when_threshold_met() {
 
     // 3 distinct Accept votes → promotion.
     for voter in ["agent-1", "agent-2", "agent-3"] {
-        let vote = eidos::knowledge::VerificationVote {
+        let vote = mneme::knowledge::VerificationVote {
             voter: koina::id::NousId::new(voter).unwrap(),
-            verdict: eidos::knowledge::VerificationVerdict::Accept,
+            verdict: mneme::knowledge::VerificationVerdict::Accept,
             at: now,
         };
-        let outcome = episteme::verification::vote_on_proposal(&mut proposal, vote, 3);
+        let outcome = mneme::verification::vote_on_proposal(&mut proposal, vote, 3);
         if voter == "agent-3" {
             assert!(
-                matches!(outcome, episteme::verification::VerificationOutcome::Promoted { new_tier } if new_tier == EpistemicTier::Verified),
+                matches!(outcome, mneme::verification::VerificationOutcome::Promoted { new_tier } if new_tier == EpistemicTier::Verified),
                 "N=3 accepts should promote to Verified, got {outcome:?}"
             );
         } else {
             assert!(
-                matches!(
-                    outcome,
-                    episteme::verification::VerificationOutcome::Pending
-                ),
+                matches!(outcome, mneme::verification::VerificationOutcome::Pending),
                 "before threshold should be Pending, got {outcome:?}"
             );
         }
@@ -753,9 +750,9 @@ fn verification_protocol_contest_prevents_promotion() {
     let now = jiff::Timestamp::now();
     let fact = make_test_fact("vf-2", "agent-0", "Rust is fast.");
     let published =
-        episteme::verification::publish_fact(&fact, &koina::id::NousId::new("agent-0").unwrap());
+        mneme::verification::publish_fact(&fact, &koina::id::NousId::new("agent-0").unwrap());
 
-    let mut proposal = eidos::knowledge::VerificationProposal {
+    let mut proposal = mneme::knowledge::VerificationProposal {
         fact_id: published.original_fact_id.clone(),
         proposing_nous: koina::id::NousId::new("agent-0").unwrap(),
         proposed_tier: EpistemicTier::Verified,
@@ -764,21 +761,21 @@ fn verification_protocol_contest_prevents_promotion() {
 
     // 2 Accept + 1 Contest → contested (no promotion).
     for (voter, verdict) in [
-        ("agent-1", eidos::knowledge::VerificationVerdict::Accept),
-        ("agent-2", eidos::knowledge::VerificationVerdict::Accept),
-        ("agent-3", eidos::knowledge::VerificationVerdict::Contest),
+        ("agent-1", mneme::knowledge::VerificationVerdict::Accept),
+        ("agent-2", mneme::knowledge::VerificationVerdict::Accept),
+        ("agent-3", mneme::knowledge::VerificationVerdict::Contest),
     ] {
-        let vote = eidos::knowledge::VerificationVote {
+        let vote = mneme::knowledge::VerificationVote {
             voter: koina::id::NousId::new(voter).unwrap(),
             verdict,
             at: now,
         };
-        let outcome = episteme::verification::vote_on_proposal(&mut proposal, vote, 3);
+        let outcome = mneme::verification::vote_on_proposal(&mut proposal, vote, 3);
         if voter == "agent-3" {
             assert!(
                 matches!(
                     outcome,
-                    episteme::verification::VerificationOutcome::Contested { .. }
+                    mneme::verification::VerificationOutcome::Contested { .. }
                 ),
                 "a single contest should block promotion, got {outcome:?}"
             );

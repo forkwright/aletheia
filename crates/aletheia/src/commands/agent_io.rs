@@ -173,7 +173,7 @@ pub(crate) struct InitArgs {
 
 use taxis::oikos::Oikos;
 
-use graphe::types::Role;
+use mneme::types::Role;
 
 #[cfg(feature = "recall")]
 fn knowledge_path_for_nous(oikos: &Oikos, nous_id: &str) -> PathBuf {
@@ -388,10 +388,9 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
     // Import sessions into graphe.
     if !args.skip_sessions {
         let sessions_db = oikos.sessions_db();
-        let store =
-            graphe::store::SessionStore::open(&sessions_db).with_whatever_context(|_| {
-                format!("failed to open session store at {}", sessions_db.display())
-            })?;
+        let store = mneme::store::SessionStore::open(&sessions_db).with_whatever_context(|_| {
+            format!("failed to open session store at {}", sessions_db.display())
+        })?;
 
         for session in &agent_file.sessions {
             let imported = store
@@ -430,7 +429,7 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
             }
 
             for note in &session.notes {
-                let category = if graphe::store::SessionStore::VALID_CATEGORIES
+                let category = if mneme::store::SessionStore::VALID_CATEGORIES
                     .contains(&note.category.as_str())
                 {
                     note.category.as_str()
@@ -913,7 +912,7 @@ pub(crate) async fn guard_knowledge_lock(url: &str) -> Result<()> {
 mod tests {
     use std::collections::HashMap;
 
-    use graphe::portability::{
+    use mneme::portability::{
         AgentFile, ExportedMessage, ExportedNote, ExportedSession, NousInfo, WorkspaceData,
     };
 
@@ -1020,7 +1019,7 @@ mod tests {
         assert!(soul.contains("Imported Agent"));
 
         // Verify sessions were imported.
-        let store = graphe::store::SessionStore::open(&oikos.sessions_db()).unwrap();
+        let store = mneme::store::SessionStore::open(&oikos.sessions_db()).unwrap();
         let sessions = store.list_sessions(Some("imported-agent")).unwrap();
         assert_eq!(sessions.len(), 1, "one session should be imported");
 
@@ -1053,7 +1052,7 @@ mod tests {
 
         import_agent(Some(&dir.path().to_path_buf()), &args).unwrap();
 
-        let store = graphe::store::SessionStore::open(&oikos.sessions_db()).unwrap();
+        let store = mneme::store::SessionStore::open(&oikos.sessions_db()).unwrap();
         let sessions = store.list_sessions(Some("imported-agent")).unwrap();
         assert!(sessions.is_empty(), "sessions should be skipped");
     }

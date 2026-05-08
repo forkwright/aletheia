@@ -1063,7 +1063,7 @@ fn query_relationships_filtered(
 
 #[cfg(feature = "recall")]
 fn parse_entity_rows(
-    result: &episteme::knowledge_store::QueryResult,
+    result: &mneme::knowledge_store::QueryResult,
 ) -> Result<Vec<mneme::knowledge::Entity>> {
     let mut entities = Vec::with_capacity(result.row_count());
     for i in 0..result.row_count() {
@@ -1104,7 +1104,7 @@ fn parse_entity_rows(
 
 #[cfg(feature = "recall")]
 fn parse_relationship_rows(
-    result: &episteme::knowledge_store::QueryResult,
+    result: &mneme::knowledge_store::QueryResult,
 ) -> Result<Vec<mneme::knowledge::Relationship>> {
     use snafu::ResultExt;
 

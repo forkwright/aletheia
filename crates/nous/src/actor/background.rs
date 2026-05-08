@@ -93,23 +93,23 @@ impl NousActor {
         let mut config = extraction_config.clone();
         config.provider = match self.config.behavior.knowledge_extraction_provider {
             taxis::config::BookkeepingProviderKind::Llm => {
-                episteme::extract::BookkeepingProviderKind::Llm
+                mneme::extract::BookkeepingProviderKind::Llm
             }
             taxis::config::BookkeepingProviderKind::Gliner => {
-                episteme::extract::BookkeepingProviderKind::Gliner
+                mneme::extract::BookkeepingProviderKind::Gliner
             }
-            _ => episteme::extract::BookkeepingProviderKind::Llm,
+            _ => mneme::extract::BookkeepingProviderKind::Llm,
         };
         #[cfg(not(feature = "gliner"))]
         if matches!(
             config.provider,
-            episteme::extract::BookkeepingProviderKind::Gliner
+            mneme::extract::BookkeepingProviderKind::Gliner
         ) {
             warn!(
                 nous_id = %self.id,
                 "GLiNER extraction provider requested but nous/gliner is disabled; falling back to LLM"
             );
-            config.provider = episteme::extract::BookkeepingProviderKind::Llm;
+            config.provider = mneme::extract::BookkeepingProviderKind::Llm;
         }
         let providers = Arc::clone(&self.services.providers);
         let nous_id = self.id.clone();
@@ -428,7 +428,7 @@ async fn run_extraction(
                 // Run cohort-scoped conflict detection when enabled.
                 if config.detect_conflict {
                     for fact in &refined.extraction.facts {
-                        match episteme::verification::detect_conflict(fact, store, nous_id) {
+                        match mneme::verification::detect_conflict(fact, store, nous_id) {
                             Ok(Some(conflict)) => {
                                 tracing::info!(
                                     nous_id = %nous_id,

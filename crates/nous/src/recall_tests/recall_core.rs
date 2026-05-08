@@ -303,8 +303,8 @@ fn recall_config_defaults() {
 
 #[test]
 fn recall_from_settings_propagation() {
-    use eidos::id::FactId;
-    use eidos::knowledge::MemoryScope;
+    use mneme::id::FactId;
+    use mneme::knowledge::MemoryScope;
 
     let settings = taxis::config::RecallSettings {
         pinned_facts: vec![
@@ -347,7 +347,7 @@ fn recall_pinned_facts_before_budgeted() {
     let config = RecallConfig {
         max_results: 2,
         min_score: 0.0,
-        pinned_facts: vec![eidos::id::FactId::new(pinned_id).expect("valid")],
+        pinned_facts: vec![mneme::id::FactId::new(pinned_id).expect("valid")],
         ..Default::default()
     };
     let stage = RecallStage::new(config);
@@ -384,7 +384,7 @@ fn recall_pinned_facts_deduplicated() {
     let config = RecallConfig {
         max_results: 5,
         min_score: 0.0,
-        pinned_facts: vec![eidos::id::FactId::new(pinned_id).expect("valid")],
+        pinned_facts: vec![mneme::id::FactId::new(pinned_id).expect("valid")],
         ..Default::default()
     };
     let stage = RecallStage::new(config);

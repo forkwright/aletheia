@@ -2,8 +2,8 @@
 
 use std::collections::HashMap;
 
-use eidos::id::FactId;
-use eidos::knowledge::MemoryScope;
+use mneme::id::FactId;
+use mneme::knowledge::MemoryScope;
 use serde::{Deserialize, Serialize};
 
 use mneme::recall::ScoredResult;

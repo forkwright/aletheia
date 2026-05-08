@@ -34,14 +34,17 @@ Only types with downstream consumers are surfaced. Modules not listed here (admi
 | `graphe` | `store` | `SessionStore` | always |
 | `graphe` | `types` | `Message`, `Role`, `Session`, `SessionMetrics`, `SessionOrigin`, `SessionStatus`, `SessionType`, `UsageRecord` | always |
 | `episteme` | `consolidation` | `ConsolidationConfig` | always |
-| `episteme` | `embedding` | `EmbeddingProvider`, `DegradedEmbeddingProvider`, `EmbeddingConfig`, `create_provider`, `MockEmbeddingProvider` (test-support) | always |
+| `episteme` | `embedding` | `EmbeddingProvider`, `DegradedEmbeddingProvider`, `EmbeddingConfig`, `EmbeddingError`, `create_provider`, `is_degraded_provider`, `MockEmbeddingProvider` (test-support) | always |
 | `episteme` | `embedding_eval` | `EvalDataset`, `EvalRunResult`, `compare_models` | always |
-| `episteme` | `extract` | `ConversationMessage`, `ExtractionConfig`, `ExtractionEngine`, `ExtractionError`, `ExtractionProvider`, `LlmCallSnafu` | always |
+| `episteme` | `extract` | `ConversationMessage`, `ExtractionConfig`, `ExtractionEngine`, `ExtractionError`, `ExtractionProvider`, `ExtractedToolCall`, `LlmCallSnafu` | always |
 | `episteme` | `instinct` | `ToolObservation`, `ToolOutcome`, `sanitize_parameters`, `truncate_context_summary`, constants | always |
-| `episteme` | `knowledge_store` | `HybridQuery`, `KnowledgeConfig`, `KnowledgeStore` | always |
+| `episteme` | `knowledge_store` | `HybridQuery`, `KnowledgeConfig`, `KnowledgeStore`, `QueryResult` | `mneme-engine` |
 | `episteme` | `recall` | `FactorScores`, `RecallEngine`, `RecallWeights`, `ScoredResult` | always |
 | `episteme` | `skill` | `SkillContent`, `export_skills_to_cc`, `parse_skill_md`, `scan_skill_dir` | always |
 | `episteme` | `skills` | `CandidateTracker`, `PendingSkill`, `SkillExtractor`, `ToolCallRecord`, `TrackResult` + `extract` submodule | always |
+| `episteme` | `manifest`, `query_rewrite`, `side_query`, `trace_ingest`, `verification` | public support modules used by recall, tracing, and verification consumers | always |
+| `episteme`/`graphe` | `metrics` | `register_knowledge`, `register_sessions` | always |
+| `eidos` | `bookkeeping` | provider contracts and extraction DTOs | always |
 | `eidos` | `training` | `TrainingConfig`, `TrainingRecord`, `TRAINING_RECORD_SCHEMA_VERSION` | always |
 | `krites` | `engine` | (full crate alias) | `mneme-engine` |
 

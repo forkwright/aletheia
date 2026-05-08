@@ -569,7 +569,7 @@ pub(crate) async fn resolve_session(
 /// Returns `true` when a mneme error indicates a duplicate session-key
 /// (the fjall backend's equivalent of a UNIQUE constraint violation).
 ///
-/// Delegates to [`graphe::error::Error::is_unique_constraint_violation`].
+/// Delegates to [`mneme::error::Error::is_unique_constraint_violation`].
 fn is_unique_constraint_violation(err: &mneme::error::Error) -> bool {
     err.is_unique_constraint_violation()
 }

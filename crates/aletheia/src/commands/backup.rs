@@ -190,12 +190,12 @@ fn validate_kv(partition: &str, key: &[u8], value: &[u8]) -> std::result::Result
     match partition {
         "sessions" => validate_sessions(key, value),
         "messages" => validate_messages(key, value),
-        "usage" => serde_json::from_slice::<graphe::types::UsageRecord>(value)
+        "usage" => serde_json::from_slice::<mneme::types::UsageRecord>(value)
             .map(|_| ())
             .map_err(|e| e.to_string()),
         "distillations" | "ops:tasks" => validate_json(value),
         "notes" => validate_notes(key, value),
-        "blackboard" => serde_json::from_slice::<graphe::types::BlackboardRow>(value)
+        "blackboard" => serde_json::from_slice::<mneme::types::BlackboardRow>(value)
             .map(|_| ())
             .map_err(|e| e.to_string()),
         "counters" => validate_u64(value),
@@ -219,7 +219,7 @@ fn validate_sessions(key: &[u8], value: &[u8]) -> std::result::Result<(), String
         std::str::from_utf8(value).map_err(|e| e.to_string())?;
         Ok(())
     } else {
-        serde_json::from_slice::<graphe::types::Session>(value)
+        serde_json::from_slice::<mneme::types::Session>(value)
             .map(|_| ())
             .map_err(|e| e.to_string())
     }
@@ -241,7 +241,7 @@ fn validate_messages(key: &[u8], value: &[u8]) -> std::result::Result<(), String
         }
         Ok(())
     } else {
-        serde_json::from_slice::<graphe::types::Message>(value)
+        serde_json::from_slice::<mneme::types::Message>(value)
             .map(|_| ())
             .map_err(|e| e.to_string())
     }
@@ -253,7 +253,7 @@ fn validate_notes(key: &[u8], value: &[u8]) -> std::result::Result<(), String> {
         std::str::from_utf8(value).map_err(|e| e.to_string())?;
         Ok(())
     } else {
-        serde_json::from_slice::<graphe::types::AgentNote>(value)
+        serde_json::from_slice::<mneme::types::AgentNote>(value)
             .map(|_| ())
             .map_err(|e| e.to_string())
     }
@@ -438,16 +438,16 @@ mod tests {
         let ks = db
             .keyspace("sessions", fjall::KeyspaceCreateOptions::default)
             .unwrap();
-        let session = graphe::types::Session {
+        let session = mneme::types::Session {
             id: "sess-1".into(),
             nous_id: "syn".into(),
             session_key: "default".into(),
-            status: graphe::types::SessionStatus::Active,
+            status: mneme::types::SessionStatus::Active,
             model: None,
-            session_type: graphe::types::SessionType::Primary,
+            session_type: mneme::types::SessionType::Primary,
             created_at: "2024-01-01T00:00:00.000Z".into(),
             updated_at: "2024-01-01T00:00:00.000Z".into(),
-            metrics: graphe::types::SessionMetrics {
+            metrics: mneme::types::SessionMetrics {
                 token_count_estimate: 0,
                 message_count: 0,
                 last_input_tokens: 0,
@@ -456,7 +456,7 @@ mod tests {
                 last_distilled_at: None,
                 computed_context_tokens: 0,
             },
-            origin: graphe::types::SessionOrigin {
+            origin: mneme::types::SessionOrigin {
                 parent_session_id: None,
                 thread_id: None,
                 transport: None,

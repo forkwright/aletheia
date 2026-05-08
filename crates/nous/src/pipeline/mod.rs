@@ -1120,18 +1120,18 @@ pub(crate) async fn run_pipeline(
         let (turn_classification, correction_signal, fact_type) =
             if pipeline_config.training.enabled {
                 (
-                    episteme::extract::refinement::classify_turn(&input.content),
-                    episteme::extract::refinement::detect_correction(&input.content),
-                    episteme::extract::refinement::classify_fact(&input.content),
+                    mneme::extract::refinement::classify_turn(&input.content),
+                    mneme::extract::refinement::detect_correction(&input.content),
+                    mneme::extract::refinement::classify_fact(&input.content),
                 )
             } else {
                 (
-                    episteme::extract::refinement::TurnType::Discussion,
-                    episteme::extract::refinement::CorrectionSignal {
+                    mneme::extract::refinement::TurnType::Discussion,
+                    mneme::extract::refinement::CorrectionSignal {
                         is_correction: false,
                         confidence_boost: 0.0,
                     },
-                    episteme::extract::refinement::FactType::Observation,
+                    mneme::extract::refinement::FactType::Observation,
                 )
             };
 

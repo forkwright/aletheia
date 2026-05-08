@@ -35,7 +35,7 @@ pub trait VectorSearch: Send + Sync {
         _query_vec: Vec<f32>,
         _k: usize,
         _ef: usize,
-        _rewrite_provider: &dyn episteme::query_rewrite::RewriteProvider,
+        _rewrite_provider: &dyn mneme::query_rewrite::RewriteProvider,
     ) -> Option<error::Result<Vec<KnowledgeRecallResult>>> {
         None
     }
@@ -79,7 +79,7 @@ pub(super) fn vector_search_tiered(
     query: &str,
     query_vec: Vec<f32>,
     k: usize,
-    rewrite_provider: &dyn episteme::query_rewrite::RewriteProvider,
+    rewrite_provider: &dyn mneme::query_rewrite::RewriteProvider,
 ) -> error::Result<Vec<KnowledgeRecallResult>> {
     if let Some(result) = search.search_tiered(query, query_vec.clone(), k, 50, rewrite_provider) {
         return result.map_err(|e| {
