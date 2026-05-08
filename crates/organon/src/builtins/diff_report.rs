@@ -11,7 +11,7 @@ use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
     InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolGroupId,
-    ToolInput, ToolResult,
+    ToolInput, ToolResult, ToolTag,
 };
 
 struct DiffReportExecutor;
@@ -163,6 +163,7 @@ fn diff_report_def() -> crate::types::ToolDef {
         reversibility: Reversibility::FullyReversible,
         auto_activate: false,
         groups: vec![ToolGroupId::Read, ToolGroupId::Verify],
+        tags: vec![ToolTag::Verify, ToolTag::Recon],
     }
 }
 

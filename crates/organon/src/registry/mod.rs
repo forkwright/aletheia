@@ -14,7 +14,7 @@ use koina::id::ToolName;
 use crate::error::{self, Result};
 use crate::types::{
     ApprovalRequirement, Reversibility, ToolCallMetadata, ToolCategory, ToolContext, ToolDef,
-    ToolGroupId, ToolInput, ToolResult,
+    ToolGroupId, ToolInput, ToolResult, ToolTag,
 };
 
 /// The trait tool implementations must satisfy.
@@ -234,6 +234,28 @@ impl ToolRegistry {
         self.tools
             .values()
             .filter(|t| t.def.category == category)
+            .map(|t| &t.def)
+            .collect()
+    }
+
+    /// Tool definitions whose tags intersect any of `tags` (union semantics).
+    ///
+    /// Cross-category lookup — different from [`Self::definitions_for_category`]
+    /// which is structural.  Returns an empty Vec when `tags` is empty.
+    ///
+    /// # Complexity
+    ///
+    /// O(n * m) where n is the number of registered tools and m is the length
+    /// of `tags` (typically small).
+    #[must_use]
+    pub fn definitions_for_tags(&self, tags: &[ToolTag]) -> Vec<&ToolDef> {
+        // kanon:ignore RUST/pub-visibility
+        if tags.is_empty() {
+            return Vec::new();
+        }
+        self.tools
+            .values()
+            .filter(|t| t.def.tags.iter().any(|tag| tags.contains(tag)))
             .map(|t| &t.def)
             .collect()
     }
@@ -642,3 +664,8 @@ impl ToolRegistry {
 )]
 #[path = "registry_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
+#[path = "tag_tests.rs"]
+mod tag_tests;

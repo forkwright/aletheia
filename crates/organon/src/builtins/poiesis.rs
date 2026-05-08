@@ -19,7 +19,7 @@ use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
     InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
-    ToolGroupId, ToolInput, ToolResult,
+    ToolGroupId, ToolInput, ToolResult, ToolTag,
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -216,6 +216,7 @@ fn generate_document_def() -> ToolDef {
         reversibility: Reversibility::FullyReversible,
         auto_activate: false,
         groups: vec![ToolGroupId::Edit],
+        tags: vec![ToolTag::Format],
     }
 }
 
@@ -334,6 +335,7 @@ fn lint_report_def() -> ToolDef {
         reversibility: Reversibility::FullyReversible,
         auto_activate: false,
         groups: vec![ToolGroupId::Verify],
+        tags: vec![ToolTag::Verify, ToolTag::Format],
     }
 }
 
@@ -436,6 +438,7 @@ fn verify_report_def() -> ToolDef {
         reversibility: Reversibility::FullyReversible,
         auto_activate: false,
         groups: vec![ToolGroupId::Verify],
+        tags: vec![ToolTag::Verify, ToolTag::Format],
     }
 }
 
@@ -574,6 +577,7 @@ fn render_typst_report_def() -> ToolDef {
         reversibility: Reversibility::FullyReversible,
         auto_activate: false,
         groups: vec![ToolGroupId::Edit],
+        tags: vec![ToolTag::Format],
     }
 }
 

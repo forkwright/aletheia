@@ -11,7 +11,7 @@ use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
     InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolGroupId,
-    ToolInput, ToolResult,
+    ToolInput, ToolResult, ToolTag,
 };
 
 struct InspectReportExecutor;
@@ -158,6 +158,7 @@ fn inspect_report_def() -> crate::types::ToolDef {
         reversibility: Reversibility::FullyReversible,
         auto_activate: false,
         groups: vec![ToolGroupId::Read],
+        tags: vec![ToolTag::Recon],
     }
 }
 

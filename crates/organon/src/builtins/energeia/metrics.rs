@@ -16,7 +16,7 @@ use crate::error::Result;
 use crate::registry::ToolExecutor;
 use crate::types::{
     InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
-    ToolGroupId, ToolInput, ToolResult,
+    ToolGroupId, ToolInput, ToolResult, ToolTag,
 };
 
 use super::shared::{opt_u64, require_str, to_json_text};
@@ -74,6 +74,7 @@ pub(super) fn metron_def() -> ToolDef {
         reversibility: Reversibility::FullyReversible,
         auto_activate: false,
         groups: vec![ToolGroupId::Verify],
+        tags: vec![ToolTag::Recon, ToolTag::Verify],
     }
 }
 

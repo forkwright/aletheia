@@ -18,7 +18,7 @@ use crate::process_guard::ProcessGuard;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
     InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
-    ToolGroupId, ToolInput, ToolResult,
+    ToolGroupId, ToolInput, ToolResult, ToolTag,
 };
 
 use super::workspace::{
@@ -527,6 +527,7 @@ fn grep_def() -> ToolDef {
         reversibility: Reversibility::FullyReversible,
         auto_activate: true,
         groups: vec![ToolGroupId::Read],
+        tags: vec![ToolTag::Recon],
     }
 }
 
@@ -589,6 +590,7 @@ fn find_def() -> ToolDef {
         reversibility: Reversibility::FullyReversible,
         auto_activate: true,
         groups: vec![ToolGroupId::Read],
+        tags: vec![ToolTag::Recon],
     }
 }
 
@@ -624,6 +626,7 @@ fn ls_def() -> ToolDef {
         reversibility: Reversibility::FullyReversible,
         auto_activate: true,
         groups: vec![ToolGroupId::Read],
+        tags: vec![ToolTag::Recon],
     }
 }
 

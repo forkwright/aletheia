@@ -39,6 +39,7 @@ fn make_def(name: &str) -> ToolDef {
         reversibility: Reversibility::Irreversible,
         auto_activate: false,
         groups: vec![ToolGroupId::Read],
+        tags: vec![],
     }
 }
 

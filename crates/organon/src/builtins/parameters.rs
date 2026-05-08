@@ -16,7 +16,7 @@ use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
     InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
-    ToolGroupId, ToolInput, ToolResult,
+    ToolGroupId, ToolInput, ToolResult, ToolTag,
 };
 
 /// Filter specs against the optional section/affects/tier inputs.
@@ -166,6 +166,7 @@ fn query_parameters_def() -> ToolDef {
         reversibility: Reversibility::FullyReversible,
         auto_activate: true,
         groups: vec![ToolGroupId::Read],
+        tags: vec![ToolTag::Recon],
     }
 }
 

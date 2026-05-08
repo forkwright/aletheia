@@ -140,6 +140,7 @@ fn make_tool_def(name: &str) -> ToolDef {
         reversibility: organon::types::Reversibility::Irreversible,
         auto_activate: false,
         groups: vec![organon::types::ToolGroupId::Read],
+        tags: vec![],
     }
 }
 
