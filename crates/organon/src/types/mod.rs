@@ -611,6 +611,9 @@ pub struct ToolResult {
     /// Optional diagnostic metadata from the execution environment.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub diagnostics: Option<ToolDiagnostics>,
+    /// HMAC-SHA256 receipt for hallucination-resistant attestation.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub receipt: Option<String>,
 }
 
 impl ToolResult {
@@ -623,6 +626,7 @@ impl ToolResult {
             is_error: false,
             outcome: ToolOutcome::Success,
             diagnostics: None,
+            receipt: None,
         }
     }
 
@@ -636,6 +640,7 @@ impl ToolResult {
             is_error: true,
             outcome: ToolOutcome::failure(reason),
             diagnostics: None,
+            receipt: None,
         }
     }
 
@@ -648,6 +653,7 @@ impl ToolResult {
             is_error: false,
             outcome: ToolOutcome::Success,
             diagnostics: None,
+            receipt: None,
         }
     }
 
@@ -670,6 +676,7 @@ impl ToolResult {
             is_error: false,
             outcome: ToolOutcome::partial(reasons),
             diagnostics: None,
+            receipt: None,
         }
     }
 
@@ -695,6 +702,14 @@ impl ToolResult {
     pub fn with_diagnostics(mut self, diagnostics: ToolDiagnostics) -> Self {
         // kanon:ignore RUST/pub-visibility
         self.diagnostics = Some(diagnostics);
+        self
+    }
+
+    /// Attach a receipt to this result.
+    #[must_use]
+    pub fn with_receipt(mut self, receipt: impl Into<String>) -> Self {
+        // kanon:ignore RUST/pub-visibility
+        self.receipt = Some(receipt.into());
         self
     }
 }

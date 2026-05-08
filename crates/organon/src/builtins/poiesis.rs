@@ -28,6 +28,10 @@ fn extract_opt_str<'a>(args: &'a serde_json::Value, key: &str) -> Option<&'a str
     args.get(key).and_then(serde_json::Value::as_str)
 }
 
+#[expect(
+    clippy::result_large_err,
+    reason = "ToolResult grew by receipt field; boxing would change public API"
+)]
 fn extract_str<'a>(
     args: &'a serde_json::Value,
     key: &str,

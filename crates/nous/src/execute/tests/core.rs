@@ -94,10 +94,14 @@ async fn single_tool_iteration() {
         result.tool_calls[0].name, "exec",
         "tool call name should match registered tool"
     );
-    assert_eq!(
-        result.tool_calls[0].result.as_deref(),
-        Some("executed: exec"),
-        "tool result should contain the echo executor output"
+    let result_text = result.tool_calls[0].result.as_deref().unwrap_or("");
+    assert!(
+        result_text.starts_with("executed: exec"),
+        "tool result should start with echo executor output: {result_text}"
+    );
+    assert!(
+        result_text.contains("[receipt:"),
+        "tool result should contain receipt: {result_text}"
     );
     assert!(
         !result.tool_calls[0].is_error,
@@ -252,10 +256,14 @@ async fn tool_error_captured() {
         result.tool_calls[0].is_error,
         "tool call should be marked as an error"
     );
-    assert_eq!(
-        result.tool_calls[0].result.as_deref(),
-        Some("tool failed"),
-        "tool error message should be captured in result"
+    let result_text = result.tool_calls[0].result.as_deref().unwrap_or("");
+    assert!(
+        result_text.starts_with("tool failed"),
+        "tool result should start with error message: {result_text}"
+    );
+    assert!(
+        result_text.contains("[receipt:"),
+        "tool result should contain receipt: {result_text}"
     );
     assert_eq!(
         result.content, "Recovered",
@@ -282,6 +290,7 @@ fn signal_classification_code() {
         result: Some("ok".to_owned()),
         is_error: false,
         duration_ms: 10,
+        receipt: None,
     }];
     let signals = classify_signals(&calls, "", false, false);
     assert!(
@@ -303,6 +312,7 @@ fn signal_classification_research() {
         result: Some("results".to_owned()),
         is_error: false,
         duration_ms: 10,
+        receipt: None,
     }];
     let signals = classify_signals(&calls, "", false, false);
     assert!(
@@ -324,6 +334,7 @@ fn signal_classification_error_recovery() {
         result: Some("failed".to_owned()),
         is_error: true,
         duration_ms: 10,
+        receipt: None,
     }];
     let signals = classify_signals(&calls, "", false, false);
     assert!(
@@ -491,6 +502,7 @@ fn classify_signals_includes_error_recovery() {
         result: Some("failed".to_owned()),
         is_error: true,
         duration_ms: 5,
+        receipt: None,
     }];
     let signals = classify_signals(&calls, "", false, false);
     assert!(

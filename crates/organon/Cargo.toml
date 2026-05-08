@@ -26,6 +26,8 @@ required-features = ["energeia"]
 # Computer use tool: screen capture, action dispatch, Landlock sandbox.
 # Not compiled by default — requires Linux kernel 5.13+ with Landlock support.
 computer-use = []
+# Receipt verification for hallucination detection (default OFF).
+receipt_verification = []
 # Energeia capability tools (dromeus, dokimasia, diorthosis, epitropos, parateresis,
 # mathesis, prographe, schedion, metron). Wires to real energeia subsystem.
 energeia = ["dep:energeia"]
@@ -64,13 +66,17 @@ poiesis-inspect = { path = "../poiesis/inspect" }
 koina = { path = "../koina" }
 taxis = { path = "../taxis" }
 base64 = { workspace = true }
+getrandom = "0.3"
 indexmap = { workspace = true }
+hmac = { workspace = true }
 jiff = { workspace = true }
 prometheus-client = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
 regex = { workspace = true }
 serde_json = { workspace = true }
+rand = { workspace = true }
+sha2 = { workspace = true }
 snafu = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }

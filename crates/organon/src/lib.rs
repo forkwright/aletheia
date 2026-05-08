@@ -1,5 +1,6 @@
 #![deny(missing_docs)]
 #![deny(clippy::unwrap_used)]
+
 //! aletheia-organon: tool registry, definitions, and built-in tool stubs
 //!
 //! Organon (ὄργανον): "instrument." The formal instruments through which
@@ -18,6 +19,8 @@ pub mod interp;
 pub mod metrics;
 /// RAII guard for subprocess lifecycle: kills and reaps on drop.
 pub mod process_guard;
+/// HMAC-SHA256 tool-call receipts for hallucination-resistant attestation.
+pub mod receipts;
 /// Central tool registry for runtime discovery and dispatch.
 pub mod registry;
 /// Landlock + seccomp sandbox for tool execution.

@@ -265,6 +265,7 @@ mod tests {
                 result: Some("file contents here".to_owned()),
                 is_error: false,
                 duration_ms: 42,
+                receipt: None,
             }],
             usage: TurnUsage {
                 input_tokens: 200,

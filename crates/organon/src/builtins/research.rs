@@ -22,6 +22,10 @@ use crate::types::{
 
 use super::workspace::{extract_opt_u64, extract_str};
 
+#[expect(
+    clippy::result_large_err,
+    reason = "ToolResult grew by receipt field; boxing would change public API"
+)]
 fn require_services(
     ctx: &ToolContext,
 ) -> std::result::Result<&crate::types::ToolServices, ToolResult> {

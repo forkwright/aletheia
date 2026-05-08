@@ -602,6 +602,8 @@ pub struct ToolCall {
     pub is_error: bool,
     /// Execution duration in milliseconds.
     pub duration_ms: u64,
+    /// HMAC-SHA256 receipt for hallucination-resistant attestation.
+    pub receipt: Option<String>,
 }
 
 /// Token usage for a single turn.

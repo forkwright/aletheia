@@ -78,6 +78,10 @@ pub(crate) struct StagedPrompt {
     pub(crate) staged_path: String,
 }
 
+#[expect(
+    clippy::result_large_err,
+    reason = "ToolResult grew by receipt field; boxing would change public API"
+)]
 fn require_services(
     ctx: &ToolContext,
 ) -> std::result::Result<&crate::types::ToolServices, ToolResult> {
