@@ -85,6 +85,34 @@ impl LoadedPack {
             .map(|o| o.domains.clone())
             .unwrap_or_default()
     }
+
+    /// Model override for a specific agent, if any.
+    #[must_use]
+    pub fn model_for_agent(&self, agent_id: &str) -> Option<String> {
+        self.manifest
+            .overlays
+            .get(agent_id)
+            .and_then(|o| o.model.clone())
+    }
+
+    /// Agency override for a specific agent, if any.
+    #[must_use]
+    pub fn agency_for_agent(&self, agent_id: &str) -> Option<String> {
+        self.manifest
+            .overlays
+            .get(agent_id)
+            .and_then(|o| o.agency.clone())
+    }
+
+    /// System-prompt additions for a specific agent, if any.
+    #[must_use]
+    pub fn system_prompt_additions_for_agent(&self, agent_id: &str) -> Vec<String> {
+        self.manifest
+            .overlays
+            .get(agent_id)
+            .map(|o| o.system_prompt_additions.clone())
+            .unwrap_or_default()
+    }
 }
 
 /// Load all configured domain packs.
@@ -403,6 +431,42 @@ agents = ["analyst"]
         let pack = load_single_pack(dir.path()).unwrap();
         assert_eq!(pack.domains_for_agent("analyst"), vec!["healthcare", "sql"]);
         assert!(pack.domains_for_agent("hermes").is_empty());
+    }
+
+    #[test]
+    fn overlay_fields_for_agent() {
+        let toml = r#"
+name = "overlay-test"
+version = "1.0"
+
+[overlays.analyst]
+domains = ["healthcare"]
+model = "anubis-70b"
+agency = "unrestricted"
+system_prompt_additions = ["Answer in bullet points."]
+"#;
+        let dir = setup_pack(&[("pack.toml", toml)]);
+
+        let pack = load_single_pack(dir.path()).unwrap();
+        assert_eq!(pack.domains_for_agent("analyst"), vec!["healthcare"]);
+        assert_eq!(
+            pack.model_for_agent("analyst"),
+            Some("anubis-70b".to_owned())
+        );
+        assert_eq!(
+            pack.agency_for_agent("analyst"),
+            Some("unrestricted".to_owned())
+        );
+        assert_eq!(
+            pack.system_prompt_additions_for_agent("analyst"),
+            vec!["Answer in bullet points.".to_owned()]
+        );
+
+        // Empty overlay for unknown agents
+        assert!(pack.domains_for_agent("hermes").is_empty());
+        assert_eq!(pack.model_for_agent("hermes"), None);
+        assert_eq!(pack.agency_for_agent("hermes"), None);
+        assert!(pack.system_prompt_additions_for_agent("hermes").is_empty());
     }
 
     #[test]

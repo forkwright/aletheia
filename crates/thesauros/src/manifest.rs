@@ -73,6 +73,19 @@ pub struct AgentOverlay {
     /// Domain tags to merge into the agent's config.
     #[serde(default)]
     pub domains: Vec<String>,
+
+    /// Optional override for primary model. None means use the agent's configured model.
+    #[serde(default)]
+    pub model: Option<String>,
+
+    /// Optional override for agency level (unrestricted, standard, restricted).
+    /// None means use the agent's default.
+    #[serde(default)]
+    pub agency: Option<String>,
+
+    /// Per-agent system-prompt additions appended at the workspace-pack tier.
+    #[serde(default)]
+    pub system_prompt_additions: Vec<String>,
 }
 
 /// A tool definition declared in a pack manifest.
