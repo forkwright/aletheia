@@ -10,6 +10,7 @@ use snafu::ResultExt;
 use crate::error::{self, Result};
 use crate::runner::RunReport;
 use crate::scenario::ScenarioOutcome;
+use crate::tags::tag_eval_result;
 
 /// A single evaluation record for JSONL training data output.
 #[derive(Debug, Clone, Serialize)]
@@ -109,15 +110,7 @@ pub fn append_jsonl_stamped(path: &Path, report: &RunReport) -> Result<()> {
 
     // Write the sibling .meta.json alongside the JSONL output.
     let meta = report.stamp();
-    let meta_path = {
-        let mut p = path.to_owned();
-        let ext = match p.extension() {
-            Some(e) => format!("{}.meta.json", e.to_string_lossy()),
-            None => "meta.json".to_owned(),
-        };
-        p.set_extension(ext);
-        p
-    };
+    let meta_path = sibling_path(path, "meta.json");
     let meta_json = serde_json::to_vec_pretty(&meta).context(error::JsonSnafu)?;
     let mut meta_file = std::fs::OpenOptions::new()
         .create(true)
@@ -127,17 +120,44 @@ pub fn append_jsonl_stamped(path: &Path, report: &RunReport) -> Result<()> {
         .context(error::IoSnafu)?;
     meta_file.write_all(&meta_json).context(error::IoSnafu)?;
 
+    // Write the sibling .tags.json for fast set-membership filtering.
+    let tags = tag_eval_result(report);
+    let tags_path = sibling_path(path, "tags.json");
+    let tags_json = serde_json::to_vec_pretty(&tags).context(error::JsonSnafu)?;
+    let mut tags_file = std::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(true)
+        .open(&tags_path)
+        .context(error::IoSnafu)?;
+    tags_file.write_all(&tags_json).context(error::IoSnafu)?;
+
     Ok(())
 }
 
 pub(crate) fn now_iso8601() -> String {
     // WHY: avoid pulling in jiff/chrono for a single timestamp format.
     // Epoch seconds are unambiguous and lightweight.
-    let duration = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default();
-    let secs = duration.as_secs();
-    format!("{secs}")
+    match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
+        Ok(duration) => {
+            let secs = duration.as_secs();
+            format!("{secs}")
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "system clock before unix epoch, returning 0");
+            "0".to_owned()
+        }
+    }
+}
+
+fn sibling_path(path: &Path, suffix: &str) -> std::path::PathBuf {
+    let mut p = path.to_owned();
+    let ext = match p.extension() {
+        Some(e) => format!("{}.{suffix}", e.to_string_lossy()),
+        None => suffix.to_owned(),
+    };
+    p.set_extension(ext);
+    p
 }
 
 fn millis_from_duration(duration: &std::time::Duration) -> u64 {
@@ -399,5 +419,50 @@ mod tests {
 
         let _ = std::fs::remove_file(&path);
         let _ = std::fs::remove_file(&meta_path);
+    }
+
+    #[test]
+    fn append_jsonl_stamped_writes_tags_sibling() {
+        let dir = std::env::temp_dir().join("aletheia-eval-tags-test");
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("stamped-tags.jsonl");
+        let tags_path = dir.join("stamped-tags.jsonl.tags.json");
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(&tags_path);
+
+        let report = RunReport {
+            passed: 1,
+            failed: 0,
+            skipped: 0,
+            total_duration: std::time::Duration::from_millis(100),
+            results: vec![ScenarioResult {
+                meta: sample_meta("tag-test", "health"),
+                outcome: ScenarioOutcome::Passed {
+                    duration: std::time::Duration::from_millis(50),
+                },
+            }],
+        };
+
+        append_jsonl_stamped(&path, &report).expect("stamped append should succeed");
+
+        assert!(path.exists(), "JSONL file should exist after stamped write");
+        assert!(
+            tags_path.exists(),
+            "tags JSON sibling should exist after stamped write"
+        );
+
+        let tags_content = std::fs::read_to_string(&tags_path).expect("should read tags file");
+        let tags: Vec<crate::tags::TagId> =
+            serde_json::from_str(&tags_content).expect("tags should be valid JSON");
+        assert!(
+            tags.iter().any(|t| matches!(
+                t,
+                crate::tags::TagId::Outcome(crate::tags::OutcomeTag::Passed)
+            )),
+            "tags should contain passed outcome"
+        );
+
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(&tags_path);
     }
 }

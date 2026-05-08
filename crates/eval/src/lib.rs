@@ -29,14 +29,27 @@ pub mod sse;
 /// Every benchmark comparison that publishes results must report
 /// CI + effect size + FDR-adjusted p-value via this module.
 pub mod stats;
+/// Typed-tag namespace over RunReport for SFT/distillation pipeline.
+pub mod tags;
 /// Configurable evaluation trigger scheduling.
 pub mod triggers;
+
+#[cfg(test)]
+mod tag_tests;
 
 #[cfg(test)]
 mod tests {
     #[test]
     fn public_modules_accessible() {
         // NOTE: verifies that the crate's public module structure is intact
-        let _: fn(&crate::runner::RunReport, &str) = crate::report::print_report;
+        let report = crate::runner::RunReport {
+            passed: 0,
+            failed: 0,
+            skipped: 0,
+            total_duration: std::time::Duration::from_secs(0),
+            results: vec![],
+        };
+        crate::report::print_report(&report, "http://localhost");
+        assert_eq!(report.passed, 0, "public module should be accessible");
     }
 }
