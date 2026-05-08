@@ -1,15 +1,15 @@
-//! Microbenchmarks for the `SessionStore` `SQLite` hot paths.
+//! Microbenchmarks for the fjall-backed `SessionStore` hot paths.
 //!
-//! WHY: every turn creates or finds a session and appends ≥2 messages.
-//! These benchmarks track end-to-end `SQLite` cost (including the
-//! `INSERT...SELECT MAX(seq)` pattern in `append_message`) so any
-//! schema/index/prepared-statement change surfaces in CI.
+//! WHY: every turn creates or finds a session and appends two or more
+//! messages. These benchmarks track end-to-end fjall LSM-tree cost, including
+//! partition lookups, range scans over padded keys, counter reads, and commit
+//! overhead, so storage layout changes surface in CI.
 //!
 //! Run: `cargo bench -p aletheia-graphe`
 //! Filter: `cargo bench -p aletheia-graphe -- create_session`
 //!
-//! Each bench uses an in-memory database to isolate from disk I/O —
-//! this measures the `SQLite` engine + our SQL, not the storage stack.
+//! Each bench uses an ephemeral fjall keyspace in a temp directory. It still
+//! exercises the real storage stack while avoiding persistent fixture state.
 
 #![expect(clippy::expect_used, reason = "bench setup")]
 
@@ -26,7 +26,7 @@ fn fresh_store() -> SessionStore {
 }
 
 /// `create_session` is on every new conversation. Cost is dominated by
-/// the INSERT plus the follow-up SELECT used to return the row.
+/// the uniqueness-index lookup plus the session and index writes.
 ///
 /// WHY: each iteration uses a unique `(nous_id, session_key)` pair to
 /// avoid the UNIQUE constraint on sessions; running with `iter_batched`
@@ -55,8 +55,8 @@ fn create_session(c: &mut Criterion) {
 }
 
 /// `append_message` is on every user/assistant/tool turn. Cost includes
-/// the seq-computation INSERT, the seq lookup, the session metadata
-/// UPDATE, and a transaction commit.
+/// the next-sequence counter read, message write, session metadata update,
+/// counter writes, and a transaction commit.
 fn append_message(c: &mut Criterion) {
     let store = fresh_store();
     let session_id = Ulid::new().to_string();
@@ -82,8 +82,8 @@ fn append_message(c: &mut Criterion) {
 }
 
 /// `find_session_by_id` is on every dispatcher path that resumes a
-/// session by primary key. The query is a single primary-key lookup;
-/// this measures the round-trip overhead.
+/// session by primary key. The query is a single partition lookup; this
+/// measures the read transaction round-trip overhead.
 fn find_session_by_id(c: &mut Criterion) {
     let store = fresh_store();
     let session_id = Ulid::new().to_string();

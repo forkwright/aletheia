@@ -716,6 +716,10 @@ impl RuntimeBuilder {
             let daemon_token = shutdown_token.child_token();
             let mut daemon_runner =
                 TaskRunner::new("system", daemon_token).with_maintenance(maintenance_config);
+            let retention_executor = Arc::new(
+                crate::session_retention::SessionRetentionAdapter::new(Arc::clone(&session_store)),
+            );
+            daemon_runner = daemon_runner.with_retention(retention_executor);
 
             #[cfg(feature = "recall")]
             if let Some(ks) = knowledge_store_for_daemon.as_ref() {

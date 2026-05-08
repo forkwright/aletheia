@@ -170,6 +170,27 @@ fn retention_requires_executor() {
     );
 }
 
+#[test]
+fn retention_registers_when_enabled_with_executor() {
+    let token = CancellationToken::new();
+    let mut config = MaintenanceConfig::default();
+    config.retention.enabled = true;
+    let executor: Arc<dyn crate::maintenance::RetentionExecutor> = Arc::new(MockRetentionExecutor);
+
+    let mut runner = TaskRunner::new("system", token)
+        .with_maintenance(config)
+        .with_retention(executor);
+    runner.register_maintenance_tasks();
+
+    let statuses = runner.status();
+    let retention = statuses
+        .iter()
+        .find(|s| s.id == "retention-execution")
+        .expect("retention task should be scheduled");
+    assert_eq!(retention.name, "Data retention cleanup");
+    assert!(retention.enabled);
+}
+
 #[tokio::test]
 async fn retention_without_executor_skips() {
     let result = execute_builtin(

@@ -47,6 +47,13 @@ use crate::types::{
     SessionType, UsageRecord,
 };
 
+fn storage_error(message: impl Into<String>) -> error::Error {
+    error::StorageSnafu {
+        message: message.into(),
+    }
+    .build()
+}
+
 /// Width for zero-padded sequence numbers.
 ///
 /// 20 digits covers `u64::MAX` (`18_446_744_073_709_551_615`) and ensures
@@ -512,10 +519,12 @@ impl SessionStore {
             let idx_prefix = b"idx:".as_slice();
             let mut raw_sessions: Vec<Session> = Vec::new();
             for guard in snap.range::<&str, _>(&sessions_part, ..) {
-                if let Ok((k, v)) = guard.into_inner()
-                    && !k.starts_with(idx_prefix)
-                    && let Ok(session) = serde_json::from_slice::<Session>(&v)
-                {
+                let (k, v) = guard
+                    .into_inner()
+                    .map_err(|e| storage_error(format!("fjall list_sessions full scan: {e}")))?;
+                if !k.starts_with(idx_prefix) {
+                    let session =
+                        serde_json::from_slice::<Session>(&v).context(error::StoredJsonSnafu)?;
                     raw_sessions.push(session);
                 }
             }
@@ -807,6 +816,8 @@ impl SessionStore {
 
     /// Get non-distilled messages, newest `limit` in chronological order.
     fn load_messages_in_range(&self, session_id: &str, limit: Option<i64>) -> Result<Vec<Message>> {
+        use std::collections::VecDeque;
+
         use fjall::Readable;
 
         let messages_part = self.partition("messages")?;
@@ -814,24 +825,25 @@ impl SessionStore {
         let upper = format!("{session_id};\x00");
         let snap = self.db.read_tx();
 
-        // All messages in ascending seq order (lexicographic on padded key).
-        let mut messages: Vec<Message> = snap
-            .range(&messages_part, prefix.as_str()..upper.as_str())
-            .filter_map(|g| g.into_inner().ok())
-            .filter_map(|(_k, v)| serde_json::from_slice::<Message>(&v).ok())
-            .filter(|m| !m.is_distilled)
-            .collect();
-
-        // Apply limit: take the N most recent (end of list), then restore chronological order.
-        if let Some(lim) = limit {
-            let lim = usize::try_from(lim).unwrap_or(usize::MAX);
-            if messages.len() > lim {
-                let start = messages.len() - lim;
-                messages = messages.split_off(start);
+        let limit = limit.and_then(|lim| usize::try_from(lim).ok());
+        let mut messages = VecDeque::new();
+        for guard in snap.range(&messages_part, prefix.as_str()..upper.as_str()) {
+            let (_k, v) = guard
+                .into_inner()
+                .map_err(|e| storage_error(format!("fjall load_messages_in_range: {e}")))?;
+            let msg = serde_json::from_slice::<Message>(&v).context(error::StoredJsonSnafu)?;
+            if msg.is_distilled {
+                continue;
+            }
+            messages.push_back(msg);
+            if let Some(lim) = limit
+                && messages.len() > lim
+            {
+                messages.pop_front();
             }
         }
 
-        Ok(messages)
+        Ok(messages.into_iter().collect())
     }
 
     /// Get message history for a session.
@@ -848,6 +860,8 @@ impl SessionStore {
         limit: Option<i64>,
         before_seq: Option<i64>,
     ) -> Result<Vec<Message>> {
+        use std::collections::VecDeque;
+
         use fjall::Readable;
 
         let messages_part = self.partition("messages")?;
@@ -858,22 +872,25 @@ impl SessionStore {
         };
         let snap = self.db.read_tx();
 
-        let mut messages: Vec<Message> = snap
-            .range(&messages_part, prefix.as_str()..upper.as_str())
-            .filter_map(|g| g.into_inner().ok())
-            .filter_map(|(_k, v)| serde_json::from_slice::<Message>(&v).ok())
-            .filter(|m| !m.is_distilled)
-            .collect();
-
-        if let Some(lim) = limit {
-            let lim = usize::try_from(lim).unwrap_or(usize::MAX);
-            if messages.len() > lim {
-                let start = messages.len() - lim;
-                messages = messages.split_off(start);
+        let limit = limit.and_then(|lim| usize::try_from(lim).ok());
+        let mut messages = VecDeque::new();
+        for guard in snap.range(&messages_part, prefix.as_str()..upper.as_str()) {
+            let (_k, v) = guard
+                .into_inner()
+                .map_err(|e| storage_error(format!("fjall get_history_filtered: {e}")))?;
+            let msg = serde_json::from_slice::<Message>(&v).context(error::StoredJsonSnafu)?;
+            if msg.is_distilled {
+                continue;
+            }
+            messages.push_back(msg);
+            if let Some(lim) = limit
+                && messages.len() > lim
+            {
+                messages.pop_front();
             }
         }
 
-        Ok(messages)
+        Ok(messages.into_iter().collect())
     }
 
     /// Get message history within a token budget (most recent first, working backward).
@@ -895,18 +912,20 @@ impl SessionStore {
         let upper = format!("{session_id};\x00");
         let snap = self.db.read_tx();
 
-        // Collect in ascending order, then iterate in reverse for budget window.
-        let all: Vec<Message> = snap
-            .range(&messages_part, prefix.as_str()..upper.as_str())
-            .filter_map(|g| g.into_inner().ok())
-            .filter_map(|(_k, v)| serde_json::from_slice::<Message>(&v).ok())
-            .filter(|m| !m.is_distilled)
-            .collect();
-
         let mut result = Vec::new();
         let mut total: i64 = 0;
 
-        for msg in all.into_iter().rev() {
+        for guard in snap
+            .range(&messages_part, prefix.as_str()..upper.as_str())
+            .rev()
+        {
+            let (_k, v) = guard
+                .into_inner()
+                .map_err(|e| storage_error(format!("fjall get_history_with_budget: {e}")))?;
+            let msg = serde_json::from_slice::<Message>(&v).context(error::StoredJsonSnafu)?;
+            if msg.is_distilled {
+                continue;
+            }
             if total + msg.token_estimate > max_tokens && !result.is_empty() {
                 break;
             }
@@ -960,7 +979,10 @@ impl SessionStore {
 
         for &seq in seqs {
             let key = format!("{session_id}:{}", pad_u64(seq.cast_unsigned()));
-            if let Ok(Some(bytes)) = tx.get(&messages_part, key.as_str()) {
+            if let Some(bytes) = tx
+                .get(&messages_part, key.as_str())
+                .map_err(|e| storage_error(format!("fjall mark_messages_distilled get: {e}")))?
+            {
                 let mut msg: Message =
                     serde_json::from_slice(&bytes).context(error::StoredJsonSnafu)?;
                 msg.is_distilled = true;
@@ -977,10 +999,11 @@ impl SessionStore {
             let mut tokens: i64 = 0;
             let mut count: i64 = 0;
             for guard in tx.range(&messages_part, prefix.as_str()..upper.as_str()) {
-                if let Ok((_k, v)) = guard.into_inner()
-                    && let Ok(msg) = serde_json::from_slice::<Message>(&v)
-                    && !msg.is_distilled
-                {
+                let (_k, v) = guard.into_inner().map_err(|e| {
+                    storage_error(format!("fjall mark_messages_distilled range: {e}"))
+                })?;
+                let msg = serde_json::from_slice::<Message>(&v).context(error::StoredJsonSnafu)?;
+                if !msg.is_distilled {
                     tokens += msg.token_estimate;
                     count += 1;
                 }
@@ -988,7 +1011,10 @@ impl SessionStore {
             (tokens, count)
         };
 
-        if let Ok(Some(bytes)) = tx.get(&sessions_part, session_id) {
+        if let Some(bytes) = tx
+            .get(&sessions_part, session_id)
+            .map_err(|e| storage_error(format!("fjall mark_messages_distilled session get: {e}")))?
+        {
             let mut session: Session =
                 serde_json::from_slice(&bytes).context(error::StoredJsonSnafu)?;
             session.metrics.token_count_estimate = total_tokens;
@@ -1032,10 +1058,19 @@ impl SessionStore {
         let upper = format!("{session_id};\x00");
         let distilled_keys: Vec<Vec<u8>> = tx
             .range(&messages_part, prefix.as_str()..upper.as_str())
-            .filter_map(|g| g.into_inner().ok())
-            .filter(|(_k, v)| serde_json::from_slice::<Message>(v).is_ok_and(|m| m.is_distilled))
-            .map(|(k, _v)| k.to_vec())
-            .collect();
+            .map(|g| {
+                let (k, v) = g
+                    .into_inner()
+                    .map_err(|e| storage_error(format!("fjall distillation_summary scan: {e}")))?;
+                let msg = serde_json::from_slice::<Message>(&v).context(error::StoredJsonSnafu)?;
+                Ok((k, msg))
+            })
+            .filter_map(|result: Result<_>| match result {
+                Ok((k, msg)) if msg.is_distilled => Some(Ok(k.to_vec())),
+                Ok((_k, _msg)) => None,
+                Err(e) => Some(Err(e)),
+            })
+            .collect::<Result<Vec<_>>>()?;
         for key in &distilled_keys {
             tx.remove(&messages_part, key.as_slice());
         }
@@ -1044,7 +1079,7 @@ impl SessionStore {
         let counters_part = self.partition("counters")?;
         let current_msg_id = tx
             .get(&counters_part, "msg_id")
-            .unwrap_or(None)
+            .map_err(|e| storage_error(format!("fjall msg_id counter read: {e}")))?
             .map_or(0, |b| decode_u64(&b));
         let new_msg_id = current_msg_id + 1;
         tx.insert(&counters_part, "msg_id", encode_u64(new_msg_id));
@@ -1074,10 +1109,11 @@ impl SessionStore {
             let mut tokens: i64 = 0;
             let mut count: i64 = 0;
             for guard in tx.range(&messages_part, prefix.as_str()..upper.as_str()) {
-                if let Ok((_k, v)) = guard.into_inner()
-                    && let Ok(msg) = serde_json::from_slice::<Message>(&v)
-                    && !msg.is_distilled
-                {
+                let (_k, v) = guard.into_inner().map_err(|e| {
+                    storage_error(format!("fjall distillation_summary recount: {e}"))
+                })?;
+                let msg = serde_json::from_slice::<Message>(&v).context(error::StoredJsonSnafu)?;
+                if !msg.is_distilled {
                     tokens += msg.token_estimate;
                     count += 1;
                 }
@@ -1085,7 +1121,10 @@ impl SessionStore {
             (tokens, count)
         };
 
-        if let Ok(Some(bytes)) = tx.get(&sessions_part, session_id) {
+        if let Some(bytes) = tx
+            .get(&sessions_part, session_id)
+            .map_err(|e| storage_error(format!("fjall distillation_summary session get: {e}")))?
+        {
             let mut session: Session =
                 serde_json::from_slice(&bytes).context(error::StoredJsonSnafu)?;
             session.metrics.token_count_estimate = total_tokens;
@@ -1133,7 +1172,7 @@ impl SessionStore {
         let snap = self.db.read_tx();
         let dist_id = snap
             .get(&counters_part, "dist_id")
-            .unwrap_or(None)
+            .map_err(|e| storage_error(format!("fjall dist_id counter read: {e}")))?
             .map_or(0, |b| decode_u64(&b))
             + 1;
         drop(snap);
@@ -1155,7 +1194,10 @@ impl SessionStore {
         tx.insert(&counters_part, "dist_id", encode_u64(dist_id));
 
         // Update session distillation counter.
-        if let Ok(Some(bytes)) = tx.get(&sessions_part, session_id) {
+        if let Some(bytes) = tx
+            .get(&sessions_part, session_id)
+            .map_err(|e| storage_error(format!("fjall record_distillation session get: {e}")))?
+        {
             let mut session: Session =
                 serde_json::from_slice(&bytes).context(error::StoredJsonSnafu)?;
             session.metrics.distillation_count += 1;
@@ -1252,12 +1294,12 @@ impl SessionStore {
         let snap = self.db.read_tx();
         let note_id = snap
             .get(&counters_part, "note_local_id")
-            .unwrap_or(None)
+            .map_err(|e| storage_error(format!("fjall note_local_id counter read: {e}")))?
             .map_or(0, |b| decode_u64(&b))
             + 1;
         let global_id = snap
             .get(&counters_part, "note_global_id")
-            .unwrap_or(None)
+            .map_err(|e| storage_error(format!("fjall note_global_id counter read: {e}")))?
             .map_or(0, |b| decode_u64(&b))
             + 1;
         drop(snap);
@@ -1300,11 +1342,13 @@ impl SessionStore {
         let upper = format!("{session_id};\x00");
         let snap = self.db.read_tx();
 
-        let notes: Vec<AgentNote> = snap
-            .range(&notes_part, prefix.as_str()..upper.as_str())
-            .filter_map(|g| g.into_inner().ok())
-            .filter_map(|(_k, v)| serde_json::from_slice::<AgentNote>(&v).ok())
-            .collect();
+        let mut notes = Vec::new();
+        for guard in snap.range(&notes_part, prefix.as_str()..upper.as_str()) {
+            let (_k, v) = guard
+                .into_inner()
+                .map_err(|e| storage_error(format!("fjall get_notes range: {e}")))?;
+            notes.push(serde_json::from_slice::<AgentNote>(&v).context(error::StoredJsonSnafu)?);
+        }
 
         Ok(notes)
     }
@@ -1373,10 +1417,17 @@ impl SessionStore {
         let now = now_iso();
         let expires_at = if ttl_secs > 0 {
             // Approximate: add ttl_secs to now.
-            jiff::Zoned::now()
-                .checked_add(jiff::Span::new().seconds(ttl_secs))
-                .ok()
-                .map(|z| z.strftime("%Y-%m-%dT%H:%M:%S%.3fZ").to_string())
+            Some(
+                jiff::Zoned::now()
+                    .checked_add(
+                        jiff::Span::new()
+                            .try_seconds(ttl_secs)
+                            .context(error::TtlOverflowSnafu { ttl_secs })?,
+                    )
+                    .context(error::TtlOverflowSnafu { ttl_secs })?
+                    .strftime("%Y-%m-%dT%H:%M:%S%.3fZ")
+                    .to_string(),
+            )
         } else {
             None
         };
@@ -1417,12 +1468,17 @@ impl SessionStore {
         let bb_part = self.partition("blackboard")?;
         let snap = self.db.read_tx();
 
-        let entries: Vec<BlackboardRow> = snap
-            .range::<&str, _>(&bb_part, ..)
-            .filter_map(|g| g.into_inner().ok())
-            .filter_map(|(_k, v)| serde_json::from_slice::<BlackboardRow>(&v).ok())
-            .filter(|r| !is_expired(r))
-            .collect();
+        let mut entries = Vec::new();
+        for guard in snap.range::<&str, _>(&bb_part, ..) {
+            let (_k, v) = guard
+                .into_inner()
+                .map_err(|e| storage_error(format!("fjall blackboard_list range: {e}")))?;
+            let row =
+                serde_json::from_slice::<BlackboardRow>(&v).context(error::StoredJsonSnafu)?;
+            if !is_expired(&row) {
+                entries.push(row);
+            }
+        }
 
         Ok(entries)
     }
@@ -1430,8 +1486,11 @@ impl SessionStore {
     /// Remove all expired blackboard entries.
     ///
     /// Returns the number of rows deleted.
-    #[expect(dead_code, reason = "blackboard cleanup called by retention runner")]
-    pub(crate) fn cleanup_expired_entries(&self) -> Result<u64> {
+    ///
+    /// # Errors
+    /// Returns an error if the blackboard scan, JSON decoding, or delete
+    /// transaction fails.
+    pub fn cleanup_expired_entries(&self) -> Result<u64> {
         use fjall::Readable;
 
         let _guard = self
@@ -1441,17 +1500,24 @@ impl SessionStore {
         let bb_part = self.partition("blackboard")?;
         let snap = self.db.read_tx();
 
-        let expired_keys: Vec<Vec<u8>> = snap
-            .range::<&str, _>(&bb_part, ..)
-            .filter_map(|g| g.into_inner().ok())
-            .filter(|(_k, v)| {
-                serde_json::from_slice::<BlackboardRow>(v).is_ok_and(|r| is_expired(&r))
-            })
-            .map(|(k, _v)| k.to_vec())
-            .collect();
+        let mut expired_keys = Vec::new();
+        for guard in snap.range::<&str, _>(&bb_part, ..) {
+            let (k, v) = guard
+                .into_inner()
+                .map_err(|e| storage_error(format!("fjall cleanup_expired scan: {e}")))?;
+            let row =
+                serde_json::from_slice::<BlackboardRow>(&v).context(error::StoredJsonSnafu)?;
+            if is_expired(&row) {
+                expired_keys.push(k.to_vec());
+            }
+        }
         drop(snap);
 
-        let count = expired_keys.len() as u64;
+        let count = u64::try_from(expired_keys.len()).map_err(|e| {
+            storage_error(format!(
+                "expired blackboard key count conversion failed: {e}"
+            ))
+        })?;
         if count > 0 {
             let mut tx = self.db.write_tx();
             for key in &expired_keys {

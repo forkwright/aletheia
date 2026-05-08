@@ -5,8 +5,16 @@
     reason = "test assertions on Vecs with asserted length"
 )]
 
+use crate::error::Error;
 use crate::test_fixtures::test_store;
-use crate::types::{Role, SessionStatus};
+use crate::types::{BlackboardRow, Role, SessionStatus};
+
+fn write_raw(store: &super::SessionStore, partition_name: &str, key: &str, value: &[u8]) {
+    let partition = store.partition(partition_name).expect("partition opens");
+    let mut tx = store.db.write_tx();
+    tx.insert(&partition, key, value);
+    tx.commit().expect("raw value committed");
+}
 
 #[test]
 fn create_and_find_session() {
@@ -217,6 +225,111 @@ fn blackboard_crud() {
     let deleted = store.blackboard_delete("goal", "syn").expect("delete");
     assert!(deleted);
     assert!(store.blackboard_read("goal").expect("read").is_none());
+}
+
+#[test]
+fn blackboard_write_rejects_ttl_overflow() {
+    let store = test_store();
+    let result = store.blackboard_write("goal", "finish M0b", "syn", i64::MAX);
+    assert!(
+        matches!(
+            result,
+            Err(Error::TtlOverflow {
+                ttl_secs: i64::MAX,
+                ..
+            })
+        ),
+        "TTL overflow must be returned to the caller"
+    );
+    assert!(
+        store
+            .blackboard_read("goal")
+            .expect("read after failed write")
+            .is_none(),
+        "overflowing TTL write must not create an immortal entry"
+    );
+}
+
+#[test]
+fn cleanup_expired_entries_removes_expired_blackboard_rows() {
+    let store = test_store();
+    let row = BlackboardRow {
+        key: "goal".to_owned(),
+        value: "finish M0b".to_owned(),
+        author_nous_id: "syn".to_owned(),
+        ttl_seconds: 1,
+        created_at: "1970-01-01T00:00:00.000Z".to_owned(),
+        expires_at: Some("1970-01-01T00:00:01.000Z".to_owned()),
+    };
+    let data = serde_json::to_vec(&row).expect("blackboard row serializes");
+    write_raw(&store, "blackboard", "goal", &data);
+
+    assert_eq!(store.cleanup_expired_entries().expect("cleanup"), 1);
+    assert_eq!(
+        store
+            .cleanup_expired_entries()
+            .expect("second cleanup after removal"),
+        0
+    );
+}
+
+#[test]
+fn corrupted_message_json_propagates_from_history() {
+    let store = test_store();
+    store
+        .create_session("ses-1", "syn", "main", None, None)
+        .expect("create");
+    store
+        .append_message("ses-1", Role::User, "hello", None, None, 10)
+        .expect("append");
+
+    write_raw(
+        &store,
+        "messages",
+        "ses-1:00000000000000000001",
+        b"{not valid json",
+    );
+
+    let result = store.get_history("ses-1", None);
+    assert!(
+        matches!(result, Err(Error::StoredJson { .. })),
+        "corrupt message JSON must not be silently skipped"
+    );
+}
+
+#[test]
+fn corrupted_note_json_propagates_from_note_list() {
+    let store = test_store();
+    store
+        .create_session("ses-1", "syn", "main", None, None)
+        .expect("create");
+    store
+        .add_note("ses-1", "syn", "task", "do something")
+        .expect("add note");
+
+    write_raw(&store, "notes", "ses-1:00000000000000000001", b"not-json");
+
+    let result = store.get_notes("ses-1");
+    assert!(
+        matches!(result, Err(Error::StoredJson { .. })),
+        "corrupt note JSON must not be silently skipped"
+    );
+}
+
+#[test]
+fn corrupted_blackboard_json_propagates_from_list() {
+    let store = test_store();
+    store
+        .blackboard_write("goal", "finish M0b", "syn", 3600)
+        .expect("write");
+
+    write_raw(&store, "blackboard", "goal", b"not-json");
+
+    let result = store.blackboard_list();
+    assert!(
+        matches!(result, Err(Error::StoredJson { .. })),
+        "corrupt blackboard JSON must not be silently skipped"
+    );
 }
 
 #[test]

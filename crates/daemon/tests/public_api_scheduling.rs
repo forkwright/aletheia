@@ -260,6 +260,7 @@ fn retention_executor_trait_is_implementable_from_integration_tests() {
         summary: RetentionSummary {
             sessions_cleaned: 11,
             messages_cleaned: 22,
+            blackboard_entries_cleaned: 44,
             bytes_freed: 33,
         },
     });
@@ -269,6 +270,7 @@ fn retention_executor_trait_is_implementable_from_integration_tests() {
         .expect("mock executor succeeds");
     assert_eq!(result.sessions_cleaned, 11);
     assert_eq!(result.messages_cleaned, 22);
+    assert_eq!(result.blackboard_entries_cleaned, 44);
     assert_eq!(result.bytes_freed, 33);
 
     // And the runner accepts it through the public builder.

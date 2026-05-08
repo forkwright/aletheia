@@ -432,14 +432,18 @@ pub(crate) async fn execute_builtin(
             tracing::info!(
                 sessions = summary.sessions_cleaned,
                 messages = summary.messages_cleaned,
+                blackboard_entries = summary.blackboard_entries_cleaned,
                 bytes_freed = summary.bytes_freed,
                 "maintenance: retention complete"
             );
             Ok(ExecutionResult {
                 success: true,
                 output: Some(format!(
-                    "{} sessions, {} messages cleaned, {} bytes freed",
-                    summary.sessions_cleaned, summary.messages_cleaned, summary.bytes_freed
+                    "{} sessions, {} messages, {} blackboard entries cleaned, {} bytes freed",
+                    summary.sessions_cleaned,
+                    summary.messages_cleaned,
+                    summary.blackboard_entries_cleaned,
+                    summary.bytes_freed
                 )),
             })
         }

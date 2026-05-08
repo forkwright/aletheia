@@ -342,6 +342,7 @@ async fn retention_with_executor_returns_summary() {
         summary: RetentionSummary {
             sessions_cleaned: 3,
             messages_cleaned: 12,
+            blackboard_entries_cleaned: 2,
             bytes_freed: 4096,
         },
     });
@@ -359,6 +360,7 @@ async fn retention_with_executor_returns_summary() {
     let output = result.output.expect("output");
     assert!(output.contains("3 sessions"));
     assert!(output.contains("12 messages"));
+    assert!(output.contains("2 blackboard entries"));
     assert!(output.contains("4096 bytes"));
 }
 
