@@ -373,6 +373,24 @@ impl KnowledgeSearchService for StubKnowledgeService {
         Box::pin(std::future::ready(Ok(summary)))
     }
 
+    fn find_skill_by_name(
+        &self,
+        _nous_id: &str,
+        skill_name: &str,
+    ) -> Pin<Box<dyn Future<Output = Result<Option<String>, KnowledgeAdapterError>> + Send + '_>>
+    {
+        let facts = self
+            .facts
+            .lock()
+            .expect("facts mutex should not be poisoned");
+        for (_, content) in facts.iter() {
+            if content.contains(skill_name) {
+                return Box::pin(std::future::ready(Ok(Some(content.clone()))));
+            }
+        }
+        Box::pin(std::future::ready(Ok(None)))
+    }
+
     fn datalog_query(
         &self,
         _query: &str,

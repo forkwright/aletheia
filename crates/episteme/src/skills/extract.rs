@@ -96,6 +96,8 @@ impl ExtractedSkill {
             tools_used: self.tools_used.clone(),
             domain_tags: self.domain_tags.clone(),
             origin: "extracted".to_owned(),
+            triggers: vec![],
+            always: false,
         }
     }
 }

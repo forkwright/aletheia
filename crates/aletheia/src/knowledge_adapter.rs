@@ -377,6 +377,36 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
         })
     }
 
+    fn find_skill_by_name(
+        &self,
+        nous_id: &str,
+        skill_name: &str,
+    ) -> Pin<Box<dyn Future<Output = Result<Option<String>, KnowledgeAdapterError>> + Send + '_>>
+    {
+        let nous_id = nous_id.to_owned();
+        let skill_name = skill_name.to_owned();
+        Box::pin(async move {
+            let skills = self
+                .store
+                .find_skills_for_nous(&nous_id, 1000)
+                .map_err(|e| {
+                    FactQuerySnafu {
+                        message: e.to_string(),
+                    }
+                    .build()
+                })?;
+            for fact in skills {
+                if let Ok(content) =
+                    serde_json::from_str::<mneme::skill::SkillContent>(&fact.content)
+                    && content.name == skill_name
+                {
+                    return Ok(Some(fact.content));
+                }
+            }
+            Ok(None)
+        })
+    }
+
     fn datalog_query(
         &self,
         query: &str,

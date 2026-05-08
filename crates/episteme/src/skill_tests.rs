@@ -143,6 +143,8 @@ fn skill_content_serde_roundtrip() {
         tools_used: vec!["Read".to_owned(), "Edit".to_owned()],
         domain_tags: vec!["test".to_owned()],
         origin: "manual".to_owned(),
+        triggers: vec![],
+        always: false,
     };
     let json = serde_json::to_string(&skill).expect("SkillContent serializes to JSON");
     let back: SkillContent =
@@ -331,6 +333,8 @@ fn export_skill() -> SkillContent {
         tools_used: vec!["Read".to_owned(), "Edit".to_owned(), "Bash".to_owned()],
         domain_tags: vec!["rust".to_owned(), "errors".to_owned()],
         origin: "manual".to_owned(),
+        triggers: vec![],
+        always: false,
     }
 }
 

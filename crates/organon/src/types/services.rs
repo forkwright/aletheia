@@ -204,6 +204,16 @@ pub trait KnowledgeSearchService: Send + Sync {
         timeout_secs: Option<f64>,
         row_limit: Option<usize>,
     ) -> Pin<Box<dyn Future<Output = Result<DatalogResult, KnowledgeAdapterError>> + Send + '_>>;
+
+    /// Look up a skill by name for the given nous.
+    ///
+    /// Returns the skill's raw JSON content when found, or `None` when no
+    /// matching skill exists.
+    fn find_skill_by_name(
+        &self,
+        nous_id: &str,
+        skill_name: &str,
+    ) -> Pin<Box<dyn Future<Output = Result<Option<String>, KnowledgeAdapterError>> + Send + '_>>;
 }
 
 /// Result from a read-only Datalog query.

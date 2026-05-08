@@ -251,7 +251,9 @@ pub mod recall {
 /// [`parse_skill_md`](skill::parse_skill_md),
 /// [`scan_skill_dir`](skill::scan_skill_dir)
 pub mod skill {
-    pub use episteme::skill::{SkillContent, export_skills_to_cc, parse_skill_md, scan_skill_dir};
+    pub use episteme::skill::{
+        SkillContent, export_skills_to_cc, format_skill_md, parse_skill_md, scan_skill_dir,
+    };
 }
 
 /// Skill auto-capture: heuristic filter, signature hashing, and candidate tracking.

@@ -476,6 +476,8 @@ fn pending_skill_approved_status() {
             tools_used: vec![],
             domain_tags: vec![],
             origin: "extracted".to_owned(),
+            triggers: vec![],
+            always: false,
         },
         candidate_id: "c".to_owned(),
         status: "approved".to_owned(),
@@ -533,6 +535,8 @@ fn make_skill(name: &str, tools: &[&str]) -> SkillContent {
         tools_used: tools.iter().map(|t| (*t).to_owned()).collect(),
         domain_tags: vec!["test".to_owned()],
         origin: "extracted".to_owned(),
+        triggers: vec![],
+        always: false,
     }
 }
 

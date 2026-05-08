@@ -307,7 +307,8 @@ enum LoadTier {
 /// (which expresses importance) and [`LoadTier`] (which expresses load timing).
 ///
 /// Precedence order (when assembled): `Identity` → `SoulPersona` → `OperatorProfile` →
-/// `Prosoche` → `Team` → `Goals` → `Tools` → `Checklist` → `Memory` → `Context`.
+/// `Prosoche` → `Team` → `Goals` → `SkillsAlways` → `SkillsLazyIndex` → `Tools` →
+/// `Checklist` → `Memory` → `Context`.
 ///
 /// External design prior: HKUDS/DeepTutor `BOOTSTRAP_FILES` order.
 #[derive(
@@ -328,14 +329,18 @@ pub enum BootstrapSlot {
     Team = 4,
     /// Active / completed / deferred goals. (GOALS.md)
     Goals = 5,
+    /// Always-injected skill bodies. (from knowledge store)
+    SkillsAlways = 6,
+    /// Lazy skill index — one-line summaries for on-demand loading.
+    SkillsLazyIndex = 7,
     /// Registered tool surface. (TOOLS.md)
-    Tools = 6,
+    Tools = 8,
     /// Work procedures / checklist. (CHECKLIST.md)
-    Checklist = 7,
+    Checklist = 9,
     /// Operational memory — accumulated knowledge over time. (MEMORY.md)
-    Memory = 8,
+    Memory = 10,
     /// Runtime config / auto-generated context. (CONTEXT.md)
-    Context = 9,
+    Context = 11,
 }
 
 /// A section of the bootstrap system prompt.
