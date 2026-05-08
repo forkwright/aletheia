@@ -4,6 +4,10 @@
 //! Keyword-based classification (no LLM call) for v1.  Reuses keyword patterns
 //! from [`aletheia_lexica`] where applicable.
 
+use aletheia_lexica::keywords::{
+    INTAKE_ANALYSIS_KEYWORDS as ANALYSIS_KEYWORDS, INTAKE_DASHBOARD_KEYWORDS as DASHBOARD_KEYWORDS,
+    INTAKE_REPORT_KEYWORDS as REPORT_KEYWORDS,
+};
 use snafu::Snafu;
 
 /// Classification of an intake request.
@@ -51,48 +55,6 @@ pub enum Error {
 
 /// Convenience alias.
 pub type Result<T> = std::result::Result<T, Error>;
-
-// ── Keyword lists ─────────────────────────────────────────────────────────────
-
-/// Keywords that map to [`RequestKind::Analysis`].
-const ANALYSIS_KEYWORDS: &[&str] = &[
-    "analyze",
-    "analysis",
-    "analyse",
-    "investigate",
-    "study",
-    "evaluate",
-    "assess",
-    "compare",
-    "review",
-    "break down",
-    "breakdown",
-];
-
-/// Keywords that map to [`RequestKind::Report`].
-const REPORT_KEYWORDS: &[&str] = &[
-    "report",
-    "write",
-    "document",
-    "summary",
-    "prose",
-    "narrative",
-    "brief",
-    "whitepaper",
-    "white paper",
-];
-
-/// Keywords that map to [`RequestKind::Dashboard`].
-const DASHBOARD_KEYWORDS: &[&str] = &[
-    "dashboard",
-    "panel",
-    "visual",
-    "chart",
-    "metric",
-    "kpi",
-    "graph",
-    "tableau",
-];
 
 // ── Classification ────────────────────────────────────────────────────────────
 
@@ -223,7 +185,9 @@ fn analysis_template(description: &str, requirements: &[String]) -> String {
     if !requirements.is_empty() {
         out.push_str("## Requirements\n\n");
         for req in requirements {
-            let _ = std::fmt::Write::write_fmt(&mut out, format_args!("- {req}\n"));
+            out.push_str("- ");
+            out.push_str(req);
+            out.push('\n');
         }
         out.push('\n');
     }
@@ -238,7 +202,9 @@ fn report_template(description: &str, requirements: &[String]) -> String {
     if !requirements.is_empty() {
         out.push_str("## Requirements\n\n");
         for req in requirements {
-            let _ = std::fmt::Write::write_fmt(&mut out, format_args!("- {req}\n"));
+            out.push_str("- ");
+            out.push_str(req);
+            out.push('\n');
         }
         out.push('\n');
     }
@@ -253,7 +219,9 @@ fn dashboard_template(description: &str, requirements: &[String]) -> String {
     if !requirements.is_empty() {
         out.push_str("## Requirements\n\n");
         for req in requirements {
-            let _ = std::fmt::Write::write_fmt(&mut out, format_args!("- {req}\n"));
+            out.push_str("- ");
+            out.push_str(req);
+            out.push('\n');
         }
         out.push('\n');
     }
@@ -268,7 +236,9 @@ fn generic_template(description: &str, requirements: &[String]) -> String {
     if !requirements.is_empty() {
         out.push_str("## Requirements\n\n");
         for req in requirements {
-            let _ = std::fmt::Write::write_fmt(&mut out, format_args!("- {req}\n"));
+            out.push_str("- ");
+            out.push_str(req);
+            out.push('\n');
         }
         out.push('\n');
     }
