@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
+use taxis::config::DaemonBehaviorConfig;
 use tokio_util::sync::CancellationToken;
 
 use crate::bridge::DaemonBridge;
@@ -55,6 +56,8 @@ pub struct TaskRunner {
     state_store: Option<crate::state::TaskStateStore>,
     /// Output mode: full or brief (truncated).
     output_mode: DaemonOutputMode,
+    /// Deployment-tunable daemon behavior.
+    daemon_behavior: DaemonBehaviorConfig,
     /// Self-prompt rate limiter (tracks per-agent dispatch counts).
     self_prompt_limiter: crate::self_prompt::SelfPromptLimiter,
     /// Self-prompt configuration (enabled, rate limits).
@@ -107,6 +110,7 @@ impl TaskRunner {
             in_flight: HashMap::new(),
             state_store: None,
             output_mode: DaemonOutputMode::Full,
+            daemon_behavior: DaemonBehaviorConfig::default(),
             self_prompt_limiter: crate::self_prompt::SelfPromptLimiter::new(1),
             self_prompt_config: crate::self_prompt::SelfPromptConfig::default(),
             #[cfg(feature = "dispatch-cron")]
@@ -131,6 +135,7 @@ impl TaskRunner {
             in_flight: HashMap::new(),
             state_store: None,
             output_mode: DaemonOutputMode::Full,
+            daemon_behavior: DaemonBehaviorConfig::default(),
             self_prompt_limiter: crate::self_prompt::SelfPromptLimiter::new(1),
             self_prompt_config: crate::self_prompt::SelfPromptConfig::default(),
             #[cfg(feature = "dispatch-cron")]
@@ -194,6 +199,13 @@ impl TaskRunner {
     #[must_use]
     pub fn with_output_mode(mut self, mode: DaemonOutputMode) -> Self {
         self.output_mode = mode;
+        self
+    }
+
+    /// Apply deployment-tunable daemon behavior.
+    #[must_use]
+    pub fn with_daemon_behavior(mut self, behavior: DaemonBehaviorConfig) -> Self {
+        self.daemon_behavior = behavior;
         self
     }
 

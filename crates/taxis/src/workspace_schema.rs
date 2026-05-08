@@ -167,13 +167,6 @@ impl WorkspaceSchema {
 /// Returns [`WorkspaceSchemaError`] when any agent workspace fails validation.
 /// The `workspace` field in the error is set to the instance root; individual
 /// agent failures appear in `failures`.
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "validates all agent workspaces during startup preflight; only the inline test module currently calls this — production wiring is in flight"
-    )
-)]
 pub(crate) fn validate_agent_workspaces(
     config: &AletheiaConfig,
     oikos: &Oikos,

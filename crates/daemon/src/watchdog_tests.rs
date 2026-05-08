@@ -113,6 +113,7 @@ async fn detects_hung_process() {
         heartbeat_timeout: Duration::from_millis(50),
         check_interval: Duration::from_millis(10),
         max_restarts: 5,
+        ..WatchdogConfig::default()
     };
     let mut wd = Watchdog::new(config, token);
     let proc = Arc::new(MockProcess::new("agent-1"));
@@ -149,6 +150,7 @@ async fn restart_failure_applies_backoff() {
         heartbeat_timeout: Duration::from_millis(50),
         check_interval: Duration::from_millis(10),
         max_restarts: 5,
+        ..WatchdogConfig::default()
     };
     let mut wd = Watchdog::new(config, token);
     let proc = Arc::new(MockProcess::new("agent-1"));
@@ -175,6 +177,7 @@ async fn max_restarts_abandons_process() {
         heartbeat_timeout: Duration::from_millis(50),
         check_interval: Duration::from_millis(10),
         max_restarts: 2,
+        ..WatchdogConfig::default()
     };
     let mut wd = Watchdog::new(config, token);
     let proc = Arc::new(MockProcess::new("agent-1"));
@@ -201,6 +204,7 @@ async fn backoff_prevents_immediate_retry() {
         heartbeat_timeout: Duration::from_millis(50),
         check_interval: Duration::from_millis(10),
         max_restarts: 5,
+        ..WatchdogConfig::default()
     };
     let mut wd = Watchdog::new(config, token);
     let proc = Arc::new(MockProcess::new("agent-1"));
@@ -244,6 +248,29 @@ fn watchdog_backoff_zero_attempt() {
     );
 }
 
+#[test]
+fn watchdog_backoff_honors_daemon_behavior() {
+    let behavior = taxis::config::DaemonBehaviorConfig {
+        watchdog_backoff_base_secs: 3,
+        watchdog_backoff_cap_secs: 9,
+        ..taxis::config::DaemonBehaviorConfig::default()
+    };
+    let config = WatchdogConfig::default().with_daemon_behavior(&behavior);
+
+    assert_eq!(
+        watchdog_backoff_with_config(1, &config),
+        Duration::from_secs(3)
+    );
+    assert_eq!(
+        watchdog_backoff_with_config(2, &config),
+        Duration::from_secs(6)
+    );
+    assert_eq!(
+        watchdog_backoff_with_config(3, &config),
+        Duration::from_secs(9)
+    );
+}
+
 #[tokio::test]
 async fn shutdown_exits_watchdog_loop() {
     let token = CancellationToken::new();
@@ -269,6 +296,7 @@ async fn restart_log_records_events() {
         heartbeat_timeout: Duration::from_millis(50),
         check_interval: Duration::from_millis(10),
         max_restarts: 5,
+        ..WatchdogConfig::default()
     };
     let mut wd = Watchdog::new(config, token);
     let proc = Arc::new(MockProcess::new("agent-1"));

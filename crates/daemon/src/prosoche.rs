@@ -17,6 +17,8 @@ pub struct ProsocheCheck {
     /// Optional knowledge store for memory consistency checks.
     #[cfg(feature = "knowledge-store")]
     knowledge_store: Option<Arc<episteme::knowledge_store::KnowledgeStore>>,
+    /// Number of recent facts sampled by anomaly detection.
+    anomaly_sample_size: usize,
 }
 
 impl std::fmt::Debug for ProsocheCheck {
@@ -24,7 +26,8 @@ impl std::fmt::Debug for ProsocheCheck {
         let mut s = f.debug_struct("ProsocheCheck");
         s.field("nous_id", &self.nous_id)
             .field("data_dir", &self.data_dir)
-            .field("db_paths", &self.db_paths);
+            .field("db_paths", &self.db_paths)
+            .field("anomaly_sample_size", &self.anomaly_sample_size);
         #[cfg(feature = "knowledge-store")]
         s.field(
             "knowledge_store",
@@ -42,6 +45,7 @@ impl Clone for ProsocheCheck {
             db_paths: self.db_paths.clone(),
             #[cfg(feature = "knowledge-store")]
             knowledge_store: self.knowledge_store.clone(),
+            anomaly_sample_size: self.anomaly_sample_size,
         }
     }
 }
@@ -119,13 +123,6 @@ impl AttentionItem {
 
 impl ProsocheCheck {
     /// Create a prosoche check for the given nous with default paths.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "prosoche attention checks, tested and awaiting integration"
-        )
-    )]
     pub(crate) fn new(nous_id: &str) -> Self {
         Self {
             nous_id: nous_id.to_owned(),
@@ -133,7 +130,18 @@ impl ProsocheCheck {
             db_paths: Vec::new(),
             #[cfg(feature = "knowledge-store")]
             knowledge_store: None,
+            anomaly_sample_size: DEFAULT_ANOMALY_SAMPLE_SIZE,
         }
+    }
+
+    /// Apply deployment-tunable daemon behavior.
+    #[must_use]
+    pub(crate) fn with_daemon_behavior(
+        mut self,
+        behavior: &taxis::config::DaemonBehaviorConfig,
+    ) -> Self {
+        self.anomaly_sample_size = behavior.prosoche_anomaly_sample_size;
+        self
     }
 
     /// Set the data directory for disk space checking.
@@ -211,7 +219,7 @@ impl ProsocheCheck {
 
         #[cfg(feature = "knowledge-store")]
         if let Some(ref store) = self.knowledge_store {
-            let checker = MultiPathConsistencyCheck::new(ANOMALY_SAMPLE_SIZE);
+            let checker = MultiPathConsistencyCheck::new(self.anomaly_sample_size);
             match checker.check(store) {
                 Ok(anomalies) => items.extend(anomalies),
                 Err(e) => {
@@ -415,8 +423,7 @@ pub(crate) fn parse_vmrss(contents: &str) -> std::io::Result<u64> {
 ///
 /// Kept small so the check is lightweight. Each sampled fact triggers
 /// one additional Datalog query for entity-path verification.
-#[cfg(feature = "knowledge-store")]
-const ANOMALY_SAMPLE_SIZE: usize = 15;
+const DEFAULT_ANOMALY_SAMPLE_SIZE: usize = 15;
 
 /// Trait for pluggable knowledge graph consistency checks.
 ///

@@ -20,6 +20,17 @@ fn prosoche_check_new() {
 }
 
 #[test]
+fn prosoche_honors_daemon_behavior_sample_size() {
+    let behavior = taxis::config::DaemonBehaviorConfig {
+        prosoche_anomaly_sample_size: 27,
+        ..taxis::config::DaemonBehaviorConfig::default()
+    };
+    let check = ProsocheCheck::new("test-nous").with_daemon_behavior(&behavior);
+
+    assert_eq!(check.anomaly_sample_size, 27);
+}
+
+#[test]
 fn attention_item_category_label_calendar() {
     let item = AttentionItem {
         category: AttentionCategory::Calendar,

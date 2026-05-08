@@ -244,9 +244,17 @@ async fn execute_command_failure_uses_stderr_in_reason() {
 #[tokio::test]
 async fn execute_action_dispatches_command_variant() {
     let action = TaskAction::Command("echo dispatched".to_owned());
-    let result = execute_action(&action, "test-nous", None, None, None, None)
-        .await
-        .expect("should succeed");
+    let result = execute_action(
+        &action,
+        "test-nous",
+        None,
+        None,
+        None,
+        None,
+        &taxis::config::DaemonBehaviorConfig::default(),
+    )
+    .await
+    .expect("should succeed");
     assert!(result.success);
     assert!(result.output.expect("output").contains("dispatched"));
 }
@@ -256,9 +264,17 @@ async fn execute_action_dispatches_builtin_variant() {
     // WHY: SelfPrompt is the canonical "no setup needed" builtin — it
     // returns a canned error message without needing bridge or executor.
     let action = TaskAction::Builtin(BuiltinTask::SelfPrompt);
-    let result = execute_action(&action, "test-nous", None, None, None, None)
-        .await
-        .expect("should not error");
+    let result = execute_action(
+        &action,
+        "test-nous",
+        None,
+        None,
+        None,
+        None,
+        &taxis::config::DaemonBehaviorConfig::default(),
+    )
+    .await
+    .expect("should not error");
     assert!(!result.success);
     assert!(
         result
@@ -273,17 +289,17 @@ async fn execute_action_dispatches_builtin_variant() {
 // --- execute_builtin: bridge-dependent paths ---
 
 #[tokio::test]
-async fn prosoche_no_bridge_returns_unconfigured() {
+async fn prosoche_no_bridge_runs_local_check() {
     let result = execute_builtin(&BuiltinTask::Prosoche, "test-nous", None, None, None, None)
         .await
         .expect("should not error");
-    assert!(!result.success);
+    assert!(result.success);
     assert!(
         result
             .output
             .as_deref()
             .unwrap_or_default()
-            .contains("no bridge configured")
+            .contains("checked_at")
     );
 }
 

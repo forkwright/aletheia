@@ -24,6 +24,7 @@ eidos = { path = "../eidos" }
 episteme = { path = "../episteme", default-features = false }
 energeia = { path = "../energeia", optional = true }
 koina = { path = "../koina", features = ["fjall"] }
+taxis = { path = "../taxis" }
 # WHY: axum for webhook trigger listener
 axum = { workspace = true }
 # WHY: single-instance enforcement per workspace. Used directly via rustix::fs::flock

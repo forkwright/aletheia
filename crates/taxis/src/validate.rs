@@ -5,6 +5,7 @@ use snafu::Snafu;
 
 use crate::config::AletheiaConfig;
 use crate::oikos::Oikos;
+use crate::workspace_schema::validate_agent_workspaces;
 
 /// Validation error with collected messages.
 #[derive(Debug, Snafu)]
@@ -101,6 +102,10 @@ pub fn validate_startup(config: &AletheiaConfig, oikos: &Oikos) -> Result<(), Va
         }
     }
 
+    if let Err(err) = validate_agent_workspaces(config, oikos) {
+        errors.extend(err.failures);
+    }
+
     if errors.is_empty() {
         Ok(())
     } else {
@@ -152,8 +157,8 @@ pub fn validate_section(section: &str, value: &Value) -> Result<(), ValidationEr
         "jwt" => validate_jwt(value, &mut errors),
         "providers" => validate_providers(value, &mut errors),
         // NOTE: pass-through sections with no validation rules.
-        "packs" | "pricing" | "sandbox" | "logging" | "mcp" | "localProvider" | "training"
-        | "anthropic" | "promptAudit" | "dispatch" => {}
+        "packs" | "pricing" | "sandbox" | "logging" | "observability" | "mcp" | "localProvider"
+        | "training" | "anthropic" | "promptAudit" | "dispatch" => {}
         _ => errors.push(format!("unknown config section: {section}")),
     }
 
@@ -565,9 +570,7 @@ fn validate_nous_behavior(value: &Value, errors: &mut Vec<String>) {
     check_range_u64(value, "degradedPanicThreshold", 1, 100, errors);
     check_range_u64(value, "degradedWindowSecs", 1, 86_400, errors);
     check_range_u64(value, "inboxRecvTimeoutSecs", 1, 3600, errors);
-    check_range_u64(value, "inboxCapacity", 1, 10_000, errors);
     check_range_u64(value, "maxSpawnedTasks", 1, 1_000, errors);
-    check_range_u64(value, "maxSessions", 1, 100_000, errors);
     check_range_u64(value, "gcIntervalSecs", 30, 3600, errors);
     check_range_u64(value, "loopDetectionWindow", 5, 500, errors);
     check_range_u64(value, "cycleDetectionMaxLen", 1, 100, errors);

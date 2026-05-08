@@ -169,9 +169,7 @@ fn deployment_defaults_match_original_constants() {
         nb.consecutive_timeout_warn_threshold, 3,
         "consecutive_timeout_warn_threshold"
     );
-    assert_eq!(nb.inbox_capacity, 32, "inbox_capacity");
     assert_eq!(nb.max_spawned_tasks, 8, "max_spawned_tasks");
-    assert_eq!(nb.max_sessions, 1_000, "max_sessions");
     // nous::tasks::gc::DEFAULT_GC_INTERVAL = 300s
     assert_eq!(nb.gc_interval_secs, 300, "gc_interval_secs");
     // nous::manager::DEAD_THRESHOLD = 3
