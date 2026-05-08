@@ -549,17 +549,24 @@ pub async fn update_section(
         location: snafu::location!(),
     })?;
 
-    let restart_required: Vec<String> = taxis::reload::restart_prefixes()
+    let diff = taxis::reload::diff_configs(&config, &new_config);
+    let restart_required: Vec<String> = diff
+        .cold_changes()
         .iter()
-        .filter(|p| p.starts_with(&format!("{section}.")))
-        .map(|p| (*p).to_owned())
+        .map(|change| change.path.clone())
         .collect();
 
-    *config = new_config.clone();
+    let live_config = taxis::reload::preserve_restart_required_values(&config, &new_config, &diff)
+        .map_err(|e| ApiError::Internal {
+            message: format!("failed to preserve cold config values: {e}"),
+            location: snafu::location!(),
+        })?;
+
+    *config = live_config.clone();
     let redacted = taxis::redact::redact(&config);
     drop(config);
 
-    let _ = state.config_tx.send(new_config);
+    let _ = state.config_tx.send(live_config);
 
     let section_value = redacted.get(&section).cloned().unwrap_or_else(|| {
         tracing::debug!(section = %section, "config section absent after update, returning null");

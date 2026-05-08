@@ -22,12 +22,8 @@ pub struct NousBehaviorConfig {
     /// Consecutive receive timeouts before a warning log is emitted. Default: 3.
     /// Mirrors `nous::actor::CONSECUTIVE_TIMEOUT_WARN_THRESHOLD`.
     pub consecutive_timeout_warn_threshold: u32,
-    /// Actor inbox channel capacity. Default: 32.
-    pub inbox_capacity: usize,
     /// Maximum number of concurrently spawned tasks per agent. Default: 8.
     pub max_spawned_tasks: usize,
-    /// Maximum number of concurrent sessions across all agents. Default: 1000.
-    pub max_sessions: usize,
     /// Completed-task garbage collection interval in seconds. Default: 300.
     /// Mirrors `nous::tasks::gc::DEFAULT_GC_INTERVAL`.
     pub gc_interval_secs: u64,
@@ -91,9 +87,7 @@ impl Default for NousBehaviorConfig {
             degraded_window_secs: 600,
             inbox_recv_timeout_secs: 30,
             consecutive_timeout_warn_threshold: 3,
-            inbox_capacity: 32,
             max_spawned_tasks: 8,
-            max_sessions: 1_000,
             gc_interval_secs: 300,
             manager_dead_threshold: 3,
             manager_max_restart_backoff_secs: 300,

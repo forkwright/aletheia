@@ -713,8 +713,9 @@ impl RuntimeBuilder {
                 &self.config.prompt_audit,
             );
             let daemon_token = shutdown_token.child_token();
-            let mut daemon_runner =
-                TaskRunner::new("system", daemon_token).with_maintenance(maintenance_config);
+            let mut daemon_runner = TaskRunner::new("system", daemon_token)
+                .with_daemon_behavior(self.config.daemon_behavior.clone())
+                .with_maintenance(maintenance_config);
             let retention_executor = Arc::new(
                 crate::session_retention::SessionRetentionAdapter::new(Arc::clone(&session_store)),
             );
@@ -793,7 +794,8 @@ impl RuntimeBuilder {
                     agent_def.id.clone(),
                     agent_token,
                     daemon_bridge.clone(),
-                );
+                )
+                .with_daemon_behavior(self.config.daemon_behavior.clone());
                 runner.register(oikonomos::schedule::TaskDef {
                     id: format!("{}-prosoche", agent_def.id),
                     name: "Prosoche attention check".to_owned(),

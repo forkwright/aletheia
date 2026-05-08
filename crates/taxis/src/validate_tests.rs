@@ -711,6 +711,40 @@ fn validate_startup_passes_with_complete_layout() {
     );
 }
 
+#[test]
+fn validate_startup_rejects_agent_workspace_missing_soul() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join("config")).unwrap();
+    std::fs::create_dir_all(dir.path().join("data")).unwrap();
+    std::fs::create_dir_all(dir.path().join("nous").join("alice")).unwrap();
+
+    let oikos = crate::oikos::Oikos::from_root(dir.path());
+    let mut config = AletheiaConfig::default();
+    config.agents.list.clear();
+    config.agents.list.push(crate::config::NousDefinition {
+        id: "alice".to_owned(),
+        name: None,
+        model: None,
+        workspace: "nous/alice".to_owned(),
+        thinking_enabled: None,
+        agency: None,
+        allowed_roots: Vec::new(),
+        domains: Vec::new(),
+        default: false,
+        private: false,
+        episteme_cohort: None,
+        recall: None,
+        recall_profile: None,
+        behavior: None,
+    });
+
+    let err = validate_startup(&config, &oikos).unwrap_err();
+    assert!(
+        err.errors.iter().any(|e| e.contains("SOUL.md")),
+        "startup validation should enforce workspace schema: {err:?}"
+    );
+}
+
 // --- Auth-disabled startup warning (#3383) ---
 
 /// When `gateway.auth.mode = "none"`, `warn_if_auth_disabled` must emit a

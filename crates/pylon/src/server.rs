@@ -325,11 +325,17 @@ pub(crate) async fn apply_reload(
             "cold config changes deferred until restart"
         );
         let current = config_state.config.read().await;
-        let mut merged = outcome.new_config.clone();
-        // Restore cold-change sections from current running config
-        merged.gateway = current.gateway.clone();
-        merged.channels = current.channels.clone();
-        merged
+        match taxis::reload::preserve_restart_required_values(
+            &current,
+            &outcome.new_config,
+            &outcome.diff,
+        ) {
+            Ok(config) => config,
+            Err(e) => {
+                tracing::error!(error = %e, "failed to preserve cold config values");
+                current.clone()
+            }
+        }
     };
 
     let mut config = config_state.config.write().await;

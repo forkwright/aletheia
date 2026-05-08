@@ -113,7 +113,11 @@ impl TaskRunner {
                 tracing::debug!(task_id = %task_id, output = %output, "task output");
             }
             DaemonOutputMode::Brief => {
-                let truncated = truncate_output(output, None, None);
+                let truncated = truncate_output(
+                    output,
+                    Some(self.daemon_behavior.runner_output_brief_head_lines),
+                    Some(self.daemon_behavior.runner_output_brief_tail_lines),
+                );
                 tracing::info!(task_id = %task_id, output = %truncated, "task output (brief)");
             }
         }

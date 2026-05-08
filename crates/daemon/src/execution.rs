@@ -14,6 +14,7 @@ use crate::maintenance::{
     TraceRotator,
 };
 use crate::probe::{ProbeAuditSummary, ProbeSet, build_probe_audit_prompt};
+use crate::prosoche::ProsocheCheck;
 use crate::runner::ExecutionResult;
 use crate::schedule::{BuiltinTask, TaskAction};
 
@@ -27,17 +28,19 @@ pub(crate) async fn execute_action(
     maintenance: Option<&MaintenanceConfig>,
     retention_executor: Option<Arc<dyn RetentionExecutor>>,
     knowledge_executor: Option<Arc<dyn KnowledgeMaintenanceExecutor>>,
+    daemon_behavior: &taxis::config::DaemonBehaviorConfig,
 ) -> Result<ExecutionResult> {
     match action {
         TaskAction::Command(cmd) => execute_command(cmd).await,
         TaskAction::Builtin(builtin) => {
-            execute_builtin(
+            execute_builtin_with_behavior(
                 builtin,
                 nous_id,
                 bridge,
                 maintenance,
                 retention_executor,
                 knowledge_executor,
+                daemon_behavior,
             )
             .await
         }
@@ -81,11 +84,8 @@ async fn execute_command(cmd: &str) -> Result<ExecutionResult> {
     }
 }
 
+#[cfg(test)]
 #[tracing::instrument(skip_all)]
-#[expect(
-    clippy::too_many_lines,
-    reason = "match dispatch over builtin variants"
-)]
 pub(crate) async fn execute_builtin(
     builtin: &BuiltinTask,
     nous_id: &str,
@@ -93,6 +93,32 @@ pub(crate) async fn execute_builtin(
     maintenance: Option<&MaintenanceConfig>,
     retention_executor: Option<Arc<dyn RetentionExecutor>>,
     knowledge_executor: Option<Arc<dyn KnowledgeMaintenanceExecutor>>,
+) -> Result<ExecutionResult> {
+    execute_builtin_with_behavior(
+        builtin,
+        nous_id,
+        bridge,
+        maintenance,
+        retention_executor,
+        knowledge_executor,
+        &taxis::config::DaemonBehaviorConfig::default(),
+    )
+    .await
+}
+
+#[tracing::instrument(skip_all)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "match dispatch over builtin variants"
+)]
+pub(crate) async fn execute_builtin_with_behavior(
+    builtin: &BuiltinTask,
+    nous_id: &str,
+    bridge: Option<&dyn DaemonBridge>,
+    maintenance: Option<&MaintenanceConfig>,
+    retention_executor: Option<Arc<dyn RetentionExecutor>>,
+    knowledge_executor: Option<Arc<dyn KnowledgeMaintenanceExecutor>>,
+    daemon_behavior: &taxis::config::DaemonBehaviorConfig,
 ) -> Result<ExecutionResult> {
     match builtin {
         BuiltinTask::Prosoche => {
@@ -123,9 +149,16 @@ pub(crate) async fn execute_builtin(
                     }
                 }
             } else {
+                let result = ProsocheCheck::new(nous_id)
+                    .with_daemon_behavior(daemon_behavior)
+                    .run()
+                    .await?;
                 Ok(ExecutionResult {
-                    success: false,
-                    output: Some("no bridge configured".to_owned()),
+                    success: true,
+                    output: Some(
+                        serde_json::to_string(&result)
+                            .unwrap_or_else(|_| "prosoche check complete".to_owned()),
+                    ),
                 })
             }
         }

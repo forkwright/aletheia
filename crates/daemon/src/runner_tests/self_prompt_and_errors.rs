@@ -188,7 +188,7 @@ async fn failing_command_records_consecutive_failures() {
 
 /// Error path: task execution with missing bridge for bridge-dependent tasks.
 #[tokio::test]
-async fn builtin_prosoche_without_bridge_returns_failure() {
+async fn builtin_prosoche_without_bridge_runs_local_check() {
     let result = execute_builtin(
         &BuiltinTask::Prosoche,
         "test-nous",
@@ -201,12 +201,12 @@ async fn builtin_prosoche_without_bridge_returns_failure() {
 
     assert!(result.is_ok());
     let exec_result = result.unwrap();
-    assert!(!exec_result.success);
+    assert!(exec_result.success);
     assert!(
         exec_result
             .output
             .unwrap_or_default()
-            .contains("no bridge configured")
+            .contains("checked_at")
     );
 }
 

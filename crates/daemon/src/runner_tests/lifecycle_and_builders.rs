@@ -20,6 +20,28 @@ fn register_shows_in_status() {
     assert!(statuses[0].enabled);
 }
 
+#[test]
+fn runner_honors_daemon_behavior_output_limits() {
+    let token = CancellationToken::new();
+    let behavior = taxis::config::DaemonBehaviorConfig {
+        runner_output_brief_head_lines: 2,
+        runner_output_brief_tail_lines: 1,
+        ..taxis::config::DaemonBehaviorConfig::default()
+    };
+    let runner = TaskRunner::new("test-nous", token)
+        .with_output_mode(DaemonOutputMode::Brief)
+        .with_daemon_behavior(behavior);
+
+    let long = "a\nb\nc\nd\ne";
+    let truncated = truncate_output(
+        long,
+        Some(runner.daemon_behavior.runner_output_brief_head_lines),
+        Some(runner.daemon_behavior.runner_output_brief_tail_lines),
+    );
+
+    assert_eq!(truncated, "a\nb\n... (2 lines omitted)\ne");
+}
+
 #[tokio::test]
 async fn shutdown_exits_run_loop() {
     let token = CancellationToken::new();

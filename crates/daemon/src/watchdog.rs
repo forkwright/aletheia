@@ -32,6 +32,10 @@ pub struct WatchdogConfig {
     pub check_interval: Duration,
     /// Maximum number of restart attempts before giving up.
     pub max_restarts: u32,
+    /// Base duration for restart backoff.
+    pub backoff_base: Duration,
+    /// Maximum restart backoff duration.
+    pub backoff_cap: Duration,
 }
 
 impl Default for WatchdogConfig {
@@ -40,7 +44,19 @@ impl Default for WatchdogConfig {
             heartbeat_timeout: DEFAULT_HEARTBEAT_TIMEOUT,
             check_interval: DEFAULT_CHECK_INTERVAL,
             max_restarts: DEFAULT_MAX_RESTARTS,
+            backoff_base: BACKOFF_BASE,
+            backoff_cap: BACKOFF_CAP,
         }
+    }
+}
+
+impl WatchdogConfig {
+    /// Apply deployment-tunable backoff settings from taxis config.
+    #[must_use]
+    pub fn with_daemon_behavior(mut self, behavior: &taxis::config::DaemonBehaviorConfig) -> Self {
+        self.backoff_base = Duration::from_secs(behavior.watchdog_backoff_base_secs);
+        self.backoff_cap = Duration::from_secs(behavior.watchdog_backoff_cap_secs);
+        self
     }
 }
 
@@ -419,7 +435,8 @@ impl Watchdog {
                 );
                 if let Some(proc) = self.processes.get_mut(id) {
                     proc.state = ProcessState::Hung;
-                    proc.backoff_until = Some(Instant::now() + watchdog_backoff(attempt));
+                    proc.backoff_until =
+                        Some(Instant::now() + watchdog_backoff_with_config(attempt, &self.config));
                 }
             }
         }
@@ -445,12 +462,17 @@ impl Watchdog {
 /// - attempt 3: 8s
 /// - attempt 4: 16s
 /// - attempt 5+: capped at 300s (5 min)
+#[cfg(test)]
 pub(crate) fn watchdog_backoff(attempt: u32) -> Duration {
+    watchdog_backoff_with_config(attempt, &WatchdogConfig::default())
+}
+
+fn watchdog_backoff_with_config(attempt: u32, config: &WatchdogConfig) -> Duration {
     use koina::retry::BackoffStrategy;
     let strategy = BackoffStrategy::Exponential {
-        base: BACKOFF_BASE,
+        base: config.backoff_base,
         factor: 2,
-        max_delay: BACKOFF_CAP,
+        max_delay: config.backoff_cap,
     };
     // WHY: call site passes 1-indexed attempt; delay_for_attempt is 0-indexed
     strategy.delay_for_attempt(attempt.saturating_sub(1))

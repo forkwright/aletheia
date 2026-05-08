@@ -19,10 +19,6 @@ const RESTART_PREFIXES: &[&str] = &[
     "gateway.csrf",
     "gateway.bodyLimit",
     "channels",
-    // WHY: inbox capacity and session cap are set at actor spawn time; changing
-    // them requires a restart to take effect on new actors.
-    "nousBehavior.inboxCapacity",
-    "nousBehavior.maxSessions",
     // WHY: provider timeout is wired into the HTTP client at startup.
     "providerBehavior.nonStreamingTimeoutSecs",
     // WHY: poll interval and buffer capacity are set when the Semeion loop
@@ -45,6 +41,69 @@ pub(crate) fn requires_restart(field_path: &str) -> bool {
 #[must_use]
 pub fn restart_prefixes() -> &'static [&'static str] {
     RESTART_PREFIXES
+}
+
+/// Return `staged` with every restart-required changed path restored from `current`.
+///
+/// The returned config is the live/effective view. Callers may still persist the
+/// staged config to disk, but must not broadcast cold values as live runtime state.
+///
+/// # Errors
+///
+/// Returns [`serde_json::Error`] if the restored JSON cannot deserialize back
+/// into [`AletheiaConfig`].
+pub fn preserve_restart_required_values(
+    current: &AletheiaConfig,
+    staged: &AletheiaConfig,
+    diff: &ConfigDiff,
+) -> Result<AletheiaConfig, serde_json::Error> {
+    let current_value = serde_json::to_value(current)?;
+    let mut live_value = serde_json::to_value(staged)?;
+
+    for change in diff.cold_changes() {
+        if let Some(prefix) = restart_prefix_for_path(&change.path)
+            && let Some(old_value) = value_at_path(&current_value, prefix)
+        {
+            set_value_at_path(&mut live_value, prefix, old_value.clone());
+        }
+    }
+
+    serde_json::from_value(live_value)
+}
+
+fn restart_prefix_for_path(path: &str) -> Option<&'static str> {
+    RESTART_PREFIXES
+        .iter()
+        .copied()
+        .find(|prefix| path.starts_with(prefix))
+}
+
+fn value_at_path<'a>(value: &'a Value, path: &str) -> Option<&'a Value> {
+    let mut current = value;
+    for part in path.split('.') {
+        current = current.get(part)?;
+    }
+    Some(current)
+}
+
+fn set_value_at_path(value: &mut Value, path: &str, replacement: Value) {
+    let mut current = value;
+    let mut parts = path.split('.').peekable();
+    while let Some(part) = parts.next() {
+        if parts.peek().is_none() {
+            if let Value::Object(map) = current {
+                map.insert(part.to_owned(), replacement);
+            }
+            return;
+        }
+        let Value::Object(map) = current else {
+            return;
+        };
+        let Some(next) = map.get_mut(part) else {
+            return;
+        };
+        current = next;
+    }
 }
 
 /// A single changed field between two config versions.
@@ -91,7 +150,7 @@ impl ConfigDiff {
 /// Serializes both configs to JSON and walks the tree to find leaf differences.
 /// Each changed path is classified as hot-reloadable or cold (restart required).
 #[must_use]
-pub(crate) fn diff_configs(old: &AletheiaConfig, new: &AletheiaConfig) -> ConfigDiff {
+pub fn diff_configs(old: &AletheiaConfig, new: &AletheiaConfig) -> ConfigDiff {
     let old_value = serde_json::to_value(old).unwrap_or(Value::Null);
     let new_value = serde_json::to_value(new).unwrap_or(Value::Null);
 
@@ -503,6 +562,29 @@ mod tests {
         assert!(
             hot.iter().any(|c| c.path.contains("thinkingBudget")),
             "thinkingBudget should appear as a hot change"
+        );
+    }
+
+    #[test]
+    fn preserve_restart_required_values_restores_all_cold_prefixes() {
+        let current = AletheiaConfig::default();
+        let mut staged = current.clone();
+        staged.gateway.port = 9999;
+        staged.provider_behavior.non_streaming_timeout_secs = 99;
+        staged.agents.defaults.model_defaults.thinking_budget = 20_000;
+
+        let diff = diff_configs(&current, &staged);
+        let live = preserve_restart_required_values(&current, &staged, &diff)
+            .unwrap_or_else(|e| panic!("preserve cold values: {e}"));
+
+        assert_eq!(live.gateway.port, current.gateway.port);
+        assert_eq!(
+            live.provider_behavior.non_streaming_timeout_secs,
+            current.provider_behavior.non_streaming_timeout_secs
+        );
+        assert_eq!(
+            live.agents.defaults.model_defaults.thinking_budget,
+            staged.agents.defaults.model_defaults.thinking_budget
         );
     }
 

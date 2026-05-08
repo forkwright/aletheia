@@ -55,6 +55,34 @@ async fn update_section_packs_happy_path() {
 }
 
 #[tokio::test]
+async fn update_section_preserves_cold_gateway_value_in_live_response() {
+    let (app, _dir) = app().await;
+    let req = authed_request(
+        "PUT",
+        "/api/v1/config/gateway",
+        Some(serde_json::json!({
+            "port": 3999
+        })),
+    );
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert_eq!(body["section"], "gateway");
+    assert_ne!(
+        body["config"]["port"], 3999,
+        "cold gateway port must not be published as live"
+    );
+    assert!(
+        body["restart_required"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|path| path.as_str() == Some("gateway.port")),
+        "response should report staged restart-required gateway.port"
+    );
+}
+
+#[tokio::test]
 async fn update_section_malformed_body_returns_422() {
     let (app, _dir) = app().await;
     let req = authed_request(

@@ -172,6 +172,7 @@ impl TaskRunner {
             let maintenance = self.maintenance.clone();
             let retention_executor = self.retention_executor.clone();
             let knowledge_executor = self.knowledge_executor.clone();
+            let daemon_behavior = self.daemon_behavior.clone();
 
             let span = tracing::info_span!(
                 "task_execute",
@@ -189,6 +190,7 @@ impl TaskRunner {
                         maintenance.as_ref(),
                         retention_executor,
                         knowledge_executor,
+                        &daemon_behavior,
                     )
                     .await
                 }
