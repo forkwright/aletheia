@@ -49,6 +49,7 @@ impl NousActor {
             info!(session_key = %session_key, "brake reset by operator intervention");
             session.consecutive_no_progress_count = 0;
             session.brake_tripped = false;
+            session.loop_guard.reset_on_user_message();
         }
         // WHY: record when the turn started so the health check can detect turns
         // stuck longer than `stuck_turn_timeout_secs`, even when active_turn is
@@ -178,6 +179,58 @@ impl NousActor {
         }
     }
 
+    /// Apply the extended loop guard (doom-loop, ping-pong, no-progress) to a
+    /// turn result.
+    ///
+    /// If any detector fires, the turn content is replaced with an
+    /// operator-intervention message and the brake is tripped. The guard
+    /// resets on the next operator-intervention turn via
+    /// [`mark_turn_active`](Self::mark_turn_active).
+    pub(super) fn apply_loop_guard(
+        &mut self,
+        session_key: &str,
+        result: &mut crate::error::Result<TurnResult>,
+    ) {
+        let Ok(turn_result) = result else { return };
+        let Some(session) = self.sessions.get_mut(session_key) else {
+            return;
+        };
+
+        let tool_call_data: Vec<(String, String, String)> = turn_result
+            .tool_calls
+            .iter()
+            .map(|tc| {
+                (
+                    tc.name.clone(),
+                    tc.input.to_string(),
+                    tc.result.clone().unwrap_or_default(),
+                )
+            })
+            .collect();
+        let tool_refs: Vec<(&str, &str, &str)> = tool_call_data
+            .iter()
+            .map(|(n, a, r)| (n.as_str(), a.as_str(), r.as_str()))
+            .collect();
+
+        if let Err(e) =
+            session
+                .loop_guard
+                .record(&turn_result.content, &turn_result.reasoning, &tool_refs)
+        {
+            warn!(
+                session_key = %session_key,
+                error = %e,
+                "loop guard detected agent loop — halting turn"
+            );
+            turn_result.content = format!(
+                "[System: Agent loop detected ({e}). \
+                 The agent appears to be stuck in a repetitive pattern. \
+                 Please provide guidance or clarification to continue.]"
+            );
+            session.brake_tripped = true;
+        }
+    }
+
     /// Extract quality metrics from a turn result and feed them to the
     /// per-session drift detector.
     pub(super) fn record_drift_metrics(&mut self, session_key: &str, turn_result: &TurnResult) {
@@ -287,10 +340,13 @@ impl NousActor {
             .await;
 
         self.apply_mistake_brake(&session_key, &mut result);
+        self.apply_loop_guard(&session_key, &mut result);
         self.finalize_turn(&session_key, &content, &result).await;
 
         // WHY: ignore send error: caller may have dropped the receiver
-        let _ = reply.send(result);
+        if let Err(_e) = reply.send(result) {
+            debug!("caller dropped the receiver");
+        }
     }
 
     /// # Cancel safety
@@ -325,10 +381,13 @@ impl NousActor {
             .await;
 
         self.apply_mistake_brake(&session_key, &mut result);
+        self.apply_loop_guard(&session_key, &mut result);
         self.finalize_turn(&session_key, &content, &result).await;
 
         // WHY: ignore send error: caller may have dropped the receiver
-        let _ = reply.send(result);
+        if let Err(_e) = reply.send(result) {
+            debug!("caller dropped the receiver");
+        }
         // NOTE: _stream_guard drops here, closing the channel if no other senders remain
     }
 

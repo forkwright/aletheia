@@ -1,4 +1,4 @@
-//! (Split from `actor/tests.rs` — see parent mod.)
+//! Internal-state behaviour tests for `NousActor`.
 
 #![expect(
     clippy::indexing_slicing,
@@ -122,6 +122,7 @@ fn record_drift_metrics_zero_tool_calls_produces_zero_error_rate() {
     let result = make_turn_result(50, vec![]);
     // Should not panic; zero-division guard must hold.
     actor.record_drift_metrics("s", &result);
+    assert!(actor.drift_detectors.contains_key("s"));
 }
 
 #[test]
@@ -271,4 +272,143 @@ fn mark_turn_active_resets_brake_when_tripped() {
 
     assert!(!actor.sessions["s"].brake_tripped);
     assert_eq!(actor.sessions["s"].consecutive_no_progress_count, 0);
+}
+
+// ── turn.rs: apply_loop_guard ───────────────────────────────────────────────
+
+#[test]
+fn apply_loop_guard_detects_doom_loop() {
+    let (mut actor, _tx, _dir) = make_test_actor(PipelineConfig::default());
+    actor.sessions.insert(
+        "s".to_owned(),
+        SessionState::new("ses-1".to_owned(), "s".to_owned(), &test_config()),
+    );
+
+    let tc = vec![make_tool_call("read_file", false)];
+    for _ in 0..2 {
+        let mut result = Ok(make_turn_result(50, tc.clone()));
+        actor.apply_loop_guard("s", &mut result);
+        assert!(!actor.sessions["s"].brake_tripped);
+    }
+
+    let mut result = Ok(make_turn_result(50, tc.clone()));
+    actor.apply_loop_guard("s", &mut result);
+    assert!(actor.sessions["s"].brake_tripped);
+    assert!(
+        result.unwrap().content.contains("Agent loop detected"),
+        "intervention message should be injected"
+    );
+}
+
+#[test]
+fn apply_loop_guard_detects_ping_pong() {
+    let (mut actor, _tx, _dir) = make_test_actor(PipelineConfig::default());
+    actor.sessions.insert(
+        "s".to_owned(),
+        SessionState::new("ses-1".to_owned(), "s".to_owned(), &test_config()),
+    );
+    // Use a custom loop guard with k=5 for ping-pong.
+    actor.sessions.get_mut("s").unwrap().loop_guard =
+        hermeneus::loop_detector::LoopGuard::with_limits(10, 5, 10);
+
+    let a = vec![make_tool_call("read_file", false)];
+    let b = vec![make_tool_call("write_file", false)];
+    let seq = [a.clone(), b.clone(), a.clone(), b.clone()];
+    for tc in seq {
+        let mut result = Ok(make_turn_result(50, tc));
+        actor.apply_loop_guard("s", &mut result);
+        assert!(!actor.sessions["s"].brake_tripped);
+    }
+
+    let mut result = Ok(make_turn_result(50, a.clone()));
+    actor.apply_loop_guard("s", &mut result);
+    assert!(actor.sessions["s"].brake_tripped);
+}
+
+#[test]
+fn apply_loop_guard_detects_no_progress() {
+    let (mut actor, _tx, _dir) = make_test_actor(PipelineConfig::default());
+    actor.sessions.insert(
+        "s".to_owned(),
+        SessionState::new("ses-1".to_owned(), "s".to_owned(), &test_config()),
+    );
+    // limit = 3 for no-progress.
+    actor.sessions.get_mut("s").unwrap().loop_guard =
+        hermeneus::loop_detector::LoopGuard::with_limits(10, 5, 3);
+
+    let tc = vec![make_tool_call("read_file", false)];
+    for _ in 0..2 {
+        let mut result = Ok(make_turn_result_with_content(50, tc.clone(), "same"));
+        actor.apply_loop_guard("s", &mut result);
+        assert!(!actor.sessions["s"].brake_tripped);
+    }
+
+    let mut result = Ok(make_turn_result_with_content(50, tc.clone(), "same"));
+    actor.apply_loop_guard("s", &mut result);
+    assert!(actor.sessions["s"].brake_tripped);
+}
+
+#[test]
+fn apply_loop_guard_reset_on_intervention() {
+    let (mut actor, _tx, _dir) = make_test_actor(PipelineConfig::default());
+    actor.sessions.insert(
+        "s".to_owned(),
+        SessionState::new("ses-1".to_owned(), "s".to_owned(), &test_config()),
+    );
+
+    let tc = vec![make_tool_call("read_file", false)];
+    for _ in 0..3 {
+        let mut result = Ok(make_turn_result(50, tc.clone()));
+        actor.apply_loop_guard("s", &mut result);
+    }
+    assert!(actor.sessions["s"].brake_tripped);
+
+    // Simulate operator intervention: mark_turn_active resets the guard.
+    actor.mark_turn_active("s");
+    assert!(!actor.sessions["s"].brake_tripped);
+
+    // Should not trigger immediately after reset.
+    let mut result = Ok(make_turn_result(50, tc.clone()));
+    actor.apply_loop_guard("s", &mut result);
+    assert!(!actor.sessions["s"].brake_tripped);
+}
+
+#[test]
+fn apply_loop_guard_no_tool_turn_does_not_fire() {
+    let (mut actor, _tx, _dir) = make_test_actor(PipelineConfig::default());
+    actor.sessions.insert(
+        "s".to_owned(),
+        SessionState::new("ses-1".to_owned(), "s".to_owned(), &test_config()),
+    );
+
+    for _ in 0..5 {
+        let mut result = Ok(make_turn_result_with_content(50, vec![], "same"));
+        actor.apply_loop_guard("s", &mut result);
+    }
+    // No tool calls → no-progress counter stays at 0.
+    assert!(!actor.sessions["s"].brake_tripped);
+}
+
+// Helper to create a TurnResult with custom content.
+fn make_turn_result_with_content(
+    output_tokens: u64,
+    tool_calls: Vec<crate::pipeline::ToolCall>,
+    content: &str,
+) -> crate::pipeline::TurnResult {
+    crate::pipeline::TurnResult {
+        content: content.to_owned(),
+        tool_calls,
+        usage: crate::pipeline::TurnUsage {
+            input_tokens: 10,
+            output_tokens,
+            cache_read_tokens: 0,
+            cache_write_tokens: 0,
+            llm_calls: 1,
+        },
+        signals: vec![],
+        stop_reason: "end_turn".to_owned(),
+        degraded: None,
+        reasoning: String::new(),
+        model_used: "test-model".to_owned(),
+    }
 }

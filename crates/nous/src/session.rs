@@ -46,6 +46,11 @@ pub struct SessionState {
     pub receipt_signer: ReceiptSigner,
     /// Per-session in-memory ledger of all emitted tool receipts.
     pub receipt_ledger: Arc<Mutex<ReceiptLedger>>,
+    /// Extended loop detector: doom-loop, ping-pong, and no-progress.
+    ///
+    /// WHY: persisted per-session so patterns are tracked across turns.
+    /// Reset on operator intervention via `reset_on_user_message`.
+    pub loop_guard: hermeneus::loop_detector::LoopGuard,
 }
 
 impl SessionState {
@@ -71,6 +76,7 @@ impl SessionState {
             brake_tripped: false,
             receipt_signer: ReceiptSigner::new_session(),
             receipt_ledger: Arc::new(Mutex::new(ReceiptLedger::default())),
+            loop_guard: hermeneus::loop_detector::LoopGuard::new(),
         }
     }
 
