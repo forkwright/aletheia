@@ -253,6 +253,24 @@ const _: fn() = || {
     assert::<AppState>();
 };
 
+/// State slice for meta-insights handlers.
+#[derive(Clone)]
+pub struct InsightsState {
+    /// Persistent session and message storage.
+    pub session_store: Arc<Mutex<SessionStore>>,
+    /// Manages nous actor lifecycles and provides handles.
+    pub nous_manager: Arc<NousManager>,
+}
+
+impl FromRef<Arc<AppState>> for InsightsState {
+    fn from_ref(state: &Arc<AppState>) -> Self {
+        Self {
+            session_store: Arc::clone(&state.session_store),
+            nous_manager: Arc::clone(&state.nous_manager),
+        }
+    }
+}
+
 /// State slice for the domain-event subscription handler.
 #[derive(Clone)]
 pub struct EventBusState {
@@ -283,6 +301,7 @@ mod tests {
         assert::<ConfigState>();
         assert::<SessionsState>();
         assert::<KnowledgeState>();
+        assert::<InsightsState>();
         assert::<EventBusState>();
     };
 }

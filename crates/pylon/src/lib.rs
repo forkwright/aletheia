@@ -14,6 +14,8 @@ pub mod extract;
 pub mod handlers;
 /// Idempotency-key cache for deduplicating message sends on retry.
 pub mod idempotency;
+/// Meta-insights computation: anomaly detection and metric aggregation.
+pub mod insights;
 /// Prometheus metrics collection and exposure.
 pub mod metrics;
 /// Custom Axum middleware layers (CSRF protection, request ID, error enrichment, HTTP metrics).
@@ -34,6 +36,8 @@ pub mod state;
 pub mod stream;
 /// In-memory turn event buffer for SSE client recovery after connection drops.
 pub mod turn_buffer;
+/// Shared API request and response types.
+pub mod types;
 
 #[cfg(test)]
 mod tests;

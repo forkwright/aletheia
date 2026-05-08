@@ -116,6 +116,97 @@ struct AgentEntry {
     name: String,
 }
 
+// -- New insights endpoint response types -----------------------------------
+
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+struct AgentPerformanceApiResponse {
+    #[serde(default)]
+    agents: Vec<AgentPerformanceEntry>,
+    #[serde(default)]
+    anomalies: Vec<AnomalyEntry>,
+}
+
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+struct AgentPerformanceEntry {
+    #[serde(default)]
+    agent_id: String,
+    #[serde(default)]
+    agent_name: String,
+    #[serde(default)]
+    avg_tokens_per_response: f64,
+    #[serde(default)]
+    tool_calls_per_session: f64,
+    #[serde(default)]
+    tool_success_rate: f64,
+    #[serde(default)]
+    distillation_frequency: f64,
+    #[serde(default)]
+    avg_context_before_distill: f64,
+    #[serde(default)]
+    messages_per_session: f64,
+    #[serde(default)]
+    sessions_per_day: f64,
+    #[serde(default)]
+    errors_per_session: f64,
+    #[serde(default)]
+    tokens_per_response_series: Vec<TimeSeriesPointEntry>,
+}
+
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+struct AnomalyEntry {
+    #[expect(dead_code, reason = "deserialized for completeness")]
+    #[serde(default)]
+    agent_id: String,
+    #[serde(default)]
+    agent_name: String,
+    #[serde(default)]
+    metric_name: String,
+    #[serde(default)]
+    current_value: f64,
+    #[serde(default)]
+    baseline_mean: f64,
+    #[serde(default)]
+    deviation_pct: f64,
+    #[serde(default)]
+    direction: String,
+}
+
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+struct QualityMetricsApiResponse {
+    #[serde(default)]
+    series: QualitySeriesEntry,
+}
+
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+struct QualitySeriesEntry {
+    #[serde(default)]
+    avg_turn_length: Vec<TimeSeriesPointEntry>,
+    #[serde(default)]
+    response_to_question_ratio: Vec<TimeSeriesPointEntry>,
+    #[serde(default)]
+    tool_call_density: Vec<TimeSeriesPointEntry>,
+    #[serde(default)]
+    thinking_time_ratio: Vec<TimeSeriesPointEntry>,
+}
+
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+struct TimeSeriesPointEntry {
+    #[serde(default)]
+    date: String,
+    #[serde(default)]
+    value: f64,
+}
+
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+struct JournalEventEntry {
+    #[serde(default)]
+    timestamp: String,
+    #[serde(default)]
+    event_type: String,
+    #[serde(default)]
+    message: String,
+}
+
 /// Composite data fetched from multiple API endpoints.
 #[derive(Debug, Clone)]
 struct MetaData {
@@ -380,18 +471,34 @@ async fn fetch_meta_data(cfg: &ConnectionConfig) -> FetchState<MetaData> {
     let timeline_url = format!("{base}/api/v1/knowledge/timeline");
     let sessions_url = format!("{base}/api/v1/sessions");
     let agents_url = format!("{base}/api/v1/nous");
+    let perf_url = format!("{base}/api/v1/metrics/agents");
+    let quality_url = format!("{base}/api/v1/metrics/quality");
+    let journal_url = format!("{base}/api/v1/journal");
 
     // WHY: Fetch all endpoints in parallel to minimize latency.
-    let (health_res, metrics_res, facts_res, entities_res, timeline_res, sessions_res, agents_res) =
-        tokio::join!(
-            client.get(&health_url).send(),
-            client.get(&metrics_url).send(),
-            client.get(&facts_url).send(),
-            client.get(&entities_url).send(),
-            client.get(&timeline_url).send(),
-            client.get(&sessions_url).send(),
-            client.get(&agents_url).send(),
-        );
+    let (
+        health_res,
+        metrics_res,
+        facts_res,
+        entities_res,
+        timeline_res,
+        sessions_res,
+        agents_res,
+        perf_res,
+        quality_res,
+        journal_res,
+    ) = tokio::join!(
+        client.get(&health_url).send(),
+        client.get(&metrics_url).send(),
+        client.get(&facts_url).send(),
+        client.get(&entities_url).send(),
+        client.get(&timeline_url).send(),
+        client.get(&sessions_url).send(),
+        client.get(&agents_url).send(),
+        client.get(&perf_url).send(),
+        client.get(&quality_url).send(),
+        client.get(&journal_url).send(),
+    );
 
     let health: HealthApiResponse = match health_res {
         Ok(resp) if resp.status().is_success() => {
@@ -468,6 +575,32 @@ async fn fetch_meta_data(cfg: &ConnectionConfig) -> FetchState<MetaData> {
         _ => Vec::new(),
     };
 
-    let data = assemble_meta_data(health, metrics, facts, entities, timeline, sessions, agents);
+    let perf: AgentPerformanceApiResponse = match perf_res {
+        Ok(resp) if resp.status().is_success() => resp.json().await.unwrap_or_default(),
+        _ => AgentPerformanceApiResponse::default(),
+    };
+
+    let quality: QualityMetricsApiResponse = match quality_res {
+        Ok(resp) if resp.status().is_success() => resp.json().await.unwrap_or_default(),
+        _ => QualityMetricsApiResponse::default(),
+    };
+
+    let journal: Vec<JournalEventEntry> = match journal_res {
+        Ok(resp) if resp.status().is_success() => resp.json().await.unwrap_or_default(),
+        _ => Vec::new(),
+    };
+
+    let data = assemble_meta_data(
+        health,
+        metrics,
+        facts,
+        entities,
+        timeline,
+        sessions,
+        agents,
+        perf,
+        quality,
+        journal,
+    );
     FetchState::Loaded(data)
 }

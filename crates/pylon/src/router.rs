@@ -17,7 +17,9 @@ use tracing::info_span;
 use koina::http::{API_HEALTH, API_V1};
 
 use crate::error::{ApiError, ErrorBody, ErrorResponse};
-use crate::handlers::{config, events, health, knowledge, metrics, nous, planning, sessions};
+use crate::handlers::{
+    config, events, health, insights, knowledge, metrics, nous, planning, sessions,
+};
 use crate::middleware::{
     CsrfState, DeprecationLayer, ETagLayer, RateLimiter, RequestId, UserRateLimiter, deprecate,
     enrich_error_response, inject_request_id, per_user_rate_limit, rate_limit, record_http_metrics,
@@ -125,6 +127,10 @@ pub fn build_router_with(
         .route("/knowledge/search", get(knowledge::search))
         .route("/knowledge/timeline", get(knowledge::timeline))
         .route("/knowledge/check", get(knowledge::check_graph_health))
+        .route("/metrics/agents", get(insights::get_agent_perf))
+        .route("/metrics/agents/{id}", get(insights::get_agent_perf_one))
+        .route("/metrics/quality", get(insights::get_quality_metrics))
+        .route("/journal", get(insights::get_journal))
         // WHY(#3266): planning routes belong under the versioned prefix.
         // The desktop app (proskenion) adapts to the API, not the reverse.
         .route(

@@ -3,14 +3,19 @@
 use std::collections::HashMap;
 
 use super::{
-    AgentEntry, AgentPerformanceStore, EntityEntry, FactEntry, HealthApiResponse,
-    KnowledgeGrowthStore, MemoryHealthStore, MetaData, MetricsApiResponse, QualityStore,
-    SessionEntry, SystemReflectionStore, TimelineEntry,
+    AgentEntry, AgentPerformanceApiResponse, AgentPerformanceStore,
+    EntityEntry, FactEntry, HealthApiResponse, JournalEventEntry,
+    KnowledgeGrowthStore, MemoryHealthStore, MetaData, MetricsApiResponse, QualityMetricsApiResponse,
+    QualityStore, SessionEntry, SystemReflectionStore, TimelineEntry, TimeSeriesPointEntry,
 };
 
 /// Assemble all fetched data into the composite `MetaData` structure.
 #[expect(clippy::cast_precision_loss, reason = "display-only metrics")]
 #[expect(clippy::as_conversions, reason = "display-only metrics assembly")]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "data assembly requires all fetched API sources"
+)]
 pub(super) fn assemble_meta_data(
     health: HealthApiResponse,
     metrics: MetricsApiResponse,
@@ -19,38 +24,95 @@ pub(super) fn assemble_meta_data(
     timeline: Vec<TimelineEntry>,
     sessions: Vec<SessionEntry>,
     agents: Vec<AgentEntry>,
+    perf: AgentPerformanceApiResponse,
+    quality: QualityMetricsApiResponse,
+    journal: Vec<JournalEventEntry>,
 ) -> MetaData {
     // -- Performance --
     let mut scorecards = Vec::new();
-    for agent in &agents {
-        let agent_sessions: Vec<&SessionEntry> =
-            sessions.iter().filter(|s| s.nous_id == agent.id).collect();
-        let session_count = agent_sessions.len().max(1) as f64;
-        let total_messages: u32 = agent_sessions.iter().map(|s| s.message_count).sum();
+    let mut anomalies = Vec::new();
+    let mut tokens_per_response_series: HashMap<String, Vec<crate::state::meta::DataPoint>> =
+        HashMap::new();
 
-        scorecards.push(crate::state::meta::AgentScorecard {
-            agent_id: agent.id.clone(),
-            agent_name: if agent.name.is_empty() {
-                agent.id.clone()
-            } else {
-                agent.name.clone()
-            },
-            avg_tokens_per_response: 0.0,
-            tool_calls_per_session: 0.0,
-            tool_success_rate: 0.0,
-            distillation_frequency: 0.0,
-            avg_context_before_distill: 0.0,
-            messages_per_session: total_messages as f64 / session_count,
-            sessions_per_day: compute_sessions_per_day(&agent_sessions),
-            errors_per_session: 0.0,
-        });
+    if perf.agents.is_empty() {
+        // Fallback: compute from sessions/agents when endpoint returns empty.
+        for agent in &agents {
+            let agent_sessions: Vec<&SessionEntry> =
+                sessions.iter().filter(|s| s.nous_id == agent.id).collect();
+            let session_count = agent_sessions.len().max(1) as f64;
+            let total_messages: u32 = agent_sessions.iter().map(|s| s.message_count).sum();
+
+            scorecards.push(crate::state::meta::AgentScorecard {
+                agent_id: agent.id.clone(),
+                agent_name: if agent.name.is_empty() {
+                    agent.id.clone()
+                } else {
+                    agent.name.clone()
+                },
+                avg_tokens_per_response: 0.0,
+                tool_calls_per_session: 0.0,
+                tool_success_rate: 0.0,
+                distillation_frequency: 0.0,
+                avg_context_before_distill: 0.0,
+                messages_per_session: total_messages as f64 / session_count,
+                sessions_per_day: compute_sessions_per_day(&agent_sessions),
+                errors_per_session: 0.0,
+            });
+        }
+    } else {
+        for entry in &perf.agents {
+            scorecards.push(crate::state::meta::AgentScorecard {
+                agent_id: entry.agent_id.clone(),
+                agent_name: if entry.agent_name.is_empty() {
+                    entry.agent_id.clone()
+                } else {
+                    entry.agent_name.clone()
+                },
+                avg_tokens_per_response: entry.avg_tokens_per_response,
+                tool_calls_per_session: entry.tool_calls_per_session,
+                tool_success_rate: entry.tool_success_rate,
+                distillation_frequency: entry.distillation_frequency,
+                avg_context_before_distill: entry.avg_context_before_distill,
+                messages_per_session: entry.messages_per_session,
+                sessions_per_day: entry.sessions_per_day,
+                errors_per_session: entry.errors_per_session,
+            });
+
+            if !entry.tokens_per_response_series.is_empty() {
+                let series: Vec<crate::state::meta::DataPoint> = entry
+                    .tokens_per_response_series
+                    .iter()
+                    .map(|p| crate::state::meta::DataPoint {
+                        label: p.date.clone(),
+                        value: p.value,
+                    })
+                    .collect();
+                tokens_per_response_series.insert(entry.agent_id.clone(), series);
+            }
+        }
+
+        for entry in &perf.anomalies {
+            let direction = match entry.direction.as_str() {
+                "up" => crate::state::meta::TrendDirection::Up,
+                "down" => crate::state::meta::TrendDirection::Down,
+                _ => crate::state::meta::TrendDirection::Flat,
+            };
+            anomalies.push(crate::state::meta::Anomaly {
+                agent_name: entry.agent_name.clone(),
+                metric_name: entry.metric_name.clone(),
+                current_value: entry.current_value,
+                baseline_mean: entry.baseline_mean,
+                deviation_pct: entry.deviation_pct,
+                direction,
+            });
+        }
     }
 
     let performance = AgentPerformanceStore {
         scorecards,
-        anomalies: Vec::new(),
-        tokens_per_response_series: HashMap::new(),
-        endpoint_available: false,
+        anomalies,
+        tokens_per_response_series,
+        endpoint_available: true,
     };
 
     // -- Quality --
@@ -63,14 +125,19 @@ pub(super) fn assemble_meta_data(
         }
     }
 
+    let avg_turn_length = convert_series(&quality.series.avg_turn_length);
+    let response_to_question_ratio = convert_series(&quality.series.response_to_question_ratio);
+    let tool_call_density = convert_series(&quality.series.tool_call_density);
+    let thinking_time_ratio = convert_series(&quality.series.thinking_time_ratio);
+
     let quality = QualityStore {
-        avg_turn_length: Vec::new(),
-        response_to_question_ratio: Vec::new(),
-        tool_call_density: Vec::new(),
-        thinking_time_ratio: Vec::new(),
+        avg_turn_length,
+        response_to_question_ratio,
+        tool_call_density,
+        thinking_time_ratio,
         depth_distribution: depth,
         top_topics: Vec::new(),
-        charts_endpoint_available: false,
+        charts_endpoint_available: true,
     };
 
     // -- Knowledge growth --
@@ -243,12 +310,21 @@ pub(super) fn assemble_meta_data(
         .collect();
     let heatmap = crate::state::meta::build_heatmap(&timestamps);
 
+    let journal_events: Vec<crate::state::meta::JournalEvent> = journal
+        .into_iter()
+        .map(|e| crate::state::meta::JournalEvent {
+            timestamp: e.timestamp,
+            event_type: parse_journal_event_type(&e.event_type),
+            message: e.message,
+        })
+        .collect();
+
     let reflection = SystemReflectionStore {
         overview,
         heatmap,
         efficiency,
-        journal: Vec::new(),
-        journal_endpoint_available: false,
+        journal: journal_events,
+        journal_endpoint_available: true,
     };
 
     MetaData {
@@ -257,6 +333,28 @@ pub(super) fn assemble_meta_data(
         knowledge,
         health: mem_health,
         reflection,
+    }
+}
+
+/// Convert API time-series entries to internal `DataPoint` values.
+fn convert_series(entries: &[TimeSeriesPointEntry]) -> Vec<crate::state::meta::DataPoint> {
+    entries
+        .iter()
+        .map(|e| crate::state::meta::DataPoint {
+            label: e.date.clone(),
+            value: e.value,
+        })
+        .collect()
+}
+
+/// Parse a journal event type string into the internal enum.
+fn parse_journal_event_type(s: &str) -> crate::state::meta::JournalEventType {
+    match s {
+        "error" => crate::state::meta::JournalEventType::Error,
+        "distillation" => crate::state::meta::JournalEventType::Distillation,
+        "config" => crate::state::meta::JournalEventType::ConfigChange,
+        "memory" => crate::state::meta::JournalEventType::MemoryMerge,
+        _ => crate::state::meta::JournalEventType::Error,
     }
 }
 
