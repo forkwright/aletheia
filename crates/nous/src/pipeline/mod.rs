@@ -146,6 +146,84 @@ pub enum LoopVerdict {
     },
 }
 
+/// Assemble a sequence of [`Step`]s from pipeline messages.
+///
+/// Walks the message stream and groups each assistant message with the
+/// contiguous tool-result messages that follow it. Each group becomes one
+/// [`Step`] where the assistant content is the `self_note` and the tool
+/// results become [`Observation`]s.
+///
+/// Non-tool user messages (e.g., the original user prompt) act as turn
+/// boundaries but do not produce Steps themselves.
+///
+/// # Edge cases
+///
+/// - Tool results with no preceding assistant message are attached to the
+///   most recent prior step. If no prior step exists, they are dropped.
+/// - An assistant message with no trailing tool results produces a step with
+///   empty observations.
+pub fn assemble_steps(messages: &[PipelineMessage]) -> Vec<crate::memory::step::Step> {
+    use crate::memory::step::{Observation, Step};
+
+    let mut steps: Vec<Step> = Vec::new();
+    let mut current_note: Option<String> = None;
+    let mut current_obs: Vec<Observation> = Vec::new();
+
+    for msg in messages {
+        match msg.role.as_str() {
+            "assistant" => {
+                if let Some(note) = current_note.take() {
+                    steps.push(Step::from_assistant_turn(
+                        note,
+                        std::mem::take(&mut current_obs),
+                        steps.len(),
+                    ));
+                }
+                current_note = Some(msg.content.clone());
+            }
+            "user" if msg.content.starts_with("[tool:") => {
+                let source = extract_tool_name(&msg.content)
+                    .map_or_else(|| "unknown".to_owned(), std::borrow::ToOwned::to_owned);
+                let obs = Observation::new(source, msg.content.clone());
+                if current_note.is_some() {
+                    current_obs.push(obs);
+                } else if let Some(last) = steps.last_mut() {
+                    last.observations.push(obs);
+                }
+                // If there are no steps at all, drop the orphan.
+            }
+            _ => {
+                if let Some(note) = current_note.take() {
+                    steps.push(Step::from_assistant_turn(
+                        note,
+                        std::mem::take(&mut current_obs),
+                        steps.len(),
+                    ));
+                }
+            }
+        }
+    }
+
+    if let Some(note) = current_note.take() {
+        steps.push(Step::from_assistant_turn(
+            note,
+            std::mem::take(&mut current_obs),
+            steps.len(),
+        ));
+    }
+
+    steps
+}
+
+/// Extract the tool name from a formatted tool result message.
+///
+/// Expects content starting with `[tool:<name>@<timestamp>]`.
+fn extract_tool_name(content: &str) -> Option<&str> {
+    let content = content.strip_prefix("[tool:")?;
+    let end = content.find('@')?;
+    content.get(..end)
+}
+
 /// A recorded tool call with execution outcome.
 #[derive(Debug, Clone)]
 struct CallRecord {

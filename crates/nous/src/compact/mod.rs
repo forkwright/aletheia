@@ -113,6 +113,76 @@ pub fn select_prompt(reason: CompactReason) -> &'static str {
     }
 }
 
+use crate::memory::step::Step;
+
+/// Strategy for applying context compaction to a sequence of steps.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "#193 will wire CompactionStrategy into the pipeline"
+    )
+)]
+#[non_exhaustive]
+pub enum CompactionStrategy {
+    /// Uniform tail truncation (current default).
+    UniformTail,
+    /// Step-positional: last 2 steps full, earlier i < n-2 notes-only.
+    StepPositional,
+}
+
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "#193 will wire CompactionStrategy into the pipeline"
+    )
+)]
+impl CompactionStrategy {
+    /// Apply the strategy to a step sequence under a token budget.
+    ///
+    /// Returns a new sequence where steps may be compacted or dropped
+    /// depending on the strategy and budget.
+    ///
+    /// # Note
+    ///
+    /// [`CompactionStrategy::StepPositional`] is currently a stub: it
+    /// delegates to [`CompactionStrategy::UniformTail`] until #193
+    /// implements the actual `i < n-2 → notes-only` rule.
+    #[must_use]
+    pub fn apply(self, steps: &[Step], budget: usize) -> Vec<Step> {
+        match self {
+            Self::UniformTail => Self::apply_uniform_tail(steps, budget),
+            Self::StepPositional => {
+                // TODO(#193)[deliberate-prudent]: implement step-positional degradation:
+                //   i < n-2 → notes only (Step::compact)
+                //   last 2 steps → full content
+                // For now, delegate to UniformTail to avoid behavioural change.
+                Self::apply_uniform_tail(steps, budget)
+            }
+        }
+    }
+
+    fn apply_uniform_tail(steps: &[Step], budget: usize) -> Vec<Step> {
+        let mut result = Vec::new();
+        let mut used: usize = 0;
+
+        for step in steps.iter().rev() {
+            let cost = step.token_estimate();
+            let new_used = used.saturating_add(cost);
+            if new_used > budget && !result.is_empty() {
+                break;
+            }
+            result.push(step.clone());
+            used = new_used;
+        }
+
+        result.reverse();
+        result
+    }
+}
+
 #[cfg(test)]
 mod prompt_tests;
 
@@ -120,6 +190,10 @@ mod prompt_tests;
 #[expect(
     clippy::expect_used,
     reason = "test assertions use .expect() for descriptive panic messages"
+)]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test: vec indices are valid after asserting sufficient length"
 )]
 mod tests {
     use super::*;
@@ -183,6 +257,86 @@ mod tests {
         assert_eq!(
             config.max_critical_files, 5,
             "max_critical_files should default to 5"
+        );
+    }
+
+    #[test]
+    fn uniform_tail_preserves_recent_steps() {
+        let steps: Vec<Step> = (0..5)
+            .map(|i| Step {
+                self_note: format!("step {i}"),
+                observations: Vec::new(),
+                summary: None,
+                index: i,
+                started_at: jiff::Timestamp::now(),
+            })
+            .collect();
+
+        // Each step is ~3 tokens ("step N".len() / 4 = 2 or 3).
+        // Budget of 6 tokens should keep the last 2-3 steps.
+        let result = CompactionStrategy::UniformTail.apply(&steps, 6);
+        assert!(
+            !result.is_empty(),
+            "UniformTail should preserve at least the most recent step"
+        );
+        assert_eq!(
+            result.last().expect("result should not be empty").index,
+            4,
+            "most recent step (index 4) should always be preserved"
+        );
+    }
+
+    #[test]
+    fn uniform_tail_passthrough_when_under_budget() {
+        let steps: Vec<Step> = (0..3)
+            .map(|i| Step {
+                self_note: "x".to_owned(),
+                observations: Vec::new(),
+                summary: None,
+                index: i,
+                started_at: jiff::Timestamp::now(),
+            })
+            .collect();
+
+        let result = CompactionStrategy::UniformTail.apply(&steps, 10_000);
+        assert_eq!(
+            result.len(),
+            steps.len(),
+            "under-budget should return all steps unchanged"
+        );
+        assert_eq!(result[0].index, 0);
+        assert_eq!(result[2].index, 2);
+    }
+
+    #[test]
+    fn step_positional_stub_delegates_to_uniform_tail() {
+        let steps: Vec<Step> = (0..5)
+            .map(|i| Step {
+                self_note: format!("step {i}"),
+                observations: Vec::new(),
+                summary: None,
+                index: i,
+                started_at: jiff::Timestamp::now(),
+            })
+            .collect();
+
+        let uniform_result = CompactionStrategy::UniformTail.apply(&steps, 6);
+        let positional_result = CompactionStrategy::StepPositional.apply(&steps, 6);
+        assert_eq!(
+            uniform_result.len(),
+            positional_result.len(),
+            "StepPositional stub should produce same length as UniformTail"
+        );
+        assert_eq!(
+            uniform_result
+                .last()
+                .expect("uniform_result not empty")
+                .index,
+            positional_result
+                .last()
+                .expect("positional_result not empty")
+                .index,
+            "StepPositional stub should preserve same tail as UniformTail"
         );
     }
 }
