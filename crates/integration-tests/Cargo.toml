@@ -42,4 +42,5 @@ tokio = { workspace = true }
 tokio-util = { workspace = true }
 tracing = { workspace = true }
 http-body-util = "0.1"
+indexmap = { workspace = true }
 tower = { workspace = true }

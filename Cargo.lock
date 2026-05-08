@@ -4729,6 +4729,7 @@ dependencies = [
  "episteme",
  "hermeneus",
  "http-body-util",
+ "indexmap 2.14.0",
  "jiff",
  "koina",
  "mneme",
