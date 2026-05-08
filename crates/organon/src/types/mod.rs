@@ -55,6 +55,48 @@ impl std::fmt::Display for ToolGroupId {
     }
 }
 
+/// Operational-intent tag for cross-category tool lookup.
+///
+/// Categories ([`ToolCategory`]) are structural / navigational; tags describe
+/// what the tool *does* at an operational level.  A single tool may carry
+/// multiple tags.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum ToolTag {
+    /// Intel-gathering, discovery, read-only inspection.
+    Recon,
+    /// File or state mutation.
+    Edit,
+    /// Tests, lints, checks, validation.
+    Verify,
+    /// External data retrieval (HTTP, MCP, web search, etc.).
+    Fetch,
+    /// Sub-agent or task creation.
+    Spawn,
+    /// Planning, design-doc, strategy, roadmap.
+    Plan,
+    /// Shell, cargo, runtime commands, and communication dispatch.
+    Execute,
+    /// Document / report / slide / spreadsheet generation and output-shaping.
+    Format,
+}
+
+impl std::fmt::Display for ToolTag {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Recon => f.write_str("recon"),
+            Self::Edit => f.write_str("edit"),
+            Self::Verify => f.write_str("verify"),
+            Self::Fetch => f.write_str("fetch"),
+            Self::Spawn => f.write_str("spawn"),
+            Self::Plan => f.write_str("plan"),
+            Self::Execute => f.write_str("execute"),
+            Self::Format => f.write_str("format"),
+        }
+    }
+}
+
 /// Tool definition: the rich metadata that organon tracks internally.
 ///
 /// Converted to `hermeneus::types::ToolDefinition` (the lean LLM wire format)
@@ -63,7 +105,7 @@ impl std::fmt::Display for ToolGroupId {
 /// # Examples
 ///
 /// ```no_run
-/// use organon::types::{ToolDef, InputSchema, ToolCategory, Reversibility, ToolGroupId};
+/// use organon::types::{ToolDef, InputSchema, ToolCategory, Reversibility, ToolGroupId, ToolTag};
 /// use koina::id::ToolName;
 ///
 /// let def = ToolDef {
@@ -78,6 +120,7 @@ impl std::fmt::Display for ToolGroupId {
 ///     reversibility: Reversibility::FullyReversible,
 ///     auto_activate: true,
 ///     groups: vec![ToolGroupId::Read],
+///     tags: vec![ToolTag::Recon],
 /// };
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -100,6 +143,9 @@ pub struct ToolDef {
     /// Tool groups this tool belongs to.  Used for role-based gating.
     #[serde(default)]
     pub groups: Vec<ToolGroupId>,
+    /// Operational-intent tags for cross-category lookup.
+    #[serde(default)]
+    pub tags: Vec<ToolTag>,
 }
 
 /// JSON Schema for tool input parameters.

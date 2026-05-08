@@ -16,7 +16,7 @@ use crate::error::Result;
 use crate::registry::ToolExecutor;
 use crate::types::{
     InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
-    ToolGroupId, ToolInput, ToolResult,
+    ToolGroupId, ToolInput, ToolResult, ToolTag,
 };
 
 use super::shared::{opt_bool, opt_u64, require_str, to_json_text};
@@ -85,6 +85,7 @@ pub(super) fn dromeus_def() -> ToolDef {
         reversibility: Reversibility::Irreversible,
         auto_activate: false,
         groups: vec![ToolGroupId::SpawnSubtask],
+        tags: vec![ToolTag::Spawn, ToolTag::Execute],
     }
 }
 

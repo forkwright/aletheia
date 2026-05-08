@@ -21,7 +21,7 @@ use crate::process_guard::ProcessGuard;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
     InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
-    ToolDiagnostics, ToolGroupId, ToolInput, ToolResult,
+    ToolDiagnostics, ToolGroupId, ToolInput, ToolResult, ToolTag,
 };
 
 /// Strip absolute path prefixes from an error message, showing only the filename.
@@ -815,6 +815,7 @@ fn read_def() -> ToolDef {
         reversibility: Reversibility::FullyReversible,
         auto_activate: true,
         groups: vec![ToolGroupId::Read],
+        tags: vec![ToolTag::Recon],
     }
 }
 
@@ -859,6 +860,7 @@ fn write_def() -> ToolDef {
         reversibility: Reversibility::Reversible,
         auto_activate: true,
         groups: vec![ToolGroupId::Edit],
+        tags: vec![ToolTag::Edit],
     }
 }
 
@@ -907,6 +909,7 @@ fn edit_def() -> ToolDef {
         reversibility: Reversibility::Reversible,
         auto_activate: true,
         groups: vec![ToolGroupId::Edit],
+        tags: vec![ToolTag::Edit],
     }
 }
 
@@ -943,6 +946,7 @@ fn exec_def() -> ToolDef {
         reversibility: Reversibility::Irreversible,
         auto_activate: true,
         groups: vec![ToolGroupId::Command],
+        tags: vec![ToolTag::Execute],
     }
 }
 

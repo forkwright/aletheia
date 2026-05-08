@@ -241,6 +241,7 @@ fn register_single_tool(
         reversibility: Reversibility::FullyReversible,
         auto_activate: false,
         groups: vec![],
+        tags: vec![],
     };
 
     let executor = ExternalToolExecutor {

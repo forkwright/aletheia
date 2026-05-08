@@ -56,6 +56,7 @@ fn make_def(name: &str, category: ToolCategory) -> ToolDef {
         reversibility: Reversibility::Irreversible,
         auto_activate: false,
         groups: vec![ToolGroupId::Read],
+        tags: vec![],
     }
 }
 
@@ -213,6 +214,7 @@ fn to_hermeneus_tools_produces_valid_definitions() {
         reversibility: Reversibility::Irreversible,
         auto_activate: false,
         groups: vec![ToolGroupId::Read],
+        tags: vec![],
     };
     reg.register(def, exec).expect("register");
 
@@ -303,6 +305,7 @@ fn make_def_with_activate(name: &str, category: ToolCategory, auto_activate: boo
         reversibility: Reversibility::Irreversible,
         auto_activate,
         groups: vec![ToolGroupId::Read],
+        tags: vec![],
     }
 }
 
@@ -459,6 +462,7 @@ fn schema_includes_required_fields() {
         reversibility: Reversibility::Irreversible,
         auto_activate: false,
         groups: vec![ToolGroupId::Read],
+        tags: vec![],
     };
     reg.register(def, exec).expect("register");
     let tools = reg.to_hermeneus_tools();
@@ -493,6 +497,7 @@ fn schema_includes_enum_values() {
         reversibility: Reversibility::Irreversible,
         auto_activate: false,
         groups: vec![ToolGroupId::Read],
+        tags: vec![],
     };
     reg.register(def, exec).expect("register");
     let tools = reg.to_hermeneus_tools();
@@ -526,6 +531,7 @@ fn schema_includes_default_values() {
         reversibility: Reversibility::Irreversible,
         auto_activate: false,
         groups: vec![ToolGroupId::Read],
+        tags: vec![],
     };
     reg.register(def, exec).expect("register");
     let tools = reg.to_hermeneus_tools();
@@ -553,6 +559,7 @@ fn lazy_catalog_includes_description() {
             reversibility: Reversibility::Irreversible,
             auto_activate: false,
             groups: vec![ToolGroupId::Read],
+            tags: vec![],
         },
         exec,
     )

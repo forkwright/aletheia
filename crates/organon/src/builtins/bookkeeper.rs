@@ -14,7 +14,7 @@ use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
     InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
-    ToolGroupId, ToolInput, ToolResult,
+    ToolGroupId, ToolInput, ToolResult, ToolTag,
 };
 
 /// Stub executor for bookkeeper tools.
@@ -99,6 +99,7 @@ fn tamias_def() -> ToolDef {
         reversibility: Reversibility::PartiallyReversible,
         auto_activate: false,
         groups: vec![ToolGroupId::Read, ToolGroupId::Verify],
+        tags: vec![ToolTag::Edit],
     }
 }
 
@@ -149,6 +150,7 @@ fn katharos_def() -> ToolDef {
         reversibility: Reversibility::Irreversible,
         auto_activate: false,
         groups: vec![ToolGroupId::Read, ToolGroupId::Verify],
+        tags: vec![ToolTag::Edit, ToolTag::Execute],
     }
 }
 

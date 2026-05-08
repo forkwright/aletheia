@@ -29,6 +29,7 @@ fn echo_def() -> ToolDef {
         reversibility: Reversibility::Irreversible,
         auto_activate: false,
         groups: vec![ToolGroupId::Read],
+        tags: vec![],
     }
 }
 
@@ -55,6 +56,7 @@ fn note_def() -> ToolDef {
         reversibility: Reversibility::Irreversible,
         auto_activate: false,
         groups: vec![ToolGroupId::Read],
+        tags: vec![],
     }
 }
 

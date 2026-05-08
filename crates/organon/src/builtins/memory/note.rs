@@ -11,7 +11,7 @@ use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
     InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
-    ToolGroupId, ToolInput, ToolResult,
+    ToolGroupId, ToolInput, ToolResult, ToolTag,
 };
 
 use crate::builtins::workspace::extract_str;
@@ -151,6 +151,7 @@ fn note_def() -> ToolDef {
         reversibility: Reversibility::Reversible,
         auto_activate: true,
         groups: vec![ToolGroupId::Read, ToolGroupId::Edit],
+        tags: vec![ToolTag::Edit],
     }
 }
 

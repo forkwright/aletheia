@@ -13,7 +13,7 @@ use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
     InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
-    ToolGroupId, ToolInput, ToolResult,
+    ToolGroupId, ToolInput, ToolResult, ToolTag,
 };
 
 struct RenderPptxReportExecutor;
@@ -109,6 +109,7 @@ fn render_pptx_report_def() -> ToolDef {
         reversibility: Reversibility::FullyReversible,
         auto_activate: false,
         groups: vec![ToolGroupId::Edit],
+        tags: vec![ToolTag::Format],
     }
 }
 

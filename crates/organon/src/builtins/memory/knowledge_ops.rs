@@ -11,7 +11,7 @@ use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
     InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
-    ToolGroupId, ToolInput, ToolResult,
+    ToolGroupId, ToolInput, ToolResult, ToolTag,
 };
 
 use crate::builtins::workspace::{extract_opt_u64, extract_str};
@@ -246,6 +246,7 @@ fn memory_search_def() -> ToolDef {
         reversibility: Reversibility::FullyReversible,
         auto_activate: true,
         groups: vec![ToolGroupId::Read],
+        tags: vec![ToolTag::Recon],
     }
 }
 
@@ -281,6 +282,7 @@ fn memory_correct_def() -> ToolDef {
         reversibility: Reversibility::PartiallyReversible,
         auto_activate: false,
         groups: vec![ToolGroupId::Edit],
+        tags: vec![ToolTag::Edit],
     }
 }
 
@@ -316,6 +318,7 @@ fn memory_retract_def() -> ToolDef {
         reversibility: Reversibility::PartiallyReversible,
         auto_activate: false,
         groups: vec![ToolGroupId::Edit],
+        tags: vec![ToolTag::Edit],
     }
 }
 
@@ -357,6 +360,7 @@ fn memory_forget_def() -> ToolDef {
         reversibility: Reversibility::PartiallyReversible,
         auto_activate: false,
         groups: vec![ToolGroupId::Edit],
+        tags: vec![ToolTag::Edit],
     }
 }
 
@@ -401,6 +405,7 @@ fn memory_audit_def() -> ToolDef {
         reversibility: Reversibility::FullyReversible,
         auto_activate: false,
         groups: vec![ToolGroupId::Read, ToolGroupId::Verify],
+        tags: vec![ToolTag::Verify, ToolTag::Recon],
     }
 }
 

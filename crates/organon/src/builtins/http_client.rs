@@ -21,7 +21,7 @@ use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
     InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
-    ToolGroupId, ToolInput, ToolResult,
+    ToolGroupId, ToolInput, ToolResult, ToolTag,
 };
 
 use super::workspace::{extract_opt_str, extract_opt_u64, extract_str};
@@ -355,6 +355,7 @@ fn http_request_def() -> ToolDef {
         reversibility: Reversibility::Irreversible,
         auto_activate: false,
         groups: vec![ToolGroupId::Mcp],
+        tags: vec![ToolTag::Fetch],
     }
 }
 

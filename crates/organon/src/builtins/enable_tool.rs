@@ -11,7 +11,7 @@ use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
     InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
-    ToolGroupId, ToolInput, ToolResult,
+    ToolGroupId, ToolInput, ToolResult, ToolTag,
 };
 
 use super::workspace::extract_str;
@@ -101,6 +101,7 @@ fn enable_tool_def() -> ToolDef {
         reversibility: Reversibility::FullyReversible,
         auto_activate: true,
         groups: vec![ToolGroupId::Read],
+        tags: vec![ToolTag::Execute],
     }
 }
 

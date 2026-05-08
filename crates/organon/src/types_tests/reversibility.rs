@@ -157,6 +157,7 @@ fn tool_def_includes_reversibility_in_serde() {
         reversibility: Reversibility::Reversible,
         auto_activate: false,
         groups: vec![ToolGroupId::Read],
+        tags: vec![],
     };
     let json = serde_json::to_string(&def).expect("serialize");
     let back: ToolDef = serde_json::from_str(&json).expect("deserialize");

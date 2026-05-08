@@ -13,7 +13,7 @@ use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
     InputSchema, PropertyDef, PropertyType, Reversibility, SpawnRequest, SpawnResult, ToolCategory,
-    ToolContext, ToolDef, ToolGroupId, ToolInput, ToolResult,
+    ToolContext, ToolDef, ToolGroupId, ToolInput, ToolResult, ToolTag,
 };
 
 /// Fallback default; runtime reads `ctx.tool_config.agent_dispatch_timeout_secs`.
@@ -308,6 +308,7 @@ fn sessions_spawn_def() -> ToolDef {
         reversibility: Reversibility::PartiallyReversible,
         auto_activate: false,
         groups: vec![ToolGroupId::SpawnSubtask],
+        tags: vec![ToolTag::Spawn],
     }
 }
 
@@ -349,6 +350,7 @@ fn sessions_dispatch_def() -> ToolDef {
         reversibility: Reversibility::Irreversible,
         auto_activate: false,
         groups: vec![ToolGroupId::SpawnSubtask],
+        tags: vec![ToolTag::Spawn],
     }
 }
 

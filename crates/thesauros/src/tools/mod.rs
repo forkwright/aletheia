@@ -272,6 +272,7 @@ fn prepare_tool(
         reversibility: organon::types::Reversibility::Irreversible,
         auto_activate: false,
         groups: vec![],
+        tags: vec![],
     };
 
     let executor = Box::new(ShellToolExecutor {
