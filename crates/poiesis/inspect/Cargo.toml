@@ -16,3 +16,11 @@ snafu = { workspace = true }
 tracing = { workspace = true }
 zip = "8"
 pdf-extract = "0.10"
+lopdf = "0.38"
+indexmap = { workspace = true }
+
+[dev-dependencies]
+poiesis-sheet = { path = "../sheet" }
+poiesis-text = { path = "../text" }
+poiesis-core = { path = "../core" }
+serde_json = { workspace = true }

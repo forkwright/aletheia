@@ -5156,21 +5156,25 @@ dependencies = [
  "aes",
  "bitflags 2.11.0",
  "cbc",
+ "chrono",
  "ecb",
  "encoding_rs",
  "flate2",
  "getrandom 0.3.4",
  "indexmap 2.14.0",
  "itoa",
+ "jiff",
  "log",
  "md-5",
  "nom 8.0.0",
  "nom_locate 5.0.0",
  "rand 0.9.4",
  "rangemap",
+ "rayon",
  "sha2 0.10.9",
  "stringprep",
  "thiserror 2.0.18",
+ "time",
  "ttf-parser",
  "weezl",
 ]
@@ -6553,6 +6557,9 @@ dependencies = [
 name = "poiesis-diff"
 version = "0.21.1"
 dependencies = [
+ "indexmap 2.14.0",
+ "poiesis-sheet",
+ "serde_json",
  "snafu",
  "tracing",
  "zip 8.5.1",
@@ -6575,7 +6582,13 @@ dependencies = [
 name = "poiesis-inspect"
 version = "0.21.1"
 dependencies = [
+ "indexmap 2.14.0",
+ "lopdf",
  "pdf-extract",
+ "poiesis-core",
+ "poiesis-sheet",
+ "poiesis-text",
+ "serde_json",
  "snafu",
  "tracing",
  "zip 8.5.1",

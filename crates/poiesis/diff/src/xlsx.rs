@@ -1,24 +1,47 @@
 //! XLSX workbook diffing implementation.
 
-use std::collections::BTreeMap;
 use std::io::Cursor;
 
+use indexmap::IndexMap;
 use zip::ZipArchive;
 
 use crate::CellDiff;
 use crate::error::Result;
 
 /// Map of cell coordinates to their string values within a single sheet.
-type SheetCells = BTreeMap<(u32, u32), String>;
+type SheetCells = IndexMap<(u32, u32), String>;
 
-/// Map of sheet names to their cell data across a workbook.
-type WorkbookData = BTreeMap<String, SheetCells>;
+/// Map of sheet names to their cell data across a workbook, in workbook order.
+type WorkbookData = IndexMap<String, SheetCells>;
 
-/// Parse cell value from XML worksheet using simple string matching.
-fn extract_cells_from_worksheet(xml_data: &str) -> SheetCells {
-    let mut cells = BTreeMap::new();
+/// Extract shared strings from `xl/sharedStrings.xml`.
+fn extract_shared_strings(xml_data: &str) -> Vec<String> {
+    let mut strings = Vec::new();
+    for chunk in xml_data.split("<si>") {
+        if let Some(end) = chunk.find("</si>")
+            && let Some(si) = chunk.get(..end)
+        {
+            let mut text = String::new();
+            for t_chunk in si.split("<t") {
+                if let Some(gt) = t_chunk.find('>')
+                    && let Some(after_gt) = t_chunk.get(gt + 1..)
+                    && let Some(lt) = after_gt.find("</t>")
+                    && let Some(slice) = after_gt.get(..lt)
+                {
+                    text.push_str(slice);
+                }
+            }
+            strings.push(text);
+        }
+    }
+    strings
+}
 
-    // Simple regex-free approach: split on <row> and <c> tags
+/// Parse cell value from XML worksheet using simple string matching,
+/// resolving shared-string indices via `shared_strings`.
+fn extract_cells_from_worksheet(xml_data: &str, shared_strings: &[String]) -> SheetCells {
+    let mut cells = IndexMap::new();
+
     let mut current_row: u32 = 0;
 
     for row_chunk in xml_data.split("<row") {
@@ -34,6 +57,8 @@ fn extract_cells_from_worksheet(xml_data: &str) -> SheetCells {
 
         // Extract cells from this row
         for cell_chunk in row_chunk.split("<c") {
+            let is_shared = cell_chunk.contains("t=\"s\"");
+
             // Extract cell reference and value
             if let Some(r_start) = cell_chunk.find("r=\"")
                 && let Some(rest) = cell_chunk.get(r_start + 3..)
@@ -55,7 +80,17 @@ fn extract_cells_from_worksheet(xml_data: &str) -> SheetCells {
                     && let Some(v_end) = rest.find("</v>")
                     && let Some(value) = rest.get(..v_end)
                 {
-                    cells.insert((current_row, col_idx), value.to_string());
+                    let resolved = if is_shared {
+                        value
+                            .parse::<usize>()
+                            .ok()
+                            .and_then(|idx| shared_strings.get(idx))
+                            .cloned()
+                            .unwrap_or_else(|| value.to_string())
+                    } else {
+                        value.to_string()
+                    };
+                    cells.insert((current_row, col_idx), resolved);
                 }
             }
         }
@@ -64,15 +99,25 @@ fn extract_cells_from_worksheet(xml_data: &str) -> SheetCells {
     cells
 }
 
-/// Extract sheet names and cell data from XLSX archive.
+/// Extract sheet names and cell data from XLSX archive, preserving workbook order.
 fn read_workbook(bytes: &[u8]) -> Result<WorkbookData> {
     let cursor = Cursor::new(bytes);
     let mut archive =
         ZipArchive::new(cursor).map_err(|e| crate::DiffError::ZipError { source: e })?;
 
-    let mut workbook_data: WorkbookData = BTreeMap::new();
+    // Read shared strings if present
+    let shared_strings = if let Ok(mut file) = archive.by_name("xl/sharedStrings.xml") {
+        let mut content = String::new();
+        std::io::Read::read_to_string(&mut file, &mut content)
+            .map_err(|e| crate::DiffError::Io { source: e })?;
+        extract_shared_strings(&content)
+    } else {
+        Vec::new()
+    };
 
-    // Read workbook.xml to get sheet names
+    let mut workbook_data: WorkbookData = IndexMap::new();
+
+    // Read workbook.xml to get sheet names in order
     let workbook_xml = {
         let mut file = archive
             .by_name("xl/workbook.xml")
@@ -83,7 +128,8 @@ fn read_workbook(bytes: &[u8]) -> Result<WorkbookData> {
         content
     };
 
-    // Simple extraction of sheet names
+    // Simple extraction of sheet names, preserving order
+    let mut sheet_names = Vec::new();
     for line in workbook_xml.lines() {
         if line.contains("<sheet")
             && let Some(start) = line.find("name=\"")
@@ -91,18 +137,21 @@ fn read_workbook(bytes: &[u8]) -> Result<WorkbookData> {
             && let Some(end) = rest.find('"')
             && let Some(sheet_name) = rest.get(..end)
         {
-            workbook_data.insert(sheet_name.to_string(), BTreeMap::new());
+            sheet_names.push(sheet_name.to_string());
+            workbook_data.insert(sheet_name.to_string(), IndexMap::new());
         }
     }
 
     // Read worksheet files (xl/worksheets/sheet1.xml, etc.)
-    for (sheet_idx, cell_map) in (1..).zip(workbook_data.values_mut()) {
+    for (sheet_idx, sheet_name) in sheet_names.iter().enumerate() {
         let worksheet_path = format!("xl/worksheets/sheet{sheet_idx}.xml");
         if let Ok(mut file) = archive.by_name(&worksheet_path) {
             let mut content = String::new();
             std::io::Read::read_to_string(&mut file, &mut content)
                 .map_err(|e| crate::DiffError::Io { source: e })?;
-            *cell_map = extract_cells_from_worksheet(&content);
+            if let Some(cell_map) = workbook_data.get_mut(sheet_name) {
+                *cell_map = extract_cells_from_worksheet(&content, &shared_strings);
+            }
         }
     }
 

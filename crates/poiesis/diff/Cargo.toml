@@ -15,3 +15,8 @@ workspace = true
 snafu = { workspace = true }
 tracing = { workspace = true }
 zip = "8"
+indexmap = { workspace = true }
+
+[dev-dependencies]
+poiesis-sheet = { path = "../sheet" }
+serde_json = { workspace = true }

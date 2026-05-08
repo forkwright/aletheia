@@ -30,8 +30,8 @@ pub struct PdfSummary {
 #[non_exhaustive]
 #[derive(Debug, Clone)]
 pub struct WorkbookSummary {
-    /// Sheet names and their extracted text content.
-    pub sheets: std::collections::BTreeMap<String, String>,
+    /// Sheet names and their extracted text content, in workbook order.
+    pub sheets: indexmap::IndexMap<String, String>,
 }
 
 /// Summary of extracted text and metadata from a PPTX presentation.
@@ -102,5 +102,84 @@ mod tests {
         let result = inspect_pptx(invalid);
         // Should error on invalid ZIP
         let _ = result;
+    }
+
+    #[test]
+    #[expect(clippy::expect_used, reason = "test assertions")]
+    fn inspect_xlsx_resolves_shared_strings_and_sheet_order() {
+        let data = serde_json::json!({
+            "sheets": [
+                {
+                    "name": "Zebra",
+                    "columns": [{ "header": "Animal" }],
+                    "rows": [["Zebra"]]
+                },
+                {
+                    "name": "Apple",
+                    "columns": [{ "header": "Fruit" }],
+                    "rows": [["Apple"]]
+                },
+                {
+                    "name": "Mango",
+                    "columns": [{ "header": "Tropical" }],
+                    "rows": [["Mango"]]
+                }
+            ]
+        });
+
+        let bytes = poiesis_sheet::render_xlsx(&data).expect("render must succeed");
+        let summary = inspect_xlsx(&bytes).expect("inspect must succeed");
+
+        let names: Vec<&str> = summary.sheets.keys().map(String::as_str).collect();
+        assert_eq!(
+            names,
+            vec!["Zebra", "Apple", "Mango"],
+            "sheet order must match workbook order"
+        );
+
+        for (name, text) in &summary.sheets {
+            assert!(
+                text.contains(name),
+                "sheet '{name}' text must contain its shared-string value, got: {text}"
+            );
+        }
+    }
+
+    #[test]
+    #[expect(clippy::expect_used, reason = "test assertions")]
+    fn inspect_pdf_counts_real_pages() {
+        use poiesis_core::{Block, Document, Metadata, Renderer, RichText, Span};
+        use poiesis_text::pdf::PdfError;
+
+        // Build a document with enough paragraphs to span multiple pages.
+        let mut content = Vec::new();
+        for i in 0..60 {
+            content.push(Block::Paragraph(RichText {
+                spans: vec![Span::Plain(format!(
+                    "This is paragraph {i} with enough words to force line wrapping and page breaks. "
+                ))],
+            }));
+        }
+        let doc = Document {
+            metadata: Metadata {
+                title: "Multi-page".to_owned(),
+                author: None,
+                created: None,
+            },
+            content,
+        };
+
+        let renderer = match poiesis_text::PdfRenderer::new() {
+            Ok(r) => r,
+            Err(PdfError::NoFont) => return,
+            Err(e) => panic!("unexpected error: {e}"),
+        };
+        let bytes = renderer.render(&doc).expect("PDF render failed");
+        let summary = inspect_pdf(&bytes).expect("inspect must succeed");
+        assert!(
+            summary.pages >= 2,
+            "expected at least 2 pages for a 60-paragraph doc, got {}",
+            summary.pages
+        );
     }
 }

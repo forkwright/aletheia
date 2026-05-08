@@ -19,7 +19,7 @@ fn extract_opt_str<'a>(args: &'a serde_json::Value, key: &str) -> Option<&'a str
 
 // ── render_xlsx_report ────────────────────────────────────────────────────────
 
-struct RenderXlsxReportExecutor;
+pub(crate) struct RenderXlsxReportExecutor;
 
 impl ToolExecutor for RenderXlsxReportExecutor {
     fn execute<'a>(
@@ -30,15 +30,26 @@ impl ToolExecutor for RenderXlsxReportExecutor {
         Box::pin(async move {
             let args = &input.arguments;
 
-            let data: serde_json::Value = if let Some(raw) = extract_opt_str(args, "data") {
-                match serde_json::from_str(raw) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        return Ok(ToolResult::error(format!("data must be valid JSON: {e}")));
+            let data = match args.get("data") {
+                Some(v) => {
+                    if let Some(raw) = v.as_str() {
+                        match serde_json::from_str(raw) {
+                            Ok(parsed) => parsed,
+                            Err(e) => {
+                                return Ok(ToolResult::error(format!(
+                                    "data must be valid JSON: {e}"
+                                )));
+                            }
+                        }
+                    } else {
+                        v.clone()
                     }
                 }
-            } else {
-                serde_json::json!({})
+                None => {
+                    return Ok(ToolResult::error(
+                        "missing required argument: data".to_owned(),
+                    ));
+                }
             };
 
             let xlsx_result = poiesis_sheet::render_xlsx(&data);
@@ -113,7 +124,7 @@ fn render_xlsx_report_def() -> ToolDef {
                     },
                 ),
             ]),
-            required: vec![],
+            required: vec!["data".to_owned()],
         },
         category: ToolCategory::Workspace,
         reversibility: Reversibility::FullyReversible,

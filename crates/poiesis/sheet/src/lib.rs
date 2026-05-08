@@ -24,7 +24,7 @@ pub use xlsx::XlsxRenderer;
 pub use ods::OdsRenderer;
 
 #[cfg(feature = "xlsx")]
-use rust_xlsxwriter::Workbook;
+use rust_xlsxwriter::{Format, Workbook};
 
 #[cfg(feature = "xlsx")]
 use tracing::instrument;
@@ -92,99 +92,147 @@ pub fn render_xlsx(data: &serde_json::Value) -> Result<Vec<u8>, Error> {
     let mut workbook = Workbook::new();
 
     for (sheet_idx, sheet_val) in sheets.iter().enumerate() {
-        let name = sheet_val
-            .get("name")
-            .and_then(serde_json::Value::as_str)
-            .ok_or_else(|| Error::InvalidSchema {
-                detail: format!("sheet {sheet_idx}: missing required field: name"),
-            })?;
-
-        let columns = sheet_val
-            .get("columns")
-            .and_then(serde_json::Value::as_array)
-            .ok_or_else(|| Error::InvalidSchema {
-                detail: format!("sheet {sheet_idx}: missing required field: columns (array)"),
-            })?;
-
-        let rows = sheet_val
-            .get("rows")
-            .and_then(serde_json::Value::as_array)
-            .ok_or_else(|| Error::InvalidSchema {
-                detail: format!("sheet {sheet_idx}: missing required field: rows (array)"),
-            })?;
-
-        let worksheet = workbook.add_worksheet();
-        worksheet.set_name(name).map_err(|e| Error::XlsxWrite {
-            message: e.to_string(),
-        })?;
-
-        // Header row
-        for (col_idx, col_val) in columns.iter().enumerate() {
-            let header = col_val
-                .get("header")
-                .and_then(serde_json::Value::as_str)
-                .ok_or_else(|| Error::InvalidSchema {
-                    detail: format!(
-                        "sheet {sheet_idx}, column {col_idx}: missing required field: header"
-                    ),
-                })?;
-
-            let col_u16 = u16::try_from(col_idx).map_err(|e| Error::XlsxWrite {
-                message: format!("column index {col_idx} exceeds u16 max: {e}"),
-            })?;
-
-            worksheet
-                .write(0, col_u16, header)
-                .map_err(|e| Error::XlsxWrite {
-                    message: e.to_string(),
-                })?;
-
-            if let Some(width) = col_val.get("width").and_then(serde_json::Value::as_f64) {
-                worksheet
-                    .set_column_width(col_u16, width)
-                    .map_err(|e| Error::XlsxWrite {
-                        message: e.to_string(),
-                    })?;
-            }
-        }
-
-        // Data rows
-        for (row_idx, row_val) in rows.iter().enumerate() {
-            let cells = row_val.as_array().ok_or_else(|| Error::InvalidSchema {
-                detail: format!("sheet {sheet_idx}, row {row_idx}: each row must be an array"),
-            })?;
-
-            for (col_idx, cell) in cells.iter().enumerate() {
-                let col_u16 = u16::try_from(col_idx).map_err(|e| Error::XlsxWrite {
-                    message: format!("column index {col_idx} exceeds u16 max: {e}"),
-                })?;
-
-                let cell_text = match cell {
-                    serde_json::Value::String(s) => s.clone(),
-                    serde_json::Value::Number(n) => n.to_string(),
-                    serde_json::Value::Bool(b) => b.to_string(),
-                    serde_json::Value::Null => String::new(),
-                    other => other.to_string(),
-                };
-
-                worksheet
-                    .write(
-                        u32::try_from(row_idx).map_err(|e| Error::XlsxWrite {
-                            message: format!("row index {row_idx} exceeds u32 max: {e}"),
-                        })? + 1,
-                        col_u16,
-                        cell_text.as_str(),
-                    )
-                    .map_err(|e| Error::XlsxWrite {
-                        message: e.to_string(),
-                    })?;
-            }
-        }
+        render_one_sheet(&mut workbook, sheet_idx, sheet_val)?;
     }
 
     workbook.save_to_buffer().map_err(|e| Error::XlsxWrite {
         message: e.to_string(),
     })
+}
+
+#[cfg(feature = "xlsx")]
+fn render_one_sheet(
+    workbook: &mut Workbook,
+    sheet_idx: usize,
+    sheet_val: &serde_json::Value,
+) -> Result<(), Error> {
+    let name = sheet_val
+        .get("name")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| Error::InvalidSchema {
+            detail: format!("sheet {sheet_idx}: missing required field: name"),
+        })?;
+
+    let columns = sheet_val
+        .get("columns")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| Error::InvalidSchema {
+            detail: format!("sheet {sheet_idx}: missing required field: columns (array)"),
+        })?;
+
+    let rows = sheet_val
+        .get("rows")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| Error::InvalidSchema {
+            detail: format!("sheet {sheet_idx}: missing required field: rows (array)"),
+        })?;
+
+    let worksheet = workbook.add_worksheet();
+    worksheet.set_name(name).map_err(|e| Error::XlsxWrite {
+        message: e.to_string(),
+    })?;
+
+    // Header row
+    for (col_idx, col_val) in columns.iter().enumerate() {
+        let header = col_val
+            .get("header")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| Error::InvalidSchema {
+                detail: format!(
+                    "sheet {sheet_idx}, column {col_idx}: missing required field: header"
+                ),
+            })?;
+
+        let col_u16 = u16::try_from(col_idx).map_err(|e| Error::XlsxWrite {
+            message: format!("column index {col_idx} exceeds u16 max: {e}"),
+        })?;
+
+        worksheet
+            .write(0, col_u16, header)
+            .map_err(|e| Error::XlsxWrite {
+                message: e.to_string(),
+            })?;
+
+        if let Some(width) = col_val.get("width").and_then(serde_json::Value::as_f64) {
+            worksheet
+                .set_column_width(col_u16, width)
+                .map_err(|e| Error::XlsxWrite {
+                    message: e.to_string(),
+                })?;
+        }
+    }
+
+    // Data rows
+    for (row_idx, row_val) in rows.iter().enumerate() {
+        let cells = row_val.as_array().ok_or_else(|| Error::InvalidSchema {
+            detail: format!("sheet {sheet_idx}, row {row_idx}: each row must be an array"),
+        })?;
+
+        for (col_idx, cell) in cells.iter().enumerate() {
+            write_cell(worksheet, sheet_idx, row_idx, col_idx, cell)?;
+        }
+    }
+
+    Ok(())
+}
+
+#[cfg(feature = "xlsx")]
+fn write_cell(
+    worksheet: &mut rust_xlsxwriter::Worksheet,
+    _sheet_idx: usize,
+    row_idx: usize,
+    col_idx: usize,
+    cell: &serde_json::Value,
+) -> Result<(), Error> {
+    let col_u16 = u16::try_from(col_idx).map_err(|e| Error::XlsxWrite {
+        message: format!("column index {col_idx} exceeds u16 max: {e}"),
+    })?;
+
+    let row_num = u32::try_from(row_idx).map_err(|e| Error::XlsxWrite {
+        message: format!("row index {row_idx} exceeds u32 max: {e}"),
+    })? + 1;
+
+    match cell {
+        serde_json::Value::String(s) => {
+            worksheet
+                .write(row_num, col_u16, s.as_str())
+                .map_err(|e| Error::XlsxWrite {
+                    message: e.to_string(),
+                })?;
+        }
+        serde_json::Value::Number(n) => {
+            let val = n.as_f64().ok_or_else(|| Error::XlsxWrite {
+                message: format!("invalid numeric cell at row {row_idx}, col {col_idx}"),
+            })?;
+            worksheet
+                .write_number(row_num, col_u16, val)
+                .map_err(|e| Error::XlsxWrite {
+                    message: e.to_string(),
+                })?;
+        }
+        serde_json::Value::Bool(b) => {
+            worksheet
+                .write_boolean(row_num, col_u16, *b)
+                .map_err(|e| Error::XlsxWrite {
+                    message: e.to_string(),
+                })?;
+        }
+        serde_json::Value::Null => {
+            worksheet
+                .write_blank(row_num, col_u16, &Format::default())
+                .map_err(|e| Error::XlsxWrite {
+                    message: e.to_string(),
+                })?;
+        }
+        other => {
+            worksheet
+                .write(row_num, col_u16, other.to_string().as_str())
+                .map_err(|e| Error::XlsxWrite {
+                    message: e.to_string(),
+                })?;
+        }
+    }
+    Ok(())
 }
 
 /// Inspect an XLSX byte slice and return a structural summary.
@@ -356,6 +404,58 @@ mod json_api_tests {
         assert!(
             matches!(err, Error::InvalidSchema { .. }),
             "expected InvalidSchema, got: {err:?}"
+        );
+    }
+
+    #[test]
+    #[expect(clippy::expect_used, reason = "test assertions")]
+    fn render_xlsx_numeric_and_boolean_cells_round_trip() {
+        let data = serde_json::json!({
+            "sheets": [
+                {
+                    "name": "Data",
+                    "columns": [
+                        { "header": "Number" },
+                        { "header": "Bool" },
+                        { "header": "Text" }
+                    ],
+                    "rows": [
+                        [42, true, "hello"],
+                        [2.5, false, "world"]
+                    ]
+                }
+            ]
+        });
+
+        let bytes = render_xlsx(&data).expect("render must succeed");
+
+        let cursor = std::io::Cursor::new(&bytes);
+        let mut workbook = calamine::Xlsx::new(cursor).expect("calamine must open xlsx");
+        let range = workbook.worksheet_range("Data").expect("sheet must exist");
+
+        // Row 0 is header; rows 1 and 2 are data.
+        let cell_1_0 = range.get((1, 0)).expect("cell (1,0)");
+        assert!(
+            matches!(cell_1_0, calamine::Data::Float(f) if (*f - 42.0).abs() < f64::EPSILON),
+            "expected numeric 42, got {cell_1_0:?}"
+        );
+
+        let cell_1_1 = range.get((1, 1)).expect("cell (1,1)");
+        assert!(
+            matches!(cell_1_1, calamine::Data::Bool(true)),
+            "expected bool true, got {cell_1_1:?}"
+        );
+
+        let cell_2_0 = range.get((2, 0)).expect("cell (2,0)");
+        assert!(
+            matches!(cell_2_0, calamine::Data::Float(f) if (*f - 2.5).abs() < f64::EPSILON),
+            "expected numeric 2.5, got {cell_2_0:?}"
+        );
+
+        let cell_2_1 = range.get((2, 1)).expect("cell (2,1)");
+        assert!(
+            matches!(cell_2_1, calamine::Data::Bool(false)),
+            "expected bool false, got {cell_2_1:?}"
         );
     }
 }

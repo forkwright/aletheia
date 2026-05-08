@@ -144,9 +144,23 @@ impl Renderer for PdfRenderer {
         let mut y = MARGIN_TOP;
         let x = MARGIN_X;
 
+        // Helper: start a new page if the cursor has crossed the bottom margin.
+        macro_rules! check_page_break {
+            () => {
+                if y > PAGE_H - MARGIN_TOP {
+                    surface.finish();
+                    page.finish();
+                    page = krilla_doc.start_page_with(a4_page()?);
+                    surface = page.surface();
+                    y = MARGIN_TOP;
+                }
+            };
+        }
+
         // Draw document title as a pseudo-H1 if the title is non-empty.
         let title_text = doc.metadata.title.as_str();
         if !title_text.is_empty() {
+            check_page_break!();
             surface.draw_text(
                 Point::from_xy(x, y + FONT_SIZE_H1),
                 font.clone(),
@@ -159,18 +173,12 @@ impl Renderer for PdfRenderer {
         }
 
         for block in &doc.content {
-            // Check if we need a new page.
-            if y > PAGE_H - MARGIN_TOP {
-                surface.finish();
-                page.finish();
-                page = krilla_doc.start_page_with(a4_page()?);
-                surface = page.surface();
-                y = MARGIN_TOP;
-            }
+            check_page_break!();
 
             match block {
                 Block::Heading { level, text } => {
                     y += HEAD_SPACING;
+                    check_page_break!();
                     let fs = heading_font_size(*level);
                     let plain = text.plain_text();
                     surface.draw_text(
@@ -184,15 +192,13 @@ impl Renderer for PdfRenderer {
                     y += fs * LEADING + HEAD_SPACING;
                 }
                 Block::Paragraph(rt) => {
-                    y = draw_wrapped(
-                        &mut surface,
-                        &font,
-                        FONT_SIZE_BODY,
-                        &rt.plain_text(),
-                        x,
-                        y,
-                        USABLE_W,
-                    );
+                    let lines =
+                        wrap_words(&rt.plain_text(), chars_per_line(FONT_SIZE_BODY, USABLE_W));
+                    for line in lines {
+                        check_page_break!();
+                        draw_line(&mut surface, &font, FONT_SIZE_BODY, &line, x, y);
+                        y += FONT_SIZE_BODY * LEADING;
+                    }
                     y += PARA_SPACING;
                 }
                 Block::List { ordered, items } => {
@@ -203,51 +209,47 @@ impl Renderer for PdfRenderer {
                             "\u{2022} ".to_owned()
                         };
                         let text = format!("{}{}", bullet, item.content.plain_text());
-                        y = draw_wrapped(
-                            &mut surface,
-                            &font,
-                            FONT_SIZE_BODY,
-                            &text,
-                            x,
-                            y,
-                            USABLE_W,
-                        );
+                        let lines = wrap_words(&text, chars_per_line(FONT_SIZE_BODY, USABLE_W));
+                        for line in lines {
+                            check_page_break!();
+                            draw_line(&mut surface, &font, FONT_SIZE_BODY, &line, x, y);
+                            y += FONT_SIZE_BODY * LEADING;
+                        }
                     }
                     y += PARA_SPACING;
                 }
                 Block::Table(table) => {
                     // Render table as header row + data rows, plain text.
                     let header_line = table.headers.join(" | ");
-                    y = draw_wrapped(
-                        &mut surface,
-                        &font,
-                        FONT_SIZE_BODY,
-                        &header_line,
-                        x,
-                        y,
-                        USABLE_W,
-                    );
+                    let lines = wrap_words(&header_line, chars_per_line(FONT_SIZE_BODY, USABLE_W));
+                    for line in lines {
+                        check_page_break!();
+                        draw_line(&mut surface, &font, FONT_SIZE_BODY, &line, x, y);
+                        y += FONT_SIZE_BODY * LEADING;
+                    }
                     // Visual separator gap after header.
                     y += 4.0;
                     for row in &table.rows {
                         let cells: Vec<String> = row.iter().map(RichText::plain_text).collect();
                         let row_line = cells.join(" | ");
-                        y = draw_wrapped(
-                            &mut surface,
-                            &font,
-                            FONT_SIZE_BODY,
-                            &row_line,
-                            x,
-                            y,
-                            USABLE_W,
-                        );
+                        let lines = wrap_words(&row_line, chars_per_line(FONT_SIZE_BODY, USABLE_W));
+                        for line in lines {
+                            check_page_break!();
+                            draw_line(&mut surface, &font, FONT_SIZE_BODY, &line, x, y);
+                            y += FONT_SIZE_BODY * LEADING;
+                        }
                     }
                     y += PARA_SPACING;
                 }
                 Block::Image(img) => {
                     // Images are not rendered inline — emit the alt text instead.
                     let alt = format!("[Image: {}]", img.alt);
-                    y = draw_wrapped(&mut surface, &font, FONT_SIZE_BODY, &alt, x, y, USABLE_W);
+                    let lines = wrap_words(&alt, chars_per_line(FONT_SIZE_BODY, USABLE_W));
+                    for line in lines {
+                        check_page_break!();
+                        draw_line(&mut surface, &font, FONT_SIZE_BODY, &line, x, y);
+                        y += FONT_SIZE_BODY * LEADING;
+                    }
                     y += PARA_SPACING;
                 }
                 Block::PageBreak => {
@@ -280,48 +282,35 @@ fn heading_font_size(level: u8) -> f32 {
     }
 }
 
-/// Draw `text` word-wrapped within `max_width` points, returning the new y cursor.
-///
-/// The y cursor on entry points to the top of where the first line should start.
-/// Each line advances by `font_size * LEADING`.
-fn draw_wrapped(
+/// Approximate characters per line for the given font size and max width.
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::as_conversions,
+    reason = "max_width and char_w_approx are positive finite f32 from page constants; ratio fits in usize"
+)]
+fn chars_per_line(font_size: f32, max_width: f32) -> usize {
+    let char_w_approx = font_size * 0.55;
+    (max_width / char_w_approx).max(1.0) as usize
+}
+
+/// Draw a single line of text, advancing the y cursor by `font_size * LEADING`.
+fn draw_line(
     surface: &mut krilla::surface::Surface<'_>,
     font: &Font,
     font_size: f32,
     text: &str,
     x: f32,
-    mut y: f32,
-    max_width: f32,
-) -> f32 {
-    // Approximate character width: krilla does not expose advance widths without
-    // shaping, so we use an empirical factor for the font at the given size.
-    // Liberation Sans / Noto Sans at 11pt: ~6 pt per average character.
-    let char_w_approx = font_size * 0.55;
-    // WHY: safe cast — max_width and char_w_approx are positive finite f32 values
-    // produced from compile-time page constants; the ratio fits comfortably in usize.
-    #[expect(
-        clippy::cast_possible_truncation,
-        clippy::cast_sign_loss,
-        clippy::as_conversions,
-        reason = "max_width and char_w_approx are positive finite f32 from page constants; ratio fits in usize"
-    )]
-    let chars_per_line = (max_width / char_w_approx).max(1.0) as usize; // SAFETY: positive finite f32 clamped to >= 1.0; ratio bounded by page constants
-
-    let line_h = font_size * LEADING;
-    let baseline_offset = font_size; // PDF baseline is font_size below y
-
-    for line in wrap_words(text, chars_per_line) {
-        surface.draw_text(
-            Point::from_xy(x, y + baseline_offset),
-            font.clone(),
-            font_size,
-            &line,
-            false,
-            TextDirection::Auto,
-        );
-        y += line_h;
-    }
-    y
+    y: f32,
+) {
+    surface.draw_text(
+        Point::from_xy(x, y + font_size),
+        font.clone(),
+        font_size,
+        text,
+        false,
+        TextDirection::Auto,
+    );
 }
 
 /// Split `text` into lines no longer than `max_chars` characters,
