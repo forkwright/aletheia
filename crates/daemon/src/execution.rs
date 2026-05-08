@@ -1,5 +1,6 @@
 //! Task action execution: commands and builtins.
 
+use std::path::Path;
 use std::sync::Arc;
 
 use koina::system::{Environment, RealSystem};
@@ -303,8 +304,12 @@ pub(crate) async fn execute_builtin(
         BuiltinTask::GraphCleanup => {
             graph_cleanup::execute_graph_cleanup(nous_id, knowledge_executor).await
         }
-        BuiltinTask::OpsFactExtraction => execute_ops_fact_extraction(nous_id).await,
-        BuiltinTask::LessonExtraction => execute_lesson_extraction().await,
+        BuiltinTask::OpsFactExtraction => {
+            execute_ops_fact_extraction(nous_id, knowledge_executor).await
+        }
+        BuiltinTask::LessonExtraction => {
+            execute_lesson_extraction(nous_id, knowledge_executor).await
+        }
         BuiltinTask::SelfPrompt => {
             // NOTE: SelfPrompt is dispatched inline by the runner after
             // extracting a follow-up from prosoche output. This arm handles
@@ -630,8 +635,20 @@ async fn execute_knowledge_task(
 ///
 /// WHY: blocking I/O (file reads + JSON parsing) is done on the blocking
 /// pool to avoid starving the async scheduler.
-async fn execute_lesson_extraction() -> Result<ExecutionResult> {
-    let result = tokio::task::spawn_blocking(|| {
+async fn execute_lesson_extraction(
+    nous_id: &str,
+    knowledge_executor: Option<Arc<dyn KnowledgeMaintenanceExecutor>>,
+) -> Result<ExecutionResult> {
+    let Some(executor) = knowledge_executor else {
+        return error::TaskFailedSnafu {
+            task_id: "lesson-extraction".to_owned(),
+            reason: "no knowledge executor configured for fact persistence".to_owned(),
+        }
+        .fail();
+    };
+
+    let nous_id = nous_id.to_owned();
+    let result = tokio::task::spawn_blocking(move || {
         // WHY: training data lives at repo root under workflow/training/.
         // The daemon runs from the instance directory, so we look for the
         // training dir relative to cwd first, then fall back to an absolute path.
@@ -649,33 +666,7 @@ async fn execute_lesson_extraction() -> Result<ExecutionResult> {
             });
         };
 
-        let extraction =
-            episteme::extract::training::extract_from_training_data(training_dir)
-                .context(error::MaintenanceIoSnafu {
-                    context: "lesson extraction",
-                })?;
-
-        let lesson_count = extraction.lessons.len();
-        let facts = episteme::extract::training::lessons_to_facts(&extraction.lessons);
-
-        tracing::info!(
-            violations_read = extraction.violations_read,
-            lint_summaries_read = extraction.lint_summaries_read,
-            lessons_extracted = lesson_count,
-            facts_produced = facts.len(),
-            records_skipped = extraction.records_skipped,
-            "lesson extraction complete"
-        );
-
-        Ok(ExecutionResult {
-            success: true,
-            output: Some(format!(
-                "{lesson_count} lessons extracted, {} facts produced ({} violations, {} lint summaries read)",
-                facts.len(),
-                extraction.violations_read,
-                extraction.lint_summaries_read,
-            )),
-        })
+        execute_lesson_extraction_from_dir(&nous_id, training_dir, executor.as_ref())
     })
     .await
     .context(error::BlockingJoinSnafu {
@@ -688,14 +679,34 @@ async fn execute_lesson_extraction() -> Result<ExecutionResult> {
 /// Extract operational metrics into knowledge graph facts.
 ///
 /// Collects a snapshot of current cron execution counters and converts
-/// them into `Fact` values via `OpsFactExtractor`. The facts are logged
-/// for now; insertion into the knowledge store happens when the caller
-/// has a store handle (daemon bridge integration).
-#[expect(
-    clippy::unused_async,
-    reason = "async signature required by execute_builtin dispatch which awaits all arms"
-)]
-async fn execute_ops_fact_extraction(nous_id: &str) -> Result<ExecutionResult> {
+/// them into `Fact` values via `OpsFactExtractor`, then persists every
+/// fact through the daemon knowledge executor.
+async fn execute_ops_fact_extraction(
+    nous_id: &str,
+    knowledge_executor: Option<Arc<dyn KnowledgeMaintenanceExecutor>>,
+) -> Result<ExecutionResult> {
+    let Some(executor) = knowledge_executor else {
+        return error::TaskFailedSnafu {
+            task_id: "ops-fact-extraction".to_owned(),
+            reason: "no knowledge executor configured for fact persistence".to_owned(),
+        }
+        .fail();
+    };
+
+    let nous_id = nous_id.to_owned();
+    tokio::task::spawn_blocking(move || {
+        execute_ops_fact_extraction_blocking(&nous_id, executor.as_ref())
+    })
+    .await
+    .context(error::BlockingJoinSnafu {
+        context: "ops-fact-extraction",
+    })?
+}
+
+fn execute_ops_fact_extraction_blocking(
+    nous_id: &str,
+    executor: &dyn KnowledgeMaintenanceExecutor,
+) -> Result<ExecutionResult> {
     use episteme::ops_facts::{OpsFactExtractor, OpsSnapshot};
 
     // WHY: the daemon's cron execution counters are the source of truth for
@@ -731,16 +742,155 @@ async fn execute_ops_fact_extraction(nous_id: &str) -> Result<ExecutionResult> {
         );
     }
 
+    persist_facts(
+        executor,
+        facts.iter().map(|ops_fact| &ops_fact.fact),
+        "ops-fact-extraction",
+    )?;
+
     tracing::info!(
         nous_id = %nous_id,
         facts_extracted = count,
+        facts_inserted = count,
         "operational fact extraction complete"
     );
 
     Ok(ExecutionResult {
         success: true,
-        output: Some(format!("{count} operational facts extracted")),
+        output: Some(format!(
+            "{count} operational facts extracted, {count} inserted"
+        )),
     })
+}
+
+fn execute_lesson_extraction_from_dir(
+    nous_id: &str,
+    training_dir: &Path,
+    executor: &dyn KnowledgeMaintenanceExecutor,
+) -> Result<ExecutionResult> {
+    let extraction = episteme::extract::training::extract_from_training_data(training_dir)
+        .context(error::MaintenanceIoSnafu {
+            context: "lesson extraction",
+        })?;
+
+    let lesson_count = extraction.lessons.len();
+    let extracted_facts = episteme::extract::training::lessons_to_facts(&extraction.lessons);
+    let durable_facts = extracted_facts_to_facts(
+        nous_id,
+        &extracted_facts,
+        "daemon:lesson-extraction",
+        jiff::Timestamp::now(),
+    )?;
+    let inserted = durable_facts.len();
+    persist_facts(executor, durable_facts.iter(), "lesson-extraction")?;
+
+    tracing::info!(
+        violations_read = extraction.violations_read,
+        lint_summaries_read = extraction.lint_summaries_read,
+        lessons_extracted = lesson_count,
+        facts_produced = durable_facts.len(),
+        facts_inserted = inserted,
+        records_skipped = extraction.records_skipped,
+        "lesson extraction complete"
+    );
+
+    Ok(ExecutionResult {
+        success: true,
+        output: Some(format!(
+            "{lesson_count} lessons extracted, {} facts produced, {inserted} inserted ({} violations, {} lint summaries read)",
+            durable_facts.len(),
+            extraction.violations_read,
+            extraction.lint_summaries_read,
+        )),
+    })
+}
+
+fn extracted_facts_to_facts(
+    nous_id: &str,
+    facts: &[episteme::extract::ExtractedFact],
+    source: &str,
+    now: jiff::Timestamp,
+) -> Result<Vec<episteme::knowledge::Fact>> {
+    facts
+        .iter()
+        .enumerate()
+        .map(|(index, fact)| extracted_fact_to_fact(nous_id, fact, source, now, index))
+        .collect()
+}
+
+fn extracted_fact_to_fact(
+    nous_id: &str,
+    fact: &episteme::extract::ExtractedFact,
+    source: &str,
+    now: jiff::Timestamp,
+    index: usize,
+) -> Result<episteme::knowledge::Fact> {
+    use episteme::knowledge::{
+        EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactTemporal, FactType,
+        MemoryScope, Visibility, far_future,
+    };
+
+    let content = format!("{} {} {}", fact.subject, fact.predicate, fact.object);
+    let id = episteme::id::FactId::new(format!("daemon-fact-{}-{index}", koina::ulid::Ulid::new()))
+        .map_err(|e| {
+            error::TaskFailedSnafu {
+                task_id: "lesson-extraction".to_owned(),
+                reason: e.to_string(),
+            }
+            .build()
+        })?;
+    let classified_type = fact
+        .fact_type
+        .as_deref()
+        .map_or_else(|| FactType::classify(&content), FactType::from_str_lossy);
+
+    Ok(Fact {
+        id,
+        nous_id: nous_id.to_owned(),
+        fact_type: classified_type.as_str().to_owned(),
+        content,
+        scope: Some(MemoryScope::Project),
+        temporal: FactTemporal {
+            valid_from: now,
+            valid_to: far_future(),
+            recorded_at: now,
+        },
+        provenance: FactProvenance {
+            confidence: fact.confidence,
+            tier: EpistemicTier::Inferred,
+            source_session_id: Some(source.to_owned()),
+            stability_hours: classified_type.base_stability_hours(),
+        },
+        lifecycle: FactLifecycle {
+            superseded_by: None,
+            is_forgotten: false,
+            forgotten_at: None,
+            forget_reason: None,
+        },
+        access: FactAccess {
+            access_count: 0,
+            last_accessed_at: None,
+        },
+        sensitivity: episteme::knowledge::FactSensitivity::Public,
+        visibility: Visibility::Private,
+    })
+}
+
+fn persist_facts<'a>(
+    executor: &dyn KnowledgeMaintenanceExecutor,
+    facts: impl IntoIterator<Item = &'a episteme::knowledge::Fact>,
+    task_id: &str,
+) -> Result<()> {
+    for fact in facts {
+        executor.insert_fact(fact).map_err(|e| {
+            error::TaskFailedSnafu {
+                task_id: task_id.to_owned(),
+                reason: e.to_string(),
+            }
+            .build()
+        })?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]

@@ -81,26 +81,27 @@ impl TaskRunner {
             self.register_knowledge_maintenance_tasks();
         }
 
-        // WHY: lesson extraction runs daily to learn from training data
-        // independently of knowledge maintenance (no executor required).
-        self.register_builtin(
-            "lesson-extraction",
-            "Lesson extraction from training data",
-            Schedule::Cron("0 0 5 * * *".to_owned()),
-            BuiltinTask::LessonExtraction,
-            true,
-        );
+        if self.knowledge_executor.is_some() {
+            // WHY: lesson extraction produces durable facts; without a
+            // knowledge executor it cannot satisfy its persistence contract.
+            self.register_builtin(
+                "lesson-extraction",
+                "Lesson extraction from training data",
+                Schedule::Cron("0 0 5 * * *".to_owned()),
+                BuiltinTask::LessonExtraction,
+                true,
+            );
 
-        // WHY: operational fact extraction runs on a short interval to keep
-        // the knowledge graph current with system health metrics. Agents
-        // recall these facts during bootstrap for situational awareness.
-        self.register_builtin(
-            "ops-fact-extraction",
-            "Operational fact extraction",
-            Schedule::Interval(Duration::from_mins(15)),
-            BuiltinTask::OpsFactExtraction,
-            false,
-        );
+            // WHY: operational facts must be retrievable from the knowledge
+            // graph after extraction, not just logged as transient metrics.
+            self.register_builtin(
+                "ops-fact-extraction",
+                "Operational fact extraction",
+                Schedule::Interval(Duration::from_mins(15)),
+                BuiltinTask::OpsFactExtraction,
+                false,
+            );
+        }
 
         if config.fjall_backup.enabled {
             self.register_builtin(

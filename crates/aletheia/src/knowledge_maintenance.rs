@@ -24,6 +24,16 @@ impl KnowledgeMaintenanceAdapter {
 }
 
 impl KnowledgeMaintenanceExecutor for KnowledgeMaintenanceAdapter {
+    fn insert_fact(&self, fact: &mneme::knowledge::Fact) -> oikonomos::error::Result<()> {
+        self.store.insert_fact(fact).map_err(|e| {
+            oikonomos::error::TaskFailedSnafu {
+                task_id: "fact-persistence".to_owned(),
+                reason: e.to_string(),
+            }
+            .build()
+        })
+    }
+
     /// Query all current facts and apply FSRS decay via `RecallEngine::score_decay`.
     ///
     /// Updates confidence scores in place for each fact. Facts whose decay score
