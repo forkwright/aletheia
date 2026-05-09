@@ -117,7 +117,7 @@ pub(crate) async fn dispatch(cmd: Command, instance_root: Option<&PathBuf>) -> R
         Command::SessionCreate(a) => session_create::run(instance_root, &a).map_err(Into::into),
         Command::SessionExport(a) => session_export::run(&a).await.map_err(Into::into),
         Command::Import(a) => agent_io::import_agent(instance_root, &a).map_err(Into::into),
-        Command::SeedSkills(a) => agent_io::seed_skills(&a).map_err(Into::into),
+        Command::SeedSkills(a) => agent_io::seed_skills(instance_root, &a).map_err(Into::into),
         Command::ExportSkills(a) => agent_io::export_skills(instance_root, &a)
             .await
             .map_err(Into::into),

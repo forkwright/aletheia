@@ -15,15 +15,6 @@ pub(crate) enum Action {
         #[arg(long)]
         json: bool,
     },
-    /// Trigger a consolidation pass manually
-    Consolidate {
-        /// Nous agent ID to consolidate
-        #[arg(long)]
-        nous_id: String,
-        /// Preview without mutating
-        #[arg(long)]
-        dry_run: bool,
-    },
     /// Sample random memories for quality review
     Sample {
         /// Number of memories to sample
@@ -113,7 +104,6 @@ pub(crate) async fn run(action: Action, url: &str, instance_root: Option<&PathBu
 
         match action {
             Action::Check { json } => run_check(&store, json),
-            Action::Consolidate { nous_id, dry_run } => run_consolidate(&store, &nous_id, dry_run),
             Action::Sample { count, nous_id } => run_sample(&store, count, nous_id.as_deref()),
             Action::Dedup { nous_id, dry_run } => run_dedup(&store, &nous_id, dry_run),
             Action::Patterns { nous_id, limit } => run_patterns(&store, nous_id.as_deref(), limit),
@@ -411,54 +401,6 @@ fn find_orphaned_embeddings(
     Ok((0..result.row_count())
         .filter_map(|i| result.get_string(i, "id"))
         .collect())
-}
-
-// --- consolidate ---
-
-#[cfg(feature = "recall")]
-fn run_consolidate(
-    store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
-    nous_id: &str,
-    dry_run: bool,
-) -> Result<()> {
-    use mneme::consolidation::ConsolidationConfig;
-
-    let config = ConsolidationConfig::default();
-
-    println!("Scanning for consolidation candidates (nous: {nous_id})...");
-
-    let entity_candidates = store
-        .find_entity_overflow_candidates(nous_id, &config)
-        .whatever_context("entity overflow scan failed")?;
-    let community_candidates = store
-        .find_community_overflow_candidates(nous_id, &config)
-        .whatever_context("community overflow scan failed")?;
-
-    let total = entity_candidates.len() + community_candidates.len();
-    if total == 0 {
-        println!("No consolidation candidates found.");
-        println!(
-            "  Entity threshold: {} facts, Community threshold: {} facts, Age gate: {} days",
-            config.entity_fact_threshold, config.community_fact_threshold, config.min_age_days
-        );
-        return Ok(());
-    }
-
-    println!("Found {total} candidates:");
-    for c in entity_candidates.iter().chain(community_candidates.iter()) {
-        println!("  {} — {} facts", c.trigger.trigger_type(), c.fact_count);
-    }
-
-    if dry_run {
-        println!("\n--dry-run: no mutations applied.");
-    } else {
-        println!(
-            "\nConsolidation requires an LLM provider. Use the server's maintenance \
-             pipeline for automated consolidation, or re-run with --dry-run to preview."
-        );
-    }
-
-    Ok(())
 }
 
 // --- sample ---

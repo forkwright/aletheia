@@ -1,5 +1,7 @@
 //! Agent import/export and skill management commands.
 
+use std::collections::HashMap;
+use std::path::Path;
 use std::path::PathBuf;
 
 use clap::Args;
@@ -173,7 +175,7 @@ pub(crate) struct InitArgs {
 
 use taxis::oikos::Oikos;
 
-use mneme::types::Role;
+use mneme::types::{Role, SessionStatus};
 
 #[cfg(feature = "recall")]
 fn knowledge_path_for_nous(oikos: &Oikos, nous_id: &str) -> PathBuf {
@@ -184,13 +186,222 @@ fn knowledge_path_for_nous(oikos: &Oikos, nous_id: &str) -> PathBuf {
     oikos.knowledge_cohort_db(cohort.as_ref())
 }
 
-pub(crate) fn export_agent(_instance_root: Option<&PathBuf>, _args: &ExportArgs) -> Result<()> {
-    // WHY: the SQLite export pipeline was removed alongside rusqlite (#3446).
-    // A fjall-backed agent export/import round trip needs to be re-implemented
-    // against the new session store before this subcommand returns.
-    whatever!(
-        "export is temporarily unavailable: the agent-file export pipeline is being reimplemented on the fjall backend (#3446)"
-    );
+#[expect(
+    clippy::too_many_lines,
+    reason = "agent export assembles config, workspace, sessions, messages, and notes into one portability file"
+)]
+pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -> Result<()> {
+    use mneme::portability::{AgentFile, ExportedMessage, ExportedNote, ExportedSession, NousInfo};
+
+    let oikos = super::resolve_oikos(instance_root)?;
+    let config =
+        taxis::loader::load_config(&oikos).whatever_context("failed to load aletheia config")?;
+    let resolved = taxis::config::resolve_nous(&config, &args.nous_id);
+
+    if !config
+        .agents
+        .list
+        .iter()
+        .any(|agent| agent.id == args.nous_id)
+    {
+        whatever!("nous agent '{}' not found in configuration", args.nous_id);
+    }
+
+    let workspace_root = resolve_workspace_path(&oikos, &resolved.workspace);
+    let workspace = export_workspace(&workspace_root).with_whatever_context(|_| {
+        format!(
+            "failed to export workspace for '{}' at {}",
+            args.nous_id,
+            workspace_root.display()
+        )
+    })?;
+
+    let sessions_db = oikos.sessions_db();
+    let store = mneme::store::SessionStore::open(&sessions_db).with_whatever_context(|_| {
+        format!("failed to open session store at {}", sessions_db.display())
+    })?;
+
+    let limit = if args.max_messages == 0 {
+        None
+    } else {
+        Some(i64::try_from(args.max_messages).unwrap_or(i64::MAX))
+    };
+    let mut sessions = Vec::new();
+    for session in store
+        .list_sessions(Some(&args.nous_id))
+        .whatever_context("failed to list sessions")?
+    {
+        if !args.archived && session.status != SessionStatus::Active {
+            continue;
+        }
+
+        let messages = store
+            .get_history(&session.id, limit)
+            .with_whatever_context(|_| format!("failed to read history for {}", session.id))?
+            .into_iter()
+            .map(|msg| ExportedMessage {
+                role: msg.role.to_string(),
+                content: msg.content,
+                seq: msg.seq,
+                token_estimate: msg.token_estimate,
+                is_distilled: msg.is_distilled,
+                created_at: msg.created_at,
+            })
+            .collect();
+
+        let notes = store
+            .get_notes(&session.id)
+            .with_whatever_context(|_| format!("failed to read notes for {}", session.id))?
+            .into_iter()
+            .map(|note| ExportedNote {
+                category: note.category,
+                content: note.content,
+                created_at: note.created_at,
+            })
+            .collect();
+
+        sessions.push(ExportedSession {
+            id: session.id,
+            session_key: session.session_key,
+            status: session.status.to_string(),
+            session_type: session.session_type.to_string(),
+            message_count: session.metrics.message_count,
+            token_count_estimate: session.metrics.token_count_estimate,
+            distillation_count: session.metrics.distillation_count,
+            created_at: session.created_at,
+            updated_at: session.updated_at,
+            working_state: None,
+            distillation_priming: None,
+            notes,
+            messages,
+        });
+    }
+
+    let exported_at = jiff::Timestamp::now().to_string();
+    let agent_file = AgentFile {
+        version: 1,
+        exported_at: exported_at.clone(),
+        generator: format!("aletheia-rust/{}", env!("CARGO_PKG_VERSION")),
+        nous: NousInfo {
+            id: args.nous_id.clone(),
+            name: resolved.name.clone(),
+            model: Some(resolved.model.primary.to_string()),
+            config: serde_json::json!({
+                "workspace": resolved.workspace,
+                "domains": resolved.domains,
+                "epistemeCohort": resolved.episteme_cohort.to_string(),
+                "private": resolved.private,
+            }),
+        },
+        workspace,
+        sessions,
+        memory: None,
+        knowledge: None,
+    };
+
+    let output = args
+        .output
+        .clone()
+        .unwrap_or_else(|| default_export_path(&args.nous_id, &exported_at));
+    if output.exists() && !args.force {
+        whatever!(
+            "output file already exists: {}\nUse --force to overwrite.",
+            output.display()
+        );
+    }
+    if let Some(parent) = output.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        std::fs::create_dir_all(parent)
+            .with_whatever_context(|_| format!("failed to create {}", parent.display()))?;
+    }
+
+    let json = if args.compact {
+        serde_json::to_string(&agent_file).whatever_context("failed to serialize agent file")?
+    } else {
+        serde_json::to_string_pretty(&agent_file)
+            .whatever_context("failed to serialize agent file")?
+    };
+    koina::fs::write_restricted(&output, json.as_bytes())
+        .with_whatever_context(|_| format!("failed to write {}", output.display()))?;
+
+    println!("Exported agent '{}' to {}", args.nous_id, output.display());
+    println!("  Workspace: {} files", agent_file.workspace.files.len());
+    println!("  Sessions: {}", agent_file.sessions.len());
+
+    Ok(())
+}
+
+fn default_export_path(nous_id: &str, exported_at: &str) -> PathBuf {
+    let date = exported_at.split('T').next().unwrap_or("now");
+    PathBuf::from(format!("{nous_id}-{date}.agent.json"))
+}
+
+fn resolve_workspace_path(oikos: &Oikos, workspace: &str) -> PathBuf {
+    let path = Path::new(workspace);
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        oikos.root().join(path)
+    }
+}
+
+fn export_workspace(root: &Path) -> Result<mneme::portability::WorkspaceData> {
+    let mut files = HashMap::new();
+    let mut binary_files = Vec::new();
+    if !root.exists() {
+        return Ok(mneme::portability::WorkspaceData {
+            files,
+            binary_files,
+        });
+    }
+    collect_workspace_entries(root, root, &mut files, &mut binary_files)?;
+    Ok(mneme::portability::WorkspaceData {
+        files,
+        binary_files,
+    })
+}
+
+fn collect_workspace_entries(
+    root: &Path,
+    dir: &Path,
+    files: &mut HashMap<String, String>,
+    binary_files: &mut Vec<String>,
+) -> Result<()> {
+    for entry in std::fs::read_dir(dir)
+        .with_whatever_context(|_| format!("failed to read {}", dir.display()))?
+    {
+        let entry = entry
+            .with_whatever_context(|_| format!("failed to read entry in {}", dir.display()))?;
+        let path = entry.path();
+        if path.is_dir() {
+            collect_workspace_entries(root, &path, files, binary_files)?;
+            continue;
+        }
+        if !path.is_file() {
+            continue;
+        }
+        let relative = path
+            .strip_prefix(root)
+            .unwrap_or(path.as_path())
+            .to_string_lossy()
+            .replace('\\', "/");
+        match std::fs::read_to_string(&path) {
+            Ok(content) => {
+                files.insert(relative, content);
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::InvalidData => {
+                binary_files.push(relative);
+            }
+            Err(e) => {
+                return Err(crate::error::Error::msg(format!(
+                    "failed to read {}: {e}",
+                    path.display()
+                )));
+            }
+        }
+    }
+    Ok(())
 }
 fn capitalize(s: &str) -> String {
     let mut chars = s.chars();
@@ -458,7 +669,7 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
     clippy::too_many_lines,
     reason = "CLI dispatch is inherently verbose — splitting would hurt readability"
 )]
-pub(crate) fn seed_skills(args: &SeedSkillsArgs) -> Result<()> {
+pub(crate) fn seed_skills(instance_root: Option<&PathBuf>, args: &SeedSkillsArgs) -> Result<()> {
     use mneme::skill::{SkillContent, parse_skill_md, scan_skill_dir};
 
     let dir = &args.dir;
@@ -512,8 +723,16 @@ pub(crate) fn seed_skills(args: &SeedSkillsArgs) -> Result<()> {
         };
         use mneme::knowledge_store::KnowledgeStore;
 
+        let oikos = super::resolve_oikos(instance_root)?;
+        let knowledge_path = knowledge_path_for_nous(&oikos, nous_id);
+        let config = mneme::knowledge_store::KnowledgeConfig::default();
         let store =
-            KnowledgeStore::open_mem().whatever_context("failed to open knowledge store")?;
+            KnowledgeStore::open_fjall(&knowledge_path, config).with_whatever_context(|_| {
+                format!(
+                    "failed to open knowledge store at {}",
+                    knowledge_path.display()
+                )
+            })?;
 
         let now = jiff::Timestamp::now();
         let mut seeded = 0u32;
@@ -608,7 +827,7 @@ pub(crate) fn seed_skills(args: &SeedSkillsArgs) -> Result<()> {
 
     #[cfg(not(feature = "recall"))]
     {
-        let _ = (args, nous_id, parsed, parse_errors);
+        let _ = (instance_root, args, nous_id, parsed, parse_errors);
         whatever!(
             "seed-skills requires the 'recall' feature (KnowledgeStore). \
              Build with: cargo build --features recall"
@@ -983,6 +1202,167 @@ mod tests {
             memory: None,
             knowledge: None,
         }
+    }
+
+    fn write_agent_config(root: &Path, agent_id: &str, name: &str) {
+        let oikos = Oikos::from_root(root);
+        std::fs::create_dir_all(oikos.config()).unwrap();
+        std::fs::create_dir_all(oikos.data()).unwrap();
+        std::fs::create_dir_all(oikos.nous_dir(agent_id)).unwrap();
+        std::fs::write(
+            oikos.config().join("aletheia.toml"),
+            format!(
+                r#"
+[agents.defaults.model]
+primary = "mock-model"
+
+[[agents.list]]
+id = "{agent_id}"
+name = "{name}"
+workspace = "nous/{agent_id}"
+"#
+            ),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn export_agent_writes_portable_file_from_fjall_sessions() {
+        let dir = tempfile::tempdir().unwrap();
+        let oikos = Oikos::from_root(dir.path());
+        write_agent_config(dir.path(), "alice", "Alice");
+        std::fs::write(oikos.nous_dir("alice").join("SOUL.md"), "# Alice\n").unwrap();
+
+        let store = mneme::store::SessionStore::open(&oikos.sessions_db()).unwrap();
+        let session = store
+            .create_session("ses-export", "alice", "main", None, Some("mock-model"))
+            .unwrap();
+        store
+            .append_message(&session.id, Role::User, "hello", None, None, 5)
+            .unwrap();
+        store
+            .append_message(&session.id, Role::Assistant, "hi", None, None, 7)
+            .unwrap();
+        store
+            .add_note(&session.id, "alice", "task", "remember this")
+            .unwrap();
+        drop(store);
+
+        let output = dir.path().join("alice.agent.json");
+        let args = ExportArgs {
+            nous_id: "alice".to_owned(),
+            output: Some(output.clone()),
+            archived: false,
+            max_messages: 0,
+            compact: false,
+            force: false,
+        };
+        export_agent(Some(&dir.path().to_path_buf()), &args).unwrap();
+
+        let exported: AgentFile =
+            serde_json::from_str(&std::fs::read_to_string(output).unwrap()).unwrap();
+        assert_eq!(exported.nous.id, "alice");
+        assert_eq!(exported.nous.name.as_deref(), Some("Alice"));
+        assert_eq!(
+            exported.workspace.files.get("SOUL.md").map(String::as_str),
+            Some("# Alice\n")
+        );
+        assert_eq!(exported.sessions.len(), 1);
+        assert_eq!(exported.sessions[0].messages.len(), 2);
+        assert_eq!(exported.sessions[0].notes.len(), 1);
+    }
+
+    #[test]
+    fn export_agent_output_round_trips_through_import() {
+        let source = tempfile::tempdir().unwrap();
+        let source_oikos = Oikos::from_root(source.path());
+        write_agent_config(source.path(), "alice", "Alice");
+        std::fs::write(source_oikos.nous_dir("alice").join("SOUL.md"), "# Alice\n").unwrap();
+
+        let source_store = mneme::store::SessionStore::open(&source_oikos.sessions_db()).unwrap();
+        let session = source_store
+            .create_session("ses-roundtrip", "alice", "main", None, Some("mock-model"))
+            .unwrap();
+        source_store
+            .append_message(&session.id, Role::User, "round trip", None, None, 10)
+            .unwrap();
+        drop(source_store);
+
+        let export_path = source.path().join("alice.agent.json");
+        export_agent(
+            Some(&source.path().to_path_buf()),
+            &ExportArgs {
+                nous_id: "alice".to_owned(),
+                output: Some(export_path.clone()),
+                archived: false,
+                max_messages: 0,
+                compact: true,
+                force: false,
+            },
+        )
+        .unwrap();
+
+        let dest = tempfile::tempdir().unwrap();
+        let dest_oikos = Oikos::from_root(dest.path());
+        std::fs::create_dir_all(dest_oikos.config()).unwrap();
+        std::fs::create_dir_all(dest_oikos.data()).unwrap();
+        import_agent(
+            Some(&dest.path().to_path_buf()),
+            &ImportArgs {
+                file: export_path,
+                target_id: None,
+                skip_sessions: false,
+                skip_workspace: false,
+                force: false,
+                dry_run: false,
+            },
+        )
+        .unwrap();
+
+        let dest_store = mneme::store::SessionStore::open(&dest_oikos.sessions_db()).unwrap();
+        let sessions = dest_store.list_sessions(Some("alice")).unwrap();
+        assert_eq!(sessions.len(), 1);
+        let history = dest_store.get_history(&sessions[0].id, None).unwrap();
+        assert_eq!(history.len(), 1);
+        assert_eq!(history[0].content, "round trip");
+    }
+
+    #[test]
+    fn seed_skills_persists_to_fjall_store() {
+        let dir = tempfile::tempdir().unwrap();
+        let oikos = Oikos::from_root(dir.path());
+        write_agent_config(dir.path(), "alice", "Alice");
+
+        let skills_dir = dir.path().join("skills");
+        let skill_path = skills_dir.join("rust-errors");
+        std::fs::create_dir_all(&skill_path).unwrap();
+        std::fs::write(
+            skill_path.join("SKILL.md"),
+            "# Rust Errors\n\nUse this when diagnosing Rust errors.\n\n## Steps\n1. Read the compiler output\n",
+        )
+        .unwrap();
+
+        seed_skills(
+            Some(&dir.path().to_path_buf()),
+            &SeedSkillsArgs {
+                dir: skills_dir,
+                nous_id: "alice".to_owned(),
+                force: false,
+                dry_run: false,
+            },
+        )
+        .unwrap();
+
+        let store = mneme::knowledge_store::KnowledgeStore::open_fjall(
+            oikos.knowledge_cohort_db("shared"),
+            mneme::knowledge_store::KnowledgeConfig::default(),
+        )
+        .unwrap();
+        let facts = store.find_skills_for_nous("alice", 10).unwrap();
+        assert_eq!(facts.len(), 1);
+        let persisted: mneme::skill::SkillContent =
+            serde_json::from_str(&facts[0].content).unwrap();
+        assert_eq!(persisted.name, "rust-errors");
     }
 
     #[test]
