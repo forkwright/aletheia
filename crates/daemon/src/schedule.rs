@@ -137,6 +137,8 @@ pub enum BuiltinTask {
     FjallBackup,
     /// Prune prompt audit log daily files past the retention window (#3411).
     PromptAuditRotation,
+    /// Refresh empirical after-action routing statistics from JSONL logs.
+    RoutingStoreRefresh,
 }
 
 impl Schedule {

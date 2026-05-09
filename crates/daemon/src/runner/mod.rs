@@ -153,7 +153,15 @@ impl TaskRunner {
 
     /// Attach maintenance configuration.
     #[must_use]
-    pub fn with_maintenance(mut self, config: MaintenanceConfig) -> Self {
+    pub fn with_maintenance(mut self, mut config: MaintenanceConfig) -> Self {
+        if config.after_action_store.is_none()
+            && let Some(store) = self
+                .maintenance
+                .as_ref()
+                .and_then(|maintenance| maintenance.after_action_store.clone())
+        {
+            config.after_action_store = Some(store);
+        }
         self.maintenance = Some(config);
         self
     }
@@ -175,6 +183,18 @@ impl TaskRunner {
         executor: Arc<dyn KnowledgeMaintenanceExecutor>,
     ) -> Self {
         self.knowledge_executor = Some(executor);
+        self
+    }
+
+    /// Attach the empirical routing after-action store for periodic refresh.
+    #[must_use]
+    pub fn with_after_action_store(
+        mut self,
+        store: Arc<aletheia_routing::AfterActionStore>,
+    ) -> Self {
+        let mut maintenance = self.maintenance.take().unwrap_or_default();
+        maintenance.after_action_store = Some(store);
+        self.maintenance = Some(maintenance);
         self
     }
 

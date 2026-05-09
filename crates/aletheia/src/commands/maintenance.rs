@@ -193,6 +193,7 @@ pub(crate) fn build_config(
     prompt_audit: &taxis::config::PromptAuditSettings,
 ) -> MaintenanceConfig {
     MaintenanceConfig {
+        after_action_store: None,
         trace_rotation: TraceRotationConfig {
             enabled: settings.trace_rotation.enabled,
             trace_dir: oikos.traces(),

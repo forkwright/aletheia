@@ -51,28 +51,42 @@ impl TaskCategory {
     /// the router's hot path. Keyword matching is O(n) and zero-latency.
     pub fn from_prompt(text: &str) -> Self {
         let lower = text.to_lowercase();
-        if lower.contains("refactor") || lower.contains("restructure") || lower.contains("rename") {
+        let tokens = lower
+            .split(|c: char| !c.is_ascii_alphanumeric())
+            .filter(|token| !token.is_empty());
+
+        let mut is_refactor = false;
+        let mut is_bug = false;
+        let mut is_test = false;
+        let mut is_docs = false;
+        let mut is_chore = false;
+
+        for token in tokens {
+            match token {
+                "refactor" | "restructure" | "rename" => is_refactor = true,
+                "fix" | "bug" | "defect" | "regression" => is_bug = true,
+                "test" | "spec" | "coverage" => is_test = true,
+                "doc" | "docs" | "comment" | "readme" => is_docs = true,
+                "chore" | "dependency" | "dependencies" | "deps" | "ci" | "lint" => {
+                    is_chore = true;
+                }
+                _ => {}
+            }
+        }
+
+        if is_refactor {
             return Self::Refactor;
         }
-        if lower.contains("fix")
-            || lower.contains("bug")
-            || lower.contains("defect")
-            || lower.contains("regression")
-        {
-            return Self::Bug;
-        }
-        if lower.contains("test") || lower.contains("spec") || lower.contains("coverage") {
+        if is_test {
             return Self::Test;
         }
-        if lower.contains("doc") || lower.contains("comment") || lower.contains("readme") {
+        if is_bug {
+            return Self::Bug;
+        }
+        if is_docs {
             return Self::Docs;
         }
-        if lower.contains("chore")
-            || lower.contains("dependency")
-            || lower.contains("deps")
-            || lower.contains("ci")
-            || lower.contains("lint")
-        {
+        if is_chore {
             return Self::Chore;
         }
         Self::Feature
@@ -291,4 +305,65 @@ pub enum RouterError {
         /// Human-readable error description.
         message: String,
     },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn from_prompt_matches_keyword_tokens() {
+        assert_eq!(
+            TaskCategory::from_prompt("rename the parser module"),
+            TaskCategory::Refactor
+        );
+        assert_eq!(
+            TaskCategory::from_prompt("add coverage for route selection"),
+            TaskCategory::Test
+        );
+        assert_eq!(
+            TaskCategory::from_prompt("fix regression in provider choice"),
+            TaskCategory::Bug
+        );
+        assert_eq!(
+            TaskCategory::from_prompt("update README"),
+            TaskCategory::Docs
+        );
+        assert_eq!(
+            TaskCategory::from_prompt("run CI lint cleanup"),
+            TaskCategory::Chore
+        );
+    }
+
+    #[test]
+    fn from_prompt_ignores_keyword_substrings() {
+        for prompt in [
+            "fixture data setup",
+            "prefix normalization",
+            "suffix array experiment",
+            "affix metadata",
+            "contest ranking",
+            "testament parser",
+            "documentary index",
+            "docile retry policy",
+            "dock event stream",
+            "doctor profile import",
+            "splint workflow",
+            "lintel metadata",
+        ] {
+            assert_eq!(
+                TaskCategory::from_prompt(prompt),
+                TaskCategory::Feature,
+                "{prompt}"
+            );
+        }
+    }
+
+    #[test]
+    fn from_prompt_prefers_test_when_bug_words_modify_test_work() {
+        assert_eq!(
+            TaskCategory::from_prompt("fix the test fixture"),
+            TaskCategory::Test
+        );
+    }
 }

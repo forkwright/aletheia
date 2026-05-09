@@ -203,7 +203,6 @@ dependencies = [
 name = "aletheia-routing"
 version = "0.21.1"
 dependencies = [
- "fjall",
  "futures",
  "jiff",
  "serde",
@@ -4697,8 +4696,8 @@ dependencies = [
 
 [[package]]
 name = "keryx"
-version = "1.0.0"
-source = "git+http://127.0.0.1:7878/forkwright/theatron.git?tag=v1.0.0#22f3619a1c908c2cf83b5dbef62e256f1f66dcfb"
+version = "1.1.0"
+source = "git+http://127.0.0.1:7878/forkwright/theatron.git?tag=v1.1.0#755e5c8d00cc464ee54dfc64e17866651d296ca7"
 dependencies = [
  "bytes",
  "dioxus",
@@ -5950,6 +5949,7 @@ dependencies = [
 name = "oikonomos"
 version = "0.21.1"
 dependencies = [
+ "aletheia-routing",
  "axum 0.8.9",
  "eidos",
  "energeia",
@@ -6232,8 +6232,8 @@ dependencies = [
 
 [[package]]
 name = "parodos"
-version = "1.0.0"
-source = "git+http://127.0.0.1:7878/forkwright/theatron.git?tag=v1.0.0#22f3619a1c908c2cf83b5dbef62e256f1f66dcfb"
+version = "1.1.0"
+source = "git+http://127.0.0.1:7878/forkwright/theatron.git?tag=v1.1.0#755e5c8d00cc464ee54dfc64e17866651d296ca7"
 dependencies = [
  "arboard",
  "base64 0.22.1",
