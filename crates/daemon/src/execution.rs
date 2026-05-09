@@ -294,6 +294,29 @@ pub(crate) async fn execute_builtin_with_behavior(
                 output: Some(summary.join(", ")),
             })
         }
+        BuiltinTask::RoutingStoreRefresh => {
+            let Some(store) = maintenance.and_then(|config| config.after_action_store.clone())
+            else {
+                return Ok(ExecutionResult {
+                    success: false,
+                    output: Some("skipped — no after-action store configured".to_owned()),
+                });
+            };
+
+            store.refresh().await.map_err(|source| {
+                error::TaskFailedSnafu {
+                    task_id: "routing-store-refresh".to_owned(),
+                    reason: source.to_string(),
+                }
+                .build()
+            })?;
+
+            tracing::info!("maintenance: routing after-action store refresh complete");
+            Ok(ExecutionResult {
+                success: true,
+                output: Some("routing after-action store refreshed".to_owned()),
+            })
+        }
         BuiltinTask::SelfAudit => {
             if let Some(bridge) = bridge {
                 let prompt = "Run self-audit: execute all registered prosoche checks.";
@@ -629,7 +652,8 @@ async fn execute_knowledge_task(
             | BuiltinTask::SelfPrompt
             | BuiltinTask::ProposeRules
             | BuiltinTask::FjallBackup
-            | BuiltinTask::PromptAuditRotation => {
+            | BuiltinTask::PromptAuditRotation
+            | BuiltinTask::RoutingStoreRefresh => {
                 unreachable!("non-knowledge task routed to execute_knowledge_task")
             }
         }?;

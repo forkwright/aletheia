@@ -11,17 +11,12 @@ rust-version.workspace = true
 workspace = true
 
 [features]
-# WHY: fjall is a pure-Rust LSM-tree embedded store. Gated behind a feature so
-# crates that only need the trait or in-memory storage don't pull in fjall's
-# build footprint.
-storage-fjall = ["dep:fjall"]
 # Test tiers (see docs/test-tiers.md)
-test-core = ["storage-fjall"]
+test-core = []
 test-full = ["test-core"]
 
 [dependencies]
 jiff = { workspace = true, features = ["serde"] }
-fjall = { version = "3", default-features = false, optional = true }
 futures = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

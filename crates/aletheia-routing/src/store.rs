@@ -19,6 +19,7 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use jiff::Timestamp;
 use snafu::{ResultExt as _, Snafu};
@@ -26,6 +27,9 @@ use tokio::io::{AsyncBufReadExt as _, BufReader};
 use tokio::sync::RwLock;
 
 use crate::types::{ProviderId, TaskCategory, TurnOutcome};
+
+const SECS_PER_DAY: u64 = 24 * 60 * 60;
+const DEFAULT_REFRESH_WINDOW: Duration = Duration::from_secs(7 * SECS_PER_DAY);
 
 // ---------------------------------------------------------------------------
 // AfterActionStoreError
@@ -122,14 +126,19 @@ impl RollingStats {
 /// The cache is keyed by `(ProviderId, TaskCategory)` and protected by a
 /// `RwLock` so concurrent readers (routing decisions) are never blocked by
 /// a periodic `refresh`.
+#[derive(Debug)]
 pub struct AfterActionStore {
     /// Directory containing per-day JSONL files (`YYYY-MM-DD.jsonl`).
     ///
     /// `None` when the store is used in memory-only mode (interactive path
     /// without a configured log directory).
     dir: Option<PathBuf>,
+    /// Latest per-day JSONL files to include during refresh.
+    window: Duration,
     /// In-memory cache: `(provider_id, task_category)` → [`RollingStats`].
     cache: RwLock<HashMap<(ProviderId, TaskCategory), RollingStats>>,
+    /// Direct interactive writes since the most recent disk refresh.
+    interactive: RwLock<HashMap<(ProviderId, TaskCategory), RollingStats>>,
 }
 
 impl AfterActionStore {
@@ -137,9 +146,19 @@ impl AfterActionStore {
     ///
     /// Call [`refresh`](Self::refresh) to populate the cache from disk.
     pub fn new(dir: PathBuf) -> Self {
+        Self::new_with_window(dir, DEFAULT_REFRESH_WINDOW)
+    }
+
+    /// Create a store backed by `dir` with a bounded refresh window.
+    ///
+    /// The window is interpreted as a count of latest per-day JSONL files. A
+    /// zero duration keeps all history for callers that explicitly need it.
+    pub fn new_with_window(dir: PathBuf, window: Duration) -> Self {
         Self {
             dir: Some(dir),
+            window,
             cache: RwLock::new(HashMap::new()),
+            interactive: RwLock::new(HashMap::new()),
         }
     }
 
@@ -150,7 +169,9 @@ impl AfterActionStore {
     pub fn in_memory() -> Self {
         Self {
             dir: None,
+            window: DEFAULT_REFRESH_WINDOW,
             cache: RwLock::new(HashMap::new()),
+            interactive: RwLock::new(HashMap::new()),
         }
     }
 
@@ -161,11 +182,27 @@ impl AfterActionStore {
         &self,
         provider: &ProviderId,
         cat: &TaskCategory,
-        _window: std::time::Duration,
+        window: std::time::Duration,
     ) -> Option<RollingStats> {
-        // WHY: the cache is window-bounded by refresh() which only reads files
-        // within the configured window. `_window` is kept in the signature for
-        // future per-query filtering.
+        if window != self.window
+            && let Some(dir) = &self.dir
+        {
+            return match self.build_cache(dir, window).await {
+                Ok(mut cache) => {
+                    self.merge_interactive(&mut cache).await;
+                    cache.get(&(provider.clone(), *cat)).cloned()
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        error = %error,
+                        requested_window_days = ?window_file_limit(window),
+                        "failed to build requested routing stats window"
+                    );
+                    None
+                }
+            };
+        }
+
         let cache = self.cache.read().await;
         cache.get(&(provider.clone(), *cat)).cloned()
     }
@@ -187,14 +224,11 @@ impl AfterActionStore {
     pub async fn record_outcome(&self, outcome: &TurnOutcome) {
         let key = (outcome.provider.clone(), outcome.task_category);
         let mut cache = self.cache.write().await;
-        let stats = cache.entry(key).or_default();
-        if outcome.success {
-            stats.successes += 1;
-            stats.last_success_at = Some(Timestamp::now());
-        } else {
-            stats.failures += 1;
-        }
-        stats.total += 1;
+        record_stats(cache.entry(key.clone()).or_default(), outcome.success);
+        drop(cache);
+
+        let mut interactive = self.interactive.write().await;
+        record_stats(interactive.entry(key).or_default(), outcome.success);
     }
 
     /// Re-scan the JSONL log directory and rebuild the in-memory cache.
@@ -205,12 +239,19 @@ impl AfterActionStore {
     /// If the store was created with [`in_memory`](Self::in_memory) this is
     /// a no-op (returns `Ok(())`).
     pub async fn refresh(&self) -> Result<(), AfterActionStoreError> {
+        self.refresh_window(self.window).await
+    }
+
+    /// Re-scan the JSONL log directory using an explicit latest-file window.
+    pub async fn refresh_window(&self, window: Duration) -> Result<(), AfterActionStoreError> {
         let Some(ref dir) = self.dir else {
             return Ok(());
         };
-        let new_cache = self.build_cache(dir).await?;
+        let new_cache = self.build_cache(dir, window).await?;
         let mut cache = self.cache.write().await;
         *cache = new_cache;
+        let mut interactive = self.interactive.write().await;
+        interactive.clear();
         Ok(())
     }
 
@@ -218,24 +259,11 @@ impl AfterActionStore {
     async fn build_cache(
         &self,
         dir: &Path,
+        window: Duration,
     ) -> Result<HashMap<(ProviderId, TaskCategory), RollingStats>, AfterActionStoreError> {
         let mut map: HashMap<(ProviderId, TaskCategory), RollingStats> = HashMap::new();
 
-        let mut read_dir = tokio::fs::read_dir(dir).await.context(IoSnafu {
-            path: dir.to_owned(),
-        })?;
-
-        while let Some(entry) = read_dir.next_entry().await.context(IoSnafu {
-            path: dir.to_owned(),
-        })? {
-            let path = entry.path();
-            let Some(ext) = path.extension() else {
-                continue;
-            };
-            if ext != "jsonl" {
-                continue;
-            }
-
+        for path in jsonl_paths_in_window(dir, window).await? {
             self.scan_file(&path, &mut map).await?;
         }
 
@@ -284,6 +312,50 @@ impl AfterActionStore {
 
         Ok(())
     }
+
+    async fn merge_interactive(&self, map: &mut HashMap<(ProviderId, TaskCategory), RollingStats>) {
+        let interactive = self.interactive.read().await;
+        for (key, stats) in interactive.iter() {
+            merge_stats(map.entry(key.clone()).or_default(), stats);
+        }
+    }
+}
+
+async fn jsonl_paths_in_window(
+    dir: &Path,
+    window: Duration,
+) -> Result<Vec<PathBuf>, AfterActionStoreError> {
+    let mut paths = Vec::new();
+    let mut read_dir = tokio::fs::read_dir(dir).await.context(IoSnafu {
+        path: dir.to_owned(),
+    })?;
+
+    while let Some(entry) = read_dir.next_entry().await.context(IoSnafu {
+        path: dir.to_owned(),
+    })? {
+        let path = entry.path();
+        if path.extension().is_some_and(|ext| ext == "jsonl") {
+            paths.push(path);
+        }
+    }
+
+    paths.sort_by(|a, b| a.file_name().cmp(&b.file_name()));
+    paths.reverse();
+
+    if let Some(limit) = window_file_limit(window) {
+        paths.truncate(limit);
+    }
+
+    Ok(paths)
+}
+
+fn window_file_limit(window: Duration) -> Option<usize> {
+    if window.is_zero() {
+        return None;
+    }
+
+    let days = window.as_secs().div_ceil(SECS_PER_DAY).max(1);
+    usize::try_from(days).ok()
 }
 
 /// Ingest one parsed after-action record into the rolling-stats accumulator.
@@ -309,14 +381,30 @@ fn ingest_record(
         let stats = map.entry(key).or_default();
 
         let is_success = session.status == "success";
-        if is_success {
-            stats.successes += 1;
-            stats.last_success_at = Some(Timestamp::now());
-        } else {
-            stats.failures += 1;
-        }
-        stats.total += 1;
+        record_stats(stats, is_success);
     }
+}
+
+fn record_stats(stats: &mut RollingStats, success: bool) {
+    if success {
+        stats.successes += 1;
+        stats.last_success_at = Some(Timestamp::now());
+    } else {
+        stats.failures += 1;
+    }
+    stats.total += 1;
+}
+
+fn merge_stats(target: &mut RollingStats, source: &RollingStats) {
+    target.successes += source.successes;
+    target.failures += source.failures;
+    target.total += source.total;
+    target.last_success_at = match (target.last_success_at, source.last_success_at) {
+        (Some(target_ts), Some(source_ts)) => Some(target_ts.max(source_ts)),
+        (None, Some(source_ts)) => Some(source_ts),
+        (Some(target_ts), None) => Some(target_ts),
+        (None, None) => None,
+    };
 }
 
 /// Parse a category string from a JSONL record.
@@ -425,6 +513,83 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(stats.total, 2);
+    }
+
+    #[tokio::test]
+    async fn refresh_scans_only_latest_files_in_window() {
+        let tmp = tempfile::tempdir().unwrap();
+
+        for idx in 0..1000 {
+            let model = if idx >= 990 { "recent" } else { "stale" };
+            write_jsonl(
+                tmp.path(),
+                &format!("2026-04-{idx:04}.jsonl"),
+                &[session_line(model, "success", "feature")],
+            );
+        }
+
+        let store =
+            AfterActionStore::new_with_window(tmp.path().to_owned(), Duration::from_hours(240));
+        store.refresh().await.unwrap();
+
+        let recent = store
+            .rolling_stats(
+                &ProviderId::new("recent"),
+                &TaskCategory::Feature,
+                Duration::from_hours(240),
+            )
+            .await
+            .unwrap();
+        assert_eq!(recent.total, 10);
+        assert!(
+            store
+                .rolling_stats(
+                    &ProviderId::new("stale"),
+                    &TaskCategory::Feature,
+                    Duration::from_hours(240),
+                )
+                .await
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn rolling_stats_uses_requested_window_when_it_differs_from_cache() {
+        let tmp = tempfile::tempdir().unwrap();
+
+        for idx in 0..20 {
+            let model = if idx >= 10 { "recent" } else { "stale" };
+            write_jsonl(
+                tmp.path(),
+                &format!("2026-04-{idx:04}.jsonl"),
+                &[session_line(model, "success", "feature")],
+            );
+        }
+
+        let store =
+            AfterActionStore::new_with_window(tmp.path().to_owned(), Duration::from_hours(480));
+        store.refresh().await.unwrap();
+
+        assert!(
+            store
+                .rolling_stats(
+                    &ProviderId::new("stale"),
+                    &TaskCategory::Feature,
+                    Duration::from_hours(480),
+                )
+                .await
+                .is_some()
+        );
+        assert!(
+            store
+                .rolling_stats(
+                    &ProviderId::new("stale"),
+                    &TaskCategory::Feature,
+                    Duration::from_hours(240),
+                )
+                .await
+                .is_none()
+        );
     }
 
     #[tokio::test]

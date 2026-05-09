@@ -1,5 +1,7 @@
 //! Instance maintenance services: trace rotation, drift detection, DB monitoring, retention.
 
+use std::sync::Arc;
+
 use koina::system::{Environment, RealSystem};
 
 /// Database size monitoring with configurable warning and alert thresholds.
@@ -74,4 +76,6 @@ pub struct MaintenanceConfig {
     pub propose_rules: ProposeRulesConfig,
     /// Prompt audit log retention pruning (#3411).
     pub prompt_audit: PromptAuditRetentionConfig,
+    /// Runtime handle for refreshing empirical routing after-action stats.
+    pub after_action_store: Option<Arc<aletheia_routing::AfterActionStore>>,
 }

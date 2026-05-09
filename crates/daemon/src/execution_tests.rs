@@ -5,11 +5,12 @@
 )]
 
 use std::future::Future;
+use std::io::Write as _;
 use std::pin::Pin;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use crate::bridge::DaemonBridge;
-use crate::maintenance::{MaintenanceReport, RetentionSummary};
+use crate::maintenance::{MaintenanceConfig, MaintenanceReport, RetentionSummary};
 
 use super::*;
 
@@ -284,6 +285,53 @@ async fn execute_action_dispatches_builtin_variant() {
             .contains("self-prompt must be dispatched"),
         "expected canned message"
     );
+}
+
+#[tokio::test]
+async fn routing_store_refresh_builtin_refreshes_attached_store() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let path = tmp.path().join("2026-04-17.jsonl");
+    let mut file = std::fs::File::create(path).expect("jsonl file");
+    writeln!(
+        file,
+        "{}",
+        serde_json::json!({
+            "session_outcomes": [
+                {"model": "provider-a", "status": "success", "category": "feature"}
+            ]
+        })
+    )
+    .expect("write jsonl");
+
+    let store = Arc::new(aletheia_routing::AfterActionStore::new(
+        tmp.path().to_owned(),
+    ));
+    let config = MaintenanceConfig {
+        after_action_store: Some(Arc::clone(&store)),
+        ..MaintenanceConfig::default()
+    };
+    let result = execute_builtin_with_behavior(
+        &BuiltinTask::RoutingStoreRefresh,
+        "system",
+        None,
+        Some(&config),
+        None,
+        None,
+        &taxis::config::DaemonBehaviorConfig::default(),
+    )
+    .await
+    .expect("routing refresh should succeed");
+
+    assert!(result.success);
+    let stats = store
+        .rolling_stats(
+            &aletheia_routing::types::ProviderId::new("provider-a"),
+            &aletheia_routing::types::TaskCategory::Feature,
+            std::time::Duration::from_hours(168),
+        )
+        .await
+        .expect("refreshed stats");
+    assert_eq!(stats.total, 1);
 }
 
 // --- execute_builtin: bridge-dependent paths ---

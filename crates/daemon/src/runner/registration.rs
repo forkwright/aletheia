@@ -67,6 +67,18 @@ impl TaskRunner {
             );
         }
 
+        if config.after_action_store.is_some() {
+            // WHY: ten minutes keeps empirical dispatch routing fresh without
+            // competing with per-turn writes or daily log rotation.
+            self.register_builtin(
+                "routing-store-refresh",
+                "Routing after-action store refresh",
+                Schedule::Interval(Duration::from_mins(10)),
+                BuiltinTask::RoutingStoreRefresh,
+                false,
+            );
+        }
+
         if config.retention.enabled && has_executor {
             self.register_builtin(
                 "retention-execution",

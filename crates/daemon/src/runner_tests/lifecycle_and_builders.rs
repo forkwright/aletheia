@@ -168,6 +168,29 @@ fn register_maintenance_tasks_respects_enabled() {
 }
 
 #[test]
+fn routing_store_refresh_registers_when_store_is_attached() {
+    let token = CancellationToken::new();
+    let config = MaintenanceConfig::default();
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let store = Arc::new(aletheia_routing::AfterActionStore::new(
+        tmp.path().to_owned(),
+    ));
+
+    let mut runner = TaskRunner::new("system", token)
+        .with_maintenance(config)
+        .with_after_action_store(store);
+    runner.register_maintenance_tasks();
+
+    let statuses = runner.status();
+    let refresh = statuses
+        .iter()
+        .find(|status| status.id == "routing-store-refresh")
+        .expect("routing refresh task should be scheduled");
+    assert_eq!(refresh.name, "Routing after-action store refresh");
+    assert!(refresh.enabled);
+}
+
+#[test]
 fn register_maintenance_tasks_skips_without_config() {
     let token = CancellationToken::new();
     let mut runner = TaskRunner::new("system", token);
