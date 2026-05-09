@@ -79,11 +79,7 @@ pub fn streamable_http_router_with_config(
 /// Reads JSON-RPC from stdin, writes to stdout. Blocks until the connection
 /// closes or the shutdown token fires.
 #[tracing::instrument(skip_all)]
-#[expect(
-    dead_code,
-    reason = "intended for future aletheia mcp stdio subcommand"
-)]
-pub(crate) async fn serve_stdio(state: Arc<DiaporeiaState>) -> Result<()> {
+pub async fn serve_stdio(state: Arc<DiaporeiaState>) -> Result<()> {
     let server = DiaporeiaServer::with_state(state);
     let service = server
         .serve(rmcp::transport::io::stdio())

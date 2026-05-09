@@ -43,17 +43,13 @@ pub(super) fn validate_external_tools(oikos: &Oikos) -> bool {
 
     let mut tools_ok = true;
     for (name, entry) in &tools_config.required {
-        if entry.kind != crate::external_tools::ExternalToolKind::Builtin
-            && entry.endpoint.is_none()
-        {
+        if entry.kind == crate::external_tools::ExternalToolKind::Http && entry.endpoint.is_none() {
             println!("  [FAIL] tools.required.{name}: missing endpoint");
             tools_ok = false;
         }
     }
     for (name, entry) in &tools_config.optional {
-        if entry.kind != crate::external_tools::ExternalToolKind::Builtin
-            && entry.endpoint.is_none()
-        {
+        if entry.kind == crate::external_tools::ExternalToolKind::Http && entry.endpoint.is_none() {
             println!("  [warn] tools.optional.{name}: missing endpoint");
         }
     }

@@ -14,6 +14,8 @@ pub(crate) mod eval_embeddings;
 pub(crate) mod health;
 pub(crate) mod ingest;
 pub(crate) mod maintenance;
+#[cfg(feature = "mcp")]
+pub(crate) mod mcp;
 pub(crate) mod memory;
 pub(crate) mod migrate;
 pub(crate) mod prompt_audit;
@@ -74,6 +76,16 @@ pub(crate) async fn dispatch(cmd: Command, instance_root: Option<&PathBuf>) -> R
             .map_err(anyhow::Error::from)
         }
         Command::Health(a) => health::run(&a).await.map_err(Into::into),
+        Command::Mcp => {
+            #[cfg(feature = "mcp")]
+            {
+                mcp::run(instance_root).await.map_err(Into::into)
+            }
+            #[cfg(not(feature = "mcp"))]
+            {
+                anyhow::bail!("MCP stdio not available - rebuild with `--features mcp`")
+            }
+        }
         Command::Backup(a) => backup::run(instance_root, &a).map_err(Into::into),
         Command::Maintenance { action } => {
             maintenance::run(action, instance_root).map_err(Into::into)

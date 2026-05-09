@@ -1,8 +1,10 @@
 //! Pluggable external tool registry: config-driven tool discovery and execution.
 //!
 //! Reads the `[tools]` section from `aletheia.toml` and registers external tool
-//! executors into the [`ToolRegistry`]. Each external tool is a thin HTTP proxy
-//! that forwards tool calls to the configured endpoint.
+//! executors into the [`ToolRegistry`]. HTTP tools remain thin POST proxies.
+//! MCP entries are server registrations: Aletheia connects to the external MCP
+//! server, discovers tools via `tools/list`, registers each discovered tool in
+//! organon, and routes execution back through `tools/call`.
 //!
 //! WHY: Different deployments have different MCP servers available.  A menos
 //! instance has Semantic Scholar + `PubMed` + kanon-mcp.  A verda instance has
@@ -11,17 +13,22 @@
 
 use std::collections::HashMap;
 use std::future::Future;
+use std::path::PathBuf;
 use std::pin::Pin;
 
+#[cfg(feature = "mcp")]
+use diaporeia::client::{ExternalMcpClient, StdioMcpServerConfig};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 
 use koina::id::ToolName;
 use organon::registry::{ToolExecutor, ToolRegistry};
+#[cfg(feature = "mcp")]
+use organon::types::ToolGroupId;
 use organon::types::{
     InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
-    ToolInput, ToolResult,
+    ToolInput, ToolResult, ToolTag,
 };
 use taxis::oikos::Oikos;
 
@@ -46,6 +53,18 @@ pub(crate) struct ExternalToolEntry {
     /// HTTP endpoint URL for `mcp` and `http` tool types.
     #[serde(default)]
     pub endpoint: Option<String>,
+    /// Stdio MCP server command. For `type = "mcp"`, defaults to the config key.
+    #[serde(default)]
+    pub command: Option<String>,
+    /// Stdio MCP server command arguments.
+    #[serde(default)]
+    pub args: Vec<String>,
+    /// Stdio MCP server working directory.
+    #[serde(default)]
+    pub cwd: Option<PathBuf>,
+    /// Extra environment for stdio MCP server processes.
+    #[serde(default)]
+    pub env: HashMap<String, String>,
     /// Human-readable description sent to the LLM.
     #[serde(default)]
     pub description: Option<String>,
@@ -157,7 +176,7 @@ pub(crate) fn load_tools_config(oikos: &Oikos) -> ExternalToolsConfig {
 /// - `mcp` and `http` entries with an endpoint get an [`ExternalToolExecutor`]
 ///   registered into the tool registry.
 /// - Missing endpoints produce a warning and mark the tool unavailable.
-pub(crate) fn register_external_tools(
+pub(crate) async fn register_external_tools(
     config: &ExternalToolsConfig,
     registry: &mut ToolRegistry,
     http_client: &reqwest::Client,
@@ -170,25 +189,28 @@ pub(crate) fn register_external_tools(
     // WHY: process required tools first so startup warnings about missing
     // required tools appear before optional tool info.
     for (name, entry) in &config.required {
-        let result = register_single_tool(name, entry, registry, http_client);
-        manifest.required.push(result);
+        let result = register_single_tool(name, entry, registry, http_client).await;
+        manifest.required.extend(result);
     }
 
     for (name, entry) in &config.optional {
-        let result = register_single_tool(name, entry, registry, http_client);
-        manifest.optional.push(result);
+        let result = register_single_tool(name, entry, registry, http_client).await;
+        manifest.optional.extend(result);
     }
 
     manifest
 }
 
 /// Attempt to register a single external tool.
-fn register_single_tool(
+async fn register_single_tool(
     name: &str,
     entry: &ExternalToolEntry,
     registry: &mut ToolRegistry,
     http_client: &reqwest::Client,
-) -> ToolManifestEntry {
+) -> Vec<ToolManifestEntry> {
+    #[cfg(not(feature = "mcp"))]
+    std::future::ready(()).await;
+
     let description = entry
         .description
         .clone()
@@ -201,34 +223,41 @@ fn register_single_tool(
             .ok()
             .and_then(|tn| registry.get_def(&tn))
             .is_some();
-        return ToolManifestEntry {
+        return vec![ToolManifestEntry {
             name: name.to_owned(),
             kind: entry.kind,
             available,
             description,
-        };
+        }];
+    }
+
+    if entry.kind == ExternalToolKind::Mcp {
+        #[cfg(feature = "mcp")]
+        return register_mcp_server(name, entry, registry, description).await;
+        #[cfg(not(feature = "mcp"))]
+        return register_mcp_server(name, entry, registry, description);
     }
 
     let Some(endpoint) = entry.endpoint.clone() else {
         warn!(tool = name, "external tool has no endpoint configured");
-        return ToolManifestEntry {
+        return vec![ToolManifestEntry {
             name: name.to_owned(),
             kind: entry.kind,
             available: false,
             description,
-        };
+        }];
     };
 
     let tool_name = match ToolName::new(name) {
         Ok(tn) => tn,
         Err(e) => {
             warn!(tool = name, error = %e, "invalid external tool name");
-            return ToolManifestEntry {
+            return vec![ToolManifestEntry {
                 name: name.to_owned(),
                 kind: entry.kind,
                 available: false,
                 description,
-            };
+            }];
         }
     };
 
@@ -241,7 +270,7 @@ fn register_single_tool(
         reversibility: Reversibility::FullyReversible,
         auto_activate: false,
         groups: vec![],
-        tags: vec![],
+        tags: vec![ToolTag::Fetch],
     };
 
     let executor = ExternalToolExecutor {
@@ -254,22 +283,325 @@ fn register_single_tool(
     match registry.register(tool_def, Box::new(executor)) {
         Ok(()) => {
             info!(tool = name, kind = ?entry.kind, "external tool registered");
-            ToolManifestEntry {
+            vec![ToolManifestEntry {
                 name: name.to_owned(),
                 kind: entry.kind,
                 available: true,
                 description,
-            }
+            }]
         }
         Err(e) => {
             warn!(tool = name, error = %e, "failed to register external tool");
-            ToolManifestEntry {
+            vec![ToolManifestEntry {
                 name: name.to_owned(),
                 kind: entry.kind,
                 available: false,
                 description,
+            }]
+        }
+    }
+}
+
+#[cfg(feature = "mcp")]
+async fn register_mcp_server(
+    server_name: &str,
+    entry: &ExternalToolEntry,
+    registry: &mut ToolRegistry,
+    description: String,
+) -> Vec<ToolManifestEntry> {
+    let client = match connect_mcp_server(server_name, entry).await {
+        Ok(client) => client,
+        Err(e) => {
+            warn!(server = server_name, error = %e, "failed to connect MCP server");
+            return vec![ToolManifestEntry {
+                name: server_name.to_owned(),
+                kind: ExternalToolKind::Mcp,
+                available: false,
+                description,
+            }];
+        }
+    };
+
+    let remote_tools = match client.list_tools().await {
+        Ok(tools) => tools,
+        Err(e) => {
+            warn!(server = server_name, error = %e, "failed to list MCP server tools");
+            let _close_result = client.close().await;
+            return vec![ToolManifestEntry {
+                name: server_name.to_owned(),
+                kind: ExternalToolKind::Mcp,
+                available: false,
+                description,
+            }];
+        }
+    };
+
+    if remote_tools.is_empty() {
+        warn!(server = server_name, "MCP server exposed no tools");
+        let _close_result = client.close().await;
+        return vec![ToolManifestEntry {
+            name: server_name.to_owned(),
+            kind: ExternalToolKind::Mcp,
+            available: false,
+            description,
+        }];
+    }
+
+    let mut entries = Vec::new();
+    for remote_tool in remote_tools {
+        let remote_name = remote_tool.name.to_string();
+        let Some(tool_name) = allocate_mcp_tool_name(server_name, &remote_name, registry) else {
+            warn!(
+                server = server_name,
+                remote_tool = %remote_name,
+                "invalid MCP tool name after normalization"
+            );
+            entries.push(ToolManifestEntry {
+                name: remote_name,
+                kind: ExternalToolKind::Mcp,
+                available: false,
+                description: description.clone(),
+            });
+            continue;
+        };
+        let tool_description = remote_tool
+            .description
+            .as_ref()
+            .map(ToString::to_string)
+            .or_else(|| remote_tool.title.clone())
+            .unwrap_or_else(|| format!("External MCP tool {remote_name} from {server_name}"));
+        let tool_def = ToolDef {
+            name: tool_name.clone(),
+            description: tool_description.clone(),
+            extended_description: Some(format!(
+                "External MCP tool '{remote_name}' served by '{server_name}'."
+            )),
+            input_schema: input_schema_from_mcp(&remote_tool),
+            category: ToolCategory::Research,
+            reversibility: reversibility_from_mcp(&remote_tool),
+            auto_activate: false,
+            groups: vec![ToolGroupId::Mcp],
+            tags: tags_from_mcp(&remote_tool),
+        };
+        let executor = ExternalMcpToolExecutor {
+            server_name: server_name.to_owned(),
+            remote_name: remote_name.clone(),
+            client: client.clone(),
+        };
+        match registry.register(tool_def, Box::new(executor)) {
+            Ok(()) => {
+                info!(
+                    server = server_name,
+                    remote_tool = %remote_name,
+                    tool = %tool_name,
+                    "external MCP tool registered"
+                );
+                entries.push(ToolManifestEntry {
+                    name: tool_name.as_str().to_owned(),
+                    kind: ExternalToolKind::Mcp,
+                    available: true,
+                    description: tool_description,
+                });
+            }
+            Err(e) => {
+                warn!(
+                    server = server_name,
+                    remote_tool = %remote_name,
+                    error = %e,
+                    "failed to register external MCP tool"
+                );
+                entries.push(ToolManifestEntry {
+                    name: tool_name.as_str().to_owned(),
+                    kind: ExternalToolKind::Mcp,
+                    available: false,
+                    description: tool_description,
+                });
             }
         }
+    }
+
+    entries
+}
+
+#[cfg(feature = "mcp")]
+async fn connect_mcp_server(
+    server_name: &str,
+    entry: &ExternalToolEntry,
+) -> diaporeia::error::Result<ExternalMcpClient> {
+    if let Some(endpoint) = entry.endpoint.as_deref() {
+        return ExternalMcpClient::connect_streamable_http(endpoint).await;
+    }
+
+    let command = entry
+        .command
+        .clone()
+        .unwrap_or_else(|| server_name.to_owned());
+    let config = StdioMcpServerConfig {
+        command,
+        args: entry.args.clone(),
+        cwd: entry.cwd.clone(),
+        env: entry.env.clone(),
+    };
+    ExternalMcpClient::connect_stdio(&config).await
+}
+
+#[cfg(not(feature = "mcp"))]
+fn register_mcp_server(
+    server_name: &str,
+    entry: &ExternalToolEntry,
+    _registry: &mut ToolRegistry,
+    description: String,
+) -> Vec<ToolManifestEntry> {
+    let _ = entry;
+    warn!(
+        server = server_name,
+        "MCP external tools require rebuilding aletheia with the `mcp` feature"
+    );
+    vec![ToolManifestEntry {
+        name: server_name.to_owned(),
+        kind: ExternalToolKind::Mcp,
+        available: false,
+        description,
+    }]
+}
+
+#[cfg(feature = "mcp")]
+fn allocate_mcp_tool_name(
+    server_name: &str,
+    remote_name: &str,
+    registry: &ToolRegistry,
+) -> Option<ToolName> {
+    let normalized_remote = normalize_tool_name(remote_name);
+    if let Ok(candidate) = ToolName::new(normalized_remote.clone())
+        && registry.get_def(&candidate).is_none()
+    {
+        return Some(candidate);
+    }
+
+    let prefixed = normalize_tool_name(&format!("mcp_{server_name}_{remote_name}"));
+    ToolName::new(prefixed)
+        .ok()
+        .filter(|candidate| registry.get_def(candidate).is_none())
+}
+
+#[cfg(feature = "mcp")]
+fn normalize_tool_name(name: &str) -> String {
+    let mut normalized: String = name
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    normalized = normalized.trim_matches('_').to_owned();
+    if normalized.is_empty() {
+        normalized.push_str("mcp_tool");
+    }
+    if normalized.len() > 128 {
+        normalized.truncate(128);
+    }
+    normalized
+}
+
+#[cfg(feature = "mcp")]
+fn input_schema_from_mcp(tool: &rmcp::model::Tool) -> InputSchema {
+    let schema = serde_json::Value::Object(tool.input_schema.as_ref().clone());
+    let required = schema
+        .get("required")
+        .and_then(serde_json::Value::as_array)
+        .map(|values| {
+            values
+                .iter()
+                .filter_map(serde_json::Value::as_str)
+                .map(ToOwned::to_owned)
+                .collect()
+        })
+        .unwrap_or_default();
+    let mut properties = IndexMap::new();
+    if let Some(props) = schema
+        .get("properties")
+        .and_then(serde_json::Value::as_object)
+    {
+        for (name, prop) in props {
+            properties.insert(name.clone(), property_def_from_json(prop));
+        }
+    }
+
+    InputSchema {
+        properties,
+        required,
+    }
+}
+
+#[cfg(feature = "mcp")]
+fn property_def_from_json(value: &serde_json::Value) -> PropertyDef {
+    let property_type = value
+        .get("type")
+        .and_then(serde_json::Value::as_str)
+        .map(property_type_from_str)
+        .unwrap_or(PropertyType::String);
+    let description = value
+        .get("description")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("External MCP tool parameter")
+        .to_owned();
+    let enum_values = value
+        .get("enum")
+        .and_then(serde_json::Value::as_array)
+        .map(|values| {
+            values
+                .iter()
+                .filter_map(serde_json::Value::as_str)
+                .map(ToOwned::to_owned)
+                .collect()
+        });
+    let default = value.get("default").cloned();
+    PropertyDef {
+        property_type,
+        description,
+        enum_values,
+        default,
+    }
+}
+
+#[cfg(feature = "mcp")]
+fn property_type_from_str(value: &str) -> PropertyType {
+    match value {
+        "number" => PropertyType::Number,
+        "integer" => PropertyType::Integer,
+        "boolean" => PropertyType::Boolean,
+        "array" => PropertyType::Array,
+        "object" => PropertyType::Object,
+        _ => PropertyType::String,
+    }
+}
+
+#[cfg(feature = "mcp")]
+fn reversibility_from_mcp(tool: &rmcp::model::Tool) -> Reversibility {
+    match tool
+        .annotations
+        .as_ref()
+        .and_then(|annotations| annotations.read_only_hint)
+    {
+        Some(true) => Reversibility::FullyReversible,
+        _ => Reversibility::Irreversible,
+    }
+}
+
+#[cfg(feature = "mcp")]
+fn tags_from_mcp(tool: &rmcp::model::Tool) -> Vec<ToolTag> {
+    if tool
+        .annotations
+        .as_ref()
+        .and_then(|annotations| annotations.read_only_hint)
+        == Some(true)
+    {
+        vec![ToolTag::Fetch]
+    } else {
+        vec![ToolTag::Fetch, ToolTag::Execute]
     }
 }
 
@@ -358,6 +690,63 @@ impl ToolExecutor for ExternalToolExecutor {
     }
 }
 
+#[cfg(feature = "mcp")]
+struct ExternalMcpToolExecutor {
+    server_name: String,
+    remote_name: String,
+    client: ExternalMcpClient,
+}
+
+#[cfg(feature = "mcp")]
+impl ToolExecutor for ExternalMcpToolExecutor {
+    fn execute<'a>(
+        &'a self,
+        input: &'a ToolInput,
+        _ctx: &'a ToolContext,
+    ) -> Pin<Box<dyn Future<Output = organon::error::Result<ToolResult>> + Send + 'a>> {
+        Box::pin(async move {
+            let Some(arguments) = input.arguments.as_object().cloned() else {
+                return Ok(ToolResult::error(format!(
+                    "External MCP tool '{tool}' expected object arguments",
+                    tool = self.remote_name
+                )));
+            };
+
+            let result = self.client.call_tool(&self.remote_name, arguments).await;
+            match result {
+                Ok(result) => Ok(mcp_result_to_tool_result(result)),
+                Err(e) => Ok(ToolResult::error(format!(
+                    "External MCP tool '{tool}' on server '{server}' failed: {e}",
+                    tool = self.remote_name,
+                    server = self.server_name
+                ))),
+            }
+        })
+    }
+}
+
+#[cfg(feature = "mcp")]
+fn mcp_result_to_tool_result(result: rmcp::model::CallToolResult) -> ToolResult {
+    let text_blocks: Vec<String> = result
+        .content
+        .iter()
+        .filter_map(|content| content.as_text().map(|text| text.text.clone()))
+        .collect();
+    let rendered = if !text_blocks.is_empty() {
+        text_blocks.join("\n")
+    } else if let Some(value) = result.structured_content {
+        value.to_string()
+    } else {
+        serde_json::to_string(&result).unwrap_or_else(|e| format!("unrenderable MCP result: {e}"))
+    };
+
+    if result.is_error == Some(true) {
+        ToolResult::error(rendered)
+    } else {
+        ToolResult::text(rendered)
+    }
+}
+
 // ── Tests ───────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -369,6 +758,22 @@ mod tests {
     /// production this happens in `main()`. Tests must install it themselves.
     fn ensure_crypto_provider() {
         let _ = rustls::crypto::ring::default_provider().install_default();
+    }
+
+    fn entry(
+        kind: ExternalToolKind,
+        endpoint: Option<&str>,
+        description: Option<&str>,
+    ) -> ExternalToolEntry {
+        ExternalToolEntry {
+            kind,
+            endpoint: endpoint.map(ToOwned::to_owned),
+            command: None,
+            args: Vec::new(),
+            cwd: None,
+            env: HashMap::new(),
+            description: description.map(ToOwned::to_owned),
+        }
     }
 
     #[test]
@@ -408,57 +813,56 @@ pubmed = { type = "http", endpoint = "http://localhost:3101", description = "Sea
         assert!(config.optional.is_empty());
     }
 
-    #[test]
-    fn register_builtin_tool_checks_registry() {
+    #[tokio::test]
+    async fn register_builtin_tool_checks_registry() {
         ensure_crypto_provider();
         let mut registry = ToolRegistry::new();
-        let entry = ExternalToolEntry {
-            kind: ExternalToolKind::Builtin,
-            endpoint: None,
-            description: Some("built-in file ops".to_owned()),
-        };
+        let entry = entry(ExternalToolKind::Builtin, None, Some("built-in file ops"));
         let result = register_single_tool(
             "nonexistent_builtin",
             &entry,
             &mut registry,
             &reqwest::Client::new(),
-        );
+        )
+        .await;
         // NOTE: builtin entry for a tool that doesn't exist in the registry
-        assert!(!result.available);
-        assert_eq!(result.kind, ExternalToolKind::Builtin);
+        assert_eq!(result.len(), 1);
+        let entry = result.first().expect("manifest entry");
+        assert!(!entry.available);
+        assert_eq!(entry.kind, ExternalToolKind::Builtin);
     }
 
-    #[test]
-    fn register_mcp_tool_without_endpoint() {
+    #[tokio::test]
+    async fn register_mcp_tool_without_endpoint() {
         ensure_crypto_provider();
         let mut registry = ToolRegistry::new();
-        let entry = ExternalToolEntry {
-            kind: ExternalToolKind::Mcp,
-            endpoint: None,
-            description: Some("missing endpoint".to_owned()),
-        };
+        let entry = entry(ExternalToolKind::Mcp, None, Some("missing endpoint"));
         let result =
-            register_single_tool("bad_tool", &entry, &mut registry, &reqwest::Client::new());
-        assert!(!result.available);
+            register_single_tool("bad_tool", &entry, &mut registry, &reqwest::Client::new()).await;
+        assert_eq!(result.len(), 1);
+        assert!(!result.first().expect("manifest entry").available);
     }
 
-    #[test]
-    fn register_mcp_tool_with_endpoint() {
+    #[tokio::test]
+    async fn register_http_tool_with_endpoint() {
         ensure_crypto_provider();
         let mut registry = ToolRegistry::new();
-        let entry = ExternalToolEntry {
-            kind: ExternalToolKind::Mcp,
-            endpoint: Some("http://localhost:3100".to_owned()),
-            description: Some("Semantic Scholar".to_owned()),
-        };
+        let entry = entry(
+            ExternalToolKind::Http,
+            Some("http://localhost:3100"),
+            Some("Semantic Scholar"),
+        );
         let result = register_single_tool(
             "semantic_scholar",
             &entry,
             &mut registry,
             &reqwest::Client::new(),
-        );
-        assert!(result.available);
-        assert_eq!(result.name, "semantic_scholar");
+        )
+        .await;
+        assert_eq!(result.len(), 1);
+        let entry = result.first().expect("manifest entry");
+        assert!(entry.available);
+        assert_eq!(entry.name, "semantic_scholar");
 
         // NOTE: verify the tool is actually in the registry
         let tool_name = ToolName::new("semantic_scholar").expect("valid name");
@@ -493,8 +897,8 @@ pubmed = { type = "http", endpoint = "http://localhost:3101", description = "Sea
         assert_eq!(manifest.missing_required_count(), 1);
     }
 
-    #[test]
-    fn full_registration_flow() {
+    #[tokio::test]
+    async fn full_registration_flow() {
         ensure_crypto_provider();
         let toml_str = r#"
 [required]
@@ -508,7 +912,7 @@ no_endpoint = { type = "mcp" }
         let mut registry = ToolRegistry::new();
         let client = reqwest::Client::new();
 
-        let manifest = register_external_tools(&config, &mut registry, &client);
+        let manifest = register_external_tools(&config, &mut registry, &client).await;
 
         // NOTE: file_ops is builtin but not registered in empty registry → unavailable
         assert_eq!(manifest.required.len(), 1);
@@ -520,6 +924,118 @@ no_endpoint = { type = "mcp" }
 
         let no_ep = manifest.optional.iter().find(|e| e.name == "no_endpoint");
         assert!(no_ep.is_some_and(|e| !e.available));
+    }
+
+    #[cfg(feature = "mcp")]
+    fn fake_mcp_server_script() -> (tempfile::TempDir, std::path::PathBuf) {
+        use std::fs;
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let script = dir.path().join("fake-mcp.sh");
+        fs::write(
+            &script,
+            r#"#!/bin/sh
+IFS= read -r init
+printf '%s\n' '{"jsonrpc":"2.0","id":0,"result":{"protocolVersion":"2024-11-05","capabilities":{"tools":{}},"serverInfo":{"name":"fake","version":"0.1.0"}}}'
+IFS= read -r initialized
+IFS= read -r list
+printf '%s\n' '{"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"echo","description":"Echo through MCP","inputSchema":{"type":"object","properties":{"message":{"type":"string","description":"Message"}},"required":["message"]},"annotations":{"readOnlyHint":true}}]}}'
+while IFS= read -r line; do
+  case "$line" in
+    *'"method":"tools/call"'*)
+      printf '%s\n' '{"jsonrpc":"2.0","id":2,"result":{"content":[{"type":"text","text":"mcp-response"}],"isError":false}}'
+      ;;
+  esac
+done
+"#,
+        )
+        .expect("write script");
+        let mut perms = fs::metadata(&script).expect("metadata").permissions();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            perms.set_mode(0o755);
+            fs::set_permissions(&script, perms).expect("chmod");
+        }
+        (dir, script)
+    }
+
+    #[cfg(feature = "mcp")]
+    fn test_ctx() -> ToolContext {
+        use std::collections::HashSet;
+        use std::sync::{Arc, RwLock};
+
+        ToolContext {
+            nous_id: koina::id::NousId::new("alice").expect("valid nous id"),
+            session_id: koina::id::SessionId::new(),
+            turn_number: 0,
+            workspace: std::env::current_dir().expect("cwd"),
+            allowed_roots: vec![std::env::current_dir().expect("cwd")],
+            services: None,
+            active_tools: Arc::new(RwLock::new(HashSet::new())),
+            tool_config: Arc::new(taxis::config::ToolLimitsConfig::default()),
+        }
+    }
+
+    #[cfg(feature = "mcp")]
+    #[tokio::test]
+    async fn register_mcp_server_discovers_tools_and_execute_routes_call() {
+        ensure_crypto_provider();
+        let (_dir, script) = fake_mcp_server_script();
+        let mut registry = ToolRegistry::new();
+        let mut entry = entry(ExternalToolKind::Mcp, None, Some("Fake MCP"));
+        entry.command = Some(script.display().to_string());
+
+        let result =
+            register_single_tool("fake", &entry, &mut registry, &reqwest::Client::new()).await;
+        assert_eq!(result.len(), 1);
+        assert!(result[0].available);
+        assert_eq!(result[0].name, "echo");
+
+        let tool_name = ToolName::new("echo").expect("tool name");
+        let def = registry.get_def(&tool_name).expect("tool def");
+        assert_eq!(def.groups, vec![ToolGroupId::Mcp]);
+        assert!(def.tags.contains(&ToolTag::Fetch));
+
+        let input = ToolInput {
+            name: tool_name,
+            tool_use_id: "call-1".to_owned(),
+            arguments: serde_json::json!({"message": "hello"}),
+        };
+        let output = registry
+            .execute(&input, &test_ctx())
+            .await
+            .expect("execute");
+        assert!(!output.is_error);
+        let organon::types::ToolResultContent::Text(text) = output.content else {
+            panic!("expected text tool result");
+        };
+        assert_eq!(text, "mcp-response");
+    }
+
+    #[cfg(feature = "mcp")]
+    #[tokio::test]
+    async fn execute_checked_denies_mcp_group_when_role_lacks_group() {
+        ensure_crypto_provider();
+        let (_dir, script) = fake_mcp_server_script();
+        let mut registry = ToolRegistry::new();
+        let mut entry = entry(ExternalToolKind::Mcp, None, Some("Fake MCP"));
+        entry.command = Some(script.display().to_string());
+
+        let result =
+            register_single_tool("fake", &entry, &mut registry, &reqwest::Client::new()).await;
+        assert!(result.iter().any(|entry| entry.available));
+
+        let input = ToolInput {
+            name: ToolName::new("echo").expect("tool name"),
+            tool_use_id: "call-1".to_owned(),
+            arguments: serde_json::json!({"message": "hello"}),
+        };
+        let err = registry
+            .execute_checked(&input, &test_ctx(), "reader", &[ToolGroupId::Read])
+            .await
+            .expect_err("mcp group denied");
+        assert!(err.to_string().contains("tool group violation"));
     }
 
     #[test]

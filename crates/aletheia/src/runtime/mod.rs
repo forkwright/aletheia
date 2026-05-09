@@ -374,7 +374,8 @@ impl RuntimeBuilder {
             &tools_config,
             &mut tool_registry,
             &reqwest::Client::new(),
-        );
+        )
+        .await;
         if tool_manifest.available_count() > 0 || !tools_config.required.is_empty() {
             info!(
                 available = tool_manifest.available_count(),

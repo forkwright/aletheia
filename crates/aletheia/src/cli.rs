@@ -66,6 +66,8 @@ pub(crate) struct Cli {
 pub(crate) enum Command {
     /// Start the HTTP server (same as running with no subcommand)
     Serve,
+    /// Serve Aletheia MCP over stdio
+    Mcp,
     /// Check if the server is running
     Health(HealthArgs),
     /// Manage database backups

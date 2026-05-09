@@ -18,6 +18,8 @@
 
 /// Bearer token authentication middleware for MCP transport.
 pub mod auth;
+/// MCP client helpers for external server integration.
+pub mod client;
 /// Diaporeia-specific error types and result alias.
 pub mod error;
 pub(crate) mod rate_limit;
