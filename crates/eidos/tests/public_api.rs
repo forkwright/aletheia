@@ -772,3 +772,144 @@ mod training_config {
         assert!((back.author_classifier_threshold - cfg.author_classifier_threshold).abs() < 1e-6);
     }
 }
+
+// --- Provenance ---
+
+mod provenance {
+    use eidos::id::{CausalEdgeId, FactId};
+    use eidos::knowledge::finding::FindingStats;
+    use eidos::knowledge::{
+        CausalEdge, CausalRelationType, EpistemicTier, FactProvenance, TemporalOrdering,
+        VerificationRecord, VerificationSource, VerificationStatus, parse_timestamp,
+    };
+    use eidos::{
+        ArchitectureFact, ArtefactMeta, EvidenceLevel, FactScope, Finding, Provenance,
+        ProvenanceProject,
+    };
+
+    #[test]
+    fn root_export_projects_artefact_meta() {
+        let meta = ArtefactMeta::new("eidos@0.1.0", 2, "2026-04-22T00:00:00Z")
+            .with_actor("agent-1", Some("session-1".to_owned()))
+            .with_source("git_repo", "https://example.invalid/repo")
+            .with_evidence(["chunk-1", "chunk-2"])
+            .with_confidence(0.75)
+            .with_supersede("old-id", "corrected source");
+
+        let provenance = meta.provenance();
+
+        assert_eq!(provenance.actor_id.as_deref(), Some("agent-1"));
+        assert_eq!(provenance.session_id.as_deref(), Some("session-1"));
+        assert_eq!(provenance.source_kind.as_deref(), Some("git_repo"));
+        assert_eq!(
+            provenance.source_locator.as_deref(),
+            Some("https://example.invalid/repo")
+        );
+        assert_eq!(provenance.evidence_refs, ["chunk-1", "chunk-2"]);
+        assert_eq!(provenance.confidence, Some(0.75));
+        assert_eq!(provenance.supersedes.as_deref(), Some("old-id"));
+        assert_eq!(
+            provenance.supersede_reason.as_deref(),
+            Some("corrected source")
+        );
+        assert_eq!(
+            provenance.generated_at.as_deref(),
+            Some("2026-04-22T00:00:00Z")
+        );
+    }
+
+    #[test]
+    fn fact_provenance_projection_preserves_only_carried_fields() {
+        let fact_provenance = FactProvenance {
+            confidence: 0.82,
+            tier: EpistemicTier::Verified,
+            source_session_id: Some("session-9".to_owned()),
+            stability_hours: 72.0,
+        };
+
+        let provenance = Provenance::from(&fact_provenance);
+
+        assert_eq!(provenance.session_id.as_deref(), Some("session-9"));
+        assert_eq!(provenance.confidence, Some(0.82));
+        assert!(provenance.actor_id.is_none());
+        assert!(provenance.source_kind.is_none());
+        assert!(provenance.generated_at.is_none());
+    }
+
+    #[test]
+    fn public_shapes_project_to_canonical_provenance() {
+        let mut architecture = ArchitectureFact::new(
+            "aletheia.eidos.provenance",
+            FactScope::Concept,
+            "Eidos exposes canonical provenance.",
+            vec!["crates/eidos/src/meta.rs".to_owned()],
+            "PR-102",
+        );
+        architecture.mneme_session = Some("mneme-session".to_owned());
+        architecture.updated_at = "2026-05-08T00:00:00Z".to_owned();
+        let architecture_provenance = Provenance::from(&architecture);
+        assert_eq!(architecture_provenance.actor_id.as_deref(), Some("PR-102"));
+        assert_eq!(
+            architecture_provenance.session_id.as_deref(),
+            Some("mneme-session")
+        );
+        assert_eq!(
+            architecture_provenance.evidence_refs,
+            ["crates/eidos/src/meta.rs"]
+        );
+
+        let finding = Finding {
+            finding_id: "LME-factual-001".to_owned(),
+            claim: "Candidate recall improved.".to_owned(),
+            evidence_level: EvidenceLevel::Exploratory,
+            counter_argument: "Synthetic sample only.".to_owned(),
+            source: "benchmark/runner.rs".to_owned(),
+            stats: FindingStats::none(),
+        };
+        assert_eq!(
+            finding.provenance().source_locator.as_deref(),
+            Some("benchmark/runner.rs")
+        );
+
+        let verified_at = parse_timestamp("2026-05-08T12:00:00Z").expect("valid timestamp");
+        let verification = VerificationRecord {
+            claim: "cargo test passed".to_owned(),
+            source: VerificationSource::Command,
+            expected: serde_json::json!("pass"),
+            actual: serde_json::json!("pass"),
+            tolerance: 0.0,
+            status: VerificationStatus::Pass,
+            verified_at,
+        };
+        let verification_provenance = verification.provenance();
+        assert_eq!(
+            verification_provenance.source_kind.as_deref(),
+            Some("command")
+        );
+        assert_eq!(
+            verification_provenance.generated_at.as_deref(),
+            Some("2026-05-08T12:00:00Z")
+        );
+
+        let edge = CausalEdge {
+            id: CausalEdgeId::new("ce-1").expect("valid edge id"),
+            source_id: FactId::new("fact-a").expect("valid source id"),
+            target_id: FactId::new("fact-b").expect("valid target id"),
+            relationship_type: CausalRelationType::Caused,
+            ordering: TemporalOrdering::Before,
+            confidence: 0.5,
+            evidence_session_id: Some("session-causal".to_owned()),
+            timestamp: parse_timestamp("2026-05-08T13:00:00Z").expect("valid timestamp"),
+        };
+        let edge_provenance = edge.provenance();
+        assert_eq!(
+            edge_provenance.session_id.as_deref(),
+            Some("session-causal")
+        );
+        assert_eq!(edge_provenance.confidence, Some(0.5));
+        assert_eq!(
+            edge_provenance.generated_at.as_deref(),
+            Some("2026-05-08T13:00:00Z")
+        );
+    }
+}

@@ -385,16 +385,46 @@ Rules:
             fact_count = extraction.facts.len(),
         )
     )]
-    #[expect(
-        clippy::too_many_lines,
-        reason = "sequential extraction pipeline: entities → relationships → facts"
-    )]
     pub fn persist(
         &self,
         extraction: &Extraction,
         store: &crate::knowledge_store::KnowledgeStore,
         source: &str,
         nous_id: &str,
+    ) -> Result<PersistResult, ExtractionError> {
+        self.persist_with_scope(
+            extraction,
+            store,
+            source,
+            nous_id,
+            Some(crate::knowledge::MemoryScope::Project),
+        )
+    }
+
+    /// Persist an extraction to the knowledge store with an explicit memory scope.
+    ///
+    /// `scope` is copied onto every inserted fact. Pass `None` only for legacy
+    /// imports where no parent session or project scope exists.
+    #[cfg(feature = "mneme-engine")]
+    #[instrument(
+        skip(self, store, extraction),
+        fields(
+            entity_count = extraction.entities.len(),
+            relationship_count = extraction.relationships.len(),
+            fact_count = extraction.facts.len(),
+        )
+    )]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "sequential extraction pipeline: entities → relationships → facts"
+    )]
+    pub fn persist_with_scope(
+        &self,
+        extraction: &Extraction,
+        store: &crate::knowledge_store::KnowledgeStore,
+        source: &str,
+        nous_id: &str,
+        scope: Option<crate::knowledge::MemoryScope>,
     ) -> Result<PersistResult, ExtractionError> {
         use crate::knowledge::{
             Entity, Fact, FactAccess, FactLifecycle, FactProvenance, FactTemporal, Relationship,
@@ -583,7 +613,7 @@ Rules:
                 nous_id: nous_id.to_owned(),
                 content,
                 fact_type: classified_type.as_str().to_owned(),
-                scope: None,
+                scope,
                 temporal: FactTemporal {
                     valid_from: now,
                     valid_to: far_future(),

@@ -13,8 +13,6 @@ pub mod id;
 pub mod knowledge;
 /// Uniform provenance metadata for fleet artefacts.
 pub mod meta;
-/// Cross-layer provenance translation between eidos and the mnemosyne JSON shape.
-pub mod provenance_adapter;
 
 /// Re-export bookkeeping provider contracts and DTOs at crate root.
 pub use bookkeeping::{
@@ -27,11 +25,7 @@ pub use knowledge::architecture_fact::{ArchitectureFact, FactError, FactScope, F
 /// Re-export canonical finding types at crate root.
 pub use knowledge::finding::{EvidenceLevel, Finding};
 /// Re-export provenance types at crate root.
-pub use meta::{ArtefactMeta, Stamped};
-/// Re-export mnemosyne interop types at crate root.
-pub use provenance_adapter::{
-    MnemosyneAnnotationView, MnemosyneView, from_mnemosyne_annotation, to_mnemosyne_compatible,
-};
+pub use meta::{ArtefactMeta, Provenance, ProvenanceProject, Stamped};
 /// Shared test data builders for `Fact`, `Entity`, and `Relationship`.
 #[cfg(any(test, feature = "test-support"))]
 #[expect(

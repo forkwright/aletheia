@@ -101,6 +101,8 @@ impl NousActor {
             );
             self.maybe_spawn_skill_analysis(&turn_result.tool_calls, session_key);
             self.maybe_spawn_distillation(session_key).await;
+            #[cfg(feature = "knowledge-store")]
+            self.maybe_run_auto_dream();
         }
 
         self.active_session = None;

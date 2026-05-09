@@ -75,6 +75,17 @@ pub enum Error {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+
+    /// Backward-path probe verification rejected a memory flush.
+    #[snafu(display(
+        "backward-path probe verification failed: {failure_count}/{total_probes} probes failed"
+    ))]
+    ProbeVerification {
+        failure_count: usize,
+        total_probes: usize,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
 }
 
 /// Convenience alias for `Result` with melete's [`Error`] type.
