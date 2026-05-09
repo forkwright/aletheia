@@ -47,3 +47,30 @@ pub enum Error {
 
 /// Convenience alias for `Result` with Signal's [`Error`] type.
 pub(crate) type Result<T> = std::result::Result<T, Error>;
+
+impl koina::error_class::Classifiable for Error {
+    fn class(&self) -> koina::error_class::ErrorClass {
+        use koina::error_class::ErrorClass;
+        match self {
+            Self::Http { source, .. } if source.is_timeout() || source.is_connect() => {
+                ErrorClass::Transient
+            }
+            Self::Http { .. } => ErrorClass::Unknown,
+            Self::Rpc { .. } | Self::NoAccount { .. } | Self::Json { .. } => ErrorClass::Permanent,
+        }
+    }
+
+    fn action(&self) -> koina::error_class::ErrorAction {
+        use koina::error_class::{ErrorAction, ErrorClass};
+        match self.class() {
+            ErrorClass::Transient => ErrorAction::Retry {
+                max_attempts: 3,
+                backoff_base_ms: 500,
+            },
+            ErrorClass::Permanent => ErrorAction::Surface {
+                user_message: self.to_string(),
+            },
+            _ => ErrorAction::Escalate,
+        }
+    }
+}

@@ -8,7 +8,7 @@
 
 /// RFC 4648 base64 encoding and decoding (standard and URL-safe variants).
 pub mod base64;
-/// Setup-time cleanup registration via RAII guards ([`cleanup::CleanupGuard`], [`cleanup::CleanupRegistry`]).
+/// Setup-time cleanup registration via [`cleanup::CleanupRegistry`].
 pub mod cleanup;
 /// Credential provider trait for dynamic API key resolution.
 pub mod credential;
@@ -45,8 +45,6 @@ pub mod retry;
 pub mod secret;
 /// Trait abstractions for filesystem, clock, and environment operations.
 pub mod system;
-/// Tracing subscriber initialization for human-readable and JSON log output.
-pub mod tracing_init;
 /// Internal ULID generation (Crockford base32, 48-bit timestamp + 80-bit random).
 pub mod ulid;
 /// Internal UUID v4 generation (dependency-free).

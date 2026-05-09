@@ -523,6 +523,58 @@ mod tests {
         assert!(classifier.classify(&long_text).is_err());
     }
 
+    #[tokio::test]
+    async fn load_reads_and_validates_metadata() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            dir.path().join("metadata.json"),
+            r#"{
+                "schema_version": "1",
+                "artifact_version": "2026.05.08-test",
+                "producer": "alice-test-classifier",
+                "produced_at": "2026-05-08T00:00:00Z",
+                "model_type": "heuristic_rule_bank",
+                "classes": ["user", "subagent", "system_scaffolding", "template"],
+                "runtime_version": null
+            }"#,
+        )
+        .expect("write metadata");
+
+        let classifier = Classifier::load(dir.path()).await.expect("load classifier");
+
+        assert_eq!(
+            classifier.metadata().schema_version,
+            EXPECTED_SCHEMA_VERSION
+        );
+        assert_eq!(classifier.metadata().producer, "alice-test-classifier");
+        assert_eq!(
+            classifier.metadata().classes,
+            ["user", "subagent", "system_scaffolding", "template"]
+        );
+    }
+
+    #[test]
+    fn classify_returns_normalized_non_uniform_scores() {
+        let classifier = Classifier::new();
+        let probs = classifier
+            .classify("lol thanks, can u check this real quick???")
+            .expect("classify");
+        let sum: f32 = probs.probabilities.iter().sum();
+
+        assert!(
+            (sum - 1.0).abs() < 0.001,
+            "probabilities should sum to 1.0, got {sum}"
+        );
+        assert_eq!(probs.argmax(), AuthorClass::User);
+        assert!(
+            probs
+                .probabilities
+                .windows(2)
+                .any(|pair| (pair[0] - pair[1]).abs() > f32::EPSILON),
+            "heuristic classifier should not return a uniform distribution"
+        );
+    }
+
     // ── Golden-set accuracy (20 human + 20 agent) ───────────────────
 
     const HUMAN_SAMPLES: &[&str] = &[

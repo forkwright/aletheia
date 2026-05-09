@@ -69,10 +69,14 @@ pub(crate) async fn run(args: Args) -> Result<()> {
         Box::pin(RuntimeBuilder::production(Arc::clone(&oikos_arc), config.clone()).build())
             .await?;
 
+    let disk_monitor =
+        spawn_disk_space_monitor(log_dir.clone(), runtime.shutdown_token.child_token());
+
     spawn_log_retention(
         log_dir.clone(),
         config.logging.retention_days,
         runtime.shutdown_token.child_token(),
+        Some(disk_monitor),
     );
     #[cfg(feature = "recall")]
     if let (Some(layer), Some(store)) = (trace_ingest_layer, runtime.state.knowledge_store.clone())
@@ -291,4 +295,6 @@ mod tracing_setup;
 
 #[cfg(feature = "recall")]
 use tracing_setup::spawn_trace_ingest_flush;
-use tracing_setup::{init_tracing, resolve_log_dir, shutdown_signal, spawn_log_retention};
+use tracing_setup::{
+    init_tracing, resolve_log_dir, shutdown_signal, spawn_disk_space_monitor, spawn_log_retention,
+};

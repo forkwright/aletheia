@@ -151,10 +151,7 @@ impl SignalClient {
             },
         };
         config
-            .retry_async(
-                || self.rpc("send", &rpc_params),
-                |e| !matches!(e, super::error::Error::Rpc { .. }),
-            )
+            .retry_classified_async(|| self.rpc("send", &rpc_params))
             .await
     }
 
