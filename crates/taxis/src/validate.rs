@@ -743,17 +743,24 @@ fn validate_providers(value: &Value, errors: &mut Vec<String>) {
         match entry.get("providerType").and_then(Value::as_str) {
             None | Some("") => {
                 errors.push(format!(
-                    "providers[{i}].providerType must be one of: anthropic, openai-compatible, claude-code"
+                    "providers[{i}].providerType must be one of: anthropic, openai, open-ai-compatible, openai-compatible, claude-code"
                 ));
             }
             Some(kind) => {
-                if !matches!(kind, "anthropic" | "openai-compatible" | "claude-code") {
+                if !matches!(
+                    kind,
+                    "anthropic"
+                        | "openai"
+                        | "open-ai-compatible"
+                        | "openai-compatible"
+                        | "claude-code"
+                ) {
                     errors.push(format!(
-                        "providers[{i}].providerType '{kind}' is not recognized (expected one of: anthropic, openai-compatible, claude-code)"
+                        "providers[{i}].providerType '{kind}' is not recognized (expected one of: anthropic, openai, open-ai-compatible, openai-compatible, claude-code)"
                     ));
                 }
                 // OpenAI-compatible requires baseUrl.
-                if kind == "openai-compatible"
+                if matches!(kind, "open-ai-compatible" | "openai-compatible")
                     && entry
                         .get("baseUrl")
                         .and_then(Value::as_str)
@@ -767,10 +774,13 @@ fn validate_providers(value: &Value, errors: &mut Vec<String>) {
         }
 
         if let Some(target) = entry.get("deploymentTarget").and_then(Value::as_str)
-            && !matches!(target, "cloud" | "localhosted" | "embedded")
+            && !matches!(
+                target,
+                "cloud" | "localhosted" | "local_hosted" | "local-hosted" | "embedded"
+            )
         {
             errors.push(format!(
-                "providers[{i}].deploymentTarget '{target}' is not recognized (expected one of: cloud, localhosted, embedded)"
+                "providers[{i}].deploymentTarget '{target}' is not recognized (expected one of: cloud, localhosted, local_hosted, local-hosted, embedded)"
             ));
         }
     }

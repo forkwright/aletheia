@@ -107,6 +107,7 @@ pub enum DeploymentTarget {
     /// Self-hosted endpoint reachable over the local network (e.g., a
     /// colocated llama.cpp server on the same subnet). Trusted with
     /// operator-sensitive content but not with personally-identifiable data.
+    #[serde(alias = "local_hosted", alias = "local-hosted")]
     LocalHosted,
     /// Runs on the same machine as aletheia (loopback llama.cpp / ollama
     /// / vllm). Trusted with every fact the operator would trust to disk.
@@ -124,9 +125,13 @@ pub enum DeploymentTarget {
 pub enum ProviderKind {
     /// Anthropic Messages API native client.
     Anthropic,
+    /// `OpenAI` Chat Completions API native endpoint.
+    #[serde(rename = "openai", alias = "open-ai")]
+    OpenAi,
     /// `OpenAI` Chat Completions-compatible HTTP client. Works with
     /// `OpenAI`, llama.cpp, ollama, vllm, and any other server exposing the
     /// same wire format.
+    #[serde(alias = "openai-compatible")]
     OpenAiCompatible,
     /// Claude Code subprocess adapter (delegates to the `claude` CLI).
     /// Requires the `cc-provider` feature flag on hermeneus.

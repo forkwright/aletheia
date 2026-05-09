@@ -34,6 +34,9 @@ pub(crate) async fn execute_action(
 ) -> Result<ExecutionResult> {
     match action {
         TaskAction::Command(cmd) => execute_command(cmd).await,
+        TaskAction::SelfPrompt(prompt) => {
+            crate::self_prompt::execute_self_prompt(nous_id, prompt, bridge).await
+        }
         TaskAction::Builtin(builtin) => {
             execute_builtin_with_behavior(
                 builtin,

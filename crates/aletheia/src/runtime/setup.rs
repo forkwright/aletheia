@@ -227,8 +227,15 @@ fn register_declared_providers(registry: &mut ProviderRegistry, config: &Alethei
 
     for entry in &config.providers {
         match entry.kind {
-            ProviderKind::OpenAiCompatible => {
-                let Some(base_url) = entry.base_url.clone() else {
+            ProviderKind::OpenAi | ProviderKind::OpenAiCompatible => {
+                let base_url = if entry.kind == ProviderKind::OpenAi {
+                    entry
+                        .base_url
+                        .clone()
+                        .unwrap_or_else(|| OpenAiProviderConfig::default().base_url)
+                } else if let Some(base_url) = entry.base_url.clone() {
+                    base_url
+                } else {
                     warn!(
                         provider = %entry.name,
                         "OpenAI-compatible provider missing base_url — skipping"

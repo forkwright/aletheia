@@ -78,6 +78,8 @@ pub enum TaskAction {
     Command(String),
     /// Run a built-in maintenance function.
     Builtin(BuiltinTask),
+    /// Send a daemon-generated prompt to the nous.
+    SelfPrompt(String),
 }
 
 /// Built-in maintenance tasks.

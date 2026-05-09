@@ -149,6 +149,78 @@ fn accepts_valid_auth_modes() {
     }
 }
 
+#[test]
+fn accepts_provider_type_and_deployment_aliases() {
+    let section = json!([
+        {
+            "name": "openai-cloud",
+            "providerType": "openai",
+            "deploymentTarget": "cloud",
+            "models": ["gpt-4.1"]
+        },
+        {
+            "name": "menos-chat",
+            "providerType": "open-ai-compatible",
+            "baseUrl": "http://127.0.0.1:5001/v1",
+            "deploymentTarget": "local_hosted",
+            "models": ["anubis-70b"]
+        },
+        {
+            "name": "menos-vlm",
+            "providerType": "openai-compatible",
+            "baseUrl": "http://127.0.0.1:5009/v1",
+            "deploymentTarget": "localhosted",
+            "models": ["qwen3-vl"]
+        }
+    ]);
+
+    assert!(
+        validate_section("providers", &section).is_ok(),
+        "provider/deployment aliases should validate"
+    );
+}
+
+#[test]
+fn provider_aliases_deserialize_to_typed_config() {
+    let json = r#"{
+        "providers": [
+            {
+                "name": "openai-cloud",
+                "providerType": "openai",
+                "deploymentTarget": "cloud",
+                "models": ["gpt-4.1"]
+            },
+            {
+                "name": "menos-chat",
+                "providerType": "openai-compatible",
+                "baseUrl": "http://127.0.0.1:5001/v1",
+                "deploymentTarget": "local_hosted",
+                "models": ["anubis-70b"]
+            }
+        ]
+    }"#;
+
+    let config_result: Result<crate::config::AletheiaConfig, _> = serde_json::from_str(json);
+    assert!(
+        config_result.is_ok(),
+        "provider aliases should parse: {config_result:?}"
+    );
+    let config = config_result.unwrap_or_default();
+    assert_eq!(config.providers.len(), 2);
+    assert_eq!(
+        config.providers[0].kind,
+        crate::config::ProviderKind::OpenAi
+    );
+    assert_eq!(
+        config.providers[1].kind,
+        crate::config::ProviderKind::OpenAiCompatible
+    );
+    assert_eq!(
+        config.providers[1].deployment_target,
+        crate::config::DeploymentTarget::LocalHosted
+    );
+}
+
 /// Serialises tests that mutate `ALETHEIA_ALLOW_AUTH_NONE`. Cargo runs tests
 /// within a binary in parallel threads, and `std::env` is process-wide, so
 /// without a mutex the opt-in gate flips under another test's feet.

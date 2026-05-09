@@ -132,6 +132,27 @@ fn self_prompt_no_follow_up_no_dispatch() {
     );
 }
 
+#[test]
+fn register_top_issue_self_prompt_adds_recurring_task() {
+    let token = CancellationToken::new();
+    let mut runner = TaskRunner::new("test-nous", token);
+    let issues = vec![crate::self_prompt::OpenIssue {
+        number: 1,
+        title: "Generate issue-driven prompt".to_owned(),
+        body: "Use issue title and body.".to_owned(),
+    }];
+
+    let task_id = runner
+        .register_top_issue_self_prompt(&issues, Schedule::Interval(Duration::from_mins(30)))
+        .expect("registered task");
+
+    assert_eq!(task_id, "issue-self-prompt-1");
+    let statuses = runner.status();
+    assert_eq!(statuses.len(), 1);
+    assert_eq!(statuses[0].id, "issue-self-prompt-1");
+    assert_eq!(statuses[0].name, "Issue #1 self-prompt");
+}
+
 // -- Error handling tests --
 
 /// Error path: task with invalid cron expression is rejected during registration.
