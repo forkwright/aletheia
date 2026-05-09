@@ -25,7 +25,7 @@ MCP server interface for external AI agents via the Model Context Protocol. 1.5K
 | `RateLimiter` | `rate_limit.rs` | Per-session rate limiting with Cheap/Expensive tiers |
 | `Error` | `error.rs` | Error enum with `Into<rmcp::ErrorData>` conversion |
 
-## MCP tools (15)
+## MCP tools (21)
 
 | Tool | Tier | RBAC | Purpose |
 |------|------|------|---------|
@@ -36,13 +36,19 @@ MCP server interface for external AI agents via the Model Context Protocol. 1.5K
 | `nous_list` | Cheap | Agent | List all registered nous agents |
 | `nous_status` | Cheap | Agent | Detailed status of a specific agent |
 | `nous_tools` | Cheap | Agent | List tools available to an agent |
-| `knowledge_search` | Expensive | Operator | Semantic search across the knowledge graph (stub) |
+| `knowledge_search` | Expensive | Operator | Search the knowledge graph through the configured knowledge store |
 | `knowledge_recall` | Expensive | Agent | BM25 text recall across the knowledge graph |
 | `knowledge_get` | Cheap | Agent | Retrieve a single fact by ID |
 | `knowledge_insert` | Expensive | Operator | Insert a new fact (returns fact ID) |
 | `knowledge_forget` | Expensive | Operator | Soft-delete a fact by ID |
 | `knowledge_graph_neighbors` | Expensive | Agent | Traverse entity edges up to configured depth |
 | `config_get` | Cheap | Operator | Runtime config (redacted) |
+| `repomix_templates_list` | Cheap | Agent | List available repomix context-packing templates |
+| `repomix_template_get` | Cheap | Agent | Fetch one repomix template definition by name |
+| `repomix_pack` | Expensive | Operator | Pack crate source into compressed dispatch context |
+| `creds_set` | Cheap | Operator | Store a named secret in the session vault |
+| `creds_list` | Cheap | Operator | List secret names stored in the session vault |
+| `creds_rm` | Cheap | Operator | Remove a named secret from the session vault |
 | `system_health` | Cheap | Agent | Uptime, actor health, version info |
 
 Knowledge graph tools require `mcp.knowledge_graph.enabled = true` in config (default `false`).

@@ -49,13 +49,6 @@ pub(crate) struct NousIdParam {
 }
 
 /// Parameters for knowledge search.
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "fields consumed by JsonSchema/Deserialize derives, not accessed directly"
-    )
-)]
 #[derive(Debug, Deserialize, JsonSchema)]
 pub(crate) struct KnowledgeSearchParams {
     /// The search query text.

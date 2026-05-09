@@ -24,12 +24,22 @@ use crate::error::{
 use crate::rate_limit::Tier;
 use crate::server::DiaporeiaServer;
 
+#[cfg(test)]
+const AGENT_ONLY_TOOLS: &[&str] = &[
+    "session_list",
+    "session_history",
+    "nous_list",
+    "nous_status",
+    "nous_tools",
+    "system_health",
+];
+
 /// Extract role from request context by validating the Bearer token.
 ///
 /// When a `JwtManager` is available, validates the signature before
 /// extracting claims (closes the payload-only decode bypass from #3337).
 /// In single-operator mode (`auth.mode = "none"`), returns the configured
-/// `none_role` (defaults to admin).
+/// `none_role`, falling back to `Readonly` when the config is malformed.
 ///
 /// Returns `None` only when auth info is unavailable or the token is invalid.
 async fn extract_role(
@@ -46,7 +56,7 @@ async fn extract_role(
             .none_role
             .parse::<Role>()
             .ok()
-            .or(Some(Role::Admin));
+            .or(Some(Role::Readonly));
     }
 
     let parts = context.extensions.get::<http::request::Parts>()?;
@@ -195,6 +205,146 @@ fn resolve_store(
         .ok_or_else(|| KnowledgeStoreUnavailableSnafu {}.build())
 }
 
+#[cfg(feature = "knowledge-store")]
+fn search_knowledge_store(
+    store: &mneme::knowledge_store::KnowledgeStore,
+    params: &params::KnowledgeSearchParams,
+    max_results: u32,
+) -> Result<Vec<mneme::knowledge::RecallResult>, rmcp::ErrorData> {
+    let limit = params.limit.unwrap_or(20).min(max_results);
+    let results = store
+        .search_text_for_recall(&params.query, i64::from(limit))
+        .map_err(|e| {
+            rmcp::ErrorData::from(
+                KnowledgeStoreSnafu {
+                    message: e.to_string(),
+                }
+                .build(),
+            )
+        })?;
+
+    let results = if let Some(ref nous_id) = params.nous_id {
+        results
+            .into_iter()
+            .filter(|result| result.source_id.contains(nous_id.as_str()))
+            .collect()
+    } else {
+        results
+    };
+
+    Ok(results)
+}
+
+#[cfg(feature = "knowledge-store")]
+fn direct_graph_neighbors(
+    store: &mneme::knowledge_store::KnowledgeStore,
+    entity_id: &str,
+    hop: u32,
+) -> Result<Vec<serde_json::Value>, rmcp::ErrorData> {
+    use std::collections::BTreeMap;
+
+    use mneme::engine::DataValue;
+
+    let script = r"
+        ?[neighbor_id, name, entity_type, relation, weight, direction] :=
+            *relationships{src: $entity_id, dst: neighbor_id, relation, weight},
+            *entities{id: neighbor_id, name, entity_type},
+            direction = 'outgoing'
+
+        ?[neighbor_id, name, entity_type, relation, weight, direction] :=
+            *relationships{src: neighbor_id, dst: $entity_id, relation, weight},
+            *entities{id: neighbor_id, name, entity_type},
+            direction = 'incoming'
+    ";
+
+    let mut query_params: BTreeMap<String, DataValue> = BTreeMap::new();
+    query_params.insert(
+        "entity_id".to_owned(),
+        DataValue::Str(entity_id.to_owned().into()),
+    );
+
+    let result = store.run_query(script, query_params).map_err(|e| {
+        rmcp::ErrorData::from(
+            KnowledgeStoreSnafu {
+                message: e.to_string(),
+            }
+            .build(),
+        )
+    })?;
+
+    Ok(result
+        .rows_to_json()
+        .into_iter()
+        .map(|row| {
+            serde_json::json!({
+                "entity_id": row.first().cloned().unwrap_or(serde_json::Value::Null),
+                "name": row.get(1).cloned().unwrap_or(serde_json::Value::Null),
+                "entity_type": row.get(2).cloned().unwrap_or(serde_json::Value::Null),
+                "relation": row.get(3).cloned().unwrap_or(serde_json::Value::Null),
+                "weight": row.get(4).cloned().unwrap_or(serde_json::Value::Null),
+                "direction": row.get(5).cloned().unwrap_or(serde_json::Value::Null),
+                "source_entity_id": entity_id,
+                "hop": hop,
+            })
+        })
+        .collect())
+}
+
+#[cfg(feature = "knowledge-store")]
+fn graph_neighbors_to_depth(
+    store: &mneme::knowledge_store::KnowledgeStore,
+    start_entity_id: &str,
+    depth: u32,
+) -> Result<Vec<serde_json::Value>, rmcp::ErrorData> {
+    use std::collections::BTreeSet;
+
+    let mut frontier = BTreeSet::from([start_entity_id.to_owned()]);
+    let mut visited_entities = BTreeSet::from([start_entity_id.to_owned()]);
+    let mut seen_neighbors = BTreeSet::new();
+    let mut neighbors = Vec::new();
+
+    for hop in 1..=depth {
+        let mut next_frontier = BTreeSet::new();
+
+        for entity_id in &frontier {
+            for neighbor in direct_graph_neighbors(store, entity_id, hop)? {
+                let neighbor_id = neighbor
+                    .get("entity_id")
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::to_owned);
+                let relation = neighbor
+                    .get("relation")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or_default()
+                    .to_owned();
+                let key = (
+                    entity_id.clone(),
+                    neighbor_id.clone().unwrap_or_default(),
+                    relation,
+                    hop,
+                );
+
+                if seen_neighbors.insert(key) {
+                    neighbors.push(neighbor);
+                }
+
+                if let Some(id) = neighbor_id
+                    && visited_entities.insert(id.clone())
+                {
+                    next_frontier.insert(id);
+                }
+            }
+        }
+
+        frontier = next_frontier;
+        if frontier.is_empty() {
+            break;
+        }
+    }
+
+    Ok(neighbors)
+}
+
 /// Register all tools on the server via the `#[tool_router]` macro.
 ///
 /// This generates the `DiaporeiaServer::tool_router()` associated function
@@ -244,8 +394,10 @@ impl DiaporeiaServer {
     async fn session_list(
         &self,
         Parameters(params): Parameters<params::SessionListParams>,
+        context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Cheap)?;
+        require_role(self, &context, Role::Agent, "session_list").await?;
         let store = self.state.session_store.lock().await;
         let sessions = store
             .list_sessions(params.nous_id.as_deref())
@@ -355,8 +507,10 @@ impl DiaporeiaServer {
     async fn session_history(
         &self,
         Parameters(params): Parameters<params::SessionHistoryParams>,
+        context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Cheap)?;
+        require_role(self, &context, Role::Agent, "session_history").await?;
         let store = self.state.session_store.lock().await;
         let messages = store
             .get_history(&params.session_id, params.limit)
@@ -391,6 +545,7 @@ impl DiaporeiaServer {
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Cheap)?;
+        require_role(self, &context, Role::Agent, "nous_list").await?;
         let show_reliability = is_operator_or_above(self, &context).await;
         let statuses = if show_reliability {
             self.state.nous_manager.list_all().await
@@ -439,6 +594,7 @@ impl DiaporeiaServer {
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Cheap)?;
+        require_role(self, &context, Role::Agent, "nous_status").await?;
         let show_reliability = is_operator_or_above(self, &context).await;
         let handle = self
             .state
@@ -491,8 +647,10 @@ impl DiaporeiaServer {
     async fn nous_tools(
         &self,
         Parameters(params): Parameters<params::NousIdParam>,
+        context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Cheap)?;
+        require_role(self, &context, Role::Agent, "nous_tools").await?;
         let config = self
             .state
             .nous_manager
@@ -541,17 +699,34 @@ impl DiaporeiaServer {
     #[tool(description = "Semantic search across the knowledge graph")]
     async fn knowledge_search(
         &self,
-        Parameters(_params): Parameters<params::KnowledgeSearchParams>,
+        Parameters(params): Parameters<params::KnowledgeSearchParams>,
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Expensive)?;
         require_role(self, &context, Role::Operator, "knowledge_search").await?;
-        Ok(CallToolResult::success(vec![rmcp::model::Content::text(
-            "Knowledge search is not available in this configuration. \
-             The server must be built with the 'recall' feature enabled \
-             and a knowledge store must be configured."
-                .to_string(),
-        )]))
+        let config = require_knowledge_graph(self).await?;
+
+        #[cfg(feature = "knowledge-store")]
+        {
+            let store = resolve_store(self).map_err(rmcp::ErrorData::from)?;
+            let results = search_knowledge_store(
+                &store,
+                &params,
+                config.mcp.knowledge_graph.max_search_results,
+            )?;
+            let json = serde_json::to_string_pretty(&results)
+                .context(SerializationSnafu {})
+                .map_err(rmcp::ErrorData::from)?;
+            return Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+                json,
+            )]));
+        }
+
+        #[cfg(not(feature = "knowledge-store"))]
+        {
+            let _ = (params, config);
+            Err(KnowledgeStoreUnavailableSnafu {}.build().into())
+        }
     }
 
     /// BM25 text recall across the knowledge graph.
@@ -875,58 +1050,11 @@ impl DiaporeiaServer {
 
         #[cfg(feature = "knowledge-store")]
         {
-            use std::collections::BTreeMap;
-
-            use mneme::engine::DataValue;
-
             let store = resolve_store(self).map_err(rmcp::ErrorData::from)?;
 
             let max_depth = config.mcp.knowledge_graph.max_graph_depth.min(4);
             let depth = params.depth.unwrap_or(2).min(max_depth);
-
-            // WHY: run_query accepts arbitrary Datalog so we can traverse
-            // the neighborhood without exposing `entity_neighborhood`
-            // (which is pub(crate) in episteme) through the public facade.
-            // The query fetches direct edges (1-hop) from the seed entity.
-            // Multi-hop traversal beyond depth=1 is left for future work
-            // once the Datalog recursive-rule API is stable.
-            let script = r"
-                ?[entity_id, name, entity_type, relation, weight] :=
-                    *relationships{src: $entity_id, dst: entity_id, relation, weight},
-                    *entities{id: entity_id, name, entity_type}
-
-                ?[entity_id, name, entity_type, relation, weight] :=
-                    *relationships{src: entity_id, dst: $entity_id, relation, weight},
-                    *entities{id: entity_id, name, entity_type}
-            ";
-            let mut query_params: BTreeMap<String, DataValue> = BTreeMap::new();
-            query_params.insert(
-                "entity_id".to_owned(),
-                DataValue::Str(params.entity_id.clone().into()),
-            );
-
-            let result = store.run_query(script, query_params).map_err(|e| {
-                rmcp::ErrorData::from(
-                    KnowledgeStoreSnafu {
-                        message: e.to_string(),
-                    }
-                    .build(),
-                )
-            })?;
-
-            let neighbors: Vec<serde_json::Value> = result
-                .rows_to_json()
-                .into_iter()
-                .map(|row| {
-                    serde_json::json!({
-                        "entity_id": row.first().cloned().unwrap_or(serde_json::Value::Null),
-                        "name": row.get(1).cloned().unwrap_or(serde_json::Value::Null),
-                        "entity_type": row.get(2).cloned().unwrap_or(serde_json::Value::Null),
-                        "relation": row.get(3).cloned().unwrap_or(serde_json::Value::Null),
-                        "weight": row.get(4).cloned().unwrap_or(serde_json::Value::Null),
-                    })
-                })
-                .collect();
+            let neighbors = graph_neighbors_to_depth(&store, &params.entity_id, depth)?;
 
             let json = serde_json::to_string_pretty(&serde_json::json!({
                 "entity_id": params.entity_id,
@@ -1212,6 +1340,7 @@ impl DiaporeiaServer {
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Cheap)?;
+        require_role(self, &context, Role::Agent, "system_health").await?;
         let show_reliability = is_operator_or_above(self, &context).await;
         let health = self.state.nous_manager.check_health().await;
         let uptime = self.state.start_time.elapsed();
@@ -1255,5 +1384,173 @@ impl DiaporeiaServer {
         Ok(CallToolResult::success(vec![rmcp::model::Content::text(
             json,
         )]))
+    }
+}
+
+#[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
+mod tests {
+    use super::*;
+
+    #[cfg(feature = "knowledge-store")]
+    fn test_fact(id: &str, nous_id: &str, content: &str) -> mneme::knowledge::Fact {
+        use mneme::id::FactId;
+        use mneme::knowledge::{
+            EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactSensitivity,
+            FactTemporal, Visibility, default_stability_hours, far_future,
+        };
+
+        let now = jiff::Timestamp::now();
+        Fact {
+            id: FactId::new(id).expect("valid fact id"),
+            nous_id: nous_id.to_owned(),
+            fact_type: "knowledge".to_owned(),
+            content: content.to_owned(),
+            scope: None,
+            sensitivity: FactSensitivity::Public,
+            visibility: Visibility::Private,
+            temporal: FactTemporal {
+                valid_from: now,
+                valid_to: far_future(),
+                recorded_at: now,
+            },
+            provenance: FactProvenance {
+                confidence: 0.9,
+                tier: EpistemicTier::Verified,
+                source_session_id: None,
+                stability_hours: default_stability_hours("knowledge"),
+            },
+            lifecycle: FactLifecycle {
+                superseded_by: None,
+                is_forgotten: false,
+                forgotten_at: None,
+                forget_reason: None,
+            },
+            access: FactAccess {
+                access_count: 0,
+                last_accessed_at: None,
+            },
+        }
+    }
+
+    #[cfg(feature = "knowledge-store")]
+    fn test_entity(id: &str, name: &str, entity_type: &str) -> mneme::knowledge::Entity {
+        let now = jiff::Timestamp::now();
+        mneme::knowledge::Entity {
+            id: mneme::id::EntityId::new(id).expect("valid entity id"),
+            name: name.to_owned(),
+            entity_type: entity_type.to_owned(),
+            aliases: Vec::new(),
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    #[cfg(feature = "knowledge-store")]
+    fn test_relationship(src: &str, dst: &str, relation: &str) -> mneme::knowledge::Relationship {
+        mneme::knowledge::Relationship {
+            src: mneme::id::EntityId::new(src).expect("valid src id"),
+            dst: mneme::id::EntityId::new(dst).expect("valid dst id"),
+            relation: relation.to_owned(),
+            weight: 0.8,
+            created_at: jiff::Timestamp::now(),
+        }
+    }
+
+    #[test]
+    fn agent_only_tool_matrix_matches_rbac_hierarchy() {
+        let mut cases = 0;
+        for tool in AGENT_ONLY_TOOLS {
+            assert!(
+                Role::Agent >= Role::Agent,
+                "{tool}: Agent must satisfy Agent gate"
+            );
+            assert!(
+                Role::Operator >= Role::Agent,
+                "{tool}: Operator must satisfy Agent gate"
+            );
+            assert!(
+                Role::Readonly < Role::Agent,
+                "{tool}: Readonly must not satisfy Agent gate"
+            );
+            cases += 3;
+        }
+        assert_eq!(cases, 18, "six Agent-only tools times three roles");
+    }
+
+    #[cfg(feature = "knowledge-store")]
+    #[test]
+    fn knowledge_search_uses_store_for_hit_and_miss() {
+        let store = mneme::knowledge_store::KnowledgeStore::open_mem().expect("open memory store");
+        store
+            .insert_fact(&test_fact(
+                "f-rust-search",
+                "alice",
+                "Rust borrow checker prevents memory unsafety",
+            ))
+            .expect("insert rust fact");
+
+        let hit_params = params::KnowledgeSearchParams {
+            query: "borrow checker".to_owned(),
+            nous_id: None,
+            limit: Some(10),
+        };
+        let hit = search_knowledge_store(&store, &hit_params, 20).expect("search hit");
+        assert!(
+            hit.iter().any(|result| result.source_id == "f-rust-search"),
+            "knowledge_search must return the matching fact from the backend"
+        );
+
+        let miss_params = params::KnowledgeSearchParams {
+            query: "nonexistent astrophysics keyword".to_owned(),
+            nous_id: None,
+            limit: Some(10),
+        };
+        let miss = search_knowledge_store(&store, &miss_params, 20).expect("search miss");
+        assert!(
+            miss.is_empty(),
+            "unmatched query should return no backend hits"
+        );
+    }
+
+    #[cfg(feature = "knowledge-store")]
+    #[test]
+    fn graph_neighbors_depth_expands_past_direct_neighbors() {
+        let store = mneme::knowledge_store::KnowledgeStore::open_mem().expect("open memory store");
+        for entity in [
+            test_entity("e1", "Alice", "person"),
+            test_entity("e2", "Aletheia", "project"),
+            test_entity("e3", "Diaporeia", "crate"),
+            test_entity("e4", "MCP", "protocol"),
+        ] {
+            store.insert_entity(&entity).expect("insert entity");
+        }
+        for relationship in [
+            test_relationship("e1", "e2", "works_on"),
+            test_relationship("e2", "e3", "contains"),
+            test_relationship("e3", "e4", "implements"),
+        ] {
+            store
+                .insert_relationship(&relationship)
+                .expect("insert relationship");
+        }
+
+        let depth_one = graph_neighbors_to_depth(&store, "e1", 1).expect("depth 1 traversal");
+        let depth_three = graph_neighbors_to_depth(&store, "e1", 3).expect("depth 3 traversal");
+
+        assert_eq!(depth_one.len(), 1, "depth=1 should only return e2");
+        assert!(
+            depth_three.len() > depth_one.len(),
+            "deeper traversal should discover more graph neighbors"
+        );
+        assert!(
+            depth_three.iter().any(|neighbor| {
+                neighbor
+                    .get("entity_id")
+                    .and_then(serde_json::Value::as_str)
+                    == Some("e4")
+            }),
+            "depth=3 should reach the third-hop entity"
+        );
     }
 }

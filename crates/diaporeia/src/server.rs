@@ -96,6 +96,7 @@ impl DiaporeiaServer {
     ///
     /// Logic mirrors `tools::extract_role` but lives on the server struct
     /// so resource handlers can use it without depending on the tools module.
+    /// Malformed anonymous-role config falls back to `Readonly`.
     async fn resolve_caller_role(
         &self,
         context: &rmcp::service::RequestContext<rmcp::RoleServer>,
@@ -109,7 +110,7 @@ impl DiaporeiaServer {
                 .none_role
                 .parse::<Role>()
                 .ok()
-                .or(Some(Role::Admin));
+                .or(Some(Role::Readonly));
         }
 
         let parts = context.extensions.get::<http::request::Parts>()?;
