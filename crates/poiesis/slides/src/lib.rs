@@ -248,11 +248,12 @@ fn extract_text_runs(xml: &str) -> Result<Vec<String>> {
             Ok(Event::Start(e)) if e.name().as_ref() == b"a:t" => {
                 current.clear();
             }
-            Ok(Event::Text(e))
+            Ok(Event::Text(e)) => {
                 if let Ok(decoded) = e.decode()
-                    && let Ok(txt) = unescape(&decoded) =>
-            {
-                current.push_str(&txt);
+                    && let Ok(txt) = unescape(&decoded)
+                {
+                    current.push_str(&txt);
+                }
             }
             Ok(Event::End(e)) if e.name().as_ref() == b"a:t" => {
                 texts.push(current.clone());
