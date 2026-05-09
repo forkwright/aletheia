@@ -17,12 +17,11 @@
 # Keep in sync with:
 # - crates/archeion/src/ci_config.rs::default_rust_gate (upstream default)
 #
-# NOTE: the `kanon lint` stage is intentionally omitted. Aletheia's current
-# lint baseline is 2502 open violations + 126 suppressed, so enforcing it
-# in CI would reject every PR until a dedicated cleanup arc reduces the
-# baseline to zero. GHA CI also never enforced it, so omission preserves
-# parity. Re-add the stage (matching harmonia's) once the baseline is clean.
-# Tracked in the phase plan at
+# NOTE: the duplicate in-repo basanos crate was removed in favor of kanon's
+# canonical linter. The `kanon lint` stage remains intentionally omitted until
+# the workspace baseline is clean enough to enforce for every PR. GHA CI also
+# never enforced it, so omission preserves parity. Re-add the stage (matching
+# harmonia's) once the baseline is clean. Tracked in the phase plan at
 # `kanon/projects/aletheia/phases/aletheia-05e-forge-cutover.md`.
 
 [pipeline]

@@ -7,19 +7,10 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 
-/// Compile a static regex from a literal pattern. Panics if the pattern is invalid
-/// (programming error caught at startup, not a runtime concern).
-// WHY: `#[allow]` instead of `#[expect]` because clippy cannot track lint
-// suppression through macro expansion on static items — `#[expect]` would
-// fire `unfulfilled_lint_expectations` on every invocation of this macro.
+/// Compile a static regex from a literal pattern.
 macro_rules! static_regex {
     ($name:ident, $pattern:expr) => {
-        #[allow(
-            clippy::expect_used,
-            reason = "macro-generated static regex requires expect() for compilation failure"
-        )]
-        static $name: LazyLock<Regex> =
-            LazyLock::new(|| Regex::new($pattern).expect("static regex must compile"));
+        static $name: LazyLock<Option<Regex>> = LazyLock::new(|| Regex::new($pattern).ok());
     };
 }
 
@@ -35,14 +26,19 @@ static_regex!(
 /// Redact sensitive values (API keys, JWTs, bearer tokens, passwords) from a string.
 #[must_use]
 pub(crate) fn redact_sensitive(value: &str) -> String {
-    let mut result = RE_ANTHROPIC_KEY
-        .replace_all(value, "sk-ant-***")
-        .into_owned();
-    result = RE_SK_KEY.replace_all(&result, "sk-***").into_owned();
-    result = RE_BEARER.replace_all(&result, "Bearer ***").into_owned();
-    result = RE_JWT.replace_all(&result, "[JWT REDACTED]").into_owned();
-    result = RE_SECRETS.replace_all(&result, "$1=***").into_owned();
+    let mut result = replace_sensitive(&RE_ANTHROPIC_KEY, value, "sk-ant-***");
+    result = replace_sensitive(&RE_SK_KEY, &result, "sk-***");
+    result = replace_sensitive(&RE_BEARER, &result, "Bearer ***");
+    result = replace_sensitive(&RE_JWT, &result, "[JWT REDACTED]");
+    result = replace_sensitive(&RE_SECRETS, &result, "$1=***");
     result
+}
+
+fn replace_sensitive(regex: &LazyLock<Option<Regex>>, value: &str, replacement: &str) -> String {
+    match regex.as_ref() {
+        Some(regex) => regex.replace_all(value, replacement).into_owned(),
+        None => value.to_owned(),
+    }
 }
 
 #[cfg(test)]

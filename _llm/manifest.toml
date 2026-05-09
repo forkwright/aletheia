@@ -37,12 +37,6 @@ source_hash = "bdaa0ffd8661f008c77f789efd0d7b5380be5fbf4a87972eae608db59fe02323"
 token_estimate = 111
 
 [[l2]]
-name = "basanos"
-file = "L2-crate-summaries/basanos.md"
-source_hash = "b442d740c182826055d972c669a0cc1827984c9490f087d56721e11ff98e8c79"
-token_estimate = 179
-
-[[l2]]
 name = "dianoia"
 file = "L2-crate-summaries/dianoia.md"
 source_hash = "1ac053a2d842b435785a4f20bf1f01cb1a0a2408a64e331552d57d3c0ef8b729"
@@ -263,12 +257,6 @@ name = "aletheia-sessions-migrate"
 path = "crates/aletheia-sessions-migrate"
 source_hash = "793ca9f613b9beb836d4f795b7b6dd691c59758a8970373559923c40a8466187"
 l3_token_estimate = 4455
-
-[[crates]]
-name = "basanos"
-path = "crates/basanos"
-source_hash = "dd924c336ef08199f2e1c57a744e0a7636ac034e894171b10cc7d06fa2e73621"
-l3_token_estimate = 1501
 
 [[crates]]
 name = "dianoia"

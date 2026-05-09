@@ -11,7 +11,6 @@ Aletheia is a single-binary Rust agent runtime with 44 workspace crates plus the
 | `aletheia-lexica` | `crates/aletheia-lexica` | Static lexicon and data constants for Aletheia. |
 | `aletheia-memory-mcp` | `crates/aletheia-memory-mcp` | Standalone stdio MCP server exposing Aletheia's memory and knowledge graph (read-only) to external agents. |
 | `aletheia-routing` | `crates/aletheia-routing` | Shared routing trait and empirical success-rate storage for dispatch and interactive paths. |
-| `basanos` | `crates/basanos` | Planning and standards linter for kanon projects. |
 | `diaporeia` | `crates/diaporeia` | MCP server interface - the passage through for external AI agents. |
 | `dianoia` | `crates/dianoia` | Planning and project orchestration - multi-phase state machine with workspace persistence. |
 | `eidos` | `crates/eidos` | Shared knowledge types for the Aletheia memory layer. |
@@ -59,7 +58,7 @@ Aletheia is a single-binary Rust agent runtime with 44 workspace crates plus the
 **LLM, tools, and runtime.** Providers, tools, distillation, domain packs, and the agent actor pipeline: `hermeneus`, `organon`, `melete`, `thesauros`, `nous`.
 **Auth, gateway, MCP, and channels.** HTTP, auth/RBAC, external MCP, Signal/channel routing: `symbolon`, `pylon`, `diaporeia`, `agora`, `aletheia-memory-mcp`.
 **Dispatch, daemon, and routing.** Background maintenance, empirical routing, and dispatch orchestration: `oikonomos`, `aletheia-routing`, `energeia`.
-**CLI and operators.** Binary wiring, migrations, standards, evals, and integration canaries: `aletheia`, `aletheia-sessions-migrate`, `basanos`, `dokimion`, `integration-tests`.
+**CLI and operators.** Binary wiring, migrations, evals, and integration canaries: `aletheia`, `aletheia-sessions-migrate`, `dokimion`, `integration-tests`.
 **Poiesis document stack.** Report model, renderers, diff/inspect/intake/scaffold helpers: `poiesis-core`, `poiesis-text`, `poiesis-sheet`, `poiesis-slides`, `poiesis-lint`, `poiesis-verify`, `poiesis-typst`, `poiesis-intake`, `poiesis-doc`, `poiesis-diff`, `poiesis-inspect`, `poiesis-scaffold`.
 **Presentation.** Shared UI client, TUI, facade, and excluded desktop shell: `skene`, `koilon`, `theatron`, `proskenion`.
 

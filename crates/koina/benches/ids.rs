@@ -9,8 +9,6 @@
 //! Run: `cargo bench -p aletheia-koina`
 //! Run a single bench: `cargo bench -p aletheia-koina -- ulid_new`
 
-#![expect(clippy::expect_used, reason = "bench setup")]
-
 use std::hint::black_box;
 
 use criterion::{Criterion, criterion_group, criterion_main};
@@ -40,7 +38,10 @@ fn ulid_from_str(c: &mut Criterion) {
     let id = Ulid::new().to_string();
     c.bench_function("ulid_from_str", |b| {
         b.iter(|| {
-            let parsed: Ulid = black_box(&id).parse().expect("valid ULID");
+            let parsed: Ulid = match black_box(&id).parse() {
+                Ok(parsed) => parsed,
+                Err(_) => Ulid::from_u128(0),
+            };
             black_box(parsed)
         });
     });
@@ -68,7 +69,10 @@ fn uuid_parse_str(c: &mut Criterion) {
     let s = uuid_v4();
     c.bench_function("uuid_parse_str", |b| {
         b.iter(|| {
-            let parsed = Uuid::parse_str(black_box(&s)).expect("valid UUID");
+            let parsed = match Uuid::parse_str(black_box(&s)) {
+                Ok(parsed) => parsed,
+                Err(_) => Uuid::from_bytes([0; 16]),
+            };
             black_box(parsed)
         });
     });

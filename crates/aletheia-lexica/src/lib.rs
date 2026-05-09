@@ -1,7 +1,7 @@
 //! Static lexicon and data constants for Aletheia.
 //!
 //! Houses string-typed word lists and pattern constants consumed by
-//! `nous`, `melete`, `basanos`, and `poiesis`.
+//! `nous`, `melete`, and `poiesis`.
 
 #![deny(missing_docs)]
 

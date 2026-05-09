@@ -5,7 +5,7 @@ use std::fmt;
 use crate::secret::SecretString;
 
 /// Origin of a resolved credential.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum CredentialSource {
     /// Read from an environment variable.
@@ -16,6 +16,17 @@ pub enum CredentialSource {
     OAuth,
     /// Read from the OS keyring (e.g. GNOME Keyring, macOS Keychain).
     Keyring,
+}
+
+impl fmt::Debug for CredentialSource {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Environment => "Environment",
+            Self::File => "File",
+            Self::OAuth => "OAuth",
+            Self::Keyring => "Keyring",
+        })
+    }
 }
 
 impl fmt::Display for CredentialSource {
