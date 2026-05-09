@@ -15,7 +15,7 @@
 //! - The system prompt's byte length
 //! - Message count + token estimate
 //! - Fact IDs included via recall (not fact content)
-//! - Fact IDs filtered out by sensitivity policy (deferred to #3404)
+//! - Fact IDs filtered out by sensitivity policy
 //! - Tool names (not tool inputs)
 //!
 //! Never logged: system prompt content, user message text, tool call
@@ -79,18 +79,9 @@ pub enum PromptAuditError {
 pub type Result<T> = std::result::Result<T, PromptAuditError>;
 
 /// Deployment target classification for a request.
-///
-/// WHY(stub): #3404 will introduce a proper `DeploymentTarget` enum shared with
-/// eidos/hermeneus for the fact sensitivity recall filter. Until then, the
-/// audit log carries a simple string default of `"cloud"` so the schema is
-/// stable and the follow-up PR only has to swap the field type.
 pub type DeploymentTarget = String;
 
 /// Sensitivity classification of a fact that was filtered from recall.
-///
-/// WHY(stub): Same as [`DeploymentTarget`] — #3404 owns the canonical enum.
-/// The audit log keeps the field in the schema now so `PromptAuditRecord` is
-/// stable; the filtered-facts vector defaults to empty until the filter lands.
 pub type FactSensitivity = String;
 
 /// A single fact that was filtered out by the sensitivity policy.
@@ -282,11 +273,6 @@ impl PromptAuditLog {
 /// Called once per pipeline turn, right before the execute stage hands the
 /// request to hermeneus. Never touches the system prompt content — the
 /// hash and length are the only signal that leave this function.
-///
-/// WHY(stub): `deployment_target` defaults to `"cloud"` and
-/// `fact_ids_filtered` is always empty until #3404 lands the `FactSensitivity`
-/// enum and recall-time filter. At that point this helper will read the
-/// filtered-facts list directly from `PipelineContext::recall_result`.
 pub(crate) fn build_audit_record(
     ctx: &crate::pipeline::PipelineContext,
     session: &crate::session::SessionState,
@@ -301,9 +287,14 @@ pub(crate) fn build_audit_record(
     // WHY: resolve provider from the configured model so the log reports the
     // real route, not just the model alias. `"unknown"` keeps the log
     // writeable when the provider is mid-reconfiguration.
-    let provider_name = providers
-        .find_provider(&config.generation.model)
-        .map_or_else(|| "unknown".to_owned(), |p| p.name().to_owned());
+    let provider = providers.find_provider(&config.generation.model);
+    let provider_name = provider.map_or_else(|| "unknown".to_owned(), |p| p.name().to_owned());
+    let deployment_target = provider
+        .map_or(hermeneus::provider::DeploymentTarget::Cloud, |p| {
+            p.deployment_target()
+        })
+        .as_str()
+        .to_owned();
 
     // WHY: tool name list mirrors the filter in execute::resolve_active_server_tools
     // so the audit reflects what the model will actually see this turn.
@@ -325,6 +316,15 @@ pub(crate) fn build_audit_record(
         .as_ref()
         .map(|r| r.fact_ids.clone())
         .unwrap_or_default();
+    let fact_ids_filtered = ctx.recall_result.as_ref().map_or_else(Vec::new, |r| {
+        r.filtered_facts
+            .iter()
+            .map(|fact| FilteredFact {
+                id: fact.id.clone(),
+                sensitivity: fact.sensitivity.as_str().to_owned(),
+            })
+            .collect()
+    });
 
     // WHY: token estimate uses the same per-message estimate the pipeline
     // already computed, plus the system-prompt byte length divided by a
@@ -350,15 +350,14 @@ pub(crate) fn build_audit_record(
         session_id: session.id.clone(),
         turn_id: session.turn_id.to_string(),
         provider: provider_name,
-        deployment_target: "cloud".to_owned(),
+        deployment_target,
         model: config.generation.model.clone(),
         system_prompt_hash: hash_system_prompt(system_prompt),
         system_prompt_bytes,
         message_count: ctx.messages.len(),
         token_count_estimate,
         fact_ids_included,
-        // TODO(#3404): populate from sensitivity filter when it lands.
-        fact_ids_filtered: Vec::new(),
+        fact_ids_filtered,
         tool_names,
         // TODO(#3384 follow-up): thread request_id from pylon middleware
         // through PipelineInput once the extraction path reaches nous.

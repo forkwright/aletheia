@@ -1,5 +1,5 @@
-//! Instinct observation bridge: records tool usage from the nous pipeline
-//! into mneme's instinct system for behavioral pattern learning.
+//! Instinct observation bridge: builds sanitized tool-use observations from
+//! the nous pipeline.
 
 use tracing::{debug, instrument, warn};
 
@@ -50,9 +50,10 @@ pub(crate) fn observation_from_tool_call(
 
 /// Record tool observations from a completed turn.
 ///
-/// Extracts observations from all tool calls and logs them. In a full
-/// deployment with a knowledge store, these would be persisted to the
-/// `tool_observations` relation for later aggregation.
+/// Extracts observations from all tool calls and logs them. These observations
+/// are intentionally ephemeral until a persistent instinct store is wired into
+/// the pipeline; callers should treat the returned vector as turn telemetry,
+/// not durable behavioral memory.
 #[instrument(skip_all, fields(nous_id = %nous_id, tool_count = tool_calls.len()))]
 pub(crate) fn record_observations(
     tool_calls: &[ToolCall],

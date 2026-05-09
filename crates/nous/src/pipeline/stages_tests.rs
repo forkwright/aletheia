@@ -209,6 +209,8 @@ fn apply_recall_result_injects_into_system_prompt_by_default() {
         tokens_consumed: 10,
         recall_section: Some("## Recalled Knowledge\n- fact".to_owned()),
         fact_ids: vec!["f1".to_owned()],
+        deployment_target: hermeneus::provider::DeploymentTarget::Cloud,
+        filtered_facts: Vec::new(),
     };
     let span = tracing::info_span!("test");
     super::apply_recall_result(Ok(recall), &mut ctx, &span, false);
@@ -236,6 +238,8 @@ fn apply_recall_result_late_inject_appends_system_message() {
         tokens_consumed: 10,
         recall_section: Some("## Recalled Knowledge\n- fact".to_owned()),
         fact_ids: vec!["f1".to_owned()],
+        deployment_target: hermeneus::provider::DeploymentTarget::Cloud,
+        filtered_facts: Vec::new(),
     };
     let span = tracing::info_span!("test");
     super::apply_recall_result(Ok(recall), &mut ctx, &span, true);

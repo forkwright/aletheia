@@ -457,10 +457,24 @@ fn tool_call_with_error() {
 }
 
 #[test]
-fn check_guard_always_allows() {
+fn check_guard_allows_below_session_token_cap() {
     let config = crate::config::NousConfig::default();
     let session = crate::session::SessionState::new("s-1".to_owned(), "main".to_owned(), &config);
-    assert_eq!(check_guard(&session, &config), GuardResult::Allow, "guard should always allow");
+    assert_eq!(check_guard(&session, &config), GuardResult::Allow);
+}
+
+#[test]
+fn check_guard_rejects_at_session_token_cap() {
+    let mut config = crate::config::NousConfig::default();
+    config.limits.session_token_cap = 10;
+    let mut session =
+        crate::session::SessionState::new("s-1".to_owned(), "main".to_owned(), &config);
+    session.cumulative_tokens = 10;
+
+    assert!(matches!(
+        check_guard(&session, &config),
+        GuardResult::Rejected { reason } if reason.contains("token budget exhausted")
+    ));
 }
 
 #[tokio::test]

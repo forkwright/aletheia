@@ -52,6 +52,12 @@ impl Rule for ErrorVariantNamingRule {
     }
 }
 
+struct FieldRename {
+    value: String,
+    path: String,
+    line: usize,
+}
+
 /// Scan a crate for field casing inconsistencies.
 ///
 /// Walk all Rust source files and look for struct/enum definitions with serde renames.
@@ -70,12 +76,21 @@ fn check_crate_field_casing(project_root: &str, violations: &mut Vec<Violation>)
     let mut all_renames = Vec::new();
 
     // Walk all Rust source files.
-    collect_rs_files(&src_dir, &mut |content| {
-        for line in content.lines() {
+    collect_rs_files(&src_dir, &mut |path, content| {
+        let display_path = path
+            .strip_prefix(root)
+            .unwrap_or(path)
+            .display()
+            .to_string();
+        for (idx, line) in content.lines().enumerate() {
             if let Some(captures) = rename_re.captures(line)
                 && let Some(value) = captures.get(1)
             {
-                all_renames.push(value.as_str().to_string());
+                all_renames.push(FieldRename {
+                    value: value.as_str().to_string(),
+                    path: display_path.clone(),
+                    line: idx + 1,
+                });
             }
         }
     });
@@ -87,54 +102,45 @@ fn check_crate_field_casing(project_root: &str, violations: &mut Vec<Violation>)
     let mut camel_example = None;
 
     for rename in &all_renames {
-        if is_snake_case(rename) {
+        if is_snake_case(&rename.value) {
             has_snake = true;
             if snake_example.is_none() {
-                snake_example = Some(rename.clone());
+                snake_example = Some(rename.value.clone());
             }
-        } else if is_camel_case(rename) {
+        } else if is_camel_case(&rename.value) {
             has_camel = true;
             if camel_example.is_none() {
-                camel_example = Some(rename.clone());
+                camel_example = Some(rename.value.clone());
             }
         }
     }
 
     // If both patterns exist, flag them.
     if has_snake && has_camel {
-        // Find line numbers by scanning files again
-        collect_rs_files(&src_dir, &mut |content| {
-            let rename_re = regex(r#"#\[serde\(rename\s*=\s*"([^"]+)"\)"#);
-            for (idx, line) in content.lines().enumerate() {
-                if let Some(captures) = rename_re.captures(line)
-                    && let Some(value) = captures.get(1)
-                {
-                    let rename_value = value.as_str();
-                    if let Some(ref example) = snake_example
-                        && rename_value == example
-                    {
-                        violations.push(Violation {
-                            rule: "API/field-casing".into(),
-                            path: "src/lib.rs".into(), // simplified: actual path tracking would be needed
-                            line: idx + 1,
-                            message: "snake_case field rename found, but crate also uses camelCase; standardize on one convention"
-                                .into(),
-                        });
-                    }
-                    if let Some(ref example) = camel_example
-                        && rename_value == example
-                    {
-                        violations.push(Violation {
-                            rule: "API/field-casing".into(),
-                            path: "src/lib.rs".into(), // simplified: actual path tracking would be needed
-                            line: idx + 1,
-                            message: "camelCase field rename found, but crate also uses snake_case; standardize on one convention"
-                                .into(),
-                        });
-                    }
-                }
+        for rename in &all_renames {
+            if let Some(ref example) = snake_example
+                && rename.value == *example
+            {
+                violations.push(Violation {
+                    rule: "API/field-casing".into(),
+                    path: rename.path.clone(),
+                    line: rename.line,
+                    message: "snake_case field rename found, but crate also uses camelCase; standardize on one convention"
+                        .into(),
+                });
             }
-        });
+            if let Some(ref example) = camel_example
+                && rename.value == *example
+            {
+                violations.push(Violation {
+                    rule: "API/field-casing".into(),
+                    path: rename.path.clone(),
+                    line: rename.line,
+                    message: "camelCase field rename found, but crate also uses snake_case; standardize on one convention"
+                        .into(),
+                });
+            }
+        }
     }
 }
 
@@ -157,7 +163,7 @@ fn check_error_variant_patterns(project_root: &str, violations: &mut Vec<Violati
     let error_enum_re = regex(r"^\s*pub\s+enum\s+(\w+Error)\s*\{");
     let variant_re = regex(r"^\s*(\w+)\s*(?:\{|,|\()");
 
-    collect_rs_files(&src_dir, &mut |content| {
+    collect_rs_files(&src_dir, &mut |_path, content| {
         let mut current_enum: Option<String> = None;
         let mut enum_variants = Vec::new();
 
@@ -295,14 +301,14 @@ fn is_camel_case(s: &str) -> bool {
 /// Collect all Rust source files from a directory and process them.
 fn collect_rs_files<F>(dir: &Path, callback: &mut F)
 where
-    F: FnMut(String),
+    F: FnMut(&Path, String),
 {
     let _ = collect_rs_files_impl(dir, callback);
 }
 
 fn collect_rs_files_impl<F>(dir: &Path, callback: &mut F) -> std::io::Result<()>
 where
-    F: FnMut(String),
+    F: FnMut(&Path, String),
 {
     for entry in fs::read_dir(dir)? {
         let entry = entry?;
@@ -310,7 +316,7 @@ where
 
         if path.is_file() && path.extension().is_some_and(|ext| ext == "rs") {
             if let Ok(content) = fs::read_to_string(&path) {
-                callback(content);
+                callback(&path, content);
             }
         } else if path.is_dir() && path.file_name().is_none_or(|name| name != "target") {
             collect_rs_files_impl(&path, callback)?;
@@ -321,6 +327,7 @@ where
 }
 
 #[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
 
@@ -376,6 +383,49 @@ pub struct B {{
     fn field_casing_allows_consistent_snake_case() {
         let count = check_field_casing_violation_count("user_id", "user_name");
         assert_eq!(count, 0, "consistent snake_case should not violate");
+    }
+
+    #[test]
+    fn field_casing_reports_real_file_path() {
+        use crate::rules::Rule;
+
+        let project = tempfile::tempdir().expect("tempdir");
+        let models = project.path().join("src").join("models");
+        std::fs::create_dir_all(&models).expect("mkdir");
+        std::fs::write(
+            project.path().join("src").join("lib.rs"),
+            r#"
+pub struct ApiUser {
+    #[serde(rename = "userId")]
+    id: String,
+}
+"#,
+        )
+        .expect("write lib");
+        std::fs::write(
+            models.join("profile.rs"),
+            r#"
+pub struct Profile {
+    #[serde(rename = "display_name")]
+    display_name: String,
+}
+"#,
+        )
+        .expect("write model");
+
+        let violations = FieldCasingRule
+            .check(project.path().to_str().expect("utf-8 path"))
+            .expect("rule check");
+        assert!(
+            violations.iter().any(|v| v.path == "src/models/profile.rs"),
+            "expected real nested path, got {violations:?}"
+        );
+        assert!(
+            violations
+                .iter()
+                .all(|v| v.path != "src/lib.rs" || v.line == 3),
+            "src/lib.rs should appear only for the actual lib.rs violation"
+        );
     }
 
     #[test]

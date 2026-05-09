@@ -48,6 +48,19 @@ pub struct RecallStageResult {
     /// section. Used by the prompt audit log (#3411) so operators can see
     /// which stored facts were included in each outbound request.
     pub fact_ids: Vec<String>,
+    /// Provider boundary used for the sovereignty filter.
+    pub deployment_target: DeploymentTarget,
+    /// Facts dropped because their sensitivity exceeded `deployment_target`.
+    pub filtered_facts: Vec<RecallFilteredFact>,
+}
+
+/// A fact filtered out before provider dispatch.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RecallFilteredFact {
+    /// Source fact ID.
+    pub id: String,
+    /// Sensitivity that exceeded the active deployment target.
+    pub sensitivity: FactSensitivity,
 }
 
 impl RecallStageResult {
@@ -58,8 +71,15 @@ impl RecallStageResult {
             tokens_consumed: 0,
             recall_section: None,
             fact_ids: Vec::new(),
+            deployment_target: DeploymentTarget::Cloud,
+            filtered_facts: Vec::new(),
         }
     }
+}
+
+struct SensitivityFilterResult {
+    kept: Vec<ScoredResult>,
+    filtered: Vec<RecallFilteredFact>,
 }
 
 /// Recall stage: scores and formats knowledge for injection into the system prompt.
@@ -523,7 +543,9 @@ impl RecallStage {
         // `min_score` filtering / budgeting, so the dropped facts never
         // contribute to the recall section sent to the LLM. Non-fact sources
         // default to `Public` and pass through unchanged.
-        let ranked = self.filter_by_sensitivity(ranked);
+        let sensitivity_filter = self.filter_by_sensitivity(ranked);
+        let ranked = sensitivity_filter.kept;
+        let filtered_facts = sensitivity_filter.filtered;
 
         // WHY (#208): visibility filter. Default to Private so callers who
         // do not explicitly configure visibility continue to see only their
@@ -557,6 +579,8 @@ impl RecallStage {
             debug!(candidates_found, "all candidates below min_score");
             return RecallStageResult {
                 candidates_found,
+                deployment_target: self.deployment_target,
+                filtered_facts,
                 ..RecallStageResult::empty()
             };
         }
@@ -584,6 +608,8 @@ impl RecallStage {
                 Some(section)
             },
             fact_ids,
+            deployment_target: self.deployment_target,
+            filtered_facts,
         }
     }
 
@@ -663,31 +689,35 @@ impl RecallStage {
     /// # Complexity
     ///
     /// O(n) where n is the number of ranked candidates.
-    fn filter_by_sensitivity(&self, ranked: Vec<ScoredResult>) -> Vec<ScoredResult> {
+    fn filter_by_sensitivity(&self, ranked: Vec<ScoredResult>) -> SensitivityFilterResult {
         let target = self.deployment_target;
         let max_allowed = max_sensitivity_for(target);
-        let mut filtered_ids: Vec<String> = Vec::new();
+        let mut filtered: Vec<RecallFilteredFact> = Vec::new();
         let kept: Vec<ScoredResult> = ranked
             .into_iter()
             .filter(|r| {
                 if r.sensitivity <= max_allowed {
                     true
                 } else {
-                    filtered_ids.push(r.source_id.clone());
+                    filtered.push(RecallFilteredFact {
+                        id: r.source_id.clone(),
+                        sensitivity: r.sensitivity,
+                    });
                     false
                 }
             })
             .collect();
-        if !filtered_ids.is_empty() {
+        if !filtered.is_empty() {
+            let filtered_ids: Vec<&str> = filtered.iter().map(|f| f.id.as_str()).collect();
             info!(
-                filtered_count = filtered_ids.len(),
+                filtered_count = filtered.len(),
                 deployment_target = target.as_str(),
                 max_sensitivity = max_allowed.as_str(),
                 fact_ids = ?filtered_ids,
                 "recall: dropped sensitive facts before provider dispatch (sovereignty filter)"
             );
         }
-        kept
+        SensitivityFilterResult { kept, filtered }
     }
 
     /// Build candidate scores from raw search results.

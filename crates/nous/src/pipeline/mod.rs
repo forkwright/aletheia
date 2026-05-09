@@ -858,7 +858,7 @@ pub async fn assemble_context_conditional_with_cache(
     Ok(())
 }
 
-/// Guard stage: check rate limits, loop detection, safety.
+/// Guard stage: enforce the per-session token cap.
 ///
 /// Enforces the per-session token spending cap from
 /// `NousConfig::session_token_cap`. A cap of `0` disables the check.
@@ -1291,7 +1291,15 @@ pub(crate) async fn run_pipeline(
         }
 
         if !result.tool_calls.is_empty() {
-            crate::instinct::record_observations(&result.tool_calls, &input.content, &config.id);
+            let observations = crate::instinct::record_observations(
+                &result.tool_calls,
+                &input.content,
+                &config.id,
+            );
+            tracing::debug!(
+                observation_count = observations.len(),
+                "instinct observations recorded as ephemeral turn telemetry"
+            );
         }
 
         let current_span = tracing::Span::current();

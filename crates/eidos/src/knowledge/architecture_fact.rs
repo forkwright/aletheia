@@ -433,7 +433,7 @@ pub fn seed_facts() -> Vec<ArchitectureFact> {
                 .to_owned(),
             evidence: vec![
                 "~/menos-ops/dispatch-config.toml".to_owned(),
-                "crates/hermeneus/src/provider/router.rs".to_owned(),
+                "crates/hermeneus/src/provider.rs".to_owned(),
             ],
             mneme_session: None,
             updated_at: "2026-04-22T00:00:00Z".to_owned(),
@@ -706,6 +706,33 @@ mod tests {
             assert!(!fact.id.is_empty(), "fact id must not be empty");
             assert!(!fact.claim.is_empty(), "fact claim must not be empty");
             assert_eq!(fact.updated_by, "PR-3789");
+        }
+    }
+
+    #[test]
+    fn provider_routing_seed_evidence_resolves() {
+        let workspace_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("crates dir")
+            .parent()
+            .expect("workspace root");
+        let fact = seed_facts()
+            .into_iter()
+            .find(|fact| fact.id == "aletheia.providers.llm.routing")
+            .expect("provider routing seed fact");
+
+        let repo_paths: Vec<&str> = fact
+            .evidence
+            .iter()
+            .map(String::as_str)
+            .filter(|path| path.starts_with("crates/"))
+            .collect();
+        assert!(!repo_paths.is_empty(), "seed fact should cite repo paths");
+        for path in repo_paths {
+            assert!(
+                workspace_root.join(path).exists(),
+                "seed evidence path should resolve: {path}"
+            );
         }
     }
 
