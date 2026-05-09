@@ -52,7 +52,7 @@ pub struct TaskRunner {
     knowledge_executor: Option<Arc<dyn KnowledgeMaintenanceExecutor>>,
     /// In-flight tasks: `task_id` → [`InFlightTask`].
     in_flight: HashMap<String, InFlightTask>,
-    /// Optional SQLite-backed state store for cross-restart persistence.
+    /// Optional fjall-backed state store for cross-restart persistence.
     state_store: Option<crate::state::TaskStateStore>,
     /// Output mode: full or brief (truncated).
     output_mode: DaemonOutputMode,
@@ -178,7 +178,7 @@ impl TaskRunner {
         self
     }
 
-    /// Attach a `SQLite` state store for task execution persistence.
+    /// Attach a fjall state store for task execution persistence.
     ///
     /// State is loaded on the first call to [`Self::run`] (before catch-up),
     /// and saved after every task completion or failure.

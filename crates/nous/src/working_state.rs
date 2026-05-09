@@ -2,7 +2,7 @@
 //!
 //! Tracks what the agent is currently doing (task stack), what it is focused
 //! on (focus context), and what it is waiting for (wait state). Persisted to
-//! SQLite via the session store blackboard so state survives crashes.
+//! fjall via the session store blackboard so state survives crashes.
 
 use std::sync::Arc;
 

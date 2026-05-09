@@ -66,8 +66,7 @@ pub fn register(registry: &mut Registry) {
 
 /// Record a session creation.
 ///
-/// Compiled when either the `sqlite` or `fjall` feature is enabled — both
-/// store backends call this on successful session creation.
+/// Compiled for the fjall store backend; called on successful session creation.
 pub(crate) fn record_session_created(nous_id: &str, session_type: &str) {
     SESSIONS_TOTAL
         .get_or_create(&SessionLabels {
@@ -80,7 +79,7 @@ pub(crate) fn record_session_created(nous_id: &str, session_type: &str) {
 /// Record a backup operation duration.
 ///
 /// Currently unused outside tests: the only production call site
-/// (`backup::create_backup`) was removed along with rusqlite in #3446.
+/// (`backup::create_backup`) was removed with the historical legacy `SQLite` backend in #3446.
 /// Retained — together with `BACKUP_DURATION_SECONDS` and its registration —
 /// so fjall-based backup work can re-attach to the same metric name without
 /// a schema migration. The test module exercises this entry point to keep

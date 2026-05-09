@@ -25,7 +25,7 @@
 | Coordination | `coordination.rs` | Child agent spawning with concurrency limits |
 | Triggers | `triggers.rs` | Event-driven activation: file watchers, webhooks |
 | Watchdog | `watchdog.rs` | Process heartbeat monitoring with auto-recovery |
-| State | `state.rs` | SQLite persistence, workspace config, single-instance locking |
+| State | `state.rs` | fjall persistence, workspace config, single-instance locking |
 
 ### What oikonomos does NOT do
 

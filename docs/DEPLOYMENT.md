@@ -96,7 +96,7 @@ instance/
 │   ├── aletheia.toml       # Main config
 │   ├── credentials/        # API keys, secrets
 │   └── tls/                # TLS certs (optional)
-├── data/                   # SQLite databases, backups
+├── data/                   # fjall stores and backups
 ├── logs/traces/            # Trace files
 ├── nous/                   # Agent workspaces
 │   └── _template/          # Template for new agents

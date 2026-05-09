@@ -128,7 +128,7 @@ into structured facts: extraction, deduplication, confidence scoring, succession
 preservation of what was said.
 
 **In this codebase.** The session persistence layer. Stores conversation messages and turn
-history in SQLite - the written record of what passed between user and agent.
+history in fjall - the written record of what passed between user and agent.
 
 **Crate.** `graphe` (low layer) - session persistence.
 

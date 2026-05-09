@@ -36,7 +36,7 @@
 | **Mneme** | μνήμη | "memory" | Memory as active faculty, the Muse's gift, not passive storage. Facade re-exporting eidos, krites, graphe, episteme. |
 | **Eidos** | εἶδος | "types" | The visible form: what makes a Fact a Fact, a Session a Session. Shared memory types, IDs, error definitions. |
 | **Krites** | κριτής | "engine" | The judge: evaluates queries, decides what follows from rules and facts. Vendored CozoDB datalog engine. |
-| **Graphe** | γραφή | "session" | The inscription: messages written, turns recorded, history preserved. SQLite session persistence. |
+| **Graphe** | γραφή | "session" | The inscription: messages written, turns recorded, history preserved. fjall session persistence. |
 | **Episteme** | ἐπιστήμη | "knowledge" | Systematic knowledge: extraction, recall, scoring, dedup, succession. Transforms raw experience into understanding. |
 | **Organon** | ὄργανον | "tools" | Aristotle's name for the instruments of thought, that by which the mind extends itself. Tool registry, definitions, built-in tool set. |
 | **Agora** | ἀγορά | "channels" | The gathering place, Greek civic space where voices meet and meaning is made public. Channel registry, ChannelProvider trait, Signal JSON-RPC client. |

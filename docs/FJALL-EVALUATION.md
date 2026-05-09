@@ -135,7 +135,7 @@ The bus factor is the most significant risk, but it is bounded by the license an
 
 ## Comparison
 
-| Property | fjall 3.x | sled 0.34 | rocksdb (via rust-rocksdb) | SQLite (rusqlite) |
+| Property | fjall 3.x | sled 0.34 | rocksdb (via rust-rocksdb) | Historical SQLite (rusqlite) |
 |----------|-----------|-----------|---------------------------|-------------------|
 | Language | Pure Rust | Pure Rust | C++ (FFI wrapper) | C (FFI wrapper) |
 | C deps | None | None | Yes (librocksdb, libsnappy, liblz4) | Yes (bundled) |
@@ -148,17 +148,17 @@ The bus factor is the most significant risk, but it is bounded by the license an
 | Compaction strategies | Leveled, FIFO | Size-tiered only | Many (Level, Universal, FIFO, etc.) | N/A |
 | Custom compaction filters | Yes | No | Yes | N/A |
 | KV separation (large values) | Yes | No | Yes (BlobDB) | N/A |
-| Maintenance | Active (2024-present) | Unmaintained (stale since 2022) | Active (Meta) | Active (SQLite team) |
+| Maintenance | Active (2024-present) | Unmaintained (stale since 2022) | Active (Meta) | Active upstream |
 | Bus factor | 1 | Abandoned | Large team | Large team |
 | Disk format stability | Major-version guarantee | Unstable (breaking changes in 0.x) | Stable | Stable |
 | Unsafe in library | 2 sites (scoped) | Extensive | Extensive (C++) | N/A (C) |
-| Current use in project | krites storage backend | None | None | graphe (sessions) |
+| Current use in project | krites and live session storage | None | None | Historical pre-fjall graphe sessions only |
 
 **sled** is ruled out. Development stalled in 2022. The 0.x version series has no disk format guarantee and a history of breaking changes. It should not be considered.
 
 **rocksdb-rs** brings C++ and a large build artifact. It would break the single-static-binary goal and add cross-compilation complexity. The configurability advantage over fjall does not justify this.
 
-**SQLite** is already used for sessions (`graphe`). It is not an LSM-tree and lacks native column families. Adapting it to replace fjall for the knowledge engine would require either a single large table (losing key isolation) or multiple database files (losing cross-store atomics). Neither is appropriate.
+**Historical note:** SQLite was previously used for sessions (`graphe`). It is not an LSM-tree and lacks native column families. Adapting it to replace fjall for the knowledge engine would require either a single large table (losing key isolation) or multiple database files (losing cross-store atomics). Neither is appropriate.
 
 ---
 

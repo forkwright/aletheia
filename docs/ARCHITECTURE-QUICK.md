@@ -6,7 +6,7 @@
 - **mneme** - facade re-exporting memory sub-crates
 
 ## Storage
-- **graphe** - SQLite session/message store
+- **graphe** - fjall session/message store
 - **krites** - embedded Datalog engine
 - **episteme** - knowledge pipeline: extraction, recall, embeddings
 

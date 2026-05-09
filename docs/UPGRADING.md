@@ -52,9 +52,11 @@ Check `git log --oneline` or [GitHub releases](https://github.com/forkwright/ale
 
 ---
 
-## Database migration
+## Store migration
 
-SQLite schema migrations run automatically on startup via `SessionStore::open()`. No manual migration steps required.
+The current session store is fjall-backed. The pre-fjall SQLite session backend
+is historical; use the one-shot migration tool if you still have a legacy
+`sessions.db` file.
 
 The embedded Datalog engine (knowledge store) manages its own schema versioning internally.
 
@@ -62,10 +64,10 @@ The embedded Datalog engine (knowledge store) manages its own schema versioning 
 
 ### Upgrading from <0.16 to >=0.16 (fjall session store)
 
-Version 0.16.0 changed the default session store backend from SQLite to fjall.
-Both backends use the same path (`data/sessions.db`), but SQLite creates a file
-while fjall creates a directory. Upgrading without preparation causes a startup
-crash.
+Version 0.16.0 changed the default session store backend from historical SQLite
+to fjall. Both backends use the same path (`data/sessions.db`), but the
+historical SQLite backend creates a file while fjall creates a directory.
+Upgrading without preparation causes a startup crash.
 
 `data/knowledge.fjall` may also be incompatible if it was created by an
 older fjall version (the error message will mention `InvalidTag(CompressionType)`).
@@ -83,7 +85,7 @@ mv instance/data/knowledge.fjall instance/data/pre-0.16-archive/
 ```
 
 The new binary will create fresh fjall stores on startup. Existing session
-history from SQLite is not automatically migrated; it is preserved in the
+history from historical SQLite is not automatically migrated; it is preserved in the
 archive directory for manual export if needed.
 
 ---
@@ -123,6 +125,6 @@ Before any upgrade:
 
 ### Rollback limitations
 
-- **SQLite migrations are forward-only.** If a newer version added tables or columns, the older binary may not understand the new schema. Restore from backup in this case.
+- **Legacy SQLite migrations are forward-only.** If a newer pre-fjall version added tables or columns, an older binary may not understand the schema. Restore from backup in this case.
 - **Knowledge engine schema changes** are also forward-only.
 - **Config additions** in newer versions are silently ignored by older binaries (they use `serde(default)`), so config files are generally backwards-compatible.

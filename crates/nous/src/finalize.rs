@@ -69,7 +69,7 @@ pub struct FinalizeResult {
 ///
 /// # Session guarantee
 ///
-/// The nous actor creates sessions in memory (not in `SQLite`). Before
+/// The nous actor creates sessions in memory (not in the fjall store). Before
 /// appending messages we verify the session record exists in the store,
 /// avoiding a FOREIGN KEY constraint violation on the `messages` table.
 // NOTE(#940): 120 lines: sequential persistence pipeline: persist assistant message,
@@ -346,7 +346,7 @@ mod tests {
     }
 
     /// Regression test for #747: finalize must succeed even when the session
-    /// record does not yet exist in `SQLite`. The nous actor creates sessions in
+    /// record does not yet exist in the fjall store. The nous actor creates sessions in
     /// memory, so the first call to finalize is responsible for ensuring the
     /// row exists before inserting child messages (FOREIGN KEY constraint).
     #[test]

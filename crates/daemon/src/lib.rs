@@ -44,7 +44,7 @@ pub mod runner;
 pub mod schedule;
 /// Self-prompting: daemon-initiated follow-up actions with rate limiting.
 pub mod self_prompt;
-/// Task-state persistence (fjall default, sqlite feature), workspace config, and single-instance locking.
+/// Task-state persistence (fjall), workspace config, and single-instance locking.
 pub mod state;
 /// Event-driven activation: file watchers and webhook receiver.
 pub mod triggers;
