@@ -7,28 +7,21 @@
 )]
 
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
-use tokio::sync::Mutex as TokioMutex;
-use tokio_util::sync::CancellationToken;
 use tower::ServiceExt;
 
-use hermeneus::provider::{LlmProvider, ProviderRegistry};
+use hermeneus::provider::LlmProvider;
 use hermeneus::test_utils::MockProvider;
 use hermeneus::types::*;
-use koina::secret::SecretString;
-use mneme::store::SessionStore;
-use nous::config::{NousConfig, PipelineConfig};
-use nous::manager::NousManager;
-use organon::registry::ToolRegistry;
-use pylon::router::build_router;
-use pylon::state::AppState;
-use symbolon::auth::{AuthConfig, AuthFacade};
-use symbolon::jwt::{JwtConfig, JwtManager};
-use symbolon::types::Role;
-use taxis::oikos::Oikos;
+use integration_tests::harness::{TestHarness, body_json, body_string};
+use mneme::embedding::EmbeddingProvider;
+use mneme::id::{EmbeddingId, FactId};
+use mneme::knowledge::{
+    EmbeddedChunk, EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactSensitivity,
+    FactTemporal, Visibility,
+};
 
 // --- Mock Providers ---
 
@@ -57,6 +50,24 @@ impl CapturingMockProvider {
             captured,
         }
     }
+
+    fn response_for(&self, request: &CompletionRequest) -> CompletionResponse {
+        let system = request.system.as_deref().unwrap_or_default();
+        let text = if system.contains("search query expansion engine") {
+            r#"["What does the Aletheia recall substrate store?","Aletheia recall substrate stores operator calibration facts"]"#
+        } else if system.contains("Select up to") {
+            r#"["fact-http-recall-1"]"#
+        } else {
+            return self.response.clone();
+        };
+        CompletionResponse {
+            content: vec![ContentBlock::Text {
+                text: text.to_owned(),
+                citations: None,
+            }],
+            ..self.response.clone()
+        }
+    }
 }
 
 impl LlmProvider for CapturingMockProvider {
@@ -79,7 +90,7 @@ impl LlmProvider for CapturingMockProvider {
                 .lock()
                 .expect("lock poisoned")
                 .push(request.clone());
-            Ok(self.response.clone())
+            Ok(self.response_for(request))
         })
     }
 
@@ -93,224 +104,68 @@ impl LlmProvider for CapturingMockProvider {
     }
 }
 
-// --- Test Harness ---
-
-struct TestHarness {
-    state: Arc<AppState>,
-    jwt_manager: Arc<JwtManager>,
-    _tmp: tempfile::TempDir,
+async fn build_capturing() -> (TestHarness, Arc<Mutex<Vec<CompletionRequest>>>) {
+    let captured = Arc::new(Mutex::new(Vec::new()));
+    let provider = CapturingMockProvider::new(Arc::clone(&captured));
+    let harness = TestHarness::build_with_provider(Box::new(provider)).await;
+    (harness, captured)
 }
 
-impl TestHarness {
-    async fn build() -> Self {
-        Self::build_with_provider(Box::new(
-            MockProvider::new("Hello from mock!").models(&["mock-model"]),
-        ))
-        .await
-    }
+#[cfg(feature = "knowledge-store")]
+async fn build_capturing_with_knowledge_store() -> (TestHarness, Arc<Mutex<Vec<CompletionRequest>>>)
+{
+    let captured = Arc::new(Mutex::new(Vec::new()));
+    let provider = CapturingMockProvider::new(Arc::clone(&captured));
+    let harness = TestHarness::build_with_provider_and_knowledge_store(Box::new(provider)).await;
+    (harness, captured)
+}
 
-    async fn build_capturing() -> (Self, Arc<Mutex<Vec<CompletionRequest>>>) {
-        let captured = Arc::new(Mutex::new(Vec::new()));
-        let provider = CapturingMockProvider::new(Arc::clone(&captured));
-        let harness = Self::build_with_provider(Box::new(provider)).await;
-        (harness, captured)
-    }
-
-    async fn build_with_provider(provider: Box<dyn LlmProvider>) -> Self {
-        let dir = tempfile::TempDir::new().expect("tmpdir");
-        let root = dir.path();
-
-        std::fs::create_dir_all(root.join("nous/test-nous")).expect("mkdir nous/test-nous");
-        std::fs::create_dir_all(root.join("shared")).expect("mkdir shared");
-        std::fs::create_dir_all(root.join("theke")).expect("mkdir theke");
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "integration tests write fixture files to temp directories; synchronous I/O is required in test setup"
-        )]
-        std::fs::write(root.join("nous/test-nous/SOUL.md"), "You are a test agent.")
-            .expect("write SOUL.md");
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "integration tests write fixture files to temp directories; synchronous I/O is required in test setup"
-        )]
-        std::fs::write(root.join("theke/USER.md"), "Test user.").expect("write USER.md");
-
-        let oikos = Arc::new(Oikos::from_root(root));
-        let store = SessionStore::open_in_memory().expect("in-memory store");
-
-        let mut provider_registry = ProviderRegistry::new();
-        provider_registry.register(provider);
-        let provider_registry = Arc::new(provider_registry);
-        let tool_registry = Arc::new(ToolRegistry::new());
-
-        let session_store = Arc::new(TokioMutex::new(store));
-
-        let mut nous_manager = NousManager::new(
-            Arc::clone(&provider_registry),
-            Arc::clone(&tool_registry),
-            Arc::clone(&oikos),
-            None,
-            None,
-            Some(Arc::clone(&session_store)),
-            #[cfg(feature = "knowledge-store")]
-            None,
-            Arc::new(vec![]),
-            None,
-            None,
-            taxis::config::NousBehaviorConfig::default(),
-        );
-
-        let nous_config = NousConfig {
-            id: Arc::from("test-nous"),
-            generation: nous::config::NousGenerationConfig {
-                model: "mock-model".to_owned(),
-                ..Default::default()
-            },
-            ..NousConfig::default()
-        };
-        nous_manager
-            .spawn(nous_config, PipelineConfig::default())
-            .await
-            .expect("spawn nous");
-
-        let jwt_manager = Arc::new(JwtManager::new(JwtConfig {
-            signing_key: SecretString::from("test-secret-key-for-jwt".to_owned()),
-            access_ttl: Duration::from_hours(1),
-            refresh_ttl: Duration::from_hours(24),
-            issuer: "aletheia-test".to_owned(),
-            ..JwtConfig::default()
-        }));
-
-        let default_config = taxis::config::AletheiaConfig::default();
-        let (config_tx, _config_rx) = tokio::sync::watch::channel(default_config.clone());
-        let metrics_registry = koina::metrics::MetricsRegistry::new();
-        metrics_registry.with_registry(pylon::metrics::register);
-        let state = Arc::new(AppState {
-            session_store,
-            nous_manager: Arc::new(nous_manager),
-            provider_registry,
-            tool_registry,
-            oikos,
-            jwt_manager: Arc::clone(&jwt_manager),
-            auth_facade: Arc::new(
-                AuthFacade::in_memory(AuthConfig {
-                    jwt: JwtConfig::default(),
-                })
-                .expect("auth facade"),
-            ),
-            start_time: Instant::now(),
-            auth_mode: "token".to_owned(),
-            none_role: "admin".to_owned(),
-            config: Arc::new(tokio::sync::RwLock::new(default_config)),
-            config_tx,
-            idempotency_cache: Arc::new(pylon::idempotency::IdempotencyCache::new()),
-            shutdown: CancellationToken::new(),
-            #[cfg(feature = "knowledge-store")]
-            knowledge_store: None,
-            embedding_provider: None,
-            turn_buffer_registry: Arc::new(pylon::turn_buffer::TurnBufferRegistry::new()),
-            metrics_registry,
-            event_bus: Arc::new(pylon::event_bus::EventBus::new(256)),
-        });
-
-        Self {
-            state,
-            jwt_manager,
-            _tmp: dir,
-        }
-    }
-
-    fn auth_token(&self) -> String {
-        self.jwt_manager
-            .issue_access("test-user", Role::Operator, None)
-            .expect("test token")
-    }
-
-    fn router(&self) -> axum::Router {
-        let security = pylon::security::SecurityConfig {
-            csrf: pylon::security::CsrfConfig {
-                enabled: false,
-                ..pylon::security::CsrfConfig::default()
-            },
-            ..pylon::security::SecurityConfig::default()
-        };
-        self.router_with_security(&security)
-    }
-
-    fn router_with_security(&self, security: &pylon::security::SecurityConfig) -> axum::Router {
-        build_router(Arc::clone(&self.state), security)
-    }
-
-    fn authed_request(
-        &self,
-        method: &str,
-        uri: &str,
-        body: Option<serde_json::Value>,
-    ) -> Request<Body> {
-        let token = self.auth_token();
-        self.authed_request_with_token(&token, method, uri, body)
-    }
-
-    #[expect(
-        clippy::unused_self,
-        reason = "kept as instance method for API consistency"
-    )]
-    fn authed_request_with_token(
-        &self,
-        token: &str,
-        method: &str,
-        uri: &str,
-        body: Option<serde_json::Value>,
-    ) -> Request<Body> {
-        let builder = Request::builder()
-            .method(method)
-            .uri(uri)
-            .header("content-type", "application/json")
-            .header("authorization", format!("Bearer {token}"));
-
-        match body {
-            Some(b) => builder
-                .body(Body::from(serde_json::to_vec(&b).expect("serialize")))
-                .expect("request"),
-            None => builder.body(Body::empty()).expect("request"),
-        }
-    }
-
-    fn authed_get(&self, uri: &str) -> Request<Body> {
-        let token = self.auth_token();
-        Request::get(uri)
-            .header("authorization", format!("Bearer {token}"))
-            .body(Body::empty())
-            .expect("request")
-    }
-
-    async fn create_session(&self, router: &axum::Router) -> serde_json::Value {
-        let req = self.authed_request(
-            "POST",
-            "/api/v1/sessions",
-            Some(serde_json::json!({
-                "nous_id": "test-nous",
-                "session_key": "e2e-test"
-            })),
-        );
-        let resp = router.clone().oneshot(req).await.expect("oneshot");
-        assert_eq!(resp.status(), StatusCode::CREATED);
-        body_json(resp).await
+#[cfg(feature = "knowledge-store")]
+fn recall_fact(id: &str, content: &str) -> Fact {
+    let now = "2026-03-01T00:00:00Z".parse().expect("valid timestamp");
+    Fact {
+        id: FactId::new(id).expect("valid fact id"),
+        nous_id: "test-nous".to_owned(),
+        content: content.to_owned(),
+        fact_type: "observation".to_owned(),
+        scope: None,
+        temporal: FactTemporal {
+            valid_from: now,
+            valid_to: mneme::knowledge::far_future(),
+            recorded_at: now,
+        },
+        provenance: FactProvenance {
+            confidence: 0.95,
+            tier: EpistemicTier::Verified,
+            source_session_id: Some("session-http-recall".to_owned()),
+            stability_hours: mneme::knowledge::default_stability_hours("observation"),
+        },
+        lifecycle: FactLifecycle {
+            superseded_by: None,
+            is_forgotten: false,
+            forgotten_at: None,
+            forget_reason: None,
+        },
+        access: FactAccess {
+            access_count: 0,
+            last_accessed_at: None,
+        },
+        sensitivity: FactSensitivity::Public,
+        visibility: Visibility::Private,
     }
 }
 
-async fn body_json(response: axum::response::Response) -> serde_json::Value {
-    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
-        .await
-        .expect("read body");
-    serde_json::from_slice(&bytes).expect("parse json")
-}
-
-async fn body_string(response: axum::response::Response) -> String {
-    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
-        .await
-        .expect("read body");
-    String::from_utf8(bytes.to_vec()).expect("utf8")
+#[cfg(feature = "knowledge-store")]
+fn recall_embedding(embedder: &dyn EmbeddingProvider, fact: &Fact) -> EmbeddedChunk {
+    EmbeddedChunk {
+        id: EmbeddingId::new(format!("emb-{}", fact.id)).expect("valid embedding id"),
+        content: fact.content.clone(),
+        source_type: "fact".to_owned(),
+        source_id: fact.id.to_string(),
+        nous_id: fact.nous_id.clone(),
+        embedding: embedder.embed(&fact.content).expect("embed fixture"),
+        created_at: fact.temporal.recorded_at,
+    }
 }
 
 // --- Tests ---
@@ -446,7 +301,7 @@ async fn nous_status_reflects_configuration() {
 
 #[tokio::test]
 async fn bootstrap_assembles_from_oikos() {
-    let (harness, captured) = TestHarness::build_capturing().await;
+    let (harness, captured) = build_capturing().await;
     let router = harness.router();
 
     let session = harness.create_session(&router).await;
@@ -470,7 +325,9 @@ async fn bootstrap_assembles_from_oikos() {
         "mock provider should have received at least one request"
     );
 
-    let system_prompt = requests[0]
+    let system_prompt = requests
+        .last()
+        .expect("at least one provider request")
         .system
         .as_ref()
         .expect("system prompt should be present");
@@ -481,6 +338,72 @@ async fn bootstrap_assembles_from_oikos() {
     assert!(
         system_prompt.contains("Test user"),
         "system prompt should contain USER.md content, got: {system_prompt}"
+    );
+}
+
+#[cfg(feature = "knowledge-store")]
+#[tokio::test]
+async fn http_harness_wires_real_knowledge_store_and_embedding_provider() {
+    let (harness, captured) = build_capturing_with_knowledge_store().await;
+    let router = harness.router();
+    assert!(
+        harness.state.embedding_provider.is_some(),
+        "specific invariant: harness must wire an embedding provider into AppState"
+    );
+    assert!(
+        harness.state.nous_manager.knowledge_store().is_some(),
+        "specific invariant: harness must wire a knowledge store into NousManager"
+    );
+
+    let fact = recall_fact(
+        "fact-http-recall-1",
+        "Aletheia recall substrate stores operator calibration facts",
+    );
+    let store = harness.knowledge_store();
+    store.insert_fact(&fact).expect("insert recall fact");
+    store
+        .insert_embedding(&recall_embedding(
+            harness.embedding_provider().as_ref(),
+            &fact,
+        ))
+        .expect("insert recall embedding");
+    let direct_results = store
+        .search_vectors(
+            harness
+                .embedding_provider()
+                .embed(&fact.content)
+                .expect("embed"),
+            5,
+            50,
+        )
+        .expect("direct vector search");
+    assert!(
+        direct_results
+            .iter()
+            .any(|result| result.source_id == "fact-http-recall-1"),
+        "specific invariant: harness knowledge_store must expose real vector search results"
+    );
+
+    let session = harness.create_session(&router).await;
+    let id = session["id"].as_str().expect("session id");
+    let body = harness
+        .send_message(
+            &router,
+            id,
+            "What does the Aletheia recall substrate store?",
+        )
+        .await;
+    assert!(
+        body.contains("event: message_complete"),
+        "happy path should still complete after recall executes: {body}"
+    );
+
+    let requests = captured
+        .lock()
+        .expect("captured provider requests lock should not be poisoned");
+    assert!(
+        !requests.is_empty(),
+        "specific invariant: HTTP message path should reach the provider while knowledge_store is wired"
     );
 }
 

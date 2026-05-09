@@ -1,7 +1,7 @@
 //! Integration tests: organon tool executors → mneme session store.
 //!
 //! Tests the `note` and `blackboard` tools with real `SessionStore` adapters,
-//! and memory search/correct/audit tools with a stub `KnowledgeSearchService`.
+//! and memory search/correct/audit tools with a real `KnowledgeSearchService`.
 //!
 //! What is NOT tested here (already covered in organon unit tests):
 //! - Mock-backed note/blackboard tool internals (see organon/src/builtins/memory.rs)
@@ -12,12 +12,7 @@
 //! - `KnowledgeSearchService` → memory tool executor wiring
 
 #![expect(clippy::expect_used, reason = "test assertions")]
-#![expect(
-    clippy::indexing_slicing,
-    reason = "integration tests: index-based assertions on known-length slices"
-)]
-
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::future::Future;
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -27,6 +22,13 @@ use tokio::sync::Mutex;
 
 use koina::id::ToolName;
 use koina::id::{NousId, SessionId};
+use mneme::embedding::{EmbeddingProvider, MockEmbeddingProvider};
+use mneme::id::{EmbeddingId, FactId};
+use mneme::knowledge::{
+    EmbeddedChunk, EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactSensitivity,
+    FactTemporal, Visibility,
+};
+use mneme::knowledge_store::{KnowledgeConfig, KnowledgeStore};
 use mneme::store::SessionStore;
 use nous::adapters::{SessionBlackboardAdapter, SessionNoteAdapter};
 use organon::builtins;
@@ -37,6 +39,9 @@ use organon::types::{
     FactSummary, KnowledgeSearchService, MemoryResult, ServerToolConfig, ToolContext, ToolInput,
     ToolServices,
 };
+
+const KNOWLEDGE_DIM: usize = 384;
+const RECORDED_AT: &str = "2026-03-01T00:00:00Z";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -213,119 +218,170 @@ async fn blackboard_delete_uses_real_store() {
 }
 
 // ---------------------------------------------------------------------------
-// Stub KnowledgeSearchService for testing executor wiring
+// Real KnowledgeSearchService backed by mneme KnowledgeStore
 // ---------------------------------------------------------------------------
 
-struct StubKnowledgeService {
-    facts: std::sync::Mutex<Vec<(String, String)>>, // (id, content)
-    next_id: std::sync::Mutex<u32>,
-    corrected: std::sync::Mutex<Vec<(String, String)>>, // (old_id, new_id)
-    retracted: std::sync::Mutex<Vec<String>>,
-    audited: std::sync::Mutex<Vec<(String, String)>>, // (id, content): FactSummary not Clone
+struct RealKnowledgeFixture {
+    service: Arc<RealKnowledgeService>,
+    _tmp: tempfile::TempDir,
 }
 
-impl StubKnowledgeService {
+struct RealKnowledgeService {
+    store: Arc<KnowledgeStore>,
+    embedder: Arc<dyn EmbeddingProvider>,
+}
+
+impl RealKnowledgeFixture {
     fn new() -> Self {
+        let tmp = tempfile::TempDir::new().expect("tmpdir");
+        let store = KnowledgeStore::open_fjall(
+            tmp.path().join("knowledge").join("shared"),
+            KnowledgeConfig {
+                dim: KNOWLEDGE_DIM,
+                ..KnowledgeConfig::default()
+            },
+        )
+        .expect("open tempfile fjall knowledge store");
+        let embedder = Arc::new(MockEmbeddingProvider::new(KNOWLEDGE_DIM));
         Self {
-            facts: std::sync::Mutex::new(Vec::new()),
-            next_id: std::sync::Mutex::new(1),
-            corrected: std::sync::Mutex::new(Vec::new()),
-            retracted: std::sync::Mutex::new(Vec::new()),
-            audited: std::sync::Mutex::new(Vec::new()),
+            service: Arc::new(RealKnowledgeService { store, embedder }),
+            _tmp: tmp,
         }
     }
 
     fn seed_fact(&self, id: &str, content: &str) {
-        self.facts
-            .lock()
-            .expect("facts mutex should not be poisoned")
-            .push((id.to_owned(), content.to_owned()));
-        self.audited
-            .lock()
-            .expect("audited mutex should not be poisoned")
-            .push((id.to_owned(), content.to_owned()));
+        self.service.seed_fact(id, "alice", content);
     }
 }
 
-impl KnowledgeSearchService for StubKnowledgeService {
+impl RealKnowledgeService {
+    fn seed_fact(&self, id: &str, nous_id: &str, content: &str) {
+        self.store
+            .insert_fact(&fact(id, nous_id, content))
+            .expect("insert fact");
+        self.store
+            .insert_embedding(&embedded_chunk(
+                self.embedder.as_ref(),
+                &format!("emb-{id}"),
+                id,
+                nous_id,
+                content,
+            ))
+            .expect("insert embedding");
+    }
+}
+
+impl KnowledgeSearchService for RealKnowledgeService {
     fn search(
         &self,
         query: &str,
         _nous_id: &str,
-        _limit: usize,
+        limit: usize,
     ) -> Pin<Box<dyn Future<Output = Result<Vec<MemoryResult>, KnowledgeAdapterError>> + Send + '_>>
     {
-        let results: Vec<MemoryResult> = self
-            .facts
-            .lock()
-            .expect("facts mutex should not be poisoned")
-            .iter()
-            .filter(|(_, content)| content.contains(query))
-            .map(|(id, content)| MemoryResult {
-                id: id.clone(),
-                content: content.clone(),
-                score: 0.95,
-                source_type: "fact".to_owned(),
-            })
-            .collect();
-        Box::pin(std::future::ready(Ok(results)))
+        let query = query.to_owned();
+        Box::pin(async move {
+            let embedding = self.embedder.embed(&query).map_err(|e| {
+                organon::error::EmbeddingSnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })?;
+            let results = self
+                .store
+                .search_vectors_async(embedding, i64::try_from(limit).unwrap_or(i64::MAX), 50)
+                .await
+                .map_err(|e| {
+                    organon::error::SearchSnafu {
+                        message: e.to_string(),
+                    }
+                    .build()
+                })?;
+            Ok(results
+                .into_iter()
+                .map(|r| MemoryResult {
+                    id: r.source_id,
+                    content: r.content,
+                    score: 1.0 / (1.0 + r.distance),
+                    source_type: r.source_type,
+                })
+                .collect())
+        })
     }
 
     fn correct_fact(
         &self,
-        fact_id: &str,
-        _new_content: &str,
-        _nous_id: &str,
+        _fact_id: &str,
+        new_content: &str,
+        nous_id: &str,
     ) -> Pin<Box<dyn Future<Output = Result<String, KnowledgeAdapterError>> + Send + '_>> {
-        let mut n = self
-            .next_id
-            .lock()
-            .expect("next_id mutex should not be poisoned");
-        let new_id = format!("fact-corrected-{n}");
-        *n += 1;
-        self.corrected
-            .lock()
-            .expect("corrected mutex should not be poisoned")
-            .push((fact_id.to_owned(), new_id.clone()));
-        Box::pin(std::future::ready(Ok(new_id)))
+        let new_content = new_content.to_owned();
+        let nous_id = nous_id.to_owned();
+        Box::pin(async move {
+            let new_id = format!("fact-corrected-{}", koina::ulid::Ulid::new());
+            self.seed_fact(&new_id, &nous_id, &new_content);
+            Ok(new_id)
+        })
     }
 
     fn retract_fact(
         &self,
         fact_id: &str,
-        _reason: Option<&str>,
+        reason: Option<&str>,
     ) -> Pin<Box<dyn Future<Output = Result<(), KnowledgeAdapterError>> + Send + '_>> {
-        self.retracted
-            .lock()
-            .expect("retracted mutex should not be poisoned")
-            .push(fact_id.to_owned());
-        Box::pin(std::future::ready(Ok(())))
+        let fact_id = fact_id.to_owned();
+        let reason = reason.unwrap_or("mistake").to_owned();
+        Box::pin(async move {
+            let fact_id = FactId::new(fact_id).map_err(|e| {
+                organon::error::MutateStoreSnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })?;
+            let reason = reason
+                .parse()
+                .map_err(|e: String| organon::error::InvalidReasonSnafu { reason: e }.build())?;
+            self.store
+                .forget_fact_async(fact_id, reason)
+                .await
+                .map(|_| ())
+                .map_err(|e| {
+                    organon::error::MutateStoreSnafu {
+                        message: e.to_string(),
+                    }
+                    .build()
+                })
+        })
     }
 
     fn audit_facts(
         &self,
-        _nous_id: Option<&str>,
-        _since: Option<&str>,
-        _limit: usize,
+        nous_id: Option<&str>,
+        since: Option<&str>,
+        limit: usize,
     ) -> Pin<Box<dyn Future<Output = Result<Vec<FactSummary>, KnowledgeAdapterError>> + Send + '_>>
     {
-        let facts: Vec<FactSummary> = self
-            .audited
-            .lock()
-            .expect("audited mutex should not be poisoned")
-            .iter()
-            .map(|(id, content)| FactSummary {
-                id: id.clone(),
-                content: content.clone(),
-                confidence: 0.9,
-                tier: "verified".to_owned(),
-                recorded_at: "2026-01-01T00:00:00Z".to_owned(),
-                is_forgotten: false,
-                forgotten_at: None,
-                forget_reason: None,
-            })
-            .collect();
-        Box::pin(std::future::ready(Ok(facts)))
+        let nous_id = nous_id.unwrap_or("alice").to_owned();
+        let since = since
+            .and_then(mneme::knowledge::parse_timestamp)
+            .unwrap_or(jiff::Timestamp::UNIX_EPOCH);
+        Box::pin(async move {
+            let facts = self
+                .store
+                .audit_all_facts_async(nous_id, i64::try_from(limit).unwrap_or(i64::MAX))
+                .await
+                .map_err(|e| {
+                    organon::error::FactQuerySnafu {
+                        message: e.to_string(),
+                    }
+                    .build()
+                })?;
+            Ok(facts
+                .into_iter()
+                .filter(|f| f.temporal.recorded_at >= since)
+                .map(fact_summary)
+                .collect())
+        })
     }
 
     fn forget_fact(
@@ -339,17 +395,29 @@ impl KnowledgeSearchService for StubKnowledgeService {
                 + '_,
         >,
     > {
-        let summary = organon::types::FactSummary {
-            id: fact_id.to_owned(),
-            content: "mock fact".to_owned(),
-            confidence: 1.0,
-            tier: "established".to_owned(),
-            recorded_at: "2026-01-01T00:00:00Z".to_owned(),
-            is_forgotten: true,
-            forgotten_at: Some("2026-01-02T00:00:00Z".to_owned()),
-            forget_reason: Some(reason.to_owned()),
-        };
-        Box::pin(std::future::ready(Ok(summary)))
+        let fact_id = fact_id.to_owned();
+        let reason = reason.to_owned();
+        Box::pin(async move {
+            let fact_id = FactId::new(fact_id).map_err(|e| {
+                organon::error::MutateStoreSnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })?;
+            let reason = reason
+                .parse()
+                .map_err(|e: String| organon::error::InvalidReasonSnafu { reason: e }.build())?;
+            self.store
+                .forget_fact_async(fact_id, reason)
+                .await
+                .map(fact_summary)
+                .map_err(|e| {
+                    organon::error::MutateStoreSnafu {
+                        message: e.to_string(),
+                    }
+                    .build()
+                })
+        })
     }
 
     fn unforget_fact(
@@ -362,43 +430,59 @@ impl KnowledgeSearchService for StubKnowledgeService {
                 + '_,
         >,
     > {
-        let summary = organon::types::FactSummary {
-            id: fact_id.to_owned(),
-            content: "mock fact".to_owned(),
-            confidence: 1.0,
-            tier: "established".to_owned(),
-            recorded_at: "2026-01-01T00:00:00Z".to_owned(),
-            is_forgotten: false,
-            forgotten_at: None,
-            forget_reason: None,
-        };
-        Box::pin(std::future::ready(Ok(summary)))
+        let fact_id = fact_id.to_owned();
+        Box::pin(async move {
+            let fact_id = FactId::new(fact_id).map_err(|e| {
+                organon::error::MutateStoreSnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })?;
+            self.store
+                .unforget_fact_async(fact_id)
+                .await
+                .map(fact_summary)
+                .map_err(|e| {
+                    organon::error::MutateStoreSnafu {
+                        message: e.to_string(),
+                    }
+                    .build()
+                })
+        })
     }
 
     fn find_skill_by_name(
         &self,
-        _nous_id: &str,
+        nous_id: &str,
         skill_name: &str,
     ) -> Pin<Box<dyn Future<Output = Result<Option<String>, KnowledgeAdapterError>> + Send + '_>>
     {
-        let facts = self
-            .facts
-            .lock()
-            .expect("facts mutex should not be poisoned");
-        for (_, content) in facts.iter() {
-            if content.contains(skill_name) {
-                return Box::pin(std::future::ready(Ok(Some(content.clone()))));
-            }
-        }
-        Box::pin(std::future::ready(Ok(None)))
+        let nous_id = nous_id.to_owned();
+        let skill_name = skill_name.to_owned();
+        Box::pin(async move {
+            let facts = self
+                .store
+                .query_facts_async(nous_id, "9999-12-31T00:00:00Z".to_owned(), 1000)
+                .await
+                .map_err(|e| {
+                    organon::error::FactQuerySnafu {
+                        message: e.to_string(),
+                    }
+                    .build()
+                })?;
+            Ok(facts
+                .into_iter()
+                .find(|f| f.content.contains(&skill_name))
+                .map(|f| f.content))
+        })
     }
 
     fn datalog_query(
         &self,
-        _query: &str,
-        _params: Option<serde_json::Value>,
-        _timeout_secs: Option<f64>,
-        _row_limit: Option<usize>,
+        query: &str,
+        params: Option<serde_json::Value>,
+        timeout_secs: Option<f64>,
+        row_limit: Option<usize>,
     ) -> Pin<
         Box<
             dyn Future<Output = Result<organon::types::DatalogResult, KnowledgeAdapterError>>
@@ -406,15 +490,126 @@ impl KnowledgeSearchService for StubKnowledgeService {
                 + '_,
         >,
     > {
-        Box::pin(std::future::ready(Ok(organon::types::DatalogResult {
-            columns: vec!["stub".to_owned()],
-            rows: vec![],
-            truncated: false,
-        })))
+        let query = query.to_owned();
+        Box::pin(async move {
+            let rows = self
+                .store
+                .run_query_with_timeout(
+                    &query,
+                    json_params(params),
+                    timeout_secs.map(std::time::Duration::from_secs_f64),
+                )
+                .map_err(|e| {
+                    organon::error::DatalogQuerySnafu {
+                        message: e.to_string(),
+                    }
+                    .build()
+                })?;
+            let limit = row_limit.unwrap_or(100);
+            let truncated = rows.row_count() > limit;
+            let columns = rows.headers.iter().map(ToString::to_string).collect();
+            let result_rows = rows.rows_to_json().into_iter().take(limit).collect();
+            Ok(organon::types::DatalogResult {
+                columns,
+                rows: result_rows,
+                truncated,
+            })
+        })
     }
 }
 
-fn ctx_with_knowledge(svc: Arc<StubKnowledgeService>) -> ToolContext {
+fn ts() -> jiff::Timestamp {
+    RECORDED_AT.parse().expect("valid timestamp")
+}
+
+fn fact(id: &str, nous_id: &str, content: &str) -> Fact {
+    Fact {
+        id: FactId::new(id).expect("valid fact id"),
+        nous_id: nous_id.to_owned(),
+        content: content.to_owned(),
+        fact_type: "observation".to_owned(),
+        scope: None,
+        temporal: FactTemporal {
+            valid_from: ts(),
+            valid_to: mneme::knowledge::far_future(),
+            recorded_at: ts(),
+        },
+        provenance: FactProvenance {
+            confidence: 0.95,
+            tier: EpistemicTier::Verified,
+            source_session_id: Some("ses-organon".to_owned()),
+            stability_hours: mneme::knowledge::default_stability_hours("observation"),
+        },
+        lifecycle: FactLifecycle {
+            superseded_by: None,
+            is_forgotten: false,
+            forgotten_at: None,
+            forget_reason: None,
+        },
+        access: FactAccess {
+            access_count: 0,
+            last_accessed_at: None,
+        },
+        sensitivity: FactSensitivity::Public,
+        visibility: Visibility::Private,
+    }
+}
+
+fn embedded_chunk(
+    embedder: &dyn EmbeddingProvider,
+    embedding_id: &str,
+    fact_id: &str,
+    nous_id: &str,
+    content: &str,
+) -> EmbeddedChunk {
+    EmbeddedChunk {
+        id: EmbeddingId::new(embedding_id).expect("valid embedding id"),
+        content: content.to_owned(),
+        source_type: "fact".to_owned(),
+        source_id: fact_id.to_owned(),
+        nous_id: nous_id.to_owned(),
+        embedding: embedder.embed(content).expect("embed fixture"),
+        created_at: ts(),
+    }
+}
+
+fn fact_summary(f: Fact) -> FactSummary {
+    FactSummary {
+        id: f.id.to_string(),
+        content: f.content,
+        confidence: f.provenance.confidence,
+        tier: f.provenance.tier.to_string(),
+        recorded_at: mneme::knowledge::format_timestamp(&f.temporal.recorded_at),
+        is_forgotten: f.lifecycle.is_forgotten,
+        forgotten_at: f.lifecycle.forgotten_at.map(|t| t.to_string()),
+        forget_reason: f.lifecycle.forget_reason.map(|r| r.to_string()),
+    }
+}
+
+fn json_params(params: Option<serde_json::Value>) -> BTreeMap<String, mneme::engine::DataValue> {
+    let Some(serde_json::Value::Object(map)) = params else {
+        return BTreeMap::new();
+    };
+    map.into_iter()
+        .map(|(key, value)| (key, json_to_datavalue(&value)))
+        .collect()
+}
+
+fn json_to_datavalue(value: &serde_json::Value) -> mneme::engine::DataValue {
+    match value {
+        serde_json::Value::Null => mneme::engine::DataValue::Null,
+        serde_json::Value::Bool(v) => mneme::engine::DataValue::Bool(*v),
+        serde_json::Value::Number(n) => n
+            .as_i64()
+            .map(mneme::engine::DataValue::from)
+            .or_else(|| n.as_f64().map(mneme::engine::DataValue::from))
+            .unwrap_or(mneme::engine::DataValue::Null),
+        serde_json::Value::String(s) => mneme::engine::DataValue::Str(s.as_str().into()),
+        _ => mneme::engine::DataValue::Str(value.to_string().into()),
+    }
+}
+
+fn ctx_with_knowledge(svc: Arc<dyn KnowledgeSearchService>) -> ToolContext {
     install_crypto_provider();
     ToolContext {
         nous_id: NousId::new("alice").expect("valid"),
@@ -447,11 +642,11 @@ fn ctx_with_knowledge(svc: Arc<StubKnowledgeService>) -> ToolContext {
 
 #[tokio::test]
 async fn memory_search_tool_returns_results() {
-    let svc = Arc::new(StubKnowledgeService::new());
-    svc.seed_fact("fact-1", "Alice works on the Aletheia project");
+    let fixture = RealKnowledgeFixture::new();
+    fixture.seed_fact("fact-1", "Alice works on the Aletheia project");
 
     let reg = registry();
-    let ctx = ctx_with_knowledge(Arc::clone(&svc));
+    let ctx = ctx_with_knowledge(fixture.service.clone());
 
     let input = tool_input(
         "memory_search",
@@ -474,9 +669,9 @@ async fn memory_search_tool_returns_results() {
 
 #[tokio::test]
 async fn memory_search_returns_empty_message_when_no_results() {
-    let svc = Arc::new(StubKnowledgeService::new());
+    let fixture = RealKnowledgeFixture::new();
     let reg = registry();
-    let ctx = ctx_with_knowledge(Arc::clone(&svc));
+    let ctx = ctx_with_knowledge(fixture.service.clone());
 
     let input = tool_input(
         "memory_search",
@@ -493,11 +688,11 @@ async fn memory_search_returns_empty_message_when_no_results() {
 
 #[tokio::test]
 async fn memory_correct_tool_reports_new_id() {
-    let svc = Arc::new(StubKnowledgeService::new());
-    svc.seed_fact("fact-42", "Bob prefers Python");
+    let fixture = RealKnowledgeFixture::new();
+    fixture.seed_fact("fact-42", "Bob prefers Python");
 
     let reg = registry();
-    let ctx = ctx_with_knowledge(Arc::clone(&svc));
+    let ctx = ctx_with_knowledge(fixture.service.clone());
 
     let input = tool_input(
         "memory_correct",
@@ -520,23 +715,28 @@ async fn memory_correct_tool_reports_new_id() {
         r.content.text_summary()
     );
 
-    // Verify the stub recorded the correction
-    let corrected = svc
-        .corrected
-        .lock()
-        .expect("corrected mutex should not be poisoned");
-    assert_eq!(corrected.len(), 1);
-    assert_eq!(corrected[0].0, "fact-42");
+    let memories = fixture
+        .service
+        .search("Bob prefers Rust", "alice", 5)
+        .await
+        .expect("search corrected fact");
+    let memory_contents: Vec<&str> = memories.iter().map(|m| m.content.as_str()).collect();
+    assert!(
+        memories
+            .iter()
+            .any(|m| m.content.contains("Bob prefers Rust")),
+        "specific invariant: correction should insert searchable content through KnowledgeStore; got: {memory_contents:?}"
+    );
 }
 
 #[tokio::test]
 async fn memory_audit_tool_returns_facts() {
-    let svc = Arc::new(StubKnowledgeService::new());
-    svc.seed_fact("fact-a", "Alice is an engineer");
-    svc.seed_fact("fact-b", "Bob works at acme.corp");
+    let fixture = RealKnowledgeFixture::new();
+    fixture.seed_fact("fact-a", "Alice is an engineer");
+    fixture.seed_fact("fact-b", "Bob works at acme.corp");
 
     let reg = registry();
-    let ctx = ctx_with_knowledge(Arc::clone(&svc));
+    let ctx = ctx_with_knowledge(fixture.service.clone());
 
     let input = tool_input("memory_audit", serde_json::json!({"limit": 10}));
     let r = reg.execute(&input, &ctx).await.expect("execute");
@@ -553,5 +753,52 @@ async fn memory_audit_tool_returns_facts() {
     assert!(
         text.contains("Bob works at acme.corp"),
         "fact-b in output: {text}"
+    );
+}
+
+#[tokio::test]
+async fn datalog_query_tool_hits_real_knowledge_store() {
+    let fixture = RealKnowledgeFixture::new();
+    fixture.seed_fact("fact-datalog", "Datalog query reaches the real store");
+
+    let reg = registry();
+    let ctx = ctx_with_knowledge(fixture.service.clone());
+
+    let input = tool_input(
+        "datalog_query",
+        serde_json::json!({"query": "?[id, content] := *facts{id, content}", "row_limit": 10}),
+    );
+    let r = reg.execute(&input, &ctx).await.expect("execute");
+    assert!(
+        !r.is_error,
+        "specific invariant: read-only Datalog query should succeed against KnowledgeStore: {}",
+        r.content.text_summary()
+    );
+    let text = r.content.text_summary();
+    assert!(
+        text.contains("fact-datalog") && text.contains("Datalog query reaches the real store"),
+        "specific invariant: datalog_query output must come from the real facts relation; got: {text}"
+    );
+}
+
+#[tokio::test]
+async fn datalog_query_tool_rejects_mutations_before_store() {
+    let fixture = RealKnowledgeFixture::new();
+    let reg = registry();
+    let ctx = ctx_with_knowledge(fixture.service.clone());
+
+    let input = tool_input(
+        "datalog_query",
+        serde_json::json!({"query": "?[id] := id = \"x\" :put facts {id}"}),
+    );
+    let r = reg.execute(&input, &ctx).await.expect("execute");
+    assert!(
+        r.is_error,
+        "specific invariant: mutating datalog_query must return tool error"
+    );
+    assert!(
+        r.content.text_summary().contains("mutation keyword"),
+        "specific invariant: mutation rejection should name the read-only guard; got: {}",
+        r.content.text_summary()
     );
 }

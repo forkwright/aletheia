@@ -173,13 +173,45 @@ fn default_stability_by_fact_type() {
 }
 
 #[test]
-#[ignore = "run manually: cargo test -p aletheia-integration-tests --features engine-tests audit -- --ignored --nocapture"]
-fn knowledge_graph_data_audit() {
+fn knowledge_graph_data_audit_asserts_seeded_invariants() {
     let store = open_store(4);
+    let provider = MockEmbeddingProvider::new(4);
+
+    let fact_a = make_fact(
+        "f-audit-1",
+        "syn",
+        "audit fact with access tracking coverage",
+    );
+    let fact_b = make_fact("f-audit-2", "syn", "audit fact without access");
+    store.insert_fact(&fact_a).expect("insert fact_a");
+    store.insert_fact(&fact_b).expect("insert fact_b");
+
+    let embedding = provider.embed(&fact_a.content).expect("embed fact_a");
+    store
+        .insert_embedding(&EmbeddedChunk {
+            id: EmbeddingId::new("emb-audit-1").expect("valid test id"),
+            content: fact_a.content.clone(),
+            source_type: "fact".to_owned(),
+            source_id: fact_a.id.to_string(),
+            nous_id: "syn".to_owned(),
+            embedding: embedding.clone(),
+            created_at: ts(TS_RECORDED),
+        })
+        .expect("insert embedding");
+    let search_results = store.search_vectors(embedding, 5, 20).expect("search");
+    assert!(
+        search_results.iter().any(|r| r.source_id == "f-audit-1"),
+        "specific invariant: seeded audit fact must be reachable through vector search"
+    );
 
     let facts = store
-        .query_facts("", "9999-12-31", 1000)
-        .unwrap_or_default();
+        .query_facts("syn", "2026-06-01T00:00:00Z", 1000)
+        .expect("query facts");
+    assert_eq!(
+        facts.len(),
+        2,
+        "specific invariant: audit fixture should contain exactly two facts"
+    );
 
     let entity_rows = store
         .run_query(
@@ -187,18 +219,12 @@ fn knowledge_graph_data_audit() {
             std::collections::BTreeMap::default(),
         )
         .map_or(0, |r| r.row_count());
-
     let rel_rows = store
         .run_query(
             "?[src, dst, relation] := *relationships{src, dst, relation}",
             std::collections::BTreeMap::default(),
         )
         .map_or(0, |r| r.row_count());
-
-    println!("\n=== Knowledge Graph Data Audit ===");
-    println!("Facts:         {}", facts.len());
-    println!("Entities:      {entity_rows}");
-    println!("Relationships: {rel_rows}");
 
     let verified = facts
         .iter()
@@ -212,10 +238,18 @@ fn knowledge_graph_data_audit() {
         .iter()
         .filter(|f| f.provenance.tier == EpistemicTier::Assumed)
         .count();
-    println!("\nFact tiers:");
-    println!("  Verified:  {verified}");
-    println!("  Inferred:  {inferred}");
-    println!("  Assumed:   {assumed}");
+    assert_eq!(
+        verified, 0,
+        "specific invariant: seeded fixture should have zero verified facts"
+    );
+    assert_eq!(
+        inferred, 2,
+        "specific invariant: seeded fixture should have two inferred facts"
+    );
+    assert_eq!(
+        assumed, 0,
+        "specific invariant: seeded fixture should have zero assumed facts"
+    );
 
     let accessed = facts.iter().filter(|f| f.access.access_count > 0).count();
     let max_access = facts
@@ -238,10 +272,18 @@ fn knowledge_graph_data_audit() {
             / facts.len() as f64;
         avg
     };
-    println!("\nAccess tracking:");
-    println!("  Facts accessed:    {accessed}/{}", facts.len());
-    println!("  Max access count:  {max_access}");
-    println!("  Avg access count:  {avg_access:.2}");
+    assert_eq!(
+        accessed, 1,
+        "specific invariant: vector search should access exactly one seeded fact"
+    );
+    assert_eq!(
+        max_access, 1,
+        "specific invariant: max access count should reflect the single search"
+    );
+    assert!(
+        (avg_access - 0.5).abs() < f64::EPSILON,
+        "specific invariant: average access should be 0.5, got {avg_access}"
+    );
 
     #[expect(
         clippy::cast_precision_loss,
@@ -253,27 +295,16 @@ fn knowledge_graph_data_audit() {
     } else {
         0.0
     };
-    println!("\nGraph density: {density:.4}");
-
-    println!("\n--- Phase F Viability ---");
-    if facts.is_empty() {
-        println!("No data yet. Phase F has nothing to calibrate against.");
-    } else {
-        #[expect(
-            clippy::cast_precision_loss,
-            clippy::as_conversions,
-            reason = "test: small counts"
-        )]
-        let pct = accessed as f64 / facts.len() as f64 * 100.0;
-        println!(
-            "Facts with access data: {accessed}/{} ({pct:.0}%)",
-            facts.len(),
-        );
-        if accessed > 10 {
-            println!("Sufficient access data for initial FSRS calibration.");
-        } else {
-            println!("Need more access data before FSRS calibration is viable.");
-        }
-    }
-    println!("=================================\n");
+    assert_eq!(
+        entity_rows, 0,
+        "specific invariant: fixture should not seed graph entities"
+    );
+    assert_eq!(
+        rel_rows, 0,
+        "specific invariant: fixture should not seed graph relationships"
+    );
+    assert!(
+        density.abs() < f64::EPSILON,
+        "specific invariant: empty graph density should be zero, got {density}"
+    );
 }

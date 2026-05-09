@@ -3,8 +3,9 @@
 //! Validates the wiring between crates: HTTP → pylon → nous actor → pipeline
 //! stages → LLM mock → tool execution → session persistence → SSE response.
 //!
-//! Each test uses the `TestHarness` pattern from `end_to_end.rs`, extended with
-//! multi-response mock providers for tool-use round trips and recall injection.
+//! Each test uses the shared `integration_tests::harness::TestHarness`,
+//! extended with multi-response mock providers for tool-use round trips and
+//! recall injection.
 
 #![expect(clippy::expect_used, reason = "test assertions")]
 #![expect(
@@ -13,29 +14,15 @@
 )]
 
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
-use tokio::sync::Mutex as TokioMutex;
-use tokio_util::sync::CancellationToken;
 use tower::ServiceExt;
 
-use hermeneus::provider::{LlmProvider, ProviderRegistry};
+use hermeneus::provider::LlmProvider;
 use hermeneus::test_utils::MockProvider;
 use hermeneus::types::*;
-use koina::secret::SecretString;
-use mneme::store::SessionStore;
-use nous::config::{NousConfig, PipelineConfig};
-use nous::manager::NousManager;
-use organon::builtins;
-use organon::registry::ToolRegistry;
-use pylon::router::build_router;
-use pylon::state::AppState;
-use symbolon::auth::{AuthConfig, AuthFacade};
-use symbolon::jwt::{JwtConfig, JwtManager};
-use symbolon::types::Role;
-use taxis::oikos::Oikos;
+use integration_tests::harness::{TestHarness, body_json, body_string};
 
 // ---------------------------------------------------------------------------
 // Mock providers
@@ -165,257 +152,11 @@ impl LlmProvider for SequentialMockProvider {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Test harness
-// ---------------------------------------------------------------------------
-
-struct TestHarness {
-    state: Arc<AppState>,
-    jwt_manager: Arc<JwtManager>,
-    _tmp: tempfile::TempDir,
-}
-
-impl TestHarness {
-    async fn build() -> Self {
-        Self::build_with_provider(Box::new(
-            MockProvider::new("Hello from mock!").models(&["mock-model"]),
-        ))
-        .await
-    }
-
-    async fn build_capturing(text: &str) -> (Self, Arc<Mutex<Vec<CompletionRequest>>>) {
-        let captured = Arc::new(Mutex::new(Vec::new()));
-        let provider = CapturingMockProvider::new(text, Arc::clone(&captured));
-        let harness = Self::build_with_provider(Box::new(provider)).await;
-        (harness, captured)
-    }
-
-    async fn build_with_provider(provider: Box<dyn LlmProvider>) -> Self {
-        Self::build_with_provider_and_tools(provider, false).await
-    }
-
-    async fn build_with_provider_and_tools(
-        provider: Box<dyn LlmProvider>,
-        register_tools: bool,
-    ) -> Self {
-        let dir = tempfile::TempDir::new().expect("tmpdir");
-        let root = dir.path();
-
-        std::fs::create_dir_all(root.join("nous/test-nous")).expect("mkdir nous/test-nous");
-        std::fs::create_dir_all(root.join("shared")).expect("mkdir shared");
-        std::fs::create_dir_all(root.join("theke")).expect("mkdir theke");
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "integration tests write fixture files to temp directories; synchronous I/O is required in test setup"
-        )]
-        std::fs::write(root.join("nous/test-nous/SOUL.md"), "You are a test agent.")
-            .expect("write SOUL.md");
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "integration tests write fixture files to temp directories; synchronous I/O is required in test setup"
-        )]
-        std::fs::write(root.join("theke/USER.md"), "Test user.").expect("write USER.md");
-
-        let oikos = Arc::new(Oikos::from_root(root));
-        let store = SessionStore::open_in_memory().expect("in-memory store");
-
-        let mut provider_registry = ProviderRegistry::new();
-        provider_registry.register(provider);
-        let provider_registry = Arc::new(provider_registry);
-
-        let mut tool_registry = ToolRegistry::new();
-        if register_tools {
-            builtins::register_all(&mut tool_registry).expect("register builtins");
-        }
-        let tool_registry = Arc::new(tool_registry);
-
-        let session_store = Arc::new(TokioMutex::new(store));
-
-        let mut nous_manager = NousManager::new(
-            Arc::clone(&provider_registry),
-            Arc::clone(&tool_registry),
-            Arc::clone(&oikos),
-            None,
-            None,
-            Some(Arc::clone(&session_store)),
-            #[cfg(feature = "knowledge-store")]
-            None,
-            Arc::new(vec![]),
-            None,
-            None,
-            taxis::config::NousBehaviorConfig::default(),
-        );
-
-        let nous_config = NousConfig {
-            id: Arc::from("test-nous"),
-            generation: nous::config::NousGenerationConfig {
-                model: "mock-model".to_owned(),
-                ..Default::default()
-            },
-            ..NousConfig::default()
-        };
-        nous_manager
-            .spawn(nous_config, PipelineConfig::default())
-            .await
-            .expect("spawn nous");
-
-        let jwt_manager = Arc::new(JwtManager::new(JwtConfig {
-            signing_key: SecretString::from("test-secret-key-for-jwt".to_owned()),
-            access_ttl: Duration::from_hours(1),
-            refresh_ttl: Duration::from_hours(24),
-            issuer: "aletheia-test".to_owned(),
-            ..JwtConfig::default()
-        }));
-
-        let default_config = taxis::config::AletheiaConfig::default();
-        let (config_tx, _config_rx) = tokio::sync::watch::channel(default_config.clone());
-        let metrics_registry = koina::metrics::MetricsRegistry::new();
-        metrics_registry.with_registry(pylon::metrics::register);
-        let state = Arc::new(AppState {
-            session_store,
-            nous_manager: Arc::new(nous_manager),
-            provider_registry,
-            tool_registry,
-            oikos,
-            jwt_manager: Arc::clone(&jwt_manager),
-            auth_facade: Arc::new(
-                AuthFacade::in_memory(AuthConfig {
-                    jwt: JwtConfig::default(),
-                })
-                .expect("auth facade"),
-            ),
-            start_time: Instant::now(),
-            auth_mode: "token".to_owned(),
-            none_role: "admin".to_owned(),
-            config: Arc::new(tokio::sync::RwLock::new(default_config)),
-            config_tx,
-            idempotency_cache: Arc::new(pylon::idempotency::IdempotencyCache::new()),
-            shutdown: CancellationToken::new(),
-            #[cfg(feature = "knowledge-store")]
-            knowledge_store: None,
-            embedding_provider: None,
-            turn_buffer_registry: Arc::new(pylon::turn_buffer::TurnBufferRegistry::new()),
-            metrics_registry,
-            event_bus: Arc::new(pylon::event_bus::EventBus::new(256)),
-        });
-
-        Self {
-            state,
-            jwt_manager,
-            _tmp: dir,
-        }
-    }
-
-    fn auth_token(&self) -> String {
-        self.jwt_manager
-            .issue_access("test-user", Role::Operator, None)
-            .expect("test token")
-    }
-
-    fn router(&self) -> axum::Router {
-        build_router(
-            Arc::clone(&self.state),
-            &pylon::security::SecurityConfig {
-                csrf: pylon::security::CsrfConfig {
-                    enabled: false,
-                    ..pylon::security::CsrfConfig::default()
-                },
-                ..pylon::security::SecurityConfig::default()
-            },
-        )
-    }
-
-    fn authed_request(
-        &self,
-        method: &str,
-        uri: &str,
-        body: Option<serde_json::Value>,
-    ) -> Request<Body> {
-        let token = self.auth_token();
-        let builder = Request::builder()
-            .method(method)
-            .uri(uri)
-            .header("content-type", "application/json")
-            .header("authorization", format!("Bearer {token}"));
-
-        match body {
-            Some(b) => builder
-                .body(Body::from(serde_json::to_vec(&b).expect("serialize")))
-                .expect("request"),
-            None => builder.body(Body::empty()).expect("request"),
-        }
-    }
-
-    fn authed_get(&self, uri: &str) -> Request<Body> {
-        let token = self.auth_token();
-        Request::get(uri)
-            .header("authorization", format!("Bearer {token}"))
-            .body(Body::empty())
-            .expect("request")
-    }
-
-    async fn create_session(&self, router: &axum::Router) -> serde_json::Value {
-        let req = self.authed_request(
-            "POST",
-            "/api/v1/sessions",
-            Some(serde_json::json!({
-                "nous_id": "test-nous",
-                "session_key": "e2e-test"
-            })),
-        );
-        let resp = router.clone().oneshot(req).await.expect("oneshot");
-        assert_eq!(resp.status(), StatusCode::CREATED);
-        body_json(resp).await
-    }
-
-    async fn create_session_with_key(&self, router: &axum::Router, key: &str) -> serde_json::Value {
-        let req = self.authed_request(
-            "POST",
-            "/api/v1/sessions",
-            Some(serde_json::json!({
-                "nous_id": "test-nous",
-                "session_key": key
-            })),
-        );
-        let resp = router.clone().oneshot(req).await.expect("oneshot");
-        assert_eq!(resp.status(), StatusCode::CREATED);
-        body_json(resp).await
-    }
-
-    async fn send_message(&self, router: &axum::Router, session_id: &str, content: &str) -> String {
-        let req = self.authed_request(
-            "POST",
-            &format!("/api/v1/sessions/{session_id}/messages"),
-            Some(serde_json::json!({ "content": content })),
-        );
-        let resp = router.clone().oneshot(req).await.expect("send message");
-        assert_eq!(resp.status(), StatusCode::OK);
-        body_string(resp).await
-    }
-
-    async fn get_history(&self, router: &axum::Router, session_id: &str) -> serde_json::Value {
-        let resp = router
-            .clone()
-            .oneshot(self.authed_get(&format!("/api/v1/sessions/{session_id}/history")))
-            .await
-            .expect("get history");
-        assert_eq!(resp.status(), StatusCode::OK);
-        body_json(resp).await
-    }
-}
-
-async fn body_json(response: axum::response::Response) -> serde_json::Value {
-    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
-        .await
-        .expect("read body");
-    serde_json::from_slice(&bytes).expect("parse json")
-}
-
-async fn body_string(response: axum::response::Response) -> String {
-    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
-        .await
-        .expect("read body");
-    String::from_utf8(bytes.to_vec()).expect("utf8")
+async fn build_capturing(text: &str) -> (TestHarness, Arc<Mutex<Vec<CompletionRequest>>>) {
+    let captured = Arc::new(Mutex::new(Vec::new()));
+    let provider = CapturingMockProvider::new(text, Arc::clone(&captured));
+    let harness = TestHarness::build_with_provider(Box::new(provider)).await;
+    (harness, captured)
 }
 
 /// Parse SSE body into (`event_type`, data) pairs.

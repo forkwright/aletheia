@@ -55,7 +55,7 @@ async fn auth_expired_token_returns_401() {
     // Craft a token with exp far in the past
     let claims = symbolon::types::Claims {
         sub: "test-user".to_owned(),
-        role: Role::Operator,
+        role: symbolon::types::Role::Operator,
         nous_id: None,
         iss: "aletheia-test".to_owned(),
         iat: 1_000_000,
