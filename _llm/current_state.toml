@@ -3,7 +3,7 @@ name = "aletheia"
 repo = "forkwright/aletheia"
 generated = false
 source_docs = [
-  "kanon/projects/aletheia/STATE.md",
+  "<canonical-state-doc>/STATE.md",
   "README.md",
 ]
 

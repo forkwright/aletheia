@@ -3,14 +3,14 @@ set -euo pipefail
 # Deploy the conduwuit Matrix homeserver on this host.
 #
 # Usage: scripts/deploy-conduwuit.sh [--server-name NAME] [--dry-run]
-#   --server-name NAME  Matrix server name (default: menos.lan)
+#   --server-name NAME  Matrix server name (default: matrix.example.com)
 #   --dry-run           Print actions without executing
 #
 # Effects:
 #   1. Pulls the pinned conduwuit container image.
-#   2. Generates a random registration token at ~/menos-ops/secrets/conduwuit-registration-token
-#      (mode 0600) and seeds it into /storage/conduwuit/registration_token.
-#   3. Creates the /storage/conduwuit/ data directory.
+#   2. Generates a random registration token at ${SECRETS_DIR}/conduwuit-registration-token
+#      (mode 0600) and seeds it into ${CONDUWUIT_DATA_DIR}/registration_token.
+#   3. Creates the ${CONDUWUIT_DATA_DIR} data directory.
 #   4. Installs Quadlet unit /etc/containers/systemd/conduwuit.container with the
 #      requested server name baked in.
 #   5. Reloads systemd, starts conduwuit.service, waits for /_matrix/client/versions
@@ -21,7 +21,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-SERVER_NAME="menos.lan"
+SERVER_NAME="matrix.example.com"
 DRY_RUN=0
 
 while [[ $# -gt 0 ]]; do
@@ -47,9 +47,9 @@ done
 
 TEMPLATE="${REPO_ROOT}/scripts/conduwuit.container.template"
 UNIT_DST="/etc/containers/systemd/conduwuit.container"
-DATA_DIR="/storage/conduwuit"
-TOKEN_PATH="${HOME}/menos-ops/secrets/conduwuit-registration-token"
-SECRETS_DIR="$(dirname "${TOKEN_PATH}")"
+DATA_DIR="${CONDUWUIT_DATA_DIR:-${XDG_STATE_HOME:-${HOME}/.local/state}/conduwuit}"
+SECRETS_DIR="${SECRETS_DIR:-${XDG_CONFIG_HOME:-${HOME}/.config}/aletheia/secrets}"
+TOKEN_PATH="${TOKEN_PATH:-${SECRETS_DIR}/conduwuit-registration-token}"
 SERVICE="conduwuit.service"
 HEALTH_URL="http://127.0.0.1:6167/_matrix/client/versions"
 HEALTH_TIMEOUT=60
@@ -129,7 +129,10 @@ fi
 log "installing Quadlet unit ${UNIT_DST}"
 RENDERED="$(mktemp)"
 trap 'rm -f "${RENDERED}"' EXIT
-sed "s|__SERVER_NAME__|${SERVER_NAME}|g" "${TEMPLATE}" >"${RENDERED}"
+RENDERED_CONTENT="$(<"${TEMPLATE}")"
+RENDERED_CONTENT="${RENDERED_CONTENT//__SERVER_NAME__/${SERVER_NAME}}"
+RENDERED_CONTENT="${RENDERED_CONTENT//__DATA_DIR__/${DATA_DIR}}"
+printf '%s\n' "${RENDERED_CONTENT}" >"${RENDERED}"
 run "sudo install -m 0644 '${RENDERED}' '${UNIT_DST}'"
 
 # 5. Reload systemd and start the service.
@@ -180,7 +183,7 @@ Next steps:
 
      Or via conduwuit's register endpoint (API paths depend on the version; see upstream docs).
 
-  2. Point an Element client at http://menos.lan:6167 (over Tailscale).
+  2. Point an Element client at http://matrix.example.com:6167.
 
   3. Follow up with Phase 3 (aletheia matrix init) to provision agent users.
 EOF

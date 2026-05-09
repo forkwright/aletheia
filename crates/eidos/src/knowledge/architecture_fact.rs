@@ -26,8 +26,8 @@
 //!
 //! [`FactStore::search`] performs a case-insensitive substring scan across
 //! all loaded facts' `id`, `scope`, and `claim` fields.  Full-text
-//! indexing is out of scope for v1; the dataset is expected to stay
-//! small (<1 000 facts).
+//! substring scanning is sufficient for the tracked v1 size limit (<1 000
+//! facts).
 
 use std::io;
 use std::path::PathBuf;
@@ -41,11 +41,11 @@ use snafu::{ResultExt, Snafu};
 /// Errors from [`FactStore`] operations.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
-#[non_exhaustive]
 #[expect(
     missing_docs,
     reason = "snafu error variant fields are self-documenting via display format"
 )]
+#[non_exhaustive]
 pub enum FactError {
     /// The facts directory could not be created.
     #[snafu(display("failed to create facts directory {}: {source}", dir.display()))]
@@ -231,7 +231,9 @@ impl FactStore {
         if !path.exists() {
             return Ok(None);
         }
-        let bytes = std::fs::read(&path).with_context(|_| ReadFileSnafu { path: path.clone() })?;
+        let bytes = tokio::fs::read(&path)
+            .await
+            .with_context(|_| ReadFileSnafu { path: path.clone() })?;
         let fact = serde_json::from_slice(&bytes)
             .with_context(|_| DeserialiseSnafu { path: path.clone() })?;
         Ok(Some(fact))
@@ -246,14 +248,18 @@ impl FactStore {
     /// fails, or the file cannot be written.
     #[tracing::instrument(skip(self, fact), fields(id = %fact.id))]
     pub async fn put(&self, fact: ArchitectureFact) -> Result<(), FactError> {
-        std::fs::create_dir_all(&self.dir).with_context(|_| CreateDirSnafu {
-            dir: self.dir.clone(),
-        })?;
+        tokio::fs::create_dir_all(&self.dir)
+            .await
+            .with_context(|_| CreateDirSnafu {
+                dir: self.dir.clone(),
+            })?;
         let path = self.fact_path(&fact.id);
         let json = serde_json::to_vec_pretty(&fact).with_context(|_| SerialiseSnafu {
             id: fact.id.clone(),
         })?;
-        std::fs::write(&path, &json).with_context(|_| WriteFileSnafu { path })?;
+        tokio::fs::write(&path, &json)
+            .await
+            .with_context(|_| WriteFileSnafu { path })?;
         Ok(())
     }
 
@@ -268,7 +274,7 @@ impl FactStore {
         if !self.dir.exists() {
             return Ok(vec![]);
         }
-        let mut facts = self.load_all()?;
+        let mut facts = self.load_all().await?;
         if let Some(s) = scope {
             facts.retain(|f| f.scope == s);
         }
@@ -288,7 +294,7 @@ impl FactStore {
             return Ok(vec![]);
         }
         let query_lower = query.to_lowercase();
-        let facts = self.load_all()?;
+        let facts = self.load_all().await?;
         Ok(facts
             .into_iter()
             .filter(|f| {
@@ -300,21 +306,23 @@ impl FactStore {
     }
 
     /// Load all `.json` files in the store directory.
-    fn load_all(&self) -> Result<Vec<ArchitectureFact>, FactError> {
-        let entries = std::fs::read_dir(&self.dir).with_context(|_| ReadDirSnafu {
-            dir: self.dir.clone(),
-        })?;
-        let mut facts = Vec::new();
-        for entry in entries {
-            let entry = entry.with_context(|_| DirEntrySnafu {
+    async fn load_all(&self) -> Result<Vec<ArchitectureFact>, FactError> {
+        let mut entries = tokio::fs::read_dir(&self.dir)
+            .await
+            .with_context(|_| ReadDirSnafu {
                 dir: self.dir.clone(),
             })?;
+        let mut facts = Vec::new();
+        while let Some(entry) = entries.next_entry().await.with_context(|_| DirEntrySnafu {
+            dir: self.dir.clone(),
+        })? {
             let path = entry.path();
             if path.extension().and_then(|e| e.to_str()) != Some("json") {
                 continue;
             }
-            let bytes =
-                std::fs::read(&path).with_context(|_| ReadFileSnafu { path: path.clone() })?;
+            let bytes = tokio::fs::read(&path)
+                .await
+                .with_context(|_| ReadFileSnafu { path: path.clone() })?;
             let fact: ArchitectureFact = serde_json::from_slice(&bytes)
                 .with_context(|_| DeserialiseSnafu { path: path.clone() })?;
             facts.push(fact);
@@ -360,13 +368,13 @@ pub fn seed_facts() -> Vec<ArchitectureFact> {
         ArchitectureFact {
             id: "aletheia.providers.llm.routing".to_owned(),
             scope: FactScope::Boundary,
-            claim: "LLM provider routing is configured in `dispatch-config.toml` \
-                    (`~/menos-ops/dispatch-config.toml`). The `local` provider routes to \
+            claim: "LLM provider routing is configured in the fleet dispatch config \
+                    (`<fleet-dispatch-config>`). The `local` provider routes to \
                     logismos at its configured port; `anthropic` routes to the Anthropic API. \
                     Provider selection is per-nous-config, not global."
                 .to_owned(),
             evidence: vec![
-                "~/menos-ops/dispatch-config.toml".to_owned(),
+                "<fleet-dispatch-config>".to_owned(),
                 "crates/hermeneus/src/provider.rs".to_owned(),
             ],
             mneme_session: None,

@@ -22,7 +22,7 @@
 # the workspace baseline is clean enough to enforce for every PR. GHA CI also
 # never enforced it, so omission preserves parity. Re-add the stage (matching
 # harmonia's) once the baseline is clean. Tracked in the phase plan at
-# `kanon/projects/aletheia/phases/aletheia-05e-forge-cutover.md`.
+# `<canonical-state-doc>/phases/aletheia-05e-forge-cutover.md`.
 
 [pipeline]
 stages = ["cargo fmt", "cargo check", "cargo clippy", "cargo nextest", "dokimasia"]
@@ -48,8 +48,8 @@ timeout_secs = 2400
 #
 # Binary lives at /usr/local/bin/dokimasia (installed from
 # forkwright/theatron). Updated via:
-#   cargo build --release -p dokimasia --manifest-path ~/dev/theatron/Cargo.toml
-#   sudo install -m 755 ~/dev/theatron/target/release/dokimasia /usr/local/bin/
+#   cargo build --release -p dokimasia --manifest-path <theatron-repo>/Cargo.toml
+#   sudo install -m 755 <theatron-repo>/target/release/dokimasia /usr/local/bin/
 [stages."dokimasia"]
-cmd = "dokimasia --design-tokens /home/ck/dev/kanon/crates/basanos/standards/DESIGN-TOKENS.md crates/"
+cmd = "dokimasia --design-tokens ${DESIGN_TOKENS_PATH:?required} crates/"
 timeout_secs = 60

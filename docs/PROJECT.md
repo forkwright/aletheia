@@ -14,7 +14,7 @@ Five design pressures shape every decision:
 
 The always-on ambient model shapes every design decision: Signal-native, independent routines, household access, autonomous background cycles.
 
-Naming: Greek terminology carries more signal than English equivalents. See [gnomon.md](gnomon.md) for the naming philosophy and [lexicon.md](lexicon.md) for the crate registry.
+Naming: Greek terminology carries more signal than English equivalents. See [lexicon.md](lexicon.md) for the crate registry.
 
 ## Architecture
 
@@ -24,7 +24,7 @@ See [TECHNOLOGY.md](TECHNOLOGY.md) for technology decisions, dependency policy, 
 
 ## Milestones
 
-Planning and milestones tracked in the [kanon project roadmap](https://github.com/forkwright/kanon/blob/main/projects/aletheia/ROADMAP.md).
+Planning and milestones are tracked in the internal project roadmap.
 
 ## Interfaces
 

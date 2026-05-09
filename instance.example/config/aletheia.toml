@@ -82,14 +82,14 @@ workspace = "nous/main"
 # plaintext because device access tokens are transported in each request.
 # [channels.matrix]
 # enabled = true
-# homeserverUrl = "https://matrix.menos.lan"
-# userId = "@syn:menos.lan"
+# homeserverUrl = "https://matrix.example.com"
+# userId = "@agent:example.com"
 # deviceDisplayName = "menos-syn"
 # cryptoStorePath = "matrix-crypto"
 #
 # [[channels.matrix.accounts]]
 # nousId = "syn"
-# room = "!abcd1234:menos.lan"
+# room = "!abcd1234:example.com"
 
 # --- Bindings (route messages to agents) ---
 # [[bindings]]

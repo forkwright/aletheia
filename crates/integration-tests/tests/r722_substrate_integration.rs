@@ -1,4 +1,4 @@
-//! R722 substrate integration tests (W1+W2+W7+W8 end-to-end).
+//! R722 substrate integration tests (substrate milestones end-to-end).
 //!
 //! Exercises cross-crate boundaries that per-crate unit tests and the
 //! substrate-validation surface checks cannot reach.
@@ -413,7 +413,7 @@ fn cohort_isolation_facts_in_one_store_not_recallable_from_another() {
     let store_y = KnowledgeStore::open_mem().expect("open_mem");
 
     let fact_x = make_test_fact("fact-x", "agent-x", "CohortX secret");
-    store_x.insert_fact(&fact_x).expect("insert into x");
+    store_x.insert_fact(&fact_x).expect("insert store x");
 
     // Search store_y for the same content — should find nothing because it is a
     // different store instance (different cohort keyspace).

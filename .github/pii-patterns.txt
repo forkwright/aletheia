@@ -27,8 +27,8 @@ acme-workshop
 Acme Workshop LLC
 [A-Z][a-z]+'s birthday
 
-# Operator LAN (menos homelab, 192.168.0.0/24). Synthetic tests should use
-# 192.168.1.x or RFC 5737 documentation subnets 192.0.2.0/24, 198.51.100.0/24.
+# Private LAN CIDR examples should use `<lan-cidr>` placeholders or reserved
+# TEST-NET ranges from RFC 5737: 192.0.2.0/24, 198.51.100.0/24.
 # The pattern matches .16-.255 so the bare prefix in inline comments or URL
 # examples (e.g. "192.168.0.") does not trip it; only real hosts match.
 \b192\.168\.0\.(?:1[6-9]|2[0-9]|3[0-9]|[4-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\b
