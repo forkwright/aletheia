@@ -24,6 +24,7 @@ use oikonomos::runner::TaskRunner;
 use organon::registry::ToolRegistry;
 use organon::types::ToolServices;
 use pylon::state::AppState;
+use symbolon::auth::{AuthConfig, AuthFacade};
 use symbolon::jwt::{JwtConfig, JwtManager};
 use taxis::config::{AletheiaConfig, resolve_nous};
 use taxis::oikos::Oikos;
@@ -344,6 +345,16 @@ impl RuntimeBuilder {
         ));
         info!(path = %db_path.display(), "session store opened");
 
+        let auth_store_path = self.oikos.data().join("auth.fjall");
+        let auth_facade = AuthFacade::new(
+            AuthConfig {
+                jwt: jwt_config.clone(),
+            },
+            &auth_store_path,
+        )
+        .with_whatever_context(|_| {
+            format!("failed to open auth store at {}", auth_store_path.display())
+        })?;
         let jwt_manager = JwtManager::new(jwt_config);
 
         // Provider registry
@@ -848,6 +859,7 @@ impl RuntimeBuilder {
             tool_registry,
             oikos: self.oikos,
             jwt_manager: Arc::new(jwt_manager),
+            auth_facade: Arc::new(auth_facade),
             start_time: Instant::now(),
             auth_mode: self.config.gateway.auth.mode.clone(),
             none_role: self.config.gateway.auth.none_role.clone(),

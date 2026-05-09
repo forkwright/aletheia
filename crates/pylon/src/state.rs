@@ -15,6 +15,7 @@ use mneme::knowledge_store::KnowledgeStore;
 use mneme::store::SessionStore;
 use nous::manager::NousManager;
 use organon::registry::ToolRegistry;
+use symbolon::auth::AuthFacade;
 use symbolon::jwt::JwtManager;
 use taxis::config::AletheiaConfig;
 use taxis::oikos::Oikos;
@@ -37,6 +38,8 @@ pub struct AppState {
     pub oikos: Arc<Oikos>,
     /// JWT token creation and validation.
     pub jwt_manager: Arc<JwtManager>,
+    /// Revocation-aware authentication facade.
+    pub auth_facade: Arc<AuthFacade>,
     /// Server start instant for uptime calculation.
     pub start_time: Instant,
     /// Runtime configuration, updatable via config API.

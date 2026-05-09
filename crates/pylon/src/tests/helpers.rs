@@ -16,6 +16,7 @@ use mneme::store::SessionStore;
 use nous::config::{NousConfig, PipelineConfig};
 use nous::manager::NousManager;
 use organon::registry::ToolRegistry;
+use symbolon::auth::{AuthConfig, AuthFacade};
 use symbolon::jwt::{JwtConfig, JwtManager};
 use taxis::oikos::Oikos;
 
@@ -35,14 +36,27 @@ pub(super) fn test_security_config() -> SecurityConfig {
     }
 }
 
-pub(super) fn test_jwt_manager() -> Arc<JwtManager> {
-    Arc::new(JwtManager::new(JwtConfig {
+pub(super) fn test_jwt_config() -> JwtConfig {
+    JwtConfig {
         signing_key: SecretString::from("test-secret-key-for-jwt".to_owned()),
         access_ttl: std::time::Duration::from_hours(1),
         refresh_ttl: std::time::Duration::from_hours(24),
         issuer: "aletheia-test".to_owned(),
         ..JwtConfig::default()
-    }))
+    }
+}
+
+pub(super) fn test_jwt_manager() -> Arc<JwtManager> {
+    Arc::new(JwtManager::new(test_jwt_config()))
+}
+
+pub(super) fn test_auth_facade() -> Arc<AuthFacade> {
+    Arc::new(
+        AuthFacade::in_memory(AuthConfig {
+            jwt: test_jwt_config(),
+        })
+        .expect("in-memory auth facade"),
+    )
 }
 
 pub(super) fn default_token() -> String {
@@ -198,6 +212,7 @@ bind = "localhost"
     }
 
     let jwt_manager = test_jwt_manager();
+    let auth_facade = test_auth_facade();
 
     let mut default_config = taxis::config::AletheiaConfig::default();
     default_config.gateway.sse_heartbeat_interval_secs = 1;
@@ -215,6 +230,7 @@ bind = "localhost"
         tool_registry,
         oikos,
         jwt_manager,
+        auth_facade,
         start_time: Instant::now(),
         auth_mode: auth_mode.to_owned(),
         none_role: "admin".to_owned(),

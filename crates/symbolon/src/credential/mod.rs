@@ -26,6 +26,40 @@ pub use refresh::{
 // Re-export OAuth provider configuration from pkce module
 pub use pkce::OAuthProvider;
 
+/// Caller-rendered action emitted by interactive OAuth credential flows.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum OAuthRequiredAction {
+    /// Open or display a browser authorization URL.
+    BrowserOpenUrl {
+        /// URL the operator must visit.
+        url: String,
+    },
+    /// Show a device authorization code and verification URI.
+    DeviceCode {
+        /// Verification URI the operator must visit.
+        verification_uri: String,
+        /// User code the operator must enter.
+        user_code: String,
+        /// Optional direct URI with the user code pre-filled.
+        verification_uri_complete: Option<String>,
+        /// Seconds until the device authorization expires.
+        expires_in_secs: u64,
+    },
+    /// Wait for the OAuth callback on the local loopback listener.
+    WaitingForCallback {
+        /// Timeout in seconds for the callback wait.
+        timeout_secs: u64,
+    },
+    /// Wait for the provider to complete device authorization.
+    WaitingForDeviceAuthorization {
+        /// Seconds until the device authorization expires.
+        expires_in_secs: u64,
+    },
+    /// The OAuth flow completed and credentials were received.
+    AuthorizationSucceeded,
+}
+
 /// Return current time as milliseconds since UNIX epoch, warning if the clock
 /// is before epoch rather than silently returning zero.
 fn unix_epoch_ms() -> u64 {

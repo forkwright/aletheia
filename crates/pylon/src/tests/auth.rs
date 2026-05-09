@@ -88,6 +88,35 @@ async fn malformed_token_rejected() {
 }
 
 #[tokio::test]
+async fn revoked_token_rejected() {
+    let (state, dir) = test_state().await;
+    let token = state
+        .jwt_manager
+        .issue_access("test-user", symbolon::types::Role::Operator, None)
+        .unwrap();
+    state.auth_facade.revoke(&token).unwrap();
+    let app = build_router(state, &test_security_config());
+
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/sessions")
+        .header("content-type", "application/json")
+        .header("authorization", format!("Bearer {token}"))
+        .body(Body::from(
+            serde_json::to_vec(&serde_json::json!({
+                "nous_id": "syn",
+                "session_key": "revoked-token-test"
+            }))
+            .unwrap(),
+        ))
+        .unwrap();
+
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    drop(dir);
+}
+
+#[tokio::test]
 async fn missing_bearer_prefix() {
     let (app, _dir) = app().await;
     let token = default_token();
@@ -138,6 +167,7 @@ async fn app_auth_disabled() -> (axum::Router, tempfile::TempDir) {
         tool_registry: Arc::clone(&state.tool_registry),
         oikos: Arc::clone(&state.oikos),
         jwt_manager: Arc::clone(&state.jwt_manager),
+        auth_facade: Arc::clone(&state.auth_facade),
         start_time: state.start_time,
         config: Arc::clone(&state.config),
         config_tx,

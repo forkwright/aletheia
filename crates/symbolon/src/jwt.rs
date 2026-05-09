@@ -33,6 +33,7 @@ const HS256_HEADER_B64: &str = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9";
 pub const DEFAULT_CLOCK_SKEW_LEEWAY_SECS: u64 = 30;
 
 /// Configuration for JWT token management.
+#[derive(Clone)]
 pub struct JwtConfig {
     /// HMAC-SHA256 signing key.
     pub signing_key: SecretString,

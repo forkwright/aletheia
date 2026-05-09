@@ -12,9 +12,9 @@ use tracing::{debug, info, warn};
 
 use koina::secret::SecretString;
 
-use super::OAuthProvider;
 use super::file_ops::CredentialFile;
 use super::pkce::url_encode;
+use super::{OAuthProvider, OAuthRequiredAction};
 
 /// Errors from Device Code authentication flow.
 #[derive(Debug, Snafu)]
@@ -337,9 +337,8 @@ async fn poll_token_endpoint(
 ///
 /// This function:
 /// 1. Requests device authorization from the provider
-/// 2. Displays the user code and verification URI
-/// 3. Polls the token endpoint until the user completes authorization
-/// 4. Returns the credential file data
+/// 2. Polls the token endpoint until the user completes authorization
+/// 3. Returns the credential file data
 ///
 /// # Errors
 ///
@@ -366,56 +365,7 @@ async fn poll_token_endpoint(
 /// ```
 #[tracing::instrument(skip_all)]
 pub async fn device_code_login(provider: &DeviceOAuthProvider) -> Result<CredentialFile> {
-    let client = reqwest::Client::new();
-
-    // Step 1: Request device authorization
-    info!("requesting device authorization");
-    let device_auth = request_device_authorization(&client, provider).await?;
-
-    // Step 2: Display instructions to the user
-    eprintln!("\n🔐 Device Authentication Required\n");
-    eprintln!("Please visit: {}", device_auth.verification_uri);
-    eprintln!("And enter code: {}\n", device_auth.user_code);
-
-    if let Some(complete_uri) = &device_auth.verification_uri_complete {
-        eprintln!("Or visit this direct link:\n  {complete_uri}\n");
-    }
-
-    eprintln!(
-        "Waiting for authorization... (expires in {} seconds)\n",
-        device_auth.expires_in
-    );
-
-    // Step 3: Poll for token
-    let token_response = poll_token_endpoint(
-        &client,
-        provider,
-        &device_auth.device_code,
-        device_auth.interval,
-        device_auth.expires_in,
-    )
-    .await?;
-
-    // SAFETY: logging success status, not the token value
-    info!("successfully obtained access token via device flow"); // kanon:ignore SECURITY/credential-logging -- logs success message, not the token
-    eprintln!("\n✓ Authentication successful!\n");
-
-    // Step 4: Build credential file
-    let expires_at = token_response
-        .expires_in
-        .map(|secs| super::unix_epoch_ms() + secs * 1000);
-
-    let scopes = token_response
-        .scope
-        .map(|s| s.split_whitespace().map(String::from).collect());
-
-    Ok(CredentialFile {
-        token: token_response.access_token,
-        refresh_token: token_response.refresh_token,
-        expires_at,
-        scopes,
-        subscription_type: None,
-    })
+    device_code_login_with_action(provider, |_| {}).await
 }
 
 /// Perform Device Code flow and save credentials to a file.
@@ -457,18 +407,55 @@ pub async fn device_code_login_with_callback<F>(
 where
     F: FnOnce(&str, &str, Option<&str>),
 {
+    let mut display_callback = Some(display_callback);
+    device_code_login_with_action(provider, |action| {
+        if let OAuthRequiredAction::DeviceCode {
+            verification_uri,
+            user_code,
+            verification_uri_complete,
+            ..
+        } = action
+            && let Some(display_callback) = display_callback.take()
+        {
+            display_callback(
+                &user_code,
+                &verification_uri,
+                verification_uri_complete.as_deref(),
+            );
+        }
+    })
+    .await
+}
+
+/// Device Code flow with typed caller-rendered OAuth actions.
+///
+/// # Errors
+///
+/// Returns an error if any step of the flow fails.
+#[tracing::instrument(skip_all)]
+pub async fn device_code_login_with_action<F>(
+    provider: &DeviceOAuthProvider,
+    mut action_callback: F,
+) -> Result<CredentialFile>
+where
+    F: FnMut(OAuthRequiredAction),
+{
     let client = reqwest::Client::new();
 
     // Step 1: Request device authorization
     info!("requesting device authorization");
     let device_auth = request_device_authorization(&client, provider).await?;
 
-    // Step 2: Call the display callback
-    display_callback(
-        &device_auth.user_code,
-        &device_auth.verification_uri,
-        device_auth.verification_uri_complete.as_deref(),
-    );
+    // Step 2: Surface required operator action to the caller
+    action_callback(OAuthRequiredAction::DeviceCode {
+        verification_uri: device_auth.verification_uri.clone(),
+        user_code: device_auth.user_code.clone(),
+        verification_uri_complete: device_auth.verification_uri_complete.clone(),
+        expires_in_secs: device_auth.expires_in,
+    });
+    action_callback(OAuthRequiredAction::WaitingForDeviceAuthorization {
+        expires_in_secs: device_auth.expires_in,
+    });
 
     // Step 3: Poll for token
     let token_response = poll_token_endpoint(
@@ -482,6 +469,7 @@ where
 
     // SAFETY: logging success status, not the token value
     info!("successfully obtained access token via device flow"); // kanon:ignore SECURITY/credential-logging -- logs success message, not the token
+    action_callback(OAuthRequiredAction::AuthorizationSucceeded);
 
     // Step 4: Build credential file
     let expires_at = token_response
