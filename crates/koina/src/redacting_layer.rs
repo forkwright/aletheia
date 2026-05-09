@@ -133,10 +133,10 @@ impl Visit for RedactingVisitor<'_> {
 }
 
 fn epoch_secs() -> f64 {
-    SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs_f64()
+    match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
+        Ok(duration) => duration.as_secs_f64(),
+        Err(_) => 0.0,
+    }
 }
 
 impl<S, W> Layer<S> for RedactingLayer<W>
@@ -207,8 +207,12 @@ where
         let Ok(mut writer) = self.writer.try_lock() else {
             return;
         };
-        let _ = serde_json::to_writer(&mut *writer, &json);
-        let _ = writer.write_all(b"\n");
+        if serde_json::to_writer(&mut *writer, &json).is_err() {
+            return;
+        }
+        match writer.write_all(b"\n") {
+            Ok(()) | Err(_) => {}
+        }
     }
 }
 

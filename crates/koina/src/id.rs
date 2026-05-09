@@ -311,15 +311,10 @@ pub struct ToolName(String);
 impl ToolName {
     /// Construct a `ToolName` from a string literal known to be valid at compile time.
     ///
-    /// # Panics
-    ///
-    /// Panics if the name fails validation. Only use with known-valid string literals.
+    /// The caller is responsible for passing a known-valid literal.
     #[must_use]
     pub fn from_static(name: &'static str) -> Self {
-        match Self::new(name) {
-            Ok(t) => t,
-            Err(e) => panic!("invalid tool name literal: {e}"),
-        }
+        Self(name.to_owned())
     }
 
     /// Create a new tool name.

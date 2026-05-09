@@ -1,6 +1,6 @@
 //! Aletheia cognitive agent runtime: binary entrypoint.
 //!
-//! Per basanos ARCHITECTURE.md: "binary entrypoint under 100 lines."
+//! Binary entrypoint kept intentionally small; command logic lives in modules.
 
 #![deny(clippy::unwrap_used)]
 

@@ -7,96 +7,88 @@
 //! Encoding: 26-character Crockford base32, lexicographically sortable.
 
 use std::fmt;
+use std::fmt::Write as _;
 use std::str::FromStr;
 use std::time::SystemTime;
 
 use rand::RngExt;
 use serde::{Deserialize, Serialize};
 
-/// Crockford base32 alphabet (uppercase).
-const CROCKFORD: &[u8; 32] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+fn decode_crockford(byte: u8) -> Option<u8> {
+    match byte {
+        b'0' | b'O' | b'o' => Some(0),
+        b'1' | b'I' | b'i' | b'L' | b'l' => Some(1),
+        b'2' => Some(2),
+        b'3' => Some(3),
+        b'4' => Some(4),
+        b'5' => Some(5),
+        b'6' => Some(6),
+        b'7' => Some(7),
+        b'8' => Some(8),
+        b'9' => Some(9),
+        b'A' | b'a' => Some(10),
+        b'B' | b'b' => Some(11),
+        b'C' | b'c' => Some(12),
+        b'D' | b'd' => Some(13),
+        b'E' | b'e' => Some(14),
+        b'F' | b'f' => Some(15),
+        b'G' | b'g' => Some(16),
+        b'H' | b'h' => Some(17),
+        b'J' | b'j' => Some(18),
+        b'K' | b'k' => Some(19),
+        b'M' | b'm' => Some(20),
+        b'N' | b'n' => Some(21),
+        b'P' | b'p' => Some(22),
+        b'Q' | b'q' => Some(23),
+        b'R' | b'r' => Some(24),
+        b'S' | b's' => Some(25),
+        b'T' | b't' => Some(26),
+        b'V' | b'v' => Some(27),
+        b'W' | b'w' => Some(28),
+        b'X' | b'x' => Some(29),
+        b'Y' | b'y' => Some(30),
+        b'Z' | b'z' => Some(31),
+        _ => None,
+    }
+}
 
-/// Reverse lookup: ASCII byte → 5-bit value. 0xFF = invalid.
-///
-/// WHY: every index here is a literal ASCII byte (`b'0'..=b'9'`,
-/// `b'A'..=b'Z'`, `b'a'..=b'z'`) cast to `usize`, all of which are
-/// strictly less than 128 — the table length. The casts are zero-cost on
-/// every architecture and the indexing is statically proved safe by
-/// inspection. Suppress at the const item so the proof is documented in
-/// one place rather than repeated 60+ times.
-#[expect(
-    clippy::as_conversions,
-    clippy::indexing_slicing,
-    reason = "compile-time const lookup table; every index is a literal ASCII byte (< 128 by construction)"
-)]
-const DECODE: [u8; 128] = {
-    let mut table = [0xFFu8; 128];
-    // Digits
-    table[b'0' as usize] = 0;
-    table[b'1' as usize] = 1;
-    table[b'2' as usize] = 2;
-    table[b'3' as usize] = 3;
-    table[b'4' as usize] = 4;
-    table[b'5' as usize] = 5;
-    table[b'6' as usize] = 6;
-    table[b'7' as usize] = 7;
-    table[b'8' as usize] = 8;
-    table[b'9' as usize] = 9;
-    // Upper
-    table[b'A' as usize] = 10;
-    table[b'B' as usize] = 11;
-    table[b'C' as usize] = 12;
-    table[b'D' as usize] = 13;
-    table[b'E' as usize] = 14;
-    table[b'F' as usize] = 15;
-    table[b'G' as usize] = 16;
-    table[b'H' as usize] = 17;
-    table[b'J' as usize] = 18;
-    table[b'K' as usize] = 19;
-    table[b'M' as usize] = 20;
-    table[b'N' as usize] = 21;
-    table[b'P' as usize] = 22;
-    table[b'Q' as usize] = 23;
-    table[b'R' as usize] = 24;
-    table[b'S' as usize] = 25;
-    table[b'T' as usize] = 26;
-    table[b'V' as usize] = 27;
-    table[b'W' as usize] = 28;
-    table[b'X' as usize] = 29;
-    table[b'Y' as usize] = 30;
-    table[b'Z' as usize] = 31;
-    // Lower (same values)
-    table[b'a' as usize] = 10;
-    table[b'b' as usize] = 11;
-    table[b'c' as usize] = 12;
-    table[b'd' as usize] = 13;
-    table[b'e' as usize] = 14;
-    table[b'f' as usize] = 15;
-    table[b'g' as usize] = 16;
-    table[b'h' as usize] = 17;
-    table[b'j' as usize] = 18;
-    table[b'k' as usize] = 19;
-    table[b'm' as usize] = 20;
-    table[b'n' as usize] = 21;
-    table[b'p' as usize] = 22;
-    table[b'q' as usize] = 23;
-    table[b'r' as usize] = 24;
-    table[b's' as usize] = 25;
-    table[b't' as usize] = 26;
-    table[b'v' as usize] = 27;
-    table[b'w' as usize] = 28;
-    table[b'x' as usize] = 29;
-    table[b'y' as usize] = 30;
-    table[b'z' as usize] = 31;
-    // Confusable aliases per Crockford spec
-    table[b'O' as usize] = 0; // O → 0
-    table[b'o' as usize] = 0;
-    table[b'I' as usize] = 1; // I → 1
-    table[b'i' as usize] = 1;
-    table[b'L' as usize] = 1; // L → 1
-    table[b'l' as usize] = 1;
-    table
-};
+fn encode_crockford(digit: u8) -> Option<char> {
+    match digit {
+        0 => Some('0'),
+        1 => Some('1'),
+        2 => Some('2'),
+        3 => Some('3'),
+        4 => Some('4'),
+        5 => Some('5'),
+        6 => Some('6'),
+        7 => Some('7'),
+        8 => Some('8'),
+        9 => Some('9'),
+        10 => Some('A'),
+        11 => Some('B'),
+        12 => Some('C'),
+        13 => Some('D'),
+        14 => Some('E'),
+        15 => Some('F'),
+        16 => Some('G'),
+        17 => Some('H'),
+        18 => Some('J'),
+        19 => Some('K'),
+        20 => Some('M'),
+        21 => Some('N'),
+        22 => Some('P'),
+        23 => Some('Q'),
+        24 => Some('R'),
+        25 => Some('S'),
+        26 => Some('T'),
+        27 => Some('V'),
+        28 => Some('W'),
+        29 => Some('X'),
+        30 => Some('Y'),
+        31 => Some('Z'),
+        _ => None,
+    }
+}
 
 /// A ULID (Universally Unique Lexicographically Sortable Identifier).
 ///
@@ -114,13 +106,11 @@ impl Ulid {
         // try_from with saturating fallback to u64::MAX is correct: any
         // value above 2^48 (year 8921) is already a spec violation; the
         // saturating cast is documented and avoids the silent `as`.
-        let ms = u64::try_from(
-            SystemTime::now()
-                .duration_since(SystemTime::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_millis(),
-        )
-        .unwrap_or(u64::MAX);
+        let elapsed = match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
+            Ok(duration) => duration,
+            Err(_) => std::time::Duration::ZERO,
+        };
+        let ms = u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX);
 
         let random: u128 = {
             let mut rng = rand::rng();
@@ -149,12 +139,9 @@ impl Ulid {
 
     /// The millisecond timestamp component (upper 48 bits).
     #[must_use]
-    #[expect(
-        clippy::as_conversions,
-        reason = "shifting a u128 right by 80 leaves the upper 48 bits in the low half; the result fits in u64 by construction"
-    )]
     pub const fn timestamp_ms(self) -> u64 {
-        (self.0 >> 80) as u64
+        let [b0, b1, b2, b3, b4, b5, _, _, _, _, _, _, _, _, _, _] = self.0.to_be_bytes();
+        u64::from_be_bytes([0, 0, b0, b1, b2, b3, b4, b5])
     }
 }
 
@@ -166,32 +153,19 @@ impl Default for Ulid {
 
 impl fmt::Display for Ulid {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut buf = [0u8; 26];
         let mut val = self.0;
-        // Encode from least significant to most significant
-        for byte in buf.iter_mut().rev() {
-            // WHY: `val & 0x1F` is in 0..=31 (5-bit mask), and CROCKFORD has
-            // 32 entries. The cast to `usize` and the index are statically safe.
-            #[expect(
-                clippy::as_conversions,
-                clippy::indexing_slicing,
-                reason = "5-bit mask result (0..=31) indexes a 32-entry table"
-            )]
-            {
-                *byte = CROCKFORD[(val & 0x1F) as usize];
-            }
+        let mut chars = ['0'; 26];
+        for slot in chars.iter_mut().rev() {
+            let Ok(digit) = u8::try_from(val & 0x1F) else {
+                return Err(fmt::Error);
+            };
+            *slot = encode_crockford(digit).ok_or(fmt::Error)?;
             val >>= 5;
         }
-        // WHY: CROCKFORD alphabet is ASCII (32 bytes), so every byte we
-        // emit into `buf` is in 0..=127 — valid UTF-8 by construction.
-        // Use #[expect] on the local expect() so the invariant is documented
-        // at the call site rather than via unsafe.
-        #[expect(
-            clippy::expect_used,
-            reason = "Crockford base32 alphabet is ASCII; buf is always valid UTF-8 by construction"
-        )]
-        let s = std::str::from_utf8(&buf).expect("Crockford base32 is always valid UTF-8");
-        f.write_str(s)
+        for ch in chars {
+            f.write_char(ch)?;
+        }
+        Ok(())
     }
 }
 
@@ -232,19 +206,9 @@ impl FromStr for Ulid {
                     reason: "non-ASCII character",
                 });
             }
-            // WHY: the `byte >= 128` guard above proves `byte as usize` is in
-            // 0..=127 — a valid index into the 128-entry DECODE table.
-            #[expect(
-                clippy::as_conversions,
-                clippy::indexing_slicing,
-                reason = "guarded by `byte >= 128` check immediately above"
-            )]
-            let digit = DECODE[byte as usize];
-            if digit == 0xFF {
-                return Err(DecodeError {
-                    reason: "invalid Crockford base32 character",
-                });
-            }
+            let digit = decode_crockford(byte).ok_or(DecodeError {
+                reason: "invalid Crockford base32 character",
+            })?;
             value = value
                 .checked_shl(5)
                 .ok_or(DecodeError { reason: "overflow" })?

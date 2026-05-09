@@ -681,20 +681,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "be5eb007b7cacc6c660343e96f650fedf4b5a77512399eb952ca6642cf8d13f7"
 
 [[package]]
-name = "basanos"
-version = "0.21.1"
-dependencies = [
- "aletheia-lexica",
- "regex",
- "serde",
- "serde_json",
- "snafu",
- "tempfile",
- "toml 1.1.2+spec-1.1.0",
- "tracing",
-]
-
-[[package]]
 name = "base64"
 version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -79,11 +79,10 @@ impl MetricsRegistry {
     where
         F: FnOnce(&mut Registry) -> R,
     {
-        #[expect(
-            clippy::expect_used,
-            reason = "registry mutex poisoning indicates a prior panic during startup registration — surfacing it here is correct"
-        )]
-        let mut guard = self.inner.lock().expect("metrics registry mutex poisoned");
+        let mut guard = self
+            .inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         f(&mut guard)
     }
 
@@ -102,11 +101,10 @@ impl MetricsRegistry {
     ///
     /// Panics if the internal mutex is poisoned (see [`Self::with_registry`]).
     pub fn encode(&self, buffer: &mut String) -> Result<(), std::fmt::Error> {
-        #[expect(
-            clippy::expect_used,
-            reason = "registry mutex poisoning indicates a prior panic; surfacing it here is correct"
-        )]
-        let guard = self.inner.lock().expect("metrics registry mutex poisoned");
+        let guard = self
+            .inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         prometheus_client::encoding::text::encode(buffer, &guard)
     }
 }

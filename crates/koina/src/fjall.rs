@@ -17,7 +17,7 @@
 //! ```
 
 use std::path::Path;
-use std::sync::Mutex;
+use std::sync;
 
 use fjall::{KeyspaceCreateOptions, SingleWriterTxDatabase};
 
@@ -36,7 +36,7 @@ pub struct FjallDb {
     /// Aletheia stores expose `&self` write methods (matching historical legacy `SQLite` backends
     /// that use interior mutability). This mutex ensures only one logical write
     /// runs at a time, matching that serial contract.
-    pub write_lock: Mutex<()>,
+    pub write_lock: sync::Mutex<()>,
     /// Kept alive to auto-delete the temp directory when the store is dropped.
     ///
     /// WHY: the leading underscore signals that the field is unused for its value
@@ -64,7 +64,7 @@ impl FjallDb {
 
         Ok(Self {
             db,
-            write_lock: Mutex::new(()),
+            write_lock: sync::Mutex::new(()),
             _temp_dir: None,
         })
     }
@@ -94,7 +94,7 @@ impl FjallDb {
 
         Ok(Self {
             db,
-            write_lock: Mutex::new(()),
+            write_lock: sync::Mutex::new(()),
             _temp_dir: None,
         })
     }
@@ -123,7 +123,7 @@ impl FjallDb {
 
         Ok(Self {
             db,
-            write_lock: Mutex::new(()),
+            write_lock: sync::Mutex::new(()),
             _temp_dir: Some(dir),
         })
     }

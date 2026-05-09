@@ -34,10 +34,12 @@ impl Uuid {
     #[must_use]
     pub fn new_v4() -> Self {
         let mut bytes: [u8; 16] = rand::random();
-        // Set version (4) in the high nibble of byte 6
-        bytes[6] = (bytes[6] & 0x0F) | 0x40;
-        // Set variant (RFC 4122) in the high two bits of byte 8
-        bytes[8] = (bytes[8] & 0x3F) | 0x80;
+        if let Some(version) = bytes.get_mut(6) {
+            *version = (*version & 0x0F) | 0x40;
+        }
+        if let Some(variant) = bytes.get_mut(8) {
+            *variant = (*variant & 0x3F) | 0x80;
+        }
         Self(bytes)
     }
 
@@ -71,31 +73,14 @@ impl Uuid {
                     }
                 }
                 _ => {
-                    // SAFETY: `to_digit(16)` returns 0-15, which always fits in u8.
-                    // This is an infallible conversion, but `try_into()` is used
-                    // for type safety and to satisfy clippy::as_conversions.
-                    #[expect(
-                        clippy::expect_used,
-                        reason = "infallible: hex digit 0-15 always fits in u8"
-                    )]
-                    let nibble: u8 = c
-                        .to_digit(16)
-                        .ok_or(UuidParseError)?
-                        .try_into()
-                        .expect("hex digit 0-15 always fits in u8");
-                    // WHY: `byte_idx` only increments inside this branch, and
-                    // this branch runs for the 32 hex chars in a 36-char UUID
-                    // (positions 0-7, 9-12, 14-17, 19-22, 24-35). So byte_idx
-                    // ranges 0..32 and `byte_idx / 2` ranges 0..16 — exactly
-                    // the bounds of `bytes: [u8; 16]`. Safe by construction.
-                    #[expect(
-                        clippy::indexing_slicing,
-                        reason = "byte_idx in 0..32; byte_idx/2 in 0..16; bytes is [u8; 16]"
-                    )]
+                    let Ok(nibble) = u8::try_from(c.to_digit(16).ok_or(UuidParseError)?) else {
+                        return Err(UuidParseError);
+                    };
+                    let byte = bytes.get_mut(byte_idx / 2).ok_or(UuidParseError)?;
                     if byte_idx % 2 == 0 {
-                        bytes[byte_idx / 2] = nibble << 4;
+                        *byte = nibble << 4;
                     } else {
-                        bytes[byte_idx / 2] |= nibble;
+                        *byte |= nibble;
                     }
                     byte_idx += 1;
                 }
@@ -138,16 +123,18 @@ impl Uuid {
     /// - bytes 8–15 → variant + clock-seq + node (`[u8; 8]`)
     #[must_use]
     pub fn as_fields(&self) -> (u32, u16, u16, &[u8; 8]) {
-        let time_low = u32::from_be_bytes([self.0[0], self.0[1], self.0[2], self.0[3]]);
-        let time_mid = u16::from_be_bytes([self.0[4], self.0[5]]);
-        let time_hi = u16::from_be_bytes([self.0[6], self.0[7]]);
-        // Split the fixed-size array at a known constant boundary. This is safe
-        // because `self.0` is `[u8; 16]` and `split_array_ref` is const-aware.
-        let (_, rest_slice) = self.0.split_at(8);
-        // INVARIANT: split_at(8) on [u8; 16] yields a 8-byte suffix.
-        let rest: &[u8; 8] = rest_slice
-            .try_into()
-            .unwrap_or_else(|_| unreachable!("split_at(8) of [u8;16] always yields 8 bytes"));
+        static ZERO_REST: [u8; 8] = [0; 8];
+        let (head, rest) = self.0.split_at(8);
+        let Ok(head) = <&[u8; 8]>::try_from(head) else {
+            return (0, 0, 0, &ZERO_REST);
+        };
+        let Ok(rest) = <&[u8; 8]>::try_from(rest) else {
+            return (0, 0, 0, &ZERO_REST);
+        };
+        let [b0, b1, b2, b3, b4, b5, b6, b7] = *head;
+        let time_low = u32::from_be_bytes([b0, b1, b2, b3]);
+        let time_mid = u16::from_be_bytes([b4, b5]);
+        let time_hi = u16::from_be_bytes([b6, b7]);
         (time_low, time_mid, time_hi, rest)
     }
 
@@ -158,10 +145,44 @@ impl Uuid {
     #[must_use]
     pub fn from_fields(time_low: u32, time_mid: u16, time_hi: u16, rest: &[u8; 8]) -> Self {
         let mut bytes = [0u8; 16];
-        bytes[0..4].copy_from_slice(&time_low.to_be_bytes());
-        bytes[4..6].copy_from_slice(&time_mid.to_be_bytes());
-        bytes[6..8].copy_from_slice(&time_hi.to_be_bytes());
-        bytes[8..16].copy_from_slice(rest);
+        let [
+            b0,
+            b1,
+            b2,
+            b3,
+            b4,
+            b5,
+            b6,
+            b7,
+            b8,
+            b9,
+            b10,
+            b11,
+            b12,
+            b13,
+            b14,
+            b15,
+        ] = &mut bytes;
+        let [tl0, tl1, tl2, tl3] = time_low.to_be_bytes();
+        let [tm0, tm1] = time_mid.to_be_bytes();
+        let [th0, th1] = time_hi.to_be_bytes();
+        let [r0, r1, r2, r3, r4, r5, r6, r7] = *rest;
+        *b0 = tl0;
+        *b1 = tl1;
+        *b2 = tl2;
+        *b3 = tl3;
+        *b4 = tm0;
+        *b5 = tm1;
+        *b6 = th0;
+        *b7 = th1;
+        *b8 = r0;
+        *b9 = r1;
+        *b10 = r2;
+        *b11 = r3;
+        *b12 = r4;
+        *b13 = r5;
+        *b14 = r6;
+        *b15 = r7;
         Self(bytes)
     }
 
@@ -175,30 +196,55 @@ impl Uuid {
     /// `timestamp_100ns` is the count of 100-nanosecond intervals since the UUID epoch
     /// (1582-10-15 00:00:00 UTC, i.e., `122_192_928_000_000_000` intervals before Unix epoch).
     #[must_use]
-    #[expect(
-        clippy::as_conversions,
-        reason = "UUID field packing: masking before cast guarantees values fit in target types"
-    )]
     pub fn new_v1(timestamp_100ns: u64, clock_seq: u16, node: &[u8; 6]) -> Self {
-        // Masking ensures each field fits in the destination type before the `as` cast.
-        // time_low: low 32 bits of 64-bit timestamp, masked to exactly 32 bits.
-        let time_low = (timestamp_100ns & 0xFFFF_FFFF) as u32;
-        // time_mid: bits 32–47, masked to 16 bits.
-        let time_mid = ((timestamp_100ns >> 32) & 0xFFFF) as u16;
-        // Set version = 1 in the high nibble of time_hi_and_version; bits 48–59.
-        let time_hi = (((timestamp_100ns >> 48) & 0x0FFF) as u16) | 0x1000;
-        // Set variant bits: RFC 4122 §4.1.1 — top two bits = 10.
-        // clock_seq is u16; masking to 6 bits then casting to u8 is safe.
-        let clock_seq_hi = (((clock_seq >> 8) & 0x3F) as u8) | 0x80;
-        let clock_seq_low = (clock_seq & 0xFF) as u8;
+        let [_, _, _, _, ts4, ts5, ts6, ts7] = timestamp_100ns.to_be_bytes();
+        let time_low = u32::from_be_bytes([ts4, ts5, ts6, ts7]);
+        let time_mid = u16::from_be_bytes([ts2(timestamp_100ns), ts3(timestamp_100ns)]);
+        let time_hi =
+            u16::from_be_bytes([ts0(timestamp_100ns) & 0x0F, ts1(timestamp_100ns)]) | 0x1000;
+        let [seq_hi, seq_low] = clock_seq.to_be_bytes();
+        let clock_seq_hi = (seq_hi & 0x3F) | 0x80;
+        let clock_seq_low = seq_low;
 
         let mut bytes = [0u8; 16];
-        bytes[0..4].copy_from_slice(&time_low.to_be_bytes());
-        bytes[4..6].copy_from_slice(&time_mid.to_be_bytes());
-        bytes[6..8].copy_from_slice(&time_hi.to_be_bytes());
-        bytes[8] = clock_seq_hi;
-        bytes[9] = clock_seq_low;
-        bytes[10..16].copy_from_slice(node);
+        let [
+            b0,
+            b1,
+            b2,
+            b3,
+            b4,
+            b5,
+            b6,
+            b7,
+            b8,
+            b9,
+            b10,
+            b11,
+            b12,
+            b13,
+            b14,
+            b15,
+        ] = &mut bytes;
+        let [tl0, tl1, tl2, tl3] = time_low.to_be_bytes();
+        let [tm0, tm1] = time_mid.to_be_bytes();
+        let [th0, th1] = time_hi.to_be_bytes();
+        let [n0, n1, n2, n3, n4, n5] = *node;
+        *b0 = tl0;
+        *b1 = tl1;
+        *b2 = tl2;
+        *b3 = tl3;
+        *b4 = tm0;
+        *b5 = tm1;
+        *b6 = th0;
+        *b7 = th1;
+        *b8 = clock_seq_hi;
+        *b9 = clock_seq_low;
+        *b10 = n0;
+        *b11 = n1;
+        *b12 = n2;
+        *b13 = n3;
+        *b14 = n4;
+        *b15 = n5;
         Self(bytes)
     }
 
@@ -215,16 +261,15 @@ impl Uuid {
     /// (`time_low`, `time_mid`, `time_high`) and must be reassembled by shifting.
     #[must_use]
     pub fn get_timestamp(&self) -> Option<V1Timestamp> {
-        // Version is stored in the high nibble of byte 6
-        let version = (self.0[6] >> 4) & 0xF;
+        let [b0, b1, b2, b3, b4, b5, b6, b7, _, _, _, _, _, _, _, _] = self.0;
+        // Version is stored in the high nibble of byte 6.
+        let version = (b6 >> 4) & 0xF;
         if version != 1 {
             return None;
         }
-        let time_low = u64::from(u32::from_be_bytes([
-            self.0[0], self.0[1], self.0[2], self.0[3],
-        ]));
-        let time_mid = u64::from(u16::from_be_bytes([self.0[4], self.0[5]]));
-        let time_hi = u64::from(u16::from_be_bytes([self.0[6], self.0[7]]) & 0x0FFF);
+        let time_low = u64::from(u32::from_be_bytes([b0, b1, b2, b3]));
+        let time_mid = u64::from(u16::from_be_bytes([b4, b5]));
+        let time_hi = u64::from(u16::from_be_bytes([b6, b7]) & 0x0FFF);
         let ts_100ns = time_low | (time_mid << 32) | (time_hi << 48);
         Some(V1Timestamp(ts_100ns))
     }
@@ -234,17 +279,32 @@ impl Uuid {
         struct Hyphenated<'a>(&'a [u8; 16]);
         impl fmt::Display for Hyphenated<'_> {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                let [
+                    b0,
+                    b1,
+                    b2,
+                    b3,
+                    b4,
+                    b5,
+                    b6,
+                    b7,
+                    b8,
+                    b9,
+                    b10,
+                    b11,
+                    b12,
+                    b13,
+                    b14,
+                    b15,
+                ] = *self.0;
                 write!(
                     f,
                     "{:08x}-{:04x}-{:04x}-{:04x}-{:012x}",
-                    u32::from_be_bytes([self.0[0], self.0[1], self.0[2], self.0[3]]),
-                    u16::from_be_bytes([self.0[4], self.0[5]]),
-                    u16::from_be_bytes([self.0[6], self.0[7]]),
-                    u16::from_be_bytes([self.0[8], self.0[9]]),
-                    u64::from_be_bytes([
-                        0, 0, self.0[10], self.0[11], self.0[12], self.0[13], self.0[14],
-                        self.0[15],
-                    ])
+                    u32::from_be_bytes([b0, b1, b2, b3]),
+                    u16::from_be_bytes([b4, b5]),
+                    u16::from_be_bytes([b6, b7]),
+                    u16::from_be_bytes([b8, b9]),
+                    u64::from_be_bytes([0, 0, b10, b11, b12, b13, b14, b15])
                 )
             }
         }
@@ -302,10 +362,31 @@ impl V1Timestamp {
         let secs = ts / INTERVALS_PER_SEC;
         // INVARIANT: remainder is always in 0..10_000_000 which fits u32.
         // `try_into()` encodes that fact without a silent `as` cast.
-        let subsec = u32::try_from(ts % INTERVALS_PER_SEC)
-            .unwrap_or_else(|_| unreachable!("remainder < 10_000_000 always fits u32"));
+        let Ok(subsec) = u32::try_from(ts % INTERVALS_PER_SEC) else {
+            return (secs, 0);
+        };
         (secs, subsec)
     }
+}
+
+fn ts0(timestamp_100ns: u64) -> u8 {
+    let [b0, _, _, _, _, _, _, _] = timestamp_100ns.to_be_bytes();
+    b0
+}
+
+fn ts1(timestamp_100ns: u64) -> u8 {
+    let [_, b1, _, _, _, _, _, _] = timestamp_100ns.to_be_bytes();
+    b1
+}
+
+fn ts2(timestamp_100ns: u64) -> u8 {
+    let [_, _, b2, _, _, _, _, _] = timestamp_100ns.to_be_bytes();
+    b2
+}
+
+fn ts3(timestamp_100ns: u64) -> u8 {
+    let [_, _, _, b3, _, _, _, _] = timestamp_100ns.to_be_bytes();
+    b3
 }
 
 /// Generate a random UUID v4 as a string.

@@ -58,8 +58,8 @@ pub(crate) fn resolve_oikos(instance_root: Option<&PathBuf>) -> crate::error::Re
 
 /// Route a CLI subcommand to its handler.
 ///
-/// WHY: Extracted from `main` to keep the binary entrypoint under 100 lines
-/// per basanos ARCHITECTURE.md guidelines.
+/// WHY: Extracted from `main` to keep the binary entrypoint focused on process
+/// setup and top-level routing.
 pub(crate) async fn dispatch(cmd: Command, instance_root: Option<&PathBuf>) -> Result<()> {
     match cmd {
         Command::Init(a) => {
