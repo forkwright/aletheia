@@ -60,10 +60,10 @@ pub(super) fn dromeus_def() -> ToolDef {
                     },
                 ),
                 (
-                    "max_turns".to_owned(),
+                    "max_parallel".to_owned(),
                     PropertyDef {
                         property_type: PropertyType::Integer,
-                        description: "Maximum turns per session (default: no limit)".to_owned(),
+                        description: "Maximum simultaneous sessions (default: no limit)".to_owned(),
                         enum_values: None,
                         default: None,
                     },
@@ -115,6 +115,9 @@ impl ToolExecutor for DromeusExecutor {
                 Ok(s) => s,
                 Err(e) => return Ok(e),
             };
+            if project.trim().is_empty() {
+                return Ok(ToolResult::error("missing required field 'project'"));
+            }
             let dry_run = opt_bool(args, "dry_run").unwrap_or(false);
 
             // WHY: spec is a JSON array of PromptSpec objects. Callers build the
@@ -139,7 +142,7 @@ impl ToolExecutor for DromeusExecutor {
             let mut dispatch_spec =
                 energeia::types::DispatchSpec::new(project.to_owned(), prompt_numbers);
             dispatch_spec.max_parallel =
-                opt_u64(args, "max_turns").and_then(|v| u32::try_from(v).ok());
+                opt_u64(args, "max_parallel").and_then(|v| u32::try_from(v).ok());
 
             match orchestrator.dispatch(dispatch_spec, &prompts).await {
                 Ok(result) => Ok(to_json_text(&result)),

@@ -149,13 +149,14 @@ async fn all_nine_tools_return_non_error() {
     let result = registry.execute(&input, &ctx).await.unwrap();
     assert_non_error(&result, "prographe");
 
-    // ── 3. dokimasia — run_qa with empty diff, no services needed ────────────
+    // ── 3. dokimasia — run_qa with caller-provided diff ─────────────────────
     let input = make_input(
         "dokimasia",
         serde_json::json!({
             "prompt_number": 1,
             "pr_number": 42,
-            "project": "acme/test"
+            "project": "acme/test",
+            "diff": "diff --git a/src/lib.rs b/src/lib.rs\n+fn added() {}\n"
         }),
     );
     let result = registry.execute(&input, &ctx).await.unwrap();
@@ -267,6 +268,7 @@ async fn all_nine_tools_return_non_error() {
         serde_json::json!({
             "spec": spec.to_string(),
             "project": "acme/test",
+            "max_parallel": 2,
             "dry_run": true
         }),
     );
@@ -279,4 +281,29 @@ fn register_without_services_does_not_panic() {
     let mut registry = ToolRegistry::new();
     register(&mut registry, None).expect("register without services should not error");
     assert_eq!(registry.definitions().len(), 9);
+}
+
+#[tokio::test]
+async fn dokimasia_empty_diff_returns_no_work() {
+    let (_tmp, services) = setup();
+    let ctx = make_ctx();
+    let mut registry = ToolRegistry::new();
+    register(&mut registry, Some(services)).expect("register");
+
+    let input = make_input(
+        "dokimasia",
+        serde_json::json!({
+            "prompt_number": 1,
+            "pr_number": 42,
+            "project": "acme/test",
+            "diff": ""
+        }),
+    );
+    let result = registry.execute(&input, &ctx).await.unwrap();
+    assert_non_error(&result, "dokimasia no-work");
+    let text = result.content.text_summary();
+    assert!(
+        text.contains("\"status\": \"no_work\""),
+        "empty diff must not produce vacuous Pass: {text}"
+    );
 }

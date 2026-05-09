@@ -6,6 +6,7 @@ use std::pin::Pin;
 use hermeneus::types::{DocumentSource, ToolResultBlock};
 use indexmap::IndexMap;
 
+use crate::builtins::workspace::validate_path;
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
@@ -19,7 +20,7 @@ impl ToolExecutor for RenderEvalReportExecutor {
     fn execute<'a>(
         &'a self,
         input: &'a ToolInput,
-        _ctx: &'a ToolContext,
+        ctx: &'a ToolContext,
     ) -> Pin<Box<dyn Future<Output = Result<ToolResult>> + Send + 'a>> {
         Box::pin(async move {
             let args = &input.arguments;
@@ -41,6 +42,20 @@ impl ToolExecutor for RenderEvalReportExecutor {
                     ));
                 };
 
+            let validated_out_path =
+                if let Some(out_path) = args.get("out_path").and_then(serde_json::Value::as_str) {
+                    match validate_path(out_path, ctx, &input.name) {
+                        Ok(path) => Some(path),
+                        Err(e) => {
+                            return Ok(ToolResult::error(format!(
+                                "invalid out_path {out_path:?}: {e}"
+                            )));
+                        }
+                    }
+                } else {
+                    None
+                };
+
             let pdf_bytes = match poiesis_typst::render_template("eval-report", &data) {
                 Ok(b) => b,
                 Err(e) => {
@@ -49,11 +64,12 @@ impl ToolExecutor for RenderEvalReportExecutor {
             };
 
             // Optional: write to a caller-provided path in addition to returning bytes.
-            if let Some(out_path) = args.get("out_path").and_then(serde_json::Value::as_str)
-                && let Err(e) = tokio::fs::write(out_path, &pdf_bytes).await
+            if let Some(validated) = validated_out_path
+                && let Err(e) = tokio::fs::write(&validated, &pdf_bytes).await
             {
                 return Ok(ToolResult::error(format!(
-                    "wrote 0 bytes to {out_path:?}: {e}"
+                    "wrote 0 bytes to {}: {e}",
+                    validated.display()
                 )));
             }
 
@@ -125,4 +141,54 @@ fn render_eval_report_def() -> ToolDef {
 pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
     registry.register(render_eval_report_def(), Box::new(RenderEvalReportExecutor))?;
     Ok(())
+}
+
+#[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
+mod tests {
+    use std::collections::HashSet;
+    use std::sync::{Arc, RwLock};
+
+    use koina::id::{NousId, SessionId, ToolName};
+
+    use super::*;
+
+    fn test_ctx(dir: &std::path::Path) -> ToolContext {
+        ToolContext {
+            nous_id: NousId::new("test-agent").expect("valid"),
+            session_id: SessionId::new(),
+            turn_number: 0,
+            workspace: dir.to_path_buf(),
+            allowed_roots: vec![dir.to_path_buf()],
+            services: None,
+            active_tools: Arc::new(RwLock::new(HashSet::new())),
+            tool_config: Arc::new(taxis::config::ToolLimitsConfig::default()),
+        }
+    }
+
+    fn input(out_path: &str) -> ToolInput {
+        ToolInput {
+            name: ToolName::from_static("render_eval_report"),
+            tool_use_id: "toolu_test".to_owned(),
+            arguments: serde_json::json!({
+                "data": {"summary": {}, "benchmarks": []},
+                "out_path": out_path,
+            }),
+        }
+    }
+
+    #[tokio::test]
+    async fn render_eval_report_rejects_out_path_escape() {
+        let dir = tempfile::tempdir().expect("tmpdir");
+        let ctx = test_ctx(dir.path());
+
+        for out_path in ["/etc/eval-report.pdf", "../eval-report.pdf"] {
+            let result = RenderEvalReportExecutor
+                .execute(&input(out_path), &ctx)
+                .await
+                .expect("exec");
+            assert!(result.is_error, "{out_path} must be rejected");
+            assert!(result.content.text_summary().contains("invalid out_path"));
+        }
+    }
 }

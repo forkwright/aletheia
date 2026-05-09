@@ -16,11 +16,13 @@ port = 18789
 bind = "lan"              # lan | localhost | auto
 
 [gateway.auth]
-mode = "token"            # token | none
+mode = "token"            # token | jwt | none
 # SECURITY: mode = "none" disables ALL authentication on both the HTTP API
 # and MCP server. Every connection receives the role specified by noneRole
-# (defaults to "admin"). Only use for single-operator localhost deployments.
-# When bind != "localhost", the server logs an ERROR at startup.
+# (defaults to "admin"). Only use with bind = "localhost" for single-operator
+# local deployments. For bind = "lan", use mode = "token" or mode = "jwt".
+# Startup refuses mode = "none" on non-loopback binds unless the operator sets
+# ALETHEIA_ALLOW_AUTH_NONE_LAN=1, and logs WARN when that override is active.
 # noneRole = "admin"      # readonly | agent | operator | admin
 
 # --- JWT validation ---

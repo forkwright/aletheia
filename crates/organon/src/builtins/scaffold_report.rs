@@ -5,6 +5,7 @@ use std::pin::Pin;
 
 use indexmap::IndexMap;
 
+use crate::builtins::workspace::validate_path;
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
@@ -41,7 +42,7 @@ impl ToolExecutor for ScaffoldReportExecutor {
     fn execute<'a>(
         &'a self,
         input: &'a ToolInput,
-        _ctx: &'a ToolContext,
+        ctx: &'a ToolContext,
     ) -> Pin<Box<dyn Future<Output = Result<ToolResult>> + Send + 'a>> {
         Box::pin(async move {
             let args = &input.arguments;
@@ -73,13 +74,19 @@ impl ToolExecutor for ScaffoldReportExecutor {
                 };
 
             if let Some(dir) = extract_opt_str(args, "directory") {
-                if let Err(e) = tokio::fs::create_dir_all(dir).await {
+                let validated_dir = match validate_path(dir, ctx, &input.name) {
+                    Ok(path) => path,
+                    Err(e) => {
+                        return Ok(ToolResult::error(format!("invalid directory {dir:?}: {e}")));
+                    }
+                };
+                if let Err(e) = tokio::fs::create_dir_all(&validated_dir).await {
                     return Ok(ToolResult::error(format!(
                         "failed to create directory {dir:?}: {e}"
                     )));
                 }
                 for file in &files {
-                    let path = std::path::Path::new(dir).join(&file.path);
+                    let path = validated_dir.join(&file.path);
                     if let Some(parent) = path.parent()
                         && let Err(e) = tokio::fs::create_dir_all(parent).await
                     {
@@ -200,4 +207,55 @@ fn scaffold_report_def() -> ToolDef {
 pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
     registry.register(scaffold_report_def(), Box::new(ScaffoldReportExecutor))?;
     Ok(())
+}
+
+#[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
+mod tests {
+    use std::collections::HashSet;
+    use std::sync::{Arc, RwLock};
+
+    use koina::id::{NousId, SessionId, ToolName};
+
+    use super::*;
+
+    fn test_ctx(dir: &std::path::Path) -> ToolContext {
+        ToolContext {
+            nous_id: NousId::new("test-agent").expect("valid"),
+            session_id: SessionId::new(),
+            turn_number: 0,
+            workspace: dir.to_path_buf(),
+            allowed_roots: vec![dir.to_path_buf()],
+            services: None,
+            active_tools: Arc::new(RwLock::new(HashSet::new())),
+            tool_config: Arc::new(taxis::config::ToolLimitsConfig::default()),
+        }
+    }
+
+    fn input(directory: &str) -> ToolInput {
+        ToolInput {
+            name: ToolName::from_static("scaffold_report"),
+            tool_use_id: "toolu_test".to_owned(),
+            arguments: serde_json::json!({
+                "slug": "acme-report",
+                "format": "typst",
+                "directory": directory,
+            }),
+        }
+    }
+
+    #[tokio::test]
+    async fn scaffold_report_rejects_directory_escape() {
+        let dir = tempfile::tempdir().expect("tmpdir");
+        let ctx = test_ctx(dir.path());
+
+        for directory in ["/etc/aletheia-scaffold", "../aletheia-scaffold"] {
+            let result = ScaffoldReportExecutor
+                .execute(&input(directory), &ctx)
+                .await
+                .expect("exec");
+            assert!(result.is_error, "{directory} must be rejected");
+            assert!(result.content.text_summary().contains("invalid directory"));
+        }
+    }
 }

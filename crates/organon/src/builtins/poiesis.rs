@@ -15,6 +15,7 @@ use poiesis_core::{Block, Document, Metadata, Renderer, RichText, Span};
 use poiesis_lint::{LintConfig, Linter};
 use poiesis_verify::Verifier;
 
+use crate::builtins::workspace::validate_path;
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
@@ -465,7 +466,7 @@ impl ToolExecutor for RenderTypstReportExecutor {
     fn execute<'a>(
         &'a self,
         input: &'a ToolInput,
-        _ctx: &'a ToolContext,
+        ctx: &'a ToolContext,
     ) -> Pin<Box<dyn Future<Output = Result<ToolResult>> + Send + 'a>> {
         Box::pin(async move {
             let args = &input.arguments;
@@ -502,12 +503,21 @@ impl ToolExecutor for RenderTypstReportExecutor {
             };
 
             // Optional: write to a caller-provided path in addition to returning bytes.
-            if let Some(out_path) = extract_opt_str(args, "out_path")
-                && let Err(e) = tokio::fs::write(out_path, &pdf_bytes).await
-            {
-                return Ok(ToolResult::error(format!(
-                    "wrote 0 bytes to {out_path:?}: {e}"
-                )));
+            if let Some(out_path) = extract_opt_str(args, "out_path") {
+                let validated = match validate_path(out_path, ctx, &input.name) {
+                    Ok(path) => path,
+                    Err(e) => {
+                        return Ok(ToolResult::error(format!(
+                            "invalid out_path {out_path:?}: {e}"
+                        )));
+                    }
+                };
+                if let Err(e) = tokio::fs::write(&validated, &pdf_bytes).await {
+                    return Ok(ToolResult::error(format!(
+                        "wrote 0 bytes to {}: {e}",
+                        validated.display()
+                    )));
+                }
             }
 
             let encoded = koina::base64::encode(&pdf_bytes);

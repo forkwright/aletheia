@@ -11,7 +11,7 @@ use hermeneus::secret::substitute_in_json;
 use hermeneus::types::{ContentBlock, ToolResultBlock, ToolResultContent};
 use koina::id::ToolName;
 use organon::registry::ToolRegistry;
-use organon::types::{ToolContext, ToolInput};
+use organon::types::{ApprovalRequirement, ToolContext, ToolInput};
 
 use crate::error;
 use crate::pipeline::{InteractionSignal, LoopDetector, LoopVerdict, ToolCall};
@@ -23,6 +23,18 @@ pub(super) struct DispatchResult {
     pub blocks: Vec<ContentBlock>,
     /// Loop warning message to inject into conversation, if detected.
     pub loop_warning: Option<String>,
+}
+
+fn approval_risk(approval: ApprovalRequirement) -> &'static str {
+    match approval {
+        ApprovalRequirement::None | ApprovalRequirement::Advisory => "low",
+        ApprovalRequirement::Required => "high",
+        _ => "critical",
+    }
+}
+
+fn approval_reason(tool_name: &str, approval: ApprovalRequirement) -> String {
+    format!("Tool '{tool_name}' requires {approval} approval because of its reversibility metadata")
 }
 
 /// Inject a bounded diagnostic preamble into tool result content.
@@ -530,6 +542,72 @@ pub(super) async fn dispatch_tools_streaming(
             });
             crate::metrics::record_tool_failure(tool_ctx.nous_id.as_ref(), tool_name);
             continue;
+        }
+
+        let approval = tools
+            .approval_requirement(&tool_name_id)
+            .unwrap_or(ApprovalRequirement::Mandatory);
+        if matches!(
+            approval,
+            ApprovalRequirement::Required | ApprovalRequirement::Mandatory
+        ) {
+            if let Err(e) = stream_tx.try_send(TurnStreamEvent::ToolApprovalRequired {
+                turn_id: tool_ctx.turn_number.to_string(),
+                tool_id: tool_id.clone(),
+                tool_name: tool_name.clone(),
+                input: tool_input.clone(),
+                risk: approval_risk(approval).to_owned(),
+                reason: approval_reason(tool_name, approval),
+            }) {
+                match e {
+                    tokio::sync::mpsc::error::TrySendError::Full(_) => {
+                        warn!(
+                            tool = tool_name.as_str(),
+                            "streaming approval event dropped: channel buffer full"
+                        );
+                        crate::metrics::record_stream_event_dropped(
+                            tool_ctx.nous_id.as_ref(),
+                            "buffer_full",
+                        );
+                    }
+                    tokio::sync::mpsc::error::TrySendError::Closed(_) => {
+                        debug!(
+                            tool = tool_name.as_str(),
+                            "streaming approval event dropped: receiver disconnected"
+                        );
+                        crate::metrics::record_stream_event_dropped(
+                            tool_ctx.nous_id.as_ref(),
+                            "disconnected",
+                        );
+                    }
+                }
+            }
+        } else if let Err(e) = stream_tx.try_send(TurnStreamEvent::ToolApprovalResolved {
+            tool_id: tool_id.clone(),
+            decision: "auto_approved".to_owned(),
+        }) {
+            match e {
+                tokio::sync::mpsc::error::TrySendError::Full(_) => {
+                    warn!(
+                        tool = tool_name.as_str(),
+                        "streaming auto-approval event dropped: channel buffer full"
+                    );
+                    crate::metrics::record_stream_event_dropped(
+                        tool_ctx.nous_id.as_ref(),
+                        "buffer_full",
+                    );
+                }
+                tokio::sync::mpsc::error::TrySendError::Closed(_) => {
+                    debug!(
+                        tool = tool_name.as_str(),
+                        "streaming auto-approval event dropped: receiver disconnected"
+                    );
+                    crate::metrics::record_stream_event_dropped(
+                        tool_ctx.nous_id.as_ref(),
+                        "disconnected",
+                    );
+                }
+            }
         }
 
         // WHY: distinguish buffer-full (performance problem, warn) from receiver-

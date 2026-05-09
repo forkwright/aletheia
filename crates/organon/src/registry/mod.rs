@@ -14,7 +14,7 @@ use koina::id::ToolName;
 use crate::error::{self, Result};
 use crate::types::{
     ApprovalRequirement, Reversibility, ToolCallMetadata, ToolCategory, ToolContext, ToolDef,
-    ToolGroupId, ToolInput, ToolResult, ToolTag,
+    ToolGroupId, ToolInput, ToolOutcome, ToolResult, ToolTag,
 };
 
 /// The trait tool implementations must satisfy.
@@ -164,13 +164,27 @@ impl ToolRegistry {
         let duration_ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
         span.record("tool.duration_ms", duration_ms);
         match &result {
-            Ok(r) if !r.is_error => span.record("tool.status", "ok"),
-            _ => span.record("tool.status", "error"),
+            Ok(r) if matches!(r.outcome, ToolOutcome::PartialSuccess(_)) => {
+                span.record("tool.status", "partial");
+            }
+            Ok(r) if !r.is_error => {
+                span.record("tool.status", "ok");
+            }
+            _ => {
+                span.record("tool.status", "error");
+            }
+        }
+        let status = match &result {
+            Ok(r) if matches!(r.outcome, ToolOutcome::PartialSuccess(_)) => {
+                crate::metrics::InvocationStatus::Partial
+            }
+            Ok(r) if !r.is_error => crate::metrics::InvocationStatus::Ok,
+            _ => crate::metrics::InvocationStatus::Error,
         };
         crate::metrics::record_invocation(
             input.name.as_str(),
             start.elapsed().as_secs_f64(),
-            matches!(&result, Ok(r) if !r.is_error),
+            status,
         );
         result
     }

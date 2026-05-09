@@ -114,6 +114,19 @@ pub(crate) enum TurnStreamEvent {
         tool_id: String,
         input: serde_json::Value,
     },
+    /// Tool execution is awaiting approval.
+    #[serde(rename = "tool_approval_required")]
+    ToolApprovalRequired {
+        turn_id: String,
+        tool_name: String,
+        tool_id: String,
+        input: serde_json::Value,
+        risk: String,
+        reason: String,
+    },
+    /// Tool approval decision resolved.
+    #[serde(rename = "tool_approval_resolved")]
+    ToolApprovalResolved { tool_id: String, decision: String },
     /// Tool execution result.
     #[serde(rename = "tool_result")]
     ToolResult {
@@ -145,6 +158,8 @@ impl TurnStreamEvent {
             Self::ThinkingDelta { .. } => "thinking_delta",
             Self::TextDelta { .. } => "text_delta",
             Self::ToolUse { .. } => "tool_use",
+            Self::ToolApprovalRequired { .. } => "tool_approval_required",
+            Self::ToolApprovalResolved { .. } => "tool_approval_resolved",
             Self::ToolResult { .. } => "tool_result",
             Self::MessageComplete { .. } => "message_complete",
             Self::Error { .. } => "error",

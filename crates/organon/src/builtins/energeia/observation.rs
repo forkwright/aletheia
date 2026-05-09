@@ -27,9 +27,9 @@ use super::shared::{opt_str, opt_u64, require_str, to_json_text};
 pub(super) fn parateresis_def() -> ToolDef {
     ToolDef {
         name: ToolName::from_static("parateresis"),
-        description: "Collect observations from recently merged pull requests, \
-            match them to open issues, and create tracking issues for patterns not yet filed."
-            .to_owned(),
+        description:
+            "Record an observation scan request and return stored observations for a project."
+                .to_owned(),
         extended_description: None,
         input_schema: InputSchema {
             properties: IndexMap::from([
