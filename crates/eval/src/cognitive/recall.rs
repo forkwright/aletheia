@@ -9,6 +9,8 @@ use tracing::Instrument;
 use crate::client::EvalClient;
 use crate::scenario::{Scenario, ScenarioFuture, ScenarioMeta, assert_eval};
 
+type DocId = String;
+
 /// Standard k values for recall benchmarks.
 pub(crate) const RECALL_K_VALUES: [usize; 4] = [1, 5, 10, 20];
 
@@ -19,6 +21,8 @@ pub(crate) struct RecallScore {
     pub k: usize,
     /// Fraction of relevant items found in top-k (0.0 to 1.0).
     pub score: f64,
+    /// Fraction of retrieved items at k that are relevant (0.0 to 1.0).
+    pub precision: f64,
     /// Count of relevant items found in top-k.
     pub found: usize,
     /// Total number of relevant items.
@@ -39,6 +43,7 @@ pub(crate) fn compute_recall_at_k(
         return RecallScore {
             k,
             score: 0.0,
+            precision: 0.0,
             found: 0,
             total_relevant: 0,
         };
@@ -58,9 +63,21 @@ pub(crate) fn compute_recall_at_k(
     )]
     let score = found as f64 / total_relevant as f64; // SAFETY: count values small; exact in f64 mantissa
 
+    #[expect(
+        clippy::as_conversions,
+        clippy::cast_precision_loss,
+        reason = "count values are small enough for lossless f64 conversion"
+    )]
+    let precision = if top_k.is_empty() {
+        0.0
+    } else {
+        found as f64 / top_k.len() as f64
+    };
+
     RecallScore {
         k,
         score,
+        precision,
         found,
         total_relevant,
     }
@@ -78,14 +95,49 @@ pub(crate) fn compute_recall_benchmark(
         .collect()
 }
 
+fn recall_has_signal(scores: &[RecallScore]) -> bool {
+    scores.iter().any(|score| score.found > 0)
+}
+
 /// Scenario that benchmarks recall@k against the knowledge search API.
-struct RecallBenchmarkScenario;
+struct RecallBenchmarkScenario {
+    relevant_set: Vec<DocId>,
+}
+
+impl RecallBenchmarkScenario {
+    const RELEVANT_IDS_ENV: &'static str = "ALETHEIA_RECALL_RELEVANT_IDS";
+
+    fn from_operator_config() -> Self {
+        let relevant_set = std::env::var(Self::RELEVANT_IDS_ENV)
+            .ok()
+            .map(|raw| parse_relevant_set(&raw))
+            .filter(|ids| !ids.is_empty())
+            .unwrap_or_else(Self::default_ground_truth);
+        Self { relevant_set }
+    }
+
+    fn default_ground_truth() -> Vec<DocId> {
+        vec![
+            "recall-benchmark-alpha".to_owned(),
+            "recall-benchmark-beta".to_owned(),
+            "recall-benchmark-gamma".to_owned(),
+        ]
+    }
+}
+
+fn parse_relevant_set(raw: &str) -> Vec<DocId> {
+    raw.split(',')
+        .map(str::trim)
+        .filter(|id| !id.is_empty())
+        .map(ToOwned::to_owned)
+        .collect()
+}
 
 impl Scenario for RecallBenchmarkScenario {
     fn meta(&self) -> ScenarioMeta {
         ScenarioMeta {
             id: "recall-at-k-benchmark",
-            description: "Measure knowledge retrieval quality at k=1,5,10,20",
+            description: "Compute recall@k against configured ground-truth document IDs",
             category: "cognitive",
             requires_auth: true,
             requires_nous: true,
@@ -108,9 +160,7 @@ impl Scenario for RecallBenchmarkScenario {
 
                 let retrieved: Vec<String> = results.facts.iter().map(|f| f.id.clone()).collect();
 
-                // WHY: ground truth is the full set returned; we measure how search ranking
-                // surfaces them. With no pre-seeded facts, this validates the pipeline works.
-                let relevant: HashSet<String> = retrieved.iter().cloned().collect();
+                let relevant: HashSet<String> = self.relevant_set.iter().cloned().collect();
 
                 let scores = compute_recall_benchmark(&relevant, &retrieved);
 
@@ -118,6 +168,7 @@ impl Scenario for RecallBenchmarkScenario {
                     tracing::info!(
                         k = score.k,
                         recall = score.score,
+                        precision = score.precision,
                         found = score.found,
                         total = score.total_relevant,
                         "recall@k"
@@ -127,6 +178,10 @@ impl Scenario for RecallBenchmarkScenario {
                 assert_eval(
                     scores.iter().all(|s| s.score >= 0.0 && s.score <= 1.0),
                     "recall scores must be in [0.0, 1.0]",
+                )?;
+                assert_eval(
+                    recall_has_signal(&scores),
+                    "no configured ground-truth document IDs were retrieved",
                 )?;
 
                 Ok(())
@@ -140,7 +195,7 @@ impl Scenario for RecallBenchmarkScenario {
 }
 
 pub(crate) fn scenarios() -> Vec<Box<dyn Scenario>> {
-    vec![Box::new(RecallBenchmarkScenario)]
+    vec![Box::new(RecallBenchmarkScenario::from_operator_config())]
 }
 
 #[cfg(test)]
@@ -160,6 +215,10 @@ mod tests {
             (score.score).abs() < f64::EPSILON,
             "empty relevant set should yield 0.0"
         );
+        assert!(
+            (score.precision).abs() < f64::EPSILON,
+            "empty relevant set should yield 0.0 precision"
+        );
         assert_eq!(score.total_relevant, 0, "total_relevant should be 0");
     }
 
@@ -171,6 +230,10 @@ mod tests {
         assert!(
             (score.score).abs() < f64::EPSILON,
             "empty retrieved set should yield 0.0"
+        );
+        assert!(
+            (score.precision).abs() < f64::EPSILON,
+            "empty retrieved set should yield 0.0 precision"
         );
     }
 
@@ -185,6 +248,78 @@ mod tests {
             "all relevant items retrieved should yield 1.0"
         );
         assert_eq!(score.found, 3, "all 3 should be found");
+        assert!(
+            (score.precision - 1.0).abs() < f64::EPSILON,
+            "all retrieved items are relevant"
+        );
+    }
+
+    #[test]
+    fn recall_ground_truth_two_of_three_found() {
+        let relevant: HashSet<String> =
+            HashSet::from(["1".to_owned(), "2".to_owned(), "3".to_owned()]);
+        let retrieved = vec!["1".to_owned(), "2".to_owned()];
+        let score = compute_recall_at_k(&relevant, &retrieved, 3);
+        assert!(
+            (score.score - 2.0 / 3.0).abs() < f64::EPSILON,
+            "2 of 3 relevant docs should produce 2/3 recall"
+        );
+    }
+
+    #[test]
+    fn relevant_set_parser_uses_operator_ids() {
+        let ids = parse_relevant_set(" doc-1,doc-2, ,doc-3 ");
+        assert_eq!(ids, vec!["doc-1", "doc-2", "doc-3"]);
+    }
+
+    #[test]
+    fn recall_ground_truth_empty_retrieval_zero() {
+        let relevant: HashSet<String> =
+            HashSet::from(["1".to_owned(), "2".to_owned(), "3".to_owned()]);
+        let retrieved = vec![];
+        let score = compute_recall_at_k(&relevant, &retrieved, 3);
+        assert!(
+            (score.score).abs() < f64::EPSILON,
+            "no retrieved docs should produce zero recall"
+        );
+    }
+
+    #[test]
+    fn recall_signal_requires_at_least_one_ground_truth_hit() {
+        let relevant: HashSet<String> =
+            HashSet::from(["1".to_owned(), "2".to_owned(), "3".to_owned()]);
+        let no_hits = compute_recall_benchmark(&relevant, &["4".to_owned(), "5".to_owned()]);
+        assert!(
+            !recall_has_signal(&no_hits),
+            "benchmark should not accept all-zero recall as a signal"
+        );
+
+        let with_hit = compute_recall_benchmark(&relevant, &["4".to_owned(), "1".to_owned()]);
+        assert!(
+            recall_has_signal(&with_hit),
+            "benchmark should accept at least one retrieved ground-truth document"
+        );
+    }
+
+    #[test]
+    fn recall_ground_truth_extra_retrieval_keeps_recall_and_precision_honest() {
+        let relevant: HashSet<String> =
+            HashSet::from(["1".to_owned(), "2".to_owned(), "3".to_owned()]);
+        let retrieved = vec![
+            "1".to_owned(),
+            "2".to_owned(),
+            "3".to_owned(),
+            "4".to_owned(),
+        ];
+        let score = compute_recall_at_k(&relevant, &retrieved, 4);
+        assert!(
+            (score.score - 1.0).abs() < f64::EPSILON,
+            "all relevant docs retrieved should produce perfect recall"
+        );
+        assert!(
+            (score.precision - 0.75).abs() < f64::EPSILON,
+            "3 relevant of 4 retrieved docs should produce 0.75 precision"
+        );
     }
 
     #[test]
@@ -314,6 +449,7 @@ mod tests {
         let score = RecallScore {
             k: 5,
             score: 0.6,
+            precision: 0.75,
             found: 3,
             total_relevant: 5,
         };

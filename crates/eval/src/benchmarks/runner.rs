@@ -119,13 +119,30 @@ impl BenchmarkRunner {
     async fn run_question(&self, index: usize, question: BenchmarkQuestion) -> QuestionResult {
         let session_key = format!("{}-{}-{index}", self.config.session_key_prefix, question.id);
 
-        let answer = match self.ingest_and_ask(&question, &session_key).await {
-            Ok(answer) => answer,
-            Err(e) => {
+        let answer = match tokio::time::timeout(
+            self.config.question_timeout,
+            self.ingest_and_ask(&question, &session_key),
+        )
+        .await
+        {
+            Ok(Ok(answer)) => answer,
+            Ok(Err(e)) => {
                 warn!(
                     id = %question.id,
                     error = %e,
                     "benchmark question failed — scoring as no-answer"
+                );
+                String::new()
+            }
+            Err(_) => {
+                let e = crate::error::TimeoutSnafu {
+                    elapsed_ms: millis_from_duration(self.config.question_timeout),
+                }
+                .build();
+                warn!(
+                    id = %question.id,
+                    error = %e,
+                    "benchmark question timed out — scoring as no-answer"
                 );
                 String::new()
             }
@@ -251,6 +268,10 @@ impl BenchmarkRunner {
 fn role_is_user(role: &str) -> bool {
     let lower = role.to_lowercase();
     lower != "assistant" && lower != "system" && lower != "tool_result" && lower != "tool"
+}
+
+fn millis_from_duration(duration: Duration) -> u64 {
+    u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
 }
 
 #[cfg(test)]

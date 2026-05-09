@@ -27,9 +27,6 @@ pub(crate) struct EvalArgs {
     /// Write evaluation results as JSONL training data to this file
     #[arg(long)]
     pub jsonl_output: Option<String>,
-    /// Print default trigger configuration and exit
-    #[arg(long)]
-    pub show_triggers: bool,
 }
 
 pub(crate) async fn run(args: EvalArgs) -> Result<()> {
@@ -40,16 +37,7 @@ pub(crate) async fn run(args: EvalArgs) -> Result<()> {
         json: json_output,
         timeout,
         jsonl_output,
-        show_triggers,
     } = args;
-
-    if show_triggers {
-        let config = dokimion::triggers::TriggerConfig::default_config();
-        let json = serde_json::to_string_pretty(&config)
-            .whatever_context("failed to serialize trigger config")?;
-        println!("{json}");
-        return Ok(());
-    }
 
     if scenario.as_deref() == Some("list") {
         let scenarios = dokimion::scenarios::all_scenarios();

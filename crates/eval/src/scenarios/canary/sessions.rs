@@ -109,14 +109,14 @@ impl Scenario for SessionMultiTurnContext {
     }
 }
 
-/// Session close → reopen → verify state restored
+/// Session close → verify archived session retrieval behavior.
 pub(super) struct SessionCloseReopenRestore;
 
 impl Scenario for SessionCloseReopenRestore {
     fn meta(&self) -> ScenarioMeta {
         ScenarioMeta {
             id: "canary-session-close-reopen-restore",
-            description: "Session persists and restores after close/reopen",
+            description: "Closed session is archived or no longer retrievable",
             category: "canary-session",
             requires_auth: true,
             requires_nous: true,
