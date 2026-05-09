@@ -217,9 +217,13 @@ pub fn permissive_security() -> SecurityConfig {
 }
 
 pub fn issue_test_token(state: &AppState) -> String {
+    issue_test_token_as(state, Role::Operator)
+}
+
+pub fn issue_test_token_as(state: &AppState, role: Role) -> String {
     state
         .jwt_manager
-        .issue_access("test-user", Role::Operator, None)
+        .issue_access("test-user", role, None)
         .expect("issue test token")
 }
 

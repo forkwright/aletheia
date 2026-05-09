@@ -3592,6 +3592,7 @@ dependencies = [
  "fjall",
  "jiff",
  "koina",
+ "oikonomos",
  "prometheus-client",
  "proptest",
  "serde",
@@ -3599,6 +3600,7 @@ dependencies = [
  "snafu",
  "tempfile",
  "tokio",
+ "tokio-util",
  "tracing",
 ]
 
