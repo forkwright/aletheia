@@ -96,7 +96,7 @@ fn default_after_tool_returns_continue() {
         nous_id: "test",
         tool_name: "test_tool",
         tool_input: &serde_json::json!({}),
-        tool_result: "success",
+        tool_result: crate::hooks::ToolResultRecord::Present("success"),
         is_error: false,
         turn_usage: &DEFAULT_USAGE,
     };
@@ -184,5 +184,17 @@ fn default_after_compact_returns_continue() {
         result,
         HookResult::Continue,
         "default after_compact should return Continue"
+    );
+}
+
+#[test]
+fn tool_result_record_preserves_missing_result() {
+    assert_eq!(
+        crate::hooks::ToolResultRecord::from_option(None),
+        crate::hooks::ToolResultRecord::Missing
+    );
+    assert_eq!(
+        crate::hooks::ToolResultRecord::from_option(Some("ok")),
+        crate::hooks::ToolResultRecord::Present("ok")
     );
 }

@@ -34,7 +34,7 @@ use self::resolve::{
 use crate::config::NousConfig;
 use crate::error;
 use crate::hooks::registry::HookRegistry;
-use crate::hooks::{AfterToolContext, ToolHookContext, ToolHookResult};
+use crate::hooks::{AfterToolContext, ToolHookContext, ToolHookResult, ToolResultRecord};
 use crate::pipeline::{LoopDetector, PipelineContext, ToolCall, TurnResult, TurnUsage};
 use crate::session::SessionState;
 use crate::stream::TurnStreamEvent;
@@ -378,7 +378,7 @@ pub async fn execute(
                         .iter()
                         .find(|(_, name, _)| name == &tool_call.name)
                         .map_or(&serde_json::Value::Null, |(_, _, input)| input),
-                    tool_result: tool_call.result.as_deref().unwrap_or(""),
+                    tool_result: ToolResultRecord::from_option(tool_call.result.as_deref()),
                     is_error: tool_call.is_error,
                     turn_usage: &total_usage,
                 };
@@ -755,7 +755,7 @@ pub async fn execute_streaming(
                         .iter()
                         .find(|(_, name, _)| name == &tool_call.name)
                         .map_or(&serde_json::Value::Null, |(_, _, input)| input),
-                    tool_result: tool_call.result.as_deref().unwrap_or(""),
+                    tool_result: ToolResultRecord::from_option(tool_call.result.as_deref()),
                     is_error: tool_call.is_error,
                     turn_usage: &total_usage,
                 };

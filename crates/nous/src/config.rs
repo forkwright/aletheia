@@ -319,6 +319,8 @@ pub struct HookConfig {
     pub correction_hooks_enabled: bool,
     /// Enable the audit logging hook (priority 100).
     pub audit_logging_enabled: bool,
+    /// Enable post-turn self-audit checks.
+    pub self_audit_enabled: bool,
     /// Enable the working checkpoint hook (priority 40).
     ///
     /// When enabled, agent-curated `<key_info>` checkpoints written via
@@ -335,6 +337,7 @@ impl Default for HookConfig {
             scope_enforcement_enabled: true,
             correction_hooks_enabled: true,
             audit_logging_enabled: true,
+            self_audit_enabled: true,
             working_checkpoint_enabled: true,
         }
     }
