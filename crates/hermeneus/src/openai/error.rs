@@ -48,7 +48,12 @@ pub(crate) async fn map_error_response(
     let status = response.status().as_u16();
     let retry_after_ms = extract_retry_after(&response);
 
-    let body = response.text().await.unwrap_or_default();
+    let body = match response.text().await {
+        Ok(body) => body,
+        Err(source) => {
+            return error::Error::ApiErrorBodyRead { status, source };
+        }
+    };
 
     let detail = serde_json::from_str::<WireErrorResponse>(&body)
         .ok()

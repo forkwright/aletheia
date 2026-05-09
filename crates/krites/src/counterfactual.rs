@@ -28,6 +28,8 @@ use std::collections::BTreeMap;
 
 use eidos::knowledge::CausalRelationType;
 
+use snafu::OptionExt;
+
 use crate::{DataValue, Db, NamedRows, Result};
 
 /// A single causal edge returned by counterfactual queries.
@@ -57,9 +59,11 @@ fn parse_edge_rows(rows: &NamedRows) -> Result<Vec<CausalEdgeRow>> {
         let rel_type_str = extract_str(&row[2])?;
         let confidence = extract_f64(&row[3])?;
 
-        let relationship_type = rel_type_str
-            .parse::<CausalRelationType>()
-            .unwrap_or(CausalRelationType::Caused);
+        let relationship_type = rel_type_str.parse::<CausalRelationType>().ok().context(
+            crate::error::UnknownCausalRelationSnafu {
+                input: rel_type_str,
+            },
+        )?;
 
         edges.push(CausalEdgeRow {
             cause,

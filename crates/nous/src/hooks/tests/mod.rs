@@ -198,7 +198,7 @@ fn test_after_tool_context(tool_input: &serde_json::Value) -> AfterToolContext<'
         nous_id: "test-agent",
         tool_name: "test_tool",
         tool_input,
-        tool_result: "test result",
+        tool_result: crate::hooks::ToolResultRecord::Present("test result"),
         is_error: false,
         turn_usage: &DEFAULT_USAGE,
     }

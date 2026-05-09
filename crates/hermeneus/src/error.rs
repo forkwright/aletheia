@@ -56,6 +56,10 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// API error response body could not be read.
+    #[snafu(display("failed to read API error response body for status {status}: {source}"))]
+    ApiErrorBodyRead { status: u16, source: reqwest::Error },
+
     /// API returned an error response.
     #[snafu(display("API error {status}: {message}"))]
     ApiError {
@@ -120,6 +124,7 @@ impl Error {
             // of surfacing a hard error.
             Error::ProviderInit { .. }
             | Error::RateLimited { .. }
+            | Error::ApiErrorBodyRead { .. }
             | Error::ApiError {
                 status: 500..=599, ..
             } => true,
@@ -148,6 +153,7 @@ impl koina::error_class::Classifiable for Error {
             // and provider init failures (CC binary crashed/disappeared).
             Error::RateLimited { .. }
             | Error::ProviderInit { .. }
+            | Error::ApiErrorBodyRead { .. }
             | Error::ApiError {
                 status: 500..=599, ..
             } => ErrorClass::Transient,
@@ -188,6 +194,10 @@ impl koina::error_class::Classifiable for Error {
             } => ErrorAction::Retry {
                 max_attempts: 3,
                 backoff_base_ms: 1_000,
+            },
+            Error::ApiErrorBodyRead { .. } => ErrorAction::Retry {
+                max_attempts: 3,
+                backoff_base_ms: 500,
             },
             Error::ApiRequest { message, .. } => {
                 let msg = message.to_lowercase();
