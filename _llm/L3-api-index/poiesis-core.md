@@ -102,7 +102,7 @@ impl Metadata {
 ## `src/renderer.rs`
 
 > A format backend that renders a [`Document`] into raw bytes.
-> 
+>
 > Implementors produce a self-contained byte payload for their target format
 > (e.g. PDF, ODT, XLSX). The caller writes those bytes to disk or streams
 > them over the network.

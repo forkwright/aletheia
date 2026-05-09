@@ -33,10 +33,12 @@ Navigation index for concepts that touch many components.
 - `eidos::knowledge` - canonical `Fact`, `Entity`, `Relationship`, `EpistemicTier` types
 - `episteme::recall::RecallEngine` - 6-factor scoring for knowledge retrieval
 - `organon::builtins::memory` - `memory_search`, `note`, `blackboard` tools
+- `nous::working_memory` - per-turn working checkpoint injection into `<key_info>`
 - `melete::flush::MemoryFlush` - persists critical context before distillation boundaries
 
 **Contracts:**
 - Facts carry bi-temporal timestamps (`valid_from`/`valid_to` and `recorded_at`) from `eidos`
+- Facts carry `Visibility` and optional `MemoryScope`; recall and MCP/API surfaces must preserve those filters
 - Recall weights are configurable per-agent via `taxis` config and consumed by `nous`
 - `memory_search` routes through `organon` → `mneme` → `episteme` with the same scoring
 
@@ -53,10 +55,12 @@ Navigation index for concepts that touch many components.
 - `hermeneus::types` - `ContentBlock::ToolUse` and `StopReason::ToolUse` from LLM responses
 - `nous::execute::dispatch` - sequential tool execution with loop detection and event logging
 - `pylon::openapi` - exposes tool schemas via utoipa-derived OpenAPI spec
+- `organon::receipts` - HMAC-SHA256 receipt signer and in-memory ledger
 
 **Contracts:**
-- Tools register with `name`, `description`, `schema`, and `auto_activate` flag (`organon::types`)
+- Tools register with `name`, `description`, `schema`, typed tags, tool groups, and `auto_activate` flag (`organon::types`)
 - Tool dispatch caps at `max_tool_iterations` configured per agent (`nous::execute`)
+- Tool results must be backed by receipts when the active pipeline is verifying tool-use integrity
 - Tool results are encoded as `ContentBlock::ToolResult` and appended to turn history
 
 **Known mismatches:** none

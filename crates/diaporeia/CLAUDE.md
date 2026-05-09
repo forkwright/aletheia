@@ -61,6 +61,12 @@ Knowledge graph tools require `mcp.knowledge_graph.enabled = true` in config (de
 - **Two transports**: streamable HTTP (mounted into pylon's Axum router at `/mcp`) and stdio (for CLI use).
 - **Feature gated**: `mcp` feature in the binary crate; disabled by default.
 
+## Recent substrate notes
+
+- Diaporeia owns both streamable HTTP MCP and stdio/external MCP bridging into organon.
+- RBAC claims are represented by `McpClaims`; tool handlers must enforce role boundaries before touching shared state.
+- `knowledge_search` and depth-aware graph tools route through `mneme`/`organon` service traits, not direct private store access.
+
 ## Common tasks
 
 | Task | Where |

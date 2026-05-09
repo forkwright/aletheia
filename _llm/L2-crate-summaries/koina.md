@@ -1,24 +1,29 @@
 # koina
 
-**Purpose:** Core types, errors, tracing, and system abstractions shared by every Aletheia crate. Zero workspace dependencies.
+**Purpose:** Core types, errors, and tracing for Aletheia.
 
 ## Key types
 
 | Type | Purpose |
 |------|---------|
-| `NousId` | Agent identifier (CompactString newtype) |
-| `SessionId` | Session identifier (UUID newtype) |
-| `SecretString` | API key/token with redacted output and zeroize-on-drop |
-| `FileSystem` | Trait for testable filesystem access |
-| `Clock` | Trait for testable time (`now()`) |
+| `Classifiable` | Current public type or boundary; see L3/source for exact fields |
+| `AppError` | Current public type or boundary; see L3/source for exact fields |
+| `MetricsRegistry` | Current public type or boundary; see L3/source for exact fields |
+| `SystemEvent` | Current public type or boundary; see L3/source for exact fields |
 
 ## Public API surface
 
-- `koina::id` - `NousId`, `SessionId`, `TurnId`, `ToolName` newtypes; `newtype_id!` macro
-- `koina::secret` - `SecretString` for safe credential handling
-- `koina::system` - `FileSystem`, `Clock`, `Environment` traits + `RealSystem`/`TestSystem` impls
+- `koina::base64` - public items from `src/base64.rs`
+- `koina::cleanup` - public items from `src/cleanup.rs`
+- `koina::credential` - public items from `src/credential.rs`
+- `koina::defaults` - public items from `src/defaults.rs`
+- `koina::disk_space` - public items from `src/disk_space.rs`
 
 ## When to look here
 
-- When you need a shared identifier type or need to define a new domain ID newtype
-- When adding injectable system dependencies (filesystem, clock) for testability
+- When work touches `crates/koina` or downstream imports from `koina`.
+- For exact signatures, load `_llm/L3-api-index/koina.md` if present, then source.
+
+## Recent changes
+
+Timestamps use jiff consistently; tracing, cleanup events, and the Classifiable trait were wired into shared foundations.

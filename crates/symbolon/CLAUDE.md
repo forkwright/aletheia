@@ -41,6 +41,11 @@ Authentication and authorization: JWT sessions, API keys, Argon2id passwords, OA
 - **Encryption at rest**: AES-256-GCM via `encrypt` module for credential files. `enc:` prefix in config triggers transparent decryption.
 - **Clock skew tolerance**: 30s leeway on token expiry checks to handle NTP drift.
 
+## Recent substrate notes
+
+- `AuthFacade`/`AuthService` is the verification boundary consumed by pylon and diaporeia for admin-token checks and revocation.
+- Terminal UX belongs in the binary/client layer; keep symbolon as auth and authorization library code.
+
 ## Common tasks
 
 | Task | Where |

@@ -1,24 +1,22 @@
 # aletheia
 
-**Purpose:** Binary entrypoint: Clap CLI, server startup, and service wiring that connects all crates into the running Aletheia runtime.
+**Purpose:** Aletheia cognitive agent runtime.
 
 ## Key types
 
 | Type | Purpose |
 |------|---------|
-| `Cli` | Top-level clap parser: instance root, log level, bind, port |
-| `Command` | Subcommand enum: Health, Backup, Maintenance, Memory, Tui, etc. |
-| `NousDaemonBridge` | Implements `DaemonBridge` to connect oikonomos tasks to nous actors |
-| `FilesystemPlanningService` | Implements `PlanningService` trait over dianoia workspace |
-| `KnowledgeSearchAdapter` | Bridges organon tool search to mneme knowledge store |
+| `Cli` | Current public type or boundary; see L3/source for exact fields |
 
 ## Public API surface
 
-- `aletheia::main` - binary entry point (not a library; no public API surface)
-- `crates/aletheia/src/commands/` - one module per CLI subcommand
-- `crates/aletheia/src/dispatch.rs` - inbound message dispatcher (agora → nous routing)
+- `aletheia::error` - public items from `src/error.rs`
 
 ## When to look here
 
-- When adding a new CLI subcommand
-- When modifying service startup order or adapter wiring between crates
+- When work touches `crates/aletheia` or downstream imports from `aletheia`.
+- For exact signatures, load `_llm/L3-api-index/aletheia.md` if present, then source.
+
+## Recent changes
+
+CLI scaffolds now persist seed skills, guard dry-run consolidation, and route drift-audit fixes through the binary wiring.

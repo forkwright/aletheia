@@ -475,10 +475,10 @@ pub enum Event {
 ## `koilon/src/lib.rs`
 
 > Run the interactive TUI setup wizard for first-run instance initialization.
-> 
+>
 > Returns [`wizard::WizardAnswers`] when the user confirms on the final step.
 > Returns [`error::Error::WizardAborted`] if the user presses Esc or Ctrl+C.
-> 
+>
 > Call [`wizard::is_tty`] first to verify the terminal supports interactive input.
 ```rust
 pub fn run_wizard (
@@ -1722,138 +1722,13 @@ pub struct ViewStack {
 ## `koilon/src/theme.rs`
 
 ```rust
-pub enum ColorDepth {
-    /// 24-bit RGB (COLORTERM=truecolor, iTerm2, Kitty, Alacritty, etc.)
-    TrueColor,
-    /// 256-color (xterm-256color)
-    Color256,
-    /// Basic 16 ANSI colors
-    Basic,
-}
-```
-
-```rust
-pub enum ThemeMode {
-    Dark,
-    Light,
-}
-```
-
-```rust
-pub struct Colors {
-    pub bg: Color,
-    pub surface: Color,
-    pub surface_bright: Color,
-    pub surface_dim: Color,
-    pub accent: Color,
-    pub accent_dim: Color,
-}
-```
-
-```rust
-pub struct TextColors {
-    pub fg: Color,
-    pub fg_muted: Color,
-    pub fg_dim: Color,
-    pub user: Color,
-    pub assistant: Color,
-    pub system: Color,
-}
-```
-
-```rust
-pub struct Borders {
-    pub normal: Color,
-    pub focused: Color,
-    pub separator: Color,
-    pub selected: Color,
-}
-```
-
-```rust
-pub struct StatusColors {
-    pub success: Color,
-    pub warning: Color,
-    pub error: Color,
-    pub info: Color,
-    pub spinner: Color,
-    pub idle: Color,
-    pub streaming: Color,
-    pub compacting: Color,
-}
-```
-
-```rust
-pub struct CodeColors {
-    pub fg: Color,
-    pub bg: Color,
-    pub lang: Color,
-}
-```
-
-```rust
-pub struct ThinkingColors {
-    pub fg: Color,
-    pub border: Color,
-}
-```
-
-```rust
-pub struct Theme {
-    pub colors: Colors,
-    pub text: TextColors,
-    pub borders: Borders,
-    pub status: StatusColors,
-    pub code: CodeColors,
-    pub thinking: ThinkingColors,
-    /// Color depth (for conditional rendering).
-    pub depth: ColorDepth,
-    /// Light or dark background.
-    pub mode: ThemeMode,
-}
-```
-
-```rust
 pub static THEME: std::sync::LazyLock<Theme> = std::sync::LazyLock::new(Theme::default);
-```
-
-```rust
-impl Theme {
-    pub fn detect () -> Self;
-    pub fn for_mode (mode: Option<ThemeMode>) -> Self;
-    pub fn style_fg (&self) -> Style;
-    pub fn style_muted (&self) -> Style;
-    pub fn style_dim (&self) -> Style;
-    pub fn style_accent (&self) -> Style;
-    pub fn style_accent_bold (&self) -> Style;
-    pub fn style_success (&self) -> Style;
-    pub fn style_warning (&self) -> Style;
-    pub fn style_error (&self) -> Style;
-    pub fn style_success_bold (&self) -> Style;
-    pub fn style_error_bold (&self) -> Style;
-    pub fn style_user (&self) -> Style;
-    pub fn style_assistant (&self) -> Style;
-    pub fn style_code (&self) -> Style;
-    pub fn style_inline_code (&self) -> Style;
-    pub fn style_surface (&self) -> Style;
-    pub fn style_border (&self) -> Style;
-    pub fn style_border_focused (&self) -> Style;
-}
-```
-
-> Braille spinner frames for smooth animation.
-```rust
-pub const BRAILLE_SPINNER: &[char] = &['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
-```
-
-```rust
-pub fn spinner_frame (tick: u64) -> char
 ```
 
 ## `koilon/src/wizard/mod.rs`
 
 > Returns `true` when the current environment supports a TUI wizard.
-> 
+>
 > Requires both stdin and stdout to be connected to a TTY.
 ```rust
 pub fn is_tty () -> bool
@@ -1947,38 +1822,14 @@ pub struct ChatState {
 }
 ```
 
-## `proskenion/src/components/connection_indicator.rs`
-
-```rust
-pub struct ConnectionIndicator {
-    /// Semantic color for the indicator dot.
-    pub color: IndicatorColor,
-    /// Short human-readable label.
-    pub label: String,
-    /// Tooltip or extended description.
-    pub tooltip: String,
-}
-```
-
-```rust
-pub enum IndicatorColor {
-    /// Healthy connection.
-    Green,
-    /// Degraded or reconnecting.
-    Yellow,
-    /// Disconnected or failed.
-    Red,
-}
-```
-
 ## `proskenion/src/lib.rs`
 
 > Launch the desktop application.
-> 
+>
 > Initialises log-to-file, loads persisted window state, and configures the
 > desktop window before showing it. Closing the window exits the process
 > cleanly  -  no minimize-to-tray, no hidden background process.
-> 
+>
 > Pass `verbose = true` (e.g. from a `--verbose` CLI flag) to also emit logs
 > to stderr. When `RUST_LOG` is set in the environment stderr output is added
 > automatically regardless.
@@ -2654,49 +2505,9 @@ pub enum CloseBehavior {
 ## `proskenion/src/state/toasts.rs`
 
 ```rust
-pub enum Severity {
-    /// Neutral information (dye: natural).
-    Info,
-    /// Positive outcome (dye: green).
-    Success,
-    /// Non-critical warning (dye: aporia).
-    Warning,
-    /// Critical failure (dye: aima).
-    Error,
-}
-```
-
-```rust
-pub struct ToastAction {
-    /// Button label text.
-    pub label: String,
-    /// Action identifier dispatched when clicked.
-    pub action_id: String,
-}
-```
-
-```rust
-pub struct Toast {
-    /// Unique identifier.
-    pub id: ToastId,
-    /// Visual severity.
-    pub severity: Severity,
-    /// Short title text.
-    pub title: String,
-    /// Optional extended body text.
-    pub body: Option<String>,
-    /// Optional action button.
-    pub action: Option<ToastAction>,
-    /// Auto-dismiss duration. `None` means manual dismiss only (used for
-    /// action toasts).
-    pub auto_dismiss: Option<Duration>,
-}
-```
-
-```rust
 pub struct ToastStore {
     toasts: Vec<Toast>,
-    next_id: ToastId,
+    next_id: u64,
 }
 ```
 
@@ -2817,132 +2628,6 @@ pub struct PlanCardState {
 }
 ```
 
-## `proskenion/src/theme.rs`
-
-```rust
-pub enum ThemeMode {
-    Dark,
-    Light,
-    /// Follow the OS/desktop environment preference.
-    System,
-}
-```
-
-## `proskenion/target/debug/build/target-lexicon-a72007252ff2c32a/out/host.rs`
-
-> The `Triple` of the current host.
-```rust
-pub const HOST: Triple = Triple {
-    architecture: Architecture::X86_64,
-    vendor: Vendor::Unknown,
-    operating_system: OperatingSystem::Linux,
-    environment: Environment::Gnu,
-    binary_format: BinaryFormat::Elf,
-};
-```
-
-```rust
-impl Architecture {
-    pub const fn host () -> Self;
-}
-```
-
-```rust
-impl Vendor {
-    pub const fn host () -> Self;
-}
-```
-
-```rust
-impl OperatingSystem {
-    pub const fn host () -> Self;
-}
-```
-
-```rust
-impl Environment {
-    pub const fn host () -> Self;
-}
-```
-
-```rust
-impl BinaryFormat {
-    pub const fn host () -> Self;
-}
-```
-
-```rust
-impl Triple {
-    pub const fn host () -> Self;
-}
-```
-
-## `proskenion/target/debug/build/x11-dl-8c72dbd8a12af642/out/config.rs`
-
-```rust
-pub const xext: Option<&'static str> = Some("/usr/lib64");
-```
-
-```rust
-pub const gl: Option<&'static str> = Some("/usr/lib64");
-```
-
-```rust
-pub const xcursor: Option<&'static str> = Some("/usr/lib64");
-```
-
-```rust
-pub const xxf86vm: Option<&'static str> = None;
-```
-
-```rust
-pub const xft: Option<&'static str> = Some("/usr/lib64");
-```
-
-```rust
-pub const xinerama: Option<&'static str> = Some("/usr/lib64");
-```
-
-```rust
-pub const xi: Option<&'static str> = Some("/usr/lib64");
-```
-
-```rust
-pub const x11: Option<&'static str> = Some("/usr/lib64");
-```
-
-```rust
-pub const xlib_xcb: Option<&'static str> = Some("/usr/lib64");
-```
-
-```rust
-pub const xmu: Option<&'static str> = None;
-```
-
-```rust
-pub const xrandr: Option<&'static str> = Some("/usr/lib64");
-```
-
-```rust
-pub const xtst: Option<&'static str> = Some("/usr/lib64");
-```
-
-```rust
-pub const xrender: Option<&'static str> = Some("/usr/lib64");
-```
-
-```rust
-pub const xpresent: Option<&'static str> = None;
-```
-
-```rust
-pub const xscrnsaver: Option<&'static str> = None;
-```
-
-```rust
-pub const xt: Option<&'static str> = None;
-```
-
 ## `skene/src/api/client.rs`
 
 ```rust
@@ -3000,40 +2685,6 @@ impl ApiClient {
     pub async fn knowledge_update_confidence (&self, fact_id: &str, confidence: f64) -> Result<()>;
     pub async fn queue_message (&self, session_id: &str, text: &str) -> Result<()>;
     pub fn raw_client (&self) -> &Client;
-}
-```
-
-## `skene/src/api/error.rs`
-
-```rust
-pub enum ApiError {
-    /// HTTP transport or connection error (no response received).
-    #[snafu(display("{operation}: {source}"))]
-    Http {
-        /// Which API call failed.
-        operation: &'static str,
-        /// Underlying reqwest error.
-        source: reqwest::Error,
-    },
-
-    /// Non-2xx HTTP response. Message is extracted from the server body when possible.
-    #[snafu(display("{operation}: {status} {message}"))]
-    Server {
-        /// Which API call failed.
-        operation: &'static str,
-        /// HTTP status code from the response.
-        status: u16,
-        /// Human-readable error from the server.
-        message: String,
-    },
-
-    /// Credentials rejected by the gateway.
-    #[snafu(display("authentication failed: token expired or invalid"))]
-    Auth,
-
-    /// Token contains characters that are not valid in an HTTP header value.
-    #[snafu(display("invalid token: contains characters not valid in HTTP headers"))]
-    InvalidToken,
 }
 ```
 
@@ -3636,46 +3287,4 @@ pub struct TurnId(String);
 
 ```rust
 pub struct PlanId(String);
-```
-
-## `skene/src/sse.rs`
-
-```rust
-pub struct SseEvent {
-    /// The `event:` field. Defaults to `"message"` per the SSE spec.
-    pub event: String,
-    /// The `data:` field(s), concatenated with newlines for multi-line data.
-    pub data: String,
-    /// The `id:` field, if present.
-    pub id: Option<String>,
-    /// The `retry:` field in milliseconds, if present.
-    pub retry: Option<u64>,
-}
-```
-
-> Transforms a byte stream into a stream of parsed SSE events.
-> 
-> Handles the full SSE wire protocol: `data:`, `event:`, `id:`, `retry:`,
-> comment lines (`:` prefix), multi-line `data:` fields (concatenated with
-> newlines), and blank-line event delimiters.
-```rust
-pub struct SseStream<S> {
-    stream: S,
-    buf: String,
-    done: bool,
-
-    current_event: Option<String>,
-    current_data: String,
-    current_id: Option<String>,
-    current_retry: Option<u64>,
-    has_data: bool,
-}
-```
-
-```rust
-impl <S, E> SseStream<S> where
-    S: Stream<Item = Result<Bytes, E>> + Unpin,
-    E: std::fmt::Display, {
-    pub fn new (stream: S) -> Self;
-}
 ```

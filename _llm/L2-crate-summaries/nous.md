@@ -1,25 +1,31 @@
 # nous
 
-**Purpose:** Agent session pipeline: bootstrap → recall → execute → finalize. Implements the `NousActor` tokio actor model for sequential turn processing.
+**Purpose:** Agent session pipeline - bootstrap, routing, tool execution.
 
 ## Key types
 
 | Type | Purpose |
 |------|---------|
-| `NousActor` | Tokio actor processing turns sequentially via inbox channel |
-| `NousHandle` | Cloneable sender for invoking turns on a NousActor |
-| `NousManager` | Spawns actors, monitors health, routes messages across agents |
-| `PipelineContext` | Assembled context flowing through pipeline stages |
-| `BootstrapAssembler` | Priority-based system prompt packer from workspace cascade |
+| `NousActor` | Current public type or boundary; see L3/source for exact fields |
+| `NousManager` | Current public type or boundary; see L3/source for exact fields |
+| `BootstrapSlot` | Current public type or boundary; see L3/source for exact fields |
+| `Step` | Current public type or boundary; see L3/source for exact fields |
+| `WorkingState` | Current public type or boundary; see L3/source for exact fields |
+| `LoopDetector` | Current public type or boundary; see L3/source for exact fields |
 
 ## Public API surface
 
-- `nous::actor` - `NousActor` run loop, `NousHandle` for external invocation
-- `nous::manager` - `NousManager` lifecycle, health polling, restart
-- `nous::bootstrap` - `BootstrapAssembler`, system prompt construction
-- `nous::pipeline` - `PipelineContext`, `TurnResult`, stage composition
+- `nous::actor` - public items from `src/actor/mod.rs`
+- `nous::actor/spawn` - public items from `src/actor/spawn.rs`
+- `nous::adapters` - public items from `src/adapters.rs`
+- `nous::audit` - public items from `src/audit.rs`
+- `nous::bootstrap` - public items from `src/bootstrap/mod.rs`
 
 ## When to look here
 
-- When modifying the agent turn pipeline (bootstrap, recall, execute, finalize stages)
-- When adding cross-nous routing or changing actor lifecycle management
+- When work touches `crates/nous` or downstream imports from `nous`.
+- For exact signatures, load `_llm/L3-api-index/nous.md` if present, then source.
+
+## Recent changes
+
+Working-memory injection, Composite LoopGuard use, BootstrapSlot, Step compaction, tool-group gating, mistake brake, and per-stage timeouts are live.

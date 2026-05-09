@@ -1,24 +1,30 @@
 # energeia
 
-**Purpose:** Dispatch orchestration for plan execution - actualizes plans into agent sessions with budget tracking, multi-stage escalation, and QA gating.
+**Purpose:** Dispatch orchestration - actualization of plans into execution.
 
 ## Key types
 
 | Type | Purpose |
 |------|---------|
-| `DispatchSpec` | What to dispatch: prompt numbers, DAG reference, project |
-| `DispatchResult` | Aggregate outcome: dispatch_id, per-prompt outcomes, cost, duration |
-| `SessionOutcome` | Per-prompt result: status, cost, turns, duration, PR URL |
-| `Budget` | Cost/turn/duration limits with record and check |
-| `QaGate` | Trait for QA evaluation: verdict (Pass/Partial/Fail), criteria, mechanical issues |
+| `AgentSdkConfig` | Current public type or boundary; see L3/source for exact fields |
+| `McpServerConfig` | Current public type or boundary; see L3/source for exact fields |
+| `AgentSdkEngine` | Current public type or boundary; see L3/source for exact fields |
+| `new` | Current public type or boundary; see L3/source for exact fields |
+| `default_model` | Current public type or boundary; see L3/source for exact fields |
 
 ## Public API surface
 
-- `energeia::engine` - `DispatchEngine` trait, `SessionHandle` trait, `SessionSpec`
-- `energeia::types` - `DispatchSpec`, `DispatchResult`, `SessionOutcome`, `Budget`, `ResumePolicy`
-- `energeia::qa` - `QaGate` trait, `QaResult`, `QaVerdict`, `PromptSpec`
+- `energeia::agent_sdk` - public items from `src/agent_sdk.rs`
+- `energeia::backend/backend_impl` - public items from `src/backend/backend_impl.rs`
+- `energeia::backend` - public items from `src/backend.rs`
+- `energeia::budget` - public items from `src/budget.rs`
+- `energeia::cost_ledger` - public items from `src/cost_ledger.rs`
 
 ## When to look here
 
-- When adding dispatch strategies, budget policies, or QA evaluation criteria
-- When integrating the dispatch engine with a new session provider
+- When work touches `crates/energeia` or downstream imports from `energeia`.
+- For exact signatures, load `_llm/L3-api-index/energeia.md` if present, then source.
+
+## Recent changes
+
+L3 was refreshed for dispatch orchestration after cross-crate substrate changes.

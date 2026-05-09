@@ -32,7 +32,7 @@ pub struct CategoryBaseline {
 ```
 
 > Baselines for the `LongMemEval` benchmark.
-> 
+>
 > Paper: *`LongMemEval`: Benchmarking Chat Assistants on Long-Term Interactive
 > Memory*, Zhang et al., 2024 (arxiv:2410.10813).
 ```rust
@@ -45,7 +45,7 @@ pub fn longmemeval_category_baselines () -> Vec<(&'static str, Vec<CategoryBasel
 ```
 
 > Baselines for the `LoCoMo` benchmark.
-> 
+>
 > Paper: *Long-Context Conversational Memory (`LoCoMo`)*, Maharana et al.,
 > 2024 (arxiv:2402.17753).
 ```rust
@@ -159,7 +159,7 @@ pub fn ndcg_at_k (retrieved: &[String], relevant: &[String], k: usize) -> f64
 ## `src/benchmarks/mod.rs`
 
 > Re-export of [`EvalClient`](crate::client::EvalClient) for external use.
-> 
+>
 > External consumers of the benchmark runner need this to construct a
 > runner. The rest of the client API surface is not stable.
 ```rust
@@ -301,9 +301,9 @@ pub fn download_instructions () -> &'static str
 ```
 
 > Load a `LongMemEval` dataset from a JSON file on disk.
-> 
+>
 > # Errors
-> 
+>
 > Returns an error if the file cannot be read or the JSON is not in the
 > expected `LongMemEval` format.
 ```rust
@@ -313,9 +313,9 @@ pub async fn load_longmemeval (
 ```
 
 > Load a `LoCoMo` dataset from a JSON file on disk.
-> 
+>
 > # Errors
-> 
+>
 > Returns an error if the file cannot be read or the JSON is not in the
 > expected `LoCoMo` format.
 ```rust
@@ -688,19 +688,34 @@ pub fn records_from_report (report: &RunReport) -> Vec<EvalRecord>
 ```
 
 > Append evaluation records to a JSONL file, creating it if necessary.
-> 
+>
 > # Errors
-> 
+>
 > Returns `Io` if the file cannot be opened or written to.
 > Returns `Json` if a record cannot be serialized.
 ```rust
 pub fn append_jsonl (path: &Path, records: &[EvalRecord]) -> Result<()>
 ```
 
+> Append evaluation records from a `RunReport` to a JSONL file and write a
+> sibling `<path>.meta.json` file with provenance metadata.
+>
+> The `.meta.json` file is always overwritten (not appended) because it
+> reflects the provenance of the *most recent* batch of records written to
+> the JSONL file.
+>
+> # Errors
+>
+> Returns `Io` if either file cannot be opened or written to.
+> Returns `Json` if serialization of records or metadata fails.
+```rust
+pub fn append_jsonl_stamped (path: &Path, report: &RunReport) -> Result<()>
+```
+
 ## `src/provider/provider_impl.rs`
 
 > Provider that returns all built-in dokimion scenarios.
-> 
+>
 > This is the default when no custom provider is specified  -  it wraps
 > [`scenarios::all_scenarios()`](crate::scenarios::all_scenarios).
 ```rust
@@ -708,7 +723,7 @@ pub struct BuiltinProvider;
 ```
 
 > Combines multiple providers into a single scenario set.
-> 
+>
 > Scenarios are collected in provider order. Deduplication is the caller's
 > responsibility (scenario IDs are not enforced unique across providers).
 ```rust
@@ -727,7 +742,7 @@ impl CompositeProvider {
 ## `src/provider.rs`
 
 > Source of evaluation scenarios.
-> 
+>
 > Implementations decide which scenarios to include. The runner calls
 > [`provide`] once at the start of a run and executes the returned set.
 ```rust
@@ -745,6 +760,10 @@ pub fn print_report (report: &RunReport, base_url: &str)
 
 ```rust
 pub fn print_report_json (report: &RunReport)
+```
+
+```rust
+pub fn emit_eval_report (report: &RunReport) -> crate::error::Result<Vec<u8>>
 ```
 
 ## `src/runner.rs`
@@ -1025,104 +1044,6 @@ pub enum FdrMethod {
 pub fn fdr_correct (p_values: &[f64], method: FdrMethod) -> Result<Vec<f64>, Error>
 ```
 
-## `src/stats/finding.rs`
-
-```rust
-pub enum EvidenceLevel {
-    /// Survives FDR correction, n is large enough for inference.
-    Statistical,
-    /// Consistent across methods but p-value is not FDR-corrected.
-    Robust,
-    /// Pattern present; useful for hypothesis generation only.
-    Exploratory,
-    /// Qualitative reading; no direct statistical backing.
-    Interpretive,
-    /// Low-confidence extrapolation; flag explicitly in reports.
-    Speculative,
-}
-```
-
-```rust
-pub struct FindingStats {
-    /// FDR-adjusted p-value. `None` for non-statistical findings.
-    pub p_adjusted: Option<f64>,
-    /// Effect size metric name (e.g. `"cohens_d"`).
-    pub effect_metric: Option<String>,
-    /// Effect size value.
-    pub effect_value: Option<f64>,
-    /// 95% CI as `[low, high]`. `None` when not computable.
-    pub ci: Option<[f64; 2]>,
-    /// Sample sizes: `[n_a, n_b]`.
-    pub sample_sizes: Option<[usize; 2]>,
-}
-```
-
-```rust
-impl FindingStats {
-    pub fn none () -> Self;
-}
-```
-
-```rust
-pub struct EvalFinding {
-    /// Stable identifier for this finding within the eval run.
-    ///
-    /// Convention: `<BENCHMARK>-<CATEGORY>-<N>`, e.g. `LME-factual-001`.
-    pub finding_id: String,
-    /// The claim as a single declarative sentence.
-    ///
-    /// Write as: "{system} {verb} {metric} ({value}), {framing qualifier}."
-    /// Example: "Candidate recall@5 is 0.73 (↑0.08 vs baseline), exploratory."
-    pub claim: String,
-    /// Epistemological tier of the evidence.
-    pub evidence_level: EvidenceLevel,
-    /// The strongest objection a hostile reader would raise.
-    ///
-    /// Forces the producer to acknowledge scope limits before publication.
-    /// Every finding must include one even if only "insufficient sample for
-    /// inference" or "metric does not capture semantic correctness".
-    pub counter_argument: String,
-    /// Provenance: what produced this finding (e.g. `"benchmark/runner.rs"`).
-    pub source: String,
-    /// Statistical backing. Use [`FindingStats::none`] for non-statistical tiers.
-    pub stats: FindingStats,
-}
-```
-
-```rust
-impl EvalFinding {
-    pub fn from_comparison (
-        finding_id: impl Into<String>,
-        claim: impl Into<String>,
-        counter_argument: impl Into<String>,
-        source: impl Into<String>,
-        report: &super::ComparisonReport,
-    ) -> Self;
-}
-```
-
-```rust
-pub struct ConfidenceSummary {
-    /// Count of `Statistical` findings.
-    pub statistical: usize,
-    /// Count of `Robust` findings.
-    pub robust: usize,
-    /// Count of `Exploratory` findings.
-    pub exploratory: usize,
-    /// Count of `Interpretive` findings.
-    pub interpretive: usize,
-    /// Count of `Speculative` findings.
-    pub speculative: usize,
-}
-```
-
-```rust
-impl ConfidenceSummary {
-    pub fn from_findings (findings: &[EvalFinding]) -> Self;
-    pub fn total (&self) -> usize;
-}
-```
-
 ## `src/stats/report.rs`
 
 ```rust
@@ -1179,41 +1100,67 @@ pub fn comparison_report (
 ) -> Result<ComparisonReport, Error>
 ```
 
-## `src/triggers.rs`
+## `src/tags.rs`
 
 ```rust
-pub enum TriggerSchedule {
-    /// Run on every deployment.
-    OnDeploy,
-    /// Run daily.
-    Daily,
-    /// Run weekly.
-    Weekly,
-    /// Custom cron expression.
-    Cron(String),
+pub enum TagId {
+    /// A scenario category present in the run.
+    Category {
+        /// The category name (e.g. "health", "session").
+        name: String,
+    },
+    /// An outcome class present among the results.
+    Outcome(OutcomeTag),
+    /// The run contains at least one scenario requiring authentication.
+    RequiresAuth,
+    /// The run contains at least one scenario requiring a nous agent.
+    RequiresNous,
+    /// The run contains at least one scenario with validation criteria.
+    HasCriteria,
+    /// Wall-clock duration band for the entire run.
+    DurationBand(DurationBand),
+    /// Number-of-scenarios band for the run.
+    SizeBand(SizeBand),
 }
 ```
 
 ```rust
-pub struct EvalTrigger {
-    /// Scenario ID pattern to match (substring filter).
-    pub scenario_pattern: String,
-    /// When to run this evaluation.
-    pub schedule: TriggerSchedule,
-    /// Whether this trigger is active.
-    pub enabled: bool,
+pub enum OutcomeTag {
+    /// At least one scenario passed.
+    Passed,
+    /// At least one scenario failed.
+    Failed,
+    /// At least one scenario was skipped.
+    Skipped,
 }
 ```
 
 ```rust
-pub struct TriggerConfig {
-    /// List of evaluation triggers.
-    pub triggers: Vec<EvalTrigger>,
+pub enum DurationBand {
+    /// Under 1 second.
+    Low,
+    /// 1 second to 1 minute.
+    Medium,
+    /// Over 1 minute.
+    High,
 }
 ```
 
 ```rust
-impl TriggerConfig {
-    pub fn default_config () -> Self;
+pub enum SizeBand {
+    /// No scenarios in the run.
+    Empty,
+    /// A single scenario.
+    Single,
+    /// 2–5 scenarios.
+    Small,
+    /// 6–20 scenarios.
+    Medium,
+    /// More than 20 scenarios.
+    Large,
 }
+```
+
+```rust
+pub fn tag_eval_result (report: &RunReport) -> Vec<TagId>
 ```

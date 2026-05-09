@@ -19,7 +19,7 @@ pub enum OdtError {
 ```
 
 > Renders a [`Document`] to an ODT byte vector.
-> 
+>
 > The output is a self-contained `OpenDocument` Text file (ODF 1.2) that can be
 > opened in `LibreOffice`, Apache `OpenOffice`, or any conformant editor.
 ```rust
@@ -61,7 +61,7 @@ pub enum PdfError {
 ```
 
 > Renders a [`Document`] to a PDF byte vector using the `krilla` crate.
-> 
+>
 > Requires at least one OpenType/TrueType font to be available at the paths
 > checked by [`PdfRenderer::font_data`]. On Fedora the `liberation-sans-fonts`
 > or `google-noto-sans-fonts` package satisfies this requirement.

@@ -62,6 +62,11 @@ Embedded Datalog engine with HNSW vector search, full-text search, and graph alg
 - **Internal engine modules carry per-site lint suppressions with documented reasons.
 - **Transaction model**: `multi_transaction()` spawns on rayon, communicates via crossbeam channels.
 
+## Recent substrate notes
+
+- Eval-facing recall scenarios are decoupled from engine internals; keep benchmark and trigger config types at the boundary.
+- `question_timeout`, ISO-8601 helpers, and `TriggerConfig` support scenario truth without embedding test policy in the engine.
+
 ## Common tasks
 
 | Task | Where |

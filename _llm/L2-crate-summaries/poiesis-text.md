@@ -1,20 +1,27 @@
 # poiesis-text
 
-**Purpose:** PDF and ODT rendering backends for the poiesis document family. PDF uses `krilla` (A4 layout, system font); ODT is a clean-room ZIP/XML implementation.
+**Purpose:** PDF and ODT document rendering backends for poiesis.
 
 ## Key types
 
 | Type | Purpose |
 |------|---------|
-| `PdfRenderer` | PDF backend: A4 layout, line wrapping, system font loading via `krilla` |
-| `OdtRenderer` | ODT backend: ZIP/XML clean-room implementation |
+| `OdtError` | Current public type or boundary; see L3/source for exact fields |
+| `OdtRenderer` | Current public type or boundary; see L3/source for exact fields |
+| `new` | Current public type or boundary; see L3/source for exact fields |
+| `PdfError` | Current public type or boundary; see L3/source for exact fields |
+| `PdfRenderer` | Current public type or boundary; see L3/source for exact fields |
 
 ## Public API surface
 
-- `poiesis_text::PdfRenderer` - implements `Renderer`, produces PDF bytes (requires `pdf` feature, default on)
-- `poiesis_text::OdtRenderer` - implements `Renderer`, produces ODT bytes (requires `odt` feature, default on)
+- `poiesis-text::odt` - public items from `src/odt.rs`
+- `poiesis-text::pdf` - public items from `src/pdf.rs`
 
 ## When to look here
 
-- When modifying PDF layout behavior (font selection, margins, line wrapping)
-- When fixing or extending ODT XML output
+- When work touches `crates/poiesis/text` or downstream imports from `poiesis-text`.
+- For exact signatures, load `_llm/L3-api-index/poiesis-text.md` if present, then source.
+
+## Recent changes
+
+PDF/ODT drift fixes are reflected in the refreshed API surface.

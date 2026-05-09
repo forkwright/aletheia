@@ -1,6 +1,6 @@
 # External MCP Servers
 
-Operator-side MCP servers that extend an agent's capabilities without modifying the aletheia binary. Aletheia is a 23-crate, ~348K LOC Rust workspace. Coding agents (Claude Code, Cursor, etc.) that only have grep and file reads burn tokens re-discovering structure that a Language Server could answer in one request. The servers below close that gap.
+Operator-side MCP servers that extend an agent's capabilities without modifying the aletheia binary. Aletheia is a 44-crate Rust workspace plus the excluded desktop shell. Coding agents (Claude Code, Cursor, etc.) that only have grep and file reads burn tokens re-discovering structure that a Language Server could answer in one request. The servers below close that gap.
 
 These servers run as **operator-side tooling**, not as part of the aletheia binary. They are registered in the agent's client config (e.g. `~/.claude.json`, `.mcp.json`, or Cursor's `mcp.json`). No aletheia crate depends on them, and they are not wired into the `diaporeia` tool bus. See [Why external, not vendored](#why-external-not-vendored) below.
 
@@ -14,7 +14,7 @@ These servers run as **operator-side tooling**, not as part of the aletheia bina
 
 [Serena](https://github.com/oraios/serena) wraps `rust-analyzer` (and 40+ other language servers) as MCP tools. For aletheia, this means an agent can ask:
 
-- **`find_symbol`** - locate a symbol by name/path across all 23 crates.
+- **`find_symbol`** - locate a symbol by name/path across the workspace crates.
 - **`find_referencing_symbols`** - find every caller of a trait/fn/type across the workspace.
 - **`get_symbols_overview`** - get the top-level symbols defined in a file without reading it.
 - **`rename_symbol`** - workspace-wide safe rename via LSP refactoring.

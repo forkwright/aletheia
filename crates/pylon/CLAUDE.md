@@ -52,6 +52,12 @@ All handlers: `async fn(State(Arc<AppState>), Claims, ...) -> Result<impl IntoRe
 - **OpenAPI**: utoipa derive on handlers, served at `GET /api/docs/openapi.json`.
 - **Config hot-reload**: SIGHUP handler re-reads config, validates, swaps via watch channel.
 
+## Recent substrate notes
+
+- Admin-only operations must flow through `symbolon::AuthFacade` verification and revocation, not ad-hoc token checks.
+- OpenAPI, SSE, handler, and meta-insights surfaces were reconciled; keep handler behavior and generated docs in lockstep.
+- Gateway errors map `nous` stage timeouts and ask timeouts into service-unavailable responses without leaking internals.
+
 ## Common tasks
 
 | Task | Where |

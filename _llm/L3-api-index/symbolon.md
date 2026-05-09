@@ -5,6 +5,69 @@ Crate path: `crates/symbolon`
 Public API signatures extracted from source. Each signature is preceded by its doc comment.
 For implementation context, read the source directly (`L4`).
 
+## `src/auth.rs`
+
+```rust
+pub struct AuthConfig {
+    /// JWT configuration.
+    pub jwt: JwtConfig,
+}
+```
+
+> The main auth service: wraps JWT, API keys, and password auth.
+```rust
+pub struct AuthService {
+    jwt: JwtManager,
+    store: AuthStore,
+}
+```
+
+> Canonical production auth facade.
+```rust
+pub type AuthFacade = AuthService;
+```
+
+```rust
+pub struct AdminClaims {
+    /// Subject identifier for the authenticated administrator.
+    pub sub: String,
+    /// Authorization role. This is always [`Role::Admin`].
+    pub role: Role,
+    /// Optional nous scope carried by the token.
+    pub nous_id: Option<String>,
+}
+```
+
+```rust
+impl AuthService {
+    pub fn new (config: AuthConfig, db_path: &Path) -> Result<Self>;
+    pub fn in_memory (config: AuthConfig) -> Result<Self>;
+    pub fn register_user (
+        &self,
+        username: &str,
+        password: &SecretString,
+        role: Role,
+    ) -> Result<crate::types::User>;
+    pub fn login (&self, username: &str, password: &SecretString) -> Result<TokenPair>;
+    pub fn authenticate_api_key (&self, raw_key: &str) -> Result<Claims>;
+    pub fn validate_token (&self, token: &str) -> Result<Claims>;
+    pub fn verify_admin (&self, token: &str) -> Result<AdminClaims>;
+    pub fn revoke (&self, token: &str) -> Result<()>;
+    pub fn refresh_token (&self, refresh_token: &str) -> Result<TokenPair>;
+    pub fn logout (&self, token: &str) -> Result<()>;
+    pub fn generate_api_key (
+        &self,
+        prefix: &str,
+        role: Role,
+        nous_id: Option<&str>,
+        expires_in: Option<Duration>,
+    ) -> Result<(String, ApiKeyRecord)>;
+    pub fn revoke_api_key (&self, key_id: &str) -> Result<()>;
+    pub fn list_api_keys (&self) -> Result<Vec<ApiKeyRecord>>;
+    pub fn authorize (&self, claims: &Claims, action: &Action) -> Result<()>;
+}
+```
+
 ## `src/circuit_breaker.rs`
 
 ```rust
@@ -157,6 +220,14 @@ pub async fn device_code_login_with_callback <F> (
     F: FnOnce(&str, &str, Option<&str>),
 ```
 
+```rust
+pub async fn device_code_login_with_action <F> (
+    provider: &DeviceOAuthProvider,
+    mut action_callback: F,
+) -> Result<CredentialFile> where
+    F: FnMut(OAuthRequiredAction),
+```
+
 ## `src/credential/file_ops.rs`
 
 ```rust
@@ -195,7 +266,7 @@ impl CredentialFile {
 
 > Reads credentials from the OS keyring (GNOME Keyring, macOS Keychain,
 > Windows Credential Manager).
-> 
+>
 > Falls through silently when the keyring is unavailable (headless server,
 > no D-Bus session, locked keychain) so downstream providers get a chance.
 ```rust
@@ -210,6 +281,41 @@ impl KeyringCredentialProvider {
     pub fn new () -> Self;
     pub fn store (&self, token: &str) -> Result<(), keyring::Error>;
     pub fn delete (&self) -> Result<(), keyring::Error>;
+}
+```
+
+## `src/credential/mod.rs`
+
+```rust
+pub enum OAuthRequiredAction {
+    /// Open or display a browser authorization URL.
+    BrowserOpenUrl {
+        /// URL the operator must visit.
+        url: String,
+    },
+    /// Show a device authorization code and verification URI.
+    DeviceCode {
+        /// Verification URI the operator must visit.
+        verification_uri: String,
+        /// User code the operator must enter.
+        user_code: String,
+        /// Optional direct URI with the user code pre-filled.
+        verification_uri_complete: Option<String>,
+        /// Seconds until the device authorization expires.
+        expires_in_secs: u64,
+    },
+    /// Wait for the OAuth callback on the local loopback listener.
+    WaitingForCallback {
+        /// Timeout in seconds for the callback wait.
+        timeout_secs: u64,
+    },
+    /// Wait for the provider to complete device authorization.
+    WaitingForDeviceAuthorization {
+        /// Seconds until the device authorization expires.
+        expires_in_secs: u64,
+    },
+    /// The OAuth flow completed and credentials were received.
+    AuthorizationSucceeded,
 }
 ```
 
@@ -392,6 +498,14 @@ pub async fn pkce_login (provider: &OAuthProvider) -> Result<CredentialFile>
 ```
 
 ```rust
+pub async fn pkce_login_with_action <F> (
+    provider: &OAuthProvider,
+    mut action_callback: F,
+) -> Result<CredentialFile> where
+    F: FnMut(OAuthRequiredAction),
+```
+
+```rust
 pub async fn pkce_login_and_save (
     provider: &OAuthProvider,
     path: &std::path::Path,
@@ -401,7 +515,7 @@ pub async fn pkce_login_and_save (
 ## `src/credential/providers.rs`
 
 > Reads a credential from an environment variable.
-> 
+>
 > Automatically detects OAuth tokens by the `sk-ant-oat` prefix and
 > returns [`CredentialSource::OAuth`] so callers use `Bearer` auth.
 ```rust
@@ -451,12 +565,12 @@ impl CredentialChain {
 ## `src/credential/refresh.rs`
 
 > Wraps a credential file with background OAuth token refresh.
-> 
+>
 > Cleanup is registered at construction time via [`CleanupRegistry`](koina::cleanup::CleanupRegistry): the
 > background task is cancelled and aborted when the provider is dropped,
 > regardless of whether the drop occurs during normal execution, early
 > error return, or panic unwind.
-> 
+>
 > // WHY: `RwLock` allows concurrent readers (`get_credential` calls) with a
 > // single writer (the background refresh task). This avoids blocking
 > // LLM requests during token refresh, which may take 100-500ms.
@@ -492,7 +606,7 @@ pub fn claude_code_provider (path: &Path) -> Option<Box<dyn CredentialProvider>>
 ```
 
 > Build a credential provider with a custom circuit breaker configuration.
-> 
+>
 > See [`claude_code_provider`] for behavior details.
 ```rust
 pub fn claude_code_provider_with_config (
@@ -621,7 +735,7 @@ pub enum Error {
 ## `src/jwt.rs`
 
 > Default clock skew leeway applied to JWT expiration checks.
-> 
+>
 > WHY: clock drift between the issuer and validator (or NTP jumps on the
 > validator) can immediately invalidate freshly issued tokens. 30s is
 > small enough that truly expired tokens are rejected in practice while
@@ -631,7 +745,6 @@ pub enum Error {
 pub const DEFAULT_CLOCK_SKEW_LEEWAY_SECS: u64 = 30;
 ```
 
-> Configuration for JWT token management.
 ```rust
 pub struct JwtConfig {
     /// HMAC-SHA256 signing key.
@@ -726,5 +839,76 @@ pub struct Claims {
     pub jti: String,
     /// Access or refresh.
     pub kind: TokenKind,
+}
+```
+
+> An access + refresh token pair returned from login or refresh.
+```rust
+pub struct TokenPair {
+    /// Access token used for authenticated API requests.
+    pub access_token: SecretString,
+    /// Refresh token used to obtain a new token pair.
+    pub refresh_token: SecretString,
+}
+```
+
+```rust
+pub enum Action {
+    /// Read a session belonging to a specific nous.
+    ReadSession {
+        /// Nous identifier whose session is being read.
+        nous_id: String,
+    },
+    /// Write to a session belonging to a specific nous.
+    WriteSession {
+        /// Nous identifier whose session is being written.
+        nous_id: String,
+    },
+    /// Manage agent configurations.
+    ManageAgents,
+    /// Manage user accounts.
+    ManageUsers,
+    /// Read the dashboard (metrics, status).
+    ReadDashboard,
+}
+```
+
+```rust
+pub struct User {
+    /// Stable user identifier.
+    pub id: String,
+    /// Login username.
+    pub username: String,
+    /// Password hash encoded by the configured password hasher.
+    pub password_hash: String,
+    /// User authorization role.
+    pub role: Role,
+    /// Creation timestamp in RFC3339-like UTC format.
+    pub created_at: String,
+    /// Last update timestamp in RFC3339-like UTC format.
+    pub updated_at: String,
+}
+```
+
+```rust
+pub struct ApiKeyRecord {
+    /// Stable key identifier.
+    pub id: String,
+    /// Public key prefix.
+    pub prefix: String,
+    /// Secret hash for validation.
+    pub key_hash: String,
+    /// Role granted by the key.
+    pub role: Role,
+    /// Optional nous scope granted by the key.
+    pub nous_id: Option<String>,
+    /// Creation timestamp in RFC3339-like UTC format.
+    pub created_at: String,
+    /// Optional expiration timestamp in RFC3339-like UTC format.
+    pub expires_at: Option<String>,
+    /// Optional last-used timestamp in RFC3339-like UTC format.
+    pub last_used_at: Option<String>,
+    /// Optional revocation timestamp in RFC3339-like UTC format.
+    pub revoked_at: Option<String>,
 }
 ```

@@ -1,24 +1,30 @@
 # organon
 
-**Purpose:** Tool registry, 49 built-in tool executors, and Landlock/seccomp sandbox for agent tool execution.
+**Purpose:** Tool registry, definitions, and built-in tool executors.
 
 ## Key types
 
 | Type | Purpose |
 |------|---------|
-| `ToolExecutor` | Trait: `async execute(input, ctx) -> Result<ToolResult>` |
-| `ToolRegistry` | Name-based dispatch with metrics and tracing |
-| `ToolDef` | Tool metadata: name, description, JSON schema, category |
-| `ToolContext` | Per-execution context: nous_id, session_id, workspace, services |
-| `SandboxConfig` | Landlock + seccomp + egress policy |
+| `ToolRegistry` | Current public type or boundary; see L3/source for exact fields |
+| `ToolDef` | Current public type or boundary; see L3/source for exact fields |
+| `ToolTag` | Current public type or boundary; see L3/source for exact fields |
+| `KnowledgeSearchService` | Current public type or boundary; see L3/source for exact fields |
+| `WorkingCheckpoint` | Current public type or boundary; see L3/source for exact fields |
 
 ## Public API surface
 
-- `organon::registry` - `ToolExecutor` trait, `ToolRegistry`; call `register_all()` to load builtins
-- `organon::types` - `ToolDef`, `ToolInput`, `ToolResult`, `ToolContext`, `ToolServices`
-- `organon::sandbox` - `SandboxConfig` for process-level isolation
+- `organon::builtins/computer_use/executor` - public items from `src/builtins/computer_use/executor.rs`
+- `organon::builtins/energeia` - public items from `src/builtins/energeia/mod.rs`
+- `organon::builtins/energeia/shared` - public items from `src/builtins/energeia/shared.rs`
+- `organon::builtins` - public items from `src/builtins/mod.rs`
+- `organon::builtins/skill_read` - public items from `src/builtins/skill_read.rs`
 
 ## When to look here
 
-- When adding a new built-in tool (implement `ToolExecutor`, register in `register_all()`)
-- When configuring or extending sandbox policy for tool execution
+- When work touches `crates/organon` or downstream imports from `organon`.
+- For exact signatures, load `_llm/L3-api-index/organon.md` if present, then source.
+
+## Recent changes
+
+Tool definitions now carry typed tags, registry tag lookup is supported, file-ref interpolation is available, and working_checkpoint is registered.

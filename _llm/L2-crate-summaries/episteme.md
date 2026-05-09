@@ -1,24 +1,31 @@
 # episteme
 
-**Purpose:** Knowledge pipeline: LLM-driven extraction, 6-factor recall scoring, conflict detection, consolidation, and embedding management.
+**Purpose:** Knowledge pipeline for Aletheia.
 
 ## Key types
 
 | Type | Purpose |
 |------|---------|
-| `ExtractionEngine` | LLM-driven entity/relationship/fact extraction from conversations |
-| `RecallEngine` | 6-factor scoring for knowledge retrieval (recency, relevance, confidence, access, tier, graph) |
-| `EmbeddingProvider` | Trait: `embed(text) -> Vec<f32>` for vector embeddings |
-| `ConflictClassification` | Contradiction, Supersession, Elaboration, Independent |
-| `ConsolidationProvider` | Trait for LLM-driven fact consolidation decisions |
+| `KnowledgeStore` | Current public type or boundary; see L3/source for exact fields |
+| `TraceIngestLayer` | Current public type or boundary; see L3/source for exact fields |
+| `SideRanker` | Current public type or boundary; see L3/source for exact fields |
+| `RecallEngine` | Current public type or boundary; see L3/source for exact fields |
+| `QueryRewriteConfig` | Current public type or boundary; see L3/source for exact fields |
+| `Visibility` | Current public type or boundary; see L3/source for exact fields |
 
 ## Public API surface
 
-- `episteme::extract` - `ExtractionEngine`, `ExtractionProvider` trait
-- `episteme::recall` - `RecallEngine`, `RecallWeights` for configurable scoring
-- `episteme::embedding` - `EmbeddingProvider` trait, `CandelProvider`, `MockEmbeddingProvider`
+- `episteme::admission` - public items from `src/admission.rs`
+- `episteme::bookkeeping/gliner` - public items from `src/bookkeeping/gliner.rs`
+- `episteme::bookkeeping` - public items from `src/bookkeeping/mod.rs`
+- `episteme::causal` - public items from `src/causal.rs`
+- `episteme::conflict` - public items from `src/conflict.rs`
 
 ## When to look here
 
-- When adding or modifying knowledge extraction, recall scoring, or embedding logic
-- When implementing a new `EmbeddingProvider` (e.g., a different embedding model)
+- When work touches `crates/episteme` or downstream imports from `episteme`.
+- For exact signatures, load `_llm/L3-api-index/episteme.md` if present, then source.
+
+## Recent changes
+
+TraceIngestLayer, SideRanker, query rewrite, tiered search, and Visibility schema v11 are wired into the knowledge pipeline.

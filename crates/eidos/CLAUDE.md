@@ -38,6 +38,12 @@ Shared knowledge types for the memory layer. 1.6K lines. Zero internal dependenc
 - **Stability model**: `FactType::base_stability_hours()` and `EpistemicTier::stability_multiplier()` feed FSRS decay scoring.
 - **Far-future sentinel**: `far_future()` returns a fixed timestamp (9999-12-31) for open-ended validity.
 
+## Recent substrate notes
+
+- Provenance and citation shapes are unified through `meta::Provenance` projections.
+- `Fact` carries `visibility` and optional `scope`; downstream Datalog, recall, API, and MCP code must preserve them.
+- `MemoryScope` and the Reflected epistemic tier are part of the public knowledge contract.
+
 ## Common tasks
 
 | Task | Where |

@@ -21,7 +21,7 @@
 | Task runner | `runner.rs` | Cron/interval scheduling with failure tracking and graceful shutdown |
 | Scheduling | `schedule.rs` | Cron expressions (jiff-native parser), intervals, one-shots, jitter |
 | Prosoche | `prosoche.rs` | Periodic attention checks - agent surveys environment | 
-| Maintenance | `maintenance/` | Trace rotation, drift detection, DB monitoring, retention |
+| Maintenance | `maintenance/` | Trace rotation, drift detection, DB monitoring, retention, knowledge maintenance, fact-extraction persistence |
 | Coordination | `coordination.rs` | Child agent spawning with concurrency limits |
 | Triggers | `triggers.rs` | Event-driven activation: file watchers, webhooks |
 | Watchdog | `watchdog.rs` | Process heartbeat monitoring with auto-recovery |
@@ -101,6 +101,7 @@ Active windows restrict execution to time ranges (e.g., `active_window: Some((8,
 | GraphRecompute | Cron | Recompute PageRank, centrality |
 | EmbeddingRefresh | Cron | Re-embed stale entities |
 | KnowledgeGc | Cron | Orphan removal, expired edge pruning |
+| OpsFactExtraction | Cron/startup | Persist operational fact-extraction results for later recall/audit |
 | IndexMaintenance | Cron | Rebuild/optimize graph indexes |
 | GraphHealthCheck | Cron | Diagnostic health check |
 | SkillDecay | Cron | Retire stale skills |
@@ -119,6 +120,6 @@ Active windows restrict execution to time ranges (e.g., `active_window: Some((8,
 
 ## Status
 
-Oikonomos is implemented. KAIROS mode is scaffolded - the subsystems exist and are tested (185 tests), but full autonomous operation (prosoche → decision → action loop) is not yet wired end-to-end. Integration with dianoia for cross-project attention is planned for Phase 05e.
+Oikonomos is implemented. KAIROS mode is scaffolded - the subsystems exist and are tested, and maintenance now includes persistent fact extraction plus drift/knowledge maintenance wiring. The full autonomous prosoche-to-decision-to-action loop remains the boundary for KAIROS completion. Integration with dianoia for cross-project attention is planned for Phase 05e.
 
 See [PROSOCHE.md](PROSOCHE.md) for the attention subsystem detail.

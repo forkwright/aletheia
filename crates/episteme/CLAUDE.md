@@ -13,7 +13,7 @@ Knowledge pipeline: extraction, recall, conflict detection, consolidation, embed
 1. `src/lib.rs`: Module structure and re-exports from eidos/graphe
 2. `src/extract/mod.rs`: ExtractionEngine, ExtractionProvider trait, extracted types
 3. `src/recall.rs`: RecallEngine 6-factor scoring (recency, relevance, confidence, access, tier, graph)
-4. `src/knowledge_store/mod.rs`: CozoDB-backed knowledge store (Datalog schema, HNSW index)
+4. `src/knowledge_store/mod.rs`: Knowledge store facade (Datalog schema, HNSW index)
 5. `src/conflict.rs`: Conflict detection pipeline for fact insertion
 6. `src/embedding.rs`: EmbeddingProvider trait, CandelProvider, MockEmbeddingProvider
 
@@ -37,7 +37,7 @@ Knowledge pipeline: extraction, recall, conflict detection, consolidation, embed
 | Feature | Default | Purpose |
 |---------|---------|---------|
 | `graph-algo` | yes | Graph algorithms for recall scoring |
-| `mneme-engine` | no | CozoDB knowledge store + typed query builder |
+| `mneme-engine` | no | Embedded Datalog knowledge store + typed query builder |
 | `embed-candle` | no | Local ML embeddings via candle |
 | `hnsw_rs` | no | Alternative HNSW vector index backend |
 | `test-support` | no | MockEmbeddingProvider for tests |
@@ -49,6 +49,12 @@ Knowledge pipeline: extraction, recall, conflict detection, consolidation, embed
 - **Extraction refinement**: turn classification, correction detection, quality filters, and fact type classification in `extract/refinement`.
 - **Serendipity engine**: cross-domain discovery and surprise scoring in `serendipity/mod.rs`.
 - **Ecological succession**: domain volatility tracking and adaptive decay rates in `succession.rs`.
+
+## Recent substrate notes
+
+- Trace ingestion is exposed through `TraceIngestLayer` and the OPS schema helpers.
+- Side-query ranking, query rewrite, tiered search, and schema v11 visibility filtering are current recall contracts.
+- Preserve `Visibility` and `MemoryScope` through ingestion, recall scoring, and Datalog field definitions.
 
 ## Common tasks
 

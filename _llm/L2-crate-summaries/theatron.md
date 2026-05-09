@@ -1,21 +1,30 @@
 # theatron
 
-**Purpose:** Presentation umbrella crate re-exporting `skene` types for UI consumers. Groups skene (shared), koilon (TUI), and proskenion (desktop) under one import surface.
+**Purpose:** Thin facade re-exporting skene types for external consumers.
 
 ## Key types
 
 | Type | Purpose |
 |------|---------|
-| `ApiClient` | Re-exported from skene: HTTP client for gateway REST API |
-| `StreamEvent` | Re-exported from skene: per-turn streaming events |
-| `NousId` / `SessionId` | Re-exported from skene: domain identifier newtypes |
+| `DashboardState` | Current public type or boundary; see L3/source for exact fields |
+| `ConnectionState` | Current public type or boundary; see L3/source for exact fields |
+| `RenderState` | Current public type or boundary; see L3/source for exact fields |
+| `ViewportState` | Current public type or boundary; see L3/source for exact fields |
+| `InteractionState` | Current public type or boundary; see L3/source for exact fields |
 
 ## Public API surface
 
-- `theatron::*` - re-exports skene's public types; no additional logic
-- Sub-crates accessed directly: `aletheia-skene`, `aletheia-koilon`, `aletheia-proskenion`
+- `theatron::koilon/app` - public items from `koilon/src/app/mod.rs`
+- `theatron::koilon/command` - public items from `koilon/src/command/mod.rs`
+- `theatron::koilon/error` - public items from `koilon/src/error.rs`
+- `theatron::koilon/events` - public items from `koilon/src/events.rs`
+- `theatron::koilon/lib` - public items from `koilon/src/lib.rs`
 
 ## When to look here
 
-- When you need a single import point for shared UI types without depending on skene directly
-- For understanding the UI crate dependency structure (skene ← koilon, skene ← proskenion)
+- When work touches `crates/theatron` or downstream imports from `theatron`.
+- For exact signatures, load `_llm/L3-api-index/theatron.md` if present, then source.
+
+## Recent changes
+
+L3 was refreshed for the presentation facade after shared UI type movement.

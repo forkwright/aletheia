@@ -1,24 +1,30 @@
 # melete
 
-**Purpose:** Context distillation engine: compresses conversation history via LLM-driven summarization with token budgeting and verbatim tail preservation.
+**Purpose:** Context distillation engine - compresses conversation history.
 
 ## Key types
 
 | Type | Purpose |
 |------|---------|
-| `DistillEngine` | Orchestrates LLM summarization with token budget and tail preservation |
-| `DistillConfig` | Knobs: token budget, section list, similarity threshold, model |
-| `DistillResult` | Output: structured summary, memory flush, contradiction log, pruning stats |
-| `MemoryFlush` | Decisions, corrections, facts to persist before distillation boundaries |
-| `ContradictionLog` | Cross-chunk contradictions detected during distillation |
+| `Contradiction` | Current public type or boundary; see L3/source for exact fields |
+| `ResolutionStrategy` | Current public type or boundary; see L3/source for exact fields |
+| `ContradictionLog` | Current public type or boundary; see L3/source for exact fields |
+| `empty` | Current public type or boundary; see L3/source for exact fields |
+| `is_empty` | Current public type or boundary; see L3/source for exact fields |
 
 ## Public API surface
 
-- `melete::distill` - `DistillEngine`, `DistillConfig`, `DistillResult`
-- `melete::flush` - `MemoryFlush`, `FlushItem` for pre-distillation persistence
-- `melete::similarity` - Jaccard-based near-duplicate pruning
+- `melete::contradiction` - public items from `src/contradiction.rs`
+- `melete::distill` - public items from `src/distill.rs`
+- `melete::dream` - public items from `src/dream/mod.rs`
+- `melete::error` - public items from `src/error.rs`
+- `melete::flush` - public items from `src/flush.rs`
 
 ## When to look here
 
-- When configuring or extending the context compression pipeline
-- When adding new distillation sections or adjusting flush behavior
+- When work touches `crates/melete` or downstream imports from `melete`.
+- For exact signatures, load `_llm/L3-api-index/melete.md` if present, then source.
+
+## Recent changes
+
+L3 was refreshed for context distillation after the substrate-wide API update.

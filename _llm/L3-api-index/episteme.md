@@ -70,7 +70,7 @@ impl AdmissionScores {
 ```
 
 > Gate that decides whether a fact should enter the knowledge graph.
-> 
+>
 > Implementations range from [`DefaultAdmissionPolicy`] (admit all  -  current
 > behavior) to [`StructuredAdmissionPolicy`] (five-factor A-MAC decision).
 ```rust
@@ -104,6 +104,71 @@ pub struct StructuredAdmissionPolicy {
 impl StructuredAdmissionPolicy {
     pub fn new (config: StructuredAdmissionConfig) -> Self;
     pub fn score (&self, fact: &Fact) -> AdmissionScores;
+}
+```
+
+## `src/bookkeeping/gliner.rs`
+
+```rust
+pub struct GlinerProviderConfig {
+    /// Directory containing `tokenizer.json` and `onnx/model_int8.onnx`.
+    pub model_dir: PathBuf,
+    /// Minimum sigmoid score for an entity span.
+    pub threshold: f32,
+}
+```
+
+> GLiNER-backed extraction provider with LLM fallback.
+>
+> The constructor loads the tokenizer and ONNX graph up front. Entity spans
+> are decoded from `GLiNER` logits; relationships and subject-predicate-object
+> facts remain on the LLM fallback because this model artifact is NER-only.
+```rust
+pub struct GlinerExtractionProvider<'a> {
+    config: GlinerProviderConfig,
+    tokenizer: Tokenizer,
+    session: Mutex<Session>,
+    fallback: LlmBookkeepingProvider<'a>,
+}
+```
+
+```rust
+impl <'a> GlinerExtractionProvider<'a> {
+    pub fn new (
+        engine: &'a ExtractionEngine,
+        provider: &'a dyn ExtractionProvider,
+    ) -> BookkeepingResult<Self>;
+    pub fn with_model_dir (
+        engine: &'a ExtractionEngine,
+        provider: &'a dyn ExtractionProvider,
+        model_dir: impl Into<PathBuf>,
+    ) -> BookkeepingResult<Self>;
+    pub fn with_config (
+        engine: &'a ExtractionEngine,
+        provider: &'a dyn ExtractionProvider,
+        config: GlinerProviderConfig,
+    ) -> BookkeepingResult<Self>;
+    pub async fn extract_entities (&self, text: &str) -> BookkeepingResult<Vec<ExtractedEntity>>;
+    pub async fn smoke_infer (&self) -> BookkeepingResult<()>;
+}
+```
+
+## `src/bookkeeping/mod.rs`
+
+> LLM-backed bookkeeping provider.
+>
+> This is the compatibility implementation for the current extraction path:
+> it delegates to the existing extraction prompt, LLM provider, and parser.
+```rust
+pub struct LlmBookkeepingProvider<'a> {
+    engine: &'a ExtractionEngine,
+    provider: &'a dyn ExtractionProvider,
+}
+```
+
+```rust
+impl <'a> LlmBookkeepingProvider<'a> {
+    pub fn new (engine: &'a ExtractionEngine, provider: &'a dyn ExtractionProvider) -> Self;
 }
 ```
 
@@ -470,7 +535,7 @@ pub struct ConsolidationAuditRecord {
 ```
 
 > Minimal LLM interface for fact consolidation.
-> 
+>
 > Keeps mneme independent of hermeneus. The nous layer bridges this trait
 > to the configured LLM provider.
 ```rust
@@ -488,11 +553,11 @@ pub fn consolidation_user_message (facts: &[(FactId, String, f64, String)]) -> S
 ```
 
 > Parse the LLM response into consolidated fact entries.
-> 
+>
 > Expects a JSON array of objects with at least a `content` field.
-> 
+>
 > # Errors
-> 
+>
 > Returns an error if the response cannot be parsed as valid JSON.
 ```rust
 pub fn parse_consolidation_response (
@@ -526,10 +591,10 @@ pub struct LlmRelationshipEntry {
 ```
 
 > Datalog query: find entities with more than N active facts older than the age gate.
-> 
+>
 > Parameters: `$min_count` (Int), `$cutoff` (String: ISO 8601 timestamp),
 >             `$nous_id` (String).
-> 
+>
 > Returns: `[entity_id, fact_count]` sorted by `fact_count` descending.
 ```rust
 pub const ENTITY_OVERFLOW_CANDIDATES: &str = r"
@@ -552,10 +617,10 @@ candidates[entity_id, count(fact_id)] :=
 ```
 
 > Datalog query: find community clusters with more than N active facts older than the age gate.
-> 
+>
 > Parameters: `$min_count` (Int), `$cutoff` (String: ISO 8601 timestamp),
 >             `$nous_id` (String).
-> 
+>
 > Returns: `[cluster_id, fact_count]` sorted by `fact_count` descending.
 ```rust
 pub const COMMUNITY_OVERFLOW_CANDIDATES: &str = r"
@@ -579,7 +644,7 @@ candidates[cluster_id, count(fact_id)] :=
 ```
 
 > Datalog query: gather eligible fact IDs for an entity.
-> 
+>
 > Parameters: `$entity_id` (String), `$cutoff` (String), `$nous_id` (String).
 > Returns: `[fact_id, content, confidence, recorded_at]`.
 ```rust
@@ -599,7 +664,7 @@ pub const ENTITY_FACTS_FOR_CONSOLIDATION: &str = r"
 ```
 
 > Datalog query: gather eligible fact IDs for a community cluster.
-> 
+>
 > Parameters: `$cluster_id` (Int), `$cutoff` (String), `$nous_id` (String).
 > Returns: `[fact_id, content, confidence, recorded_at]`.
 ```rust
@@ -634,7 +699,7 @@ pub const CONSOLIDATION_AUDIT_DDL: &str = r":create consolidation_audit {
 ```
 
 > Datalog DDL for the `fact_multiplicity` side-index (#3634).
-> 
+>
 > Side-indexed rather than folded into the `facts` relation so that the
 > fact schema stays stable and legacy records without multiplicity
 > metadata remain valid. Consumers (recall, conflict resolution) look
@@ -653,28 +718,28 @@ pub const FACT_MULTIPLICITY_DDL: &str = r":create fact_multiplicity {
 ## `src/decay.rs`
 
 > Default reinforcement boost per explicit reinforcement event.
-> 
+>
 > Callers should prefer the value from `taxis::config::KnowledgeConfig::decay_reinforcement_boost`.
 ```rust
 pub const DEFAULT_REINFORCEMENT_BOOST: f64 = 0.02;
 ```
 
 > Default maximum cumulative reinforcement bonus (caps at 50 reinforcements).
-> 
+>
 > Callers should prefer the value from `taxis::config::KnowledgeConfig::decay_max_reinforcement_bonus`.
 ```rust
 pub const DEFAULT_MAX_REINFORCEMENT_BONUS: f64 = 1.0;
 ```
 
 > Default multiplier bonus per distinct agent that accessed a fact.
-> 
+>
 > Callers should prefer the value from `taxis::config::KnowledgeConfig::decay_cross_agent_bonus_per_agent`.
 ```rust
 pub const DEFAULT_CROSS_AGENT_BONUS_PER_AGENT: f64 = 0.15;
 ```
 
 > Default maximum cross-agent multiplier (caps at 5 distinct agents → 1.75×).
-> 
+>
 > Callers should prefer the value from `taxis::config::KnowledgeConfig::decay_max_cross_agent_multiplier`.
 ```rust
 pub const DEFAULT_MAX_CROSS_AGENT_MULTIPLIER: f64 = 1.75;
@@ -762,7 +827,7 @@ pub const DEFAULT_EMBED_THRESHOLD: f64 = 0.80;
 ## `src/derived_rules.rs`
 
 > All rule IDs emitted by the derived-rule engine.
-> 
+>
 > Used to filter and inspect `derived_facts` rows by provenance.
 ```rust
 pub const RULE_IDS: &[&str] = &[
@@ -770,6 +835,46 @@ pub const RULE_IDS: &[&str] = &[
     "causal:transitive_chain",
     "defeasible:default",
 ];
+```
+
+## `src/embedding/openai.rs`
+
+```rust
+pub struct OpenAiCompatConfig {
+    /// Base URL for the target endpoint — typically ends in `/v1`. Example:
+    /// `http://127.0.0.1:5005/v1` for a local llama.cpp server.
+    pub base_url: String,
+    /// Optional bearer token for authenticated endpoints. Loopback llama.cpp
+    /// accepts any value (or no auth at all); `OpenAI` requires a real key.
+    pub api_key: Option<koina::secret::SecretString>,
+    /// Model ID to request from the endpoint.
+    pub model: String,
+    /// Expected output dimension. Used by [`EmbeddingProvider::dimension`].
+    pub dimension: usize,
+}
+```
+
+> `OpenAI` `/v1/embeddings`-compatible embedding provider.
+>
+> Holds a dedicated Tokio runtime so the sync [`EmbeddingProvider`] trait can
+> drive async HTTP requests. In the Aletheia runtime this is invoked from
+> `tokio::task::spawn_blocking`, which is a safe context for
+> `Runtime::block_on`.
+```rust
+pub struct OpenAiEmbeddingProvider {
+    client: Client,
+    runtime: tokio::runtime::Runtime,
+    base_url: String,
+    api_key: Option<koina::secret::SecretString>,
+    model: String,
+    dimension: usize,
+}
+```
+
+```rust
+impl OpenAiEmbeddingProvider {
+    pub fn new (config: &OpenAiCompatConfig) -> EmbeddingResult<Self>;
+}
 ```
 
 ## `src/embedding.rs`
@@ -802,7 +907,7 @@ pub enum EmbeddingError {
 ```
 
 > Trait for text→vector embedding providers.
-> 
+>
 > Implementations must be `Send + Sync` for use across async boundaries.
 ```rust
 pub trait EmbeddingProvider : Send + Sync {
@@ -826,10 +931,10 @@ impl MockEmbeddingProvider {
 ```
 
 > Local embedding provider using candle (pure Rust).
-> 
+>
 > Downloads and caches models from `HuggingFace` Hub on first use.
 > Default model is `BAAI/bge-small-en-v1.5` (384 dimensions).
-> 
+>
 > Thread-safe via `RwLock`: multiple concurrent reads (embedding requests)
 > proceed in parallel. Write locks are only needed for model reload.
 ```rust
@@ -844,7 +949,7 @@ pub struct CandelProvider {
 
 ```rust
 pub struct EmbeddingConfig {
-    /// Provider type: `mock`, `candle`, `voyage`.
+    /// Provider type: `mock`, `candle`, `openai-compat`, `voyage`.
     pub provider: String,
     /// Model name (provider-specific).
     pub model: Option<String>,
@@ -852,6 +957,8 @@ pub struct EmbeddingConfig {
     pub dimension: Option<usize>,
     /// API key (for cloud providers).
     pub api_key: Option<koina::secret::SecretString>,
+    /// Base URL for OpenAI-compatible endpoints (e.g. `http://127.0.0.1:5005/v1`).
+    pub base_url: Option<String>,
 }
 ```
 
@@ -1202,12 +1309,12 @@ pub struct GradeInputs {
 ## `src/extract/engine.rs`
 
 > Drives the extraction pipeline: prompt building, LLM calling, response parsing.
-> 
+>
 > # Examples
-> 
+>
 > ```no_run
 > use episteme::extract::{ExtractionConfig, ExtractionEngine};
-> 
+>
 > let config = ExtractionConfig::default();
 > let engine = ExtractionEngine::new(config);
 > ```
@@ -1236,6 +1343,14 @@ impl ExtractionEngine {
         store: &crate::knowledge_store::KnowledgeStore,
         source: &str,
         nous_id: &str,
+    ) -> Result<PersistResult, ExtractionError>;
+    pub fn persist_with_scope (
+        &self,
+        extraction: &Extraction,
+        store: &crate::knowledge_store::KnowledgeStore,
+        source: &str,
+        nous_id: &str,
+        scope: Option<crate::knowledge::MemoryScope>,
     ) -> Result<PersistResult, ExtractionError>;
 }
 ```
@@ -1401,10 +1516,10 @@ pub fn extract_tags (text: &str) -> Vec<String>
 ## `src/extract/provider.rs`
 
 > Minimal LLM completion interface for extraction.
-> 
+>
 > Keeps mneme independent of hermeneus. The nous layer bridges this trait
 > to the full `LlmProvider` + `CompletionRequest` API.
-> 
+>
 > Uses a boxed future return type to remain dyn-compatible (object-safe).
 ```rust
 pub trait ExtractionProvider : Send + Sync {
@@ -1571,19 +1686,19 @@ pub struct ExtractionResult {
 ```
 
 > Extract lessons from training data JSONL files.
-> 
+>
 > Reads violations and lint summaries, applies quality gates, and produces
 > deduplicated lessons grouped by rule.
-> 
+>
 > # Quality gates
-> 
+>
 > - Violations with `pr_number` and `sha` are treated as fixed (merged PR).
 > - Violations without PR context are treated as unfixed (recurring).
 > - Duplicate rule+file pairs are collapsed into a single lesson with
 >   an occurrence count.
-> 
+>
 > # Errors
-> 
+>
 > Returns `std::io::Error` if the training data files cannot be read.
 ```rust
 pub fn extract_from_training_data (training_dir: &Path) -> std::io::Result<ExtractionResult>
@@ -1594,64 +1709,6 @@ pub fn lessons_to_facts (lessons: &[TrainingLesson]) -> Vec<super::types::Extrac
 ```
 
 ## `src/extract/types.rs`
-
-```rust
-pub struct Extraction {
-    /// Named entities found in the conversation.
-    pub entities: Vec<ExtractedEntity>,
-    /// Relationships between entities.
-    pub relationships: Vec<ExtractedRelationship>,
-    /// Factual claims as subject-predicate-object triples.
-    pub facts: Vec<ExtractedFact>,
-}
-```
-
-```rust
-pub struct ExtractedEntity {
-    /// Normalized entity name (proper noun form).
-    pub name: String,
-    /// Category: person, project, concept, tool, or location.
-    pub entity_type: String,
-    /// Brief description of the entity from context.
-    pub description: String,
-}
-```
-
-```rust
-pub struct ExtractedRelationship {
-    /// Entity name (source).
-    pub source: String,
-    /// Verb phrase: "works on", "depends on", "created by".
-    pub relation: String,
-    /// Entity name (target).
-    pub target: String,
-    /// 0.0--1.0.
-    pub confidence: f64,
-}
-```
-
-```rust
-pub struct ExtractedFact {
-    /// The entity or concept the fact is about.
-    pub subject: String,
-    /// The relationship verb phrase.
-    pub predicate: String,
-    /// The object of the claim.
-    pub object: String,
-    /// Confidence score (0.0--1.0).
-    pub confidence: f64,
-    /// Whether this fact is a correction of prior information.
-    ///
-    /// Detected by heuristic patterns (e.g. "actually, it's X not Y").
-    /// Corrections get a +0.2 confidence boost (capped at 1.0) and
-    /// skip the SUPPLEMENTS path in conflict detection.
-    #[serde(default)]
-    pub is_correction: bool,
-    /// Classified fact type for FSRS decay tuning.
-    #[serde(default)]
-    pub fact_type: Option<String>,
-}
-```
 
 ```rust
 pub struct ExtractionConfig {
@@ -1667,34 +1724,43 @@ pub struct ExtractionConfig {
     pub max_facts: usize,
     /// Whether extraction is active.
     pub enabled: bool,
+    /// Bookkeeping provider used by the extraction engine.
+    #[serde(default)]
+    pub provider: BookkeepingProviderKind,
+    /// Whether to extract facts whose subject is a first-person self-reference.
+    ///
+    /// When `false`, facts with subjects like "I" or obvious assistant
+    /// self-references are filtered out during `extract_refined`.
+    #[serde(default = "default_true")]
+    pub extract_self_facts: bool,
+    /// When `true`, the extraction prompt instructs the LLM to capture only
+    /// concrete events and observations, excluding self-descriptive,
+    /// preference, identity, or meta-relational facts.
+    #[serde(default)]
+    pub events_only_prompt: bool,
+    /// Default epistemic tier assigned to persisted facts.
+    #[serde(default = "default_tier_inferred")]
+    pub default_tier: EpistemicTier,
+    /// Whether to run cohort-respecting conflict detection against the
+    /// knowledge store after extraction.
+    #[serde(default)]
+    pub detect_conflict: bool,
 }
 ```
 
 ```rust
-pub struct ExtractedToolCall {
-    /// Tool call ID.
-    pub id: String,
-    /// Tool name.
-    pub name: String,
-    /// Input parameters (JSON).
-    pub input: serde_json::Value,
-    /// Result content, if available.
-    pub result: Option<String>,
-    /// Whether the tool call errored.
-    pub is_error: bool,
+impl ExtractionConfig {
+    pub fn schema (&self) -> ExtractionSchema;
 }
 ```
 
 ```rust
-pub struct ConversationMessage {
-    /// Message role (e.g. "user", "assistant").
-    pub role: String,
-    /// Message text content.
-    pub content: String,
-    /// Tool calls made during this turn, if any.
-    pub tool_calls: Option<Vec<ExtractedToolCall>>,
-    /// Reasoning or thinking blocks generated by the model, if any.
-    pub reasoning: Option<String>,
+pub enum BookkeepingProviderKind {
+    /// Compatibility LLM prompt + parser path.
+    #[default]
+    Llm,
+    /// `GLiNER` ONNX entity adapter with LLM fallback for facts and relationships.
+    Gliner,
 }
 ```
 
@@ -1704,6 +1770,12 @@ pub struct ExtractionPrompt {
     pub system: String,
     /// Concatenated conversation text for the user message.
     pub user_message: String,
+}
+```
+
+```rust
+impl ExtractionPrompt {
+    pub fn new (system: impl Into<String>, user_message: impl Into<String>) -> Self;
 }
 ```
 
@@ -1726,6 +1798,17 @@ pub struct RefinedExtraction {
 ```
 
 ```rust
+impl RefinedExtraction {
+    pub fn new (
+        extraction: Extraction,
+        turn_type: refinement::TurnType,
+        facts_filtered: usize,
+        causal_signal: Option<(CausalRelationType, f64)>,
+    ) -> Self;
+}
+```
+
+```rust
 pub struct PersistResult {
     /// Number of entities written.
     pub entities_inserted: usize,
@@ -1737,6 +1820,12 @@ pub struct PersistResult {
     pub facts_inserted: usize,
     /// Number of causal edges extracted and recorded.
     pub causal_edges_inserted: usize,
+}
+```
+
+```rust
+impl PersistResult {
+    pub const fn is_empty (&self) -> bool;
 }
 ```
 
@@ -1801,14 +1890,14 @@ pub struct IngestConfig {
 ```
 
 > Ingest raw content and produce facts.
-> 
+>
 > For [`IngestFormat::Json`] and [`IngestFormat::Jsonl`], facts are parsed
 > directly from the input. For [`IngestFormat::Markdown`] and
 > [`IngestFormat::PlainText`], content is chunked and each chunk becomes a
 > heuristic fact.
-> 
+>
 > # Errors
-> 
+>
 > Returns an error if JSON parsing fails or if a generated fact ID is
 > invalid.
 ```rust
@@ -1823,28 +1912,28 @@ pub fn ingest_content (
 ## `src/instinct.rs`
 
 > Default maximum length for parameter values before truncation.
-> 
+>
 > Callers should prefer the value from `taxis::config::KnowledgeConfig::instinct_max_param_value_len`.
 ```rust
 pub const DEFAULT_MAX_PARAM_VALUE_LEN: usize = 200;
 ```
 
 > Default maximum length for context summaries.
-> 
+>
 > Callers should prefer the value from `taxis::config::KnowledgeConfig::instinct_max_context_summary_len`.
 ```rust
 pub const DEFAULT_MAX_CONTEXT_SUMMARY_LEN: usize = 100;
 ```
 
 > Default minimum observations before a behavioral pattern is created.
-> 
+>
 > Callers should prefer the value from `taxis::config::AgentBehaviorDefaults::knowledge_instinct_min_observations`.
 ```rust
 pub const DEFAULT_MIN_OBSERVATIONS: u32 = 5;
 ```
 
 > Default minimum success rate (0.0--1.0) before a behavioral pattern is created.
-> 
+>
 > Callers should prefer the value from `taxis::config::AgentBehaviorDefaults::knowledge_instinct_min_success_rate`.
 ```rust
 pub const DEFAULT_MIN_SUCCESS_RATE: f64 = 0.80;
@@ -2096,7 +2185,9 @@ pub const KNOWLEDGE_DDL: &[&str] = &[
         fact_type: String,
         is_forgotten: Bool default false,
         forgotten_at: String?,
-        forget_reason: String?
+        forget_reason: String?,
+        scope: String?,
+        visibility: String default 'private'
     }",
     r":create entities {
         id: String =>
@@ -2159,6 +2250,23 @@ pub const KNOWLEDGE_DDL: &[&str] = &[
         default_content: String,
         confidence: Float,
         created_at: String
+    }",
+    // Index 10 — published_facts (added in schema v10, R716 Phase 3)
+    r":create published_facts {
+        id: String =>
+        original_fact_id: String,
+        published_by: String,
+        published_at: String,
+        verification_count: Int default 0,
+        contested_by: String,
+        contest_reason: String?
+    }",
+    // Index 11 — provenance (added in schema v10, R716 Phase 3)
+    r":create provenance {
+        published_fact_id: String, contributor: String =>
+        contribution_type: String,
+        confidence: Float,
+        contributed_at: String
     }",
 ];
 ```
@@ -2325,6 +2433,29 @@ impl KnowledgeStore {
         self: &std::sync::Arc<Self>,
         q: HybridQuery,
     ) -> crate::error::Result<Vec<HybridResult>>;
+    pub fn search_enhanced (
+        &self,
+        base_query: &HybridQuery,
+        query_variants: &[String],
+    ) -> crate::error::Result<Vec<HybridResult>>;
+    pub fn search_tiered (
+        &self,
+        base_query: &HybridQuery,
+        rewriter: &crate::query_rewrite::QueryRewriter,
+        provider: &dyn crate::query_rewrite::RewriteProvider,
+        context: Option<&str>,
+        config: &crate::query_rewrite::TieredSearchConfig,
+    ) -> crate::error::Result<crate::query_rewrite::TieredSearchResult<HybridResult>>;
+    pub fn search_tiered_for_recall (
+        &self,
+        base_query: &HybridQuery,
+        rewriter: &crate::query_rewrite::QueryRewriter,
+        provider: &dyn crate::query_rewrite::RewriteProvider,
+        context: Option<&str>,
+        config: &crate::query_rewrite::TieredSearchConfig,
+    ) -> crate::error::Result<
+        crate::query_rewrite::TieredSearchResult<crate::knowledge::RecallResult>,
+    >;
     pub async fn search_temporal_async (
         self: &std::sync::Arc<Self>,
         q: HybridQuery,
@@ -2391,8 +2522,22 @@ pub struct MemoryHeader {
 ```
 
 ```rust
+impl MemoryHeader {
+    pub fn new (source_id: impl Into<String>, name: impl Into<String>, mtime_ms: i64) -> Self;
+    pub fn with_description (mut self, description: impl Into<String>) -> Self;
+}
+```
+
+```rust
 pub struct MemoryManifest {
     headers: Vec<MemoryHeader>,
+}
+```
+
+```rust
+impl MemoryManifest {
+    pub fn from_headers (mut headers: Vec<MemoryHeader>) -> Self;
+    pub fn format (&self) -> String;
 }
 ```
 
@@ -2432,7 +2577,7 @@ pub struct OpsFact {
 ```
 
 > Extracts knowledge graph facts from operational metric snapshots.
-> 
+>
 > Each extraction produces up to 4 facts:
 > - `ops.sessions`: active session count
 > - `ops.tool_success_rate`: tool call success rate percentage
@@ -2443,7 +2588,7 @@ pub struct OpsFactExtractor;
 ```
 
 > Default minimum tool calls before success rate is meaningful.
-> 
+>
 > Callers should prefer the value from `taxis::config::KnowledgeConfig::instinct_min_tool_calls`.
 ```rust
 pub const DEFAULT_MIN_TOOL_CALLS: u64 = 5;
@@ -2557,6 +2702,8 @@ pub enum FactsField {
     IsForgotten,
     ForgottenAt,
     ForgetReason,
+    Scope,
+    Visibility,
 }
 ```
 
@@ -2641,6 +2788,16 @@ pub enum CausalEdgesField {
 
 ## `src/query_rewrite.rs`
 
+> Minimal LLM completion interface for query rewriting.
+>
+> Keeps mneme independent of hermeneus. The nous layer bridges this trait
+> to the full `LlmProvider` + `CompletionRequest` API.
+```rust
+pub trait RewriteProvider : Send + Sync {
+    fn complete (&self, system: &str, user_message: &str) -> Result<String, RewriteError>;
+}
+```
+
 ```rust
 pub enum RewriteError {
     /// The LLM provider returned an error.
@@ -2667,6 +2824,26 @@ pub struct RewriteResult {
     pub variants: Vec<String>,
     /// Time spent on the rewrite operation in milliseconds.
     pub latency_ms: u64,
+}
+```
+
+> LLM-powered query rewriter for the recall pipeline.
+```rust
+pub struct QueryRewriter {
+    config: RewriteConfig,
+}
+```
+
+```rust
+impl QueryRewriter {
+    pub fn new (config: RewriteConfig) -> Self;
+    pub fn with_defaults () -> Self;
+    pub fn rewrite (
+        &self,
+        query: &str,
+        context: Option<&str>,
+        provider: &dyn RewriteProvider,
+    ) -> Result<RewriteResult, RewriteError>;
 }
 ```
 
@@ -2709,7 +2886,12 @@ pub struct TieredSearchResult<T> {
 }
 ```
 
-## `src/recall.rs`
+## `src/recall/mod.rs`
+
+> Type alias for a recall candidate used by rerankers.
+```rust
+pub type RecallCandidate = ScoredResult;
+```
 
 ```rust
 pub struct RecallWeights {
@@ -2768,6 +2950,17 @@ pub struct ScoredResult {
     /// pipeline can filter by the active provider's deployment target
     /// (#3404, #3413).
     pub sensitivity: crate::knowledge::FactSensitivity,
+    /// Visibility level controlling which nous / consumers may see this result.
+    ///
+    /// `Private` is visible only to the owning nous; `Shared` and `Published`
+    /// are broadly visible; `Restricted` is retained only for the owning nous
+    /// until an access-list model is wired (#R722).
+    pub visibility: Visibility,
+    /// Memory sharing scope for team-memory quota enforcement.
+    ///
+    /// `None` for results from non-fact sources or facts created before the
+    /// team memory model was introduced.
+    pub scope: Option<crate::knowledge::MemoryScope>,
 }
 ```
 
@@ -2776,6 +2969,12 @@ pub struct RecallEngine {
     weights: RecallWeights,
     /// Maximum access count for frequency normalization.
     max_access_count: f64,
+    /// Optional reranker applied to the top-K after baseline scoring.
+    #[cfg(feature = "reranker")]
+    pub reranker: Option<std::sync::Arc<dyn reranker::Reranker>>,
+    /// Number of top candidates to pass to the reranker.
+    #[cfg(feature = "reranker")]
+    pub reranker_top_k: usize,
 }
 ```
 
@@ -2783,6 +2982,16 @@ pub struct RecallEngine {
 impl RecallEngine {
     pub fn new () -> Self;
     pub fn with_weights (weights: RecallWeights) -> Self;
+    pub fn with_reranker (
+        mut self,
+        reranker: Option<std::sync::Arc<dyn reranker::Reranker>>,
+    ) -> Self;
+    pub fn with_reranker_top_k (mut self, top_k: usize) -> Self;
+    pub async fn rank_and_rerank (
+        &self,
+        query: &str,
+        candidates: Vec<ScoredResult>,
+    ) -> Vec<ScoredResult>;
     pub fn score_vector_similarity (&self, cosine_distance: f64) -> f64;
     pub fn score_decay (
         &self,
@@ -2810,17 +3019,70 @@ pub fn pre_filter_by_side_query <S: BuildHasher> (
 ) -> Vec<ScoredResult>
 ```
 
+```rust
+pub fn filter_by_cohort_visibility (
+    candidates: Vec<ScoredResult>,
+    query_nous_id: &str,
+) -> Vec<ScoredResult>
+```
+
+```rust
+pub fn filter_by_visibility (candidates: Vec<ScoredResult>, min: Visibility) -> Vec<ScoredResult>
+```
+
+## `src/recall/reranker.rs`
+
+```rust
+pub enum EpistemeError {
+    /// Reranker operation failed.
+    #[snafu(display("reranker failed: {message}"))]
+    RerankerFailed {
+        message: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+}
+```
+
+```rust
+pub trait Reranker : Send + Sync {
+    async fn rerank (
+        &self,
+        query: &str,
+        candidates: Vec<RecallCandidate>,
+    ) -> Result<Vec<RecallCandidate>, EpistemeError>;
+    fn name (&self) -> &'static str;
+}
+```
+
+```rust
+pub struct NaiveReranker;
+```
+
+```rust
+pub struct HttpReranker {
+    client: reqwest::Client,
+    url: String,
+}
+```
+
+```rust
+impl HttpReranker {
+    pub fn new (url: impl Into<String>) -> Self;
+}
+```
+
 ## `src/rule_proposals.rs`
 
 > Default minimum observations before a pattern can generate a proposal.
-> 
+>
 > Callers should prefer the value from `taxis::config::AgentBehaviorDefaults::knowledge_rule_min_observations`.
 ```rust
 pub const DEFAULT_MIN_OBSERVATIONS: u32 = 5;
 ```
 
 > Default minimum confidence score (0.0--1.0) for a proposal to be emitted.
-> 
+>
 > Callers should prefer the value from `taxis::config::AgentBehaviorDefaults::knowledge_rule_min_confidence`.
 ```rust
 pub const DEFAULT_MIN_CONFIDENCE: f64 = 0.60;
@@ -2906,16 +3168,16 @@ pub fn propose_rules (
 ```
 
 > Write proposals to `<data_dir>/rule_proposals.toml`.
-> 
+>
 > Creates the directory if it does not exist. Overwrites any previous output.
 > This is an append-on-success design: if serialization fails, the old file
 > is preserved.
-> 
+>
 > WHY: Proposals are for operator review, not runtime consumption. A flat
 > TOML file is the least-friction format for a human to open and annotate.
-> 
+>
 > # Errors
-> 
+>
 > Returns an error if the directory cannot be created, if serialization fails,
 > or if writing to the file fails.
 ```rust
@@ -2927,6 +3189,38 @@ pub fn write_proposals (
 ```
 
 ## `src/side_query.rs`
+
+```rust
+pub enum SideQueryError {
+    /// The ranking model call failed.
+    #[snafu(display("side-query ranker failed: {message}"))]
+    RankerFailed {
+        /// Provider or parser failure message.
+        message: String,
+        #[snafu(implicit)]
+        /// Source location captured by Snafu.
+        location: snafu::Location,
+    },
+}
+```
+
+> Trait for ranking memory entries via a side-query to a lightweight model.
+>
+> Implementations send the formatted manifest and query to an LLM and parse
+> the response into a ranked list of source IDs. The trait is synchronous to
+> match the existing recall pipeline's sync trait pattern
+> ([`EmbeddingProvider`](crate::embedding::EmbeddingProvider),
+> [`VectorSearch`]).
+```rust
+pub trait SideQueryRanker : Send + Sync {
+    fn rank_memories (
+        &self,
+        query: &str,
+        manifest_text: &str,
+        max_results: usize,
+    ) -> Result<Vec<String>, SideQueryError>;
+}
+```
 
 ```rust
 pub struct SideQueryConfig {
@@ -2947,6 +3241,35 @@ pub struct SideQueryResult {
     pub selected_ids: Vec<String>,
     /// Whether this result was served from cache.
     pub from_cache: bool,
+}
+```
+
+> Side-query selector: pre-filters memories using a lightweight model.
+>
+> Wraps a [`SideQueryRanker`] with `already_surfaced` tracking and LRU
+> caching. Designed to run as a pre-filter stage before the 6-factor
+> recall scoring in [`RecallEngine`](crate::recall::RecallEngine).
+```rust
+pub struct SideQuerySelector {
+    config: SideQueryConfig,
+    // WHY: std::sync::Mutex — lock never held across .await.
+    already_surfaced: Mutex<HashSet<String>>,
+    cache: Mutex<RelevanceCache>,
+}
+```
+
+```rust
+impl SideQuerySelector {
+    pub fn new (config: SideQueryConfig) -> Self;
+    pub fn select (
+        &self,
+        query: &str,
+        manifest: &MemoryManifest,
+        ranker: &dyn SideQueryRanker,
+    ) -> Result<SideQueryResult, SideQueryError>;
+    pub fn mark_surfaced (&self, ids: &[String]);
+    pub fn is_surfaced (&self, id: &str) -> bool;
+    pub fn cache_len (&self) -> usize;
 }
 ```
 
@@ -2989,6 +3312,13 @@ pub struct SkillContent {
     pub domain_tags: Vec<String>,
     /// How this skill was created: `"manual"`, `"seeded"`, or `"extracted"`.
     pub origin: String,
+    /// Trigger keywords that hint this skill should be loaded.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub triggers: Vec<String>,
+    /// Whether this skill is always injected into the system prompt.
+    /// When `false` (default), the skill is lazy-loaded via `skill_read`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub always: bool,
 }
 ```
 
@@ -3002,12 +3332,12 @@ pub struct SkillParseError {
 ```
 
 > Parse a SKILL.md file into structured skill content.
-> 
+>
 > Supports optional YAML frontmatter (delimited by `---`) with `tools` and
 > `domains` fields. Falls back to extracting from markdown sections.
-> 
+>
 > # Errors
-> 
+>
 > Returns an error if the document is empty, missing a top-level heading,
 > or has no description.
 ```rust
@@ -3015,15 +3345,19 @@ pub fn parse_skill_md (source: &str, slug: &str) -> Result<SkillContent, SkillPa
 ```
 
 > Scan a directory for subdirectories containing SKILL.md files.
-> 
+>
 > Returns `(slug, content_string)` pairs for each found skill.
-> 
+>
 > # Errors
-> 
+>
 > Returns an error if the directory cannot be read or if a skill file
 > cannot be read.
 ```rust
 pub fn scan_skill_dir (dir: &std::path::Path) -> Result<Vec<(String, String)>, std::io::Error>
+```
+
+```rust
+pub fn format_skill_md (skill: &SkillContent) -> String
 ```
 
 ```rust
@@ -3038,16 +3372,16 @@ pub struct ExportedSkill {
 ```
 
 > Export a collection of skills to Claude Code's `.claude/skills/<slug>/SKILL.md` format.
-> 
+>
 > Creates the directory structure and writes each skill as a SKILL.md file
 > with YAML frontmatter. Existing files are overwritten.
-> 
+>
 > This is a pure library function: no knowledge store dependency. Pass in
 > already-resolved `SkillContent` values. The CLI and energeia bridge both
 > use this same function.
-> 
+>
 > # Errors
-> 
+>
 > Returns `std::io::Error` if directory creation or file writing fails.
 ```rust
 pub fn export_skills_to_cc (
@@ -3097,7 +3431,7 @@ pub enum TrackResult {
 ```
 
 > In-memory store for skill candidates with Rule-of-Three promotion.
-> 
+>
 > Thread-safe via an internal [`std::sync::Mutex`].
 > Serialize each [`SkillCandidate`] to JSON and persist as a fact with
 > `fact_type = "skill_candidate"` for durable storage.
@@ -3142,10 +3476,10 @@ pub enum SkillExtractionError {
 ```
 
 > Minimal LLM completion interface for skill extraction.
-> 
+>
 > Keeps mneme independent of hermeneus. The nous layer bridges this trait
 > to the full provider API, just like [`crate::extract::ExtractionProvider`].
-> 
+>
 > Uses a boxed future return type to remain dyn-compatible (object-safe).
 ```rust
 pub trait SkillExtractionProvider : Send + Sync {
@@ -3430,7 +3764,7 @@ impl BatchResult {
 > Default surprise threshold (in nats) above which a turn is classified as an
 > episode boundary. Empirically, bigram KL divergence on conversational text
 > clusters around 0.5-1.5 for same-topic turns and 2.0+ for topic shifts.
-> 
+>
 > Callers should prefer the value from `taxis::config::AgentBehaviorDefaults::knowledge_surprise_threshold`.
 ```rust
 pub const DEFAULT_THRESHOLD: f64 = 2.0;
@@ -3438,7 +3772,7 @@ pub const DEFAULT_THRESHOLD: f64 = 2.0;
 
 > Default exponential moving average decay factor. Controls how quickly the running
 > distribution forgets old observations. 0.3 = new observation gets 30% weight.
-> 
+>
 > Callers should prefer the value from `taxis::config::AgentBehaviorDefaults::knowledge_surprise_ema_alpha`.
 ```rust
 pub const DEFAULT_EMA_ALPHA: f64 = 0.3;
@@ -3526,6 +3860,190 @@ pub enum TraceEvent {
         timestamp: String,
     },
 }
+```
+
+> DDL that creates the three `ops.*` relations in a Datalog database.
+>
+> Apply this before the first `TraceIngestLayer::flush` call.  In production
+> the knowledge-store init path runs all DDL; this constant is exposed so
+> feature-gated tests and the init migration can reference the canonical
+> schema. Only the `mneme-engine`-gated `engine_tests` mod reads it.
+```rust
+pub const OPS_DDL: &[&str] = &[
+    r":create ops_turns {
+        session_id: String, nous_id: String =>
+        model: String,
+        tokens: Int,
+        duration_ms: Int,
+        timestamp: String
+    }",
+    r":create ops_tools {
+        session_id: String, tool_name: String, timestamp: String =>
+        success: Bool,
+        duration_ms: Int
+    }",
+    r":create ops_errors {
+        session_id: String, error_class: String, timestamp: String =>
+        message: String
+    }",
+];
+```
+
+> Tracing subscriber layer that captures structured operational events.
+>
+> Install via [`tracing_subscriber::registry().with(TraceIngestLayer::new())`].
+> Call [`TraceIngestLayer::flush`] periodically (e.g., every 30 s) to drain the
+> buffer into the Datalog engine.
+>
+> Event recognition is driven by the `message` field.  Emit matching events with
+> [`tracing::info!`] and the field names documented on each [`TraceEvent`] variant:
+>
+> ```text
+> tracing::info!(
+>     message = "turn_completed",
+>     session_id = %session_id,
+>     nous_id    = %nous_id,
+>     model      = %model,
+>     tokens     = tokens_total,
+>     duration_ms = elapsed.as_millis() as i64,
+> );
+> ```
+```rust
+pub struct TraceIngestLayer {
+    buffer: std::sync::Arc<Mutex<Vec<TraceEvent>>>,
+}
+```
+
+```rust
+impl TraceIngestLayer {
+    pub fn new () -> Self;
+    pub fn drain (&self) -> Vec<TraceEvent>;
+    pub fn pending (&self) -> usize;
+    pub fn flush (&self, store: &crate::knowledge_store::KnowledgeStore);
+    pub fn flush_noop (&self);
+}
+```
+
+```rust
+pub fn ensure_ops_schema (store: &crate::knowledge_store::KnowledgeStore)
+```
+
+## `src/verification/conflict.rs`
+
+```rust
+pub enum ConflictKind {
+    /// Two facts make incompatible claims about the same subject.
+    Contradiction,
+    /// Two facts express the same claim (deduplication target).
+    Duplicate,
+    /// Same name resolves to different entity types across nouses.
+    EntityCollision,
+}
+```
+
+```rust
+pub struct Conflict {
+    /// Newly-extracted fact under consideration.
+    pub incoming: FactId,
+    /// Existing fact in the store that conflicts.
+    pub existing: FactId,
+    /// Conflict classification.
+    pub kind: ConflictKind,
+    /// Vector-similarity score in `[0.0, 1.0]` (1.0 = identical embedding).
+    pub similarity: f64,
+}
+```
+
+```rust
+pub enum ResolveError {
+    /// `facts` slice was empty.
+    #[snafu(display("resolve_conflict requires at least one fact"))]
+    Empty,
+    /// `facts` and `supporters` slices had different lengths.
+    #[snafu(display(
+        "facts and supporters slices must be the same length; got facts={facts}, supporters={supporters}"
+    ))]
+    LengthMismatch {
+        /// Length of the `facts` slice.
+        facts: usize,
+        /// Length of the `supporters` slice.
+        supporters: usize,
+    },
+}
+```
+
+> Resolve a conflict among multiple competing facts using composite scoring.
+>
+> `supporters[i]` is the count of distinct nouses backing `facts[i]` (typically
+> `verification_count + 1` to include the publisher). `now` parameterizes
+> recency for deterministic testing.
+>
+> Losers retain their `contested_by` provenance  -  callers must NOT delete
+> loser facts as a side effect of resolution.
+>
+> # Errors
+>
+> Returns [`ResolveError::Empty`] if `facts` is empty, or
+> [`ResolveError::LengthMismatch`] if `facts.len() != supporters.len()`.
+```rust
+pub fn resolve_conflict (
+    facts: &[&Fact],
+    supporters: &[u32],
+    now: jiff::Timestamp,
+) -> Result<ConflictResolution, ResolveError>
+```
+
+## `src/verification/mod.rs`
+
+```rust
+pub fn detect_conflict (
+    fact: &eidos::bookkeeping::ExtractedFact,
+    store: &crate::knowledge_store::KnowledgeStore,
+    nous_id: &str,
+) -> Result<Option<Conflict>, crate::extract::ExtractionError>
+```
+
+## `src/verification/proposal.rs`
+
+> Default Accept-vote threshold that triggers auto-promotion.
+>
+> Per R716 Phase 3: when N≥3 distinct nouses cast Accept, the proposal
+> promotes the fact to the proposed tier.
+```rust
+pub const DEFAULT_VERIFICATION_THRESHOLD: u32 = 3;
+```
+
+```rust
+pub enum VerificationOutcome {
+    /// Vote recorded; threshold not yet met and no contest.
+    Pending,
+    /// Threshold met (N≥3 distinct Accepts); fact should be promoted.
+    Promoted {
+        /// New epistemic tier the proposal targets.
+        new_tier: EpistemicTier,
+    },
+    /// At least one Contest vote present; resolution required.
+    Contested {
+        /// Free-text reason for surfacing — placeholder for richer semantics.
+        reason: String,
+    },
+}
+```
+
+```rust
+pub fn publish_fact (fact: &Fact, publisher: &koina::id::NousId) -> PublishedFact
+```
+
+> Append a vote to a proposal and compute the resulting outcome.
+>
+> Counts Accept votes from DISTINCT voters (dedupes by voter `NousId`).
+> Any Contest vote short-circuits the outcome to `Contested`.
+```rust
+pub fn vote_on_proposal (
+    proposal: &mut VerificationProposal,
+    vote: VerificationVote,
+    threshold: u32,
+) -> VerificationOutcome
 ```
 
 ## `src/vocab.rs`

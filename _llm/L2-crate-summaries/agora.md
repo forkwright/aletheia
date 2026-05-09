@@ -1,24 +1,30 @@
 # agora
 
-**Purpose:** Channel registry and Signal provider for external messaging. Implements `ChannelProvider` trait and routes inbound messages to nous agents.
+**Purpose:** Channel registry and provider implementations (Signal).
 
 ## Key types
 
 | Type | Purpose |
 |------|---------|
-| `ChannelProvider` | Trait: `send()`, `probe()`, `capabilities()` |
-| `ChannelRegistry` | Provider lookup by channel ID, `send()` dispatch, `probe_all()` |
-| `ChannelListener` | Merges inbound messages from all providers into a single `mpsc::Receiver` |
-| `MessageRouter` | Resolves inbound messages to nous agents (group > source > channel default > global) |
-| `SignalProvider` | Signal channel: multi-account JSON-RPC to signal-cli daemon |
+| `ChannelProvider` | Current public type or boundary; see L3/source for exact fields |
+| `ChannelRegistry` | Current public type or boundary; see L3/source for exact fields |
+| `ChannelListener` | Current public type or boundary; see L3/source for exact fields |
+| `MessageRouter` | Current public type or boundary; see L3/source for exact fields |
+| `SignalProvider` | Current public type or boundary; see L3/source for exact fields |
 
 ## Public API surface
 
-- `agora::types` - `ChannelProvider` trait, `InboundMessage`, `SendParams`, `ChannelCapabilities`
-- `agora::registry` - `ChannelRegistry` for provider lookup and dispatch
-- `agora::router` - `MessageRouter`, `RouteDecision` for inbound routing to agents
+- `agora::error` - public items from `src/error.rs`
+- `agora::listener` - public items from `src/listener.rs`
+- `agora::metrics` - public items from `src/metrics.rs`
+- `agora::registry` - public items from `src/registry.rs`
+- `agora::router` - public items from `src/router.rs`
 
 ## When to look here
 
-- When implementing a new messaging channel (implement `ChannelProvider`)
-- When modifying inbound message routing rules or agent assignment logic
+- When work touches `crates/agora` or downstream imports from `agora`.
+- For exact signatures, load `_llm/L3-api-index/agora.md` if present, then source.
+
+## Recent changes
+
+Signal capability claims were made honest and listener cleanup now uses registered abort callbacks.

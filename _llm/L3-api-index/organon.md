@@ -8,13 +8,13 @@ For implementation context, read the source directly (`L4`).
 ## `src/builtins/computer_use/executor.rs`
 
 > Register the `computer_use` tool into the registry.
-> 
+>
 > Uses the provided [`SandboxConfig`] to derive default session
 > sandbox policy. The tool is registered with `auto_activate: false`,
 > requiring explicit activation via `enable_tool`.
-> 
+>
 > # Errors
-> 
+>
 > Returns an error if the tool name collides with an existing tool.
 ```rust
 pub fn register (registry: &mut ToolRegistry, sandbox: &SandboxConfig) -> Result<()>
@@ -23,16 +23,16 @@ pub fn register (registry: &mut ToolRegistry, sandbox: &SandboxConfig) -> Result
 ## `src/builtins/energeia/mod.rs`
 
 > Register all 9 energeia tools with real implementations.
-> 
+>
 > When `services` is `Some`, tools that need the orchestrator or store call
 > through to the real energeia subsystem. When `None`, those tools return a
 > structured error indicating the missing dependency  -  they do not panic.
-> 
+>
 > Tools that are pure computation (schedion, prographe, diorthosis,
 > dokimasia, epitropos) work regardless of whether services are provided.
-> 
+>
 > # Errors
-> 
+>
 > Returns an error if any tool name collides with an already-registered tool.
 ```rust
 pub fn register (
@@ -44,7 +44,7 @@ pub fn register (
 ## `src/builtins/energeia/shared.rs`
 
 > Services injected at registration time for energeia tool executors.
-> 
+>
 > The orchestrator handles dispatch (dromeus), and the store backs lessons,
 > observations, and metrics (mathesis, parateresis, metron, diorthosis).
 ```rust
@@ -59,9 +59,9 @@ pub struct EnergeiaServices {
 ## `src/builtins/mod.rs`
 
 > Register all built-in tool executors with default sandbox config.
-> 
+>
 > # Errors
-> 
+>
 > Returns an error if any built-in tool name collides with an
 > already-registered tool.
 ```rust
@@ -69,9 +69,17 @@ pub fn register_all (registry: &mut ToolRegistry) -> Result<()>
 ```
 
 > Register all built-in tool executors with custom sandbox config.
-> 
+>
+> Registration is two-phase:
+>
+> 1. All domain tools are registered first.
+> 2. `tool_schema` is registered last, capturing a schema snapshot of every
+>    tool registered in phase 1.  This avoids a self-referential ownership
+>    cycle (the registry owns the `tool_schema` executor, which cannot safely
+>    hold a back-reference to the same registry).
+>
 > # Errors
-> 
+>
 > Returns an error if any built-in tool name collides with an
 > already-registered tool.
 ```rust
@@ -79,6 +87,46 @@ pub fn register_all_with_sandbox (
     registry: &mut ToolRegistry,
     sandbox: SandboxConfig,
 ) -> Result<()>
+```
+
+## `src/builtins/skill_read.rs`
+
+> Register the `skill_read` tool into `registry`.
+>
+> # Errors
+>
+> Returns an error if `skill_read` is already registered.
+```rust
+pub fn register (registry: &mut ToolRegistry) -> Result<()>
+```
+
+## `src/builtins/working_checkpoint.rs`
+
+```rust
+pub enum WorkingCheckpointScope {
+    /// Session-scoped checkpoint (default).
+    #[default]
+    Session,
+}
+```
+
+```rust
+pub struct UpdateWorkingCheckpointInput {
+    /// Structured `key_info` content the agent has decided is worth retaining.
+    pub content: String,
+    /// Scope of the checkpoint. Currently "session" only; "project" follow-up.
+    #[serde(default)]
+    pub scope: WorkingCheckpointScope,
+}
+```
+
+> Register the `update_working_checkpoint` tool into `registry`.
+>
+> # Errors
+>
+> Returns an error if the tool name collides with an already-registered tool.
+```rust
+pub fn register (registry: &mut ToolRegistry) -> Result<()>
 ```
 
 ## `src/error.rs`
@@ -123,6 +171,27 @@ pub enum Error {
     #[snafu(display("schema serialization failed"))]
     SchemaSerialization {
         source: serde_json::Error,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// File-ref interpolation failed during tool argument expansion.
+    #[snafu(display("file-ref interpolation failed: {source}"))]
+    InterpError {
+        source: crate::interp::InterpError,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Tool call rejected because the tool's groups do not intersect the role's allowed groups.
+    #[snafu(display(
+        "tool group violation: role {role} cannot call tool {tool}: allowed groups {allowed:?}, tool groups {tool_groups:?}"
+    ))]
+    ToolGroupViolation {
+        role: String,
+        tool: String,
+        allowed: Vec<crate::types::ToolGroupId>,
+        tool_groups: Vec<crate::types::ToolGroupId>,
         #[snafu(implicit)]
         location: snafu::Location,
     },
@@ -293,6 +362,62 @@ pub enum KnowledgeAdapterError {
 }
 ```
 
+## `src/interp.rs`
+
+```rust
+pub enum InterpError {
+    /// The requested file does not exist.
+    #[snafu(display("file not found: {}", path.display()))]
+    FileNotFound { path: PathBuf },
+
+    /// The requested line range exceeds the file's actual line count.
+    #[snafu(display(
+        "line range {requested_start}..{requested_end} out of bounds; file has {actual_lines} lines: {}",
+        path.display()
+    ))]
+    OutOfBounds {
+        path: PathBuf,
+        requested_start: usize,
+        requested_end: usize,
+        actual_lines: usize,
+    },
+
+    /// Absolute paths are rejected by default.
+    #[snafu(display("absolute path not allowed: {}", path.display()))]
+    AbsolutePathRejected { path: PathBuf },
+
+    /// An I/O error occurred while reading the file.
+    #[snafu(display("io error reading {}: {source}", path.display()))]
+    Io {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+
+    /// A line number in the template could not be parsed.
+    #[snafu(display("invalid line number in template: {value}"))]
+    InvalidLineNumber { value: String },
+}
+```
+
+```rust
+pub fn expand_file_refs (text: &str, workspace_root: &Path) -> Result<String, InterpError>
+```
+
+> Recursively expand file refs in every JSON string value.
+>
+> Objects and arrays are traversed depth-first. Non-string values are cloned
+> unchanged.
+>
+> # Errors
+>
+> Returns [`InterpError`] on the first file-ref that fails to resolve.
+```rust
+pub fn expand_file_refs_in_json (
+    value: &serde_json::Value,
+    workspace_root: &Path,
+) -> Result<serde_json::Value, InterpError>
+```
+
 ## `src/metrics.rs`
 
 > Register this crate's metrics with the shared registry.
@@ -303,7 +428,7 @@ pub fn register (registry: &mut Registry)
 ## `src/process_guard.rs`
 
 > RAII guard that kills and reaps a child process on drop.
-> 
+>
 > Drop calls `kill()` followed by `wait()` on the inner
 > [`Child`][std::process::Child].  Both calls ignore errors: `kill()` fails
 > if the process has already exited (safe), and `wait()` fails if the OS
@@ -321,28 +446,154 @@ impl ProcessGuard {
 }
 ```
 
+## `src/receipts.rs`
+
+```rust
+pub struct ReceiptSigner {
+    key: [u8; 32],
+}
+```
+
+```rust
+impl ReceiptSigner {
+    pub fn new_session () -> Self;
+    pub fn sign (
+        &self,
+        tool_name: &str,
+        args_json: &str,
+        result: &str,
+        ts: jiff::Timestamp,
+    ) -> String;
+    pub fn verify (
+        &self,
+        receipt: &str,
+        tool_name: &str,
+        args_json: &str,
+        result: &str,
+        ts: jiff::Timestamp,
+    ) -> Result<(), VerifyError>;
+}
+```
+
+```rust
+pub struct ReceiptLedger {
+    entries: Vec<EmittedReceipt>,
+}
+```
+
+```rust
+pub struct EmittedReceipt {
+    /// The receipt token (base64url, no padding).
+    pub receipt: String,
+    /// Tool name.
+    pub tool_name: String,
+    /// Arguments JSON at emission time.
+    pub args_json: String,
+    /// Result text at emission time.
+    pub result: String,
+    /// Timestamp used for signing.
+    pub ts: jiff::Timestamp,
+}
+```
+
+```rust
+impl EmittedReceipt {
+    pub fn new (
+        receipt: String,
+        tool_name: String,
+        args_json: String,
+        result: String,
+        ts: jiff::Timestamp,
+    ) -> Self;
+}
+```
+
+```rust
+impl ReceiptLedger {
+    pub fn record (
+        &mut self,
+        receipt: String,
+        tool_name: String,
+        args_json: String,
+        result: String,
+        ts: jiff::Timestamp,
+    );
+    pub fn lookup (&self, receipt: &str) -> Option<&EmittedReceipt>;
+}
+```
+
+> Scan an assistant message for cited receipts and verify each against the ledger.
+>
+> # Errors
+> Returns [`HallucinationDetected::HallucinatedReceipt`] if a cited receipt is
+> not present in the ledger, or [`HallucinationDetected::ReceiptInvalid`] if
+> verification fails (e.g. HMAC mismatch).
+```rust
+pub fn scan_and_verify (
+    signer: &ReceiptSigner,
+    ledger: &ReceiptLedger,
+    assistant_text: &str,
+) -> Result<(), HallucinationDetected>
+```
+
+```rust
+pub enum VerifyError {
+    /// Receipt missing or malformed (not valid base64url).
+    #[snafu(display("receipt missing or malformed"))]
+    Malformed,
+    /// HMAC mismatch — receipt does not authenticate this tuple.
+    #[snafu(display("HMAC mismatch — receipt does not authenticate this tuple"))]
+    HmacMismatch,
+    /// Base64 decode error.
+    #[snafu(display("decode error: {source}"))]
+    Decode {
+        /// Underlying base64 error.
+        source: base64::DecodeError,
+    },
+}
+```
+
+```rust
+pub enum HallucinationDetected {
+    /// Model cited a receipt not present in the ledger — fabricated tool call.
+    #[snafu(display("model cited receipt {receipt} not present in ledger — fabricated tool call"))]
+    HallucinatedReceipt {
+        /// The receipt token cited by the model.
+        receipt: String,
+    },
+    /// Receipt present in ledger but verification failed.
+    #[snafu(display("receipt {receipt} verification failed: {source}"))]
+    ReceiptInvalid {
+        /// The receipt token.
+        receipt: String,
+        /// Underlying verification error.
+        source: VerifyError,
+    },
+}
+```
+
 ## `src/registry/mod.rs`
 
 > The trait tool implementations must satisfy.
-> 
+>
 > Uses `Pin<Box<dyn Future>>` for object-safety with async dispatch.
-> 
+>
 > # Errors
-> 
+>
 > Implementations may return `ExecutionFailed` if the tool
 > cannot complete its operation, or `InvalidInput` if the
 > provided arguments fail validation.
-> 
+>
 > # Examples
-> 
+>
 > ```no_run
 > use std::future::Future;
 > use std::pin::Pin;
 > use organon::registry::ToolExecutor;
 > use organon::types::{ToolContext, ToolInput, ToolResult};
-> 
+>
 > struct MyTool;
-> 
+>
 > impl ToolExecutor for MyTool {
 >     fn execute<'a>(
 >         &'a self,
@@ -364,15 +615,15 @@ pub trait ToolExecutor : Send + Sync {
 ```
 
 > Registry of available tools.
-> 
+>
 > Tools are registered at startup and looked up by name during execution.
 > The registry is the single source of truth for what tools an agent can use.
-> 
+>
 > # Examples
-> 
+>
 > ```no_run
 > use organon::registry::ToolRegistry;
-> 
+>
 > let mut registry = ToolRegistry::new();
 > // Tools are registered at startup with their definitions and executors.
 > // See the `builtins` module for built-in tool implementations.
@@ -390,13 +641,47 @@ impl ToolRegistry {
     pub fn register (&mut self, def: ToolDef, executor: Box<dyn ToolExecutor>) -> Result<()>;
     pub fn get_def (&self, name: &ToolName) -> Option<&ToolDef>;
     pub async fn execute (&self, input: &ToolInput, ctx: &ToolContext) -> Result<ToolResult>;
+    pub async fn execute_checked (
+        &self,
+        input: &ToolInput,
+        ctx: &ToolContext,
+        role: &str,
+        allowed_groups: &[ToolGroupId],
+    ) -> Result<ToolResult>;
     pub fn definitions (&self) -> Vec<&ToolDef>;
     pub fn definitions_for_category (&self, category: ToolCategory) -> Vec<&ToolDef>;
+    pub fn definitions_for_tags (&self, tags: &[ToolTag]) -> Vec<&ToolDef>;
+    pub fn definitions_for_groups (&self, allowed_groups: &[ToolGroupId]) -> Vec<&ToolDef>;
     pub fn to_hermeneus_tools (&self) -> Vec<hermeneus::types::ToolDefinition>;
+    pub fn to_hermeneus_tools_for_groups (
+        &self,
+        allowed_groups: &[ToolGroupId],
+    ) -> Vec<hermeneus::types::ToolDefinition>;
+    pub fn to_hermeneus_tools_summaries (&self) -> Vec<hermeneus::types::ToolDefinition>;
+    pub fn to_hermeneus_tools_summaries_for_groups (
+        &self,
+        allowed_groups: &[ToolGroupId],
+    ) -> Vec<hermeneus::types::ToolDefinition>;
+    pub fn to_hermeneus_tools_summaries_filtered (
+        // kanon:ignore RUST/pub-visibility
+        &self,
+        active: &HashSet<ToolName>,
+    ) -> Vec<hermeneus::types::ToolDefinition>;
+    pub fn to_hermeneus_tools_summaries_filtered_for_groups (
+        &self,
+        active: &HashSet<ToolName>,
+        allowed_groups: &[ToolGroupId],
+    ) -> Vec<hermeneus::types::ToolDefinition>;
+    pub fn schema_byte_sizes (&self) -> (usize, usize);
     pub fn to_hermeneus_tools_filtered (
         // kanon:ignore RUST/pub-visibility
         &self,
         active: &HashSet<ToolName>,
+    ) -> Vec<hermeneus::types::ToolDefinition>;
+    pub fn to_hermeneus_tools_filtered_for_groups (
+        &self,
+        active: &HashSet<ToolName>,
+        allowed_groups: &[ToolGroupId],
     ) -> Vec<hermeneus::types::ToolDefinition>;
     pub fn reversibility (&self, name: &ToolName) -> Option<Reversibility>;
     pub fn approval_requirement (&self, name: &ToolName) -> Option<ApprovalRequirement>;
@@ -530,15 +815,15 @@ pub fn apply_sandbox (
 ## `src/testing.rs`
 
 > Install the default rustls crypto provider for tests.
-> 
+>
 > Safe to call multiple times (uses `try_install_default`). This helper prevents
 > the "no crypto provider installed" panic when tests use TLS connections.
-> 
+>
 > # Example
-> 
+>
 > ```ignore
 > use organon::testing::install_crypto_provider;
-> 
+>
 > #[test]
 > fn test_with_tls() {
 >     install_crypto_provider();
@@ -550,12 +835,12 @@ pub fn install_crypto_provider ()
 ```
 
 > Configurable mock [`ToolExecutor`] for use in tests.
-> 
+>
 > Implements the same [`ToolExecutor`] trait as production executors.
 > Supports fixed text responses, error injection, and call-count tracking.
-> 
+>
 > # Examples
-> 
+>
 > ```ignore
 > let ex = MockToolExecutor::text("ok");
 > let result = ex.execute(&input, &ctx).await.expect("execute should succeed"); // kanon:ignore RUST/expect
@@ -583,7 +868,7 @@ impl MockToolExecutor {
 ```
 
 > Spec contract that any [`ToolExecutor`] implementation must satisfy.
-> 
+>
 > Use [`ToolExecutorSpec::validate_async`] inside a `#[tokio::test]` to assert
 > the contract. The report separates passed checks from failed ones so test
 > output is easy to diagnose.
@@ -662,6 +947,7 @@ pub struct ToolServices {
     pub spawn: Option<Arc<dyn SpawnService>>,
     pub planning: Option<Arc<dyn PlanningService>>,
     pub knowledge: Option<Arc<dyn KnowledgeSearchService>>,
+    pub working_checkpoint_store: Option<Arc<dyn crate::types::WorkingCheckpointStore>>,
     pub http_client: reqwest::Client,
     /// In-memory vault for session-scoped secrets (AWS SSO keys, API tokens, etc.).
     ///
@@ -682,6 +968,8 @@ pub struct ToolContext {
     pub nous_id: NousId,
     /// Current session.
     pub session_id: SessionId,
+    /// Current turn number within the session.
+    pub turn_number: u64,
     /// Agent workspace root.
     pub workspace: PathBuf,
     /// Allowed filesystem roots for sandboxing.
@@ -696,6 +984,46 @@ pub struct ToolContext {
 ```
 
 ## `src/types/mod.rs`
+
+```rust
+pub enum ToolGroupId {
+    /// File/code reading tools (`read`, `grep`, `find`, `ls`, `view_file`, ...).
+    Read,
+    /// File/code mutation tools (`write`, `edit`, `mkdir`, `mv`, `cp`, `rm`, ...).
+    Edit,
+    /// Shell/cargo execution (`exec`, `git_checkout`, `computer_use`, ...).
+    Command,
+    /// MCP tool invocation and external API calls (`web_fetch`, `http_request`, ...).
+    Mcp,
+    /// Spawning sub-agents (`sessions_spawn`, `sessions_dispatch`, ...).
+    SpawnSubtask,
+    /// Planning and design tools (`plan_create`, `plan_roadmap`, ...).
+    Plan,
+    /// Tests, lint, fmt, and verification tools (`lint_report`, `verify_report`, ...).
+    Verify,
+}
+```
+
+```rust
+pub enum ToolTag {
+    /// Intel-gathering, discovery, read-only inspection.
+    Recon,
+    /// File or state mutation.
+    Edit,
+    /// Tests, lints, checks, validation.
+    Verify,
+    /// External data retrieval (HTTP, MCP, web search, etc.).
+    Fetch,
+    /// Sub-agent or task creation.
+    Spawn,
+    /// Planning, design-doc, strategy, roadmap.
+    Plan,
+    /// Shell, cargo, runtime commands, and communication dispatch.
+    Execute,
+    /// Document / report / slide / spreadsheet generation and output-shaping.
+    Format,
+}
+```
 
 ```rust
 pub struct ToolDef {
@@ -714,6 +1042,12 @@ pub struct ToolDef {
     pub reversibility: Reversibility,
     /// Whether the tool activates automatically by domain without explicit config.
     pub auto_activate: bool,
+    /// Tool groups this tool belongs to.  Used for role-based gating.
+    #[serde(default)]
+    pub groups: Vec<ToolGroupId>,
+    /// Operational-intent tags for cross-category lookup.
+    #[serde(default)]
+    pub tags: Vec<ToolTag>,
 }
 ```
 
@@ -927,6 +1261,9 @@ pub struct ToolResult {
     /// Optional diagnostic metadata from the execution environment.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub diagnostics: Option<ToolDiagnostics>,
+    /// HMAC-SHA256 receipt for hallucination-resistant attestation.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub receipt: Option<String>,
 }
 ```
 
@@ -941,6 +1278,7 @@ impl ToolResult {
     ) -> Self;
     pub fn normalize (mut self) -> Self;
     pub fn with_diagnostics (mut self, diagnostics: ToolDiagnostics) -> Self;
+    pub fn with_receipt (mut self, receipt: impl Into<String>) -> Self;
 }
 ```
 
@@ -1088,7 +1426,7 @@ pub struct FactSummary {
 ```
 
 > Abstracts knowledge store operations for memory tools.
-> 
+>
 > Implemented by an adapter in the binary crate wrapping `KnowledgeStore` + `EmbeddingProvider`.
 ```rust
 pub trait KnowledgeSearchService : Send + Sync {
@@ -1131,6 +1469,11 @@ pub trait KnowledgeSearchService : Send + Sync {
         timeout_secs: Option<f64>,
         row_limit: Option<usize>,
     ) -> Pin<Box<dyn Future<Output = Result<DatalogResult, KnowledgeAdapterError>> + Send + '_>>;
+    fn find_skill_by_name (
+        &self,
+        nous_id: &str,
+        skill_name: &str,
+    ) -> Pin<Box<dyn Future<Output = Result<Option<String>, KnowledgeAdapterError>> + Send + '_>>;
 }
 ```
 
@@ -1228,6 +1571,43 @@ pub struct SpawnResult {
     pub input_tokens: u64,
     /// Output tokens produced.
     pub output_tokens: u64,
+}
+```
+
+> Working checkpoint storage for agent-curated session memory.
+>
+> Agents call `update_working_checkpoint` to persist structured key-info
+> that survives context compaction and is reinjected on subsequent turns.
+```rust
+pub trait WorkingCheckpointStore : Send + Sync {
+    fn write_checkpoint (
+        &self,
+        session_id: &str,
+        turn_number: u64,
+        content: &str,
+    ) -> std::result::Result<(), crate::error::StoreError>;
+    fn read_latest (
+        &self,
+        session_id: &str,
+    ) -> std::result::Result<Option<WorkingCheckpoint>, crate::error::StoreError>;
+    fn read_recent (
+        &self,
+        session_id: &str,
+        limit: usize,
+    ) -> std::result::Result<Vec<WorkingCheckpoint>, crate::error::StoreError>;
+}
+```
+
+```rust
+pub struct WorkingCheckpoint {
+    /// Session identifier.
+    pub session_id: String,
+    /// Turn number when the checkpoint was written.
+    pub turn_number: u64,
+    /// Structured key-info content.
+    pub content: String,
+    /// ISO-8601 timestamp of the write.
+    pub created_at: String,
 }
 ```
 

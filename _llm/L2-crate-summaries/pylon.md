@@ -1,25 +1,31 @@
 # pylon
 
-**Purpose:** Axum HTTP gateway with SSE streaming, JWT auth middleware, rate limiting, CSRF protection, and idempotency handling.
+**Purpose:** Axum HTTP gateway for Aletheia.
 
 ## Key types
 
 | Type | Purpose |
 |------|---------|
-| `AppState` | Shared state: stores, managers, JWT config, shutdown token |
-| `ApiError` | Error enum with HTTP status code mapping |
-| `Claims` | JWT auth extractor for Axum handlers |
-| `RateLimiter` | Per-IP sliding window rate limiter |
-| `IdempotencyCache` | TTL + LRU deduplication for message sends |
+| `AppState` | Current public type or boundary; see L3/source for exact fields |
+| `ApiError` | Current public type or boundary; see L3/source for exact fields |
+| `Claims` | Current public type or boundary; see L3/source for exact fields |
+| `EventBus` | Current public type or boundary; see L3/source for exact fields |
+| `AgentPerformance` | Current public type or boundary; see L3/source for exact fields |
+| `QualityMetricsResponse` | Current public type or boundary; see L3/source for exact fields |
 
 ## Public API surface
 
-- `pylon::router` - route construction and middleware layer ordering
-- `pylon::state` - `AppState` shared across all handlers
-- `pylon::handlers` - handler modules: sessions, streaming, nous, auth, costs
-- `pylon::error` - `ApiError` with HTTP status mapping
+- `pylon::error` - public items from `src/error.rs`
+- `pylon::event_bus` - public items from `src/event_bus.rs`
+- `pylon::extract` - public items from `src/extract.rs`
+- `pylon::handlers/config` - public items from `src/handlers/config.rs`
+- `pylon::handlers/events` - public items from `src/handlers/events.rs`
 
 ## When to look here
 
-- When adding a new HTTP endpoint (add handler in `src/handlers/`, register in `src/router.rs`)
-- When modifying auth middleware, rate limits, or SSE streaming behavior
+- When work touches `crates/pylon` or downstream imports from `pylon`.
+- For exact signatures, load `_llm/L3-api-index/pylon.md` if present, then source.
+
+## Recent changes
+
+Admin auth enforcement, OpenAPI honesty, SSE/handler drift fixes, and meta-insights endpoints are part of the gateway shape.

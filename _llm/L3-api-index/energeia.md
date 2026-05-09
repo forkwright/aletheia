@@ -36,7 +36,7 @@ pub struct McpServerConfig {
 ```
 
 > Agent SDK-based dispatch engine.
-> 
+>
 > WHY: Provides native Agent SDK integration with `OAuth`, permissions, and
 > plugin support, replacing the subprocess-based `HttpEngine`.
 ```rust
@@ -78,14 +78,14 @@ impl EnergeiaBackend {
 ## `src/backend.rs`
 
 > High-level dispatch orchestration backend.
-> 
+>
 > Abstracts the full dispatch workflow: execute prompts, manage PRs via
 > steward, query status, check health, and generate reports. Control planes
 > (kanon CLI, KAIROS daemon) depend on this trait, not on concrete
 > implementations.
-> 
+>
 > # Implementations
-> 
+>
 > - [`EnergeiaBackend`]  -  uses energeia's [`Orchestrator`](crate::orchestrator::Orchestrator),
 >   steward service, and fjall-backed metrics. This is the production backend
 >   in aletheia. Requires the `storage-fjall` feature.
@@ -128,7 +128,7 @@ pub enum BudgetStatus {
 ```
 
 > Shared budget tracker for a dispatch run.
-> 
+>
 > INVARIANT: `current_cost_hundredths` and `current_turns` only increase
 > (monotonic). `start_time` is set once at construction and never changes.
 ```rust
@@ -230,7 +230,7 @@ impl CronTask {
 ```
 
 > Fjall-backed lock store that persists the last-fired timestamp per task.
-> 
+>
 > A mutex serializes lock acquisition within a single process; the fjall
 > write provides cross-restart deduplication.
 ```rust
@@ -345,10 +345,6 @@ impl PromptDag {
 }
 ```
 
-```rust
-pub fn compute_frontier (dag: &PromptDag) -> Vec<Vec<u32>>
-```
-
 ## `src/engine.rs`
 
 ```rust
@@ -368,7 +364,7 @@ pub trait DispatchEngine : Send + Sync {
 ```
 
 > Handle to a running or completed agent session.
-> 
+>
 > Provides an event stream for observing session progress, plus control
 > methods for waiting on completion or aborting.
 ```rust
@@ -671,10 +667,52 @@ pub enum Error {
 pub type Result<T> = std::result::Result<T, Error>;
 ```
 
+## `src/friction/capture.rs`
+
+```rust
+pub struct Observation {
+    /// Human-readable title summarising the observation.
+    pub title: String,
+    /// Detailed description of the observation.
+    pub body: String,
+    /// URL of the PR where the observation was recorded.
+    pub source: String,
+    /// Files or crates affected by the observation.
+    pub files_affected: Vec<String>,
+}
+```
+
+> Template snippet for the "Observations" PR body section.
+>
+> Prompt builders can inject this template so worker agents know
+> how to format observations. Replace the `{{placeholder}}` tokens
+> at render time.
+```rust
+pub const TEMPLATE: &str = r"## Observations
+
+### {{title}}
+{{body}}
+
+- **Source:** {{source}}
+- **Files affected:** {{files}}
+
+";
+```
+
+```rust
+pub fn parse_pr_body (text: &str) -> Vec<Observation>
+```
+
+## `src/frontier.rs`
+
+```rust
+pub fn compute_frontier (dag: &PromptDag) -> Vec<Vec<u32>>
+```
+
 ## `src/hermeneus_engine.rs`
 
 > Dispatch engine backed by hermeneus [`LlmProvider`].
-> 
+>
 > Supports prompt caching via the [`PromptComponents`](crate::prompt_cache::PromptComponents)
 > split: the static prefix is sent as a cached system prompt and the dynamic
 > suffix as the user message.
@@ -694,7 +732,7 @@ impl HermeneusEngine {
 ## `src/http/client.rs`
 
 > Subprocess-based dispatch engine targeting the Claude CLI.
-> 
+>
 > Spawns `claude --output-format stream-json` subprocesses and streams NDJSON
 > events. Will be replaced by a direct HTTP/SSE client when the Anthropic
 > Agent SDK HTTP endpoints are publicly available.
@@ -716,7 +754,7 @@ impl HttpEngine {
 ## `src/http/mock.rs`
 
 > Test double for [`DispatchEngine`].
-> 
+>
 > Returns pre-configured outcomes in FIFO order. Thread-safe for use in
 > async test contexts.
 ```rust
@@ -804,12 +842,12 @@ pub struct DailyVelocity {
 ```
 
 > Compute a cost and velocity report for the given number of past days.
-> 
+>
 > Pass `window_days = 0` to include all available history.
 > Pass `window_days = 7` for the last week, `30` for the last month.
-> 
+>
 > # Errors
-> 
+>
 > Returns `Error::Store` if any underlying store read fails.
 ```rust
 pub fn compute_cost_report (store: &EnergeiaStore, window_days: u32) -> Result<CostReport>
@@ -863,12 +901,12 @@ pub struct HealthReport {
 ```
 
 > Compute all 7 pipeline health metrics from stored dispatch and session data.
-> 
+>
 > `window_days` controls how far back to look; pass `0` to include all
 > available data. All queries are read-only.
-> 
+>
 > # Errors
-> 
+>
 > Returns `Error::Store` if any underlying store read fails.
 ```rust
 pub fn compute_health_report (store: &EnergeiaStore, window_days: u32) -> Result<HealthReport>
@@ -899,14 +937,14 @@ pub fn register (registry: &mut Registry)
 ```
 
 > Record a completed dispatch run.
-> 
+>
 > Call once per dispatch when it finishes (Completed or Failed).
 ```rust
 pub fn record_dispatch (project: &str, status: &str)
 ```
 
 > Record a completed agent session.
-> 
+>
 > - `cost_usd`  -  session cost; silently skipped when zero.
 > - `duration_ms`  -  wall-clock duration in milliseconds.
 > - `model`  -  LLM model used (e.g., "claude-3-5-sonnet").
@@ -923,14 +961,14 @@ pub fn record_session (
 ```
 
 > Record turns consumed by a session.
-> 
+>
 > Call this to update the `energeia_turns_total` metric.
 ```rust
 pub fn record_turns (project: &str, turns: u32, model: &str, blast_radius: &str)
 ```
 
 > Record a QA evaluation verdict.
-> 
+>
 > `verdict` should be one of `"pass"`, `"partial"`, or `"fail"`.
 ```rust
 pub fn record_qa_verdict (project: &str, verdict: &str)
@@ -988,12 +1026,12 @@ pub struct ProjectSummary {
 ```
 
 > Build a real-time status dashboard snapshot.
-> 
+>
 > Scans all dispatches and sessions. The `recent_outcomes` list contains the
 > most recent `50` dispatches sorted newest-first.
-> 
+>
 > # Errors
-> 
+>
 > Returns `Error::Store` if any underlying store read fails.
 ```rust
 pub fn compute_status_dashboard (store: &EnergeiaStore) -> Result<StatusDashboard>
@@ -1055,7 +1093,7 @@ impl OrchestratorConfig {
 ## `src/orchestrator/mod.rs`
 
 > Top-level dispatch orchestrator.
-> 
+>
 > Builds the pipeline context, runs the 4-stage dispatch pipeline
 > (preparation → execution → `post_processing`), and returns the result.
 > Stage logic lives in [`crate::pipeline`]; this struct owns the
@@ -1122,6 +1160,91 @@ pub struct DryRunPrompt {
 }
 ```
 
+## `src/predictive_budget.rs`
+
+```rust
+pub enum Complexity {
+    /// Simple, mechanical changes (lint fixes, formatting, typos).
+    Low,
+    /// Moderate changes requiring some design (feature additions, tests).
+    Medium,
+    /// Architectural or large-scale redesign work.
+    High,
+}
+```
+
+```rust
+pub struct ClassificationDetail {
+    /// Assigned complexity tier.
+    pub complexity: Complexity,
+    /// Normalized score (0–10+) used for fine-grained adjustment.
+    pub score: u32,
+    /// Keywords or signals that influenced the classification.
+    pub signals: Vec<String>,
+}
+```
+
+```rust
+pub struct PredictedBudget {
+    /// Recommended turn budget for initial session run.
+    initial_turns: u32,
+    /// Recommended turn budget for each resume attempt.
+    resume_turns: u32,
+    /// Confidence level in the prediction (0.0–1.0).
+    confidence: f64,
+    /// Factors that contributed to the prediction.
+    factors: PredictionFactors,
+    /// Human-readable explanation of the prediction.
+    explanation: String,
+}
+```
+
+```rust
+impl PredictedBudget {
+    pub fn initial_turns (&self) -> u32;
+    pub fn resume_turns (&self) -> u32;
+    pub fn confidence (&self) -> f64;
+    pub fn factors (&self) -> &PredictionFactors;
+    pub fn explanation (&self) -> &str;
+}
+```
+
+```rust
+pub struct PredictionFactors {
+    /// Complexity classification of the prompt.
+    pub complexity: Complexity,
+    /// Number of files in the blast radius.
+    pub blast_radius_count: usize,
+    /// Domain/type of the prompt (feat, fix, refactor, etc.).
+    pub domain: String,
+    /// Complexity score from classification.
+    pub complexity_score: u32,
+    /// Estimated based on historical data.
+    pub historical_based: bool,
+}
+```
+
+```rust
+pub fn classify_with_detail (text: &str) -> ClassificationDetail
+```
+
+```rust
+pub fn predict_budget (
+    prompt: &PromptSpec,
+    domain: Option<&str>,
+    max_turns: Option<u32>,
+) -> PredictedBudget
+```
+
+```rust
+pub fn predict_budget_with_historical (
+    prompt: &PromptSpec,
+    domain: Option<&str>,
+    max_turns: Option<u32>,
+    historical_avg: Option<f64>,
+) -> PredictedBudget
+```
+
 ## `src/prompt.rs`
 
 ```rust
@@ -1146,12 +1269,12 @@ pub struct PromptSpec {
 ```
 
 > Load a single prompt from a YAML-frontmatter Markdown file.
-> 
+>
 > The file must begin with `---\n`, contain a YAML block, and close with
 > `---\n`. Everything after the closing delimiter is the body.
-> 
+>
 > # Errors
-> 
+>
 > Returns [`crate::error::Error::Io`] on read failure or
 > [`crate::error::Error::FrontmatterParse`] if the YAML is malformed or
 > the file lacks the `---` delimiters.
@@ -1160,12 +1283,12 @@ pub fn load_prompt (path: &Path) -> Result<PromptSpec>
 ```
 
 > Load all `.md` prompts from a directory.
-> 
+>
 > Reads every `*.md` file in `dir` (non-recursive) and returns the parsed
 > specs sorted by prompt number. Skips non-Markdown files silently.
-> 
+>
 > # Errors
-> 
+>
 > Returns [`crate::error::Error::Io`] if the directory cannot be read.
 > Returns [`crate::error::Error::FrontmatterParse`] for any malformed file.
 ```rust
@@ -1173,12 +1296,12 @@ pub fn load_queue (dir: &Path) -> Result<Vec<PromptSpec>>
 ```
 
 > Construct a validated [`PromptDag`] from a slice of prompt specs.
-> 
+>
 > Each spec's `number` and `depends_on` fields form the DAG nodes and edges.
 > Immediately validates the graph for cycles and missing dependencies.
-> 
+>
 > # Errors
-> 
+>
 > Returns [`crate::error::Error::DagCycle`] on cycle detection or
 > [`crate::error::Error::DagMissingDeps`] for broken dependency references.
 ```rust
@@ -1230,12 +1353,12 @@ pub fn mechanical_check (diff: &str, prompt: &PromptSpec) -> Vec<MechanicalIssue
 ```
 
 > Run `cargo fmt --check` in the given directory.
-> 
+>
 > Returns a [`MechanicalIssue`] per file with formatting violations.
 > Returns an empty vec on success or if the command cannot run.
-> 
+>
 > # Cancel safety
-> 
+>
 > Cancel-safe. The spawned `cargo fmt` process runs independently;
 > cancelling this future simply detaches from the process. The process
 > will complete and its output is discarded.
@@ -1244,12 +1367,12 @@ pub async fn format_check (working_dir: &Path) -> Vec<MechanicalIssue>
 ```
 
 > Run `cargo clippy` in the given directory.
-> 
+>
 > Returns a [`MechanicalIssue`] per warning or error detected.
 > Returns an empty vec on success or if the command cannot run.
-> 
+>
 > # Cancel safety
-> 
+>
 > Cancel-safe. The spawned `cargo clippy` process runs independently;
 > cancelling this future simply detaches from the process. The process
 > will complete and its output is discarded.
@@ -1264,7 +1387,7 @@ pub fn parse_changed_files (diff: &str) -> Vec<String>
 ## `src/qa/mod.rs`
 
 > Abstraction over quality assurance evaluation.
-> 
+>
 > Implementations use hermeneus for LLM-based semantic evaluation and
 > perform mechanical checks (blast radius, lint, format) without LLM calls.
 ```rust
@@ -1299,22 +1422,22 @@ impl PromptSpec {
 ```
 
 > Run a full QA evaluation on a PR diff.
-> 
+>
 > Orchestrates the complete flow: mechanical pre-screening, criteria
 > classification, LLM evaluation of semantic criteria, verdict determination,
 > and training data capture.
-> 
+>
 > # Arguments
-> 
+>
 > * `diff` - The unified diff of the PR
 > * `prompt` - The prompt specification with criteria and blast radius
 > * `pr_number` - The pull request number
 > * `llm` - Optional LLM provider for semantic evaluation. When `None`,
 >   semantic criteria are skipped with a warning and the verdict reflects
 >   mechanical checks only.
-> 
+>
 > # Semantic evaluation
-> 
+>
 > When an LLM provider is supplied, semantic criteria are evaluated via
 > hermeneus. When unavailable (`None`), the verdict indicates that
 > semantic evaluation was not included so the operator knows the gate
@@ -1400,7 +1523,7 @@ impl EventAccumulator {
 ```
 
 > Extract a `GitHub` pull request URL from text.
-> 
+>
 > Matches `https://github.com/{owner}/{repo}/pull/{number}` patterns.
 > Returns the first match found.
 ```rust
@@ -1551,15 +1674,15 @@ impl StewardConfig {
 ```
 
 > Run the steward polling loop.
-> 
+>
 > Each cycle: classify PRs, make merge decisions, execute actions.
 > Respects the cancellation token for graceful shutdown.
-> 
+>
 > WHY: Separating the polling loop from the single-pass logic allows
 > both daemon mode (polling) and CLI mode (single pass).
-> 
+>
 > # Cancel safety
-> 
+>
 > Cancel-safe at loop boundaries. The `select!` uses `cancel.cancelled()`
 > which is cancel-safe. Dropping the future between iterations simply
 > delays the next poll without losing state.
@@ -1568,12 +1691,12 @@ pub async fn run (config: &StewardConfig, cancel: CancellationToken) -> Vec<Stew
 ```
 
 > Run a single steward pass (classify, decide, act).
-> 
+>
 > This is the unit of work for both polling and single-pass modes.
 > Returns the classification and action results.
-> 
+>
 > # Cancel safety
-> 
+>
 > Not cancel-safe. This is a placeholder implementation; the real
 > implementation will perform side effects (fetching PRs, executing
 > merges) that are not idempotent. Do not use in `select!` branches.
@@ -1956,7 +2079,7 @@ pub enum ConflictStrategy {
 ## `src/store/fjall_store.rs`
 
 > State persistence layer wrapping a fjall keyspace.
-> 
+>
 > All dispatch, session, lesson, observation, and CI validation records are
 > stored in a dedicated `"energeia"` partition with byte-prefixed keys for
 > efficient prefix scans.

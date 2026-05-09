@@ -16,7 +16,7 @@ pub struct NoopBridge;
 
 > Allows daemon tasks to send prompts to a nous actor without the daemon
 > crate depending on nous directly.
-> 
+>
 > Implemented in the binary crate where both daemon and nous are available.
 > Uses boxed futures for object safety (`Arc<dyn DaemonBridge>`).
 ```rust
@@ -389,11 +389,12 @@ pub struct MaintenanceReport {
 ```
 
 > Bridge trait for knowledge graph maintenance operations.
-> 
+>
 > Daemon crate defines it, binary crate implements it where `KnowledgeStore`
 > is available. All methods are blocking: the runner wraps in `spawn_blocking`.
 ```rust
 pub trait KnowledgeMaintenanceExecutor : Send + Sync {
+    fn insert_fact (&self, fact: &episteme::knowledge::Fact) -> crate::error::Result<()>;
     fn refresh_decay_scores (&self, nous_id: &str) -> crate::error::Result<MaintenanceReport>;
     fn deduplicate_entities (&self, nous_id: &str) -> crate::error::Result<MaintenanceReport>;
     fn recompute_graph_scores (&self, nous_id: &str) -> crate::error::Result<MaintenanceReport>;
@@ -511,7 +512,7 @@ pub struct RetentionConfig {
 ```
 
 > Trait for components that can execute data retention cleanup.
-> 
+>
 > Implemented in the aletheia binary where `SessionStore` is available.
 > The daemon crate defines the interface only.
 ```rust
@@ -526,6 +527,9 @@ pub struct RetentionSummary {
     pub sessions_cleaned: u32,
     /// Number of expired messages removed.
     pub messages_cleaned: u32,
+    /// Number of expired blackboard entries removed.
+    #[serde(default)]
+    pub blackboard_entries_cleaned: u32,
     /// Total bytes reclaimed from storage.
     pub bytes_freed: u64,
 }
@@ -574,6 +578,7 @@ pub struct TraceRotator {
 ```rust
 impl TraceRotator {
     pub fn new (config: TraceRotationConfig) -> Self;
+    pub fn set_disk_monitor (&mut self, monitor: DiskSpaceMonitor);
     pub fn rotate (&self) -> error::Result<RotationReport>;
 }
 ```
@@ -707,6 +712,8 @@ pub struct ProsocheCheck {
     /// Optional knowledge store for memory consistency checks.
     #[cfg(feature = "knowledge-store")]
     knowledge_store: Option<Arc<episteme::knowledge_store::KnowledgeStore>>,
+    /// Number of recent facts sampled by anomaly detection.
+    anomaly_sample_size: usize,
 }
 ```
 
@@ -764,6 +771,254 @@ impl ProsocheCheck {
 }
 ```
 
+## `src/prosoche_audit.rs`
+
+```rust
+pub enum ProsocheCheckKind {
+    /// Detect contradictions between facts in the knowledge store (X and not-X).
+    Consistency,
+    /// Identify facts or sessions that haven't been touched in N days without rationale.
+    Staleness,
+    /// Verify recent session turns are advancing stated goals.
+    GoalAlignment,
+    /// Evaluate whether sessions produce actionable outcomes (error rate, completion rate).
+    SessionQuality,
+    /// Detect recurring patterns in agent behavior (loops, avoidance, over-confidence).
+    ///
+    /// v1: stub — defines the trait shape. Full semantics need gnomon weights.
+    /// Tracked in follow-up issue.
+    InstinctPatterns,
+}
+```
+
+```rust
+pub struct ProsocheState {
+    /// The nous identity this audit is running for.
+    pub nous_id: String,
+    /// Known stated goals for this nous (free-text lines).
+    ///
+    /// Used by [`GoalAlignmentCheck`] for keyword overlap.
+    pub stated_goals: Vec<String>,
+    /// Recent session summaries (id, turn count, error count, completed flag).
+    ///
+    /// Used by [`SessionQualityCheck`] and [`GoalAlignmentCheck`].
+    pub sessions: Vec<SessionSnapshot>,
+    /// Recent facts for consistency and staleness checks.
+    ///
+    /// Each entry is `(fact_id, content, last_touched_days_ago)`.
+    pub facts: Vec<FactSnapshot>,
+    /// Current UTC timestamp (ISO 8601), set at audit start.
+    pub checked_at: String,
+}
+```
+
+```rust
+pub struct FactSnapshot {
+    /// Stable fact identifier.
+    pub fact_id: String,
+    /// Full text content of the fact.
+    pub content: String,
+    /// How many days ago this fact was last accessed or updated.
+    ///
+    /// A value of `None` means last-access is unknown.
+    pub days_since_touched: Option<f64>,
+}
+```
+
+```rust
+pub struct SessionSnapshot {
+    /// Session identifier.
+    pub session_id: String,
+    /// Total turn count in the session.
+    pub turn_count: u32,
+    /// Number of turns that resulted in an error response.
+    pub error_count: u32,
+    /// Whether the session reached a natural completion (vs. abandoned).
+    pub completed: bool,
+    /// Combined text of all user turns in this session.
+    ///
+    /// Used for goal-alignment keyword matching.
+    pub turn_text: String,
+}
+```
+
+> A single prosoche self-audit check.
+>
+> Implementations receive a [`ProsocheState`] snapshot and produce zero or
+> more [`Finding`]s describing attention-quality issues. Each finding carries
+> its own [`EvidenceLevel`] so consumers can weight the results appropriately.
+>
+> # Implementation contract
+>
+> - Checks MUST be stateless: all input is in [`ProsocheState`].
+> - Checks MUST NOT panic. Return an empty `Vec` on errors and log via `tracing`.
+> - Checks SHOULD log one `tracing::info!` per invocation with `findings_count`.
+> - Checks SHOULD be fast (<100ms). Long-running analysis belongs in a separate
+>   maintenance task, not a prosoche check.
+>
+> # Object safety
+>
+> `check` returns `Pin<Box<dyn Future>>` so the trait is object-safe and
+> `Arc<dyn ProsocheCheck>` works without `async_trait`. Pattern mirrors
+> [`crate::bridge::DaemonBridge`].
+```rust
+pub trait ProsocheCheck : Send + Sync {
+    fn check <'a> (
+        &'a self,
+        state: &'a ProsocheState,
+    ) -> Pin<Box<dyn std::future::Future<Output = Vec<Finding>> + Send + 'a>>;
+    fn kind (&self) -> ProsocheCheckKind;
+}
+```
+
+> Detect contradictions in the fact graph.
+>
+> v1 heuristic: looks for fact pairs where one fact content contains a term
+> and another contains "not <term>" or "never <term>". This catches obvious
+> logical contradictions without requiring symbolic reasoning.
+>
+> Future: integrate with episteme's A-MemGuard consensus layer for full
+> multi-path contradiction detection.
+```rust
+pub struct ConsistencyCheck;
+```
+
+> Flag facts and sessions that haven't been touched in N days without a
+> documented rationale.
+>
+> v1 thresholds:
+> - Facts untouched > 90 days: `Exploratory` finding.
+> - Incomplete sessions with > 10 turns: `Interpretive` finding.
+```rust
+pub struct StalenessCheck {
+    /// Number of days after which an unaccessed fact is considered stale.
+    pub fact_stale_days: f64,
+}
+```
+
+> Verify recent session turns are advancing stated goals.
+>
+> v1: keyword-overlap heuristic. For each session, count how many of the
+> stated-goal keywords appear in the session's turn text. Sessions with
+> zero overlap with any goal produce an `Interpretive` finding.
+>
+> Limitation: keyword matching does not capture semantic alignment. A session
+> about "implement the authentication system" may advance the goal
+> "ship secure login" without sharing keywords.
+```rust
+pub struct GoalAlignmentCheck;
+```
+
+> Flag sessions with high error rates or only abandoned turns.
+>
+> v1 thresholds:
+> - Error rate > 50% of turns: `Exploratory` finding.
+> - Zero completed sessions in the snapshot AND ≥ 5 sessions: `Interpretive` finding.
+```rust
+pub struct SessionQualityCheck {
+    /// Error rate threshold above which a session is flagged (0.0–1.0).
+    pub error_rate_threshold: f64,
+    /// Minimum session length (in turns) before quality check is applied.
+    ///
+    /// Very short sessions are excluded to avoid flagging legitimate 1-turn interactions.
+    pub min_turns: u32,
+}
+```
+
+> Detect recurring patterns in agent behavior.
+>
+> v1: stub implementation. The trait shape and variant are correct; the
+> pattern detection logic requires gnomon behavioral weights and a session
+> history longer than what's available in `ProsocheState`.
+>
+> # Follow-up
+>
+> Full implementation tracked separately. When gnomon weights are available:
+> 1. Sample the last N session summaries.
+> 2. Run behavioural pattern detection (loop detection, avoidance bias,
+>    over-confidence in tool selection).
+> 3. Emit `Speculative` findings for patterns that exceed a threshold.
+```rust
+pub struct InstinctPatternsCheck;
+```
+
+> Persistence backend for audit reports.
+>
+> v1: writes JSON files to a directory on disk. Each audit run produces
+> a timestamped file: `prosoche-audit-<ISO8601>.json`.
+```rust
+pub struct AuditStorage {
+    /// Directory where audit reports are written.
+    pub dir: PathBuf,
+}
+```
+
+```rust
+impl AuditStorage {
+    pub fn new (dir: impl Into<PathBuf>) -> Self;
+    pub fn persist (&self, report: &AuditReport) -> std::io::Result<PathBuf>;
+}
+```
+
+```rust
+pub struct AuditReport {
+    /// ISO 8601 timestamp when this audit ran.
+    pub audited_at: String,
+    /// The nous identity this audit covers.
+    pub nous_id: String,
+    /// All findings from all checks, in check order.
+    pub findings: Vec<Finding>,
+    /// Summary counts by check kind.
+    pub check_summary: Vec<CheckSummary>,
+    /// Provenance metadata (producer, schema version, counts).
+    pub meta: ArtefactMeta,
+}
+```
+
+```rust
+pub struct CheckSummary {
+    /// Which check produced these findings.
+    pub kind: ProsocheCheckKind,
+    /// How many findings this check produced.
+    pub findings_count: usize,
+}
+```
+
+> Runs all registered prosoche checks and persists the resulting findings.
+>
+> # Usage
+>
+> Build the runner with [`ProsocheAuditRunner::default_checks`], then call
+> [`ProsocheAuditRunner::run_audit`] at the heartbeat cadence. The runner is
+> wired into the existing 5-minute heartbeat via [`crate::execution`]'s
+> `SelfAudit` builtin arm  -  it does NOT create a new timer.
+>
+> ```text
+> BuiltinTask::SelfAudit
+>   └─ ProsocheAuditRunner::run_audit(&state)
+>        ├─ ConsistencyCheck::check()
+>        ├─ StalenessCheck::check()
+>        ├─ GoalAlignmentCheck::check()
+>        ├─ SessionQualityCheck::check()
+>        └─ InstinctPatternsCheck::check()  (stub)
+> ```
+```rust
+pub struct ProsocheAuditRunner {
+    /// Ordered list of checks to run.
+    checks: Vec<Arc<dyn ProsocheCheck>>,
+    /// Persistence backend for audit reports.
+    storage: AuditStorage,
+}
+```
+
+```rust
+impl ProsocheAuditRunner {
+    pub fn default_checks (audit_dir: impl AsRef<Path>) -> Self;
+    pub fn new (checks: Vec<Arc<dyn ProsocheCheck>>, storage: AuditStorage) -> Self;
+    pub async fn run_audit (&self, state: &ProsocheState) -> AuditReport;
+}
+```
+
 ## `src/runner/inflight.rs`
 
 ```rust
@@ -805,10 +1060,12 @@ pub struct TaskRunner {
     knowledge_executor: Option<Arc<dyn KnowledgeMaintenanceExecutor>>,
     /// In-flight tasks: `task_id` → [`InFlightTask`].
     in_flight: HashMap<String, InFlightTask>,
-    /// Optional SQLite-backed state store for cross-restart persistence.
+    /// Optional fjall-backed state store for cross-restart persistence.
     state_store: Option<crate::state::TaskStateStore>,
     /// Output mode: full or brief (truncated).
     output_mode: DaemonOutputMode,
+    /// Deployment-tunable daemon behavior.
+    daemon_behavior: DaemonBehaviorConfig,
     /// Self-prompt rate limiter (tracks per-agent dispatch counts).
     self_prompt_limiter: crate::self_prompt::SelfPromptLimiter,
     /// Self-prompt configuration (enabled, rate limits).
@@ -847,6 +1104,7 @@ impl TaskRunner {
         executor: Arc<dyn KnowledgeMaintenanceExecutor>,
     ) -> Self;
     pub fn with_output_mode (mut self, mode: DaemonOutputMode) -> Self;
+    pub fn with_daemon_behavior (mut self, behavior: DaemonBehaviorConfig) -> Self;
     pub fn with_self_prompt (mut self, config: crate::self_prompt::SelfPromptConfig) -> Self;
 }
 ```
@@ -863,7 +1121,7 @@ impl TaskRunner {
 ## `src/runner/systemd.rs`
 
 > Send `READY=1` to systemd via the `$NOTIFY_SOCKET`.
-> 
+>
 > WHY: systemd `Type=notify` services need this to know initialization is
 > complete. No-op if `$NOTIFY_SOCKET` is not SET.
 ```rust
@@ -871,7 +1129,7 @@ pub fn sd_notify_ready ()
 ```
 
 > Send `WATCHDOG=1` to systemd.
-> 
+>
 > WHY: `WatchdogSec` integration enables automatic restart on hang.
 ```rust
 pub fn sd_notify_watchdog ()
@@ -883,7 +1141,7 @@ pub fn sd_notify_stopping ()
 ```
 
 > Parse `$WATCHDOG_USEC` to determine the systemd watchdog interval.
-> 
+>
 > Returns `None` if the variable is not SET or unparseable. The recommended
 > notification interval is half the watchdog timeout.
 ```rust
@@ -1029,7 +1287,7 @@ pub struct TaskStatus {
 ## `src/self_prompt.rs`
 
 > Session key used for all self-prompt dispatches.
-> 
+>
 > WHY: separate session key prevents self-prompts from interfering with user
 > sessions. Users can check `daemon:self-prompt` when they want to review
 > autonomous actions.
@@ -1126,17 +1384,17 @@ impl DaemonConfig {
 ```
 
 > Single-instance lock guard for daemon process per workspace.
-> 
+>
 > WHY: only one daemon process should run per workspace. We use
 > `rustix::fs::flock` directly on the lock file's file descriptor.
-> 
+>
 > The lock file is created at `.aletheia/daemon.lock` in the workspace root.
 > The advisory lock is bound to the file descriptor and held for as long as
 > `WorkspaceGuard` (and therefore the inner `File`) lives. Drop closes the
 > file descriptor, which releases the flock automatically.
-> 
+>
 > # Bug history
-> 
+>
 > Previously this used `fd_lock::RwLock<File>` and probed with `try_write()`,
 > then immediately dropped the resulting `RwLockWriteGuard`. This was a bug:
 > `RwLockWriteGuard::drop` calls `flock(fd, LOCK_UN)`, releasing the lock
@@ -1182,6 +1440,16 @@ pub struct WatchdogConfig {
     pub check_interval: Duration,
     /// Maximum number of restart attempts before giving up.
     pub max_restarts: u32,
+    /// Base duration for restart backoff.
+    pub backoff_base: Duration,
+    /// Maximum restart backoff duration.
+    pub backoff_cap: Duration,
+}
+```
+
+```rust
+impl WatchdogConfig {
+    pub fn with_daemon_behavior (mut self, behavior: &taxis::config::DaemonBehaviorConfig) -> Self;
 }
 ```
 
@@ -1243,4 +1511,21 @@ pub struct ProcessStatus {
 impl Watchdog {
     pub async fn run (&mut self);
 }
+```
+
+## `tests/common/mod.rs`
+
+> Write a fixture file synchronously via `OpenOptions` + `Write`.
+>
+> WHY: the daemon crate's `clippy.toml` disallows `std::fs::write` to steer
+> production code toward `tokio::fs`. Integration tests still inherit that
+> clippy config. Using explicit `File::create` + `write_all` is equivalent
+> and keeps the lint clean.
+```rust
+pub fn write_fixture (path: impl AsRef<Path>, bytes: impl AsRef<[u8]>)
+```
+
+> Build a minimal `TaskRunner` bound to a throw-away cancellation token.
+```rust
+pub fn make_runner (nous_id: &str) -> TaskRunner
 ```

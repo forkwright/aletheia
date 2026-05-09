@@ -1,24 +1,30 @@
 # graphe
 
-**Purpose:** Session and message persistence using a fjall LSM-tree store; includes agent portability types for cross-runtime export/import.
+**Purpose:** Session persistence layer for Aletheia.
 
 ## Key types
 
 | Type | Purpose |
 |------|---------|
-| `SessionStore` | fjall-backed session store (single-writer transactions) |
-| `Session` | Session record: id, nous_id, status, type, metrics, timestamps |
-| `Message` | Conversation message: role, content, tool calls, token estimate |
-| `SessionStatus` | Active, Archived, Distilled |
-| `AgentFile` | Portable agent export format (pure data types) |
+| `SessionStore` | Current public type or boundary; see L3/source for exact fields |
+| `Session` | Current public type or boundary; see L3/source for exact fields |
+| `Message` | Current public type or boundary; see L3/source for exact fields |
+| `UsageRecord` | Current public type or boundary; see L3/source for exact fields |
+| `CleanupExpiredEntries` | Current public type or boundary; see L3/source for exact fields |
 
 ## Public API surface
 
-- `graphe::store` - `SessionStore` CRUD: create, get, append messages, list, archive
-- `graphe::types` - `Session`, `Message`, `UsageRecord`, `Role`, `SessionType`, `SessionStatus`
-- `graphe::portability` - `AgentFile` for cross-runtime agent export/import
+- `graphe::error` - public items from `src/error.rs`
+- `graphe::metrics` - public items from `src/metrics.rs`
+- `graphe::portability` - public items from `src/portability.rs`
+- `graphe::store/fjall_store` - public items from `src/store/fjall_store.rs`
+- `graphe::types` - public items from `src/types.rs`
 
 ## When to look here
 
-- When reading or writing session/message data
-- When implementing agent portability or backup/restore logic
+- When work touches `crates/graphe` or downstream imports from `graphe`.
+- For exact signatures, load `_llm/L3-api-index/graphe.md` if present, then source.
+
+## Recent changes
+
+TTL overflow handling and cleanup_expired_entries are wired into the fjall-backed store and maintenance path.

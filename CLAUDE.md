@@ -32,14 +32,14 @@ Task-specific context selection is defined in [`_llm/recipes.toml`](_llm/recipes
 
 | Task type | Recipe | What to load | Token budget |
 |-----------|--------|--------------|-------------|
-| Cold start / first interaction | `cold_start` | `architecture.toml` + `manifest.toml` + `CLAUDE.md` | ~5,700 |
-| Single-crate edit | `edit_crate` | `architecture.toml` + L3(crate) + source(crate) | varies |
-| Cross-crate refactor | `cross_crate_refactor` | `architecture.toml` + `manifest.toml` + L3(touched crates) | ~250K |
+| Cold start / first interaction | `cold_start` | `L1-workspace.md` + `manifest.toml` + `CLAUDE.md` | ~5,700 |
+| Single-crate edit | `edit_crate` | L2(crate) + L3(crate) + source(crate) | varies |
+| Cross-crate refactor | `cross_crate_refactor` | `L1-workspace.md` + `manifest.toml` + L3(touched crates) | ~250K |
 | New HTTP endpoint | `add_endpoint` | `architecture.toml` + `api.toml` + L3(pylon, nous) | ~65K |
 | New built-in tool | `add_tool` | `architecture.toml` + L3(organon) + `builtins/` source | ~35K |
 | Bug fix in known crate | `fix_bug` | `architecture.toml` + L3(crate) + source(crate) | ~45K |
 
-The `nous` crate provides [`RecipeRegistry`](crates/nous/src/recipes.rs) for parsing and selecting recipes at bootstrap time.
+The `nous` crate provides [`RecipeRegistry`](crates/nous/src/recipes.rs) for parsing and selecting recipes at bootstrap time. L2 summaries now include one-line recent-change notes; use them before reading source for post-2026-05-08 substrate orientation.
 
 ### Config
 
@@ -114,7 +114,7 @@ for the release-time substance-audit gate that calls this tool via
 | CLI subcommand | `crates/aletheia/src/commands/` | Add to clap derive in `main.rs` |
 | API endpoint | `crates/pylon/src/handlers/` | Add route in `crates/pylon/src/router.rs` |
 | Built-in tool | `crates/organon/src/builtins/` | Register in `register_all()` |
-| Config section | `crates/taxis/src/config.rs` | Add field to `AletheiaConfig` struct |
+| Config section | `crates/taxis/src/config/behavior/` or `crates/taxis/src/config/agents.rs` | Add field to `AletheiaConfig`/defaults and registry metadata |
 | Error variant | `crates/{crate}/src/error.rs` | snafu derive on the crate's Error enum |
 | Maintenance task | `crates/daemon/src/` | Register in runner |
 | Bootstrap file | `crates/nous/src/bootstrap/` | Add to section list in assembler |

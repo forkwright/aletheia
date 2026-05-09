@@ -152,16 +152,19 @@ impl LoadedPack {
         domains: &[String],
     ) -> Vec<&PackSection>;
     pub fn domains_for_agent (&self, agent_id: &str) -> Vec<String>;
+    pub fn model_for_agent (&self, agent_id: &str) -> Option<String>;
+    pub fn agency_for_agent (&self, agent_id: &str) -> Option<String>;
+    pub fn system_prompt_additions_for_agent (&self, agent_id: &str) -> Vec<String>;
 }
 ```
 
 > Load all configured domain packs.
-> 
+>
 > Reads manifests from each path, resolves context files, and returns loaded packs.
 > Invalid or missing packs emit warnings and are skipped (graceful degradation).
-> 
+>
 > # Blocking I/O
-> 
+>
 > This function performs synchronous file I/O and is intended to be called once
 > at startup, before the async runtime begins serving requests. If called from
 > within an async context during normal operation, wrap in
@@ -227,6 +230,19 @@ pub struct AgentOverlay {
     /// Domain tags to merge into the agent's config.
     #[serde(default)]
     pub domains: Vec<String>,
+
+    /// Optional override for primary model. None means use the agent's configured model.
+    #[serde(default)]
+    pub model: Option<String>,
+
+    /// Optional override for agency level (unrestricted, standard, restricted).
+    /// None means use the agent's default.
+    #[serde(default)]
+    pub agency: Option<String>,
+
+    /// Per-agent system-prompt additions appended at the workspace-pack tier.
+    #[serde(default)]
+    pub system_prompt_additions: Vec<String>,
 }
 ```
 
@@ -277,7 +293,7 @@ pub struct PackPropertyDef {
 ## `src/tools/mod.rs`
 
 > Register all tools from loaded packs into the tool registry.
-> 
+>
 > Validates each tool's command path and schema, then registers it.
 > Invalid tools are skipped with warnings; errors are collected and returned.
 ```rust

@@ -1,23 +1,27 @@
 # poiesis-lint
 
-**Purpose:** Prose quality linting for reports. Checks banned words, citation coverage, structural patterns, required sections, and header length. Ported from `ergon_tools` sdr lint.
+**Purpose:** Report prose linting: banned words, citation checks, structure checks.
 
 ## Key types
 
 | Type | Purpose |
 |------|---------|
-| `LintError` | Error enum for the lint pipeline |
-| `banned_words::*` | Banned-word detection |
-| `citations::*` | Citation coverage analysis |
-| `structure::*` | Required-section and header-length checks |
+| `LintError` | Current public type or boundary; see L3/source for exact fields |
+| `Finding` | Current public type or boundary; see L3/source for exact fields |
+| `FindingKind` | Current public type or boundary; see L3/source for exact fields |
+| `LineFix` | Current public type or boundary; see L3/source for exact fields |
+| `LintConfig` | Current public type or boundary; see L3/source for exact fields |
 
 ## Public API surface
 
-- `poiesis_lint::error` - `LintError` and result types
-- `poiesis_lint` - Serializable report types (`Deserialize`/`Serialize`)
+- `poiesis-lint::error` - public items from `src/error.rs`
+- `poiesis-lint::lib` - public items from `src/lib.rs`
 
 ## When to look here
 
-- When adjusting prose-quality rules for report generation
-- When extending the citation coverage heuristic
-- When adding a new required section to report templates
+- When work touches `crates/poiesis/lint` or downstream imports from `poiesis-lint`.
+- For exact signatures, load `_llm/L3-api-index/poiesis-lint.md` if present, then source.
+
+## Recent changes
+
+Comment filtering and report-lint drift fixes are reflected in the refreshed API surface.

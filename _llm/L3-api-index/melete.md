@@ -48,7 +48,7 @@ impl ContradictionLog {
 ## `src/distill.rs`
 
 > Default maximum conversation turns to skip between distillation retry attempts.
-> 
+>
 > Callers should prefer the value from `taxis::config::AgentBehaviorDefaults::distillation_max_backoff_turns`.
 ```rust
 pub const DEFAULT_MAX_BACKOFF_TURNS: u32 = 8;
@@ -177,28 +177,28 @@ impl DistillEngine {
 ## `src/dream/mod.rs`
 
 > Default minimum hours between consolidation runs.
-> 
+>
 > Callers should prefer the value from `taxis::config::AgentBehaviorDefaults::dream_min_hours`.
 ```rust
 pub const DEFAULT_MIN_HOURS: u64 = 24;
 ```
 
 > Default minimum sessions required to trigger consolidation.
-> 
+>
 > Callers should prefer the value from `taxis::config::AgentBehaviorDefaults::dream_min_sessions`.
 ```rust
 pub const DEFAULT_MIN_SESSIONS: usize = 5;
 ```
 
 > Default session scan throttle interval (10 minutes in seconds).
-> 
+>
 > Callers should prefer the value from `taxis::config::AgentBehaviorDefaults::dream_scan_throttle_secs`.
 ```rust
 pub const DEFAULT_SCAN_THROTTLE_SECS: i64 = 600;
 ```
 
 > Default stale lock threshold (1 hour in seconds).
-> 
+>
 > Callers should prefer the value from `taxis::config::AgentBehaviorDefaults::dream_stale_threshold_secs`.
 ```rust
 pub const DEFAULT_STALE_THRESHOLD_SECS: i64 = 3_600;
@@ -250,8 +250,8 @@ pub struct MergeReport {
 ```
 
 > Trait for counting and loading session transcripts.
-> 
-> Implementors provide access to session storage (e.g. `SQLite` via graphe).
+>
+> Implementors provide access to session storage (e.g. fjall via graphe).
 ```rust
 pub trait TranscriptSource : Send + Sync {
     fn count_sessions_since (
@@ -266,7 +266,7 @@ pub trait TranscriptSource : Send + Sync {
 ```
 
 > Trait for persisting consolidation results to the knowledge graph.
-> 
+>
 > Implementors provide the merge/dedup/stale-marking operations backed by
 > the concrete knowledge store (e.g. episteme via mneme).
 ```rust
@@ -285,13 +285,14 @@ pub trait ConsolidationTarget : Send + Sync {
 ```
 
 > The auto-dream consolidation engine.
-> 
+>
 > Manages the triple-gate system and spawns background consolidation tasks.
 > Thread-safe: uses atomics for scan throttling, no mutex needed.
 ```rust
 pub struct DreamEngine {
     config: DreamConfig,
     distill: DistillEngine,
+    probe: ProbeVerifier,
     /// Unix timestamp of the last session scan (for 10-minute throttle).
     /// WHY: `AtomicI64` because we need lock-free reads FROM the gate check
     /// hot path. i64 holds Unix seconds until year ~292 billion.
@@ -376,6 +377,17 @@ pub enum Error {
     DreamConsolidationTarget {
         context: String,
         source: std::io::Error,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Backward-path probe verification rejected a memory flush.
+    #[snafu(display(
+        "backward-path probe verification failed: {failure_count}/{total_probes} probes failed"
+    ))]
+    ProbeVerification {
+        failure_count: usize,
+        total_probes: usize,
         #[snafu(implicit)]
         location: snafu::Location,
     },
@@ -525,7 +537,7 @@ impl ProbeVerifier {
 ## `src/prompt.rs`
 
 > Default maximum character length for truncated tool results in distillation prompts.
-> 
+>
 > Callers should prefer the value from `taxis::config::AgentBehaviorDefaults::distillation_max_tool_result_len`.
 ```rust
 pub const DEFAULT_MAX_TOOL_RESULT_LEN: usize = 500;
@@ -534,14 +546,14 @@ pub const DEFAULT_MAX_TOOL_RESULT_LEN: usize = 500;
 ## `src/similarity.rs`
 
 > Default minimum token length to include in similarity comparison.
-> 
+>
 > Callers should prefer the value from `taxis::config::AgentBehaviorDefaults::similarity_min_token_len`.
 ```rust
 pub const DEFAULT_MIN_TOKEN_LEN: usize = 3;
 ```
 
 > Default Jaccard similarity threshold for near-duplicate detection.
-> 
+>
 > Callers should prefer the value from `taxis::config::AgentBehaviorDefaults::similarity_threshold`.
 ```rust
 pub const DEFAULT_SIMILARITY_THRESHOLD: f64 = 0.85;

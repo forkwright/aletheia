@@ -44,9 +44,9 @@ pub fn encode (input: &[u8]) -> String
 ```
 
 > Decode standard base64 (with `+`, `/`, `=` padding).
-> 
+>
 > # Errors
-> 
+>
 > Returns [`DecodeError`] if the input contains invalid characters,
 > has an invalid length, or has malformed padding.
 ```rust
@@ -58,13 +58,13 @@ pub fn encode_url_safe_no_pad (input: &[u8]) -> String
 ```
 
 > Decode URL-safe base64 (with `-`, `_`, no padding required).
-> 
+>
 > Leniently accepts `+` and `/` as aliases for `-` and `_`, and strips
 > any trailing `=` padding, so callers that receive mildly malformed
 > inputs do not fail unnecessarily.
-> 
+>
 > # Errors
-> 
+>
 > Returns [`DecodeError`] if the input contains invalid characters
 > or has an invalid length.
 ```rust
@@ -73,34 +73,28 @@ pub fn decode_url_safe_no_pad (input: &str) -> Result<Vec<u8>, DecodeError>
 
 ## `src/cleanup.rs`
 
-```rust
-impl <F: FnOnce()> CleanupGuard<F> {
-    pub fn disarm (mut self);
-}
-```
-
 > Registry that collects multiple cleanup callbacks and runs them all on drop.
-> 
-> Unlike [`CleanupGuard`] (single callback), `CleanupRegistry` accumulates
-> callbacks over time and runs them in reverse registration order (LIFO) on
-> drop -- matching the natural resource acquisition/release pattern.
-> 
+>
+> `CleanupRegistry` accumulates callbacks over time and runs them in reverse
+> registration order (LIFO) on drop -- matching the natural resource
+> acquisition/release pattern.
+>
 > # Example
-> 
+>
 > ```
 > use koina::cleanup::CleanupRegistry;
 > use std::sync::Arc;
 > use std::sync::atomic::{AtomicU32, Ordering};
-> 
+>
 > let counter = Arc::new(AtomicU32::new(0));
 > let mut registry = CleanupRegistry::new();
-> 
+>
 > let c = Arc::clone(&counter);
 > registry.register(move || { c.fetch_add(1, Ordering::Relaxed); });
-> 
+>
 > let c = Arc::clone(&counter);
 > registry.register(move || { c.fetch_add(10, Ordering::Relaxed); });
-> 
+>
 > drop(registry);
 > assert_eq!(counter.load(Ordering::Relaxed), 11, "both callbacks must fire");
 > ```
@@ -145,7 +139,7 @@ pub struct Credential {
 
 > Trait for credential resolution. Called per-request to support mid-session
 > token rotation and background OAuth refresh.
-> 
+>
 > Implementations must be `Send + Sync` for use across threads and in async
 > contexts. The `get_credential()` method is intentionally synchronous: the
 > refreshing providers store the current token in memory and refresh
@@ -224,7 +218,22 @@ pub const CHARS_PER_TOKEN: u32 = 4;
 pub const MAX_OUTPUT_BYTES: usize = 50 * 1024;
 ```
 
+> Default limit for consecutive no-progress turns before the mistake brake fires.
+```rust
+pub const DEFAULT_CONSECUTIVE_MISTAKE_LIMIT: u32 = 5;
+```
+
 ## `src/disk_space.rs`
+
+> Default warning threshold: 1 GB.
+```rust
+pub const DEFAULT_WARNING_BYTES: u64 = 1024 * BYTES_PER_MB;
+```
+
+> Default critical threshold: 100 MB.
+```rust
+pub const DEFAULT_CRITICAL_BYTES: u64 = 100 * BYTES_PER_MB;
+```
 
 ```rust
 pub enum DiskStatus {
@@ -253,13 +262,22 @@ impl DiskStatus {
 ```
 
 > Query available disk space for the filesystem containing `path`.
-> 
+>
 > # Errors
-> 
+>
 > Returns an I/O error if the `statvfs` syscall fails (e.g. path does not
 > exist or is not accessible).
 ```rust
 pub fn available_space (path: &Path) -> std::io::Result<u64>
+```
+
+> Check disk space and classify against thresholds.
+```rust
+pub fn check_disk_space (
+    path: &Path,
+    warning_bytes: u64,
+    critical_bytes: u64,
+) -> std::io::Result<DiskStatus>
 ```
 
 ```rust
@@ -272,8 +290,12 @@ pub struct DiskSpaceMonitor {
 
 ```rust
 impl DiskSpaceMonitor {
+    pub fn new (warning_bytes: u64, critical_bytes: u64) -> Self;
+    pub fn refresh (&self, path: &Path) -> std::io::Result<DiskStatus>;
     pub fn status (&self) -> DiskStatus;
     pub fn allow_non_essential_write (&self) -> bool;
+    pub fn warning_bytes (&self) -> u64;
+    pub fn critical_bytes (&self) -> u64;
 }
 ```
 
@@ -408,23 +430,23 @@ pub enum ErrorAction {
 ```
 
 > A classifiable error: knows its own class and the action the caller should take.
-> 
+>
 > Implement this on each concrete error type that flows through the pipeline.
 > The pipeline uses `class()` and `action()` to decide retry vs escalate vs
 > surface, replacing per-site `match` arms on individual error variants.
-> 
+>
 > # Example
-> 
+>
 > ```
 > use koina::error_class::{Classifiable, ErrorAction, ErrorClass};
-> 
+>
 > struct MyError;
-> 
+>
 > impl Classifiable for MyError {
 >     fn class(&self) -> ErrorClass {
 >         ErrorClass::Transient
 >     }
-> 
+>
 >     fn action(&self) -> ErrorAction {
 >         ErrorAction::Retry {
 >             max_attempts: 3,
@@ -458,7 +480,7 @@ pub enum LogLevel {
 ```
 
 > A typed internal event that produces both a log line and metric labels.
-> 
+>
 > Implementors define what to log and what metric labels to attach.
 > The [`EventEmitter`] handles dispatching to both sinks.
 ```rust
@@ -477,15 +499,17 @@ pub struct EventEmitter {
     counter: Arc<AtomicU64>,
     /// Optional metric sink for forwarding to Prometheus or other collectors.
     metric_sink: Arc<Option<Box<MetricSink>>>,
-    /// Optional event listeners for testing and composition.
-    listeners: Arc<Mutex<Vec<Box<Listener>>>>,
 }
 ```
 
 ```rust
 impl EventEmitter {
     pub fn new () -> Self;
+    pub fn with_metric_sink (
+        sink: impl Fn(&str, &[(&str, String)], f64) + Send + Sync + 'static,
+    ) -> Self;
     pub fn emit (&self, event: &impl InternalEvent);
+    pub fn event_count (&self) -> u64;
 }
 ```
 
@@ -493,7 +517,7 @@ impl EventEmitter {
 
 > A fjall database handle with a write-serialization mutex and optional temp
 > directory for ephemeral (test) stores.
-> 
+>
 > The `_temp_dir` field's `Drop` implementation deletes the temporary directory
 > when the store is dropped. The leading underscore suppresses `dead_code`
 > warnings since the field is only needed for its `Drop` side effect.
@@ -504,7 +528,7 @@ pub struct FjallDb {
     /// Shared write mutex.
     ///
     /// WHY: `SingleWriterTxDatabase` serialises writers internally, but many
-    /// Aletheia stores expose `&self` write methods (matching the `SQLite` backends
+    /// Aletheia stores expose `&self` write methods (matching historical legacy `SQLite` backends
     /// that use interior mutability). This mutex ensures only one logical write
     /// runs at a time, matching that serial contract.
     pub write_lock: Mutex<()>,
@@ -550,7 +574,7 @@ pub enum FjallOpenError {
 ```
 
 > ISO 8601 timestamp string for "now" using jiff.
-> 
+>
 > Shared across fjall-backed stores that need consistent timestamp formatting.
 ```rust
 pub fn now_iso () -> String
@@ -559,16 +583,16 @@ pub fn now_iso () -> String
 ## `src/fs.rs`
 
 > Validate that `path` resolves within `root` after canonicalization.
-> 
+>
 > Follows the security standard's path validation sequence:
 > normalize -> check `allowed_roots` -> canonicalize -> re-check `allowed_roots`.
-> 
+>
 > For paths that do not yet exist on disk, the parent directory is
 > canonicalized and the final component is appended. This handles the
 > common pattern of validating a file path before creating it.
-> 
+>
 > # Errors
-> 
+>
 > Returns [`std::io::Error`] if:
 > - The path contains `..` components (pre-canonicalization check).
 > - The canonicalized path does not start with the canonicalized root.
@@ -578,16 +602,16 @@ pub fn validate_within_root (path: &Path, root: &Path) -> std::io::Result<PathBu
 ```
 
 > Write `content` to `path` atomically with 0600 permissions.
-> 
+>
 > 1. Creates parent directories if needed.
 > 2. Writes to a `.tmp` sibling with mode 0600.
 > 3. Renames atomically to the target path.
-> 
+>
 > The two-step write prevents other processes from reading a partially-written
 > file and ensures the final file is never world-readable.
-> 
+>
 > # Errors
-> 
+>
 > Returns an I/O error if any step (dir creation, write, rename) fails.
 ```rust
 pub fn write_restricted (path: &Path, content: &[u8]) -> std::io::Result<()>
@@ -737,14 +761,28 @@ pub struct OutputBuffer<T> {
 
 ```rust
 impl <T: Clone> OutputBuffer<T> {
+    pub fn new () -> Self;
     pub fn register_output (&mut self, name: &str);
+    pub fn register_dead_letter (&mut self);
+    pub fn push (&mut self, event: T, output: &str) -> bool;
+    pub fn fan_out (&mut self, event: T, targets: &[&str]) -> usize;
+    pub fn route (&mut self, event: T, router: impl FnOnce(&T) -> &str) -> bool;
+    pub fn drain (&mut self, output: &str) -> Vec<T>;
+    pub fn drain_dead_letter (&mut self) -> Vec<T>;
+    pub fn peek (&self, output: &str) -> &[T];
+    pub fn len (&self, output: &str) -> usize;
+    pub fn is_empty (&self, output: &str) -> bool;
+    pub fn total_events (&self) -> usize;
+    pub fn output_names (&self) -> Vec<&str>;
+    pub fn has_output (&self, name: &str) -> bool;
+    pub fn clear (&mut self);
 }
 ```
 
 ## `src/redacting_layer.rs`
 
 > Tracing layer that redacts sensitive field values in structured JSON output.
-> 
+>
 > Fields matching `redact_fields` have their values replaced with
 > `[REDACTED]`. Fields matching `truncate_fields` are capped at
 > `truncate_length` characters. All string values are scanned for API key
@@ -831,6 +869,10 @@ impl RetryConfig {
     ) -> Result<T, E> where
         F: FnMut() -> Fut,
         Fut: Future<Output = Result<T, E>>,;
+    pub async fn retry_classified_async <F, Fut, T, E> (&self, mut operation: F) -> Result<T, E> where
+        F: FnMut() -> Fut,
+        Fut: Future<Output = Result<T, E>>,
+        E: Classifiable,;
 }
 ```
 
@@ -841,7 +883,7 @@ pub fn exponential_steps (attempt: u32, factor: u32, cap: u32) -> u32
 ## `src/secret.rs`
 
 > A string holding a secret value (API key, token, password).
-> 
+>
 > - `Debug` and `Display` print `[REDACTED]` instead of the value.
 > - `Serialize` outputs `"[REDACTED]"` to prevent accidental logging via JSON.
 > - `Deserialize` accepts the actual string value normally.
@@ -862,10 +904,10 @@ impl SecretString {
 ## `src/system.rs`
 
 > Abstraction over filesystem read, write, and query operations.
-> 
+>
 > Implement this trait to substitute an in-memory store in tests instead of
 > touching the real disk.
-> 
+>
 > All directory-creation methods use `create_dir_all` semantics (they create
 > the full ancestor chain as needed).
 ```rust
@@ -882,7 +924,7 @@ pub trait FileSystem : Send + Sync {
 ```
 
 > Abstraction over the system clock.
-> 
+>
 > Use [`RealSystem`] in production and a frozen [`TestSystem`] in tests to
 > obtain deterministic timestamps without sleeping.
 ```rust
@@ -893,7 +935,7 @@ pub trait Clock : Send + Sync {
 ```
 
 > Abstraction over the process environment.
-> 
+>
 > Use [`RealSystem`] in production and a pre-populated [`TestSystem`] in
 > tests to avoid polluting or reading the real process environment.
 ```rust

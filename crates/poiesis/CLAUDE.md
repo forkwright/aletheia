@@ -72,6 +72,12 @@ Current slugs: `default`.
 - **ZIP-based packaging**: ODT, XLSX, ODS, and PPTX are all ZIP archives; tests verify the `PK` magic bytes.
 - **In-memory Typst world**: `poiesis-typst` embeds the compiler as a library; source and injected data live in memory (no temp files, no CLI subprocess).
 
+## Recent substrate notes
+
+- XLSX, ODT, and PDF drift fixes are current; avoid broad renderer rewrites when a backend-specific fix is enough.
+- Content-drop paths should return typed errors.
+- Lint comment filtering is part of the report-lint contract.
+
 ## Common tasks
 
 | Task | Where |
