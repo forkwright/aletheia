@@ -29,7 +29,8 @@ use crate::store::records::{
 };
 #[cfg(feature = "storage-fjall")]
 use crate::store::{
-    EnergeiaStore, SCAN_LIMIT_CI_VALIDATIONS, SCAN_LIMIT_DISPATCHES, SCAN_LIMIT_SESSIONS,
+    EnergeiaStore, SCAN_LIMIT_CI_VALIDATIONS, SCAN_LIMIT_DISPATCHES, SCAN_LIMIT_QA_VERDICTS,
+    SCAN_LIMIT_SESSIONS,
 };
 #[cfg(feature = "storage-fjall")]
 use crate::types::SessionStatus;
@@ -83,7 +84,20 @@ pub struct HealthMetric {
     pub sample_size: u64,
     /// `true` if a higher value is healthier (e.g. success rate).
     pub higher_is_better: bool,
+    /// Engine name label for downstream metrics export.
+    pub engine_name: &'static str,
+    /// Provider label for downstream metrics export.
+    pub provider: &'static str,
+    /// Agent identifier label for downstream metrics export.
+    pub agent_id: &'static str,
 }
+
+#[cfg(feature = "storage-fjall")]
+const DEFAULT_ENGINE_LABEL: &str = "energeia";
+#[cfg(feature = "storage-fjall")]
+const DEFAULT_PROVIDER_LABEL: &str = "unknown";
+#[cfg(feature = "storage-fjall")]
+const DEFAULT_AGENT_LABEL: &str = "unknown";
 
 /// Aggregate pipeline health report for a time window.
 #[derive(Debug, Clone)]
@@ -131,6 +145,7 @@ pub fn compute_health_report(store: &EnergeiaStore, window_days: u32) -> Result<
     let all_dispatches = store.list_dispatches(SCAN_LIMIT_DISPATCHES)?;
     let all_sessions = store.list_all_sessions(SCAN_LIMIT_SESSIONS)?;
     let all_ci_validations = store.list_all_ci_validations(SCAN_LIMIT_CI_VALIDATIONS)?;
+    let all_qa_verdicts = store.list_all_qa_verdicts(SCAN_LIMIT_QA_VERDICTS)?;
 
     let dispatches: Vec<&DispatchRecord> = all_dispatches
         .iter()
@@ -154,7 +169,7 @@ pub fn compute_health_report(store: &EnergeiaStore, window_days: u32) -> Result<
     };
 
     let metrics = vec![
-        corrective_rate(&dispatches, &sessions),
+        corrective_rate(&dispatches, &sessions, &all_qa_verdicts),
         stuck_rate(&sessions),
         qa_false_positive_rate(&sessions, &ci_by_session),
         fix_agent_success_rate(&sessions, &ci_by_session),
@@ -216,6 +231,9 @@ fn unavailable(
         warn_threshold,
         sample_size: 0,
         higher_is_better,
+        engine_name: DEFAULT_ENGINE_LABEL,
+        provider: DEFAULT_PROVIDER_LABEL,
+        agent_id: DEFAULT_AGENT_LABEL,
     }
 }
 
@@ -231,21 +249,40 @@ fn unavailable(
 /// a fraction of all dispatches. True corrective rate requires QA PARTIAL/FAIL
 /// verdict records which are not yet stored.
 #[cfg(feature = "storage-fjall")]
-fn corrective_rate(dispatches: &[&DispatchRecord], sessions: &[&SessionRecord]) -> HealthMetric {
+fn corrective_rate(
+    dispatches: &[&DispatchRecord],
+    sessions: &[&SessionRecord],
+    qa_verdicts: &[crate::store::records::QaVerdictRecord],
+) -> HealthMetric {
     const NAME: &str = "corrective_rate";
-    const DESC: &str = "% of dispatches needing corrective prompts \
-        (proxy: dispatches with Failed/Stuck sessions; true rate needs QA verdicts)";
+    const DESC: &str =
+        "% of dispatches needing corrective prompts (QA Partial/Fail verdicts when recorded)";
 
     let total = dispatches.len();
     if total == 0 {
         return unavailable(NAME, DESC, 0.10, 0.20, false);
     }
 
-    let corrective_dispatch_ids: HashSet<&str> = sessions
+    let dispatch_ids: HashSet<&str> = dispatches.iter().map(|d| d.id.as_str()).collect();
+    let mut corrective_dispatch_ids: HashSet<&str> = qa_verdicts
         .iter()
-        .filter(|s| matches!(s.status, SessionStatus::Failed | SessionStatus::Stuck))
-        .map(|s| s.dispatch_id.as_str())
+        .filter(|v| dispatch_ids.contains(v.dispatch_id.as_str()))
+        .filter(|v| {
+            matches!(
+                v.verdict,
+                crate::types::QaVerdict::Partial | crate::types::QaVerdict::Fail
+            )
+        })
+        .map(|v| v.dispatch_id.as_str())
         .collect();
+
+    if corrective_dispatch_ids.is_empty() {
+        corrective_dispatch_ids = sessions
+            .iter()
+            .filter(|s| matches!(s.status, SessionStatus::Failed | SessionStatus::Stuck))
+            .map(|s| s.dispatch_id.as_str())
+            .collect();
+    }
 
     #[expect(
         clippy::cast_precision_loss,
@@ -265,6 +302,9 @@ fn corrective_rate(dispatches: &[&DispatchRecord], sessions: &[&SessionRecord]) 
         warn_threshold: 0.20,
         sample_size,
         higher_is_better: false,
+        engine_name: DEFAULT_ENGINE_LABEL,
+        provider: DEFAULT_PROVIDER_LABEL,
+        agent_id: DEFAULT_AGENT_LABEL,
     }
 }
 
@@ -304,6 +344,9 @@ fn stuck_rate(sessions: &[&SessionRecord]) -> HealthMetric {
         warn_threshold: 0.15,
         sample_size,
         higher_is_better: false,
+        engine_name: DEFAULT_ENGINE_LABEL,
+        provider: DEFAULT_PROVIDER_LABEL,
+        agent_id: DEFAULT_AGENT_LABEL,
     }
 }
 
@@ -359,6 +402,9 @@ fn qa_false_positive_rate(
         warn_threshold: 0.10,
         sample_size,
         higher_is_better: false,
+        engine_name: DEFAULT_ENGINE_LABEL,
+        provider: DEFAULT_PROVIDER_LABEL,
+        agent_id: DEFAULT_AGENT_LABEL,
     }
 }
 
@@ -411,6 +457,9 @@ fn fix_agent_success_rate(
         warn_threshold: 0.60,
         sample_size,
         higher_is_better: true,
+        engine_name: DEFAULT_ENGINE_LABEL,
+        provider: DEFAULT_PROVIDER_LABEL,
+        agent_id: DEFAULT_AGENT_LABEL,
     }
 }
 
@@ -459,6 +508,9 @@ fn cycle_time(dispatches: &[&DispatchRecord]) -> HealthMetric {
         warn_threshold: 8.0,
         sample_size,
         higher_is_better: false,
+        engine_name: DEFAULT_ENGINE_LABEL,
+        provider: DEFAULT_PROVIDER_LABEL,
+        agent_id: DEFAULT_AGENT_LABEL,
     }
 }
 
@@ -533,6 +585,9 @@ fn batch_parallelism(dispatches: &[&DispatchRecord], sessions: &[&SessionRecord]
         warn_threshold: 1.5,
         sample_size,
         higher_is_better: true,
+        engine_name: DEFAULT_ENGINE_LABEL,
+        provider: DEFAULT_PROVIDER_LABEL,
+        agent_id: DEFAULT_AGENT_LABEL,
     }
 }
 

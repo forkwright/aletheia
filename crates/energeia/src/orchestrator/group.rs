@@ -50,9 +50,9 @@ pub(crate) async fn execute_group(
         let engine = Arc::clone(&engine);
         let budget = Arc::clone(&budget);
         let policy = resume_policy.clone();
-        let opts = options.clone();
         let sem = Arc::clone(&semaphore);
         let token = cancel.clone();
+        let opts = options.clone().cancel_token(token.clone());
         let prompt = prompt.clone();
 
         join_set.spawn(async move {

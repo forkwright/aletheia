@@ -353,6 +353,8 @@ mod tests {
                 output_tokens: 80,
                 ..Usage::default()
             },
+            cost_usd: None,
+            duration_ms: None,
         };
         let mut providers = ProviderRegistry::new();
         providers.register(Box::new(
@@ -456,6 +458,8 @@ mod tests {
                         citations: None,
                     }],
                     usage: Usage::default(),
+                    cost_usd: None,
+                    duration_ms: None,
                 })
             })
         }

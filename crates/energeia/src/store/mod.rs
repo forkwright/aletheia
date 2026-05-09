@@ -11,6 +11,7 @@
 //! - [`queries`] — prefix scan implementations for list/query operations
 
 pub mod records;
+#[cfg(feature = "storage-fjall")]
 pub(crate) mod schema;
 
 #[cfg(feature = "storage-fjall")]
@@ -23,5 +24,5 @@ mod fjall_store;
 pub use fjall_store::EnergeiaStore;
 #[cfg(feature = "storage-fjall")]
 pub(crate) use fjall_store::{
-    SCAN_LIMIT_CI_VALIDATIONS, SCAN_LIMIT_DISPATCHES, SCAN_LIMIT_SESSIONS,
+    SCAN_LIMIT_CI_VALIDATIONS, SCAN_LIMIT_DISPATCHES, SCAN_LIMIT_QA_VERDICTS, SCAN_LIMIT_SESSIONS,
 };

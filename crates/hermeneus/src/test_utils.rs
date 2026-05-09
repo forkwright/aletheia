@@ -25,6 +25,8 @@ pub fn make_response(text: &str) -> CompletionResponse {
             output_tokens: 5,
             ..Usage::default()
         },
+        cost_usd: None,
+        duration_ms: None,
     }
 }
 

@@ -91,6 +91,8 @@ impl WireResponse {
             stop_reason,
             content,
             usage: self.usage.into_usage(),
+            cost_usd: None,
+            duration_ms: None,
         })
     }
 }

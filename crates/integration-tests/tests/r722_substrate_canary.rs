@@ -144,6 +144,8 @@ mod fixtures {
                         output_tokens: 5,
                         ..Usage::default()
                     },
+                    cost_usd: None,
+                    duration_ms: None,
                 },
                 captured,
             }
@@ -199,6 +201,8 @@ mod fixtures {
                 output_tokens: 5,
                 ..Usage::default()
             },
+            cost_usd: None,
+            duration_ms: None,
         }
     }
 

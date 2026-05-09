@@ -117,7 +117,7 @@ mod storage_tests {
     fn corrective_rate_all_clean() {
         let d = make_dispatch("D1");
         let s = make_session("D1", SessionStatus::Success);
-        let metric = corrective_rate(&[&d], &[&s]);
+        let metric = corrective_rate(&[&d], &[&s], &[]);
         assert_eq!(metric.status, HealthStatus::Ok);
         assert_eq!(metric.value, 0.0);
         assert_eq!(metric.sample_size, 1);
@@ -129,7 +129,7 @@ mod storage_tests {
         let d2 = make_dispatch("D2");
         let s1 = make_session("D1", SessionStatus::Success);
         let s2 = make_session("D2", SessionStatus::Stuck);
-        let metric = corrective_rate(&[&d1, &d2], &[&s1, &s2]);
+        let metric = corrective_rate(&[&d1, &d2], &[&s1, &s2], &[]);
         // 1 out of 2 dispatches has a Stuck session → rate = 0.5 → CRIT
         assert_eq!(metric.status, HealthStatus::Crit);
         assert!((metric.value - 0.5).abs() < 1e-10);
@@ -137,7 +137,7 @@ mod storage_tests {
 
     #[test]
     fn corrective_rate_no_dispatches_unavailable() {
-        let metric = corrective_rate(&[], &[]);
+        let metric = corrective_rate(&[], &[], &[]);
         assert_eq!(metric.status, HealthStatus::Unavailable);
         assert_eq!(metric.sample_size, 0);
     }

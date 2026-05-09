@@ -12,14 +12,15 @@ use crate::error::{self, Result};
 use crate::store::queries;
 use crate::store::records::{
     CiValidationRecord, CiValidationStatus, DispatchId, DispatchRecord, DispatchStatus,
-    LessonRecord, NewLesson, NewObservation, ObservationRecord, SessionId, SessionOutcomeData,
-    SessionRecord, SessionUpdate,
+    LessonRecord, NewLesson, NewObservation, ObservationRecord, QaVerdictRecord, SessionId,
+    SessionOutcomeData, SessionRecord, SessionUpdate,
 };
 
 /// Maximum records returned by bulk-scan methods to prevent unbounded memory use.
 pub(crate) const SCAN_LIMIT_DISPATCHES: usize = 10_000;
 pub(crate) const SCAN_LIMIT_SESSIONS: usize = 100_000;
 pub(crate) const SCAN_LIMIT_CI_VALIDATIONS: usize = 200_000;
+pub(crate) const SCAN_LIMIT_QA_VERDICTS: usize = 200_000;
 use crate::store::schema;
 use crate::types::{DispatchSpec, SessionOutcome, SessionStatus};
 
@@ -408,6 +409,36 @@ impl EnergeiaStore {
         Ok(())
     }
 
+    /// Record a QA verdict for a dispatch.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Error::Store` on write failure.
+    pub fn add_qa_verdict(
+        &self,
+        dispatch_id: &DispatchId,
+        project: &str,
+        verdict: crate::types::QaVerdict,
+    ) -> Result<()> {
+        let now = jiff::Timestamp::now();
+        let ulid = koina::ulid::Ulid::new().to_string();
+        let record = QaVerdictRecord {
+            dispatch_id: dispatch_id.clone(),
+            project: project.to_owned(),
+            verdict,
+            recorded_at: now,
+        };
+
+        let key = schema::qa_verdict_key(dispatch_id, now.as_millisecond(), &ulid);
+        let value = serialize_msgpack(&record, "QA verdict")?;
+
+        self.keyspace
+            .insert(key.as_bytes(), value)
+            .map_err(|e| store_err("write QA verdict", e))?;
+
+        Ok(())
+    }
+
     // -----------------------------------------------------------------------
     // Training data integration
     // -----------------------------------------------------------------------
@@ -524,6 +555,27 @@ impl EnergeiaStore {
     /// Returns `Error::Store` on read failure.
     pub(crate) fn list_all_ci_validations(&self, limit: usize) -> Result<Vec<CiValidationRecord>> {
         queries::list_all_ci_validations(&self.keyspace, limit)
+    }
+
+    /// List all QA verdict records, up to `limit`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Error::Store` on read failure.
+    pub(crate) fn list_all_qa_verdicts(&self, limit: usize) -> Result<Vec<QaVerdictRecord>> {
+        queries::list_all_qa_verdicts(&self.keyspace, limit)
+    }
+
+    /// List QA verdict records for a specific dispatch.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Error::Store` on read failure.
+    pub fn list_qa_verdicts_for_dispatch(
+        &self,
+        dispatch_id: &DispatchId,
+    ) -> Result<Vec<QaVerdictRecord>> {
+        queries::list_qa_verdicts_for_dispatch(&self.keyspace, dispatch_id)
     }
 
     /// List CI validation records for a specific session.

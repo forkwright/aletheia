@@ -4,6 +4,7 @@
 //! Implementations: `HttpEngine` (production), `MockEngine` (tests).
 
 use std::future::Future;
+use std::path::PathBuf;
 use std::pin::Pin;
 
 use serde::{Deserialize, Serialize};
@@ -102,6 +103,8 @@ pub struct AgentOptions {
     pub max_turns: Option<u32>,
     /// Permission mode for tool execution (e.g., "plan", "auto").
     pub permission_mode: Option<String>,
+    /// Additional directories the agent can access.
+    pub additional_dirs: Vec<PathBuf>,
 }
 
 /// Raw deserialization type for [`AgentOptions`].
@@ -112,6 +115,8 @@ struct AgentOptionsRaw {
     cwd: Option<String>,
     max_turns: Option<u32>,
     permission_mode: Option<String>,
+    #[serde(default)]
+    additional_dirs: Vec<PathBuf>,
 }
 
 impl From<AgentOptionsRaw> for AgentOptions {
@@ -122,6 +127,7 @@ impl From<AgentOptionsRaw> for AgentOptions {
             cwd: raw.cwd,
             max_turns: raw.max_turns,
             permission_mode: raw.permission_mode,
+            additional_dirs: raw.additional_dirs,
         }
     }
 }
@@ -136,6 +142,7 @@ impl AgentOptions {
             cwd: None,
             max_turns: None,
             permission_mode: None,
+            additional_dirs: Vec::new(),
         }
     }
 
@@ -171,6 +178,13 @@ impl AgentOptions {
     #[must_use]
     pub fn permission_mode(mut self, mode: impl Into<String>) -> Self {
         self.permission_mode = Some(mode.into());
+        self
+    }
+
+    /// Add an additional accessible directory.
+    #[must_use]
+    pub fn add_dir(mut self, dir: impl Into<PathBuf>) -> Self {
+        self.additional_dirs.push(dir.into());
         self
     }
 }

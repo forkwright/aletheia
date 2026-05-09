@@ -9,6 +9,7 @@
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::time::Instant;
 
 use hermeneus::provider::LlmProvider;
 use hermeneus::types::{CompletionRequest, Content, Message, Role, StopReason};
@@ -88,12 +89,16 @@ impl DispatchEngine for HermeneusEngine {
     ) -> Pin<Box<dyn Future<Output = Result<Box<dyn SessionHandle>>> + Send + 'a>> {
         Box::pin(async move {
             let request = self.build_request(spec, options);
+            let started = Instant::now();
             let response = self.provider.complete(&request).await.map_err(|e| {
                 error::EngineSnafu {
                     detail: format!("hermeneus completion failed: {e}"),
                 }
                 .build()
             })?;
+            let duration_ms = response.duration_ms.unwrap_or_else(|| {
+                u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX)
+            });
 
             let session_id = format!("hermeneus-{}", koina::ulid::Ulid::new());
             let text = response
@@ -113,9 +118,9 @@ impl DispatchEngine for HermeneusEngine {
 
             let result = SessionResult {
                 session_id: session_id.clone(),
-                cost_usd: 0.0, // hermeneus responses don't include cost directly
+                cost_usd: response.cost_usd.unwrap_or(0.0),
                 num_turns: 1,
-                duration_ms: 0,
+                duration_ms,
                 success,
                 result_text: Some(text.clone()),
                 model: Some(request.model),
@@ -157,12 +162,16 @@ impl DispatchEngine for HermeneusEngine {
                 ..CompletionRequest::default()
             };
 
+            let started = Instant::now();
             let response = self.provider.complete(&request).await.map_err(|e| {
                 error::EngineSnafu {
                     detail: format!("hermeneus resume failed: {e}"),
                 }
                 .build()
             })?;
+            let duration_ms = response.duration_ms.unwrap_or_else(|| {
+                u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX)
+            });
 
             let session_id = format!("hermeneus-resume-{}", koina::ulid::Ulid::new());
             let text = response
@@ -182,9 +191,9 @@ impl DispatchEngine for HermeneusEngine {
 
             let result = SessionResult {
                 session_id: session_id.clone(),
-                cost_usd: 0.0,
+                cost_usd: response.cost_usd.unwrap_or(0.0),
                 num_turns: 1,
-                duration_ms: 0,
+                duration_ms,
                 success,
                 result_text: Some(text.clone()),
                 model: Some(request.model),
@@ -315,5 +324,30 @@ mod tests {
 
         let request = engine.build_request(&spec, &AgentOptions::new());
         assert!(!request.cache_system);
+    }
+
+    #[tokio::test]
+    async fn session_result_uses_hermeneus_cost_and_duration_metadata() -> Result<()> {
+        let mut response = hermeneus::test_utils::make_response("done");
+        response.cost_usd = Some(0.123);
+        response.duration_ms = Some(456);
+        let provider = Arc::new(hermeneus::test_utils::MockProvider::with_responses(vec![
+            response,
+        ]));
+        let engine = HermeneusEngine::new(provider, "claude-sonnet-4");
+        let spec = SessionSpec {
+            prompt: "do it".to_owned(),
+            system_prompt: None,
+            cwd: None,
+            prompt_components: None,
+        };
+
+        let handle = engine.spawn_session(&spec, &AgentOptions::new()).await?;
+        let result = handle.wait().await?;
+
+        assert!((result.cost_usd - 0.123).abs() < f64::EPSILON);
+        assert_eq!(result.duration_ms, 456);
+        assert_eq!(result.num_turns, 1);
+        Ok(())
     }
 }

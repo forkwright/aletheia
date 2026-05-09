@@ -73,6 +73,10 @@ impl HttpEngine {
             args.extend(["--max-turns".to_owned(), turns.to_string()]);
         }
 
+        for dir in &options.additional_dirs {
+            args.extend(["--add-dir".to_owned(), dir.to_string_lossy().into_owned()]);
+        }
+
         args
     }
 
@@ -236,7 +240,8 @@ mod tests {
         let options = AgentOptions::new()
             .model("claude-opus-4-6")
             .max_turns(50)
-            .permission_mode("bypassPermissions");
+            .permission_mode("bypassPermissions")
+            .add_dir("/tmp/shared");
         let args = engine.build_args(&options);
 
         assert!(args.contains(&"claude-opus-4-6".to_owned()));
@@ -244,6 +249,8 @@ mod tests {
         assert!(args.contains(&"50".to_owned()));
         assert!(args.contains(&"--permission-mode".to_owned()));
         assert!(args.contains(&"bypassPermissions".to_owned()));
+        assert!(args.contains(&"--add-dir".to_owned()));
+        assert!(args.contains(&"/tmp/shared".to_owned()));
     }
 
     #[test]

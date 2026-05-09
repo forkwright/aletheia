@@ -408,8 +408,10 @@ impl AnthropicProvider {
 
             match stream_result {
                 Ok(()) => {
-                    let resp = accumulator.finish();
+                    let mut resp = accumulator.finish();
                     self.health.record_success();
+                    let duration_ms =
+                        u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
                     #[expect(
                         clippy::cast_possible_truncation,
                         clippy::as_conversions,
@@ -424,6 +426,8 @@ impl AnthropicProvider {
                     tracing::Span::current().record("llm.status", "ok");
                     tracing::Span::current().record("llm.retries", attempt);
                     let cost = estimate_cost_with_cache(&self.pricing, &request.model, &resp.usage);
+                    resp.cost_usd = Some(cost);
+                    resp.duration_ms = Some(duration_ms);
                     info!(
                         model = %request.model,
                         tokens_in = resp.usage.input_tokens,
@@ -845,8 +849,10 @@ impl AnthropicProvider {
                         r.into_response()
                             .map_err(|msg| error::ApiRequestSnafu { message: msg }.build())
                     });
-                if let Ok(ref resp) = parsed {
+                if let Ok(mut resp) = parsed {
                     self.health.record_success();
+                    let duration_ms =
+                        u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
                     #[expect(
                         clippy::cast_possible_truncation,
                         clippy::as_conversions,
@@ -861,6 +867,8 @@ impl AnthropicProvider {
                     tracing::Span::current().record("llm.status", "ok");
                     tracing::Span::current().record("llm.retries", attempt);
                     let cost = estimate_cost_with_cache(&self.pricing, &request.model, &resp.usage);
+                    resp.cost_usd = Some(cost);
+                    resp.duration_ms = Some(duration_ms);
                     info!(
                         model = %request.model,
                         tokens_in = resp.usage.input_tokens,
@@ -885,6 +893,7 @@ impl AnthropicProvider {
                         "ok",
                         start.elapsed().as_secs_f64(),
                     );
+                    return Ok(resp);
                 }
                 return parsed;
             }

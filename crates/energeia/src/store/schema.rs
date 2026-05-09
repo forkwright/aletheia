@@ -1,14 +1,3 @@
-// WHY: encoding primitives are building blocks — some are only consumed by
-// tests or by cfg(feature = "storage-fjall") query code today, but all will
-// be needed as the store API surface grows.
-#![cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "schema primitives used across feature gates and tests"
-    )
-)]
-
 //! Key encoding and decoding for energeia's fjall key-value schema.
 //!
 //! All keys use a string prefix followed by a colon separator for efficient
@@ -21,6 +10,7 @@
 //! lesson:{source}:{timestamp_ms}           -> LessonRecord
 //! observation:{timestamp_ms}:{ulid}        -> ObservationRecord
 //! ci_validation:{session_id}:{check_name}  -> CiValidationRecord
+//! qa_verdict:{dispatch_id}:{timestamp_ms}:{ulid} -> QaVerdictRecord
 //! ```
 
 use crate::store::records::{DispatchId, SessionId};
@@ -35,6 +25,8 @@ const PREFIX_LESSON: &str = "lesson:";
 const PREFIX_OBSERVATION: &str = "observation:";
 /// Key prefix for CI validation records.
 const PREFIX_CI_VALIDATION: &str = "ci_validation:";
+/// Key prefix for QA verdict records.
+const PREFIX_QA_VERDICT: &str = "qa_verdict:";
 
 // ---------------------------------------------------------------------------
 // Dispatch keys
@@ -53,6 +45,7 @@ pub(crate) fn dispatch_prefix() -> &'static str {
 }
 
 /// Extract the `DispatchId` from a dispatch key.
+#[cfg(test)]
 #[must_use]
 pub(crate) fn decode_dispatch_key(key: &[u8]) -> Option<DispatchId> {
     let s = std::str::from_utf8(key).ok()?;
@@ -88,6 +81,7 @@ pub(crate) fn session_prefix() -> &'static str {
 }
 
 /// Extract `(DispatchId, prompt_number)` from a session key.
+#[cfg(test)]
 #[must_use]
 pub(crate) fn decode_session_key(key: &[u8]) -> Option<(DispatchId, u32)> {
     let s = std::str::from_utf8(key).ok()?;
@@ -158,6 +152,27 @@ pub(crate) fn ci_validation_prefix() -> &'static str {
 #[must_use]
 pub(crate) fn ci_validation_prefix_for_session(session_id: &SessionId) -> String {
     format!("{PREFIX_CI_VALIDATION}{}:", session_id.as_str())
+}
+
+/// Encode a QA verdict key.
+#[must_use]
+pub(crate) fn qa_verdict_key(dispatch_id: &DispatchId, timestamp_ms: i64, ulid: &str) -> String {
+    format!(
+        "{PREFIX_QA_VERDICT}{}:{timestamp_ms:020}:{ulid}",
+        dispatch_id.as_str()
+    )
+}
+
+/// Prefix for scanning all QA verdict records.
+#[must_use]
+pub(crate) fn qa_verdict_prefix() -> &'static str {
+    PREFIX_QA_VERDICT
+}
+
+/// Prefix for scanning QA verdict records for one dispatch.
+#[must_use]
+pub(crate) fn qa_verdict_prefix_for_dispatch(dispatch_id: &DispatchId) -> String {
+    format!("{PREFIX_QA_VERDICT}{}:", dispatch_id.as_str())
 }
 
 #[cfg(test)]

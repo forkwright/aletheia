@@ -124,6 +124,11 @@ impl Budget {
                     "duration {elapsed}ms >= limit {max_duration}ms"
                 ));
             }
+            if elapsed >= max_duration.saturating_mul(4) / 5 {
+                return BudgetStatus::Warning(format!(
+                    "duration {elapsed}ms approaching limit {max_duration}ms"
+                ));
+            }
         }
 
         BudgetStatus::Ok
@@ -182,6 +187,9 @@ impl Budget {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::{AtomicU32, AtomicU64};
+    use std::time::{Duration, Instant};
+
     use super::*;
 
     #[test]
@@ -260,6 +268,24 @@ mod tests {
         match budget.check() {
             BudgetStatus::Exceeded(msg) => assert!(msg.contains("duration"), "msg: {msg}"),
             other => panic!("expected Exceeded, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn check_warning_at_80_percent_duration() {
+        let budget = Budget {
+            max_cost_usd: None,
+            max_turns: None,
+            max_duration_ms: Some(1_000),
+            current_cost_hundredths: AtomicU64::new(0),
+            current_turns: AtomicU32::new(0),
+            start_time: Instant::now()
+                .checked_sub(Duration::from_millis(850))
+                .unwrap_or_else(Instant::now),
+        };
+        match budget.check() {
+            BudgetStatus::Warning(msg) => assert!(msg.contains("duration"), "msg: {msg}"),
+            other => panic!("expected Warning, got {other:?}"),
         }
     }
 

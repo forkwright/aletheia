@@ -1,8 +1,7 @@
-//! Agent SDK engine: OAuth-enabled, permission-aware, plugin-capable dispatch engine.
+//! Claude CLI subprocess engine with OAuth token injection.
 //!
-//! WHY: Replaces HttpEngine with a native Agent SDK integration that supports
-//! OAuth authentication, granular permissions, MCP plugins, and configurable
-//! model routing.
+//! WHY: This engine uses the `claude` CLI transport while preserving the
+//! dispatch-engine boundary for future native SDK integration.
 
 use std::collections::HashMap;
 use std::future::Future;
@@ -58,8 +57,9 @@ pub struct McpServerConfig {
 
 /// Agent SDK-based dispatch engine.
 ///
-/// WHY: Provides native Agent SDK integration with `OAuth`, permissions, and
-/// plugin support, replacing the subprocess-based `HttpEngine`.
+/// WHY: Provides CLI subprocess integration with `OAuth` token injection,
+/// permissions, and MCP configuration fields while the native SDK path remains
+/// unwired.
 pub struct AgentSdkEngine {
     config: AgentSdkConfig,
     binary: String,
@@ -133,6 +133,10 @@ impl AgentSdkEngine {
 
         if let Some(turns) = options.max_turns {
             args.extend(["--max-turns".to_owned(), turns.to_string()]);
+        }
+
+        for dir in &options.additional_dirs {
+            args.extend(["--add-dir".to_owned(), dir.to_string_lossy().into_owned()]);
         }
 
         args
@@ -217,7 +221,7 @@ impl DispatchEngine for AgentSdkEngine {
                     .model
                     .as_deref()
                     .unwrap_or(&self.config.default_model),
-                "spawning agent SDK session"
+                "spawning claude CLI subprocess session"
             );
 
             let handle = Self::launch(cmd)?;

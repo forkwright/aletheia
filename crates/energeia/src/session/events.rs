@@ -5,6 +5,8 @@
 
 use std::time::{Duration, Instant};
 
+use tokio_util::sync::CancellationToken;
+
 use crate::engine::{SessionEvent, SessionHandle};
 
 // ---------------------------------------------------------------------------
@@ -51,6 +53,8 @@ pub(crate) enum StreamOutcome {
         accumulator: EventAccumulator,
         message: String,
     },
+    /// Dispatch cancellation was requested.
+    Cancelled { accumulator: EventAccumulator },
 }
 
 // ---------------------------------------------------------------------------
@@ -67,6 +71,7 @@ pub(crate) enum StreamOutcome {
 pub(crate) async fn process_events(
     handle: &mut Box<dyn SessionHandle>,
     idle_timeout: Option<Duration>,
+    cancel: Option<&CancellationToken>,
 ) -> StreamOutcome {
     let mut acc = EventAccumulator::new();
     let mut last_event_time = Instant::now();
@@ -86,14 +91,40 @@ pub(crate) async fn process_events(
 
         let event = if let Some(timeout) = idle_timeout {
             let remaining = timeout.saturating_sub(last_event_time.elapsed());
-            match tokio::time::timeout(remaining, handle.next_event()).await {
-                Ok(event) => event,
-                Err(_) => {
-                    return StreamOutcome::Timeout {
-                        accumulator: acc,
-                        elapsed: last_event_time.elapsed(),
-                    };
+            if let Some(cancel) = cancel {
+                tokio::select! {
+                    () = cancel.cancelled() => {
+                        return StreamOutcome::Cancelled { accumulator: acc };
+                    }
+                    result = tokio::time::timeout(remaining, handle.next_event()) => {
+                        match result {
+                            Ok(event) => event,
+                            Err(_) => {
+                                return StreamOutcome::Timeout {
+                                    accumulator: acc,
+                                    elapsed: last_event_time.elapsed(),
+                                };
+                            }
+                        }
+                    }
                 }
+            } else {
+                match tokio::time::timeout(remaining, handle.next_event()).await {
+                    Ok(event) => event,
+                    Err(_) => {
+                        return StreamOutcome::Timeout {
+                            accumulator: acc,
+                            elapsed: last_event_time.elapsed(),
+                        };
+                    }
+                }
+            }
+        } else if let Some(cancel) = cancel {
+            tokio::select! {
+                () = cancel.cancelled() => {
+                    return StreamOutcome::Cancelled { accumulator: acc };
+                }
+                event = handle.next_event() => event,
             }
         } else {
             handle.next_event().await
@@ -316,7 +347,7 @@ mod tests {
             .await
             .unwrap();
 
-        let outcome = process_events(&mut handle, None).await;
+        let outcome = process_events(&mut handle, None, None).await;
         match outcome {
             StreamOutcome::Complete(acc) => {
                 assert_eq!(acc.num_turns, 2);
@@ -348,7 +379,7 @@ mod tests {
             .await
             .unwrap();
 
-        let outcome = process_events(&mut handle, None).await;
+        let outcome = process_events(&mut handle, None, None).await;
         match outcome {
             StreamOutcome::Error {
                 message,
@@ -376,7 +407,7 @@ mod tests {
         // NOTE: With an empty event stream, the mock returns None immediately,
         // so we get Complete rather than Timeout. This is correct behavior —
         // timeout only fires when events stop arriving mid-stream.
-        let outcome = process_events(&mut handle, Some(Duration::from_millis(10))).await;
+        let outcome = process_events(&mut handle, Some(Duration::from_millis(10)), None).await;
         assert!(matches!(outcome, StreamOutcome::Complete(_)));
     }
 }

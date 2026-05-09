@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use koina::newtype_id;
 
-use crate::types::SessionStatus;
+use crate::types::{QaVerdict, SessionStatus};
 
 // ---------------------------------------------------------------------------
 // Domain IDs
@@ -229,6 +229,23 @@ pub enum CiValidationStatus {
     Pass,
     /// CI validation failed.
     Fail,
+}
+
+// ---------------------------------------------------------------------------
+// QA Verdict
+// ---------------------------------------------------------------------------
+
+/// Persisted QA verdict emitted during dispatch post-processing.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QaVerdictRecord {
+    /// Parent dispatch this verdict belongs to.
+    pub dispatch_id: DispatchId,
+    /// Project slug this verdict belongs to.
+    pub project: String,
+    /// Overall QA verdict.
+    pub verdict: QaVerdict,
+    /// Timestamp when the verdict was recorded.
+    pub recorded_at: jiff::Timestamp,
 }
 
 impl std::fmt::Display for CiValidationStatus {
