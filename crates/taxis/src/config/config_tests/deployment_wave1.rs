@@ -32,15 +32,6 @@ fn capacity_defaults_match_koina_consts() {
         config.capacity.max_tool_output_bytes, 51_200,
         "default max_tool_output_bytes must be 51200 (50 KiB)"
     );
-    assert_eq!(
-        config.capacity.opus_context_tokens,
-        koina::defaults::OPUS_CONTEXT_TOKENS,
-        "default opus_context_tokens must equal koina::defaults::OPUS_CONTEXT_TOKENS"
-    );
-    assert_eq!(
-        config.capacity.opus_context_tokens, 1_000_000,
-        "default opus_context_tokens must be 1 000 000"
-    );
 }
 
 #[test]
@@ -80,15 +71,11 @@ fn timeouts_override_from_json() {
 
 #[test]
 fn capacity_override_from_json() {
-    let json = r#"{"capacity": {"maxToolOutputBytes": 102400, "opusContextTokens": 500000}}"#;
+    let json = r#"{"capacity": {"maxToolOutputBytes": 102400}}"#;
     let config: AletheiaConfig = serde_json::from_str(json).expect("parse capacity override");
     assert_eq!(
         config.capacity.max_tool_output_bytes, 102_400,
         "max_tool_output_bytes override from json should take effect"
-    );
-    assert_eq!(
-        config.capacity.opus_context_tokens, 500_000,
-        "opus_context_tokens override from json should take effect"
     );
 }
 
@@ -115,7 +102,6 @@ fn new_sections_survive_serde_roundtrip() {
     let mut config = AletheiaConfig::default();
     config.timeouts.llm_call_secs = 120;
     config.capacity.max_tool_output_bytes = 8192;
-    config.capacity.opus_context_tokens = 500_000;
     config.retry.max_attempts = 1;
     config.retry.backoff_base_ms = 500;
     config.retry.backoff_max_ms = 5_000;
@@ -130,10 +116,6 @@ fn new_sections_survive_serde_roundtrip() {
     assert_eq!(
         back.capacity.max_tool_output_bytes, 8192,
         "max_tool_output_bytes should survive serde roundtrip"
-    );
-    assert_eq!(
-        back.capacity.opus_context_tokens, 500_000,
-        "opus_context_tokens should survive serde roundtrip"
     );
     assert_eq!(
         back.retry.max_attempts, 1,

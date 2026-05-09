@@ -13,11 +13,11 @@ use tracing::instrument;
 
 /// Errors from embedding operations.
 #[derive(Debug, Snafu)]
-#[non_exhaustive]
 #[expect(
     missing_docs,
     reason = "snafu error variant fields (message, location) are self-documenting via display format"
 )]
+#[non_exhaustive]
 pub enum EmbeddingError {
     /// The embedding model failed to initialize.
     #[snafu(display("embedding model init failed: {message}"))]
@@ -50,6 +50,7 @@ pub(crate) type EmbeddingResult<T> = std::result::Result<T, EmbeddingError>;
 ///
 /// Implementations must be `Send + Sync` for use across async boundaries.
 pub trait EmbeddingProvider: Send + Sync {
+    // kanon:ignore ARCHITECTURE/trait-impl-colocation
     /// Embed a single text chunk. Returns a vector of floats.
     ///
     /// # Complexity
@@ -365,7 +366,8 @@ mod candle_provider {
         }
     }
 
-    impl EmbeddingProvider for CandelProvider {
+    impl EmbeddingProvider for CandelProvider // kanon:ignore ARCHITECTURE/trait-impl-colocation
+    {
         #[instrument(skip(self, text))]
         fn embed(&self, text: &str) -> EmbeddingResult<Vec<f32>> {
             let mut results = self.forward_embed(&[text])?;
@@ -533,6 +535,36 @@ pub fn create_provider(config: &EmbeddingConfig) -> EmbeddingResult<Box<dyn Embe
             };
             Ok(Box::new(OpenAiEmbeddingProvider::new(&cfg)?))
         }
+        #[cfg(feature = "openai-embed")]
+        "voyage" => {
+            let model = config
+                .model
+                .clone()
+                .unwrap_or_else(|| "voyage-3-lite".to_owned());
+            let dim = config.dimension.unwrap_or(1024);
+            let api_key = config.api_key.clone().or_else(|| {
+                std::env::var("VOYAGE_API_KEY")
+                    .ok()
+                    .filter(|key| !key.is_empty())
+                    .map(koina::secret::SecretString::from)
+            });
+            let cfg = OpenAiCompatConfig {
+                base_url: config
+                    .base_url
+                    .clone()
+                    .unwrap_or_else(|| "https://api.voyageai.com/v1".to_owned()),
+                api_key,
+                model,
+                dimension: dim,
+            };
+            Ok(Box::new(OpenAiEmbeddingProvider::new(&cfg)?))
+        }
+        #[cfg(not(feature = "openai-embed"))]
+        "voyage" => InitFailedSnafu {
+            message: "openai-embed feature not enabled — build with --features openai-embed"
+                .to_owned(),
+        }
+        .fail(),
         #[cfg(not(feature = "openai-embed"))]
         "openai-compat" => InitFailedSnafu {
             message: "openai-embed feature not enabled — build with --features openai-embed"
