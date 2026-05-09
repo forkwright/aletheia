@@ -1,3 +1,7 @@
+# archetype: B
+# forge-only: false
+# spdx: AGPL-3.0-or-later
+
 # Forge CI pipeline for forkwright/aletheia.
 #
 # Mirrors harmonia's .kanon-ci.toml with aletheia-specific adjustments:
@@ -12,8 +16,6 @@
 #
 # Keep in sync with:
 # - crates/archeion/src/ci_config.rs::default_rust_gate (upstream default)
-# - .github/workflows/ci.yml (until the GHA check+clippy+test workflow is
-#   disabled as part of the 05e cutover)
 #
 # NOTE: the `kanon lint` stage is intentionally omitted. Aletheia's current
 # lint baseline is 2502 open violations + 126 suppressed, so enforcing it
