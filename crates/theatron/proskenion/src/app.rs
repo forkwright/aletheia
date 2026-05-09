@@ -98,12 +98,14 @@ pub(crate) fn App() -> Element {
     let keybindings = use_signal(|| loaded_settings.keybinding_store());
     let is_first_run = use_signal(|| first_run);
 
-    // NOTE: Read saved theme preference; default to Dark if unset.
-    let initial_theme = match appearance.read().theme.as_str() {
-        "light" => themelion::theme::ThemeMode::Light,
-        "system" => themelion::theme::ThemeMode::System,
-        _ => themelion::theme::ThemeMode::Dark,
-    };
+    // NOTE: Read saved theme preference; default to Dark if unset or
+    // unrecognized. Uses themelion::ThemeMode::from_slug (theatron v1.2.0)
+    // to parse the lowercase config slug; pre-v1.2 this was a hand-rolled
+    // match across 4 proskenion sites, now centralized in themelion.
+    let initial_theme = themelion::theme::ThemeMode::from_slug(
+        appearance.read().theme.as_str(),
+    )
+    .unwrap_or(themelion::theme::ThemeMode::Dark);
 
     // NOTE: Provide signals as context so all views can access them.
     use_context_provider(|| connection_state);

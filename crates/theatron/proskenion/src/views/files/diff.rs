@@ -110,7 +110,7 @@ pub(crate) fn DiffViewer(path: String, on_back: EventHandler<()>) -> Element {
         });
     });
 
-    let language = detect_language_from_path(&path);
+    let language = gramma::syntax::language_from_path(&path);
 
     rsx! {
         div {
@@ -174,7 +174,7 @@ pub(crate) fn DiffViewer(path: String, on_back: EventHandler<()>) -> Element {
                                     DiffHunkView {
                                         key: "{i}",
                                         hunk: hunk.clone(),
-                                        language: language.clone(),
+                                        language: language.to_string(),
                                         mode,
                                     }
                                 }
@@ -187,32 +187,10 @@ pub(crate) fn DiffViewer(path: String, on_back: EventHandler<()>) -> Element {
     }
 }
 
-/// Infer language from file extension for syntax highlighting.
-fn detect_language_from_path(path: &str) -> String {
-    path.rsplit('.')
-        .next()
-        .map(|ext| match ext {
-            "rs" => "rust",
-            "py" => "python",
-            "js" => "javascript",
-            "ts" => "typescript",
-            "tsx" => "typescript",
-            "jsx" => "javascript",
-            "md" => "markdown",
-            "toml" => "toml",
-            "yaml" | "yml" => "yaml",
-            "json" => "json",
-            "sh" | "bash" => "bash",
-            "css" => "css",
-            "html" => "html",
-            "sql" => "sql",
-            "go" => "go",
-            "rb" => "ruby",
-            "java" => "java",
-            "c" | "h" => "c",
-            "cpp" | "hpp" | "cc" => "cpp",
-            other => other,
-        })
-        .unwrap_or("text")
-        .to_string()
-}
+// detect_language_from_path lifted into `gramma::syntax::language_from_path`
+// (theatron v1.2.0). The local map collapsed tsx/jsx → typescript/javascript;
+// gramma preserves them as distinct syntect tokens (the `tsx` and `jsx`
+// syntect language definitions exist and offer better highlighting fidelity
+// for those files). Operator-visible only when viewing diffs of .tsx / .jsx
+// files; per the 2026-05-09 consumer-pull rescan the distinct-tokens
+// behavior is the desired direction.

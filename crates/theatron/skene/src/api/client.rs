@@ -10,22 +10,12 @@ use super::types::{
     NousTool, NousToolsResponse, Session, SessionsResponse,
 };
 
-/// Percent-encode a value for use in a URL path segment.
-fn encode_path(s: &str) -> String {
-    let mut encoded = String::with_capacity(s.len());
-    for byte in s.as_bytes() {
-        match byte {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
-                encoded.push(char::from(*byte));
-            }
-            _ => {
-                use std::fmt::Write;
-                let _ = write!(encoded, "%{byte:02X}");
-            }
-        }
-    }
-    encoded
-}
+// `fn encode_path` lifted into `keryx::url::encode_path_segment` (theatron
+// v1.2.0). Implementation behavior preserved exactly: RFC 3986 unreserved-
+// characters passthrough (`A-Z`, `a-z`, `0-9`, `-`, `.`, `_`, `~`), `%XX`
+// uppercase-hex everywhere else. keryx's helper uses a byte-level hex table
+// instead of `write!()` to avoid `.expect()` on infallible String formatting,
+// but the output bytes are identical.
 
 /// Build the shared reqwest client used by all API paths (REST, streaming, SSE).
 ///
@@ -237,7 +227,7 @@ impl ApiClient {
     )]
     #[tracing::instrument(skip(self))]
     pub async fn sessions(&self, nous_id: &str) -> Result<Vec<Session>> {
-        let encoded = encode_path(nous_id);
+        let encoded = keryx::url::encode_path_segment(nous_id);
         let resp = self
             .request(
                 reqwest::Method::GET,
@@ -270,7 +260,7 @@ impl ApiClient {
     )]
     #[tracing::instrument(skip(self))]
     pub async fn history(&self, session_id: &str) -> Result<Vec<HistoryMessage>> {
-        let encoded = encode_path(session_id);
+        let encoded = keryx::url::encode_path_segment(session_id);
         let resp = self
             .request(
                 reqwest::Method::GET,
@@ -323,7 +313,7 @@ impl ApiClient {
     )]
     #[tracing::instrument(skip(self))]
     pub async fn archive_session(&self, session_id: &str) -> Result<()> {
-        let encoded = encode_path(session_id);
+        let encoded = keryx::url::encode_path_segment(session_id);
         let resp = self
             .request(
                 reqwest::Method::POST,
@@ -346,7 +336,7 @@ impl ApiClient {
     )]
     #[tracing::instrument(skip(self))]
     pub async fn unarchive_session(&self, session_id: &str) -> Result<()> {
-        let encoded = encode_path(session_id);
+        let encoded = keryx::url::encode_path_segment(session_id);
         let resp = self
             .request(
                 reqwest::Method::POST,
@@ -369,7 +359,7 @@ impl ApiClient {
     )]
     #[tracing::instrument(skip(self))]
     pub async fn rename_session(&self, session_id: &str, name: &str) -> Result<()> {
-        let encoded = encode_path(session_id);
+        let encoded = keryx::url::encode_path_segment(session_id);
         let resp = self
             .request(
                 reqwest::Method::PUT,
@@ -393,7 +383,7 @@ impl ApiClient {
     )]
     #[tracing::instrument(skip(self))]
     pub async fn abort_turn(&self, turn_id: &str) -> Result<()> {
-        let encoded = encode_path(turn_id);
+        let encoded = keryx::url::encode_path_segment(turn_id);
         let resp = self
             .request(
                 reqwest::Method::POST,
@@ -416,8 +406,8 @@ impl ApiClient {
     )]
     #[tracing::instrument(skip(self))]
     pub async fn approve_tool(&self, turn_id: &str, tool_id: &str) -> Result<()> {
-        let t = encode_path(turn_id);
-        let d = encode_path(tool_id);
+        let t = keryx::url::encode_path_segment(turn_id);
+        let d = keryx::url::encode_path_segment(tool_id);
         let resp = self
             .request(
                 reqwest::Method::POST,
@@ -440,8 +430,8 @@ impl ApiClient {
     )]
     #[tracing::instrument(skip(self))]
     pub async fn deny_tool(&self, turn_id: &str, tool_id: &str) -> Result<()> {
-        let t = encode_path(turn_id);
-        let d = encode_path(tool_id);
+        let t = keryx::url::encode_path_segment(turn_id);
+        let d = keryx::url::encode_path_segment(tool_id);
         let resp = self
             .request(
                 reqwest::Method::POST,
@@ -464,7 +454,7 @@ impl ApiClient {
     )]
     #[tracing::instrument(skip(self))]
     pub async fn approve_plan(&self, plan_id: &str) -> Result<()> {
-        let encoded = encode_path(plan_id);
+        let encoded = keryx::url::encode_path_segment(plan_id);
         let resp = self
             .request(
                 reqwest::Method::POST,
@@ -487,7 +477,7 @@ impl ApiClient {
     )]
     #[tracing::instrument(skip(self))]
     pub async fn cancel_plan(&self, plan_id: &str) -> Result<()> {
-        let encoded = encode_path(plan_id);
+        let encoded = keryx::url::encode_path_segment(plan_id);
         let resp = self
             .request(
                 reqwest::Method::POST,
@@ -542,7 +532,7 @@ impl ApiClient {
     )]
     #[tracing::instrument(skip(self))]
     pub async fn compact(&self, session_id: &str) -> Result<()> {
-        let encoded = encode_path(session_id);
+        let encoded = keryx::url::encode_path_segment(session_id);
         let resp = self
             .request(
                 reqwest::Method::POST,
@@ -571,7 +561,7 @@ impl ApiClient {
     )]
     #[tracing::instrument(skip(self))]
     pub async fn tools(&self, nous_id: &str) -> Result<Vec<NousTool>> {
-        let encoded = encode_path(nous_id);
+        let encoded = keryx::url::encode_path_segment(nous_id);
         let resp = self
             .request(
                 reqwest::Method::GET,
@@ -598,7 +588,7 @@ impl ApiClient {
     )]
     #[tracing::instrument(skip(self))]
     pub async fn recall(&self, nous_id: &str, query: &str) -> Result<String> {
-        let encoded = encode_path(nous_id);
+        let encoded = keryx::url::encode_path_segment(nous_id);
         let resp = self
             .request(
                 reqwest::Method::GET,
@@ -656,7 +646,7 @@ impl ApiClient {
         section: &str,
         data: &serde_json::Value,
     ) -> Result<serde_json::Value> {
-        let encoded = encode_path(section);
+        let encoded = keryx::url::encode_path_segment(section);
         let resp = self
             .request(reqwest::Method::PUT, &format!("/api/v1/config/{encoded}"))
             .json(data)
@@ -709,7 +699,7 @@ impl ApiClient {
     )]
     #[tracing::instrument(skip(self))]
     pub async fn knowledge_fact_detail(&self, fact_id: &str) -> Result<serde_json::Value> {
-        let encoded = encode_path(fact_id);
+        let encoded = keryx::url::encode_path_segment(fact_id);
         let resp = self
             .request(
                 reqwest::Method::GET,
@@ -734,7 +724,7 @@ impl ApiClient {
     )]
     #[tracing::instrument(skip(self))]
     pub async fn knowledge_forget(&self, fact_id: &str) -> Result<()> {
-        let encoded = encode_path(fact_id);
+        let encoded = keryx::url::encode_path_segment(fact_id);
         let resp = self
             .request(
                 reqwest::Method::POST,
@@ -757,7 +747,7 @@ impl ApiClient {
     )]
     #[tracing::instrument(skip(self))]
     pub async fn knowledge_restore(&self, fact_id: &str) -> Result<()> {
-        let encoded = encode_path(fact_id);
+        let encoded = keryx::url::encode_path_segment(fact_id);
         let resp = self
             .request(
                 reqwest::Method::POST,
@@ -804,7 +794,7 @@ impl ApiClient {
         &self,
         entity_id: &str,
     ) -> Result<serde_json::Value> {
-        let encoded = encode_path(entity_id);
+        let encoded = keryx::url::encode_path_segment(entity_id);
         let resp = self
             .request(
                 reqwest::Method::GET,
@@ -850,7 +840,7 @@ impl ApiClient {
     )]
     #[tracing::instrument(skip(self))]
     pub async fn knowledge_update_confidence(&self, fact_id: &str, confidence: f64) -> Result<()> {
-        let encoded = encode_path(fact_id);
+        let encoded = keryx::url::encode_path_segment(fact_id);
         let resp = self
             .request(
                 reqwest::Method::PUT,
@@ -874,7 +864,7 @@ impl ApiClient {
     )]
     #[tracing::instrument(skip(self, text))]
     pub async fn queue_message(&self, session_id: &str, text: &str) -> Result<()> {
-        let encoded = encode_path(session_id);
+        let encoded = keryx::url::encode_path_segment(session_id);
         let resp = self
             .request(
                 reqwest::Method::POST,
@@ -933,20 +923,7 @@ impl ApiClient {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn encode_path_clean_string() {
-        assert_eq!(encode_path("hello-world"), "hello-world");
-        assert_eq!(encode_path("abc123"), "abc123");
-    }
-
-    #[test]
-    fn encode_path_special_chars() {
-        assert_eq!(encode_path("a/b"), "a%2Fb");
-        assert_eq!(encode_path("hello world"), "hello%20world");
-        assert_eq!(encode_path("id=1&x=2"), "id%3D1%26x%3D2");
-    }
-}
+// encode_path_* tests removed: function lifted into
+// keryx::url::encode_path_segment (theatron v1.2.0); its tests live in
+// keryx's crate (6 tests covering passthrough, percent-encoding,
+// multibyte UTF-8, empty input, control characters, and uppercase-hex).

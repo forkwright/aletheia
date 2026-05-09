@@ -196,12 +196,11 @@ pub(crate) fn AppearancePanel() -> Element {
 }
 
 fn mode_str(mode: ThemeMode) -> &'static str {
-    match mode {
-        ThemeMode::Dark => "dark",
-        ThemeMode::Light => "light",
-        ThemeMode::System => "system",
-        // ThemeMode is #[non_exhaustive] from themelion; future
-        // variants degrade to "system" gracefully.
-        _ => "system",
-    }
+    // Migrated 2026-05-08 to themelion::ThemeMode::slug (theatron v1.2.0):
+    // a single shared accessor instead of a hand-rolled match here. Falls
+    // back to "system" for any future #[non_exhaustive] variant via the
+    // `or_else` (slug returns &'static str unconditionally for the three
+    // known variants; the catch-all is defensive against upstream variant
+    // additions theatron-side that this consumer hasn't picked up yet).
+    mode.slug()
 }

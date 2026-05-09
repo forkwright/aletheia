@@ -137,43 +137,15 @@ pub(crate) fn is_binary_content(bytes: &[u8]) -> bool {
         .is_some_and(|slice| slice.contains(&0))
 }
 
-/// Map a file extension to a syntect language token.
-pub(crate) fn extension_to_language(path: &str) -> &str {
-    let ext = path.rsplit('.').next().unwrap_or("");
-    match ext {
-        "rs" => "rust",
-        "py" => "python",
-        "js" => "javascript",
-        "ts" => "typescript",
-        "tsx" => "tsx",
-        "jsx" => "jsx",
-        "rb" => "ruby",
-        "go" => "go",
-        "java" => "java",
-        "c" | "h" => "c",
-        "cpp" | "cc" | "cxx" | "hpp" => "cpp",
-        "cs" => "cs",
-        "swift" => "swift",
-        "kt" | "kts" => "kotlin",
-        "sh" | "bash" => "bash",
-        "fish" => "fish",
-        "zsh" => "zsh",
-        "toml" => "toml",
-        "yaml" | "yml" => "yaml",
-        "json" => "json",
-        "xml" => "xml",
-        "html" | "htm" => "html",
-        "css" => "css",
-        "scss" => "scss",
-        "sql" => "sql",
-        "md" | "markdown" => "markdown",
-        "dockerfile" | "Dockerfile" => "dockerfile",
-        "lua" => "lua",
-        "r" | "R" => "r",
-        "zig" => "zig",
-        _ => ext,
-    }
-}
+// extension_to_language lifted into `gramma::syntax::language_from_path`
+// (theatron v1.2.0). Consumers use that helper directly. Kept as the
+// canonical source of file-path-to-syntect-token resolution across
+// fleet desktop surfaces; behavior preserved for known extensions.
+// The local fallback returned the bare extension verbatim for unknown
+// inputs; gramma's helper returns "text" instead, which `syntect`'s
+// `find_syntax_by_token`/`_by_extension` chain at the call site
+// already handles identically (both fall through to plain text via
+// `unwrap_or_else(|| find_syntax_plain_text())`).
 
 /// Derive a unicode icon for a file based on extension.
 pub(crate) fn file_icon(path: &str, is_dir: bool) -> &'static str {
@@ -266,19 +238,9 @@ mod tests {
         assert!(!is_binary_content(&[]));
     }
 
-    #[test]
-    fn extension_to_language_known_extensions() {
-        assert_eq!(extension_to_language("main.rs"), "rust");
-        assert_eq!(extension_to_language("app.py"), "python");
-        assert_eq!(extension_to_language("index.tsx"), "tsx");
-        assert_eq!(extension_to_language("Cargo.toml"), "toml");
-        assert_eq!(extension_to_language("config.yaml"), "yaml");
-    }
-
-    #[test]
-    fn extension_to_language_unknown_passes_through() {
-        assert_eq!(extension_to_language("file.xyz"), "xyz");
-    }
+    // extension_to_language tests removed: function lifted into
+    // gramma::syntax::language_from_path (theatron v1.2.0); its tests
+    // live in gramma's crate.
 
     #[test]
     fn file_icon_returns_folder_for_directory() {

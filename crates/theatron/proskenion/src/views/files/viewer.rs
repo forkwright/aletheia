@@ -8,7 +8,7 @@ use syntect::util::LinesWithEndings;
 
 use crate::api::client::authenticated_client;
 use crate::state::connection::ConnectionConfig;
-use crate::state::files::{extension_to_language, is_binary_content};
+use crate::state::files::is_binary_content;
 use crate::views::files::toolbar::ViewerToolbar;
 
 const VIEWER_CONTAINER_STYLE: &str = "\
@@ -247,7 +247,7 @@ fn highlight_content(content: &str, path: &str) -> Vec<HighlightedLine> {
     let syntax_set = SyntaxSet::load_defaults_newlines();
     let theme_set = ThemeSet::load_defaults();
 
-    let lang = extension_to_language(path);
+    let lang = gramma::syntax::language_from_path(path);
     let syntax = syntax_set
         .find_syntax_by_token(lang)
         .or_else(|| syntax_set.find_syntax_by_extension(lang))
