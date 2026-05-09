@@ -2,7 +2,7 @@
 
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 use tokio_util::sync::CancellationToken;
@@ -13,9 +13,14 @@ use koina::defaults::{
     BOOTSTRAP_MAX_TOKENS, CONTEXT_TOKENS, DEFAULT_MODEL, MAX_OUTPUT_TOKENS, MAX_TOOL_ITERATIONS,
     MAX_TOOL_RESULT_BYTES,
 };
+use mneme::embedding::EmbeddingProvider;
+#[cfg(feature = "knowledge-store")]
+use mneme::knowledge_store::KnowledgeStore;
+use mneme::store::SessionStore;
 use organon::registry::ToolRegistry;
-use organon::types::{SpawnRequest, SpawnResult, SpawnService};
+use organon::types::{SpawnRequest, SpawnResult, SpawnService, ToolServices};
 use taxis::oikos::Oikos;
+use tokio::sync::Mutex;
 
 use crate::actor;
 use crate::config::{NousConfig, PipelineConfig, StageBudget};
@@ -33,6 +38,34 @@ pub struct SpawnServiceImpl {
     providers: Arc<ProviderRegistry>,
     tools: Arc<ToolRegistry>,
     oikos: Arc<Oikos>,
+    embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
+    vector_search: Option<Arc<dyn crate::recall::VectorSearch>>,
+    session_store: Option<Arc<Mutex<SessionStore>>>,
+    #[cfg(feature = "knowledge-store")]
+    knowledge_store: Option<Arc<KnowledgeStore>>,
+    router: Option<Arc<crate::cross::CrossNousRouter>>,
+    audit_log: Option<Arc<crate::audit::PromptAuditLog>>,
+    empirical_router: Option<Arc<dyn aletheia_routing::Router>>,
+    tool_services: OnceLock<Arc<ToolServices>>,
+}
+
+/// Parent runtime dependencies inherited by ephemeral sub-agents.
+pub struct InheritedSpawnServices {
+    /// Shared embedding provider inherited from the parent runtime.
+    pub embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
+    /// Shared vector search backend inherited from the parent runtime.
+    pub vector_search: Option<Arc<dyn crate::recall::VectorSearch>>,
+    /// Durable session store used to persist spawned-agent turns.
+    pub session_store: Option<Arc<Mutex<SessionStore>>>,
+    /// Knowledge store selected for spawned-agent recall and memory tools.
+    #[cfg(feature = "knowledge-store")]
+    pub knowledge_store: Option<Arc<KnowledgeStore>>,
+    /// Cross-nous router used to register spawned agents for communication tools.
+    pub router: Option<Arc<crate::cross::CrossNousRouter>>,
+    /// Prompt audit log shared with parent actors.
+    pub audit_log: Option<Arc<crate::audit::PromptAuditLog>>,
+    /// Empirical routing backend shared with parent actors.
+    pub empirical_router: Option<Arc<dyn aletheia_routing::Router>>,
 }
 
 impl SpawnServiceImpl {
@@ -47,7 +80,37 @@ impl SpawnServiceImpl {
             providers,
             tools,
             oikos,
+            embedding_provider: None,
+            vector_search: None,
+            session_store: None,
+            #[cfg(feature = "knowledge-store")]
+            knowledge_store: None,
+            router: None,
+            audit_log: None,
+            empirical_router: None,
+            tool_services: OnceLock::new(),
         }
+    }
+
+    /// Attach parent runtime services that spawned agents should inherit.
+    #[must_use]
+    pub fn with_runtime_services(mut self, services: InheritedSpawnServices) -> Self {
+        self.embedding_provider = services.embedding_provider;
+        self.vector_search = services.vector_search;
+        self.session_store = services.session_store;
+        #[cfg(feature = "knowledge-store")]
+        {
+            self.knowledge_store = services.knowledge_store;
+        }
+        self.router = services.router;
+        self.audit_log = services.audit_log;
+        self.empirical_router = services.empirical_router;
+        self
+    }
+
+    /// Complete the service cycle after `ToolServices` is built.
+    pub fn set_tool_services(&self, services: Arc<ToolServices>) {
+        let _ = self.tool_services.set(services);
     }
 }
 
@@ -89,6 +152,8 @@ impl SpawnService for SpawnServiceImpl {
             "spawn:{}",
             koina::ulid::Ulid::new().to_string().to_lowercase()
         );
+        let workspace = self.oikos.nous_dir(&spawn_id);
+        let allowed_roots = vec![self.oikos.root().to_path_buf()];
 
         let config = NousConfig {
             id: Arc::from(spawn_id.as_str()),
@@ -121,6 +186,8 @@ impl SpawnService for SpawnServiceImpl {
             domains: Vec::new(),
             private: false,
             episteme_cohort: std::sync::Arc::from("shared"),
+            workspace,
+            allowed_roots,
             server_tools: Vec::new(),
             cache_enabled: true,
             recall: crate::recall::RecallConfig::default(),
@@ -144,6 +211,15 @@ impl SpawnService for SpawnServiceImpl {
         let providers = Arc::clone(&self.providers);
         let tools = Arc::clone(&self.tools);
         let oikos = Arc::clone(&self.oikos);
+        let embedding_provider = self.embedding_provider.clone();
+        let vector_search = self.vector_search.clone();
+        let session_store = self.session_store.clone();
+        #[cfg(feature = "knowledge-store")]
+        let knowledge_store = self.knowledge_store.clone();
+        let tool_services = self.tool_services.get().cloned();
+        let router = self.router.clone();
+        let audit_log = self.audit_log.clone();
+        let empirical_router = self.empirical_router.clone();
 
         let span = tracing::info_span!(
             "spawn_sub_agent",
@@ -172,28 +248,32 @@ impl SpawnService for SpawnServiceImpl {
 
                 // WHY: ephemeral actors get their own cancellation token: short-lived, no shared parent
                 let ephemeral_cancel = CancellationToken::new();
+                let (cross_tx, cross_rx) = if let Some(router) = router.as_ref() {
+                    let (tx, rx) = tokio::sync::mpsc::channel(32);
+                    router.register(&spawn_id, tx.clone()).await;
+                    (Some(tx), Some(rx))
+                } else {
+                    (None, None)
+                };
                 let (handle, join_handle, _active_turn, _turn_started_at_ms) = actor::spawn(
                     config,
                     pipeline_config,
                     providers,
                     tools,
                     oikos,
-                    None,
-                    None,
-                    None,
+                    embedding_provider,
+                    vector_search,
+                    session_store,
                     #[cfg(feature = "knowledge-store")]
-                    None,
-                    None,
+                    knowledge_store,
+                    tool_services,
                     Vec::new(),
-                    None,
-                    None,
+                    cross_rx,
+                    cross_tx,
                     ephemeral_cancel,
                     taxis::config::NousBehaviorConfig::default(),
-                    None,
-                    // WHY: ephemeral sub-agents don't record after-action outcomes;
-                    // they are short-lived and their results are captured by the
-                    // parent actor's router.
-                    None,
+                    audit_log,
+                    empirical_router,
                 );
 
                 info!(session_key = %session_key, "ephemeral actor started");
@@ -203,6 +283,9 @@ impl SpawnService for SpawnServiceImpl {
 
                 let _ = handle.shutdown().await;
                 let _ = join_handle.await;
+                if let Some(router) = router.as_ref() {
+                    router.unregister(&spawn_id).await;
+                }
 
                 let _ = tokio::fs::remove_dir_all(&nous_dir).await;
 

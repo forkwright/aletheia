@@ -7,6 +7,7 @@ use std::time::Duration;
 use koina::id::{NousId, SessionId};
 use organon::types::ToolContext;
 use tokio::sync::mpsc;
+use tokio_util::sync::CancellationToken;
 use tracing::{Instrument, debug, error, info, warn};
 
 use aletheia_routing::RoutingDecision;
@@ -28,6 +29,16 @@ impl Drop for StreamSenderGuard {
         // even if the turn was cancelled via cancellation token or task abort.
         drop(self.0.take());
     }
+}
+
+pub(super) struct StreamingTurnRequest {
+    pub session_key: String,
+    pub session_id: Option<String>,
+    pub content: String,
+    pub stream_tx: mpsc::Sender<TurnStreamEvent>,
+    pub caller_span: tracing::Span,
+    pub turn_cancel: CancellationToken,
+    pub reply: tokio::sync::oneshot::Sender<crate::error::Result<TurnResult>>,
 }
 
 impl NousActor {
@@ -328,6 +339,7 @@ impl NousActor {
         session_id: Option<String>,
         content: String,
         caller_span: tracing::Span,
+        turn_cancel: CancellationToken,
         reply: tokio::sync::oneshot::Sender<crate::error::Result<TurnResult>>,
     ) {
         self.mark_turn_active(&session_key);
@@ -338,6 +350,7 @@ impl NousActor {
                 session_id.as_deref(),
                 &content,
                 caller_span,
+                turn_cancel,
             )
             .await;
 
@@ -356,15 +369,16 @@ impl NousActor {
     /// Not cancel-safe in isolation: same profile as `handle_turn`.
     /// Sets `lifecycle` and `active_session` before the `.await` point.
     /// Only called from the sequential actor loop.
-    pub(super) async fn handle_streaming_turn(
-        &mut self,
-        session_key: String, // kanon:ignore RUST/plain-string-secret
-        session_id: Option<String>,
-        content: String,
-        stream_tx: mpsc::Sender<TurnStreamEvent>,
-        caller_span: tracing::Span,
-        reply: tokio::sync::oneshot::Sender<crate::error::Result<TurnResult>>,
-    ) {
+    pub(super) async fn handle_streaming_turn(&mut self, request: StreamingTurnRequest) {
+        let StreamingTurnRequest {
+            session_key,
+            session_id,
+            content,
+            stream_tx,
+            caller_span,
+            turn_cancel,
+            reply,
+        } = request;
         // WHY: wrap sender in a Drop guard so it is dropped (closing the channel) even
         // if the turn is cancelled via cancellation token or panic, preventing hung
         // SSE connections on the receiver side.
@@ -379,6 +393,7 @@ impl NousActor {
                 &content,
                 &stream_tx,
                 caller_span,
+                turn_cancel,
             )
             .await;
 
@@ -406,10 +421,18 @@ impl NousActor {
         session_id: Option<&str>,
         content: &str,
         caller_span: tracing::Span,
+        turn_cancel: CancellationToken,
     ) -> crate::error::Result<TurnResult> {
         // WHY: pipeline spawned in separate task so panics are caught by JoinHandle, not the actor loop
         let result = self
-            .spawn_pipeline_task(session_key, session_id, content, None, caller_span)
+            .spawn_pipeline_task(
+                session_key,
+                session_id,
+                content,
+                None,
+                caller_span,
+                turn_cancel,
+            )
             .await;
         self.handle_pipeline_result(result, session_key)
     }
@@ -422,6 +445,7 @@ impl NousActor {
         content: &str,
         stream_tx: &mpsc::Sender<TurnStreamEvent>,
         caller_span: tracing::Span,
+        turn_cancel: CancellationToken,
     ) -> crate::error::Result<TurnResult> {
         let result = self
             .spawn_pipeline_task(
@@ -430,6 +454,7 @@ impl NousActor {
                 content,
                 Some(stream_tx.clone()),
                 caller_span,
+                turn_cancel,
             )
             .await;
         self.handle_pipeline_result(result, session_key)
@@ -458,6 +483,7 @@ impl NousActor {
         content: &str,
         stream_tx: Option<mpsc::Sender<TurnStreamEvent>>,
         caller_span: tracing::Span,
+        turn_cancel: CancellationToken,
     ) -> Result<crate::error::Result<TurnResult>, tokio::task::JoinError> {
         self.evict_oldest_session_if_needed();
         let session = self
@@ -541,8 +567,8 @@ impl NousActor {
             nous_id,
             session_id,
             turn_number: session.turn,
-            workspace: self.services.oikos.nous_dir(&self.id),
-            allowed_roots: vec![self.services.oikos.root().to_path_buf()],
+            workspace: self.config.workspace.clone(),
+            allowed_roots: self.config.allowed_roots.clone(),
             services: self.services.tool_services.clone(),
             active_tools: std::sync::Arc::new(std::sync::RwLock::new(
                 std::collections::HashSet::new(),
@@ -564,7 +590,7 @@ impl NousActor {
 
         // WHY: create hook registry from config so hooks run inside the spawned pipeline task
         let mut hook_registry = crate::hooks::registry::HookRegistry::new();
-        let workspace = self.services.oikos.nous_dir(&self.id);
+        let workspace = self.config.workspace.clone();
         let working_checkpoint_store = self
             .services
             .tool_services
@@ -591,7 +617,7 @@ impl NousActor {
         // so cached workspace reads are reused turn-to-turn (#3388).
         let bootstrap_cache = Arc::clone(&self.services.bootstrap_cache);
         let audit_log = self.services.audit_log.clone();
-        tokio::spawn(
+        let mut pipeline_task = tokio::spawn(
             async move {
                 #[cfg(feature = "knowledge-store")]
                 let text_search_ref: Option<&dyn crate::recall::TextSearch> =
@@ -647,8 +673,18 @@ impl NousActor {
                 }
             }
             .instrument(caller_span),
-        )
-        .await
+        );
+
+        tokio::select! {
+            result = &mut pipeline_task => result,
+            () = turn_cancel.cancelled() => {
+                pipeline_task.abort();
+                let _ = pipeline_task.await;
+                Ok(Err(crate::error::TurnCancelledSnafu {
+                    reason: "request cancelled".to_owned(),
+                }.build()))
+            }
+        }
     }
 
     /// Convert a spawned pipeline result (which may be a panic) into an `error::Result`.

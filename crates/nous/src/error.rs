@@ -74,6 +74,14 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// Turn was cancelled before completion.
+    #[snafu(display("turn cancelled: {reason}"))]
+    TurnCancelled {
+        reason: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// Guard rejected the request.
     #[snafu(display("guard rejected: {reason}"))]
     GuardRejected {
@@ -347,6 +355,7 @@ impl koina::error_class::Classifiable for Error {
             Error::AskCycleDetected { .. } => ErrorClass::Permanent,
             Error::MutexPoisoned { .. } => ErrorClass::Permanent,
             Error::PipelinePanic { .. } => ErrorClass::Permanent,
+            Error::TurnCancelled { .. } => ErrorClass::Permanent,
             Error::MemoryFlushProbe { .. } => ErrorClass::Permanent,
             Error::CompetenceStore { .. } => ErrorClass::Permanent,
             Error::UncertaintyStore { .. } => ErrorClass::Permanent,
@@ -409,6 +418,9 @@ impl koina::error_class::Classifiable for Error {
             },
             Error::AddressRejected { to, .. } => ErrorAction::Surface {
                 user_message: format!("Agent '{to}' rejected this sender."),
+            },
+            Error::TurnCancelled { reason, .. } => ErrorAction::Surface {
+                user_message: format!("Turn cancelled: {reason}"),
             },
 
             // Everything else: escalate for operator visibility

@@ -7,7 +7,7 @@ use std::pin::Pin;
 use snafu::ResultExt;
 
 use dianoia::phase::Phase;
-use dianoia::plan::PlanState;
+use dianoia::plan::{Plan, PlanState};
 use dianoia::project::{Project, ProjectMode};
 use dianoia::state::{ProjectState, Transition};
 use dianoia::workspace::ProjectWorkspace;
@@ -16,7 +16,7 @@ use organon::error::{
     NotFoundSnafu, PlanningAdapterError, SaveProjectSnafu, SerializeSnafu, TaskJoinSnafu,
     TransitionSnafu, WorkspaceSnafu,
 };
-use organon::types::PlanningService;
+use organon::types::{PlanningPlanInput, PlanningService};
 
 pub(crate) struct FilesystemPlanningService {
     projects_root: PathBuf,
@@ -185,6 +185,80 @@ impl PlanningService for FilesystemPlanningService {
                 let order = project.phases.len() as u32 + 1;
                 let phase = Phase::new(name, goal, order);
                 project.add_phase(phase);
+                ws.save_project(&project).map_err(|e| {
+                    SaveProjectSnafu {
+                        message: e.to_string(),
+                    }
+                    .build()
+                })?;
+                serde_json::to_string_pretty(&project).context(SerializeSnafu)
+            })
+            .await
+            .context(TaskJoinSnafu)?
+        })
+    }
+
+    fn add_plan(
+        &self,
+        project_id: &str,
+        phase_id: &str,
+        plan_input: PlanningPlanInput<'_>,
+    ) -> Pin<Box<dyn Future<Output = Result<String, PlanningAdapterError>> + Send + '_>> {
+        let root = self.projects_root.clone();
+        let project_id = project_id.to_owned();
+        let phase_id = phase_id.to_owned();
+        let title = plan_input.title.to_owned();
+        let description = plan_input.description.to_owned();
+        let wave = plan_input.wave;
+        let depends_on = plan_input.depends_on.to_vec();
+        let max_iterations = plan_input.max_iterations;
+        Box::pin(async move {
+            tokio::task::spawn_blocking(move || {
+                let _span = tracing::info_span!("planning_add_plan", project_id = %project_id, phase_id = %phase_id, plan_title = %title).entered();
+                let ws_path = root.join(&project_id);
+                let ws = ProjectWorkspace::open(&ws_path).map_err(|e| {
+                    WorkspaceSnafu {
+                        message: e.to_string(),
+                    }
+                    .build()
+                })?;
+                let mut project = ws.load_project().map_err(|e| {
+                    LoadProjectSnafu {
+                        message: e.to_string(),
+                    }
+                    .build()
+                })?;
+                let phase_ulid: koina::ulid::Ulid =
+                    phase_id.parse().map_err(|e: koina::ulid::DecodeError| {
+                        InvalidIdSnafu {
+                            kind: "phase_id".to_owned(),
+                            message: e.to_string(),
+                        }
+                        .build()
+                    })?;
+                let dep_ids = parse_plan_ids(&depends_on)?;
+                let phase = project
+                    .phases
+                    .iter_mut()
+                    .find(|p| p.id == phase_ulid)
+                    .ok_or_else(|| {
+                        NotFoundSnafu {
+                            kind: "phase",
+                            id: &phase_id,
+                        }
+                        .build()
+                    })?;
+                let mut plan = Plan::new(title, description, wave);
+                if let Some(max) = max_iterations {
+                    plan = plan.with_max_iterations(max);
+                }
+                plan.set_depends_on(dep_ids, &phase.plans)
+                    .map_err(|e| InvalidIdSnafu {
+                        kind: "depends_on".to_owned(),
+                        message: e.to_string(),
+                    }
+                    .build())?;
+                phase.add_plan(plan);
                 ws.save_project(&project).map_err(|e| {
                     SaveProjectSnafu {
                         message: e.to_string(),
@@ -466,6 +540,20 @@ fn find_plan_mut<'a>(
         })
 }
 
+fn parse_plan_ids(ids: &[String]) -> Result<Vec<koina::ulid::Ulid>, PlanningAdapterError> {
+    ids.iter()
+        .map(|id| {
+            id.parse().map_err(|e: koina::ulid::DecodeError| {
+                InvalidIdSnafu {
+                    kind: "depends_on".to_owned(),
+                    message: e.to_string(),
+                }
+                .build()
+            })
+        })
+        .collect()
+}
+
 fn list_projects_sync(root: &Path) -> Result<String, PlanningAdapterError> {
     if !root.exists() {
         return Ok("[]".to_owned());
@@ -588,6 +676,52 @@ mod tests {
         let project: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert_eq!(project["phases"].as_array().unwrap().len(), 1);
         assert_eq!(project["phases"][0]["name"], "Foundation");
+    }
+
+    #[tokio::test]
+    async fn add_plan_creates_executable_plan_that_completion_accepts() {
+        let dir = tempfile::tempdir().unwrap();
+        let service = FilesystemPlanningService::new(dir.path().to_path_buf());
+
+        let json = service
+            .create_project("test", "desc", None, "full", None, "syn")
+            .await
+            .unwrap();
+        let project: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let project_id = project["id"].as_str().unwrap();
+        let json = service
+            .add_phase(project_id, "Foundation", "Set up core")
+            .await
+            .unwrap();
+        let project: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let phase_id = project["phases"][0]["id"].as_str().unwrap();
+
+        let json = service
+            .add_plan(
+                project_id,
+                phase_id,
+                PlanningPlanInput {
+                    title: "Wire runtime",
+                    description: "Implement the concrete runtime path",
+                    wave: 1,
+                    depends_on: &[],
+                    max_iterations: Some(3),
+                },
+            )
+            .await
+            .unwrap();
+        let project: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let plan = &project["phases"][0]["plans"][0];
+        let plan_id = plan["id"].as_str().unwrap();
+        assert_eq!(plan["title"], "Wire runtime");
+        assert_eq!(plan["max_iterations"], 3);
+
+        let json = service
+            .complete_plan(project_id, phase_id, plan_id, Some("accepted by executor"))
+            .await
+            .unwrap();
+        let project: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(project["phases"][0]["plans"][0]["state"], "Complete");
     }
 
     #[tokio::test]

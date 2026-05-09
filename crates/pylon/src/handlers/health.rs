@@ -57,6 +57,7 @@ pub async fn check(State(state): State<HealthState>) -> impl IntoResponse {
         let credential_check =
             check_credential_validity(&state, clock_skew_leeway, expiry_warning_threshold);
         let embedding_check = check_embedding_provider(&state);
+        let gateway_security_check = check_gateway_security(&state).await;
 
         vec![
             store_check,
@@ -64,6 +65,7 @@ pub async fn check(State(state): State<HealthState>) -> impl IntoResponse {
             actor_check,
             check_provider_reachability(&state),
             config_check,
+            gateway_security_check,
             credential_check,
             storage_check,
             embedding_check,
@@ -102,11 +104,44 @@ pub async fn check(State(state): State<HealthState>) -> impl IntoResponse {
         Json(HealthResponse {
             status,
             version: env!("CARGO_PKG_VERSION"),
+            git_sha: option_env!("GIT_SHA").unwrap_or("unknown"),
             uptime_seconds: uptime,
             checks,
             data_dir: state.oikos.data().to_string_lossy().into_owned(),
         }),
     )
+}
+
+async fn check_gateway_security(state: &HealthState) -> HealthCheck {
+    let config = state.config.read().await;
+    gateway_security_check(&config.gateway.auth.mode, &config.gateway.bind)
+}
+
+fn gateway_security_check(auth_mode: &str, bind: &str) -> HealthCheck {
+    if auth_mode == "none" && !taxis::validate::is_loopback_bind(bind) {
+        return HealthCheck {
+            name: "gateway_security",
+            status: "fail",
+            message: Some(format!(
+                "unsafe gateway posture: auth.mode = \"none\" with non-loopback bind '{bind}'"
+            )),
+        };
+    }
+    if auth_mode == "none" {
+        return HealthCheck {
+            name: "gateway_security",
+            status: "warn",
+            message: Some(
+                "auth.mode = \"none\" is limited to loopback but remains unauthenticated"
+                    .to_owned(),
+            ),
+        };
+    }
+    HealthCheck {
+        name: "gateway_security",
+        status: "pass",
+        message: None,
+    }
 }
 
 /// GET /health: deprecated unversioned health check.
@@ -648,6 +683,9 @@ pub struct HealthResponse {
     /// Crate version from `Cargo.toml`.
     #[schema(value_type = String)]
     pub version: &'static str,
+    /// Build git SHA when available from the build environment.
+    #[schema(value_type = String)]
+    pub git_sha: &'static str,
     /// Seconds since server start.
     pub uptime_seconds: u64,
     /// Individual subsystem check results.
@@ -714,6 +752,7 @@ mod tests {
         let resp = HealthResponse {
             status: "healthy",
             version: "1.0.0",
+            git_sha: "abc123",
             uptime_seconds: 300,
             checks: vec![],
             data_dir: "/tmp/instance/data".to_owned(),
@@ -723,6 +762,13 @@ mod tests {
         assert_eq!(json["version"], "1.0.0");
         assert_eq!(json["uptime_seconds"], 300);
         assert!(json["checks"].as_array().unwrap().is_empty());
+    }
+
+    #[test]
+    fn gateway_security_fails_auth_none_on_lan_bind() {
+        let check = gateway_security_check("none", "0.0.0.0");
+        assert_eq!(check.status, "fail");
+        assert_eq!(check.name, "gateway_security");
     }
 
     #[test]

@@ -158,48 +158,7 @@ pub(super) fn plan_roadmap_def() -> ToolDef {
         description: "Manage project roadmap: add phases, start discussion or execution".to_owned(),
         extended_description: None,
         input_schema: InputSchema {
-            properties: IndexMap::from([
-                (
-                    "project_id".to_owned(),
-                    PropertyDef {
-                        property_type: PropertyType::String,
-                        description: "Project ID".to_owned(),
-                        enum_values: None,
-                        default: None,
-                    },
-                ),
-                (
-                    "action".to_owned(),
-                    PropertyDef {
-                        property_type: PropertyType::String,
-                        description: "Action to perform".to_owned(),
-                        enum_values: Some(vec![
-                            "add_phase".to_owned(),
-                            "start_discussion".to_owned(),
-                            "start_execution".to_owned(),
-                        ]),
-                        default: None,
-                    },
-                ),
-                (
-                    "phase_name".to_owned(),
-                    PropertyDef {
-                        property_type: PropertyType::String,
-                        description: "Phase name (required for add_phase)".to_owned(),
-                        enum_values: None,
-                        default: None,
-                    },
-                ),
-                (
-                    "phase_goal".to_owned(),
-                    PropertyDef {
-                        property_type: PropertyType::String,
-                        description: "Phase goal (required for add_phase)".to_owned(),
-                        enum_values: None,
-                        default: None,
-                    },
-                ),
-            ]),
+            properties: plan_roadmap_properties(),
             required: vec!["project_id".to_owned(), "action".to_owned()],
         },
         category: ToolCategory::Planning,
@@ -208,6 +167,84 @@ pub(super) fn plan_roadmap_def() -> ToolDef {
         groups: vec![ToolGroupId::Plan],
         tags: vec![ToolTag::Plan],
     }
+}
+
+fn plan_roadmap_properties() -> IndexMap<String, PropertyDef> {
+    IndexMap::from([
+        string_property("project_id", "Project ID"),
+        (
+            "action".to_owned(),
+            PropertyDef {
+                property_type: PropertyType::String,
+                description: "Action to perform".to_owned(),
+                enum_values: Some(vec![
+                    "add_phase".to_owned(),
+                    "add_plan".to_owned(),
+                    "start_discussion".to_owned(),
+                    "start_execution".to_owned(),
+                ]),
+                default: None,
+            },
+        ),
+        string_property("phase_name", "Phase name (required for add_phase)"),
+        string_property("phase_goal", "Phase goal (required for add_phase)"),
+        string_property("phase_id", "Phase ID (required for add_plan)"),
+        string_property(
+            "plan_title",
+            "Executable plan title (required for add_plan)",
+        ),
+        string_property(
+            "plan_description",
+            "Concrete work description for the executable plan",
+        ),
+        integer_property(
+            "wave",
+            "Execution wave; plans in the same wave may run in parallel",
+            Some(serde_json::json!(1)),
+        ),
+        (
+            "depends_on".to_owned(),
+            PropertyDef {
+                property_type: PropertyType::Array,
+                description: "Plan IDs that must complete before this plan can run".to_owned(),
+                enum_values: None,
+                default: Some(serde_json::json!([])),
+            },
+        ),
+        integer_property(
+            "max_iterations",
+            "Optional maximum execution iterations before stuck",
+            None,
+        ),
+    ])
+}
+
+fn string_property(name: &str, description: &str) -> (String, PropertyDef) {
+    (
+        name.to_owned(),
+        PropertyDef {
+            property_type: PropertyType::String,
+            description: description.to_owned(),
+            enum_values: None,
+            default: None,
+        },
+    )
+}
+
+fn integer_property(
+    name: &str,
+    description: &str,
+    default: Option<serde_json::Value>,
+) -> (String, PropertyDef) {
+    (
+        name.to_owned(),
+        PropertyDef {
+            property_type: PropertyType::Integer,
+            description: description.to_owned(),
+            enum_values: None,
+            default,
+        },
+    )
 }
 
 pub(super) fn plan_discuss_def() -> ToolDef {

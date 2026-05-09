@@ -312,6 +312,7 @@ async fn send_timeout_fires_when_inbox_full() {
         session_id: None,
         content: "filler".to_owned(),
         span: tracing::Span::current(),
+        turn_cancel: tokio_util::sync::CancellationToken::new(),
         reply: reply_tx,
     })
     .await

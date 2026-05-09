@@ -1,6 +1,7 @@
 //! Nous agent configuration.
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use hermeneus::complexity::ComplexityConfig;
@@ -248,6 +249,12 @@ pub struct NousConfig {
     /// Episteme knowledge-store cohort for this agent.
     #[serde(default = "default_episteme_cohort", with = "arc_str")]
     pub episteme_cohort: Arc<str>,
+    /// Filesystem workspace used by local tools and hooks.
+    #[serde(default = "default_workspace")]
+    pub workspace: PathBuf,
+    /// Canonical filesystem roots that local tools may access.
+    #[serde(default)]
+    pub allowed_roots: Vec<PathBuf>,
     /// Server-side tools to include in API requests (e.g., web search).
     #[serde(default)]
     pub server_tools: Vec<hermeneus::types::ServerToolDefinition>,
@@ -378,6 +385,8 @@ impl Default for NousConfig {
             domains: Vec::new(),
             private: false,
             episteme_cohort: default_episteme_cohort(),
+            workspace: default_workspace(),
+            allowed_roots: Vec::new(),
             server_tools: Vec::new(),
             cache_enabled: true,
             recall: RecallConfig::default(),
@@ -388,6 +397,10 @@ impl Default for NousConfig {
             behavior: AgentBehaviorDefaults::default(),
         }
     }
+}
+
+fn default_workspace() -> PathBuf {
+    PathBuf::from(".")
 }
 
 impl NousConfig {
@@ -632,6 +645,8 @@ mod tests {
             domains: vec!["medical".to_owned()],
             private: true,
             episteme_cohort: std::sync::Arc::from("shared"),
+            workspace: std::path::PathBuf::from("/tmp/analyst"),
+            allowed_roots: vec![std::path::PathBuf::from("/tmp")],
             server_tools: Vec::new(),
             cache_enabled: false,
             recall: RecallConfig::default(),

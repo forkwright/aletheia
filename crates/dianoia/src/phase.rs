@@ -88,8 +88,7 @@ impl Phase {
     }
 
     /// Add an executable plan to this phase.
-    #[cfg_attr(not(test), expect(dead_code, reason = "WIP: planning phase lifecycle"))]
-    pub(crate) fn add_plan(&mut self, plan: Plan) {
+    pub fn add_plan(&mut self, plan: Plan) {
         self.plans.push(plan);
     }
 

@@ -81,16 +81,12 @@ pub struct AppState {
 }
 
 impl AppState {
-    #[expect(
-        dead_code,
-        reason = "hot-reload subscriber API, not yet wired into actor lifecycle"
-    )]
     /// Subscribe to config change notifications.
     ///
     /// Returns a `watch::Receiver` that yields the latest config after each
     /// successful reload. Actors should call `changed().await` to be notified.
     #[must_use]
-    pub(crate) fn config_rx(&self) -> tokio::sync::watch::Receiver<AletheiaConfig> {
+    pub fn config_rx(&self) -> tokio::sync::watch::Receiver<AletheiaConfig> {
         self.config_tx.subscribe()
     }
 }
