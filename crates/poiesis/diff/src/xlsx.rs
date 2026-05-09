@@ -128,23 +128,30 @@ fn read_workbook(bytes: &[u8]) -> Result<WorkbookData> {
         content
     };
 
-    // Simple extraction of sheet names, preserving order
+    // Simple extraction of sheet names, preserving order.
+    // rust_xlsxwriter emits compact XML, so multiple sheet tags may share a line.
     let mut sheet_names = Vec::new();
-    for line in workbook_xml.lines() {
-        if line.contains("<sheet")
-            && let Some(start) = line.find("name=\"")
-            && let Some(rest) = line.get(start + 6..)
-            && let Some(end) = rest.find('"')
-            && let Some(sheet_name) = rest.get(..end)
-        {
-            sheet_names.push(sheet_name.to_string());
-            workbook_data.insert(sheet_name.to_string(), IndexMap::new());
-        }
+    for sheet_xml in workbook_xml.split("<sheet").skip(1) {
+        let Some(start) = sheet_xml.find("name=\"") else {
+            continue;
+        };
+        let Some(rest) = sheet_xml.get(start + 6..) else {
+            continue;
+        };
+        let Some(end) = rest.find('"') else {
+            continue;
+        };
+        let Some(sheet_name) = rest.get(..end) else {
+            continue;
+        };
+        sheet_names.push(sheet_name.to_string());
+        workbook_data.insert(sheet_name.to_string(), IndexMap::new());
     }
 
     // Read worksheet files (xl/worksheets/sheet1.xml, etc.)
     for (sheet_idx, sheet_name) in sheet_names.iter().enumerate() {
-        let worksheet_path = format!("xl/worksheets/sheet{sheet_idx}.xml");
+        let worksheet_number = sheet_idx + 1;
+        let worksheet_path = format!("xl/worksheets/sheet{worksheet_number}.xml");
         if let Ok(mut file) = archive.by_name(&worksheet_path) {
             let mut content = String::new();
             std::io::Read::read_to_string(&mut file, &mut content)

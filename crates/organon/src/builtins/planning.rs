@@ -7,7 +7,7 @@ use std::sync::Arc;
 use super::workspace::{extract_opt_bool, extract_opt_u64, extract_str};
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
-use crate::types::{PlanningService, ToolContext, ToolInput, ToolResult};
+use crate::types::{PlanningPlanInput, PlanningService, ToolContext, ToolInput, ToolResult};
 
 #[path = "planning_defs.rs"]
 mod defs;
@@ -151,6 +151,44 @@ impl ToolExecutor for PlanRoadmapExecutor {
                     let phase_name = extract_str(&input.arguments, "phase_name", &input.name)?;
                     let phase_goal = extract_str(&input.arguments, "phase_goal", &input.name)?;
                     match planning.add_phase(project_id, phase_name, phase_goal).await {
+                        Ok(json) => Ok(ToolResult::text(json)),
+                        Err(e) => Ok(ToolResult::error(e.to_string())),
+                    }
+                }
+                "add_plan" => {
+                    let phase_id = extract_str(&input.arguments, "phase_id", &input.name)?;
+                    let title = extract_str(&input.arguments, "plan_title", &input.name)?;
+                    let description =
+                        extract_str(&input.arguments, "plan_description", &input.name)?;
+                    let wave = extract_opt_u64(&input.arguments, "wave")
+                        .map_or(1, |v| u32::try_from(v).unwrap_or(u32::MAX));
+                    let depends_on = input
+                        .arguments
+                        .get("depends_on")
+                        .and_then(serde_json::Value::as_array)
+                        .map(|values| {
+                            values
+                                .iter()
+                                .filter_map(|value| value.as_str().map(ToOwned::to_owned))
+                                .collect::<Vec<_>>()
+                        })
+                        .unwrap_or_default();
+                    let max_iterations = extract_opt_u64(&input.arguments, "max_iterations")
+                        .map(|v| u32::try_from(v).unwrap_or(u32::MAX));
+                    match planning
+                        .add_plan(
+                            project_id,
+                            phase_id,
+                            PlanningPlanInput {
+                                title,
+                                description,
+                                wave,
+                                depends_on: &depends_on,
+                                max_iterations,
+                            },
+                        )
+                        .await
+                    {
                         Ok(json) => Ok(ToolResult::text(json)),
                         Err(e) => Ok(ToolResult::error(e.to_string())),
                     }

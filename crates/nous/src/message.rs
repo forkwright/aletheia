@@ -4,7 +4,9 @@ use std::fmt;
 use std::time::Duration;
 
 use tokio::sync::{mpsc, oneshot};
+use tokio_util::sync::CancellationToken;
 
+use crate::config::{NousConfig, PipelineConfig};
 use crate::error;
 use crate::pipeline::TurnResult;
 use crate::stream::TurnStreamEvent;
@@ -22,6 +24,8 @@ pub(crate) enum NousMessage {
         content: String,
         /// Caller's tracing span: propagated into the pipeline task for request correlation.
         span: tracing::Span,
+        /// Request-scoped turn cancellation token.
+        turn_cancel: CancellationToken,
         reply: oneshot::Sender<error::Result<TurnResult>>,
     },
     /// Process a user message with real-time streaming events.
@@ -33,6 +37,8 @@ pub(crate) enum NousMessage {
         stream_tx: mpsc::Sender<TurnStreamEvent>,
         /// Caller's tracing span: propagated into the pipeline task for request correlation.
         span: tracing::Span,
+        /// Request-scoped turn cancellation token.
+        turn_cancel: CancellationToken,
         reply: oneshot::Sender<error::Result<TurnResult>>,
     },
     /// Query current lifecycle state.
@@ -45,6 +51,12 @@ pub(crate) enum NousMessage {
     Wake,
     /// Reset degraded state: clears panic counter and restores lifecycle to Idle.
     Recover { reply: oneshot::Sender<bool> },
+    /// Apply hot-reloadable runtime configuration to this actor.
+    ReloadConfig {
+        config: Box<NousConfig>,
+        pipeline_config: Box<PipelineConfig>,
+        reply: oneshot::Sender<()>,
+    },
     /// Graceful shutdown.
     Shutdown,
 }

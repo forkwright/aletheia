@@ -66,7 +66,7 @@ impl TaskCategory {
                 "refactor" | "restructure" | "rename" => is_refactor = true,
                 "fix" | "bug" | "defect" | "regression" => is_bug = true,
                 "test" | "spec" | "coverage" => is_test = true,
-                "doc" | "docs" | "comment" | "readme" => is_docs = true,
+                "doc" | "docs" | "documentation" | "comment" | "readme" => is_docs = true,
                 "chore" | "dependency" | "dependencies" | "deps" | "ci" | "lint" => {
                     is_chore = true;
                 }
@@ -327,6 +327,10 @@ mod tests {
         );
         assert_eq!(
             TaskCategory::from_prompt("update README"),
+            TaskCategory::Docs
+        );
+        assert_eq!(
+            TaskCategory::from_prompt("update documentation for API"),
             TaskCategory::Docs
         );
         assert_eq!(

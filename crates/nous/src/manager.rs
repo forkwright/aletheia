@@ -28,7 +28,7 @@ use crate::actor;
 use crate::bootstrap::{BootstrapSection, pack_sections_to_bootstrap};
 use crate::budget::CharEstimator;
 use crate::config::{NousConfig, PipelineConfig};
-use crate::handle::NousHandle;
+use crate::handle::{DEFAULT_SEND_TIMEOUT, NousHandle};
 use crate::message::{ActorHealth, NousStatus};
 
 /// Result of waiting for a single actor task during `shutdown_all`.
@@ -358,6 +358,22 @@ impl NousManager {
     #[must_use]
     pub fn configs(&self) -> Vec<&NousConfig> {
         self.actors.values().map(|e| &e.config).collect()
+    }
+
+    /// Apply hot-reloadable config snapshots to running actors.
+    pub async fn reload_actor_configs(
+        &self,
+        configs: Vec<(String, NousConfig, PipelineConfig)>,
+    ) -> crate::error::Result<()> {
+        for (id, config, pipeline_config) in configs {
+            if let Some(entry) = self.actors.get(&id) {
+                entry
+                    .handle
+                    .reload_config(config, pipeline_config, DEFAULT_SEND_TIMEOUT)
+                    .await?;
+            }
+        }
+        Ok(())
     }
 
     /// Check liveness of all actors by sending a ping with a timeout.

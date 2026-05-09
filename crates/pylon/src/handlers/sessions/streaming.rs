@@ -10,6 +10,7 @@ use axum::response::sse::{Event, KeepAlive, Sse};
 use tokio::sync::mpsc;
 use tokio_stream::StreamExt;
 use tokio_stream::wrappers::{IntervalStream, ReceiverStream};
+use tokio_util::sync::CancellationToken;
 use tracing::{Instrument, debug, instrument, warn};
 
 use hermeneus::anthropic::StreamEvent as LlmStreamEvent;
@@ -42,11 +43,15 @@ use super::{find_session, resolve_session};
 /// Stored alongside the SSE response stream so that when the client
 /// disconnects and Axum drops the response future, the in-flight LLM
 /// turn is cancelled rather than running to completion.
-struct AbortOnDrop(tokio::task::JoinHandle<()>);
+struct AbortOnDrop {
+    task: tokio::task::JoinHandle<()>,
+    turn_cancel: CancellationToken,
+}
 
 impl Drop for AbortOnDrop {
     fn drop(&mut self) {
-        self.0.abort();
+        self.turn_cancel.cancel();
+        self.task.abort();
     }
 }
 
@@ -168,11 +173,15 @@ pub async fn send_message(
                     ))
                     .await;
                 drop(tx);
+                let turn_cancel = CancellationToken::new();
                 let stream = GuardedStream {
                     inner: ReceiverStream::new(rx).map(sse_event_to_axum_with_id),
-                    _guard: AbortOnDrop(tokio::spawn(
-                        async {}.instrument(tracing::info_span!("idempotent_noop")),
-                    )),
+                    _guard: AbortOnDrop {
+                        task: tokio::spawn(
+                            async {}.instrument(tracing::info_span!("idempotent_noop")),
+                        ),
+                        turn_cancel,
+                    },
                 };
                 return Ok(Sse::new(stream).keep_alive(
                     KeepAlive::new()
@@ -277,6 +286,8 @@ pub async fn send_message(
         idempotency_key = idempotency_key.as_deref().unwrap_or(""),
     );
     let shutdown_token = state.shutdown.child_token();
+    let turn_cancel = CancellationToken::new();
+    let turn_cancel_task = turn_cancel.clone();
     let buf_handle_task = buf_handle.clone();
     let event_bus = Arc::clone(&state.event_bus);
     let turn_handle = tokio::spawn(
@@ -292,16 +303,18 @@ pub async fn send_message(
 
             // WHY: cancel the in-flight turn when the server shuts down so Axum's graceful
             // shutdown can drain open SSE connections rather than hanging indefinitely (#1723).
-            let turn_fut = handle.send_turn_with_session_id(
+            let turn_fut = handle.send_turn_with_cancel(
                 &session_key,
                 Some(sid.clone()),
                 &content,
                 nous::handle::DEFAULT_SEND_TIMEOUT,
+                turn_cancel_task.clone(),
             );
             let result = tokio::select! {
                 r = turn_fut => r,
                 () = shutdown_token.cancelled() => {
                     tracing::info!("shutdown: cancelling in-flight SSE turn");
+                    turn_cancel_task.cancel();
                     buf_handle_task.mark_failed().await;
                     return;
                 }
@@ -380,7 +393,10 @@ pub async fn send_message(
     // Without this, a disconnected client leaves the LLM inference running.
     let stream = GuardedStream {
         inner: ReceiverStream::new(rx).map(sse_event_to_axum_with_id),
-        _guard: AbortOnDrop(turn_handle),
+        _guard: AbortOnDrop {
+            task: turn_handle,
+            turn_cancel,
+        },
     };
 
     Ok(Sse::new(stream).keep_alive(
@@ -578,23 +594,27 @@ pub async fn stream_turn(
     );
 
     let shutdown_token = state.shutdown.child_token();
+    let turn_cancel = CancellationToken::new();
+    let turn_cancel_task = turn_cancel.clone();
     let buf_handle_task = buf_handle.clone();
     let event_bus = Arc::clone(&state.event_bus);
     let stream_turn_handle = tokio::spawn(
         async move {
             // WHY: cancel the in-flight turn when the server shuts down so Axum's graceful
             // shutdown can drain open SSE connections rather than hanging indefinitely (#1723).
-            let turn_fut = handle.send_turn_streaming_with_session_id(
+            let turn_fut = handle.send_turn_streaming_with_cancel(
                 &session_key,
                 Some(sid.clone()),
                 &message,
                 nous_tx,
                 nous::handle::DEFAULT_SEND_TIMEOUT,
+                turn_cancel_task.clone(),
             );
             let result = tokio::select! {
                 r = turn_fut => r,
                 () = shutdown_token.cancelled() => {
                     tracing::info!("shutdown: cancelling in-flight streaming turn");
+                    turn_cancel_task.cancel();
                     buf_handle_task.mark_failed().await;
                     return;
                 }
@@ -688,7 +708,10 @@ pub async fn stream_turn(
                 }
             }
         }),
-        _guard: AbortOnDrop(stream_turn_handle),
+        _guard: AbortOnDrop {
+            task: stream_turn_handle,
+            turn_cancel,
+        },
     };
 
     Ok(Sse::new(stream).keep_alive(

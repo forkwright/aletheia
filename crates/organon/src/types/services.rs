@@ -80,6 +80,14 @@ pub trait PlanningService: Send + Sync {
         goal: &str,
     ) -> Pin<Box<dyn Future<Output = Result<String, PlanningAdapterError>> + Send + '_>>;
 
+    /// Add an executable plan to a phase. Returns updated project JSON.
+    fn add_plan(
+        &self,
+        project_id: &str,
+        phase_id: &str,
+        plan: PlanningPlanInput<'_>,
+    ) -> Pin<Box<dyn Future<Output = Result<String, PlanningAdapterError>> + Send + '_>>;
+
     /// Mark a plan as complete within a phase. Returns updated project JSON.
     fn complete_plan(
         &self,
@@ -118,6 +126,20 @@ pub trait PlanningService: Send + Sync {
         phase_id: &str,
         criteria_json: &str,
     ) -> Pin<Box<dyn Future<Output = Result<String, PlanningAdapterError>> + Send + '_>>;
+}
+
+/// Input for creating an executable plan inside a phase.
+pub struct PlanningPlanInput<'a> {
+    /// Short title for the executable plan.
+    pub title: &'a str,
+    /// Concrete work description.
+    pub description: &'a str,
+    /// Execution wave; plans in the same wave may run in parallel.
+    pub wave: u32,
+    /// Plan IDs that must complete before this plan can run.
+    pub depends_on: &'a [String],
+    /// Optional maximum iterations before the plan is stuck.
+    pub max_iterations: Option<u32>,
 }
 
 /// A result from knowledge store search.

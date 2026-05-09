@@ -98,17 +98,15 @@ pub(crate) fn inspect_xlsx_impl(bytes: &[u8]) -> Result<WorkbookSummary> {
         content
     };
 
-    // Extract sheet names from workbook.xml, preserving order
+    // Extract sheet names from workbook.xml, preserving order.
+    // rust_xlsxwriter emits compact XML, so multiple sheet tags may share a line.
     let mut sheet_names = Vec::new();
-    for line in workbook_xml.lines() {
-        if !line.contains("<sheet") {
-            continue;
-        }
-        let Some(start) = line.find("name=\"") else {
+    for sheet_xml in workbook_xml.split("<sheet").skip(1) {
+        let Some(start) = sheet_xml.find("name=\"") else {
             continue;
         };
         let after_name = start + 6;
-        let Some(rest) = line.get(after_name..) else {
+        let Some(rest) = sheet_xml.get(after_name..) else {
             continue;
         };
         let Some(end) = rest.find('"') else {

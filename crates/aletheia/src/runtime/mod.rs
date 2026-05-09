@@ -2,6 +2,7 @@
 
 #[cfg(feature = "recall")]
 use std::collections::BTreeSet;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -435,8 +436,7 @@ impl RuntimeBuilder {
         };
 
         // Tool services
-        let (cross_nous, messenger, note_store, blackboard_store, spawn, planning) = if self
-            .tool_services
+        let (cross_nous, messenger, note_store, blackboard_store, planning) = if self.tool_services
         {
             let cross_nous: Arc<dyn organon::types::CrossNousService> =
                 Arc::new(tool_adapters::CrossNousAdapter(Arc::clone(&cross_router)));
@@ -457,12 +457,6 @@ impl RuntimeBuilder {
                 Some(Arc::new(nous::adapters::SessionBlackboardAdapter(
                     Arc::clone(&session_store),
                 )));
-            let spawn: Option<Arc<dyn organon::types::SpawnService>> =
-                Some(Arc::new(nous::spawn_svc::SpawnServiceImpl::new(
-                    Arc::clone(&provider_registry),
-                    Arc::clone(&tool_registry),
-                    Arc::clone(&self.oikos),
-                )));
             let planning_root = self.oikos.data().join("planning");
             let planning: Option<Arc<dyn organon::types::PlanningService>> = Some(Arc::new(
                 planning_adapter::FilesystemPlanningService::new(planning_root),
@@ -472,11 +466,10 @@ impl RuntimeBuilder {
                 messenger,
                 note_store,
                 blackboard_store,
-                spawn,
                 planning,
             )
         } else {
-            (None, None, None, None, None, None)
+            (None, None, None, None, None)
         };
 
         // Knowledge stores
@@ -557,6 +550,46 @@ impl RuntimeBuilder {
         #[cfg(not(feature = "recall"))]
         let knowledge_search: Option<Arc<dyn organon::types::KnowledgeSearchService>> = None;
 
+        let audit_log_dir = self
+            .config
+            .prompt_audit
+            .log_dir
+            .clone()
+            .unwrap_or_else(|| self.oikos.logs().join("prompt-audit"));
+        let audit_log = Arc::new(nous::audit::PromptAuditLog::new(
+            audit_log_dir,
+            self.config.prompt_audit.enabled,
+        ));
+
+        let spawn_impl = if self.tool_services {
+            #[cfg(feature = "recall")]
+            let child_knowledge_store = shared_knowledge_store.clone();
+            Some(Arc::new(
+                nous::spawn_svc::SpawnServiceImpl::new(
+                    Arc::clone(&provider_registry),
+                    Arc::clone(&tool_registry),
+                    Arc::clone(&self.oikos),
+                )
+                .with_runtime_services(nous::spawn_svc::InheritedSpawnServices {
+                    embedding_provider: Some(Arc::clone(&embedding_provider)),
+                    vector_search: vector_search.clone(),
+                    session_store: Some(Arc::clone(&session_store)),
+                    #[cfg(feature = "recall")]
+                    knowledge_store: child_knowledge_store,
+                    router: Some(Arc::clone(&cross_router)),
+                    audit_log: Some(Arc::clone(&audit_log)),
+                    empirical_router: None,
+                }),
+            ))
+        } else {
+            None
+        };
+        let spawn: Option<Arc<dyn organon::types::SpawnService>> =
+            spawn_impl.as_ref().map(|service| {
+                let service: Arc<dyn organon::types::SpawnService> = service.clone();
+                service
+            });
+
         let tool_services = Arc::new(ToolServices {
             working_checkpoint_store: None,
             cross_nous,
@@ -571,24 +604,13 @@ impl RuntimeBuilder {
             lazy_tool_catalog: tool_registry.lazy_tool_catalog(),
             server_tool_config: organon::types::ServerToolConfig::default(),
         });
+        if let Some(spawn_impl) = spawn_impl.as_ref() {
+            spawn_impl.set_tool_services(Arc::clone(&tool_services));
+        }
 
         // Clone shared store Arc before moving cohort stores into NousManager
         #[cfg(feature = "recall")]
         let knowledge_store_for_daemon = shared_knowledge_store.clone();
-
-        // WHY(#3411): shared prompt audit log written once per turn across
-        // all actors. Path defaults to `{instance}/logs/prompt-audit/` when
-        // the operator hasn't set an explicit `log_dir` in config.
-        let audit_log_dir = self
-            .config
-            .prompt_audit
-            .log_dir
-            .clone()
-            .unwrap_or_else(|| self.oikos.logs().join("prompt-audit"));
-        let audit_log = Arc::new(nous::audit::PromptAuditLog::new(
-            audit_log_dir,
-            self.config.prompt_audit.enabled,
-        ));
 
         let mut nous_manager = NousManager::new(
             Arc::clone(&provider_registry),
@@ -609,104 +631,9 @@ impl RuntimeBuilder {
         // Spawn nous actors
         {
             for agent_def in &self.config.agents.list {
-                let resolved = resolve_nous(&self.config, &agent_def.id);
-
-                let mut domains = resolved.domains.clone();
-                let mut model = resolved.model.primary.to_string();
-                let mut max_tool_iterations = resolved.capabilities.max_tool_iterations;
-                for pack in packs.iter() {
-                    for d in pack.domains_for_agent(&agent_def.id) {
-                        if !domains.contains(&d) {
-                            domains.push(d);
-                        }
-                    }
-                    if let Some(m) = pack.model_for_agent(&agent_def.id) {
-                        model = m;
-                    }
-                    if let Some(a) = pack.agency_for_agent(&agent_def.id) {
-                        max_tool_iterations = match a.as_str() {
-                            "unrestricted" => 10_000,
-                            "standard" => koina::defaults::MAX_TOOL_ITERATIONS,
-                            "restricted" => 50,
-                            other => {
-                                warn!(
-                                    agent = %agent_def.id,
-                                    agency = %other,
-                                    pack = %pack.manifest.name,
-                                    "unknown agency level in pack overlay, skipping"
-                                );
-                                continue;
-                            }
-                        };
-                    }
-                }
-
-                let nous_config = NousConfig {
-                    id: resolved.id,
-                    name: resolved.name,
-                    generation: nous::config::NousGenerationConfig {
-                        model,
-                        fallback_models: resolved
-                            .model
-                            .fallbacks
-                            .iter()
-                            .map(ToString::to_string)
-                            .collect(),
-                        retries_before_fallback: resolved.model.retries_before_fallback,
-                        context_window: resolved.limits.context_tokens,
-                        max_output_tokens: resolved.limits.max_output_tokens,
-                        bootstrap_max_tokens: resolved.limits.bootstrap_max_tokens,
-                        thinking_enabled: resolved.capabilities.thinking_enabled,
-                        thinking_budget: resolved.limits.thinking_budget,
-                        chars_per_token: resolved.limits.chars_per_token,
-                        prosoche_model: resolved.prosoche_model.to_string(),
-                        complexity: hermeneus::complexity::ComplexityConfig::default(),
-                        extraction_model: None,
-                        distillation_model: None,
-                    },
-                    limits: nous::config::NousLimits {
-                        max_tool_iterations,
-                        loop_detection_threshold: 3,
-                        consecutive_error_threshold: 4,
-                        loop_max_warnings: 2,
-                        session_token_cap: 500_000,
-                        max_tool_result_bytes: resolved.limits.max_tool_result_bytes,
-                        max_consecutive_tool_only_iterations: 3,
-                        consecutive_mistake_limit:
-                            koina::defaults::DEFAULT_CONSECUTIVE_MISTAKE_LIMIT,
-                    },
-                    domains,
-                    private: resolved.private,
-                    episteme_cohort: resolved.episteme_cohort,
-                    server_tools: Vec::new(),
-                    cache_enabled: resolved.capabilities.cache_enabled,
-                    recall: resolved.recall.into(),
-                    recall_profile: resolved.recall_profile.into(),
-                    tool_allowlist: None,
-                    tool_groups: Vec::new(),
-                    hooks: nous::config::HookConfig::default(),
-                    behavior: resolved.behavior,
-                };
-                // WHY (#3740): honour the operator-set extraction_model
-                // override if present. Extraction is a "fast tier" workload
-                // (small model) and on local multi-model deployments should
-                // not inherit the turn model. When unset, fall back to the
-                // ExtractionConfig default.
-                let mut extraction_cfg = mneme::extract::ExtractionConfig::default();
-                if let Some(m) = nous_config.generation.extraction_model.as_deref() {
-                    extraction_cfg.model = m.to_owned();
-                }
-                if let Err(e) = nous_manager
-                    .spawn(
-                        nous_config,
-                        PipelineConfig {
-                            extraction: Some(extraction_cfg),
-                            training: self.config.training.clone(),
-                            ..PipelineConfig::default()
-                        },
-                    )
-                    .await
-                {
+                let (nous_config, pipeline_config) =
+                    build_nous_runtime_config(&self.config, &self.oikos, &packs, &agent_def.id);
+                if let Err(e) = nous_manager.spawn(nous_config, pipeline_config).await {
                     error!(
                         agent = %agent_def.id,
                         error = %e,
@@ -852,6 +779,38 @@ impl RuntimeBuilder {
         register_all_metrics(&metrics_registry);
 
         let (config_tx, _config_rx) = tokio::sync::watch::channel(aletheia_config.clone());
+        let mut reload_rx = config_tx.subscribe();
+        let reload_manager = Arc::clone(&nous_manager);
+        let reload_oikos = Arc::clone(&self.oikos);
+        let reload_packs = Arc::clone(&packs);
+        task_tracker.spawn(
+            async move {
+                loop {
+                    if reload_rx.changed().await.is_err() {
+                        break;
+                    }
+                    let config = reload_rx.borrow().clone();
+                    let actor_configs = config
+                        .agents
+                        .list
+                        .iter()
+                        .map(|agent| {
+                            let (nous_config, pipeline_config) = build_nous_runtime_config(
+                                &config,
+                                &reload_oikos,
+                                &reload_packs,
+                                &agent.id,
+                            );
+                            (agent.id.clone(), nous_config, pipeline_config)
+                        })
+                        .collect();
+                    if let Err(e) = reload_manager.reload_actor_configs(actor_configs).await {
+                        warn!(error = %e, "failed to apply hot-reloaded actor config");
+                    }
+                }
+            }
+            .instrument(tracing::info_span!("config_reload_actor_sync")),
+        );
         let state = Arc::new(AppState {
             session_store,
             nous_manager: Arc::clone(&nous_manager),
@@ -897,6 +856,130 @@ mod tool_adapters;
 
 #[cfg(feature = "recall")]
 use setup::open_knowledge_stores;
+
+fn resolve_config_path(oikos: &Oikos, configured: &str) -> PathBuf {
+    let path = Path::new(configured);
+    let absolute = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        oikos.root().join(path)
+    };
+    absolute.canonicalize().unwrap_or(absolute)
+}
+
+fn resolve_allowed_roots(
+    oikos: &Oikos,
+    workspace: &str,
+    configured_roots: &[String],
+) -> Vec<PathBuf> {
+    let mut roots = Vec::with_capacity(configured_roots.len() + 1);
+    roots.push(resolve_config_path(oikos, workspace));
+    for root in configured_roots {
+        let resolved = resolve_config_path(oikos, root);
+        if !roots.iter().any(|existing| existing == &resolved) {
+            roots.push(resolved);
+        }
+    }
+    roots
+}
+
+fn build_nous_runtime_config(
+    config: &AletheiaConfig,
+    oikos: &Oikos,
+    packs: &[thesauros::loader::LoadedPack],
+    agent_id: &str,
+) -> (NousConfig, PipelineConfig) {
+    let resolved = resolve_nous(config, agent_id);
+    let mut domains = resolved.domains.clone();
+    let mut model = resolved.model.primary.to_string();
+    let mut max_tool_iterations = resolved.capabilities.max_tool_iterations;
+    for pack in packs {
+        for domain in pack.domains_for_agent(agent_id) {
+            if !domains.contains(&domain) {
+                domains.push(domain);
+            }
+        }
+        if let Some(pack_model) = pack.model_for_agent(agent_id) {
+            model = pack_model;
+        }
+        if let Some(agency) = pack.agency_for_agent(agent_id) {
+            max_tool_iterations = match agency.as_str() {
+                "unrestricted" => 10_000,
+                "standard" => koina::defaults::MAX_TOOL_ITERATIONS,
+                "restricted" => 50,
+                other => {
+                    warn!(
+                        agent = %agent_id,
+                        agency = %other,
+                        pack = %pack.manifest.name,
+                        "unknown agency level in pack overlay, skipping"
+                    );
+                    continue;
+                }
+            };
+        }
+    }
+
+    let nous_config = NousConfig {
+        id: resolved.id,
+        name: resolved.name,
+        generation: nous::config::NousGenerationConfig {
+            model,
+            fallback_models: resolved
+                .model
+                .fallbacks
+                .iter()
+                .map(ToString::to_string)
+                .collect(),
+            retries_before_fallback: resolved.model.retries_before_fallback,
+            context_window: resolved.limits.context_tokens,
+            max_output_tokens: resolved.limits.max_output_tokens,
+            bootstrap_max_tokens: resolved.limits.bootstrap_max_tokens,
+            thinking_enabled: resolved.capabilities.thinking_enabled,
+            thinking_budget: resolved.limits.thinking_budget,
+            chars_per_token: resolved.limits.chars_per_token,
+            prosoche_model: resolved.prosoche_model.to_string(),
+            complexity: hermeneus::complexity::ComplexityConfig::default(),
+            extraction_model: None,
+            distillation_model: None,
+        },
+        limits: nous::config::NousLimits {
+            max_tool_iterations,
+            loop_detection_threshold: 3,
+            consecutive_error_threshold: 4,
+            loop_max_warnings: 2,
+            session_token_cap: 500_000,
+            max_tool_result_bytes: resolved.limits.max_tool_result_bytes,
+            max_consecutive_tool_only_iterations: 3,
+            consecutive_mistake_limit: koina::defaults::DEFAULT_CONSECUTIVE_MISTAKE_LIMIT,
+        },
+        domains,
+        private: resolved.private,
+        episteme_cohort: resolved.episteme_cohort,
+        workspace: resolve_config_path(oikos, &resolved.workspace),
+        allowed_roots: resolve_allowed_roots(oikos, &resolved.workspace, &resolved.allowed_roots),
+        server_tools: Vec::new(),
+        cache_enabled: resolved.capabilities.cache_enabled,
+        recall: resolved.recall.into(),
+        recall_profile: resolved.recall_profile.into(),
+        tool_allowlist: None,
+        tool_groups: Vec::new(),
+        hooks: nous::config::HookConfig::default(),
+        behavior: resolved.behavior,
+    };
+    let mut extraction_cfg = mneme::extract::ExtractionConfig::default();
+    if let Some(model) = nous_config.generation.extraction_model.as_deref() {
+        model.clone_into(&mut extraction_cfg.model);
+    }
+    (
+        nous_config,
+        PipelineConfig {
+            extraction: Some(extraction_cfg),
+            training: config.training.clone(),
+            ..PipelineConfig::default()
+        },
+    )
+}
 use setup::{
     LazyEmbeddingProvider, build_provider_registry, build_signal_provider, build_tool_registry,
     start_inbound_dispatch,

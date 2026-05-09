@@ -3,7 +3,9 @@
 use std::time::Duration;
 
 use tokio::sync::{mpsc, oneshot};
+use tokio_util::sync::CancellationToken;
 
+use crate::config::{NousConfig, PipelineConfig};
 use crate::error::{self, ActorRecvSnafu, ActorSendSnafu, InboxFullSnafu};
 use crate::message::{NousMessage, NousStatus};
 use crate::pipeline::TurnResult;
@@ -77,6 +79,34 @@ impl NousHandle {
             session_id,
             content: content.into(),
             span: tracing::Span::current(),
+            turn_cancel: CancellationToken::new(),
+            reply: tx,
+        };
+        self.send_with_timeout(msg, timeout).await?;
+        rx.await.map_err(|_send_err| {
+            ActorRecvSnafu {
+                message: format!("actor '{}' dropped reply", self.id),
+            }
+            .build()
+        })?
+    }
+
+    /// Send a turn with an explicit request-scoped cancellation token.
+    pub async fn send_turn_with_cancel(
+        &self,
+        session_key: impl Into<String>,
+        session_id: Option<String>,
+        content: impl Into<String>,
+        timeout: Duration,
+        turn_cancel: CancellationToken,
+    ) -> error::Result<TurnResult> {
+        let (tx, rx) = oneshot::channel();
+        let msg = NousMessage::Turn {
+            session_key: session_key.into(),
+            session_id,
+            content: content.into(),
+            span: tracing::Span::current(),
+            turn_cancel,
             reply: tx,
         };
         self.send_with_timeout(msg, timeout).await?;
@@ -155,6 +185,36 @@ impl NousHandle {
             content: content.into(),
             stream_tx,
             span: tracing::Span::current(),
+            turn_cancel: CancellationToken::new(),
+            reply: tx,
+        };
+        self.send_with_timeout(msg, timeout).await?;
+        rx.await.map_err(|_send_err| {
+            ActorRecvSnafu {
+                message: format!("actor '{}' dropped reply", self.id),
+            }
+            .build()
+        })?
+    }
+
+    /// Send a streaming turn with an explicit request-scoped cancellation token.
+    pub async fn send_turn_streaming_with_cancel(
+        &self,
+        session_key: impl Into<String>,
+        session_id: Option<String>,
+        content: impl Into<String>,
+        stream_tx: mpsc::Sender<TurnStreamEvent>,
+        timeout: Duration,
+        turn_cancel: CancellationToken,
+    ) -> error::Result<TurnResult> {
+        let (tx, rx) = oneshot::channel();
+        let msg = NousMessage::StreamingTurn {
+            session_key: session_key.into(),
+            session_id,
+            content: content.into(),
+            stream_tx,
+            span: tracing::Span::current(),
+            turn_cancel,
             reply: tx,
         };
         self.send_with_timeout(msg, timeout).await?;
@@ -207,6 +267,31 @@ impl NousHandle {
             }
             .build()),
         }
+    }
+
+    /// Apply hot-reloadable configuration to the actor.
+    pub async fn reload_config(
+        &self,
+        config: NousConfig,
+        pipeline_config: PipelineConfig,
+        timeout: Duration,
+    ) -> error::Result<()> {
+        let (tx, rx) = oneshot::channel();
+        self.send_with_timeout(
+            NousMessage::ReloadConfig {
+                config: Box::new(config),
+                pipeline_config: Box::new(pipeline_config),
+                reply: tx,
+            },
+            timeout,
+        )
+        .await?;
+        rx.await.map_err(|_send_err| {
+            ActorRecvSnafu {
+                message: format!("actor '{}' dropped reload reply", self.id),
+            }
+            .build()
+        })
     }
 
     /// Send a message to the actor's inbox with a timeout.
@@ -466,6 +551,7 @@ mod tests {
                     session_id: None,
                     content: "hello".to_owned(),
                     span: tracing::Span::current(),
+                    turn_cancel: CancellationToken::new(),
                     reply: reply_tx,
                 })
                 .await

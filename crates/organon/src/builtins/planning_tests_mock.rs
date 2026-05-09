@@ -9,7 +9,9 @@ use koina::id::{NousId, SessionId};
 
 use crate::error::PlanningAdapterError;
 use crate::testing::install_crypto_provider;
-use crate::types::{PlanningService, ServerToolConfig, ToolContext, ToolServices};
+use crate::types::{
+    PlanningPlanInput, PlanningService, ServerToolConfig, ToolContext, ToolServices,
+};
 
 pub(super) fn test_ctx() -> ToolContext {
     ToolContext {
@@ -59,6 +61,8 @@ pub(super) struct MockPlanning {
     pub(super) transition_result: Mutex<Option<Result<String, PlanningAdapterError>>>,
     pub(super) add_phase_calls: Mutex<Vec<(String, String, String)>>,
     pub(super) add_phase_result: Mutex<Option<Result<String, PlanningAdapterError>>>,
+    pub(super) add_plan_calls: Mutex<Vec<(String, String, String, String)>>,
+    pub(super) add_plan_result: Mutex<Option<Result<String, PlanningAdapterError>>>,
     pub(super) complete_plan_calls: Mutex<Vec<(String, String, String)>>,
     pub(super) complete_plan_result: Mutex<Option<Result<String, PlanningAdapterError>>>,
     pub(super) fail_plan_calls: Mutex<Vec<(String, String, String, String)>>,
@@ -139,6 +143,30 @@ impl PlanningService for MockPlanning {
             .unwrap_or(Ok(
                 r#"{"id":"01J0000000000000000000000","phases":[{"name":"Phase 1"}]}"#.to_owned(),
             ));
+        Box::pin(async move { result })
+    }
+
+    fn add_plan(
+        &self,
+        project_id: &str,
+        phase_id: &str,
+        plan: PlanningPlanInput<'_>,
+    ) -> Pin<Box<dyn Future<Output = Result<String, PlanningAdapterError>> + Send + '_>> {
+        self.add_plan_calls
+            .lock()
+            .expect("lock not poisoned")
+            .push((
+                project_id.to_owned(),
+                phase_id.to_owned(),
+                plan.title.to_owned(),
+                plan.description.to_owned(),
+            ));
+        let result = self
+            .add_plan_result
+            .lock()
+            .expect("lock not poisoned")
+            .take()
+            .unwrap_or(Ok(r#"{"status":"plan added"}"#.to_owned()));
         Box::pin(async move { result })
     }
 

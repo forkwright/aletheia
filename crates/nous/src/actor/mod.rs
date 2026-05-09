@@ -342,6 +342,7 @@ impl NousActor {
                             session_id,
                             content,
                             span,
+                            turn_cancel,
                             reply,
                         } => {
                             if self.channel.status == NousLifecycle::Degraded {
@@ -350,7 +351,7 @@ impl NousActor {
                                     panic_count: self.runtime.pipeline_panic_count,
                                 }.build()));
                             } else {
-                                self.handle_turn(session_key, session_id, content, span, reply).await;
+                                self.handle_turn(session_key, session_id, content, span, turn_cancel, reply).await;
                             }
                         }
                         NousMessage::StreamingTurn {
@@ -359,6 +360,7 @@ impl NousActor {
                             content,
                             stream_tx,
                             span,
+                            turn_cancel,
                             reply,
                         } => {
                             if self.channel.status == NousLifecycle::Degraded {
@@ -368,7 +370,15 @@ impl NousActor {
                                 }.build()));
                                 drop(stream_tx);
                             } else {
-                                self.handle_streaming_turn(session_key, session_id, content, stream_tx, span, reply).await;
+                                self.handle_streaming_turn(turn::StreamingTurnRequest {
+                                    session_key,
+                                    session_id,
+                                    content,
+                                    stream_tx,
+                                    caller_span: span,
+                                    turn_cancel,
+                                    reply,
+                                }).await;
                             }
                         }
                         NousMessage::Status { reply } => {
@@ -386,6 +396,16 @@ impl NousActor {
                         NousMessage::Recover { reply } => {
                             let recovered = self.recover();
                             let _ = reply.send(recovered);
+                        }
+                        NousMessage::ReloadConfig {
+                            mut config,
+                            mut pipeline_config,
+                            reply,
+                        } => {
+                            config.apply_recall_profile(&mut pipeline_config);
+                            self.config = *config;
+                            self.pipeline_config = *pipeline_config;
+                            let _ = reply.send(());
                         }
                         NousMessage::Shutdown => {
                             info!("shutdown requested");
@@ -446,6 +466,7 @@ impl NousActor {
                 None,
                 &content,
                 tracing::Span::current(),
+                tokio_util::sync::CancellationToken::new(),
             )
             .await;
 
