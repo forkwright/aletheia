@@ -7,6 +7,9 @@
 use organon::registry::ToolRegistry;
 use organon::types::ToolDef;
 
+use super::{BootstrapSection, BootstrapSlot, SectionPriority};
+use crate::budget::CharEstimator;
+
 /// Compact tool summary for bootstrap inclusion.
 ///
 /// One-liner is the first sentence of the tool description, capped at 80 characters.
@@ -19,10 +22,6 @@ pub struct ToolSummary {
 }
 
 /// Expanded tool description for on-demand loading.
-#[expect(
-    dead_code,
-    reason = "tool expansion not yet wired into bootstrap pipeline"
-)]
 #[derive(Debug, Clone)]
 pub(crate) struct ToolExpanded {
     /// Tool name.
@@ -33,13 +32,6 @@ pub(crate) struct ToolExpanded {
     pub parameters: Vec<(String, String)>,
 }
 
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "tool-summary injection not yet wired into bootstrap pipeline"
-    )
-)]
 /// Generate compact summaries for all registered tools.
 #[must_use]
 pub(crate) fn summarize_tools(registry: &ToolRegistry) -> Vec<ToolSummary> {
@@ -54,10 +46,6 @@ pub(crate) fn summarize_tools(registry: &ToolRegistry) -> Vec<ToolSummary> {
 }
 
 /// Generate expanded descriptions for selected tool definitions.
-#[expect(
-    dead_code,
-    reason = "tool expansion not yet wired into bootstrap pipeline"
-)]
 #[must_use]
 pub(crate) fn expand_tools(defs: &[&ToolDef]) -> Vec<ToolExpanded> {
     defs.iter()
@@ -79,25 +67,63 @@ pub(crate) fn expand_tools(defs: &[&ToolDef]) -> Vec<ToolExpanded> {
 }
 
 /// Format tool summaries as a markdown section for the system prompt.
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "tool expansion not yet wired into bootstrap pipeline"
-    )
-)]
 #[must_use]
-pub(crate) fn format_tool_summary_section(summaries: &[ToolSummary]) -> String {
+pub(crate) fn format_tool_summary_section(
+    summaries: &[ToolSummary],
+    expanded: &[ToolExpanded],
+) -> String {
     if summaries.is_empty() {
         return String::new();
     }
 
-    let mut lines = Vec::with_capacity(summaries.len() + 2);
+    let mut lines = Vec::with_capacity(summaries.len() + expanded.len() + 4);
     lines.push("## Available Tools\n".to_owned());
     for summary in summaries {
         lines.push(format!("- **{}**: {}", summary.name, summary.one_liner));
     }
+    let parameter_lines: Vec<String> = expanded
+        .iter()
+        .filter(|tool| !tool.parameters.is_empty())
+        .map(|tool| {
+            let names = tool
+                .parameters
+                .iter()
+                .map(|(name, _description)| name.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            let one_liner = extract_one_liner(&tool.description);
+            format!("- **{}**: {one_liner} Parameters: {names}", tool.name)
+        })
+        .collect();
+    if !parameter_lines.is_empty() {
+        lines.push("\n### Tool Parameters".to_owned());
+        lines.extend(parameter_lines);
+    }
     lines.join("\n")
+}
+
+/// Build a budgeted bootstrap section from the live tool registry.
+#[must_use]
+pub(crate) fn tool_summary_bootstrap_section(
+    registry: &ToolRegistry,
+    estimator: &CharEstimator,
+) -> Option<BootstrapSection> {
+    let summaries = summarize_tools(registry);
+    let definitions = registry.definitions();
+    let expanded = expand_tools(&definitions);
+    let content = format_tool_summary_section(&summaries, &expanded);
+    if content.is_empty() {
+        return None;
+    }
+
+    Some(BootstrapSection {
+        name: "tools-summary".to_owned(),
+        priority: SectionPriority::Important,
+        tokens: estimator.estimate(&content),
+        content,
+        truncatable: true,
+        slot: BootstrapSlot::Tools,
+    })
 }
 
 /// Extract a one-line summary from a description string.
@@ -122,6 +148,7 @@ fn extract_one_liner(description: &str) -> String {
 }
 
 #[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
 
@@ -163,7 +190,7 @@ mod tests {
                 one_liner: "Write content to a file.".to_owned(),
             },
         ];
-        let section = format_tool_summary_section(&summaries);
+        let section = format_tool_summary_section(&summaries, &[]);
         assert!(section.contains("## Available Tools"));
         assert!(section.contains("- **read**: Read a file from disk."));
         assert!(section.contains("- **write**: Write content to a file."));
@@ -171,6 +198,59 @@ mod tests {
 
     #[test]
     fn format_empty_summaries() {
-        assert_eq!(format_tool_summary_section(&[]), "");
+        assert_eq!(format_tool_summary_section(&[], &[]), "");
+    }
+
+    #[test]
+    fn registry_summary_becomes_bootstrap_section() {
+        let mut registry = ToolRegistry::new();
+        registry
+            .register(
+                organon::types::ToolDef {
+                    name: koina::id::ToolName::new("read_file").expect("valid tool name"),
+                    description: "Read a file from disk. Extra details.".to_owned(),
+                    extended_description: None,
+                    input_schema: organon::types::InputSchema {
+                        properties: indexmap::IndexMap::new(),
+                        required: Vec::new(),
+                    },
+                    category: organon::types::ToolCategory::Workspace,
+                    reversibility: organon::types::Reversibility::FullyReversible,
+                    auto_activate: false,
+                    groups: vec![organon::types::ToolGroupId::Read],
+                    tags: Vec::new(),
+                },
+                Box::new(NoopExecutor),
+            )
+            .expect("register tool");
+
+        let section = tool_summary_bootstrap_section(&registry, &CharEstimator::default())
+            .expect("summary section");
+        assert_eq!(section.name, "tools-summary");
+        assert_eq!(section.slot, BootstrapSlot::Tools);
+        assert!(
+            section
+                .content
+                .contains("- **read_file**: Read a file from disk.")
+        );
+        assert!(section.tokens > 0);
+    }
+
+    struct NoopExecutor;
+
+    impl organon::registry::ToolExecutor for NoopExecutor {
+        fn execute<'a>(
+            &'a self,
+            _input: &'a organon::types::ToolInput,
+            _ctx: &'a organon::types::ToolContext,
+        ) -> std::pin::Pin<
+            Box<
+                dyn std::future::Future<Output = organon::error::Result<organon::types::ToolResult>>
+                    + Send
+                    + 'a,
+            >,
+        > {
+            Box::pin(async { Ok(organon::types::ToolResult::text("ok")) })
+        }
     }
 }

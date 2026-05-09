@@ -213,6 +213,31 @@ fn retention_registers_when_enabled_with_executor() {
     assert!(retention.enabled);
 }
 
+#[test]
+fn knowledge_maintenance_registers_only_implemented_tasks() {
+    let token = CancellationToken::new();
+    let mut config = MaintenanceConfig::default();
+    config.knowledge_maintenance.enabled = true;
+    let executor: Arc<dyn crate::maintenance::KnowledgeMaintenanceExecutor> =
+        Arc::new(MockKnowledgeExecutor);
+
+    let mut runner = TaskRunner::new("system", token)
+        .with_maintenance(config)
+        .with_knowledge_maintenance(executor);
+    runner.register_maintenance_tasks();
+
+    let statuses = runner.status();
+    let ids: Vec<&str> = statuses.iter().map(|s| s.id.as_str()).collect();
+    assert!(ids.contains(&"decay-refresh"));
+    assert!(ids.contains(&"entity-dedup"));
+    assert!(ids.contains(&"graph-recompute"));
+    assert!(ids.contains(&"skill-decay"));
+    assert!(!ids.contains(&"embedding-refresh"));
+    assert!(!ids.contains(&"knowledge-gc"));
+    assert!(!ids.contains(&"index-maintenance"));
+    assert!(!ids.contains(&"graph-health-check"));
+}
+
 #[tokio::test]
 async fn retention_without_executor_skips() {
     let result = execute_builtin(
@@ -300,6 +325,70 @@ struct MockRetentionExecutor;
 impl crate::maintenance::RetentionExecutor for MockRetentionExecutor {
     fn execute_retention(&self) -> crate::error::Result<crate::maintenance::RetentionSummary> {
         Ok(crate::maintenance::RetentionSummary::default())
+    }
+}
+
+struct MockKnowledgeExecutor;
+
+impl crate::maintenance::KnowledgeMaintenanceExecutor for MockKnowledgeExecutor {
+    fn insert_fact(&self, _fact: &episteme::knowledge::Fact) -> crate::error::Result<()> {
+        Ok(())
+    }
+
+    fn refresh_decay_scores(
+        &self,
+        _nous_id: &str,
+    ) -> crate::error::Result<crate::maintenance::MaintenanceReport> {
+        Ok(crate::maintenance::MaintenanceReport::default())
+    }
+
+    fn deduplicate_entities(
+        &self,
+        _nous_id: &str,
+    ) -> crate::error::Result<crate::maintenance::MaintenanceReport> {
+        Ok(crate::maintenance::MaintenanceReport::default())
+    }
+
+    fn recompute_graph_scores(
+        &self,
+        _nous_id: &str,
+    ) -> crate::error::Result<crate::maintenance::MaintenanceReport> {
+        Ok(crate::maintenance::MaintenanceReport::default())
+    }
+
+    fn refresh_embeddings(
+        &self,
+        _nous_id: &str,
+    ) -> crate::error::Result<crate::maintenance::MaintenanceReport> {
+        Ok(crate::maintenance::MaintenanceReport::default())
+    }
+
+    fn garbage_collect(
+        &self,
+        _nous_id: &str,
+    ) -> crate::error::Result<crate::maintenance::MaintenanceReport> {
+        Ok(crate::maintenance::MaintenanceReport::default())
+    }
+
+    fn maintain_indexes(
+        &self,
+        _nous_id: &str,
+    ) -> crate::error::Result<crate::maintenance::MaintenanceReport> {
+        Ok(crate::maintenance::MaintenanceReport::default())
+    }
+
+    fn health_check(
+        &self,
+        _nous_id: &str,
+    ) -> crate::error::Result<crate::maintenance::MaintenanceReport> {
+        Ok(crate::maintenance::MaintenanceReport::default())
+    }
+
+    fn run_skill_decay(
+        &self,
+        _nous_id: &str,
+    ) -> crate::error::Result<crate::maintenance::MaintenanceReport> {
+        Ok(crate::maintenance::MaintenanceReport::default())
     }
 }
 

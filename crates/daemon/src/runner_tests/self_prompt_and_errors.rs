@@ -258,9 +258,9 @@ async fn self_audit_without_bridge_returns_failure() {
     );
 }
 
-/// Error path: knowledge maintenance without executor returns not implemented.
+/// Error path: knowledge maintenance without executor returns an explicit failure.
 #[tokio::test]
-async fn knowledge_task_without_executor_returns_not_implemented() {
+async fn knowledge_task_without_executor_returns_unconfigured_failure() {
     let result = execute_builtin(
         &BuiltinTask::DecayRefresh,
         "test-nous",
@@ -278,7 +278,7 @@ async fn knowledge_task_without_executor_returns_not_implemented() {
         exec_result
             .output
             .unwrap_or_default()
-            .contains("NOT_IMPLEMENTED")
+            .contains("executor configured")
     );
 }
 

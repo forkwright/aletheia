@@ -479,7 +479,7 @@ async fn knowledge_task_no_executor_returns_not_implemented() {
             .output
             .as_deref()
             .unwrap_or_default()
-            .contains("NOT_IMPLEMENTED")
+            .contains("no knowledge maintenance executor configured")
     );
 }
 

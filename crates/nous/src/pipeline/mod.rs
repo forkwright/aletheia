@@ -1,6 +1,7 @@
 //! Message processing pipeline.
 
 use std::collections::VecDeque;
+use std::future::Future;
 use std::time::{Duration, Instant};
 
 use jiff;
@@ -960,16 +961,22 @@ pub(crate) async fn run_pipeline(
         let recipe =
             crate::bootstrap::LlmRecipe::from_task_hint(task_hint, input.session.turn == 1);
 
-        run_context_stage(
-            oikos,
+        run_stage_with_timeout(
             config,
-            pipeline_config,
-            &mut ctx,
-            extra_bootstrap,
-            task_hint,
-            recipe,
-            bootstrap_cache,
+            "context",
+            pipeline_config.stage_budget.context_secs,
             emitter,
+            run_context_stage(
+                oikos,
+                config,
+                pipeline_config,
+                &mut ctx,
+                extra_bootstrap,
+                task_hint,
+                recipe,
+                bootstrap_cache,
+                emitter,
+            ),
         )
         .await?;
         stages_completed += 1;
@@ -986,21 +993,34 @@ pub(crate) async fn run_pipeline(
         ctx.triage_result = Some(triage_result);
         stages_completed += 1;
 
-        run_recall_stage(
+        run_stage_with_timeout(
             config,
-            pipeline_config,
-            &mut ctx,
-            &input.content,
-            embedding_provider,
-            vector_search,
-            text_search,
-            providers,
+            "recall",
+            pipeline_config.stage_budget.recall_secs,
             emitter,
+            run_recall_stage(
+                config,
+                pipeline_config,
+                &mut ctx,
+                &input.content,
+                embedding_provider,
+                vector_search,
+                text_search,
+                providers,
+                emitter,
+            ),
         )
-        .await;
+        .await?;
         stages_completed += 1;
 
-        run_history_stage(config, &mut ctx, &input, session_store, emitter).await?;
+        run_stage_with_timeout(
+            config,
+            "history",
+            pipeline_config.stage_budget.history_secs,
+            emitter,
+            run_history_stage(config, &mut ctx, &input, session_store, emitter),
+        )
+        .await?;
         stages_completed += 1;
 
         // WHY: Fire before_compact hooks before any compaction happens.
@@ -1045,7 +1065,14 @@ pub(crate) async fn run_pipeline(
             hook_registry.run_after_compact(&compact_ctx).await;
         }
 
-        run_guard_stage(&input.session, config, emitter)?;
+        run_stage_with_timeout(
+            config,
+            "guard",
+            pipeline_config.stage_budget.guard_secs,
+            emitter,
+            async { run_guard_stage(&input.session, config, emitter) },
+        )
+        .await?;
         stages_completed += 1;
 
         // Before-query hooks run after guard (so rejected requests never reach hooks)
@@ -1105,10 +1132,27 @@ pub(crate) async fn run_pipeline(
         .await?;
         stages_completed += 1;
 
-        run_finalize_stage(config, &input, &result, session_store, emitter).await;
+        run_stage_with_timeout(
+            config,
+            "finalize",
+            pipeline_config.stage_budget.finalize_secs,
+            emitter,
+            async {
+                run_finalize_stage(config, &input, &result, session_store, emitter).await;
+                Ok(())
+            },
+        )
+        .await?;
         stages_completed += 1;
 
-        run_reflection_stage(config, pipeline_config, &mut ctx, emitter).await;
+        run_stage_with_timeout(
+            config,
+            "reflection",
+            pipeline_config.stage_budget.reflection_secs,
+            emitter,
+            run_reflection_stage(config, pipeline_config, &mut ctx, emitter),
+        )
+        .await?;
         stages_completed += 1;
 
         // WHY: training capture runs after finalize (and optional reflection) so only persisted, successful
@@ -1342,6 +1386,38 @@ pub(crate) async fn run_pipeline(
     }
     .instrument(pipeline_span)
     .await
+}
+
+async fn run_stage_with_timeout<T, F>(
+    config: &NousConfig,
+    stage: &'static str,
+    timeout_secs: u32,
+    emitter: &EventEmitter,
+    fut: F,
+) -> error::Result<T>
+where
+    F: Future<Output = error::Result<T>>,
+{
+    if timeout_secs == 0 {
+        return fut.await;
+    }
+
+    match tokio::time::timeout(Duration::from_secs(u64::from(timeout_secs)), fut).await {
+        Ok(result) => result,
+        Err(_elapsed) => {
+            crate::metrics::record_error(&config.id, stage, "timeout");
+            emitter.emit(&events::StageTimeout {
+                nous_id: config.id.to_string(),
+                stage,
+                timeout_secs,
+            });
+            Err(error::PipelineTimeoutSnafu {
+                stage,
+                timeout_secs,
+            }
+            .build())
+        }
+    }
 }
 
 /// Typed pipeline events for the internal event system.

@@ -177,9 +177,9 @@ impl TaskRunner {
         }
     }
 
-    /// Register the 7 knowledge maintenance tasks with their schedules.
+    /// Register implemented knowledge maintenance tasks with their schedules.
     fn register_knowledge_maintenance_tasks(&mut self) {
-        let tasks: [(_, _, Schedule, BuiltinTask); 8] = [
+        let tasks: [(_, _, Schedule, BuiltinTask); 4] = [
             (
                 "decay-refresh",
                 "Decay score refresh",
@@ -197,30 +197,6 @@ impl TaskRunner {
                 "Graph score recomputation",
                 Schedule::Interval(Duration::from_hours(8)),
                 BuiltinTask::GraphRecompute,
-            ),
-            (
-                "embedding-refresh",
-                "Embedding refresh",
-                Schedule::Interval(Duration::from_hours(12)),
-                BuiltinTask::EmbeddingRefresh,
-            ),
-            (
-                "knowledge-gc",
-                "Knowledge garbage collection",
-                Schedule::Cron("0 0 4 * * *".to_owned()),
-                BuiltinTask::KnowledgeGc,
-            ),
-            (
-                "index-maintenance",
-                "Index maintenance",
-                Schedule::Cron("0 30 4 * * *".to_owned()),
-                BuiltinTask::IndexMaintenance,
-            ),
-            (
-                "graph-health-check",
-                "Graph health check",
-                Schedule::Cron("0 0 5 * * *".to_owned()),
-                BuiltinTask::GraphHealthCheck,
             ),
             (
                 "skill-decay",

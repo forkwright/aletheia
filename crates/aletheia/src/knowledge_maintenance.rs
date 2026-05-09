@@ -1,8 +1,8 @@
 //! `KnowledgeMaintenanceExecutor` implementation for the binary crate.
 //!
 //! Wires the daemon's maintenance trait to the concrete `KnowledgeStore`.
-//! Three tasks are fully implemented; the remaining five log `NOT_IMPLEMENTED`
-//! in their `detail` field pending future implementation (F.1--F.8).
+//!
+//! Only tasks backed by concrete `KnowledgeStore` behavior report success.
 
 use std::sync::Arc;
 
@@ -171,61 +171,41 @@ impl KnowledgeMaintenanceExecutor for KnowledgeMaintenanceAdapter {
         })
     }
 
-    /// Count facts without embeddings and log the gap.
-    ///
-    /// Cannot actually embed without an `EmbeddingProvider`, so this reports
-    /// the count of current facts and notes that embedding refresh is not yet wired.
-    fn refresh_embeddings(&self, nous_id: &str) -> oikonomos::error::Result<MaintenanceReport> {
-        let now = jiff::Timestamp::now();
-        let now_str = mneme::knowledge::format_timestamp(&now);
-        let facts = self
-            .store
-            .query_facts(nous_id, &now_str, 10_000)
-            .map_err(|e| {
-                oikonomos::error::TaskFailedSnafu {
-                    task_id: "embedding-refresh".to_owned(),
-                    reason: e.to_string(),
-                }
-                .build()
-            })?;
-        #[expect(clippy::as_conversions, reason = "usize→u64: fact count fits in u64")]
-        let total_facts = facts.len() as u64;
-
-        let detail = format!(
-            "NOT_IMPLEMENTED: embedding refresh requires EmbeddingProvider — {total_facts} facts found, none re-embedded"
-        );
-        tracing::warn!(%detail, "maintenance: embedding refresh skipped");
-
-        Ok(MaintenanceReport {
-            items_processed: total_facts,
-            items_modified: 0,
-            detail: Some(detail),
-            ..Default::default()
-        })
+    fn refresh_embeddings(&self, _nous_id: &str) -> oikonomos::error::Result<MaintenanceReport> {
+        Err(oikonomos::error::TaskFailedSnafu {
+            task_id: "embedding-refresh".to_owned(),
+            reason: "embedding refresh requires an EmbeddingProvider bridge and is not scheduled"
+                .to_owned(),
+        }
+        .build())
     }
 
     fn garbage_collect(&self, _nous_id: &str) -> oikonomos::error::Result<MaintenanceReport> {
-        Ok(MaintenanceReport {
-            detail: Some(
-                "NOT_IMPLEMENTED: garbage collection of orphaned nodes/expired edges not yet wired"
+        Err(oikonomos::error::TaskFailedSnafu {
+            task_id: "knowledge-gc".to_owned(),
+            reason:
+                "knowledge garbage collection has no concrete store contract and is not scheduled"
                     .to_owned(),
-            ),
-            ..Default::default()
-        })
+        }
+        .build())
     }
 
     fn maintain_indexes(&self, _nous_id: &str) -> oikonomos::error::Result<MaintenanceReport> {
-        Ok(MaintenanceReport {
-            detail: Some("NOT_IMPLEMENTED: index rebuild/optimization not yet wired".to_owned()),
-            ..Default::default()
-        })
+        Err(oikonomos::error::TaskFailedSnafu {
+            task_id: "index-maintenance".to_owned(),
+            reason: "index maintenance has no concrete store contract and is not scheduled"
+                .to_owned(),
+        }
+        .build())
     }
 
     fn health_check(&self, _nous_id: &str) -> oikonomos::error::Result<MaintenanceReport> {
-        Ok(MaintenanceReport {
-            detail: Some("NOT_IMPLEMENTED: knowledge graph health check not yet wired".to_owned()),
-            ..Default::default()
-        })
+        Err(oikonomos::error::TaskFailedSnafu {
+            task_id: "graph-health-check".to_owned(),
+            reason: "knowledge graph health check has no concrete diagnostic contract and is not scheduled"
+                .to_owned(),
+        }
+        .build())
     }
 
     fn run_skill_decay(&self, nous_id: &str) -> oikonomos::error::Result<MaintenanceReport> {
