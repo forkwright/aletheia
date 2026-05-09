@@ -16,10 +16,10 @@ See also [AGENTS.md](AGENTS.md) for a cross-tool quick-reference (build commands
 
 ## Standards
 
-Universal: [standards/STANDARDS.md](standards/STANDARDS.md)
-Rust: [standards/RUST.md](standards/RUST.md)
-Writing: [standards/WRITING.md](standards/WRITING.md)
-Shell: [standards/SHELL.md](standards/SHELL.md)
+Universal: `~/dev/kanon/crates/basanos/standards/STANDARDS.md`
+Rust: `~/dev/kanon/crates/basanos/standards/RUST.md`
+Writing: `~/dev/kanon/crates/basanos/standards/WRITING.md`
+Shell: `~/dev/kanon/crates/basanos/standards/SHELL.md`
 
 ## Structure
 
@@ -87,7 +87,7 @@ for the release-time substance-audit gate that calls this tool via
 - **Config:** TOML cascade in `taxis` (owned loader, no figment)
 - **Lints:** `#[expect(lint, reason = "...")]` over `#[allow]`; every suppression justified
 - **Visibility:** `pub(crate)` by default; `pub` only for cross-crate API surface
-- **Naming:** Greek names per [standards/GNOMON.md](standards/GNOMON.md), registry at [docs/lexicon.md](docs/lexicon.md)
+- **Naming:** Greek names per `~/dev/kanon/crates/basanos/standards/GNOMON.md`, registry at [docs/lexicon.md](docs/lexicon.md)
 - **No barrel files**: import from the file that owns the symbol
 - **Module imports flow downward**: higher layers depend on lower, never reverse
 
