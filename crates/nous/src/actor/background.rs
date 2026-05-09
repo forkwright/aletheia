@@ -4,6 +4,8 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
+#[cfg(feature = "knowledge-store")]
+use hermeneus::provider::LlmProvider;
 use hermeneus::provider::ProviderRegistry;
 #[cfg(feature = "knowledge-store")]
 use mneme::knowledge_store::KnowledgeStore;
@@ -322,6 +324,8 @@ impl NousActor {
 
         let store = Arc::clone(store_arc);
         let providers = Arc::clone(&self.services.providers);
+        #[cfg(feature = "knowledge-store")]
+        let knowledge_store = self.stores.knowledge_store.as_ref().map(Arc::clone);
         let nous_id = self.id.clone();
         let span =
             tracing::info_span!("distillation", nous.id = %nous_id, session.id = %session_id);
@@ -342,13 +346,233 @@ impl NousActor {
                     () = cancel.cancelled() => {
                         info!(nous_id = %nous_id, task_type = "distillation", "background task cancelled during shutdown");
                     }
-                    () = run_background_distillation(store, providers, session_id, nous_id.clone(), config) => {}
+                    () = run_background_distillation(
+                        store,
+                        providers,
+                        #[cfg(feature = "knowledge-store")]
+                        knowledge_store,
+                        session_id,
+                        nous_id.clone(),
+                        config,
+                    ) => {}
                 }
                 // NOTE: guard Drop handles flag.store(false) for both normal and panic paths
             }
             .instrument(span),
         );
         true
+    }
+
+    #[cfg(feature = "knowledge-store")]
+    pub(super) fn maybe_run_auto_dream(&self) {
+        let (Some(session_store), Some(knowledge_store)) = (
+            self.stores.session_store.as_ref(),
+            self.stores.knowledge_store.as_ref(),
+        ) else {
+            return;
+        };
+
+        let config = crate::distillation::DistillTriggerConfig::default();
+        if self
+            .services
+            .providers
+            .find_provider(&config.model)
+            .is_none()
+        {
+            return;
+        }
+        let provider: Arc<dyn LlmProvider> = Arc::new(RegistryLlmProvider::new(
+            Arc::clone(&self.services.providers),
+            config.model.clone(),
+        ));
+
+        let lock_dir = std::env::temp_dir().join("aletheia-auto-dream");
+        if let Err(e) = std::fs::create_dir_all(&lock_dir) {
+            warn!(nous_id = %self.id, error = %e, "auto-dream lock directory unavailable");
+            return;
+        }
+
+        let mut dream_config = melete::dream::DreamConfig::new(
+            lock_dir.join(format!("{}.lock", self.id.replace('/', "_"))),
+        );
+        dream_config.min_hours = self.config.behavior.dream_min_hours;
+        dream_config.min_sessions = self.config.behavior.dream_min_sessions;
+        dream_config.scan_interval_secs = self.config.behavior.dream_scan_throttle_secs;
+        dream_config.stale_threshold_secs = self.config.behavior.dream_stale_threshold_secs;
+        dream_config.distill_config.model = config.model;
+        dream_config.distill_config.verbatim_tail = config.verbatim_tail;
+
+        let engine = Arc::new(melete::dream::DreamEngine::new(dream_config));
+        let source: Arc<dyn melete::dream::TranscriptSource> =
+            Arc::new(SessionStoreTranscriptSource::new(Arc::clone(session_store)));
+        let target: Arc<dyn melete::dream::ConsolidationTarget> = Arc::new(
+            KnowledgeStoreConsolidationTarget::new(Arc::clone(knowledge_store)),
+        );
+        engine.on_turn_complete(&source, &target, &provider);
+    }
+}
+
+#[cfg(feature = "knowledge-store")]
+struct SessionStoreTranscriptSource {
+    store: Arc<Mutex<SessionStore>>,
+}
+
+#[cfg(feature = "knowledge-store")]
+impl SessionStoreTranscriptSource {
+    fn new(store: Arc<Mutex<SessionStore>>) -> Self {
+        Self { store }
+    }
+
+    fn sessions_since(
+        &self,
+        since: jiff::Timestamp,
+    ) -> std::result::Result<Vec<mneme::types::Session>, std::io::Error> {
+        let store = self.store.try_lock().map_err(|e| {
+            std::io::Error::other(format!(
+                "session store busy during auto-dream transcript scan: {e}"
+            ))
+        })?;
+        let sessions = store
+            .list_sessions(None)
+            .map_err(|e| std::io::Error::other(e.to_string()))?
+            .into_iter()
+            .filter(|session| {
+                session
+                    .updated_at
+                    .parse::<jiff::Timestamp>()
+                    .is_ok_and(|updated_at| updated_at >= since)
+            })
+            .collect();
+        Ok(sessions)
+    }
+}
+
+#[cfg(feature = "knowledge-store")]
+impl melete::dream::TranscriptSource for SessionStoreTranscriptSource {
+    fn count_sessions_since(
+        &self,
+        since: jiff::Timestamp,
+    ) -> std::result::Result<usize, std::io::Error> {
+        self.sessions_since(since).map(|sessions| sessions.len())
+    }
+
+    fn load_transcripts_since(
+        &self,
+        since: jiff::Timestamp,
+    ) -> std::result::Result<Vec<melete::dream::SessionTranscript>, std::io::Error> {
+        let sessions = self.sessions_since(since)?;
+        let store = self.store.try_lock().map_err(|e| {
+            std::io::Error::other(format!(
+                "session store busy during auto-dream transcript load: {e}"
+            ))
+        })?;
+        sessions
+            .into_iter()
+            .map(|session| {
+                let history = store
+                    .get_history(&session.id, None)
+                    .map_err(|e| std::io::Error::other(e.to_string()))?;
+                Ok(melete::dream::SessionTranscript {
+                    session_id: session.id,
+                    nous_id: session.nous_id,
+                    messages: crate::distillation::convert_to_hermeneus_messages(&history),
+                })
+            })
+            .collect()
+    }
+}
+
+#[cfg(feature = "knowledge-store")]
+struct KnowledgeStoreConsolidationTarget {
+    store: Arc<KnowledgeStore>,
+}
+
+#[cfg(feature = "knowledge-store")]
+impl KnowledgeStoreConsolidationTarget {
+    fn new(store: Arc<KnowledgeStore>) -> Self {
+        Self { store }
+    }
+}
+
+#[cfg(feature = "knowledge-store")]
+impl melete::dream::ConsolidationTarget for KnowledgeStoreConsolidationTarget {
+    fn merge_flush(
+        &self,
+        flush: &melete::flush::MemoryFlush,
+        nous_id: &str,
+    ) -> std::result::Result<melete::dream::MergeReport, std::io::Error> {
+        let facts_added = crate::distillation::persist_memory_flush_items(
+            &self.store,
+            flush,
+            "auto-dream",
+            nous_id,
+        )
+        .map_err(|e| std::io::Error::other(e.to_string()))?;
+        Ok(melete::dream::MergeReport {
+            facts_added,
+            facts_deduped: 0,
+            facts_stale: 0,
+        })
+    }
+
+    fn mark_contradictions_stale(
+        &self,
+        _log: &melete::contradiction::ContradictionLog,
+        _nous_id: &str,
+    ) -> std::result::Result<usize, std::io::Error> {
+        Err(std::io::Error::other(
+            "auto-dream contradiction stale marking is not supported by KnowledgeStore yet",
+        ))
+    }
+}
+
+#[cfg(feature = "knowledge-store")]
+struct RegistryLlmProvider {
+    registry: Arc<ProviderRegistry>,
+    model: String,
+}
+
+#[cfg(feature = "knowledge-store")]
+impl RegistryLlmProvider {
+    fn new(registry: Arc<ProviderRegistry>, model: String) -> Self {
+        Self { registry, model }
+    }
+}
+
+#[cfg(feature = "knowledge-store")]
+impl LlmProvider for RegistryLlmProvider {
+    fn complete<'a>(
+        &'a self,
+        request: &'a hermeneus::types::CompletionRequest,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<
+                    Output = hermeneus::error::Result<hermeneus::types::CompletionResponse>,
+                > + Send
+                + 'a,
+        >,
+    > {
+        Box::pin(async move {
+            let Some(provider) = self.registry.find_provider(&request.model) else {
+                return Err(hermeneus::error::UnsupportedModelSnafu {
+                    model: request.model.clone(),
+                }
+                .build());
+            };
+            provider.complete(request).await
+        })
+    }
+
+    fn supported_models(&self) -> &[&str] {
+        &[]
+    }
+
+    fn supports_model(&self, model: &str) -> bool {
+        model == self.model && self.registry.find_provider(model).is_some()
+    }
+
+    fn name(&self) -> &'static str {
+        "provider-registry"
     }
 }
 
@@ -460,7 +684,13 @@ async fn run_extraction(
                     }
                 }
 
-                match engine.persist(&refined.extraction, store, "background", nous_id) {
+                match engine.persist_with_scope(
+                    &refined.extraction,
+                    store,
+                    "background",
+                    nous_id,
+                    Some(mneme::knowledge::MemoryScope::Project),
+                ) {
                     Ok(result) => {
                         info!(
                             nous_id = %nous_id,
@@ -642,6 +872,7 @@ async fn run_skill_extraction(
 async fn run_background_distillation(
     store: Arc<Mutex<SessionStore>>, // kanon:ignore RUST/no-arc-mutex-anti-pattern
     providers: Arc<ProviderRegistry>,
+    #[cfg(feature = "knowledge-store")] knowledge_store: Option<Arc<KnowledgeStore>>,
     session_id: String,
     nous_id: String,
     config: crate::distillation::DistillTriggerConfig,
@@ -705,6 +936,21 @@ async fn run_background_distillation(
             return;
         }
     };
+
+    #[cfg(feature = "knowledge-store")]
+    if let Some(store) = knowledge_store.as_ref()
+        && let Err(e) = crate::distillation::commit_memory_flush(
+            store,
+            &session_id,
+            &nous_id,
+            &result,
+            &history,
+        )
+    {
+        warn!(nous_id = %nous_id, session_id = %session_id, error = %e, "failed to commit distillation memory flush");
+        crate::metrics::record_background_failure(&nous_id, "distillation_memory_flush");
+        return;
+    }
 
     let s = store.lock().await;
     if let Err(e) = crate::distillation::apply_distillation(&s, &session_id, &result, &history) {

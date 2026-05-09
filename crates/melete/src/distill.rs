@@ -577,44 +577,6 @@ fn block_char_len(block: &ContentBlock) -> usize {
     }
 }
 
-/// Drop the oldest messages until the token estimate fits within `context_window`.
-///
-/// Returns the number of messages dropped. Always keeps at least one message
-/// even when the remaining context still exceeds the window: dropping
-/// everything would leave the conversation unrecoverable.
-///
-/// Logs at `ERROR` level when any messages are dropped, because this is a
-/// last-resort fallback indicating that distillation has failed to keep the
-/// context in bounds.
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "callable by the session management layer; no call site exists within this crate"
-    )
-)]
-pub(crate) fn enforce_context_limit(messages: &mut Vec<Message>, context_window: u64) -> usize {
-    if messages.is_empty() {
-        return 0;
-    }
-    let initial = estimate_tokens(messages);
-    if initial <= context_window {
-        return 0;
-    }
-    tracing::error!(
-        context_tokens = initial,
-        context_window,
-        message_count = messages.len(),
-        "context exceeds window; dropping oldest messages as last-resort fallback"
-    );
-    let mut dropped = 0;
-    while messages.len() > 1 && estimate_tokens(messages) > context_window {
-        messages.remove(0);
-        dropped += 1;
-    }
-    dropped
-}
-
 /// Extract plain text from response content blocks.
 fn extract_summary_text(content: &[hermeneus::types::ContentBlock]) -> String {
     content

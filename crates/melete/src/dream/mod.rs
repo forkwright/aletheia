@@ -22,8 +22,11 @@ use hermeneus::types::Message;
 
 use crate::contradiction::ContradictionLog;
 use crate::distill::{DistillConfig, DistillEngine};
-use crate::error::{DreamConsolidationTargetSnafu, DreamTranscriptSourceSnafu, Result};
+use crate::error::{
+    DreamConsolidationTargetSnafu, DreamTranscriptSourceSnafu, ProbeVerificationSnafu, Result,
+};
 use crate::flush::MemoryFlush;
+use crate::probe::{ProbeConfig, ProbeVerifier};
 
 pub(crate) mod lock;
 
@@ -163,6 +166,7 @@ pub trait ConsolidationTarget: Send + Sync {
 pub struct DreamEngine {
     config: DreamConfig,
     distill: DistillEngine,
+    probe: ProbeVerifier,
     /// Unix timestamp of the last session scan (for 10-minute throttle).
     /// WHY: `AtomicI64` because we need lock-free reads FROM the gate check
     /// hot path. i64 holds Unix seconds until year ~292 billion.
@@ -186,6 +190,7 @@ impl DreamEngine {
         Self {
             config,
             distill,
+            probe: ProbeVerifier::new(ProbeConfig::default()),
             last_scan_at: AtomicI64::new(0),
         }
     }
@@ -417,6 +422,12 @@ impl DreamEngine {
                 }
             };
 
+            if let Err(e) = self.verify_flush_grounding(&result.memory_flush, &transcript.messages)
+            {
+                let _ = acquired.rollback();
+                return Err(e);
+            }
+
             // NOTE: merge extracted facts INTO the knowledge graph.
             match target
                 .merge_flush(&result.memory_flush, &transcript.nous_id)
@@ -472,6 +483,48 @@ impl DreamEngine {
     pub(crate) fn set_last_scan_at(&self, ts: i64) {
         self.last_scan_at.store(ts, Ordering::Relaxed);
     }
+
+    fn verify_flush_grounding(&self, flush: &MemoryFlush, messages: &[Message]) -> Result<()> {
+        let transcript_text = format_probe_transcript(messages);
+        let probe_report = self.probe.verify(flush, &transcript_text);
+        if probe_report.all_passed() {
+            return Ok(());
+        }
+        ProbeVerificationSnafu {
+            failure_count: probe_report.failure_count(),
+            total_probes: probe_report.total_probes(),
+        }
+        .fail()
+    }
+}
+
+fn format_probe_transcript(messages: &[Message]) -> String {
+    messages
+        .iter()
+        .map(|message| match &message.content {
+            hermeneus::types::Content::Text(text) => text.clone(),
+            hermeneus::types::Content::Blocks(blocks) => blocks
+                .iter()
+                .filter_map(|block| match block {
+                    hermeneus::types::ContentBlock::Text { text, .. } => Some(text.clone()),
+                    hermeneus::types::ContentBlock::ToolUse { name, input, .. } => {
+                        Some(format!("{name} {input}"))
+                    }
+                    hermeneus::types::ContentBlock::ToolResult { content, .. } => {
+                        Some(content.text_summary())
+                    }
+                    hermeneus::types::ContentBlock::Thinking { thinking, .. } => {
+                        Some(thinking.clone())
+                    }
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+                .join("\n"),
+            _ => String::new(),
+        })
+        .filter(|text| !text.trim().is_empty())
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 #[cfg(test)]

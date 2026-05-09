@@ -6,6 +6,10 @@ use tracing::{info, instrument};
 use hermeneus::provider::LlmProvider;
 use hermeneus::types::{Content, Message as HermeneusMessage, Role as HermeneusRole};
 use melete::distill::{DistillConfig, DistillEngine, DistillResult};
+#[cfg(feature = "knowledge-store")]
+use melete::flush::{FlushItem, MemoryFlush};
+#[cfg(feature = "knowledge-store")]
+use melete::probe::{ProbeConfig, ProbeVerifier};
 use mneme::store::SessionStore;
 use mneme::types::{Role as MnemeRole, Session, SessionType};
 #[cfg(test)]
@@ -334,6 +338,141 @@ pub fn apply_distillation(
     Ok(())
 }
 
+/// Verify and persist a structured memory flush to the knowledge store.
+#[cfg(feature = "knowledge-store")]
+pub fn commit_memory_flush(
+    knowledge_store: &mneme::knowledge_store::KnowledgeStore,
+    session_id: &str,
+    nous_id: &str,
+    result: &DistillResult,
+    history: &[mneme::types::Message],
+) -> error::Result<usize> {
+    if result.memory_flush.is_empty() {
+        return Ok(0);
+    }
+
+    verify_memory_flush(&result.memory_flush, history)?;
+    persist_memory_flush_items(knowledge_store, &result.memory_flush, session_id, nous_id)
+}
+
+#[cfg(feature = "knowledge-store")]
+pub(crate) fn persist_memory_flush_items(
+    knowledge_store: &mneme::knowledge_store::KnowledgeStore,
+    flush: &MemoryFlush,
+    session_id: &str,
+    nous_id: &str,
+) -> error::Result<usize> {
+    let mut inserted = 0usize;
+    for (kind, item) in flush_items(flush) {
+        let fact = fact_from_flush_item(kind, item, session_id, nous_id)?;
+        knowledge_store
+            .insert_fact(&fact)
+            .context(error::KnowledgeStoreSnafu)?;
+        inserted = inserted.saturating_add(1);
+    }
+    if let Some(task_state) = flush.task_state.as_deref() {
+        let fact = fact_from_content("task_state", task_state, session_id, nous_id)?;
+        knowledge_store
+            .insert_fact(&fact)
+            .context(error::KnowledgeStoreSnafu)?;
+        inserted = inserted.saturating_add(1);
+    }
+    Ok(inserted)
+}
+
+#[cfg(feature = "knowledge-store")]
+fn verify_memory_flush(
+    flush: &MemoryFlush,
+    history: &[mneme::types::Message],
+) -> error::Result<()> {
+    let transcript = history
+        .iter()
+        .map(|message| message.content.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    let report = ProbeVerifier::new(ProbeConfig::default()).verify(flush, &transcript);
+    if report.all_passed() {
+        return Ok(());
+    }
+    error::MemoryFlushProbeSnafu {
+        failure_count: report.failure_count(),
+        total_probes: report.total_probes(),
+    }
+    .fail()
+}
+
+#[cfg(feature = "knowledge-store")]
+fn flush_items(flush: &MemoryFlush) -> Vec<(&'static str, &FlushItem)> {
+    let mut items = Vec::new();
+    items.extend(flush.decisions.iter().map(|item| ("decision", item)));
+    items.extend(flush.corrections.iter().map(|item| ("correction", item)));
+    items.extend(flush.facts.iter().map(|item| ("distilled_fact", item)));
+    items
+}
+
+#[cfg(feature = "knowledge-store")]
+fn fact_from_flush_item(
+    kind: &str,
+    item: &FlushItem,
+    session_id: &str,
+    nous_id: &str,
+) -> error::Result<mneme::knowledge::Fact> {
+    fact_from_content(kind, &item.content, session_id, nous_id)
+}
+
+#[cfg(feature = "knowledge-store")]
+fn fact_from_content(
+    kind: &str,
+    content: &str,
+    session_id: &str,
+    nous_id: &str,
+) -> error::Result<mneme::knowledge::Fact> {
+    use mneme::id::FactId;
+    use mneme::knowledge::{
+        EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactTemporal, MemoryScope,
+        Visibility, default_stability_hours, far_future,
+    };
+
+    let now = jiff::Timestamp::now();
+    let fact_type = kind.to_owned();
+    let id = FactId::new(format!("f-flush-{}", koina::uuid::uuid_v4())).map_err(|source| {
+        error::ConfigSnafu {
+            message: source.to_string(),
+        }
+        .build()
+    })?;
+    Ok(Fact {
+        id,
+        nous_id: nous_id.to_owned(),
+        fact_type: fact_type.clone(),
+        content: content.to_owned(),
+        scope: Some(MemoryScope::Project),
+        sensitivity: mneme::knowledge::FactSensitivity::Public,
+        visibility: Visibility::Private,
+        temporal: FactTemporal {
+            valid_from: now,
+            valid_to: far_future(),
+            recorded_at: now,
+        },
+        provenance: FactProvenance {
+            confidence: 0.8,
+            tier: EpistemicTier::Reflected,
+            source_session_id: Some(session_id.to_owned()),
+            stability_hours: default_stability_hours(&fact_type),
+        },
+        lifecycle: FactLifecycle {
+            superseded_by: None,
+            is_forgotten: false,
+            forgotten_at: None,
+            forget_reason: None,
+        },
+        access: FactAccess {
+            access_count: 0,
+            last_accessed_at: None,
+        },
+    })
+}
+
 /// Convert mneme messages to hermeneus messages for the distillation engine.
 #[must_use]
 pub fn convert_to_hermeneus_messages(history: &[mneme::types::Message]) -> Vec<HermeneusMessage> {
@@ -585,6 +724,107 @@ mod tests {
         assert_eq!(
             session.metrics.distillation_count, 1,
             "distillation_count should be incremented"
+        );
+    }
+
+    #[cfg(feature = "knowledge-store")]
+    fn distill_result_with_flush(memory_flush: melete::flush::MemoryFlush) -> DistillResult {
+        DistillResult {
+            summary: "Summary of previous turns.".to_owned(),
+            messages_distilled: 1,
+            tokens_before: 200,
+            tokens_after: 80,
+            distillation_number: 1,
+            timestamp: jiff::Timestamp::now().to_string(),
+            verbatim_messages: vec![],
+            memory_flush,
+            pruning_stats: None,
+            contradiction_log: melete::contradiction::ContradictionLog::empty(),
+        }
+    }
+
+    #[cfg(feature = "knowledge-store")]
+    fn mneme_message(content: &str) -> mneme::types::Message {
+        mneme::types::Message {
+            id: 1,
+            session_id: "ses-1".to_owned(),
+            seq: 1,
+            role: mneme::types::Role::User,
+            content: content.to_owned(),
+            tool_call_id: None,
+            tool_name: None,
+            token_estimate: 0,
+            is_distilled: false,
+            created_at: String::new(),
+        }
+    }
+
+    #[cfg(feature = "knowledge-store")]
+    fn flush_item(content: &str) -> melete::flush::FlushItem {
+        melete::flush::FlushItem {
+            content: content.to_owned(),
+            timestamp: jiff::Timestamp::now().to_string(),
+            source: melete::flush::FlushSource::Extracted,
+        }
+    }
+
+    #[cfg(feature = "knowledge-store")]
+    #[test]
+    fn commit_memory_flush_persists_structured_items_and_task_state() {
+        let store = mneme::knowledge_store::KnowledgeStore::open_mem().expect("knowledge store");
+        let flush = melete::flush::MemoryFlush {
+            decisions: vec![flush_item("alice chose rust for the substrate")],
+            corrections: vec![],
+            facts: vec![flush_item("bob owns the deployment checklist")],
+            task_state: Some("acme rollout remains in review".to_owned()),
+        };
+        let result = distill_result_with_flush(flush);
+        let history = vec![mneme_message(
+            "alice chose rust for the substrate. bob owns the deployment checklist.",
+        )];
+
+        let inserted =
+            commit_memory_flush(&store, "ses-1", "nous-1", &result, &history).expect("commit");
+
+        assert_eq!(inserted, 3);
+        let facts = store.list_all_facts(10).expect("list facts");
+        assert_eq!(facts.len(), 3);
+        assert!(
+            facts
+                .iter()
+                .all(|fact| fact.scope == Some(mneme::knowledge::MemoryScope::Project)),
+            "memory flush facts must preserve project scope"
+        );
+        assert!(
+            facts.iter().any(|fact| fact.fact_type == "task_state"
+                && fact.content == "acme rollout remains in review"),
+            "task_state must be persisted, not silently dropped"
+        );
+    }
+
+    #[cfg(feature = "knowledge-store")]
+    #[test]
+    fn commit_memory_flush_rejects_ungrounded_items_before_persisting() {
+        let store = mneme::knowledge_store::KnowledgeStore::open_mem().expect("knowledge store");
+        let flush = melete::flush::MemoryFlush {
+            decisions: vec![flush_item("mallory secretly approved the migration")],
+            corrections: vec![],
+            facts: vec![],
+            task_state: None,
+        };
+        let result = distill_result_with_flush(flush);
+        let history = vec![mneme_message("alice chose rust for the substrate")];
+
+        let err = commit_memory_flush(&store, "ses-1", "nous-1", &result, &history)
+            .expect_err("probe must reject ungrounded flush");
+
+        assert!(
+            matches!(err, error::Error::MemoryFlushProbe { .. }),
+            "ungrounded flush should surface typed probe error"
+        );
+        assert!(
+            store.list_all_facts(10).expect("list facts").is_empty(),
+            "failed probe must abort knowledge-store commit"
         );
     }
 

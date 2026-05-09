@@ -1,4 +1,4 @@
-//! Tests for context limit enforcement, `nous_id` sanitization, token estimation, and summary parsing.
+//! Tests for `nous_id` sanitization, token estimation, and summary parsing.
 #![expect(clippy::expect_used, reason = "test assertions")]
 #![expect(
     clippy::indexing_slicing,
@@ -8,73 +8,7 @@
 use hermeneus::types::{ContentBlock, ToolResultContent};
 
 use super::super::super::*;
-use super::{MOCK_SUMMARY, default_engine, sample_conversation, success_provider, text_msg};
-
-#[test]
-fn enforce_context_limit_returns_zero_when_within_window() {
-    let mut messages = sample_conversation();
-    let count_before = messages.len();
-    let dropped = enforce_context_limit(&mut messages, 1_000_000);
-    assert_eq!(
-        dropped, 0,
-        "no messages should be dropped when within the context window"
-    );
-    assert_eq!(
-        messages.len(),
-        count_before,
-        "message count should be unchanged when within the context window"
-    );
-}
-
-#[test]
-fn enforce_context_limit_drops_oldest_messages_when_over() {
-    let mut messages: Vec<Message> = (0..10)
-        .map(|i| text_msg(Role::User, &"x".repeat(100 + i)))
-        .collect();
-    let initial_count = messages.len();
-    let dropped = enforce_context_limit(&mut messages, 4);
-    assert!(dropped > 0, "should have dropped some messages");
-    assert_eq!(
-        messages.len(),
-        initial_count - dropped,
-        "remaining message count should equal initial minus dropped"
-    );
-}
-
-#[test]
-fn enforce_context_limit_keeps_at_least_one_message() {
-    let mut messages = vec![text_msg(Role::User, "x".repeat(1000).as_str())];
-    // NOTE: window of 1 token: impossible to satisfy, but we must keep the last message
-    let dropped = enforce_context_limit(&mut messages, 1);
-    assert_eq!(dropped, 0, "single message must not be dropped");
-    assert_eq!(
-        messages.len(),
-        1,
-        "single message should remain after enforce_context_limit even if oversized"
-    );
-}
-
-#[test]
-fn enforce_context_limit_drops_from_front() {
-    let mut messages = vec![
-        text_msg(Role::User, &"a".repeat(400)), // oldest: should be dropped
-        text_msg(Role::User, &"b".repeat(400)),
-        text_msg(Role::User, &"c".repeat(4)), // newest: should be kept
-    ];
-    // NOTE: 201 total tokens, window of 2 keeps last ~8 chars = 2 tokens
-    let dropped = enforce_context_limit(&mut messages, 2);
-    assert!(
-        dropped > 0,
-        "at least one oversized message should be dropped"
-    );
-    let last_msg = messages
-        .last()
-        .unwrap_or_else(|| panic!("messages should not be empty"));
-    assert!(
-        last_msg.content.text().starts_with('c'),
-        "newest message starting with 'c' should be kept"
-    );
-}
+use super::{MOCK_SUMMARY, default_engine, sample_conversation, success_provider};
 
 #[test]
 fn sanitize_nous_id_clean_string_unchanged() {

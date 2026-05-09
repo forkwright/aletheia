@@ -189,6 +189,25 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// Backward-path probe verification rejected a memory flush.
+    #[snafu(display(
+        "distillation memory flush rejected: {failure_count}/{total_probes} probes failed"
+    ))]
+    MemoryFlushProbe {
+        failure_count: usize,
+        total_probes: usize,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Knowledge-store persistence failed.
+    #[snafu(display("knowledge store error: {source}"))]
+    KnowledgeStore {
+        source: mneme::error::Error,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// A mutex or rwlock was poisoned by a prior panic.
     #[snafu(display("mutex poisoned: {what}"))]
     MutexPoisoned {
@@ -313,6 +332,7 @@ impl koina::error_class::Classifiable for Error {
             Error::ActorRecv { .. } => ErrorClass::Transient,
             Error::RecallEmbedding { .. } => ErrorClass::Transient,
             Error::RecallSearch { .. } => ErrorClass::Transient,
+            Error::KnowledgeStore { .. } => ErrorClass::Transient,
 
             // Permanent: these will not succeed on retry
             Error::Config { .. } => ErrorClass::Permanent,
@@ -327,6 +347,7 @@ impl koina::error_class::Classifiable for Error {
             Error::AskCycleDetected { .. } => ErrorClass::Permanent,
             Error::MutexPoisoned { .. } => ErrorClass::Permanent,
             Error::PipelinePanic { .. } => ErrorClass::Permanent,
+            Error::MemoryFlushProbe { .. } => ErrorClass::Permanent,
             Error::CompetenceStore { .. } => ErrorClass::Permanent,
             Error::UncertaintyStore { .. } => ErrorClass::Permanent,
             Error::WorkingCheckpointStore { .. } => ErrorClass::Permanent,

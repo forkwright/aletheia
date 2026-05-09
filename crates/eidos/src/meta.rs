@@ -18,42 +18,32 @@
 //! 3. Increment `schema_version` only when the on-disk schema changes in a
 //!    backwards-incompatible way.
 //!
-//! # Mnemosyne alignment
+//! # Cross-shape alignment
 //!
-//! `ArtefactMeta` carries optional fields that mirror the mnemosyne
-//! `Annotation` type in `kanon::mnemosyne::model`. The table below maps each
-//! field to its mnemosyne counterpart. Fields that exist only on one side are
-//! documented as side-specific.
+//! `ArtefactMeta` carries optional fields that mirror provenance and citation
+//! fields used by eidos knowledge types. The canonical [`Provenance`] shape
+//! lets callers project those older public structs into one vocabulary without
+//! inventing missing data.
 //!
-//! | `ArtefactMeta` field  | Mnemosyne `Annotation` field | Notes                                         |
-//! |-----------------------|------------------------------|-----------------------------------------------|
-//! | `producer`            | `agent_id`                   | Different namespacing: crate name vs agent ID |
-//! | `schema_version`      | _(none)_                     | **aletheia-specific** — kanon issue #111      |
-//! | `generated_at`        | `created_at`                 | Both ISO 8601 UTC; different field name       |
-//! | `row_counts`          | _(none)_                     | **aletheia-specific** bulk-count envelope     |
-//! | `actor_id`            | `agent_id`                   | Unified actor identity (replaces `nous_id`)   |
-//! | `session_id`          | `session_id`                 | Identical semantics                           |
-//! | `supersedes`          | `supersedes`                 | Supersede chain reference                     |
-//! | `supersede_reason`    | `supersede_reason`           | Required reason when `supersedes` is set      |
-//! | `confidence`          | _(none)_                     | From episteme `Fact`; no annotation analog    |
-//! | `source_kind`         | `SourceKind` (on `Source`)   | Ingest source kind string                     |
-//! | `source_locator`      | `locator` (on `Source`)      | Canonical ingest URL/path                     |
-//! | `evidence_refs`       | `evidence_chunks`            | Evidence IDs; mnemosyne uses typed `ChunkId`s |
-//!
-//! The [`provenance_adapter`](crate::provenance_adapter) module provides
-//! `from_mnemosyne_annotation` and `to_mnemosyne_compatible` for
-//! cross-layer translation without importing mnemosyne directly.
-//!
-//! ## Future mnemosyne-side alignment
-//!
-//! kanon issue #111 tracks adding `schema_version` to mnemosyne's `Annotation`
-//! type so the `Stamped` trait can be satisfied across both stores. Until
-//! that lands, `schema_version` is carried in `ArtefactMeta` only and
-//! surfaced via `MnemosyneView::schema_version` as an aletheia extension field.
+//! | `Provenance` field | Existing eidos fields |
+//! |--------------------|-----------------------|
+//! | `actor_id` | `ArtefactMeta::actor_id`, `ArchitectureFact::updated_by` |
+//! | `session_id` | `ArtefactMeta::session_id`, `FactProvenance::source_session_id` |
+//! | `source_kind` | `VerificationRecord::source` |
+//! | `source_locator` | `ArtefactMeta::source_locator`, `Finding::source` |
+//! | `evidence_refs` | `ArtefactMeta::evidence_refs`, `ArchitectureFact::evidence` |
+//! | `confidence` | `ArtefactMeta::confidence`, `FactProvenance::confidence` |
+//! | `supersedes` / `supersede_reason` | `ArtefactMeta` supersession fields |
+//! | `generated_at` | `ArtefactMeta::generated_at`, verification/edge timestamps |
 
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
+
+use crate::knowledge::{
+    CausalEdge, FactProvenance, VerificationRecord, architecture_fact::ArchitectureFact,
+    finding::Finding, format_timestamp,
+};
 
 // ── Stamped trait ─────────────────────────────────────────────────────────────
 
@@ -65,6 +55,107 @@ use serde::{Deserialize, Serialize};
 pub trait Stamped {
     /// Returns the artefact's stamp at the moment of persistence.
     fn stamp(&self) -> ArtefactMeta;
+}
+
+// ── Provenance ────────────────────────────────────────────────────────────────
+
+/// Canonical provenance projection for eidos public knowledge shapes.
+///
+/// Each field is optional except `evidence_refs` so legacy structs can project
+/// only the facts they actually carry. Conversion impls intentionally leave
+/// unknown values empty instead of manufacturing source kinds, actors, or
+/// timestamps from nearby but semantically different fields.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct Provenance {
+    /// Actor or producer responsible for the artefact, when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub actor_id: Option<String>,
+    /// Session that produced or observed the artefact, when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
+    /// Kind of source or verification mechanism, when explicitly known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_kind: Option<String>,
+    /// Stable source locator such as a path, URL, or producer string.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_locator: Option<String>,
+    /// Evidence identifiers, paths, URLs, or fact references supporting the artefact.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub evidence_refs: Vec<String>,
+    /// Normalized confidence score in `[0.0, 1.0]`, when the source carries one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confidence: Option<f64>,
+    /// Identifier of the previous artefact superseded by this one, when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub supersedes: Option<String>,
+    /// Human-readable reason for supersession, when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub supersede_reason: Option<String>,
+    /// RFC 3339 timestamp for generation, update, verification, or observation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub generated_at: Option<String>,
+}
+
+impl Provenance {
+    /// Construct an empty provenance projection.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Set actor and optional session identity.
+    #[must_use]
+    pub fn with_actor(mut self, actor_id: impl Into<String>, session_id: Option<String>) -> Self {
+        self.actor_id = Some(actor_id.into());
+        self.session_id = session_id;
+        self
+    }
+
+    /// Set source kind and locator.
+    #[must_use]
+    pub fn with_source(
+        mut self,
+        kind: Option<impl Into<String>>,
+        locator: Option<impl Into<String>>,
+    ) -> Self {
+        self.source_kind = kind.map(Into::into);
+        self.source_locator = locator.map(Into::into);
+        self
+    }
+
+    /// Set evidence references.
+    #[must_use]
+    pub fn with_evidence(mut self, refs: impl IntoIterator<Item = impl Into<String>>) -> Self {
+        self.evidence_refs = refs.into_iter().map(Into::into).collect();
+        self
+    }
+
+    /// Set normalized confidence.
+    #[must_use]
+    pub fn with_confidence(mut self, confidence: f64) -> Self {
+        self.confidence = Some(confidence);
+        self
+    }
+
+    /// Set supersession metadata.
+    #[must_use]
+    pub fn with_supersede(
+        mut self,
+        supersedes: impl Into<String>,
+        reason: impl Into<String>,
+    ) -> Self {
+        self.supersedes = Some(supersedes.into());
+        self.supersede_reason = Some(reason.into());
+        self
+    }
+
+    /// Set the generation or observation timestamp.
+    #[must_use]
+    pub fn with_generated_at(mut self, generated_at: impl Into<String>) -> Self {
+        self.generated_at = Some(generated_at.into());
+        self
+    }
 }
 
 // ── ArtefactMeta ──────────────────────────────────────────────────────────────
@@ -256,6 +347,131 @@ impl ArtefactMeta {
         self.supersedes = Some(supersedes.into());
         self.supersede_reason = Some(reason.into());
         self
+    }
+
+    /// Project this artefact envelope into canonical eidos provenance.
+    #[must_use]
+    pub fn provenance(&self) -> Provenance {
+        Provenance::from(self)
+    }
+}
+
+impl From<&ArtefactMeta> for Provenance {
+    fn from(meta: &ArtefactMeta) -> Self {
+        Self {
+            actor_id: meta.actor_id.clone(),
+            session_id: meta.session_id.clone(),
+            source_kind: meta.source_kind.clone(),
+            source_locator: meta.source_locator.clone(),
+            evidence_refs: meta.evidence_refs.clone(),
+            confidence: meta.confidence.map(f64::from),
+            supersedes: meta.supersedes.clone(),
+            supersede_reason: meta.supersede_reason.clone(),
+            generated_at: Some(meta.generated_at.clone()),
+        }
+    }
+}
+
+impl From<ArtefactMeta> for Provenance {
+    fn from(meta: ArtefactMeta) -> Self {
+        Self::from(&meta)
+    }
+}
+
+impl From<&FactProvenance> for Provenance {
+    fn from(provenance: &FactProvenance) -> Self {
+        Self {
+            session_id: provenance.source_session_id.clone(),
+            confidence: Some(provenance.confidence),
+            ..Self::default()
+        }
+    }
+}
+
+impl From<FactProvenance> for Provenance {
+    fn from(provenance: FactProvenance) -> Self {
+        Self::from(&provenance)
+    }
+}
+
+impl From<&VerificationRecord> for Provenance {
+    fn from(record: &VerificationRecord) -> Self {
+        Self {
+            source_kind: Some(record.source.as_str().to_owned()),
+            generated_at: Some(format_timestamp(&record.verified_at)),
+            ..Self::default()
+        }
+    }
+}
+
+impl From<VerificationRecord> for Provenance {
+    fn from(record: VerificationRecord) -> Self {
+        Self::from(&record)
+    }
+}
+
+impl From<&ArchitectureFact> for Provenance {
+    fn from(fact: &ArchitectureFact) -> Self {
+        Self {
+            actor_id: Some(fact.updated_by.clone()),
+            session_id: fact.mneme_session.clone(),
+            evidence_refs: fact.evidence.clone(),
+            generated_at: Some(fact.updated_at.clone()),
+            ..Self::default()
+        }
+    }
+}
+
+impl From<ArchitectureFact> for Provenance {
+    fn from(fact: ArchitectureFact) -> Self {
+        Self::from(&fact)
+    }
+}
+
+impl From<&Finding> for Provenance {
+    fn from(finding: &Finding) -> Self {
+        Self {
+            source_locator: Some(finding.source.clone()),
+            ..Self::default()
+        }
+    }
+}
+
+impl From<Finding> for Provenance {
+    fn from(finding: Finding) -> Self {
+        Self::from(&finding)
+    }
+}
+
+impl From<&CausalEdge> for Provenance {
+    fn from(edge: &CausalEdge) -> Self {
+        Self {
+            session_id: edge.evidence_session_id.clone(),
+            confidence: Some(edge.confidence),
+            generated_at: Some(format_timestamp(&edge.timestamp)),
+            ..Self::default()
+        }
+    }
+}
+
+impl From<CausalEdge> for Provenance {
+    fn from(edge: CausalEdge) -> Self {
+        Self::from(&edge)
+    }
+}
+
+/// Types that can project into canonical eidos provenance.
+pub trait ProvenanceProject {
+    /// Return a canonical provenance projection for this value.
+    fn provenance(&self) -> Provenance;
+}
+
+impl<T> ProvenanceProject for T
+where
+    for<'a> Provenance: From<&'a T>,
+{
+    fn provenance(&self) -> Provenance {
+        Provenance::from(self)
     }
 }
 
