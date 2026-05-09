@@ -11,10 +11,10 @@ use tokio_util::sync::CancellationToken;
 use crate::bridge::DaemonBridge;
 use crate::error::Result;
 use crate::maintenance::{KnowledgeMaintenanceExecutor, MaintenanceConfig, RetentionExecutor};
-// WHY: tests use `use super::*` and reference Schedule/BuiltinTask/TaskAction directly.
-use crate::schedule::TaskDef;
+use crate::schedule::{Schedule, TaskAction, TaskDef};
+// WHY: tests use `use super::*` and reference BuiltinTask directly.
 #[cfg(test)]
-use crate::schedule::{BuiltinTask, Schedule, TaskAction};
+use crate::schedule::BuiltinTask;
 
 /// Output mode for daemon logging.
 ///
@@ -231,6 +231,29 @@ impl TaskRunner {
         self.self_prompt_limiter = crate::self_prompt::SelfPromptLimiter::new(config.max_per_hour);
         self.self_prompt_config = config;
         self
+    }
+
+    /// Register the top open issue as a recurring self-prompt task.
+    ///
+    /// Returns the registered task id when an open issue was available.
+    pub fn register_top_issue_self_prompt(
+        &mut self,
+        issues: &[crate::self_prompt::OpenIssue],
+        schedule: Schedule,
+    ) -> Option<String> {
+        let prompt_task = crate::self_prompt::prompt_task_from_top_open_issue(issues)?;
+        let task_id = prompt_task.id.clone();
+        self.register(TaskDef {
+            id: prompt_task.id,
+            name: prompt_task.name,
+            nous_id: self.nous_id.clone(),
+            schedule,
+            action: TaskAction::SelfPrompt(prompt_task.prompt),
+            enabled: true,
+            catch_up: false,
+            ..TaskDef::default()
+        });
+        Some(task_id)
     }
 }
 

@@ -16,6 +16,82 @@ use serde::{Deserialize, Serialize};
 /// autonomous actions.
 pub const SELF_PROMPT_SESSION_KEY: &str = "daemon:self-prompt";
 
+/// Minimal issue shape used to seed autonomous follow-up work.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OpenIssue {
+    /// Issue number in the tracker.
+    pub number: u64,
+    /// Issue title.
+    pub title: String,
+    /// Issue body, if the tracker provided one.
+    #[serde(default)]
+    pub body: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RawIssue {
+    number: u64,
+    title: String,
+    #[serde(default)]
+    body: Option<String>,
+    #[serde(default)]
+    state: Option<String>,
+}
+
+/// Prompt task generated from an open issue.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IssuePromptTask {
+    /// Stable daemon task id.
+    pub id: String,
+    /// Human-readable task name.
+    pub name: String,
+    /// Prompt sent to the nous.
+    pub prompt: String,
+}
+
+/// Parse tracker JSON and retain only open issues.
+///
+/// The accepted shape is a JSON array of objects with `number`, `title`,
+/// optional `body`, and optional `state`; missing `state` is treated as open
+/// so tests and simple local snapshots can use a minimal issue shape.
+pub fn parse_open_issues_json(input: &str) -> Result<Vec<OpenIssue>, serde_json::Error> {
+    let issues: Vec<RawIssue> = serde_json::from_str(input)?;
+    Ok(issues
+        .into_iter()
+        .filter(|issue| issue.state.as_deref().is_none_or(|state| state == "open"))
+        .map(|issue| OpenIssue {
+            number: issue.number,
+            title: issue.title,
+            body: issue.body.unwrap_or_default(),
+        })
+        .collect())
+}
+
+/// Generate a recurring self-prompt task from the lowest-numbered open issue.
+#[must_use]
+pub fn prompt_task_from_top_open_issue(issues: &[OpenIssue]) -> Option<IssuePromptTask> {
+    let issue = issues.iter().min_by_key(|issue| issue.number)?;
+    Some(IssuePromptTask {
+        id: format!("issue-self-prompt-{}", issue.number),
+        name: format!("Issue #{} self-prompt", issue.number),
+        prompt: format_issue_prompt(issue),
+    })
+}
+
+fn format_issue_prompt(issue: &OpenIssue) -> String {
+    let mut prompt = format!(
+        "Work the top open issue.\n\nIssue #{}: {}\n\n",
+        issue.number, issue.title
+    );
+    if !issue.body.trim().is_empty() {
+        prompt.push_str(issue.body.trim());
+        prompt.push_str("\n\n");
+    }
+    prompt.push_str("Produce a concrete implementation plan and take the next useful action.");
+    prompt
+}
+
 /// Configuration for self-prompting behavior.
 ///
 /// WHY: self-prompting must be opt-in and rate-limited. Without explicit
@@ -236,6 +312,42 @@ mod tests {
         let config: SelfPromptConfig = serde_json::from_str(json).expect("deserialize");
         assert!(!config.enabled);
         assert_eq!(config.max_per_hour, 1);
+    }
+
+    #[test]
+    fn parses_open_issues_from_tracker_json() {
+        let json = r#"[
+            {"number": 2, "title": "closed item", "body": "done", "state": "closed"},
+            {"number": 1, "title": "wire issue prompts", "body": "Use title and body.", "state": "open"}
+        ]"#;
+        let issues = parse_open_issues_json(json).expect("parse issues");
+        assert_eq!(issues.len(), 1);
+        let Some(issue) = issues.first() else {
+            panic!("expected one open issue");
+        };
+        assert_eq!(issue.number, 1);
+        assert_eq!(issue.title, "wire issue prompts");
+    }
+
+    #[test]
+    fn top_open_issue_generates_prompt_task() {
+        let issues = vec![
+            OpenIssue {
+                number: 4,
+                title: "later task".to_owned(),
+                body: String::new(),
+            },
+            OpenIssue {
+                number: 1,
+                title: "Generate issue prompt".to_owned(),
+                body: "Use the issue body as context.".to_owned(),
+            },
+        ];
+
+        let task = prompt_task_from_top_open_issue(&issues).expect("task");
+        assert_eq!(task.id, "issue-self-prompt-1");
+        assert!(task.prompt.contains("Issue #1: Generate issue prompt"));
+        assert!(task.prompt.contains("Use the issue body as context."));
     }
 
     // -- SelfPromptLimiter tests --
