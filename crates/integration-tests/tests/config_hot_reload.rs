@@ -11,6 +11,7 @@ use nous::config::{NousConfig, PipelineConfig};
 use nous::manager::NousManager;
 use organon::registry::ToolRegistry;
 use pylon::state::AppState;
+use symbolon::auth::{AuthConfig, AuthFacade};
 use symbolon::jwt::{JwtConfig, JwtManager};
 use taxis::oikos::Oikos;
 use tokio::sync::Mutex as TokioMutex;
@@ -100,6 +101,12 @@ impl TestHarness {
             tool_registry,
             oikos,
             jwt_manager,
+            auth_facade: std::sync::Arc::new(
+                AuthFacade::in_memory(AuthConfig {
+                    jwt: JwtConfig::default(),
+                })
+                .expect("auth facade"),
+            ),
             start_time: Instant::now(),
             auth_mode: "token".to_owned(),
             none_role: "admin".to_owned(),

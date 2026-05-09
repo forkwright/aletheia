@@ -60,12 +60,13 @@ impl FromRequestParts<Arc<AppState>> for Claims {
                 location: snafu::location!(),
             })?;
 
-        let claims = state
-            .jwt_manager
-            .validate(token)
-            .map_err(|_err| ApiError::Unauthorized {
-                location: snafu::location!(),
-            })?;
+        let claims =
+            state
+                .auth_facade
+                .validate_token(token)
+                .map_err(|_err| ApiError::Unauthorized {
+                    location: snafu::location!(),
+                })?;
 
         Ok(Self {
             sub: claims.sub,

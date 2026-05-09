@@ -25,6 +25,7 @@ use nous::manager::NousManager;
 use organon::registry::ToolRegistry;
 use pylon::router::build_router;
 use pylon::state::AppState;
+use symbolon::auth::{AuthConfig, AuthFacade};
 use symbolon::jwt::{JwtConfig, JwtManager};
 use symbolon::types::Role;
 use taxis::oikos::Oikos;
@@ -191,6 +192,12 @@ impl TestHarness {
             tool_registry,
             oikos,
             jwt_manager: Arc::clone(&jwt_manager),
+            auth_facade: Arc::new(
+                AuthFacade::in_memory(AuthConfig {
+                    jwt: JwtConfig::default(),
+                })
+                .expect("auth facade"),
+            ),
             start_time: Instant::now(),
             auth_mode: "token".to_owned(),
             none_role: "admin".to_owned(),

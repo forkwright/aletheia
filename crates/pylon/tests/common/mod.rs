@@ -33,6 +33,7 @@ use organon::registry::ToolRegistry;
 use pylon::idempotency::IdempotencyCache;
 use pylon::security::{CsrfConfig, SecurityConfig};
 use pylon::state::AppState;
+use symbolon::auth::{AuthConfig, AuthFacade};
 use symbolon::jwt::{JwtConfig, JwtManager};
 use symbolon::types::Role;
 use taxis::config::AletheiaConfig;
@@ -154,16 +155,7 @@ impl TestEnvBuilder {
                 .expect("spawn nous in test harness");
         }
 
-        let jwt_manager = Arc::new(JwtManager::new(JwtConfig {
-            signing_key: SecretString::from("test-secret-key-for-jwt".to_owned()),
-            access_ttl: self.jwt_access_ttl.unwrap_or(Duration::from_hours(1)),
-            refresh_ttl: Duration::from_hours(24),
-            issuer: "aletheia-test".to_owned(),
-            // WHY: explicit zero leeway so the short-TTL expiry test
-            // observes immediate expiry rather than the 30s default
-            // clock-skew tolerance.
-            clock_skew_leeway_secs: 0,
-        }));
+        let (jwt_manager, auth_facade) = test_auth_state(self.jwt_access_ttl);
 
         let default_config = AletheiaConfig::default();
         let (config_tx, _config_rx) = tokio::sync::watch::channel(default_config.clone());
@@ -176,6 +168,7 @@ impl TestEnvBuilder {
             tool_registry,
             oikos,
             jwt_manager,
+            auth_facade,
             start_time: Instant::now(),
             auth_mode: self.auth_mode.unwrap_or_else(|| "token".to_owned()),
             none_role: "admin".to_owned(),
@@ -193,6 +186,22 @@ impl TestEnvBuilder {
 
         TestEnv { state, _tmp: tmp }
     }
+}
+
+fn test_auth_state(access_ttl: Option<Duration>) -> (Arc<JwtManager>, Arc<AuthFacade>) {
+    let jwt_config = JwtConfig {
+        signing_key: SecretString::from("test-secret-key-for-jwt".to_owned()),
+        access_ttl: access_ttl.unwrap_or(Duration::from_hours(1)),
+        refresh_ttl: Duration::from_hours(24),
+        issuer: "aletheia-test".to_owned(),
+        // WHY: explicit zero leeway so the short-TTL expiry test observes
+        // immediate expiry rather than the 30s default clock-skew tolerance.
+        clock_skew_leeway_secs: 0,
+    };
+    let jwt_manager = Arc::new(JwtManager::new(jwt_config.clone()));
+    let auth_facade =
+        Arc::new(AuthFacade::in_memory(AuthConfig { jwt: jwt_config }).expect("auth facade"));
+    (jwt_manager, auth_facade)
 }
 
 /// `SecurityConfig` with CSRF disabled: exercises the default route matrix

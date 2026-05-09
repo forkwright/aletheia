@@ -16,6 +16,7 @@ use tracing::{debug, info};
 
 use crate::util::base64url_encode;
 
+use super::OAuthRequiredAction;
 use super::file_ops::CredentialFile;
 
 /// Errors from PKCE authentication flow.
@@ -678,6 +679,22 @@ async fn exchange_code(
 /// ```
 #[tracing::instrument(skip_all)]
 pub async fn pkce_login(provider: &OAuthProvider) -> Result<CredentialFile> {
+    pkce_login_with_action(provider, |_| {}).await
+}
+
+/// Perform the complete PKCE OAuth login flow with typed caller-rendered actions.
+///
+/// # Errors
+///
+/// Returns an error if any step of the flow fails.
+#[tracing::instrument(skip_all)]
+pub async fn pkce_login_with_action<F>(
+    provider: &OAuthProvider,
+    mut action_callback: F,
+) -> Result<CredentialFile>
+where
+    F: FnMut(OAuthRequiredAction),
+{
     // Generate PKCE parameters
     let pkce = PkcePair::generate()?;
     let state = generate_state()?;
@@ -685,12 +702,13 @@ pub async fn pkce_login(provider: &OAuthProvider) -> Result<CredentialFile> {
     // Start callback server
     let (port, callback_rx) = start_callback_server(&state)?;
 
-    // Build and display authorization URL
+    // Build and surface authorization URL
     let auth_url = build_authorization_url(provider, &pkce, &state, port);
 
-    eprintln!("\n🔐 Authentication required");
-    eprintln!("Please visit this URL to authorize:\n");
-    eprintln!("  {auth_url}\n");
+    action_callback(OAuthRequiredAction::BrowserOpenUrl {
+        url: auth_url.clone(),
+    });
+    action_callback(OAuthRequiredAction::WaitingForCallback { timeout_secs: 300 });
 
     // Wait for callback with timeout
     let callback_result = tokio::time::timeout(Duration::from_mins(5), callback_rx).await;
@@ -723,6 +741,7 @@ pub async fn pkce_login(provider: &OAuthProvider) -> Result<CredentialFile> {
 
     // SAFETY: logging success status, not the token value
     info!("successfully obtained access token"); // kanon:ignore SECURITY/credential-logging -- logs success status, not the token
+    action_callback(OAuthRequiredAction::AuthorizationSucceeded);
 
     // Build credential file
     let expires_at = token_response

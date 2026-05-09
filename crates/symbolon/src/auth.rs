@@ -1,8 +1,4 @@
 //! Unified auth facade composing JWT, API keys, password auth, and RBAC.
-#![expect(
-    dead_code,
-    reason = "auth facade internals; only exercised by crate-level tests"
-)]
 
 use std::path::Path;
 use std::time::Duration;
@@ -20,42 +16,58 @@ use crate::types::{Action, ApiKeyRecord, Claims, Role, TokenKind, TokenPair};
 use crate::util::days_to_date;
 
 /// Configuration for the auth service.
-#[derive(Default)]
-pub(crate) struct AuthConfig {
+#[derive(Clone, Default)]
+pub struct AuthConfig {
     /// JWT configuration.
     pub jwt: JwtConfig,
 }
 
 /// The main auth service: wraps JWT, API keys, and password auth.
-pub(crate) struct AuthService {
+pub struct AuthService {
     jwt: JwtManager,
     store: AuthStore,
 }
 
+/// Canonical production auth facade.
+pub type AuthFacade = AuthService;
+
+/// Claims returned after a token is verified as an administrator token.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AdminClaims {
+    /// Subject identifier for the authenticated administrator.
+    pub sub: String,
+    /// Authorization role. This is always [`Role::Admin`].
+    pub role: Role,
+    /// Optional nous scope carried by the token.
+    pub nous_id: Option<String>,
+}
+
 impl AuthService {
-    /// Create a new auth service backed by a `SQLite` database.
-    pub(crate) fn new(config: AuthConfig, db_path: &Path) -> Result<Self> {
+    /// Create a new auth service backed by the configured auth store.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the auth store cannot be opened.
+    pub fn new(config: AuthConfig, db_path: &Path) -> Result<Self> {
         let store = AuthStore::open(db_path)?;
         let jwt = JwtManager::new(config.jwt);
         Ok(Self { jwt, store })
     }
 
-    /// Create an auth service with an in-memory database (for testing).
-    pub(crate) fn in_memory(config: AuthConfig) -> Result<Self> {
+    /// Create an auth service with an in-memory auth store.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the temporary auth store cannot be opened.
+    pub fn in_memory(config: AuthConfig) -> Result<Self> {
         let store = AuthStore::open_in_memory()?;
         let jwt = JwtManager::new(config.jwt);
         Ok(Self { jwt, store })
     }
 
-    /// Get a reference to the underlying store.
-    #[must_use]
-    pub(crate) fn store(&self) -> &AuthStore {
-        &self.store
-    }
-
     /// Register a new user with a hashed password.
     #[instrument(skip(self, password))]
-    pub(crate) fn register_user(
+    pub fn register_user(
         &self,
         username: &str,
         password: &SecretString,
@@ -68,7 +80,7 @@ impl AuthService {
 
     /// Authenticate via username + password. Returns a JWT pair.
     #[instrument(skip(self, password))]
-    pub(crate) fn login(&self, username: &str, password: &SecretString) -> Result<TokenPair> {
+    pub fn login(&self, username: &str, password: &SecretString) -> Result<TokenPair> {
         let user = self.store.find_user_by_username(username)?.ok_or_else(|| {
             crate::metrics::record_auth_attempt("password", false);
             error::InvalidCredentialsSnafu.build()
@@ -91,15 +103,22 @@ impl AuthService {
     }
 
     /// Authenticate via API key. Returns claims.
-    pub(crate) fn authenticate_api_key(&self, raw_key: &str) -> Result<Claims> {
+    pub fn authenticate_api_key(&self, raw_key: &str) -> Result<Claims> {
         let result = api_key::validate(&self.store, raw_key);
         crate::metrics::record_auth_attempt("api_key", result.is_ok());
         result
     }
 
     /// Validate a JWT token. Checks signature, expiry, and revocation.
-    pub(crate) fn validate_token(&self, token: &str) -> Result<Claims> {
+    pub fn validate_token(&self, token: &str) -> Result<Claims> {
         let claims = self.jwt.validate(token)?;
+
+        if claims.kind != TokenKind::Access {
+            return Err(error::InvalidTokenSnafu {
+                message: "expected access token".to_owned(),
+            }
+            .build());
+        }
 
         if self.store.is_token_revoked(&claims.jti)? {
             return Err(error::InvalidTokenSnafu {
@@ -111,9 +130,41 @@ impl AuthService {
         Ok(claims)
     }
 
+    /// Validate a JWT access token and require an administrator role.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the token is invalid, expired, revoked, or not an
+    /// administrator token.
+    pub fn verify_admin(&self, token: &str) -> Result<AdminClaims> {
+        let claims = self.validate_token(token)?;
+        if claims.role != Role::Admin {
+            return Err(error::PermissionDeniedSnafu {
+                action: "verify admin".to_owned(),
+                role: claims.role.to_string(),
+            }
+            .build());
+        }
+        Ok(AdminClaims {
+            sub: claims.sub,
+            role: claims.role,
+            nous_id: claims.nous_id,
+        })
+    }
+
+    /// Revoke a JWT access or refresh token.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the token cannot be validated or persisted to the
+    /// revocation store.
+    pub fn revoke(&self, token: &str) -> Result<()> {
+        self.logout(token)
+    }
+
     /// Refresh a JWT pair using a refresh token.
     #[instrument(skip(self, refresh_token))]
-    pub(crate) fn refresh_token(&self, refresh_token: &str) -> Result<TokenPair> {
+    pub fn refresh_token(&self, refresh_token: &str) -> Result<TokenPair> {
         let claims = self.jwt.validate(refresh_token)?;
 
         if claims.kind != TokenKind::Refresh {
@@ -142,14 +193,14 @@ impl AuthService {
     }
 
     /// Logout by revoking a JWT (adds its jti to the revocation list).
-    pub(crate) fn logout(&self, token: &str) -> Result<()> {
+    pub fn logout(&self, token: &str) -> Result<()> {
         let claims = self.jwt.validate(token)?;
         let expires_at = format_unix_iso(claims.exp);
         self.store.revoke_token(&claims.jti, &expires_at)
     }
 
     /// Generate a new API key.
-    pub(crate) fn generate_api_key(
+    pub fn generate_api_key(
         &self,
         prefix: &str,
         role: Role,
@@ -160,21 +211,17 @@ impl AuthService {
     }
 
     /// Revoke an API key.
-    pub(crate) fn revoke_api_key(&self, key_id: &str) -> Result<()> {
+    pub fn revoke_api_key(&self, key_id: &str) -> Result<()> {
         api_key::revoke(&self.store, key_id)
     }
 
     /// List all API keys.
-    pub(crate) fn list_api_keys(&self) -> Result<Vec<ApiKeyRecord>> {
+    pub fn list_api_keys(&self) -> Result<Vec<ApiKeyRecord>> {
         api_key::list(&self.store)
     }
 
     /// Check if claims authorize the given action. Returns `Ok(())` if allowed.
-    #[expect(
-        clippy::unused_self,
-        reason = "method semantically belongs to AuthService instance"
-    )]
-    pub(crate) fn authorize(&self, claims: &Claims, action: &Action) -> Result<()> {
+    pub fn authorize(&self, claims: &Claims, action: &Action) -> Result<()> {
         if is_authorized(claims, action) {
             Ok(())
         } else {
@@ -309,6 +356,50 @@ mod tests {
 
         let result = svc.validate_token(pair.access_token.expose_secret());
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn verify_admin_accepts_valid_admin_token() {
+        let svc = memory_service();
+        let token = svc.jwt.issue_access("alice", Role::Admin, None).unwrap();
+
+        let claims = svc.verify_admin(&token).unwrap();
+
+        assert_eq!(claims.sub, "alice");
+        assert_eq!(claims.role, Role::Admin);
+    }
+
+    #[test]
+    fn verify_admin_rejects_revoked_token() {
+        let svc = memory_service();
+        let token = svc.jwt.issue_access("alice", Role::Admin, None).unwrap();
+
+        svc.revoke(&token).unwrap();
+
+        assert!(svc.verify_admin(&token).is_err());
+    }
+
+    #[test]
+    fn verify_admin_rejects_invalid_signature() {
+        let svc = memory_service();
+        let other = JwtManager::new(JwtConfig {
+            signing_key: SecretString::from("different-test-secret"),
+            access_ttl: Duration::from_hours(1),
+            refresh_ttl: Duration::from_hours(24),
+            issuer: "aletheia-test".to_owned(),
+            ..JwtConfig::default()
+        });
+        let token = other.issue_access("alice", Role::Admin, None).unwrap();
+
+        assert!(svc.verify_admin(&token).is_err());
+    }
+
+    #[test]
+    fn verify_admin_rejects_non_admin_token() {
+        let svc = memory_service();
+        let token = svc.jwt.issue_access("alice", Role::Operator, None).unwrap();
+
+        assert!(svc.verify_admin(&token).is_err());
     }
 
     #[test]

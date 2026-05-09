@@ -12,10 +12,13 @@ use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
 use hermeneus::provider::ProviderRegistry;
+use koina::secret::SecretString;
+use koina::system::{Environment, RealSystem};
 use mneme::store::SessionStore;
 use nous::config::{NousConfig, PipelineConfig};
 use nous::manager::NousManager;
 use organon::registry::ToolRegistry;
+use symbolon::auth::{AuthConfig, AuthFacade};
 use symbolon::jwt::{JwtConfig, JwtManager};
 use taxis::config::AletheiaConfig;
 use taxis::oikos::Oikos;
@@ -73,6 +76,10 @@ pub enum ServerError {
     /// Default nous agent failed to spawn during startup.
     #[snafu(display("default nous spawn failed: {source}"))]
     NousSpawn { source: nous::error::Error },
+
+    /// Authentication setup failed during startup.
+    #[snafu(display("authentication setup failed: {message}"))]
+    Auth { message: String },
 }
 
 /// Start the HTTP gateway and block until shutdown.
@@ -104,7 +111,6 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
 
     let provider_registry = Arc::new(ProviderRegistry::new());
     let tool_registry = Arc::new(ToolRegistry::new());
-    let jwt_manager = Arc::new(JwtManager::new(JwtConfig::default()));
 
     let mut nous_manager = NousManager::new(
         Arc::clone(&provider_registry),
@@ -136,6 +142,8 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
     // gateway config. (#3383)
     taxis::validate::warn_if_auth_disabled(&aletheia_config);
 
+    let (jwt_manager, auth_facade) = build_auth_state(&aletheia_config, &oikos)?;
+
     #[cfg(feature = "knowledge-store")]
     let knowledge_store = nous_manager.knowledge_store().cloned();
 
@@ -154,6 +162,7 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
         tool_registry,
         oikos,
         jwt_manager,
+        auth_facade,
         start_time: Instant::now(),
         auth_mode: aletheia_config.gateway.auth.mode.clone(),
         none_role: aletheia_config.gateway.auth.none_role.clone(),
@@ -210,6 +219,52 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
     state.nous_manager.shutdown_readonly().await;
     info!("pylon shutdown complete");
     Ok(())
+}
+
+fn build_auth_state(
+    config: &AletheiaConfig,
+    oikos: &Oikos,
+) -> Result<(Arc<JwtManager>, Arc<AuthFacade>), ServerError> {
+    let jwt_config = jwt_config_from_gateway(config);
+    jwt_config
+        .validate_for_auth_mode(config.gateway.auth.mode.as_str())
+        .map_err(|e| ServerError::Auth {
+            message: e.to_string(),
+        })?;
+    let auth_store_path = oikos.data().join("auth.fjall");
+    let auth_facade = Arc::new(
+        AuthFacade::new(
+            AuthConfig {
+                jwt: jwt_config.clone(),
+            },
+            &auth_store_path,
+        )
+        .map_err(|e| ServerError::Auth {
+            message: format!("failed to open {}: {e}", auth_store_path.display()),
+        })?,
+    );
+    let jwt_manager = Arc::new(JwtManager::new(jwt_config));
+    Ok((jwt_manager, auth_facade))
+}
+
+fn jwt_config_from_gateway(config: &AletheiaConfig) -> JwtConfig {
+    let signing_key = config.gateway.auth.signing_key.clone().or_else(|| {
+        RealSystem
+            .var("ALETHEIA_JWT_SECRET")
+            .map(SecretString::from)
+    });
+    let clock_skew_leeway_secs = config.jwt.clock_skew_leeway_secs;
+    match signing_key {
+        Some(signing_key) => JwtConfig {
+            signing_key,
+            clock_skew_leeway_secs,
+            ..JwtConfig::default()
+        },
+        None => JwtConfig {
+            clock_skew_leeway_secs,
+            ..JwtConfig::default()
+        },
+    }
 }
 
 async fn serve_plain(app: axum::Router, bind_addr: &str) -> Result<(), ServerError> {

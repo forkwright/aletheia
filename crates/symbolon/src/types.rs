@@ -87,26 +87,26 @@ pub struct Claims {
 }
 
 /// An access + refresh token pair returned from login or refresh.
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "auth facade internal; exercised by crate tests")
-)]
-pub(crate) struct TokenPair {
+pub struct TokenPair {
+    /// Access token used for authenticated API requests.
     pub access_token: SecretString,
+    /// Refresh token used to obtain a new token pair.
     pub refresh_token: SecretString,
 }
 
 /// Actions that can be authorized via RBAC.
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "auth facade internal; exercised by crate tests")
-)]
 #[non_exhaustive]
-pub(crate) enum Action {
+pub enum Action {
     /// Read a session belonging to a specific nous.
-    ReadSession { nous_id: String },
+    ReadSession {
+        /// Nous identifier whose session is being read.
+        nous_id: String,
+    },
     /// Write to a session belonging to a specific nous.
-    WriteSession { nous_id: String },
+    WriteSession {
+        /// Nous identifier whose session is being written.
+        nous_id: String,
+    },
     /// Manage agent configurations.
     ManageAgents,
     /// Manage user accounts.
@@ -129,29 +129,40 @@ impl std::fmt::Display for Action {
 
 /// Stored user record.
 #[derive(Debug, Clone)]
-#[expect(
-    dead_code,
-    reason = "auth facade internal; some fields unused even in crate tests"
-)]
-pub(crate) struct User {
+pub struct User {
+    /// Stable user identifier.
     pub id: String,
+    /// Login username.
     pub username: String,
+    /// Password hash encoded by the configured password hasher.
     pub password_hash: String,
+    /// User authorization role.
     pub role: Role,
+    /// Creation timestamp in RFC3339-like UTC format.
     pub created_at: String,
+    /// Last update timestamp in RFC3339-like UTC format.
     pub updated_at: String,
 }
 
 /// Stored API key metadata (never includes the secret).
 #[derive(Debug, Clone)]
-pub(crate) struct ApiKeyRecord {
+pub struct ApiKeyRecord {
+    /// Stable key identifier.
     pub id: String,
+    /// Public key prefix.
     pub prefix: String,
+    /// Secret hash for validation.
     pub key_hash: String,
+    /// Role granted by the key.
     pub role: Role,
+    /// Optional nous scope granted by the key.
     pub nous_id: Option<String>,
+    /// Creation timestamp in RFC3339-like UTC format.
     pub created_at: String,
+    /// Optional expiration timestamp in RFC3339-like UTC format.
     pub expires_at: Option<String>,
+    /// Optional last-used timestamp in RFC3339-like UTC format.
     pub last_used_at: Option<String>,
+    /// Optional revocation timestamp in RFC3339-like UTC format.
     pub revoked_at: Option<String>,
 }
