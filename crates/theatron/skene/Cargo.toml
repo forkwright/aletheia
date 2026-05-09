@@ -13,7 +13,7 @@ test-full = []
 
 [dependencies]
 koina = { path = "../../koina" }
-keryx = { git = "http://127.0.0.1:7878/forkwright/theatron.git", tag = "v1.1.0" }
+keryx = { git = "http://127.0.0.1:7878/forkwright/theatron.git", tag = "v1.2.0" }
 bytes = { workspace = true }
 futures-core = "0.3"
 futures-util = "0.3"

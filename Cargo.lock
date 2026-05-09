@@ -4682,8 +4682,8 @@ dependencies = [
 
 [[package]]
 name = "keryx"
-version = "1.1.0"
-source = "git+http://127.0.0.1:7878/forkwright/theatron.git?tag=v1.1.0#755e5c8d00cc464ee54dfc64e17866651d296ca7"
+version = "1.2.0"
+source = "git+http://127.0.0.1:7878/forkwright/theatron.git?tag=v1.2.0#6225613827dcc21a0b7b1c1585f9ff8199affae9"
 dependencies = [
  "bytes",
  "dioxus",
@@ -6218,8 +6218,8 @@ dependencies = [
 
 [[package]]
 name = "parodos"
-version = "1.1.0"
-source = "git+http://127.0.0.1:7878/forkwright/theatron.git?tag=v1.1.0#755e5c8d00cc464ee54dfc64e17866651d296ca7"
+version = "1.2.0"
+source = "git+http://127.0.0.1:7878/forkwright/theatron.git?tag=v1.2.0#6225613827dcc21a0b7b1c1585f9ff8199affae9"
 dependencies = [
  "arboard",
  "base64 0.22.1",

@@ -22,9 +22,10 @@ koina = { path = "../../koina" }
 # WHY: chalkeion plan Phase 1+2 — proskenion consumes theatron incrementally.
 # AGPL-3.0+ proskenion can consume Apache-2.0 OR MIT theatron via the
 # Apache-2.0 path — license-compatible.
-themelion = { git = "http://127.0.0.1:7878/forkwright/theatron.git", tag = "v1.1.0" }
-skeue = { git = "http://127.0.0.1:7878/forkwright/theatron.git", tag = "v1.1.0" }
-gramma = { git = "http://127.0.0.1:7878/forkwright/theatron.git", tag = "v1.1.0" }
+themelion = { git = "http://127.0.0.1:7878/forkwright/theatron.git", tag = "v1.2.0" }
+skeue = { git = "http://127.0.0.1:7878/forkwright/theatron.git", tag = "v1.2.0" }
+gramma = { git = "http://127.0.0.1:7878/forkwright/theatron.git", tag = "v1.2.0" }
+bathron = { git = "http://127.0.0.1:7878/forkwright/theatron.git", tag = "v1.2.0", features = ["logging"] }
 
 # UI framework
 # WHY: Pinned to the same exact patch theatron's workspace pins (=0.7.6).
@@ -67,9 +68,12 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
 # Logging
+# WHY: tracing-appender + tracing-subscriber dropped in v1.2 migration —
+# proskenion now consumes `bathron::logging::init_with_stderr` (theatron
+# v1.2.0) which encapsulates the daily-rotated file appender + opt-in
+# stderr layer behind a single function call. See `lib.rs::run` for the
+# call site and the `bathron` dep above with `features = ["logging"]`.
 tracing = "0.1"
-tracing-appender = "0.2"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # Error handling
 snafu = "0.8"

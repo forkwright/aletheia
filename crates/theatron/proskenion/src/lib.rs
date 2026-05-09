@@ -10,8 +10,9 @@
 pub mod api;
 /// Dioxus UI components for the desktop app.
 pub mod components;
-/// Log-to-file initialisation (daily-rolling, non-blocking).
-pub(crate) mod logging;
+// Log-to-file initialisation (daily-rolling, non-blocking) lifted into
+// `bathron::logging::init_with_stderr` (theatron v1.2.0). See `run` below
+// for the call site that replaces the former local `logging::init`.
 /// Platform integration: system tray, global hotkeys, native menus, window state, notifications.
 pub(crate) mod platform;
 /// Background services: SSE connection, stream management, and state sync.
@@ -37,7 +38,40 @@ pub(crate) mod views;
 pub fn run(verbose: bool) {
     // WHY: Keep the guard alive for the process lifetime so the non-blocking
     // writer thread flushes pending log records before the file is closed.
-    let _log_guard = logging::init(verbose);
+    //
+    // Migrated 2026-05-08 from local `logging.rs` (88 LOC) to
+    // `bathron::logging::init_with_stderr` (theatron v1.2.0) with the
+    // PR-B Option 3 knobs that preserve proskenion's pre-migration
+    // behavior across all 5 axes (log dir, file name, ANSI on file,
+    // EnvFilter directive, stderr trigger):
+    //   - log_dir = ~/.local/share/aletheia/logs/  (preserved via
+    //     with_log_dir; would otherwise be ~/.local/state/<app>/logs/
+    //     under XDG state-dir defaults)
+    //   - app_name = "proskenion" (file becomes proskenion.log)
+    //   - ansi_on_file = false (preserved via with_ansi_on_file)
+    //   - filter_directive = "proskenion=info" (preserved via
+    //     with_filter_directive; RUST_LOG always wins)
+    //   - also_to_stderr = verbose || RUST_LOG_set
+    // WHY: log path preserved at ~/.local/share/aletheia/logs/ (the
+    // pre-migration value). bathron's default would route to
+    // ~/.local/state/aletheia/logs/ via dirs::state_dir, which would
+    // break operator `tail -f` muscle memory.
+    let log_dir = dirs::data_local_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("aletheia")
+        .join("logs");
+    let cfg = bathron::logging::LogConfig::new("proskenion", tracing::Level::INFO)
+        .with_log_dir(log_dir)
+        .with_ansi_on_file(false)
+        .with_filter_directive("proskenion=info");
+    let also_to_stderr = verbose || std::env::var("RUST_LOG").is_ok();
+    let _log_guard = match bathron::logging::init_with_stderr(cfg, also_to_stderr) {
+        Ok(guard) => guard,
+        Err(e) => {
+            eprintln!("proskenion: failed to initialize logging: {e}");
+            return;
+        }
+    };
 
     tracing::info!("starting proskenion");
 

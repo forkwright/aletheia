@@ -93,11 +93,14 @@ pub(crate) fn SetupWizard() -> Element {
                                     let density = data.selected_density;
                                     drop(data);
 
-                                    let new_mode = match selected_theme.as_str() {
-                                        "dark" => ThemeMode::Dark,
-                                        "light" => ThemeMode::Light,
-                                        _ => ThemeMode::System,
-                                    };
+                                    // Migrated 2026-05-08 to
+                                    // themelion::ThemeMode::from_slug
+                                    // (theatron v1.2.0); fall back to
+                                    // System for unrecognized slugs to
+                                    // preserve pre-migration behavior.
+                                    let new_mode =
+                                        ThemeMode::from_slug(selected_theme.as_str())
+                                            .unwrap_or(ThemeMode::System);
                                     theme_mode.set(new_mode);
                                     {
                                         let mut app = appearance.write();
