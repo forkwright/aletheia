@@ -569,6 +569,24 @@ pub async fn stream_turn(
                         tool_id,
                         input,
                     },
+                    TurnStreamEvent::ToolApprovalRequired {
+                        turn_id,
+                        tool_id,
+                        tool_name,
+                        input,
+                        risk,
+                        reason,
+                    } => PylonTurnStreamEvent::ToolApprovalRequired {
+                        turn_id,
+                        tool_name,
+                        tool_id,
+                        input,
+                        risk,
+                        reason,
+                    },
+                    TurnStreamEvent::ToolApprovalResolved { tool_id, decision } => {
+                        PylonTurnStreamEvent::ToolApprovalResolved { tool_id, decision }
+                    }
                     TurnStreamEvent::ToolResult {
                         tool_id,
                         tool_name,

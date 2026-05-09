@@ -65,13 +65,30 @@ pub fn register(registry: &mut Registry) {
 // Recording
 // ---------------------------------------------------------------------------
 
+/// Outcome bucket used for tool invocation metrics.
+#[derive(Clone, Copy)]
+pub(crate) enum InvocationStatus {
+    Ok,
+    Partial,
+    Error,
+}
+
+impl InvocationStatus {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Ok => "ok",
+            Self::Partial => "partial",
+            Self::Error => "error",
+        }
+    }
+}
+
 /// Record a tool invocation.
-pub(crate) fn record_invocation(tool_name: &str, duration_secs: f64, success: bool) {
-    let status = if success { "ok" } else { "error" };
+pub(crate) fn record_invocation(tool_name: &str, duration_secs: f64, status: InvocationStatus) {
     TOOL_INVOCATIONS_TOTAL
         .get_or_create(&ToolInvocationLabels {
             tool_name: tool_name.to_owned(),
-            status: status.to_owned(),
+            status: status.as_str().to_owned(),
         })
         .inc();
     TOOL_DURATION_SECONDS
@@ -103,7 +120,7 @@ mod tests {
     #[test]
     fn register_and_record_invocation_success() {
         let r = fresh_registry();
-        record_invocation("_test_tool_ok", 0.05, true);
+        record_invocation("_test_tool_ok", 0.05, InvocationStatus::Ok);
         let out = encode(&r);
         assert!(
             out.contains(
@@ -120,11 +137,24 @@ mod tests {
     #[test]
     fn register_and_record_invocation_failure() {
         let r = fresh_registry();
-        record_invocation("_test_tool_err", 0.01, false);
+        record_invocation("_test_tool_err", 0.01, InvocationStatus::Error);
         let out = encode(&r);
         assert!(
             out.contains(
                 "aletheia_tool_invocations_total{tool_name=\"_test_tool_err\",status=\"error\"} 1"
+            ),
+            "got: {out}"
+        );
+    }
+
+    #[test]
+    fn register_and_record_invocation_partial() {
+        let r = fresh_registry();
+        record_invocation("_test_tool_partial", 0.02, InvocationStatus::Partial);
+        let out = encode(&r);
+        assert!(
+            out.contains(
+                "aletheia_tool_invocations_total{tool_name=\"_test_tool_partial\",status=\"partial\"} 1"
             ),
             "got: {out}"
         );

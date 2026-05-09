@@ -6,6 +6,7 @@ use std::pin::Pin;
 use hermeneus::types::{DocumentSource, ToolResultBlock};
 use indexmap::IndexMap;
 
+use crate::builtins::workspace::validate_path;
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
@@ -19,7 +20,7 @@ impl ToolExecutor for RenderDocxReportExecutor {
     fn execute<'a>(
         &'a self,
         input: &'a ToolInput,
-        _ctx: &'a ToolContext,
+        ctx: &'a ToolContext,
     ) -> Pin<Box<dyn Future<Output = Result<ToolResult>> + Send + 'a>> {
         Box::pin(async move {
             let args = &input.arguments;
@@ -54,12 +55,21 @@ impl ToolExecutor for RenderDocxReportExecutor {
             };
 
             // Optional: write to a caller-provided path in addition to returning bytes.
-            if let Some(out_path) = args.get("out_path").and_then(serde_json::Value::as_str)
-                && let Err(e) = tokio::fs::write(out_path, &docx_bytes).await
-            {
-                return Ok(ToolResult::error(format!(
-                    "wrote 0 bytes to {out_path:?}: {e}"
-                )));
+            if let Some(out_path) = args.get("out_path").and_then(serde_json::Value::as_str) {
+                let validated = match validate_path(out_path, ctx, &input.name) {
+                    Ok(path) => path,
+                    Err(e) => {
+                        return Ok(ToolResult::error(format!(
+                            "invalid out_path {out_path:?}: {e}"
+                        )));
+                    }
+                };
+                if let Err(e) = tokio::fs::write(&validated, &docx_bytes).await {
+                    return Ok(ToolResult::error(format!(
+                        "wrote 0 bytes to {}: {e}",
+                        validated.display()
+                    )));
+                }
             }
 
             let encoded = koina::base64::encode(&docx_bytes);

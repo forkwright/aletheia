@@ -59,11 +59,22 @@ pub(super) fn dokimasia_def() -> ToolDef {
                         default: None,
                     },
                 ),
+                (
+                    "diff".to_owned(),
+                    PropertyDef {
+                        property_type: PropertyType::String,
+                        description: "Unified PR diff to evaluate; empty diffs return no-work."
+                            .to_owned(),
+                        enum_values: None,
+                        default: None,
+                    },
+                ),
             ]),
             required: vec![
                 "prompt_number".to_owned(),
                 "pr_number".to_owned(),
                 "project".to_owned(),
+                "diff".to_owned(),
             ],
         },
         category: ToolCategory::Agent,
@@ -97,22 +108,35 @@ impl ToolExecutor for DokimasiaExecutor {
                 Ok(s) => s,
                 Err(e) => return Ok(e),
             };
+            if _project.trim().is_empty() {
+                return Ok(ToolResult::error("missing required field 'project'"));
+            }
+            let diff = match require_str(args, "diff") {
+                Ok(s) => s,
+                Err(e) => return Ok(e),
+            };
+            if diff.trim().is_empty() {
+                let output = serde_json::json!({
+                    "status": "no_work",
+                    "reason": "no diff to QA",
+                    "project": _project,
+                    "prompt_number": prompt_number,
+                    "pr_number": pr_number,
+                });
+                return Ok(to_json_text(&output));
+            }
 
             // WHY: Build a minimal QA prompt spec from the prompt number. Full
             // prompt spec loading (with real acceptance criteria) requires file
-            // I/O outside the tool's scope. Callers can add criteria via a future
-            // schema extension. Mechanical checks run against the empty diff.
+            // I/O outside the tool's scope. Mechanical checks run against the
+            // caller-provided diff.
             let qa_prompt =
                 energeia::qa::PromptSpec::new(prompt_number, format!("Prompt #{prompt_number}"));
 
-            // WHY: Diff is empty because fetching the PR diff requires GitHub API
-            // access which is outside this tool's scope. Callers may pass a diff
-            // via a future `diff` field extension. Mechanical checks on an empty
-            // diff produce no findings.
             // WHY: No LLM provider available in the tool context — runs
             // mechanical-only evaluation. Semantic evaluation requires the
             // orchestrator which has access to hermeneus providers.
-            let qa_result = run_qa("", &qa_prompt, pr_number, None).await;
+            let qa_result = run_qa(diff, &qa_prompt, pr_number, None).await;
 
             Ok(to_json_text(&qa_result))
         })

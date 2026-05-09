@@ -1,4 +1,5 @@
 #![expect(clippy::expect_used, reason = "test assertions")]
+#![expect(clippy::indexing_slicing, reason = "test object mutation")]
 //! Tests for poiesis tool executors.
 //!
 //! Current coverage: `render_typst_report`. The other poiesis executors (lint,
@@ -117,6 +118,32 @@ async fn render_typst_report_writes_out_path() {
 }
 
 #[tokio::test]
+async fn render_typst_report_rejects_out_path_escape() {
+    let dir = tempfile::tempdir().expect("tmpdir");
+    let ctx = test_ctx(dir.path());
+
+    for out_path in ["/etc/aletheia-report.pdf", "../escape.pdf"] {
+        let input = tool_input(
+            "render_typst_report",
+            serde_json::json!({
+                "source": "Hello from Typst.",
+                "out_path": out_path,
+            }),
+        );
+        let result = RenderTypstReportExecutor
+            .execute(&input, &ctx)
+            .await
+            .expect("exec");
+        assert!(result.is_error, "{out_path} must be rejected");
+        assert!(
+            result.content.text_summary().contains("invalid out_path"),
+            "unexpected error: {:?}",
+            result.content
+        );
+    }
+}
+
+#[tokio::test]
 async fn render_typst_report_requires_source_or_template() {
     let dir = tempfile::tempdir().expect("tmpdir");
     let ctx = test_ctx(dir.path());
@@ -230,4 +257,52 @@ async fn render_xlsx_report_missing_data_is_error() {
         .await
         .expect("exec");
     assert!(result.is_error, "missing data must error");
+}
+
+#[tokio::test]
+async fn report_renderers_reject_out_path_escape() {
+    let dir = tempfile::tempdir().expect("tmpdir");
+    let ctx = test_ctx(dir.path());
+
+    let cases = [
+        (
+            "render_docx_report",
+            serde_json::json!({
+                "data": {"title": "Test", "paragraphs": [{"text": "Hello"}]}
+            }),
+        ),
+        (
+            "render_pptx_report",
+            serde_json::json!({
+                "data": {"slides": [{"title": "Test", "content": [{"text": "Hello"}]}]}
+            }),
+        ),
+        (
+            "render_xlsx_report",
+            serde_json::json!({
+                "data": {"sheets": [{"name": "Sheet1", "columns": [{"header": "A"}], "rows": [["x"]]}]}
+            }),
+        ),
+    ];
+
+    for (name, base_args) in cases {
+        for out_path in ["/etc/aletheia-report.bin", "../escape.bin"] {
+            let mut args = base_args.clone();
+            args["out_path"] = serde_json::json!(out_path);
+            let input = tool_input(name, args);
+            let result = match name {
+                "render_docx_report" => RenderDocxReportExecutor.execute(&input, &ctx).await,
+                "render_pptx_report" => RenderPptxReportExecutor.execute(&input, &ctx).await,
+                "render_xlsx_report" => RenderXlsxReportExecutor.execute(&input, &ctx).await,
+                other => panic!("unexpected renderer {other}"),
+            }
+            .expect("exec");
+            assert!(result.is_error, "{name} {out_path} must be rejected");
+            assert!(
+                result.content.text_summary().contains("invalid out_path"),
+                "unexpected error for {name}: {:?}",
+                result.content
+            );
+        }
+    }
 }

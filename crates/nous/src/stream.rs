@@ -18,6 +18,17 @@ pub enum TurnStreamEvent {
         tool_name: String,
         input: serde_json::Value,
     },
+    /// Tool approval is required before execution.
+    ToolApprovalRequired {
+        turn_id: String,
+        tool_id: String,
+        tool_name: String,
+        input: serde_json::Value,
+        risk: String,
+        reason: String,
+    },
+    /// Tool approval was resolved.
+    ToolApprovalResolved { tool_id: String, decision: String },
     /// Tool execution completed.
     ToolResult {
         tool_id: String,

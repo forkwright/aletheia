@@ -1,7 +1,7 @@
 //! Bookkeeper tools for prompt archival and worktree cleanup.
 //!
-//! - `tamias` (ταμίας — steward/treasurer): archive completed prompts
-//! - `katharos` (καθαρός — clean): remove stale worktrees and artifacts
+//! - `tamias` (ταμίας — steward/treasurer): placeholder for prompt archival
+//! - `katharos` (καθαρός — clean): placeholder for worktree cleanup
 
 use std::future::Future;
 use std::pin::Pin;
@@ -47,8 +47,7 @@ impl ToolExecutor for BookkeeperStub {
 fn tamias_def() -> ToolDef {
     ToolDef {
         name: ToolName::from_static("tamias"),
-        description: "Archive completed prompts: move prompt files from queue/ to done/ \
-            after successful merge. Optionally archives by prompt number or batch."
+        description: "Placeholder for future prompt archival; currently returns not implemented."
             .to_owned(),
         extended_description: None,
         input_schema: InputSchema {
@@ -57,7 +56,8 @@ fn tamias_def() -> ToolDef {
                     "prompt_number".to_owned(),
                     PropertyDef {
                         property_type: PropertyType::Integer,
-                        description: "Specific prompt number to archive".to_owned(),
+                        description: "Specific prompt number for the future archive operation"
+                            .to_owned(),
                         enum_values: None,
                         default: None,
                     },
@@ -66,7 +66,7 @@ fn tamias_def() -> ToolDef {
                     "project".to_owned(),
                     PropertyDef {
                         property_type: PropertyType::String,
-                        description: "Project slug to scope the archive operation".to_owned(),
+                        description: "Project slug for the future archive operation".to_owned(),
                         enum_values: None,
                         default: None,
                     },
@@ -75,8 +75,7 @@ fn tamias_def() -> ToolDef {
                     "batch".to_owned(),
                     PropertyDef {
                         property_type: PropertyType::Boolean,
-                        description: "Archive all merged prompts in the queue (default: false)"
-                            .to_owned(),
+                        description: "Future batch mode flag (default: false)".to_owned(),
                         enum_values: None,
                         default: Some(serde_json::json!(false)),
                     },
@@ -85,9 +84,7 @@ fn tamias_def() -> ToolDef {
                     "dry_run".to_owned(),
                     PropertyDef {
                         property_type: PropertyType::Boolean,
-                        description:
-                            "List what would be archived without moving files (default: false)"
-                                .to_owned(),
+                        description: "Future dry-run flag (default: false)".to_owned(),
                         enum_values: None,
                         default: Some(serde_json::json!(false)),
                     },
@@ -108,8 +105,7 @@ fn tamias_def() -> ToolDef {
 fn katharos_def() -> ToolDef {
     ToolDef {
         name: ToolName::from_static("katharos"),
-        description: "Clean up stale dispatch artifacts: remove orphaned worktrees, \
-            close merged PR branches, and delete expired lock files."
+        description: "Placeholder for future dispatch cleanup; currently returns not implemented."
             .to_owned(),
         extended_description: None,
         input_schema: InputSchema {
@@ -118,7 +114,7 @@ fn katharos_def() -> ToolDef {
                     "project".to_owned(),
                     PropertyDef {
                         property_type: PropertyType::String,
-                        description: "Project slug to scope cleanup".to_owned(),
+                        description: "Project slug for the future cleanup operation".to_owned(),
                         enum_values: None,
                         default: None,
                     },
@@ -127,8 +123,7 @@ fn katharos_def() -> ToolDef {
                     "max_age_hours".to_owned(),
                     PropertyDef {
                         property_type: PropertyType::Integer,
-                        description: "Remove worktrees older than this many hours (default: 48)"
-                            .to_owned(),
+                        description: "Future max-age cleanup threshold (default: 48)".to_owned(),
                         enum_values: None,
                         default: Some(serde_json::json!(48)),
                     },
@@ -137,8 +132,7 @@ fn katharos_def() -> ToolDef {
                     "dry_run".to_owned(),
                     PropertyDef {
                         property_type: PropertyType::Boolean,
-                        description: "List what would be cleaned without removing (default: false)"
-                            .to_owned(),
+                        description: "Future dry-run flag (default: false)".to_owned(),
                         enum_values: None,
                         default: Some(serde_json::json!(false)),
                     },
