@@ -2,33 +2,42 @@
 
 use std::fmt;
 
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "planned user-facing error surface, not yet wired into API response layer"
-    )
-)]
 /// Presentation errors for end users.
 ///
 /// The full technical error is logged via tracing at the call site.
 /// This type carries only what a user should see.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub(crate) enum UserFacingError {
+pub enum UserFacingError {
     /// The LLM provider is currently unavailable.
     ProviderUnavailable {
+        /// User-readable provider label.
         provider: String,
+        /// Actionable recovery suggestion.
         suggestion: String,
     },
     /// The conversation exceeded the model's context window.
-    ContextOverflow { limit_tokens: u64 },
+    ContextOverflow {
+        /// Model context limit in tokens.
+        limit_tokens: u64,
+    },
     /// A tool execution failed.
-    ToolExecutionFailed { tool_name: String, message: String },
+    ToolExecutionFailed {
+        /// Name of the failed tool or tool stage.
+        tool_name: String,
+        /// Sanitized client-visible failure message.
+        message: String,
+    },
     /// The session has expired or is invalid.
-    SessionExpired { session_id: String },
+    SessionExpired {
+        /// Expired or invalid session identifier.
+        session_id: String,
+    },
     /// Rate limited by the provider.
-    RateLimited { retry_after_secs: Option<u64> },
+    RateLimited {
+        /// Optional retry hint in seconds.
+        retry_after_secs: Option<u64>,
+    },
 }
 
 impl fmt::Display for UserFacingError {
@@ -79,18 +88,36 @@ impl fmt::Display for UserFacingError {
     }
 }
 
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "planned user-facing error surface, not yet wired into API response layer"
-    )
-)]
+impl UserFacingError {
+    /// Stable machine-readable error code for HTTP and SSE clients.
+    #[must_use]
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::ProviderUnavailable { .. } => "provider_unavailable",
+            Self::ContextOverflow { .. } => "context_overflow",
+            Self::ToolExecutionFailed { .. } => "tool_execution_failed",
+            Self::SessionExpired { .. } => "session_expired",
+            Self::RateLimited { .. } => "rate_limited",
+        }
+    }
+
+    /// Retry hint for rate-limit errors.
+    #[must_use]
+    pub fn retry_after_secs(&self) -> Option<u64> {
+        match self {
+            Self::RateLimited {
+                retry_after_secs, ..
+            } => *retry_after_secs,
+            _ => None,
+        }
+    }
+}
+
 /// Convert a pipeline error into a user-facing error, if applicable.
 ///
 /// Returns `None` for internal errors that should not be shown to users.
 #[must_use]
-pub(crate) fn to_user_facing(error: &crate::error::Error) -> Option<UserFacingError> {
+pub fn to_user_facing(error: &crate::error::Error) -> Option<UserFacingError> {
     use hermeneus::error::Error as HError;
 
     use crate::error::Error;
@@ -122,6 +149,12 @@ pub(crate) fn to_user_facing(error: &crate::error::Error) -> Option<UserFacingEr
                 provider: "AI provider".to_owned(),
                 suggestion: "The provider is recovering from errors. Please try again shortly."
                     .to_owned(),
+            })
+        }
+        Error::PipelineStage { stage, message, .. } if stage == "execute" => {
+            Some(UserFacingError::ToolExecutionFailed {
+                tool_name: "tool execution".to_owned(),
+                message: message.clone(),
             })
         }
         _ => None,

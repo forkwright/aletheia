@@ -71,6 +71,7 @@ organon = { path = "../organon" }
 mneme = { path = "../mneme" }
 nous = { path = "../nous" }
 symbolon = { path = "../symbolon" }
+dianoia = { path = "../dianoia" }
 
 [dev-dependencies]
 hermeneus = { path = "../hermeneus", features = ["test-utils"] }

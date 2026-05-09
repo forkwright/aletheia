@@ -139,6 +139,17 @@ pub enum ApiError {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+
+    /// Client-visible error already classified by a lower-layer presentation contract.
+    #[snafu(display("user-facing error ({status} {code}): {message}"))]
+    UserFacing {
+        status: StatusCode,
+        code: String,
+        message: String,
+        retry_after_secs: Option<u64>,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
 }
 
 impl ApiError {
@@ -180,6 +191,16 @@ impl IntoResponse for ApiError {
                 )
             }
             Self::NotImplemented { .. } => (StatusCode::NOT_IMPLEMENTED, "not_implemented", None),
+            Self::UserFacing {
+                status,
+                code,
+                retry_after_secs,
+                ..
+            } => (
+                *status,
+                code.as_str(),
+                retry_after_secs.map(|secs| serde_json::json!({ "retry_after_secs": secs })),
+            ),
         };
 
         // WHY: retry_after_secs must be extracted before self is moved into client_message construction below.
@@ -188,13 +209,20 @@ impl IntoResponse for ApiError {
         } = &self
         {
             Some(*retry_after_secs)
+        } else if let Self::UserFacing {
+            retry_after_secs, ..
+        } = &self
+        {
+            *retry_after_secs
         } else {
             None
         };
 
         // WHY: 5xx errors log full details internally but return a generic message so SQL paths,
         // panic text, and provider details are never exposed to clients (#827, #846, #847).
-        let client_message = if status.is_server_error() {
+        let client_message = if let Self::UserFacing { message, .. } = &self {
+            message.clone()
+        } else if status.is_server_error() {
             tracing::error!(error = %self, "internal server error");
             "An internal error occurred".to_owned()
         } else {
@@ -381,117 +409,189 @@ impl_from_error!(hermeneus::error::Error, |err| {
     .build(),
 });
 
-impl_from_error!(nous::error::Error, |err| {
-    NousNotFound { nous_id, .. } => NousNotFoundSnafu { id: nous_id }.build(),
-    GuardRejected { reason, .. } => ForbiddenSnafu { message: reason }.build(),
-    PipelineTimeout {
-        stage,
-        timeout_secs,
-        ..
-    } => ServiceUnavailableSnafu {
-        message: format!("pipeline stage '{stage}' timed out after {timeout_secs}s"),
-    }
-    .build(),
-    // WHY: PipelineStage errors from execute with "unavailable" indicate the
-    // provider is Down (circuit breaker open). This is a transient condition:
-    // 503 tells the client the server is alive but the LLM is temporarily down.
-    PipelineStage { stage, message, .. } if stage == "execute" && message.contains("unavailable") => {
-        ServiceUnavailableSnafu { message }.build()
-    }
-    PipelineStage { ref stage, ref message, .. } => {
-        tracing::error!(error = %err, "pipeline stage error");
-        InternalSnafu {
-            message: format!("pipeline stage '{stage}' failed: {message}"),
+impl From<nous::error::Error> for ApiError {
+    fn from(err: nous::error::Error) -> Self {
+        if let Some(user_error) = nous::user_error::to_user_facing(&err) {
+            return user_facing_error_response(&user_error);
         }
-        .build()
+
+        map_nous_error(err)
     }
-    ServiceDegraded { nous_id, panic_count, .. } => ServiceUnavailableSnafu {
-        message: format!("agent '{nous_id}' is degraded after {panic_count} panics"),
-    }
-    .build(),
-    Llm { source, .. } => Self::from(source),
-    // WHY: transient failures (actor channels, recall, stores) map to 503
-    // so clients know the server is alive but temporarily unable to process.
-    ActorSend { .. } | ActorRecv { .. } => ServiceUnavailableSnafu {
-        message: format!("agent actor unavailable: {err}"),
-    }
-    .build(),
-    AskTimeout { nous_id, timeout_secs, .. } => ServiceUnavailableSnafu {
-        message: format!("cross-agent ask to '{nous_id}' timed out after {timeout_secs}s"),
-    }
-    .build(),
-    InboxFull { nous_id, .. } => ServiceUnavailableSnafu {
-        message: format!("agent '{nous_id}' is overloaded"),
-    }
-    .build(),
-    RecallEmbedding { .. } | RecallSearch { .. } => ServiceUnavailableSnafu {
-        message: format!("recall service unavailable: {err}"),
-    }
-    .build(),
-    Store { .. } => ServiceUnavailableSnafu {
-        message: format!("session store unavailable: {err}"),
-    }
-    .build(),
-    CompetenceStore { .. } | UncertaintyStore { .. } => ServiceUnavailableSnafu {
-        message: format!("store unavailable: {err}"),
-    }
-    .build(),
-    // WHY: permanent configuration/validation errors — cannot succeed on retry.
-    Config { message, .. } => InternalSnafu {
-        message: format!("configuration error: {message}"),
-    }
-    .build(),
-    WorkspaceValidation { nous_id, message, .. } => InternalSnafu {
-        message: format!("agent '{nous_id}' workspace invalid: {message}"),
-    }
-    .build(),
-    ContextAssembly { message, .. } => InternalSnafu {
-        message: format!("context assembly failed: {message}"),
-    }
-    .build(),
-    ContextAssemblyIo { file, .. } => InternalSnafu {
-        message: format!("context assembly failed: file '{file}' unreadable"),
-    }
-    .build(),
-    LoopDetected { iterations, pattern, .. } => InternalSnafu {
-        message: format!("loop detected after {iterations} iterations: {pattern}"),
-    }
-    .build(),
-    AskCycleDetected { chain, .. } => InternalSnafu {
-        message: format!("ask cycle detected: {chain}"),
-    }
-    .build(),
-    DeliveryFailed { nous_id, .. } => ServiceUnavailableSnafu {
-        message: format!("delivery to '{nous_id}' failed"),
-    }
-    .build(),
-    ReplyNotFound { .. } => InternalSnafu {
-        message: format!("reply channel not found: {err}"),
-    }
-    .build(),
-    MutexPoisoned { .. } => InternalSnafu {
-        message: format!("internal lock poisoned: {err}"),
-    }
-    .build(),
-    PipelinePanic { .. } => InternalSnafu {
-        message: "pipeline encountered an unexpected internal error".to_owned(),
-    }
-    .build(),
-    Distillation { .. } => {
-        tracing::error!(error = %err, "distillation failed");
-        InternalSnafu {
-            message: format!("distillation failed: {err}"),
+}
+
+fn map_nous_error(err: nous::error::Error) -> ApiError {
+    use nous::error::Error;
+    match err {
+        Error::NousNotFound { nous_id, .. } => NousNotFoundSnafu { id: nous_id }.build(),
+        Error::GuardRejected { reason, .. } => ForbiddenSnafu { message: reason }.build(),
+        Error::PipelineTimeout {
+            stage,
+            timeout_secs,
+            ..
+        } => ServiceUnavailableSnafu {
+            message: format!("pipeline stage '{stage}' timed out after {timeout_secs}s"),
         }
-        .build()
-    }
-    SelfAudit { .. } | RoleContract { .. } => {
-        tracing::error!(error = %err, "self-monitoring error");
-        InternalSnafu {
-            message: format!("self-monitoring error: {err}"),
+        .build(),
+        Error::PipelineStage { stage, message, .. } => {
+            tracing::error!(stage, message, "pipeline stage error");
+            InternalSnafu {
+                message: format!("pipeline stage '{stage}' failed: {message}"),
+            }
+            .build()
         }
-        .build()
+        Error::ServiceDegraded {
+            nous_id,
+            panic_count,
+            ..
+        } => ServiceUnavailableSnafu {
+            message: format!("agent '{nous_id}' is degraded after {panic_count} panics"),
+        }
+        .build(),
+        Error::Llm { source, .. } => ApiError::from(source),
+        other @ (Error::ActorSend { .. }
+        | Error::ActorRecv { .. }
+        | Error::AskTimeout { .. }
+        | Error::InboxFull { .. }
+        | Error::RecallEmbedding { .. }
+        | Error::RecallSearch { .. }
+        | Error::Store { .. }
+        | Error::CompetenceStore { .. }
+        | Error::UncertaintyStore { .. }
+        | Error::WorkingCheckpointStore { .. }
+        | Error::DeliveryFailed { .. }) => map_nous_service_error(other),
+        _ => map_nous_internal_error(err),
     }
-});
+}
+
+fn map_nous_service_error(err: nous::error::Error) -> ApiError {
+    use nous::error::Error;
+    match err {
+        Error::ActorSend { .. } | Error::ActorRecv { .. } => ServiceUnavailableSnafu {
+            message: "agent actor unavailable".to_owned(),
+        }
+        .build(),
+        Error::AskTimeout {
+            nous_id,
+            timeout_secs,
+            ..
+        } => ServiceUnavailableSnafu {
+            message: format!("cross-agent ask to '{nous_id}' timed out after {timeout_secs}s"),
+        }
+        .build(),
+        Error::InboxFull { nous_id, .. } => ServiceUnavailableSnafu {
+            message: format!("agent '{nous_id}' is overloaded"),
+        }
+        .build(),
+        Error::RecallEmbedding { .. } | Error::RecallSearch { .. } => ServiceUnavailableSnafu {
+            message: "recall service unavailable".to_owned(),
+        }
+        .build(),
+        Error::Store { .. } => ServiceUnavailableSnafu {
+            message: "session store unavailable".to_owned(),
+        }
+        .build(),
+        Error::CompetenceStore { .. }
+        | Error::UncertaintyStore { .. }
+        | Error::WorkingCheckpointStore { .. } => ServiceUnavailableSnafu {
+            message: "store unavailable".to_owned(),
+        }
+        .build(),
+        Error::DeliveryFailed { nous_id, .. } => ServiceUnavailableSnafu {
+            message: format!("delivery to '{nous_id}' failed"),
+        }
+        .build(),
+        other => map_nous_internal_error(other),
+    }
+}
+
+fn map_nous_internal_error(err: nous::error::Error) -> ApiError {
+    use nous::error::Error;
+    match err {
+        Error::Config { message, .. } => InternalSnafu {
+            message: format!("configuration error: {message}"),
+        }
+        .build(),
+        Error::WorkspaceValidation {
+            nous_id, message, ..
+        } => InternalSnafu {
+            message: format!("agent '{nous_id}' workspace invalid: {message}"),
+        }
+        .build(),
+        Error::ContextAssembly { message, .. } => InternalSnafu {
+            message: format!("context assembly failed: {message}"),
+        }
+        .build(),
+        Error::ContextAssemblyIo { file, .. } => InternalSnafu {
+            message: format!("context assembly failed: file '{file}' unreadable"),
+        }
+        .build(),
+        Error::LoopDetected {
+            iterations,
+            pattern,
+            ..
+        } => InternalSnafu {
+            message: format!("loop detected after {iterations} iterations: {pattern}"),
+        }
+        .build(),
+        Error::AskCycleDetected { chain, .. } => InternalSnafu {
+            message: format!("ask cycle detected: {chain}"),
+        }
+        .build(),
+        Error::ReplyNotFound { .. } => InternalSnafu {
+            message: "reply channel not found".to_owned(),
+        }
+        .build(),
+        Error::MutexPoisoned { .. } => InternalSnafu {
+            message: "internal lock poisoned".to_owned(),
+        }
+        .build(),
+        Error::PipelinePanic { .. } => InternalSnafu {
+            message: "pipeline encountered an unexpected internal error".to_owned(),
+        }
+        .build(),
+        Error::Distillation { .. } => {
+            tracing::error!(error = %err, "distillation failed");
+            InternalSnafu {
+                message: format!("distillation failed: {err}"),
+            }
+            .build()
+        }
+        Error::SelfAudit { .. } | Error::RoleContract { .. } => {
+            tracing::error!(error = %err, "self-monitoring error");
+            InternalSnafu {
+                message: format!("self-monitoring error: {err}"),
+            }
+            .build()
+        }
+        _ => {
+            tracing::error!(error = %err, "unclassified nous error variant");
+            InternalSnafu {
+                message: err.to_string(),
+            }
+            .build()
+        }
+    }
+}
+
+fn user_facing_error_response(error: &nous::user_error::UserFacingError) -> ApiError {
+    let status = match &error {
+        nous::user_error::UserFacingError::RateLimited { .. } => StatusCode::TOO_MANY_REQUESTS,
+        nous::user_error::UserFacingError::ContextOverflow { .. }
+        | nous::user_error::UserFacingError::ToolExecutionFailed { .. } => StatusCode::BAD_REQUEST,
+        nous::user_error::UserFacingError::SessionExpired { .. } => StatusCode::NOT_FOUND,
+        nous::user_error::UserFacingError::ProviderUnavailable { .. } => {
+            StatusCode::SERVICE_UNAVAILABLE
+        }
+        _ => StatusCode::INTERNAL_SERVER_ERROR,
+    };
+    ApiError::UserFacing {
+        status,
+        code: error.code().to_owned(),
+        message: error.to_string(),
+        retry_after_secs: error.retry_after_secs(),
+        location: snafu::location!(),
+    }
+}
 
 impl From<tokio::task::JoinError> for ApiError {
     fn from(err: tokio::task::JoinError) -> Self {
