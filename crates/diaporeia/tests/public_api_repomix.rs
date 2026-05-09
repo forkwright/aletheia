@@ -20,7 +20,6 @@ use tokio::sync::{Mutex as TokioMutex, RwLock};
 use tokio_util::sync::CancellationToken;
 use tower::ServiceExt;
 
-use diaporeia::auth::McpClaims;
 use diaporeia::error::{Error, Result as DiaporeiaResult};
 use diaporeia::server::DiaporeiaServer;
 use diaporeia::state::DiaporeiaState;

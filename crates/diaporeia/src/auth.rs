@@ -3,7 +3,7 @@
 //! Mirrors pylon's `Claims` extractor but operates as an Axum middleware layer
 //! so it can wrap the opaque `StreamableHttpService` (which does not use
 //! Axum extractors). When `auth_mode == "none"`, requests pass through without
-//! a token and receive anonymous claims via request extensions.
+//! a token.
 
 use std::sync::Arc;
 
@@ -13,47 +13,24 @@ use axum::middleware::Next;
 use tracing::warn;
 
 use koina::http::BEARER_PREFIX;
-use symbolon::types::Role;
 
 use crate::state::DiaporeiaState;
-
-/// Validated identity attached to request extensions after successful auth.
-///
-/// Parallel to `pylon::extract::Claims` but decoupled: diaporeia does not
-/// depend on pylon, and the two may diverge as per-tool RBAC is added.
-#[derive(Debug, Clone)]
-pub struct McpClaims {
-    /// Subject identifier (user or service principal).
-    pub sub: String,
-    /// Authorization role governing API access.
-    pub role: Role,
-    /// Optional nous scope: when set, restricts access to a single agent.
-    pub nous_id: Option<String>,
-}
 
 /// Axum middleware that validates Bearer JWT tokens on MCP requests.
 ///
 /// # Auth modes
 ///
-/// - `"none"`: injects anonymous `McpClaims` with the configured `none_role`.
+/// - `"none"`: permits anonymous requests and lets MCP handlers resolve
+///   `none_role` from shared config, defaulting to `Readonly` if malformed.
 /// - Any other value: requires a valid `Authorization: Bearer <token>` header;
 ///   returns 401 Unauthorized on missing/invalid tokens.
-///
-/// Validated claims are inserted into request extensions so downstream handlers
-/// can access them via `req.extensions().get::<McpClaims>()`.
 #[tracing::instrument(skip_all)]
 pub async fn mcp_auth(
     state: Arc<DiaporeiaState>,
-    mut req: Request<Body>,
+    req: Request<Body>,
     next: Next,
 ) -> Response<Body> {
     if state.auth_mode == "none" {
-        let role = state.none_role.parse::<Role>().unwrap_or(Role::Readonly);
-        req.extensions_mut().insert(McpClaims {
-            sub: "anonymous".to_owned(),
-            role,
-            nous_id: None,
-        });
         return next.run(req).await;
     }
 
@@ -78,14 +55,7 @@ pub async fn mcp_auth(
     };
 
     match jwt.validate(token) {
-        Ok(claims) => {
-            req.extensions_mut().insert(McpClaims {
-                sub: claims.sub,
-                role: claims.role,
-                nous_id: claims.nous_id,
-            });
-            next.run(req).await
-        }
+        Ok(_) => next.run(req).await,
         Err(_err) => {
             // SAFETY: logging rejection status, not the token value
             warn!("MCP request rejected: invalid Bearer token"); // kanon:ignore SECURITY/credential-logging -- logs rejection event, not the token
@@ -104,17 +74,4 @@ fn unauthorized() -> Response<Body> {
         .status(StatusCode::UNAUTHORIZED)
         .body(Body::empty())
         .expect("static 401 response must be valid")
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn mcp_claims_is_send_sync() {
-        const _: fn() = || {
-            fn assert<T: Send + Sync + Clone>() {}
-            assert::<McpClaims>();
-        };
-    }
 }

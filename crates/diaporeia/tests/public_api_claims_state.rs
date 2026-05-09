@@ -20,7 +20,6 @@ use tokio::sync::{Mutex as TokioMutex, RwLock};
 use tokio_util::sync::CancellationToken;
 use tower::ServiceExt;
 
-use diaporeia::auth::McpClaims;
 use diaporeia::error::{Error, Result as DiaporeiaResult};
 use diaporeia::server::DiaporeiaServer;
 use diaporeia::state::DiaporeiaState;
@@ -39,77 +38,7 @@ use taxis::oikos::Oikos;
 mod common;
 use common::{StateBuilder, issue_token};
 
-// Split: McpClaims + Error + DiaporeiaState + DiaporeiaServer construction.
-
-// -------------------------------------------------------------------
-// Section 1: McpClaims
-// -------------------------------------------------------------------
-
-#[test]
-fn mcp_claims_struct_fields_are_publicly_accessible() {
-    let claims = McpClaims {
-        sub: "alice".to_owned(),
-        role: Role::Operator,
-        nous_id: Some("syn".to_owned()),
-    };
-
-    assert_eq!(claims.sub, "alice");
-    assert_eq!(claims.role, Role::Operator);
-    assert_eq!(claims.nous_id.as_deref(), Some("syn"));
-}
-
-#[test]
-fn mcp_claims_allows_none_nous_id_for_unscoped_principals() {
-    let claims = McpClaims {
-        sub: "admin".to_owned(),
-        role: Role::Admin,
-        nous_id: None,
-    };
-
-    assert!(claims.nous_id.is_none());
-    assert_eq!(claims.role, Role::Admin);
-}
-
-#[test]
-fn mcp_claims_is_clone_debug_send_sync() {
-    // Compile-time verification of the trait bounds promised by the public type.
-    fn assert_send_sync<T: Send + Sync + Clone + std::fmt::Debug>() {}
-    assert_send_sync::<McpClaims>();
-
-    // Runtime verification: clone produces an equal, independently-owned value.
-    let original = McpClaims {
-        sub: "bob".to_owned(),
-        role: Role::Readonly,
-        nous_id: Some("charlie".to_owned()),
-    };
-    let cloned = original.clone();
-    assert_eq!(original.sub, cloned.sub);
-    assert_eq!(original.role, cloned.role);
-    assert_eq!(original.nous_id, cloned.nous_id);
-
-    // Debug formatting must surface the subject so tracing logs are useful.
-    let debug = format!("{original:?}");
-    assert!(
-        debug.contains("bob"),
-        "Debug output must contain subject: {debug}"
-    );
-}
-
-#[test]
-fn mcp_claims_supports_every_role_variant() {
-    // WHY: the RBAC hierarchy is Readonly < Agent < Operator < Admin.
-    // McpClaims must accept any variant because the middleware maps whatever
-    // the JWT carries directly into the struct. A regression that narrowed
-    // the role type would fail this test at compile time.
-    for role in [Role::Readonly, Role::Agent, Role::Operator, Role::Admin] {
-        let claims = McpClaims {
-            sub: format!("subject-{role}"),
-            role,
-            nous_id: None,
-        };
-        assert_eq!(claims.role, role);
-    }
-}
+// Split: Error + DiaporeiaState + DiaporeiaServer construction.
 
 // -------------------------------------------------------------------
 // Section 2: Error type
