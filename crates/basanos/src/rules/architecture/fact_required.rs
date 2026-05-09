@@ -9,9 +9,9 @@
 //! For each file scanned:
 //!
 //! 1. If the file is `src/lib.rs`, check whether an `ArchitectureFact` JSON
-//!    file exists for that crate (id prefix: `aletheia.<crate-name>.*`).
+//!    file exists for that crate (id prefix: `<project-prefix>.<crate-name>.*`).
 //! 2. If the file contains a `pub mod <name>` declaration, check whether a
-//!    fact with id `aletheia.<crate>.<module>` exists.
+//!    fact with id `<project-prefix>.<crate>.<module>` exists.
 //!
 //! When no fact store is present (fresh install), the rule emits no violations
 //! — absence of the store is not itself a violation; the first PR that lands
@@ -29,7 +29,7 @@
 //! The file-level heuristic is acceptable for v1 per the acceptance criteria.
 
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use snafu::ResultExt;
 
@@ -40,7 +40,55 @@ use crate::rules::{Rule, Violation};
 ///
 /// Scan crate source files for architectural seams (lib.rs, pub mod
 /// declarations) and warn when no architecture fact is present for them.
-pub struct FactRequiredRule;
+pub struct FactRequiredRule {
+    config: FactRequiredConfig,
+}
+
+/// Configuration for [`FactRequiredRule`].
+#[derive(Debug, Clone)]
+pub struct FactRequiredConfig {
+    /// Whether the policy is active. Defaults to `true`.
+    pub enabled: bool,
+    /// Directory containing flat JSON architecture facts.
+    pub facts_dir: PathBuf,
+    /// Prefix used when deriving expected fact IDs.
+    pub project_prefix: String,
+}
+
+impl FactRequiredConfig {
+    fn fact_prefix(&self, crate_nm: &str) -> String {
+        format!("{}.{crate_nm}.", self.project_prefix)
+    }
+
+    fn module_fact_id(&self, crate_nm: &str, module_name: &str) -> String {
+        format!("{}.{crate_nm}.{module_name}", self.project_prefix)
+    }
+}
+
+impl Default for FactRequiredConfig {
+    fn default() -> Self {
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_owned());
+        Self {
+            enabled: true,
+            facts_dir: PathBuf::from(home).join("aletheia/instance/facts"),
+            project_prefix: "aletheia".to_owned(),
+        }
+    }
+}
+
+impl FactRequiredRule {
+    /// Create a rule with explicit configuration.
+    #[must_use]
+    pub fn with_config(config: FactRequiredConfig) -> Self {
+        Self { config }
+    }
+}
+
+impl Default for FactRequiredRule {
+    fn default() -> Self {
+        Self::with_config(FactRequiredConfig::default())
+    }
+}
 
 /// Rule severity label — Warn for v1.
 const SEVERITY: &str = "warn";
@@ -54,8 +102,9 @@ impl Rule for FactRequiredRule {
         let root = Path::new(project_root);
         let mut violations = Vec::new();
 
-        // Resolve the fact store directory: ALETHEIA_FACTS_DIR or default.
-        let facts_dir = fact_store_dir();
+        if !self.config.enabled {
+            return Ok(violations);
+        }
 
         // Walk crates/ looking for Rust crate roots.
         let crates_dir = root.join("crates");
@@ -75,22 +124,11 @@ impl Rule for FactRequiredRule {
             }
             let lib_rs = crate_path.join("src").join("lib.rs");
             if lib_rs.is_file() {
-                check_lib_rs(&lib_rs, &crate_path, &facts_dir, &mut violations)?;
+                check_lib_rs(&lib_rs, &crate_path, &self.config, &mut violations)?;
             }
         }
 
         Ok(violations)
-    }
-}
-
-/// Resolve the fact store directory path.
-fn fact_store_dir() -> std::path::PathBuf {
-    match std::env::var("ALETHEIA_FACTS_DIR") {
-        Ok(d) if !d.is_empty() => std::path::PathBuf::from(d),
-        _ => {
-            let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_owned());
-            std::path::PathBuf::from(home).join("aletheia/instance/facts")
-        }
     }
 }
 
@@ -105,17 +143,17 @@ fn crate_name(crate_path: &Path) -> String {
 
 /// Check `src/lib.rs` for missing architecture facts.
 ///
-/// - Checks for a crate-level fact: any `aletheia.<crate_name>.*` fact file.
+/// - Checks for a crate-level fact: any `<project>.<crate_name>.*` fact file.
 /// - Checks each `pub mod <name>` declaration for a module-level fact.
 fn check_lib_rs(
     lib_rs: &Path,
     crate_path: &Path,
-    facts_dir: &Path,
+    config: &FactRequiredConfig,
     violations: &mut Vec<Violation>,
 ) -> Result<()> {
     // If the fact store directory does not exist, skip — store is not yet
     // initialised for this installation.
-    if !facts_dir.is_dir() {
+    if !config.facts_dir.is_dir() {
         return Ok(());
     }
 
@@ -124,9 +162,8 @@ fn check_lib_rs(
         path: lib_rs.to_path_buf(),
     })?;
 
-    // Check crate-level fact existence (any file matching `aletheia.<crate_nm>.*`).
-    let crate_prefix = format!("aletheia.{crate_nm}.");
-    let has_crate_fact = fact_exists_with_prefix(facts_dir, &crate_prefix);
+    let crate_prefix = config.fact_prefix(&crate_nm);
+    let has_crate_fact = fact_exists_with_prefix(&config.facts_dir, &crate_prefix);
 
     if !has_crate_fact {
         violations.push(Violation {
@@ -135,9 +172,9 @@ fn check_lib_rs(
             line: 1,
             message: format!(
                 "[{SEVERITY}] crate '{crate_nm}' has no architecture fact (expected id prefix \
-                 'aletheia.{crate_nm}.*' in {facts_dir}). \
+                 '{crate_prefix}*' in {facts_dir}). \
                  Add a fact via the `architecture_fact` MCP tool.",
-                facts_dir = facts_dir.display(),
+                facts_dir = config.facts_dir.display(),
             ),
         });
     }
@@ -146,15 +183,15 @@ fn check_lib_rs(
     for (idx, line) in content.lines().enumerate() {
         let trimmed = line.trim();
         if let Some(module_name) = extract_pub_mod(trimmed) {
-            let fact_id = format!("aletheia.{crate_nm}.{module_name}");
-            if !fact_file_exists(facts_dir, &fact_id) {
+            let fact_id = config.module_fact_id(&crate_nm, module_name);
+            if !fact_file_exists(&config.facts_dir, &fact_id) {
                 violations.push(Violation {
                     rule: "ARCHITECTURE/fact-required".to_owned(),
                     path: lib_rs.display().to_string(),
                     line: idx + 1,
                     message: format!(
                         "[{SEVERITY}] public module '{module_name}' in crate '{crate_nm}' has no \
-                         architecture fact (expected id 'aletheia.{crate_nm}.{module_name}'). \
+                         architecture fact (expected id '{fact_id}'). \
                          Add a fact via the `architecture_fact` MCP tool.",
                     ),
                 });
@@ -263,14 +300,10 @@ mod tests {
         fs::create_dir_all(crate_dir.join("src")).expect("mkdir");
         fs::write(crate_dir.join("src").join("lib.rs"), b"//! eidos lib\n").expect("write lib.rs");
 
-        // WHY: set_var is unsafe in Rust 2024; tests are single-threaded within
-        // this module, so the env mutation is safe here.
-        #[expect(unsafe_code, reason = "test-only env mutation; tests run sequentially")]
-        // SAFETY: single-threaded test context; no concurrent env readers.
-        unsafe {
-            std::env::set_var("ALETHEIA_FACTS_DIR", facts.path());
-        };
-        let rule = FactRequiredRule;
+        let rule = FactRequiredRule::with_config(FactRequiredConfig {
+            facts_dir: facts.path().to_path_buf(),
+            ..FactRequiredConfig::default()
+        });
         let violations = rule
             .check(project.path().to_str().expect("valid path"))
             .expect("check");
@@ -311,12 +344,10 @@ mod tests {
         )
         .expect("write fact");
 
-        #[expect(unsafe_code, reason = "test-only env mutation; tests run sequentially")]
-        // SAFETY: single-threaded test context; no concurrent env readers.
-        unsafe {
-            std::env::set_var("ALETHEIA_FACTS_DIR", facts.path());
-        };
-        let rule = FactRequiredRule;
+        let rule = FactRequiredRule::with_config(FactRequiredConfig {
+            facts_dir: facts.path().to_path_buf(),
+            ..FactRequiredConfig::default()
+        });
         let violations = rule
             .check(project.path().to_str().expect("valid path"))
             .expect("check");
@@ -348,12 +379,10 @@ mod tests {
         )
         .expect("write crate fact");
 
-        #[expect(unsafe_code, reason = "test-only env mutation; tests run sequentially")]
-        // SAFETY: single-threaded test context; no concurrent env readers.
-        unsafe {
-            std::env::set_var("ALETHEIA_FACTS_DIR", facts.path());
-        };
-        let rule = FactRequiredRule;
+        let rule = FactRequiredRule::with_config(FactRequiredConfig {
+            facts_dir: facts.path().to_path_buf(),
+            ..FactRequiredConfig::default()
+        });
         let violations = rule
             .check(project.path().to_str().expect("valid path"))
             .expect("check");
@@ -361,6 +390,53 @@ mod tests {
         assert!(
             violations.iter().any(|v| v.message.contains("knowledge")),
             "expected violation for pub mod knowledge; got: {violations:?}"
+        );
+    }
+
+    #[test]
+    fn rule_can_be_disabled() {
+        let project = tempfile::tempdir().expect("tempdir");
+        let facts = tempfile::tempdir().expect("facts tempdir");
+        let crate_dir = project.path().join("crates").join("eidos");
+        fs::create_dir_all(crate_dir.join("src")).expect("mkdir");
+        fs::write(crate_dir.join("src").join("lib.rs"), b"//! eidos lib\n").expect("write lib.rs");
+
+        let rule = FactRequiredRule::with_config(FactRequiredConfig {
+            enabled: false,
+            facts_dir: facts.path().to_path_buf(),
+            ..FactRequiredConfig::default()
+        });
+        let violations = rule
+            .check(project.path().to_str().expect("valid path"))
+            .expect("check");
+        assert!(violations.is_empty(), "disabled policy should not emit");
+    }
+
+    #[test]
+    fn rule_uses_configured_project_prefix() {
+        let project = tempfile::tempdir().expect("tempdir");
+        let facts = tempfile::tempdir().expect("facts tempdir");
+        let crate_dir = project.path().join("crates").join("basanos");
+        fs::create_dir_all(crate_dir.join("src")).expect("mkdir");
+        fs::write(crate_dir.join("src").join("lib.rs"), b"//! basanos lib\n")
+            .expect("write lib.rs");
+        fs::write(
+            facts.path().join("kanon.basanos.architecture.json"),
+            b"{\"id\":\"kanon.basanos.architecture\"}",
+        )
+        .expect("write fact");
+
+        let rule = FactRequiredRule::with_config(FactRequiredConfig {
+            facts_dir: facts.path().to_path_buf(),
+            project_prefix: "kanon".to_owned(),
+            ..FactRequiredConfig::default()
+        });
+        let violations = rule
+            .check(project.path().to_str().expect("valid path"))
+            .expect("check");
+        assert!(
+            violations.is_empty(),
+            "configured prefix should satisfy facts; got: {violations:?}"
         );
     }
 }

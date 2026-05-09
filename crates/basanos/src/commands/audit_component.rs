@@ -136,12 +136,7 @@ fn check_generic_vs_specific(crate_path: &Path) -> AuditCheck {
                 total_lines += 1;
                 let trimmed = line.trim();
 
-                // Count boilerplate patterns: generic error handling, Result wrapping.
-                if trimmed.contains("Result<")
-                    || trimmed.contains(".context(")
-                    || trimmed.contains("snafu::")
-                    || trimmed.contains("WithContext")
-                {
+                if is_generic_boilerplate_line(trimmed) {
                     boilerplate_count += 1;
                 }
             }
@@ -355,11 +350,10 @@ fn check_component_count(crate_path: &Path) -> AuditCheck {
          {pub_impl_count} pub impls (total: {total_components})"
     );
 
-    // Threshold heuristic: 20+ components is reasonable for a crate.
-    let result = if total_components >= 20 {
-        CheckResult::Pass
+    let result = if total_components == 0 {
+        CheckResult::NeedsHuman
     } else {
-        CheckResult::Fail
+        CheckResult::Pass
     };
 
     AuditCheck {
@@ -383,16 +377,13 @@ fn check_dependencies(crate_path: &Path) -> AuditCheck {
     // Parse Cargo.toml to count dependencies.
     match fs::read_to_string(&cargo_toml) {
         Ok(content) => {
-            let dep_count = content
-                .lines()
-                .filter(|line| {
-                    let trimmed = line.trim();
-                    trimmed.ends_with(" = { workspace = true }")
-                        || trimmed.ends_with(" = { version = ")
-                        || (trimmed.ends_with(" = { workspace = true }\"")
-                            && !trimmed.starts_with('#'))
-                })
-                .count();
+            let Some(dep_count) = dependency_count(&content) else {
+                return AuditCheck {
+                    id: "dependencies".into(),
+                    result: CheckResult::NeedsHuman,
+                    evidence: "Could not parse Cargo.toml".into(),
+                };
+            };
 
             let evidence = if dep_count < 5 {
                 format!("{dep_count} dependencies (lean, good for reusability)")
@@ -420,6 +411,25 @@ fn check_dependencies(crate_path: &Path) -> AuditCheck {
             evidence: "Could not read Cargo.toml".into(),
         },
     }
+}
+
+fn is_generic_boilerplate_line(trimmed: &str) -> bool {
+    trimmed.contains("Box<dyn ")
+        || trimmed.contains("Arc<dyn ")
+        || trimmed.contains("Arc<Mutex<")
+        || trimmed.contains("HashMap<String, serde_json::Value>")
+}
+
+fn dependency_count(content: &str) -> Option<usize> {
+    let Ok(value) = toml::from_str::<toml::Value>(content) else {
+        return None;
+    };
+    Some(
+        value
+            .get("dependencies")
+            .and_then(toml::Value::as_table)
+            .map_or(0, toml::map::Map::len),
+    )
 }
 
 /// Check 6: Indirection layers — STUB for v1.
@@ -493,6 +503,7 @@ fn walkdir_recursively(path: &Path) -> Vec<std::io::Result<fs::DirEntry>> {
 }
 
 #[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
 
@@ -569,6 +580,45 @@ mod tests {
         assert_eq!(CheckResult::Pass.to_string(), "PASS");
         assert_eq!(CheckResult::Fail.to_string(), "FAIL");
         assert_eq!(CheckResult::NeedsHuman.to_string(), "NEEDS_HUMAN");
+    }
+
+    #[test]
+    fn snafu_error_handling_is_not_counted_as_boilerplate() {
+        assert!(!is_generic_boilerplate_line(
+            "type Result<T> = std::result::Result<T, Error>;"
+        ));
+        assert!(!is_generic_boilerplate_line(
+            "read().context(ReadFileSnafu)?;"
+        ));
+        assert!(!is_generic_boilerplate_line("use snafu::ResultExt;"));
+        assert!(!is_generic_boilerplate_line("use snafu::WithContext;"));
+    }
+
+    #[test]
+    fn component_count_accepts_small_focused_crates() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let crate_dir = dir.path().join("small");
+        std::fs::create_dir_all(crate_dir.join("src")).expect("mkdir");
+        std::fs::write(
+            crate_dir.join("src").join("lib.rs"),
+            "pub struct Focused;\n",
+        )
+        .expect("write");
+
+        let check = check_component_count(&crate_dir);
+        assert_eq!(check.result, CheckResult::Pass);
+    }
+
+    #[test]
+    fn dependency_count_parses_valid_cargo_toml_forms() {
+        let content = r#"
+[dependencies]
+serde = "1"
+tokio = { workspace = true, features = ["rt"] }
+regex = { version = "1", default-features = false }
+"#;
+
+        assert_eq!(dependency_count(content), Some(3));
     }
 
     #[test]

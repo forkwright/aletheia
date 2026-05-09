@@ -261,6 +261,7 @@ fn sovereignty_filter_cloud_drops_internal_and_confidential() {
         result.results_injected, 1,
         "only Public fact should be injected on Cloud target"
     );
+    assert_eq!(result.filtered_facts.len(), 2);
 }
 
 #[test]
@@ -296,6 +297,7 @@ fn sovereignty_filter_local_hosted_drops_only_confidential() {
     assert!(section.contains("internal B"));
     assert!(!section.contains("confidential C"));
     assert_eq!(result.results_injected, 2);
+    assert_eq!(result.filtered_facts.len(), 1);
 }
 
 #[test]
@@ -329,6 +331,7 @@ fn sovereignty_filter_embedded_keeps_all() {
     assert!(section.contains("internal B"));
     assert!(section.contains("confidential C"));
     assert_eq!(result.results_injected, 3);
+    assert!(result.filtered_facts.is_empty());
 }
 
 #[test]
@@ -561,5 +564,14 @@ fn sovereignty_filter_reports_filtered_count_in_result() {
     assert_eq!(
         result.results_injected, 1,
         "only Public fact survives Cloud sovereignty filter"
+    );
+    assert_eq!(
+        result
+            .filtered_facts
+            .iter()
+            .map(|fact| fact.id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["f-int-42", "f-sec"],
+        "filtered fact IDs should be preserved for prompt audit"
     );
 }

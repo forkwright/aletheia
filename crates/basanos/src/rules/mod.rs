@@ -43,7 +43,7 @@ pub fn all_rules() -> Vec<Box<dyn Rule>> {
         Box::new(api_consistency::FieldCasingRule),
         Box::new(api_consistency::ErrorVariantNamingRule),
         Box::new(planning::MissingFalsifierRule),
-        Box::new(architecture::fact_required::FactRequiredRule),
+        Box::new(architecture::fact_required::FactRequiredRule::default()),
         Box::new(writing::PurposeInTechnicalDocRule),
         Box::new(vocabulary::HubWordDisciplineRule::new()),
         Box::new(writing::ReferenceMustCompressRule),

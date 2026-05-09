@@ -538,7 +538,7 @@ fn build_structural_summary(messages: &[PipelineMessage], config: &CompactConfig
     summary
 }
 
-/// Guard stage: check rate limits, loop detection, safety.
+/// Guard stage: enforce the per-session token cap.
 pub(super) fn run_guard_stage(
     session: &SessionState,
     config: &NousConfig,
