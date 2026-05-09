@@ -1,5 +1,6 @@
 //! Instance maintenance services: trace rotation, drift detection, DB monitoring, retention.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use koina::system::{Environment, RealSystem};
@@ -55,8 +56,14 @@ impl Default for ProposeRulesConfig {
     }
 }
 
+/// Records backup observability metrics from the runtime crate.
+pub trait BackupMetricsRecorder: std::fmt::Debug + Send + Sync {
+    /// Record one backup attempt duration.
+    fn record_backup_duration(&self, duration_secs: f64, success: bool);
+}
+
 /// Aggregated maintenance configuration for all daemon tasks.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct MaintenanceConfig {
     /// Trace file rotation and compression settings.
     pub trace_rotation: TraceRotationConfig,
@@ -70,6 +77,10 @@ pub struct MaintenanceConfig {
     pub knowledge_maintenance: KnowledgeMaintenanceConfig,
     /// Fjall knowledge store backup settings.
     pub fjall_backup: FjallBackupConfig,
+    /// Runtime metrics hook for backup freshness alerting.
+    pub backup_metrics: Option<Arc<dyn BackupMetricsRecorder>>,
+    /// Directory where prosoche self-audit reports are written.
+    pub prosoche_audit_dir: PathBuf,
     /// Cron task configuration (evolution, reflection, graph cleanup).
     pub cron: crate::cron::CronConfig,
     /// Rule proposal generation from observed patterns.
@@ -78,4 +89,27 @@ pub struct MaintenanceConfig {
     pub prompt_audit: PromptAuditRetentionConfig,
     /// Runtime handle for refreshing empirical routing after-action stats.
     pub after_action_store: Option<Arc<aletheia_routing::AfterActionStore>>,
+}
+
+impl Default for MaintenanceConfig {
+    fn default() -> Self {
+        let root = RealSystem.var("ALETHEIA_ROOT").map_or_else(
+            || std::path::PathBuf::from("instance"),
+            std::path::PathBuf::from,
+        );
+        Self {
+            trace_rotation: TraceRotationConfig::default(),
+            drift_detection: DriftDetectionConfig::default(),
+            db_monitoring: DbMonitoringConfig::default(),
+            retention: RetentionConfig::default(),
+            knowledge_maintenance: KnowledgeMaintenanceConfig::default(),
+            fjall_backup: FjallBackupConfig::default(),
+            backup_metrics: None,
+            prosoche_audit_dir: root.join("data").join("prosoche-audits"),
+            cron: crate::cron::CronConfig::default(),
+            propose_rules: ProposeRulesConfig::default(),
+            prompt_audit: PromptAuditRetentionConfig::default(),
+            after_action_store: None,
+        }
+    }
 }

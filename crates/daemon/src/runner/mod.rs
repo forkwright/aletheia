@@ -203,14 +203,7 @@ impl TaskRunner {
     /// State is loaded on the first call to [`Self::run`] (before catch-up),
     /// and saved after every task completion or failure.
     #[must_use]
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "called by runner_tests::with_state_store_persists_across_restarts; production wiring lives in the binary crate"
-        )
-    )]
-    pub(crate) fn with_state_store(mut self, store: crate::state::TaskStateStore) -> Self {
+    pub fn with_state_store(mut self, store: crate::state::TaskStateStore) -> Self {
         self.state_store = Some(store);
         self
     }

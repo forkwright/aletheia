@@ -25,17 +25,10 @@ const PARTITION: &str = "ops:tasks";
 ///
 /// One keyspace directory holds state for all tasks in a runner.
 /// Uses `SingleWriterTxDatabase` for durability without WAL complexity.
-pub(crate) struct TaskStateStore {
+pub struct TaskStateStore {
     db: SingleWriterTxDatabase,
 }
 
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "open + methods are called from #[cfg(test)] state::tests and runner_tests; production wiring lives in the binary crate"
-    )
-)]
 impl TaskStateStore {
     /// Open (or create) the task state store at `path`.
     ///
@@ -45,7 +38,7 @@ impl TaskStateStore {
     ///
     /// Returns `Storage` if the fjall keyspace cannot be opened or the
     /// `ops:tasks` partition cannot be initialised.
-    pub(crate) fn open(path: &Path) -> Result<Self> {
+    pub fn open(path: &Path) -> Result<Self> {
         let fdb = koina::fjall::FjallDb::open(path, &[PARTITION]).map_err(|e| {
             error::StorageSnafu {
                 message: e.to_string(),
@@ -62,7 +55,7 @@ impl TaskStateStore {
     ///
     /// Returns `Storage` on fjall I/O failure or `StoredJson` on JSON decode
     /// failure.
-    pub(crate) fn load_all(&self) -> Result<Vec<TaskState>> {
+    pub fn load_all(&self) -> Result<Vec<TaskState>> {
         let partition = self
             .db
             .keyspace(PARTITION, KeyspaceCreateOptions::default)
@@ -100,7 +93,7 @@ impl TaskStateStore {
     ///
     /// Returns `StoredJson` on serialization failure or `Storage` on write
     /// failure.
-    pub(crate) fn save(&self, state: &TaskState) -> Result<()> {
+    pub fn save(&self, state: &TaskState) -> Result<()> {
         let partition = self
             .db
             .keyspace(PARTITION, KeyspaceCreateOptions::default)

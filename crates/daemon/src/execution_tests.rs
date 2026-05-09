@@ -399,37 +399,67 @@ async fn prosoche_bridge_error_returns_failure() {
 }
 
 #[tokio::test]
-async fn self_audit_no_bridge_returns_unconfigured() {
-    let result = execute_builtin(&BuiltinTask::SelfAudit, "test-nous", None, None, None, None)
-        .await
-        .expect("should not error");
-    assert!(!result.success);
-    assert!(
-        result
-            .output
-            .as_deref()
-            .unwrap_or_default()
-            .contains("no bridge configured")
-    );
-}
-
-#[tokio::test]
-async fn self_audit_with_bridge_dispatches() {
-    let bridge = TestBridge::ok("audit-ok");
+async fn self_audit_no_bridge_runs_prosoche_runner() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let maintenance = crate::maintenance::MaintenanceConfig {
+        prosoche_audit_dir: tmp.path().join("audits"),
+        ..crate::maintenance::MaintenanceConfig::default()
+    };
     let result = execute_builtin(
         &BuiltinTask::SelfAudit,
         "test-nous",
-        Some(&bridge),
         None,
+        Some(&maintenance),
         None,
         None,
     )
     .await
     .expect("should not error");
     assert!(result.success);
-    assert_eq!(result.output.as_deref(), Some("dispatched"));
+    assert!(
+        result
+            .output
+            .as_deref()
+            .unwrap_or_default()
+            .contains("prosoche self-audit complete")
+    );
+    assert!(
+        std::fs::read_dir(tmp.path().join("audits"))
+            .expect("audit dir")
+            .next()
+            .is_some(),
+        "self-audit should persist a report"
+    );
+}
+
+#[tokio::test]
+async fn self_audit_with_bridge_runs_local_runner() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let maintenance = crate::maintenance::MaintenanceConfig {
+        prosoche_audit_dir: tmp.path().join("audits"),
+        ..crate::maintenance::MaintenanceConfig::default()
+    };
+    let bridge = TestBridge::ok("audit-ok");
+    let result = execute_builtin(
+        &BuiltinTask::SelfAudit,
+        "test-nous",
+        Some(&bridge),
+        Some(&maintenance),
+        None,
+        None,
+    )
+    .await
+    .expect("should not error");
+    assert!(result.success);
+    assert!(
+        result
+            .output
+            .as_deref()
+            .unwrap_or_default()
+            .contains("prosoche self-audit complete")
+    );
     let calls = bridge.calls.lock().expect("not poisoned");
-    assert_eq!(calls[0].1, "daemon:self-audit");
+    assert!(calls.is_empty());
 }
 
 #[tokio::test]
