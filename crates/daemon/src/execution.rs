@@ -1,7 +1,8 @@
 //! Task action execution: commands and builtins.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Instant;
 
 use koina::system::{Environment, RealSystem};
 use snafu::ResultExt;
@@ -10,11 +11,12 @@ use crate::bridge::DaemonBridge;
 use crate::cron::{evolution, graph_cleanup, reflection};
 use crate::error::{self, Result};
 use crate::maintenance::{
-    DbMonitor, DriftDetector, KnowledgeMaintenanceExecutor, MaintenanceConfig, RetentionExecutor,
-    TraceRotator,
+    DbMonitor, DriftDetector, FjallBackupConfig, KnowledgeMaintenanceExecutor, MaintenanceConfig,
+    RetentionExecutor, TraceRotator,
 };
 use crate::probe::{ProbeAuditSummary, ProbeSet, build_probe_audit_prompt};
 use crate::prosoche::ProsocheCheck;
+use crate::prosoche_audit::{ProsocheAuditRunner, ProsocheState};
 use crate::runner::ExecutionResult;
 use crate::schedule::{BuiltinTask, TaskAction};
 
@@ -82,6 +84,13 @@ async fn execute_command(cmd: &str) -> Result<ExecutionResult> {
         }
         .fail()
     }
+}
+
+fn default_prosoche_audit_dir() -> PathBuf {
+    let root = RealSystem
+        .var("ALETHEIA_ROOT")
+        .map_or_else(|| PathBuf::from("instance"), PathBuf::from);
+    root.join("data").join("prosoche-audits")
 }
 
 #[cfg(test)]
@@ -318,41 +327,23 @@ pub(crate) async fn execute_builtin_with_behavior(
             })
         }
         BuiltinTask::SelfAudit => {
-            if let Some(bridge) = bridge {
-                let prompt = "Run self-audit: execute all registered prosoche checks.";
-                match bridge
-                    .send_prompt(nous_id, "daemon:self-audit", prompt)
-                    .await
-                {
-                    Ok(result) => {
-                        tracing::info!(
-                            nous_id = %nous_id,
-                            success = result.success,
-                            "self-audit dispatch succeeded"
-                        );
-                        Ok(ExecutionResult {
-                            success: true,
-                            output: Some("dispatched".to_owned()),
-                        })
-                    }
-                    Err(e) => {
-                        tracing::warn!(
-                            nous_id = %nous_id,
-                            error = %e,
-                            "self-audit dispatch failed"
-                        );
-                        Ok(ExecutionResult {
-                            success: false,
-                            output: Some(format!("dispatch failed: {e}")),
-                        })
-                    }
-                }
-            } else {
-                Ok(ExecutionResult {
-                    success: false,
-                    output: Some("no bridge configured".to_owned()),
-                })
-            }
+            let audit_dir = maintenance
+                .map_or_else(default_prosoche_audit_dir, |m| m.prosoche_audit_dir.clone());
+            let runner = ProsocheAuditRunner::default_checks(audit_dir);
+            let state = ProsocheState {
+                nous_id: nous_id.to_owned(),
+                checked_at: jiff::Timestamp::now().to_string(),
+                ..ProsocheState::default()
+            };
+            let report = runner.run_audit(&state).await;
+            Ok(ExecutionResult {
+                success: true,
+                output: Some(format!(
+                    "prosoche self-audit complete: {} findings across {} checks",
+                    report.findings.len(),
+                    report.check_summary.len()
+                )),
+            })
         }
         BuiltinTask::ProbeAudit => execute_probe_audit(nous_id, bridge).await,
         BuiltinTask::EvolutionSearch => evolution::execute_evolution(nous_id, bridge).await,
@@ -421,17 +412,35 @@ pub(crate) async fn execute_builtin_with_behavior(
             })
         }
         BuiltinTask::FjallBackup => {
-            let config = maintenance
-                .map(|m| m.fjall_backup.clone())
-                .unwrap_or_default();
-            let report = tokio::task::spawn_blocking(move || {
+            let config =
+                maintenance.map_or_else(FjallBackupConfig::default, |m| m.fjall_backup.clone());
+            let backup_metrics = maintenance.and_then(|m| m.backup_metrics.clone());
+            let started = Instant::now();
+            let backup_result = tokio::task::spawn_blocking(move || {
                 let _span = tracing::info_span!("fjall_backup").entered();
                 crate::maintenance::FjallBackup::new(config).create_backup()
             })
             .await
             .context(error::BlockingJoinSnafu {
                 context: "fjall backup",
-            })??;
+            })?;
+            let duration_secs = started.elapsed().as_secs_f64();
+            let report = match backup_result {
+                Ok(report) => {
+                    if report.backup_path.is_some()
+                        && let Some(metrics) = backup_metrics.as_ref()
+                    {
+                        metrics.record_backup_duration(duration_secs, true);
+                    }
+                    report
+                }
+                Err(e) => {
+                    if let Some(metrics) = backup_metrics.as_ref() {
+                        metrics.record_backup_duration(duration_secs, false);
+                    }
+                    return Err(e);
+                }
+            };
 
             tracing::info!(
                 files = report.files_copied,

@@ -231,6 +231,8 @@ pub(crate) fn build_config(
             interval_hours: settings.backup.backup_interval_hours,
             retention_count: settings.backup.backup_retention_count,
         },
+        backup_metrics: None,
+        prosoche_audit_dir: oikos.data().join("prosoche-audits"),
         propose_rules: ProposeRulesConfig::default(),
         prompt_audit: PromptAuditRetentionConfig {
             enabled: prompt_audit.enabled,

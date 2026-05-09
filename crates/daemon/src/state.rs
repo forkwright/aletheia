@@ -26,7 +26,7 @@ pub struct TaskState {
 }
 
 mod fjall_store;
-pub(crate) use fjall_store::TaskStateStore;
+pub use fjall_store::TaskStateStore;
 
 // -- Workspace config and locking (shared across backends) -------------------
 

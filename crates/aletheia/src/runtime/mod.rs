@@ -644,17 +644,24 @@ impl RuntimeBuilder {
             info!(count = nous_manager.count(), "nous actors spawned");
         }
 
+        let mut maintenance_config = maintenance::build_config(
+            &self.oikos,
+            &self.config.maintenance,
+            &self.config.prompt_audit,
+        );
+        maintenance_config.backup_metrics = Some(Arc::new(RuntimeBackupMetricsRecorder));
+        let task_state_root = self.oikos.data().join("daemon-task-state");
+
         if self.daemons {
             // System maintenance daemon
-            let maintenance_config = maintenance::build_config(
-                &self.oikos,
-                &self.config.maintenance,
-                &self.config.prompt_audit,
-            );
             let daemon_token = shutdown_token.child_token();
+            let system_state_store =
+                oikonomos::state::TaskStateStore::open(&task_state_root.join("system"))
+                    .with_whatever_context(|_| "failed to open system daemon task-state store")?;
             let mut daemon_runner = TaskRunner::new("system", daemon_token)
                 .with_daemon_behavior(self.config.daemon_behavior.clone())
-                .with_maintenance(maintenance_config);
+                .with_state_store(system_state_store)
+                .with_maintenance(maintenance_config.clone());
             let retention_executor = Arc::new(
                 crate::session_retention::SessionRetentionAdapter::new(Arc::clone(&session_store)),
             );
@@ -734,7 +741,19 @@ impl RuntimeBuilder {
                     agent_token,
                     daemon_bridge.clone(),
                 )
-                .with_daemon_behavior(self.config.daemon_behavior.clone());
+                .with_daemon_behavior(self.config.daemon_behavior.clone())
+                .with_state_store(
+                    oikonomos::state::TaskStateStore::open(
+                        &task_state_root.join(task_state_component(&agent_def.id)),
+                    )
+                    .with_whatever_context(|_| {
+                        format!(
+                            "failed to open daemon task-state store for {}",
+                            agent_def.id
+                        )
+                    })?,
+                )
+                .with_maintenance(maintenance_config.clone());
                 runner.register(oikonomos::schedule::TaskDef {
                     id: format!("{}-prosoche", agent_def.id),
                     name: "Prosoche attention check".to_owned(),
@@ -744,6 +763,21 @@ impl RuntimeBuilder {
                     ),
                     action: oikonomos::schedule::TaskAction::Builtin(
                         oikonomos::schedule::BuiltinTask::Prosoche,
+                    ),
+                    enabled: true,
+                    active_window: Some((8, 23)),
+                    catch_up: false,
+                    ..oikonomos::schedule::TaskDef::default()
+                });
+                runner.register(oikonomos::schedule::TaskDef {
+                    id: format!("{}-prosoche-self-audit", agent_def.id),
+                    name: "Prosoche self-audit".to_owned(),
+                    nous_id: agent_def.id.clone(),
+                    schedule: oikonomos::schedule::Schedule::Interval(
+                        std::time::Duration::from_hours(6),
+                    ),
+                    action: oikonomos::schedule::TaskAction::Builtin(
+                        oikonomos::schedule::BuiltinTask::SelfAudit,
                     ),
                     enabled: true,
                     active_window: Some((8, 23)),
@@ -1008,4 +1042,26 @@ fn register_all_metrics(registry: &koina::metrics::MetricsRegistry) {
         #[cfg(feature = "energeia")]
         energeia::metrics::prometheus::register(r);
     });
+}
+
+#[derive(Debug)]
+struct RuntimeBackupMetricsRecorder;
+
+impl oikonomos::maintenance::BackupMetricsRecorder for RuntimeBackupMetricsRecorder {
+    fn record_backup_duration(&self, duration_secs: f64, success: bool) {
+        mneme::metrics::record_backup_duration(duration_secs, success);
+    }
+}
+
+fn task_state_component(agent_id: &str) -> String {
+    agent_id
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
+                ch
+            } else {
+                '_'
+            }
+        })
+        .collect()
 }

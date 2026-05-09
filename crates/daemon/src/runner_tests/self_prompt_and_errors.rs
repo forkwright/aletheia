@@ -234,14 +234,19 @@ async fn probe_audit_without_bridge_returns_failure() {
     );
 }
 
-/// Error path: self-audit without bridge returns failure result.
+/// Self-audit runs the local prosoche audit runner without a bridge.
 #[tokio::test]
-async fn self_audit_without_bridge_returns_failure() {
+async fn self_audit_without_bridge_runs_local_runner() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let maintenance = crate::maintenance::MaintenanceConfig {
+        prosoche_audit_dir: tmp.path().join("audits"),
+        ..crate::maintenance::MaintenanceConfig::default()
+    };
     let result = execute_builtin(
         &BuiltinTask::SelfAudit,
         "test-nous",
-        None, // no bridge
         None,
+        Some(&maintenance),
         None,
         None,
     )
@@ -249,12 +254,12 @@ async fn self_audit_without_bridge_returns_failure() {
 
     assert!(result.is_ok());
     let exec_result = result.unwrap();
-    assert!(!exec_result.success);
+    assert!(exec_result.success);
     assert!(
         exec_result
             .output
             .unwrap_or_default()
-            .contains("no bridge configured")
+            .contains("prosoche self-audit complete")
     );
 }
 

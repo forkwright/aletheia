@@ -268,7 +268,7 @@ pub mod knowledge_store {
 /// [`register_sessions`](metrics::register_sessions)
 pub mod metrics {
     pub use episteme::metrics::register as register_knowledge;
-    pub use graphe::metrics::register as register_sessions;
+    pub use graphe::metrics::{record_backup_duration, register as register_sessions};
 }
 
 /// Memory manifest types used by side-query selection.
