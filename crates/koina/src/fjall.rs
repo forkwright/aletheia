@@ -33,7 +33,7 @@ pub struct FjallDb {
     /// Shared write mutex.
     ///
     /// WHY: `SingleWriterTxDatabase` serialises writers internally, but many
-    /// Aletheia stores expose `&self` write methods (matching the `SQLite` backends
+    /// Aletheia stores expose `&self` write methods (matching historical legacy `SQLite` backends
     /// that use interior mutability). This mutex ensures only one logical write
     /// runs at a time, matching that serial contract.
     pub write_lock: Mutex<()>,

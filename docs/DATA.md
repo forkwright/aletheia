@@ -121,7 +121,7 @@ rm -rf instance/nous/AGENT_ID/
 ### Delete everything
 
 ```bash
-rm instance/data/sessions.db
+rm -rf instance/data/sessions.db
 rm -rf instance/data/engine/
 rm -rf instance/nous/*/memory/
 ```

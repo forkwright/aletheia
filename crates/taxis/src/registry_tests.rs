@@ -115,3 +115,89 @@ fn all_specs_have_non_empty_fields() {
         );
     }
 }
+
+#[test]
+fn restart_required_registry_entries_are_not_hot_reloadable() {
+    for prefix in crate::reload::restart_prefixes() {
+        if let Some(spec) = spec_by_key(prefix) {
+            assert!(
+                !spec.hot_reloadable,
+                "restart-required spec {} must not be marked hot-reloadable",
+                spec.key
+            );
+        }
+    }
+}
+
+#[test]
+fn cold_registry_entries_have_restart_prefixes() {
+    let restart_prefixes = crate::reload::restart_prefixes();
+    for spec in all_specs().iter().filter(|spec| !spec.hot_reloadable) {
+        assert!(
+            restart_prefixes
+                .iter()
+                .any(|prefix| spec.key.starts_with(prefix)),
+            "cold spec {} must have a restart prefix",
+            spec.key
+        );
+    }
+}
+
+#[test]
+fn registry_exposes_validated_behavior_fields() {
+    const VALIDATED_FIELDS: &[&str] = &[
+        "nousBehavior.degradedPanicThreshold",
+        "nousBehavior.degradedWindowSecs",
+        "nousBehavior.inboxRecvTimeoutSecs",
+        "nousBehavior.maxSpawnedTasks",
+        "nousBehavior.cycleDetectionMaxLen",
+        "nousBehavior.selfAuditEventThreshold",
+        "nousBehavior.managerPingTimeoutSecs",
+        "nousBehavior.managerMaxRestartBackoffSecs",
+        "nousBehavior.managerRestartDrainTimeoutSecs",
+        "nousBehavior.managerRestartDecayWindowSecs",
+        "nousBehavior.shutdownTimeoutSecs",
+        "messaging.bufferCapacity",
+        "messaging.haltedHealthCheckIntervalSecs",
+        "messaging.rpcTimeoutSecs",
+        "messaging.healthTimeoutSecs",
+        "messaging.receiveTimeoutSecs",
+        "messaging.agentDispatchTimeoutSecs",
+        "messaging.maxConcurrentHandlers",
+        "apiLimits.maxSessionNameLen",
+        "apiLimits.maxIdentifierBytes",
+        "apiLimits.maxFactsLimit",
+        "apiLimits.maxSearchLimit",
+        "apiLimits.idempotencyMaxKeyLength",
+        "providerBehavior.sseDefaultRetryMs",
+        "providerBehavior.concurrencyEwmaAlpha",
+        "providerBehavior.concurrencyLatencyThresholdSecs",
+        "daemonBehavior.prosocheAnomalySampleSize",
+        "daemonBehavior.runnerOutputBriefHeadLines",
+        "daemonBehavior.runnerOutputBriefTailLines",
+    ];
+
+    for key in VALIDATED_FIELDS {
+        assert!(
+            spec_by_key(key).is_some(),
+            "validated field {key} must be present in registry"
+        );
+    }
+}
+
+#[test]
+fn registry_bounds_match_validator_ranges_for_drifted_fields() {
+    let cases = [
+        ("messaging.circuitBreakerThreshold", (1.0, 100.0)),
+        ("apiLimits.maxHistoryLimit", (1.0, 100_000.0)),
+        ("apiLimits.idempotencyCapacity", (100.0, 10_000_000.0)),
+    ];
+
+    for (key, bounds) in cases {
+        assert_eq!(
+            spec_by_key(key).map(|spec| spec.bounds),
+            Some(Some(bounds)),
+            "bounds drift for {key}"
+        );
+    }
+}

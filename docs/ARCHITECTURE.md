@@ -22,7 +22,7 @@ aletheia
 ├── taxis          -  config, path resolution, oikos hierarchy, secret refs
 ├── mneme          -  thin facade re-exporting eidos, graphe, episteme, krites
 │   ├── eidos      -  shared knowledge types (Fact, Entity, Relationship, EpistemicTier)
-│   ├── graphe     -  SQLite session store: WAL, migrations, retention, backup
+│   ├── graphe     -  fjall session/message store, retention, archive support
 │   ├── episteme   -  knowledge pipeline: extraction, recall, consolidation, embeddings
 │   └── krites     -  embedded Datalog engine + HNSW vectors (mneme-engine feature gate)
 ├── hermeneus      -  Anthropic client, model routing, credentials, provider trait
@@ -114,7 +114,7 @@ The oikos hierarchy is described in [CONFIGURATION.md](CONFIGURATION.md).
 | `koina` | `crates/koina` | Errors (snafu), tracing, fs utilities, safe wrappers | nothing (leaf) |
 | `taxis` | `crates/taxis` | Config loading (owned TOML cascade), path resolution, oikos hierarchy | koina |
 | `eidos` | `crates/eidos` | Shared knowledge types: Fact, Entity, Relationship, EpistemicTier | nothing (leaf) |
-| `graphe` | `crates/graphe` | SQLite session store: WAL, migrations, retention, backup, export/import | eidos, koina |
+| `graphe` | `crates/graphe` | fjall session/message store, retention, archive support | eidos, koina |
 | `episteme` | `crates/episteme` | Knowledge pipeline: extraction, recall, consolidation, embedding provider | eidos, koina, graphe, krites (opt) |
 | `krites` | `crates/krites` | Embedded Datalog engine with HNSW and graph support | eidos |
 | `mneme` | `crates/mneme` | Thin facade re-exporting eidos, graphe, episteme, krites | eidos, graphe, episteme, krites |
@@ -242,7 +242,7 @@ When adding a component, prefer extending an existing edge (dependency or trait 
 ## Structural properties
 
 - **koina, eidos, and dianoia are true leaf nodes.** No workspace deps in Rust.
-- **symbolon depends only on koina** (plus external crates: reqwest, rusqlite, hmac/sha2/aes-gcm, argon2).
+- **symbolon depends only on koina** (plus external crates: reqwest, fjall, hmac/sha2/aes-gcm, argon2).
 - **mneme is a thin facade.** It re-exports from eidos (types), graphe (session store), episteme (knowledge pipeline), and krites (Datalog engine). No logic of its own.
 - **krites contains the Datalog+HNSW engine**, gated behind the `mneme-engine` feature.
 - **EmbeddingProvider lives in episteme**, not mneme.

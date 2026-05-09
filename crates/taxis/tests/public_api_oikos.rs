@@ -203,6 +203,8 @@ fn validate_startup_rejects_agent_with_nonexistent_workspace() {
 fn validate_startup_accepts_agent_with_real_workspace_directory() {
     let dir = make_valid_instance();
     std::fs::create_dir_all(dir.path().join("nous").join("bob")).expect("mk bob workspace");
+    std::fs::write(dir.path().join("nous").join("bob").join("SOUL.md"), "bob")
+        .expect("write bob soul");
 
     let oikos = Oikos::from_root(dir.path());
     let mut config = AletheiaConfig::default();

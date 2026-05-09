@@ -92,7 +92,7 @@ instance/
 ├── config/
 │   ├── aletheia.toml       # Main config
 │   └── credentials/        # API keys (0600 permissions)
-├── data/                   # SQLite databases
+├── data/                   # fjall stores and backups
 ├── logs/                   # Structured log files
 ├── nous/
 │   └── pronoea/            # Your first agent workspace

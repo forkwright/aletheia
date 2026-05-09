@@ -1,7 +1,7 @@
 //! `aletheia backup`: database backup management.
 //!
-//! Operates on the fjall knowledge store — the only persistent store in the
-//! stack since rusqlite removal (#3446).
+//! Operates on the fjall knowledge store. Session/auth storage also uses fjall;
+//! `rusqlite` remains only for gnosis and legacy migration tooling.
 
 use std::path::{Path, PathBuf};
 

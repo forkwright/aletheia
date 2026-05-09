@@ -197,7 +197,8 @@ tokio-util = { version = "0.7", default-features = false, features = ["rt"] }
 flate2 = "1"
 
 # TLS / Security
-# ring remains as transitive via rustls; direct usage replaced by RustCrypto crates
+# ring is still direct in crates/aletheia for self-signed certificate generation
+# and remains transitive via rustls.
 rustls = { version = "0.23", default-features = false, features = [
     "ring",
     "std",

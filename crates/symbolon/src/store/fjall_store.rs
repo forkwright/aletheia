@@ -418,7 +418,7 @@ impl AuthStore {
             records.push(api_key_entry_to_record(entry));
         }
 
-        // Sort descending by created_at to match SQLite behaviour.
+        // Sort descending by created_at to match legacy SQLite behaviour.
         records.sort_by(|a, b| b.created_at.cmp(&a.created_at));
         Ok(records)
     }

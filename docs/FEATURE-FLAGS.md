@@ -21,9 +21,8 @@ Every feature flag defined in the workspace, how flags interact across crates, a
 | **aletheia** | `energeia` | no | `dep:energeia` | - |
 | **aletheia** | `test-core` | no | - | `mneme/test-core`, `nous/test-core`, `pylon/test-core` |
 | **aletheia** | `test-full` | no | - | `test-core`, `mneme/test-full` |
-| **daemon** (oikonomos) | `default` | **yes** | `fjall` | - |
-| **daemon** | `fjall` | no | fjall task-state backend | `dep:fjall`, `koina/fjall` |
-| **daemon** | `sqlite` | no | SQLite task-state backend | `dep:rusqlite` |
+| **daemon** (oikonomos) | `default` | **yes** | *(empty)* | - |
+| **daemon** | `dispatch-cron` | no | Dispatch cron integration | `energeia/storage-fjall`, `dep:energeia` |
 | **daemon** | `knowledge-store` | no | Prosoche memory consistency checks | `episteme/mneme-engine` |
 | **daemon** | `test-core` | no | - | - |
 | **daemon** | `test-full` | no | - | - |
@@ -42,16 +41,14 @@ Every feature flag defined in the workspace, how flags interact across crates, a
 | **episteme** | `default` | **yes** | `graph-algo` | - |
 | **episteme** | `graph-algo` | no | Graph algorithms | - |
 | **episteme** | `test-support` | no | Test helpers | - |
-| **episteme** | `mneme-engine` | no | Datalog knowledge store + typed query builder | `dep:krites`, `dep:tokio`, `graphe/mneme-engine`, `graphe/sqlite` |
+| **episteme** | `mneme-engine` | no | Datalog knowledge store + typed query builder | `dep:krites`, `dep:tokio` |
 | **episteme** | `storage-fjall` | no | fjall storage backend | `mneme-engine`, `krites/storage-fjall` |
 | **episteme** | `embed-candle` | no | Candle embedding model loading | `dep:candle-core`, `dep:candle-nn`, `dep:candle-transformers`, `dep:tokenizers`, `dep:hf-hub` |
 | **episteme** | `test-core` | no | - | `mneme-engine` |
 | **episteme** | `test-full` | no | - | `test-core`, `embed-candle` |
 | **eval** (dokimion) | `test-core` | no | - | - |
 | **eval** | `test-full` | no | - | - |
-| **graphe** | `default` | **yes** | `fjall` | - |
-| **graphe** | `fjall` | no | fjall session backend | `dep:fjall`, `dep:tempfile`, `koina/fjall` |
-| **graphe** | `sqlite` | no | SQLite session backend | `dep:rusqlite`, `dep:sha2` |
+| **graphe** | `default` | **yes** | *(empty)* | - |
 | **graphe** | `mneme-engine` | no | Gates `tokio::task::JoinError` variants | `dep:tokio` |
 | **graphe** | `test-core` | no | - | - |
 | **graphe** | `test-full` | no | - | - |
@@ -60,8 +57,7 @@ Every feature flag defined in the workspace, how flags interact across crates, a
 | **hermeneus** | `test-support` | no | Mock LLM provider for tests | `test-utils` |
 | **hermeneus** | `test-core` | no | - | - |
 | **hermeneus** | `test-full` | no | - | - |
-| **integration-tests** | `default` | **yes** | `sqlite-tests`, `knowledge-store` | - |
-| **integration-tests** | `sqlite-tests` | no | SQLite-backed tests | `mneme/sqlite` |
+| **integration-tests** | `default` | **yes** | `knowledge-store` | - |
 | **integration-tests** | `engine-tests` | no | Engine integration tests | `mneme/mneme-engine` |
 | **integration-tests** | `knowledge-store` | no | Knowledge-store integration tests | `nous/knowledge-store`, `pylon/knowledge-store` |
 | **integration-tests** | `test-core` | no | - | `engine-tests` |
@@ -79,10 +75,9 @@ Every feature flag defined in the workspace, how flags interact across crates, a
 | **melete** | `test-core` | no | - | - |
 | **melete** | `test-full` | no | - | - |
 | **mneme** | `default` | **yes** | `fjall`, `graph-algo`, `mneme-engine` | - |
-| **mneme** | `fjall` | no | fjall session backend | `graphe/fjall` |
+| **mneme** | `fjall` | no | Historical alias; graphe's fjall session backend is unconditional | - |
 | **mneme** | `graph-algo` | no | Graph algorithm types | `episteme/graph-algo` |
 | **mneme** | `test-support` | no | `MockEmbeddingProvider` and test helpers | `episteme/test-support` |
-| **mneme** | `sqlite` | no | SQLite session backend | `graphe/sqlite` |
 | **mneme** | `embed-candle` | no | Candle embedding provider | `episteme/embed-candle` |
 | **mneme** | `mneme-engine` | no | Datalog knowledge engine | `dep:krites`, `graphe/mneme-engine`, `episteme/mneme-engine` |
 | **mneme** | `storage-fjall` | no | fjall knowledge storage | `mneme-engine`, `episteme/storage-fjall` |
@@ -102,9 +97,7 @@ Every feature flag defined in the workspace, how flags interact across crates, a
 | **pylon** | `knowledge-store` | no | Knowledge-store HTTP handlers | `nous/knowledge-store` |
 | **pylon** | `test-core` | no | - | `knowledge-store` |
 | **pylon** | `test-full` | no | - | - |
-| **symbolon** | `default` | **yes** | `fjall` | - |
-| **symbolon** | `fjall` | no | fjall auth backend | `dep:fjall`, `dep:jiff`, `dep:tempfile`, `koina/fjall` |
-| **symbolon** | `sqlite` | no | SQLite auth backend | `dep:rusqlite` |
+| **symbolon** | `default` | **yes** | *(empty)* | - |
 | **symbolon** | `keyring` | no | OS keyring integration | `dep:keyring` |
 | **symbolon** | `test-support` | no | Test helpers | - |
 | **symbolon** | `test-core` | no | - | - |
@@ -144,7 +137,6 @@ aletheia/recall
           → graphe/mneme-engine
           → episteme/mneme-engine
               → krites
-              → graphe/sqlite
 ```
 
 Because of this, enabling `recall` in the `aletheia` binary automatically pulls in `mneme-engine` for the whole workspace via Cargo feature unification.
@@ -157,9 +149,6 @@ Because of this, enabling `recall` in the `aletheia` binary automatically pulls 
 | `episteme/storage-fjall` | `episteme/mneme-engine` + `krites/storage-fjall` |
 | `aletheia/storage-fjall` | `mneme/storage-fjall` |
 | `energeia/storage-fjall` | `dep:fjall` |
-| `graphe/fjall` | `koina/fjall` |
-| `symbolon/fjall` | `koina/fjall` |
-| `daemon/fjall` | `koina/fjall` |
 
 ### Embedding models (`embed-candle` chain)
 
@@ -286,11 +275,8 @@ cargo build --manifest-path crates/theatron/proskenion/Cargo.toml
 ### "I want to run integration tests"
 
 ```bash
-# Default integration-test profile (sqlite + knowledge-store)
+# Default integration-test profile (knowledge-store)
 cargo test -p integration-tests
-
-# With the fjall backend instead of sqlite
-cargo test -p integration-tests --no-default-features --features engine-tests,knowledge-store
 ```
 
 ### "I want to test a specific storage backend"
@@ -298,8 +284,6 @@ cargo test -p integration-tests --no-default-features --features engine-tests,kn
 | Backend | Command |
 |---------|---------|
 | fjall (default) | `cargo test -p mneme --features test-core` |
-| sqlite | `cargo test -p mneme --features sqlite,test-support` |
-| both | `cargo test -p mneme --all-features` |
 
 ### "I need the knowledge store in a downstream crate"
 

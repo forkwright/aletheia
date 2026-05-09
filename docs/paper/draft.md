@@ -66,7 +66,7 @@ Datalog has been used in program analysis, network configuration, and security p
 
 ### 3.1 System overview
 
-Aletheia is a Rust workspace with 24 crates. A single binary (`aletheia`) embeds all subsystems. HTTP traffic arrives at `pylon`, an Axum API with SSE streaming. Agent turns flow through `nous`, a Tokio actor that processes bootstrap, recall, execution, and finalize stages. The memory subsystem (`mneme`) is a thin facade over four sub-crates: `eidos` (types), `graphe` (SQLite session store), `episteme` (knowledge pipeline), and `krites` (Datalog engine).
+Aletheia is a Rust workspace with 24 crates. A single binary (`aletheia`) embeds all subsystems. HTTP traffic arrives at `pylon`, an Axum API with SSE streaming. Agent turns flow through `nous`, a Tokio actor that processes bootstrap, recall, execution, and finalize stages. The memory subsystem (`mneme`) is a thin facade over four sub-crates: `eidos` (types), `graphe` (fjall session store), `episteme` (knowledge pipeline), and `krites` (Datalog engine).
 
 ```text
 aletheia binary
@@ -75,7 +75,7 @@ aletheia binary
 ├── organon      Tool registry (49 built-ins) + sandbox
 ├── mneme        Memory facade
 │   ├── eidos    Shared knowledge types
-│   ├── graphe   SQLite session store (WAL, migrations)
+│   ├── graphe   fjall session store
 │   ├── episteme Knowledge pipeline (extract, embed, recall, consolidate)
 │   └── krites   Datalog engine + HNSW vectors + graph algorithms
 ├── hermeneus    Anthropic client + model routing
@@ -85,7 +85,7 @@ aletheia binary
 
 ### 3.2 Datalog engine (krites)
 
-Krites is an embedded Datalog engine with three storage backends: in-memory, fjall (LSM-tree), and SQLite backup/restore. It supports:
+Krites is an embedded Datalog engine with in-memory and fjall (LSM-tree) storage backends. Historical SQLite backup/restore hooks are disabled with the removed `storage-sqlite` feature. It supports:
 
 - **Stratified Datalog** with negation and recursion
 - **HNSW approximate nearest-neighbor vector search** inside queries
@@ -139,7 +139,7 @@ comm[labels, entity_id] <~ CommunityDetectionLouvain(edges_w[])
 
 `PageRank` and `Louvain` execute in Rust (via the fixed-rule mechanism), read the `relationships` relation, and write results back to `graph_scores`. The engine then uses these scores in the recall pipeline.
 
-**Storage.** The fjall backend provides persistent LSM-tree storage with LZ4 compression and read-your-own-writes semantics. No external database process is required. The engine also backs up to SQLite for portability and restores from SQLite on import.
+**Storage.** The fjall backend provides persistent LSM-tree storage with LZ4 compression and read-your-own-writes semantics. No external database process is required. Historical SQLite portability hooks remain disabled with the removed `storage-sqlite` feature.
 
 ### 3.3 Kernel-level sandbox (organon)
 
@@ -204,7 +204,7 @@ Weights are tunable per agent via the oikos config cascade. The engine skips exp
 Aletheia compiles to one binary with no runtime dependencies beyond the Linux kernel. The embedded stack includes:
 
 - Datalog engine with HNSW vectors (krites)
-- SQLite session store (graphe)
+- fjall session store (graphe)
 - BM25 full-text search (krites FTS)
 - Agent actor loop (nous)
 - Sandbox (organon)

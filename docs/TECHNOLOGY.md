@@ -18,7 +18,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for module boundaries, [PROJECT.md](PROJE
 | Unified store | Embedded Datalog+HNSW engine | Qdrant + Neo4j | Rust-native embedded, Datalog, HNSW vectors + graph + relations in one DB. Zero external services. Located in `mneme/src/engine/`, gated behind `mneme-engine` feature. |
 | Embeddings | candle + `EmbeddingProvider` trait | fastembed-rs (ONNX) | Pure Rust, no C++ deps. Default: BAAI/bge-small-en-v1.5 (384 dims). Feature-gated behind `embed-candle`. |
 | Memory | Direct (no abstraction) | KnowledgeStore (embedded engine) | ~50 LOC replaces the library |
-| Sessions | rusqlite + bundled | better-sqlite3 | WAL mode, no native addon |
+| Sessions | fjall | Historical pre-fjall rusqlite + bundled | Pure-Rust LSM tree, no native addon |
 | Encryption | XChaCha20Poly1305 | None (plaintext) | Planned: per-message encryption at rest. Not yet implemented. |
 | Config | toml + serde_json + serde | Zod | Owned cascade loader in taxis: deep-merge on serde_json::Value (defaults → TOML → env). ~80 lines, no proc-macro parser combinator overhead. |
 | IDs | ulid + uuid | uuid | ulid for time-sorted data (sessions, messages, memories) - lexicographic sort = natural ordering. uuid v4 for non-temporal. |
@@ -81,13 +81,13 @@ Lean dependency count. See `Cargo.toml` workspace members and `[workspace.depend
 |-------|-----------------|
 | **koina** | snafu, tracing, tracing-subscriber |
 | **taxis** | koina, serde, serde_json, toml, snafu, tracing, chacha20poly1305, base64 |
-| **mneme** | koina, snafu, serde, tracing, ulid, rusqlite (sqlite), candle-core/nn/transformers (embed-candle), jiff, hnsw_rs, fjall |
+| **mneme** | koina, snafu, serde, tracing, ulid, candle-core/nn/transformers (embed-candle), jiff, hnsw_rs, fjall |
 | **hermeneus** | koina, taxis, reqwest, serde_json, tokio |
 | **organon** | koina, taxis, hermeneus, tokio, gix, extrasafe, chromiumoxide |
 | **nous** | koina, taxis, mneme, hermeneus, organon, melete, tokio, ulid, compact_str |
-| **dianoia** | koina, taxis, mneme, hermeneus, nous, rusqlite |
+| **dianoia** | koina, taxis, mneme, hermeneus, nous |
 | **pylon** | koina, taxis, nous, axum, tower, tower-http, symbolon, serde_json, chacha20poly1305 |
-| **symbolon** | koina, taxis, rusqlite, ring (HS256 JWT), argon2 |
+| **symbolon** | koina, taxis, fjall, ring (HS256 JWT), argon2 |
 | **agora** | koina, taxis, nous, tokio (semeion: tokio::process, slack: tokio-tungstenite) |
 | **daemon** | koina, taxis, nous, mneme, cron, notify, arc-swap |
 | **melete** | koina, taxis, mneme, hermeneus, nous |

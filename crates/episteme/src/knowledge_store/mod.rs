@@ -2,11 +2,9 @@
 //!
 //! This module requires the `mneme-engine` feature flag.
 //!
-//! **Coexistence with `sqlite` feature:** No link conflict. The `mneme-engine`
-//! vendored CozoDB uses only mem/redb/fjall storage backends: no C++
-//! dependencies. `rusqlite` (used by the `sqlite` feature) compiles with
-//! `features = ["bundled"]`, keeping its symbols isolated. Both features may
-//! be enabled simultaneously.
+//! **Storage:** The `mneme-engine` vendored CozoDB uses only mem/redb/fjall
+//! storage backends: no C++ dependencies. The legacy session-store SQLite
+//! feature is no longer part of the live session backend.
 //!
 //! # Schema
 //!

@@ -151,10 +151,6 @@ Every `AletheiaConfig` field is classified as either **Hot** (safe to apply via 
 | `maintenance.diskSpace.warningThresholdMb` | Hot | Threshold read by background task |
 | `maintenance.diskSpace.criticalThresholdMb` | Hot | Threshold read by background task |
 | `maintenance.diskSpace.checkIntervalSecs` | Hot | Interval read by background task |
-| `maintenance.sqliteRecovery.enabled` | Hot | Recovery toggle checked at open time |
-| `maintenance.sqliteRecovery.integrityCheckOnOpen` | Hot | Check flag read at open time |
-| `maintenance.sqliteRecovery.autoRepair` | Hot | Repair flag read at open time |
-| `maintenance.sqliteRecovery.backupCorrupt` | Hot | Backup flag read at open time |
 | `maintenance.retention.enabled` | Hot | Retention toggle checked by background task |
 | `maintenance.knowledgeMaintenanceEnabled` | Hot | Maintenance toggle checked by background task |
 | `maintenance.watchdog.enabled` | Hot | Watchdog toggle checked by monitor |

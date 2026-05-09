@@ -445,7 +445,7 @@ impl NousActor {
     /// pylon, preventing FK constraint failures in finalize and tools.
     ///
     /// // WHY(#2160): Session is persisted BEFORE spawning the pipeline task.
-    /// // If the actor crashes mid-pipeline, the `session_id` survives in `SQLite`
+    /// // If the actor crashes mid-pipeline, the `session_id` survives in fjall
     /// // for recovery instead of being lost with the in-memory `HashMap`.
     #[expect(
         clippy::too_many_lines,

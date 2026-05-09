@@ -39,7 +39,7 @@ use crate::status;
 /// Resolve the instance root and verify it exists.
 ///
 /// Returns a clear error message directing the user to `aletheia init` or `-r`
-/// instead of letting downstream code fail with opaque SQLite/config errors.
+/// instead of letting downstream code fail with opaque storage/config errors.
 pub(crate) fn resolve_oikos(instance_root: Option<&PathBuf>) -> crate::error::Result<Oikos> {
     let oikos = match instance_root {
         Some(root) => Oikos::from_root(root),

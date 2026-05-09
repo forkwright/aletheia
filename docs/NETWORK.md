@@ -80,7 +80,7 @@ These components make **no network calls**:
 
 - **candle**: pure Rust inference for embeddings, runs entirely in-process
 - **mneme**: embedded graph + vector database, no network protocol
-- **SQLite**: session store, file-based
+- **fjall**: session and knowledge stores, file-based
 - **Prometheus metrics**: passive endpoint (`GET /metrics`), scraped by external collector
 - **Configuration loading**: reads local YAML/TOML files only
 
@@ -178,7 +178,7 @@ Air-gapped operation is possible with:
                ┌────────────┼────────────┐
                │            │            │
       ┌────────┴──┐   ┌────┴─────┐  ┌───┴────────┐
-      │  mneme    │   │  SQLite  │  │  candle     │
+      │  mneme    │   │  fjall   │  │  candle     │
       │ (knowledge│   │ (sessions│  │ (embeddings)│
       │  graphs)  │   │  .db)    │  │             │
       └───────────┘   └──────────┘  └─────────────┘
@@ -197,7 +197,7 @@ Air-gapped operation is possible with:
 
 ### What stays local
 
-- **Session history** → SQLite (`instance/data/sessions.db`)
+- **Session history** -> fjall (`instance/data/sessions.db`, directory name kept for compatibility)
 - **Knowledge graphs and vectors** → mneme (embedded Datalog engine)
 - **Embeddings** → computed locally by candle
 - **Agent workspaces** → local filesystem (`instance/nous/`)

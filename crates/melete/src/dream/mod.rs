@@ -106,7 +106,7 @@ pub struct MergeReport {
 
 /// Trait for counting and loading session transcripts.
 ///
-/// Implementors provide access to session storage (e.g. `SQLite` via graphe).
+/// Implementors provide access to session storage (e.g. fjall via graphe).
 pub trait TranscriptSource: Send + Sync {
     /// Count sessions modified after `since`.
     ///
