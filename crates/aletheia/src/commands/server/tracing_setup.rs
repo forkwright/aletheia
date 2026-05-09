@@ -11,6 +11,7 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{EnvFilter, fmt};
 
+use koina::disk_space::{DEFAULT_CRITICAL_BYTES, DEFAULT_WARNING_BYTES, DiskSpaceMonitor};
 use koina::redacting_layer::RedactingLayer;
 use taxis::oikos::Oikos;
 
@@ -25,7 +26,12 @@ use crate::error::Result;
 /// Files are moved to `log_dir/archive/` and then pruned immediately
 /// (`max_archives = 0`), which produces a net deletion of old log files without
 /// requiring a separate archive housekeeping step.
-pub(super) fn spawn_log_retention(log_dir: PathBuf, retention_days: u32, token: CancellationToken) {
+pub(super) fn spawn_log_retention(
+    log_dir: PathBuf,
+    retention_days: u32,
+    token: CancellationToken,
+    disk_monitor: Option<DiskSpaceMonitor>,
+) {
     use oikonomos::maintenance::{TraceRotationConfig, TraceRotator};
 
     let span = tracing::info_span!("log_retention", retention_days, dir = %log_dir.display());
@@ -46,8 +52,15 @@ pub(super) fn spawn_log_retention(log_dir: PathBuf, retention_days: u32, token: 
                     max_archives: 0,
                 };
 
-                let result =
-                    tokio::task::spawn_blocking(move || TraceRotator::new(cfg).rotate()).await;
+                let rotation_monitor = disk_monitor.clone();
+                let result = tokio::task::spawn_blocking(move || {
+                    let mut rotator = TraceRotator::new(cfg);
+                    if let Some(monitor) = rotation_monitor {
+                        rotator.set_disk_monitor(monitor);
+                    }
+                    rotator.rotate()
+                })
+                .await;
 
                 match result {
                     Ok(Ok(report)) if report.files_pruned > 0 => {
@@ -76,6 +89,39 @@ pub(super) fn spawn_log_retention(log_dir: PathBuf, retention_days: u32, token: 
         }
         .instrument(span),
     );
+}
+
+/// Spawn a cached disk-space monitor for runtime maintenance tasks.
+pub(super) fn spawn_disk_space_monitor(
+    path: PathBuf,
+    token: CancellationToken,
+) -> DiskSpaceMonitor {
+    let monitor = DiskSpaceMonitor::new(DEFAULT_WARNING_BYTES, DEFAULT_CRITICAL_BYTES);
+    let task_monitor = monitor.clone();
+    let span = tracing::info_span!("disk_space_monitor", path = %path.display());
+    tokio::spawn(
+        async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_mins(1));
+            loop {
+                tokio::select! {
+                    biased;
+                    () = token.cancelled() => break,
+                    _ = interval.tick() => {
+                        match task_monitor.refresh(&path) {
+                            Ok(status) => {
+                                tracing::debug!(%status, "disk space monitor refreshed");
+                            }
+                            Err(e) => {
+                                tracing::warn!(error = %e, path = %path.display(), "disk space monitor refresh failed");
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .instrument(span),
+    );
+    monitor
 }
 
 /// Flush trace-ingest operational events into the knowledge store until shutdown.

@@ -7,7 +7,6 @@
 //! # Usage
 //!
 //! ```ignore
-//! // NOTE: EventEmitter::event_count() is pub(crate); use within aletheia-koina only
 //! use koina::event::{InternalEvent, EventEmitter, LogLevel};
 //!
 //! struct StageCompleted {
@@ -31,8 +30,8 @@
 //! assert_eq!(emitter.event_count(), 1, "emitter must record one event");
 //! ```
 
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
 
 use tracing::{debug, error, info, trace, warn};
 
@@ -84,9 +83,6 @@ pub trait InternalEvent: Send + Sync {
 /// Receives: event name, labels, and numeric value.
 type MetricSink = dyn Fn(&str, &[(&str, String)], f64) + Send + Sync;
 
-/// Listener callback type.
-type Listener = dyn Fn(&dyn InternalEvent) + Send + Sync;
-
 /// Event emitter that dispatches typed events to log and metric sinks.
 ///
 /// Thread-safe via `Arc` internals. Clone is cheap (shared state).
@@ -96,8 +92,6 @@ pub struct EventEmitter {
     counter: Arc<AtomicU64>,
     /// Optional metric sink for forwarding to Prometheus or other collectors.
     metric_sink: Arc<Option<Box<MetricSink>>>,
-    /// Optional event listeners for testing and composition.
-    listeners: Arc<Mutex<Vec<Box<Listener>>>>,
 }
 
 impl std::fmt::Debug for EventEmitter {
@@ -122,46 +116,17 @@ impl EventEmitter {
         Self {
             counter: Arc::new(AtomicU64::new(0)),
             metric_sink: Arc::new(None),
-            listeners: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
     /// Create an emitter with a metric sink callback.
     #[must_use]
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "event emitter infrastructure for metric + log dual-dispatch"
-        )
-    )]
-    pub(crate) fn with_metric_sink(
+    pub fn with_metric_sink(
         sink: impl Fn(&str, &[(&str, String)], f64) + Send + Sync + 'static,
     ) -> Self {
         Self {
             counter: Arc::new(AtomicU64::new(0)),
             metric_sink: Arc::new(Some(Box::new(sink))),
-            listeners: Arc::new(Mutex::new(Vec::new())),
-        }
-    }
-
-    /// Register a listener that receives all emitted events.
-    ///
-    /// Useful for testing and event composition.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "event emitter infrastructure for metric + log dual-dispatch"
-        )
-    )]
-    pub(crate) fn add_listener(
-        &self,
-        listener: impl Fn(&dyn InternalEvent) + Send + Sync + 'static,
-    ) {
-        // WHY: lock held only during Vec::push, no await
-        if let Ok(mut listeners) = self.listeners.lock() {
-            listeners.push(Box::new(listener));
         }
     }
 
@@ -190,32 +155,12 @@ impl EventEmitter {
         {
             sink(name, &labels, event.metric_value());
         }
-
-        // Listener dispatch.
-        if let Ok(listeners) = self.listeners.lock() {
-            for listener in listeners.iter() {
-                listener(event);
-            }
-        }
     }
 
     /// Total number of events emitted since creation.
     #[must_use]
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "event emitter infrastructure for metric + log dual-dispatch"
-        )
-    )]
-    pub(crate) fn event_count(&self) -> u64 {
+    pub fn event_count(&self) -> u64 {
         self.counter.load(Ordering::Relaxed)
-    }
-
-    /// Reset the event counter to zero.
-    #[cfg_attr(not(test), expect(dead_code, reason = "planned infrastructure"))]
-    pub(crate) fn reset_count(&self) {
-        self.counter.store(0, Ordering::Relaxed);
     }
 }
 
@@ -324,40 +269,6 @@ mod tests {
     }
 
     #[test]
-    fn reset_count_zeroes() {
-        let emitter = EventEmitter::new();
-        emitter.emit(&TestEvent {
-            stage: "a",
-            duration_ms: 1,
-        });
-        emitter.reset_count();
-        assert_eq!(emitter.event_count(), 0, "counter reset to zero");
-    }
-
-    #[test]
-    fn listener_receives_events() {
-        let received = Arc::new(AtomicU64::new(0));
-        let recv_clone = Arc::clone(&received);
-        let emitter = EventEmitter::new();
-        emitter.add_listener(move |_event| {
-            recv_clone.fetch_add(1, Ordering::Relaxed);
-        });
-        emitter.emit(&TestEvent {
-            stage: "context",
-            duration_ms: 10,
-        });
-        emitter.emit(&TestEvent {
-            stage: "execute",
-            duration_ms: 100,
-        });
-        assert_eq!(
-            received.load(Ordering::Relaxed),
-            2,
-            "listener called for each event"
-        );
-    }
-
-    #[test]
     fn default_metric_value_is_one() {
         let event = TestEvent {
             stage: "test",
@@ -373,14 +284,8 @@ mod tests {
     fn single_emit_produces_log_and_metric() {
         let metric_calls = Arc::new(AtomicU64::new(0));
         let metric_clone = Arc::clone(&metric_calls);
-        let log_calls = Arc::new(AtomicU64::new(0));
-        let log_clone = Arc::clone(&log_calls);
-
         let emitter = EventEmitter::with_metric_sink(move |_name, _labels, _val| {
             metric_clone.fetch_add(1, Ordering::Relaxed);
-        });
-        emitter.add_listener(move |_event| {
-            log_clone.fetch_add(1, Ordering::Relaxed);
         });
 
         // Single emit call at the stage level.
@@ -393,11 +298,6 @@ mod tests {
             metric_calls.load(Ordering::Relaxed),
             1,
             "one metric increment from single emit"
-        );
-        assert_eq!(
-            log_calls.load(Ordering::Relaxed),
-            1,
-            "one listener call from single emit"
         );
         assert_eq!(emitter.event_count(), 1, "one event total");
     }

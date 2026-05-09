@@ -16,6 +16,8 @@
 
 use tracing::{info, warn};
 
+use koina::error_class::{Classifiable, ErrorAction};
+
 use crate::error;
 use crate::pipeline::{InteractionSignal, TurnResult, TurnUsage};
 
@@ -56,7 +58,7 @@ impl DegradedMode {
 #[must_use]
 pub fn is_transient_llm_error(err: &error::Error) -> bool {
     match err {
-        error::Error::Llm { source, .. } => source.is_retryable(),
+        error::Error::Llm { source, .. } => matches!(source.action(), ErrorAction::Retry { .. }),
         _ => false,
     }
 }

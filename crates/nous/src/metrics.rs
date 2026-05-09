@@ -190,6 +190,44 @@ pub(crate) fn record_error(nous_id: &str, stage: &str, error_type: &str) {
         .inc();
 }
 
+/// Build the production pipeline event emitter.
+pub(crate) fn pipeline_event_emitter() -> koina::event::EventEmitter {
+    koina::event::EventEmitter::with_metric_sink(record_pipeline_event)
+}
+
+fn record_pipeline_event(name: &str, labels: &[(&str, String)], value: f64) {
+    match name {
+        "StageCompleted" => {
+            if let (Some(nous_id), Some(stage)) = (label(labels, "nous_id"), label(labels, "stage"))
+            {
+                record_stage(nous_id, stage, value);
+            }
+        }
+        "StageError" | "StageTimeout" => {
+            if let (Some(nous_id), Some(stage), Some(error_type)) = (
+                label(labels, "nous_id"),
+                label(labels, "stage"),
+                label(labels, "error_type"),
+            ) {
+                record_error(nous_id, stage, error_type);
+            }
+        }
+        "TurnCompleted" => {
+            if let Some(nous_id) = label(labels, "nous_id") {
+                record_turn(nous_id);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn label<'a>(labels: &'a [(&str, String)], key: &str) -> Option<&'a str> {
+    labels
+        .iter()
+        .find(|(label, _)| *label == key)
+        .map(|(_, value)| value.as_str())
+}
+
 /// Record a tool execution failure.
 ///
 /// WHY: Tool failures at warn level need a metrics counter so operators can

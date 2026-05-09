@@ -32,6 +32,7 @@
 use std::io;
 use std::path::PathBuf;
 
+use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 use snafu::{ResultExt, Snafu};
 
@@ -161,77 +162,10 @@ impl ArchitectureFact {
             claim: claim.into(),
             evidence,
             mneme_session: None,
-            updated_at: chrono_now_rfc3339(),
+            updated_at: Timestamp::now().strftime("%Y-%m-%dT%H:%M:%SZ").to_string(),
             updated_by: updated_by.into(),
         }
     }
-}
-
-/// Produce a naive RFC 3339 timestamp from the system clock.
-///
-/// WHY: eidos has no `jiff` in its dep tree for `ArchitectureFact` yet; `jiff`
-/// is only compiled when the `jiff` feature is present.  For v1 the timestamp
-/// is informational and does not need sub-second precision, so we use the
-/// standard-library `SystemTime` to stay dep-free.
-fn chrono_now_rfc3339() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let secs = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-    // Format as ISO 8601 UTC: YYYY-MM-DDTHH:MM:SSZ
-    let s = secs % 60;
-    let m = (secs / 60) % 60;
-    let h = (secs / 3600) % 24;
-    let days = secs / 86400;
-    // Day 0 = 1970-01-01.  Gregorian calendar reconstruction.
-    let (year, month, day) = days_to_ymd(days);
-    format!("{year:04}-{month:02}-{day:02}T{h:02}:{m:02}:{s:02}Z")
-}
-
-/// Convert days-since-epoch to (year, month, day) using the proleptic Gregorian
-/// calendar.  Correct for all dates representable by a u64 timestamp.
-fn days_to_ymd(mut days: u64) -> (u64, u64, u64) {
-    // WHY: we avoid pulling in chrono/jiff for a single timestamp; the algorithm
-    // is the standard proleptic Gregorian reconstruction from days-since-epoch.
-    let mut year: u64 = 1970;
-    loop {
-        let leap = is_leap(year);
-        let days_in_year: u64 = if leap { 366 } else { 365 };
-        if days < days_in_year {
-            break;
-        }
-        days -= days_in_year;
-        year += 1;
-    }
-    let leap = is_leap(year);
-    let month_days: [u64; 12] = [
-        31,
-        if leap { 29 } else { 28 },
-        31,
-        30,
-        31,
-        30,
-        31,
-        31,
-        30,
-        31,
-        30,
-        31,
-    ];
-    let mut month: u64 = 1;
-    for &md in &month_days {
-        if days < md {
-            break;
-        }
-        days -= md;
-        month += 1;
-    }
-    (year, month, days + 1)
-}
-
-fn is_leap(year: u64) -> bool {
-    (year.is_multiple_of(4) && !year.is_multiple_of(100)) || year.is_multiple_of(400)
 }
 
 // ── FactStore ────────────────────────────────────────────────────────────────
@@ -512,6 +446,27 @@ mod tests {
         assert!(
             !json.contains("mneme_session"),
             "mneme_session should be omitted when None"
+        );
+    }
+
+    #[test]
+    fn new_sets_jiff_parseable_rfc3339_timestamp() {
+        let fact = ArchitectureFact::new(
+            "test.fact.timestamp",
+            FactScope::Concept,
+            "ArchitectureFact::new timestamps are jiff parseable.",
+            Vec::new(),
+            "test",
+        );
+
+        let parsed = fact
+            .updated_at
+            .parse::<Timestamp>()
+            .expect("updated_at parses as jiff timestamp");
+        assert_eq!(
+            parsed.strftime("%Y-%m-%dT%H:%M:%SZ").to_string(),
+            fact.updated_at,
+            "timestamp should round-trip through jiff with second precision"
         );
     }
 

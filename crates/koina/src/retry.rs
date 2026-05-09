@@ -10,6 +10,8 @@ use std::time::Duration;
 
 use rand::RngExt;
 
+use crate::error_class::{Classifiable, ErrorAction};
+
 /// Backoff strategy for computing retry delays between attempts.
 ///
 /// Attempts are 0-indexed: `delay_for_attempt(0)` returns the delay before
@@ -190,6 +192,54 @@ impl RetryConfig {
 
         result
     }
+
+    /// Run an async operation using [`Classifiable::action`] for retry policy.
+    ///
+    /// `ErrorAction::Retry` controls the total attempts and base backoff.
+    /// Non-retry actions fail fast. `self.max_retries` is retained as a
+    /// configuration cap so call sites can bound retries independently of the
+    /// error's preferred policy.
+    ///
+    /// # Errors
+    ///
+    /// Returns the last error from `operation` when retry attempts are exhausted
+    /// or the error action is not retryable.
+    pub async fn retry_classified_async<F, Fut, T, E>(&self, mut operation: F) -> Result<T, E>
+    where
+        F: FnMut() -> Fut,
+        Fut: Future<Output = Result<T, E>>,
+        E: Classifiable,
+    {
+        let mut attempts: u32 = 1;
+        loop {
+            match operation().await {
+                Ok(value) => return Ok(value),
+                Err(err) => match err.action() {
+                    ErrorAction::Retry {
+                        max_attempts,
+                        backoff_base_ms,
+                    } if attempts < max_attempts.min(self.max_retries.saturating_add(1)) => {
+                        let delay = compute_exponential(
+                            Duration::from_millis(backoff_base_ms),
+                            2,
+                            Duration::from_secs(30),
+                            attempts - 1,
+                        );
+                        tracing::warn!(
+                            attempt = attempts,
+                            max_attempts = max_attempts,
+                            delay_ms = u64::try_from(delay.as_millis()).unwrap_or(u64::MAX),
+                            error_class = ?err.class(),
+                            "classified operation failed, retrying after backoff"
+                        );
+                        tokio::time::sleep(delay).await;
+                        attempts += 1;
+                    }
+                    _ => return Err(err),
+                },
+            }
+        }
+    }
 }
 
 /// Compute exponential backoff steps for non-time-based backoff.
@@ -244,7 +294,34 @@ fn apply_jitter(delay: Duration) -> Duration {
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
+    use crate::error_class::{Classifiable, ErrorAction, ErrorClass};
+
     use super::*;
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum TestError {
+        Retryable,
+        Permanent,
+    }
+
+    impl Classifiable for TestError {
+        fn class(&self) -> ErrorClass {
+            match self {
+                Self::Retryable => ErrorClass::Transient,
+                Self::Permanent => ErrorClass::Permanent,
+            }
+        }
+
+        fn action(&self) -> ErrorAction {
+            match self {
+                Self::Retryable => ErrorAction::Retry {
+                    max_attempts: 3,
+                    backoff_base_ms: 10,
+                },
+                Self::Permanent => ErrorAction::Escalate,
+            }
+        }
+    }
 
     #[test]
     fn constant_returns_same_delay_for_all_attempts() {
@@ -560,6 +637,62 @@ mod tests {
             attempt.load(std::sync::atomic::Ordering::Relaxed),
             1,
             "should attempt exactly once with zero retries"
+        );
+    }
+
+    #[tokio::test]
+    async fn retry_classified_async_retries_retryable_error() {
+        tokio::time::pause();
+
+        let config = RetryConfig {
+            max_retries: 5,
+            strategy: BackoffStrategy::Constant {
+                delay: Duration::from_millis(1),
+            },
+        };
+        let attempt = std::sync::atomic::AtomicU32::new(0);
+        let result: Result<i32, TestError> = config
+            .retry_classified_async(|| {
+                let n = attempt.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                async move {
+                    if n < 2 {
+                        Err(TestError::Retryable)
+                    } else {
+                        Ok(42)
+                    }
+                }
+            })
+            .await;
+        assert_eq!(result.unwrap(), 42, "retryable error should be retried");
+        assert_eq!(
+            attempt.load(std::sync::atomic::Ordering::Relaxed),
+            3,
+            "ErrorAction::Retry max_attempts should allow two retries"
+        );
+    }
+
+    #[tokio::test]
+    async fn retry_classified_async_fails_fast_on_non_retryable_error() {
+        tokio::time::pause();
+
+        let config = RetryConfig {
+            max_retries: 5,
+            strategy: BackoffStrategy::Constant {
+                delay: Duration::from_millis(1),
+            },
+        };
+        let attempt = std::sync::atomic::AtomicU32::new(0);
+        let result: Result<i32, TestError> = config
+            .retry_classified_async(|| {
+                attempt.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                async { Err(TestError::Permanent) }
+            })
+            .await;
+        assert_eq!(result, Err(TestError::Permanent));
+        assert_eq!(
+            attempt.load(std::sync::atomic::Ordering::Relaxed),
+            1,
+            "non-retryable action must not retry"
         );
     }
 }

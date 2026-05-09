@@ -883,7 +883,7 @@ pub fn check_guard(session: &SessionState, config: &NousConfig) -> GuardResult {
 ///
 /// The [`EventEmitter`] couples metrics and logs: each stage emits a single
 /// typed event that simultaneously records a metric and produces a structured
-/// log line. Pass `None` to use a default log-only emitter.
+/// log line. Pass `None` to use the production metrics-backed emitter.
 ///
 /// // WHY: The pipeline uses a mutable `PipelineContext` passed between stages
 /// // rather than returning values. This allows each stage to build on the
@@ -915,7 +915,7 @@ pub(crate) async fn run_pipeline(
     bootstrap_cache: Option<&crate::bootstrap::BootstrapFileCache>,
     audit_log: Option<&crate::audit::PromptAuditLog>,
 ) -> error::Result<TurnResult> {
-    let default_emitter = EventEmitter::new();
+    let default_emitter = crate::metrics::pipeline_event_emitter();
     let emitter = emitter.unwrap_or(&default_emitter);
 
     let pipeline_start = Instant::now();
@@ -1322,7 +1322,6 @@ pub(crate) async fn run_pipeline(
         current_span.record("pipeline.tool_calls", result.tool_calls.len() as u64); // kanon:ignore RUST/as-cast
 
         // Single event emission replaces separate metrics::record_turn + tracing::info.
-        crate::metrics::record_turn(&config.id);
         let duration_ms = u64::try_from(pipeline_start.elapsed().as_millis()).unwrap_or(u64::MAX);
         #[expect(
             clippy::as_conversions,
