@@ -196,10 +196,6 @@ impl<'a> ChatCompletionRequest<'a> {
     clippy::too_many_lines,
     reason = "one function per Anthropic role keeps the wire mapping readable in one place"
 )]
-#[expect(
-    clippy::collapsible_match,
-    reason = "nested if lets read more clearly here than a combined match guard"
-)]
 fn translate_message(msg: &Message, out: &mut Vec<ChatMessage>) {
     match msg.role {
         Role::System => {
