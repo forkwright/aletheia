@@ -273,6 +273,8 @@ async fn thinking_only_response() {
             output_tokens: 80,
             ..Usage::default()
         },
+        cost_usd: None,
+        duration_ms: None,
     };
     providers.register(Box::new(
         MockProvider::with_responses(vec![response]).models(&["test-model"]),

@@ -205,6 +205,8 @@ mod tests {
                 citations: None,
             }],
             usage: Usage::default(),
+            cost_usd: None,
+            duration_ms: None,
         })
     }
 

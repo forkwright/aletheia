@@ -5,6 +5,8 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
+use tokio_util::sync::CancellationToken;
+
 use crate::engine::AgentOptions;
 
 // ---------------------------------------------------------------------------
@@ -23,6 +25,8 @@ pub struct EngineConfig {
     /// How long to wait for session events before declaring a timeout.
     /// `None` disables timeout detection.
     pub idle_timeout: Option<Duration>,
+    /// Cancellation token shared by the dispatch group.
+    pub cancel: Option<CancellationToken>,
 }
 
 impl EngineConfig {
@@ -33,6 +37,7 @@ impl EngineConfig {
             options,
             additional_dirs: Vec::new(),
             idle_timeout: None,
+            cancel: None,
         }
     }
 
@@ -94,10 +99,19 @@ impl EngineConfig {
         self
     }
 
+    /// Set the cancellation token for this session.
+    #[must_use]
+    pub fn cancel_token(mut self, token: CancellationToken) -> Self {
+        self.cancel = Some(token);
+        self
+    }
+
     /// Extract the inner [`AgentOptions`] for passing to the engine.
     #[must_use]
     pub fn to_agent_options(&self) -> AgentOptions {
-        self.options.clone()
+        let mut options = self.options.clone();
+        options.additional_dirs.clone_from(&self.additional_dirs);
+        options
     }
 
     /// Create a copy of the inner options with a different `max_turns` value.
@@ -105,6 +119,7 @@ impl EngineConfig {
     pub fn options_with_turns(&self, turns: u32) -> AgentOptions {
         let mut opts = self.options.clone();
         opts.max_turns = Some(turns);
+        opts.additional_dirs.clone_from(&self.additional_dirs);
         opts
     }
 }

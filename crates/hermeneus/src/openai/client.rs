@@ -262,10 +262,12 @@ impl OpenAiProvider {
                     }
                     .build()
                 })?;
-                let resp = parsed
+                let mut resp = parsed
                     .into_response()
                     .map_err(|msg| error::ApiRequestSnafu { message: msg }.build())?;
                 self.health.record_success();
+                resp.duration_ms =
+                    Some(u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX));
                 tracing::Span::current().record("llm.tokens_in", resp.usage.input_tokens);
                 tracing::Span::current().record("llm.tokens_out", resp.usage.output_tokens);
                 tracing::Span::current().record("llm.status", "ok");

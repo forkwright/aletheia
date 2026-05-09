@@ -120,7 +120,26 @@ impl SessionManager {
 
         let mut session_id = Some(handle.session_id().to_owned());
 
-        let stream_result = events::process_events(&mut handle, options.idle_timeout).await;
+        let stream_result =
+            events::process_events(&mut handle, options.idle_timeout, options.cancel.as_ref())
+                .await;
+
+        if let Some(outcome) = abort_terminal_stream(
+            &mut handle,
+            &stream_result,
+            prompt.number,
+            session_id.clone(),
+            total_cost,
+            total_turns,
+            start,
+            resume_count,
+            model.clone(),
+            prompt.blast_radius.clone(),
+        )
+        .await?
+        {
+            return Ok(outcome);
+        }
 
         // NOTE: Wait for the session to produce its final result.
         let session_result = handle.wait().await;
@@ -142,29 +161,6 @@ impl SessionManager {
         }
 
         // --- Check stream outcome for early exit ---
-
-        if let StreamOutcome::Timeout { elapsed, .. } = &stream_result {
-            tracing::warn!(
-                prompt_number = prompt.number,
-                elapsed_secs = elapsed.as_secs(),
-                "session stalled (no events within timeout)"
-            );
-            return Ok(build_outcome(
-                prompt.number,
-                SessionStatus::Stuck,
-                session_id,
-                total_cost,
-                total_turns,
-                start,
-                resume_count,
-                None,
-                Some(format!("timeout: no events for {}s", elapsed.as_secs())),
-                effective_model.clone(),
-                prompt.blast_radius.clone(),
-                cache_hits,
-                cache_misses,
-            ));
-        }
 
         if let StreamOutcome::Error { message, .. } = &stream_result
             && !run_success
@@ -304,7 +300,26 @@ impl SessionManager {
 
             session_id = Some(handle.session_id().to_owned());
 
-            let stream_result = events::process_events(&mut handle, options.idle_timeout).await;
+            let stream_result =
+                events::process_events(&mut handle, options.idle_timeout, options.cancel.as_ref())
+                    .await;
+
+            if let Some(outcome) = abort_terminal_stream(
+                &mut handle,
+                &stream_result,
+                prompt.number,
+                session_id.clone(),
+                total_cost,
+                total_turns,
+                start,
+                resume_count,
+                effective_model.clone(),
+                prompt.blast_radius.clone(),
+            )
+            .await?
+            {
+                return Ok(outcome);
+            }
 
             let session_result = handle.wait().await;
 
@@ -332,32 +347,6 @@ impl SessionManager {
             }
 
             // --- Timeout in resume ---
-
-            if let StreamOutcome::Timeout { elapsed, .. } = &stream_result {
-                tracing::warn!(
-                    prompt_number = prompt.number,
-                    elapsed_secs = elapsed.as_secs(),
-                    "session stalled during resume"
-                );
-                return Ok(build_outcome(
-                    prompt.number,
-                    SessionStatus::Stuck,
-                    session_id,
-                    total_cost,
-                    total_turns,
-                    start,
-                    resume_count,
-                    None,
-                    Some(format!(
-                        "timeout during resume: no events for {}s",
-                        elapsed.as_secs()
-                    )),
-                    effective_model.clone(),
-                    prompt.blast_radius.clone(),
-                    0,
-                    0,
-                ));
-            }
 
             // --- Success check ---
 
@@ -455,7 +444,67 @@ fn accumulator_from(outcome: &StreamOutcome) -> &super::events::EventAccumulator
         }
         | StreamOutcome::Error {
             accumulator: acc, ..
-        } => acc,
+        }
+        | StreamOutcome::Cancelled { accumulator: acc } => acc,
+    }
+}
+
+async fn abort_terminal_stream(
+    handle: &mut Box<dyn crate::engine::SessionHandle>,
+    stream_result: &StreamOutcome,
+    prompt_number: u32,
+    session_id: Option<String>,
+    total_cost: f64,
+    total_turns: u32,
+    start: Instant,
+    resume_count: u32,
+    model: Option<String>,
+    blast_radius: Vec<String>,
+) -> Result<Option<SessionOutcome>> {
+    match stream_result {
+        StreamOutcome::Timeout { elapsed, .. } => {
+            tracing::warn!(
+                prompt_number,
+                elapsed_secs = elapsed.as_secs(),
+                "session stalled; aborting subprocess"
+            );
+            handle.abort().await?;
+            Ok(Some(build_outcome(
+                prompt_number,
+                SessionStatus::Stuck,
+                session_id,
+                total_cost,
+                total_turns,
+                start,
+                resume_count,
+                None,
+                Some(format!("timeout: no events for {}s", elapsed.as_secs())),
+                model,
+                blast_radius,
+                0,
+                0,
+            )))
+        }
+        StreamOutcome::Cancelled { .. } => {
+            tracing::info!(prompt_number, "session cancelled; aborting subprocess");
+            handle.abort().await?;
+            Ok(Some(build_outcome(
+                prompt_number,
+                SessionStatus::Aborted,
+                session_id,
+                total_cost,
+                total_turns,
+                start,
+                resume_count,
+                None,
+                Some("dispatch cancelled".to_owned()),
+                model,
+                blast_radius,
+                0,
+                0,
+            )))
+        }
+        StreamOutcome::Complete(_) | StreamOutcome::Error { .. } => Ok(None),
     }
 }
 

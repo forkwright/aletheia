@@ -103,6 +103,8 @@ fn make_text_response(text: &str) -> CompletionResponse {
             output_tokens: 50,
             ..Usage::default()
         },
+        cost_usd: None,
+        duration_ms: None,
     }
 }
 
@@ -125,6 +127,8 @@ fn make_tool_response(
             output_tokens: 30,
             ..Usage::default()
         },
+        cost_usd: None,
+        duration_ms: None,
     }
 }
 

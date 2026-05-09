@@ -601,6 +601,12 @@ pub struct CompletionResponse {
     pub content: Vec<ContentBlock>,
     /// Token usage.
     pub usage: Usage,
+    /// Estimated provider cost in USD, when the provider can compute it.
+    #[serde(default)]
+    pub cost_usd: Option<f64>,
+    /// End-to-end provider call duration in milliseconds, when known.
+    #[serde(default)]
+    pub duration_ms: Option<u64>,
 }
 
 /// Why the model stopped generating.

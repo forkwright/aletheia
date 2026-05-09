@@ -106,6 +106,12 @@ impl PipelineStage for PostProcessingStage {
 
         #[cfg(feature = "storage-fjall")]
         if let (Some(store), Some(store_id)) = (&ctx.store, &ctx.store_dispatch_id) {
+            for verdict in &ctx.qa_verdicts {
+                if let Err(e) = store.add_qa_verdict(store_id, &ctx.spec.project, *verdict) {
+                    tracing::warn!(error = %e, verdict = %verdict, "failed to persist QA verdict");
+                }
+            }
+
             let status = if ctx.aborted {
                 crate::store::records::DispatchStatus::Failed
             } else {
@@ -151,7 +157,7 @@ async fn append_after_action_record(ctx: &PipelineContext) -> Result<(), Pipelin
         return Ok(());
     };
 
-    let record = build_after_action_record(ctx);
+    let record = build_after_action_record(ctx)?;
     let line = serde_json::to_string(&record)
         .map_err(|e| {
             crate::error::SerializationSnafu {
@@ -207,7 +213,7 @@ async fn append_after_action_record(ctx: &PipelineContext) -> Result<(), Pipelin
 }
 
 /// Build the [`AfterActionRecord`] from the current pipeline context.
-fn build_after_action_record(ctx: &PipelineContext) -> AfterActionRecord {
+fn build_after_action_record(ctx: &PipelineContext) -> Result<AfterActionRecord, PipelineError> {
     let session_outcomes = ctx
         .outcomes
         .iter()
@@ -234,9 +240,11 @@ fn build_after_action_record(ctx: &PipelineContext) -> AfterActionRecord {
         })
         .collect();
 
-    let prompt_hash = compute_prompt_hash(&ctx.prompts);
+    let prompt_hash = compute_prompt_hash(&ctx.prompts).context(StageSnafu {
+        stage: "post_processing",
+    })?;
 
-    AfterActionRecord {
+    Ok(AfterActionRecord {
         dispatch_id: ctx.dispatch_id.clone(),
         ts_start: ctx.start_ts.strftime("%Y-%m-%dT%H:%M:%SZ").to_string(),
         ts_end: Timestamp::now().strftime("%Y-%m-%dT%H:%M:%SZ").to_string(),
@@ -247,7 +255,7 @@ fn build_after_action_record(ctx: &PipelineContext) -> AfterActionRecord {
         stage_latencies_ms,
         qa_verdict: aggregate_qa_verdict(&ctx.qa_verdicts).to_string(),
         prompt_hash,
-    }
+    })
 }
 
 /// Convert a USD float to whole cents.
@@ -282,8 +290,13 @@ fn aggregate_qa_verdict(verdicts: &[QaVerdict]) -> QaVerdict {
 }
 
 /// SHA-256 hash of the serialized prompt set, prefixed with `sha256:`.
-fn compute_prompt_hash(prompts: &[crate::prompt::PromptSpec]) -> String {
-    let bytes = serde_json::to_vec(prompts).unwrap_or_default();
+fn compute_prompt_hash(prompts: &[crate::prompt::PromptSpec]) -> crate::error::Result<String> {
+    let bytes = serde_json::to_vec(prompts).map_err(|e| {
+        crate::error::SerializationSnafu {
+            message: format!("serialize prompts for prompt hash: {e}"),
+        }
+        .build()
+    })?;
     let hash = Sha256::digest(&bytes);
     let hex = hash
         .iter()
@@ -293,7 +306,7 @@ fn compute_prompt_hash(prompts: &[crate::prompt::PromptSpec]) -> String {
             let _ = write!(acc, "{b:02x}");
             acc
         });
-    format!("sha256:{hex}")
+    Ok(format!("sha256:{hex}"))
 }
 
 // ---------------------------------------------------------------------------

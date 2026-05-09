@@ -7,7 +7,8 @@
 use crate::error::{self, Result};
 #[cfg(feature = "storage-fjall")]
 use crate::store::records::{
-    CiValidationRecord, DispatchRecord, LessonRecord, ObservationRecord, SessionRecord,
+    CiValidationRecord, DispatchRecord, LessonRecord, ObservationRecord, QaVerdictRecord,
+    SessionRecord,
 };
 #[cfg(feature = "storage-fjall")]
 use crate::store::schema;
@@ -232,5 +233,37 @@ pub(crate) fn list_ci_validations_for_session(
         "ci_validation prefix scan",
         usize::MAX,
         |_: &CiValidationRecord| true,
+    )
+}
+
+/// Collect all QA verdict records across all dispatches via prefix scan.
+#[cfg(feature = "storage-fjall")]
+pub(crate) fn list_all_qa_verdicts(
+    keyspace: &fjall::Keyspace,
+    limit: usize,
+) -> Result<Vec<QaVerdictRecord>> {
+    let prefix_bytes = schema::qa_verdict_prefix().as_bytes();
+    prefix_scan(
+        keyspace,
+        prefix_bytes,
+        "qa_verdict prefix scan",
+        limit,
+        |_: &QaVerdictRecord| true,
+    )
+}
+
+/// Collect QA verdict records for a given dispatch via prefix scan.
+#[cfg(feature = "storage-fjall")]
+pub(crate) fn list_qa_verdicts_for_dispatch(
+    keyspace: &fjall::Keyspace,
+    dispatch_id: &crate::store::records::DispatchId,
+) -> Result<Vec<QaVerdictRecord>> {
+    let prefix = schema::qa_verdict_prefix_for_dispatch(dispatch_id);
+    prefix_scan(
+        keyspace,
+        prefix.as_bytes(),
+        "qa_verdict prefix scan",
+        usize::MAX,
+        |_: &QaVerdictRecord| true,
     )
 }

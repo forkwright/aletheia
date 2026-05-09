@@ -256,6 +256,10 @@ impl StreamAccumulator {
     }
 
     /// Build the final `CompletionResponse` from accumulated state.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "stream accumulator converts every supported Anthropic block variant"
+    )]
     pub(crate) fn finish(self) -> CompletionResponse {
         let content = self
             .blocks
@@ -360,6 +364,8 @@ impl StreamAccumulator {
                 cache_write_tokens: self.cache_write_tokens,
                 cache_read_tokens: self.cache_read_tokens,
             },
+            cost_usd: None,
+            duration_ms: None,
         }
     }
 }

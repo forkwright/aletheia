@@ -209,10 +209,10 @@ impl CronScheduler {
     ///
     /// Cancel-safe at the sleep boundary. Dropping the future during sleep
     /// has no side effects.
-    pub async fn run<F, Fut>(&self, cancel: CancellationToken, mut on_fire: F) -> Result<()>
+    pub async fn run<F, Fut>(&self, cancel: CancellationToken, on_fire: F) -> Result<()>
     where
-        F: FnMut(&CronTask) -> Fut + Send,
-        Fut: Future<Output = ()> + Send,
+        F: Fn(CronTask) -> Fut + Clone + Send + Sync + 'static,
+        Fut: Future<Output = ()> + Send + 'static,
     {
         loop {
             let now = Utc::now();
@@ -272,7 +272,11 @@ impl CronScheduler {
                         "cron task fired"
                     );
                     let span = tracing::info_span!("cron_fire", task = %task.name);
-                    on_fire(task).instrument(span).await;
+                    let callback = on_fire.clone();
+                    let task = task.clone();
+                    tokio::spawn(async move {
+                        callback(task).instrument(span).await;
+                    });
                 }
                 Ok(false) => {
                     tracing::debug!(
@@ -415,7 +419,7 @@ mod tests {
         let f1 = fired.clone();
         let handle1 = tokio::spawn(async move {
             scheduler1
-                .run(cancel1, |_task| {
+                .run(cancel1, move |_task| {
                     let f = f1.clone();
                     async move {
                         f.fetch_add(1, Ordering::SeqCst);
@@ -428,7 +432,7 @@ mod tests {
         let handle2 = tokio::spawn(async move {
             tokio::time::sleep(Duration::from_millis(50)).await;
             scheduler2
-                .run(cancel2, |_task| {
+                .run(cancel2, move |_task| {
                     let f = f2.clone();
                     async move {
                         f.fetch_add(1, Ordering::SeqCst);
@@ -451,6 +455,44 @@ mod tests {
         assert!(
             total <= 3,
             "lock should prevent excessive duplicate fires, got {total}"
+        );
+    }
+
+    #[tokio::test]
+    async fn slow_on_fire_does_not_block_scheduler_ticks() {
+        let db = koina::fjall::FjallDb::open_temp(&[LOCK_PARTITION]).unwrap();
+        let lock_store = Arc::new(CronLockStore::open(Arc::new(db.db)).unwrap());
+        let task = CronTask {
+            name: CompactString::new("slow-callback"),
+            cron: parse_schedule("* * * * * *"),
+            jitter: Duration::ZERO,
+            dispatch_spec: DispatchSpec::new("test".to_owned(), vec![]),
+        };
+        let fired = Arc::new(AtomicUsize::new(0));
+        let scheduler = CronScheduler::new(vec![task], lock_store);
+        let cancel = CancellationToken::new();
+        let cancel_for_task = cancel.clone();
+        let fired_for_task = Arc::clone(&fired);
+
+        let handle = tokio::spawn(async move {
+            scheduler
+                .run(cancel_for_task, move |_task| {
+                    let fired = Arc::clone(&fired_for_task);
+                    async move {
+                        fired.fetch_add(1, Ordering::SeqCst);
+                        tokio::time::sleep(Duration::from_secs(5)).await;
+                    }
+                })
+                .await
+        });
+
+        tokio::time::sleep(Duration::from_millis(2_500)).await;
+        cancel.cancel();
+        handle.await.unwrap().unwrap();
+
+        assert!(
+            fired.load(Ordering::SeqCst) >= 2,
+            "slow callback should not block later cron ticks"
         );
     }
 

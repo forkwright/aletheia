@@ -23,6 +23,8 @@ fn distill_response(text: &str) -> CompletionResponse {
             cache_read_tokens: 0,
             cache_write_tokens: 0,
         },
+        cost_usd: None,
+        duration_ms: None,
     }
 }
 
@@ -43,6 +45,8 @@ fn empty_response_provider() -> MockProvider {
         stop_reason: StopReason::EndTurn,
         content: vec![],
         usage: Usage::default(),
+        cost_usd: None,
+        duration_ms: None,
     }])
     .models(&["claude-sonnet-4-20250514"])
     .named("mock-distill")
@@ -68,6 +72,8 @@ fn empty_text_provider() -> MockProvider {
             },
         ],
         usage: Usage::default(),
+        cost_usd: None,
+        duration_ms: None,
     }])
     .models(&["claude-sonnet-4-20250514"])
     .named("mock-distill")

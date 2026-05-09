@@ -236,6 +236,8 @@ impl OpenAiStreamAccumulator {
             stop_reason,
             content,
             usage,
+            cost_usd: None,
+            duration_ms: None,
         }
     }
 }

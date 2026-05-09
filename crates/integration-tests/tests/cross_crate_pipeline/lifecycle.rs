@@ -120,6 +120,8 @@ async fn tool_execution_round_trip() {
             output_tokens: 15,
             ..Usage::default()
         },
+        cost_usd: None,
+        duration_ms: None,
     };
 
     // Second call: LLM returns text after seeing tool result
@@ -136,6 +138,8 @@ async fn tool_execution_round_trip() {
             output_tokens: 12,
             ..Usage::default()
         },
+        cost_usd: None,
+        duration_ms: None,
     };
 
     let provider = SequentialMockProvider::new(

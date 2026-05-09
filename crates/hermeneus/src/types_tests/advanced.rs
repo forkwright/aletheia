@@ -68,6 +68,8 @@ fn completion_response_serde() {
             output_tokens: 50,
             ..Usage::default()
         },
+        cost_usd: Some(0.001),
+        duration_ms: Some(25),
     };
     let json =
         serde_json::to_string(&response).expect("CompletionResponse should serialize to JSON");

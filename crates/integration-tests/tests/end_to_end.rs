@@ -46,6 +46,8 @@ impl CapturingMockProvider {
                     output_tokens: 5,
                     ..Usage::default()
                 },
+                cost_usd: None,
+                duration_ms: None,
             },
             captured,
         }

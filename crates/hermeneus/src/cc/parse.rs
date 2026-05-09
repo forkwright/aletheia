@@ -246,6 +246,8 @@ pub(crate) fn result_to_response(
         stop_reason: StopReason::EndTurn,
         content,
         usage,
+        cost_usd: None,
+        duration_ms: None,
     })
 }
 
