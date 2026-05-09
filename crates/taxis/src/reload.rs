@@ -28,7 +28,6 @@ const RESTART_PREFIXES: &[&str] = &[
     // WHY: idempotency capacity sets the LRU cache size at server startup.
     "apiLimits.idempotencyCapacity",
     // WHY: model context limits are loaded into provider/model routing state.
-    "capacity.opusContextTokens",
 ];
 
 /// Returns true if changing the given dotted field path requires a restart.

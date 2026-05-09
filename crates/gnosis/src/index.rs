@@ -1,7 +1,7 @@
 //! Workspace index builder.
 //!
 //! Walks a Cargo workspace via `cargo metadata`, then parses each `*.rs`
-//! file with `syn`, populating the `SQLite` schema with symbol definitions and
+//! file with `syn`, populating the fjall index with symbol definitions and
 //! cross-reference edges.
 //!
 //! # Incremental rebuild
@@ -9,7 +9,7 @@
 //! Each file's SHA-256 hash is stored in `file_hashes`.  On the next
 //! `rebuild()` call only files whose on-disk hash differs from the stored
 //! value are re-parsed.  To force a full rebuild, delete the cache file
-//! (typically `~/.cache/aletheia/gnosis.sqlite`).
+//! (typically `~/.cache/aletheia/gnosis.fjall`).
 //!
 //! # What is indexed
 //!
@@ -40,11 +40,11 @@ use sha2::{Digest, Sha256};
 
 use cargo_metadata::MetadataCommand;
 use proc_macro2::Span;
-use rusqlite::{Connection, params};
 use snafu::ResultExt;
 use syn::visit::Visit;
 
-use crate::error::{CargoMetadataSnafu, ParseSnafu, ReadSourceSnafu, Result, SqliteSnafu};
+use crate::error::{CargoMetadataSnafu, ParseSnafu, ReadSourceSnafu, Result};
+use crate::schema::Store;
 
 // ── SHA-256 helper ───────────────────────────────────────────────────────────
 
@@ -69,55 +69,61 @@ fn file_hash(data: &[u8]) -> String {
 
 /// Context passed to the `syn::visit` walker.
 struct IndexVisitor<'a> {
-    conn: &'a Connection,
+    store: &'a Store,
     crate_name: &'a str,
     /// Dot-separated module path within the crate, e.g. `"types::message"`.
     module_path: String,
     file_path: &'a str,
+    last_symbol_id: Option<u64>,
 }
 
 impl<'a> IndexVisitor<'a> {
-    fn new(
-        conn: &'a Connection,
-        crate_name: &'a str,
-        file_path: &'a str,
-        module_path: String,
-    ) -> Self {
+    fn new(store: &'a Store, crate_name: &'a str, file_path: &'a str, module_path: String) -> Self {
         Self {
-            conn,
+            store,
             crate_name,
             module_path,
             file_path,
-        }
-    }
-
-    fn insert_symbol(&self, name: &str, kind: &str, line: u32) {
-        // Non-fatal: log and continue on DB errors during indexing.
-        if let Err(e) = self.conn.execute(
-            "INSERT INTO symbols (crate_name, module_path, symbol_name, symbol_kind, file_path, line_start)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            params![self.crate_name, self.module_path, name, kind, self.file_path, line],
-        ) {
-            tracing::warn!(
-                crate_name = self.crate_name,
-                symbol = name,
-                kind,
-                error = %e,
-                "gnosis: failed to insert symbol"
-            );
+            last_symbol_id: None,
         }
     }
 
     fn last_symbol_id(&self) -> Option<i64> {
-        self.conn.last_insert_rowid().into()
+        self.last_symbol_id.and_then(|id| i64::try_from(id).ok())
+    }
+
+    fn record_symbol(&mut self, name: &str, kind: &str, line: u32) {
+        match self.store.insert_symbol(
+            self.crate_name,
+            &self.module_path,
+            name,
+            kind,
+            self.file_path,
+            i64::from(line),
+        ) {
+            Ok(id) => self.last_symbol_id = Some(id),
+            Err(e) => {
+                self.last_symbol_id = None;
+                tracing::warn!(
+                    crate_name = self.crate_name,
+                    symbol = name,
+                    kind,
+                    error = %e,
+                    "gnosis: failed to insert symbol"
+                );
+            }
+        }
     }
 
     fn insert_ref(&self, from_id: i64, to_crate: &str, to_module: &str, to_sym: &str, kind: &str) {
-        if let Err(e) = self.conn.execute(
-            "INSERT INTO symbol_refs (from_symbol, to_crate, to_module, to_symbol, ref_kind)
-             VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![from_id, to_crate, to_module, to_sym, kind],
-        ) {
+        let Ok(from_id) = u64::try_from(from_id) else {
+            tracing::warn!(from_id, "gnosis: invalid negative symbol id");
+            return;
+        };
+        if let Err(e) = self
+            .store
+            .insert_ref(from_id, to_crate, to_module, to_sym, kind)
+        {
             tracing::warn!(
                 from_id,
                 to_symbol = to_sym,
@@ -176,7 +182,7 @@ fn decompose_path(path: &syn::Path) -> (String, String, String) {
 
 /// Extract the line number from a `proc_macro2::Span`.
 ///
-/// Line numbers are `usize` in `proc_macro2` but stored as `u32` in `SQLite`.
+/// Line numbers are `usize` in `proc_macro2` but stored as `u32` in fjall.
 /// Real source files never exceed `u32::MAX` lines so the truncation is safe;
 /// we use `try_from` and fall back to 0 for defence.
 fn span_line(span: Span) -> u32 {
@@ -189,21 +195,21 @@ impl<'ast> Visit<'ast> for IndexVisitor<'_> {
     fn visit_item_fn(&mut self, node: &'ast syn::ItemFn) {
         let name = node.sig.ident.to_string();
         let line = span_line(node.sig.ident.span());
-        self.insert_symbol(&name, "fn", line);
+        self.record_symbol(&name, "fn", line);
         syn::visit::visit_item_fn(self, node);
     }
 
     fn visit_impl_item_fn(&mut self, node: &'ast syn::ImplItemFn) {
         let name = node.sig.ident.to_string();
         let line = span_line(node.sig.ident.span());
-        self.insert_symbol(&name, "fn", line);
+        self.record_symbol(&name, "fn", line);
         syn::visit::visit_impl_item_fn(self, node);
     }
 
     fn visit_trait_item_fn(&mut self, node: &'ast syn::TraitItemFn) {
         let name = node.sig.ident.to_string();
         let line = span_line(node.sig.ident.span());
-        self.insert_symbol(&name, "fn", line);
+        self.record_symbol(&name, "fn", line);
         syn::visit::visit_trait_item_fn(self, node);
     }
 
@@ -212,7 +218,7 @@ impl<'ast> Visit<'ast> for IndexVisitor<'_> {
     fn visit_item_struct(&mut self, node: &'ast syn::ItemStruct) {
         let name = node.ident.to_string();
         let line = span_line(node.ident.span());
-        self.insert_symbol(&name, "struct", line);
+        self.record_symbol(&name, "struct", line);
         syn::visit::visit_item_struct(self, node);
     }
 
@@ -221,7 +227,7 @@ impl<'ast> Visit<'ast> for IndexVisitor<'_> {
     fn visit_item_enum(&mut self, node: &'ast syn::ItemEnum) {
         let name = node.ident.to_string();
         let line = span_line(node.ident.span());
-        self.insert_symbol(&name, "enum", line);
+        self.record_symbol(&name, "enum", line);
         syn::visit::visit_item_enum(self, node);
     }
 
@@ -230,7 +236,7 @@ impl<'ast> Visit<'ast> for IndexVisitor<'_> {
     fn visit_item_trait(&mut self, node: &'ast syn::ItemTrait) {
         let name = node.ident.to_string();
         let line = span_line(node.ident.span());
-        self.insert_symbol(&name, "trait", line);
+        self.record_symbol(&name, "trait", line);
         syn::visit::visit_item_trait(self, node);
     }
 
@@ -239,7 +245,7 @@ impl<'ast> Visit<'ast> for IndexVisitor<'_> {
     fn visit_item_type(&mut self, node: &'ast syn::ItemType) {
         let name = node.ident.to_string();
         let line = span_line(node.ident.span());
-        self.insert_symbol(&name, "type", line);
+        self.record_symbol(&name, "type", line);
         syn::visit::visit_item_type(self, node);
     }
 
@@ -248,7 +254,7 @@ impl<'ast> Visit<'ast> for IndexVisitor<'_> {
     fn visit_item_const(&mut self, node: &'ast syn::ItemConst) {
         let name = node.ident.to_string();
         let line = span_line(node.ident.span());
-        self.insert_symbol(&name, "const", line);
+        self.record_symbol(&name, "const", line);
         syn::visit::visit_item_const(self, node);
     }
 
@@ -265,7 +271,7 @@ impl<'ast> Visit<'ast> for IndexVisitor<'_> {
                     .map_or_else(Span::call_site, |s| s.ident.span()),
             );
             let (trait_crate, trait_module, trait_sym) = decompose_path(trait_path);
-            self.insert_symbol(&type_name, "impl", line);
+            self.record_symbol(&type_name, "impl", line);
             if let Some(sym_id) = self.last_symbol_id() {
                 self.insert_ref(sym_id, &trait_crate, &trait_module, &trait_sym, "impl");
             }
@@ -326,7 +332,7 @@ fn extract_reexports(
         syn::UseTree::Name(n) => {
             let sym = n.ident.to_string();
             let line = span_line(n.ident.span());
-            visitor.insert_symbol(&sym, "reexport", line);
+            visitor.record_symbol(&sym, "reexport", line);
             if let Some(id) = visitor.last_symbol_id() {
                 prefix.push(sym.clone());
                 let (to_crate, to_module, to_sym) = decompose_segments(prefix);
@@ -337,7 +343,7 @@ fn extract_reexports(
         syn::UseTree::Rename(r) => {
             let alias = r.rename.to_string();
             let line = span_line(r.rename.span());
-            visitor.insert_symbol(&alias, "reexport", line);
+            visitor.record_symbol(&alias, "reexport", line);
             if let Some(id) = visitor.last_symbol_id() {
                 let original = r.ident.to_string();
                 prefix.push(original);
@@ -400,13 +406,8 @@ fn module_path_from_file_path(src_dir: &Path, file_path: &Path) -> String {
 ///
 /// Errors during parsing are logged at WARN and skipped — they do not abort
 /// the overall index build.
-#[tracing::instrument(skip(conn), fields(crate_name, file = file_path))]
-fn index_file(
-    conn: &Connection,
-    crate_name: &str,
-    file_path: &str,
-    module_path: &str,
-) -> Result<()> {
+#[tracing::instrument(skip(store), fields(crate_name, file = file_path))]
+fn index_file(store: &Store, crate_name: &str, file_path: &str, module_path: &str) -> Result<()> {
     let content = std::fs::read_to_string(file_path).with_context(|_| ReadSourceSnafu {
         path: PathBuf::from(file_path),
     })?;
@@ -415,25 +416,17 @@ fn index_file(
         path: PathBuf::from(file_path),
     })?;
 
-    // Delete any existing symbols from this file before re-inserting.
-    conn.execute(
-        "DELETE FROM symbols WHERE file_path = ?1",
-        params![file_path],
-    )
-    .context(SqliteSnafu)?;
+    store.delete_symbols_for_file(file_path)?;
 
-    let mut visitor = IndexVisitor::new(conn, crate_name, file_path, module_path.to_owned());
+    let mut visitor = IndexVisitor::new(store, crate_name, file_path, module_path.to_owned());
     visitor.visit_file(&file);
 
     Ok(())
 }
 
 /// Populate `crate_edges` from `cargo metadata` dependency graph.
-fn populate_crate_edges(
-    conn: &Connection,
-    metadata: &cargo_metadata::Metadata,
-) -> rusqlite::Result<()> {
-    conn.execute("DELETE FROM crate_edges", [])?;
+fn populate_crate_edges(store: &Store, metadata: &cargo_metadata::Metadata) -> Result<()> {
+    store.clear_crate_edges()?;
 
     let workspace_ids: HashMap<_, _> = metadata
         .workspace_members
@@ -454,10 +447,7 @@ fn populate_crate_edges(
         let from_name = pkg.name.as_str();
         for dep in &pkg.dependencies {
             if workspace_ids.values().any(|n| n == dep.name.as_str()) {
-                conn.execute(
-                    "INSERT OR IGNORE INTO crate_edges (from_crate, to_crate) VALUES (?1, ?2)",
-                    params![from_name, dep.name.as_str()],
-                )?;
+                store.insert_crate_edge(from_name, dep.name.as_str())?;
             }
         }
     }
@@ -478,8 +468,8 @@ fn populate_crate_edges(
 ///
 /// Time: O(P + F + B), where P is workspace packages, F is source files, and B
 /// is bytes read from changed files. Space: O(F) for the present-file set.
-#[tracing::instrument(skip(conn))]
-pub(crate) fn rebuild(conn: &Connection, workspace_root: &Path) -> Result<()> {
+#[tracing::instrument(skip(store))]
+pub(crate) fn rebuild(store: &Store, workspace_root: &Path) -> Result<()> {
     tracing::info!(workspace = %workspace_root.display(), "gnosis: starting index rebuild");
 
     // ── 1. cargo metadata ────────────────────────────────────────────────────
@@ -496,7 +486,7 @@ pub(crate) fn rebuild(conn: &Connection, workspace_root: &Path) -> Result<()> {
         .context(CargoMetadataSnafu)?;
 
     // ── 2. Populate crate_edges ───────────────────────────────────────────────
-    populate_crate_edges(conn, &metadata_full).context(SqliteSnafu)?;
+    populate_crate_edges(store, &metadata_full)?;
 
     // ── 3. Walk workspace source files ───────────────────────────────────────
     let mut total_files = 0usize;
@@ -536,18 +526,7 @@ pub(crate) fn rebuild(conn: &Connection, workspace_root: &Path) -> Result<()> {
             let hash = file_hash(&content);
 
             // Check stored hash.
-            let stored_hash: Option<String> = match conn.query_row(
-                "SELECT sha256 FROM file_hashes WHERE file_path = ?1",
-                params![path_str],
-                |row| row.get(0),
-            ) {
-                Ok(h) => Some(h),
-                Err(rusqlite::Error::QueryReturnedNoRows) => None,
-                Err(e) => {
-                    tracing::warn!(file = %path_str, error = %e, "gnosis: failed to read stored hash");
-                    None
-                }
-            };
+            let stored_hash = store.file_hash(path_str)?;
 
             if stored_hash.as_deref() == Some(hash.as_str()) {
                 skipped += 1;
@@ -557,24 +536,21 @@ pub(crate) fn rebuild(conn: &Connection, workspace_root: &Path) -> Result<()> {
 
             // Parse and index.
             let module_path = module_path_from_file_path(&src_dir, &file_path);
-            if let Err(e) = index_file(conn, crate_name, path_str, &module_path) {
+            if let Err(e) = index_file(store, crate_name, path_str, &module_path) {
                 tracing::warn!(file = %path_str, error = %e, "gnosis: parse error, skipping file");
                 all_present_paths.push(present_path);
                 continue;
             }
 
             // Update hash.
-            conn.execute(
-                "INSERT OR REPLACE INTO file_hashes (file_path, sha256) VALUES (?1, ?2)",
-                params![path_str, hash],
-            )
-            .context(SqliteSnafu)?;
+            store.set_file_hash(path_str, &hash)?;
             all_present_paths.push(present_path);
         }
     }
 
     // ── 4. Prune deleted files ────────────────────────────────────────────────
-    prune_deleted_files(conn, &all_present_paths)?;
+    prune_deleted_files(store, &all_present_paths)?;
+    store.persist()?;
 
     tracing::info!(
         total_files,
@@ -587,32 +563,20 @@ pub(crate) fn rebuild(conn: &Connection, workspace_root: &Path) -> Result<()> {
 }
 
 /// Remove symbols and `file_hashes` for source files no longer on disk.
-fn prune_deleted_files(conn: &Connection, present: &[String]) -> Result<()> {
-    conn.execute(
-        "CREATE TEMP TABLE IF NOT EXISTS present_files (path TEXT PRIMARY KEY)",
-        [],
-    )
-    .context(SqliteSnafu)?;
-    conn.execute("DELETE FROM present_files", [])
-        .context(SqliteSnafu)?;
-    {
-        let mut stmt = conn
-            .prepare("INSERT OR IGNORE INTO present_files (path) VALUES (?1)")
-            .context(SqliteSnafu)?;
-        for path in present {
-            stmt.execute([path]).context(SqliteSnafu)?;
+fn prune_deleted_files(store: &Store, present: &[String]) -> Result<()> {
+    let present_set: std::collections::BTreeSet<&str> =
+        present.iter().map(String::as_str).collect();
+    let file_paths: Vec<String> = store
+        .symbols()?
+        .into_iter()
+        .map(|symbol| symbol.file_path)
+        .collect();
+    for file_path in file_paths {
+        if !present_set.contains(file_path.as_str()) {
+            store.delete_symbols_for_file(&file_path)?;
         }
     }
-    conn.execute(
-        "DELETE FROM symbols WHERE NOT EXISTS (SELECT 1 FROM present_files WHERE path = file_path)",
-        [],
-    )
-    .context(SqliteSnafu)?;
-    conn.execute(
-        "DELETE FROM file_hashes WHERE NOT EXISTS (SELECT 1 FROM present_files WHERE path = file_path)",
-        [],
-    )
-    .context(SqliteSnafu)?;
+    store.prune_file_hashes_not_in(present)?;
     Ok(())
 }
 

@@ -467,17 +467,6 @@ fn validate_capacity(value: &Value, errors: &mut Vec<String>) {
             "capacity.maxToolOutputBytes must not exceed {MAX_TOOL_OUTPUT_BYTES} bytes (10 MiB)"
         ));
     }
-
-    // WHY: opus_context_tokens must be at least 200k (the standard default) and
-    // no more than 2M to prevent nonsensical configurations.
-    if let Some(val) = value.get("opusContextTokens").and_then(Value::as_u64) {
-        if val < 200_000 {
-            errors.push("capacity.opusContextTokens must be at least 200 000 tokens".to_owned());
-        }
-        if val > 2_000_000 {
-            errors.push("capacity.opusContextTokens must not exceed 2 000 000 tokens".to_owned());
-        }
-    }
 }
 
 fn validate_retry(value: &Value, errors: &mut Vec<String>) {

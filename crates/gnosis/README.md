@@ -28,7 +28,7 @@ architecture_fact (existing)          code_graph_query (this crate)
 ─────────────────────────────         ─────────────────────────────────
 ops: get/put/list/search              ops: rdeps/impl/reexports/deps
 tier: Verified (human-curated)        tier: Inferred (machine-derived)
-storage: flat JSON per-fact           storage: SQLite index
+storage: flat JSON per-fact           storage: fjall index
 use: "what does the design say?"      use: "what does the code actually do?"
 ```
 
@@ -38,11 +38,11 @@ architectural fact.
 
 ## Cache location
 
-Default: `~/.cache/aletheia/gnosis.sqlite`
+Default: `~/.cache/aletheia/gnosis.fjall`
 
 Override with `GNOSIS_CACHE_PATH` environment variable.
 
-**Delete the file to force a full rebuild** (next rebuild will re-parse all files).
+**Delete the directory to force a full rebuild** (next rebuild will re-parse all files).
 
 ## Rebuild trigger
 
@@ -56,10 +56,10 @@ Override with `GNOSIS_CACHE_PATH` environment variable.
 
 ## Cache eviction
 
-Delete the SQLite file:
+Delete the fjall directory:
 
 ```bash
-rm ~/.cache/aletheia/gnosis.sqlite
+rm -rf ~/.cache/aletheia/gnosis.fjall
 ```
 
 The next rebuild will re-parse all workspace source files.
@@ -91,12 +91,12 @@ The next rebuild will re-parse all workspace source files.
 
 ## Architecture
 
-- **`CodeGraph`** - public API handle; wraps a `Mutex<rusqlite::Connection>`.
+- **`CodeGraph`** - public API handle; wraps a `Mutex<schema::Store>`.
 - **`crates/gnosis/src/index.rs`** - walks workspace via `cargo metadata`, parses each
-  `*.rs` with `syn::visit`, and populates the SQLite index. Incremental rebuilds use the SHA-256 digest stored in `file_hashes`.
-- **`crates/gnosis/src/query.rs`** - query impls against the SQLite tables.
-- **`crates/gnosis/src/schema.rs`** - DDL for `symbols`, `symbol_refs`, `crate_edges`,
-  `file_hashes` tables.
+  `*.rs` with `syn::visit`, and populates the fjall index. Incremental rebuilds use the SHA-256 digest stored in `file_hashes`.
+- **`crates/gnosis/src/query.rs`** - query impls against the fjall keyspaces.
+- **`crates/gnosis/src/schema.rs`** - keyspace and record definitions for `symbols`, `symbol_refs`, `crate_edges`,
+  `file_hashes`, and `meta`.
 - **`crates/organon/src/builtins/code_graph_query.rs`** - MCP tool executor.
 
 ## Limitations (v1)

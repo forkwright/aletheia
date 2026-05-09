@@ -1,7 +1,7 @@
 //! # gnosis — machine-derived code-graph index
 //!
 //! `gnosis` (γνῶσις: "knowledge") provides symbol-level cross-crate queries
-//! over an aletheia workspace via a lightweight `SQLite` index built from
+//! over an aletheia workspace via a lightweight `fjall` index built from
 //! `cargo metadata` and `syn` AST walks.
 //!
 //! ## What it does
@@ -30,8 +30,8 @@
 //!
 //! ## Cache location
 //!
-//! Default: `~/.cache/aletheia/gnosis.sqlite`.  Override with
-//! `GNOSIS_CACHE_PATH` env var.  Delete the file to force a full rebuild.
+//! Default: `~/.cache/aletheia/gnosis.fjall`.  Override with
+//! `GNOSIS_CACHE_PATH` env var.  Delete the directory to force a full rebuild.
 //!
 //! ## Rebuild trigger
 //!
@@ -52,25 +52,23 @@ mod index;
 use std::path::{Path, PathBuf};
 
 use parking_lot::Mutex;
-use rusqlite::Connection;
 use snafu::ResultExt;
 
-use crate::error::{CreateCacheDirSnafu, RemoveCacheFileSnafu, Result, SqliteSnafu};
+use crate::error::{CreateCacheDirSnafu, Result};
 use crate::query::QueryRow;
-use crate::schema::SCHEMA_VERSION;
+use crate::schema::Store;
 
 // ── CodeGraph ─────────────────────────────────────────────────────────────────
 
-/// A handle to the gnosis `SQLite` index.
+/// A handle to the gnosis fjall index.
 ///
 /// # Thread safety
 ///
-/// `Connection` is `!Send`; we wrap it in `Mutex` so `CodeGraph` can be
-/// stored in `Arc` and shared across async tasks.  All methods lock the
-/// mutex for the duration of the call.
+/// The fjall keyspace handles are thread-safe. We keep them behind a mutex so
+/// query and rebuild operations see a consistent sequence of mutations.
 pub struct CodeGraph {
-    /// Mutex-protected `SQLite` connection.
-    conn: Mutex<Connection>,
+    /// Mutex-protected fjall store.
+    store: Mutex<Store>,
     /// Workspace root (for rebuild).
     workspace_root: PathBuf,
     /// Gnosis schema version this instance was opened with.
@@ -91,15 +89,15 @@ impl std::fmt::Debug for CodeGraph {
 impl CodeGraph {
     /// Open (or create) a gnosis index at `db_path` for `workspace_root`.
     ///
-    /// If the file does not exist it is created and the schema is initialised.
-    /// If the file exists but has an incompatible `user_version`, it is
-    /// truncated and re-initialised (data loss is acceptable — the index is
-    /// fully rebuildable).
+    /// If the directory does not exist it is created and the schema is
+    /// initialised. If the directory exists but carries an incompatible schema
+    /// version, the index keyspaces are cleared and re-initialised (data loss
+    /// is acceptable — the index is fully rebuildable).
     ///
     /// # Errors
     ///
     /// Returns [`error::GnosisError`] if the cache directory cannot be created,
-    /// the database cannot be opened, or schema initialisation fails.
+    /// the fjall database cannot be opened, or schema initialisation fails.
     #[tracing::instrument]
     pub fn open(db_path: &Path, workspace_root: &Path) -> Result<Self> {
         // Ensure the cache directory exists.
@@ -111,52 +109,20 @@ impl CodeGraph {
             })?;
         }
 
-        let conn = Connection::open(db_path).context(SqliteSnafu)?;
-
-        // Check schema version.
-        let stored_ver: u32 = conn
-            .query_row("PRAGMA user_version", [], |r| r.get(0))
-            .context(SqliteSnafu)?;
-
-        if stored_ver != 0 && stored_ver != SCHEMA_VERSION {
-            tracing::warn!(
-                stored_ver,
-                expected = SCHEMA_VERSION,
-                db_path = %db_path.display(),
-                "gnosis: schema version mismatch — dropping and reinitialising index"
-            );
-            // Drop all tables by closing and re-opening (truncate).
-            drop(conn);
-            std::fs::remove_file(db_path).with_context(|_| RemoveCacheFileSnafu {
-                path: db_path.to_owned(),
-            })?;
-            let conn = Connection::open(db_path).context(SqliteSnafu)?;
-            schema::init(&conn)?;
-            conn.execute_batch(&format!("PRAGMA user_version = {SCHEMA_VERSION}"))
-                .context(SqliteSnafu)?;
-            return Ok(Self {
-                conn: Mutex::new(conn),
-                workspace_root: workspace_root.to_owned(),
-                schema_version: SCHEMA_VERSION,
-                producer: format!("gnosis@{SCHEMA_VERSION}"),
-            });
-        }
-
-        schema::init(&conn)?;
-        conn.execute_batch(&format!("PRAGMA user_version = {SCHEMA_VERSION}"))
-            .context(SqliteSnafu)?;
+        let store = Store::open(db_path)?;
+        let schema_version = store.schema_version()?;
 
         Ok(Self {
-            conn: Mutex::new(conn),
+            store: Mutex::new(store),
             workspace_root: workspace_root.to_owned(),
-            schema_version: SCHEMA_VERSION,
-            producer: format!("gnosis@{SCHEMA_VERSION}"),
+            schema_version,
+            producer: format!("gnosis@{schema_version}"),
         })
     }
 
     /// Open a gnosis index at the default cache path for `workspace_root`.
     ///
-    /// Default path: `~/.cache/aletheia/gnosis.sqlite` (or
+    /// Default path: `~/.cache/aletheia/gnosis.fjall` (or
     /// `GNOSIS_CACHE_PATH` env override).
     ///
     /// # Errors
@@ -167,10 +133,10 @@ impl CodeGraph {
         Self::open(&path, workspace_root)
     }
 
-    /// The default `SQLite` cache path.
+    /// The default fjall cache path.
     ///
     /// Respects `GNOSIS_CACHE_PATH` env var; falls back to
-    /// `~/.cache/aletheia/gnosis.sqlite`.
+    /// `~/.cache/aletheia/gnosis.fjall`.
     #[must_use]
     pub fn default_cache_path() -> PathBuf {
         if let Ok(p) = std::env::var("GNOSIS_CACHE_PATH")
@@ -179,7 +145,7 @@ impl CodeGraph {
             return PathBuf::from(p);
         }
         let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_owned());
-        PathBuf::from(home).join(".cache/aletheia/gnosis.sqlite")
+        PathBuf::from(home).join(".cache/aletheia/gnosis.fjall")
     }
 
     /// Schema version this index was opened with.
@@ -205,11 +171,11 @@ impl CodeGraph {
     /// # Errors
     ///
     /// Returns [`error::GnosisError`] if `cargo metadata` fails, a source file
-    /// cannot be read, or a `SQLite` operation fails.
+    /// cannot be read, or a fjall operation fails.
     #[tracing::instrument(skip(self))]
     pub fn rebuild(&self) -> Result<()> {
-        let conn = self.conn.lock();
-        index::rebuild(&conn, &self.workspace_root)
+        let store = self.store.lock();
+        index::rebuild(&store, &self.workspace_root)
     }
 
     // ── Queries ───────────────────────────────────────────────────────────────
@@ -220,59 +186,59 @@ impl CodeGraph {
     ///
     /// # Errors
     ///
-    /// Returns [`error::GnosisError`] on `SQLite` failure.
+    /// Returns [`error::GnosisError`] on fjall failure.
     #[tracing::instrument(skip(self))]
     pub fn symbol_rdeps(
         &self,
         symbol_name: &str,
         target_crate: Option<&str>,
     ) -> Result<Vec<QueryRow>> {
-        let conn = self.conn.lock();
-        query::symbol_rdeps(&conn, symbol_name, target_crate)
+        let store = self.store.lock();
+        query::symbol_rdeps(&store, symbol_name, target_crate)
     }
 
     /// Which types implement `trait_name`?
     ///
     /// # Errors
     ///
-    /// Returns [`error::GnosisError`] on `SQLite` failure.
+    /// Returns [`error::GnosisError`] on fjall failure.
     #[tracing::instrument(skip(self))]
     pub fn impl_search(&self, trait_name: &str) -> Result<Vec<QueryRow>> {
-        let conn = self.conn.lock();
-        query::impl_search(&conn, trait_name)
+        let store = self.store.lock();
+        query::impl_search(&store, trait_name)
     }
 
     /// Which crates re-export `symbol_name` via `pub use`?
     ///
     /// # Errors
     ///
-    /// Returns [`error::GnosisError`] on `SQLite` failure.
+    /// Returns [`error::GnosisError`] on fjall failure.
     #[tracing::instrument(skip(self))]
     pub fn reexport_chain(&self, symbol_name: &str) -> Result<Vec<QueryRow>> {
-        let conn = self.conn.lock();
-        query::reexport_chain(&conn, symbol_name)
+        let store = self.store.lock();
+        query::reexport_chain(&store, symbol_name)
     }
 
     /// What workspace crates does `crate_name` directly depend on?
     ///
     /// # Errors
     ///
-    /// Returns [`error::GnosisError`] on `SQLite` failure.
+    /// Returns [`error::GnosisError`] on fjall failure.
     #[tracing::instrument(skip(self))]
     pub fn crate_deps(&self, crate_name: &str) -> Result<Vec<QueryRow>> {
-        let conn = self.conn.lock();
-        query::crate_deps(&conn, crate_name)
+        let store = self.store.lock();
+        query::crate_deps(&store, crate_name)
     }
 
     /// What workspace crates directly depend on `crate_name`?
     ///
     /// # Errors
     ///
-    /// Returns [`error::GnosisError`] on `SQLite` failure.
+    /// Returns [`error::GnosisError`] on fjall failure.
     #[tracing::instrument(skip(self))]
     pub fn crate_rdeps(&self, crate_name: &str) -> Result<Vec<QueryRow>> {
-        let conn = self.conn.lock();
-        query::crate_rdeps(&conn, crate_name)
+        let store = self.store.lock();
+        query::crate_rdeps(&store, crate_name)
     }
 
     /// List all symbols in `crate_name`, optionally filtered by `kind`.
@@ -282,11 +248,11 @@ impl CodeGraph {
     ///
     /// # Errors
     ///
-    /// Returns [`error::GnosisError`] on `SQLite` failure.
+    /// Returns [`error::GnosisError`] on fjall failure.
     #[tracing::instrument(skip(self))]
     pub fn symbols_in(&self, crate_name: &str, kind: Option<&str>) -> Result<Vec<QueryRow>> {
-        let conn = self.conn.lock();
-        query::symbols_in(&conn, crate_name, kind)
+        let store = self.store.lock();
+        query::symbols_in(&store, crate_name, kind)
     }
 }
 
@@ -299,7 +265,7 @@ mod tests {
 
     fn open_tmp_graph() -> (CodeGraph, tempfile::TempDir) {
         let tmp = tempfile::tempdir().expect("tempdir");
-        let db_path = tmp.path().join("gnosis.sqlite");
+        let db_path = tmp.path().join("gnosis.fjall");
         let graph = CodeGraph::open(&db_path, tmp.path()).expect("open");
         (graph, tmp)
     }
@@ -307,19 +273,22 @@ mod tests {
     #[test]
     fn open_creates_db_and_schema() {
         let (_graph, tmp) = open_tmp_graph();
-        assert!(tmp.path().join("gnosis.sqlite").exists());
+        assert!(tmp.path().join("gnosis.fjall").exists());
     }
 
     #[test]
     fn schema_version_matches_constant() {
         let (graph, _tmp) = open_tmp_graph();
-        assert_eq!(graph.schema_version(), SCHEMA_VERSION);
+        assert_eq!(graph.schema_version(), crate::schema::SCHEMA_VERSION);
     }
 
     #[test]
     fn producer_string_matches_schema_version() {
         let (graph, _tmp) = open_tmp_graph();
-        assert_eq!(graph.producer(), format!("gnosis@{SCHEMA_VERSION}"));
+        assert_eq!(
+            graph.producer(),
+            format!("gnosis@{}", crate::schema::SCHEMA_VERSION)
+        );
     }
 
     #[test]
@@ -327,10 +296,10 @@ mod tests {
         // SAFETY: test-only env mutation.
         #[expect(unsafe_code, reason = "test env mutation")]
         unsafe {
-            std::env::set_var("GNOSIS_CACHE_PATH", "/tmp/test-gnosis-override.sqlite");
+            std::env::set_var("GNOSIS_CACHE_PATH", "/tmp/test-gnosis-override.fjall");
         }
         let path = CodeGraph::default_cache_path();
-        assert_eq!(path, PathBuf::from("/tmp/test-gnosis-override.sqlite"));
+        assert_eq!(path, PathBuf::from("/tmp/test-gnosis-override.fjall"));
         #[expect(unsafe_code, reason = "test env mutation")]
         unsafe {
             std::env::remove_var("GNOSIS_CACHE_PATH");
