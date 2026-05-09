@@ -1,0 +1,55 @@
+[meta]
+name = "aletheia"
+repo = "forkwright/aletheia"
+generated = false
+source_docs = [
+  "README.md",
+  "_llm/api.toml",
+]
+
+[apis]
+summary = "Aletheia exposes a CLI, HTTP/SSE API, Signal command surface, TUI, and MCP integration."
+
+[[cli_commands]]
+name = "aletheia"
+purpose = "Start the server by default."
+
+[[cli_commands]]
+name = "aletheia init"
+purpose = "Initialize a new instance."
+
+[[cli_commands]]
+name = "aletheia health"
+purpose = "Check a running instance."
+
+[[cli_commands]]
+name = "aletheia status"
+purpose = "Show system status."
+
+[[cli_commands]]
+name = "aletheia tui"
+purpose = "Launch the terminal dashboard when built with the TUI feature."
+
+[[mcp_tools]]
+name = "aletheia-memory-mcp"
+purpose = "Standalone memory MCP server for external agents."
+
+[[http_routes]]
+method = "GET"
+path = "/api/health"
+purpose = "Liveness and readiness."
+
+[[http_routes]]
+method = "GET"
+path = "/api/docs/openapi.json"
+purpose = "OpenAPI spec."
+
+[[http_routes]]
+method = "POST"
+path = "/api/v1/sessions/{id}/messages"
+purpose = "Send a message and stream the turn response."
+
+[[http_routes]]
+method = "GET"
+path = "/api/v1/sessions/{id}/history"
+purpose = "Read conversation history."

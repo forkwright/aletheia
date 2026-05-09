@@ -1,115 +1,53 @@
-# Technology decisions — compressed from docs/TECHNOLOGY.md
-# Canonical source: docs/TECHNOLOGY.md
+[meta]
+name = "aletheia"
+repo = "forkwright/aletheia"
+generated = false
+source_docs = [
+  "README.md",
+  "docs/TECHNOLOGY.md",
+  "kanon/projects/aletheia/STATE.md",
+  "_llm/decisions.toml",
+]
+
+[decisions]
+summary = "Core runtime and architecture decisions for the aletheia agent system."
 
 [[decision]]
-area = "language"
-choice = "Rust"
-replaces = "TypeScript + Python"
-why = "No GC, single binary, true concurrency"
+id = "D-pure-rust"
+title = "Pure Rust runtime and storage boundary"
+status = "accepted"
+context = "Aletheia replaced TypeScript/Python services and external databases with one deployable Rust system."
+decision = "Use Rust, Tokio, axum, fjall, and owned clients rather than Node, Python services, Qdrant, Neo4j, or SQLite as required runtime dependencies."
+consequences = "The runtime deploys as one binary with embedded storage and a smaller external-service footprint."
 
 [[decision]]
-area = "async"
-choice = "Tokio"
-replaces = "Node.js event loop"
-why = "Real threads, Axum built on it"
+id = "D-agent-actor"
+title = "Actor per nous"
+status = "accepted"
+context = "Agents need isolated turn state, durable memory, tools, and cross-agent coordination without shared mutable state."
+decision = "Run each nous as a Tokio actor with a mailbox and explicit turn pipeline."
+consequences = "Agent work is serialized per nous while tools, recall, and gateways remain independently testable."
 
 [[decision]]
-area = "http-server"
-choice = "Axum"
-replaces = "Hono"
-why = "SSE built-in, cleaner middleware"
+id = "D-memory-split"
+title = "Split memory into typed knowledge crates"
+status = "accepted"
+context = "Persistent agent memory needs facts, graph search, sessions, recall, and consolidation without one monolithic store."
+decision = "Keep eidos, graphe, episteme, krites, and the mneme facade as separate crates."
+consequences = "Knowledge behavior can evolve by layer while downstream crates consume the mneme facade."
 
 [[decision]]
-area = "http-client"
-choice = "reqwest"
-why = "Async, connection pooling, rustls"
+id = "D-sovereignty-filter"
+title = "Provider deployment target controls recall sensitivity"
+status = "accepted"
+context = "Local OpenAI-compatible providers must not be treated as cloud providers for confidential recall filtering."
+decision = "Honor deployment_target in provider config and bridge it into runtime provider classification."
+consequences = "Local providers can receive internal/confidential facts while cloud providers remain filtered."
 
 [[decision]]
-area = "llm-client"
-choice = "Own client (~600 LOC)"
-replaces = "@anthropic-ai/sdk"
-why = "Stable API, reqwest + SSE, adaptive thinking"
-
-[[decision]]
-area = "knowledge-store"
-choice = "Embedded Datalog+HNSW (krites)"
-replaces = "Qdrant + Neo4j"
-why = "Rust-native, zero external services, vectors + graph + relations in one engine"
-
-[[decision]]
-area = "embeddings"
-choice = "candle (pure Rust)"
-replaces = "fastembed-rs (ONNX)"
-why = "No C++ deps. Feature-gated embed-candle"
-
-[[decision]]
-area = "sessions"
-choice = "fjall (pure Rust LSM)"
-replaces = "SQLite"
-why = "Zero C deps, embedded, WAL"
-
-[[decision]]
-area = "config"
-choice = "owned toml + serde_json merge + env overlay"
-why = "Oikos cascade: defaults (serde_json::Value) → TOML → env with __ splitting. Cut 6 transitive deps including pear proc-macro combinator; ~80 lines replaced figment's 27-line surface."
-
-[[decision]]
-area = "ids"
-choice = "ulid + uuid v4 (owned)"
-why = "ulid for time-sorted, uuid v4 for non-temporal"
-
-[[decision]]
-area = "errors"
-choice = "snafu"
-replaces = "thiserror"
-why = "Location-based stack traces, context wrapping, multiple variants from same source"
-
-[[decision]]
-area = "logging"
-choice = "tracing"
-why = "Structured spans, layers, OpenTelemetry compatible"
-
-[[decision]]
-area = "hashing"
-choice = "blake3 + foldhash"
-why = "blake3 for content (dedup), foldhash for HashMap keys"
-
-[[decision]]
-area = "hot-reload"
-choice = "arc-swap + notify"
-why = "Zero-downtime config swap, file watching"
-
-[[decision]]
-area = "concurrent-maps"
-choice = "papaya"
-replaces = "DashMap"
-why = "Lock-free, better scaling under contention"
-
-[[decision]]
-area = "seccomp"
-choice = "extrasafe"
-why = "Declarative syscall filtering for sandboxed tools"
-
-[[decision]]
-area = "plugins"
-choice = "WASM (wasmtime)"
-replaces = "Dynamic JS import()"
-why = "Sandboxed, portable, any-language"
-
-[[decision]]
-area = "tui"
-choice = "ratatui + crossterm"
-replaces = "Svelte 5 web UI"
-why = "Terminal-native, zero web dependencies"
-
-[[decision]]
-area = "tls"
-choice = "rustls"
-replaces = "openssl-sys"
-why = "Pure Rust, no C++"
-
-[[decision]]
-area = "crypto"
-choice = "RustCrypto (hmac, sha2, aes-gcm, chacha20poly1305)"
-replaces = "ring (direct)"
-why = "Pure Rust, ring only transitive via rustls"
+id = "D-theatron-extraction"
+title = "Extract generic UI infrastructure to theatron"
+status = "accepted"
+context = "proskenion, koilon, and skene contain reusable desktop/TUI/network UI primitives now owned fleet-wide."
+decision = "Let the theatron repo own generic UI crates; aletheia retains aletheia-specific consumer code."
+consequences = "Aletheia accepts refactor churn while keeping user-facing behavior unchanged."

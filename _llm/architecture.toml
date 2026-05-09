@@ -1,161 +1,83 @@
-# Crate architecture — compressed from docs/ARCHITECTURE.md + ARCHITECTURE-QUICK.md
-# Canonical source: docs/ARCHITECTURE.md
-
-# Layers flow downward: foundation -> storage -> agent -> interface -> runtime
-# Never reverse. Higher layers depend on lower, not the other way.
-
-[[crate]]
-name = "koina"
-layer = "foundation"
-purpose = "Core types, errors, tracing, system abstractions"
-used_by = ["every other crate"]
-
-[[crate]]
-name = "taxis"
-layer = "foundation"
-purpose = "Config cascade: TOML + env via owned loader (deep-merge on serde_json::Value)"
-depends = ["koina"]
-
-[[crate]]
-name = "eidos"
-layer = "storage"
-purpose = "Shared knowledge types (leaf crate, no deps beyond koina)"
-depends = ["koina"]
-
-[[crate]]
-name = "graphe"
-layer = "storage"
-purpose = "Session/message store (fjall default, sqlite optional)"
-depends = ["koina", "eidos"]
-
-[[crate]]
-name = "krites"
-layer = "storage"
-purpose = "Embedded Datalog engine + HNSW + BM25 FTS"
-depends = ["koina"]
-
-[[crate]]
-name = "episteme"
-layer = "storage"
-purpose = "Knowledge pipeline: extraction, recall, embeddings, graph algorithms"
-depends = ["koina", "eidos", "krites", "graphe"]
-
-[[crate]]
-name = "mneme"
-layer = "storage"
-purpose = "Memory facade (~264 lines of re-exports)"
-depends = ["eidos", "graphe", "krites", "episteme"]
-
-[[crate]]
-name = "hermeneus"
-layer = "agent"
-purpose = "LLM client: streaming, retries, health tracking, multi-provider"
-depends = ["koina", "taxis"]
-
-[[crate]]
-name = "organon"
-layer = "agent"
-purpose = "Tool registry, sandbox, 38+ built-in tools"
-depends = ["koina", "taxis", "hermeneus"]
-
-[[crate]]
-name = "melete"
-layer = "agent"
-purpose = "Context distillation / LLM-driven summarization"
-depends = ["koina", "hermeneus"]
-
-[[crate]]
-name = "thesauros"
-layer = "agent"
-purpose = "Domain pack loader"
-depends = ["koina"]
-
-[[crate]]
-name = "nous"
-layer = "agent"
-purpose = "Agent runtime: actor model, turn pipeline, bootstrap assembly"
-depends = ["koina", "taxis", "mneme", "hermeneus", "organon", "melete", "thesauros"]
-
-[[crate]]
-name = "dokimion"
-layer = "agent"
-purpose = "Behavioral eval: scenario-based API testing"
-depends = ["koina"]
-
-[[crate]]
-name = "symbolon"
-layer = "interface"
-purpose = "Auth: JWT, API keys, OAuth, RBAC, credential management"
-depends = ["koina", "taxis"]
-
-[[crate]]
-name = "pylon"
-layer = "interface"
-purpose = "Axum HTTP gateway: SSE streaming, auth middleware, rate limits"
-depends = ["koina", "taxis", "nous", "symbolon", "mneme", "hermeneus", "organon"]
-
-[[crate]]
-name = "diaporeia"
-layer = "interface"
-purpose = "MCP server for external AI agent integration"
-depends = ["koina", "nous", "organon"]
-
-[[crate]]
-name = "agora"
-layer = "interface"
-purpose = "Channel registry: Signal, Slack, webhooks"
-depends = ["koina", "taxis", "nous"]
-
-[[crate]]
-name = "dianoia"
-layer = "agent"
-purpose = "Planning: multi-phase state machine, workspace management"
-depends = ["koina", "taxis", "mneme", "hermeneus", "nous"]
-
-[[crate]]
-name = "energeia"
-layer = "runtime"
-purpose = "Dispatch orchestration (agent task scheduling)"
-depends = ["koina", "taxis", "nous", "hermeneus"]
-
-[[crate]]
-name = "daemon"
-layer = "runtime"
-purpose = "Background tasks: cron, maintenance, watchdog, prosoche"
-depends = ["koina", "taxis", "nous", "mneme"]
-
-[[crate]]
-name = "oikonomos"
-layer = "runtime"
-purpose = "Lifecycle management, graceful shutdown"
-depends = ["koina"]
-
-[[crate]]
+[meta]
 name = "aletheia"
-layer = "runtime"
-purpose = "Binary entrypoint: CLI, server startup, service wiring"
-depends = ["everything"]
+repo = "forkwright/aletheia"
+generated = false
+source_docs = [
+  "README.md",
+  "docs/ARCHITECTURE.md",
+  "kanon/projects/aletheia/STATE.md",
+  "_llm/L1-workspace.md",
+]
 
-[[crate]]
-name = "theatron/skene"
-layer = "ui"
-purpose = "Shared UI types, API client, SSE event stream"
-depends = ["koina"]
+[architecture]
+summary = "Self-hosted multi-agent AI runtime with persistent memory, tools, local knowledge, HTTP/SSE, Signal, TUI, and desktop operator surfaces."
+layers = [
+  "foundation",
+  "knowledge",
+  "llm-integration",
+  "agent-runtime",
+  "gateway",
+  "presentation",
+  "dispatch",
+  "document-generation",
+]
 
-[[crate]]
-name = "theatron/koilon"
-layer = "ui"
-purpose = "TUI dashboard (ratatui)"
-depends = ["skene"]
+[[architecture.crates]]
+name = "aletheia"
+path = "crates/aletheia"
+role = "Binary entrypoint and CLI/service wiring."
 
-[[crate]]
-name = "theatron/proskenion"
-layer = "ui"
-purpose = "Desktop app (Dioxus, excluded from workspace)"
-depends = ["skene"]
+[[architecture.crates]]
+name = "nous"
+path = "crates/nous"
+role = "Agent actor runtime and turn pipeline."
 
-[[crate]]
+[[architecture.crates]]
+name = "mneme"
+path = "crates/mneme"
+role = "Memory facade over eidos, graphe, episteme, and krites."
+
+[[architecture.crates]]
+name = "hermeneus"
+path = "crates/hermeneus"
+role = "LLM provider client and streaming integration."
+
+[[architecture.crates]]
+name = "organon"
+path = "crates/organon"
+role = "Tool registry and sandboxed built-in tool executors."
+
+[[architecture.crates]]
+name = "pylon"
+path = "crates/pylon"
+role = "Axum HTTP gateway, SSE streaming, auth middleware, and API routes."
+
+[[architecture.crates]]
+name = "diaporeia"
+path = "crates/diaporeia"
+role = "MCP server interface for external AI agents."
+
+[[architecture.crates]]
+name = "energeia"
+path = "crates/energeia"
+role = "Dispatch orchestration and plan execution."
+
+[[architecture.crates]]
 name = "poiesis"
-layer = "document"
-purpose = "Report tooling: PDF, ODT, XLSX, ODS, PPTX (excluded from workspace)"
-depends = ["koina"]
+path = "crates/poiesis/*"
+role = "Document model, renderers, linting, verification, intake, diff, and inspect tools."
+
+[[interfaces]]
+name = "aletheia"
+kind = "cli"
+path = "crates/aletheia"
+
+[[interfaces]]
+name = "aletheia HTTP API"
+kind = "http"
+path = "crates/pylon"
+
+[[interfaces]]
+name = "aletheia MCP"
+kind = "mcp"
+path = "crates/diaporeia"
