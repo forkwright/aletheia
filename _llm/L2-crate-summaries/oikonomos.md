@@ -1,24 +1,30 @@
-# oikonomos (daemon)
+# oikonomos
 
-**Purpose:** Per-nous background task runner with cron scheduling, maintenance services, prosoche attention checks, and watchdog process monitoring.
+**Purpose:** Oikonomos (the steward) -- per-nous background task runner, cron scheduling, prosoche attention.
 
 ## Key types
 
 | Type | Purpose |
 |------|---------|
-| `TaskRunner` | Per-nous scheduler: cron, interval, one-shot, and startup task modes |
-| `TaskDef` | Task definition: id, schedule, action, timeout, active window |
-| `BuiltinTask` | Built-in tasks: Prosoche, TraceRotation, DriftDetection, DbSizeMonitor |
-| `DaemonBridge` | Trait for sending prompts to nous without direct dependency |
-| `Watchdog` | Heartbeat tracker with configurable timeout and auto-restart |
+| `NoopBridge` | Current public type or boundary; see L3/source for exact fields |
+| `DaemonBridge` | Current public type or boundary; see L3/source for exact fields |
+| `Coordinator` | Current public type or boundary; see L3/source for exact fields |
+| `new` | Current public type or boundary; see L3/source for exact fields |
+| `max_children` | Current public type or boundary; see L3/source for exact fields |
 
 ## Public API surface
 
-- `daemon::runner` - `TaskRunner` lifecycle (start, register, stop)
-- `daemon::schedule` - `TaskDef`, `Schedule`, `BuiltinTask`
-- `daemon::bridge` - `DaemonBridge` trait (implemented in aletheia crate)
+- `oikonomos::bridge/bridge_impl` - public items from `src/bridge/bridge_impl.rs`
+- `oikonomos::bridge` - public items from `src/bridge.rs`
+- `oikonomos::coordination` - public items from `src/coordination.rs`
+- `oikonomos::cron/evolution` - public items from `src/cron/evolution.rs`
+- `oikonomos::cron/graph_cleanup` - public items from `src/cron/graph_cleanup.rs`
 
 ## When to look here
 
-- When adding a new recurring background task (add variant to `BuiltinTask`, schedule in `TaskDef`)
-- When debugging prosoche check-ins or watchdog restart behavior
+- When work touches `crates/daemon` or downstream imports from `oikonomos`.
+- For exact signatures, load `_llm/L3-api-index/oikonomos.md` if present, then source.
+
+## Recent changes
+
+The daemon crate is indexed under its package name; maintenance persistence and drift detection changed today.

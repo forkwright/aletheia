@@ -1,23 +1,30 @@
 # diaporeia
 
-**Purpose:** MCP server interface for external AI agents via the Model Context Protocol. Exposes 15 tools covering sessions, nous, knowledge, config, and health.
+**Purpose:** MCP server interface - the passage through for external AI agents.
 
 ## Key types
 
 | Type | Purpose |
 |------|---------|
-| `DiaporeiaServer` | MCP server: implements `ServerHandler`, holds state + rate limiter + tool router |
-| `DiaporeiaState` | Shared state: SessionStore, NousManager, ToolRegistry, Oikos, config |
-| `RateLimiter` | Per-session rate limiting with Cheap/Expensive tiers |
-| `Error` | Error enum with `Into<rmcp::ErrorData>` conversion |
+| `DiaporeiaServer` | Current public type or boundary; see L3/source for exact fields |
+| `ServerState` | Current public type or boundary; see L3/source for exact fields |
+| `McpClaims` | Current public type or boundary; see L3/source for exact fields |
+| `RateLimiter` | Current public type or boundary; see L3/source for exact fields |
+| `KnowledgeSearchParams` | Current public type or boundary; see L3/source for exact fields |
 
 ## Public API surface
 
-- `diaporeia::server` - `DiaporeiaServer`, `DiaporeiaState`
-- `diaporeia::transport` - Streamable HTTP router (Axum mount at `/mcp`) and stdio transport
-- `diaporeia::tools` - MCP tool implementations grouped by domain
+- `diaporeia::auth` - public items from `src/auth.rs`
+- `diaporeia::client` - public items from `src/client.rs`
+- `diaporeia::error` - public items from `src/error.rs`
+- `diaporeia::rate_limit` - public items from `src/rate_limit.rs`
+- `diaporeia::server` - public items from `src/server.rs`
 
 ## When to look here
 
-- When adding a new MCP tool exposed to external AI agents
-- When modifying MCP transport, rate limiting, or error serialization
+- When work touches `crates/diaporeia` or downstream imports from `diaporeia`.
+- For exact signatures, load `_llm/L3-api-index/diaporeia.md` if present, then source.
+
+## Recent changes
+
+The MCP plane gained stdio client bridging, RBAC claim handling, knowledge_search, depth controls, and shared-state boundary documentation.

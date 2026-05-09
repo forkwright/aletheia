@@ -12,15 +12,15 @@
 
 ## Runtime
 - **hermeneus** - LLM client: streaming, retries, health tracking
-- **organon** - tool registry, sandbox, 38 built-in tools
+- **organon** - tool registry, sandbox, HMAC receipts, 49 built-in tools
 - **melete** - context distillation / summarization
 - **thesauros** - domain pack loader
-- **nous** - agent runtime: actor model, turn pipeline
+- **nous** - agent runtime: actor model, working memory, turn pipeline, per-stage timeouts
 
 ## HTTP
-- **symbolon** - auth: JWT, API keys, OAuth, RBAC
-- **pylon** - Axum HTTP gateway: SSE, auth, rate limits
-- **diaporeia** - MCP server for external AI agents
+- **symbolon** - auth: JWT, API keys, OAuth, admin facade, RBAC
+- **pylon** - Axum HTTP gateway: SSE, auth, rate limits, meta-insights
+- **diaporeia** - MCP server and external tool-plane bridge
 
 ## CLI & desktop
 - **aletheia** - binary: CLI, server startup, wiring
@@ -34,5 +34,6 @@
 - **eval** - behavioral eval: scenario-based API testing
 - **energeia** - dispatch orchestration
 - **poiesis** - document rendering: PDF, ODT, XLSX, ODS, PPTX
+- **gnosis** - code graph indexing: SHA-256, module path, re-export edges
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for full details.

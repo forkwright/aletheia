@@ -39,6 +39,11 @@ fjall is a pure-Rust LSM-tree - no C dependency, no WAL management to tune. Keys
 |---------|---------|---------|
 | `mneme-engine` | no | Gates Datalog-engine error variants that reference `tokio::task::JoinError` |
 
+## Recent substrate notes
+
+- TTL overflow handling and `cleanup_expired_entries` are part of the session-store maintenance contract.
+- Session storage remains fjall-only; do not add rusqlite paths or SQLite recovery code.
+
 ## Common tasks
 
 | Task | Where |

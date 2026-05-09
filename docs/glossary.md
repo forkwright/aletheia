@@ -173,7 +173,7 @@ workspace uses without it belonging to any single layer.
 **Etymology.** From *κρίνω* (to separate, to judge, to decide). The judge: one who
 distinguishes, evaluates, and renders a verdict.
 
-**In this codebase.** The Datalog query engine. A vendored CozoDB instance evaluates
+**In this codebase.** The embedded Datalog query engine evaluates
 logical rules and facts, deciding what follows from what the system knows.
 
 **Crate.** `krites` (low layer) - Datalog engine.

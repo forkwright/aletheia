@@ -137,6 +137,42 @@ pub struct RecallSettings {
     /// proximity, access frequency) so the LLM can weight its reasoning
     /// by provenance quality. Default: false.
     pub inject_metadata: bool,
+    /// Fact IDs that should be recalled first when they appear in candidates.
+    ///
+    /// Pinned facts bypass the `max_results` budget and are slotted before
+    /// non-pinned results, but they still count against the token budget.
+    #[serde(default)]
+    pub pinned_facts: Vec<FactId>,
+    /// When true, append recalled knowledge as a system message at the end of
+    /// the conversation context instead of injecting it into the system prompt.
+    #[serde(default)]
+    pub late_inject_anchor: bool,
+    /// Per-scope minimum result counts with slack-fill.
+    ///
+    /// Guarantees fair representation across memory scopes regardless of pure
+    /// score ranking. Unused quota from one scope is redistributed (slack-fill)
+    /// to others. Default: empty (no quota enforcement).
+    #[serde(default)]
+    pub scope_quotas: HashMap<MemoryScope, usize>,
+    /// URL for an HTTP cross-encoder reranker.
+    ///
+    /// When set, recall candidates are forwarded to this endpoint for
+    /// model-based rescoring. When `None` or when the `reranker` feature is
+    /// not enabled, the pipeline falls back to baseline ranking.
+    #[serde(default)]
+    pub reranker_url: Option<String>,
+}
+```
+
+```rust
+pub enum RecallProfile {
+    /// Preserve the explicit recall/extraction/pipeline settings.
+    #[default]
+    Default,
+    /// Favor broad project/reference recall for archival work.
+    Archival,
+    /// Favor stable identity continuity across turns and sessions.
+    IdentityContinuity,
 }
 ```
 
@@ -233,9 +269,18 @@ pub struct NousDefinition {
     /// Whether this is the default agent for unrouted messages.
     #[serde(default)]
     pub default: bool,
+    /// Whether this agent's workspace is hidden from public discovery.
+    #[serde(default)]
+    pub private: bool,
+    /// Episteme knowledge-store cohort for this agent.
+    #[serde(default)]
+    pub episteme_cohort: Option<String>,
     /// Recall pipeline override; when `None`, inherits from [`AgentDefaults::recall`].
     #[serde(default)]
     pub recall: Option<RecallSettings>,
+    /// Named recall behavior profile; when `None`, resolves to [`RecallProfile::Default`].
+    #[serde(default)]
+    pub recall_profile: Option<RecallProfile>,
     /// Per-agent behavioral override; when `None`, inherits from [`AgentDefaults::behavior`].
     #[serde(default)]
     pub behavior: Option<AgentBehaviorDefaults>,
@@ -243,7 +288,7 @@ pub struct NousDefinition {
 ```
 
 ```rust
-pub struct AgentBehaviorDefaults {
+pub struct AgentBehaviorDefaults { // kanon:ignore RUST/struct-too-many-fields
     // --- Safety ---
     /// Consecutive identical tool-call sequences before loop detection fires. Default: 3.
     pub safety_loop_detection_threshold: u32,
@@ -415,6 +460,8 @@ pub struct AgentBehaviorDefaults {
     /// Cosine similarity above which embeddings are considered similar. Default: 0.80.
     /// Mirrors `episteme::dedup::EMBED_THRESHOLD`.
     pub knowledge_dedup_embed_threshold: f64,
+    /// Bookkeeping provider selected for extraction. Default: `llm`.
+    pub knowledge_extraction_provider: BookkeepingProviderKind,
 
     // --- Fact lifecycle ---
     /// Confidence above which a fact is considered Active. Default: 0.7.
@@ -639,6 +686,8 @@ pub struct KnowledgeConfig {
     pub extraction_min_fact_length: usize,
     /// Maximum character length for an extracted fact. Default: 500.
     pub extraction_max_fact_length: usize,
+    /// Provider selection for the extraction bookkeeping pass.
+    pub extraction: ExtractionConfig,
     /// Minimum tool calls before operational instinct scoring fires. Default: 5.
     /// Mirrors `episteme::ops_facts::MIN_TOOL_CALLS`.
     pub instinct_min_tool_calls: u64,
@@ -684,33 +733,20 @@ pub struct KnowledgeConfig {
 }
 ```
 
-## `src/config/behavior/matrix.rs`
-
 ```rust
-pub struct MatrixConfig {
-    /// Whether the Matrix channel is active.
-    pub enabled: bool,
-    /// Homeserver URL (e.g. `http://menos.lan:6167`). Must include scheme.
-    pub homeserver_url: String,
-    /// Matrix `user_id` this deployment authenticates as (e.g. `@syn:menos.lan`).
-    pub user_id: String,
-    /// Device display name advertised to the homeserver during login.
-    pub device_display_name: String,
-    /// Path to the fjall-backed crypto store, relative to `oikos.data()`.
-    ///
-    /// Default: `matrix-crypto/`. The store is namespaced per agent underneath.
-    pub crypto_store_path: PathBuf,
-    /// Per-nous room bindings (one entry per agent on this homeserver).
-    pub accounts: Vec<MatrixAccountConfig>,
+pub struct ExtractionConfig {
+    /// Bookkeeping provider implementation. Default: `llm`.
+    pub provider: BookkeepingProviderKind,
 }
 ```
 
 ```rust
-pub struct MatrixAccountConfig {
-    /// Nous (agent) identifier.
-    pub nous_id: String,
-    /// Matrix room ID (e.g. `!abcd1234:menos.lan`).
-    pub room: String,
+pub enum BookkeepingProviderKind {
+    /// Compatibility LLM prompt + parser path.
+    #[default]
+    Llm,
+    /// `GLiNER` ONNX entity adapter with LLM fallback.
+    Gliner,
 }
 ```
 
@@ -764,12 +800,8 @@ pub struct NousBehaviorConfig {
     /// Consecutive receive timeouts before a warning log is emitted. Default: 3.
     /// Mirrors `nous::actor::CONSECUTIVE_TIMEOUT_WARN_THRESHOLD`.
     pub consecutive_timeout_warn_threshold: u32,
-    /// Actor inbox channel capacity. Default: 32.
-    pub inbox_capacity: usize,
     /// Maximum number of concurrently spawned tasks per agent. Default: 8.
     pub max_spawned_tasks: usize,
-    /// Maximum number of concurrent sessions across all agents. Default: 1000.
-    pub max_sessions: usize,
     /// Completed-task garbage collection interval in seconds. Default: 300.
     /// Mirrors `nous::tasks::gc::DEFAULT_GC_INTERVAL`.
     pub gc_interval_secs: u64,
@@ -1092,6 +1124,8 @@ pub struct GatewayConfig {
     pub csrf: CsrfConfig,
     /// Rate limiting settings.
     pub rate_limit: RateLimitConfig,
+    /// SSE heartbeat interval for event subscription streams, in seconds.
+    pub sse_heartbeat_interval_secs: u64,
 }
 ```
 
@@ -1192,8 +1226,6 @@ pub struct MaintenanceSettings {
     pub db_monitoring: DbMonitoringSettings,
     /// Proactive disk space monitoring and write protection.
     pub disk_space: DiskSpaceSettings,
-    /// `SQLite` corruption recovery settings.
-    pub sqlite_recovery: SqliteRecoverySettings,
     /// Automatic data retention enforcement.
     pub retention: RetentionSettings,
     /// Whether background knowledge graph maintenance tasks are enabled.
@@ -1258,19 +1290,6 @@ pub struct DiskSpaceSettings {
     pub critical_threshold_mb: u64,
     /// Seconds between background disk space checks.
     pub check_interval_secs: u64,
-}
-```
-
-```rust
-pub struct SqliteRecoverySettings {
-    /// Whether corruption recovery is active.
-    pub enabled: bool,
-    /// Run `PRAGMA integrity_check` when opening a database.
-    pub integrity_check_on_open: bool,
-    /// Attempt to dump readable data into a new database on corruption.
-    pub auto_repair: bool,
-    /// Copy the corrupt file to `{path}.corrupt.{timestamp}` before repair.
-    pub backup_corrupt: bool,
 }
 ```
 
@@ -1504,7 +1523,16 @@ pub struct McpRateLimitConfig {
 ## `src/config/mod.rs`
 
 ```rust
-pub struct AletheiaConfig {
+pub struct ObservabilitySettings {
+    /// Install the episteme trace-ingest subscriber layer and flush ops facts
+    /// into the knowledge store. Default: true.
+    #[serde(alias = "trace_ingest")]
+    pub trace_ingest: bool,
+}
+```
+
+```rust
+pub struct AletheiaConfig { // kanon:ignore RUST/config-deny-unknown-fields
     /// Agent definitions and shared defaults.
     pub agents: AgentsConfig,
     /// HTTP gateway settings (port, bind address, auth, TLS, CORS).
@@ -1527,6 +1555,8 @@ pub struct AletheiaConfig {
     pub credential: CredentialConfig,
     /// Structured file logging configuration.
     pub logging: LoggingSettings,
+    /// Runtime observability feature toggles.
+    pub observability: ObservabilitySettings,
     /// MCP server configuration.
     pub mcp: McpConfig,
     /// Training data capture configuration.
@@ -1684,12 +1714,12 @@ pub struct ChannelBinding {
     pub nous_id: String,
     /// Session key pattern. Supports `{source}` and `{group}` placeholders.
     #[serde(default = "default_session_pattern")]
-    pub session_key: String,
+    pub session_key: String, // kanon:ignore RUST/plain-string-secret
 }
 ```
 
 ```rust
-pub struct EmbeddingSettings {
+pub struct EmbeddingSettings { // kanon:ignore RUST/config-deny-unknown-fields
     /// Provider type: "mock", "candle".
     pub provider: String,
     /// Provider-specific model name.
@@ -1700,17 +1730,14 @@ pub struct EmbeddingSettings {
 ```
 
 ```rust
-pub struct ChannelsConfig {
+pub struct ChannelsConfig { // kanon:ignore RUST/config-deny-unknown-fields
     /// Signal messenger transport configuration.
     pub signal: SignalConfig,
-    /// Matrix (conduwuit) transport configuration. Feature-gated at the
-    /// binary level; `enabled = false` keeps it inert regardless.
-    pub matrix: MatrixConfig,
 }
 ```
 
 ```rust
-pub struct SignalConfig {
+pub struct SignalConfig { // kanon:ignore RUST/config-deny-unknown-fields
     /// Whether the Signal channel is active.
     pub enabled: bool,
     /// Named Signal accounts keyed by account label.
@@ -1719,7 +1746,7 @@ pub struct SignalConfig {
 ```
 
 ```rust
-pub struct SignalAccountConfig {
+pub struct SignalAccountConfig { // kanon:ignore RUST/config-deny-unknown-fields
     /// Whether this account is active.
     pub enabled: bool,
     /// Hostname for the signal-cli JSON-RPC HTTP interface.
@@ -1745,7 +1772,7 @@ pub struct ResolvedModelConfig {
 ```
 
 ```rust
-pub struct TokenLimits {
+pub struct TokenLimits { // kanon:ignore TOPOLOGY/shallow-struct
     /// Maximum input context window in tokens.
     pub context_tokens: u32,
     /// Maximum output tokens per response.
@@ -1764,7 +1791,7 @@ pub struct TokenLimits {
 ```
 
 ```rust
-pub struct AgentCapabilities {
+pub struct AgentCapabilities { // kanon:ignore TOPOLOGY/shallow-struct
     /// Whether extended thinking is enabled for this agent.
     pub thinking_enabled: bool,
     /// Effective agency level for this agent.
@@ -1790,12 +1817,20 @@ pub struct ResolvedNousConfig {
     pub capabilities: AgentCapabilities,
     /// Resolved workspace directory path.
     pub workspace: String,
+    /// Whether this agent's workspace is hidden from public discovery.
+    pub private: bool,
+    /// Episteme knowledge-store cohort for this agent.
+    pub episteme_cohort: Arc<str>,
     /// Merged set of permitted filesystem roots.
     pub allowed_roots: Vec<String>,
     /// Knowledge domains this agent covers.
     pub domains: Vec<String>,
     /// Resolved recall pipeline settings.
     pub recall: RecallSettings,
+    /// Resolved extraction provider settings.
+    pub extraction: ExtractionConfig,
+    /// Resolved named recall behavior profile.
+    pub recall_profile: RecallProfile,
     /// Model used for prosoche heartbeat sessions.
     pub prosoche_model: Arc<str>,
     /// Resolved per-agent behavioral parameters (safety, hooks, distillation, etc.).
@@ -2071,6 +2106,7 @@ impl Oikos {
     pub fn data (&self) -> PathBuf;
     pub fn sessions_db (&self) -> PathBuf;
     pub fn knowledge_db (&self) -> PathBuf;
+    pub fn knowledge_cohort_db (&self, cohort: &str) -> PathBuf;
     pub fn backups (&self) -> PathBuf;
     pub fn archive (&self) -> PathBuf;
     pub fn logs (&self) -> PathBuf;
@@ -2094,15 +2130,15 @@ pub struct PreconditionError {
 ```
 
 > Run all resource precondition checks before service initialization.
-> 
+>
 > Checks disk space on the data directory, gateway port availability, and
 > read/write permissions on key instance directories.
-> 
+>
 > Call this after [`crate::oikos::Oikos::validate`] and config loading, but
 > before starting the HTTP server or any actors.
-> 
+>
 > # Errors
-> 
+>
 > Returns [`PreconditionError`] with all collected failures when any check
 > does not pass. The error message is human-readable and actionable.
 ```rust
@@ -2204,6 +2240,23 @@ pub fn spec_by_key (key: &str) -> Option<&'static ParameterSpec>
 pub fn restart_prefixes () -> &'static [&'static str]
 ```
 
+> Return `staged` with every restart-required changed path restored from `current`.
+>
+> The returned config is the live/effective view. Callers may still persist the
+> staged config to disk, but must not broadcast cold values as live runtime state.
+>
+> # Errors
+>
+> Returns [`serde_json::Error`] if the restored JSON cannot deserialize back
+> into [`AletheiaConfig`].
+```rust
+pub fn preserve_restart_required_values (
+    current: &AletheiaConfig,
+    staged: &AletheiaConfig,
+    diff: &ConfigDiff,
+) -> Result<AletheiaConfig, serde_json::Error>
+```
+
 ```rust
 pub struct ConfigChange {
     /// Dotted path to the changed field (e.g. `agents.defaults.thinkingBudget`).
@@ -2228,8 +2281,12 @@ impl ConfigDiff {
 }
 ```
 
+```rust
+pub fn diff_configs (old: &AletheiaConfig, new: &AletheiaConfig) -> ConfigDiff
+```
+
 > Log all changes from a config diff at appropriate levels.
-> 
+>
 > Cold changes (those requiring restart) are logged at `warn` level with
 > an explicit message that the new value is staged but not yet effective.
 > This satisfies the observability contract: the system's reported state
@@ -2279,7 +2336,7 @@ pub fn prepare_reload (
 
 > RAII fixture that owns a fresh temp directory and restores any env vars
 > it set (or cleared) when it is dropped.
-> 
+>
 > WHY: replaces `figment::Jail` after #3447 (figment replacement). The jail
 > protects a test's env-var mutations from leaking to sibling tests.
 ```rust
@@ -2323,7 +2380,7 @@ pub fn validate_section (section: &str, value: &Value) -> Result<(), ValidationE
 
 > Environment variable operators must set to `1` in order to accept a config
 > write that sets `gateway.auth.mode = "none"`.
-> 
+>
 > WHY: Disabling authentication removes all access control from the HTTP API.
 > Requiring an explicit opt-in prevents a remote PUT /api/v1/config/gateway
 > from silently turning off auth. (#3383)
@@ -2333,7 +2390,7 @@ pub const ALLOW_AUTH_NONE_ENV: &str = "ALETHEIA_ALLOW_AUTH_NONE";
 
 > Environment variable operators must set to `1` to allow the server to bind
 > to a non-localhost address while running with `gateway.auth.mode = "none"`.
-> 
+>
 > WHY: disabled-auth on localhost is a supported local-dev shape; disabled-auth
 > on a LAN or Tailscale bind is an insecure-by-default posture we refuse to
 > boot into. Operators who genuinely want unauthenticated LAN access must
@@ -2358,7 +2415,7 @@ pub fn auth_none_opt_in_enabled () -> bool
 ```
 
 > Emit a loud startup warning when authentication is disabled.
-> 
+>
 > Called after the initial config load. Emits a single `warn!` event with the
 > prefix `SECURITY: auth disabled` so operators running with `auth_mode = "none"`
 >  -  even intentionally  -  see the consequence in every log aggregator. (#3383)

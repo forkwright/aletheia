@@ -13,7 +13,7 @@ pub const DEFAULT_INBOX_CAPACITY: usize = 32;
 ```
 
 > A single nous agent running as a Tokio actor.
-> 
+>
 > Each actor owns its mutable state and processes messages sequentially
 > from a bounded inbox. External code interacts via [`NousHandle`](crate::handle::NousHandle).
 ```rust
@@ -48,7 +48,7 @@ impl NousActor {
 ## `src/actor/spawn.rs`
 
 > Parameters for daemon-initiated child agent spawning.
-> 
+>
 > WHY: the daemon coordinator needs to spawn child agents with a subset of
 > the parent's runtime dependencies. This struct collects the required
 > parameters so the binary crate can wire daemon spawns through to the
@@ -96,16 +96,16 @@ pub fn spawn_for_daemon (
 ## `src/adapters.rs`
 
 > Adapts `SessionStore` note methods to the `NoteStore` trait.
-> 
-> The inner lock guards `SQLite` write access; acquired via `block_in_place`
+>
+> The inner lock guards fjall session-store access; acquired via `block_in_place`
 > to avoid holding it across async boundaries.
 ```rust
 pub struct SessionNoteAdapter(pub Arc<Mutex<SessionStore>>);
 ```
 
 > Adapts `SessionStore` blackboard methods to the `BlackboardStore` trait.
-> 
-> The inner lock guards `SQLite` write access; acquired via `block_in_place`
+>
+> The inner lock guards fjall session-store access; acquired via `block_in_place`
 > to avoid holding it across async boundaries.
 ```rust
 pub struct SessionBlackboardAdapter(pub Arc<Mutex<SessionStore>>);
@@ -148,20 +148,11 @@ pub type Result<T> = std::result::Result<T, PromptAuditError>;
 ```
 
 > Deployment target classification for a request.
-> 
-> WHY(stub): #3404 will introduce a proper `DeploymentTarget` enum shared with
-> eidos/hermeneus for the fact sensitivity recall filter. Until then, the
-> audit log carries a simple string default of `"cloud"` so the schema is
-> stable and the follow-up PR only has to swap the field type.
 ```rust
 pub type DeploymentTarget = String;
 ```
 
 > Sensitivity classification of a fact that was filtered from recall.
-> 
-> WHY(stub): Same as [`DeploymentTarget`]  -  #3404 owns the canonical enum.
-> The audit log keeps the field in the schema now so `PromptAuditRecord` is
-> stable; the filtered-facts vector defaults to empty until the filter lands.
 ```rust
 pub type FactSensitivity = String;
 ```
@@ -238,7 +229,7 @@ impl PromptAuditLog {
 ## `src/bootstrap/mod.rs`
 
 > Default TTL for bootstrap file cache entries when no operator override is set.
-> 
+>
 > // WHY: 60s balances freshness (operator edits to SOUL.md/USER.md should
 > // surface within about a minute) against the cost of re-reading every
 > // workspace file on every turn. mtime-based invalidation catches edits
@@ -314,6 +305,35 @@ impl LlmRecipe {
 ```
 
 ```rust
+pub enum BootstrapSlot {
+    /// Agent's identity record — name, emoji, avatar metadata. (IDENTITY.md)
+    Identity = 0,
+    /// Workspace-local persona — operator-curated, per-instance. (SOUL.md)
+    SoulPersona = 1,
+    /// Operator's profile — what the operator brings, attested. (USER.md)
+    OperatorProfile = 2,
+    /// Heartbeat / attention checklist. (PROSOCHE.md)
+    Prosoche = 3,
+    /// Team topology — who else is in the workspace. (AGENTS.md)
+    Team = 4,
+    /// Active / completed / deferred goals. (GOALS.md)
+    Goals = 5,
+    /// Always-injected skill bodies. (from knowledge store)
+    SkillsAlways = 6,
+    /// Lazy skill index — one-line summaries for on-demand loading.
+    SkillsLazyIndex = 7,
+    /// Registered tool surface. (TOOLS.md)
+    Tools = 8,
+    /// Work procedures / checklist. (CHECKLIST.md)
+    Checklist = 9,
+    /// Operational memory — accumulated knowledge over time. (MEMORY.md)
+    Memory = 10,
+    /// Runtime config / auto-generated context. (CONTEXT.md)
+    Context = 11,
+}
+```
+
+```rust
 pub struct BootstrapSection {
     /// Section name (e.g. "SOUL.md", "tools-summary").
     pub name: String,
@@ -325,6 +345,8 @@ pub struct BootstrapSection {
     pub tokens: u64,
     /// Whether this section can be truncated (vs dropped entirely).
     pub truncatable: bool,
+    /// Role slot — precedence axis orthogonal to priority.
+    pub slot: BootstrapSlot,
 }
 ```
 
@@ -348,10 +370,10 @@ pub struct BootstrapResult {
 ```
 
 > Assembles the bootstrap system prompt from oikos workspace files.
-> 
+>
 > Resolves files through the three-tier cascade (`nous/{id}/` → `shared/` → `theke/`),
 > reads contents, estimates tokens, and packs sections in priority order.
-> 
+>
 > Workspace file reads are served from an optional [`BootstrapFileCache`]
 > when one is attached via [`new_with_cache`](Self::new_with_cache). Without
 > a cache, every call re-reads every file from disk (legacy behaviour).
@@ -367,6 +389,11 @@ pub struct BootstrapAssembler<'a> {
     cache: Option<&'a BootstrapFileCache>,
     /// Recipe for loading `_llm/` content. `None` skips _llm/ entirely.
     llm_recipe: LlmRecipe,
+    /// When true, resolve only this nous's workspace files and skip shared/theke fallback.
+    private_workspace: bool,
+    /// When true, pre-injection scan failures are fatal. Defaults to the
+    /// `KOINA_PREINJECT_SCAN_STRICT` env var (false when absent).
+    preinject_strict: bool,
 }
 ```
 
@@ -376,6 +403,8 @@ impl <'a> BootstrapAssembler<'a> {
     pub fn new_with_chars_per_token (oikos: &'a Oikos, chars_per_token: u64) -> Self;
     pub fn with_cache (mut self, cache: &'a BootstrapFileCache) -> Self;
     pub fn with_llm_recipe (mut self, recipe: LlmRecipe) -> Self;
+    pub fn with_private_workspace (mut self, private_workspace: bool) -> Self;
+    pub fn with_preinject_strict (mut self, strict: bool) -> Self;
     pub async fn assemble (
         &self,
         nous_id: &str,
@@ -411,7 +440,7 @@ pub fn classify_task_hint (content: &str) -> TaskHint
 ```
 
 > Convert domain pack sections into bootstrap sections.
-> 
+>
 > Maps thesauros [`PackSection`] values to [`BootstrapSection`] values,
 > computing token estimates for each section's content. Section names
 > are prefixed with the pack name for traceability.
@@ -420,6 +449,57 @@ pub fn pack_sections_to_bootstrap (
     sections: &[&PackSection],
     estimator: &CharEstimator,
 ) -> Vec<BootstrapSection>
+```
+
+## `src/bootstrap/preinject_scan.rs`
+
+```rust
+pub enum PreInjectError {
+    /// Invisible Unicode codepoint detected.
+    #[snafu(display("file '{path}' contains invisible-Unicode codepoint {codepoint:?}"))]
+    InvisibleUnicode {
+        /// Path of the file being scanned.
+        path: String,
+        /// The offending codepoint.
+        codepoint: char,
+    },
+
+    /// Threat pattern detected.
+    #[snafu(display("file '{path}' matches threat pattern '{pattern}'"))]
+    ThreatPattern {
+        /// Path of the file being scanned.
+        path: String,
+        /// Description of the matched pattern.
+        pattern: String,
+    },
+}
+```
+
+> Scan workspace file content before injection into the system prompt.
+>
+> Returns `Ok(())` when the content passes both the invisible-Unicode and
+> threat-pattern checks. Returns `Err` on the first detected violation.
+>
+> # Invisible-Unicode scan
+>
+> Rejects content containing zero-width spaces, bidi control characters,
+> word joiners, and other invisible codepoints that can be used to hide
+> malicious text or alter rendering.
+>
+> # Threat-pattern scan
+>
+> Rejects content matching known prompt-injection signatures. Patterns are
+> compiled once via [`OnceLock`] and matched case-insensitively.
+```rust
+pub fn scan_workspace_content (content: &str, path: &Path) -> Result<(), PreInjectError>
+```
+
+```rust
+pub fn strict_mode () -> bool
+```
+
+```rust
+pub fn strict_mode_from_env (val: Option<String>) -> bool
 ```
 
 ## `src/bootstrap/tools.rs`
@@ -436,7 +516,7 @@ pub struct ToolSummary {
 ## `src/budget.rs`
 
 > Character-based token estimator: 1 token ≈ N characters (ceiling division).
-> 
+>
 > Conservative estimate suitable for budget planning. Actual token counts
 > from the Anthropic API will be lower, giving natural headroom.
 > `chars_per_token` is configurable via `agents.defaults.chars_per_token`
@@ -522,6 +602,75 @@ pub struct CompactConfig {
     /// Number of recent turns to scan for critical file identification.
     pub critical_file_lookback: usize,
 }
+```
+
+```rust
+pub enum CompactReason {
+    /// Mid-session token cap hit.
+    TokenBudget,
+    /// Session-end checkpoint.
+    SessionBoundary,
+    /// Operator-issued compact (defaults to terse).
+    OperatorRequest,
+    /// Background consolidation pass (#95).
+    DreamConsolidation,
+}
+```
+
+```rust
+pub fn select_prompt (reason: CompactReason) -> &'static str
+```
+
+```rust
+pub enum CompactionStrategy {
+    /// Uniform tail truncation (current default).
+    UniformTail,
+    /// Step-positional: last 2 steps full, earlier i < n-2 notes-only.
+    StepPositional,
+}
+```
+
+```rust
+impl CompactionStrategy {
+    pub fn apply (self, steps: &[Step], budget: usize) -> Vec<Step>;
+}
+```
+
+## `src/compact/prompts.rs`
+
+> Mid-session token-budget compaction. Discards noise; preserves only
+> decisions made and outstanding questions. Tone: terse, decision-focused,
+> instructional. Output target: dramatically shorter than input (≥60%).
+>
+> Fires on: `TokenBudget` hits.
+```rust
+pub const COMPACT_PROMPT: &str = r"You are a context compressor. Given a conversation history, produce a terse summary that is at least 60% shorter than the input while preserving:
+
+- Every decision made and its rationale
+- Every file path or code change touched
+- Current task state and immediate next steps
+- Any errors encountered and how they were resolved
+
+Remove all redundant explanations, conversational filler, and duplicate reasoning. Output only the compressed summary. Use an impersonal, directive tone.";
+```
+
+> Session-boundary or dream-consolidation restoration. Preserves
+> actionable continuation state: the next action you intended to take,
+> the tool calls you just ran with key results, the working hypothesis.
+> Tone: first-person ("I"), tool-trail-preserving, drops only redundant
+> prose. Output target: a continuation note future-you can act on.
+>
+> Fires on: `SessionBoundary`, `DreamConsolidation`.
+```rust
+pub const RESTORE_PROMPT: &str = r#"You are a session restoration assistant. Given a conversation history, produce a first-person continuation note ("I ...") that preserves actionable continuation state:
+
+- The next action I intended to take and why
+- The tool calls I just ran, with their key results (file paths, code snippets, command outputs)
+- My current working hypothesis or plan
+- Any errors I encountered and how I resolved them
+- Any open questions I still need to answer
+
+Drop redundant prose and conversational filler, but keep the tool trail intact so I can pick up exactly where I left off. Output only the continuation note."#;
 ```
 
 ## `src/competence/mod.rs`
@@ -687,6 +836,10 @@ pub fn deserialize <'de, D> (deserializer: D) -> Result<Arc<str>, D::Error> wher
 pub struct NousGenerationConfig {
     /// Default model for this agent.
     pub model: String,
+    /// Ordered fallback models to try after the primary model fails transiently.
+    pub fallback_models: Vec<String>,
+    /// Number of primary-model attempts before moving to the fallback chain.
+    pub retries_before_fallback: u32,
     /// Maximum context window tokens.
     pub context_window: u32,
     /// Maximum output tokens per turn.
@@ -701,6 +854,27 @@ pub struct NousGenerationConfig {
     pub chars_per_token: u32,
     /// Model to use for prosoche heartbeat sessions instead of the primary model.
     pub prosoche_model: String,
+    /// Complexity-based model routing.
+    ///
+    /// WHY: when `complexity.enabled == true`, the turn model is chosen per
+    /// message by scoring query complexity and mapping to a configured tier
+    /// (haiku/sonnet/opus). When `false` (the default), `model` is used for
+    /// every turn — preserving existing behaviour.
+    pub complexity: ComplexityConfig,
+    /// Override for the knowledge extraction model (#3740).
+    ///
+    /// Extraction and distillation are obvious "fast tier" workloads that
+    /// should route to a small model (Qwen3-4B class) on local multi-model
+    /// deployments regardless of turn routing. When `None`, extraction falls
+    /// back to the turn model — preserving existing behaviour.
+    #[serde(default)]
+    pub extraction_model: Option<String>,
+    /// Override for the context distillation model (#3740).
+    ///
+    /// See `extraction_model`. Same tier / same fallback shape. When `None`,
+    /// distillation falls back to the turn model.
+    #[serde(default)]
+    pub distillation_model: Option<String>,
 }
 ```
 
@@ -735,6 +909,39 @@ pub struct NousLimits {
     /// to explain its reasoning before making more tool calls. Set to `0` to
     /// disable. Default: 3. Closes #1980.
     pub max_consecutive_tool_only_iterations: u32,
+    /// Consecutive no-progress turn limit before the mistake brake fires.
+    ///
+    /// A turn with zero tool calls increments the counter; a turn with any
+    /// tool call resets it to zero. When the limit is reached, execution
+    /// pauses and the agent asks the operator for intervention. The counter
+    /// resets on the next user message.
+    ///
+    /// Operator-tunable via `KOINA_CONSECUTIVE_MISTAKE_LIMIT` environment
+    /// variable. Default: 5. Closes #187.
+    pub consecutive_mistake_limit: u32,
+}
+```
+
+```rust
+pub enum RecallProfile {
+    /// Preserve explicit recall/extraction/pipeline settings.
+    #[default]
+    Default,
+    /// Favor broad project/reference recall for archival work.
+    Archival,
+    /// Favor identity continuity using late anchors, curated pins, and reflection.
+    IdentityContinuity,
+}
+```
+
+```rust
+impl RecallProfile {
+    pub fn apply (
+        self,
+        recall: &mut RecallConfig,
+        extraction: &mut mneme::extract::ExtractionConfig,
+        pipeline: &mut PipelineConfig,
+    );
 }
 ```
 
@@ -755,6 +962,12 @@ pub struct NousConfig {
     /// Domain tags for this agent (static config + pack overlays).
     #[serde(default)]
     pub domains: Vec<String>,
+    /// Whether this agent's workspace is hidden from public discovery.
+    #[serde(default)]
+    pub private: bool,
+    /// Episteme knowledge-store cohort for this agent.
+    #[serde(default = "default_episteme_cohort", with = "arc_str")]
+    pub episteme_cohort: Arc<str>,
     /// Server-side tools to include in API requests (e.g., web search).
     #[serde(default)]
     pub server_tools: Vec<hermeneus::types::ServerToolDefinition>,
@@ -764,6 +977,9 @@ pub struct NousConfig {
     /// Per-agent recall pipeline configuration.
     #[serde(default)]
     pub recall: RecallConfig,
+    /// Named recall behavior profile.
+    #[serde(default)]
+    pub recall_profile: RecallProfile,
     /// Tool allowlist for sub-agent role enforcement.
     ///
     /// When `Some`, only the listed tool names are available during execution.
@@ -771,6 +987,13 @@ pub struct NousConfig {
     /// during ephemeral sub-agent spawning.
     #[serde(default)]
     pub tool_allowlist: Option<Vec<String>>,
+    /// Allowed tool groups for role-based gating.
+    ///
+    /// When non-empty, only tools whose `groups` intersect this list are
+    /// visible to the LLM and executable.  Empty means all tools (legacy
+    /// fallback).  Populated from `RoleContract.tool_groups`.
+    #[serde(default)]
+    pub tool_groups: Vec<organon::types::ToolGroupId>,
     /// Turn-level hook configuration.
     #[serde(default)]
     pub hooks: HookConfig,
@@ -801,6 +1024,18 @@ pub struct HookConfig {
     pub correction_hooks_enabled: bool,
     /// Enable the audit logging hook (priority 100).
     pub audit_logging_enabled: bool,
+    /// Enable the working checkpoint hook (priority 40).
+    ///
+    /// When enabled, agent-curated `<key_info>` checkpoints written via
+    /// `update_working_checkpoint` are injected into the system prompt at
+    /// the start of each turn.
+    pub working_checkpoint_enabled: bool,
+}
+```
+
+```rust
+impl NousConfig {
+    pub fn apply_recall_profile (&mut self, pipeline: &mut PipelineConfig);
 }
 ```
 
@@ -817,6 +1052,9 @@ pub struct PipelineConfig {
     /// Training data capture configuration.
     #[serde(default)]
     pub training: crate::training::TrainingConfig,
+    /// Whether the reflection stage runs after finalize.
+    #[serde(default)]
+    pub reflection_enabled: bool,
 }
 ```
 
@@ -834,12 +1072,122 @@ pub struct StageBudget {
     pub execute_secs: u32,
     /// Finalization stage limit.
     pub finalize_secs: u32,
+    /// Reflection stage limit.
+    #[serde(default = "default_reflection_secs")]
+    pub reflection_secs: u32,
     /// Hard cap on total pipeline wall-clock time.
     pub total_secs: u32,
 }
 ```
 
+## `src/cross/knowledge.rs`
+
+```rust
+pub enum KnowledgePayload {
+    /// Notification: a fact has been published for cross-nous visibility.
+    Published {
+        /// Identifier of the published-fact record (typically a
+        /// `PublishedFactId` rendered as `String`).
+        shared_fact_id: String,
+        /// Short human-readable summary for receiver-side display/log.
+        summary: String,
+    },
+    /// Request: please verify this fact (response carries
+    /// [`KnowledgeReply::Verified`]).
+    Verify {
+        /// Fact content to evaluate.
+        fact_content: String,
+        /// Originating nous so the responder can scope its response.
+        requester: NousId,
+    },
+    /// Notification: this fact has been contested.
+    Contest {
+        /// Contested fact identifier.
+        fact_id: FactId,
+        /// Free-text reason recorded in provenance.
+        reason: String,
+    },
+    /// Request: return facts matching this query (response carries
+    /// [`KnowledgeReply::QueryResult`]).
+    ///
+    /// Default scope is the recipient's own cohort plus any explicit-allowlist
+    /// cohorts. Recall enforcement is the recipient's responsibility; this
+    /// payload carries the request shape.
+    Query {
+        /// Free-text query string.
+        query: String,
+        /// Optional filter expressions applied recipient-side.
+        filters: Vec<String>,
+    },
+}
+```
+
+```rust
+pub enum KnowledgeReply {
+    /// Verdict from the responding nous.
+    Verified {
+        /// Verdict cast on the requested fact.
+        verdict: VerificationVerdict,
+    },
+    /// Query results.
+    QueryResult {
+        /// Matching fact identifiers (recipient-scoped).
+        fact_ids: Vec<FactId>,
+    },
+}
+```
+
+```rust
+pub fn published_message (
+    from: impl Into<String>,
+    to: impl Into<String>,
+    shared_fact_id: impl Into<String>,
+    summary: impl Into<String>,
+) -> CrossNousMessage
+```
+
+```rust
+pub fn verify_message (
+    from: impl Into<String>,
+    to: impl Into<String>,
+    fact_content: impl Into<String>,
+    requester: NousId,
+    timeout: Duration,
+) -> CrossNousMessage
+```
+
+```rust
+pub fn contest_message (
+    from: impl Into<String>,
+    to: impl Into<String>,
+    fact_id: FactId,
+    reason: impl Into<String>,
+) -> CrossNousMessage
+```
+
+```rust
+pub fn query_message (
+    from: impl Into<String>,
+    to: impl Into<String>,
+    query: impl Into<String>,
+    filters: Vec<String>,
+    timeout: Duration,
+) -> CrossNousMessage
+```
+
 ## `src/cross/mod.rs`
+
+```rust
+pub enum AddressMask {
+    /// Any sender may deliver to this target.
+    #[default]
+    Public,
+    /// Only the operator sender may deliver to this target.
+    OperatorOnly,
+    /// Only the listed senders may deliver to this target.
+    AllowList(Vec<String>),
+}
+```
 
 ```rust
 pub enum DeliveryState {
@@ -870,6 +1218,8 @@ pub struct CrossNousMessage {
     pub target_session: String,
     /// Message text payload.
     pub content: String,
+    /// Optional typed payload — see [`knowledge::KnowledgePayload`].
+    pub payload: Option<knowledge::KnowledgePayload>,
     /// Whether the sender expects a [`CrossNousReply`].
     pub expects_reply: bool,
     /// How long to wait for a reply before timing out.
@@ -886,6 +1236,7 @@ impl CrossNousMessage {
     pub fn new (from: impl Into<String>, to: impl Into<String>, content: impl Into<String>) -> Self;
     pub fn with_target_session (mut self, session: impl Into<String>) -> Self;
     pub fn with_reply (mut self, timeout: Duration) -> Self;
+    pub fn with_payload (mut self, payload: knowledge::KnowledgePayload) -> Self;
 }
 ```
 
@@ -930,6 +1281,9 @@ pub struct CrossNousRouter {
     /// Invariant: an edge exists iff a pending ask is outstanding between
     /// the two nodes; removed when the reply arrives or the ask times out.
     pub(super) ask_graph: Arc<RwLock<AskGraph>>,
+    /// Inbound address policy keyed by target nous id. Missing entries use
+    /// [`AddressMask::Public`].
+    address_masks: Arc<RwLock<HashMap<String, AddressMask>>>,
 }
 ```
 
@@ -942,6 +1296,11 @@ impl CrossNousRouter {
         sender: mpsc::Sender<CrossNousEnvelope>,
     );
     pub async fn unregister (&self, nous_id: &str);
+    pub async fn set_address_mask (
+        &self,
+        nous_id: impl Into<String> + std::fmt::Debug,
+        mask: AddressMask,
+    );
     pub async fn send (&self, message: CrossNousMessage) -> error::Result<DeliveryState>;
     pub async fn ask (&self, mut message: CrossNousMessage) -> error::Result<CrossNousReply>;
     pub async fn reply (&self, reply: CrossNousReply) -> error::Result<()>;
@@ -977,20 +1336,20 @@ pub fn is_transient_llm_error (err: &error::Error) -> bool
 ```
 
 > Attempt to build a degraded [`TurnResult`] when the LLM provider is down.
-> 
+>
 > # Behaviour
-> 
+>
 > 1. If `recent_distillation` is `Some`, prepend a status banner and return
 >    the summary as the response content with a [`DegradedMode::DistillationCache`]
 >    indicator.
 > 2. If `recent_distillation` is `None`, return a clear "can't help right now"
 >    message with a [`DegradedMode::Unavailable`] indicator.
-> 
+>
 > Either way the original error is logged at `warn` level so it remains visible
 > in traces without being surfaced to the caller as a hard error.
-> 
+>
 > # Parameters
-> 
+>
 > - `nous_id`  -  agent identifier used for log context.
 > - `session_id`  -  session identifier used for log context.
 > - `original_error`  -  the transient error that triggered degradation.
@@ -1067,6 +1426,16 @@ pub fn apply_distillation (
 ```
 
 ```rust
+pub fn commit_memory_flush (
+    knowledge_store: &mneme::knowledge_store::KnowledgeStore,
+    session_id: &str,
+    nous_id: &str,
+    result: &DistillResult,
+    history: &[mneme::types::Message],
+) -> error::Result<usize>
+```
+
+```rust
 pub fn convert_to_hermeneus_messages (history: &[mneme::types::Message]) -> Vec<HermeneusMessage>
 ```
 
@@ -1138,7 +1507,7 @@ impl DriftConfig {
 ```
 
 > Rolling-window quality drift detector.
-> 
+>
 > Accumulates [`TurnMetrics`] and compares the most recent `recent_size`
 > turns against the full window. When a metric's z-score exceeds the
 > configured threshold, a [`DriftEvent`] is produced and logged at warn
@@ -1196,6 +1565,14 @@ pub enum Error {
     ContextAssemblyIo {
         file: String,
         source: std::io::Error,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// File-ref interpolation failed during bootstrap assembly.
+    #[snafu(display("file-ref interpolation failed: {source}"))]
+    InterpError {
+        source: organon::interp::InterpError,
         #[snafu(implicit)]
         location: snafu::Location,
     },
@@ -1291,6 +1668,15 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// Cross-nous address policy rejected the sender.
+    #[snafu(display("address rejected: '{from}' may not deliver to '{to}'"))]
+    AddressRejected {
+        from: String,
+        to: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// Cross-nous ask timed out waiting for reply.
     #[snafu(display("ask to '{nous_id}' timed out after {timeout_secs}s"))]
     AskTimeout {
@@ -1320,6 +1706,25 @@ pub enum Error {
     #[snafu(display("distillation failed: {source}"))]
     Distillation {
         source: melete::error::Error,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Backward-path probe verification rejected a memory flush.
+    #[snafu(display(
+        "distillation memory flush rejected: {failure_count}/{total_probes} probes failed"
+    ))]
+    MemoryFlushProbe {
+        failure_count: usize,
+        total_probes: usize,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Knowledge-store persistence failed.
+    #[snafu(display("knowledge store error: {source}"))]
+    KnowledgeStore {
+        source: mneme::error::Error,
         #[snafu(implicit)]
         location: snafu::Location,
     },
@@ -1404,6 +1809,22 @@ pub enum Error {
     #[snafu(display("uncertainty store error: {message}"))]
     UncertaintyStore {
         message: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Working checkpoint store error.
+    #[snafu(display("working checkpoint store error: {message}"))]
+    WorkingCheckpointStore {
+        message: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Model cited a receipt not present in the ledger or with mismatched HMAC.
+    #[snafu(display("hallucination detected: {details}"))]
+    HallucinationDetected {
+        details: organon::receipts::HallucinationDetected,
         #[snafu(implicit)]
         location: snafu::Location,
     },
@@ -1563,7 +1984,7 @@ pub struct NousManager {
     vector_search: Option<Arc<dyn crate::recall::VectorSearch>>,
     session_store: Option<Arc<TokioMutex<SessionStore>>>,
     #[cfg(feature = "knowledge-store")]
-    knowledge_store: Option<Arc<KnowledgeStore>>,
+    knowledge_stores: HashMap<String, Arc<KnowledgeStore>>,
     packs: Arc<Vec<LoadedPack>>,
     router: Option<Arc<crate::cross::CrossNousRouter>>,
     tool_services: Option<Arc<ToolServices>>,
@@ -1576,6 +1997,12 @@ pub struct NousManager {
     nous_behavior: taxis::config::NousBehaviorConfig,
     /// Prompt audit log shared across all actors (#3411).
     audit_log: Option<Arc<crate::audit::PromptAuditLog>>,
+    /// Empirical router shared across all actors.
+    ///
+    /// WHY: shared so all agents contribute learnings to the same
+    /// `AfterActionStore` backend. `None` when empirical routing is disabled
+    /// (the default); actors fall back to [`NoOpRouter`](aletheia_routing::NoOpRouter).
+    empirical_router: Option<Arc<dyn Router>>,
 }
 ```
 
@@ -1588,20 +2015,23 @@ impl NousManager {
         embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
         vector_search: Option<Arc<dyn crate::recall::VectorSearch>>,
         session_store: Option<Arc<TokioMutex<SessionStore>>>,
-        #[cfg(feature = "knowledge-store")] knowledge_store: Option<Arc<KnowledgeStore>>,
+        #[cfg(feature = "knowledge-store")] knowledge_stores: Option<
+            HashMap<String, Arc<KnowledgeStore>>,
+        >,
         packs: Arc<Vec<LoadedPack>>,
         router: Option<Arc<crate::cross::CrossNousRouter>>,
         tool_services: Option<Arc<ToolServices>>,
         nous_behavior: taxis::config::NousBehaviorConfig,
     ) -> Self;
     pub fn with_audit_log (mut self, audit_log: Arc<crate::audit::PromptAuditLog>) -> Self;
+    pub fn with_empirical_router (mut self, router: Arc<dyn Router>) -> Self;
     pub fn ready (&self);
     pub fn ready_rx (&self) -> watch::Receiver<bool>;
     pub fn router (&self) -> Option<&Arc<crate::cross::CrossNousRouter>>;
     pub async fn spawn (
         &mut self,
-        config: NousConfig,
-        pipeline_config: PipelineConfig,
+        mut config: NousConfig,
+        mut pipeline_config: PipelineConfig,
     ) -> crate::error::Result<NousHandle>;
     pub fn get (&self, nous_id: &str) -> Option<&NousHandle>;
     pub fn secret_vault (&self) -> Option<&hermeneus::secret::SecretVault>;
@@ -1615,6 +2045,7 @@ impl NousManager {
         cancel: CancellationToken,
     ) -> JoinHandle<()>;
     pub async fn list (&self) -> Vec<NousStatus>;
+    pub async fn list_all (&self) -> Vec<NousStatus>;
     pub async fn shutdown_all (&mut self);
     pub async fn shutdown_all_with_timeout (&mut self, timeout: Duration);
     pub async fn drain (&self, timeout: Duration);
@@ -1622,6 +2053,62 @@ impl NousManager {
     pub fn count (&self) -> usize;
     pub async fn register_agent (&mut self, config: NousConfig) -> crate::error::Result<NousHandle>;
     pub fn knowledge_store (&self) -> Option<&Arc<KnowledgeStore>>;
+    pub fn knowledge_store_for_cohort (&self, cohort: &str) -> Option<&Arc<KnowledgeStore>>;
+}
+```
+
+## `src/memory/step.rs`
+
+```rust
+pub struct Step {
+    /// Assistant's distilled reasoning / plan for this step.
+    /// What survives compaction.
+    pub self_note: String,
+
+    /// Verbose tool results, file reads, shell output for this step.
+    /// First to drop under context budget pressure.
+    pub observations: Vec<Observation>,
+
+    /// Post-compaction fallback when both `self_note` and `observations`
+    /// are dropped. Optional.
+    pub summary: Option<String>,
+
+    /// Position in the session — used by step-positional degradation.
+    pub index: usize,
+
+    /// Step boundary timestamp.
+    pub started_at: Timestamp,
+}
+```
+
+```rust
+pub struct Observation {
+    /// Source: tool name, file path, etc.
+    pub source: String,
+
+    /// Verbose body — the thing that gets dropped under budget pressure.
+    pub body: String,
+
+    /// Token estimate for budget calculations (cheap heuristic, not exact).
+    pub token_estimate: usize,
+}
+```
+
+```rust
+impl Step {
+    pub fn from_assistant_turn (
+        self_note: impl Into<String>,
+        observations: Vec<Observation>,
+        index: usize,
+    ) -> Self;
+    pub fn token_estimate (&self) -> usize;
+    pub fn compact (&self) -> String;
+}
+```
+
+```rust
+impl Observation {
+    pub fn new (source: impl Into<String>, body: impl Into<String>) -> Self;
 }
 ```
 
@@ -1712,6 +2199,10 @@ pub struct PipelineContext {
     pub working_state: Option<WorkingState>,
     /// Compaction metrics from the most recent compaction pass.
     pub compaction_metrics: Option<CompactionMetrics>,
+    /// Pre-LLM triage result (intent, sensitivity, tier), if triage was run.
+    pub triage_result: Option<triage::TriageResult>,
+    /// Reflection stage output, if reflection was run.
+    pub reflection_result: Option<ReflectionResult>,
 }
 ```
 
@@ -1723,6 +2214,11 @@ pub struct PipelineMessage {
     pub content: String,
     /// Estimated tokens.
     pub token_estimate: i64,
+    /// WHY(#3781): when true, this message marks a cache breakpoint where
+    /// the prefix up to and including this message should be cached.
+    /// Typically set on the distilled summary message after compaction.
+    #[serde(default)]
+    pub cache_breakpoint: bool,
 }
 ```
 
@@ -1758,6 +2254,26 @@ pub enum LoopVerdict {
         message: String,
     },
 }
+```
+
+> Assemble a sequence of [`Step`]s from pipeline messages.
+>
+> Walks the message stream and groups each assistant message with the
+> contiguous tool-result messages that follow it. Each group becomes one
+> [`Step`] where the assistant content is the `self_note` and the tool
+> results become [`Observation`]s.
+>
+> Non-tool user messages (e.g., the original user prompt) act as turn
+> boundaries but do not produce Steps themselves.
+>
+> # Edge cases
+>
+> - Tool results with no preceding assistant message are attached to the
+>   most recent prior step. If no prior step exists, they are dropped.
+> - An assistant message with no trailing tool results produces a step with
+>   empty observations.
+```rust
+pub fn assemble_steps (messages: &[PipelineMessage]) -> Vec<crate::memory::step::Step>
 ```
 
 ```rust
@@ -1815,6 +2331,32 @@ pub enum InteractionSignal {
 ```
 
 ```rust
+pub struct ReflectionResult {
+    /// Why the stage ended the way it did.
+    pub status: ReflectionStatus,
+    /// Number of facts emitted (reflected) during this stage.
+    pub facts_emitted: u32,
+}
+```
+
+```rust
+pub enum ReflectionStatus {
+    /// Stage skipped because reflection is disabled.
+    Skipped,
+    /// Stage skipped because no `KnowledgeStore` is available in the pipeline.
+    NoStore,
+    /// Reflection completed and facts were emitted.
+    Completed,
+}
+```
+
+```rust
+impl ReflectionResult {
+    pub fn new (status: ReflectionStatus, facts_emitted: u32) -> Self;
+}
+```
+
+```rust
 pub struct TurnResult {
     /// Assistant's response content.
     pub content: String,
@@ -1835,6 +2377,12 @@ pub struct TurnResult {
     pub degraded: Option<crate::degraded_mode::DegradedMode>,
     /// Reasoning or thinking blocks generated by the model during this turn.
     pub reasoning: String,
+    /// The model / provider identifier that was selected for this turn.
+    ///
+    /// WHY: captured from `resolve_turn_model` at execute time so
+    /// `after_action` can record the correct provider in the empirical store
+    /// without re-running routing logic at finalize time.
+    pub model_used: String,
 }
 ```
 
@@ -1852,6 +2400,8 @@ pub struct ToolCall {
     pub is_error: bool,
     /// Execution duration in milliseconds.
     pub duration_ms: u64,
+    /// HMAC-SHA256 receipt for hallucination-resistant attestation.
+    pub receipt: Option<String>,
 }
 ```
 
@@ -1923,6 +2473,58 @@ pub async fn assemble_context_conditional_with_cache (
 pub fn check_guard (session: &SessionState, config: &NousConfig) -> GuardResult
 ```
 
+## `src/pipeline/triage.rs`
+
+```rust
+pub enum Intent {
+    /// Writing or implementing code: "write a function", "fix this bug"
+    CodeWrite,
+    /// Research or investigation: "what is X", "find me...", "explain..."
+    Research,
+    /// Planning or design: "plan a migration", "design an architecture"
+    Planning,
+    /// Meta requests about the system itself: "how do you work", "what are your rules"
+    Meta,
+    /// Unable to classify with confidence.
+    Unclassified,
+}
+```
+
+```rust
+pub struct TriageResult {
+    /// Classified intent of the request.
+    pub intent: Intent,
+    /// Detected data sensitivity level.
+    pub sensitivity: FactSensitivity,
+    /// Suggested complexity tier for routing.
+    pub tier: ModelTier,
+    /// Input length (for observability).
+    pub input_len: usize,
+}
+```
+
+```rust
+impl TriageResult {
+    pub fn new (
+        intent: Intent,
+        sensitivity: FactSensitivity,
+        tier: ModelTier,
+        input_len: usize,
+    ) -> Self;
+}
+```
+
+> The triage stage: pre-LLM classification of intent, sensitivity, and complexity.
+```rust
+pub struct TriageStage;
+```
+
+```rust
+impl TriageStage {
+    pub fn classify (input: &str) -> TriageResult;
+}
+```
+
 ## `src/recall/mod.rs`
 
 ```rust
@@ -1939,16 +2541,29 @@ pub struct RecallStageResult {
     /// section. Used by the prompt audit log (#3411) so operators can see
     /// which stored facts were included in each outbound request.
     pub fact_ids: Vec<String>,
+    /// Provider boundary used for the sovereignty filter.
+    pub deployment_target: DeploymentTarget,
+    /// Facts dropped because their sensitivity exceeded `deployment_target`.
+    pub filtered_facts: Vec<RecallFilteredFact>,
+}
+```
+
+```rust
+pub struct RecallFilteredFact {
+    /// Source fact ID.
+    pub id: String,
+    /// Sensitivity that exceeded the active deployment target.
+    pub sensitivity: FactSensitivity,
 }
 ```
 
 > Recall stage: scores and formats knowledge for injection into the system prompt.
-> 
+>
 > # Examples
-> 
+>
 > ```no_run
 > use nous::recall::{RecallConfig, RecallStage};
-> 
+>
 > let stage = RecallStage::new(RecallConfig::default());
 > ```
 ```rust
@@ -1957,12 +2572,25 @@ pub struct RecallStage {
     config: RecallConfig,
     /// Optional side-query selected IDs for pre-filtering before 6-factor scoring.
     side_query_ids: Option<HashSet<String>>,
+    /// Production side-query selector used to turn the raw recall manifest into
+    /// a prefilter for 6-factor scoring.
+    side_query_selector: mneme::side_query::SideQuerySelector,
     /// Data-sovereignty target: gates which facts may leave the instance
     /// through this recall pass (#3404, #3413). Defaults to
     /// [`DeploymentTarget::Cloud`] — the safe assumption so callers who do
     /// not thread `with_deployment_target` never leak `Internal` or
     /// `Confidential` facts.
     deployment_target: DeploymentTarget,
+    /// Pinned fact IDs (fast lookup set derived from config).
+    pinned_facts: HashSet<String>,
+    /// When true, recalled knowledge is appended as a system message at the
+    /// end of the conversation context rather than injected into the system
+    /// prompt.
+    late_inject_anchor: bool,
+    /// Per-scope minimum result counts with slack-fill.
+    scope_quotas: HashMap<MemoryScope, usize>,
+    /// Optional URL for an HTTP cross-encoder reranker.
+    reranker_url: Option<String>,
 }
 ```
 
@@ -1971,6 +2599,10 @@ impl RecallStage {
     pub fn new (config: RecallConfig) -> Self;
     pub fn with_side_query_ids (mut self, ids: HashSet<String>) -> Self;
     pub fn with_deployment_target (mut self, target: DeploymentTarget) -> Self;
+    pub fn with_pinned_facts (mut self, facts: &[FactId]) -> Self;
+    pub fn with_late_inject_anchor (mut self, enabled: bool) -> Self;
+    pub fn with_scope_quotas (mut self, quotas: HashMap<MemoryScope, usize>) -> Self;
+    pub fn with_reranker_url (mut self, url: Option<String>) -> Self;
     pub fn run (
         &self,
         query: &str,
@@ -1978,6 +2610,16 @@ impl RecallStage {
         embedding_provider: &dyn EmbeddingProvider,
         vector_search: &dyn VectorSearch,
         remaining_budget: u64,
+    ) -> error::Result<RecallStageResult>;
+    pub fn run_with_recall_enhancements (
+        &self,
+        query: &str,
+        nous_id: &str,
+        embedding_provider: &dyn EmbeddingProvider,
+        vector_search: &dyn VectorSearch,
+        remaining_budget: u64,
+        side_ranker: Option<&dyn mneme::side_query::SideQueryRanker>,
+        rewrite_provider: Option<&dyn mneme::query_rewrite::RewriteProvider>,
     ) -> error::Result<RecallStageResult>;
 }
 ```
@@ -2024,6 +2666,19 @@ pub struct RecallConfig {
     /// LLM can weight its reasoning by provenance quality.
     #[serde(default)]
     pub inject_metadata: bool,
+    /// Fact IDs that should be recalled first when they appear in candidates.
+    #[serde(default)]
+    pub pinned_facts: Vec<FactId>,
+    /// When true, append recalled knowledge as a system message at the end of
+    /// the conversation context instead of injecting it into the system prompt.
+    #[serde(default)]
+    pub late_inject_anchor: bool,
+    /// Per-scope minimum result counts with slack-fill.
+    #[serde(default)]
+    pub scope_quotas: HashMap<MemoryScope, usize>,
+    /// URL for an HTTP cross-encoder reranker.
+    #[serde(default)]
+    pub reranker_url: Option<String>,
     /// Characters per token for recall budget estimation.
     ///
     /// Wired from `agents.defaults.chars_per_token` at startup.
@@ -2056,7 +2711,7 @@ impl KnowledgeVectorSearch {
 ## `src/recall/search.rs`
 
 > Abstracts vector knowledge search.
-> 
+>
 > `KnowledgeStore` implements this when the `mneme-engine` feature is available.
 > For tests, use `MockVectorSearch`.
 ```rust
@@ -2067,6 +2722,14 @@ pub trait VectorSearch : Send + Sync {
         k: usize,
         ef: usize,
     ) -> error::Result<Vec<KnowledgeRecallResult>>;
+    fn search_tiered (
+        &self,
+        _query: &str,
+        _query_vec: Vec<f32>,
+        _k: usize,
+        _ef: usize,
+        _rewrite_provider: &dyn mneme::query_rewrite::RewriteProvider,
+    ) -> Option<error::Result<Vec<KnowledgeRecallResult>>>; // default impl
 }
 ```
 
@@ -2168,25 +2831,25 @@ impl RecipeRegistry {
 ## `src/research.rs`
 
 > Spawn parallel researchers for each domain and merge results.
-> 
+>
 > Each researcher runs as an ephemeral sub-agent via [`SpawnService`]. All
 > researchers run concurrently. Partial results are accepted if some researchers
 > fail or timeout.
-> 
+>
 > # Complexity
-> 
+>
 > O(d) where d is the number of research domains. Each domain spawns a
 > concurrent task, so wall-clock time is O(1) (bounded by the slowest domain),
 > but total work scales linearly with domains.
-> 
+>
 > # Errors
-> 
+>
 > Returns `String` only if the spawn service itself is unavailable. Individual
 > researcher failures are captured as [`FindingStatus::Failed`] or
 > [`FindingStatus::TimedOut`] in the output.
-> 
+>
 > # Cancel safety
-> 
+>
 > Not cancel-safe. If cancelled while spawning researchers, some sub-agents
 > may have been spawned but their results will never be collected. This leaks
 > spawned tasks until they complete naturally. Do not use in `select!` branches.
@@ -2211,6 +2874,9 @@ pub struct RoleContract {
     pub behaviors: Vec<String>,
     /// Constraints: what this role MUST NOT do.
     pub constraints: Vec<String>,
+    /// Allowed tool groups.  Empty means all tools (legacy fallback).
+    #[serde(default)]
+    pub tool_groups: Vec<ToolGroupId>,
 }
 ```
 
@@ -2272,6 +2938,8 @@ pub struct RoleTemplate {
     pub system_prompt: &'static str,
     /// Tool access restrictions.
     pub tool_policy: ToolPolicy,
+    /// Allowed tool groups for role-based gating.
+    pub tool_groups: Vec<organon::types::ToolGroupId>,
     /// Preferred model identifier.
     pub model: &'static str,
 }
@@ -2413,7 +3081,7 @@ impl AuditReport {
 ```
 
 > A self-audit check that evaluates a specific aspect of agent behavior.
-> 
+>
 > Implementations analyze the [`CheckContext`] and return a [`CheckResult`]
 > indicating pass/warn/fail with a numeric score and evidence string.
 ```rust
@@ -2482,6 +3150,21 @@ pub struct SessionState {
     pub bootstrap_hash: Option<String>,
     /// Last time the session was accessed. Used for LRU eviction.
     pub last_accessed: Instant,
+    /// Consecutive turns with no tool calls (global no-progress counter).
+    pub consecutive_no_progress_count: u32,
+    /// Per-tool-group consecutive mistake counters.
+    pub consecutive_mistake_counts: HashMap<ToolGroupId, u32>,
+    /// Whether the consecutive-mistake brake is currently tripped for this session.
+    pub brake_tripped: bool,
+    /// Per-session ephemeral HMAC-SHA256 signer for tool-call receipts.
+    pub receipt_signer: ReceiptSigner,
+    /// Per-session in-memory ledger of all emitted tool receipts.
+    pub receipt_ledger: Arc<Mutex<ReceiptLedger>>,
+    /// Extended loop detector: doom-loop, ping-pong, and no-progress.
+    ///
+    /// WHY: persisted per-session so patterns are tracked across turns.
+    /// Reset on operator intervention via `reset_on_user_message`.
+    pub loop_guard: hermeneus::loop_detector::LoopGuard,
 }
 ```
 
@@ -2556,11 +3239,11 @@ pub enum TurnStreamEvent {
 ## `src/tasks/gc.rs`
 
 > Spawn a background GC task that periodically evicts stale entries.
-> 
+>
 > The task runs until the `shutdown` token is cancelled. Output files for
 > evicted tasks are cleaned up from disk. The sweep interval is read from
 > [`taxis::config::NousBehaviorConfig`] defaults.
-> 
+>
 > Returns a `JoinHandle` so the caller can await shutdown completion.
 ```rust
 pub fn spawn_gc_task (
@@ -2633,7 +3316,7 @@ impl OutputWriter {
 ```
 
 > Streaming reader over a task's disk-backed output.
-> 
+>
 > Implements `AsyncRead` so callers can page through output without loading
 > the entire file into memory.
 ```rust
@@ -2855,7 +3538,7 @@ pub enum ProgressEvent {
 ```
 
 > A task entry in the registry.
-> 
+>
 > Contains all state needed for status queries, progress streaming,
 > cancellation, and GC eligibility.
 ```rust
@@ -2951,7 +3634,7 @@ pub struct DpoPair {
 
 > Extractor that detects correction→response sequences and produces
 > [`DpoPair`]s.
-> 
+>
 > Maintains a small per-session buffer of the most recent turn and
 > at most one pending correction. State is bounded: old pending
 > state is silently overwritten if a new correction arrives before
@@ -2980,7 +3663,7 @@ impl DpoExtractor {
 ```
 
 > Writer for DPO preference pairs to a dated JSONL file.
-> 
+>
 > File naming: `dpo-pairs-YYYYMMDD.jsonl` in the training directory.
 > The file is opened in append mode for each write; no handle is
 > held between calls.
@@ -3175,11 +3858,16 @@ pub struct ShardEntry {
 ```
 
 > Sharded, append-only training data writer.
-> 
+>
 > Writes [`TrainingRecord`]s as JSON Lines to shard files on disk. When the
 > current shard exceeds [`TrainingConfig::max_shard_bytes`], the writer
 > rotates to a new shard. A [`TrainingManifest`] is persisted after each
 > write for crash recovery.
+>
+> If an author classifier is configured, turns are additionally filtered
+> at an authorship gate: if the user message is classified as non-user-authored
+> with confidence >= the configured threshold, the turn is rejected and logged
+> rather than written to training storage.
 ```rust
 pub struct TrainingCapture {
     /// Training data directory.
@@ -3194,6 +3882,16 @@ pub struct TrainingCapture {
     max_shard_bytes: u64,
     /// Whether to apply PII redaction before writing each record.
     pii_filter_enabled: bool,
+    /// Optional author classifier for filtering non-user-authored text.
+    ///
+    /// If `Some`, applies an authorship gate before writing.
+    /// If `None`, no authorship filtering is applied.
+    classifier: Option<Arc<Classifier>>,
+    /// Confidence threshold for the authorship gate.
+    ///
+    /// User messages where the top non-user class exceeds this threshold
+    /// are rejected from training data.
+    classifier_threshold: f32,
 }
 ```
 
@@ -3205,6 +3903,7 @@ impl TrainingCapture {
     pub fn file_path (&self) -> &Path;
     pub fn dir (&self) -> &Path;
     pub fn manifest (&self) -> &TrainingManifest;
+    pub fn set_classifier (&mut self, classifier: Option<Arc<Classifier>>);
 }
 ```
 
@@ -3402,6 +4101,24 @@ pub struct CalibrationSummary {
     pub calibration_curve: Vec<CalibrationBin>,
     /// Domains where overconfidence was detected.
     pub overconfidence_patterns: Vec<OverconfidencePattern>,
+}
+```
+
+## `src/working_memory/store.rs`
+
+> Fjall-backed implementation of [`organon::types::WorkingCheckpointStore`].
+```rust
+pub struct FjallWorkingCheckpointStore {
+    db: Arc<SingleWriterTxDatabase>,
+    write_lock: Mutex<()>,
+    _temp_dir: Option<tempfile::TempDir>,
+}
+```
+
+```rust
+impl FjallWorkingCheckpointStore {
+    pub fn open (path: &Path) -> error::Result<Self>;
+    pub fn open_in_memory () -> error::Result<Self>;
 }
 ```
 

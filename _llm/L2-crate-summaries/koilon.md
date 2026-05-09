@@ -1,24 +1,30 @@
 # koilon
 
-**Purpose:** Ratatui terminal dashboard for Aletheia: chat, planning, memory, metrics, and ops views with Elm-style message-driven architecture.
+**Purpose:** Terminal dashboard for the Aletheia distributed cognition system.
 
 ## Key types
 
 | Type | Purpose |
 |------|---------|
-| `App` | Root state: dashboard, connection, input, render, interaction, layout, config |
-| `Msg` | All application messages: key events, SSE events, API responses, UI actions |
-| `DashboardState` | Agents, sessions, messages, costs, context usage |
-| `InputState` | Emacs-style input: cursor, kill ring, history search, tab completion |
-| `Theme` | Color scheme with dark/light modes and true color / 256-color support |
+| `DashboardState` | Current public type or boundary; see L3/source for exact fields |
+| `ConnectionState` | Current public type or boundary; see L3/source for exact fields |
+| `RenderState` | Current public type or boundary; see L3/source for exact fields |
+| `ViewportState` | Current public type or boundary; see L3/source for exact fields |
+| `InteractionState` | Current public type or boundary; see L3/source for exact fields |
 
 ## Public API surface
 
-- `koilon::run_tui` - entry point: takes `ApiClient` + config, runs terminal event loop
-- `koilon::app` - `App`, `DashboardState`, `ConnectionState`
-- `koilon::msg` - `Msg` enum (all application messages)
+- `koilon::app` - public items from `src/app/mod.rs`
+- `koilon::command` - public items from `src/command/mod.rs`
+- `koilon::error` - public items from `src/error.rs`
+- `koilon::events` - public items from `src/events.rs`
+- `koilon::lib` - public items from `src/lib.rs`
 
 ## When to look here
 
-- When adding a new TUI view, panel, or keyboard shortcut
-- When modifying SSE event handling or connection management in the terminal UI
+- When work touches `crates/theatron/koilon` or downstream imports from `koilon`.
+- For exact signatures, load `_llm/L3-api-index/koilon.md` if present, then source.
+
+## Recent changes
+
+L3 was refreshed for the terminal UI crate after shared type movement.

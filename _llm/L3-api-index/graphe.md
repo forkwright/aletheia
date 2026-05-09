@@ -41,6 +41,15 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// Blackboard TTL could not be represented as an expiration timestamp.
+    #[snafu(display("blackboard TTL overflow: {ttl_secs} seconds: {source}"))]
+    TtlOverflow {
+        ttl_secs: i64,
+        source: jiff::Error,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// Filesystem I/O error (archive, backup, or store open).
     #[snafu(display("I/O error at {}: {source}", path.display()))]
     Io {
@@ -63,6 +72,24 @@ pub enum Error {
     #[cfg(feature = "mneme-engine")]
     #[snafu(display("engine query failed: {message}"))]
     EngineQuery {
+        message: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Query rewrite failed while running enhanced recall.
+    #[cfg(feature = "mneme-engine")]
+    #[snafu(display("query rewrite failed: {message}"))]
+    QueryRewrite {
+        message: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Enhanced search could not complete any rewritten query variant.
+    #[cfg(feature = "mneme-engine")]
+    #[snafu(display("enhanced search failed for every query variant: {message}"))]
+    EnhancedSearch {
         message: String,
         #[snafu(implicit)]
         location: snafu::Location,
@@ -332,7 +359,7 @@ pub struct KnowledgeExport {
 ## `src/store/fjall_store.rs`
 
 > Fjall-backed session store.
-> 
+>
 > Open with [`SessionStore::open`] for persistent storage or
 > [`SessionStore::open_in_memory`] for ephemeral storage (test-only; uses a
 > `TempDir` that is cleaned up on drop).
@@ -426,6 +453,7 @@ impl SessionStore {
     ) -> Result<()>;
     pub fn blackboard_read (&self, key: &str) -> Result<Option<BlackboardRow>>;
     pub fn blackboard_list (&self) -> Result<Vec<BlackboardRow>>;
+    pub fn cleanup_expired_entries (&self) -> Result<u64>;
     pub fn blackboard_delete (&self, key: &str, author: &str) -> Result<bool>;
 }
 ```
@@ -535,6 +563,12 @@ pub struct Session {
     /// External origin and identity metadata.
     #[serde(flatten)]
     pub origin: SessionOrigin,
+    /// Provenance stamp written at persistence time.
+    ///
+    /// `None` for sessions created before the `Stamped` arc (additive field;
+    /// existing JSON deserializes with `None` and is not broken).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub artefact_meta: Option<ArtefactMeta>,
 }
 ```
 

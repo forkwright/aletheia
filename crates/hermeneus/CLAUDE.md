@@ -37,6 +37,12 @@ Anthropic LLM client with streaming, retries, fallback, health tracking, and cos
 - **OAuth auth**: `Bearer` + `anthropic-beta: oauth-2025-04-20`. API key auth: `x-api-key` header.
 - **Wire format**: `anthropic/wire/` handles Anthropic-specific JSON serialization.
 
+## Recent substrate notes
+
+- `ProviderRegistry` supports fallback chains, max-token forwarding, and token redaction in provider-facing logs/errors.
+- `LoopGuard` composes ping-pong, no-progress, and doom-loop detection using args/result hashes; keep detector updates provider-neutral.
+- Fallback behavior belongs in hermeneus, while agent policy about when to stop remains in `nous`.
+
 ## Common tasks
 
 | Task | Where |

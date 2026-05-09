@@ -475,10 +475,10 @@ pub enum Event {
 ## `src/lib.rs`
 
 > Run the interactive TUI setup wizard for first-run instance initialization.
-> 
+>
 > Returns [`wizard::WizardAnswers`] when the user confirms on the final step.
 > Returns [`error::Error::WizardAborted`] if the user presses Esc or Ctrl+C.
-> 
+>
 > Call [`wizard::is_tty`] first to verify the terminal supports interactive input.
 ```rust
 pub fn run_wizard (
@@ -1722,138 +1722,13 @@ pub struct ViewStack {
 ## `src/theme.rs`
 
 ```rust
-pub enum ColorDepth {
-    /// 24-bit RGB (COLORTERM=truecolor, iTerm2, Kitty, Alacritty, etc.)
-    TrueColor,
-    /// 256-color (xterm-256color)
-    Color256,
-    /// Basic 16 ANSI colors
-    Basic,
-}
-```
-
-```rust
-pub enum ThemeMode {
-    Dark,
-    Light,
-}
-```
-
-```rust
-pub struct Colors {
-    pub bg: Color,
-    pub surface: Color,
-    pub surface_bright: Color,
-    pub surface_dim: Color,
-    pub accent: Color,
-    pub accent_dim: Color,
-}
-```
-
-```rust
-pub struct TextColors {
-    pub fg: Color,
-    pub fg_muted: Color,
-    pub fg_dim: Color,
-    pub user: Color,
-    pub assistant: Color,
-    pub system: Color,
-}
-```
-
-```rust
-pub struct Borders {
-    pub normal: Color,
-    pub focused: Color,
-    pub separator: Color,
-    pub selected: Color,
-}
-```
-
-```rust
-pub struct StatusColors {
-    pub success: Color,
-    pub warning: Color,
-    pub error: Color,
-    pub info: Color,
-    pub spinner: Color,
-    pub idle: Color,
-    pub streaming: Color,
-    pub compacting: Color,
-}
-```
-
-```rust
-pub struct CodeColors {
-    pub fg: Color,
-    pub bg: Color,
-    pub lang: Color,
-}
-```
-
-```rust
-pub struct ThinkingColors {
-    pub fg: Color,
-    pub border: Color,
-}
-```
-
-```rust
-pub struct Theme {
-    pub colors: Colors,
-    pub text: TextColors,
-    pub borders: Borders,
-    pub status: StatusColors,
-    pub code: CodeColors,
-    pub thinking: ThinkingColors,
-    /// Color depth (for conditional rendering).
-    pub depth: ColorDepth,
-    /// Light or dark background.
-    pub mode: ThemeMode,
-}
-```
-
-```rust
 pub static THEME: std::sync::LazyLock<Theme> = std::sync::LazyLock::new(Theme::default);
-```
-
-```rust
-impl Theme {
-    pub fn detect () -> Self;
-    pub fn for_mode (mode: Option<ThemeMode>) -> Self;
-    pub fn style_fg (&self) -> Style;
-    pub fn style_muted (&self) -> Style;
-    pub fn style_dim (&self) -> Style;
-    pub fn style_accent (&self) -> Style;
-    pub fn style_accent_bold (&self) -> Style;
-    pub fn style_success (&self) -> Style;
-    pub fn style_warning (&self) -> Style;
-    pub fn style_error (&self) -> Style;
-    pub fn style_success_bold (&self) -> Style;
-    pub fn style_error_bold (&self) -> Style;
-    pub fn style_user (&self) -> Style;
-    pub fn style_assistant (&self) -> Style;
-    pub fn style_code (&self) -> Style;
-    pub fn style_inline_code (&self) -> Style;
-    pub fn style_surface (&self) -> Style;
-    pub fn style_border (&self) -> Style;
-    pub fn style_border_focused (&self) -> Style;
-}
-```
-
-> Braille spinner frames for smooth animation.
-```rust
-pub const BRAILLE_SPINNER: &[char] = &['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
-```
-
-```rust
-pub fn spinner_frame (tick: u64) -> char
 ```
 
 ## `src/wizard/mod.rs`
 
 > Returns `true` when the current environment supports a TUI wizard.
-> 
+>
 > Requires both stdin and stdout to be connected to a TTY.
 ```rust
 pub fn is_tty () -> bool

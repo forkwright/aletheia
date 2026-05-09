@@ -47,6 +47,12 @@ Core types, errors, tracing, and system abstractions shared by every Aletheia cr
 - **Redaction pipeline**: `redact::redact_sensitive()` strips API keys, bearer tokens, JWTs via regex. `RedactingLayer` applies this to tracing output.
 - **Secret safety**: `SecretString` requires explicit `.expose_secret()` for access. Debug, Display, and Serialize all output `[REDACTED]`.
 
+## Recent substrate notes
+
+- Shared timestamps use `jiff`; do not reintroduce chrono for new foundation-layer time types.
+- `Classifiable` is the shared classification trait for errors/events that feed routing and observability.
+- Cleanup and event wiring live here only when they are foundation abstractions, not application policy.
+
 ## Common tasks
 
 | Task | Where |

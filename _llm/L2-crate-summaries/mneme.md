@@ -1,23 +1,26 @@
 # mneme
 
-**Purpose:** Thin facade re-exporting memory and session types from eidos, graphe, episteme, and krites into a single crate import surface.
+**Purpose:** Session store and memory engine for Aletheia.
 
 ## Key types
 
 | Type | Purpose |
 |------|---------|
-| `SessionStore` | Re-exported from graphe: fjall-backed session store |
-| `Fact` / `Entity` | Re-exported from eidos: knowledge graph types |
-| `RecallEngine` | Re-exported from episteme: 6-factor recall scoring |
-| `Db` | Re-exported from krites (behind `mneme-engine` feature): Datalog engine |
-| `EmbeddingProvider` | Re-exported from episteme: vector embedding trait |
+| `SessionStore` | Current public type or boundary; see L3/source for exact fields |
+| `KnowledgeStore` | Current public type or boundary; see L3/source for exact fields |
+| `TraceIngestLayer` | Current public type or boundary; see L3/source for exact fields |
+| `RecallEngine` | Current public type or boundary; see L3/source for exact fields |
+| `validate_memory_path` | Current public type or boundary; see L3/source for exact fields |
 
 ## Public API surface
 
-- `mneme::*` - single import prefix for all memory-layer types; replaces four separate crate imports
-- Feature gate `mneme-engine` enables krites `Db` and related Datalog types
+- No public Rust items were extracted; treat this crate as a facade, binary, or data crate and read source on demand.
 
 ## When to look here
 
-- When importing any memory-layer type in a downstream crate (nous, pylon, aletheia, etc.)
-- Do not add logic here; if `src/lib.rs` exceeds 500 lines, extract to a sub-crate
+- When work touches `crates/mneme` or downstream imports from `mneme`.
+- For exact signatures, load `_llm/L3-api-index/mneme.md` if present, then source.
+
+## Recent changes
+
+The facade boundary was realigned; downstream crates should import memory/session/recall types through mneme re-exports.

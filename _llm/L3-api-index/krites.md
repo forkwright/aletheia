@@ -5,6 +5,68 @@ Crate path: `crates/krites`
 Public API signatures extracted from source. Each signature is preceded by its doc comment.
 For implementation context, read the source directly (`L4`).
 
+## `src/async_surface.rs`
+
+```rust
+pub struct AsyncDb {
+    inner: Arc<Db>,
+}
+```
+
+```rust
+impl AsyncDb {
+    pub async fn open_mem () -> crate::Result<Self>;
+    pub async fn open_fjall (path: impl AsRef<Path> + Send + 'static) -> crate::Result<Self>;
+    pub fn with_cache (self, capacity: NonZeroUsize) -> Self;
+    pub async fn cache_stats (&self) -> Option<QueryCacheStats>;
+    pub async fn run (
+        &self,
+        script: &str,
+        params: BTreeMap<String, DataValue>,
+        mutability: ScriptMutability,
+    ) -> crate::Result<NamedRows>;
+    pub async fn run_read_only (
+        &self,
+        script: &str,
+        params: BTreeMap<String, DataValue>,
+    ) -> crate::Result<NamedRows>;
+    pub async fn backup_db (
+        &self,
+        out_file: impl AsRef<Path> + Send + 'static,
+    ) -> crate::Result<()>;
+    pub async fn restore_backup (
+        &self,
+        in_file: impl AsRef<Path> + Send + 'static,
+    ) -> crate::Result<()>;
+    pub async fn import_from_backup (
+        &self,
+        in_file: impl AsRef<Path> + Send + 'static,
+        relations: &[String],
+    ) -> crate::Result<()>;
+    pub async fn export_relations <I, T> (
+        &self,
+        relations: I,
+    ) -> crate::Result<BTreeMap<String, NamedRows>> where
+        I: Iterator<Item = T> + Send,
+        T: AsRef<str> + Send,;
+    pub async fn import_relations (&self, data: BTreeMap<String, NamedRows>) -> crate::Result<()>;
+    pub async fn register_fixed_rule <R: FixedRule + 'static> (
+        &self,
+        name: String,
+        rule: R,
+    ) -> crate::Result<()>;
+    pub async fn register_callback (
+        &self,
+        relation: &str,
+        capacity: Option<usize>,
+    ) -> (
+        u32,
+        crossbeam::channel::Receiver<(CallbackOp, NamedRows, NamedRows)>,
+    );
+    pub async fn multi_transaction (&self, write: bool) -> crate::MultiTransaction;
+}
+```
+
 ## `src/counterfactual.rs`
 
 ```rust
@@ -130,9 +192,9 @@ pub enum Bytecode {
 ```
 
 > Evaluate bytecode to a boolean predicate result.
-> 
+>
 > # Errors
-> 
+>
 > Returns an error if bytecode evaluation fails or if the result
 > is not a boolean value.
 ```rust
@@ -145,9 +207,9 @@ pub fn eval_bytecode_pred (
 ```
 
 > Evaluate bytecode to produce a data value.
-> 
+>
 > # Errors
-> 
+>
 > Returns an error if a variable is unbound, if the tuple is too short
 > for a binding, if an operation fails, or if type mismatches occur.
 ```rust
@@ -245,7 +307,7 @@ pub fn decode_tuple_from_key (key: &[u8], size_hint: usize) -> Tuple
 ```
 
 > Check if the tuple key passed in should be a valid return for a validity query.
-> 
+>
 > Returns two elements, the first element contains `Some(tuple)` if the key should be included
 > in the return set and `None` otherwise,
 > the second element gives the next binary key for the seek to be used as an inclusive
@@ -539,10 +601,104 @@ pub struct TokenizerConfig {
 }
 ```
 
+## `src/hot_reload.rs`
+
+> File extension for Datalog rule files loaded by the hot-reloader.
+```rust
+pub const RULE_EXTENSION: &str = "mnm";
+```
+
+```rust
+pub enum ReloadEvent {
+    /// Rules were successfully reloaded.
+    Reloaded {
+        /// Number of source files loaded.
+        count: usize,
+    },
+    /// A parse error prevented reload; old ruleset retained.
+    ParseError {
+        /// Human-readable error message.
+        source: String,
+    },
+}
+```
+
+```rust
+pub struct RuleSource {
+    /// Filename (not full path) of the source file.
+    pub filename: String,
+    /// UTC timestamp of last successful load.
+    pub last_loaded: jiff::Timestamp,
+}
+```
+
+```rust
+pub struct RuleSet {
+    /// Concatenated Datalog rule text from all source files.
+    pub rules_text: Arc<str>,
+    /// Per-source metadata for health/observability.
+    pub sources: Vec<RuleSource>,
+    /// Number of source files.
+    pub source_count: usize,
+}
+```
+
+```rust
+pub enum HotReloadError {
+    /// Failed to initialize the file watcher.
+    #[snafu(display("failed to initialize file watcher"))]
+    WatcherInit {
+        /// Underlying notify error.
+        source: notify::Error,
+    },
+    /// Failed to read the rule directory.
+    #[snafu(display("failed to read rule directory {path}"))]
+    ReadDir {
+        /// Directory path.
+        path: String,
+        /// Underlying IO error.
+        source: std::io::Error,
+    },
+    /// Failed to read a rule file.
+    #[snafu(display("failed to read rule file {path}"))]
+    ReadFile {
+        /// File path.
+        path: String,
+        /// Underlying IO error.
+        source: std::io::Error,
+    },
+    /// Rule text failed to parse.
+    #[snafu(display("rule parse error: {message}"))]
+    Parse {
+        /// Parse error message.
+        message: String,
+    },
+}
+```
+
+```rust
+pub struct HotReloader {
+    rule_dir: PathBuf,
+    reload_tx: mpsc::Sender<ReloadEvent>,
+    _watcher: notify::RecommendedWatcher,
+}
+```
+
+```rust
+impl HotReloader {
+    pub fn start (
+        rule_dir: impl AsRef<Path>,
+        fixed_rules: &Arc<
+            crossbeam::sync::ShardedLock<BTreeMap<String, Arc<Box<dyn crate::FixedRule>>>>,
+        >,
+    ) -> Result<(Self, mpsc::Receiver<ReloadEvent>, Arc<ArcSwap<RuleSet>>), HotReloadError>;
+}
+```
+
 ## `src/lib.rs`
 
 > Public facade for the Datalog engine. Dispatches to a concrete storage backend.
-> 
+>
 > Obtain an instance via [`Db::open_mem`] or [`Db::open_fjall`]. Attach an
 > optional LRU query cache with [`Db::with_cache`] to track hit/miss metrics
 > for repeated Datalog queries.
@@ -560,6 +716,10 @@ impl Db {
     pub fn open_mem () -> crate::Result<Self>;
     pub fn open_fjall (path: impl AsRef<Path>) -> crate::Result<Self>;
     pub fn with_cache (mut self, capacity: NonZeroUsize) -> Self;
+    pub fn with_rule_store (
+        mut self,
+        store: Arc<arc_swap::ArcSwap<crate::hot_reload::RuleSet>>,
+    ) -> Self;
     pub fn cache_stats (&self) -> Option<QueryCacheStats>;
     pub fn run (
         &self,
@@ -776,14 +936,14 @@ pub struct SourceSpan(pub usize, pub usize);
 ```
 
 > Parse a text script into the datalog AST.
-> 
+>
 > * `src` - the script to parse
 > * `param_pool` - the list of parameters to execute the script with. These are substituted into the syntax tree during parsing.
 > * `fixed_rules` - a mapping of fixed rule names to their implementations. These are substituted into the syntax tree during parsing.
 > * `cur_vld` - the current timestamp, substituted into expressions where validity is relevant.
-> 
+>
 > # Errors
-> 
+>
 > Returns an error if the source contains syntax errors or if parsing fails.
 ```rust
 pub fn parse_script (
@@ -907,12 +1067,12 @@ pub struct QueryCacheStats {
 ```
 
 > LRU-bounded cache for Datalog query strings.
-> 
+>
 > On each [`QueryCache::check`] call the query is normalized (whitespace
 > collapsed), then looked up in an LRU cache.  A hit promotes the entry to
 > the most-recently-used position and increments the hit counter; a miss
 > inserts the entry and increments the miss counter.
-> 
+>
 > The cache does not store compiled query plans -- it tracks *which queries
 > have been seen* and exposes hit/miss metrics so callers can observe query
 > repetition patterns and make caching decisions from the metrics.
@@ -986,6 +1146,8 @@ pub struct Db<S> {
     #[cfg(not(target_arch = "wasm32"))]
     pub(crate) event_callbacks: Arc<ShardedLock<EventCallbackRegistry>>,
     pub(crate) relation_locks: Arc<ShardedLock<BTreeMap<CompactString, Arc<ShardedLock<()>>>>>,
+    #[cfg(feature = "hot-reload")]
+    pub(crate) rule_store: Option<Arc<arc_swap::ArcSwap<crate::hot_reload::RuleSet>>>,
 }
 ```
 
@@ -1132,7 +1294,7 @@ impl RegularTempStore {
 ## `src/runtime/transact.rs`
 
 > A transaction session binding a storage transaction and a temporary store.
-> 
+>
 > Dropping without calling [`commit_tx`](Self::commit_tx) implicitly aborts.
 > All schema mutations (create/destroy relations, set triggers, etc.) go
 > through this handle.

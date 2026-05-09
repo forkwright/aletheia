@@ -1,24 +1,28 @@
 # poiesis-verify
 
-**Purpose:** Claim verification for reports. Validates numeric claims in a `VerifyManifest` against `Derived` (arithmetic formula) and `Ref` (cross-claim reference) sources. SQL sources are stored for auditability but not executed by this crate. Ported from `ergon_tools` sdr verify.
+**Purpose:** Report claim verification: arithmetic evaluation and source resolution.
 
 ## Key types
 
 | Type | Purpose |
 |------|---------|
-| `VerifyManifest` | Top-level manifest: claims and their sources |
-| `Claim` | A single numeric claim to verify |
-| `Source` | Derived (arithmetic), Ref (claim id), or SQL (stored only) |
-| `Arithmetic` | Recursive-descent arithmetic formula evaluator |
+| `VerifyError` | Current public type or boundary; see L3/source for exact fields |
+| `Verifier` | Current public type or boundary; see L3/source for exact fields |
+| `new` | Current public type or boundary; see L3/source for exact fields |
+| `verify` | Current public type or boundary; see L3/source for exact fields |
+| `verify_file` | Current public type or boundary; see L3/source for exact fields |
 
 ## Public API surface
 
-- `poiesis_verify::arithmetic` - Formula evaluator
-- `poiesis_verify::error` - Error types
-- `poiesis_verify` - `VerifyManifest`, `Claim`, `Source`
+- `poiesis-verify::error` - public items from `src/error.rs`
+- `poiesis-verify::lib` - public items from `src/lib.rs`
+- `poiesis-verify::manifest` - public items from `src/manifest.rs`
 
 ## When to look here
 
-- When adding a new source kind (beyond Derived, Ref, SQL)
-- When extending the arithmetic grammar
-- When debugging claim-verification failures in generated reports
+- When work touches `crates/poiesis/verify` or downstream imports from `poiesis-verify`.
+- For exact signatures, load `_llm/L3-api-index/poiesis-verify.md` if present, then source.
+
+## Recent changes
+
+Typed content-drop errors and verification drift fixes are reflected in the refreshed API surface.

@@ -65,40 +65,6 @@ impl ApiClient {
 }
 ```
 
-## `src/api/error.rs`
-
-```rust
-pub enum ApiError {
-    /// HTTP transport or connection error (no response received).
-    #[snafu(display("{operation}: {source}"))]
-    Http {
-        /// Which API call failed.
-        operation: &'static str,
-        /// Underlying reqwest error.
-        source: reqwest::Error,
-    },
-
-    /// Non-2xx HTTP response. Message is extracted from the server body when possible.
-    #[snafu(display("{operation}: {status} {message}"))]
-    Server {
-        /// Which API call failed.
-        operation: &'static str,
-        /// HTTP status code from the response.
-        status: u16,
-        /// Human-readable error from the server.
-        message: String,
-    },
-
-    /// Credentials rejected by the gateway.
-    #[snafu(display("authentication failed: token expired or invalid"))]
-    Auth,
-
-    /// Token contains characters that are not valid in an HTTP header value.
-    #[snafu(display("invalid token: contains characters not valid in HTTP headers"))]
-    InvalidToken,
-}
-```
-
 ## `src/api/sse.rs`
 
 > Manages the global SSE connection to /api/v1/events.
@@ -698,46 +664,4 @@ pub struct TurnId(String);
 
 ```rust
 pub struct PlanId(String);
-```
-
-## `src/sse.rs`
-
-```rust
-pub struct SseEvent {
-    /// The `event:` field. Defaults to `"message"` per the SSE spec.
-    pub event: String,
-    /// The `data:` field(s), concatenated with newlines for multi-line data.
-    pub data: String,
-    /// The `id:` field, if present.
-    pub id: Option<String>,
-    /// The `retry:` field in milliseconds, if present.
-    pub retry: Option<u64>,
-}
-```
-
-> Transforms a byte stream into a stream of parsed SSE events.
-> 
-> Handles the full SSE wire protocol: `data:`, `event:`, `id:`, `retry:`,
-> comment lines (`:` prefix), multi-line `data:` fields (concatenated with
-> newlines), and blank-line event delimiters.
-```rust
-pub struct SseStream<S> {
-    stream: S,
-    buf: String,
-    done: bool,
-
-    current_event: Option<String>,
-    current_data: String,
-    current_id: Option<String>,
-    current_retry: Option<u64>,
-    has_data: bool,
-}
-```
-
-```rust
-impl <S, E> SseStream<S> where
-    S: Stream<Item = Result<Bytes, E>> + Unpin,
-    E: std::fmt::Display, {
-    pub fn new (stream: S) -> Self;
-}
 ```

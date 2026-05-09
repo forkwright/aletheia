@@ -1,24 +1,22 @@
 # proskenion
 
-**Purpose:** Dioxus desktop application for Aletheia: chat, planning, memory, metrics, ops, and file views. Excluded from default workspace build (requires GTK3).
+**Purpose:** Dioxus desktop shell for Aletheia (excluded from the workspace build).
 
 ## Key types
 
 | Type | Purpose |
 |------|---------|
-| `AppState` | Top-level reactive state: agents, sessions, tab bar, overlays, connection |
-| `EventState` | SSE connection state, streaming state, tool calls in progress |
-| `PylonClient` | Gateway API client wrapper with auth and reconnection |
-| `ToolCallState` | Active tool call tracking with approval state |
-| `WindowState` | Window geometry persistence across sessions |
+| `See L3 API index` | Current public type or boundary; see L3/source for exact fields |
 
 ## Public API surface
 
-- `proskenion::run` - entry point: initializes Dioxus app and starts desktop window
-- `proskenion::state` - `AppState`, `EventState`, reactive state modules
-- `proskenion::services` - background services: SSE, streaming, cache, file watcher, keybindings
+- Desktop app API is checked through `crates/theatron/proskenion/Cargo.toml`, outside the workspace L3 regen.
 
 ## When to look here
 
-- When adding a new desktop view, component, or system tray feature
-- When modifying streaming accumulation or per-message tool call display
+- When work touches `crates/theatron/proskenion` or downstream imports from `proskenion`.
+- For exact signatures, load `_llm/L3-api-index/proskenion.md` if present, then source.
+
+## Recent changes
+
+Desktop remains excluded from the workspace build; use its standalone manifest for checks.

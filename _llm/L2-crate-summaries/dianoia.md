@@ -1,24 +1,30 @@
 # dianoia
 
-**Purpose:** Multi-phase planning state machine with on-disk workspace persistence. Zero workspace dependencies - fully decoupled from the agent pipeline.
+**Purpose:** Planning and project orchestration - multi-phase state machine with workspace persistence.
 
 ## Key types
 
 | Type | Purpose |
 |------|---------|
-| `Project` | Top-level project: name, mode, state, phases |
-| `ProjectState` | Lifecycle: Created → Questioning → Researching → … → Complete |
-| `Phase` | Grouping of related plans with lifecycle state and completion tracking |
-| `Plan` | Executable plan: dependencies, iteration limits, blockers |
-| `ProjectWorkspace` | On-disk persistence: PROJECT.json, phases/, blockers/, artifacts/ |
+| `Error` | Current public type or boundary; see L3/source for exact fields |
+| `GateCondition` | Current public type or boundary; see L3/source for exact fields |
+| `GateResult` | Current public type or boundary; see L3/source for exact fields |
+| `is_pass` | Current public type or boundary; see L3/source for exact fields |
+| `PhaseGate` | Current public type or boundary; see L3/source for exact fields |
 
 ## Public API surface
 
-- `dianoia::project` - `Project`, `ProjectMode`, lifecycle management
-- `dianoia::workspace` - `ProjectWorkspace` for on-disk JSON persistence
-- `dianoia::stuck` - `StuckDetector` for pattern-based loop detection
+- `dianoia::error` - public items from `src/error.rs`
+- `dianoia::gate` - public items from `src/gate.rs`
+- `dianoia::handoff` - public items from `src/handoff.rs`
+- `dianoia::intent` - public items from `src/intent.rs`
+- `dianoia::metrics` - public items from `src/metrics.rs`
 
 ## When to look here
 
-- When extending the planning state machine (new states, transitions, or plan types)
-- When modifying project workspace layout or persistence format
+- When work touches `crates/dianoia` or downstream imports from `dianoia`.
+- For exact signatures, load `_llm/L3-api-index/dianoia.md` if present, then source.
+
+## Recent changes
+
+L3 was refreshed; no major public planning-state contract change was part of the substrate push.

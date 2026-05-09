@@ -75,6 +75,12 @@ Mneme itself has no logic. All changes go to the sub-crates:
 | Modify Datalog engine | `krites` |
 | Add embedding provider | `episteme` (embedding module) |
 
+## Recent substrate notes
+
+- The facade boundary is intentional: downstream application crates should import memory/session/recall/trace types through `mneme`.
+- `TraceIngestLayer`, side-query, visibility filtering, and knowledge-store helpers are re-exported only when they have downstream consumers.
+- Add explicit re-exports for new downstream needs instead of reaching around the facade.
+
 ## Dependencies
 
 Uses: eidos, graphe, episteme, krites

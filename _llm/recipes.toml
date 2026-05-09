@@ -6,8 +6,8 @@
 # touched crates).
 #
 # Token budgets use a conservative chars/4 estimate (cl100k baseline).
-# L1 and L2 are interim: L1 = architecture.toml, L2 = manifest.toml until
-# per-crate summaries are generated (Phase 2 of the multi-resolution plan).
+# L1 and L2 are generated Markdown reference layers. Use L1 for workspace
+# orientation, L2 for crate purpose/key types, and L3 for exact signatures.
 
 [meta]
 version = 1
@@ -27,13 +27,13 @@ task_keywords = ["cold start", "first interaction", "orientation", "onboard", "o
 
 [[recipe.file]]
 level = "L1"
-path = "_llm/architecture.toml"
+path = "_llm/L1-workspace.md"
 note = "Crate tree, layers, dependency direction"
 
 [[recipe.file]]
 level = "L2"
-path = "_llm/manifest.toml"
-note = "Per-crate metadata. Interim until L2 per-crate summaries land."
+path = "_llm/L2-crate-summaries"
+note = "Per-crate purpose, key types, public surface, recent notes"
 
 [[recipe.file]]
 level = "instructions"
@@ -68,8 +68,13 @@ task_keywords = ["edit crate", "fix crate", "implement in", "refactor crate", "s
 
 [[recipe.file]]
 level = "L1"
-path = "_llm/architecture.toml"
+path = "_llm/L1-workspace.md"
 note = "Understand crate position in the dependency graph"
+
+[[recipe.file]]
+level = "L2"
+path = "_llm/L2-crate-summaries/{crate}.md"
+note = "Purpose, key types, and recent substrate notes for the target crate"
 
 [[recipe.file]]
 level = "L3"
@@ -110,12 +115,12 @@ task_keywords = ["cross crate", "workspace refactor", "trait change", "dependenc
 
 [[recipe.file]]
 level = "L1"
-path = "_llm/architecture.toml"
+path = "_llm/L1-workspace.md"
 
 [[recipe.file]]
 level = "L2"
-path = "_llm/manifest.toml"
-note = "All crate metadata to identify blast radius"
+path = "_llm/L2-crate-summaries"
+note = "All crate summaries to identify blast radius"
 
 [[recipe.file]]
 level = "L3"
@@ -153,7 +158,7 @@ task_keywords = ["add endpoint", "new endpoint", "api handler", "route", "http e
 
 [[recipe.file]]
 level = "L1"
-path = "_llm/architecture.toml"
+path = "_llm/L1-workspace.md"
 note = "Understand pylon's position in the interface layer"
 
 [[recipe.file]]
@@ -202,7 +207,7 @@ task_keywords = ["add tool", "new tool", "builtin", "organon tool", "tool execut
 
 [[recipe.file]]
 level = "L1"
-path = "_llm/architecture.toml"
+path = "_llm/L1-workspace.md"
 note = "Organon is in the agent layer; understand downstream consumers"
 
 [[recipe.file]]

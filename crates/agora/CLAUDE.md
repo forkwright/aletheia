@@ -36,6 +36,11 @@ Channel registry and provider implementations for external messaging (Signal). 3
 - **Connection resilience**: `AccountState` buffers outbound messages during disconnects, exponential reconnect backoff.
 - **Listener cleanup**: abort callbacks registered at spawn time via `CleanupRegistry`, disarmed by `into_receiver()`.
 
+## Recent substrate notes
+
+- Channel capabilities must report only behavior actually implemented by the provider; Signal claims were intentionally narrowed.
+- Listener cleanup uses registered abort callbacks and disarms them when ownership moves to the receiver.
+
 ## Common tasks
 
 | Task | Where |

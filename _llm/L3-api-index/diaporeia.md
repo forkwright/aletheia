@@ -8,22 +8,52 @@ For implementation context, read the source directly (`L4`).
 ## `src/auth.rs`
 
 ```rust
-pub struct McpClaims {
-    /// Subject identifier (user or service principal).
-    pub sub: String,
-    /// Authorization role governing API access.
-    pub role: Role,
-    /// Optional nous scope: when set, restricts access to a single agent.
-    pub nous_id: Option<String>,
+pub async fn mcp_auth (
+    state: Arc<DiaporeiaState>,
+    req: Request<Body>,
+    next: Next,
+) -> Response<Body>
+```
+
+## `src/client.rs`
+
+```rust
+pub struct StdioMcpServerConfig {
+    /// Executable to spawn.
+    pub command: String,
+    /// Command-line arguments passed to the executable.
+    pub args: Vec<String>,
+    /// Optional working directory for the child process.
+    pub cwd: Option<PathBuf>,
+    /// Extra environment variables for the child process.
+    pub env: HashMap<String, String>,
 }
 ```
 
 ```rust
-pub async fn mcp_auth (
-    state: Arc<DiaporeiaState>,
-    mut req: Request<Body>,
-    next: Next,
-) -> Response<Body>
+impl StdioMcpServerConfig {
+    pub fn new (command: impl Into<String>) -> Self;
+}
+```
+
+```rust
+pub struct ExternalMcpClient {
+    service: Arc<Mutex<RunningService<RoleClient, ClientInfo>>>,
+}
+```
+
+```rust
+impl ExternalMcpClient {
+    pub async fn connect_stdio (config: &StdioMcpServerConfig) -> Result<Self>;
+    pub async fn connect_streamable_http (endpoint: &str) -> Result<Self>;
+    pub async fn list_tools (&self) -> Result<Vec<Tool>>;
+    pub async fn call_tool (
+        &self,
+        name: &str,
+        arguments: serde_json::Map<String, serde_json::Value>,
+    ) -> Result<CallToolResult>;
+    pub async fn close (&self) -> Result<QuitReason>;
+}
 ```
 
 ## `src/error.rs`
@@ -194,7 +224,7 @@ impl DiaporeiaServer {
 ## `src/state.rs`
 
 > Shared state for the diaporeia MCP server.
-> 
+>
 > Holds the same shared `Arc` pointers as pylon's `AppState`.
 > Both live in the same process and access identical instances.
 ```rust
@@ -233,13 +263,13 @@ pub struct DiaporeiaState {
 ## `src/transport.rs`
 
 > Build an Axum Router that serves MCP over streamable HTTP.
-> 
+>
 > Mount this into the main application router to expose MCP at `/mcp`.
 > The auth middleware validates Bearer JWT tokens (or passes through
 > anonymous claims when `auth_mode == "none"`).
-> 
+>
 > # Security warnings
-> 
+>
 > Logs a `WARN` when `auth_mode == "none"` (all connections receive the
 > configured `none_role` without any credential check). Escalates to
 > `ERROR` when the bind address is not loopback, because the MCP server
@@ -249,7 +279,7 @@ pub fn streamable_http_router (state: Arc<DiaporeiaState>) -> axum::Router
 ```
 
 > Build an Axum Router with a custom Streamable HTTP config.
-> 
+>
 > Used by integration tests to enable stateless+json-response mode for
 > simpler request-response testing without SSE parsing.
 ```rust
@@ -257,4 +287,34 @@ pub fn streamable_http_router_with_config (
     state: Arc<DiaporeiaState>,
     config: rmcp::transport::streamable_http_server::StreamableHttpServerConfig,
 ) -> axum::Router
+```
+
+```rust
+pub async fn serve_stdio (state: Arc<DiaporeiaState>) -> Result<()>
+```
+
+## `tests/common/mod.rs`
+
+```rust
+pub struct StateBuilder {
+    auth_mode: String,
+    none_role: String,
+    signing_key: String,
+    instance_root: tempfile::TempDir,
+    repomix_enabled: bool,
+}
+```
+
+```rust
+impl StateBuilder {
+    pub fn new () -> Self;
+    pub fn auth_mode (mut self, mode: &str) -> Self;
+    pub fn none_role (mut self, role: &str) -> Self;
+    pub fn repomix_enabled (mut self) -> Self;
+    pub fn build (self) -> (Arc<DiaporeiaState>, Arc<JwtManager>, tempfile::TempDir);
+}
+```
+
+```rust
+pub fn issue_token (jwt: &JwtManager, subject: &str, role: Role) -> String
 ```

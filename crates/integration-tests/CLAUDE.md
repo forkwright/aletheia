@@ -24,7 +24,7 @@ Cross-crate integration test suite exercising multi-crate pipelines end-to-end. 
 | `mneme_session.rs` | Session creation, message append, history retrieval via SessionStore |
 | `recall_pipeline.rs` | Recall stage with MockEmbeddingProvider and mock vector search |
 | `recall_scoring.rs` | Multi-factor recall scoring across knowledge/nous boundaries |
-| `knowledge_engine.rs` | CozoDB knowledge store operations (requires `engine-tests`) |
+| `knowledge_engine.rs` | Embedded Datalog knowledge store operations (requires `engine-tests`) |
 | `knowledge_lifecycle.rs` | Fact insertion, recall, consolidation lifecycle |
 | `knowledge_recall.rs` | Knowledge recall with embedding similarity |
 | `cross_crate_pipeline.rs` | Multi-crate pipeline stage integration |
@@ -42,7 +42,7 @@ Cross-crate integration test suite exercising multi-crate pipelines end-to-end. 
 
 | Feature | Default | Purpose |
 |---------|---------|---------|
-| `engine-tests` | no | Tests requiring CozoDB Datalog engine |
+| `engine-tests` | no | Tests requiring embedded Datalog engine |
 | `knowledge-store` | yes | Knowledge store feature propagation to nous/pylon |
 
 ## Patterns
@@ -50,6 +50,11 @@ Cross-crate integration test suite exercising multi-crate pipelines end-to-end. 
 - **Mock providers**: tests use `MockProvider` (hermeneus), `MockEmbeddingProvider` (mneme) for deterministic LLM/embedding responses.
 - **In-memory stores**: `SessionStore::open_in_memory()` avoids disk I/O in tests.
 - **Feature-gated modules**: each test file declares `#![cfg(feature = "...")]` for appropriate test tier.
+
+## Recent substrate notes
+
+- Use the shared `TestHarness` for substrate canaries instead of hand-rolled setup.
+- The 15-scenario canary suite is the operator-independent verification surface for memory, tools, auth, gateway, and runtime wiring claims.
 
 ## Common tasks
 

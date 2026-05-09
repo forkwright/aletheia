@@ -22,6 +22,9 @@ Later layers override earlier ones. All field names use `snake_case` in TOML; `c
 - [embedding](#embedding)
 - [credential](#credential)
 - [data](#data)
+- [nous_behavior](#nous_behavior)
+- [daemon_behavior](#daemon_behavior)
+- [tool_limits](#tool_limits)
 - [maintenance](#maintenance)
 - [logging](#logging)
 - [pricing](#pricing)
@@ -52,6 +55,9 @@ Contains `defaults` (inherited by all agents) and `list` (per-agent definitions)
 | `max_tool_iterations` | u32 | `50` | Safety limit on consecutive tool use per turn |
 | `allowed_roots` | string[] | `[]` | Filesystem paths the agent may access |
 | `tool_timeouts` | object | see `agents.defaults.tool_timeouts` section | Per-tool execution timeout overrides |
+| `working_state_ttl_secs` | u64 | `604800` | Working-state expiry window (7 days) |
+| `working_state_max_task_stack` | usize | `10` | Maximum working-state task stack depth before oldest entries are evicted |
+| `tool_datalog_default_timeout_secs` | f64 | `5.0` | Default Datalog memory tool timeout |
 
 #### agents.defaults.caching
 
@@ -112,6 +118,11 @@ domains = ["research", "analysis"]
 primary = "claude-opus-4-6"
 fallbacks = ["claude-sonnet-4-6"]
 ```
+
+`nous::PipelineConfig` also carries per-stage turn budgets (`context`,
+`recall`, `history`, `guard`, `execute`, `finalize`, `reflection`, and
+`total`). These are runtime pipeline limits; top-level actor and manager
+timeouts live under `nous_behavior`.
 
 ---
 
@@ -329,6 +340,61 @@ claude_code_credentials = "~/.claude/.credentials.json"
 session_max_age_days = 90
 archive_before_delete = true
 ```
+
+---
+
+## nous_behavior
+
+Actor and manager behavior thresholds. These fields are hot-reloadable in the
+config registry unless the runtime code documents a colder lifecycle.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `degraded_panic_threshold` | u32 | `5` | Panics within the window before degraded mode |
+| `degraded_window_secs` | u64 | `600` | Panic counting window |
+| `inbox_recv_timeout_secs` | u64 | `30` | Actor inbox receive timeout before warning |
+| `manager_ping_timeout_secs` | u64 | `5` | Health ping timeout |
+| `stuck_turn_timeout_secs` | u64 | `600` | Active turn duration before the manager treats the actor as stuck |
+| `loop_detection_window` | usize | `50` | Recent tool-call window scanned for loop patterns |
+| `cycle_detection_max_len` | usize | `10` | Maximum repeated sequence length examined |
+| `bootstrap_cache_ttl_secs` | u64 | `60` | Bootstrap file cache TTL; `0` disables the cache |
+| `shutdown_timeout_secs` | u64 | `30` | Graceful shutdown bound before actor tasks are aborted |
+
+```toml
+[nous_behavior]
+loop_detection_window = 50
+stuck_turn_timeout_secs = 600
+shutdown_timeout_secs = 30
+```
+
+---
+
+## daemon_behavior
+
+Daemon watchdog, prosoche anomaly detection, and runner output summarization.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `watchdog_backoff_base_secs` | u64 | `2` | Base watchdog restart backoff |
+| `watchdog_backoff_cap_secs` | u64 | `300` | Maximum watchdog restart backoff |
+| `prosoche_anomaly_sample_size` | usize | `15` | Samples used for prosoche anomaly detection |
+| `runner_output_brief_head_lines` | usize | `5` | Head lines kept in task output summaries |
+| `runner_output_brief_tail_lines` | usize | `3` | Tail lines kept in task output summaries |
+
+---
+
+## tool_limits
+
+Deployment-wide organon tool size and timeout limits. Agent-specific overrides
+still belong under `agents.defaults.tool_timeouts`.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `glob_timeout_secs` | u64 | `10` | Filesystem glob timeout |
+| `subprocess_timeout_secs` | u64 | `60` | Default subprocess timeout |
+| `inter_session_max_timeout_secs` | u64 | `300` | Maximum wait for inter-session messages |
+| `agent_dispatch_timeout_secs` | u64 | `300` | Default timeout for spawned sub-agent dispatch |
+| `datalog_default_timeout_secs` | f64 | `5.0` | Default timeout for the Datalog memory tool |
 
 ---
 

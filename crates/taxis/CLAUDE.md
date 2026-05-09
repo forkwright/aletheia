@@ -43,6 +43,12 @@ Configuration cascade and path resolution: TOML loading, oikos directory structu
 - **Preflight checks**: Disk space, port availability, and directory permissions checked before startup.
 - **Config redaction**: Secrets stripped before API exposure via `redact` module.
 
+## Recent substrate notes
+
+- Config fields should be registered with `hot_reloadable`, outcome signal, and evidence metadata in `registry.rs`.
+- `nous_behavior`, `daemon_behavior`, `provider_behavior`, `tool_limits`, and `messaging` are deployment-tunable behavior sections.
+- Working-state defaults (`working_state_ttl_secs`, `working_state_max_task_stack`) live in agent behavior defaults.
+
 ## Common tasks
 
 | Task | Where |

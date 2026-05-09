@@ -43,6 +43,12 @@ Per-nous background task runner: cron scheduling, maintenance services, prosoche
 - **In-flight tracking**: tasks run as spawned tokio tasks, tracked for timeout detection.
 - **Cron tasks**: evolution (config variant search), reflection (self-evaluation), graph cleanup (orphan removal).
 
+## Recent substrate notes
+
+- Maintenance fact extraction now persists output instead of being a transient scan result.
+- `sqlite_recovery` paths are removed; the maintenance runner should assume fjall-backed state.
+- Drift detection and knowledge-maintenance tasks are registered through the runner, with behavior tunables under `daemon_behavior`.
+
 ## Common tasks
 
 | Task | Where |

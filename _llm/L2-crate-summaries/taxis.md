@@ -1,24 +1,30 @@
 # taxis
 
-**Purpose:** Configuration cascade (TOML → env vars), path resolution, and oikos directory structure for the Aletheia runtime.
+**Purpose:** Configuration cascade and path resolution for Aletheia.
 
 ## Key types
 
 | Type | Purpose |
 |------|---------|
-| `AletheiaConfig` | Root config struct: agents, gateway, channels, embedding, data, packs, maintenance |
-| `Oikos` | Resolved instance paths: root, data, config, logs, nous, shared, theke |
-| `NousDefinition` | Per-agent config: model, agency level, tools, limits, domains |
-| `CascadeEntry` | Resolved file with path, tier (Nous/Shared/Theke), and filename |
-| `ResolvedNousConfig` | Merged agent config after applying defaults and overrides |
+| `AletheiaConfig` | Current public type or boundary; see L3/source for exact fields |
+| `DaemonBehaviorConfig` | Current public type or boundary; see L3/source for exact fields |
+| `ConfigRegistry` | Current public type or boundary; see L3/source for exact fields |
+| `HotReloadClass` | Current public type or boundary; see L3/source for exact fields |
+| `Oikos` | Current public type or boundary; see L3/source for exact fields |
 
 ## Public API surface
 
-- `taxis::config` - `AletheiaConfig` and all nested config types; `AletheiaConfig::load()` entry point
-- `taxis::oikos` - `Oikos` path resolver for instance directory layout
-- `taxis::cascade` - Three-tier file discovery (nous/{id}/ → shared/ → theke/)
+- `taxis::cascade` - public items from `src/cascade.rs`
+- `taxis::config/agents` - public items from `src/config/agents.rs`
+- `taxis::config/behavior/api` - public items from `src/config/behavior/api.rs`
+- `taxis::config/behavior/daemon` - public items from `src/config/behavior/daemon.rs`
+- `taxis::config/behavior/dispatch` - public items from `src/config/behavior/dispatch.rs`
 
 ## When to look here
 
-- When adding a new config field (add to `AletheiaConfig` or a nested struct in `src/config.rs`)
-- When resolving instance-relative paths or navigating the oikos directory hierarchy
+- When work touches `crates/taxis` or downstream imports from `taxis`.
+- For exact signatures, load `_llm/L3-api-index/taxis.md` if present, then source.
+
+## Recent changes
+
+Schema preflight, daemonBehavior, hot_reloadable registry metadata, and the expanded config registry are current.

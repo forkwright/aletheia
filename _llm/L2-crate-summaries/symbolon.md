@@ -1,24 +1,30 @@
 # symbolon
 
-**Purpose:** Authentication and authorization: JWT sessions, API key management, Argon2id password hashing, OAuth credential refresh, and RBAC.
+**Purpose:** Authentication and authorization for Aletheia.
 
 ## Key types
 
 | Type | Purpose |
 |------|---------|
-| `JwtManager` | HS256 JWT issuance, validation, and refresh |
-| `AuthService` | Facade composing JWT, API keys, passwords, and RBAC |
-| `CredentialChain` | Priority-ordered credential resolution: env → file → OAuth refresh |
-| `Claims` | JWT payload: sub, role, nous_id, iss, iat, exp, jti, kind |
-| `RefreshingCredentialProvider` | Background OAuth token refresh with circuit breaker |
+| `AuthFacade` | Current public type or boundary; see L3/source for exact fields |
+| `AuthService` | Current public type or boundary; see L3/source for exact fields |
+| `JwtManager` | Current public type or boundary; see L3/source for exact fields |
+| `Claims` | Current public type or boundary; see L3/source for exact fields |
+| `Role` | Current public type or boundary; see L3/source for exact fields |
 
 ## Public API surface
 
-- `symbolon::auth` - `AuthService`, `JwtManager`, `JwtConfig`
-- `symbolon::credential` - `CredentialChain`, `FileCredentialProvider`, `EnvCredentialProvider`
-- `symbolon::types` - `Claims`, `Role`, `TokenKind`, `Action`
+- `symbolon::auth` - public items from `src/auth.rs`
+- `symbolon::circuit_breaker` - public items from `src/circuit_breaker.rs`
+- `symbolon::credential/device_code` - public items from `src/credential/device_code.rs`
+- `symbolon::credential/file_ops` - public items from `src/credential/file_ops.rs`
+- `symbolon::credential/keyring_provider` - public items from `src/credential/keyring_provider.rs`
 
 ## When to look here
 
-- When adding auth checks, new RBAC roles, or modifying token validation logic
-- When resolving LLM API credentials or implementing a new credential provider
+- When work touches `crates/symbolon` or downstream imports from `symbolon`.
+- For exact signatures, load `_llm/L3-api-index/symbolon.md` if present, then source.
+
+## Recent changes
+
+AuthFacade is wired as the admin-token verification and revocation boundary; terminal UX no longer lives in the library.

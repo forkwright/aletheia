@@ -48,6 +48,12 @@ Agent session pipeline: bootstrap, recall, execute, finalize. 22K lines. The age
 - **Spawn isolation**: Spawn-class tools (`SpawnSubtask` group) must be the last tool in a turn. If followed by other tools, subsequent calls are truncated and synthetic error results are injected (#186).
 - **Mistake brake**: Consecutive no-progress turns (zero tool calls) increment a per-session counter. At the configured limit (default 5, tunable via `KOINA_CONSECUTIVE_MISTAKE_LIMIT`), execution pauses and requests operator intervention (#187).
 
+## Recent substrate notes
+
+- Working checkpoints from the `working_checkpoint` tool are injected as `<key_info>` during turn-start hooks when `working_checkpoint_enabled` is true.
+- Session loop defense is composite: local `LoopDetector` state works with `hermeneus::LoopGuard` ping-pong, no-progress, and doom-loop signals.
+- `BootstrapSlot`, structured `Step`, tool-group gating, mistake brake state, and `PipelineConfig::stage_budget` are current pipeline contracts.
+
 ## Common tasks
 
 | Task | Where |

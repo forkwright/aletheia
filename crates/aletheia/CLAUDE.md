@@ -35,6 +35,11 @@ Binary entrypoint: CLI, server startup, service wiring, and adapter glue. 8.9K l
 - **Server startup**: sequential init in `commands/server/mod.rs` - config load, tracing, DB, embedding, session store, nous manager, tool registry, daemon runners, HTTP server.
 - **Feature gates**: `recall` for knowledge pipeline, `mcp` for diaporeia, `tui` for terminal dashboard, `embed-candle` for local ML.
 
+## Recent substrate notes
+
+- CLI scaffold commands now include export-agent, seed-skills persistence, consolidate wiring, and dry-run guards.
+- Binary wiring is responsible for connecting `AuthFacade`, provider registry, working-checkpoint services, and maintenance stores.
+
 ## Common tasks
 
 | Task | Where |

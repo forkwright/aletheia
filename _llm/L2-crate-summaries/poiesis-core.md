@@ -1,25 +1,30 @@
 # poiesis-core
 
-**Purpose:** Format-agnostic document model: `Document`, `Block`, and `Renderer` trait. The shared foundation for all poiesis rendering backends.
+**Purpose:** Format-agnostic document model and Renderer trait for poiesis.
 
 ## Key types
 
 | Type | Purpose |
 |------|---------|
-| `Document` | Format-agnostic document: metadata + ordered content blocks |
-| `Renderer` | Trait: `render(&self, &Document) -> Result<Vec<u8>, Error>` |
-| `Block` | Block-level element: Heading, Paragraph, Table, List, Image, PageBreak |
-| `RichText` | Sequence of styled inline `Span`s |
-| `Metadata` | Title, author, optional creation timestamp |
+| `Block` | Current public type or boundary; see L3/source for exact fields |
+| `Table` | Current public type or boundary; see L3/source for exact fields |
+| `ListItem` | Current public type or boundary; see L3/source for exact fields |
+| `Image` | Current public type or boundary; see L3/source for exact fields |
+| `Document` | Current public type or boundary; see L3/source for exact fields |
 
 ## Public API surface
 
-- `poiesis_core::document` - `Document`, `Metadata`
-- `poiesis_core::block` - `Block` enum for all content block types
-- `poiesis_core::renderer` - `Renderer` trait implemented by all backends
-- `poiesis_core::rich_text` - `RichText`, `Span` for inline styled content
+- `poiesis-core::block` - public items from `src/block.rs`
+- `poiesis-core::document` - public items from `src/document.rs`
+- `poiesis-core::metadata` - public items from `src/metadata.rs`
+- `poiesis-core::renderer` - public items from `src/renderer.rs`
+- `poiesis-core::rich_text` - public items from `src/rich_text.rs`
 
 ## When to look here
 
-- When adding a new block type to the document model
-- When implementing a new rendering backend (implement `Renderer`)
+- When work touches `crates/poiesis/core` or downstream imports from `poiesis-core`.
+- For exact signatures, load `_llm/L3-api-index/poiesis-core.md` if present, then source.
+
+## Recent changes
+
+L3 was refreshed for the document model used by the poiesis backends.

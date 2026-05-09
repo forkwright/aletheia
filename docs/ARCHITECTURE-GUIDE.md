@@ -19,12 +19,12 @@ The entire system compiles to a single Rust binary. No Node.js, no Python sideca
 When you run `aletheia`, the `main.rs` entrypoint performs a sequential initialization:
 
 1. **Oikos discovery**: finds the instance directory (`./instance`, `ALETHEIA_ROOT`, or `--instance-root`)
-2. **Config cascade**: loads compiled defaults, then YAML file, then environment variables (taxis crate)
+2. **Config cascade**: loads compiled defaults, then TOML file, then environment variables (taxis crate)
 3. **Domain packs**: loads external knowledge packs declared in config (thesauros crate)
 4. **Session store**: opens fjall LSM-tree at `instance/data/sessions.db` (mneme crate; path name is historical). See [DATA.md](DATA.md) for storage details.
-5. **JWT manager**: initializes authentication (symbolon crate)
-6. **Provider registry**: registers LLM providers (Anthropic if `ANTHROPIC_API_KEY` is set) (hermeneus crate)
-7. **Tool registry**: registers built-in tools: write, edit, exec, web_search, etc. (organon crate)
+5. **JWT/Auth facade**: initializes authentication, RBAC, admin-token verification, and revocation (symbolon crate)
+6. **Provider registry**: registers LLM providers and fallback chains (hermeneus crate)
+7. **Tool registry**: registers built-in tools, tags, tool groups, and receipt verification services (organon crate)
 8. **Embedding provider**: creates local embedding engine for recall (mneme crate)
 9. **Nous actors**: spawns one Tokio actor per configured agent (nous crate)
 10. **Daemon**: starts background maintenance: trace rotation, drift detection, DB monitoring (oikonomos crate)
@@ -56,10 +56,11 @@ POST /api/v1/sessions/{id}/messages
 
 Once a message reaches a NousActor, it flows through sequential pipeline stages:
 
-1. **Context assembly**: loads bootstrap files (SOUL.md, IDENTITY.md, GOALS.md) from the agent's workspace, assembles the system prompt within token budget
-2. **Recall**: embeds the user message via candle, searches the knowledge store for relevant facts, injects them into context
-3. **Execute**: calls the LLM (Anthropic API). If the model returns tool calls, executes them via the tool registry and feeds results back. Loops until the model stops requesting tools or hits the iteration limit.
-4. **Finalize**: persists messages to fjall, records token usage, extracts knowledge facts for future recall
+1. **Guard**: applies session limits, loop checks, tool-group policy, and per-stage budget bookkeeping.
+2. **Context assembly**: loads bootstrap files (SOUL.md, IDENTITY.md, GOALS.md), injects working-memory `<key_info>` when available, and packs the system prompt within token budget.
+3. **Recall**: searches the knowledge store for relevant facts, preserving `Visibility` and `MemoryScope` filters, then injects results into context.
+4. **Execute**: calls the active LLM provider. If the model returns tool calls, executes them through the tool registry, records HMAC-SHA256 receipts, and checks composite loop guards.
+5. **Finalize**: persists messages to fjall, records token usage, extracts knowledge facts for future recall, and emits maintenance/audit signals.
 
 The response flows back through the channel (Signal reply or HTTP response).
 
@@ -76,14 +77,14 @@ Crates are organized in layers. Lower layers know nothing about higher layers.
 ### Low (depends on koina)
 
 - **taxis**: configuration and paths. Loads the TOML config cascade (owned loader: defaults → TOML → env), resolves the oikos instance directory structure.
-- **hermeneus**: LLM provider abstraction. The Anthropic streaming client lives here. Handles retries, cost tracking, model routing.
-- **symbolon**: authentication: JWT tokens, bearer validation, RBAC. Depends on koina; uses its own fjall store for token storage.
+- **hermeneus**: LLM provider abstraction. Provider registry, fallback chains, redaction, streaming, cost tracking, and loop-guard helpers live here.
+- **symbolon**: authentication: JWT tokens, bearer validation, admin auth facade, and RBAC. Depends on koina; uses its own fjall store for token storage.
 - **mneme**: memory engine. fjall session store, embedded Datalog engine for knowledge graphs and vector search, candle for local embeddings, LLM-driven fact extraction.
 
 ### Mid (depends on lower layers)
 
 - **melete**: distillation. Compresses conversation history when context windows fill up, flushes extracted knowledge to memory. Depends on koina + hermeneus.
-- **organon**: tool system. The `ToolRegistry` and `ToolExecutor` trait, plus built-in tools (write, edit, exec, web_search). Depends on koina + hermeneus.
+- **organon**: tool system. The `ToolRegistry` and `ToolExecutor` trait, typed tags/groups, HMAC receipts, plus built-in tools (write, edit, exec, web_search). Depends on koina + hermeneus.
 - **agora**: channel system. The `ChannelProvider` trait, Signal client (semeion), message routing via bindings. Depends on koina + taxis.
 - **oikonomos** (daemon): background task runner. Cron scheduling, prosoche attention checks, trace rotation, drift detection, DB monitoring. Depends on koina.
 - **dianoia**: planning orchestrator. Multi-phase project state machine, workspace persistence. Depends on koina.
@@ -91,7 +92,7 @@ Crates are organized in layers. Lower layers know nothing about higher layers.
 
 ### High (depends on multiple mid+low layers)
 
-- **nous**: the agent pipeline. `NousManager` owns all agents. `NousActor` is a Tokio actor (Alice Ryhl pattern) that runs the pipeline stages. Bootstrap file loading, recall integration, tool execution loop, finalization.
+- **nous**: the agent pipeline. `NousManager` owns all agents. `NousActor` is a Tokio actor (Alice Ryhl pattern) that runs the pipeline stages. Bootstrap file loading, working-memory injection, recall integration, tool execution loop, timeouts, and finalization live here.
 - **pylon**: HTTP gateway. Axum router with versioned API (`/api/v1/`), SSE streaming, OpenAPI spec, Prometheus metrics, security middleware (CORS, CSRF, TLS, auth).
 
 ### Top

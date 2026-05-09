@@ -1,24 +1,30 @@
 # krites
 
-**Purpose:** Embedded Datalog engine with HNSW vector search, full-text search, and graph algorithms. Powers the aletheia knowledge graph.
+**Purpose:** Embedded Datalog engine with HNSW and graph support for Aletheia.
 
 ## Key types
 
 | Type | Purpose |
 |------|---------|
-| `Db` | Public engine facade: `open_mem()`, `open_fjall()`, `run()`, `with_cache()` |
-| `DataValue` | Core value type: Null, Bool, Num, Str, Bytes, List, Json, Vector, Validity |
-| `NamedRows` | Query result: column headers + row data |
-| `QueryCache` | LRU cache with whitespace-normalized keys and hit/miss counters |
-| `FixedRule` | Trait for custom graph algorithms (PageRank, community detection) |
+| `Db` | Current public type or boundary; see L3/source for exact fields |
+| `DataValue` | Current public type or boundary; see L3/source for exact fields |
+| `TriggerConfig` | Current public type or boundary; see L3/source for exact fields |
+| `FixedRule` | Current public type or boundary; see L3/source for exact fields |
+| `FjallStorage` | Current public type or boundary; see L3/source for exact fields |
 
 ## Public API surface
 
-- `krites::Db` - open/close engine, run Datalog queries, manage transactions
-- `krites::data` - `DataValue`, `Vector` types for query inputs/outputs
-- `krites::fixed_rule` - `FixedRule` trait for custom graph algorithm extensions
+- `krites::async_surface` - public items from `src/async_surface.rs`
+- `krites::counterfactual` - public items from `src/counterfactual.rs`
+- `krites::data/expr/expr_impl` - public items from `src/data/expr/expr_impl.rs`
+- `krites::data/expr` - public items from `src/data/expr/mod.rs`
+- `krites::data/expr/op` - public items from `src/data/expr/op.rs`
 
 ## When to look here
 
-- When querying or extending the knowledge graph with Datalog
-- When adding custom graph algorithms via the `FixedRule` trait
+- When work touches `crates/krites` or downstream imports from `krites`.
+- For exact signatures, load `_llm/L3-api-index/krites.md` if present, then source.
+
+## Recent changes
+
+Eval truth work decoupled recall scenarios and added TriggerConfig/timeout helpers around the embedded engine tests.

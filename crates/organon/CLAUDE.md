@@ -56,6 +56,13 @@ Tool registry, executors, and sandbox. 16K lines. 49 built-in tools.
 - **Path validation**: normalize -> check allowed_roots -> canonicalize -> re-check. Tilde expansion.
 - **ProcessGuard**: `kill()` + `wait()` on drop. Call `detach()` if process should outlive guard.
 
+## Recent substrate notes
+
+- `ToolDef` includes typed `tags` and `groups`; query by tags with `definitions_for_tags` for operational selection.
+- Tool receipts are HMAC-SHA256 over tool-call/result tuples with a per-session ephemeral key and in-memory ledger.
+- `working_checkpoint` is the agent-curated continuity tool; its store trait is part of `ToolServices`.
+- File-reference interpolation happens inside tool execution helpers; keep user-facing tool schemas honest about it.
+
 ## Common tasks
 
 | Task | Where |

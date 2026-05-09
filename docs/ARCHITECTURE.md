@@ -14,6 +14,35 @@ Module and crate names use Greek terms reflecting their essential nature (nous =
 
 ---
 
+## Current substrate shape
+
+The current runtime is a 44-crate workspace plus the excluded `proskenion`
+desktop shell. The compact generated inventory lives in
+[`_llm/L1-workspace.md`](../_llm/L1-workspace.md); this document describes the
+human architecture and invariants.
+
+Key substrate properties as of the 2026-05-08 refresh:
+
+- **Working-memory continuity:** `nous` injects agent-curated `<key_info>` from
+  the previous working checkpoint before recall/history assembly.
+- **Composite loop defense:** tool execution combines `hermeneus::LoopGuard`
+  signals for ping-pong, no-progress, and repeated args/result doom loops.
+- **Tool receipt integrity:** `organon` emits HMAC-SHA256 receipts and an
+  in-memory receipt ledger so the pipeline can detect hallucinated tool
+  results.
+- **External tool plane:** `diaporeia` can bridge external MCP servers into the
+  `organon` registry while preserving RBAC claims and shared-state boundaries.
+- **Auth facade:** `symbolon::AuthFacade` is the admin-token verification and
+  revocation boundary shared by `pylon` and `diaporeia`.
+- **Bounded stages:** `nous` carries per-stage timeout configuration for LLM
+  execution and actor-manager operations.
+- **Knowledge schema v11:** `eidos::Visibility` and `eidos::MemoryScope` travel
+  through facts, Datalog schema, recall filtering, and MCP/API surfaces.
+- **Operator-independent verification:** `integration-tests` owns the shared
+  `TestHarness` plus a 15-scenario substrate canary suite.
+
+---
+
 ## The binary
 
 ```text
@@ -21,17 +50,17 @@ aletheia
 ├── koina          -  errors, tracing, safe wrappers, fs utils
 ├── taxis          -  config, path resolution, oikos hierarchy, secret refs
 ├── mneme          -  thin facade re-exporting eidos, graphe, episteme, krites
-│   ├── eidos      -  shared knowledge types (Fact, Entity, Relationship, EpistemicTier)
+│   ├── eidos      -  shared knowledge types (Fact, Entity, Relationship, Visibility, MemoryScope)
 │   ├── graphe     -  fjall session/message store, retention, archive support
 │   ├── episteme   -  knowledge pipeline: extraction, recall, consolidation, embeddings
 │   └── krites     -  embedded Datalog engine + HNSW vectors (mneme-engine feature gate)
-├── hermeneus      -  Anthropic client, model routing, credentials, provider trait
-├── organon        -  tool registry + 49 built-in tools
+├── hermeneus      -  LLM provider registry, fallback chains, loop guard, credentials
+├── organon        -  tool registry + 49 built-in tools + receipt ledger
 ├── nous           -  agent pipeline, bootstrap, recall, finalize, actor model
 ├── dianoia        -  planning / project orchestration
-├── pylon          -  Axum HTTP gateway, SSE streaming
-├── diaporeia      -  MCP server interface for external AI agents
-├── symbolon       -  JWT auth, sessions, RBAC
+├── pylon          -  Axum HTTP gateway, SSE streaming, auth enforcement
+├── diaporeia      -  MCP server interface and external tool-plane bridge
+├── symbolon       -  JWT auth, admin facade, sessions, RBAC
 ├── agora          -  channel registry + ChannelProvider trait
 │   └── semeion    -  Signal (signal-cli subprocess)
 ├── daemon         -  oikonomos: per-nous background tasks, cron, prosoche
@@ -105,7 +134,9 @@ The oikos hierarchy is described in [CONFIGURATION.md](CONFIGURATION.md).
 
 ## Rust crate workspace
 
-24 crates (23 in default workspace build, proskenion excluded) in `crates/`.
+44 crates in the workspace, with `proskenion` excluded and built via its own
+manifest. The table below calls out the primary architecture crates; the full
+generated inventory is `_llm/L1-workspace.md`.
 
 ### Crates
 
@@ -113,22 +144,22 @@ The oikos hierarchy is described in [CONFIGURATION.md](CONFIGURATION.md).
 |-------|-----------|--------|------------|
 | `koina` | `crates/koina` | Errors (snafu), tracing, fs utilities, safe wrappers | nothing (leaf) |
 | `taxis` | `crates/taxis` | Config loading (owned TOML cascade), path resolution, oikos hierarchy | koina |
-| `eidos` | `crates/eidos` | Shared knowledge types: Fact, Entity, Relationship, EpistemicTier | nothing (leaf) |
+| `eidos` | `crates/eidos` | Shared knowledge types: Fact, Entity, Relationship, EpistemicTier, Visibility, MemoryScope | nothing (leaf) |
 | `graphe` | `crates/graphe` | fjall session/message store, retention, archive support | eidos, koina |
-| `episteme` | `crates/episteme` | Knowledge pipeline: extraction, recall, consolidation, embedding provider | eidos, koina, graphe, krites (opt) |
+| `episteme` | `crates/episteme` | Knowledge pipeline: extraction, trace ingest, query rewrite, recall, consolidation, embedding provider | eidos, koina, graphe, krites (opt) |
 | `krites` | `crates/krites` | Embedded Datalog engine with HNSW and graph support | eidos |
 | `mneme` | `crates/mneme` | Thin facade re-exporting eidos, graphe, episteme, krites | eidos, graphe, episteme, krites |
-| `hermeneus` | `crates/hermeneus` | Anthropic client, model routing, credential management, provider trait | koina, taxis |
-| `organon` | `crates/organon` | Tool registry, tool definitions, 49 built-in tools, sandbox | koina, hermeneus |
-| `symbolon` | `crates/symbolon` | JWT tokens, password hashing, RBAC policies | koina |
+| `hermeneus` | `crates/hermeneus` | LLM provider registry, fallback chains, token redaction, provider trait, loop guard | koina, taxis |
+| `organon` | `crates/organon` | Tool registry, tool definitions, tags, HMAC receipts, 49 built-in tools, sandbox | koina, hermeneus |
+| `symbolon` | `crates/symbolon` | JWT tokens, password hashing, admin auth facade, RBAC policies | koina |
 | `melete` | `crates/melete` | Context distillation, compression strategies, token budget management | hermeneus |
 | `agora` | `crates/agora` | Channel registry, ChannelProvider trait, Signal JSON-RPC client | koina, taxis |
 | `daemon` (oikonomos) | `crates/daemon` | Per-nous background task scheduling, cron jobs, prosoche | koina |
 | `dianoia` | `crates/dianoia` | Multi-phase planning orchestrator, project context tracking | nothing (leaf) |
 | `thesauros` | `crates/thesauros` | Domain pack loader: external knowledge, tools, config overlays | koina, organon |
-| `nous` | `crates/nous` | Agent pipeline, NousActor (tokio), bootstrap, recall, execute, finalize | koina, taxis, mneme, hermeneus, organon, melete, thesauros |
-| `pylon` | `crates/pylon` | Axum HTTP gateway, SSE streaming, auth middleware | koina, taxis, hermeneus, organon, mneme, nous, symbolon |
-| `diaporeia` | `crates/diaporeia` | MCP server interface for external AI agents | koina, taxis, nous, organon, mneme, symbolon |
+| `nous` | `crates/nous` | Agent pipeline, NousActor (tokio), working-memory injection, bootstrap, recall, execute, finalize | koina, taxis, mneme, hermeneus, organon, melete, thesauros |
+| `pylon` | `crates/pylon` | Axum HTTP gateway, SSE streaming, auth middleware, meta-insights endpoints | koina, taxis, hermeneus, organon, mneme, nous, symbolon |
+| `diaporeia` | `crates/diaporeia` | MCP server interface and stdio/external tool bridge for external AI agents | koina, taxis, nous, organon, mneme, symbolon |
 | `skene` | `crates/theatron/skene` | Shared API client, types, SSE infrastructure for UIs | koina |
 | `koilon` | `crates/theatron/koilon` | Terminal dashboard | koina, skene |
 | `proskenion` | `crates/theatron/proskenion` | Dioxus desktop UI (excluded from workspace, requires GTK3) | skene |
@@ -141,6 +172,13 @@ The oikos hierarchy is described in [CONFIGURATION.md](CONFIGURATION.md).
 | `dokimion` | `crates/eval` | Behavioral eval framework (HTTP scenario runner) | koina |
 | `integration-tests` | `crates/integration-tests` | Cross-crate integration test suite | dokimion, koina, taxis, mneme, hermeneus, nous, organon, pylon, symbolon, thesauros |
 
+Additional workspace crates include `aletheia-classify`, `aletheia-lexica`,
+`aletheia-memory-mcp`, `aletheia-routing`, `aletheia-sessions-migrate`,
+`gnosis`, and the poiesis backend/helper crates (`poiesis-doc`,
+`poiesis-diff`, `poiesis-inspect`, `poiesis-intake`, `poiesis-scaffold`,
+`poiesis-typst`). Keep the generated `_llm/L1-workspace.md` list in sync when
+workspace membership changes.
+
 ### Mneme facade
 
 Mneme was decomposed into four sub-crates. The `mneme` crate is a thin facade
@@ -152,7 +190,7 @@ tools that intentionally own a lower-level boundary.
 
 | Sub-crate | Re-exports | Feature gate |
 |-----------|------------|--------------|
-| `eidos` | `bookkeeping`, `id`, `knowledge`, `training` | always |
+| `eidos` | `bookkeeping`, `id`, `knowledge`, `meta`, `training` | always |
 | `graphe` | `error`, `metrics`, `portability`, `store`, `types` | always |
 | `episteme` | `consolidation`, `embedding`, `embedding_eval`, `extract`, `ingest`, `instinct`, `manifest`, `metrics`, `query_rewrite`, `recall`, `side_query`, `skill`, `skills`, `trace_ingest`, `verification` | `reranker` for reranker implementations |
 | `episteme` | `knowledge_store` | `mneme-engine` |
