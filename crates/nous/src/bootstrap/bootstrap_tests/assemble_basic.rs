@@ -7,6 +7,8 @@
 #![expect(clippy::expect_used, reason = "test assertions")]
 
 use std::fs;
+use std::future::Future;
+use std::pin::Pin;
 
 use tempfile::TempDir;
 
@@ -36,6 +38,69 @@ async fn assemble_with_required_only() {
         result.sections_dropped.is_empty(),
         "no sections should be dropped when only required file is present"
     );
+}
+
+#[tokio::test]
+async fn assemble_with_tool_summary_extra_includes_live_registry_tools() {
+    let (_dir, oikos) = setup_oikos("test", &[("SOUL.md", "I am a test agent.")]);
+    let assembler = BootstrapAssembler::new(&oikos);
+    let mut budget = default_budget();
+    let mut registry = organon::registry::ToolRegistry::new();
+    registry
+        .register(test_tool_def("read_file"), Box::new(NoopToolExecutor))
+        .expect("register tool");
+    let estimator = crate::budget::CharEstimator::default();
+    let tool_section =
+        tools::tool_summary_bootstrap_section(&registry, &estimator).expect("tool summary section");
+
+    let result = assembler
+        .assemble_with_extra("test", &mut budget, vec![tool_section])
+        .await
+        .expect("assemble should succeed");
+
+    assert!(
+        result
+            .sections_included
+            .iter()
+            .any(|s| s == "tools-summary"),
+        "tool summary section should participate in bootstrap packing"
+    );
+    assert!(
+        result
+            .system_prompt
+            .contains("- **read_file**: Read a file from disk."),
+        "system prompt should include the compact live-registry tool summary"
+    );
+}
+
+fn test_tool_def(name: &str) -> organon::types::ToolDef {
+    organon::types::ToolDef {
+        name: koina::id::ToolName::new(name).expect("valid tool name"),
+        description: "Read a file from disk. Extra details.".to_owned(),
+        extended_description: None,
+        input_schema: organon::types::InputSchema {
+            properties: indexmap::IndexMap::new(),
+            required: Vec::new(),
+        },
+        category: organon::types::ToolCategory::Workspace,
+        reversibility: organon::types::Reversibility::FullyReversible,
+        auto_activate: false,
+        groups: vec![organon::types::ToolGroupId::Read],
+        tags: Vec::new(),
+    }
+}
+
+struct NoopToolExecutor;
+
+impl organon::registry::ToolExecutor for NoopToolExecutor {
+    fn execute<'a>(
+        &'a self,
+        _input: &'a organon::types::ToolInput,
+        _ctx: &'a organon::types::ToolContext,
+    ) -> Pin<Box<dyn Future<Output = organon::error::Result<organon::types::ToolResult>> + Send + 'a>>
+    {
+        Box::pin(async { Ok(organon::types::ToolResult::text("ok")) })
+    }
 }
 
 #[tokio::test]

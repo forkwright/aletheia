@@ -164,12 +164,11 @@ pub(super) async fn run_context_stage(
 /// Recall stage: retrieve relevant knowledge from vector/BM25 search.
 #[expect(
     clippy::too_many_arguments,
-    clippy::too_many_lines,
     reason = "stage receives all search dependencies and owns recall branch lifecycle"
 )]
 pub(super) async fn run_recall_stage(
     config: &NousConfig,
-    pipeline_config: &PipelineConfig,
+    _pipeline_config: &PipelineConfig,
     ctx: &mut PipelineContext,
     content: &str,
     embedding_provider: Option<&dyn EmbeddingProvider>,
@@ -177,7 +176,7 @@ pub(super) async fn run_recall_stage(
     text_search: Option<&dyn crate::recall::TextSearch>,
     providers: &ProviderRegistry,
     emitter: &EventEmitter,
-) {
+) -> error::Result<()> {
     // WHY (#3404, #3413): resolve the active provider's deployment target
     // so the sovereignty filter in `finalize_results` can drop facts whose
     // sensitivity exceeds what the provider is allowed to receive. When no
@@ -196,7 +195,6 @@ pub(super) async fn run_recall_stage(
         status = tracing::field::Empty
     );
     let start = Instant::now();
-    let recall_timeout_secs = pipeline_config.stage_budget.recall_secs;
     // WHY (#3380): BM25-only fallback applies to both:
     //   - "mock-embedding"     (hash-based, would yield meaningless vector recall)
     //   - "degraded-embedding" (real provider failed to load at startup — the
@@ -241,50 +239,16 @@ pub(super) async fn run_recall_stage(
             model: &config.generation.model,
         };
 
-        let recall_result_opt = if recall_timeout_secs > 0 {
-            match tokio::time::timeout(
-                Duration::from_secs(u64::from(recall_timeout_secs)),
-                async {
-                    recall_stage.run_with_recall_enhancements(
-                        content,
-                        &config.id,
-                        ep,
-                        vs,
-                        budget,
-                        Some(&recall_bridge),
-                        Some(&recall_bridge),
-                    )
-                }
-                .instrument(span.clone()),
-            )
-            .await
-            {
-                Ok(result) => Some(result),
-                Err(_elapsed) => {
-                    span.record("status", "timeout");
-                    emitter.emit(&StageTimeout {
-                        nous_id: config.id.to_string(),
-                        stage: "recall",
-                        timeout_secs: recall_timeout_secs,
-                    });
-                    None
-                }
-            }
-        } else {
-            Some(recall_stage.run_with_recall_enhancements(
-                content,
-                &config.id,
-                ep,
-                vs,
-                budget,
-                Some(&recall_bridge),
-                Some(&recall_bridge),
-            ))
-        };
-
-        if let Some(result) = recall_result_opt {
-            apply_recall_result(result, ctx, &span, config.recall.late_inject_anchor);
-        }
+        let result = recall_stage.run_with_recall_enhancements(
+            content,
+            &config.id,
+            ep,
+            vs,
+            budget,
+            Some(&recall_bridge),
+            Some(&recall_bridge),
+        );
+        apply_recall_result(result, ctx, &span, config.recall.late_inject_anchor);
     } else {
         span.record("status", "skipped");
         emitter.emit(&StageSkipped {
@@ -300,6 +264,7 @@ pub(super) async fn run_recall_stage(
         stage: "recall",
         duration_secs,
     });
+    Ok(())
 }
 
 /// History stage: load conversation history within token budget.
@@ -835,7 +800,7 @@ pub(super) async fn run_reflection_stage(
     pipeline_config: &PipelineConfig,
     ctx: &mut PipelineContext,
     emitter: &EventEmitter,
-) {
+) -> error::Result<()> {
     let span = info_span!(
         "pipeline_stage",
         stage = "reflection",
@@ -860,7 +825,7 @@ pub(super) async fn run_reflection_stage(
             stage: "reflection",
             duration_secs,
         });
-        return;
+        return Ok(());
     }
 
     let reflection_timeout_secs = pipeline_config.stage_budget.reflection_secs;
@@ -894,13 +859,15 @@ pub(super) async fn run_reflection_stage(
                     stage: "reflection",
                     duration_secs,
                 });
-                return;
+                return Ok(());
             }
         }
     } else {
         reflection_fut.await;
     }
 
+    // WHY: no-op — KnowledgeStore is not in the pipeline signature today.
+    // Do not invent global state or fake facts.
     span.record("status", "no_store");
     ctx.reflection_result = Some(ReflectionResult::new(ReflectionStatus::NoStore, 0));
 
@@ -911,6 +878,7 @@ pub(super) async fn run_reflection_stage(
         stage: "reflection",
         duration_secs,
     });
+    Ok(())
 }
 
 /// Record elapsed duration on a pipeline stage span.

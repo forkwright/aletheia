@@ -584,11 +584,11 @@ async fn execute_knowledge_task(
     let Some(executor) = knowledge_executor else {
         tracing::warn!(
             task = ?builtin,
-            "knowledge maintenance NOT_IMPLEMENTED: no executor configured — task did not run"
+            "knowledge maintenance skipped: no executor configured"
         );
         return Ok(ExecutionResult {
             success: false,
-            output: Some("NOT_IMPLEMENTED: no executor configured".to_owned()),
+            output: Some("no knowledge maintenance executor configured".to_owned()),
         });
     };
 

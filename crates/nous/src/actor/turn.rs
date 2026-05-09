@@ -553,6 +553,14 @@ impl NousActor {
         let mut extra_bootstrap = self.extra_bootstrap.clone();
         extra_bootstrap.extend(self.resolve_intent_sections());
         extra_bootstrap.extend(self.resolve_skill_sections(content).await);
+        let tool_estimator =
+            crate::budget::CharEstimator::new(u64::from(self.config.generation.chars_per_token));
+        if let Some(section) = crate::bootstrap::tools::tool_summary_bootstrap_section(
+            &self.services.tools,
+            &tool_estimator,
+        ) {
+            extra_bootstrap.push(section);
+        }
 
         // WHY: create hook registry from config so hooks run inside the spawned pipeline task
         let mut hook_registry = crate::hooks::registry::HookRegistry::new();

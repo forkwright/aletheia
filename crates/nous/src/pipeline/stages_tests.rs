@@ -143,7 +143,9 @@ async fn reflection_stage_disabled_skips() {
     let mut ctx = PipelineContext::default();
     let emitter = EventEmitter::new();
 
-    run_reflection_stage(&config, &pipeline_config, &mut ctx, &emitter).await;
+    run_reflection_stage(&config, &pipeline_config, &mut ctx, &emitter)
+        .await
+        .expect("disabled reflection should not error");
 
     let result = ctx
         .reflection_result
@@ -162,7 +164,9 @@ async fn reflection_stage_enabled_no_store() {
     let mut ctx = PipelineContext::default();
     let emitter = EventEmitter::new();
 
-    run_reflection_stage(&config, &pipeline_config, &mut ctx, &emitter).await;
+    run_reflection_stage(&config, &pipeline_config, &mut ctx, &emitter)
+        .await
+        .expect("enabled reflection without store should not error");
 
     let result = ctx
         .reflection_result
@@ -185,9 +189,11 @@ async fn reflection_stage_timeout_path() {
     let mut ctx = PipelineContext::default();
     let emitter = EventEmitter::new();
 
-    // With the current no-op implementation the timeout never fires,
-    // but the timeout wrapper is exercised and the stage completes.
-    run_reflection_stage(&config, &pipeline_config, &mut ctx, &emitter).await;
+    // With the current no-op implementation the stage completes instantly.
+    // Per-stage timeout is enforced by `run_stage_with_timeout` in the pipeline.
+    run_reflection_stage(&config, &pipeline_config, &mut ctx, &emitter)
+        .await
+        .expect("no-op reflection should not time out");
 
     let result = ctx
         .reflection_result

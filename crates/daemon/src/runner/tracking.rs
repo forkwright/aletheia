@@ -2,7 +2,7 @@
 
 use std::time::{Duration, Instant};
 
-use crate::schedule::{BuiltinTask, TaskAction, apply_jitter, backoff_delay};
+use crate::schedule::{apply_jitter, backoff_delay};
 
 use super::TaskRunner;
 
@@ -54,13 +54,7 @@ impl TaskRunner {
         task.last_run = Some(jiff::Timestamp::now());
         task.last_error = Some(reason.to_owned());
 
-        // WHY: GraphHealthCheck is a diagnostic: failures don't count toward auto-disable.
-        let exempt = matches!(
-            task.def.action,
-            TaskAction::Builtin(BuiltinTask::GraphHealthCheck)
-        );
-
-        if !exempt && task.consecutive_failures >= 3 {
+        if task.consecutive_failures >= 3 {
             task.def.enabled = false;
             tracing::warn!(
                 task_id = %task.def.id,
