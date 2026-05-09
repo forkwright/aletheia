@@ -1,46 +1,26 @@
 # Aletheia
 
-> Self-hosted multi-agent AI system with persistent memory and Signal messaging.
+> Self-hosted multi-agent AI runtime with persistent memory, tools, HTTP/SSE, Signal, TUI, and desktop operator surfaces.
 
-Privacy-first distributed cognition. N agents + 1 human operator. Each agent has character, memory, and domain expertise. They persist understanding across sessions, coordinate through shared infrastructure, and evolve through use. Runs on commodity hardware with no cloud dependencies beyond your LLM API key.
+Aletheia runs named nous agents with durable memory, domain packs, tool execution, and local-first knowledge. The runtime is a Rust workspace with one main binary and embedded storage; configured LLM providers are the only required external dependency.
 
-Rust workspace. TUI client.
+## Binary
 
-## Getting Started
-
-- [QUICKSTART](docs/QUICKSTART.md): Zero-to-running in 5 minutes
-- [CONFIGURATION](docs/CONFIGURATION.md): Full config reference
-- [DEPLOYMENT](docs/DEPLOYMENT.md): Production setup with systemd and Signal
+`aletheia` - the main CLI and service binary. It starts the HTTP/SSE gateway by default and includes commands for init, health, status, backup, config, memory, eval, sessions, imports, exports, and TUI launch.
 
 ## Architecture
 
-- [ARCHITECTURE](docs/ARCHITECTURE.md): Crate workspace, module map, dependency graph, trait boundaries
-- [PROJECT](docs/PROJECT.md): Project plan, milestones, dependency policy, crate-to-module mapping
-- [TECHNOLOGY](docs/TECHNOLOGY.md): Technology decisions, dependency rationale, pinning policy
-- [gnomon](docs/gnomon.md): Naming philosophy and the gnomon system
-- [_llm/](_llm/README.md): compressed reference for AI agents (TOML format)
+Structured LLM corpus:
+- [_llm/architecture.toml](_llm/architecture.toml): workspace layers, crate roles, and interfaces
+- [_llm/current_state.toml](_llm/current_state.toml): phase, recent work, and active threads
+- [_llm/decisions.toml](_llm/decisions.toml): accepted runtime and architecture decisions
+- [_llm/glossary.toml](_llm/glossary.toml): canonical aletheia vocabulary
+- [_llm/apis.toml](_llm/apis.toml): CLI, MCP, and HTTP surfaces
 
-## Standards
+## Agent Entry Points
 
-- [STANDARDS](standards/README.md): Coding standards
-- [CLAUDE](CLAUDE.md): AI agent workspace rules and conventions
-
-## Agents
-
-- [WORKSPACE_FILES](docs/WORKSPACE_FILES.md): Agent workspace files, priority, caching, token budgets
-- [PACKS](docs/PACKS.md): Domain packs for agent specialization
-
-## Operations
-
-- [RUNBOOK](docs/RUNBOOK.md): Operational procedures, troubleshooting, maintenance
-- [DATA](docs/DATA.md): Data sovereignty, storage locations, backup, migration
-- [RELEASING](docs/RELEASING.md): Release process, versioning, changelog discipline
-- [SECURITY](SECURITY.md): Vulnerability reporting, developer security practices, pre-commit hooks
-
-## Key Directories
-
-- `crates/`: Rust workspace (koina, taxis, mneme, hermeneus, organon, nous, pylon, etc.)
-- `crates/theatron/koilon/`: Terminal UI client (workspace member)
-- `instance.example/nous/_template/`: Template agent workspace (SOUL.md, USER.md, AGENTS.md)
-- `instance.example/config/`: Example gateway config
-- `standards/`: Coding standards for AI agents
+- [README.md](README.md): product overview and install path
+- [CLAUDE.md](CLAUDE.md): repo conventions and working instructions
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): dependency graph and trait boundaries
+- [docs/TECHNOLOGY.md](docs/TECHNOLOGY.md): technology decision rationale
+- [instance.example/nous/_template/](instance.example/nous/_template/): template agent workspace

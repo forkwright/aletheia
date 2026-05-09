@@ -1,0 +1,48 @@
+[meta]
+name = "aletheia"
+repo = "forkwright/aletheia"
+generated = false
+source_docs = [
+  "README.md",
+  "docs/gnomon.md",
+  "docs/lexicon.md",
+  "kanon/projects/aletheia/STATE.md",
+]
+
+[glossary]
+description = "Domain vocabulary for the aletheia multi-agent runtime."
+
+[[terms]]
+term = "aletheia"
+definition = "Unconcealment; the self-hosted agent runtime that persists memory and exposes agent interaction surfaces."
+canonical = true
+
+[[terms]]
+term = "nous"
+definition = "An agent mind running as an actor with character, memory, tools, and a turn pipeline."
+canonical = true
+
+[[terms]]
+term = "mneme"
+definition = "Memory facade over the typed knowledge, session, graph, and recall crates."
+canonical = true
+
+[[terms]]
+term = "episteme"
+definition = "Knowledge pipeline for extraction, recall, consolidation, embeddings, and graph signals."
+canonical = true
+
+[[terms]]
+term = "energeia"
+definition = "Dispatch orchestration crate for plan execution and agent task scheduling."
+canonical = true
+
+[[terms]]
+term = "organon"
+definition = "Tool registry and sandboxed executor layer."
+canonical = true
+
+[[terms]]
+term = "pylon"
+definition = "HTTP gateway and streaming API layer."
+canonical = true
