@@ -2588,6 +2588,7 @@ name = "dokimion"
 version = "0.21.1"
 dependencies = [
  "eidos",
+ "jiff",
  "koina",
  "organon",
  "owo-colors",

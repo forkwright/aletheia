@@ -73,6 +73,45 @@ async fn setup_mock_server(answer_text: &str) -> MockServer {
     server
 }
 
+async fn setup_slow_mock_server(answer_text: &str, delay: std::time::Duration) -> MockServer {
+    let server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/api/v1/sessions"))
+        .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
+            "id": "sess_benchmark_slow",
+            "nous_id": "benchmark",
+            "session_key": "bench-key",
+            "status": "active",
+            "model": null,
+            "message_count": 0,
+            "token_count_estimate": 0,
+            "created_at": "2026-04-10T00:00:00Z",
+            "updated_at": "2026-04-10T00:00:00Z"
+        })))
+        .mount(&server)
+        .await;
+
+    Mock::given(method("POST"))
+        .and(path_regex(r"^/api/v1/sessions/[^/]+/messages$"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_delay(delay)
+                .insert_header("content-type", "text/event-stream")
+                .set_body_string(sse_response(answer_text)),
+        )
+        .mount(&server)
+        .await;
+
+    Mock::given(method("DELETE"))
+        .and(path_regex(r"^/api/v1/sessions/[^/]+$"))
+        .respond_with(ResponseTemplate::new(204))
+        .mount(&server)
+        .await;
+
+    server
+}
+
 const SAMPLE_DATASET: &str = r#"[
     {
         "question_id": "q1",
@@ -121,6 +160,28 @@ async fn runner_scores_wrong_answer_as_zero() {
         "wrong answer should not EM"
     );
     assert!(report.mean_f1() < 0.01, "wrong answer should have zero F1");
+}
+
+#[tokio::test]
+async fn runner_scores_timed_out_question_as_zero() {
+    init_crypto();
+    let server = setup_slow_mock_server("blue", std::time::Duration::from_millis(200)).await;
+    let client = EvalClient::new(server.uri(), None);
+    let config = BenchmarkRunnerConfig {
+        question_timeout: std::time::Duration::from_millis(100),
+        ..Default::default()
+    };
+    let runner = BenchmarkRunner::new(client, config);
+
+    let dataset = LongMemEvalDataset::from_bytes(SAMPLE_DATASET.as_bytes()).expect("valid dataset");
+    let report = runner.run(&dataset).await.expect("run should succeed");
+
+    assert_eq!(report.total, 1);
+    assert_eq!(report.questions[0].actual_answer, "");
+    assert!(
+        report.mean_f1().abs() < f64::EPSILON,
+        "timeout should be scored as a zero-answer"
+    );
 }
 
 #[tokio::test]

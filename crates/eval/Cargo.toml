@@ -19,6 +19,7 @@ test-full = []
 eidos = { path = "../eidos" }
 koina = { path = "../koina" }
 poiesis-typst = { path = "../poiesis/typst" }
+jiff = { workspace = true }
 reqwest = { workspace = true }
 regex = { workspace = true }
 serde = { workspace = true }

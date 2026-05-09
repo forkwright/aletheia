@@ -136,18 +136,10 @@ pub fn append_jsonl_stamped(path: &Path, report: &RunReport) -> Result<()> {
 }
 
 pub(crate) fn now_iso8601() -> String {
-    // WHY: avoid pulling in jiff/chrono for a single timestamp format.
-    // Epoch seconds are unambiguous and lightweight.
-    match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
-        Ok(duration) => {
-            let secs = duration.as_secs();
-            format!("{secs}")
-        }
-        Err(e) => {
-            tracing::warn!(error = %e, "system clock before unix epoch, returning 0");
-            "0".to_owned()
-        }
-    }
+    jiff::Timestamp::now()
+        .to_zoned(jiff::tz::TimeZone::UTC)
+        .strftime("%Y-%m-%dT%H:%M:%S%.3f%:z")
+        .to_string()
 }
 
 fn sibling_path(path: &Path, suffix: &str) -> std::path::PathBuf {
@@ -371,6 +363,18 @@ mod tests {
     fn now_iso8601_returns_nonempty() {
         let ts = now_iso8601();
         assert!(!ts.is_empty(), "timestamp should not be empty");
+    }
+
+    #[test]
+    fn now_iso8601_roundtrips_as_jiff_zoned() {
+        let ts = now_iso8601();
+        let parsed = jiff::Zoned::strptime("%Y-%m-%dT%H:%M:%S%.3f%:z", &ts)
+            .expect("timestamp should parse as ISO 8601 UTC");
+        assert_eq!(
+            parsed.strftime("%Y-%m-%dT%H:%M:%S%.3f%:z").to_string(),
+            ts,
+            "formatted timestamp should round-trip through jiff"
+        );
     }
 
     #[test]

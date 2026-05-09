@@ -31,8 +31,6 @@ pub mod sse;
 pub mod stats;
 /// Typed-tag namespace over RunReport for SFT/distillation pipeline.
 pub mod tags;
-/// Configurable evaluation trigger scheduling.
-pub mod triggers;
 
 #[cfg(test)]
 mod tag_tests;

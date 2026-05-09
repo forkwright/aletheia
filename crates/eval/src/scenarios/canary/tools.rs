@@ -7,14 +7,14 @@ use crate::sse;
 
 // ---------------------------------------------------------------------------
 
-/// File read tool → verify content returned
+/// File read tool capability query smoke test.
 pub(super) struct ToolFileReadContent;
 
 impl Scenario for ToolFileReadContent {
     fn meta(&self) -> ScenarioMeta {
         ScenarioMeta {
             id: "canary-tool-file-read-content",
-            description: "File read tool invocation returns expected content",
+            description: "File read capability query returns a completed non-empty response",
             category: "canary-tool",
             requires_auth: true,
             requires_nous: true,
@@ -58,14 +58,14 @@ impl Scenario for ToolFileReadContent {
     }
 }
 
-/// File write → read back → verify roundtrip
+/// File write/read capability query smoke test.
 pub(super) struct ToolFileWriteReadRoundtrip;
 
 impl Scenario for ToolFileWriteReadRoundtrip {
     fn meta(&self) -> ScenarioMeta {
         ScenarioMeta {
             id: "canary-tool-file-write-read-roundtrip",
-            description: "File write followed by read verifies roundtrip integrity",
+            description: "File write/read capability query returns a non-empty response",
             category: "canary-tool",
             requires_auth: true,
             requires_nous: true,
@@ -110,14 +110,14 @@ impl Scenario for ToolFileWriteReadRoundtrip {
     }
 }
 
-/// Web search tool → verify structured results
+/// Web search capability query smoke test.
 pub(super) struct ToolWebSearchStructured;
 
 impl Scenario for ToolWebSearchStructured {
     fn meta(&self) -> ScenarioMeta {
         ScenarioMeta {
             id: "canary-tool-web-search-structured",
-            description: "Web search tool returns structured, relevant results",
+            description: "Web search capability query returns a non-empty response",
             category: "canary-tool",
             requires_auth: true,
             requires_nous: true,
@@ -159,14 +159,14 @@ impl Scenario for ToolWebSearchStructured {
     }
 }
 
-/// Multi-tool chain (read → transform → write) → verify end state
+/// Multi-step tool-chain capability query smoke test.
 pub(super) struct ToolMultiToolChain;
 
 impl Scenario for ToolMultiToolChain {
     fn meta(&self) -> ScenarioMeta {
         ScenarioMeta {
             id: "canary-tool-multi-tool-chain",
-            description: "Multi-step tool chain completes successfully",
+            description: "Multi-step tool-chain capability query returns a non-empty response",
             category: "canary-tool",
             requires_auth: true,
             requires_nous: true,
@@ -208,14 +208,14 @@ impl Scenario for ToolMultiToolChain {
     }
 }
 
-/// Tool with invalid input → verify error handling
+/// Tool error-handling capability query smoke test.
 pub(super) struct ToolInvalidInputError;
 
 impl Scenario for ToolInvalidInputError {
     fn meta(&self) -> ScenarioMeta {
         ScenarioMeta {
             id: "canary-tool-invalid-input-error",
-            description: "Tool invocation with invalid input produces clear error",
+            description: "Tool error-handling explanation returns a non-empty response",
             category: "canary-tool",
             requires_auth: true,
             requires_nous: true,
@@ -260,3 +260,27 @@ impl Scenario for ToolInvalidInputError {
 }
 
 // ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tool_descriptions_match_smoke_test_assertions() {
+        let descriptions = [
+            ToolFileReadContent.meta().description,
+            ToolFileWriteReadRoundtrip.meta().description,
+            ToolWebSearchStructured.meta().description,
+            ToolMultiToolChain.meta().description,
+            ToolInvalidInputError.meta().description,
+        ];
+
+        for description in descriptions {
+            assert!(
+                description.contains("non-empty response")
+                    || description.contains("completed non-empty response"),
+                "tool canary descriptions should describe the non-empty-response smoke assertion"
+            );
+        }
+    }
+}

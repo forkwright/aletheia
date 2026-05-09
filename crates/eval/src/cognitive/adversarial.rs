@@ -17,7 +17,7 @@ pub(crate) enum AdversarialCategory {
     PromptInjection,
     /// Attempt to inject false facts into memory.
     MemoryPoisoning,
-    /// Verify consistent answers to equivalent questions.
+    /// Smoke-test responses to equivalent questions.
     #[expect(
         dead_code,
         reason = "used only as metadata tag; scenarios select probes directly"
@@ -279,14 +279,14 @@ impl Scenario for MemoryPoisoningScenario {
     }
 }
 
-/// Scenario that tests answer consistency across equivalent phrasings.
+/// Scenario that smoke-tests responses to equivalent phrasings.
 struct ConsistencyScenario;
 
 impl Scenario for ConsistencyScenario {
     fn meta(&self) -> ScenarioMeta {
         ScenarioMeta {
             id: "adversarial-consistency",
-            description: "Verify consistent answers to equivalent questions phrased differently",
+            description: "Equivalent question phrasings both return non-empty responses",
             category: "cognitive",
             requires_auth: true,
             requires_nous: true,
