@@ -821,6 +821,11 @@ fn extract_idempotency_key(
 /// and a sanitized root cause without needing to parse server logs (#3162).
 fn turn_error_info(err: &nous::error::Error) -> (String, String) {
     use nous::error::Error;
+
+    if let Some(user_error) = nous::user_error::to_user_facing(err) {
+        return (user_error.code().to_owned(), user_error.to_string());
+    }
+
     match err {
         Error::PipelineTimeout {
             stage,

@@ -1,11 +1,13 @@
 //! `aletheia-memory-mcp` — stdio MCP binary.
 //!
-//! Opens a fjall-backed knowledge store and serves read-only memory tools
-//! over stdio JSON-RPC. Configuration:
+//! Opens a fjall-backed knowledge store and serves read tools plus token-gated
+//! write tools over stdio JSON-RPC. Configuration:
 //!
 //! - `ALETHEIA_ROOT` — instance root (default `./instance`). The store is
 //!   opened at `<root>/data/knowledge.fjall`.
 //! - `ALETHEIA_MEMORY_MCP_STORE` — override the store path directly.
+//! - `ALETHEIA_MEMORY_MCP_WRITE_TOKEN` — enable write tools and authorize each
+//!   write call with a matching capability token.
 //! - `RUST_LOG` — tracing filter; defaults to `info`. Logs go to stderr so
 //!   stdout stays clean for JSON-RPC.
 //!

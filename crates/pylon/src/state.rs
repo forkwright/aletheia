@@ -1,5 +1,6 @@
 //! Shared application state accessible in all Axum handlers.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -246,6 +247,21 @@ impl FromRef<Arc<AppState>> for KnowledgeState {
     }
 }
 
+/// State slice for planning project verification handlers.
+#[derive(Clone)]
+pub struct PlanningState {
+    /// Root directory containing dianoia project workspaces.
+    pub planning_root: PathBuf,
+}
+
+impl FromRef<Arc<AppState>> for PlanningState {
+    fn from_ref(state: &Arc<AppState>) -> Self {
+        Self {
+            planning_root: state.oikos.data().join("planning"),
+        }
+    }
+}
+
 #[cfg(test)]
 const _: fn() = || {
     fn assert<T: Send + Sync>() {}
@@ -300,6 +316,7 @@ mod tests {
         assert::<ConfigState>();
         assert::<SessionsState>();
         assert::<KnowledgeState>();
+        assert::<PlanningState>();
         assert::<InsightsState>();
         assert::<EventBusState>();
     };

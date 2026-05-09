@@ -7067,6 +7067,7 @@ version = "0.21.1"
 dependencies = [
  "axum 0.8.9",
  "axum-server",
+ "dianoia",
  "hermeneus",
  "http-body-util",
  "jiff",

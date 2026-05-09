@@ -1,9 +1,10 @@
-//! `MemoryServer`: stdio MCP server exposing read-only memory tools.
+//! `MemoryServer`: stdio MCP server exposing read tools and token-gated writes.
 //!
 //! The server holds an `Arc<KnowledgeStore>` opened either from an explicit
 //! path (fjall) or in-memory for tests. Each tool call dispatches through
 //! the `#[tool_router]` macro; long-running store queries run on a blocking
-//! task pool via `spawn_blocking` to avoid stalling the stdio reactor.
+//! task pool via `spawn_blocking` to avoid stalling the stdio reactor. Write
+//! tools are registered only when `ALETHEIA_MEMORY_MCP_WRITE_TOKEN` is present.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

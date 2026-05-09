@@ -65,11 +65,11 @@ An abstraction with only one creation path is a mesh with a single root. If that
 ### Production usage
 
 - `Plan::new` is **not called** in any non-test production path. The reconciler (`crates/dianoia/src/reconciler.rs:303`) creates `Project::new` and `Phase::new`, but never `Plan::new`.
-- The pylon planning verification endpoints (`crates/pylon/src/handlers/planning.rs:21`) are explicitly stubbed: "Wire to the actual `dianoia` verification engine once a `PlanningService` trait is available (#2034)."
+- The pylon planning verification endpoints load dianoia project workspaces from the instance planning root and compute the desktop verification response through `dianoia::verify::verify_phase`.
 
 ### Missing grounds
 
-- **Planning API** - the pylon handlers are stubs; plans cannot be created via HTTP.
+- **Planning API creation surface** - pylon now serves verification results over HTTP, but project and plan creation still route through the planning tool service rather than HTTP handlers.
 
 ---
 
