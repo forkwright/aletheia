@@ -84,6 +84,16 @@ async fn run_via_api(args: &IngestArgs) -> Result<()> {
         "nous_id": args.nous_id,
     });
 
+    if args.dry_run {
+        println!("[dry-run] would POST to {endpoint}");
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&body)
+                .whatever_context("failed to serialize dry-run request")?
+        );
+        return Ok(());
+    }
+
     let resp = client
         .post(&endpoint)
         .json(&body)
@@ -104,10 +114,6 @@ async fn run_via_api(args: &IngestArgs) -> Result<()> {
         .json()
         .await
         .whatever_context("failed to parse ingest response")?;
-
-    if args.dry_run {
-        println!("--dry-run: would have ingested (via API)");
-    }
 
     let inserted = result
         .get("inserted")
@@ -274,4 +280,65 @@ fn collect_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "test fixture writes one temporary input file before exercising async ingest"
+)]
+mod tests {
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    use super::*;
+
+    #[tokio::test]
+    async fn api_dry_run_does_not_send_post() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("input.txt");
+        std::fs::write(&input, "one fact").unwrap();
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let requests = Arc::new(AtomicUsize::new(0));
+        let seen = Arc::clone(&requests);
+        let server = tokio::spawn(async move {
+            if let Ok(Ok((mut socket, _))) =
+                tokio::time::timeout(std::time::Duration::from_millis(200), listener.accept()).await
+            {
+                seen.fetch_add(1, Ordering::SeqCst);
+                let mut buf = [0_u8; 1024];
+                let _ = socket.read(&mut buf).await;
+                let body = r#"{"inserted":1,"skipped":0,"errors":[]}"#;
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
+                    body.len(),
+                    body
+                );
+                let _ = socket.write_all(response.as_bytes()).await;
+            }
+        });
+
+        let args = IngestArgs {
+            path: input,
+            format: "auto".to_owned(),
+            nous_id: "alice".to_owned(),
+            dry_run: true,
+            url: format!("http://{addr}"),
+        };
+
+        run_via_api(&args).await.unwrap();
+        server.await.unwrap();
+        assert_eq!(
+            requests.load(Ordering::SeqCst),
+            0,
+            "dry-run must not contact the API"
+        );
+    }
 }
