@@ -3,8 +3,8 @@
 # Installed to /etc/containers/systemd/conduwuit.container by deploy-conduwuit.sh.
 # Rendered by podman-generator into a systemd service.
 #
-# Bind: 127.0.0.1:6167 only — Tailscale is the access path.
-# Storage: /storage/conduwuit (bind-mounted into /var/lib/conduwuit).
+# Bind: 127.0.0.1:6167 only; use a private overlay or reverse proxy for access.
+# Storage: __DATA_DIR__ (bind-mounted into /var/lib/conduwuit).
 
 [Unit]
 Description=conduwuit Matrix homeserver
@@ -16,11 +16,11 @@ After=network-online.target
 Image=docker.io/girlbossceo/conduwuit:v0.5.0-rc.6
 ContainerName=conduwuit
 
-# Loopback-only: Tailscale handles external access.
+# Loopback-only: the deployment owner handles external access separately.
 PublishPort=127.0.0.1:6167:6167
 
 # Persistent database + media store.
-Volume=/storage/conduwuit:/var/lib/conduwuit:Z
+Volume=__DATA_DIR__:/var/lib/conduwuit:Z
 
 Environment=CONDUWUIT_SERVER_NAME=__SERVER_NAME__
 Environment=CONDUWUIT_DATABASE_PATH=/var/lib/conduwuit/db

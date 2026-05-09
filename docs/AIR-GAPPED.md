@@ -86,7 +86,7 @@ tool_use / tool_result conversations, streaming deltas, stop reasons.
 ## Deployment targets and factsensitivity
 
 The `deploymentTarget` field on each provider entry classifies where the
-traffic terminates. The factsensitivity filter (W3-1) reads this to decide
+traffic terminates. The factsensitivity filter reads this to decide
 which facts are allowed to flow to which provider:
 
 | Target       | Trust level                                                    |
@@ -112,4 +112,4 @@ to prove that a given model never hit the cloud entry.
 - #3424 - OpenAI-compatible provider (this feature)
 - #3414 - Air-gapped mode (this document)
 - #3410 - Prompt cache sovereignty default (already disabled)
-- W3-1 - FactSensitivity filter (consumes `deploymentTarget`)
+- FactSensitivity filter (consumes `deploymentTarget`)

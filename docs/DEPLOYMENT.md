@@ -488,28 +488,28 @@ nous_id = "main"
 
 ---
 
-## Matrix (Phase 3 - not yet wired)
+## Matrix (Phase 3 deployment profile)
 
-Aletheia does not currently ship a Matrix channel provider. The notes below
-are development scaffolding for a future Phase 3 implementation against a
+Aletheia's public deployment profile treats the Matrix channel provider as
+scaffolding for the Phase 3 implementation against a
 self-hosted [conduwuit](https://conduwuit.puppyirl.gay/) homeserver.
 
 ### Prerequisites
 
-- [Tailscale](https://tailscale.com) installed and authenticated on this host (conduwuit is only reachable via the tailnet).
+- A private overlay network or reverse proxy path for hosts that expose conduwuit beyond loopback.
 - `podman` 4.4+ with Quadlet generator (`/etc/containers/systemd/`).
-- `/storage/conduwuit/` writable (the script creates it under `sudo`).
+- `${CONDUWUIT_DATA_DIR}` writable (the script creates it under `sudo`).
 
 ### Deploy the homeserver
 
 ```bash
-scripts/deploy-conduwuit.sh --server-name menos.lan
+scripts/deploy-conduwuit.sh --server-name matrix.example.com
 ```
 
 The script:
 
 - pulls a pinned conduwuit container image,
-- generates a registration token at `~/menos-ops/secrets/conduwuit-registration-token` (mode `0600`),
+- generates a registration token at `${SECRETS_DIR}/conduwuit-registration-token` (mode `0600`), where `${SECRETS_DIR}` is an operator-managed secrets directory,
 - installs a Quadlet unit at `/etc/containers/systemd/conduwuit.container`,
 - reloads systemd and starts `conduwuit.service`,
 - waits for `http://127.0.0.1:6167/_matrix/client/versions` to return 200.
@@ -518,11 +518,11 @@ The service restarts on failure and runs with `NoNewPrivileges`, `ProtectSystem`
 
 ### Register the first user
 
-Use the registration token the script printed (also at `~/menos-ops/secrets/conduwuit-registration-token`). Follow conduwuit's current API docs for the exact endpoint - typically via `element` (web client) against `http://menos.lan:6167`, selecting "Create account" and pasting the token when prompted.
+Use the registration token the script printed (also at `${SECRETS_DIR}/conduwuit-registration-token`). Follow conduwuit's current API docs for the exact endpoint - typically via `element` (web client) against `http://host.example.lan:6167`, selecting "Create account" and pasting the token when prompted.
 
 ### Connect an Element client
 
-Point Element (desktop or web) at `http://menos.lan:6167`. Sign in as the user you registered. Over Tailscale this URL resolves and authenticates end-to-end.
+Point Element (desktop or web) at `http://host.example.lan:6167`. Sign in as the user you registered. Over the private overlay network this URL resolves and authenticates end-to-end.
 
 ### Aletheia provider status
 

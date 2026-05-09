@@ -155,14 +155,16 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
-      - name: Fetch and diff canonical standards from kanon
+      - name: Fetch and diff canonical standards
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          STANDARDS_REPO: ${{ vars.STANDARDS_REPO }}
         run: |
+          : "${STANDARDS_REPO:?Set repository variable STANDARDS_REPO to the canonical standards repository}"
           tmpdir="$(mktemp -d)"
-          gh api repos/forkwright/kanon/contents/standards \
+          gh api "repos/${STANDARDS_REPO}/contents/standards" \
             --jq '.[].name' | while IFS= read -r fname; do
-            gh api "repos/forkwright/kanon/contents/standards/${fname}" \
+            gh api "repos/${STANDARDS_REPO}/contents/standards/${fname}" \
               --jq '.content' \
               | base64 -d > "${tmpdir}/${fname}"
           done
@@ -348,7 +350,7 @@ jobs:
         env:
           SHARD: ${{ matrix.shard }}
         run: |
-          cargo nextest run \
+          env -u CARGO_TARGET_DIR cargo nextest run \
             --workspace \
             --partition "hash:${SHARD}/@@SHARDS@@"
 
@@ -383,7 +385,7 @@ jobs:
             exit 0
           fi
           pkg_flags=$(echo "$PACKAGES" | tr ' ' '\n' | grep -v '^$' | xargs -I{} printf -- '--package %s ' {})
-          cargo nextest run $pkg_flags
+          env -u CARGO_TARGET_DIR cargo nextest run $pkg_flags
 
   # WHY: Gate merges on a single required status check regardless of whether
   # the full sharded suite or the filtered subset ran. Simpler to configure in

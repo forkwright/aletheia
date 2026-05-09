@@ -42,7 +42,7 @@ MemoryMax=8G
 # writes outside explicitly allowed paths. Aletheia only needs to
 # mutate its storage directory and instance config dir.
 ProtectSystem=strict
-ReadWritePaths=/storage/aletheia /home/ck/aletheia/instance
+ReadWritePaths=${ALETHEIA_DATA_DIR} ${ALETHEIA_INSTANCE_DIR}
 
 # Hardening: make /home and /root read-only. The service still needs
 # to read its binary under ~/.local/bin and env file under ~/aletheia.
