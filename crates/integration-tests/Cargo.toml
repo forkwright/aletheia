@@ -13,12 +13,12 @@ workspace = true
 [features]
 default = ["knowledge-store"]
 engine-tests = ["mneme/mneme-engine"]
-knowledge-store = ["nous/knowledge-store", "pylon/knowledge-store"]
+knowledge-store = ["mneme/storage-fjall", "nous/knowledge-store", "pylon/knowledge-store"]
 # Test tiers (see docs/test-tiers.md)
 test-core = ["engine-tests"]
 test-full = ["test-core"]
 
-[dev-dependencies]
+[dependencies]
 dokimion = { path = "../eval" }
 koina = { path = "../koina", features = ["test-support"] }
 taxis = { path = "../taxis" }

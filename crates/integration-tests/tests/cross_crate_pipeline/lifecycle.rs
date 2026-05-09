@@ -11,7 +11,7 @@ use super::*;
 
 #[tokio::test]
 async fn full_turn_lifecycle_sse_events_and_persistence() {
-    let (harness, captured) = TestHarness::build_capturing("Hello from the agent!").await;
+    let (harness, captured) = build_capturing("Hello from the agent!").await;
     let router = harness.router();
 
     // Create session
@@ -207,7 +207,7 @@ async fn tool_execution_round_trip() {
 
 #[tokio::test]
 async fn system_prompt_includes_oikos_bootstrap_files() {
-    let (harness, captured) = TestHarness::build_capturing("Recalled context.").await;
+    let (harness, captured) = build_capturing("Recalled context.").await;
     let router = harness.router();
 
     let session = harness.create_session(&router).await;
