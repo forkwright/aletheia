@@ -6,14 +6,17 @@
 use std::sync::Arc;
 
 use axum::body::Body;
-use axum::http::{Request, StatusCode};
+use axum::http::{Method, Request, StatusCode};
 use tower::ServiceExt;
 
 use koina::http::{API_HEALTH, API_V1};
 use pylon::router::build_router;
+use symbolon::types::Role;
 
 mod common;
-use common::{TestEnv, bearer, issue_test_token, permissive_security, read_body_json};
+use common::{
+    TestEnv, bearer, issue_test_token, issue_test_token_as, permissive_security, read_body_json,
+};
 
 // Split: build_router construction + auth contracts.
 
@@ -254,4 +257,176 @@ async fn auth_mode_none_allows_access_without_bearer() {
         StatusCode::OK,
         "auth_mode=none must not require a bearer on protected routes"
     );
+}
+
+#[tokio::test]
+async fn knowledge_write_routes_reject_missing_bearer_token() {
+    let env = TestEnv::new().await;
+    let router = build_router(Arc::clone(&env.state), &permissive_security());
+
+    for route in knowledge_write_routes() {
+        let response = router
+            .clone()
+            .oneshot(route.request(None))
+            .await
+            .expect("router response");
+
+        assert_eq!(
+            response.status(),
+            StatusCode::UNAUTHORIZED,
+            "{} {}",
+            route.method,
+            route.path
+        );
+    }
+}
+
+#[tokio::test]
+async fn knowledge_write_routes_reject_invalid_bearer_token() {
+    let env = TestEnv::new().await;
+    let router = build_router(Arc::clone(&env.state), &permissive_security());
+
+    for route in knowledge_write_routes() {
+        let response = router
+            .clone()
+            .oneshot(route.request(Some("Bearer not.a.valid.jwt".to_owned())))
+            .await
+            .expect("router response");
+
+        assert_eq!(
+            response.status(),
+            StatusCode::UNAUTHORIZED,
+            "{} {}",
+            route.method,
+            route.path
+        );
+    }
+}
+
+#[tokio::test]
+async fn knowledge_write_routes_reject_valid_bearer_with_readonly_role() {
+    let env = TestEnv::new().await;
+    let token = issue_test_token_as(&env.state, Role::Readonly);
+    let router = build_router(Arc::clone(&env.state), &permissive_security());
+
+    for route in knowledge_write_routes() {
+        let response = router
+            .clone()
+            .oneshot(route.request(Some(bearer(&token))))
+            .await
+            .expect("router response");
+
+        assert_eq!(
+            response.status(),
+            StatusCode::FORBIDDEN,
+            "{} {}",
+            route.method,
+            route.path
+        );
+    }
+}
+
+#[tokio::test]
+async fn knowledge_write_routes_with_operator_bearer_reach_handlers() {
+    let env = TestEnv::new().await;
+    let token = issue_test_token(&env.state);
+    let router = build_router(Arc::clone(&env.state), &permissive_security());
+
+    for route in knowledge_write_routes() {
+        let response = router
+            .clone()
+            .oneshot(route.request(Some(bearer(&token))))
+            .await
+            .expect("router response");
+
+        assert_eq!(
+            response.status(),
+            KnowledgeWriteRoute::expected_authorized_status(),
+            "{} {}",
+            route.method,
+            route.path
+        );
+    }
+}
+
+#[derive(Clone)]
+struct KnowledgeWriteRoute {
+    method: Method,
+    path: &'static str,
+    body: Option<serde_json::Value>,
+}
+
+impl KnowledgeWriteRoute {
+    fn request(&self, authorization: Option<String>) -> Request<Body> {
+        let mut builder = Request::builder()
+            .method(self.method.clone())
+            .uri(self.path);
+        if self.body.is_some() {
+            builder = builder.header("content-type", "application/json");
+        }
+        if let Some(header) = authorization {
+            builder = builder.header("authorization", header);
+        }
+
+        match &self.body {
+            Some(body) => builder
+                .body(Body::from(
+                    serde_json::to_vec(&body).expect("serialize json body"),
+                ))
+                .expect("build request"),
+            None => builder.body(Body::empty()).expect("build request"),
+        }
+    }
+
+    fn expected_authorized_status() -> StatusCode {
+        StatusCode::SERVICE_UNAVAILABLE
+    }
+}
+
+fn knowledge_write_routes() -> [KnowledgeWriteRoute; 7] {
+    [
+        KnowledgeWriteRoute {
+            method: Method::POST,
+            path: "/api/v1/knowledge/facts/import",
+            body: Some(serde_json::json!({ "facts": [] })),
+        },
+        KnowledgeWriteRoute {
+            method: Method::POST,
+            path: "/api/v1/knowledge/ingest",
+            body: Some(serde_json::json!({
+                "content": "alice remembers the deployment window",
+                "format": "text",
+                "nous_id": "syn"
+            })),
+        },
+        KnowledgeWriteRoute {
+            method: Method::POST,
+            path: "/api/v1/knowledge/ingest/webhook",
+            body: Some(serde_json::json!({
+                "nous_id": "syn",
+                "facts": [],
+                "source": "acme.corp"
+            })),
+        },
+        KnowledgeWriteRoute {
+            method: Method::POST,
+            path: "/api/v1/knowledge/facts/some-fact-id/forget",
+            body: Some(serde_json::json!({})),
+        },
+        KnowledgeWriteRoute {
+            method: Method::POST,
+            path: "/api/v1/knowledge/facts/some-fact-id/restore",
+            body: None,
+        },
+        KnowledgeWriteRoute {
+            method: Method::PUT,
+            path: "/api/v1/knowledge/facts/some-fact-id/confidence",
+            body: Some(serde_json::json!({ "confidence": 0.8 })),
+        },
+        KnowledgeWriteRoute {
+            method: Method::PUT,
+            path: "/api/v1/knowledge/facts/some-fact-id/sensitivity",
+            body: Some(serde_json::json!({ "sensitivity": "public" })),
+        },
+    ]
 }
