@@ -18,7 +18,7 @@ test-full = []
 [dependencies]
 koina = { path = "../../koina" }
 skene = { path = "../skene" }
-parodos = { git = "http://127.0.0.1:7878/forkwright/theatron.git", tag = "v1.2.0" }
+parodos = { git = "https://github.com/forkwright/theatron.git", tag = "v1.2.0" }
 
 # Core TUI — ratatui 0.30 defaults to crossterm 0.29
 ratatui = "0.30"
