@@ -42,6 +42,8 @@ tui = ["dep:koilon"]
 cc-provider = ["hermeneus/cc-provider"]
 # Codex subprocess provider: delegates LLM calls to the `codex` CLI.
 codex-provider = ["hermeneus/codex-provider"]
+# Kimi subprocess provider: delegates LLM calls to the `kimi` CLI.
+kimi-provider = ["hermeneus/kimi-provider"]
 # Dispatch orchestration (kanon phronesis port). Default off for incremental development.
 energeia = ["dep:energeia", "oikonomos/dispatch-cron"]
 # Test tiers (see docs/test-tiers.md)
