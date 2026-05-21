@@ -325,7 +325,7 @@ fn nous_guard_rejected_includes_reason() {
 
 #[test]
 fn redact_strips_anthropic_api_key() {
-    let msg = "invalid key sk-ant-abc123def456ghi789";
+    let msg = "invalid key sk-ant-abc123def456ghi789"; // pii-allow: synthetic Anthropic key shape, redactor self-test
     let redacted = redact_secrets(msg);
     assert!(
         !redacted.contains("sk-ant-"),
@@ -336,7 +336,7 @@ fn redact_strips_anthropic_api_key() {
 
 #[test]
 fn redact_strips_generic_sk_key() {
-    let msg = "auth error with sk-abcdefghijklmnopqrstuvwxyz";
+    let msg = "auth error with sk-abcdefghijklmnopqrstuvwxyz"; // pii-allow: synthetic generic sk- shape, redactor self-test
     let redacted = redact_secrets(msg);
     assert!(
         !redacted.contains("sk-abcdef"),
@@ -354,7 +354,7 @@ fn redact_preserves_normal_messages() {
 
 #[test]
 fn redact_strips_bearer_token() {
-    let msg = "rejected bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.payload";
+    let msg = "rejected bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.payload"; // pii-allow: synthetic Bearer/JWT shape, redactor self-test
     let redacted = redact_secrets(msg);
     assert!(
         !redacted.contains("eyJh"),

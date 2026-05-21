@@ -285,7 +285,7 @@ mod tests {
         let (buf, sub) = setup(&[], &[], 200);
         tracing::subscriber::with_default(sub, || {
             tracing::info!(
-                details = "key is sk-proj-abcdefghij1234567890abcdef end",
+                details = "key is sk-proj-abcdefghij1234567890abcdef end", // pii-allow: synthetic OpenAI proj-token shape, redactor self-test
                 "api check"
             );
         });

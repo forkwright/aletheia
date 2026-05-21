@@ -293,7 +293,7 @@ mod tests {
 
     #[test]
     fn redacts_phone_e164() {
-        let (out, changed) = redact("my number is +15125550199");
+        let (out, changed) = redact("my number is +15125550199"); // pii-allow: synthetic NANP test number, redaction self-test
         assert!(changed);
         assert!(out.contains("[REDACTED:phone]"));
     }
@@ -334,10 +334,10 @@ mod tests {
 
     #[test]
     fn redacts_openai_api_key() {
-        let (out, changed) = redact("OPENAI=sk-proj-abcdefghij1234567890ABCDEF0123456789");
+        let (out, changed) = redact("OPENAI=sk-proj-abcdefghij1234567890ABCDEF0123456789"); // pii-allow: synthetic OpenAI key shape, redactor self-test
         assert!(changed);
         assert!(out.contains("[REDACTED:"));
-        assert!(!out.contains("sk-proj-abcdefghij1234567890ABCDEF0123456789"));
+        assert!(!out.contains("sk-proj-abcdefghij1234567890ABCDEF0123456789")); // pii-allow: synthetic OpenAI key shape, redactor self-test
     }
 
     #[test]
@@ -349,7 +349,7 @@ mod tests {
 
     #[test]
     fn redacts_github_token() {
-        let (out, changed) = redact("export TOKEN=ghp_1234567890abcdefghij1234567890ABCD");
+        let (out, changed) = redact("export TOKEN=ghp_1234567890abcdefghij1234567890ABCD"); // pii-allow: synthetic GitHub PAT shape, redactor self-test
         assert!(changed);
         assert!(out.contains("[REDACTED:"));
         assert!(!out.contains("ghp_1234567890abcdefghij1234567890ABCD"));
@@ -357,7 +357,7 @@ mod tests {
 
     #[test]
     fn redacts_aws_access_key_id() {
-        let (out, changed) = redact("AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE");
+        let (out, changed) = redact("AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE"); // pii-allow: AWS canonical example access key id, redactor self-test
         assert!(changed);
         assert!(out.contains("[REDACTED:"));
     }
@@ -373,7 +373,7 @@ mod tests {
     #[test]
     fn redacts_jwt() {
         let (out, changed) = redact(
-            "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c",
+            "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c", // pii-allow: jwt.io canonical example token, redactor self-test
         );
         assert!(changed);
         assert!(out.contains("[REDACTED:jwt]"));
