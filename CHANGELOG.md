@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.23.0](https://github.com/forkwright/aletheia/compare/v0.22.1...v0.23.0) (2026-05-21)
+
+
+### Features
+
+* **hermeneus:** add codex-provider feature-gated adapter ([#3886](https://github.com/forkwright/aletheia/issues/3886)) ([c174bf3](https://github.com/forkwright/aletheia/commit/c174bf328cb88e00d17a2a795947bfda0c9e6501))
+
+
+### Bug Fixes
+
+* **dianoia,hermeneus:** WIP cluster — planning lifecycle wire-in + provider unknown-noop test assertions ([#3874](https://github.com/forkwright/aletheia/issues/3874)) ([9c00246](https://github.com/forkwright/aletheia/commit/9c002460ca9b8461ba387b668fd314c8484eb046)), closes [#227](https://github.com/forkwright/aletheia/issues/227) [#228](https://github.com/forkwright/aletheia/issues/228)
+* **nous:** suppress pii-allow on synthetic SSN test fixture ([#3888](https://github.com/forkwright/aletheia/issues/3888)) ([89b02a3](https://github.com/forkwright/aletheia/commit/89b02a3226192abbc8ec5f4cb300eca9b6b8bf76))
+
 ## [0.22.1](https://github.com/forkwright/aletheia/compare/v0.22.0...v0.22.1) (2026-05-21)
 
 
