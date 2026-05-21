@@ -215,7 +215,7 @@ aletheia health           # verify
 Talk to your agents over Signal. Requires [signal-cli](https://github.com/AsamK/signal-cli) running as a JSON-RPC daemon.
 
 1. Install and register signal-cli with your phone number
-2. Start signal-cli in JSON-RPC mode: `signal-cli -a +15551234567 jsonRpc`
+2. Start signal-cli in JSON-RPC mode: `signal-cli -a +15551234567 jsonRpc` <!-- pii-allow: NANP 555 reserved-for-fiction number, doc example -->
 3. Add to `instance/config/aletheia.toml`:
 
 ```toml
@@ -223,7 +223,7 @@ Talk to your agents over Signal. Requires [signal-cli](https://github.com/AsamK/
 enabled = true
 
 [channels.signal.accounts.default]
-account = "+15551234567"
+account = "+15551234567" <!-- pii-allow: NANP 555 reserved-for-fiction number, doc example -->
 http_host = "localhost"
 http_port = 8080
 

@@ -942,7 +942,7 @@ mod tests {
         // Create a JWT with known exp claim: exp = 1234567890
         // Payload: {"exp":1234567890}
         // base64url: eyJleHAiOjEyMzQ1Njc4OTB9
-        let token = "header.eyJleHAiOjEyMzQ1Njc4OTB9.signature";
+        let token = "header.eyJleHAiOjEyMzQ1Njc4OTB9.signature"; // pii-allow: synthetic JWT structure, exp-decoder self-test
         let exp = decode_jwt_exp(token);
         assert_eq!(exp, Some(1_234_567_890));
     }
