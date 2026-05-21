@@ -40,6 +40,17 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           persist-credentials: false # PROJECT: security hardening — never expose token to steps
+      - name: Configure git credentials for private fleet deps
+        env:
+          FLEET_REPO_TOKEN: ${{ secrets.FLEET_REPO_TOKEN }}
+        run: |
+          if [ -z "${FLEET_REPO_TOKEN}" ]; then
+            echo "FLEET_REPO_TOKEN is not set; cross-repo private deps will fail to fetch." >&2
+            exit 0
+          fi
+          git config --global credential.helper store
+          printf 'https://forkwright:%s@github.com\n' "${FLEET_REPO_TOKEN}" > ~/.git-credentials
+          chmod 0600 ~/.git-credentials
       - uses: EmbarkStudios/cargo-deny-action@6c8f9facfa5047ec02d8485b6bf52b587b7777d1 # v2.0.18
         with:
           # WHY: run every check explicitly so a schema regression in one
@@ -48,6 +59,8 @@ jobs:
           # `arguments:` passes post-subcommand flags only.
           command: check advisories licenses bans sources
           arguments: --all-features
+          credentials: https://forkwright:${{ secrets.FLEET_REPO_TOKEN }}@github.com
+          use-git-cli: true
 
   cargo-audit:
     # WHY: cargo-deny's advisories check overlaps but uses a different code
@@ -60,6 +73,17 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           persist-credentials: false
+      - name: Configure git credentials for private fleet deps
+        env:
+          FLEET_REPO_TOKEN: ${{ secrets.FLEET_REPO_TOKEN }}
+        run: |
+          if [ -z "${FLEET_REPO_TOKEN}" ]; then
+            echo "FLEET_REPO_TOKEN is not set; cross-repo private deps will fail to fetch." >&2
+            exit 0
+          fi
+          git config --global credential.helper store
+          printf 'https://forkwright:%s@github.com\n' "${FLEET_REPO_TOKEN}" > ~/.git-credentials
+          chmod 0600 ~/.git-credentials
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
         with:

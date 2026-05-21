@@ -62,6 +62,15 @@ fn stream_buf(lines: &[&str]) -> Vec<u8> {
     out.into_bytes()
 }
 
+fn process_config<'a>(kimi_binary: &'a Path, cwd: &'a Path) -> KimiProcessConfig<'a> {
+    KimiProcessConfig {
+        kimi_binary,
+        cwd,
+        model: "kimi-k2-thinking",
+        timeout: Duration::from_secs(10),
+    }
+}
+
 #[test]
 fn parse_text_part_line_extracts_text() {
     let text = parse::parse_text_part_line(r"TextPart(type='text', text='hello\nworld')").unwrap();
@@ -140,10 +149,24 @@ async fn read_stream_with_callback_invokes_for_text_parts() {
     assert_eq!(collected, vec!["a", "b"]);
 }
 
+#[tokio::test]
+async fn read_stream_parses_stream_json_text_content() {
+    let buf = stream_buf(&[
+        r#"{"role":"tool","content":"ignored"}"#,
+        r#"{"role":"assistant","content":"hello"}"#,
+        r#"{"role":"assistant","content":[{"type":"think","think":"hidden"},{"type":"text","text":" world"}]}"#,
+    ]);
+
+    let output = read_stream(buf.as_slice()).await.unwrap();
+
+    assert_eq!(output.result_text, "hello world");
+    assert_eq!(output.stream_deltas, vec!["hello", " world"]);
+}
+
 #[test]
 fn build_kimi_command_uses_validated_headless_invocation_and_scrubs_api_key() {
     let cwd = Path::new("/tmp");
-    let mut cmd = build_kimi_command(Path::new("/usr/bin/kimi"), cwd, "say ok");
+    let mut cmd = build_kimi_command(Path::new("/usr/bin/kimi"), cwd, "kimi-k2-thinking");
     cmd.env("MOONSHOT_API_KEY", "raw-api-key");
     scrub_kimi_auth_env(&mut cmd);
 
@@ -156,13 +179,17 @@ fn build_kimi_command_uses_validated_headless_invocation_and_scrubs_api_key() {
         args,
         vec![
             "--print",
+            "--output-format",
+            "stream-json",
+            "--input-format",
+            "text",
             "--afk",
             "--yolo",
             "--thinking",
             "-w",
             "/tmp",
-            "-p",
-            "say ok",
+            "--model",
+            "kimi-k2-thinking",
         ]
     );
 
@@ -179,71 +206,76 @@ async fn run_completion_uses_stub_kimi_shape() {
     let script = write_script(
         "completion_shape",
         r#"[ "$1" = "--print" ] || exit 2
-[ "$2" = "--afk" ] || exit 2
-[ "$3" = "--yolo" ] || exit 2
-[ "$4" = "--thinking" ] || exit 2
-[ "$5" = "-w" ] || exit 2
-[ "$7" = "-p" ] || exit 2
-[ "$8" = "prompt text" ] || exit 2
-printf "TextPart(type='text', text='stub ok')\n"
-printf "StatusUpdate(\n"
-printf "    token_usage=TokenUsage(\n"
-printf "        input_other=1,\n"
-printf "        output=2,\n"
-printf "        input_cache_read=3,\n"
-printf "        input_cache_creation=4\n"
-printf "    ),\n"
-printf "    message_id='chatcmpl_stub',\n"
-printf ")\n""#,
+[ "$2" = "--output-format" ] || exit 2
+[ "$3" = "stream-json" ] || exit 2
+[ "$4" = "--input-format" ] || exit 2
+[ "$5" = "text" ] || exit 2
+[ "$6" = "--afk" ] || exit 2
+[ "$7" = "--yolo" ] || exit 2
+[ "$8" = "--thinking" ] || exit 2
+[ "$9" = "-w" ] || exit 2
+[ "${11}" = "--model" ] || exit 2
+[ "${12}" = "kimi-k2-thinking" ] || exit 2
+prompt="$(cat)"
+[ "$prompt" = "prompt text" ] || exit 2
+printf '{"role":"assistant","content":"stub ok"}\n'"#,
     );
 
-    let output = run_completion(
-        &script,
-        &std::env::temp_dir(),
-        None,
-        "prompt text",
-        0,
-        Duration::from_secs(10),
-    )
-    .await
-    .unwrap();
+    let cwd = std::env::temp_dir();
+    let config = process_config(&script, &cwd);
+    let output = run_completion(&config, None, "prompt text", 0)
+        .await
+        .unwrap();
 
     assert_eq!(output.result_text, "stub ok");
-    assert_eq!(output.message_id.as_deref(), Some("chatcmpl_stub"));
-    let usage = output.usage.unwrap();
-    assert_eq!(usage.output, 2);
+    assert_eq!(output.message_id, None);
+    assert_eq!(output.usage, None);
+
+    fs::remove_file(&script).unwrap();
+}
+
+#[tokio::test]
+async fn run_completion_rejects_nonzero_exit_even_with_text() {
+    let script = write_script(
+        "completion_failure",
+        r#"printf "TextPart(type='text', text='partial')\n"
+printf "failed\n" >&2
+exit 7"#,
+    );
+
+    let cwd = std::env::temp_dir();
+    let config = process_config(&script, &cwd);
+    let err = run_completion(&config, None, "prompt text", 0)
+        .await
+        .unwrap_err();
+
+    let err = err.to_string();
+    assert!(err.contains("Kimi process exited"));
+    assert!(err.contains("failed"));
 
     fs::remove_file(&script).unwrap();
 }
 
 #[tokio::test]
 async fn run_completion_rejects_max_tokens() {
-    let err = run_completion(
-        &PathBuf::from("/bin/echo"),
-        &std::env::temp_dir(),
-        None,
-        "prompt",
-        100,
-        Duration::from_secs(5),
-    )
-    .await
-    .unwrap_err();
+    let binary = PathBuf::from("/bin/echo");
+    let cwd = std::env::temp_dir();
+    let config = process_config(&binary, &cwd);
+    let err = run_completion(&config, None, "prompt", 100)
+        .await
+        .unwrap_err();
     assert!(err.to_string().contains("cannot enforce max_tokens=100"));
 }
 
 #[tokio::test]
 async fn run_completion_rejects_oversized_system_prompt() {
     let big_prompt = "x".repeat(MAX_SYSTEM_PROMPT_BYTES + 1);
-    let err = run_completion(
-        &PathBuf::from("/bin/echo"),
-        &std::env::temp_dir(),
-        Some(&big_prompt),
-        "prompt",
-        0,
-        Duration::from_secs(5),
-    )
-    .await
-    .unwrap_err();
+    let binary = PathBuf::from("/bin/echo");
+    let cwd = std::env::temp_dir();
+    let config = process_config(&binary, &cwd);
+    let err = run_completion(&config, Some(&big_prompt), "prompt", 0)
+        .await
+        .unwrap_err();
     assert!(
         err.to_string()
             .contains("system prompt exceeds maximum size")

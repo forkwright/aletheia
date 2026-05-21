@@ -1,14 +1,16 @@
 //! Kimi subprocess management.
 //!
-//! Spawns `kimi --print --afk --yolo --thinking -w <cwd> -p <prompt>` and
+//! Spawns `kimi --print --output-format stream-json --input-format text --afk --yolo --thinking
+//! -w <cwd> --model <model>` and writes the prompt over stdin.
 //! manages the child process lifecycle: stdout reading, timeout, and cleanup.
 
 use std::path::Path;
 use std::process::Stdio;
 use std::time::Duration;
 
-use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, BufReader};
-use tokio::process::Command;
+use serde_json::Value;
+use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWriteExt, BufReader};
+use tokio::process::{Child, Command};
 use tracing::{debug, warn};
 
 use crate::error::{self, Result};
@@ -26,11 +28,10 @@ const MAX_OUTPUT_BYTES: usize = 10 * 1024 * 1024;
 /// WHY: Secondary guard alongside byte limit for many-small-line output.
 const MAX_OUTPUT_LINES: usize = 100_000;
 
-/// Maximum length of a system prompt included in the Kimi prompt argument.
+/// Maximum length of a system prompt included in the Kimi prompt.
 ///
-/// WHY: The final prompt is passed as a command-line argument. An excessively
-/// large system prompt can exhaust argument space or make subprocess parsing
-/// consume excessive memory.
+/// WHY: An excessively large system prompt can make subprocess parsing consume
+/// excessive memory before the request reaches Kimi.
 const MAX_SYSTEM_PROMPT_BYTES: usize = 100 * 1024;
 
 fn scrub_kimi_auth_env(cmd: &mut Command) {
@@ -71,18 +72,23 @@ fn compose_prompt(system_prompt: Option<&str>, prompt: &str) -> Result<String> {
     }
 }
 
-fn build_kimi_command(kimi_binary: &Path, cwd: &Path, prompt: &str) -> Command {
+fn build_kimi_command(kimi_binary: &Path, cwd: &Path, model: &str) -> Command {
     let mut cmd = Command::new(kimi_binary);
     cmd.arg("--print")
+        .arg("--output-format")
+        .arg("stream-json")
+        .arg("--input-format")
+        .arg("text")
         .arg("--afk")
         .arg("--yolo")
         .arg("--thinking")
         .arg("-w")
         .arg(cwd)
-        .arg("-p")
-        .arg(prompt)
+        .arg("--model")
+        .arg(model)
         .current_dir(cwd)
-        .stdin(Stdio::null())
+        .kill_on_drop(true)
+        .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
@@ -110,6 +116,13 @@ pub(crate) struct KimiOutput {
     pub stream_deltas: Vec<String>,
 }
 
+pub(crate) struct KimiProcessConfig<'a> {
+    pub kimi_binary: &'a Path,
+    pub cwd: &'a Path,
+    pub model: &'a str,
+    pub timeout: Duration,
+}
+
 /// Spawn Kimi and run a completion, collecting all output.
 ///
 /// # Errors
@@ -117,16 +130,23 @@ pub(crate) struct KimiOutput {
 /// request options.
 #[tracing::instrument(skip_all)]
 pub(crate) async fn run_completion(
-    kimi_binary: &Path,
-    cwd: &Path,
+    config: &KimiProcessConfig<'_>,
     system_prompt: Option<&str>,
     prompt: &str,
     max_tokens: u32,
-    timeout: Duration,
 ) -> Result<KimiOutput> {
     ensure_max_tokens_supported(max_tokens)?;
     let prompt = compose_prompt(system_prompt, prompt)?;
-    let mut child = spawn_kimi(kimi_binary, cwd, &prompt, "spawning Kimi subprocess")?;
+    let mut child = spawn_kimi(
+        config.kimi_binary,
+        config.cwd,
+        config.model,
+        "spawning Kimi subprocess",
+    )?;
+    if let Err(e) = write_prompt(&mut child, &prompt).await {
+        kill_child(&mut child, "Kimi subprocess").await;
+        return Err(e);
+    }
 
     let stdout = child.stdout.take().ok_or_else(|| {
         error::ApiRequestSnafu {
@@ -135,7 +155,7 @@ pub(crate) async fn run_completion(
         .build()
     })?;
 
-    let result = tokio::time::timeout(timeout, read_stream(stdout)).await;
+    let result = tokio::time::timeout(config.timeout, read_stream(stdout)).await;
 
     match result {
         Ok(Ok(output)) => {
@@ -146,7 +166,7 @@ pub(crate) async fn run_completion(
                 .build()
             })?;
 
-            if !status.success() && output.result_text.is_empty() {
+            if !status.success() {
                 let stderr_text = read_stderr(child.stderr.take()).await;
                 return Err(error::ApiRequestSnafu {
                     message: format!(
@@ -169,12 +189,15 @@ pub(crate) async fn run_completion(
         }
         Err(_elapsed) => {
             warn!(
-                timeout_secs = timeout.as_secs(),
+                timeout_secs = config.timeout.as_secs(),
                 "Kimi subprocess timed out, killing"
             );
             kill_child(&mut child, "Kimi subprocess").await;
             Err(error::ApiRequestSnafu {
-                message: format!("Kimi subprocess timed out after {}s", timeout.as_secs()),
+                message: format!(
+                    "Kimi subprocess timed out after {}s",
+                    config.timeout.as_secs()
+                ),
             }
             .build())
         }
@@ -186,22 +209,24 @@ pub(crate) async fn run_completion(
 /// Returns the final `KimiOutput` after the stream completes.
 #[tracing::instrument(skip_all)]
 pub(crate) async fn run_streaming(
-    kimi_binary: &Path,
-    cwd: &Path,
+    config: &KimiProcessConfig<'_>,
     system_prompt: Option<&str>,
     prompt: &str,
     max_tokens: u32,
-    timeout: Duration,
     on_delta: &mut (dyn FnMut(&str) + Send),
 ) -> Result<KimiOutput> {
     ensure_max_tokens_supported(max_tokens)?;
     let prompt = compose_prompt(system_prompt, prompt)?;
     let mut child = spawn_kimi(
-        kimi_binary,
-        cwd,
-        &prompt,
+        config.kimi_binary,
+        config.cwd,
+        config.model,
         "spawning Kimi subprocess (streaming)",
     )?;
+    if let Err(e) = write_prompt(&mut child, &prompt).await {
+        kill_child(&mut child, "Kimi streaming subprocess").await;
+        return Err(e);
+    }
 
     let stdout = child.stdout.take().ok_or_else(|| {
         error::ApiRequestSnafu {
@@ -210,12 +235,30 @@ pub(crate) async fn run_streaming(
         .build()
     })?;
 
-    let result = tokio::time::timeout(timeout, read_stream_with_callback(stdout, on_delta)).await;
+    let result =
+        tokio::time::timeout(config.timeout, read_stream_with_callback(stdout, on_delta)).await;
 
     match result {
         Ok(Ok(output)) => {
-            if let Err(e) = child.wait().await {
-                warn!(error = %e, "failed to wait for Kimi streaming process");
+            let status = child.wait().await.map_err(|e| {
+                error::ApiRequestSnafu {
+                    message: format!("failed to wait for Kimi streaming process: {e}"),
+                }
+                .build()
+            })?;
+            if !status.success() {
+                let stderr_text = read_stderr(child.stderr.take()).await;
+                return Err(error::ApiRequestSnafu {
+                    message: format!(
+                        "Kimi process exited with {status}: {}",
+                        if stderr_text.is_empty() {
+                            "(no stderr)"
+                        } else {
+                            stderr_text.trim()
+                        }
+                    ),
+                }
+                .build());
             }
             Ok(output)
         }
@@ -225,12 +268,15 @@ pub(crate) async fn run_streaming(
         }
         Err(_elapsed) => {
             warn!(
-                timeout_secs = timeout.as_secs(),
+                timeout_secs = config.timeout.as_secs(),
                 "Kimi streaming subprocess timed out, killing"
             );
             kill_child(&mut child, "Kimi streaming subprocess").await;
             Err(error::ApiRequestSnafu {
-                message: format!("Kimi subprocess timed out after {}s", timeout.as_secs()),
+                message: format!(
+                    "Kimi subprocess timed out after {}s",
+                    config.timeout.as_secs()
+                ),
             }
             .build())
         }
@@ -240,9 +286,9 @@ pub(crate) async fn run_streaming(
 fn spawn_kimi(
     kimi_binary: &Path,
     cwd: &Path,
-    prompt: &str,
+    model: &str,
     log_message: &'static str,
-) -> Result<tokio::process::Child> {
+) -> Result<Child> {
     debug!(
         binary = %kimi_binary.display(),
         cwd = %cwd.display(),
@@ -250,7 +296,7 @@ fn spawn_kimi(
         log_message
     );
 
-    build_kimi_command(kimi_binary, cwd, prompt)
+    build_kimi_command(kimi_binary, cwd, model)
         .spawn()
         .map_err(|e| {
             error::ProviderInitSnafu {
@@ -258,6 +304,28 @@ fn spawn_kimi(
             }
             .build()
         })
+}
+
+async fn write_prompt(child: &mut Child, prompt: &str) -> Result<()> {
+    let mut stdin = child.stdin.take().ok_or_else(|| {
+        error::ApiRequestSnafu {
+            message: "Kimi subprocess stdin not captured".to_owned(),
+        }
+        .build()
+    })?;
+
+    stdin.write_all(prompt.as_bytes()).await.map_err(|e| {
+        error::ApiRequestSnafu {
+            message: format!("failed to write prompt to Kimi stdin: {e}"),
+        }
+        .build()
+    })?;
+    stdin.shutdown().await.map_err(|e| {
+        error::ApiRequestSnafu {
+            message: format!("failed to close Kimi stdin: {e}"),
+        }
+        .build()
+    })
 }
 
 async fn read_stderr(stderr: Option<tokio::process::ChildStderr>) -> String {
@@ -329,6 +397,14 @@ where
         }
 
         let trimmed = line.trim();
+        if trimmed.starts_with('{') {
+            if let Some(text) = parse_json_message_text(trimmed)? {
+                on_delta(&text);
+                stream_deltas.push(text);
+            }
+            continue;
+        }
+
         if trimmed.starts_with("TextPart(") {
             in_text_part = true;
         }
@@ -383,6 +459,44 @@ where
         message_id,
         stream_deltas,
     })
+}
+
+fn parse_json_message_text(line: &str) -> Result<Option<String>> {
+    let value: Value = serde_json::from_str(line).map_err(|e| {
+        error::ApiRequestSnafu {
+            message: format!("failed to parse Kimi stream-json output: {e}"),
+        }
+        .build()
+    })?;
+
+    if value.get("role").and_then(Value::as_str) != Some("assistant") {
+        return Ok(None);
+    }
+
+    let Some(content) = value.get("content") else {
+        return Ok(None);
+    };
+
+    if let Some(text) = content.as_str() {
+        return Ok((!text.is_empty()).then(|| text.to_owned()));
+    }
+
+    let Some(parts) = content.as_array() else {
+        return Ok(None);
+    };
+
+    let text = parts
+        .iter()
+        .filter_map(|part| {
+            if part.get("type").and_then(Value::as_str) == Some("text") {
+                part.get("text").and_then(Value::as_str)
+            } else {
+                None
+            }
+        })
+        .collect::<String>();
+
+    Ok((!text.is_empty()).then_some(text))
 }
 
 #[cfg(test)]

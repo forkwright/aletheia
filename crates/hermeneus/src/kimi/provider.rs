@@ -138,6 +138,10 @@ impl KimiProvider {
         }
     }
 
+    fn cli_model_name(model: &str) -> &str {
+        model.strip_prefix(KIMI_MODEL_PREFIX).unwrap_or(model)
+    }
+
     /// Format message history into a single prompt string for Kimi.
     fn format_prompt(request: &CompletionRequest) -> String {
         if request.messages.len() == 1
@@ -167,16 +171,15 @@ impl KimiProvider {
         let model = self.resolve_model(&request.model);
         let prompt = Self::format_prompt(request);
         let system = request.system.as_deref();
+        let process_config = process::KimiProcessConfig {
+            kimi_binary: &self.kimi_binary,
+            cwd: &self.working_directory,
+            model: Self::cli_model_name(model),
+            timeout: self.timeout,
+        };
 
-        let output = process::run_completion(
-            &self.kimi_binary,
-            &self.working_directory,
-            system,
-            &prompt,
-            request.max_tokens,
-            self.timeout,
-        )
-        .await?;
+        let output =
+            process::run_completion(&process_config, system, &prompt, request.max_tokens).await?;
 
         parse::result_to_response(
             &output.result_text,
@@ -194,6 +197,12 @@ impl KimiProvider {
         let model = self.resolve_model(&request.model);
         let prompt = Self::format_prompt(request);
         let system = request.system.as_deref();
+        let process_config = process::KimiProcessConfig {
+            kimi_binary: &self.kimi_binary,
+            cwd: &self.working_directory,
+            model: Self::cli_model_name(model),
+            timeout: self.timeout,
+        };
 
         let mut on_delta = |text: &str| {
             on_event(StreamEvent::TextDelta {
@@ -202,12 +211,10 @@ impl KimiProvider {
         };
 
         let output = process::run_streaming(
-            &self.kimi_binary,
-            &self.working_directory,
+            &process_config,
             system,
             &prompt,
             request.max_tokens,
-            self.timeout,
             &mut on_delta,
         )
         .await?;

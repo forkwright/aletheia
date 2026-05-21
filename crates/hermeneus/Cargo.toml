@@ -29,6 +29,8 @@ tracing = { workspace = true }
 [features]
 # Claude Code subprocess provider (delegates to `claude` CLI).
 cc-provider = []
+# Codex subprocess provider (delegates to `codex` CLI).
+codex-provider = []
 # Kimi subprocess provider (delegates to `kimi` CLI).
 kimi-provider = []
 # Shared mock LLM provider for tests across the workspace.

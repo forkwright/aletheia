@@ -114,6 +114,22 @@ pub(super) fn build_provider_registry(config: &AletheiaConfig, oikos: &Oikos) ->
 
     let credential_chain: Arc<dyn CredentialProvider> = Arc::new(CredentialChain::new(chain));
 
+    #[cfg(feature = "kimi-provider")]
+    {
+        use hermeneus::kimi::{KimiProvider, KimiProviderConfig};
+        let kimi_config = KimiProviderConfig::default();
+        match KimiProvider::new(&kimi_config) {
+            Ok(provider) => {
+                registry.register(Box::new(provider));
+                // SAFETY: logging provider registration status, not credential value
+                info!("Kimi subprocess provider registered"); // kanon:ignore SECURITY/credential-logging -- logs provider registration, no secret
+            }
+            Err(e) => {
+                tracing::debug!(error = %e, "Kimi provider unavailable");
+            }
+        }
+    }
+
     let resolved_source = credential_chain.get_credential().map(|c| c.source);
     if let Some(ref source) = resolved_source {
         // SAFETY: logging credential source name (e.g. "oauth", "api-key"), not credential value
@@ -167,18 +183,17 @@ pub(super) fn build_provider_registry(config: &AletheiaConfig, oikos: &Oikos) ->
         }
     }
 
-    #[cfg(feature = "kimi-provider")]
+    #[cfg(feature = "codex-provider")]
     {
-        use hermeneus::kimi::{KimiProvider, KimiProviderConfig};
-        let kimi_config = KimiProviderConfig::default();
-        match KimiProvider::new(&kimi_config) {
+        use hermeneus::codex::{CodexProvider, CodexProviderConfig};
+        let codex_config = CodexProviderConfig::default();
+        match CodexProvider::new(&codex_config) {
             Ok(provider) => {
                 registry.register(Box::new(provider));
-                // SAFETY: logging provider registration status, not credential value
-                info!("Kimi subprocess provider registered"); // kanon:ignore SECURITY/credential-logging -- logs provider registration, no secret
+                info!("Codex subprocess provider registered");
             }
             Err(e) => {
-                tracing::debug!(error = %e, "Kimi provider unavailable");
+                tracing::debug!(error = %e, "Codex provider unavailable");
             }
         }
     }
