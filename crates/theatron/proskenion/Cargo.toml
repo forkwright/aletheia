@@ -2,6 +2,17 @@
 # workspace and failing with "not in workspace" when building standalone.
 [workspace]
 
+# WHY: theatron deps declared here (single source of truth within this
+# standalone workspace) so the 4 consumers below inherit via
+# `<dep> = { workspace = true }`. forkwright/aletheia#3870. Pin must be kept
+# in sync with the aletheia root workspace's [workspace.dependencies] block;
+# cargo cannot inherit across the workspace boundary.
+[workspace.dependencies]
+themelion = { git = "https://github.com/forkwright/theatron.git", tag = "v1.2.0" }
+skeue = { git = "https://github.com/forkwright/theatron.git", tag = "v1.2.0" }
+gramma = { git = "https://github.com/forkwright/theatron.git", tag = "v1.2.0" }
+bathron = { git = "https://github.com/forkwright/theatron.git", tag = "v1.2.0", features = ["logging"] }
+
 [package]
 name = "proskenion"
 # WHY: explicit values instead of workspace inheritance because this crate
@@ -22,10 +33,10 @@ koina = { path = "../../koina" }
 # WHY: chalkeion plan Phase 1+2 — proskenion consumes theatron incrementally.
 # AGPL-3.0+ proskenion can consume Apache-2.0 OR MIT theatron via the
 # Apache-2.0 path — license-compatible.
-themelion = { git = "https://github.com/forkwright/theatron.git", tag = "v1.2.0" }
-skeue = { git = "https://github.com/forkwright/theatron.git", tag = "v1.2.0" }
-gramma = { git = "https://github.com/forkwright/theatron.git", tag = "v1.2.0" }
-bathron = { git = "https://github.com/forkwright/theatron.git", tag = "v1.2.0", features = ["logging"] }
+themelion = { workspace = true }
+skeue = { workspace = true }
+gramma = { workspace = true }
+bathron = { workspace = true }
 
 # UI framework
 # WHY: Pinned to the same exact patch theatron's workspace pins (=0.7.6).

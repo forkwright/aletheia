@@ -117,6 +117,18 @@ disallowed_types = "deny"
 aletheia-lexica = { path = "crates/aletheia-lexica" }
 rayon = { version = "1", default-features = false }
 
+# theatron substrate (cross-repo git deps)
+# WHY: forkwright/aletheia#3870 — single source of truth for the v1.2.0 pin.
+# Member crates inherit via `<dep> = { workspace = true }`.
+# proskenion is excluded from the workspace (GTK/webkit2gtk) and uses its own
+# standalone [workspace.dependencies] block; pin is mirrored there manually.
+parodos = { git = "https://github.com/forkwright/theatron.git", tag = "v1.2.0" }
+themelion = { git = "https://github.com/forkwright/theatron.git", tag = "v1.2.0" }
+skeue = { git = "https://github.com/forkwright/theatron.git", tag = "v1.2.0" }
+gramma = { git = "https://github.com/forkwright/theatron.git", tag = "v1.2.0" }
+bathron = { git = "https://github.com/forkwright/theatron.git", tag = "v1.2.0", features = ["logging"] }
+keryx = { git = "https://github.com/forkwright/theatron.git", tag = "v1.2.0" }
+
 # Error handling
 snafu = "0.8"
 
