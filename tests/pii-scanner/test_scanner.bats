@@ -38,7 +38,7 @@ write_positive_fixture() {
         echo "Employee SSN 987-65-4321 rotated."
         echo "Test card: 4242 4242 4242 4242"
         echo "Amex: 3782 822463 10005"
-        echo "aws = \"AKIAIOSFODNN7EXAMPLE\""
+        echo "aws = \"AKIAIOSFODNN7EXAMPLE\"" # pii-allow: AWS canonical example access key id, scanner positive fixture
         echo "sts = \"ASIAIOSFODNN7EXAMPLE\""
         echo "anthropic=${s}-${a}-api03-${long}"
         echo "openai=${s}-${long}0123456789"
@@ -48,7 +48,7 @@ write_positive_fixture() {
         echo "maps=AIza${fake}${fake}${fake}ZZZ"
         echo "stripe=${s}_${t}_${long}"
         echo "jwt=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NSJ9.${long}"
-        echo "-----BEGIN RSA PRIVATE KEY-----"
+        echo "-----BEGIN RSA PRIVATE KEY-----" # pii-allow: PEM header marker, scanner positive fixture
         echo "db=postgres://appuser:hunter2secret@db.internal:5432/prod"
         printf '%s\n' "${p}" > /dev/null  # suppress unused-var in shellcheck
     } > "${out}"

@@ -563,11 +563,44 @@ mod tests {
     }
 
     #[test]
-    fn registry_record_unknown_is_noop() {
+    fn registry_record_unknown_provider_does_not_mutate_known_or_insert_unknown() {
         let mut registry = ProviderRegistry::new();
         registry.register(Box::new(MockProvider::new("mock response")));
+        let known_health_before = registry.provider_health("mock");
+        let known_provider_count_before = registry
+            .providers
+            .iter()
+            .filter(|entry| entry.provider.name() == "mock")
+            .count();
+        let total_provider_count_before = registry.providers.len();
+
         registry.record_success("nonexistent");
         let err: crate::error::Error = crate::error::ApiRequestSnafu { message: "timeout" }.build();
         registry.record_error("nonexistent", &err);
+
+        assert_eq!(
+            registry.provider_health("mock"),
+            known_health_before,
+            "unknown-provider records must not affect known-provider health"
+        );
+        assert_eq!(
+            registry
+                .providers
+                .iter()
+                .filter(|entry| entry.provider.name() == "mock")
+                .count(),
+            known_provider_count_before,
+            "unknown-provider records must not duplicate the known provider"
+        );
+        assert_eq!(
+            registry.providers.len(),
+            total_provider_count_before,
+            "unknown-provider records must not create provider entries"
+        );
+        assert_eq!(
+            registry.provider_health("nonexistent"),
+            None,
+            "unknown provider must remain absent from health lookup"
+        );
     }
 }

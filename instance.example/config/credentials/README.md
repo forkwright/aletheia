@@ -16,7 +16,7 @@ For OAuth credentials (auto-refreshes):
 For static API keys:
 ```json
 {
-  "token": "sk-ant-api03-your-key-here"
+  "token": "sk-ant-api03-your-key-here" <!-- pii-allow: credential file shape placeholder -->
 }
 ```
 
