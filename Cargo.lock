@@ -54,7 +54,7 @@ dependencies = [
 
 [[package]]
 name = "agora"
-version = "0.22.1"
+version = "0.23.0"
 dependencies = [
  "indexmap 2.14.0",
  "koina",
@@ -109,7 +109,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia"
-version = "0.22.1"
+version = "0.23.0"
 dependencies = [
  "agora",
  "anyhow",
@@ -177,11 +177,11 @@ dependencies = [
 
 [[package]]
 name = "aletheia-lexica"
-version = "0.22.1"
+version = "0.23.0"
 
 [[package]]
 name = "aletheia-memory-mcp"
-version = "0.22.1"
+version = "0.23.0"
 dependencies = [
  "jiff",
  "koina",
@@ -201,7 +201,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-routing"
-version = "0.22.1"
+version = "0.23.0"
 dependencies = [
  "futures",
  "jiff",
@@ -215,7 +215,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-sessions-migrate"
-version = "0.22.1"
+version = "0.23.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -2014,16 +2014,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5729f5117e208430e437df2f4843f5e5952997175992d1414f94c57d61e270b4"
 
 [[package]]
-name = "der"
-version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "71fd89660b2dc699704064e59e9dba0147b903e85319429e131620d022be411b"
-dependencies = [
- "pem-rfc7468",
- "zeroize",
-]
-
-[[package]]
 name = "deranged"
 version = "0.5.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2109,7 +2099,7 @@ dependencies = [
 
 [[package]]
 name = "dianoia"
-version = "0.22.1"
+version = "0.23.0"
 dependencies = [
  "jiff",
  "koina",
@@ -2122,7 +2112,7 @@ dependencies = [
 
 [[package]]
 name = "diaporeia"
-version = "0.22.1"
+version = "0.23.0"
 dependencies = [
  "axum 0.8.9",
  "hermeneus",
@@ -2571,7 +2561,7 @@ dependencies = [
 
 [[package]]
 name = "dokimion"
-version = "0.22.1"
+version = "0.23.0"
 dependencies = [
  "eidos",
  "jiff",
@@ -2645,7 +2635,7 @@ dependencies = [
 
 [[package]]
 name = "eidos"
-version = "0.22.1"
+version = "0.23.0"
 dependencies = [
  "jiff",
  "koina",
@@ -2692,7 +2682,7 @@ dependencies = [
 
 [[package]]
 name = "energeia"
-version = "0.22.1"
+version = "0.23.0"
 dependencies = [
  "aletheia-routing",
  "chrono",
@@ -2809,7 +2799,7 @@ dependencies = [
 
 [[package]]
 name = "episteme"
-version = "0.22.1"
+version = "0.23.0"
 dependencies = [
  "async-trait",
  "candle-core",
@@ -3138,21 +3128,6 @@ dependencies = [
  "tinyvec",
  "ttf-parser",
 ]
-
-[[package]]
-name = "foreign-types"
-version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f6f339eb8adc052cd2ca78910fda869aefa38d22d5cb648e6485e4d3fc06f3b1"
-dependencies = [
- "foreign-types-shared",
-]
-
-[[package]]
-name = "foreign-types-shared"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "00b0228411908ca8685dba7fc2cdd70ec9990a6e753e89b6ac91a84c40fbaf4b"
 
 [[package]]
 name = "form_urlencoded"
@@ -3568,7 +3543,7 @@ dependencies = [
 
 [[package]]
 name = "gnosis"
-version = "0.22.1"
+version = "0.23.0"
 dependencies = [
  "cargo_metadata",
  "parking_lot",
@@ -3585,7 +3560,7 @@ dependencies = [
 
 [[package]]
 name = "graphe"
-version = "0.22.1"
+version = "0.23.0"
 dependencies = [
  "criterion",
  "eidos",
@@ -3804,7 +3779,7 @@ checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 
 [[package]]
 name = "hermeneus"
-version = "0.22.1"
+version = "0.23.0"
 dependencies = [
  "criterion",
  "jiff",
@@ -4444,7 +4419,7 @@ dependencies = [
 
 [[package]]
 name = "integration-tests"
-version = "0.22.1"
+version = "0.23.0"
 dependencies = [
  "axum 0.8.9",
  "dokimion",
@@ -4720,7 +4695,7 @@ dependencies = [
 
 [[package]]
 name = "koilon"
-version = "0.22.1"
+version = "0.23.0"
 dependencies = [
  "arboard",
  "clap",
@@ -4754,7 +4729,7 @@ dependencies = [
 
 [[package]]
 name = "koina"
-version = "0.22.1"
+version = "0.23.0"
 dependencies = [
  "criterion",
  "fjall",
@@ -4899,7 +4874,7 @@ dependencies = [
 
 [[package]]
 name = "krites"
-version = "0.22.1"
+version = "0.23.0"
 dependencies = [
  "aho-corasick",
  "arc-swap",
@@ -5379,7 +5354,7 @@ dependencies = [
 
 [[package]]
 name = "melete"
-version = "0.22.1"
+version = "0.23.0"
 dependencies = [
  "aletheia-lexica",
  "futures",
@@ -5483,7 +5458,7 @@ dependencies = [
 
 [[package]]
 name = "mneme"
-version = "0.22.1"
+version = "0.23.0"
 dependencies = [
  "eidos",
  "episteme",
@@ -5543,23 +5518,6 @@ name = "mutate_once"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "13d2233c9842d08cfe13f9eac96e207ca6a2ea10b80259ebe8ad0268be27d2af"
-
-[[package]]
-name = "native-tls"
-version = "0.2.18"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "465500e14ea162429d264d44189adc38b199b62b1c21eea9f69e4b73cb03bbf2"
-dependencies = [
- "libc",
- "log",
- "openssl",
- "openssl-probe",
- "openssl-sys",
- "schannel",
- "security-framework",
- "security-framework-sys",
- "tempfile",
-]
 
 [[package]]
 name = "ndarray"
@@ -5714,7 +5672,7 @@ dependencies = [
 
 [[package]]
 name = "nous"
-version = "0.22.1"
+version = "0.23.0"
 dependencies = [
  "aletheia-classify",
  "aletheia-lexica",
@@ -5935,7 +5893,7 @@ dependencies = [
 
 [[package]]
 name = "oikonomos"
-version = "0.22.1"
+version = "0.23.0"
 dependencies = [
  "aletheia-routing",
  "axum 0.8.9",
@@ -6018,47 +5976,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "openssl"
-version = "0.10.79"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bf0b434746ee2832f4f0baf10137e1cabb18cbe6912c69e2e33263c45250f542"
-dependencies = [
- "bitflags 2.11.0",
- "cfg-if",
- "foreign-types",
- "libc",
- "openssl-macros",
- "openssl-sys",
-]
-
-[[package]]
-name = "openssl-macros"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a948666b637a0f465e8564c73e89d4dde00d72d4d473cc972f390fc3dcee7d9c"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.117",
-]
-
-[[package]]
 name = "openssl-probe"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7c87def4c32ab89d880effc9e097653c8da5d6ef28e6b539d313baaacfbafcbe"
-
-[[package]]
-name = "openssl-sys"
-version = "0.9.115"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "158fe5b292746440aa6e7a7e690e55aeb72d41505e2804c23c6973ad0e9c9781"
-dependencies = [
- "cc",
- "libc",
- "pkg-config",
- "vcpkg",
-]
 
 [[package]]
 name = "option-ext"
@@ -6086,7 +6007,7 @@ dependencies = [
 
 [[package]]
 name = "organon"
-version = "0.22.1"
+version = "0.23.0"
 dependencies = [
  "base64 0.22.1",
  "eidos",
@@ -6313,15 +6234,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pem-rfc7468"
-version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a6305423e0e7738146434843d1694d621cce767262b2a86910beab705e4493d9"
-dependencies = [
- "base64ct",
-]
-
-[[package]]
 name = "percent-encoding"
 version = "2.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6544,7 +6456,7 @@ dependencies = [
 
 [[package]]
 name = "poiesis-core"
-version = "0.22.1"
+version = "0.23.0"
 dependencies = [
  "jiff",
  "snafu",
@@ -6552,7 +6464,7 @@ dependencies = [
 
 [[package]]
 name = "poiesis-diff"
-version = "0.22.1"
+version = "0.23.0"
 dependencies = [
  "indexmap 2.14.0",
  "poiesis-sheet",
@@ -6564,7 +6476,7 @@ dependencies = [
 
 [[package]]
 name = "poiesis-doc"
-version = "0.22.1"
+version = "0.23.0"
 dependencies = [
  "docx-rs",
  "quick-xml 0.39.2",
@@ -6577,7 +6489,7 @@ dependencies = [
 
 [[package]]
 name = "poiesis-inspect"
-version = "0.22.1"
+version = "0.23.0"
 dependencies = [
  "indexmap 2.14.0",
  "lopdf",
@@ -6593,7 +6505,7 @@ dependencies = [
 
 [[package]]
 name = "poiesis-intake"
-version = "0.22.1"
+version = "0.23.0"
 dependencies = [
  "aletheia-lexica",
  "poiesis-scaffold",
@@ -6605,7 +6517,7 @@ dependencies = [
 
 [[package]]
 name = "poiesis-lint"
-version = "0.22.1"
+version = "0.23.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -6614,7 +6526,7 @@ dependencies = [
 
 [[package]]
 name = "poiesis-scaffold"
-version = "0.22.1"
+version = "0.23.0"
 dependencies = [
  "poiesis-core",
  "poiesis-sheet",
@@ -6626,7 +6538,7 @@ dependencies = [
 
 [[package]]
 name = "poiesis-sheet"
-version = "0.22.1"
+version = "0.23.0"
 dependencies = [
  "calamine",
  "poiesis-core",
@@ -6639,7 +6551,7 @@ dependencies = [
 
 [[package]]
 name = "poiesis-slides"
-version = "0.22.1"
+version = "0.23.0"
 dependencies = [
  "poiesis-core",
  "quick-xml 0.39.2",
@@ -6652,7 +6564,7 @@ dependencies = [
 
 [[package]]
 name = "poiesis-text"
-version = "0.22.1"
+version = "0.23.0"
 dependencies = [
  "krilla 0.7.0",
  "poiesis-core",
@@ -6662,7 +6574,7 @@ dependencies = [
 
 [[package]]
 name = "poiesis-typst"
-version = "0.22.1"
+version = "0.23.0"
 dependencies = [
  "comemo",
  "jiff",
@@ -6678,7 +6590,7 @@ dependencies = [
 
 [[package]]
 name = "poiesis-verify"
-version = "0.22.1"
+version = "0.23.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -7065,7 +6977,7 @@ checksum = "b5a041e753da8b807c9255f28de81879c78c876392ff2469cde94799b2896b9d"
 
 [[package]]
 name = "pylon"
-version = "0.22.1"
+version = "0.23.0"
 dependencies = [
  "axum 0.8.9",
  "axum-server",
@@ -8482,7 +8394,7 @@ checksum = "b2aa850e253778c88a04c3d7323b043aeda9d3e30d5971937c1855769763678e"
 
 [[package]]
 name = "skene"
-version = "0.22.1"
+version = "0.23.0"
 dependencies = [
  "bytes",
  "futures-core",
@@ -8829,7 +8741,7 @@ dependencies = [
 
 [[package]]
 name = "symbolon"
-version = "0.22.1"
+version = "0.23.0"
 dependencies = [
  "aes-gcm",
  "argon2",
@@ -8948,7 +8860,7 @@ checksum = "55937e1799185b12863d447f42597ed69d9928686b8d88a1df17376a097d8369"
 
 [[package]]
 name = "taxis"
-version = "0.22.1"
+version = "0.23.0"
 dependencies = [
  "chacha20poly1305",
  "eidos",
@@ -9060,14 +8972,14 @@ dependencies = [
 
 [[package]]
 name = "theatron"
-version = "0.22.1"
+version = "0.23.0"
 dependencies = [
  "skene",
 ]
 
 [[package]]
 name = "thesauros"
-version = "0.22.1"
+version = "0.23.0"
 dependencies = [
  "futures",
  "indexmap 2.14.0",
@@ -10265,10 +10177,8 @@ checksum = "dea7109cdcd5864d4eeb1b58a1648dc9bf520360d7af16ec26d0a9354bafcfc0"
 dependencies = [
  "base64 0.22.1",
  "cookie_store",
- "der",
  "flate2",
  "log",
- "native-tls",
  "percent-encoding",
  "rustls",
  "rustls-pki-types",
@@ -10277,7 +10187,6 @@ dependencies = [
  "socks",
  "ureq-proto",
  "utf8-zero",
- "webpki-root-certs",
  "webpki-roots",
 ]
 
