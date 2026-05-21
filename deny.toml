@@ -165,3 +165,7 @@ skip = [
 [sources]
 unknown-registry = "deny"
 unknown-git = "deny"
+# WHY: skene/koilon/theatron pull keryx + parodos from GitHub (forkwright/theatron
+# tagged releases). These are first-party crates in the fleet mono-repo constellation;
+# git sources are expected until crates.io publication is decided.
+allow-org.github = ["forkwright"]

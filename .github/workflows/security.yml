@@ -59,6 +59,8 @@ jobs:
           # `arguments:` passes post-subcommand flags only.
           command: check advisories licenses bans sources
           arguments: --all-features
+          credentials: https://forkwright:${{ secrets.FLEET_REPO_TOKEN }}@github.com
+          use-git-cli: true
 
   cargo-audit:
     # WHY: cargo-deny's advisories check overlaps but uses a different code
