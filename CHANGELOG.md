@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.23.1](https://github.com/forkwright/aletheia/compare/v0.23.0...v0.23.1) (2026-05-21)
+
+
+### Bug Fixes
+
+* **deny:** allow forkwright github org for theatron git sources ([#3892](https://github.com/forkwright/aletheia/issues/3892)) ([f86c03e](https://github.com/forkwright/aletheia/commit/f86c03ebe0fea0c5847e17e191a5e439ffef7da9))
+
 ## [0.23.0](https://github.com/forkwright/aletheia/compare/v0.22.1...v0.23.0) (2026-05-21)
 
 
