@@ -340,7 +340,7 @@ mod tests {
 
     #[test]
     fn triage_detects_confidential_sensitivity() {
-        let result = TriageStage::classify("my ssn is 123-45-6789");
+        let result = TriageStage::classify("my ssn is 123-45-6789"); // pii-allow: test fixture for SSN detection — synthetic value
         assert_eq!(result.sensitivity, FactSensitivity::Confidential);
     }
 
