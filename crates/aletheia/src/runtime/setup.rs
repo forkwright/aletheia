@@ -167,6 +167,21 @@ pub(super) fn build_provider_registry(config: &AletheiaConfig, oikos: &Oikos) ->
         }
     }
 
+    #[cfg(feature = "codex-provider")]
+    {
+        use hermeneus::codex::{CodexProvider, CodexProviderConfig};
+        let codex_config = CodexProviderConfig::default();
+        match CodexProvider::new(&codex_config) {
+            Ok(provider) => {
+                registry.register(Box::new(provider));
+                info!("Codex subprocess provider registered");
+            }
+            Err(e) => {
+                tracing::debug!(error = %e, "Codex provider unavailable");
+            }
+        }
+    }
+
     let behavior = ProviderBehavior {
         non_streaming_timeout: std::time::Duration::from_secs(
             config.provider_behavior.non_streaming_timeout_secs,
