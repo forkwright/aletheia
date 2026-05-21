@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.22.1](https://github.com/forkwright/aletheia/compare/v0.22.0...v0.22.1) (2026-05-21)
+
+
+### Bug Fixes
+
+* **theatron:** switch koilon + proskenion deps to GitHub URL ([#3867](https://github.com/forkwright/aletheia/issues/3867)) ([eecb684](https://github.com/forkwright/aletheia/commit/eecb68443c669735aabb1acd93d0561276fd665f))
+* **theatron:** switch skene keryx dep to GitHub URL (companion to [#3867](https://github.com/forkwright/aletheia/issues/3867)) ([#3869](https://github.com/forkwright/aletheia/issues/3869)) ([2990457](https://github.com/forkwright/aletheia/commit/29904575e925237fcfac0a14750b07209ec95567))
+
 ## [0.22.0](https://github.com/forkwright/aletheia/compare/v0.21.1...v0.22.0) (2026-05-09)
 
 
