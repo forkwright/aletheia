@@ -167,6 +167,22 @@ pub(super) fn build_provider_registry(config: &AletheiaConfig, oikos: &Oikos) ->
         }
     }
 
+    #[cfg(feature = "kimi-provider")]
+    {
+        use hermeneus::kimi::{KimiProvider, KimiProviderConfig};
+        let kimi_config = KimiProviderConfig::default();
+        match KimiProvider::new(&kimi_config) {
+            Ok(provider) => {
+                registry.register(Box::new(provider));
+                // SAFETY: logging provider registration status, not credential value
+                info!("Kimi subprocess provider registered"); // kanon:ignore SECURITY/credential-logging -- logs provider registration, no secret
+            }
+            Err(e) => {
+                tracing::debug!(error = %e, "Kimi provider unavailable");
+            }
+        }
+    }
+
     let behavior = ProviderBehavior {
         non_streaming_timeout: std::time::Duration::from_secs(
             config.provider_behavior.non_streaming_timeout_secs,

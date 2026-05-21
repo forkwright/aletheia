@@ -27,6 +27,12 @@ pub mod error;
 pub mod fallback;
 /// Provider health state machine (Up / Degraded / Down) with automatic recovery.
 pub mod health;
+/// Kimi subprocess provider: delegates LLM calls to the `kimi` CLI.
+///
+/// Uses the CLI's local OAuth credential store. Gated behind the
+/// `kimi-provider` feature flag.
+#[cfg(feature = "kimi-provider")]
+pub mod kimi;
 /// Doom-loop detection for multi-tool MCP dispatch (Phase 7).
 pub mod loop_detector;
 /// Prometheus metrics for LLM request counts, latency, and token usage.

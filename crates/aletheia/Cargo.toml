@@ -40,6 +40,8 @@ keyring = ["symbolon/keyring"]
 tui = ["dep:koilon"]
 # Claude Code subprocess provider: delegates LLM calls to the `claude` CLI.
 cc-provider = ["hermeneus/cc-provider"]
+# Kimi subprocess provider: delegates LLM calls to the `kimi` CLI.
+kimi-provider = ["hermeneus/kimi-provider"]
 # Dispatch orchestration (kanon phronesis port). Default off for incremental development.
 energeia = ["dep:energeia", "oikonomos/dispatch-cron"]
 # Test tiers (see docs/test-tiers.md)
