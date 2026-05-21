@@ -445,6 +445,28 @@ mod tests {
         );
     }
 
+    #[test]
+    #[expect(clippy::indexing_slicing, reason = "test assertion: len checked above")]
+    fn symbol_rdeps_target_crate_filter_excludes_type_use_edges() {
+        let conn = open_db();
+        let type_use_id = insert_symbol(&conn, "nous", "", "fn_type_use", "fn", "a.rs", 1);
+        insert_ref(
+            &conn,
+            type_use_id,
+            "hermeneus",
+            "types",
+            "Message",
+            "type_use",
+        );
+        let impl_id = insert_symbol(&conn, "melete", "", "Response", "impl", "b.rs", 2);
+        insert_ref(&conn, impl_id, "hermeneus", "types", "Message", "impl");
+
+        let rows = symbol_rdeps(&conn, "Message", Some("hermeneus")).expect("query filtered");
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].symbol_name.as_deref(), Some("Response"));
+        assert_eq!(rows[0].ref_kind.as_deref(), Some("impl"));
+    }
+
     // ── impl_search ──────────────────────────────────────────────────────────
 
     #[test]
