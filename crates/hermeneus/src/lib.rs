@@ -17,6 +17,12 @@ pub mod anthropic;
 pub mod cc;
 /// Circuit breaker (Closed / Open / HalfOpen) with exponential backoff for LLM provider health.
 pub mod circuit_breaker;
+/// Codex subprocess provider: delegates LLM calls to the `codex` CLI.
+///
+/// Uses Codex CLI OAuth credentials and is gated behind the `codex-provider`
+/// feature flag.
+#[cfg(feature = "codex-provider")]
+pub mod codex;
 /// Complexity-based model routing: scores queries and routes to Haiku/Sonnet/Opus.
 pub mod complexity;
 /// Adaptive concurrency limiter (AIMD) for LLM calls based on response latency.
