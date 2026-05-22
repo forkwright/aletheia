@@ -11,8 +11,8 @@
 //! [`FactStore`] uses flat JSON files under a configurable directory
 //! (default: `~/aletheia/instance/facts/`).  Each fact is serialised to
 //! `<dir>/<id>.json` where `<id>` is the dot-separated fact identifier
-//! with `/` replaced by `__` to produce a safe filename.  No external
-//! database is required — the directory is created on first write.
+//! with path separators replaced by `-` to produce a safe filename.  No
+//! external database is required — the directory is created on first write.
 //!
 //! # Design constraints
 //!
