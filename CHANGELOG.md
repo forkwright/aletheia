@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.25.2](https://github.com/forkwright/aletheia/compare/v0.25.1...v0.25.2) (2026-05-22)
+
+
+### Bug Fixes
+
+* **episteme:** remove async-trait from reranker ([#3905](https://github.com/forkwright/aletheia/issues/3905)) ([8efa958](https://github.com/forkwright/aletheia/commit/8efa9581e33010bfc8507d6e377869f695c6d2b5))
+* **skene:** configure discovery candidates ([#3903](https://github.com/forkwright/aletheia/issues/3903)) ([ed55277](https://github.com/forkwright/aletheia/commit/ed5527740958e857984aea0549ebc839d3b0a9d7))
+
+
+### Documentation
+
+* **proskenion:** gate desktop pin drift ([#3906](https://github.com/forkwright/aletheia/issues/3906)) ([2c94929](https://github.com/forkwright/aletheia/commit/2c949291df37ea1320ba7a2b7f7de30cdef80780))
+
 ## [0.25.1](https://github.com/forkwright/aletheia/compare/v0.25.0...v0.25.1) (2026-05-22)
 
 
