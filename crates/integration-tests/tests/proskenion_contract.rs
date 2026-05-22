@@ -31,7 +31,9 @@ fn parse_sse_data_events(body: &str) -> Vec<SseDataEvent> {
 
     for line in body.lines() {
         if line.is_empty() {
-            if !data_lines.is_empty() {
+            if data_lines.is_empty() {
+                event_name = None;
+            } else {
                 let raw_data = data_lines.join("\n");
                 let data = serde_json::from_str(&raw_data).unwrap_or_else(|err| {
                     panic!(
@@ -44,8 +46,6 @@ fn parse_sse_data_events(body: &str) -> Vec<SseDataEvent> {
                     data,
                 });
                 data_lines.clear();
-            } else {
-                event_name = None;
             }
             continue;
         }
@@ -343,6 +343,10 @@ async fn proskenion_contract_knowledge_browse_surfaces_match_desktop() {
     );
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "contract test keeps related metrics endpoint assertions together"
+)]
 #[tokio::test]
 async fn proskenion_contract_metrics_surfaces_match_desktop() {
     let harness = TestHarness::build().await;
@@ -499,6 +503,10 @@ async fn proskenion_contract_metrics_surfaces_match_desktop() {
     }
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "contract test keeps create/list/history assertions in one scenario"
+)]
 #[tokio::test]
 async fn proskenion_contract_session_create_list_history_matches_desktop() {
     let harness = TestHarness::build().await;
@@ -632,6 +640,10 @@ async fn proskenion_contract_session_create_list_history_matches_desktop() {
     );
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "contract test keeps SSE protocol assertions in one scenario"
+)]
 #[tokio::test]
 async fn proskenion_contract_chat_stream_sse_matches_desktop() {
     let harness = TestHarness::build().await;

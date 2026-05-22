@@ -567,8 +567,8 @@ async fn provider_failure_returns_sse_error_event() {
         "SSE stream should contain error event, got: {body}"
     );
     assert!(
-        body.contains("provider_error"),
-        "error event should have provider_error code, got: {body}"
+        body.contains("provider_unavailable"),
+        "error event should have provider_unavailable code (ApiRequest errors map to provider_unavailable via nous UserFacingError), got: {body}"
     );
     assert!(
         body.contains("event: message_complete"),
