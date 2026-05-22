@@ -22,18 +22,20 @@ use crate::components::message::{MessageBubble, should_group};
 use crate::components::planning_card::PlanningCard;
 use crate::components::routing_indicator::{RoutingIndicator, update_routing_stage};
 use crate::components::session_tabs::SessionTabsView;
-use crate::components::tool_approval::ToolApproval;
 use crate::components::tool_panel::ToolPanel;
 use crate::services::file_watcher::{self, FileChangeTracker};
 use crate::state::agents::AgentStore;
 use crate::state::app::TabBar;
-use crate::state::chat::ChatMessage;
+use crate::state::chat::{ChatMessage, ChatSelection};
 use crate::state::commands::CommandStore;
 use crate::state::connection::ConnectionConfig;
 use crate::state::input::InputState;
 use crate::state::pipeline::{PipelineStage, RoutingState};
+use crate::state::platform::WindowState;
 use crate::state::toasts::{ToastSeverity, ToastStore};
 use crate::state::view_preservation::{PreservedViewState, ViewKey, ViewPreservationStore};
+use crate::views::chat_helpers::{format_tool_call, render_approval};
+use crate::views::chat_selection::activate_chat_selection;
 
 /// Estimated message height in pixels for virtual scroll calculations.
 const ESTIMATED_MSG_HEIGHT: f64 = 80.0;
@@ -53,9 +55,11 @@ pub(crate) fn Chat() -> Element {
     let mut palette_open = use_signal(|| false);
     let config: Signal<ConnectionConfig> = use_context();
     let cmd_store = use_context::<Signal<CommandStore>>();
-    let agent_store = use_context::<Signal<AgentStore>>();
+    let mut agent_store = use_context::<Signal<AgentStore>>();
     let mut tab_bar = use_context::<Signal<TabBar>>();
     let mut routing_signal = use_context::<Signal<Option<RoutingState>>>();
+    let mut pending_chat_selection = use_context::<Signal<Option<ChatSelection>>>();
+    let mut window_state = use_context::<Signal<WindowState>>();
 
     // WHY: Track last user message to enable retry on stream failure.
     let mut last_user_message = use_signal(String::new);
@@ -96,6 +100,22 @@ pub(crate) fn Chat() -> Element {
                 secondary_scroll: 0.0,
             },
         );
+    });
+
+    use_effect(move || {
+        let selection = pending_chat_selection.read().clone();
+        let Some(selection) = selection else {
+            return;
+        };
+
+        activate_chat_selection(
+            &selection,
+            &mut legacy_state.write(),
+            &mut agent_store.write(),
+            &mut tab_bar.write(),
+            &mut window_state.write(),
+        );
+        pending_chat_selection.set(None);
     });
 
     // Derive the active agent ID from the agent store.
@@ -177,8 +197,8 @@ pub(crate) fn Chat() -> Element {
         // WHY: Slash commands beginning with `/` are intercepted here so the
         // palette can handle them. Unrecognised commands get a toast warning
         // so the operator knows the input was not silently eaten.
-        if text.starts_with('/') {
-            let cmd_name = text[1..].split_whitespace().next().unwrap_or("");
+        if let Some(command_text) = text.strip_prefix('/') {
+            let cmd_name = command_text.split_whitespace().next().unwrap_or("");
             let known = cmd_store
                 .read()
                 .filtered
@@ -304,7 +324,9 @@ pub(crate) fn Chat() -> Element {
                     event = rx.recv() => event,
                     _ = tokio::time::sleep(Duration::from_millis(100)) => {
                         let mut state = legacy_state.write();
-                        let _ = manager.tick(&mut state);
+                        if manager.tick(&mut state) {
+                            tracing::trace!("flushed buffered chat stream state");
+                        }
                         continue;
                     }
                 };
@@ -358,7 +380,9 @@ pub(crate) fn Chat() -> Element {
                 }
 
                 let mut state = legacy_state.write();
-                let _ = manager.apply(event, &mut state);
+                if manager.apply(event, &mut state) {
+                    tracing::trace!("applied chat stream event");
+                }
             }
 
             // WHY: Clear stream start so the elapsed timer stops.
@@ -566,7 +590,7 @@ pub(crate) fn Chat() -> Element {
                                                 // WHY: Read elapsed_tick to subscribe to
                                                 // re-renders, then compute actual elapsed
                                                 // from the Instant for accuracy.
-                                                let _ = elapsed_tick();
+                                                std::hint::black_box(elapsed_tick());
                                                 let label = match stream_start_time.read().as_ref() {
                                                     Some(start) => {
                                                         let secs = start.elapsed().as_secs();
@@ -581,7 +605,7 @@ pub(crate) fn Chat() -> Element {
                                     // WHY: Escalating timeout messages give the operator
                                     // actionable feedback when streaming takes unexpectedly long.
                                     {
-                                        let _ = elapsed_tick();
+                                        std::hint::black_box(elapsed_tick());
                                         let elapsed_secs = stream_start_time
                                             .read()
                                             .as_ref()
@@ -744,66 +768,6 @@ pub(crate) fn Chat() -> Element {
                 on_abort: on_abort,
             }
         }
-    }
-}
-
-fn render_approval(
-    approval: crate::state::tools::ToolApprovalState,
-    _chat_signal: Signal<ChatState>,
-) -> Element {
-    let turn_id = approval.turn_id.to_string();
-    let tool_id = approval.tool_id.to_string();
-    let turn_id_deny = turn_id.clone();
-    let tool_id_deny = tool_id.clone();
-
-    // WHY: capture IDs by value for the async approval/deny calls.
-    let config: Signal<ConnectionConfig> = use_context();
-
-    rsx! {
-        ToolApproval {
-            approval: approval,
-            on_approve: move |_| {
-                let turn_id = turn_id.clone();
-                let tool_id = tool_id.clone();
-                let cfg = config.read().clone();
-                spawn(async move {
-                    let client = skene::api::client::ApiClient::new(
-                        &cfg.server_url,
-                        cfg.auth_token.clone(),
-                    );
-                    if let Ok(client) = client {
-                        let _ = client.approve_tool(&turn_id, &tool_id).await;
-                    }
-                });
-            },
-            on_deny: move |_| {
-                let turn_id = turn_id_deny.clone();
-                let tool_id = tool_id_deny.clone();
-                let cfg = config.read().clone();
-                spawn(async move {
-                    let client = skene::api::client::ApiClient::new(
-                        &cfg.server_url,
-                        cfg.auth_token.clone(),
-                    );
-                    if let Ok(client) = client {
-                        let _ = client.deny_tool(&turn_id, &tool_id).await;
-                    }
-                });
-            },
-        }
-    }
-}
-
-fn format_tool_call(tc: &crate::state::events::ToolCallInfo) -> String {
-    if tc.completed {
-        let marker = if tc.is_error { "[x]" } else { "[v]" };
-        match tc.duration_ms {
-            Some(ms) => format!("{marker} {} ({ms}ms)", tc.tool_name),
-            None => format!("{marker} {}", tc.tool_name),
-        }
-    } else {
-        let ellipsis = "[\u{2026}]";
-        format!("{ellipsis} {}", tc.tool_name)
     }
 }
 

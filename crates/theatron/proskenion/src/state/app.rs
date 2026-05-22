@@ -63,12 +63,14 @@ pub(crate) type TabId = u64;
 
 /// Metadata for a tab. The actual chat state lives in `AgentChatState`,
 /// owned by the tab's component, not here.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone)] // kanon:ignore RUST/no-debug-derive-on-public-types
 pub struct TabEntry {
     /// Unique tab identifier.
     pub id: TabId,
     /// Agent associated with this tab.
     pub agent_id: NousId,
+    /// Server session key associated with the tab, if known.
+    pub session_key: Option<String>, // kanon:ignore RUST/plain-string-secret
     /// Display title for the tab.
     pub title: String,
     /// Whether this tab has unread messages.
@@ -103,6 +105,26 @@ impl TabBar {
         self.tabs.push(TabEntry {
             id,
             agent_id,
+            session_key: None,
+            title: title.into(),
+            unread: false,
+        });
+        self.tabs.len() - 1
+    }
+
+    /// Create a tab bound to a known server session, returning its index.
+    pub(crate) fn create_for_session(
+        &mut self,
+        agent_id: NousId,
+        session_key: String, // kanon:ignore RUST/plain-string-secret
+        title: impl Into<String>,
+    ) -> usize {
+        let id = self.next_id;
+        self.next_id += 1;
+        self.tabs.push(TabEntry {
+            id,
+            agent_id,
+            session_key: Some(session_key),
             title: title.into(),
             unread: false,
         });
@@ -246,6 +268,21 @@ mod tests {
         let tab = bar.active_tab();
         assert!(tab.is_some());
         assert_eq!(tab.unwrap().title, "first");
+    }
+
+    #[test]
+    fn tab_bar_create_for_session_records_session_key() {
+        let mut bar = TabBar::new();
+        let idx = bar.create_for_session(
+            NousId::from("syn"),
+            "incident-review".to_string(),
+            "Incident Review",
+        );
+
+        let tab = &bar.tabs[idx];
+        assert_eq!(tab.agent_id, NousId::from("syn"));
+        assert_eq!(tab.session_key.as_deref(), Some("incident-review"));
+        assert_eq!(tab.title, "Incident Review");
     }
 
     #[test]

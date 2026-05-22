@@ -13,6 +13,7 @@ use crate::services::toast::provide_toast_context;
 use crate::services::{config, settings_config};
 use crate::state::agents::AgentStore;
 use crate::state::app::TabBar;
+use crate::state::chat::ChatSelection;
 use crate::state::commands::CommandStore;
 use crate::state::connection::ConnectionState;
 use crate::state::notifications::{DndState, NotificationHistory};
@@ -169,6 +170,7 @@ fn ConnectedApp() -> Element {
     // and not the connect view.
     use_context_provider(|| Signal::new(CommandStore::new()));
     use_context_provider(|| Signal::new(TabBar::new()));
+    use_context_provider(|| Signal::new(None::<ChatSelection>));
 
     // WHY: Start SSE coroutine here (not in App) so it only runs when connected
     // and has access to the finalized connection config.

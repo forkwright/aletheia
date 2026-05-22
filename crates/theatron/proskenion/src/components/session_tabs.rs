@@ -4,8 +4,11 @@
 //! actually interacted with (those with open tabs), not all agents.
 
 use dioxus::prelude::*;
+use skene::id::NousId;
 
+use crate::state::agents::AgentStore;
 use crate::state::app::TabBar;
+use crate::state::chat::ChatSelection;
 
 const TABS_BAR_STYLE: &str = "\
     display: flex; \
@@ -80,13 +83,24 @@ const UNREAD_BADGE_STYLE: &str = "\
 #[component]
 pub(crate) fn SessionTabsView() -> Element {
     let tab_bar = use_context::<Signal<TabBar>>();
+    let agent_store = use_context::<Signal<AgentStore>>();
+    let chat_selection = use_context::<Signal<Option<ChatSelection>>>();
 
-    let tabs: Vec<(u64, String, bool, bool)> = {
+    let tabs: Vec<(u64, NousId, Option<String>, String, bool, bool)> = {
         let bar = tab_bar.read();
         bar.tabs
             .iter()
             .enumerate()
-            .map(|(i, t)| (t.id, t.title.clone(), i == bar.active, t.unread))
+            .map(|(i, t)| {
+                (
+                    t.id,
+                    t.agent_id.clone(),
+                    t.session_key.clone(),
+                    t.title.clone(),
+                    i == bar.active,
+                    t.unread,
+                )
+            })
             .collect()
     };
 
@@ -97,10 +111,15 @@ pub(crate) fn SessionTabsView() -> Element {
     rsx! {
         div {
             style: "{TABS_BAR_STYLE}",
-            for (tab_id , title , is_active , has_unread) in tabs {
+            for (tab_id , agent_id , session_key , title , is_active , has_unread) in tabs {
                 {
                     let mut tab_bar_for_click = tab_bar;
                     let mut tab_bar_for_close = tab_bar;
+                    let mut agent_store_for_click = agent_store;
+                    let mut chat_selection_for_click = chat_selection;
+                    let agent_id_for_click = agent_id.clone();
+                    let session_key_for_click = session_key.clone();
+                    let title_for_click = title.clone();
                     let style = if is_active { TAB_ACTIVE_STYLE } else { TAB_STYLE };
 
                     rsx! {
@@ -111,6 +130,14 @@ pub(crate) fn SessionTabsView() -> Element {
                                 let mut bar = tab_bar_for_click.write();
                                 if let Some(idx) = bar.tabs.iter().position(|t| t.id == tab_id) {
                                     bar.active = idx;
+                                }
+                                agent_store_for_click.write().set_active(&agent_id_for_click);
+                                if let Some(session_key) = session_key_for_click.clone() {
+                                    chat_selection_for_click.set(Some(ChatSelection::new(
+                                        agent_id_for_click.clone(),
+                                        session_key,
+                                        title_for_click.clone(),
+                                    )));
                                 }
                             },
                             if has_unread {
