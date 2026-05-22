@@ -19,6 +19,8 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      - name: Check proskenion theatron pins
+        run: scripts/check-proskenion-pins.py
       - name: Configure git credentials for private fleet deps
         env:
           FLEET_REPO_TOKEN: ${{ secrets.FLEET_REPO_TOKEN }}
