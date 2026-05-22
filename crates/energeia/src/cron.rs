@@ -1,6 +1,6 @@
 //! Cron scheduler for recurring dispatch tasks.
 //!
-//! Uses the standard `cron` crate with chrono datetimes, plus fjall-backed
+//! Uses the `jiff-cron` crate with jiff datetimes, plus fjall-backed
 //! distributed locking to prevent duplicate fires across restarts.
 //!
 //! # Observability
@@ -18,9 +18,9 @@ use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
 
-use chrono::{DateTime, Utc};
 use compact_str::CompactString;
 use fjall::Readable;
+use jiff::{SignedDuration, Timestamp, Zoned, tz::TimeZone};
 use rand::RngExt;
 use snafu::IntoError;
 use tokio_util::sync::CancellationToken;
@@ -39,7 +39,7 @@ pub struct CronTask {
     /// Unique task identifier.
     pub name: CompactString,
     /// Cron schedule.
-    pub cron: cron::Schedule,
+    pub cron: jiff_cron::Schedule,
     /// Maximum jitter to apply (+/- this duration).
     pub jitter: Duration,
     /// What to dispatch when this task fires.
@@ -113,7 +113,7 @@ impl CronLockStore {
     /// # Errors
     ///
     /// Returns [`Error::Store`] on fjall I/O failure.
-    pub fn try_acquire(&self, task_name: &str, scheduled_time: DateTime<Utc>) -> Result<bool> {
+    pub fn try_acquire(&self, task_name: &str, scheduled_time: Timestamp) -> Result<bool> {
         let _guard = self.lock.lock();
         let existing = self.get_last_fired(task_name)?;
         if let Some(ts) = existing
@@ -125,7 +125,7 @@ impl CronLockStore {
             .db
             .keyspace(LOCK_PARTITION, fjall::KeyspaceCreateOptions::default)
             .map_err(|e| store_err("open cron_locks partition", e))?;
-        let value = scheduled_time.to_rfc3339();
+        let value = scheduled_time.to_string();
         let mut tx = self.db.write_tx();
         tx.insert(&partition, task_name.as_bytes(), value.as_bytes());
         tx.commit().map_err(|e| store_err("commit cron lock", e))?;
@@ -137,11 +137,11 @@ impl CronLockStore {
     /// # Errors
     ///
     /// Returns [`Error::Store`] on fjall I/O failure.
-    pub fn last_fired(&self, task_name: &str) -> Result<Option<DateTime<Utc>>> {
+    pub fn last_fired(&self, task_name: &str) -> Result<Option<Timestamp>> {
         self.get_last_fired(task_name)
     }
 
-    fn get_last_fired(&self, task_name: &str) -> Result<Option<DateTime<Utc>>> {
+    fn get_last_fired(&self, task_name: &str) -> Result<Option<Timestamp>> {
         let partition = self
             .db
             .keyspace(LOCK_PARTITION, fjall::KeyspaceCreateOptions::default)
@@ -159,14 +159,12 @@ impl CronLockStore {
                     }
                     .build()
                 })?;
-                let dt = DateTime::parse_from_rfc3339(s)
-                    .map_err(|e| {
-                        error::StoreSnafu {
-                            message: format!("invalid RFC 3339 in cron lock for {task_name}: {e}"),
-                        }
-                        .build()
-                    })?
-                    .with_timezone(&Utc);
+                let dt = s.parse::<Timestamp>().map_err(|e| {
+                    error::StoreSnafu {
+                        message: format!("invalid RFC 3339 in cron lock for {task_name}: {e}"),
+                    }
+                    .build()
+                })?;
                 Ok(Some(dt))
             }
             None => Ok(None),
@@ -195,8 +193,8 @@ impl CronScheduler {
     ///
     /// Returns `None` if the schedule has no future occurrences.
     #[must_use]
-    pub fn next_fire_after(&self, task: &CronTask, now: DateTime<Utc>) -> Option<DateTime<Utc>> {
-        task.cron.after(&now).next()
+    pub fn next_fire_after(&self, task: &CronTask, now: Zoned) -> Option<Zoned> {
+        task.cron.after(now).next()
     }
 
     /// Run the scheduler loop until `cancel` is triggered.
@@ -215,18 +213,19 @@ impl CronScheduler {
         Fut: Future<Output = ()> + Send + 'static,
     {
         loop {
-            let now = Utc::now();
-            let mut earliest: Option<(DateTime<Utc>, &CronTask, DateTime<Utc>)> = None;
+            let now = Timestamp::now().to_zoned(TimeZone::UTC);
+            let mut earliest: Option<(Zoned, &CronTask, Timestamp)> = None;
 
             for task in &self.tasks {
-                if let Some(base) = self.next_fire_after(task, now) {
+                if let Some(base) = self.next_fire_after(task, now.clone()) {
+                    let base_scheduled = base.timestamp();
                     let jittered = apply_jitter(base, task.jitter);
                     if let Some((ref best_time, _, _)) = earliest {
-                        if jittered < *best_time {
-                            earliest = Some((jittered, task, base));
+                        if jittered.timestamp() < best_time.timestamp() {
+                            earliest = Some((jittered, task, base_scheduled));
                         }
                     } else {
-                        earliest = Some((jittered, task, base));
+                        earliest = Some((jittered, task, base_scheduled));
                     }
                 }
             }
@@ -236,7 +235,9 @@ impl CronScheduler {
                 return Ok(());
             };
 
-            let sleep_duration = (jittered_next - now).to_std().unwrap_or(Duration::ZERO);
+            let sleep_duration =
+                Duration::try_from(jittered_next.timestamp().duration_since(now.timestamp()))
+                    .unwrap_or(Duration::ZERO);
 
             tracing::info!(
                 task = %task.name,
@@ -255,8 +256,8 @@ impl CronScheduler {
                 () = tokio::time::sleep(sleep_duration) => {}
             }
 
-            let fire_now = Utc::now();
-            if fire_now < jittered_next {
+            let fire_now = Timestamp::now();
+            if fire_now < jittered_next.timestamp() {
                 // Time may have shifted backward or sleep fired early; recompute.
                 continue;
             }
@@ -311,13 +312,14 @@ fn store_err(context: &str, e: impl std::fmt::Display) -> error::Error {
 /// Apply a random signed jitter to a base timestamp.
 ///
 /// The offset is uniformly distributed in `[-jitter, +jitter]`.
-fn apply_jitter(base: DateTime<Utc>, jitter: Duration) -> DateTime<Utc> {
+fn apply_jitter(base: Zoned, jitter: Duration) -> Zoned {
     if jitter.is_zero() {
         return base;
     }
     let max_secs = i64::try_from(jitter.as_secs()).unwrap_or(i64::MAX);
     let offset_secs = rand::rng().random_range(-max_secs..=max_secs);
-    base + chrono::Duration::seconds(offset_secs)
+    base.checked_add(SignedDuration::from_secs(offset_secs))
+        .unwrap_or(base)
 }
 
 // ---------------------------------------------------------------------------
@@ -330,12 +332,17 @@ fn apply_jitter(base: DateTime<Utc>, jitter: Duration) -> DateTime<Utc> {
 mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    use chrono::TimeZone;
-
     use super::*;
 
-    fn parse_schedule(expr: &str) -> cron::Schedule {
+    fn parse_schedule(expr: &str) -> jiff_cron::Schedule {
         expr.parse().expect("valid cron expression")
+    }
+
+    fn utc_datetime(year: i16, month: i8, day: i8, hour: i8, minute: i8, second: i8) -> Zoned {
+        jiff::civil::date(year, month, day)
+            .at(hour, minute, second, 0)
+            .to_zoned(TimeZone::UTC)
+            .unwrap()
     }
 
     fn dummy_lock_store() -> CronLockStore {
@@ -358,11 +365,11 @@ mod tests {
             jitter: Duration::ZERO,
             dispatch_spec: DispatchSpec::new("test".to_owned(), vec![]),
         };
-        let now = Utc::now();
-        let next =
-            CronScheduler::new(vec![], Arc::new(dummy_lock_store())).next_fire_after(&task, now);
+        let now = Timestamp::now().to_zoned(TimeZone::UTC);
+        let next = CronScheduler::new(vec![], Arc::new(dummy_lock_store()))
+            .next_fire_after(&task, now.clone());
         assert!(next.is_some(), "daily cron should have a next occurrence");
-        assert!(next.unwrap() > now);
+        assert!(next.unwrap().timestamp() > now.timestamp());
     }
 
     #[test]
@@ -374,24 +381,28 @@ mod tests {
             dispatch_spec: DispatchSpec::new("test".to_owned(), vec![]),
         };
         let scheduler = CronScheduler::new(vec![], Arc::new(dummy_lock_store()));
-        let now = Utc.with_ymd_and_hms(2026, 4, 17, 12, 30, 0).unwrap();
+        let now = utc_datetime(2026, 4, 17, 12, 30, 0);
         let next = scheduler.next_fire_after(&task, now);
         assert_eq!(
-            next,
-            Some(Utc.with_ymd_and_hms(2026, 4, 17, 13, 0, 0).unwrap())
+            next.map(|zoned| zoned.timestamp()),
+            Some(utc_datetime(2026, 4, 17, 13, 0, 0).timestamp())
         );
     }
 
     #[test]
     fn jitter_applies_signed_offset() {
-        let base = Utc.with_ymd_and_hms(2026, 4, 17, 12, 0, 0).unwrap();
+        let base = utc_datetime(2026, 4, 17, 12, 0, 0);
         let jitter = Duration::from_mins(5);
         let mut seen_different = false;
         for _ in 0..100 {
-            let result = apply_jitter(base, jitter);
-            let diff = (result - base).num_seconds().abs();
+            let result = apply_jitter(base.clone(), jitter);
+            let diff = result
+                .timestamp()
+                .duration_since(base.timestamp())
+                .as_secs()
+                .abs();
             assert!(diff <= 300, "jitter offset {diff} exceeds max 300");
-            if result != base {
+            if result.timestamp() != base.timestamp() {
                 seen_different = true;
             }
         }
@@ -499,14 +510,14 @@ mod tests {
     #[test]
     fn try_acquire_allows_first_fire() {
         let store = dummy_lock_store();
-        let now = Utc::now();
+        let now = Timestamp::now();
         assert!(store.try_acquire("task-a", now).unwrap());
     }
 
     #[test]
     fn try_acquire_denies_repeat_within_same_window() {
         let store = dummy_lock_store();
-        let now = Utc::now();
+        let now = Timestamp::now();
         assert!(store.try_acquire("task-b", now).unwrap());
         assert!(!store.try_acquire("task-b", now).unwrap());
     }
@@ -514,8 +525,8 @@ mod tests {
     #[test]
     fn try_acquire_allows_next_window() {
         let store = dummy_lock_store();
-        let t1 = Utc::now();
-        let t2 = t1 + chrono::Duration::hours(1);
+        let t1 = Timestamp::now();
+        let t2 = t1.checked_add(SignedDuration::from_hours(1)).unwrap();
         assert!(store.try_acquire("task-c", t1).unwrap());
         assert!(store.try_acquire("task-c", t2).unwrap());
     }
@@ -523,7 +534,7 @@ mod tests {
     #[test]
     fn last_fired_roundtrip() {
         let store = dummy_lock_store();
-        let now = Utc.with_ymd_and_hms(2026, 4, 17, 10, 0, 0).unwrap();
+        let now = utc_datetime(2026, 4, 17, 10, 0, 0).timestamp();
         assert!(store.last_fired("task-d").unwrap().is_none());
         store.try_acquire("task-d", now).unwrap();
         let read = store.last_fired("task-d").unwrap();
