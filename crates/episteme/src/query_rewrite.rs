@@ -55,7 +55,8 @@ impl Default for RewriteConfig {
 
 /// Result of a query rewrite operation.
 #[derive(Debug, Clone)]
-pub struct RewriteResult {
+#[rustfmt::skip]
+pub struct RewriteResult { // kanon:ignore TOPOLOGY/shallow-struct
     /// The original query string.
     pub original: String,
     /// Generated search variant queries (may include the original).
@@ -245,7 +246,8 @@ impl std::fmt::Display for SearchTier {
 
 /// Results from a tiered search operation.
 #[derive(Debug, Clone)]
-pub struct TieredSearchResult<T> {
+#[rustfmt::skip]
+pub struct TieredSearchResult<T> { // kanon:ignore TOPOLOGY/shallow-struct
     /// Which tier produced the final results.
     pub tier: SearchTier,
     /// The merged, deduplicated results.
@@ -263,10 +265,10 @@ pub struct TieredSearchResult<T> {
 /// (1/(k+1)), so the fused score is comparable regardless of how many
 /// variants produced the result.
 #[cfg_attr(
-    not(test),
+    not(any(test, feature = "mneme-engine")),
     expect(
         dead_code,
-        reason = "RRF merge is implemented and unit-tested ahead of enhanced search wiring"
+        reason = "staged RRF implementation for enhanced search wiring"
     )
 )]
 pub(crate) fn rrf_merge<T: HasId + HasRrfScore + Clone>(
