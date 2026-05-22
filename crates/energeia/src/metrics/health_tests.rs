@@ -17,9 +17,9 @@ fn health_status_display() {
 mod storage_tests {
     use super::*;
     use crate::store::records::{
-        DispatchId, DispatchRecord, DispatchStatus, SessionId, SessionRecord,
+        DispatchId, DispatchRecord, DispatchStatus, QaVerdictRecord, SessionId, SessionRecord,
     };
-    use crate::types::SessionStatus;
+    use crate::types::{QaVerdict, SessionStatus};
 
     fn make_dispatch(id: &str) -> DispatchRecord {
         DispatchRecord {
@@ -48,6 +48,15 @@ mod storage_tests {
             error: None,
             created_at: jiff::Timestamp::now(),
             updated_at: jiff::Timestamp::now(),
+        }
+    }
+
+    fn make_qa_verdict(dispatch_id: &str, verdict: QaVerdict) -> QaVerdictRecord {
+        QaVerdictRecord {
+            dispatch_id: DispatchId::new(dispatch_id),
+            project: "acme".to_owned(),
+            verdict,
+            recorded_at: jiff::Timestamp::now(),
         }
     }
 
@@ -121,6 +130,10 @@ mod storage_tests {
         assert_eq!(metric.status, HealthStatus::Ok);
         assert_eq!(metric.value, 0.0);
         assert_eq!(metric.sample_size, 1);
+        assert!(
+            metric.is_proxied,
+            "without stored QA verdicts corrective_rate uses session failures as a proxy"
+        );
     }
 
     #[test]
@@ -133,6 +146,25 @@ mod storage_tests {
         // 1 out of 2 dispatches has a Stuck session → rate = 0.5 → CRIT
         assert_eq!(metric.status, HealthStatus::Crit);
         assert!((metric.value - 0.5).abs() < 1e-10);
+        assert!(metric.is_proxied);
+    }
+
+    #[test]
+    fn corrective_rate_prefers_recorded_qa_verdicts_over_proxy() {
+        let d = make_dispatch("D1");
+        let s = make_session("D1", SessionStatus::Stuck);
+        let pass = make_qa_verdict("D1", QaVerdict::Pass);
+        let metric = corrective_rate(&[&d], &[&s], &[pass]);
+        assert_eq!(
+            metric.status,
+            HealthStatus::Ok,
+            "stored QA Pass verdict should not fall back to the stuck-session proxy"
+        );
+        assert_eq!(metric.value, 0.0);
+        assert!(
+            !metric.is_proxied,
+            "stored QA verdicts are direct corrective-rate data"
+        );
     }
 
     #[test]
@@ -140,6 +172,7 @@ mod storage_tests {
         let metric = corrective_rate(&[], &[], &[]);
         assert_eq!(metric.status, HealthStatus::Unavailable);
         assert_eq!(metric.sample_size, 0);
+        assert!(!metric.is_proxied);
     }
 
     // --- stuck rate ---
@@ -150,6 +183,7 @@ mod storage_tests {
         let metric = stuck_rate(&[&s]);
         assert_eq!(metric.status, HealthStatus::Ok);
         assert_eq!(metric.value, 0.0);
+        assert!(!metric.is_proxied);
     }
 
     #[test]
@@ -204,6 +238,7 @@ mod storage_tests {
         let metric = cycle_time(&[&d]);
         assert_eq!(metric.status, HealthStatus::Ok);
         assert!(metric.value > 1.9 && metric.value < 2.1);
+        assert!(!metric.is_proxied);
     }
 
     #[test]
@@ -258,6 +293,7 @@ mod storage_tests {
         let refs: Vec<&SessionRecord> = sessions.iter().collect();
         let metric = batch_parallelism(&[&d], &refs);
         assert_eq!(metric.status, HealthStatus::Ok);
+        assert!(metric.is_proxied);
         assert_eq!(metric.value, 4.0);
     }
 
