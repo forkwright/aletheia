@@ -276,15 +276,16 @@ async fn proskenion_contract_chat_stream_sse_matches_desktop() {
         assert_event_type(event);
     }
 
-    let start = events
+    let start_index = events
         .iter()
-        .find(|event| event.event == "message_start")
+        .position(|event| event.event == "message_start")
         .unwrap_or_else(|| {
             panic!(
                 "proskenion SSE contract mismatch: expected message_start event \
                  before deltas; events={events:?}; body={body}"
             )
         });
+    let start = &events[start_index];
     assert!(
         start
             .data
@@ -298,15 +299,28 @@ async fn proskenion_contract_chat_stream_sse_matches_desktop() {
         start.data
     );
 
-    let complete = events
+    let complete_index = events
         .iter()
-        .find(|event| event.event == "message_complete")
+        .position(|event| event.event == "message_complete")
         .unwrap_or_else(|| {
             panic!(
                 "proskenion SSE contract mismatch: expected terminal message_complete; \
                  events={events:?}; body={body}"
             )
         });
+    assert_eq!(
+        complete_index,
+        events.len() - 1,
+        "proskenion SSE contract mismatch: message_complete must be the final \
+         terminal event because desktop clients stop after terminal events; \
+         events={events:?}; body={body}"
+    );
+    assert!(
+        start_index < complete_index,
+        "proskenion SSE contract mismatch: message_start must precede \
+         message_complete; events={events:?}; body={body}"
+    );
+    let complete = &events[complete_index];
     let outcome = complete
         .data
         .get("outcome")

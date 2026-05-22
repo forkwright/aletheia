@@ -395,12 +395,45 @@ mod tests {
     }
 
     #[test]
+    fn parse_message_start_snake_case_valid() {
+        let data = r#"{"type":"message_start","session_id":"s1","nous_id":"syn","turn_id":"t1"}"#;
+        let result = parse_stream_event("message_start", data);
+        if let Some(StreamEvent::TurnStart {
+            session_id,
+            nous_id,
+            turn_id,
+        }) = result
+        {
+            assert_eq!(&*session_id, "s1");
+            assert_eq!(&*nous_id, "syn");
+            assert_eq!(&*turn_id, "t1");
+        } else {
+            panic!("expected TurnStart");
+        }
+    }
+
+    #[test]
     fn parse_turn_complete_valid() {
         let data = r#"{"outcome":{"text":"done","nousId":"syn","sessionId":"s1","model":"gpt","toolCalls":0,"inputTokens":100,"outputTokens":50,"cacheReadTokens":0,"cacheWriteTokens":0}}"#;
         let result = parse_stream_event("turn_complete", data);
         if let Some(StreamEvent::TurnComplete { outcome }) = result {
             assert_eq!(outcome.text, "done");
             assert_eq!(&*outcome.nous_id, "syn");
+        } else {
+            panic!("expected TurnComplete");
+        }
+    }
+
+    #[test]
+    fn parse_message_complete_snake_case_valid() {
+        let data = r#"{"type":"message_complete","outcome":{"text":"done","nous_id":"syn","session_id":"s1","model":"gpt","tool_calls":0,"input_tokens":100,"output_tokens":50,"cache_read_tokens":0,"cache_write_tokens":0}}"#;
+        let result = parse_stream_event("message_complete", data);
+        if let Some(StreamEvent::TurnComplete { outcome }) = result {
+            assert_eq!(outcome.text, "done");
+            assert_eq!(&*outcome.nous_id, "syn");
+            assert_eq!(&*outcome.session_id, "s1");
+            assert_eq!(outcome.input_tokens, 100);
+            assert_eq!(outcome.output_tokens, 50);
         } else {
             panic!("expected TurnComplete");
         }
@@ -428,6 +461,28 @@ mod tests {
     }
 
     #[test]
+    fn parse_tool_result_snake_case_valid() {
+        let data = r#"{"type":"tool_result","tool_name":"exec","tool_id":"t1","is_error":false,"duration_ms":150,"result":"ok"}"#;
+        let result = parse_stream_event("tool_result", data);
+        if let Some(StreamEvent::ToolResult {
+            tool_name,
+            tool_id,
+            is_error,
+            duration_ms,
+            result: tool_result,
+        }) = result
+        {
+            assert_eq!(tool_name, "exec");
+            assert_eq!(&*tool_id, "t1");
+            assert!(!is_error);
+            assert_eq!(duration_ms, 150);
+            assert_eq!(tool_result.as_deref(), Some("ok"));
+        } else {
+            panic!("expected ToolResult");
+        }
+    }
+
+    #[test]
     fn parse_tool_start_valid() {
         let data = r#"{"toolName":"read_file","toolId":"t1"}"#;
         let result = parse_stream_event("tool_start", data);
@@ -437,6 +492,24 @@ mod tests {
         {
             assert_eq!(tool_name, "read_file");
             assert_eq!(&*tool_id, "t1");
+        } else {
+            panic!("expected ToolStart");
+        }
+    }
+
+    #[test]
+    fn parse_tool_use_snake_case_valid() {
+        let data = r#"{"type":"tool_use","tool_name":"read_file","tool_id":"t1","input":{"path":"README.md"}}"#;
+        let result = parse_stream_event("tool_use", data);
+        if let Some(StreamEvent::ToolStart {
+            tool_name,
+            tool_id,
+            input,
+        }) = result
+        {
+            assert_eq!(tool_name, "read_file");
+            assert_eq!(&*tool_id, "t1");
+            assert!(input.is_some());
         } else {
             panic!("expected ToolStart");
         }

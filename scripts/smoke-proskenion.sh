@@ -16,6 +16,7 @@ set -euo pipefail
 #   ALETHEIA_URL          Existing server URL.
 #   ALETHEIA_AUTH_TOKEN   Bearer token written to the temporary desktop config.
 #   PROSKENION_RUNTIME    Runtime budget in seconds, default: 20.
+#   ALETHEIA_SMOKE_KEEP_LOGS  Preserve temporary logs on success when set to 1.
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROSKENION_BINARY="${PROSKENION_BINARY:-$REPO_ROOT/crates/theatron/proskenion/target/release/proskenion}"
@@ -23,6 +24,7 @@ SERVER_BINARY="${ALETHEIA_BINARY:-$REPO_ROOT/target/debug/aletheia}"
 SERVER_URL="${ALETHEIA_URL:-}"
 AUTH_TOKEN="${ALETHEIA_AUTH_TOKEN:-}"
 RUNTIME="${PROSKENION_RUNTIME:-20}"
+KEEP_LOGS="${ALETHEIA_SMOKE_KEEP_LOGS:-0}"
 START_SERVER=false
 TMPDIR=""
 SERVER_PID=""
@@ -46,12 +48,17 @@ usage() {
 }
 
 cleanup() {
+    local status=$?
     if [[ -n "${SERVER_PID:-}" ]] && kill -0 "$SERVER_PID" >/dev/null 2>&1; then
         kill "$SERVER_PID" >/dev/null 2>&1 || true # best-effort cleanup
         wait "$SERVER_PID" >/dev/null 2>&1 || true # process may already be gone
     fi
     if [[ -n "${TMPDIR:-}" ]]; then
-        rm -rf "$TMPDIR"
+        if [[ "$status" -ne 0 || "$KEEP_LOGS" == "1" ]]; then
+            log "$(printf 'preserving logs under %s' "$LOGDIR")"
+        else
+            rm -rf "$TMPDIR"
+        fi
     fi
 }
 trap cleanup EXIT
@@ -121,6 +128,16 @@ mkdir -p "$LOGDIR" "$CONFIG_HOME/aletheia" "$INSTANCE_ROOT"
 if [[ "$START_SERVER" == true ]]; then
     PORT="${ALETHEIA_SMOKE_PORT:-$(( 39000 + (RANDOM % 2000) ))}"
     SERVER_URL="$(printf 'http://127.0.0.1:%s' "$PORT")"
+    mkdir -p "$INSTANCE_ROOT/config"
+    {
+        echo "[gateway]"
+        echo 'bind = "localhost"'
+        printf 'port = %s\n' "$PORT"
+        echo
+        echo "[gateway.auth]"
+        echo 'mode = "none"'
+        echo 'none_role = "operator"'
+    } >"$INSTANCE_ROOT/config/aletheia.toml"
     log "$(printf 'starting server: %s --instance-root %s --bind 127.0.0.1 --port %s serve' "$SERVER_BINARY" "$INSTANCE_ROOT" "$PORT")"
     "$SERVER_BINARY" \
         --instance-root "$INSTANCE_ROOT" \
@@ -181,4 +198,8 @@ if grep -Eiq "$ERROR_PATTERN" "$PROSKENION_LOG"; then
     die "$(printf 'known startup/display/connection error pattern found in %s' "$PROSKENION_LOG")"
 fi
 
-log "$(printf 'pass; logs were captured under %s' "$LOGDIR")"
+if [[ "$KEEP_LOGS" == "1" ]]; then
+    log "$(printf 'pass; logs captured under %s' "$LOGDIR")"
+else
+    log "pass; temporary logs will be removed (set ALETHEIA_SMOKE_KEEP_LOGS=1 to retain them)"
+fi
