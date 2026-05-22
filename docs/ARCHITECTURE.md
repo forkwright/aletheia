@@ -10,7 +10,7 @@
 
 ## Naming
 
-Module and crate names use Greek terms reflecting their essential nature (nous = mind, mneme = memory, hermeneus = interpreter). See [gnomon.md](gnomon.md) for the naming philosophy and [lexicon.md](lexicon.md) for the full registry.
+Module and crate names use Greek terms reflecting their essential nature (nous = mind, mneme = memory, hermeneus = interpreter). See [lexicon.md](lexicon.md) for the full registry.
 
 ---
 
@@ -166,6 +166,60 @@ generated inventory is `_llm/L1-workspace.md`.
 | `aletheia` | `crates/aletheia` | Binary entrypoint (Clap CLI), wires all crates together | koina, taxis, hermeneus, organon, mneme, nous, symbolon, pylon, agora, thesauros, daemon, dianoia, dokimion, diaporeia (opt), koilon (opt) |
 
 **Support crates** (not part of the application dependency graph):
+
+## LLM provider routing
+
+`hermeneus` owns the provider trait and concrete provider clients. `taxis`
+owns the serialized `[[providers]]` config shape, including `providerType`,
+`baseUrl`, `apiKeyEnv`, `models`, and `deploymentTarget`. The `aletheia`
+binary joins those layers in `runtime/setup.rs` by registering the configured
+providers in list order.
+
+Current provider families:
+
+| Provider family | Config type | Wire/runtime shape | Deployment target |
+|-----------------|-------------|--------------------|-------------------|
+| Anthropic cloud | `anthropic` | Anthropic Messages API | `cloud` |
+| Claude Code | `claude-code` | `claude` CLI subprocess adapter | operator-local process, with provider egress controlled by Claude Code |
+| OpenAI-compatible local/third-party | `openai-compatible` | `/v1/chat/completions` HTTP wire format | explicit per provider: usually `embedded` or `localhosted` |
+| OpenAI cloud | `openai` | currently `/v1/chat/completions`; target state is OpenAI Responses API | `cloud` |
+
+Codex routing decision, recorded 2026-05-22: Codex/OpenAI cloud model access
+should move to a first-class OpenAI Responses API provider path. The existing
+OpenAI-compatible Chat Completions provider remains valid for local servers
+such as llama.cpp, ollama, and vllm, but it is not the preferred long-term
+Codex path because Codex Chat Completions support is deprecated upstream. A
+dedicated Codex CLI adapter is deferred until Aletheia has a concrete need for
+Codex-specific session, tool, or local-environment semantics that Responses
+does not cover.
+
+Planned Responses-backed config shape after the provider lands:
+
+```toml
+[[providers]]
+name = "openai-codex"
+providerType = "openai"
+apiKeyEnv = "OPENAI_API_KEY"
+deploymentTarget = "cloud"
+models = ["gpt-5.3-codex"]
+```
+
+Local OpenAI-compatible servers continue to use the Chat Completions-compatible
+shape:
+
+```toml
+[[providers]]
+name = "local-qwen"
+providerType = "openai-compatible"
+baseUrl = "http://127.0.0.1:8088/v1"
+deploymentTarget = "embedded"
+models = ["Qwen3.5-35B-A3B-Q8_0"]
+```
+
+`deploymentTarget` is load-bearing for sovereignty filtering. OpenAI cloud
+entries must be `cloud`; local servers must declare whether traffic terminates
+on the same host (`embedded`) or an operator-trusted local endpoint
+(`localhosted`).
 
 | Crate | Directory | Domain | Depends On |
 |-------|-----------|--------|------------|
