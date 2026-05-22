@@ -51,6 +51,25 @@ struct AgentEntry {
     tools: Vec<ToolEntryResp>,
 }
 
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(untagged)]
+enum AgentListResponse {
+    Wrapped {
+        #[serde(default)]
+        nous: Vec<AgentEntry>,
+    },
+    Bare(Vec<AgentEntry>),
+}
+
+impl AgentListResponse {
+    fn into_agents(self) -> Vec<AgentEntry> {
+        match self {
+            Self::Wrapped { nous } => nous,
+            Self::Bare(agents) => agents,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, serde::Deserialize)]
 struct ToolEntryResp {
     #[serde(default)]
@@ -109,7 +128,7 @@ struct ConfigResponse {
 #[derive(Debug, Clone, Default, serde::Deserialize)]
 struct FeatureFlagEntry {
     #[serde(default)]
-    key: String,
+    key: String, // kanon:ignore RUST/plain-string-secret -- feature flag identifier, not credential material
     #[serde(default)]
     description: String,
     #[serde(default)]
@@ -325,7 +344,10 @@ pub(crate) fn Ops() -> Element {
 
             let agents_data: Vec<AgentEntry> = match agents_res {
                 Ok(resp) if resp.status().is_success() => {
-                    resp.json::<Vec<AgentEntry>>().await.unwrap_or_default()
+                    resp.json::<AgentListResponse>()
+                        .await
+                        .map(AgentListResponse::into_agents)
+                        .unwrap_or_default()
                 }
                 Ok(resp) => {
                     dash_fetch.set(FetchState::Error(format!(
