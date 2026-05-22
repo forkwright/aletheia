@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.25.0](https://github.com/forkwright/aletheia/compare/v0.24.0...v0.25.0) (2026-05-22)
+
+
+### Features
+
+* **scripts:** add install-proskenion script ([#3899](https://github.com/forkwright/aletheia/issues/3899)) ([318fa7f](https://github.com/forkwright/aletheia/commit/318fa7fb858b2b08a761a6ab7c04cafa79a6eb0f))
+
 ## [0.24.0](https://github.com/forkwright/aletheia/compare/v0.23.1...v0.24.0) (2026-05-22)
 
 
