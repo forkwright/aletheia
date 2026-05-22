@@ -62,6 +62,19 @@ description = "SQL query to execute"
 domains = ["healthcare", "sql"]
 ```
 
+### Design note: startup and on-demand references
+
+`pack.toml` is the repo-local knowledge manifest for a domain pack. It should make the loader able to distinguish content needed at startup from material that should stay discoverable without entering every prompt.
+
+| Reference kind | Current manifest field | Use for | Loading behavior |
+|----------------|------------------------|---------|------------------|
+| Startup context | `[[context]]` | Small, high-signal guidance the agent needs before a turn starts | Inject into bootstrap according to priority and token budget |
+| Callable capability | `[[tools]]` | Scripts or commands the model can call when a task needs them | Register in the tool registry; do not inject tool output at startup |
+| Agent routing | `[overlays.<agent>]` | Domain tags and per-agent targeting | Merge with agent domains before section filtering |
+| On-demand reference | Proposed future `[[reference]]` shape | Larger runbooks, schemas, reports, or corpora | Index path and metadata, load only when recall or a tool asks for it |
+
+A future `[[reference]]` entry should include at least `path`, `title`, `description`, and `tags`. Optional fields such as `freshness`, `owner`, `format`, and `load_hint = "startup" | "on_demand"` can help runtime loaders choose between prompt injection, search indexing, and tool-mediated retrieval.
+
 ## Context entries
 
 Each context entry maps to a file injected into the agent's system prompt at startup.
