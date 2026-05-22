@@ -160,3 +160,34 @@ fn dependency_analysis_for_unknown_node_returns_empty() {
         .expect("dependency analysis should succeed");
     assert!(deps.is_empty(), "unknown node should have no dependencies");
 }
+
+#[test]
+fn unknown_causal_relation_errors() {
+    let db = Db::open_mem().expect("open_mem should succeed");
+    db.run(
+        r":create causal_edges {
+            cause: String, effect: String =>
+            ordering: String,
+            relationship_type: String,
+            confidence: Float,
+            created_at: String
+        }",
+        std::collections::BTreeMap::new(),
+        ScriptMutability::Mutable,
+    )
+    .expect("creating causal_edges should succeed");
+    db.run(
+        r"?[cause, effect, ordering, relationship_type, confidence, created_at] <- [['a', 'b', 'before', 'mystery', 0.7, '2026-01-01T00:00:00Z']]
+        :put causal_edges {cause, effect => ordering, relationship_type, confidence, created_at}",
+        std::collections::BTreeMap::new(),
+        ScriptMutability::Mutable,
+    )
+    .expect("inserting edge should succeed");
+
+    let err = Counterfactual::impact_analysis(&db, "a")
+        .expect_err("unknown relation type should be rejected");
+    assert!(
+        matches!(err, crate::error::Error::UnknownCausalRelation { .. }),
+        "expected UnknownCausalRelation, got {err:?}"
+    );
+}

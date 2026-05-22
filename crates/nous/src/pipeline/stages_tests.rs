@@ -2,6 +2,9 @@
 
 use koina::event::EventEmitter;
 
+use hermeneus::provider::ProviderRegistry;
+use hermeneus::test_utils::MockProvider;
+
 use super::*;
 use crate::compact::CompactConfig;
 use crate::config::{NousConfig, PipelineConfig, StageBudget};
@@ -132,6 +135,79 @@ fn structural_summary_preserve_exactly_equals_len() {
     let config = config_with_preserve(2);
     let summary = build_structural_summary(&msgs, &config);
     assert!(summary.contains("0 messages summarized"));
+}
+
+#[tokio::test]
+async fn full_compaction_uses_llm_summary() {
+    let mut config = NousConfig::default();
+    config.generation.model = "test-model".to_owned();
+    config.generation.context_window = 100;
+    let mut providers = ProviderRegistry::new();
+    providers.register(Box::new(
+        MockProvider::new("llm compacted summary").models(&["test-model"]),
+    ));
+    let mut ctx = PipelineContext {
+        messages: vec![
+            PipelineMessage {
+                role: "user".to_owned(),
+                content: "old context".to_owned(),
+                token_estimate: 90,
+                cache_breakpoint: false,
+            },
+            PipelineMessage {
+                role: "assistant".to_owned(),
+                content: "recent".to_owned(),
+                token_estimate: 1,
+                cache_breakpoint: false,
+            },
+        ],
+        ..PipelineContext::default()
+    };
+    let emitter = EventEmitter::new();
+
+    run_full_compact_stage(&config, &mut ctx, &providers, &emitter)
+        .await
+        .expect("full compaction should complete");
+
+    assert!(
+        ctx.messages
+            .first()
+            .expect("summary message should exist")
+            .content
+            .contains("llm compacted summary"),
+        "full compaction should use provider summary"
+    );
+}
+
+#[tokio::test]
+async fn full_compaction_falls_back_when_llm_unavailable() {
+    let mut config = NousConfig::default();
+    config.generation.model = "missing-model".to_owned();
+    config.generation.context_window = 100;
+    let providers = ProviderRegistry::new();
+    let mut ctx = PipelineContext {
+        messages: vec![PipelineMessage {
+            role: "user".to_owned(),
+            content: "old context".to_owned(),
+            token_estimate: 90,
+            cache_breakpoint: false,
+        }],
+        ..PipelineContext::default()
+    };
+    let emitter = EventEmitter::new();
+
+    run_full_compact_stage(&config, &mut ctx, &providers, &emitter)
+        .await
+        .expect("structural fallback should keep compaction non-fatal");
+
+    assert!(
+        ctx.messages
+            .first()
+            .expect("summary message should exist")
+            .content
+            .contains("Previous conversation context:"),
+        "fallback should use structural summary"
+    );
 }
 
 // --- Reflection stage tests ---

@@ -10,7 +10,7 @@ use snafu::Snafu;
 ///
 /// Grouped into a separate struct so it can be boxed in the enum variant,
 /// keeping the variant size below clippy's `result_large_err` threshold.
-#[derive(Debug)]
+#[derive(Debug)] // kanon:ignore RUST/no-debug-derive-on-public-types
 pub struct ApiErrorContext {
     /// Model requested when the error occurred.
     pub model: String,
@@ -33,11 +33,11 @@ impl ApiErrorContext {
 /// Errors from LLM provider operations.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
-#[non_exhaustive]
 #[expect(
     missing_docs,
     reason = "snafu error variant fields (source, location, message) are self-documenting via display format"
 )]
+#[non_exhaustive]
 pub enum Error {
     // kanon:ignore RUST/pub-visibility
     /// Provider initialization failed.
@@ -55,6 +55,10 @@ pub enum Error {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+
+    /// API error response body could not be read.
+    #[snafu(display("failed to read API error response body for status {status}: {source}"))]
+    ApiErrorBodyRead { status: u16, source: reqwest::Error },
 
     /// API returned an error response.
     #[snafu(display("API error {status}: {message}"))]
@@ -120,6 +124,7 @@ impl Error {
             // of surfacing a hard error.
             Error::ProviderInit { .. }
             | Error::RateLimited { .. }
+            | Error::ApiErrorBodyRead { .. }
             | Error::ApiError {
                 status: 500..=599, ..
             } => true,
@@ -148,6 +153,7 @@ impl koina::error_class::Classifiable for Error {
             // and provider init failures (CC binary crashed/disappeared).
             Error::RateLimited { .. }
             | Error::ProviderInit { .. }
+            | Error::ApiErrorBodyRead { .. }
             | Error::ApiError {
                 status: 500..=599, ..
             } => ErrorClass::Transient,
@@ -188,6 +194,10 @@ impl koina::error_class::Classifiable for Error {
             } => ErrorAction::Retry {
                 max_attempts: 3,
                 backoff_base_ms: 1_000,
+            },
+            Error::ApiErrorBodyRead { .. } => ErrorAction::Retry {
+                max_attempts: 3,
+                backoff_base_ms: 500,
             },
             Error::ApiRequest { message, .. } => {
                 let msg = message.to_lowercase();

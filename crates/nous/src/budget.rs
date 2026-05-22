@@ -310,7 +310,6 @@ impl TimeBudget {
 
     /// Total wall-clock time since the pipeline started.
     #[must_use]
-    #[expect(dead_code, reason = "time budget not yet wired into pipeline stages")]
     pub(crate) fn total_elapsed(&self) -> Duration {
         self.pipeline_start.elapsed()
     }

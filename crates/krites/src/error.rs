@@ -18,6 +18,14 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// Unknown causal relation variant in counterfactual rows.
+    #[snafu(display("unknown causal relation type: {input}"))]
+    UnknownCausalRelation {
+        input: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// A running query was cancelled via poison/timeout.
     #[snafu(display("Running query was killed before completion"))]
     QueryKilled {

@@ -81,12 +81,32 @@ pub(crate) struct AfterToolContext<'a> {
     pub tool_name: &'a str,
     /// The tool input that was sent.
     pub tool_input: &'a serde_json::Value,
-    /// The tool result content.
-    pub tool_result: &'a str,
+    /// The tool result content, preserving missing-result semantics.
+    pub tool_result: ToolResultRecord<'a>,
     /// Whether the tool execution was an error.
     pub is_error: bool,
     /// Cumulative token usage for this turn.
     pub turn_usage: &'a TurnUsage,
+}
+
+/// Explicit record of a tool result observed by turn hooks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ToolResultRecord<'a> {
+    /// Tool execution completed but no result was recorded.
+    Missing,
+    /// Tool execution recorded result text.
+    Present(&'a str),
+}
+
+impl<'a> ToolResultRecord<'a> {
+    /// Build a record from an optional tool result.
+    #[must_use]
+    pub(crate) fn from_option(result: Option<&'a str>) -> Self {
+        match result {
+            Some(result) => Self::Present(result),
+            None => Self::Missing,
+        }
+    }
 }
 
 /// Context passed to `session_start` hooks.

@@ -2,9 +2,10 @@
 
 use std::time::{Duration, Instant};
 
+use snafu::ResultExt;
 use tokio::sync::Mutex;
 use tokio::sync::mpsc;
-use tracing::{Instrument, debug, error, info_span};
+use tracing::{Instrument, debug, error, info_span, warn};
 
 use hermeneus::provider::ProviderRegistry;
 use hermeneus::types::{CompletionRequest, Content, ContentBlock, Message, Role};
@@ -384,20 +385,19 @@ pub(super) fn run_microcompact_stage(
     });
 }
 
-/// Full compaction stage: check threshold and prepare for summarization.
+/// Full compaction stage: check threshold and summarize via the configured LLM.
 ///
-/// Checks whether token usage exceeds the configured threshold. If so,
-/// identifies critical files and prepares the compaction. The actual model
-/// call for summarization is deferred to a background task (via task registry
-/// when available). For now, builds the compaction request and applies a
-/// placeholder summary.
+/// Checks whether token usage exceeds the configured threshold. If so, it asks
+/// the selected provider for a compaction summary and falls back to a structural
+/// summary only when no provider is available or the provider call fails.
 ///
 /// No-op when token usage is below threshold.
-pub(super) fn run_full_compact_stage(
+pub(super) async fn run_full_compact_stage(
     config: &NousConfig,
     ctx: &mut PipelineContext,
+    providers: &ProviderRegistry,
     emitter: &EventEmitter,
-) {
+) -> error::Result<()> {
     let span = info_span!(
         "pipeline_stage",
         stage = "full_compact",
@@ -436,18 +436,26 @@ pub(super) fn run_full_compact_stage(
             stage: "full_compact",
             duration_secs,
         });
-        return;
+        return Ok(());
     }
 
     let critical_files =
         crate::compact::full::identify_critical_files(&ctx.messages, &compact_config);
     let prompt = select_prompt(CompactReason::TokenBudget);
-    let (_request, preserved) =
+    let (request, preserved) =
         crate::compact::full::build_summary_request(&ctx.messages, &compact_config, prompt);
 
-    // TODO(#2261) [deliberate-prudent]: spawn background task via task registry for model summarization.
-    // For now, build a structural summary from message roles and content snippets.
-    let summary = build_structural_summary(&ctx.messages, &compact_config);
+    let summary = match compact_with_llm(config, providers, request).await {
+        Ok(summary) => summary,
+        Err(error) => {
+            warn!(
+                error = %error,
+                nous_id = %config.id,
+                "full compaction LLM call failed; using structural fallback"
+            );
+            build_structural_summary(&ctx.messages, &compact_config)
+        }
+    };
 
     let result = crate::compact::full::apply_compaction(
         &summary,
@@ -468,6 +476,54 @@ pub(super) fn run_full_compact_stage(
         stage: "full_compact",
         duration_secs,
     });
+    Ok(())
+}
+
+async fn compact_with_llm(
+    config: &NousConfig,
+    providers: &ProviderRegistry,
+    request_text: String,
+) -> error::Result<String> {
+    let model = &config.generation.model;
+    let Some(provider) = providers.find_provider(model) else {
+        return Err(hermeneus::error::UnsupportedModelSnafu {
+            model: model.clone(),
+        }
+        .build())
+        .context(error::LlmSnafu);
+    };
+
+    let request = CompletionRequest {
+        model: model.clone(),
+        system: Some("Summarize this conversation for context compaction. Preserve decisions, open tasks, file paths, and unresolved risks.".to_owned()),
+        messages: vec![Message {
+            role: Role::User,
+            content: Content::Text(request_text),
+            cache_breakpoint: false,
+        }],
+        max_tokens: config.generation.max_output_tokens,
+        temperature: Some(0.0),
+        ..CompletionRequest::default()
+    };
+
+    let response = provider.complete(&request).await.context(error::LlmSnafu)?;
+    let summary = response
+        .content
+        .iter()
+        .filter_map(|block| match block {
+            ContentBlock::Text { text, .. } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    if summary.trim().is_empty() {
+        return Err(hermeneus::error::ApiRequestSnafu {
+            message: "compaction provider returned empty summary".to_owned(),
+        }
+        .build())
+        .context(error::LlmSnafu);
+    }
+    Ok(summary)
 }
 
 /// Build a structural summary without a model call.

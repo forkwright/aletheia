@@ -123,6 +123,74 @@ impl InternalEvent for TurnCompleted {
     }
 }
 
+/// Post-turn self-audit completed.
+pub(crate) struct SelfAuditCompleted {
+    /// Agent identifier.
+    pub(crate) nous_id: String,
+    /// Number of checks run.
+    pub(crate) checks: usize,
+    /// Number of checks that did not pass.
+    pub(crate) findings: usize,
+}
+
+impl InternalEvent for SelfAuditCompleted {
+    fn event_name(&self) -> &'static str {
+        "SelfAuditCompleted"
+    }
+
+    fn log_level(&self) -> LogLevel {
+        LogLevel::Info
+    }
+
+    fn log_message(&self) -> String {
+        format!(
+            "self-audit completed for {} (checks={}, findings={})",
+            self.nous_id, self.checks, self.findings
+        )
+    }
+
+    fn metric_labels(&self) -> Vec<(&'static str, String)> {
+        vec![("nous_id", self.nous_id.clone())]
+    }
+
+    fn metric_value(&self) -> f64 {
+        f64::from(u32::try_from(self.findings).unwrap_or(u32::MAX))
+    }
+}
+
+/// Self-tuning proposals were evaluated for operator consumption.
+pub(crate) struct TuningProposalsEvaluated {
+    /// Agent identifier.
+    pub(crate) nous_id: String,
+    /// Number of proposal outcomes generated.
+    pub(crate) outcomes: usize,
+}
+
+impl InternalEvent for TuningProposalsEvaluated {
+    fn event_name(&self) -> &'static str {
+        "TuningProposalsEvaluated"
+    }
+
+    fn log_level(&self) -> LogLevel {
+        LogLevel::Info
+    }
+
+    fn log_message(&self) -> String {
+        format!(
+            "self-tuning proposals evaluated for {} (outcomes={})",
+            self.nous_id, self.outcomes
+        )
+    }
+
+    fn metric_labels(&self) -> Vec<(&'static str, String)> {
+        vec![("nous_id", self.nous_id.clone())]
+    }
+
+    fn metric_value(&self) -> f64 {
+        f64::from(u32::try_from(self.outcomes).unwrap_or(u32::MAX))
+    }
+}
+
 /// A pipeline stage was skipped (e.g. recall without embedding provider).
 pub(crate) struct StageSkipped {
     /// Agent identifier.

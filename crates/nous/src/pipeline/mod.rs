@@ -8,7 +8,7 @@ use jiff;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 use tokio::sync::mpsc;
-use tracing::{Instrument, info_span, instrument};
+use tracing::{Instrument, info_span, instrument, warn};
 
 use hermeneus::provider::ProviderRegistry;
 use koina::event::EventEmitter;
@@ -19,7 +19,7 @@ use organon::types::ToolContext;
 use taxis::oikos::Oikos;
 
 use crate::bootstrap::{BootstrapAssembler, BootstrapSection, TaskHint, classify_task_hint};
-use crate::budget::{CompactionMetrics, TokenBudget};
+use crate::budget::{CompactionMetrics, TimeBudget, TokenBudget};
 use crate::config::{NousConfig, PipelineConfig};
 use crate::error;
 use crate::history::HistoryResult;
@@ -941,6 +941,8 @@ pub(crate) async fn run_pipeline(
     // for each poll without holding a guard across suspension points.
     async move {
         let mut stages_completed: u32 = 0;
+        let time_budget = TimeBudget::new(pipeline_config.stage_budget.clone());
+        enforce_turn_time_budget(&time_budget, config, "turn_start", emitter)?;
 
         // WHY: fire session_start hooks at the beginning of the pipeline.
         // If this is a new session (turn == 1), hooks can initialize session-level state.
@@ -1045,7 +1047,14 @@ pub(crate) async fn run_pipeline(
         run_microcompact_stage(config, &mut ctx, emitter);
         stages_completed += 1;
 
-        run_full_compact_stage(config, &mut ctx, emitter);
+        run_stage_with_timeout(
+            config,
+            "full_compact",
+            pipeline_config.stage_budget.history_secs,
+            emitter,
+            run_full_compact_stage(config, &mut ctx, providers, emitter),
+        )
+        .await?;
         stages_completed += 1;
 
         // WHY: Fire after_compact hooks after compaction completes.
@@ -1077,6 +1086,7 @@ pub(crate) async fn run_pipeline(
 
         // Before-query hooks run after guard (so rejected requests never reach hooks)
         // but before execute (so hooks can modify context before the model call).
+        enforce_turn_time_budget(&time_budget, config, "execute", emitter)?;
         if let Some(hook_registry) = hooks {
             let mut query_ctx = QueryContext {
                 pipeline: &mut ctx,
@@ -1145,6 +1155,7 @@ pub(crate) async fn run_pipeline(
         .await?;
         stages_completed += 1;
 
+        enforce_turn_time_budget(&time_budget, config, "reflection", emitter)?;
         run_stage_with_timeout(
             config,
             "reflection",
@@ -1346,6 +1357,12 @@ pub(crate) async fn run_pipeline(
             );
         }
 
+        if config.hooks.self_audit_enabled {
+            run_post_turn_self_audit(config, &result, emitter);
+        }
+
+        run_session_tuning_proposer(config, emitter);
+
         let current_span = tracing::Span::current();
         #[expect(
             clippy::cast_possible_truncation,
@@ -1386,6 +1403,101 @@ pub(crate) async fn run_pipeline(
     }
     .instrument(pipeline_span)
     .await
+}
+
+fn run_post_turn_self_audit(config: &NousConfig, result: &TurnResult, emitter: &EventEmitter) {
+    let mut auditor = crate::self_audit::SelfAuditor::new();
+    auditor.register_defaults();
+    let ctx = crate::self_audit::CheckContext {
+        nous_id: config.id.to_string(),
+        recent_tool_calls: result
+            .tool_calls
+            .iter()
+            .map(|call| crate::self_audit::ToolCallRecord {
+                tool_name: call.name.clone(),
+                success: !call.is_error,
+            })
+            .collect(),
+        recent_response_lengths: vec![result.content.len()],
+        ..crate::self_audit::CheckContext::default()
+    };
+    let report = auditor.run_audit(
+        &ctx,
+        crate::self_audit::AuditTrigger::EventBased { after_n_actions: 1 },
+    );
+    let findings = report
+        .results
+        .iter()
+        .filter(|check| check.result.status != crate::self_audit::CheckStatus::Pass)
+        .count();
+    emitter.emit(&events::SelfAuditCompleted {
+        nous_id: config.id.to_string(),
+        checks: report.results.len(),
+        findings,
+    });
+}
+
+fn run_session_tuning_proposer(config: &NousConfig, emitter: &EventEmitter) {
+    if !config.behavior.tuning_eligible {
+        return;
+    }
+    let proposer = crate::tuning::TuningProposer::new(taxis::config::TuningConfig {
+        enabled: true,
+        ..taxis::config::TuningConfig::default()
+    });
+    let outcomes = proposer.evaluate(&[], &config.id);
+    emitter.emit(&events::TuningProposalsEvaluated {
+        nous_id: config.id.to_string(),
+        outcomes: outcomes.len(),
+    });
+}
+
+fn enforce_turn_time_budget(
+    budget: &TimeBudget,
+    config: &NousConfig,
+    stage: &'static str,
+    emitter: &EventEmitter,
+) -> error::Result<()> {
+    let total_secs = config_stage_total_secs(budget);
+    if budget.total_exceeded() {
+        crate::metrics::record_error(&config.id, stage, "total_timeout");
+        emitter.emit(&events::StageTimeout {
+            nous_id: config.id.to_string(),
+            stage,
+            timeout_secs: total_secs,
+        });
+        return Err(error::PipelineTimeoutSnafu {
+            stage,
+            timeout_secs: total_secs,
+        }
+        .build());
+    }
+
+    if total_secs > 0 {
+        let remaining = budget.total_remaining().as_secs();
+        let elapsed = u64::from(total_secs).saturating_sub(remaining);
+        if elapsed.saturating_mul(100) >= u64::from(total_secs).saturating_mul(80) {
+            warn!(
+                nous_id = %config.id,
+                stage,
+                elapsed_secs = elapsed,
+                total_secs,
+                "turn time budget over 80%"
+            );
+        }
+    }
+
+    Ok(())
+}
+
+fn config_stage_total_secs(budget: &TimeBudget) -> u32 {
+    let remaining = budget.total_remaining().as_secs();
+    if remaining == u64::MAX {
+        0
+    } else {
+        u32::try_from(budget.total_elapsed().as_secs().saturating_add(remaining))
+            .unwrap_or(u32::MAX)
+    }
 }
 
 async fn run_stage_with_timeout<T, F>(
