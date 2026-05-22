@@ -24,6 +24,14 @@ sudo dnf install gtk3-devel webkit2gtk4.1-devel libxdo-devel
 
 The desktop crate is excluded from the workspace because its GTK/webkit2gtk dependencies are not available in CI and would cause build failures and cargo-deny advisory noise.
 
+For the standard local install flow, run:
+
+```bash
+scripts/install-proskenion.sh
+```
+
+The installer verifies Linux GTK/webkit2gtk system libraries, builds the release binary through the standalone manifest, and installs `proskenion` to `~/.cargo/bin/`.
+
 Build it standalone using the manifest path:
 
 ```bash
