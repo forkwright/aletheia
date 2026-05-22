@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.24.0](https://github.com/forkwright/aletheia/compare/v0.23.1...v0.24.0) (2026-05-22)
+
+
+### Features
+
+* **hermeneus:** add kimi-provider feature-gated adapter ([#3887](https://github.com/forkwright/aletheia/issues/3887)) ([7e04ce4](https://github.com/forkwright/aletheia/commit/7e04ce401c6fd5f53fc1dede9209fdbc128a66eb))
+
+
+### Bug Fixes
+
+* **energeia:** migrate cron scheduler to jiff ([#3898](https://github.com/forkwright/aletheia/issues/3898)) ([a9846af](https://github.com/forkwright/aletheia/commit/a9846afee5ba760b87f2bd83c8e0177ee2c53feb))
+
 ## [0.23.1](https://github.com/forkwright/aletheia/compare/v0.23.0...v0.23.1) (2026-05-21)
 
 
