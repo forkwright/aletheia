@@ -1,4 +1,4 @@
-//! Wire types for the OpenAI Chat Completions API.
+//! Wire types for OpenAI Chat Completions and Responses APIs.
 //!
 //! Split by direction: [`request`] serializes outgoing requests,
 //! [`response`] deserializes non-streaming responses, [`stream`] parses
@@ -9,6 +9,6 @@ pub(crate) mod request;
 pub(crate) mod response;
 pub(crate) mod stream;
 
-pub(crate) use request::ChatCompletionRequest;
-pub(crate) use response::ChatCompletionResponse;
-pub(crate) use stream::parse_sse_response;
+pub(crate) use request::{ChatCompletionRequest, ResponsesRequest};
+pub(crate) use response::{ChatCompletionResponse, ResponsesResponse};
+pub(crate) use stream::{parse_chat_sse_response, parse_responses_sse_response};

@@ -8,7 +8,7 @@
 use wiremock::matchers::{body_string_contains, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-use crate::openai::{OpenAiProvider, OpenAiProviderConfig};
+use crate::openai::{OpenAiApiFamily, OpenAiProvider, OpenAiProviderConfig};
 use crate::provider::{LlmProvider, ProviderRegistry};
 use crate::types::{
     CompletionRequest, Content, ContentBlock, Message, Role, StopReason, ThinkingConfig,
@@ -24,6 +24,18 @@ fn mock_provider(server: &MockServer, models: Vec<String>) -> OpenAiProvider {
         ..OpenAiProviderConfig::default()
     };
     OpenAiProvider::new(cfg).expect("mock provider construct")
+}
+
+fn mock_responses_provider(server: &MockServer, models: Vec<String>) -> OpenAiProvider {
+    let cfg = OpenAiProviderConfig {
+        name: "test-openai-responses".to_owned(),
+        base_url: format!("{}/v1", server.uri()),
+        api_key: None,
+        models,
+        api_family: OpenAiApiFamily::Responses,
+        ..OpenAiProviderConfig::default()
+    };
+    OpenAiProvider::new(cfg).expect("mock responses provider construct")
 }
 
 fn basic_request(model: &str) -> CompletionRequest {
@@ -73,6 +85,46 @@ async fn non_streaming_text_round_trip() {
 }
 
 #[tokio::test]
+async fn responses_non_streaming_text_round_trip_uses_responses_endpoint() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/responses"))
+        .and(body_string_contains("\"model\":\"gpt-5\""))
+        .and(body_string_contains(
+            "\"instructions\":\"You are helpful.\"",
+        ))
+        .and(body_string_contains("\"max_output_tokens\":64"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "id": "resp-1",
+            "model": "gpt-5",
+            "status": "completed",
+            "output": [{
+                "type": "message",
+                "role": "assistant",
+                "content": [{ "type": "output_text", "text": "hello from responses" }]
+            }],
+            "usage": { "input_tokens": 7, "output_tokens": 3, "total_tokens": 10 }
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let provider = mock_responses_provider(&server, vec!["gpt-5".to_owned()]);
+    let resp = provider
+        .complete(&basic_request("gpt-5"))
+        .await
+        .expect("completion succeeds");
+    assert_eq!(resp.id, "resp-1");
+    assert_eq!(resp.stop_reason, StopReason::EndTurn);
+    assert_eq!(resp.usage.input_tokens, 7);
+    assert_eq!(resp.usage.output_tokens, 3);
+    match &resp.content[0] {
+        ContentBlock::Text { text, .. } => assert_eq!(text, "hello from responses"),
+        other => panic!("expected Text, got {other:?}"),
+    }
+}
+
+#[tokio::test]
 async fn tool_use_round_trip_maps_both_directions() {
     let server = MockServer::start().await;
 
@@ -105,6 +157,58 @@ async fn tool_use_round_trip_maps_both_directions() {
     let provider = mock_provider(&server, vec!["qwen".to_owned()]);
     let request = CompletionRequest {
         model: "qwen".to_owned(),
+        messages: vec![Message {
+            role: Role::User,
+            content: Content::Text("weather in Paris?".to_owned()),
+            cache_breakpoint: false,
+        }],
+        max_tokens: 64,
+        tools: vec![ToolDefinition {
+            name: "get_weather".to_owned(),
+            description: "Fetch weather".to_owned(),
+            input_schema: serde_json::json!({"type": "object"}),
+            disable_passthrough: None,
+        }],
+        ..Default::default()
+    };
+
+    let resp = provider.complete(&request).await.expect("completion");
+    assert_eq!(resp.stop_reason, StopReason::ToolUse);
+    match &resp.content[0] {
+        ContentBlock::ToolUse { id, name, input } => {
+            assert_eq!(id, "call_7");
+            assert_eq!(name, "get_weather");
+            assert_eq!(input["city"], "Paris");
+        }
+        other => panic!("expected ToolUse, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn responses_tool_use_round_trip_maps_both_directions() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/responses"))
+        .and(body_string_contains("\"type\":\"function\""))
+        .and(body_string_contains("\"name\":\"get_weather\""))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "id": "resp-tool",
+            "model": "gpt-5",
+            "status": "completed",
+            "output": [{
+                "type": "function_call",
+                "call_id": "call_7",
+                "name": "get_weather",
+                "arguments": "{\"city\":\"Paris\"}"
+            }]
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let provider = mock_responses_provider(&server, vec!["gpt-5".to_owned()]);
+    let request = CompletionRequest {
+        model: "gpt-5".to_owned(),
         messages: vec![Message {
             role: Role::User,
             content: Content::Text("weather in Paris?".to_owned()),
@@ -199,6 +303,74 @@ async fn auth_header_sent_when_api_key_present() {
     let provider = OpenAiProvider::new(cfg).expect("construct");
     let resp = provider.complete(&basic_request("qwen")).await.expect("ok");
     assert_eq!(resp.stop_reason, StopReason::EndTurn);
+}
+
+#[tokio::test]
+async fn responses_error_envelope_maps_to_provider_error() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/responses"))
+        .respond_with(ResponseTemplate::new(400).set_body_json(serde_json::json!({
+            "error": {
+                "message": "model does not support requested tool",
+                "type": "invalid_request_error",
+                "code": "unsupported_tool"
+            }
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let provider = mock_responses_provider(&server, vec!["gpt-5".to_owned()]);
+    let err = provider
+        .complete(&basic_request("gpt-5"))
+        .await
+        .expect_err("request should fail");
+    assert!(
+        err.to_string()
+            .contains("model does not support requested tool")
+    );
+}
+
+#[tokio::test]
+async fn responses_streaming_text_round_trip() {
+    let server = MockServer::start().await;
+    let sse = concat!(
+        "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp-stream\",\"model\":\"gpt-5\",\"status\":\"in_progress\",\"output\":[]}}\n\n",
+        "data: {\"type\":\"response.output_text.delta\",\"item_id\":\"msg_1\",\"output_index\":0,\"content_index\":0,\"delta\":\"Hel\"}\n\n",
+        "data: {\"type\":\"response.output_text.delta\",\"item_id\":\"msg_1\",\"output_index\":0,\"content_index\":0,\"delta\":\"lo\"}\n\n",
+        "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp-stream\",\"model\":\"gpt-5\",\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"Hello\"}]}],\"usage\":{\"input_tokens\":4,\"output_tokens\":1,\"total_tokens\":5}}}\n\n"
+    );
+    Mock::given(method("POST"))
+        .and(path("/v1/responses"))
+        .and(body_string_contains("\"stream\":true"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "text/event-stream")
+                .set_body_string(sse),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let provider = mock_responses_provider(&server, vec!["gpt-5".to_owned()]);
+    let mut events = Vec::new();
+    let resp = provider
+        .complete_streaming(&basic_request("gpt-5"), &mut |event| events.push(event))
+        .await
+        .expect("streaming completion succeeds");
+
+    assert_eq!(resp.id, "resp-stream");
+    assert_eq!(resp.usage.input_tokens, 4);
+    match &resp.content[0] {
+        ContentBlock::Text { text, .. } => assert_eq!(text, "Hello"),
+        other => panic!("expected Text, got {other:?}"),
+    }
+    assert!(
+        events.iter().any(
+            |e| matches!(e, crate::anthropic::StreamEvent::TextDelta { text } if text == "Hel")
+        ),
+    );
 }
 
 #[tokio::test]

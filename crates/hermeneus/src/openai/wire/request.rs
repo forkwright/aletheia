@@ -84,6 +84,58 @@ pub(crate) struct ChatFunctionDef<'a> {
     pub parameters: &'a serde_json::Value,
 }
 
+/// Top-level OpenAI Responses request body.
+#[derive(Debug, Serialize)]
+pub(crate) struct ResponsesRequest<'a> {
+    pub model: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub instructions: Option<String>,
+    pub input: Vec<ResponsesInputItem>,
+    pub max_output_tokens: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub temperature: Option<f32>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub tools: Vec<ResponsesTool<'a>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_choice: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stream: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user: Option<&'a str>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(untagged)]
+pub(crate) enum ResponsesInputItem {
+    Message {
+        role: &'static str,
+        content: String,
+    },
+    FunctionCall {
+        #[serde(rename = "type")]
+        item_type: &'static str,
+        call_id: String,
+        name: String,
+        arguments: String,
+    },
+    FunctionCallOutput {
+        #[serde(rename = "type")]
+        item_type: &'static str,
+        call_id: String,
+        output: String,
+    },
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct ResponsesTool<'a> {
+    #[serde(rename = "type")]
+    pub tool_type: &'static str,
+    pub name: &'a str,
+    pub description: &'a str,
+    pub parameters: &'a serde_json::Value,
+    pub strict: bool,
+}
+
 impl<'a> ChatCompletionRequest<'a> {
     /// Build an OpenAI-format request from a hermeneus [`CompletionRequest`].
     ///
@@ -187,6 +239,96 @@ impl<'a> ChatCompletionRequest<'a> {
     }
 }
 
+impl<'a> ResponsesRequest<'a> {
+    /// Build an OpenAI Responses request from a hermeneus [`CompletionRequest`].
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the request carries provider-side server tools
+    /// whose OpenAI Responses equivalents are not represented in
+    /// [`ServerToolDefinition`](crate::types::ServerToolDefinition) yet.
+    pub(crate) fn from_request(req: &'a CompletionRequest, stream: Option<bool>) -> Result<Self> {
+        if !req.server_tools.is_empty() {
+            return Err(error::ProviderInitSnafu {
+                message: "OpenAI Responses providers do not yet support hermeneus \
+                          server-side tool definitions. Route these requests to an \
+                          Anthropic provider, or remove the server_tools from the \
+                          request."
+                    .to_owned(),
+            }
+            .build());
+        }
+
+        if let Some(thinking) = &req.thinking
+            && thinking.enabled
+        {
+            tracing::warn!(
+                budget_tokens = thinking.budget_tokens,
+                "thinking budget set on request routed to OpenAI Responses provider; \
+                 dropping until the Responses reasoning knob is represented in hermeneus"
+            );
+        }
+
+        if req.cache_system || req.cache_tools || req.cache_turns {
+            tracing::warn!(
+                cache_system = req.cache_system,
+                cache_tools = req.cache_tools,
+                cache_turns = req.cache_turns,
+                "prompt-cache flags set on request routed to OpenAI Responses provider; \
+                 dropping (no hermeneus mapping for Responses prompt cache controls)"
+            );
+        }
+
+        if req.citations.is_some() {
+            tracing::debug!(
+                "citations config set on request routed to OpenAI Responses provider; \
+                 ignored until Responses annotations are mapped"
+            );
+        }
+
+        let mut instructions = Vec::new();
+        if let Some(system) = req.system.as_deref()
+            && !system.is_empty()
+        {
+            instructions.push(system.to_owned());
+        }
+
+        let mut input = Vec::with_capacity(req.messages.len());
+        for msg in &req.messages {
+            translate_responses_message(msg, &mut instructions, &mut input);
+        }
+
+        let tools = req
+            .tools
+            .iter()
+            .map(|tool| ResponsesTool {
+                tool_type: "function",
+                name: &tool.name,
+                description: &tool.description,
+                parameters: &tool.input_schema,
+                strict: false,
+            })
+            .collect();
+
+        let user = req.metadata.as_ref().and_then(|m| m.user_id.as_deref());
+
+        Ok(Self {
+            model: &req.model,
+            instructions: (!instructions.is_empty()).then(|| instructions.join("\n")),
+            input,
+            max_output_tokens: req.max_tokens,
+            temperature: req.temperature,
+            tools,
+            tool_choice: req
+                .tool_choice
+                .as_ref()
+                .map(translate_responses_tool_choice),
+            stream,
+            user,
+        })
+    }
+}
+
 /// Translate one hermeneus [`Message`] into one or more [`ChatMessage`]s.
 ///
 /// Messages with mixed content (text + `tool_use` + `tool_result`) expand
@@ -210,8 +352,8 @@ fn translate_message(msg: &Message, out: &mut Vec<ChatMessage>) {
         }
         Role::User => {
             // User messages with tool_result blocks split into one
-            // `role: "tool"` per result, plus any remaining text as a
-            // follow-up user message.
+            // `role: "tool"` per result, plus one message for remaining
+            // user text.
             match &msg.content {
                 Content::Text(text) => {
                     out.push(ChatMessage {
@@ -327,6 +469,97 @@ fn tool_result_to_string(content: &ToolResultContent) -> String {
     }
 }
 
+fn translate_responses_message(
+    msg: &Message,
+    instructions: &mut Vec<String>,
+    out: &mut Vec<ResponsesInputItem>,
+) {
+    match msg.role {
+        Role::System => {
+            let text = msg.content.text();
+            if !text.is_empty() {
+                instructions.push(text);
+            }
+        }
+        Role::User => translate_responses_user_message(msg, out),
+        Role::Assistant => translate_responses_assistant_message(msg, out),
+    }
+}
+
+fn translate_responses_user_message(msg: &Message, out: &mut Vec<ResponsesInputItem>) {
+    match &msg.content {
+        Content::Text(text) => {
+            out.push(ResponsesInputItem::Message {
+                role: "user",
+                content: text.clone(),
+            });
+        }
+        Content::Blocks(blocks) => {
+            let mut text_parts = Vec::new();
+            for block in blocks {
+                match block {
+                    ContentBlock::Text { text, .. } if !text.is_empty() => {
+                        text_parts.push(text.clone());
+                    }
+                    ContentBlock::ToolResult {
+                        tool_use_id,
+                        content,
+                        ..
+                    } => out.push(ResponsesInputItem::FunctionCallOutput {
+                        item_type: "function_call_output",
+                        call_id: tool_use_id.clone(),
+                        output: tool_result_to_string(content),
+                    }),
+                    _ => {
+                        // Images/documents have no Responses input mapping yet.
+                    }
+                }
+            }
+            if !text_parts.is_empty() {
+                out.push(ResponsesInputItem::Message {
+                    role: "user",
+                    content: text_parts.join("\n"),
+                });
+            }
+        }
+    }
+}
+
+fn translate_responses_assistant_message(msg: &Message, out: &mut Vec<ResponsesInputItem>) {
+    let mut text_parts = Vec::new();
+    match &msg.content {
+        Content::Text(text) => text_parts.push(text.clone()),
+        Content::Blocks(blocks) => {
+            for block in blocks {
+                match block {
+                    ContentBlock::Text { text, .. } if !text.is_empty() => {
+                        text_parts.push(text.clone());
+                    }
+                    ContentBlock::ToolUse { id, name, input } => {
+                        let arguments =
+                            serde_json::to_string(input).unwrap_or_else(|_| "{}".to_owned());
+                        out.push(ResponsesInputItem::FunctionCall {
+                            item_type: "function_call",
+                            call_id: id.clone(),
+                            name: name.clone(),
+                            arguments,
+                        });
+                    }
+                    _ => {
+                        // Tool results and non-text media are not assistant output items.
+                    }
+                }
+            }
+        }
+    }
+    if !text_parts.is_empty() {
+        out.push(ResponsesInputItem::Message {
+            role: "assistant",
+            content: text_parts.join("\n"),
+        });
+    }
+}
+
 fn translate_tool_choice(choice: &ToolChoice) -> serde_json::Value {
     match choice {
         ToolChoice::Auto => serde_json::Value::String("auto".to_owned()),
@@ -339,241 +572,22 @@ fn translate_tool_choice(choice: &ToolChoice) -> serde_json::Value {
     }
 }
 
+fn translate_responses_tool_choice(choice: &ToolChoice) -> serde_json::Value {
+    match choice {
+        ToolChoice::Auto => serde_json::Value::String("auto".to_owned()),
+        ToolChoice::Any => serde_json::Value::String("required".to_owned()),
+        ToolChoice::Tool { name } => serde_json::json!({
+            "type": "function",
+            "name": name
+        }),
+    }
+}
+
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 #[expect(
     clippy::indexing_slicing,
     reason = "test: indices asserted valid by construction"
 )]
-mod tests {
-    use super::*;
-    use crate::types::{
-        CompletionRequest, Content, ContentBlock, Message, Role, ThinkingConfig, ToolDefinition,
-        ToolResultContent,
-    };
-
-    #[test]
-    fn system_prompt_becomes_first_system_message() {
-        let req = CompletionRequest {
-            model: "qwen".to_owned(),
-            system: Some("You are a helpful assistant.".to_owned()),
-            messages: vec![Message {
-                role: Role::User,
-                content: Content::Text("hi".to_owned()),
-                cache_breakpoint: false,
-            }],
-            max_tokens: 128,
-            ..Default::default()
-        };
-        let wire = ChatCompletionRequest::from_request(&req, None).unwrap();
-        assert_eq!(wire.messages.len(), 2);
-        assert_eq!(wire.messages[0].role, "system");
-        assert_eq!(
-            wire.messages[0].content.as_deref(),
-            Some("You are a helpful assistant.")
-        );
-        assert_eq!(wire.messages[1].role, "user");
-    }
-
-    #[test]
-    fn tool_definitions_map_to_function_tools() {
-        let req = CompletionRequest {
-            model: "qwen".to_owned(),
-            messages: vec![Message {
-                role: Role::User,
-                content: Content::Text("use a tool".to_owned()),
-                cache_breakpoint: false,
-            }],
-            max_tokens: 128,
-            tools: vec![ToolDefinition {
-                name: "get_weather".to_owned(),
-                description: "Fetch weather for a city".to_owned(),
-                input_schema: serde_json::json!({
-                    "type": "object",
-                    "properties": { "city": { "type": "string" } }
-                }),
-                disable_passthrough: None,
-            }],
-            ..Default::default()
-        };
-        let wire = ChatCompletionRequest::from_request(&req, None).unwrap();
-        assert_eq!(wire.tools.len(), 1);
-        let tool = &wire.tools[0];
-        assert_eq!(tool.tool_type, "function");
-        assert_eq!(tool.function.name, "get_weather");
-    }
-
-    #[test]
-    fn assistant_tool_use_block_becomes_tool_calls() {
-        let req = CompletionRequest {
-            model: "qwen".to_owned(),
-            messages: vec![
-                Message {
-                    role: Role::User,
-                    content: Content::Text("call get_weather".to_owned()),
-                    cache_breakpoint: false,
-                },
-                Message {
-                    role: Role::Assistant,
-                    content: Content::Blocks(vec![
-                        ContentBlock::Text {
-                            text: "Sure".to_owned(),
-                            citations: None,
-                        },
-                        ContentBlock::ToolUse {
-                            id: "call_1".to_owned(),
-                            name: "get_weather".to_owned(),
-                            input: serde_json::json!({ "city": "Paris" }),
-                        },
-                    ]),
-                    cache_breakpoint: false,
-                },
-            ],
-            max_tokens: 128,
-            ..Default::default()
-        };
-        let wire = ChatCompletionRequest::from_request(&req, None).unwrap();
-        let assistant = wire
-            .messages
-            .iter()
-            .find(|m| m.role == "assistant")
-            .unwrap();
-        assert_eq!(assistant.tool_calls.len(), 1);
-        assert_eq!(assistant.tool_calls[0].id, "call_1");
-        assert_eq!(assistant.tool_calls[0].function.name, "get_weather");
-        assert!(assistant.tool_calls[0].function.arguments.contains("Paris"));
-    }
-
-    #[test]
-    fn user_tool_result_block_becomes_role_tool_message() {
-        let req = CompletionRequest {
-            model: "qwen".to_owned(),
-            messages: vec![Message {
-                role: Role::User,
-                content: Content::Blocks(vec![ContentBlock::ToolResult {
-                    tool_use_id: "call_1".to_owned(),
-                    content: ToolResultContent::Text("sunny".to_owned()),
-                    is_error: None,
-                }]),
-                cache_breakpoint: false,
-            }],
-            max_tokens: 128,
-            ..Default::default()
-        };
-        let wire = ChatCompletionRequest::from_request(&req, None).unwrap();
-        let tool_msg = wire.messages.iter().find(|m| m.role == "tool").unwrap();
-        assert_eq!(tool_msg.tool_call_id.as_deref(), Some("call_1"));
-        assert_eq!(tool_msg.content.as_deref(), Some("sunny"));
-    }
-
-    #[test]
-    fn thinking_block_is_dropped_and_warned() {
-        let req = CompletionRequest {
-            model: "qwen".to_owned(),
-            messages: vec![Message {
-                role: Role::User,
-                content: Content::Text("hi".to_owned()),
-                cache_breakpoint: false,
-            }],
-            max_tokens: 128,
-            thinking: Some(ThinkingConfig {
-                enabled: true,
-                budget_tokens: 1024,
-            }),
-            ..Default::default()
-        };
-        // No thinking field in the wire request; confirm it serializes.
-        let wire = ChatCompletionRequest::from_request(&req, None).unwrap();
-        let json = serde_json::to_string(&wire).unwrap();
-        assert!(!json.contains("thinking"));
-        assert!(!json.contains("budget_tokens"));
-    }
-
-    #[test]
-    fn server_tools_rejected_with_clear_error() {
-        let req = CompletionRequest {
-            model: "qwen".to_owned(),
-            messages: vec![Message {
-                role: Role::User,
-                content: Content::Text("hi".to_owned()),
-                cache_breakpoint: false,
-            }],
-            max_tokens: 128,
-            server_tools: vec![crate::types::ServerToolDefinition {
-                tool_type: "web_search_20250305".to_owned(),
-                name: "web_search".to_owned(),
-                max_uses: Some(3),
-                allowed_domains: None,
-                blocked_domains: None,
-                user_location: None,
-            }],
-            ..Default::default()
-        };
-        let err = ChatCompletionRequest::from_request(&req, None).unwrap_err();
-        assert!(err.to_string().contains("server-side tools"));
-    }
-
-    #[test]
-    fn cache_flags_dropped_without_error() {
-        let req = CompletionRequest {
-            model: "qwen".to_owned(),
-            system: Some("sys".to_owned()),
-            messages: vec![Message {
-                role: Role::User,
-                content: Content::Text("hi".to_owned()),
-                cache_breakpoint: false,
-            }],
-            max_tokens: 128,
-            cache_system: true,
-            cache_tools: true,
-            cache_turns: true,
-            ..Default::default()
-        };
-        let wire = ChatCompletionRequest::from_request(&req, None).unwrap();
-        let json = serde_json::to_string(&wire).unwrap();
-        assert!(!json.contains("cache_control"));
-    }
-
-    #[test]
-    fn tool_choice_any_maps_to_required() {
-        let req = CompletionRequest {
-            model: "qwen".to_owned(),
-            messages: vec![Message {
-                role: Role::User,
-                content: Content::Text("hi".to_owned()),
-                cache_breakpoint: false,
-            }],
-            max_tokens: 128,
-            tool_choice: Some(ToolChoice::Any),
-            ..Default::default()
-        };
-        let wire = ChatCompletionRequest::from_request(&req, None).unwrap();
-        assert_eq!(
-            wire.tool_choice,
-            Some(serde_json::Value::String("required".to_owned()))
-        );
-    }
-
-    #[test]
-    fn tool_arguments_serialized_as_json_string() {
-        let req = CompletionRequest {
-            model: "qwen".to_owned(),
-            messages: vec![Message {
-                role: Role::Assistant,
-                content: Content::Blocks(vec![ContentBlock::ToolUse {
-                    id: "c1".to_owned(),
-                    name: "f".to_owned(),
-                    input: serde_json::json!({ "x": 1 }),
-                }]),
-                cache_breakpoint: false,
-            }],
-            max_tokens: 64,
-            ..Default::default()
-        };
-        let wire = ChatCompletionRequest::from_request(&req, None).unwrap();
-        let tc = &wire.messages[0].tool_calls[0];
-        // arguments must be a JSON-encoded string containing the object.
-        let parsed: serde_json::Value = serde_json::from_str(&tc.function.arguments).unwrap();
-        assert_eq!(parsed["x"], 1);
-    }
-}
+#[path = "request_tests.rs"]
+mod tests;

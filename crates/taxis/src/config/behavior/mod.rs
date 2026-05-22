@@ -20,8 +20,8 @@ pub use knowledge::{BookkeepingProviderKind, ExtractionConfig, KnowledgeConfig};
 pub use messaging::MessagingConfig;
 pub use nous::NousBehaviorConfig;
 pub use provider::{
-    AnthropicConfig, DeploymentTarget, LlmProviderConfig, PromptCacheMode, ProviderBehaviorConfig,
-    ProviderKind,
+    AnthropicConfig, DeploymentTarget, LlmProviderConfig, OpenAiApiFamily, PromptCacheMode,
+    ProviderBehaviorConfig, ProviderKind,
 };
 pub use timeouts::{CapacityConfig, RetrySettings, TimeoutsConfig};
 pub use tools::ToolLimitsConfig;

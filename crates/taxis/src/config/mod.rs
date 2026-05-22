@@ -14,8 +14,8 @@ pub use behavior::{
     AnthropicConfig, ApiLimitsConfig, BookkeepingProviderKind, CapacityConfig, CronTaskConfig,
     DaemonBehaviorConfig, DeploymentTarget, DispatchConfig, DispatchSpecConfig, ExtractionConfig,
     JwtSettings, KnowledgeConfig, LlmProviderConfig, MessagingConfig, NousBehaviorConfig,
-    PromptCacheMode, ProviderBehaviorConfig, ProviderKind, RetrySettings, TimeoutsConfig,
-    ToolLimitsConfig, TuningConfig,
+    OpenAiApiFamily, PromptCacheMode, ProviderBehaviorConfig, ProviderKind, RetrySettings,
+    TimeoutsConfig, ToolLimitsConfig, TuningConfig,
 };
 pub use gateway::{
     BodyLimitConfig, CorsConfig, CsrfConfig, GatewayAuthConfig, GatewayConfig,

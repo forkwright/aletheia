@@ -14,6 +14,8 @@ use crate::anthropic::StreamEvent;
 use crate::error::{self, Result};
 use crate::types::{CompletionResponse, ContentBlock, StopReason, Usage};
 
+use super::response::{ResponsesResponse, parse_arguments};
+
 #[derive(Debug, Deserialize)]
 struct ChatStreamChunk {
     #[serde(default)]
@@ -253,7 +255,7 @@ fn map_finish_reason(reason: &str) -> StopReason {
 /// Parse an OpenAI SSE stream from a `reqwest::Response`, emitting
 /// [`StreamEvent`]s and returning the finalized [`CompletionResponse`].
 #[tracing::instrument(skip_all)]
-pub(crate) async fn parse_sse_response(
+pub(crate) async fn parse_chat_sse_response(
     response: &mut Response,
     on_event: &mut (dyn FnMut(StreamEvent) + Send),
 ) -> Result<CompletionResponse> {
@@ -305,6 +307,312 @@ pub(crate) async fn parse_sse_response(
                     current_data.push_str(data);
                 }
                 // Ignore comments, empty `:` lines, event:, id:, retry:
+                line_buf.clear();
+            } else {
+                line_buf.push(byte);
+            }
+        }
+
+        if done {
+            break;
+        }
+    }
+
+    Ok(accumulator.finish(on_event))
+}
+
+#[derive(Debug, Deserialize)]
+struct ResponsesStreamEvent {
+    #[serde(rename = "type")]
+    event_type: String,
+    #[serde(default)]
+    response: Option<ResponsesResponse>,
+    #[serde(default)]
+    delta: Option<String>,
+    #[serde(default)]
+    arguments: Option<String>,
+    #[serde(default)]
+    call_id: Option<String>,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    item_id: Option<String>,
+}
+
+struct ResponsesStreamAccumulator {
+    id: String,
+    model: String,
+    text_buf: String,
+    tool_calls: BTreeMap<String, PendingResponsesToolCall>,
+    completed: Option<CompletionResponse>,
+    usage: Usage,
+    text_block_open: bool,
+    message_started: bool,
+}
+
+struct PendingResponsesToolCall {
+    id: String,
+    name: String,
+    arguments: String,
+}
+
+impl ResponsesStreamAccumulator {
+    fn new() -> Self {
+        Self {
+            id: String::new(),
+            model: String::new(),
+            text_buf: String::new(),
+            tool_calls: BTreeMap::new(),
+            completed: None,
+            usage: Usage::default(),
+            text_block_open: false,
+            message_started: false,
+        }
+    }
+
+    fn process_event<F: FnMut(StreamEvent) + ?Sized>(
+        &mut self,
+        event: ResponsesStreamEvent,
+        on_event: &mut F,
+    ) -> Result<()> {
+        match event.event_type.as_str() {
+            "response.created" | "response.in_progress" => {
+                if let Some(response) = event.response {
+                    self.capture_response_metadata(&response, on_event);
+                }
+            }
+            "response.output_text.delta" => {
+                let delta = event.delta.unwrap_or_default();
+                if !delta.is_empty() {
+                    self.start_text(on_event);
+                    self.text_buf.push_str(&delta);
+                    on_event(StreamEvent::TextDelta { text: delta });
+                }
+            }
+            "response.function_call_arguments.delta" => {
+                let key = event
+                    .call_id
+                    .clone()
+                    .or(event.item_id.clone())
+                    .unwrap_or_default();
+                let pending = self.tool_calls.entry(key.clone()).or_insert_with(|| {
+                    PendingResponsesToolCall {
+                        id: key,
+                        name: event.name.clone().unwrap_or_default(),
+                        arguments: String::new(),
+                    }
+                });
+                if let Some(delta) = event.delta
+                    && !delta.is_empty()
+                {
+                    pending.arguments.push_str(&delta);
+                    on_event(StreamEvent::InputJsonDelta {
+                        partial_json: delta,
+                    });
+                }
+            }
+            "response.function_call_arguments.done" => {
+                let key = event
+                    .call_id
+                    .clone()
+                    .or(event.item_id.clone())
+                    .unwrap_or_default();
+                let pending = self.tool_calls.entry(key.clone()).or_insert_with(|| {
+                    PendingResponsesToolCall {
+                        id: key,
+                        name: String::new(),
+                        arguments: String::new(),
+                    }
+                });
+                if let Some(call_id) = event.call_id
+                    && !call_id.is_empty()
+                {
+                    pending.id = call_id;
+                }
+                if let Some(name) = event.name
+                    && !name.is_empty()
+                {
+                    pending.name = name;
+                }
+                if let Some(arguments) = event.arguments {
+                    pending.arguments = arguments;
+                }
+            }
+            "response.completed" => {
+                if let Some(response) = event.response {
+                    self.capture_response_metadata(&response, on_event);
+                    self.completed = Some(
+                        response
+                            .into_response()
+                            .map_err(|msg| error::ApiRequestSnafu { message: msg }.build())?,
+                    );
+                }
+            }
+            "response.failed" => {
+                return Err(error::ApiRequestSnafu {
+                    message: "OpenAI Responses stream failed".to_owned(),
+                }
+                .build());
+            }
+            "error" => {
+                return Err(error::ApiRequestSnafu {
+                    message: "OpenAI Responses stream emitted an error".to_owned(),
+                }
+                .build());
+            }
+            _ => {
+                // Ignore Responses event types this adapter does not surface.
+            }
+        }
+        Ok(())
+    }
+
+    fn capture_response_metadata<F: FnMut(StreamEvent) + ?Sized>(
+        &mut self,
+        response: &ResponsesResponse,
+        on_event: &mut F,
+    ) {
+        if self.id.is_empty() {
+            self.id.clone_from(&response.id);
+        }
+        if self.model.is_empty() {
+            self.model.clone_from(&response.model);
+        }
+        if let Some(usage) = &response.usage {
+            self.usage.input_tokens = usage.input_tokens;
+            self.usage.output_tokens = usage.output_tokens;
+        }
+        self.start_message(on_event);
+    }
+
+    fn start_message<F: FnMut(StreamEvent) + ?Sized>(&mut self, on_event: &mut F) {
+        if !self.message_started {
+            on_event(StreamEvent::MessageStart { usage: self.usage });
+            self.message_started = true;
+        }
+    }
+
+    fn start_text<F: FnMut(StreamEvent) + ?Sized>(&mut self, on_event: &mut F) {
+        self.start_message(on_event);
+        if !self.text_block_open {
+            on_event(StreamEvent::ContentBlockStart {
+                index: 0,
+                block_type: "text".to_owned(),
+            });
+            self.text_block_open = true;
+        }
+    }
+
+    fn finish<F: FnMut(StreamEvent) + ?Sized>(self, on_event: &mut F) -> CompletionResponse {
+        let Self {
+            id,
+            model,
+            text_buf,
+            tool_calls,
+            completed,
+            usage,
+            text_block_open,
+            ..
+        } = self;
+
+        if text_block_open {
+            on_event(StreamEvent::ContentBlockStop { index: 0 });
+        }
+
+        let resp = completed.unwrap_or_else(|| {
+            let mut content = Vec::new();
+            if !text_buf.is_empty() {
+                content.push(ContentBlock::Text {
+                    text: text_buf,
+                    citations: None,
+                });
+            }
+            for (_, call) in tool_calls {
+                content.push(ContentBlock::ToolUse {
+                    id: call.id,
+                    name: call.name,
+                    input: parse_arguments(&call.arguments),
+                });
+            }
+            let stop_reason = if content
+                .iter()
+                .any(|block| matches!(block, ContentBlock::ToolUse { .. }))
+            {
+                StopReason::ToolUse
+            } else {
+                StopReason::EndTurn
+            };
+            CompletionResponse {
+                id,
+                model,
+                stop_reason,
+                content,
+                usage,
+                cost_usd: None,
+                duration_ms: None,
+            }
+        });
+
+        on_event(StreamEvent::MessageStop {
+            stop_reason: resp.stop_reason,
+            usage: resp.usage,
+        });
+        resp
+    }
+}
+
+/// Parse an OpenAI Responses SSE stream from a `reqwest::Response`, emitting
+/// [`StreamEvent`]s and returning the finalized [`CompletionResponse`].
+#[tracing::instrument(skip_all)]
+pub(crate) async fn parse_responses_sse_response(
+    response: &mut Response,
+    on_event: &mut (dyn FnMut(StreamEvent) + Send),
+) -> Result<CompletionResponse> {
+    let mut accumulator = ResponsesStreamAccumulator::new();
+    let mut line_buf: Vec<u8> = Vec::with_capacity(256);
+    let mut current_data = String::new();
+    let mut done = false;
+
+    loop {
+        let chunk = response.chunk().await.map_err(|e| {
+            error::ApiRequestSnafu {
+                message: format!("stream read error: {e}"),
+            }
+            .build()
+        })?;
+        let Some(bytes) = chunk else { break };
+
+        for &byte in &bytes {
+            if byte == b'\n' {
+                let line_cow = String::from_utf8_lossy(&line_buf);
+                let line = line_cow.trim_end_matches('\r');
+                if line.is_empty() {
+                    if !current_data.is_empty() {
+                        if current_data.trim() == "[DONE]" {
+                            done = true;
+                        } else {
+                            let event: ResponsesStreamEvent = serde_json::from_str(&current_data)
+                                .map_err(|e| {
+                                error::ApiRequestSnafu {
+                                    message: format!("Responses stream parse error: {e}"),
+                                }
+                                .build()
+                            })?;
+                            accumulator.process_event(event, on_event)?;
+                        }
+                    }
+                    current_data.clear();
+                } else if let Some(data) = line.strip_prefix("data: ") {
+                    if !current_data.is_empty() {
+                        current_data.push('\n');
+                    }
+                    current_data.push_str(data);
+                } else if let Some(data) = line.strip_prefix("data:") {
+                    if !current_data.is_empty() {
+                        current_data.push('\n');
+                    }
+                    current_data.push_str(data);
+                }
                 line_buf.clear();
             } else {
                 line_buf.push(byte);
