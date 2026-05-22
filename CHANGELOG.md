@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.26.1](https://github.com/forkwright/aletheia/compare/v0.26.0...v0.26.1) (2026-05-22)
+
+
+### Documentation
+
+* **proskenion:** sync D2 contract coverage ([#3927](https://github.com/forkwright/aletheia/issues/3927)) ([5008d7e](https://github.com/forkwright/aletheia/commit/5008d7e775f6215c421a57bc30dd7e07d5d9720a))
+
 ## [0.26.0](https://github.com/forkwright/aletheia/compare/v0.25.4...v0.26.0) (2026-05-22)
 
 
