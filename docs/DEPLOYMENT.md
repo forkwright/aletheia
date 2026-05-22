@@ -343,6 +343,22 @@ Healthy response:
 
 Status values: `healthy` (all pass), `degraded` (warnings, e.g. no LLM provider), `unhealthy` (failures).
 
+## Prosoche heartbeat timer
+
+The optional user timer checks the running server and then executes the local
+prosoche self-audit task. The timer starts one minute after activation and runs
+every five minutes.
+
+```bash
+install -m 0755 scripts/aletheia-heartbeat.sh ~/.local/bin/aletheia-heartbeat
+mkdir -p ~/.config/systemd/user
+cp instance.example/services/aletheia-health.{service,timer} ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now aletheia-health.timer
+systemctl --user status aletheia-health.timer
+journalctl --user -u aletheia-health --since "30 minutes ago"
+```
+
 ## System status
 
 ```bash

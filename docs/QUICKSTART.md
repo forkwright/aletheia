@@ -245,6 +245,17 @@ The attention subsystem runs periodic background checks. Your agent surveys its 
 
 Each agent has a `PROSOCHE.md` workspace file defining what to check. The default agent template includes a starter checklist. To configure the heartbeat schedule, see [PROSOCHE.md](PROSOCHE.md).
 
+For the user-systemd heartbeat, install the entrypoint and timer:
+
+```bash
+install -m 0755 scripts/aletheia-heartbeat.sh ~/.local/bin/aletheia-heartbeat
+mkdir -p ~/.config/systemd/user
+cp instance.example/services/aletheia-health.{service,timer} ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now aletheia-health.timer
+systemctl --user status aletheia-health.timer
+```
+
 ---
 
 ## Upgrade
