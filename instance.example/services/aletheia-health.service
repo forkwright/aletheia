@@ -1,9 +1,11 @@
 [Unit]
-Description=Aletheia health check
+Description=Aletheia prosoche heartbeat
+Requires=aletheia.service
 After=aletheia.service
 
 [Service]
 Type=oneshot
-ExecStart=%h/aletheia/scripts/health-monitor.sh  # CUSTOMIZE: path to health-monitor.sh
-StandardOutput=append:%h/aletheia/instance/logs/health.log  # CUSTOMIZE: path to instance logs
-StandardError=append:%h/aletheia/instance/logs/health.log  # CUSTOMIZE: path to instance logs
+Environment=ALETHEIA_URL=http://127.0.0.1:18789
+ExecStart=%h/.local/bin/aletheia-heartbeat
+StandardOutput=journal
+StandardError=journal

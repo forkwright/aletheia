@@ -83,15 +83,23 @@ curl -sf http://localhost:18789/api/health | jq .
 ## Health monitoring
 
 ```bash
-# One-off check:
+# One-off health check:
 scripts/health-monitor.sh
 
 # With Signal notification on failure:
 scripts/health-monitor.sh --notify
 
-# Systemd timer (every 5 minutes):
+# One-off prosoche heartbeat:
+scripts/aletheia-heartbeat.sh
+
+# User systemd prosoche timer (first tick after 60s, then every 5 minutes):
+install -m 0755 scripts/aletheia-heartbeat.sh ~/.local/bin/aletheia-heartbeat
+mkdir -p ~/.config/systemd/user
 cp instance.example/services/aletheia-health.{service,timer} ~/.config/systemd/user/
+systemctl --user daemon-reload
 systemctl --user enable --now aletheia-health.timer
+systemctl --user status aletheia-health.timer
+journalctl --user -u aletheia-health --since "30 minutes ago"
 ```
 
 ---

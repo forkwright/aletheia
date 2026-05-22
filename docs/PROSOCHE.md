@@ -147,8 +147,19 @@ pub trait DaemonBridge: Send + Sync {
 # Check maintenance task status (includes prosoche)
 aletheia maintenance status
 
+# Run the local prosoche self-audit immediately
+aletheia maintenance run prosoche-self-audit
+
+# Install the user-systemd heartbeat timer
+install -m 0755 scripts/aletheia-heartbeat.sh ~/.local/bin/aletheia-heartbeat
+mkdir -p ~/.config/systemd/user
+cp instance.example/services/aletheia-health.{service,timer} ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now aletheia-health.timer
+
 # View prosoche activity in logs
 journalctl --user -u aletheia --since "1 hour ago" | grep prosoche
+journalctl --user -u aletheia-health --since "1 hour ago"
 ```
 
 Prosoche workspace files have **priority 7** in the token budget; they are dropped before semi-static files (MEMORY, TOOLS) under budget pressure, but SOUL.md is never dropped.
