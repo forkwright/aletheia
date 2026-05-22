@@ -1,10 +1,10 @@
 use super::*;
-use crate::schema;
+use crate::schema::Store;
 
-fn open_test_db() -> Connection {
-    let conn = Connection::open_in_memory().expect("in-memory db");
-    schema::init(&conn).expect("schema init");
-    conn
+fn open_test_store() -> (Store, tempfile::TempDir) {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let store = Store::open(dir.path()).expect("open fjall store");
+    (store, dir)
 }
 
 #[test]
@@ -39,7 +39,7 @@ fn file_hash_differs_for_different_content() {
 
 #[test]
 fn index_simple_fn() {
-    let conn = open_test_db();
+    let (store, _dir) = open_test_store();
     let src = r"
             pub fn greet(name: &str) -> String {
                 format!('Hello, {name}!')
@@ -50,21 +50,20 @@ fn index_simple_fn() {
     std::fs::write(tmp.path(), src.replace('\'', "\"")).expect("write");
     let path_str = tmp.path().to_string_lossy().into_owned();
 
-    index_file(&conn, "test_crate", &path_str, "").expect("index");
+    index_file(&store, "test_crate", &path_str, "").expect("index");
 
-    let count: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM symbols WHERE symbol_name = 'greet' AND symbol_kind = 'fn'",
-            [],
-            |r| r.get(0),
-        )
-        .expect("query");
+    let count = store
+        .symbols()
+        .expect("query")
+        .into_iter()
+        .filter(|symbol| symbol.symbol_name == "greet" && symbol.symbol_kind == "fn")
+        .count();
     assert_eq!(count, 1, "expected 1 'greet' fn symbol");
 }
 
 #[test]
 fn index_struct_and_impl_trait() {
-    let conn = open_test_db();
+    let (store, _dir) = open_test_store();
     let src = r"
             pub struct Foo;
             pub trait Bar {}
@@ -74,122 +73,120 @@ fn index_struct_and_impl_trait() {
     std::fs::write(tmp.path(), src).expect("write");
     let path_str = tmp.path().to_string_lossy().into_owned();
 
-    index_file(&conn, "my_crate", &path_str, "").expect("index");
+    index_file(&store, "my_crate", &path_str, "").expect("index");
 
-    let struct_count: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM symbols WHERE symbol_name = 'Foo' AND symbol_kind = 'struct'",
-            [],
-            |r| r.get(0),
-        )
-        .expect("query struct");
+    let symbols = store.symbols().expect("query symbols");
+    let struct_count = symbols
+        .iter()
+        .filter(|symbol| symbol.symbol_name == "Foo" && symbol.symbol_kind == "struct")
+        .count();
     assert_eq!(struct_count, 1, "expected Foo struct");
 
-    let impl_count: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM symbols WHERE symbol_kind = 'impl'",
-            [],
-            |r| r.get(0),
-        )
-        .expect("query impl");
+    let impl_count = symbols
+        .iter()
+        .filter(|symbol| symbol.symbol_kind == "impl")
+        .count();
     assert_eq!(impl_count, 1, "expected 1 impl block");
 }
 
 #[test]
 fn reindex_clears_old_symbols() {
-    let conn = open_test_db();
+    let (store, _dir) = open_test_store();
     let tmp = tempfile::NamedTempFile::new().expect("tempfile");
     let path_str = tmp.path().to_string_lossy().into_owned();
 
     std::fs::write(tmp.path(), "pub fn alpha() {}").expect("write v1");
-    index_file(&conn, "krate", &path_str, "").expect("index v1");
+    index_file(&store, "krate", &path_str, "").expect("index v1");
 
-    let c1: i64 = conn
-        .query_row("SELECT COUNT(*) FROM symbols", [], |r| r.get(0))
-        .expect("count v1");
+    let c1 = store.symbols().expect("count v1").len();
     assert_eq!(c1, 1);
 
     // Overwrite with different content.
     std::fs::write(tmp.path(), "pub fn beta() {} pub fn gamma() {}").expect("write v2");
-    index_file(&conn, "krate", &path_str, "").expect("index v2");
+    index_file(&store, "krate", &path_str, "").expect("index v2");
 
-    let c2: i64 = conn
-        .query_row("SELECT COUNT(*) FROM symbols", [], |r| r.get(0))
-        .expect("count v2");
+    let symbols = store.symbols().expect("count v2");
+    let c2 = symbols.len();
     assert_eq!(c2, 2, "old symbols must be cleared on re-index");
 
     // Verify alpha is gone.
-    let alpha: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM symbols WHERE symbol_name = 'alpha'",
-            [],
-            |r| r.get(0),
-        )
-        .expect("count alpha");
+    let alpha = symbols
+        .iter()
+        .filter(|symbol| symbol.symbol_name == "alpha")
+        .count();
     assert_eq!(alpha, 0, "alpha should have been removed");
 }
 
 #[test]
 fn pub_use_produces_reexport_symbol() {
-    let conn = open_test_db();
+    let (store, _dir) = open_test_store();
     let src = "pub use other_crate::SomeType;";
     let tmp = tempfile::NamedTempFile::new().expect("tempfile");
     std::fs::write(tmp.path(), src).expect("write");
     let path_str = tmp.path().to_string_lossy().into_owned();
 
-    index_file(&conn, "re_crate", &path_str, "").expect("index");
+    index_file(&store, "re_crate", &path_str, "").expect("index");
 
-    let count: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM symbols WHERE symbol_kind = 'reexport'",
-            [],
-            |r| r.get(0),
-        )
-        .expect("query");
+    let count = store
+        .symbols()
+        .expect("query")
+        .into_iter()
+        .filter(|symbol| symbol.symbol_kind == "reexport")
+        .count();
     assert_eq!(count, 1, "expected 1 reexport symbol for 'pub use'");
 }
 
 #[test]
 fn pub_use_reexport_populates_to_crate() {
-    let conn = open_test_db();
+    let (store, _dir) = open_test_store();
     let src = r"pub use hermeneus::types::Message;";
     let tmp = tempfile::NamedTempFile::new().expect("tempfile");
     std::fs::write(tmp.path(), src).expect("write");
     let path_str = tmp.path().to_string_lossy().into_owned();
 
-    index_file(&conn, "re_crate", &path_str, "").expect("index");
+    index_file(&store, "re_crate", &path_str, "").expect("index");
 
-    let to_crate: String = conn
-        .query_row(
-            "SELECT to_crate FROM symbol_refs
-                 JOIN symbols ON symbols.id = symbol_refs.from_symbol
-                 WHERE symbols.symbol_kind = 'reexport'",
-            [],
-            |r| r.get(0),
-        )
-        .expect("query");
+    let reexport_ids: Vec<_> = store
+        .symbols()
+        .expect("symbols")
+        .into_iter()
+        .filter(|symbol| symbol.symbol_kind == "reexport")
+        .map(|symbol| symbol.id)
+        .collect();
+    let to_crate = store
+        .refs()
+        .expect("refs")
+        .into_iter()
+        .find(|reference| reexport_ids.contains(&reference.from_symbol))
+        .expect("reexport ref")
+        .to_crate;
     assert_eq!(to_crate, "hermeneus", "reexport must record origin crate");
 }
 
 #[test]
 fn pub_use_rename_populates_to_crate() {
-    let conn = open_test_db();
+    let (store, _dir) = open_test_store();
     let src = r"pub use hermeneus::types::Message as Msg;";
     let tmp = tempfile::NamedTempFile::new().expect("tempfile");
     std::fs::write(tmp.path(), src).expect("write");
     let path_str = tmp.path().to_string_lossy().into_owned();
 
-    index_file(&conn, "re_crate", &path_str, "").expect("index");
+    index_file(&store, "re_crate", &path_str, "").expect("index");
 
-    let to_crate: String = conn
-        .query_row(
-            "SELECT to_crate FROM symbol_refs
-                 JOIN symbols ON symbols.id = symbol_refs.from_symbol
-                 WHERE symbols.symbol_name = 'Msg'",
-            [],
-            |r| r.get(0),
-        )
-        .expect("query");
+    let msg_id = store
+        .symbols()
+        .expect("symbols")
+        .into_iter()
+        .find(|symbol| symbol.symbol_name == "Msg")
+        .expect("Msg symbol")
+        .id;
+    let to_crate = store
+        .refs()
+        .expect("refs")
+        .into_iter()
+        .find(|reference| reference.from_symbol == msg_id)
+        .expect("Msg ref")
+        .to_crate;
     assert_eq!(
         to_crate, "hermeneus",
         "rename reexport must record origin crate"
@@ -198,7 +195,7 @@ fn pub_use_rename_populates_to_crate() {
 
 #[test]
 fn indexed_rdeps_cover_impl_and_reexport_edges_only() {
-    let conn = open_test_db();
+    let (store, _dir) = open_test_store();
     let src = r"
         pub struct Local;
         impl hermeneus::types::Message for Local {}
@@ -208,31 +205,29 @@ fn indexed_rdeps_cover_impl_and_reexport_edges_only() {
     std::fs::write(tmp.path(), src).expect("write");
     let path_str = tmp.path().to_string_lossy().into_owned();
 
-    index_file(&conn, "re_crate", &path_str, "").expect("index");
+    index_file(&store, "re_crate", &path_str, "").expect("index");
 
-    let impl_count: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM symbol_refs
-                 WHERE to_crate = 'hermeneus' AND to_symbol = 'Message' AND ref_kind = 'impl'",
-            [],
-            |r| r.get(0),
-        )
-        .expect("query impl refs");
-    let reexport_count: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM symbol_refs
-                 WHERE to_crate = 'hermeneus' AND to_symbol = 'Message' AND ref_kind = 'reexport'",
-            [],
-            |r| r.get(0),
-        )
-        .expect("query reexport refs");
-    let other_count: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM symbol_refs WHERE ref_kind NOT IN ('impl', 'reexport')",
-            [],
-            |r| r.get(0),
-        )
-        .expect("query other refs");
+    let refs = store.refs().expect("refs");
+    let impl_count = refs
+        .iter()
+        .filter(|reference| {
+            reference.to_crate == "hermeneus"
+                && reference.to_symbol == "Message"
+                && reference.ref_kind == "impl"
+        })
+        .count();
+    let reexport_count = refs
+        .iter()
+        .filter(|reference| {
+            reference.to_crate == "hermeneus"
+                && reference.to_symbol == "Message"
+                && reference.ref_kind == "reexport"
+        })
+        .count();
+    let other_count = refs
+        .iter()
+        .filter(|reference| reference.ref_kind != "impl" && reference.ref_kind != "reexport")
+        .count();
 
     assert_eq!(impl_count, 1, "expected one impl edge");
     assert_eq!(reexport_count, 1, "expected one reexport edge");
@@ -244,7 +239,7 @@ fn indexed_rdeps_cover_impl_and_reexport_edges_only() {
 
 #[test]
 fn module_path_for_file_module() {
-    let conn = open_test_db();
+    let (store, _dir) = open_test_store();
     let tmp = tempfile::tempdir().expect("tempdir");
     let src_dir = tmp.path().join("src");
     std::fs::create_dir_all(&src_dir).expect("create src");
@@ -257,22 +252,20 @@ fn module_path_for_file_module() {
     let module_path = module_path_from_file_path(&src_dir, &bar_rs);
     assert_eq!(module_path, "foo::bar");
 
-    index_file(&conn, "test_crate", &path_str, &module_path).expect("index");
+    index_file(&store, "test_crate", &path_str, &module_path).expect("index");
 
-    let count: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM symbols
-                 WHERE symbol_name = 'inside_bar' AND module_path = 'foo::bar'",
-            [],
-            |r| r.get(0),
-        )
-        .expect("query");
+    let count = store
+        .symbols()
+        .expect("query")
+        .into_iter()
+        .filter(|symbol| symbol.symbol_name == "inside_bar" && symbol.module_path == "foo::bar")
+        .count();
     assert_eq!(count, 1, "expected symbol inside foo::bar file module");
 }
 
 #[test]
 fn rebuild_prunes_deleted_files() {
-    let conn = open_test_db();
+    let (store, _dir) = open_test_store();
     let tmp = tempfile::tempdir().expect("tempdir");
     let ws = tmp.path();
 
@@ -305,15 +298,15 @@ edition = "2021"
     std::fs::write(&lib_rs, "pub mod foo;\npub fn keep() {}").expect("write lib.rs");
     std::fs::write(&foo_rs, "pub fn vanish() {}").expect("write foo.rs");
 
-    rebuild(&conn, ws).expect("first rebuild");
+    rebuild(&store, ws).expect("first rebuild");
 
-    let count_before: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM symbols WHERE file_path = ?1",
-            [&foo_rs.to_string_lossy()],
-            |r| r.get(0),
-        )
-        .expect("count foo symbols before");
+    let foo_path = foo_rs.to_string_lossy();
+    let count_before = store
+        .symbols()
+        .expect("count foo symbols before")
+        .into_iter()
+        .filter(|symbol| symbol.file_path == foo_path)
+        .count();
     assert_eq!(
         count_before, 1,
         "foo.rs symbol should exist before deletion"
@@ -323,23 +316,19 @@ edition = "2021"
     std::fs::remove_file(&foo_rs).expect("remove foo.rs");
     std::fs::write(&lib_rs, "pub fn keep() {}").expect("rewrite lib.rs");
 
-    rebuild(&conn, ws).expect("second rebuild");
+    rebuild(&store, ws).expect("second rebuild");
 
-    let count_after: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM symbols WHERE file_path = ?1",
-            [&foo_rs.to_string_lossy()],
-            |r| r.get(0),
-        )
-        .expect("count foo symbols after");
+    let count_after = store
+        .symbols()
+        .expect("count foo symbols after")
+        .into_iter()
+        .filter(|symbol| symbol.file_path == foo_path)
+        .count();
     assert_eq!(count_after, 0, "symbols for deleted file must be pruned");
 
-    let hash_after: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM file_hashes WHERE file_path = ?1",
-            [&foo_rs.to_string_lossy()],
-            |r| r.get(0),
-        )
-        .expect("count foo hash after");
-    assert_eq!(hash_after, 0, "file_hash for deleted file must be pruned");
+    let hash_after = store.file_hash(&foo_path).expect("count foo hash after");
+    assert!(
+        hash_after.is_none(),
+        "file_hash for deleted file must be pruned"
+    );
 }

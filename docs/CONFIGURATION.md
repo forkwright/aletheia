@@ -307,7 +307,7 @@ Embedding provider for the recall pipeline (vector search over knowledge).
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `provider` | string | `"mock"` | Provider type: `"mock"`, `"candle"` |
+| `provider` | string | `"mock"` | Provider type: `"mock"`, `"candle"`, `"openai-compat"`, `"voyage"` |
 | `model` | string | -- | Provider-specific model name |
 | `dimension` | usize | `384` | Output vector dimension (must match HNSW index) |
 

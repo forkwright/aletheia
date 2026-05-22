@@ -1,6 +1,6 @@
 //! aletheia-krites: embedded Datalog engine with HNSW and graph support
 //!
-//! Krites (Κριτής): "judge." Evaluates Datalog queries against a graph store
+//! Krites (Κριτής): Datalog engine. Evaluates Datalog queries against a graph store
 //! with HNSW vector search and graph algorithms.
 // SAFETY: warn-level satisfies the ARCHITECTURE/no-deny-missing-docs lint.
 // deny-level is impractical for krites internal modules.

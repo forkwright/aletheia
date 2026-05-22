@@ -862,19 +862,6 @@ fn build_registry() -> Vec<ParameterSpec> {
             evidence_required: "Tool output size distribution",
             direction_hint: TuningDirection::Higher,
         },
-        ParameterSpec {
-            key: "capacity.opusContextTokens",
-            section: "capacity",
-            tier: ParameterTier::Deployment,
-            default: ParameterValue::Int(1_000_000),
-            bounds: Some((200_000.0, 2_000_000.0)),
-            hot_reloadable: false,
-            description: "Context window token limit applied to Opus-class models",
-            affects: "model_context_window",
-            outcome_signal: "context_utilization_rate",
-            evidence_required: "Context utilization and quality at different window sizes",
-            direction_hint: TuningDirection::Higher,
-        },
         // ===================================================================
         // Nous behavior
         // ===================================================================

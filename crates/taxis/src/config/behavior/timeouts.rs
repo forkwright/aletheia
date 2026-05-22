@@ -26,10 +26,10 @@ impl Default for TimeoutsConfig {
     }
 }
 
-/// Deployment-tunable capacity limits for tool output and context windows.
+/// Deployment-tunable capacity limits for tool output.
 ///
-/// Controls memory and token budgets that depend on the host's hardware and
-/// the LLM provider's context limits. Defaults match `koina::defaults`.
+/// Controls memory budgets that depend on the host's hardware. Defaults match
+/// `koina::defaults`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
@@ -40,21 +40,12 @@ pub struct CapacityConfig {
     /// Applies to all built-in tools (filesystem, workspace, shell). Set to
     /// `0` to disable truncation. Valid range: 0–10 MiB. Default: 51200 (50 KiB).
     pub max_tool_output_bytes: usize,
-    /// Context window token limit applied to Opus-class models when the
-    /// global `contextTokens` is still at its default value (200k).
-    ///
-    /// Opus models support a 1M token context window; this automatic upgrade
-    /// preserves that capability without requiring manual per-agent overrides.
-    /// Set to the same value as `contextTokens` to disable the auto-upgrade.
-    /// Valid range: 200000–2000000. Default: 1000000.
-    pub opus_context_tokens: u32,
 }
 
 impl Default for CapacityConfig {
     fn default() -> Self {
         Self {
             max_tool_output_bytes: koina::defaults::MAX_OUTPUT_BYTES,
-            opus_context_tokens: koina::defaults::OPUS_CONTEXT_TOKENS,
         }
     }
 }
