@@ -18,8 +18,6 @@ storage-fjall = ["dep:fjall", "koina/fjall"]
 [dependencies]
 aletheia-routing = { path = "../aletheia-routing" }
 compact_str = { workspace = true }
-chrono = "0.4"
-cron = "=0.15.0"
 koina = { path = "../koina" }
 eidos = { path = "../eidos" }
 hermeneus = { path = "../hermeneus" }
@@ -28,6 +26,7 @@ rand = { workspace = true }
 regex = { workspace = true }
 fjall = { version = "3", optional = true }
 jiff = { workspace = true, features = ["serde"] }
+jiff-cron = "0.3"
 parking_lot = { version = "0.12", default-features = false }
 reqwest = { workspace = true }
 rmp-serde = "1.2"

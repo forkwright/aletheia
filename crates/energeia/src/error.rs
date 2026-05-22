@@ -7,11 +7,11 @@ use snafu::Snafu;
 /// Errors from dispatch orchestration operations.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
-#[non_exhaustive]
 #[expect(
     missing_docs,
     reason = "snafu error variant fields are self-documenting via display format"
 )]
+#[non_exhaustive]
 pub enum Error {
     /// I/O error reading or listing prompt files.
     #[snafu(display("I/O error for '{}': {source}", path.display()))]
@@ -157,7 +157,7 @@ pub enum Error {
     #[snafu(display("invalid cron expression '{expression}': {source}"))]
     CronParse {
         expression: String,
-        source: cron::error::Error,
+        source: jiff_cron::error::Error,
         #[snafu(implicit)]
         location: snafu::Location,
     },
