@@ -336,7 +336,9 @@ mod tests {
             Some("Ctrl+G")
         );
         assert_eq!(file.theme, back.theme);
-        let discovery = back.discovery.expect("discovery config should roundtrip");
+        let Some(discovery) = back.discovery else {
+            panic!("discovery config should roundtrip");
+        };
         assert_eq!(discovery.port, Some(18790));
         assert_eq!(
             discovery.urls.as_deref(),
