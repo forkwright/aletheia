@@ -119,7 +119,7 @@ aletheia-lexica = { path = "crates/aletheia-lexica" }
 rayon = { version = "1", default-features = false }
 
 # theatron substrate (cross-repo git deps)
-# WHY: forkwright/aletheia#3870 — single source of truth for the v1.2.0 pin.
+# WHY: forkwright/aletheia#3870 — single source of truth for the v1.3.0 pin.
 # Member crates inherit via `<dep> = { workspace = true }`.
 # proskenion is excluded from the workspace (GTK/webkit2gtk) and uses its own
 # standalone [workspace.dependencies] block; pin is mirrored there manually.
@@ -249,28 +249,34 @@ loom = { version = "0.7", default-features = false }
 # readable. Cargo resolves them identically to inline form.
 [workspace.dependencies.parodos]
 git = "https://github.com/forkwright/theatron.git"
-tag = "v1.2.0"
+tag = "v1.3.0"
+version = "1.3.0"
 
 [workspace.dependencies.themelion]
 git = "https://github.com/forkwright/theatron.git"
-tag = "v1.2.0"
+tag = "v1.3.0"
+version = "1.3.0"
 
 [workspace.dependencies.skeue]
 git = "https://github.com/forkwright/theatron.git"
-tag = "v1.2.0"
+tag = "v1.3.0"
+version = "1.3.0"
 
 [workspace.dependencies.gramma]
 git = "https://github.com/forkwright/theatron.git"
-tag = "v1.2.0"
+tag = "v1.3.0"
+version = "1.3.0"
 
 [workspace.dependencies.bathron]
 git = "https://github.com/forkwright/theatron.git"
-tag = "v1.2.0"
+tag = "v1.3.0"
+version = "1.3.0"
 features = ["logging"]
 
 [workspace.dependencies.keryx]
 git = "https://github.com/forkwright/theatron.git"
-tag = "v1.2.0"
+tag = "v1.3.0"
+version = "1.3.0"
 
 [workspace.dependencies.serde]
 version = "1"
