@@ -62,6 +62,63 @@ pub(crate) struct ChatUsage {
     // OpenAI does not expose cache-tier tokens; leave zero.
 }
 
+#[derive(Debug, Deserialize)]
+pub(crate) struct ResponsesResponse {
+    pub id: String,
+    pub model: String,
+    #[serde(default)]
+    pub status: Option<String>,
+    #[serde(default)]
+    pub incomplete_details: Option<ResponsesIncompleteDetails>,
+    #[serde(default)]
+    pub output: Vec<ResponsesOutputItem>,
+    #[serde(default)]
+    pub usage: Option<ResponsesUsage>,
+    #[serde(default)]
+    pub output_text: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct ResponsesIncompleteDetails {
+    #[serde(default)]
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(tag = "type")]
+pub(crate) enum ResponsesOutputItem {
+    #[serde(rename = "message")]
+    Message {
+        content: Vec<ResponsesOutputContent>,
+    },
+    #[serde(rename = "function_call")]
+    FunctionCall {
+        call_id: String,
+        name: String,
+        #[serde(default)]
+        arguments: String,
+    },
+    #[serde(other)]
+    Other,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(tag = "type")]
+pub(crate) enum ResponsesOutputContent {
+    #[serde(rename = "output_text")]
+    OutputText { text: String },
+    #[serde(other)]
+    Other,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct ResponsesUsage {
+    #[serde(default)]
+    pub input_tokens: u64,
+    #[serde(default)]
+    pub output_tokens: u64,
+}
+
 impl ChatCompletionResponse {
     /// Convert a successful OpenAI response into the Anthropic-shaped
     /// [`CompletionResponse`].
@@ -101,12 +158,7 @@ impl ChatCompletionResponse {
         for call in choice.message.tool_calls {
             // WHY: arguments is a JSON-encoded string on the wire. An empty
             // string means the tool takes no input — map to an empty object.
-            let input: serde_json::Value = if call.function.arguments.is_empty() {
-                serde_json::json!({})
-            } else {
-                serde_json::from_str(&call.function.arguments)
-                    .unwrap_or(serde_json::Value::String(call.function.arguments.clone()))
-            };
+            let input = parse_arguments(&call.function.arguments);
             content.push(ContentBlock::ToolUse {
                 id: call.id,
                 name: call.function.name,
@@ -132,6 +184,114 @@ impl ChatCompletionResponse {
             cost_usd: None,
             duration_ms: None,
         })
+    }
+}
+
+impl ResponsesResponse {
+    /// Convert a successful OpenAI Responses body into a hermeneus
+    /// [`CompletionResponse`].
+    ///
+    /// # Errors
+    ///
+    /// Returns an error string when the response contains neither output
+    /// items nor an `output_text` convenience field.
+    pub(crate) fn into_response(self) -> Result<CompletionResponse, String> {
+        let Self {
+            id,
+            model,
+            status,
+            incomplete_details,
+            output,
+            usage,
+            output_text,
+        } = self;
+
+        let mut content = Vec::new();
+        let mut saw_function_call = false;
+
+        for item in output {
+            match item {
+                ResponsesOutputItem::Message { content: parts } => {
+                    for part in parts {
+                        if let ResponsesOutputContent::OutputText { text } = part
+                            && !text.is_empty()
+                        {
+                            content.push(ContentBlock::Text {
+                                text,
+                                citations: None,
+                            });
+                        }
+                    }
+                }
+                ResponsesOutputItem::FunctionCall {
+                    call_id,
+                    name,
+                    arguments,
+                } => {
+                    saw_function_call = true;
+                    content.push(ContentBlock::ToolUse {
+                        id: call_id,
+                        name,
+                        input: parse_arguments(&arguments),
+                    });
+                }
+                ResponsesOutputItem::Other => {}
+            }
+        }
+
+        if content.is_empty()
+            && let Some(text) = output_text
+            && !text.is_empty()
+        {
+            content.push(ContentBlock::Text {
+                text,
+                citations: None,
+            });
+        }
+
+        if content.is_empty() {
+            return Err("OpenAI Responses response had no output".to_owned());
+        }
+
+        let stop_reason = if saw_function_call {
+            StopReason::ToolUse
+        } else if status.as_deref() == Some("incomplete")
+            && incomplete_details
+                .as_ref()
+                .and_then(|details| details.reason.as_deref())
+                .is_some_and(|reason| reason == "max_output_tokens")
+        {
+            StopReason::MaxTokens
+        } else {
+            StopReason::EndTurn
+        };
+
+        let usage = usage
+            .map(|u| Usage {
+                input_tokens: u.input_tokens,
+                output_tokens: u.output_tokens,
+                cache_read_tokens: 0,
+                cache_write_tokens: 0,
+            })
+            .unwrap_or_default();
+
+        Ok(CompletionResponse {
+            id,
+            model,
+            stop_reason,
+            content,
+            usage,
+            cost_usd: None,
+            duration_ms: None,
+        })
+    }
+}
+
+pub(crate) fn parse_arguments(arguments: &str) -> serde_json::Value {
+    if arguments.is_empty() {
+        serde_json::json!({})
+    } else {
+        serde_json::from_str(arguments).unwrap_or(serde_json::Value::String(arguments.to_owned()))
     }
 }
 

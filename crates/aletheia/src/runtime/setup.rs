@@ -13,7 +13,9 @@ use agora::semeion::SignalProvider;
 use agora::semeion::client::SignalClient;
 use agora::types::ChannelProvider;
 use hermeneus::anthropic::{AnthropicProvider, ProviderBehavior};
-use hermeneus::openai::{OpenAiProvider, OpenAiProviderConfig};
+use hermeneus::openai::{
+    OpenAiApiFamily as HermeneusOpenAiApiFamily, OpenAiProvider, OpenAiProviderConfig,
+};
 use hermeneus::provider::{
     DeploymentTarget as HermeneusDeploymentTarget, ProviderConfig, ProviderRegistry,
 };
@@ -245,6 +247,33 @@ fn map_deployment_target(src: taxis::config::DeploymentTarget) -> HermeneusDeplo
     }
 }
 
+fn map_openai_api_family(src: taxis::config::OpenAiApiFamily) -> HermeneusOpenAiApiFamily {
+    use taxis::config::OpenAiApiFamily as TaxisOpenAiApiFamily;
+    match src {
+        TaxisOpenAiApiFamily::Responses => HermeneusOpenAiApiFamily::Responses,
+        // WHY: future taxis variants should not silently move local
+        // OpenAI-compatible endpoints onto a cloud-only wire contract.
+        TaxisOpenAiApiFamily::ChatCompletions | _ => HermeneusOpenAiApiFamily::ChatCompletions,
+    }
+}
+
+fn configured_openai_api_family(
+    entry: &taxis::config::LlmProviderConfig,
+) -> HermeneusOpenAiApiFamily {
+    use taxis::config::ProviderKind;
+
+    entry.api_family.map_or_else(
+        || {
+            if entry.kind == ProviderKind::OpenAi {
+                HermeneusOpenAiApiFamily::Responses
+            } else {
+                HermeneusOpenAiApiFamily::ChatCompletions
+            }
+        },
+        map_openai_api_family,
+    )
+}
+
 /// Iterate `config.providers` and register each entry with the provider
 /// registry (#3424, #3414).
 ///
@@ -259,6 +288,7 @@ fn register_declared_providers(registry: &mut ProviderRegistry, config: &Alethei
     for entry in &config.providers {
         match entry.kind {
             ProviderKind::OpenAi | ProviderKind::OpenAiCompatible => {
+                let api_family = configured_openai_api_family(entry);
                 let base_url = if entry.kind == ProviderKind::OpenAi {
                     entry
                         .base_url
@@ -297,6 +327,7 @@ fn register_declared_providers(registry: &mut ProviderRegistry, config: &Alethei
                     base_url,
                     api_key,
                     models: entry.models.clone(),
+                    api_family,
                     // WHY (#3736): the operator-declared deployment target
                     // was previously logged below but never threaded to the
                     // provider, so every OpenAI-compat provider silently
@@ -312,8 +343,9 @@ fn register_declared_providers(registry: &mut ProviderRegistry, config: &Alethei
                         info!(
                             provider = %entry.name,
                             target = ?entry.deployment_target,
+                            api_family = ?api_family,
                             models = ?entry.models,
-                            "OpenAI-compatible provider registered"
+                            "OpenAI provider registered"
                         );
                         registry.register(Box::new(provider));
                     }
@@ -735,5 +767,31 @@ mod tests {
         assert!(message.contains("failed to register channel provider 'signal'"));
         let source = error.source().expect("duplicate channel source");
         assert!(source.to_string().contains("duplicate channel: signal"));
+    }
+
+    #[test]
+    fn openai_api_family_mapping_and_defaults_are_explicit() {
+        use taxis::config::{DeploymentTarget, LlmProviderConfig, ProviderKind};
+
+        let mut entry = LlmProviderConfig {
+            name: "openai-cloud".to_owned(),
+            kind: ProviderKind::OpenAi,
+            base_url: None,
+            api_key_env: None,
+            api_family: None,
+            deployment_target: DeploymentTarget::Cloud,
+            models: vec!["gpt-5".to_owned()],
+        };
+        assert_eq!(
+            configured_openai_api_family(&entry),
+            HermeneusOpenAiApiFamily::Responses
+        );
+
+        entry.kind = ProviderKind::OpenAiCompatible;
+        entry.base_url = Some("http://127.0.0.1:8088/v1".to_owned());
+        assert_eq!(
+            configured_openai_api_family(&entry),
+            HermeneusOpenAiApiFamily::ChatCompletions
+        );
     }
 }
