@@ -38,7 +38,7 @@ impl Agent {
 }
 
 /// A session within an agent.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)] // kanon:ignore RUST/no-debug-derive-on-public-types
 pub struct Session {
     /// Session identifier.
     pub id: SessionId,
@@ -127,27 +127,27 @@ pub struct TurnOutcome {
     /// Final text output.
     pub text: String,
     /// Agent that processed this turn.
-    #[serde(rename = "nousId")]
+    #[serde(rename = "nousId", alias = "nous_id")]
     pub nous_id: NousId,
     /// Session this turn belongs to.
-    #[serde(rename = "sessionId")]
+    #[serde(rename = "sessionId", alias = "session_id")]
     pub session_id: SessionId,
     /// Model used for this turn.
     pub model: String,
     /// Number of tool calls made.
-    #[serde(rename = "toolCalls", default)]
+    #[serde(rename = "toolCalls", alias = "tool_calls", default)]
     pub tool_calls: u32,
     /// Input tokens consumed.
-    #[serde(rename = "inputTokens", default)]
+    #[serde(rename = "inputTokens", alias = "input_tokens", default)]
     pub input_tokens: u32,
     /// Output tokens generated.
-    #[serde(rename = "outputTokens", default)]
+    #[serde(rename = "outputTokens", alias = "output_tokens", default)]
     pub output_tokens: u32,
     /// Tokens read from cache.
-    #[serde(rename = "cacheReadTokens", default)]
+    #[serde(rename = "cacheReadTokens", alias = "cache_read_tokens", default)]
     pub cache_read_tokens: u32,
     /// Tokens written to cache.
-    #[serde(rename = "cacheWriteTokens", default)]
+    #[serde(rename = "cacheWriteTokens", alias = "cache_write_tokens", default)]
     pub cache_write_tokens: u32,
     /// Error message, if the turn errored.
     #[serde(default)]
@@ -396,6 +396,7 @@ pub struct AgentsResponse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionsResponse {
     /// List of sessions.
+    #[serde(alias = "items")]
     pub sessions: Vec<Session>,
 }
 
