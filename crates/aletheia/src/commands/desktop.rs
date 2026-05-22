@@ -29,10 +29,9 @@ pub(crate) fn run(args: &DesktopArgs) -> anyhow::Result<()> {
     let binary = find_in_path().ok_or_else(|| {
         anyhow::anyhow!(
             "`{BINARY_NAME}` not found in PATH\n\n\
-             Build and install it from the workspace:\n  \
-             cd crates/theatron/proskenion && cargo build --release\n  \
-             cp target/release/{BINARY_NAME} ~/.cargo/bin/\n\n\
-             Or add its build directory to PATH."
+             Install the desktop binary with:\n  \
+             scripts/install-proskenion.sh\n\n\
+             Or add an existing `{BINARY_NAME}` build directory to PATH."
         )
     })?;
 
