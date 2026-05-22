@@ -8,21 +8,23 @@
 //!
 //! Gated behind the `reranker` feature (enabled by default).
 
-use async_trait::async_trait;
+use std::future::Future;
+use std::pin::Pin;
+
 use serde::{Deserialize, Serialize};
 use snafu::Snafu;
-use tracing::instrument;
+use tracing::{Instrument, instrument};
 
 use super::RecallCandidate;
 
 /// Errors that can occur in the episteme recall pipeline.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
-#[non_exhaustive]
 #[expect(
     missing_docs,
     reason = "snafu error variant fields are self-documenting via display format"
 )]
+#[non_exhaustive]
 pub enum EpistemeError {
     /// Reranker operation failed.
     #[snafu(display("reranker failed: {message}"))]
@@ -33,11 +35,14 @@ pub enum EpistemeError {
     },
 }
 
+/// Future returned by object-safe reranker implementations.
+pub type RerankFuture<'a> =
+    Pin<Box<dyn Future<Output = Result<Vec<RecallCandidate>, EpistemeError>> + Send + 'a>>;
+
 /// Trait for reranking recall candidates.
 ///
 /// Implementations receive the top-K candidates from the baseline 6-factor
 /// ranking and may return them in a refined order.
-#[async_trait]
 pub trait Reranker: Send + Sync {
     /// Reorder `candidates` for the given `query`.
     ///
@@ -45,11 +50,7 @@ pub trait Reranker: Send + Sync {
     ///
     /// Returns [`EpistemeError::RerankerFailed`] when the reranker cannot
     /// complete its scoring (e.g. network timeout for a remote cross-encoder).
-    async fn rerank(
-        &self,
-        query: &str,
-        candidates: Vec<RecallCandidate>,
-    ) -> Result<Vec<RecallCandidate>, EpistemeError>;
+    fn rerank<'a>(&'a self, query: &'a str, candidates: Vec<RecallCandidate>) -> RerankFuture<'a>;
 
     /// Human-readable name for diagnostics and metrics.
     fn name(&self) -> &'static str;
@@ -63,81 +64,85 @@ pub trait Reranker: Send + Sync {
 #[derive(Debug, Clone, Copy)]
 pub struct NaiveReranker;
 
-#[async_trait]
 impl Reranker for NaiveReranker {
     #[instrument(skip(self, candidates))]
-    async fn rerank(
-        &self,
-        query: &str,
+    fn rerank<'a>(
+        &'a self,
+        query: &'a str,
         mut candidates: Vec<RecallCandidate>,
-    ) -> Result<Vec<RecallCandidate>, EpistemeError> {
-        let query_tokens: Vec<String> = query
-            .to_lowercase()
-            .split_whitespace()
-            .map(String::from)
-            .collect();
+    ) -> RerankFuture<'a> {
+        Box::pin(
+            async move {
+                let query_tokens: Vec<String> = query
+                    .to_lowercase()
+                    .split_whitespace()
+                    .map(String::from)
+                    .collect();
 
-        if query_tokens.is_empty() || candidates.is_empty() {
-            return Ok(candidates);
-        }
+                if query_tokens.is_empty() || candidates.is_empty() {
+                    return Ok(candidates);
+                }
 
-        let total_len: usize = candidates
-            .iter()
-            .map(|c| c.content.split_whitespace().count())
-            .sum();
-        #[expect(
-            clippy::cast_precision_loss,
-            clippy::as_conversions,
-            reason = "usize→f64: token counts fit in f64"
-        )]
-        let avgdl = total_len as f64 / candidates.len().max(1) as f64;
-        let k1 = 1.2;
-        let b = 0.75;
-
-        for candidate in &mut candidates {
-            let doc_tokens: Vec<String> = candidate
-                .content
-                .to_lowercase()
-                .split_whitespace()
-                .map(String::from)
-                .collect();
-            #[expect(
-                clippy::cast_precision_loss,
-                clippy::as_conversions,
-                reason = "usize→f64: token counts fit in f64"
-            )]
-            let dl = doc_tokens.len() as f64;
-            let mut score = 0.0;
-
-            for qt in &query_tokens {
+                let total_len: usize = candidates
+                    .iter()
+                    .map(|c| c.content.split_whitespace().count())
+                    .sum();
                 #[expect(
                     clippy::cast_precision_loss,
                     clippy::as_conversions,
                     reason = "usize→f64: token counts fit in f64"
                 )]
-                let f = doc_tokens.iter().filter(|t| t == &qt).count() as f64;
-                if f > 0.0 {
-                    // Simplified IDF: assume every term appears in roughly half
-                    // the documents.  This avoids needing corpus-level statistics.
-                    let idf = 2.0f64.ln();
-                    let denom = f + k1 * (1.0 - b + b * dl / avgdl.max(1.0));
-                    score += idf * f * (k1 + 1.0) / denom;
+                let avgdl = total_len as f64 / candidates.len().max(1) as f64;
+                let k1 = 1.2;
+                let b = 0.75;
+
+                for candidate in &mut candidates {
+                    let doc_tokens: Vec<String> = candidate
+                        .content
+                        .to_lowercase()
+                        .split_whitespace()
+                        .map(String::from)
+                        .collect();
+                    #[expect(
+                        clippy::cast_precision_loss,
+                        clippy::as_conversions,
+                        reason = "usize→f64: token counts fit in f64"
+                    )]
+                    let dl = doc_tokens.len() as f64;
+                    let mut score = 0.0;
+
+                    for qt in &query_tokens {
+                        #[expect(
+                            clippy::cast_precision_loss,
+                            clippy::as_conversions,
+                            reason = "usize→f64: token counts fit in f64"
+                        )]
+                        let f = doc_tokens.iter().filter(|t| t == &qt).count() as f64;
+                        if f > 0.0 {
+                            // Simplified IDF: assume every term appears in roughly half
+                            // the documents.  This avoids needing corpus-level statistics.
+                            let idf = 2.0f64.ln();
+                            let denom = f + k1 * (1.0 - b + b * dl / avgdl.max(1.0));
+                            score += idf * f * (k1 + 1.0) / denom;
+                        }
+                    }
+
+                    candidate.score = score;
                 }
+
+                let mut indexed: Vec<(usize, RecallCandidate)> =
+                    candidates.into_iter().enumerate().collect();
+                indexed.sort_by(|(ia, a), (ib, b)| {
+                    b.score
+                        .partial_cmp(&a.score)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                        .then_with(|| ia.cmp(ib))
+                });
+
+                Ok(indexed.into_iter().map(|(_, c)| c).collect())
             }
-
-            candidate.score = score;
-        }
-
-        let mut indexed: Vec<(usize, RecallCandidate)> =
-            candidates.into_iter().enumerate().collect();
-        indexed.sort_by(|(ia, a), (ib, b)| {
-            b.score
-                .partial_cmp(&a.score)
-                .unwrap_or(std::cmp::Ordering::Equal)
-                .then_with(|| ia.cmp(ib))
-        });
-
-        Ok(indexed.into_iter().map(|(_, c)| c).collect())
+            .instrument(tracing::Span::current()),
+        )
     }
 
     fn name(&self) -> &'static str {
@@ -197,89 +202,93 @@ impl HttpReranker {
     }
 }
 
-#[async_trait]
 impl Reranker for HttpReranker {
     #[instrument(skip(self, candidates))]
-    async fn rerank(
-        &self,
-        query: &str,
+    fn rerank<'a>(
+        &'a self,
+        query: &'a str,
         mut candidates: Vec<RecallCandidate>,
-    ) -> Result<Vec<RecallCandidate>, EpistemeError> {
-        if candidates.is_empty() {
-            return Ok(candidates);
-        }
-
-        let req_body = RerankRequest {
-            query,
-            candidates: candidates
-                .iter()
-                .map(|c| RerankCandidate {
-                    content: &c.content,
-                    source_id: &c.source_id,
-                    source_type: &c.source_type,
-                    nous_id: &c.nous_id,
-                    score: c.score,
-                })
-                .collect(),
-        };
-
-        let response = self
-            .client
-            .post(&self.url)
-            .json(&req_body)
-            .send()
-            .await
-            .map_err(|e| {
-                RerankerFailedSnafu {
-                    message: format!("HTTP request failed: {e}"),
+    ) -> RerankFuture<'a> {
+        Box::pin(
+            async move {
+                if candidates.is_empty() {
+                    return Ok(candidates);
                 }
-                .build()
-            })?;
 
-        let status = response.status();
-        if !status.is_success() {
-            let body = match response.text().await {
-                Ok(body) => body,
-                Err(err) => format!("<failed to read error body: {err}>"),
-            };
-            return Err(RerankerFailedSnafu {
-                message: format!("HTTP {status}: {body}"),
+                let req_body = RerankRequest {
+                    query,
+                    candidates: candidates
+                        .iter()
+                        .map(|c| RerankCandidate {
+                            content: &c.content,
+                            source_id: &c.source_id,
+                            source_type: &c.source_type,
+                            nous_id: &c.nous_id,
+                            score: c.score,
+                        })
+                        .collect(),
+                };
+
+                let response = self
+                    .client
+                    .post(&self.url)
+                    .json(&req_body)
+                    .send()
+                    .await
+                    .map_err(|e| {
+                        RerankerFailedSnafu {
+                            message: format!("HTTP request failed: {e}"),
+                        }
+                        .build()
+                    })?;
+
+                let status = response.status();
+                if !status.is_success() {
+                    let body = match response.text().await {
+                        Ok(body) => body,
+                        Err(err) => format!("<failed to read error body: {err}>"),
+                    };
+                    return Err(RerankerFailedSnafu {
+                        message: format!("HTTP {status}: {body}"),
+                    }
+                    .build());
+                }
+
+                let resp_body: RerankResponse = response.json().await.map_err(|e| {
+                    RerankerFailedSnafu {
+                        message: format!("failed to parse reranker response: {e}"),
+                    }
+                    .build()
+                })?;
+
+                if resp_body.scores.len() != candidates.len() {
+                    return Err(RerankerFailedSnafu {
+                        message: format!(
+                            "score count mismatch: expected {}, got {}",
+                            candidates.len(),
+                            resp_body.scores.len()
+                        ),
+                    }
+                    .build());
+                }
+
+                for (candidate, score) in candidates.iter_mut().zip(resp_body.scores) {
+                    candidate.score = score;
+                }
+
+                let mut indexed: Vec<(usize, RecallCandidate)> =
+                    candidates.into_iter().enumerate().collect();
+                indexed.sort_by(|(ia, a), (ib, b)| {
+                    b.score
+                        .partial_cmp(&a.score)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                        .then_with(|| ia.cmp(ib))
+                });
+
+                Ok(indexed.into_iter().map(|(_, c)| c).collect())
             }
-            .build());
-        }
-
-        let resp_body: RerankResponse = response.json().await.map_err(|e| {
-            RerankerFailedSnafu {
-                message: format!("failed to parse reranker response: {e}"),
-            }
-            .build()
-        })?;
-
-        if resp_body.scores.len() != candidates.len() {
-            return Err(RerankerFailedSnafu {
-                message: format!(
-                    "score count mismatch: expected {}, got {}",
-                    candidates.len(),
-                    resp_body.scores.len()
-                ),
-            }
-            .build());
-        }
-
-        for (candidate, score) in candidates.iter_mut().zip(resp_body.scores) {
-            candidate.score = score;
-        }
-
-        let mut indexed: Vec<(usize, RecallCandidate)> =
-            candidates.into_iter().enumerate().collect();
-        indexed.sort_by(|(ia, a), (ib, b)| {
-            b.score
-                .partial_cmp(&a.score)
-                .unwrap_or(std::cmp::Ordering::Equal)
-                .then_with(|| ia.cmp(ib))
-        });
-
-        Ok(indexed.into_iter().map(|(_, c)| c).collect())
+            .instrument(tracing::Span::current()),
+        )
     }
 
     fn name(&self) -> &'static str {
