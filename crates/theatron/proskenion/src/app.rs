@@ -5,6 +5,7 @@
 //! window persistence, quick input) is wired here.
 
 use dioxus::prelude::*;
+use themelion::theme::ThemeProvider;
 
 use crate::layout::Layout;
 use crate::platform;
@@ -17,8 +18,8 @@ use crate::state::connection::ConnectionState;
 use crate::state::notifications::{DndState, NotificationHistory};
 use crate::state::platform::{CloseBehavior, HotkeyState, QuickInputState, TrayState, WindowState};
 use crate::state::tool_metrics::DateRange;
-use themelion::theme::ThemeProvider;
 use crate::views::chat::Chat;
+use crate::views::component_library::ComponentLibrary;
 use crate::views::connect::ConnectView;
 use crate::views::files::Files;
 use crate::views::memory::Memory;
@@ -57,6 +58,8 @@ pub(crate) enum Route {
         Meta {},
         #[route("/settings")]
         Settings {},
+        #[route("/component-library")]
+        ComponentLibrary {},
 }
 
 /// Route component for `/metrics/tools/:tool_name`.
