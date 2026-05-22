@@ -352,6 +352,38 @@ fn dokimasia_schema_does_not_require_reserved_project() {
     );
 }
 
+#[test]
+fn dokimasia_description_advertises_mechanical_only_qa() {
+    let mut registry = ToolRegistry::new();
+    register(&mut registry, None).expect("register");
+    let definitions = registry.definitions();
+    let dokimasia = definitions
+        .iter()
+        .find(|def| def.name.as_str() == "dokimasia")
+        .expect("dokimasia definition registered");
+
+    assert!(
+        dokimasia.description.contains("mechanical QA checks"),
+        "dokimasia should not advertise semantic QA without prompt and LLM wiring"
+    );
+    assert!(
+        dokimasia
+            .description
+            .contains("caller-provided pull-request diff"),
+        "dokimasia should document that callers must supply the diff"
+    );
+    assert!(
+        dokimasia
+            .description
+            .contains("Semantic acceptance-criteria evaluation requires"),
+        "dokimasia should document the semantic QA limitation"
+    );
+    assert!(
+        dokimasia.description.contains("empty diffs return no-work"),
+        "dokimasia should document its empty-diff behavior"
+    );
+}
+
 #[tokio::test]
 async fn dokimasia_runs_without_project() {
     let (_tmp, services) = setup();

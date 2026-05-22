@@ -26,8 +26,9 @@ use super::shared::{opt_str, opt_u64, require_str, to_json_text};
 pub(super) fn dokimasia_def() -> ToolDef {
     ToolDef {
         name: ToolName::from_static("dokimasia"),
-        description: "Run a QA evaluation of a pull request against the originating prompt spec. \
-            Returns a verdict (pass/partial/fail), per-criterion results, and mechanical issues."
+        description: "Run mechanical QA checks against a caller-provided pull-request diff. \
+            Semantic acceptance-criteria evaluation requires orchestrator-side prompt and LLM \
+            wiring; empty diffs return no-work rather than a pass verdict."
             .to_owned(),
         extended_description: None,
         input_schema: InputSchema {
