@@ -262,6 +262,13 @@ pub struct TieredSearchResult<T> {
 /// Each variant's contribution is normalized by its max possible score
 /// (1/(k+1)), so the fused score is comparable regardless of how many
 /// variants produced the result.
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "RRF merge is implemented and unit-tested ahead of enhanced search wiring"
+    )
+)]
 pub(crate) fn rrf_merge<T: HasId + HasRrfScore + Clone>(
     results_per_query: &[Vec<T>],
     k: f64,
