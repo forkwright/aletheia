@@ -12,6 +12,21 @@ Later layers override earlier ones. All field names use `snake_case` in TOML; `c
 
 ---
 
+## Cascade terminology
+
+Aletheia uses the same override vocabulary across configuration and agent workspace files:
+
+| Fleet tier | Aletheia config equivalent | Workspace equivalent |
+|------------|----------------------------|----------------------|
+| Repo default | Compiled defaults and `instance.example/` | Template files under `instance.example/nous/_template/` |
+| Team or instance | `instance/config/aletheia.toml` | Shared guidance under `instance/shared/` and `instance/theke/` |
+| Agent or personal | Per-agent entries in `agents.list[]` | `instance/nous/{id}/` identity, memory, goals, and tool notes |
+| Environment override | `ALETHEIA_` variables | Process environment and allowed filesystem roots |
+
+Runtime configuration uses the three-layer TOML cascade above. Agent bootstrap files use a workspace cascade through `nous/{id}/`, `shared/`, `theke/`, and configured domain packs. In both cases, the narrowest scope should only carry values that genuinely need to differ from the broader tier.
+
+---
+
 ## Table of contents
 
 - [agents](#agents)
