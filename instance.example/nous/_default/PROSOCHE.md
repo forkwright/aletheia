@@ -4,6 +4,8 @@ Prosoche (προσοχή) = directed attention. Checked on each heartbeat tick. 
 
 ## Heartbeat checklist
 
+On each heartbeat tick, execute only the numbered checks below. Stay within 60 seconds and 5 tool calls total. Do not investigate, research, or explore beyond these checks.
+
 ### 1. Instance health
 ```bash
 aletheia health
@@ -30,6 +32,7 @@ Something needs attention: one line per item. No investigation, no research. Jus
 
 ## Rules
 
+- 60 seconds maximum per tick
 - 5 tool calls maximum per tick
 - Check and report. Do not fix, investigate, or research during heartbeat.
 - If a check fails, skip it and note the failure
