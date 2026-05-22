@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 /// All defaults match the current hardcoded constants in the `hermeneus` crate.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
 #[serde(default)]
 pub struct ProviderBehaviorConfig {
     /// Timeout in seconds for non-streaming LLM requests. Default: 120.
@@ -51,6 +52,7 @@ impl Default for ProviderBehaviorConfig {
 /// Issues: #3406, #3410, #3409.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
 #[serde(default)]
 pub struct AnthropicConfig {
     /// Prompt cache policy (#3410).
@@ -138,14 +140,26 @@ pub enum ProviderKind {
     ClaudeCode,
 }
 
+/// `OpenAI` HTTP API family for `OpenAI` and OpenAI-compatible providers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+#[non_exhaustive]
+pub enum OpenAiApiFamily {
+    /// `OpenAI` `/v1/chat/completions` and compatible local/proxy endpoints.
+    ChatCompletions,
+    /// `OpenAI` first-party `/v1/responses` endpoint.
+    Responses,
+}
+
 /// Per-provider configuration entry. One of these is produced for every
 /// `[[providers]]` table in `aletheia.toml`.
 ///
 /// The full set of entries lives on `AletheiaConfig::providers`. At startup
 /// `build_provider_registry` iterates the vector and dispatches on
 /// [`kind`](Self::kind) to build the corresponding concrete provider.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
 pub struct LlmProviderConfig {
     /// Operator-facing label for logs and diagnostics (e.g., `"local-qwen"`,
     /// `"anthropic-cloud"`). Must be unique across the provider list.
@@ -164,6 +178,11 @@ pub struct LlmProviderConfig {
     /// not require authentication.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub api_key_env: Option<String>,
+    /// `OpenAI` API family to use. If omitted, `providerType = "openai"`
+    /// defaults to `responses`, while `openai-compatible` defaults to
+    /// `chat-completions` for local/proxy compatibility.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub api_family: Option<OpenAiApiFamily>,
     /// Where this provider's traffic terminates. Drives the
     /// factsensitivity filter (#3414) and air-gapped mode.
     #[serde(default)]
@@ -173,4 +192,18 @@ pub struct LlmProviderConfig {
     /// claims the requested model wins.
     #[serde(default)]
     pub models: Vec<String>,
+}
+
+impl std::fmt::Debug for LlmProviderConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LlmProviderConfig")
+            .field("name", &self.name)
+            .field("kind", &self.kind)
+            .field("base_url", &self.base_url)
+            .field("api_key_env", &self.api_key_env)
+            .field("api_family", &self.api_family)
+            .field("deployment_target", &self.deployment_target)
+            .field("models", &self.models)
+            .finish()
+    }
 }

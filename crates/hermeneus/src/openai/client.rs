@@ -1,9 +1,10 @@
-//! OpenAI-compatible HTTP client implementing [`LlmProvider`].
+//! OpenAI HTTP client implementing [`LlmProvider`].
 //!
-//! Talks to any endpoint that exposes the OpenAI `/v1/chat/completions`
-//! surface — OpenAI itself, llama.cpp `--server`, ollama, vllm, or any
-//! compatible proxy. The wire translation lives in [`super::wire`]; this
-//! module is the transport, retry, and registration shell.
+//! Talks to either the first-party OpenAI `/v1/responses` surface or the
+//! OpenAI-compatible `/v1/chat/completions` surface used by llama.cpp
+//! `--server`, ollama, vllm, and compatible proxies. The wire translation
+//! lives in [`super::wire`]; this module is the transport, retry, and
+//! registration shell.
 
 use std::future::Future;
 use std::pin::Pin;
@@ -23,12 +24,47 @@ use crate::provider::{DeploymentTarget, LlmProvider};
 use crate::types::{CompletionRequest, CompletionResponse};
 
 use super::error::{map_error_response, map_request_error};
-use super::wire::{ChatCompletionRequest, ChatCompletionResponse, parse_sse_response};
+use super::wire::{
+    ChatCompletionRequest, ChatCompletionResponse, ResponsesRequest, ResponsesResponse,
+    parse_chat_sse_response, parse_responses_sse_response,
+};
+
+/// OpenAI HTTP API family used by this provider.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[non_exhaustive]
+pub enum OpenAiApiFamily {
+    /// OpenAI `/v1/chat/completions` and compatible local/proxy endpoints.
+    #[default]
+    ChatCompletions,
+    /// OpenAI first-party `/v1/responses` endpoint.
+    Responses,
+}
+
+impl OpenAiApiFamily {
+    fn endpoint_path(self) -> &'static str {
+        match self {
+            Self::ChatCompletions => "chat/completions",
+            Self::Responses => "responses",
+        }
+    }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::ChatCompletions => "chat-completions",
+            Self::Responses => "responses",
+        }
+    }
+}
 
 /// Build an HTTP client with sensible timeouts shared by Anthropic and
 /// OpenAI-compatible providers.
 fn build_http_client() -> Result<Client> {
-    let _ = rustls::crypto::ring::default_provider().install_default();
+    if rustls::crypto::ring::default_provider()
+        .install_default()
+        .is_err()
+    {
+        tracing::debug!("rustls crypto provider was already installed");
+    }
     Client::builder()
         .connect_timeout(Duration::from_secs(10))
         .timeout(Duration::from_mins(2))
@@ -42,7 +78,7 @@ fn build_http_client() -> Result<Client> {
 }
 
 /// Configuration for an OpenAI-compatible provider instance.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct OpenAiProviderConfig {
     /// Operator-facing label used for logs, metrics, and `name()`.
     pub name: String,
@@ -63,6 +99,10 @@ pub struct OpenAiProviderConfig {
     /// Maximum retries on transient failures (5xx, timeout, connection
     /// reset). Defaults to 3.
     pub max_retries: u32,
+    /// Which OpenAI API family to speak. Defaults to Chat Completions for
+    /// backwards-compatible local `OpenAI`-compatible endpoints; Aletheia's
+    /// first-party `openai` config path sets this to [`OpenAiApiFamily::Responses`].
+    pub api_family: OpenAiApiFamily,
     /// Where this provider's traffic terminates, gating which
     /// [`FactSensitivity`](mneme::knowledge::FactSensitivity) the recall
     /// pipeline is allowed to send to it (#3736, #3404, #3413).
@@ -77,6 +117,21 @@ pub struct OpenAiProviderConfig {
     pub deployment_target: DeploymentTarget,
 }
 
+impl std::fmt::Debug for OpenAiProviderConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OpenAiProviderConfig")
+            .field("name", &self.name)
+            .field("base_url", &self.base_url)
+            .field("api_key", &self.api_key.as_ref().map(|_| "<redacted>"))
+            .field("models", &self.models)
+            .field("request_timeout", &self.request_timeout)
+            .field("max_retries", &self.max_retries)
+            .field("api_family", &self.api_family)
+            .field("deployment_target", &self.deployment_target)
+            .finish()
+    }
+}
+
 impl Default for OpenAiProviderConfig {
     fn default() -> Self {
         Self {
@@ -86,6 +141,7 @@ impl Default for OpenAiProviderConfig {
             models: Vec::new(),
             request_timeout: Duration::from_mins(2),
             max_retries: 3,
+            api_family: OpenAiApiFamily::ChatCompletions,
             // WHY (#3736): the trait default is Cloud and we must mirror it
             // here so `..Default::default()` in call sites (e.g. the
             // declarative registration path in aletheia's setup.rs) does
@@ -139,9 +195,10 @@ impl OpenAiProvider {
         info!(
             provider = %config.name,
             base_url = %config.base_url,
+            api_family = %config.api_family.as_str(),
             models = ?config.models,
             authenticated = config.api_key.is_some(),
-            "OpenAI-compatible provider initialized"
+            "OpenAI provider initialized"
         );
 
         Ok(Self {
@@ -193,10 +250,6 @@ impl OpenAiProvider {
         self.execute_inner(request).instrument(span).await
     }
 
-    #[expect(
-        clippy::too_many_lines,
-        reason = "retry loop with span recording and metric emission at each exit point"
-    )]
     async fn execute_inner(&self, request: &CompletionRequest) -> Result<CompletionResponse> {
         if let Err(health) = self.health.check_available() {
             return Err(error::ApiRequestSnafu {
@@ -206,18 +259,9 @@ impl OpenAiProvider {
         }
 
         let start = Instant::now();
-        let wire = ChatCompletionRequest::from_request(request, None)?;
-        let body = serde_json::to_string(&wire).map_err(|e| {
-            error::ApiRequestSnafu {
-                message: format!("failed to serialize request: {e}"),
-            }
-            .build()
-        })?;
-
-        let url = format!(
-            "{}/chat/completions",
-            self.config.base_url.trim_end_matches('/')
-        );
+        let body = self.serialize_request(request, None)?;
+        let url = self.endpoint_url();
+        let api_family = self.config.api_family.as_str();
 
         let mut last_error: Option<error::Error> = None;
 
@@ -256,15 +300,7 @@ impl OpenAiProvider {
                     }
                     .build()
                 })?;
-                let parsed: ChatCompletionResponse = serde_json::from_str(&text).map_err(|e| {
-                    error::ApiRequestSnafu {
-                        message: format!("failed to parse OpenAI response: {e}"),
-                    }
-                    .build()
-                })?;
-                let mut resp = parsed
-                    .into_response()
-                    .map_err(|msg| error::ApiRequestSnafu { message: msg }.build())?;
+                let mut resp = self.parse_response_body(&text)?;
                 self.health.record_success();
                 resp.duration_ms =
                     Some(u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX));
@@ -274,10 +310,11 @@ impl OpenAiProvider {
                 tracing::Span::current().record("llm.retries", attempt);
                 info!(
                     provider = %self.config.name,
+                    api_family,
                     model = %request.model,
                     tokens_in = resp.usage.input_tokens,
                     tokens_out = resp.usage.output_tokens,
-                    "OpenAI-compatible call complete"
+                    "OpenAI call complete"
                 );
                 crate::metrics::record_completion(
                     &self.config.name,
@@ -331,17 +368,8 @@ impl OpenAiProvider {
             .build());
         }
 
-        let wire = ChatCompletionRequest::from_request(request, Some(true))?;
-        let body = serde_json::to_string(&wire).map_err(|e| {
-            error::ApiRequestSnafu {
-                message: format!("failed to serialize request: {e}"),
-            }
-            .build()
-        })?;
-        let url = format!(
-            "{}/chat/completions",
-            self.config.base_url.trim_end_matches('/')
-        );
+        let body = self.serialize_request(request, Some(true))?;
+        let url = self.endpoint_url();
         let headers = self.build_headers()?;
 
         let mut response = self
@@ -360,9 +388,74 @@ impl OpenAiProvider {
             );
         }
 
-        let resp = parse_sse_response(&mut response, on_event).await?;
+        let resp = match self.config.api_family {
+            OpenAiApiFamily::ChatCompletions => {
+                parse_chat_sse_response(&mut response, on_event).await?
+            }
+            OpenAiApiFamily::Responses => {
+                parse_responses_sse_response(&mut response, on_event).await?
+            }
+        };
         self.health.record_success();
         Ok(resp)
+    }
+
+    fn endpoint_url(&self) -> String {
+        format!(
+            "{}/{}",
+            self.config.base_url.trim_end_matches('/'),
+            self.config.api_family.endpoint_path()
+        )
+    }
+
+    fn serialize_request(
+        &self,
+        request: &CompletionRequest,
+        stream: Option<bool>,
+    ) -> Result<String> {
+        let body = match self.config.api_family {
+            OpenAiApiFamily::ChatCompletions => {
+                let wire = ChatCompletionRequest::from_request(request, stream)?;
+                serde_json::to_string(&wire)
+            }
+            OpenAiApiFamily::Responses => {
+                let wire = ResponsesRequest::from_request(request, stream)?;
+                serde_json::to_string(&wire)
+            }
+        };
+        body.map_err(|e| {
+            error::ApiRequestSnafu {
+                message: format!("failed to serialize request: {e}"),
+            }
+            .build()
+        })
+    }
+
+    fn parse_response_body(&self, text: &str) -> Result<CompletionResponse> {
+        match self.config.api_family {
+            OpenAiApiFamily::ChatCompletions => {
+                let parsed: ChatCompletionResponse = serde_json::from_str(text).map_err(|e| {
+                    error::ApiRequestSnafu {
+                        message: format!("failed to parse OpenAI chat response: {e}"),
+                    }
+                    .build()
+                })?;
+                parsed
+                    .into_response()
+                    .map_err(|msg| error::ApiRequestSnafu { message: msg }.build())
+            }
+            OpenAiApiFamily::Responses => {
+                let parsed: ResponsesResponse = serde_json::from_str(text).map_err(|e| {
+                    error::ApiRequestSnafu {
+                        message: format!("failed to parse OpenAI Responses response: {e}"),
+                    }
+                    .build()
+                })?;
+                parsed
+                    .into_response()
+                    .map_err(|msg| error::ApiRequestSnafu { message: msg }.build())
+            }
+        }
     }
 }
 
@@ -397,6 +490,7 @@ impl std::fmt::Debug for OpenAiProvider {
         f.debug_struct("OpenAiProvider")
             .field("name", &self.config.name)
             .field("base_url", &self.config.base_url)
+            .field("api_family", &self.config.api_family)
             .field("models", &self.config.models)
             .field("authenticated", &self.config.api_key.is_some())
             .finish_non_exhaustive()
@@ -484,7 +578,7 @@ mod tests {
     }
 
     #[test]
-    fn test_deployment_target_propagates_from_config() {
+    fn deployment_target_propagates_from_config() {
         // WHY (#3736): regression for the sovereignty bug where
         // OpenAiProviderConfig.deployment_target was accepted in TOML,
         // logged at startup, then silently discarded. The recall

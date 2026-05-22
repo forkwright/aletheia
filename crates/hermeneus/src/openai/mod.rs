@@ -5,12 +5,13 @@
 // brand, so the lint is opted out at the module root only.
 #![allow(clippy::doc_markdown)]
 
-//! OpenAI Chat Completions-compatible LLM provider.
+//! OpenAI LLM provider.
 //!
-//! Talks to any endpoint that exposes the OpenAI `/v1/chat/completions`
-//! wire format — OpenAI itself, llama.cpp `--server`, ollama, vllm, or a
-//! compatible proxy. Intended primary use: local LLMs for air-gapped
-//! operation (#3414) and non-Anthropic cloud alternatives (#3424).
+//! Talks to the first-party OpenAI `/v1/responses` API or to endpoints
+//! exposing the OpenAI `/v1/chat/completions` wire format — llama.cpp
+//! `--server`, ollama, vllm, or a compatible proxy. Intended primary use:
+//! local LLMs for air-gapped operation (#3414) and non-Anthropic cloud
+//! alternatives (#3424).
 //!
 //! # Feature negotiation
 //!
@@ -47,7 +48,7 @@ mod client;
 mod error;
 mod wire;
 
-pub use client::{OpenAiProvider, OpenAiProviderConfig};
+pub use client::{OpenAiApiFamily, OpenAiProvider, OpenAiProviderConfig};
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]

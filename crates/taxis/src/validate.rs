@@ -772,7 +772,6 @@ fn validate_providers(value: &Value, errors: &mut Vec<String>) {
                 }
             }
         }
-
         if let Some(target) = entry.get("deploymentTarget").and_then(Value::as_str)
             && !matches!(
                 target,
@@ -783,9 +782,19 @@ fn validate_providers(value: &Value, errors: &mut Vec<String>) {
                 "providers[{i}].deploymentTarget '{target}' is not recognized (expected one of: cloud, localhosted, local_hosted, local-hosted, embedded)"
             ));
         }
+        if let Some(api_family) = entry.get("apiFamily").and_then(Value::as_str)
+            && !matches!(api_family, "chat-completions" | "responses")
+        {
+            errors.push(format!(
+                "providers[{i}].apiFamily '{api_family}' is not recognized (expected one of: chat-completions, responses)"
+            ));
+        }
     }
 }
 
 #[cfg(test)]
 #[path = "validate_tests.rs"]
 mod validate_tests;
+
+#[cfg(test)]
+mod validate_openai_api_family_tests;
