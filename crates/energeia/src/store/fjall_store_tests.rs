@@ -22,6 +22,7 @@ fn sample_dispatch_spec() -> DispatchSpec {
         project: "acme".to_owned(),
         dag_ref: None,
         max_parallel: Some(2),
+        max_turns: None,
     }
 }
 

@@ -19,7 +19,7 @@ use crate::types::{
     ToolGroupId, ToolInput, ToolResult, ToolTag,
 };
 
-use super::shared::{opt_u64, require_str, to_json_text};
+use super::shared::{opt_str, opt_u64, require_str, to_json_text};
 
 // ── dokimasia (δοκιμασία — examination) ────────────────────────────────────
 
@@ -54,7 +54,9 @@ pub(super) fn dokimasia_def() -> ToolDef {
                     "project".to_owned(),
                     PropertyDef {
                         property_type: PropertyType::String,
-                        description: "GitHub project slug (owner/repo)".to_owned(),
+                        description: "Optional GitHub project slug (owner/repo), reserved for \
+                            future QA result persistence"
+                            .to_owned(),
                         enum_values: None,
                         default: None,
                     },
@@ -73,7 +75,6 @@ pub(super) fn dokimasia_def() -> ToolDef {
             required: vec![
                 "prompt_number".to_owned(),
                 "pr_number".to_owned(),
-                "project".to_owned(),
                 "diff".to_owned(),
             ],
         },
@@ -104,12 +105,9 @@ impl ToolExecutor for DokimasiaExecutor {
                 Some(n) => n,
                 None => return Ok(ToolResult::error("missing required field 'pr_number'")),
             };
-            let _project = match require_str(args, "project") {
-                Ok(s) => s,
-                Err(e) => return Ok(e),
-            };
-            if _project.trim().is_empty() {
-                return Ok(ToolResult::error("missing required field 'project'"));
+            let project = opt_str(args, "project");
+            if project.is_some_and(|p| p.trim().is_empty()) {
+                return Ok(ToolResult::error("field 'project' must not be empty"));
             }
             let diff = match require_str(args, "diff") {
                 Ok(s) => s,
@@ -119,7 +117,7 @@ impl ToolExecutor for DokimasiaExecutor {
                 let output = serde_json::json!({
                     "status": "no_work",
                     "reason": "no diff to QA",
-                    "project": _project,
+                    "project": project,
                     "prompt_number": prompt_number,
                     "pr_number": pr_number,
                 });

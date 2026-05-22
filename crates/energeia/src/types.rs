@@ -27,6 +27,8 @@ pub struct DispatchSpec {
     pub dag_ref: Option<String>,
     /// Maximum parallelism (simultaneous sessions). `None` means unlimited.
     pub max_parallel: Option<u32>,
+    /// Maximum turns per initial session. `None` delegates to engine defaults.
+    pub max_turns: Option<u32>,
 }
 
 /// Raw deserialization type for [`DispatchSpec`].
@@ -36,6 +38,8 @@ struct DispatchSpecRaw {
     project: String,
     dag_ref: Option<String>,
     max_parallel: Option<u32>,
+    #[serde(default)]
+    max_turns: Option<u32>,
 }
 
 impl From<DispatchSpecRaw> for DispatchSpec {
@@ -45,6 +49,7 @@ impl From<DispatchSpecRaw> for DispatchSpec {
             project: raw.project,
             dag_ref: raw.dag_ref,
             max_parallel: raw.max_parallel,
+            max_turns: raw.max_turns,
         }
     }
 }
@@ -60,6 +65,7 @@ impl DispatchSpec {
             project,
             dag_ref: None,
             max_parallel: None,
+            max_turns: None,
         }
     }
 
@@ -76,7 +82,15 @@ impl DispatchSpec {
             project,
             dag_ref,
             max_parallel,
+            max_turns: None,
         }
+    }
+
+    /// Set the per-session turn limit.
+    #[must_use]
+    pub fn with_max_turns(mut self, max_turns: Option<u32>) -> Self {
+        self.max_turns = max_turns;
+        self
     }
 }
 
@@ -399,11 +413,13 @@ mod tests {
             project: "test-project".to_owned(),
             dag_ref: None,
             max_parallel: Some(2),
+            max_turns: Some(7),
         };
         let json = serde_json::to_string(&spec).unwrap();
         let deserialized: DispatchSpec = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.prompt_numbers, vec![1, 2, 3]);
         assert_eq!(deserialized.max_parallel, Some(2));
+        assert_eq!(deserialized.max_turns, Some(7));
     }
 
     #[test]

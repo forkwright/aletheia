@@ -24,6 +24,7 @@ fn dispatch_spec_serde_roundtrip_basic() {
     assert_eq!(deserialized.project, "my-project");
     assert!(deserialized.dag_ref.is_none());
     assert!(deserialized.max_parallel.is_none());
+    assert!(deserialized.max_turns.is_none());
 }
 
 #[test]
@@ -33,7 +34,8 @@ fn dispatch_spec_serde_with_dag_ref() {
         "prompt_numbers": [10, 20, 30],
         "project": "test-proj",
         "dag_ref": "dag.yaml",
-        "max_parallel": 8
+        "max_parallel": 8,
+        "max_turns": 12
     }"#;
     let spec: DispatchSpec = serde_json::from_str(json).expect("deserialize");
 
@@ -41,6 +43,7 @@ fn dispatch_spec_serde_with_dag_ref() {
     assert_eq!(spec.project, "test-proj");
     assert_eq!(spec.dag_ref, Some("dag.yaml".to_owned()));
     assert_eq!(spec.max_parallel, Some(8));
+    assert_eq!(spec.max_turns, Some(12));
 }
 
 #[test]
@@ -52,6 +55,7 @@ prompt_numbers:
 project: yaml-test
 dag_ref: prompts/dag.yaml
 max_parallel: 4
+max_turns: 9
 ";
     let spec: DispatchSpec = serde_yaml::from_str(yaml).expect("deserialize from yaml");
 
@@ -59,6 +63,7 @@ max_parallel: 4
     assert_eq!(spec.project, "yaml-test");
     assert_eq!(spec.dag_ref, Some("prompts/dag.yaml".to_owned()));
     assert_eq!(spec.max_parallel, Some(4));
+    assert_eq!(spec.max_turns, Some(9));
 }
 
 // ============================================================================

@@ -119,6 +119,7 @@ fn sample_dispatch_spec(prompt_numbers: Vec<u32>) -> DispatchSpec {
         project: ".".to_owned(),
         dag_ref: None,
         max_parallel: None,
+        max_turns: None,
     }
 }
 

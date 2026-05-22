@@ -350,6 +350,7 @@ mod tests {
             project: "acme".to_owned(),
             dag_ref: None,
             max_parallel: Some(2),
+            max_turns: None,
         }
     }
 
@@ -417,6 +418,7 @@ mod tests {
                     prompt_numbers: vec![1],
                     dag_ref: None,
                     max_parallel: None,
+                    max_turns: None,
                 },
             )
             .unwrap();
@@ -428,6 +430,7 @@ mod tests {
                     prompt_numbers: vec![1],
                     dag_ref: None,
                     max_parallel: None,
+                    max_turns: None,
                 },
             )
             .unwrap();

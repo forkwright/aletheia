@@ -307,3 +307,66 @@ async fn dokimasia_empty_diff_returns_no_work() {
         "empty diff must not produce vacuous Pass: {text}"
     );
 }
+
+#[test]
+fn dromeus_schema_exposes_parallel_and_turn_limits() {
+    let mut registry = ToolRegistry::new();
+    register(&mut registry, None).expect("register");
+    let definitions = registry.definitions();
+    let dromeus = definitions
+        .iter()
+        .find(|def| def.name.as_str() == "dromeus")
+        .expect("dromeus definition registered");
+
+    assert!(
+        dromeus.input_schema.properties.contains_key("max_parallel"),
+        "dromeus should expose concurrency separately"
+    );
+    assert!(
+        dromeus.input_schema.properties.contains_key("max_turns"),
+        "dromeus should expose per-session turn budget separately"
+    );
+}
+
+#[test]
+fn dokimasia_schema_does_not_require_reserved_project() {
+    let mut registry = ToolRegistry::new();
+    register(&mut registry, None).expect("register");
+    let definitions = registry.definitions();
+    let dokimasia = definitions
+        .iter()
+        .find(|def| def.name.as_str() == "dokimasia")
+        .expect("dokimasia definition registered");
+
+    assert!(
+        dokimasia.input_schema.properties.contains_key("project"),
+        "dokimasia should still document the reserved project field"
+    );
+    assert!(
+        !dokimasia
+            .input_schema
+            .required
+            .iter()
+            .any(|field| field == "project"),
+        "dokimasia should not require a reserved field it cannot persist"
+    );
+}
+
+#[tokio::test]
+async fn dokimasia_runs_without_project() {
+    let (_tmp, services) = setup();
+    let ctx = make_ctx();
+    let mut registry = ToolRegistry::new();
+    register(&mut registry, Some(services)).expect("register");
+
+    let input = make_input(
+        "dokimasia",
+        serde_json::json!({
+            "prompt_number": 1,
+            "pr_number": 42,
+            "diff": "diff --git a/src/lib.rs b/src/lib.rs\n+fn added() {}\n"
+        }),
+    );
+    let result = registry.execute(&input, &ctx).await.unwrap();
+    assert_non_error(&result, "dokimasia without project");
+}

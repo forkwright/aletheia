@@ -41,4 +41,7 @@ pub struct DispatchSpecConfig {
     /// Maximum parallelism.
     #[serde(default)]
     pub max_parallel: Option<u32>,
+    /// Maximum turns per initial session.
+    #[serde(default)]
+    pub max_turns: Option<u32>,
 }
