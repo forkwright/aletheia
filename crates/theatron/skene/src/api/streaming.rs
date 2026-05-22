@@ -58,77 +58,91 @@ pub fn stream_message(
         nous.id = nous_id,
         session.key = session_key
     );
-    tokio::spawn(
-        async move {
-            let resp = match builder.send().await {
-                Ok(resp) => resp,
+    let task = async move {
+        let resp = match builder.send().await {
+            Ok(resp) => resp,
+            Err(e) => {
+                if tx
+                    .send(StreamEvent::Error(format!("failed to connect: {e}")))
+                    .await
+                    .is_err()
+                {
+                    tracing::debug!("stream receiver dropped before connect error");
+                }
+                return;
+            }
+        };
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let reason = status.canonical_reason().unwrap_or("Unknown");
+            let body = match resp.text().await {
+                Ok(body) => body,
                 Err(e) => {
-                    let _ = tx
-                        .send(StreamEvent::Error(format!("failed to connect: {e}")))
-                        .await;
-                    return;
+                    tracing::warn!(error = %e, "failed to read stream error response body");
+                    String::new()
+                }
+            };
+            let message = if let Ok(json) = serde_json::from_str::<serde_json::Value>(&body) {
+                json.get("message")
+                    .or_else(|| json.get("error"))
+                    .and_then(|v| v.as_str())
+                    .map_or_else(
+                        || format!("{} {}", status.as_u16(), reason),
+                        std::string::ToString::to_string,
+                    )
+            } else {
+                format!("{} {}", status.as_u16(), reason)
+            };
+            if tx.send(StreamEvent::Error(message)).await.is_err() {
+                tracing::debug!("stream receiver dropped before HTTP error");
+            }
+            return;
+        }
+
+        let mut es = SseStream::new(resp.bytes_stream());
+
+        loop {
+            let maybe_event = tokio::time::timeout(READ_TIMEOUT, es.next()).await;
+            let event = match maybe_event {
+                Ok(Some(event)) => event,
+                Ok(None) => break,
+                Err(_elapsed) => {
+                    // WHY: No event received within READ_TIMEOUT. A healthy
+                    // server sends data more frequently than this window, so
+                    // silence here indicates a hung or dropped connection.
+                    tracing::warn!(
+                        timeout_secs = READ_TIMEOUT.as_secs(),
+                        "stream read timeout — treating as error"
+                    );
+                    if tx
+                        .send(StreamEvent::Error("stream timeout".to_string()))
+                        .await
+                        .is_err()
+                    {
+                        tracing::debug!("stream receiver dropped before timeout error");
+                    }
+                    break;
                 }
             };
 
-            if !resp.status().is_success() {
-                let status = resp.status();
-                let reason = status.canonical_reason().unwrap_or("Unknown");
-                let body = resp.text().await.unwrap_or_default();
-                let message = if let Ok(json) = serde_json::from_str::<serde_json::Value>(&body) {
-                    json.get("message")
-                        .or_else(|| json.get("error"))
-                        .and_then(|v| v.as_str())
-                        .map_or_else(
-                            || format!("{} {}", status.as_u16(), reason),
-                            std::string::ToString::to_string,
-                        )
-                } else {
-                    format!("{} {}", status.as_u16(), reason)
-                };
-                let _ = tx.send(StreamEvent::Error(message)).await;
-                return;
-            }
-
-            let mut es = SseStream::new(resp.bytes_stream());
-
-            loop {
-                let maybe_event = tokio::time::timeout(READ_TIMEOUT, es.next()).await;
-                let event = match maybe_event {
-                    Ok(Some(event)) => event,
-                    Ok(None) => break,
-                    Err(_elapsed) => {
-                        // WHY: No event received within READ_TIMEOUT. A healthy
-                        // server sends data more frequently than this window, so
-                        // silence here indicates a hung or dropped connection.
-                        tracing::warn!(
-                            timeout_secs = READ_TIMEOUT.as_secs(),
-                            "stream read timeout — treating as error"
-                        );
-                        let _ = tx
-                            .send(StreamEvent::Error("stream timeout".to_string()))
-                            .await;
-                        break;
-                    }
-                };
-
-                if let Some(parsed) = parse_stream_event(&event.event, &event.data) {
-                    let is_terminal = matches!(
-                        &parsed,
-                        StreamEvent::TurnComplete { .. }
-                            | StreamEvent::TurnAbort { .. }
-                            | StreamEvent::Error(_)
-                    );
-                    if tx.send(parsed).await.is_err() {
-                        break;
-                    }
-                    if is_terminal {
-                        break;
-                    }
+            if let Some(parsed) = parse_stream_event(&event.event, &event.data) {
+                let is_terminal = matches!(
+                    &parsed,
+                    StreamEvent::TurnComplete { .. }
+                        | StreamEvent::TurnAbort { .. }
+                        | StreamEvent::Error(_)
+                );
+                if tx.send(parsed).await.is_err() {
+                    break;
+                }
+                if is_terminal {
+                    break;
                 }
             }
         }
-        .instrument(span),
-    );
+    };
+    tokio::spawn(task.instrument(span));
 
     rx
 }
@@ -138,6 +152,52 @@ fn str_field<'a>(json: &'a serde_json::Value, field: &str, event_type: &str) -> 
         tracing::warn!(event_type, field, "missing required field in stream event");
         None
     })
+}
+
+fn str_any_field<'a>(
+    json: &'a serde_json::Value,
+    fields: &[&str],
+    event_type: &str,
+) -> Option<&'a str> {
+    fields
+        .iter()
+        .find_map(|field| json.get(field).and_then(|v| v.as_str()))
+        .or_else(|| {
+            tracing::warn!(
+                event_type,
+                fields = ?fields,
+                "missing required field in stream event"
+            );
+            None
+        })
+}
+
+fn bool_any_field(json: &serde_json::Value, fields: &[&str], event_type: &str) -> Option<bool> {
+    fields
+        .iter()
+        .find_map(|field| json.get(field).and_then(serde_json::Value::as_bool))
+        .or_else(|| {
+            tracing::warn!(
+                event_type,
+                fields = ?fields,
+                "missing required field in stream event"
+            );
+            None
+        })
+}
+
+fn u64_any_field(json: &serde_json::Value, fields: &[&str], event_type: &str) -> Option<u64> {
+    fields
+        .iter()
+        .find_map(|field| json.get(field).and_then(serde_json::Value::as_u64))
+        .or_else(|| {
+            tracing::warn!(
+                event_type,
+                fields = ?fields,
+                "missing required field in stream event"
+            );
+            None
+        })
 }
 
 #[expect(
@@ -154,10 +214,16 @@ fn parse_stream_event(event_type: &str, data: &str) -> Option<StreamEvent> {
     };
 
     match event_type {
-        "turn_start" => Some(StreamEvent::TurnStart {
-            session_id: SessionId::from(str_field(&json, "sessionId", event_type)?.to_string()),
-            nous_id: NousId::from(str_field(&json, "nousId", event_type)?.to_string()),
-            turn_id: TurnId::from(str_field(&json, "turnId", event_type)?.to_string()),
+        "message_start" | "turn_start" => Some(StreamEvent::TurnStart {
+            session_id: SessionId::from(
+                str_any_field(&json, &["session_id", "sessionId"], event_type)?.to_string(),
+            ),
+            nous_id: NousId::from(
+                str_any_field(&json, &["nous_id", "nousId"], event_type)?.to_string(),
+            ),
+            turn_id: TurnId::from(
+                str_any_field(&json, &["turn_id", "turnId"], event_type)?.to_string(),
+            ),
         }),
         "text_delta" => Some(StreamEvent::TextDelta(
             str_field(&json, "text", event_type)?.to_string(),
@@ -165,36 +231,20 @@ fn parse_stream_event(event_type: &str, data: &str) -> Option<StreamEvent> {
         "thinking_delta" => Some(StreamEvent::ThinkingDelta(
             str_field(&json, "text", event_type)?.to_string(),
         )),
-        "tool_start" => Some(StreamEvent::ToolStart {
-            tool_name: str_field(&json, "toolName", event_type)?.to_string(),
-            tool_id: ToolId::from(str_field(&json, "toolId", event_type)?.to_string()),
+        "tool_use" | "tool_start" => Some(StreamEvent::ToolStart {
+            tool_name: str_any_field(&json, &["tool_name", "toolName"], event_type)?.to_string(),
+            tool_id: ToolId::from(
+                str_any_field(&json, &["tool_id", "toolId"], event_type)?.to_string(),
+            ),
             input: json.get("input").cloned(),
         }),
         "tool_result" => {
-            let tool_name = str_field(&json, "toolName", event_type)?.to_string();
-            let tool_id = ToolId::from(str_field(&json, "toolId", event_type)?.to_string());
-            let is_error = json
-                .get("isError")
-                .and_then(serde_json::Value::as_bool)
-                .or_else(|| {
-                    tracing::warn!(
-                        event_type,
-                        field = "isError",
-                        "missing required field in stream event"
-                    );
-                    None
-                })?;
-            let duration_ms = json
-                .get("durationMs")
-                .and_then(serde_json::Value::as_u64)
-                .or_else(|| {
-                    tracing::warn!(
-                        event_type,
-                        field = "durationMs",
-                        "missing required field in stream event"
-                    );
-                    None
-                })?;
+            let tool_name =
+                str_any_field(&json, &["tool_name", "toolName"], event_type)?.to_string();
+            let tool_id =
+                ToolId::from(str_any_field(&json, &["tool_id", "toolId"], event_type)?.to_string());
+            let is_error = bool_any_field(&json, &["is_error", "isError"], event_type)?;
+            let duration_ms = u64_any_field(&json, &["duration_ms", "durationMs"], event_type)?;
             let result = json
                 .get("result")
                 .and_then(|v| v.as_str())
@@ -208,9 +258,13 @@ fn parse_stream_event(event_type: &str, data: &str) -> Option<StreamEvent> {
             })
         }
         "tool_approval_required" => Some(StreamEvent::ToolApprovalRequired {
-            turn_id: TurnId::from(str_field(&json, "turnId", event_type)?.to_string()),
-            tool_name: str_field(&json, "toolName", event_type)?.to_string(),
-            tool_id: ToolId::from(str_field(&json, "toolId", event_type)?.to_string()),
+            turn_id: TurnId::from(
+                str_any_field(&json, &["turn_id", "turnId"], event_type)?.to_string(),
+            ),
+            tool_name: str_any_field(&json, &["tool_name", "toolName"], event_type)?.to_string(),
+            tool_id: ToolId::from(
+                str_any_field(&json, &["tool_id", "toolId"], event_type)?.to_string(),
+            ),
             input: json
                 .get("input")
                 .cloned()
@@ -219,7 +273,9 @@ fn parse_stream_event(event_type: &str, data: &str) -> Option<StreamEvent> {
             reason: str_field(&json, "reason", event_type)?.to_string(),
         }),
         "tool_approval_resolved" => Some(StreamEvent::ToolApprovalResolved {
-            tool_id: ToolId::from(str_field(&json, "toolId", event_type)?.to_string()),
+            tool_id: ToolId::from(
+                str_any_field(&json, &["tool_id", "toolId"], event_type)?.to_string(),
+            ),
             decision: str_field(&json, "decision", event_type)?.to_string(),
         }),
         "plan_proposed" => {
@@ -233,47 +289,33 @@ fn parse_stream_event(event_type: &str, data: &str) -> Option<StreamEvent> {
             Some(StreamEvent::PlanProposed { plan })
         }
         "plan_step_start" => {
-            let step_id_u64 = json
-                .get("stepId")
-                .and_then(serde_json::Value::as_u64)
-                .or_else(|| {
-                    tracing::warn!(
-                        event_type,
-                        field = "stepId",
-                        "missing required field in stream event"
-                    );
-                    None
-                })?;
+            let step_id_u64 = u64_any_field(&json, &["step_id", "stepId"], event_type)?;
             let step_id = u32::try_from(step_id_u64).unwrap_or(u32::MAX);
             Some(StreamEvent::PlanStepStart {
-                plan_id: PlanId::from(str_field(&json, "planId", event_type)?.to_string()),
+                plan_id: PlanId::from(
+                    str_any_field(&json, &["plan_id", "planId"], event_type)?.to_string(),
+                ),
                 step_id,
             })
         }
         "plan_step_complete" => {
-            let step_id_u64 = json
-                .get("stepId")
-                .and_then(serde_json::Value::as_u64)
-                .or_else(|| {
-                    tracing::warn!(
-                        event_type,
-                        field = "stepId",
-                        "missing required field in stream event"
-                    );
-                    None
-                })?;
+            let step_id_u64 = u64_any_field(&json, &["step_id", "stepId"], event_type)?;
             let step_id = u32::try_from(step_id_u64).unwrap_or(u32::MAX);
             Some(StreamEvent::PlanStepComplete {
-                plan_id: PlanId::from(str_field(&json, "planId", event_type)?.to_string()),
+                plan_id: PlanId::from(
+                    str_any_field(&json, &["plan_id", "planId"], event_type)?.to_string(),
+                ),
                 step_id,
                 status: str_field(&json, "status", event_type)?.to_string(),
             })
         }
         "plan_complete" => Some(StreamEvent::PlanComplete {
-            plan_id: PlanId::from(str_field(&json, "planId", event_type)?.to_string()),
+            plan_id: PlanId::from(
+                str_any_field(&json, &["plan_id", "planId"], event_type)?.to_string(),
+            ),
             status: str_field(&json, "status", event_type)?.to_string(),
         }),
-        "turn_complete" => {
+        "message_complete" | "turn_complete" => {
             let outcome = json
                 .get("outcome")
                 .and_then(|v| serde_json::from_value(v.clone()).ok())
