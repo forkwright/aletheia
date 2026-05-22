@@ -5,15 +5,14 @@
 )]
 #![allow(clippy::needless_for_each)] // triggered by utoipa OpenApi derive macro
 
+use std::sync::Arc;
+
 use axum::extract::State;
 use axum::http::header;
 use axum::response::IntoResponse;
-
 use utoipa::OpenApi;
 
 use koina::http::CONTENT_TYPE_JSON;
-
-use std::sync::Arc;
 
 use crate::state::AppState;
 
@@ -70,6 +69,8 @@ use crate::state::AppState;
         crate::handlers::insights::get_agent_perf,
         crate::handlers::insights::get_agent_perf_one,
         crate::handlers::insights::get_quality_metrics,
+        crate::handlers::insights::get_token_metrics,
+        crate::handlers::insights::get_cost_metrics,
         crate::handlers::insights::get_journal,
         crate::handlers::planning::get_verification,
         crate::handlers::planning::refresh_verification,
@@ -118,6 +119,13 @@ use crate::state::AppState;
         crate::types::insights::QualityMetricsResponse,
         crate::types::insights::QualitySeries,
         crate::types::insights::TimeSeriesPoint,
+        crate::types::insights::TokenMetricsResponse,
+        crate::types::insights::TokenSeriesPoint,
+        crate::types::insights::AgentTokenRow,
+        crate::types::insights::ModelTokenRow,
+        crate::types::insights::CostMetricsResponse,
+        crate::types::insights::CostSeriesPoint,
+        crate::types::insights::AgentCostRow,
         crate::types::insights::JournalEvent,
     )),
     modifiers(&VersionFromCrate),
