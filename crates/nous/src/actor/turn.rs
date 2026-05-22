@@ -216,7 +216,7 @@ impl NousActor {
                 (
                     tc.name.clone(),
                     tc.input.to_string(),
-                    tc.result.clone().unwrap_or_default(),
+                    loop_guard_result_signature(tc.result.as_deref()),
                 )
             })
             .collect();
@@ -765,5 +765,12 @@ impl NousActor {
             );
             self.channel.status = NousLifecycle::Degraded;
         }
+    }
+}
+
+fn loop_guard_result_signature(result: Option<&str>) -> String {
+    match result {
+        Some(result) => format!("present:{result}"),
+        None => "missing".to_owned(),
     }
 }

@@ -11,9 +11,6 @@ use super::*;
 use crate::cross::{CrossNousEnvelope, CrossNousMessage};
 use crate::handle::NousHandle;
 
-// Split from `actor/tests.rs` (1392 lines) to satisfy `RUST/file-too-long`.
-// Each submodule groups tests by subject; shared helpers live here.
-
 mod cross_nous;
 mod internal_state;
 mod lifecycle_and_panic;
@@ -253,11 +250,19 @@ fn make_turn_result(
 }
 
 fn make_tool_call(name: &str, is_error: bool) -> crate::pipeline::ToolCall {
+    make_tool_call_with_result(name, is_error, None)
+}
+
+fn make_tool_call_with_result(
+    name: &str,
+    is_error: bool,
+    result: Option<&str>,
+) -> crate::pipeline::ToolCall {
     crate::pipeline::ToolCall {
         id: "tc-1".to_owned(),
         name: name.to_owned(),
         input: serde_json::Value::Null,
-        result: None,
+        result: result.map(str::to_owned),
         is_error,
         duration_ms: 10,
         receipt: None,
