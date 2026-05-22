@@ -190,68 +190,6 @@ mod pronoea_template {
         include_str!("../../../../instance.example/nous/_default/WORKFLOWS.md");
 }
 
-#[cfg(test)]
-mod tests {
-    use super::pronoea_template;
-
-    const TEMPLATE_PROSOCHE: &str =
-        include_str!("../../../../instance.example/nous/_template/PROSOCHE.md");
-
-    #[test]
-    fn prosoche_templates_keep_heartbeat_bounded() {
-        for (name, content) in [
-            ("_default/PROSOCHE.md", pronoea_template::PROSOCHE),
-            ("_template/PROSOCHE.md", TEMPLATE_PROSOCHE),
-        ] {
-            assert!(
-                content.contains("60 seconds"),
-                "{name} must state the heartbeat time budget"
-            );
-            assert!(
-                content.contains("5 tool calls"),
-                "{name} must state the heartbeat tool-call budget"
-            );
-            assert!(
-                content.contains("only the numbered"),
-                "{name} must keep the daemon prompt bounded to numbered checks"
-            );
-            assert!(
-                content.contains("Do not investigate") || content.contains("Do NOT investigate"),
-                "{name} must forbid investigation during heartbeat"
-            );
-            assert!(
-                !content.contains("gcal"),
-                "{name} must not reference stale calendar tooling"
-            );
-            assert!(
-                !contains_tw_command(content),
-                "{name} must not reference stale taskwarrior tooling"
-            );
-            assert!(
-                numbered_check_count(content) <= 5,
-                "{name} must fit within the 5-tool-call heartbeat budget"
-            );
-        }
-    }
-
-    fn contains_tw_command(content: &str) -> bool {
-        content.lines().any(|line| {
-            let command = line.trim();
-            command == "tw" || command.starts_with("tw ")
-        })
-    }
-
-    fn numbered_check_count(content: &str) -> usize {
-        content
-            .lines()
-            .filter(|line| {
-                let heading = line.trim_start_matches('#').trim_start();
-                heading.chars().next().is_some_and(|ch| ch.is_ascii_digit())
-            })
-            .count()
-    }
-}
-
 pub(super) fn render_config(a: &Answers) -> String {
     // WHY: workspace is stored relative to the instance root so the config
     // works regardless of where the instance directory is placed on disk.
@@ -371,3 +309,65 @@ const SINGLE_AGENT_SANDBOX_TOML: &str = r#"
 enforcement = "permissive"
 extraExecPaths = ["~"]
 "#;
+
+#[cfg(test)]
+mod tests {
+    use super::pronoea_template;
+
+    const TEMPLATE_PROSOCHE: &str =
+        include_str!("../../../../instance.example/nous/_template/PROSOCHE.md");
+
+    #[test]
+    fn prosoche_templates_keep_heartbeat_bounded() {
+        for (name, content) in [
+            ("_default/PROSOCHE.md", pronoea_template::PROSOCHE),
+            ("_template/PROSOCHE.md", TEMPLATE_PROSOCHE),
+        ] {
+            assert!(
+                content.contains("60 seconds"),
+                "{name} must state the heartbeat time budget"
+            );
+            assert!(
+                content.contains("5 tool calls"),
+                "{name} must state the heartbeat tool-call budget"
+            );
+            assert!(
+                content.contains("only the numbered"),
+                "{name} must keep the daemon prompt bounded to numbered checks"
+            );
+            assert!(
+                content.contains("Do not investigate") || content.contains("Do NOT investigate"),
+                "{name} must forbid investigation during heartbeat"
+            );
+            assert!(
+                !content.contains("gcal"),
+                "{name} must not reference stale calendar tooling"
+            );
+            assert!(
+                !contains_tw_command(content),
+                "{name} must not reference stale taskwarrior tooling"
+            );
+            assert!(
+                numbered_check_count(content) <= 5,
+                "{name} must fit within the 5-tool-call heartbeat budget"
+            );
+        }
+    }
+
+    fn contains_tw_command(content: &str) -> bool {
+        content.lines().any(|line| {
+            let command = line.trim();
+            command == "tw" || command.starts_with("tw ")
+        })
+    }
+
+    fn numbered_check_count(content: &str) -> usize {
+        content
+            .lines()
+            .filter(|line| {
+                let heading = line.trim_start_matches('#').trim_start();
+                heading.chars().next().is_some_and(|ch| ch.is_ascii_digit())
+            })
+            .count()
+    }
+}

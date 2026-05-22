@@ -32,6 +32,8 @@ fn rejects_unknown_openai_api_family() {
         }
     ]);
 
-    let err = validate_section("providers", &section).expect_err("apiFamily should fail");
-    assert!(err.to_string().contains("apiFamily 'edits'"));
+    match validate_section("providers", &section) {
+        Ok(()) => panic!("apiFamily should fail"),
+        Err(err) => assert!(err.to_string().contains("apiFamily 'edits'")),
+    }
 }
