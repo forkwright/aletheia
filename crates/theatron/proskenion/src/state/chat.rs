@@ -2,6 +2,29 @@
 
 use skene::id::NousId;
 
+/// Session selected by another view for the chat route to activate.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ChatSelection {
+    /// Agent that owns the session.
+    pub agent_id: NousId,
+    /// Server session key used when streaming turns.
+    pub session_key: String, // kanon:ignore RUST/plain-string-secret
+    /// Human-readable title shown in the chat tab bar.
+    pub title: String, // kanon:ignore RUST/plain-string-secret
+}
+
+impl ChatSelection {
+    /// Create an activation request for the chat route.
+    #[must_use]
+    pub(crate) fn new(agent_id: NousId, session_key: String, title: String) -> Self { // kanon:ignore RUST/plain-string-secret
+        Self {
+            agent_id,
+            session_key,
+            title,
+        }
+    }
+}
+
 /// Role of a chat message sender.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
@@ -13,7 +36,6 @@ pub enum Role {
     /// System-level message (context, errors).
     System,
 }
-
 
 /// A single chat message in the conversation history.
 #[derive(Debug, Clone, PartialEq)]

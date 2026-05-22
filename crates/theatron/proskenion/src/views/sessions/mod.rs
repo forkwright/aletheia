@@ -12,6 +12,7 @@ use skene::id::SessionId;
 use crate::api::client::authenticated_client;
 use crate::components::resize_handle::{use_resize_state, ResizeDir, ResizeHandle};
 use crate::state::agents::AgentStore;
+use crate::state::chat::ChatSelection;
 use crate::state::connection::ConnectionConfig;
 use crate::state::fetch::FetchState;
 use crate::state::sessions::{
@@ -74,10 +75,19 @@ const DEFAULT_LIST_WIDTH: f64 = 480.0;
 const MIN_LIST_WIDTH: f64 = 280.0;
 const MAX_LIST_WIDTH: f64 = 800.0;
 
+fn chat_selection_for_session(session: &Session) -> ChatSelection {
+    ChatSelection::new(
+        session.nous_id.clone(),
+        session.key.clone(),
+        session.label().to_string(),
+    )
+}
+
 #[component]
 pub(crate) fn Sessions() -> Element {
     let config: Signal<ConnectionConfig> = use_context();
-    let agents: Signal<AgentStore> = use_context();
+    let mut agents: Signal<AgentStore> = use_context();
+    let mut chat_selection: Signal<Option<ChatSelection>> = use_context();
 
     let mut list_store = use_signal(SessionListStore::new);
     let selection_store = use_signal(SessionSelectionStore::new);
@@ -509,8 +519,26 @@ pub(crate) fn Sessions() -> Element {
                     if selected_session_id.read().is_some() {
                         SessionDetail {
                             detail_state,
-                            on_open_chat: move |_id: SessionId| {
-                                // TODO(#108): set active agent and session in chat state before navigating.
+                            on_open_chat: move |id: SessionId| {
+                                let selected = match &*detail_state.read() {
+                                    FetchState::Loaded(store) => store.session.clone(),
+                                    FetchState::Loading | FetchState::Error(_) => None,
+                                }
+                                .or_else(|| {
+                                    list_store
+                                        .read()
+                                        .sessions
+                                        .iter()
+                                        .find(|session| session.id == id)
+                                        .cloned()
+                                });
+
+                                if let Some(session) = selected {
+                                    let selection = chat_selection_for_session(&session);
+                                    agents.write().set_active(&selection.agent_id);
+                                    chat_selection.set(Some(selection));
+                                }
+
                                 let nav = navigator();
                                 nav.push(crate::app::Route::Chat {});
                             },
@@ -537,5 +565,41 @@ pub(crate) fn Sessions() -> Element {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use skene::id::{NousId, SessionId};
+
+    use super::*;
+
+    fn session(display_name: Option<&str>) -> Session {
+        Session {
+            id: SessionId::from("session-id"),
+            nous_id: NousId::from("syn"),
+            key: "incident-review".to_string(),
+            status: Some("active".to_string()),
+            message_count: 4,
+            session_type: None,
+            updated_at: None,
+            display_name: display_name.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn chat_selection_uses_session_owner_key_and_label() {
+        let selection = chat_selection_for_session(&session(Some("Incident Review")));
+
+        assert_eq!(selection.agent_id, NousId::from("syn"));
+        assert_eq!(selection.session_key, "incident-review");
+        assert_eq!(selection.title, "Incident Review");
+    }
+
+    #[test]
+    fn chat_selection_title_falls_back_to_session_key() {
+        let selection = chat_selection_for_session(&session(None));
+
+        assert_eq!(selection.title, "incident-review");
     }
 }
