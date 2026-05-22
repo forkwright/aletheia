@@ -88,6 +88,143 @@ pub struct QualityMetricsResponse {
     pub series: QualitySeries,
 }
 
+/// Query parameters shared by desktop metrics views.
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
+pub struct MetricsQuery {
+    /// Series granularity: daily, weekly, or monthly.
+    #[serde(default)]
+    pub granularity: Option<String>,
+    /// Inclusive start date (`YYYY-MM-DD`).
+    #[serde(default)]
+    pub from: Option<String>,
+    /// Inclusive end date (`YYYY-MM-DD`).
+    #[serde(default)]
+    pub to: Option<String>,
+}
+
+/// A single token time-series point.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct TokenSeriesPoint {
+    /// Bucket date (`YYYY-MM-DD`, ISO week, or `YYYY-MM`).
+    pub date: String,
+    /// Input tokens in this bucket.
+    pub input_tokens: u64,
+    /// Output tokens in this bucket.
+    pub output_tokens: u64,
+}
+
+/// Per-agent token usage row.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct AgentTokenRow {
+    /// Agent identifier.
+    pub id: String,
+    /// Human-readable agent name.
+    pub name: String,
+    /// Input tokens attributed to this agent.
+    pub input_tokens: u64,
+    /// Output tokens attributed to this agent.
+    pub output_tokens: u64,
+    /// Sessions attributed to this agent.
+    pub session_count: u64,
+}
+
+/// Per-model token usage row.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct ModelTokenRow {
+    /// Model identifier.
+    pub model: String,
+    /// Input tokens attributed to this model.
+    pub input_tokens: u64,
+    /// Output tokens attributed to this model.
+    pub output_tokens: u64,
+    /// Sessions attributed to this model.
+    pub session_count: u64,
+}
+
+/// Response for `GET /api/v1/metrics/tokens`.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct TokenMetricsResponse {
+    /// Token usage over time.
+    pub series: Vec<TokenSeriesPoint>,
+    /// Token usage grouped by agent.
+    pub agents: Vec<AgentTokenRow>,
+    /// Token usage grouped by model.
+    pub models: Vec<ModelTokenRow>,
+    /// Input tokens used today.
+    pub today_input: u64,
+    /// Output tokens used today.
+    pub today_output: u64,
+    /// Input tokens used this week.
+    pub week_input: u64,
+    /// Output tokens used this week.
+    pub week_output: u64,
+    /// Input tokens used this month.
+    pub month_input: u64,
+    /// Output tokens used this month.
+    pub month_output: u64,
+    /// Input tokens used in the previous equivalent day.
+    pub prev_today_input: u64,
+    /// Output tokens used in the previous equivalent day.
+    pub prev_today_output: u64,
+    /// Input tokens used in the previous equivalent week.
+    pub prev_week_input: u64,
+    /// Output tokens used in the previous equivalent week.
+    pub prev_week_output: u64,
+    /// Input tokens used in the previous equivalent month.
+    pub prev_month_input: u64,
+    /// Output tokens used in the previous equivalent month.
+    pub prev_month_output: u64,
+}
+
+/// A single cost time-series point.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct CostSeriesPoint {
+    /// Bucket date (`YYYY-MM-DD`, ISO week, or `YYYY-MM`).
+    pub date: String,
+    /// Estimated cost in USD for this bucket.
+    pub cost_usd: f64,
+}
+
+/// Per-agent estimated cost row.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct AgentCostRow {
+    /// Agent identifier.
+    pub id: String,
+    /// Human-readable agent name.
+    pub name: String,
+    /// Estimated cost in USD.
+    pub total_cost: f64,
+    /// Message count attributed to this agent.
+    pub message_count: u64,
+    /// Sessions attributed to this agent.
+    pub session_count: u64,
+    /// Output tokens attributed to this agent.
+    pub output_tokens: u64,
+    /// Cost from the previous equivalent period.
+    pub prev_period_cost: f64,
+}
+
+/// Response for `GET /api/v1/metrics/costs`.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct CostMetricsResponse {
+    /// Estimated cost over time.
+    pub series: Vec<CostSeriesPoint>,
+    /// Estimated costs grouped by agent.
+    pub agents: Vec<AgentCostRow>,
+    /// Estimated cost today.
+    pub today_cost: f64,
+    /// Estimated cost this week.
+    pub week_cost: f64,
+    /// Estimated cost this month.
+    pub month_cost: f64,
+    /// Estimated cost for the previous equivalent day.
+    pub prev_today_cost: f64,
+    /// Estimated cost for the previous equivalent week.
+    pub prev_week_cost: f64,
+    /// Estimated cost for the previous equivalent month.
+    pub prev_month_cost: f64,
+}
+
 /// A single journal event.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct JournalEvent {

@@ -12,8 +12,9 @@ use crate::error::{ApiError, InternalSnafu, NousNotFoundSnafu};
 use crate::insights::anomaly::detect_anomalies;
 use crate::state::InsightsState;
 use crate::types::insights::{
-    AgentPerformance, AgentPerformanceListResponse, JournalEvent, JournalQuery,
-    QualityMetricsResponse, QualitySeries, TimeSeriesPoint,
+    AgentCostRow, AgentPerformance, AgentPerformanceListResponse, AgentTokenRow,
+    CostMetricsResponse, CostSeriesPoint, JournalEvent, JournalQuery, MetricsQuery, ModelTokenRow,
+    QualityMetricsResponse, QualitySeries, TimeSeriesPoint, TokenMetricsResponse, TokenSeriesPoint,
 };
 
 // -- Safe numeric conversions ------------------------------------------------
@@ -197,6 +198,47 @@ pub async fn get_quality_metrics(
     Json(QualityMetricsResponse { series })
 }
 
+// -- GET /api/v1/metrics/tokens ----------------------------------------------
+
+/// GET /api/v1/metrics/tokens: token usage envelope consumed by desktop metrics.
+#[utoipa::path(
+    get,
+    path = "/api/v1/metrics/tokens",
+    params(MetricsQuery),
+    responses(
+        (status = 200, description = "Token metrics", body = TokenMetricsResponse),
+        (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+    ),
+    security(("bearer_auth" = []))
+)]
+pub async fn get_token_metrics(
+    State(state): State<InsightsState>,
+    Query(query): Query<MetricsQuery>,
+) -> Json<TokenMetricsResponse> {
+    Json(load_token_metrics(state, query).await)
+}
+
+// -- GET /api/v1/metrics/costs -----------------------------------------------
+
+/// GET /api/v1/metrics/costs: cost metrics envelope consumed by desktop metrics.
+#[utoipa::path(
+    get,
+    path = "/api/v1/metrics/costs",
+    params(MetricsQuery),
+    responses(
+        (status = 200, description = "Cost metrics", body = CostMetricsResponse),
+        (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+    ),
+    security(("bearer_auth" = []))
+)]
+pub async fn get_cost_metrics(
+    State(state): State<InsightsState>,
+    Query(query): Query<MetricsQuery>,
+) -> Json<CostMetricsResponse> {
+    let tokens = load_token_metrics(state, query).await;
+    Json(costs_from_tokens(&tokens))
+}
+
 // -- GET /api/v1/journal -----------------------------------------------------
 
 /// GET /api/v1/journal: queryable system event log.
@@ -308,6 +350,270 @@ fn compute_agent_performance(
         sessions_per_day,
         errors_per_session: 0.0,
         tokens_per_response_series,
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+struct TokenTotals {
+    input_tokens: u64,
+    output_tokens: u64,
+    session_count: u64,
+}
+
+impl TokenTotals {
+    fn add_tokens(&mut self, input_tokens: u64, output_tokens: u64) {
+        self.input_tokens = self.input_tokens.saturating_add(input_tokens);
+        self.output_tokens = self.output_tokens.saturating_add(output_tokens);
+    }
+
+    fn add_session(&mut self) {
+        self.session_count = self.session_count.saturating_add(1);
+    }
+}
+
+async fn load_token_metrics(state: InsightsState, query: MetricsQuery) -> TokenMetricsResponse {
+    let agent_configs: Vec<(String, String, String)> = state
+        .nous_manager
+        .configs()
+        .into_iter()
+        .map(|c| {
+            (
+                c.id.to_string(),
+                c.name
+                    .clone()
+                    .filter(|n| !n.is_empty())
+                    .unwrap_or_else(|| c.id.to_string()),
+                c.generation.model.clone(),
+            )
+        })
+        .collect();
+    let model_by_agent: HashMap<String, String> = agent_configs
+        .iter()
+        .map(|(id, _, model)| (id.clone(), model.clone()))
+        .collect();
+
+    let state_clone = state.clone();
+    let all_sessions_res = tokio::task::spawn_blocking(move || {
+        let store = state_clone.session_store.blocking_lock();
+        let sessions = store.list_sessions(None).map_err(ApiError::from)?;
+        let mut rows = Vec::with_capacity(sessions.len());
+        for session in sessions {
+            let messages = store.get_history(&session.id, None).unwrap_or_else(|err| {
+                warn!(
+                    session_id = %session.id,
+                    error = %err,
+                    "failed to load session history for token metrics"
+                );
+                Vec::new()
+            });
+            rows.push((session, messages));
+        }
+        Ok::<_, ApiError>(rows)
+    })
+    .await
+    .unwrap_or_else(|e| {
+        Err(InternalSnafu {
+            message: format!("task join failed: {e}"),
+        }
+        .build())
+    });
+
+    let session_rows = all_sessions_res.unwrap_or_else(|err| {
+        warn!(error = %err, "failed to list sessions for token metrics");
+        Vec::new()
+    });
+
+    build_token_metrics(&agent_configs, &model_by_agent, &session_rows, &query)
+}
+
+fn build_token_metrics(
+    agent_configs: &[(String, String, String)],
+    model_by_agent: &HashMap<String, String>,
+    session_rows: &[(Session, Vec<Message>)],
+    query: &MetricsQuery,
+) -> TokenMetricsResponse {
+    let mut total = TokenTotals::default();
+    let mut agents: HashMap<String, (String, TokenTotals)> = agent_configs
+        .iter()
+        .map(|(id, name, _)| (id.clone(), (name.clone(), TokenTotals::default())))
+        .collect();
+    let mut models: HashMap<String, TokenTotals> = agent_configs
+        .iter()
+        .map(|(_, _, model)| (model.clone(), TokenTotals::default()))
+        .collect();
+    let mut series: HashMap<String, TokenTotals> = HashMap::new();
+
+    for (session, messages) in session_rows {
+        if !date_in_range(&session.created_at, query) {
+            continue;
+        }
+
+        let (input_tokens, output_tokens) = message_token_split(messages);
+        total.add_tokens(input_tokens, output_tokens);
+        total.add_session();
+
+        let agent_entry = agents
+            .entry(session.nous_id.clone())
+            .or_insert_with(|| (session.nous_id.clone(), TokenTotals::default()));
+        agent_entry.1.add_tokens(input_tokens, output_tokens);
+        agent_entry.1.add_session();
+
+        let model = session
+            .model
+            .clone()
+            .or_else(|| model_by_agent.get(&session.nous_id).cloned())
+            .unwrap_or_else(|| "unknown".to_owned());
+        let model_entry = models.entry(model).or_default();
+        model_entry.add_tokens(input_tokens, output_tokens);
+        model_entry.add_session();
+
+        let bucket = bucket_date(&session.created_at, query.granularity.as_deref());
+        series
+            .entry(bucket)
+            .or_default()
+            .add_tokens(input_tokens, output_tokens);
+    }
+
+    TokenMetricsResponse {
+        series: series_points(series),
+        agents: agent_rows(agents),
+        models: model_rows(models),
+        today_input: total.input_tokens,
+        today_output: total.output_tokens,
+        week_input: total.input_tokens,
+        week_output: total.output_tokens,
+        month_input: total.input_tokens,
+        month_output: total.output_tokens,
+        prev_today_input: 0,
+        prev_today_output: 0,
+        prev_week_input: 0,
+        prev_week_output: 0,
+        prev_month_input: 0,
+        prev_month_output: 0,
+    }
+}
+
+fn message_token_split(messages: &[Message]) -> (u64, u64) {
+    let mut input_tokens = 0_u64;
+    let mut output_tokens = 0_u64;
+
+    for message in messages {
+        let tokens = u64::try_from(message.token_estimate).unwrap_or(0);
+        if message.role == Role::Assistant {
+            output_tokens = output_tokens.saturating_add(tokens);
+        } else {
+            input_tokens = input_tokens.saturating_add(tokens);
+        }
+    }
+
+    (input_tokens, output_tokens)
+}
+
+fn date_in_range(timestamp: &str, query: &MetricsQuery) -> bool {
+    let Some(date) = timestamp.get(..10) else {
+        return true;
+    };
+    if let Some(from) = query.from.as_deref()
+        && !from.is_empty()
+        && date < from
+    {
+        return false;
+    }
+    if let Some(to) = query.to.as_deref()
+        && !to.is_empty()
+        && date > to
+    {
+        return false;
+    }
+    true
+}
+
+fn bucket_date(timestamp: &str, granularity: Option<&str>) -> String {
+    let date = timestamp.get(..10).unwrap_or("1970-01-01");
+    match granularity {
+        Some("monthly") => date.get(..7).unwrap_or(date).to_owned(),
+        Some("weekly") => {
+            let year = date.get(..4).unwrap_or("1970");
+            let month_day = date.get(5..10).unwrap_or("01-01");
+            format!("{year}-W{month_day}")
+        }
+        _ => date.to_owned(),
+    }
+}
+
+fn series_points(series: HashMap<String, TokenTotals>) -> Vec<TokenSeriesPoint> {
+    let mut points: Vec<TokenSeriesPoint> = series
+        .into_iter()
+        .map(|(date, totals)| TokenSeriesPoint {
+            date,
+            input_tokens: totals.input_tokens,
+            output_tokens: totals.output_tokens,
+        })
+        .collect();
+    points.sort_by(|a, b| a.date.cmp(&b.date));
+    points
+}
+
+fn agent_rows(agents: HashMap<String, (String, TokenTotals)>) -> Vec<AgentTokenRow> {
+    let mut rows: Vec<AgentTokenRow> = agents
+        .into_iter()
+        .map(|(id, (name, totals))| AgentTokenRow {
+            id,
+            name,
+            input_tokens: totals.input_tokens,
+            output_tokens: totals.output_tokens,
+            session_count: totals.session_count,
+        })
+        .collect();
+    rows.sort_by(|a, b| a.id.cmp(&b.id));
+    rows
+}
+
+fn model_rows(models: HashMap<String, TokenTotals>) -> Vec<ModelTokenRow> {
+    let mut rows: Vec<ModelTokenRow> = models
+        .into_iter()
+        .map(|(model, totals)| ModelTokenRow {
+            model,
+            input_tokens: totals.input_tokens,
+            output_tokens: totals.output_tokens,
+            session_count: totals.session_count,
+        })
+        .collect();
+    rows.sort_by(|a, b| a.model.cmp(&b.model));
+    rows
+}
+
+fn costs_from_tokens(tokens: &TokenMetricsResponse) -> CostMetricsResponse {
+    let agents = tokens
+        .agents
+        .iter()
+        .map(|agent| AgentCostRow {
+            id: agent.id.clone(),
+            name: agent.name.clone(),
+            total_cost: 0.0,
+            message_count: 0,
+            session_count: agent.session_count,
+            output_tokens: agent.output_tokens,
+            prev_period_cost: 0.0,
+        })
+        .collect();
+
+    CostMetricsResponse {
+        series: tokens
+            .series
+            .iter()
+            .map(|point| CostSeriesPoint {
+                date: point.date.clone(),
+                cost_usd: 0.0,
+            })
+            .collect(),
+        agents,
+        today_cost: 0.0,
+        week_cost: 0.0,
+        month_cost: 0.0,
+        prev_today_cost: 0.0,
+        prev_week_cost: 0.0,
+        prev_month_cost: 0.0,
     }
 }
 

@@ -134,6 +134,8 @@ pub fn build_router_with(
         .route("/metrics/agents", get(insights::get_agent_perf))
         .route("/metrics/agents/{id}", get(insights::get_agent_perf_one))
         .route("/metrics/quality", get(insights::get_quality_metrics))
+        .route("/metrics/tokens", get(insights::get_token_metrics))
+        .route("/metrics/costs", get(insights::get_cost_metrics))
         .route("/journal", get(insights::get_journal))
         // WHY(#3266): planning routes belong under the versioned prefix.
         // The desktop app (proskenion) adapts to the API, not the reverse.

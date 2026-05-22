@@ -219,7 +219,8 @@ async fn authed_get_json(addr: std::net::SocketAddr, token: &str, path: &str) ->
     assert_eq!(
         resp.status,
         StatusCode::OK.as_u16(),
-        "proskenion contract mismatch: GET {path} must return 200"
+        "proskenion contract mismatch: GET {path} must return 200; body={}",
+        String::from_utf8_lossy(&resp.body)
     );
     resp.body_json()
 }
@@ -393,6 +394,108 @@ async fn proskenion_contract_metrics_surfaces_match_desktop() {
             series.get(field).and_then(Value::as_array).is_some(),
             "proskenion contract mismatch: quality series missing array `{field}`; body={quality}"
         );
+    }
+
+    let tokens = authed_get_json(
+        addr,
+        &token,
+        "/api/v1/metrics/tokens?granularity=daily&from=2026-01-01&to=2026-12-31",
+    )
+    .await;
+    array_field(&tokens, "series", "token metrics");
+    array_field(&tokens, "agents", "token metrics");
+    array_field(&tokens, "models", "token metrics");
+    for field in [
+        "today_input",
+        "today_output",
+        "week_input",
+        "week_output",
+        "month_input",
+        "month_output",
+        "prev_today_input",
+        "prev_today_output",
+        "prev_week_input",
+        "prev_week_output",
+        "prev_month_input",
+        "prev_month_output",
+    ] {
+        numeric_field(&tokens, field, "token metrics");
+    }
+    let token_agents = array_field(&tokens, "agents", "token metrics");
+    let token_agent = token_agents
+        .iter()
+        .find(|item| item.get("id").and_then(Value::as_str) == Some(TEST_NOUS_ID))
+        .unwrap_or_else(|| {
+            panic!(
+                "proskenion contract mismatch: token metrics should include desktop agent row \
+                 with id/name/input_tokens/output_tokens/session_count; body={tokens}"
+            )
+        });
+    assert_eq!(
+        string_field(token_agent, "name", "token metrics agent row"),
+        TEST_NOUS_ID,
+        "proskenion contract mismatch: token metrics agent row should expose display name; \
+         row={token_agent}"
+    );
+    for field in ["input_tokens", "output_tokens", "session_count"] {
+        numeric_field(token_agent, field, "token metrics agent row");
+    }
+    let token_models = array_field(&tokens, "models", "token metrics");
+    let token_model = token_models
+        .iter()
+        .find(|item| item.get("model").and_then(Value::as_str) == Some("mock-model"))
+        .unwrap_or_else(|| {
+            panic!(
+                "proskenion contract mismatch: token metrics should include desktop model row \
+                 with model/input_tokens/output_tokens/session_count; body={tokens}"
+            )
+        });
+    for field in ["input_tokens", "output_tokens", "session_count"] {
+        numeric_field(token_model, field, "token metrics model row");
+    }
+
+    let costs = authed_get_json(
+        addr,
+        &token,
+        "/api/v1/metrics/costs?granularity=daily&from=2026-01-01&to=2026-12-31",
+    )
+    .await;
+    array_field(&costs, "series", "cost metrics");
+    let cost_agents = array_field(&costs, "agents", "cost metrics");
+    for field in [
+        "today_cost",
+        "week_cost",
+        "month_cost",
+        "prev_today_cost",
+        "prev_week_cost",
+        "prev_month_cost",
+    ] {
+        numeric_field(&costs, field, "cost metrics");
+    }
+    let cost_agent = cost_agents
+        .iter()
+        .find(|item| item.get("id").and_then(Value::as_str) == Some(TEST_NOUS_ID))
+        .unwrap_or_else(|| {
+            panic!(
+                "proskenion contract mismatch: cost metrics should include desktop agent row \
+                 with id/name/total_cost/message_count/session_count/output_tokens/prev_period_cost; \
+                 body={costs}"
+            )
+        });
+    assert_eq!(
+        string_field(cost_agent, "name", "cost metrics agent row"),
+        TEST_NOUS_ID,
+        "proskenion contract mismatch: cost metrics agent row should expose display name; \
+         row={cost_agent}"
+    );
+    for field in [
+        "total_cost",
+        "message_count",
+        "session_count",
+        "output_tokens",
+        "prev_period_cost",
+    ] {
+        numeric_field(cost_agent, field, "cost metrics agent row");
     }
 }
 
