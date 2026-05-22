@@ -11,6 +11,11 @@ The remainder describes the required local LLM stack, a reference `aletheia.toml
 fragment, and the feature set that drops when no Anthropic provider is
 registered.
 
+The local Chat Completions-compatible path is separate from the OpenAI/Codex
+cloud path, whose target architecture is the OpenAI Responses API provider
+tracked separately. Do not use the local
+`openai-compatible` recipe as a Codex cloud recommendation.
+
 ## Required local LLM stack
 
 Any server speaking OpenAI's `/v1/chat/completions` wire format works. The
