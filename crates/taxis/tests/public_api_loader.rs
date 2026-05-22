@@ -8,7 +8,7 @@
 
 mod common;
 
-use taxis::config::AletheiaConfig;
+use taxis::config::{AletheiaConfig, DeploymentTarget, ProviderKind};
 use taxis::loader::{load_config, write_config};
 use taxis::oikos::Oikos;
 use taxis::reload::{prepare_reload, restart_prefixes};
@@ -25,6 +25,12 @@ fn seed_instance(jail: &EnvJail) -> &std::path::Path {
     std::fs::create_dir_all(root.join("data")).expect("create data dir");
     std::fs::create_dir_all(root.join("nous")).expect("create nous dir");
     root
+}
+
+fn is_gguf_model_id(model: &str) -> bool {
+    std::path::Path::new(model)
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("gguf"))
 }
 
 // ─── TOML loading: cascade (defaults → file → env) ──────────────────────
@@ -97,6 +103,46 @@ fn load_config_parses_camel_case_keys() {
     let config = load_config(&oikos).unwrap();
     assert_eq!(config.embedding.provider, "mock");
     assert_eq!(config.embedding.dimension, 512);
+}
+
+#[test]
+fn instance_example_provider_entries_load_strictly() {
+    let jail = EnvJail::new();
+    let root = seed_instance(&jail);
+    write_toml(
+        root,
+        include_str!("../../../instance.example/config/aletheia.toml"),
+    );
+
+    let oikos = Oikos::from_root(root);
+    let config = load_config(&oikos).expect("example config should load");
+
+    let anthropic = config
+        .providers
+        .iter()
+        .find(|provider| provider.name == "anthropic-cloud")
+        .expect("anthropic provider should be declared");
+    assert_eq!(anthropic.kind, ProviderKind::Anthropic);
+    assert_eq!(anthropic.deployment_target, DeploymentTarget::Cloud);
+
+    for name in ["menos-chat", "menos-code", "menos-inference", "menos-vlm"] {
+        let provider = config
+            .providers
+            .iter()
+            .find(|provider| provider.name == name)
+            .unwrap_or_else(|| panic!("{name} provider should be declared"));
+
+        assert_eq!(provider.kind, ProviderKind::OpenAiCompatible);
+        assert_eq!(provider.deployment_target, DeploymentTarget::LocalHosted);
+        assert!(
+            provider.models.iter().any(|model| is_gguf_model_id(model)),
+            "{name} should include the llama-server model id"
+        );
+        assert!(
+            provider.models.iter().any(|model| !is_gguf_model_id(model)),
+            "{name} should keep a short routing alias"
+        );
+    }
 }
 
 #[test]

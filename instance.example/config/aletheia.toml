@@ -165,6 +165,61 @@ workspace = "nous/main"
 #   extended            — reserved for the 1-hour cache (currently behaves
 #                         the same as `ephemeral`).
 
+# --- LLM providers ---
+# Declarative providers used by the runtime registry. Local OpenAI-compatible
+# servers list both the operator-facing alias and the exact model id returned
+# by /v1/models so either form routes to the same endpoint.
+[[providers]]
+name = "anthropic-cloud"
+providerType = "anthropic"
+deploymentTarget = "cloud"
+apiKeyEnv = "ANTHROPIC_API_KEY"
+models = [
+  "claude-sonnet-4-6",
+  "claude-opus-4-6",
+  "claude-haiku-4-5",
+]
+
+[[providers]]
+name = "menos-chat"
+providerType = "openai-compatible"
+baseUrl = "http://127.0.0.1:8088/v1"
+deploymentTarget = "localhosted"
+models = [
+  "qwen3.5-27b",
+  "Qwen3.5-27B-Instruct-Q4_K_M.gguf",
+]
+
+[[providers]]
+name = "menos-code"
+providerType = "openai-compatible"
+baseUrl = "http://127.0.0.1:8089/v1"
+deploymentTarget = "localhosted"
+models = [
+  "qwen3-coder-30b-a3b",
+  "Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf",
+]
+
+[[providers]]
+name = "menos-inference"
+providerType = "openai-compatible"
+baseUrl = "http://127.0.0.1:8090/v1"
+deploymentTarget = "localhosted"
+models = [
+  "qwen3-4b",
+  "Qwen3-4B-Instruct-Q4_K_M.gguf",
+]
+
+[[providers]]
+name = "menos-vlm"
+providerType = "openai-compatible"
+baseUrl = "http://127.0.0.1:8091/v1"
+deploymentTarget = "localhosted"
+models = [
+  "qwen3-vl-8b",
+  "Qwen3-VL-8B-Instruct-Q4_K_M.gguf",
+]
+
 # --- Cost tracking ---
 # [pricing."claude-sonnet-4-6"]
 # inputCostPerMtok = 3.0
