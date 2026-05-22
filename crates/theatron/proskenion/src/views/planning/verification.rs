@@ -5,6 +5,7 @@ use dioxus::prelude::*;
 use crate::api::client::authenticated_client;
 use crate::components::coverage_bar::{CoverageBar, coverage_color};
 use crate::state::connection::ConnectionConfig;
+use crate::state::toasts::{ToastSeverity, ToastStore};
 use crate::state::verification::{RequirementVerification, VerificationResult, VerificationStore};
 use crate::views::planning::gap_analysis::GapAnalysisPanel;
 
@@ -119,13 +120,10 @@ const PLACEHOLDER_STYLE: &str = "\
 /// Fetches from `GET /api/planning/projects/{project_id}/verification`.
 /// Displays overall and per-tier coverage bars, a requirement table,
 /// and the gap analysis panel.
-///
-/// # TODO(#2034)
-/// `POST /api/planning/projects/{project_id}/verification/refresh` endpoint
-/// is assumed but may not exist yet; the Re-verify button is wired to it.
 #[component]
 pub(crate) fn VerificationView(project_id: String) -> Element {
     let config: Signal<ConnectionConfig> = use_context();
+    let toast_store = try_consume_context::<Signal<ToastStore>>();
     let mut fetch_state = use_signal(|| FetchState::Loading);
     let mut reverifying = use_signal(|| false);
     // WHY: incrementing this signal causes the fetch effect to re-run.
@@ -180,6 +178,7 @@ pub(crate) fn VerificationView(project_id: String) -> Element {
     let do_reverify = move |_| {
         let cfg = config.read().clone();
         let pid = project_id_reverify.clone();
+        let toast_store = toast_store;
         reverifying.set(true);
 
         spawn(async move {
@@ -196,11 +195,29 @@ pub(crate) fn VerificationView(project_id: String) -> Element {
                     fetch_trigger.set(next);
                 }
                 Ok(resp) => {
-                    tracing::warn!("re-verify returned {}", resp.status());
+                    let status = resp.status();
+                    tracing::warn!("re-verify returned {status}");
+                    if let Some(mut store) = toast_store {
+                        let (title, body) = reverify_failure_message(status.as_u16());
+                        store.write().push_full(
+                            ToastSeverity::Error,
+                            title.to_owned(),
+                            Some(body.to_owned()),
+                            None,
+                        );
+                    }
                     reverifying.set(false);
                 }
                 Err(e) => {
                     tracing::warn!("re-verify error: {e}");
+                    if let Some(mut store) = toast_store {
+                        store.write().push_full(
+                            ToastSeverity::Error,
+                            "Re-verify failed".to_owned(),
+                            Some(format!("Could not reach the verification refresh endpoint: {e}")),
+                            None,
+                        );
+                    }
                     reverifying.set(false);
                 }
             }
@@ -372,5 +389,40 @@ fn req_status_label(status: crate::state::verification::VerificationStatus) -> &
         VerificationStatus::PartiallyVerified => "Partial",
         VerificationStatus::Unverified => "Unverified",
         VerificationStatus::Failed => "Failed",
+    }
+}
+
+fn reverify_failure_message(status: u16) -> (&'static str, &'static str) {
+    match status {
+        404 | 501 => (
+            "Re-verify unavailable",
+            "This pylon instance does not expose the verification refresh endpoint.",
+        ),
+        _ => (
+            "Re-verify failed",
+            "The verification refresh request returned an error. Try Refresh or check the server logs.",
+        ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::reverify_failure_message;
+
+    #[test]
+    fn reverify_failure_message_marks_missing_endpoint_unavailable() {
+        let (not_found_title, not_found_body) = reverify_failure_message(404);
+        assert_eq!(not_found_title, "Re-verify unavailable");
+        assert!(not_found_body.contains("does not expose"));
+
+        let (not_implemented_title, _) = reverify_failure_message(501);
+        assert_eq!(not_implemented_title, "Re-verify unavailable");
+    }
+
+    #[test]
+    fn reverify_failure_message_marks_other_statuses_failed() {
+        let (title, body) = reverify_failure_message(500);
+        assert_eq!(title, "Re-verify failed");
+        assert!(body.contains("returned an error"));
     }
 }
