@@ -13,7 +13,7 @@ workspace = true
 [features]
 default = ["graph-algo", "reranker"]
 graph-algo = []
-reranker = ["dep:async-trait", "dep:reqwest", "dep:rustls", "dep:tokio"]
+reranker = ["dep:reqwest", "dep:rustls", "dep:tokio"]
 gliner = ["dep:ort", "dep:tokio", "dep:tokenizers"]
 test-support = []
 # WHY: mneme-engine brings in the Datalog knowledge store via krites and the
@@ -45,7 +45,6 @@ regex = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 snafu = { workspace = true }
-async-trait = { version = "0.1", optional = true }
 tokio = { workspace = true, optional = true }
 toml = { workspace = true }
 tracing = { workspace = true }
