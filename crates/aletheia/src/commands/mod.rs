@@ -87,9 +87,9 @@ pub(crate) async fn dispatch(cmd: Command, instance_root: Option<&PathBuf>) -> R
             }
         }
         Command::Backup(a) => backup::run(instance_root, &a).map_err(Into::into),
-        Command::Maintenance { action } => {
-            maintenance::run(action, instance_root).map_err(Into::into)
-        }
+        Command::Maintenance { action } => maintenance::run(action, instance_root)
+            .await
+            .map_err(Into::into),
         Command::PromptAudit { action } => {
             prompt_audit::run(action, instance_root).map_err(Into::into)
         }

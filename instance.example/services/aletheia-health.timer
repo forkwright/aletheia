@@ -1,5 +1,6 @@
 [Unit]
-Description=Aletheia health check timer
+Description=Aletheia prosoche heartbeat timer
+Requires=aletheia.service
 
 [Timer]
 OnActiveSec=60

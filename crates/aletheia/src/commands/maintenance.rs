@@ -10,6 +10,7 @@ use oikonomos::maintenance::{
     FjallBackupConfig, MaintenanceConfig, PromptAuditRetentionConfig, PromptAuditRotator,
     ProposeRulesConfig, TraceRotationConfig, TraceRotator,
 };
+use oikonomos::prosoche_audit::{ProsocheAuditRunner, ProsocheState};
 use oikonomos::runner::TaskRunner;
 use taxis::loader::load_config;
 use taxis::oikos::Oikos;
@@ -27,7 +28,7 @@ pub(crate) enum Action {
     },
     /// Run a specific maintenance task immediately
     Run {
-        /// Task name: trace-rotation, drift-detection, db-monitor, or all
+        /// Task name: trace-rotation, drift-detection, db-monitor, prosoche-self-audit, or all
         task: String,
         /// List individual files (drift-detection only)
         #[arg(long)]
@@ -35,7 +36,7 @@ pub(crate) enum Action {
     },
 }
 
-pub(crate) fn run(action: Action, instance_root: Option<&PathBuf>) -> Result<()> {
+pub(crate) async fn run(action: Action, instance_root: Option<&PathBuf>) -> Result<()> {
     let oikos = match instance_root {
         Some(root) => Oikos::from_root(root),
         None => Oikos::discover(),
@@ -78,7 +79,7 @@ pub(crate) fn run(action: Action, instance_root: Option<&PathBuf>) -> Result<()>
                 vec![task.as_str()]
             };
             for name in tasks {
-                run_task(name, &maint, verbose)?;
+                run_task(name, &maint, verbose).await?;
             }
         }
     }
@@ -86,7 +87,7 @@ pub(crate) fn run(action: Action, instance_root: Option<&PathBuf>) -> Result<()>
 }
 
 /// Execute a single maintenance task by name.
-fn run_task(name: &str, maint: &MaintenanceConfig, verbose: bool) -> Result<()> {
+async fn run_task(name: &str, maint: &MaintenanceConfig, verbose: bool) -> Result<()> {
     match name {
         "trace-rotation" => {
             let report = TraceRotator::new(maint.trace_rotation.clone())
@@ -158,30 +159,48 @@ fn run_task(name: &str, maint: &MaintenanceConfig, verbose: bool) -> Result<()> 
                 report.files_pruned, report.bytes_freed
             );
         }
-        "self-audit" => {
-            use nous::self_audit::{AuditTrigger, CheckContext, SelfAuditor};
-            let mut auditor = SelfAuditor::new();
-            auditor.register_defaults();
-            let ctx = CheckContext {
-                nous_id: String::from("system"),
-                ..Default::default()
-            };
-            let report = auditor.run_audit(&ctx, AuditTrigger::Manual);
-            for r in &report.results {
-                println!(
-                    "  {}: {} (score: {:.2})",
-                    r.check_name, r.result.status, r.result.score,
-                );
-                if r.result.status != nous::self_audit::CheckStatus::Pass {
-                    println!("    evidence: {}", r.result.evidence);
-                }
-            }
-        }
+        "self-audit" => run_self_audit(),
+        "prosoche-self-audit" => run_prosoche_self_audit(maint).await,
         other => whatever!(
-            "unknown task: {other}. Valid: trace-rotation, drift-detection, db-monitor, fjall-backup, prompt-audit-rotation, self-audit, all"
+            "unknown task: {other}. Valid: trace-rotation, drift-detection, db-monitor, fjall-backup, prompt-audit-rotation, self-audit, prosoche-self-audit, all"
         ),
     }
     Ok(())
+}
+
+fn run_self_audit() {
+    use nous::self_audit::{AuditTrigger, CheckContext, SelfAuditor};
+    let mut auditor = SelfAuditor::new();
+    auditor.register_defaults();
+    let ctx = CheckContext {
+        nous_id: String::from("system"),
+        ..Default::default()
+    };
+    let report = auditor.run_audit(&ctx, AuditTrigger::Manual);
+    for r in &report.results {
+        println!(
+            "  {}: {} (score: {:.2})",
+            r.check_name, r.result.status, r.result.score,
+        );
+        if r.result.status != nous::self_audit::CheckStatus::Pass {
+            println!("    evidence: {}", r.result.evidence);
+        }
+    }
+}
+
+async fn run_prosoche_self_audit(maint: &MaintenanceConfig) {
+    let runner = ProsocheAuditRunner::default_checks(&maint.prosoche_audit_dir);
+    let state = ProsocheState {
+        nous_id: String::from("system"),
+        checked_at: jiff::Timestamp::now().to_string(),
+        ..ProsocheState::default()
+    };
+    let report = runner.run_audit(&state).await;
+    println!(
+        "prosoche-self-audit: {} findings across {} checks",
+        report.findings.len(),
+        report.check_summary.len()
+    );
 }
 
 /// Build a `MaintenanceConfig` from the oikos layout and config settings.
