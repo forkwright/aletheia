@@ -89,7 +89,7 @@ pub(crate) fn validate(store: &AuthStore, raw_key: &str) -> Result<Claims> {
 
     if let Some(ref expires_at) = record.expires_at {
         let now = now_iso();
-        if *expires_at < now {
+        if is_expired(expires_at, &now) {
             return Err(error::ExpiredTokenSnafu.build());
         }
     }
@@ -146,6 +146,10 @@ fn now_iso() -> String {
         })
         .as_secs();
     time_from_unix(secs)
+}
+
+fn is_expired(expires_at: &str, now: &str) -> bool {
+    expires_at < now
 }
 
 fn time_from_unix(secs: u64) -> String {

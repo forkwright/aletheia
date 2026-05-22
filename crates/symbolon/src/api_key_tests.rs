@@ -262,19 +262,10 @@ fn validate_accepts_unexpired_key() {
 /// would flip this case.
 #[test]
 fn validate_equal_to_now_is_not_rejected() {
-    // Build an ISO timestamp equal to right-now. Since now_iso() uses the same
-    // time_from_unix formatter, we match its exact second-truncation.
-    let now = time_from_unix(
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs(),
-    );
-    let (result, _) = validate_with_stored_expiry(&now);
-    // Either Ok (strict <) or Err::ExpiredToken (<=) — assert Ok to pin strict <.
+    let now = "2026-05-22T00:00:00.000Z";
     assert!(
-        result.is_ok(),
-        "expires_at == now must not be considered expired (strict <). got {result:?}"
+        !super::is_expired(now, now),
+        "expires_at == now must not be considered expired (strict <)"
     );
 }
 
