@@ -35,8 +35,6 @@ pub(crate) mod theme_toggle;
 pub(crate) mod thinking;
 /// Reusable horizontal timeline with zoom, pan, and dependency arrows.
 pub(crate) mod timeline;
-/// Dual-handle timeline scrubber for selecting a date range.
-pub(crate) mod timeline_scrubber;
 // toast module extracted to skeue::ToastItem (chalkeion desktop UI integration).
 // See `skeue::toast`.
 pub(crate) mod toast_container;
