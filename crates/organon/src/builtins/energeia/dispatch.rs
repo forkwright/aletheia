@@ -69,6 +69,16 @@ pub(super) fn dromeus_def() -> ToolDef {
                     },
                 ),
                 (
+                    "max_turns".to_owned(),
+                    PropertyDef {
+                        property_type: PropertyType::Integer,
+                        description: "Maximum turns per session (default: engine default)"
+                            .to_owned(),
+                        enum_values: None,
+                        default: None,
+                    },
+                ),
+                (
                     "dry_run".to_owned(),
                     PropertyDef {
                         property_type: PropertyType::Boolean,
@@ -143,6 +153,8 @@ impl ToolExecutor for DromeusExecutor {
                 energeia::types::DispatchSpec::new(project.to_owned(), prompt_numbers);
             dispatch_spec.max_parallel =
                 opt_u64(args, "max_parallel").and_then(|v| u32::try_from(v).ok());
+            dispatch_spec.max_turns =
+                opt_u64(args, "max_turns").and_then(|v| u32::try_from(v).ok());
 
             match orchestrator.dispatch(dispatch_spec, &prompts).await {
                 Ok(result) => Ok(to_json_text(&result)),

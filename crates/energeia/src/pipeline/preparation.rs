@@ -119,10 +119,12 @@ impl PipelineStage for PreparationStage {
         ctx.cost_ledger = Some(Arc::new(CostLedger::new()));
 
         ctx.resume_policy = crate::resume::ResumePolicy::default();
-        ctx.engine_config = Some(
-            EngineConfig::new(crate::engine::AgentOptions::new())
-                .idle_timeout_opt(cfg.session_idle_timeout),
-        );
+        let mut engine_config = EngineConfig::new(crate::engine::AgentOptions::new())
+            .idle_timeout_opt(cfg.session_idle_timeout);
+        if let Some(max_turns) = ctx.spec.max_turns {
+            engine_config = engine_config.max_turns(max_turns);
+        }
+        ctx.engine_config = Some(engine_config);
 
         ctx.max_concurrent = usize::try_from(
             ctx.spec
@@ -261,6 +263,31 @@ mod tests {
         assert!(ctx.budget.is_some());
         assert!(ctx.cost_ledger.is_some());
         assert!(ctx.engine_config.is_some());
+    }
+
+    #[tokio::test]
+    async fn preparation_keeps_parallelism_and_turn_limit_separate() {
+        let prompts = vec![PromptSpec {
+            number: 1,
+            description: "first".to_owned(),
+            depends_on: vec![],
+            acceptance_criteria: vec![],
+            blast_radius: vec![],
+            body: "do first".to_owned(),
+            prompt_components: None,
+        }];
+        let mut ctx = make_context_with_prompts(prompts);
+        ctx.spec.max_parallel = Some(2);
+        ctx.spec.max_turns = Some(7);
+
+        let stage = PreparationStage;
+        stage
+            .run(&mut ctx)
+            .await
+            .expect("preparation should succeed");
+
+        assert_eq!(ctx.max_concurrent, 2);
+        assert_eq!(ctx.engine_config().options.max_turns, Some(7));
     }
 
     #[tokio::test]

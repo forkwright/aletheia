@@ -247,6 +247,7 @@ mod tests {
             project: project.to_owned(),
             dag_ref: None,
             max_parallel: None,
+            max_turns: None,
         }
     }
 

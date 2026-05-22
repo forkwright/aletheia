@@ -695,7 +695,8 @@ impl RuntimeBuilder {
                             c.dispatch_spec.prompt_numbers.clone(),
                             c.dispatch_spec.dag_ref.clone(),
                             c.dispatch_spec.max_parallel,
-                        ),
+                        )
+                        .with_max_turns(c.dispatch_spec.max_turns),
                     )
                     .with_whatever_context(|_| format!("invalid cron task '{}'", c.name))?;
                     tasks.push(task);
