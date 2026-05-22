@@ -5,7 +5,7 @@ pub mod agent;
 /// Architecture-fact query/write tool (architecture_fact).
 pub mod architecture_fact;
 /// Bookkeeper tools (prompt archival and worktree cleanup).
-#[cfg(feature = "energeia")]
+#[cfg(feature = "bookkeeper")]
 pub mod bookkeeper;
 /// Machine-derived code-graph symbol-level queries (code_graph_query).
 pub mod code_graph_query;
@@ -192,7 +192,7 @@ pub(crate) fn register_domain_tools(
     // have services configured should use energeia::register(registry, Some(services)).
     // Tools requiring services return structured errors rather than panicking.
     energeia::register(registry, None)?;
-    #[cfg(feature = "energeia")]
+    #[cfg(feature = "bookkeeper")]
     bookkeeper::register(registry)?;
     poiesis::register(registry)?;
     intake_report::register(registry)?;
@@ -207,4 +207,30 @@ pub(crate) fn register_domain_tools(
     diff_report::register(registry)?;
     inspect_report::register(registry)?;
     Ok(())
+}
+
+#[cfg(all(test, feature = "energeia", not(feature = "bookkeeper")))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_energeia_registry_excludes_unimplemented_bookkeeper_tools() -> Result<()> {
+        let mut registry = ToolRegistry::new();
+        register_domain_tools(&mut registry, SandboxConfig::default())?;
+        let names: Vec<&str> = registry
+            .definitions()
+            .iter()
+            .map(|def| def.name.as_str())
+            .collect();
+
+        assert!(
+            names.contains(&"parateresis"),
+            "implemented energeia tools should still register"
+        );
+        assert!(
+            !names.contains(&"tamias") && !names.contains(&"katharos"),
+            "unimplemented bookkeeper tools must not be exposed by default"
+        );
+        Ok(())
+    }
 }

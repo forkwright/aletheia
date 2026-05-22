@@ -384,6 +384,39 @@ fn dokimasia_description_advertises_mechanical_only_qa() {
     );
 }
 
+#[test]
+fn parateresis_schema_advertises_store_query_only() {
+    let mut registry = ToolRegistry::new();
+    register(&mut registry, None).expect("register");
+    let definitions = registry.definitions();
+    let parateresis = definitions
+        .iter()
+        .find(|def| def.name.as_str() == "parateresis")
+        .expect("parateresis definition registered");
+
+    assert!(
+        parateresis
+            .description
+            .contains("return stored observations"),
+        "parateresis should describe local observation-store behavior"
+    );
+    assert!(
+        !parateresis.description.contains("pull requests")
+            && !parateresis.description.contains("tracking issues"),
+        "parateresis must not advertise external PR or issue creation work"
+    );
+    let days_description = &parateresis
+        .input_schema
+        .properties
+        .get("days")
+        .expect("days property documented")
+        .description;
+    assert!(
+        days_description.contains("stored observations"),
+        "days should describe the store-query window, got: {days_description}"
+    );
+}
+
 #[tokio::test]
 async fn dokimasia_runs_without_project() {
     let (_tmp, services) = setup();
