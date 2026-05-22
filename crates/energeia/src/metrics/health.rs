@@ -11,12 +11,12 @@
 //! | Metric | Proxy used | Missing data |
 //! |--------|-----------|-------------|
 //! | Corrective rate | Dispatches with Failed/Stuck sessions | QA PARTIAL/FAIL verdicts |
-//! | QA false positive | PR sessions with CI failures | QA verdict records |
+//! | QA false positive | PR sessions with CI failures | QA verdict data |
 //! | Fix agent success | CI-validated sessions that succeeded | Fix agent marker |
-//! | Observation-to-issue | `Unavailable` | Issue tracker records |
+//! | Observation-to-issue | `Unavailable` | Issue tracker links |
 //!
-//! These will improve as the store schema is extended with QA verdict and issue
-//! tracking records.
+//! These will improve as the store schema gains QA verdict and issue tracking
+//! data.
 
 #[cfg(feature = "storage-fjall")]
 use std::collections::{HashMap, HashSet};
@@ -80,8 +80,11 @@ pub struct HealthMetric {
     pub ok_threshold: f64,
     /// Threshold at or beyond which the status is `Warn` (between Ok and Crit).
     pub warn_threshold: f64,
-    /// Number of records used to compute this metric (0 means unavailable).
+    /// Number of samples used to compute this metric (0 means unavailable).
     pub sample_size: u64,
+    /// `true` when the metric uses correlated proxy data instead of direct data
+    /// for the named phenomenon.
+    pub is_proxied: bool,
     /// `true` if a higher value is healthier (e.g. success rate).
     pub higher_is_better: bool,
     /// Engine name label for downstream metrics export.
@@ -92,12 +95,24 @@ pub struct HealthMetric {
     pub agent_id: &'static str,
 }
 
+impl HealthMetric {
+    /// Whether this metric has enough data to carry a health classification.
+    #[must_use]
+    pub fn is_available(&self) -> bool {
+        self.status != HealthStatus::Unavailable
+    }
+
+    /// Whether this metric is derived from proxy data.
+    #[must_use]
+    pub fn uses_proxy_data(&self) -> bool {
+        self.is_proxied
+    }
+}
+
 #[cfg(feature = "storage-fjall")]
 const DEFAULT_ENGINE_LABEL: &str = "energeia";
 #[cfg(feature = "storage-fjall")]
-const DEFAULT_PROVIDER_LABEL: &str = "unknown";
-#[cfg(feature = "storage-fjall")]
-const DEFAULT_AGENT_LABEL: &str = "unknown";
+const DEFAULT_UNKNOWN_LABEL: &str = "unknown";
 
 /// Aggregate pipeline health report for a time window.
 #[derive(Debug, Clone)]
@@ -109,6 +124,14 @@ pub struct HealthReport {
     pub window_days: u32,
     /// All 7 pipeline health metrics.
     pub metrics: Vec<HealthMetric>,
+}
+
+impl HealthReport {
+    /// Count metrics in this report that are derived from proxy data.
+    #[must_use]
+    pub fn proxy_metric_count(&self) -> usize {
+        self.metrics.iter().filter(|m| m.is_proxied).count()
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -221,6 +244,7 @@ fn unavailable(
     ok_threshold: f64,
     warn_threshold: f64,
     higher_is_better: bool,
+    is_proxied: bool,
 ) -> HealthMetric {
     HealthMetric {
         name,
@@ -230,10 +254,11 @@ fn unavailable(
         ok_threshold,
         warn_threshold,
         sample_size: 0,
+        is_proxied,
         higher_is_better,
         engine_name: DEFAULT_ENGINE_LABEL,
-        provider: DEFAULT_PROVIDER_LABEL,
-        agent_id: DEFAULT_AGENT_LABEL,
+        provider: DEFAULT_UNKNOWN_LABEL,
+        agent_id: DEFAULT_UNKNOWN_LABEL,
     }
 }
 
@@ -247,7 +272,7 @@ fn unavailable(
 ///
 /// **Proxy:** dispatches that contain at least one Failed or Stuck session, as
 /// a fraction of all dispatches. True corrective rate requires QA PARTIAL/FAIL
-/// verdict records which are not yet stored.
+/// verdict data which may not be present yet.
 #[cfg(feature = "storage-fjall")]
 fn corrective_rate(
     dispatches: &[&DispatchRecord],
@@ -256,33 +281,42 @@ fn corrective_rate(
 ) -> HealthMetric {
     const NAME: &str = "corrective_rate";
     const DESC: &str =
-        "% of dispatches needing corrective prompts (QA Partial/Fail verdicts when recorded)";
+        "% of dispatches needing corrective prompts (QA Partial/Fail verdicts when available)";
 
     let total = dispatches.len();
     if total == 0 {
-        return unavailable(NAME, DESC, 0.10, 0.20, false);
+        return unavailable(NAME, DESC, 0.10, 0.20, false, false);
     }
 
     let dispatch_ids: HashSet<&str> = dispatches.iter().map(|d| d.id.as_str()).collect();
-    let mut corrective_dispatch_ids: HashSet<&str> = qa_verdicts
+    let has_qa_verdicts = qa_verdicts
         .iter()
-        .filter(|v| dispatch_ids.contains(v.dispatch_id.as_str()))
-        .filter(|v| {
-            matches!(
-                v.verdict,
-                crate::types::QaVerdict::Partial | crate::types::QaVerdict::Fail
-            )
-        })
-        .map(|v| v.dispatch_id.as_str())
-        .collect();
-
-    if corrective_dispatch_ids.is_empty() {
-        corrective_dispatch_ids = sessions
-            .iter()
-            .filter(|s| matches!(s.status, SessionStatus::Failed | SessionStatus::Stuck))
-            .map(|s| s.dispatch_id.as_str())
-            .collect();
-    }
+        .any(|v| dispatch_ids.contains(v.dispatch_id.as_str()));
+    let (corrective_dispatch_ids, is_proxied): (HashSet<&str>, bool) = if has_qa_verdicts {
+        (
+            qa_verdicts
+                .iter()
+                .filter(|v| dispatch_ids.contains(v.dispatch_id.as_str()))
+                .filter(|v| {
+                    matches!(
+                        v.verdict,
+                        crate::types::QaVerdict::Partial | crate::types::QaVerdict::Fail
+                    )
+                })
+                .map(|v| v.dispatch_id.as_str())
+                .collect(),
+            false,
+        )
+    } else {
+        (
+            sessions
+                .iter()
+                .filter(|s| matches!(s.status, SessionStatus::Failed | SessionStatus::Stuck))
+                .map(|s| s.dispatch_id.as_str())
+                .collect(),
+            true,
+        )
+    };
 
     #[expect(
         clippy::cast_precision_loss,
@@ -301,10 +335,11 @@ fn corrective_rate(
         ok_threshold: 0.10,
         warn_threshold: 0.20,
         sample_size,
+        is_proxied,
         higher_is_better: false,
         engine_name: DEFAULT_ENGINE_LABEL,
-        provider: DEFAULT_PROVIDER_LABEL,
-        agent_id: DEFAULT_AGENT_LABEL,
+        provider: DEFAULT_UNKNOWN_LABEL,
+        agent_id: DEFAULT_UNKNOWN_LABEL,
     }
 }
 
@@ -318,7 +353,7 @@ fn stuck_rate(sessions: &[&SessionRecord]) -> HealthMetric {
 
     let total = sessions.len();
     if total == 0 {
-        return unavailable(NAME, DESC, 0.05, 0.15, false);
+        return unavailable(NAME, DESC, 0.05, 0.15, false, false);
     }
 
     let stuck = sessions
@@ -343,10 +378,11 @@ fn stuck_rate(sessions: &[&SessionRecord]) -> HealthMetric {
         ok_threshold: 0.05,
         warn_threshold: 0.15,
         sample_size,
+        is_proxied: false,
         higher_is_better: false,
         engine_name: DEFAULT_ENGINE_LABEL,
-        provider: DEFAULT_PROVIDER_LABEL,
-        agent_id: DEFAULT_AGENT_LABEL,
+        provider: DEFAULT_UNKNOWN_LABEL,
+        agent_id: DEFAULT_UNKNOWN_LABEL,
     }
 }
 
@@ -355,7 +391,7 @@ fn stuck_rate(sessions: &[&SessionRecord]) -> HealthMetric {
 /// **Threshold:** <5% OK, ≤10% WARN, >10% CRIT.
 ///
 /// **Proxy:** sessions with a PR URL (implying QA passed) where at least one
-/// CI validation record has Fail status. True rate needs stored QA verdicts.
+/// CI validation has Fail status. True rate needs persisted QA verdict data.
 #[cfg(feature = "storage-fjall")]
 fn qa_false_positive_rate(
     sessions: &[&SessionRecord],
@@ -363,14 +399,14 @@ fn qa_false_positive_rate(
 ) -> HealthMetric {
     const NAME: &str = "qa_false_positive_rate";
     const DESC: &str = "% of sessions with a PR that later fail CI \
-        (proxy for QA passing work that CI rejects; true rate needs QA verdict records)";
+        (proxy for QA passing work that CI rejects; true rate needs QA verdict data)";
 
     let sessions_with_pr: Vec<&&SessionRecord> =
         sessions.iter().filter(|s| s.pr_url.is_some()).collect();
     let total = sessions_with_pr.len();
 
     if total == 0 {
-        return unavailable(NAME, DESC, 0.05, 0.10, false);
+        return unavailable(NAME, DESC, 0.05, 0.10, false, true);
     }
 
     let ci_fail_count = sessions_with_pr
@@ -401,10 +437,11 @@ fn qa_false_positive_rate(
         ok_threshold: 0.05,
         warn_threshold: 0.10,
         sample_size,
+        is_proxied: true,
         higher_is_better: false,
         engine_name: DEFAULT_ENGINE_LABEL,
-        provider: DEFAULT_PROVIDER_LABEL,
-        agent_id: DEFAULT_AGENT_LABEL,
+        provider: DEFAULT_UNKNOWN_LABEL,
+        agent_id: DEFAULT_UNKNOWN_LABEL,
     }
 }
 
@@ -412,9 +449,9 @@ fn qa_false_positive_rate(
 ///
 /// **Threshold:** >80% OK, ≥60% WARN, <60% CRIT.
 ///
-/// **Proxy:** among sessions that have CI validation records (proxy for fix
+/// **Proxy:** among sessions that have CI validation entries (proxy for fix
 /// agent sessions), the fraction that reached `Success` status. True rate
-/// requires a fix-agent marker in the session record.
+/// requires a fix-agent marker in the session data.
 #[cfg(feature = "storage-fjall")]
 fn fix_agent_success_rate(
     sessions: &[&SessionRecord],
@@ -422,7 +459,7 @@ fn fix_agent_success_rate(
 ) -> HealthMetric {
     const NAME: &str = "fix_agent_success_rate";
     const DESC: &str = "% of CI-validated sessions reaching Success \
-        (proxy for fix agent success; true rate needs fix-agent marker in session record)";
+        (proxy for fix agent success; true rate needs fix-agent marker in session data)";
 
     let sessions_with_ci: Vec<&&SessionRecord> = sessions
         .iter()
@@ -431,7 +468,7 @@ fn fix_agent_success_rate(
 
     let total = sessions_with_ci.len();
     if total == 0 {
-        return unavailable(NAME, DESC, 0.80, 0.60, true);
+        return unavailable(NAME, DESC, 0.80, 0.60, true, true);
     }
 
     let successes = sessions_with_ci
@@ -456,10 +493,11 @@ fn fix_agent_success_rate(
         ok_threshold: 0.80,
         warn_threshold: 0.60,
         sample_size,
+        is_proxied: true,
         higher_is_better: true,
         engine_name: DEFAULT_ENGINE_LABEL,
-        provider: DEFAULT_PROVIDER_LABEL,
-        agent_id: DEFAULT_AGENT_LABEL,
+        provider: DEFAULT_UNKNOWN_LABEL,
+        agent_id: DEFAULT_UNKNOWN_LABEL,
     }
 }
 
@@ -479,7 +517,7 @@ fn cycle_time(dispatches: &[&DispatchRecord]) -> HealthMetric {
 
     let total = completed.len();
     if total == 0 {
-        return unavailable(NAME, DESC, 4.0, 8.0, false);
+        return unavailable(NAME, DESC, 4.0, 8.0, false, false);
     }
 
     let total_ms: i64 = completed
@@ -507,10 +545,11 @@ fn cycle_time(dispatches: &[&DispatchRecord]) -> HealthMetric {
         ok_threshold: 4.0,
         warn_threshold: 8.0,
         sample_size,
+        is_proxied: false,
         higher_is_better: false,
         engine_name: DEFAULT_ENGINE_LABEL,
-        provider: DEFAULT_PROVIDER_LABEL,
-        agent_id: DEFAULT_AGENT_LABEL,
+        provider: DEFAULT_UNKNOWN_LABEL,
+        agent_id: DEFAULT_UNKNOWN_LABEL,
     }
 }
 
@@ -519,8 +558,8 @@ fn cycle_time(dispatches: &[&DispatchRecord]) -> HealthMetric {
 /// **Threshold:** >50% OK, ≥25% WARN, <25% CRIT.
 ///
 /// Currently returns `Unavailable` — the energeia store tracks observations
-/// but not issue-tracker records. This metric requires cross-system data
-/// (observation records × issue tracker entries) not yet integrated.
+/// but not issue-tracker links. This metric requires cross-system data
+/// (observations × issues) not yet integrated.
 #[cfg(feature = "storage-fjall")]
 fn observation_to_issue_rate() -> HealthMetric {
     unavailable(
@@ -530,6 +569,7 @@ fn observation_to_issue_rate() -> HealthMetric {
         0.50,
         0.25,
         true,
+        false,
     )
 }
 
@@ -545,7 +585,7 @@ fn batch_parallelism(dispatches: &[&DispatchRecord], sessions: &[&SessionRecord]
 
     let total_dispatches = dispatches.len();
     if total_dispatches == 0 {
-        return unavailable(NAME, DESC, 3.0, 1.5, true);
+        return unavailable(NAME, DESC, 3.0, 1.5, true, true);
     }
 
     // Count sessions per dispatch.
@@ -562,7 +602,7 @@ fn batch_parallelism(dispatches: &[&DispatchRecord], sessions: &[&SessionRecord]
 
     let n = dispatches_with_sessions.len();
     if n == 0 {
-        return unavailable(NAME, DESC, 3.0, 1.5, true);
+        return unavailable(NAME, DESC, 3.0, 1.5, true, true);
     }
 
     let total_sessions: u64 = dispatches_with_sessions.iter().sum();
@@ -584,10 +624,11 @@ fn batch_parallelism(dispatches: &[&DispatchRecord], sessions: &[&SessionRecord]
         ok_threshold: 3.0,
         warn_threshold: 1.5,
         sample_size,
+        is_proxied: true,
         higher_is_better: true,
         engine_name: DEFAULT_ENGINE_LABEL,
-        provider: DEFAULT_PROVIDER_LABEL,
-        agent_id: DEFAULT_AGENT_LABEL,
+        provider: DEFAULT_UNKNOWN_LABEL,
+        agent_id: DEFAULT_UNKNOWN_LABEL,
     }
 }
 

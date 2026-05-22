@@ -27,7 +27,7 @@ pub struct ResumeStage {
 }
 
 impl Default for ResumePolicy {
-    /// Three-stage default escalation covering roughly 200 turns total.
+    /// Three-stage default escalation covering 230 turns total.
     ///
     /// Stage 1 (80 turns): gentle nudge — plenty of turns remain.
     /// Stage 2 (100 turns): focused redirect — file issues for blockers.
