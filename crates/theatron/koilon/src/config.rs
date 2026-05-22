@@ -59,6 +59,36 @@ pub(crate) struct ConfigFile {
     pub(crate) keybindings: Option<HashMap<String, String>>,
     /// Theme mode: "dark", "light", or "auto" (default).
     pub(crate) theme: Option<String>,
+    /// Optional auto-discovery candidates used when `url` is not set.
+    pub(crate) discovery: Option<DiscoveryFileConfig>,
+}
+
+#[derive(Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct DiscoveryFileConfig {
+    pub(crate) port: Option<u16>,
+    pub(crate) urls: Option<Vec<String>>,
+    pub(crate) lan_hostnames: Option<Vec<String>>,
+    pub(crate) tailscale_ips: Option<Vec<String>>,
+}
+
+impl DiscoveryFileConfig {
+    fn to_discovery_config(&self) -> skene::discovery::DiscoveryConfig {
+        let mut config = skene::discovery::DiscoveryConfig::default();
+        if let Some(port) = self.port {
+            config.port = port;
+        }
+        if let Some(urls) = self.urls.clone() {
+            config.base_urls = urls;
+        }
+        if let Some(hostnames) = self.lan_hostnames.clone() {
+            config.lan_hostnames = hostnames;
+        }
+        if let Some(ips) = self.tailscale_ips.clone() {
+            config.tailscale_ips = ips;
+        }
+        config
+    }
 }
 
 impl std::fmt::Debug for ConfigFile {
@@ -68,6 +98,10 @@ impl std::fmt::Debug for ConfigFile {
             .field("token", &self.token.as_ref().map(|_| "[REDACTED]"))
             .field("default_agent", &self.default_agent)
             .field("default_session", &self.default_session)
+            .field(
+                "discovery",
+                &self.discovery.as_ref().map(|_| "[configured]"),
+            )
             .finish()
     }
 }
@@ -131,13 +165,18 @@ impl Config {
 
         let resolved_token = cli_token.or(file_config.token);
         let credential_label = detect_credential_label(resolved_token.as_deref());
+        let discovery_config = file_config
+            .discovery
+            .as_ref()
+            .map(DiscoveryFileConfig::to_discovery_config)
+            .unwrap_or_default();
 
         // WHY: When neither CLI flag nor config file provides a URL, attempt
         // auto-discovery before falling back to the compiled default.
         // Discovery runs a blocking runtime because Config::load is sync.
-        let url = cli_url
-            .or(file_config.url)
-            .unwrap_or_else(|| Self::try_discover().unwrap_or_else(|| DEFAULT_URL.to_string()));
+        let url = cli_url.or(file_config.url).unwrap_or_else(|| {
+            Self::try_discover(&discovery_config).unwrap_or_else(|| DEFAULT_URL.to_string())
+        });
 
         Ok(Config {
             url,
@@ -160,14 +199,14 @@ impl Config {
     /// blocking task to run discovery without deadlocking the current runtime.
     /// If no runtime is active (e.g. tests without `#[tokio::test]`), we create
     /// a temporary one.
-    fn try_discover() -> Option<String> {
+    fn try_discover(config: &skene::discovery::DiscoveryConfig) -> Option<String> {
         tracing::info!("no server URL configured, attempting auto-discovery");
 
         if let Ok(handle) = tokio::runtime::Handle::try_current() {
             // We are inside a tokio runtime. Spawn a blocking task to avoid
             // blocking the async executor while discovery probes run.
             std::thread::scope(|s| {
-                s.spawn(|| handle.block_on(skene::discovery::discover_server()))
+                s.spawn(|| handle.block_on(skene::discovery::discover_server_with_config(config)))
                     .join()
                     .ok()
                     .flatten()
@@ -178,7 +217,7 @@ impl Config {
                 .enable_all()
                 .build()
                 .ok()?;
-            rt.block_on(skene::discovery::discover_server())
+            rt.block_on(skene::discovery::discover_server_with_config(config))
         }
     }
 
@@ -274,6 +313,12 @@ mod tests {
             bell: Some(true),
             keybindings: Some(keybindings),
             theme: Some("light".into()),
+            discovery: Some(DiscoveryFileConfig {
+                port: Some(18790),
+                urls: Some(vec!["https://aletheia.example".into()]),
+                lan_hostnames: Some(vec!["metis".into()]),
+                tailscale_ips: Some(vec!["100.64.0.10".into()]),
+            }),
         };
         let toml_str = toml::to_string(&file).unwrap();
         let back: ConfigFile = toml::from_str(&toml_str).unwrap();
@@ -291,6 +336,20 @@ mod tests {
             Some("Ctrl+G")
         );
         assert_eq!(file.theme, back.theme);
+        let discovery = back.discovery.expect("discovery config should roundtrip");
+        assert_eq!(discovery.port, Some(18790));
+        assert_eq!(
+            discovery.urls.as_deref(),
+            Some(&["https://aletheia.example".to_string()][..])
+        );
+        assert_eq!(
+            discovery.lan_hostnames.as_deref(),
+            Some(&["metis".to_string()][..])
+        );
+        assert_eq!(
+            discovery.tailscale_ips.as_deref(),
+            Some(&["100.64.0.10".to_string()][..])
+        );
     }
 
     #[test]
