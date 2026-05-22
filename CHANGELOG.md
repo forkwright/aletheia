@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.25.3](https://github.com/forkwright/aletheia/compare/v0.25.2...v0.25.3) (2026-05-22)
+
+
+### Bug Fixes
+
+* **daemon:** install prosoche heartbeat timer ([#3916](https://github.com/forkwright/aletheia/issues/3916)) ([5e2e6bb](https://github.com/forkwright/aletheia/commit/5e2e6bb4d509e21259c940f877ffec2b99c42535))
+* **episteme:** scope staged RRF dead-code expectation ([#3913](https://github.com/forkwright/aletheia/issues/3913)) ([cb85cb7](https://github.com/forkwright/aletheia/commit/cb85cb7dd72dc0e68bc57ba351d933ab5ca0ee1d))
+
+
+### Documentation
+
+* **architecture:** record Codex provider routing decision ([#3914](https://github.com/forkwright/aletheia/issues/3914)) ([b7bd51f](https://github.com/forkwright/aletheia/commit/b7bd51fb9b07a573a529bfc5de45132a5ead442a))
+
 ## [0.25.2](https://github.com/forkwright/aletheia/compare/v0.25.1...v0.25.2) (2026-05-22)
 
 
