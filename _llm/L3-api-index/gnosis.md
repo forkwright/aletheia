@@ -2,7 +2,7 @@
 
 Crate path: `crates/gnosis`
 
-Public API signatures extracted from source. Each signature is preceded by its doc comment.
+Public API signatures. Each signature is preceded by its doc comment.
 For implementation context, read the source directly (`L4`).
 
 ## `src/error.rs`
@@ -24,9 +24,17 @@ pub enum GnosisError {
     #[snafu(display("failed to parse {}: {source}", path.display()))]
     Parse { path: PathBuf, source: syn::Error },
 
-    /// A `SQLite` operation failed.
-    #[snafu(display("sqlite error: {source}"))]
-    Sqlite { source: rusqlite::Error },
+    /// A `fjall` operation failed.
+    #[snafu(display("fjall error: {source}"))]
+    Fjall { source: fjall::Error },
+
+    /// Stored index data could not be encoded or decoded.
+    #[snafu(display("index serialization error: {source}"))]
+    Codec { source: serde_json::Error },
+
+    /// Stored index data is malformed.
+    #[snafu(display("corrupt index data: {message}"))]
+    Corrupt { message: String },
 
     /// The index cache directory could not be created.
     #[snafu(display("failed to create cache directory {}: {source}", dir.display()))]
@@ -41,17 +49,6 @@ pub enum GnosisError {
         path: PathBuf,
         source: std::io::Error,
     },
-
-    /// A query was passed an unsupported operation string.
-    #[snafu(display("unknown query operation: '{op}'"))]
-    UnknownOp { op: String },
-
-    /// A required argument was missing from a query.
-    #[snafu(display("missing required argument '{arg}' for query '{query}'"))]
-    MissingArg {
-        arg: &'static str,
-        query: &'static str,
-    },
 }
 ```
 
@@ -62,17 +59,16 @@ pub type Result<T> = std::result::Result<T, GnosisError>;
 
 ## `src/lib.rs`
 
-> A handle to the gnosis `SQLite` index.
+> A handle to the gnosis fjall index.
 >
 > # Thread safety
 >
-> `Connection` is `!Send`; we wrap it in `Mutex` so `CodeGraph` can be
-> stored in `Arc` and shared across async tasks.  All methods lock the
-> mutex for the duration of the call.
+> The fjall keyspace handles are thread-safe. We keep them behind a mutex so
+> query and rebuild operations see a consistent sequence of mutations.
 ```rust
 pub struct CodeGraph {
-    /// Mutex-protected `SQLite` connection.
-    conn: Mutex<Connection>,
+    /// Mutex-protected fjall store.
+    store: Mutex<Store>,
     /// Workspace root (for rebuild).
     workspace_root: PathBuf,
     /// Gnosis schema version this instance was opened with.
