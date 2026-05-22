@@ -31,6 +31,9 @@ receipt_verification = []
 # Energeia capability tools (dromeus, dokimasia, diorthosis, epitropos, parateresis,
 # mathesis, prographe, schedion, metron). Wires to real energeia subsystem.
 energeia = ["dep:energeia"]
+# Unimplemented prompt archival/worktree cleanup tool schemas. Default OFF so
+# agents do not see stub capabilities unless a deployment deliberately opts in.
+bookkeeper = []
 # Z3 SMT solver tool (z3_solver). Bundled so the default build doesn't pull libz3.
 z3 = ["dep:z3"]
 # Gates MockToolExecutor, ToolExecutorSpec, and other test helpers. No test code in release binaries.

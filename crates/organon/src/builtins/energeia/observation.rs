@@ -1,6 +1,6 @@
 //! Observation and learning tools (parateresis + mathesis).
 //!
-//! - parateresis (παρατήρησις — observation): collect observations from merged PRs
+//! - parateresis (παρατήρησις — observation): query stored observations
 //! - mathesis (μάθησις — learning): query/record lessons learned
 
 use std::future::Future;
@@ -28,7 +28,7 @@ pub(super) fn parateresis_def() -> ToolDef {
     ToolDef {
         name: ToolName::from_static("parateresis"),
         description:
-            "Record an observation scan request and return stored observations for a project."
+            "Record an observation query request and return stored observations for a project."
                 .to_owned(),
         extended_description: None,
         input_schema: InputSchema {
@@ -37,7 +37,7 @@ pub(super) fn parateresis_def() -> ToolDef {
                     "project".to_owned(),
                     PropertyDef {
                         property_type: PropertyType::String,
-                        description: "GitHub project slug (owner/repo)".to_owned(),
+                        description: "Project slug for stored observations (owner/repo)".to_owned(),
                         enum_values: None,
                         default: None,
                     },
@@ -46,7 +46,8 @@ pub(super) fn parateresis_def() -> ToolDef {
                     "days".to_owned(),
                     PropertyDef {
                         property_type: PropertyType::Integer,
-                        description: "How many days of merged PRs to scan (default: 7)".to_owned(),
+                        description: "How many days of stored observations to return (default: 7)"
+                            .to_owned(),
                         enum_values: None,
                         default: Some(serde_json::json!(7)),
                     },
@@ -88,19 +89,19 @@ impl ToolExecutor for ParateresisExecutor {
                 .and_then(|d| u32::try_from(d).ok())
                 .unwrap_or(7);
 
-            // Record an observation for this collection pass and return existing ones.
+            // Record an observation for this query pass and return existing ones.
             // WHY: The observation pipeline captures patterns from merged PRs as
             // ObservationRecord entries. This tool queries existing observations and
-            // records a new sentinel observation for the scan run.
-            let scan_observation = NewObservation {
+            // records a new sentinel observation for the query run.
+            let query_observation = NewObservation {
                 project: project.to_owned(),
                 source: "parateresis".to_owned(),
-                content: format!("observation scan requested for last {days} days"),
-                observation_type: "scan".to_owned(),
+                content: format!("observation query requested for last {days} days"),
+                observation_type: "query".to_owned(),
                 session_id: None,
             };
-            if let Err(e) = store.add_observation(&scan_observation) {
-                tracing::warn!(error = %e, "parateresis: failed to record scan observation");
+            if let Err(e) = store.add_observation(&query_observation) {
+                tracing::warn!(error = %e, "parateresis: failed to record query observation");
             }
 
             match store.query_observations(Some(project), Some(days), 100) {
