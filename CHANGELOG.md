@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.26.0](https://github.com/forkwright/aletheia/compare/v0.25.4...v0.26.0) (2026-05-22)
+
+
+### Features
+
+* **hermeneus:** add OpenAI Responses provider path ([#3919](https://github.com/forkwright/aletheia/issues/3919)) ([8baf490](https://github.com/forkwright/aletheia/commit/8baf4904aa48dfb98892638d18a893a218fe9209))
+
 ## [0.25.4](https://github.com/forkwright/aletheia/compare/v0.25.3...v0.25.4) (2026-05-22)
 
 
