@@ -48,6 +48,7 @@ members = [
 # WHY: proskenion requires GTK3/webkit2gtk system libraries (via Dioxus
 # desktop/webview) which are not available in CI. Excluded from workspace to
 # avoid cargo-deny advisory failures on GTK deps and build failures on CI.
+# Build/install flow and system deps: docs/DESKTOP.md
 # Build standalone: `cargo build -p proskenion --manifest-path crates/theatron/proskenion/Cargo.toml`
 exclude = [
     "crates/theatron/proskenion",
@@ -122,12 +123,6 @@ rayon = { version = "1", default-features = false }
 # Member crates inherit via `<dep> = { workspace = true }`.
 # proskenion is excluded from the workspace (GTK/webkit2gtk) and uses its own
 # standalone [workspace.dependencies] block; pin is mirrored there manually.
-parodos = { git = "https://github.com/forkwright/theatron.git", tag = "v1.2.0" }
-themelion = { git = "https://github.com/forkwright/theatron.git", tag = "v1.2.0" }
-skeue = { git = "https://github.com/forkwright/theatron.git", tag = "v1.2.0" }
-gramma = { git = "https://github.com/forkwright/theatron.git", tag = "v1.2.0" }
-bathron = { git = "https://github.com/forkwright/theatron.git", tag = "v1.2.0", features = ["logging"] }
-keryx = { git = "https://github.com/forkwright/theatron.git", tag = "v1.2.0" }
 
 # Error handling
 snafu = "0.8"
@@ -249,9 +244,34 @@ wiremock = { version = "0.6", default-features = false }
 # Invoked as `RUSTFLAGS="--cfg loom" cargo test -p krites --release loom_tests`.
 loom = { version = "0.7", default-features = false }
 
-# WHY: serde, axum-server, regex, criterion declared as expanded tables at the
-# end to satisfy TOML/inline-table-too-long while keeping `[workspace.dependencies]`
-# block readable. Cargo resolves them identically to inline form.
+# WHY: long dependency specifications are declared as expanded tables at the end
+# to satisfy TOML/inline-table-too-long while keeping `[workspace.dependencies]`
+# readable. Cargo resolves them identically to inline form.
+[workspace.dependencies.parodos]
+git = "https://github.com/forkwright/theatron.git"
+tag = "v1.2.0"
+
+[workspace.dependencies.themelion]
+git = "https://github.com/forkwright/theatron.git"
+tag = "v1.2.0"
+
+[workspace.dependencies.skeue]
+git = "https://github.com/forkwright/theatron.git"
+tag = "v1.2.0"
+
+[workspace.dependencies.gramma]
+git = "https://github.com/forkwright/theatron.git"
+tag = "v1.2.0"
+
+[workspace.dependencies.bathron]
+git = "https://github.com/forkwright/theatron.git"
+tag = "v1.2.0"
+features = ["logging"]
+
+[workspace.dependencies.keryx]
+git = "https://github.com/forkwright/theatron.git"
+tag = "v1.2.0"
+
 [workspace.dependencies.serde]
 version = "1"
 default-features = false

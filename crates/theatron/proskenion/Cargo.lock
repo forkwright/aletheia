@@ -319,7 +319,7 @@ checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 [[package]]
 name = "bathron"
 version = "1.2.0"
-source = "git+http://127.0.0.1:7878/forkwright/theatron.git?tag=v1.2.0#6225613827dcc21a0b7b1c1585f9ff8199affae9"
+source = "git+https://github.com/forkwright/theatron.git?tag=v1.2.0#6225613827dcc21a0b7b1c1585f9ff8199affae9"
 dependencies = [
  "dirs",
  "serde",
@@ -2142,7 +2142,7 @@ dependencies = [
 [[package]]
 name = "gramma"
 version = "1.2.0"
-source = "git+http://127.0.0.1:7878/forkwright/theatron.git?tag=v1.2.0#6225613827dcc21a0b7b1c1585f9ff8199affae9"
+source = "git+https://github.com/forkwright/theatron.git?tag=v1.2.0#6225613827dcc21a0b7b1c1585f9ff8199affae9"
 dependencies = [
  "pulldown-cmark",
  "syntect",
@@ -2759,7 +2759,7 @@ dependencies = [
 [[package]]
 name = "keryx"
 version = "1.2.0"
-source = "git+http://127.0.0.1:7878/forkwright/theatron.git?tag=v1.2.0#6225613827dcc21a0b7b1c1585f9ff8199affae9"
+source = "git+https://github.com/forkwright/theatron.git?tag=v1.2.0#6225613827dcc21a0b7b1c1585f9ff8199affae9"
 dependencies = [
  "bytes",
  "dioxus",
@@ -2786,7 +2786,7 @@ dependencies = [
 
 [[package]]
 name = "koina"
-version = "0.21.1"
+version = "0.25.1"
 dependencies = [
  "jiff",
  "prometheus-client",
@@ -4992,7 +4992,7 @@ checksum = "b2aa850e253778c88a04c3d7323b043aeda9d3e30d5971937c1855769763678e"
 
 [[package]]
 name = "skene"
-version = "0.21.1"
+version = "0.25.1"
 dependencies = [
  "bytes",
  "futures-core",
@@ -5011,7 +5011,7 @@ dependencies = [
 [[package]]
 name = "skeue"
 version = "1.2.0"
-source = "git+http://127.0.0.1:7878/forkwright/theatron.git?tag=v1.2.0#6225613827dcc21a0b7b1c1585f9ff8199affae9"
+source = "git+https://github.com/forkwright/theatron.git?tag=v1.2.0#6225613827dcc21a0b7b1c1585f9ff8199affae9"
 dependencies = [
  "dioxus",
  "gramma",
@@ -5362,7 +5362,7 @@ dependencies = [
 [[package]]
 name = "themelion"
 version = "1.2.0"
-source = "git+http://127.0.0.1:7878/forkwright/theatron.git?tag=v1.2.0#6225613827dcc21a0b7b1c1585f9ff8199affae9"
+source = "git+https://github.com/forkwright/theatron.git?tag=v1.2.0#6225613827dcc21a0b7b1c1585f9ff8199affae9"
 dependencies = [
  "dioxus",
  "serde",

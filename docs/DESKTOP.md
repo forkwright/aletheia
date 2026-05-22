@@ -39,6 +39,18 @@ cargo build -p proskenion --manifest-path crates/theatron/proskenion/Cargo.toml
 cargo build -p proskenion --manifest-path crates/theatron/proskenion/Cargo.toml --release
 ```
 
+## Pin discipline
+
+`proskenion` has its own standalone workspace, so its theatron git dependencies cannot inherit from the root `[workspace.dependencies]` block. Keep the mirrored pins in `crates/theatron/proskenion/Cargo.toml` aligned with the root manifest.
+
+Run the pin check before changing the desktop pins:
+
+```bash
+scripts/check-proskenion-pins.py
+```
+
+The standard installer runs this check before building, and the release workflow runs it before the release test suite.
+
 ## Why excluded from workspace
 
 1. **CI compatibility.** GTK3 and webkit2gtk are not installed in the CI environment. Including the crate in the workspace would fail `cargo build --workspace` and `cargo clippy --workspace`.

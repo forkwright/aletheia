@@ -14,6 +14,7 @@ The canonical version lives in `Cargo.toml` at `[workspace.package].version`. Al
 3. Review and merge the release PR
 4. release-please creates a git tag (`vX.Y.Z`) and GitHub Release
 5. The tag triggers `.github/workflows/release.yml`:
+   - Verifies proskenion's standalone theatron pins match the root workspace
    - Runs the full test suite
    - Builds cross-platform binaries (4 targets)
    - Generates SHA256 checksums per binary
