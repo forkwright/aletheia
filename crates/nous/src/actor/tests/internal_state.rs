@@ -301,6 +301,32 @@ fn apply_loop_guard_detects_doom_loop() {
 }
 
 #[test]
+fn apply_loop_guard_preserves_missing_vs_empty_tool_result() {
+    let (mut actor, _tx, _dir) = make_test_actor(PipelineConfig::default());
+    actor.sessions.insert(
+        "s".to_owned(),
+        SessionState::new("ses-1".to_owned(), "s".to_owned(), &test_config()),
+    );
+    actor.sessions.get_mut("s").unwrap().loop_guard =
+        hermeneus::loop_detector::LoopGuard::with_limits(3, 10, 10);
+
+    let sequence = [
+        make_tool_call_with_result("read_file", false, None),
+        make_tool_call_with_result("read_file", false, Some("")),
+        make_tool_call_with_result("read_file", false, None),
+    ];
+
+    for call in sequence {
+        let mut result = Ok(make_turn_result(50, vec![call]));
+        actor.apply_loop_guard("s", &mut result);
+        assert!(
+            !actor.sessions["s"].brake_tripped,
+            "missing and empty results must remain distinct for loop detection"
+        );
+    }
+}
+
+#[test]
 fn apply_loop_guard_detects_ping_pong() {
     let (mut actor, _tx, _dir) = make_test_actor(PipelineConfig::default());
     actor.sessions.insert(
