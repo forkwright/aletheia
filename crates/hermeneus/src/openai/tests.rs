@@ -5,6 +5,10 @@
 //! wire module boundary (the per-module unit tests already cover JSON
 //! translation in isolation).
 
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use wiremock::matchers::{body_string_contains, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -370,6 +374,161 @@ async fn responses_streaming_text_round_trip() {
         events.iter().any(
             |e| matches!(e, crate::anthropic::StreamEvent::TextDelta { text } if text == "Hel")
         ),
+    );
+}
+
+#[tokio::test]
+async fn streaming_retries_retryable_http_error_before_sse() {
+    let server = MockServer::start().await;
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let attempts_for_responder = Arc::clone(&attempts);
+    let sse = concat!(
+        "data: {\"type\":\"response.output_text.delta\",\"item_id\":\"msg_1\",\"output_index\":0,\"content_index\":0,\"delta\":\"Ok\"}\n\n",
+        "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp-retry\",\"model\":\"gpt-5\",\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"Ok\"}]}],\"usage\":{\"input_tokens\":3,\"output_tokens\":1,\"total_tokens\":4}}}\n\n"
+    );
+
+    Mock::given(method("POST"))
+        .and(path("/v1/responses"))
+        .and(body_string_contains("\"stream\":true"))
+        .respond_with(move |_request: &wiremock::Request| {
+            if attempts_for_responder.fetch_add(1, Ordering::SeqCst) == 0 {
+                ResponseTemplate::new(500).set_body_json(serde_json::json!({
+                    "error": { "message": "temporary overload" }
+                }))
+            } else {
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "text/event-stream")
+                    .set_body_string(sse)
+            }
+        })
+        .expect(2)
+        .mount(&server)
+        .await;
+
+    let provider = OpenAiProvider::new(OpenAiProviderConfig {
+        name: "test-openai-responses".to_owned(),
+        base_url: format!("{}/v1", server.uri()),
+        models: vec!["gpt-5".to_owned()],
+        max_retries: 1,
+        api_family: OpenAiApiFamily::Responses,
+        ..OpenAiProviderConfig::default()
+    })
+    .expect("mock responses provider construct");
+
+    let mut events = Vec::new();
+    let resp = provider
+        .complete_streaming(&basic_request("gpt-5"), &mut |event| events.push(event))
+        .await
+        .expect("streaming completion retries and succeeds");
+
+    assert_eq!(attempts.load(Ordering::SeqCst), 2);
+    assert_eq!(resp.id, "resp-retry");
+    assert_eq!(resp.usage.input_tokens, 3);
+    assert!(events.iter().any(
+        |event| matches!(event, crate::anthropic::StreamEvent::TextDelta { text } if text == "Ok")
+    ));
+}
+
+#[tokio::test]
+async fn streaming_retries_request_send_failure_before_sse() {
+    let reserved = std::net::TcpListener::bind("127.0.0.1:0").expect("reserve test port");
+    let addr = reserved.local_addr().expect("read reserved port");
+    drop(reserved);
+
+    let listener_attempts = Arc::new(AtomicUsize::new(0));
+    let attempts_for_server = Arc::clone(&listener_attempts);
+    let server = tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        let listener = tokio::net::TcpListener::bind(addr)
+            .await
+            .expect("bind retry target");
+        let (mut socket, _peer_addr) = listener.accept().await.expect("accept retry request");
+        attempts_for_server.fetch_add(1, Ordering::SeqCst);
+
+        let mut request = Vec::new();
+        let mut chunk = [0_u8; 1024];
+        loop {
+            let read = socket.read(&mut chunk).await.expect("read request");
+            if read == 0 {
+                break;
+            }
+            request.extend_from_slice(&chunk[..read]);
+            if request.windows(4).any(|window| window == b"\r\n\r\n") {
+                break;
+            }
+        }
+
+        let body = concat!(
+            "data: {\"type\":\"response.output_text.delta\",\"item_id\":\"msg_1\",\"output_index\":0,\"content_index\":0,\"delta\":\"Ok\"}\n\n",
+            "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp-send-retry\",\"model\":\"gpt-5\",\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"Ok\"}]}],\"usage\":{\"input_tokens\":3,\"output_tokens\":1,\"total_tokens\":4}}}\n\n"
+        );
+        let response = format!(
+            "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+            body.len(),
+            body
+        );
+        socket
+            .write_all(response.as_bytes())
+            .await
+            .expect("write sse response");
+    });
+
+    let provider = OpenAiProvider::new(OpenAiProviderConfig {
+        name: "test-openai-responses".to_owned(),
+        base_url: format!("http://{addr}/v1"),
+        models: vec!["gpt-5".to_owned()],
+        max_retries: 1,
+        api_family: OpenAiApiFamily::Responses,
+        ..OpenAiProviderConfig::default()
+    })
+    .expect("mock responses provider construct");
+
+    let mut events = Vec::new();
+    let resp = provider
+        .complete_streaming(&basic_request("gpt-5"), &mut |event| events.push(event))
+        .await
+        .expect("streaming completion retries after send failure");
+
+    server.await.expect("server task completes");
+    assert_eq!(listener_attempts.load(Ordering::SeqCst), 1);
+    assert_eq!(resp.id, "resp-send-retry");
+    assert!(events.iter().any(
+        |event| matches!(event, crate::anthropic::StreamEvent::TextDelta { text } if text == "Ok")
+    ));
+}
+
+#[tokio::test]
+async fn streaming_does_not_retry_non_retryable_http_error() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/responses"))
+        .respond_with(ResponseTemplate::new(400).set_body_json(serde_json::json!({
+            "error": { "message": "bad stream request" }
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let provider = OpenAiProvider::new(OpenAiProviderConfig {
+        name: "test-openai-responses".to_owned(),
+        base_url: format!("{}/v1", server.uri()),
+        models: vec!["gpt-5".to_owned()],
+        max_retries: 2,
+        api_family: OpenAiApiFamily::Responses,
+        ..OpenAiProviderConfig::default()
+    })
+    .expect("mock responses provider construct");
+
+    let mut events = Vec::new();
+    let err = provider
+        .complete_streaming(&basic_request("gpt-5"), &mut |event| events.push(event))
+        .await
+        .expect_err("bad request should fail without retry");
+
+    assert!(events.is_empty());
+    assert!(
+        matches!(err, crate::error::Error::ApiError { status: 400, .. }),
+        "expected ApiError 400, got {err:?}"
     );
 }
 
