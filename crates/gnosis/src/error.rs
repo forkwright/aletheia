@@ -31,9 +31,17 @@ pub enum GnosisError {
     #[snafu(display("failed to parse {}: {source}", path.display()))]
     Parse { path: PathBuf, source: syn::Error },
 
-    /// A `SQLite` operation failed.
-    #[snafu(display("sqlite error: {source}"))]
-    Sqlite { source: rusqlite::Error },
+    /// A fjall operation failed.
+    #[snafu(display("fjall error: {source}"))]
+    Fjall { source: fjall::Error },
+
+    /// Stored index data could not be encoded or decoded.
+    #[snafu(display("index serialization error: {source}"))]
+    Codec { source: serde_json::Error },
+
+    /// Stored index data is malformed.
+    #[snafu(display("corrupt index data: {message}"))]
+    Corrupt { message: String },
 
     /// The index cache directory could not be created.
     #[snafu(display("failed to create cache directory {}: {source}", dir.display()))]
@@ -47,17 +55,6 @@ pub enum GnosisError {
     RemoveCacheFile {
         path: PathBuf,
         source: std::io::Error,
-    },
-
-    /// A query was passed an unsupported operation string.
-    #[snafu(display("unknown query operation: '{op}'"))]
-    UnknownOp { op: String },
-
-    /// A required argument was missing from a query.
-    #[snafu(display("missing required argument '{arg}' for query '{query}'"))]
-    MissingArg {
-        arg: &'static str,
-        query: &'static str,
     },
 }
 

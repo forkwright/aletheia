@@ -50,7 +50,7 @@ mod workspace_integration {
     fn symbol_rdeps_finds_many_callers() {
         let root = workspace_root();
         let tmp = tempfile::tempdir().expect("tempdir");
-        let db_path = tmp.path().join("gnosis_integration.sqlite");
+        let db_path = tmp.path().join("gnosis_integration.fjall");
 
         let graph = CodeGraph::open(&db_path, &root).expect("open graph");
         graph.rebuild().expect("rebuild");
@@ -86,7 +86,7 @@ mod workspace_integration {
     fn impl_search_finds_stamped_impls() {
         let root = workspace_root();
         let tmp = tempfile::tempdir().expect("tempdir");
-        let db_path = tmp.path().join("gnosis_stamped.sqlite");
+        let db_path = tmp.path().join("gnosis_stamped.fjall");
 
         let graph = CodeGraph::open(&db_path, &root).expect("open graph");
         graph.rebuild().expect("rebuild");
@@ -105,7 +105,7 @@ mod workspace_integration {
     fn crate_rdeps_eidos_returns_many() {
         let root = workspace_root();
         let tmp = tempfile::tempdir().expect("tempdir");
-        let db_path = tmp.path().join("gnosis_eidos.sqlite");
+        let db_path = tmp.path().join("gnosis_eidos.fjall");
 
         let graph = CodeGraph::open(&db_path, &root).expect("open graph");
         graph.rebuild().expect("rebuild");

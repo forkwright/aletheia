@@ -173,7 +173,7 @@ impl ArchitectureFact {
 /// Flat-JSON-file backed store for [`ArchitectureFact`]s.
 ///
 /// One file per fact: `<dir>/<safe_id>.json` where `<safe_id>` is the fact's
-/// `id` with `.` and `/` replaced by `__` and `-` respectively.
+/// `id` with `/` and `\` replaced by `-`. Dots are preserved.
 ///
 /// The store is created lazily: the directory is created on first [`put`].
 ///
