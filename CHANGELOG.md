@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.25.4](https://github.com/forkwright/aletheia/compare/v0.25.3...v0.25.4) (2026-05-22)
+
+
+### Documentation
+
+* **nous:** bound D3 prosoche heartbeat checklist ([#3917](https://github.com/forkwright/aletheia/issues/3917)) ([390e9b2](https://github.com/forkwright/aletheia/commit/390e9b2fce1b335ad6580cc66d34ab4f098b8246))
+
 ## [0.25.3](https://github.com/forkwright/aletheia/compare/v0.25.2...v0.25.3) (2026-05-22)
 
 
