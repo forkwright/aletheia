@@ -93,6 +93,7 @@ fn disabling_hooks_reduces_count() {
         scope_enforcement_enabled: false,
         correction_hooks_enabled: false,
         audit_logging_enabled: true,
+        self_audit_enabled: true,
         working_checkpoint_enabled: false,
         turn_token_budget: 0,
     };
@@ -113,6 +114,7 @@ fn all_hooks_disabled_gives_empty_registry() {
         scope_enforcement_enabled: false,
         correction_hooks_enabled: false,
         audit_logging_enabled: false,
+        self_audit_enabled: false,
         working_checkpoint_enabled: false,
         turn_token_budget: 0,
     };
@@ -233,6 +235,7 @@ async fn cost_control_denies_through_registry() {
         scope_enforcement_enabled: false,
         correction_hooks_enabled: false,
         audit_logging_enabled: false,
+        self_audit_enabled: false,
         working_checkpoint_enabled: false,
     };
     let mut registry = HookRegistry::new();

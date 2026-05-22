@@ -225,7 +225,7 @@ async fn after_tool_fires_and_does_not_short_circuit() {
         nous_id: "test",
         tool_name: "test_tool",
         tool_input: &serde_json::json!({"arg": "value"}),
-        tool_result: "tool succeeded",
+        tool_result: crate::hooks::ToolResultRecord::Present("tool succeeded"),
         is_error: false,
         turn_usage: &DEFAULT_USAGE,
     };

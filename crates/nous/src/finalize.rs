@@ -153,12 +153,17 @@ pub(crate) fn finalize(
                 .context(error::StoreSnafu)?;
             messages_persisted += 1;
 
-            let tool_output = tc.result.as_deref().unwrap_or("");
+            let tool_output = tc.result.as_deref().unwrap_or("[missing tool result]");
+            let compact_tagged_output = crate::compact::micro::format_tool_result(
+                &tc.name,
+                jiff::Timestamp::now(),
+                tool_output,
+            );
             store
                 .append_message(
                     &session.id,
                     Role::ToolResult,
-                    tool_output,
+                    &compact_tagged_output,
                     Some(&tc.id),
                     Some(&tc.name),
                     0,
@@ -314,7 +319,8 @@ mod tests {
         assert!(history[1].tool_call_id.is_some());
         assert_eq!(history[1].tool_name.as_deref(), Some("read_file"));
         assert_eq!(history[2].role, Role::ToolResult);
-        assert_eq!(history[2].content, "file contents here");
+        assert!(history[2].content.starts_with("[tool:read_file@"));
+        assert!(history[2].content.contains("file contents here"));
         assert_eq!(history[3].role, Role::Assistant);
         assert_eq!(history[3].content, "Done.");
     }

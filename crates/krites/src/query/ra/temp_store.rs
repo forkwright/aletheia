@@ -211,6 +211,12 @@ impl TempStoreRA {
             None => false,
             Some(name) => *name == self.storage_key,
         };
+        let range_bounds = if self.filters.is_empty() {
+            None
+        } else {
+            let other_bindings = &self.bindings[right_join_indices.len()..];
+            Some(compute_bounds(&self.filters, other_bindings)?)
+        };
         let mut skip_range_check = false;
         let it = left_iter
             .map_ok(move |tuple| {
@@ -220,43 +226,40 @@ impl TempStoreRA {
                     .collect_vec();
                 let mut stack = vec![];
 
-                if !skip_range_check && !self.filters.is_empty() {
-                    let other_bindings = &self.bindings[right_join_indices.len()..];
-                    let (l_bound, u_bound) =
-                        compute_bounds(&self.filters, other_bindings).unwrap_or_default();
-                    if !l_bound.iter().all(|v| *v == DataValue::Null)
-                        || !u_bound.iter().all(|v| *v == DataValue::Bot)
-                    {
-                        let mut lower_bound = prefix.clone();
-                        lower_bound.extend(l_bound);
-                        let mut upper_bound = prefix;
-                        upper_bound.extend(u_bound);
-                        let it = if scan_epoch {
-                            Left(storage.delta_range_iter(&lower_bound, &upper_bound, true))
-                        } else {
-                            Right(storage.range_iter(&lower_bound, &upper_bound, true))
-                        };
-                        return Left(
-                            it.map(move |res_found| -> Result<Option<Tuple>> {
-                                if self.filters.is_empty() {
-                                    let mut ret = tuple.clone();
-                                    ret.extend(res_found.into_iter().cloned());
-                                    Ok(Some(ret))
-                                } else {
-                                    let found = res_found.into_tuple();
-                                    for (p, span) in self.filters_bytecodes.iter() {
-                                        if !eval_bytecode_pred(p, &found, &mut stack, *span)? {
-                                            return Ok(None);
-                                        }
+                if let Some((l_bound, u_bound)) = &range_bounds
+                    && !skip_range_check
+                    && (!l_bound.iter().all(|v| *v == DataValue::Null)
+                        || !u_bound.iter().all(|v| *v == DataValue::Bot))
+                {
+                    let mut lower_bound = prefix.clone();
+                    lower_bound.extend(l_bound.iter().cloned());
+                    let mut upper_bound = prefix;
+                    upper_bound.extend(u_bound.iter().cloned());
+                    let it = if scan_epoch {
+                        Left(storage.delta_range_iter(&lower_bound, &upper_bound, true))
+                    } else {
+                        Right(storage.range_iter(&lower_bound, &upper_bound, true))
+                    };
+                    return Left(
+                        it.map(move |res_found| -> Result<Option<Tuple>> {
+                            if self.filters.is_empty() {
+                                let mut ret = tuple.clone();
+                                ret.extend(res_found.into_iter().cloned());
+                                Ok(Some(ret))
+                            } else {
+                                let found = res_found.into_tuple();
+                                for (p, span) in self.filters_bytecodes.iter() {
+                                    if !eval_bytecode_pred(p, &found, &mut stack, *span)? {
+                                        return Ok(None);
                                     }
-                                    let mut ret = tuple.clone();
-                                    ret.extend(found);
-                                    Ok(Some(ret))
                                 }
-                            })
-                            .filter_map(swap_option_result),
-                        );
-                    }
+                                let mut ret = tuple.clone();
+                                ret.extend(found);
+                                Ok(Some(ret))
+                            }
+                        })
+                        .filter_map(swap_option_result),
+                    );
                 }
                 skip_range_check = true;
 

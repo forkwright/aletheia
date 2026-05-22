@@ -191,13 +191,6 @@ fn parse_tool_result_metadata(msg: &PipelineMessage) -> Option<(ToolResultType, 
 /// Prepends a parseable metadata header to tool result content so
 /// microcompaction can identify tool results and their age.
 #[must_use]
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "wired when finalize stage tags tool results with metadata"
-    )
-)]
 pub(crate) fn format_tool_result(
     tool_name: &str,
     created_at: jiff::Timestamp,

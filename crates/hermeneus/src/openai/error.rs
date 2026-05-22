@@ -50,9 +50,8 @@ pub(crate) async fn map_error_response(
 
     let body = match response.text().await {
         Ok(body) => body,
-        Err(err) => {
-            tracing::debug!(error = %err, "failed to read OpenAI error response body");
-            String::new()
+        Err(source) => {
+            return error::Error::ApiErrorBodyRead { status, source };
         }
     };
 
