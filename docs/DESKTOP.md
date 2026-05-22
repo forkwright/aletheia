@@ -39,6 +39,22 @@ cargo build -p proskenion --manifest-path crates/theatron/proskenion/Cargo.toml
 cargo build -p proskenion --manifest-path crates/theatron/proskenion/Cargo.toml --release
 ```
 
+## Contract and smoke checks
+
+The desktop crate is outside the main workspace, so acceptance uses two focused checks instead of a full GUI driver:
+
+```bash
+CARGO_TARGET_DIR=/data/target/wt/proskenion-contract-smoke/target \
+  cargo +1.94 test -p integration-tests --features test-core proskenion_contract -- --nocapture
+
+bash -n scripts/smoke-proskenion.sh
+scripts/smoke-proskenion.sh --server-url http://127.0.0.1:3000 --proskenion-binary ~/.cargo/bin/proskenion
+```
+
+The `proskenion_contract` integration test exercises the protocol surface the app consumes: session create/list/history and `POST /api/v1/sessions/stream` SSE event names, terminal events, and JSON field shape. If it fails, file the failure as a server/client runtime-contract mismatch and include the assertion text, full response body printed by the test, endpoint, and expected proskenion field or event name.
+
+The smoke script starts a local server when no `--server-url` is supplied, or connects to the supplied URL. It writes a temporary desktop config, uses `xvfb-run` when no `DISPLAY` is available, enforces a bounded runtime, captures logs, and fails on known display/startup/connectivity patterns. Missing Xvfb or a missing `proskenion` binary exits with a clear skip status instead of silently passing.
+
 ## Pin discipline
 
 `proskenion` has its own standalone workspace, so its theatron git dependencies cannot inherit from the root `[workspace.dependencies]` block. Keep the mirrored pins in `crates/theatron/proskenion/Cargo.toml` aligned with the root manifest.
