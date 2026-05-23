@@ -38,3 +38,54 @@ WRITING/minimizer:_llm/L3-api-index/*.md
 WRITING/paragraph-length:_llm/L3-api-index/*.md
 WRITING/temporal-staleness:_llm/L3-api-index/*.md
 WRITING/weasel-word:_llm/L3-api-index/*.md
+
+# WHY(#3987): legacy one-shot SQLite migrator tests use crate-level allows to keep historical fixture code stable
+RUST/crate-level-denied-allow:crates/aletheia-sessions-migrate/tests/common/mod.rs
+RUST/crate-level-denied-allow:crates/aletheia-sessions-migrate/tests/idempotency.rs
+RUST/crate-level-denied-allow:crates/aletheia-sessions-migrate/tests/legacy_extras.rs
+RUST/crate-level-denied-allow:crates/aletheia-sessions-migrate/tests/orphan_recovery.rs
+RUST/crate-level-denied-allow:crates/aletheia-sessions-migrate/tests/round_trip_integrity.rs
+RUST/crate-level-denied-allow:crates/aletheia-sessions-migrate/tests/schema_mismatch.rs
+RUST/crate-level-denied-allow:crates/aletheia-sessions-migrate/tests/tiny_synthetic.rs
+
+# WHY(#3987): benchmark integration fixture keeps crate-level lint relaxations around generated scenario code
+RUST/crate-level-denied-allow:crates/eval/tests/benchmark_runner.rs
+
+# WHY(#3987): legacy migrator main carries historical clippy suppression syntax until the migrator is retired
+RUST/no-tautological-clippy-suppress:crates/aletheia-sessions-migrate/src/main.rs
+
+# WHY(#3987): test-support helpers intentionally panic/expect on poisoned test harness state
+RUST/lock-expect-panics:crates/organon/src/testing.rs
+RUST/no-unconditional-panic-in-prod:crates/hermeneus/src/anthropic/wire/tests_extended.rs
+
+# WHY(#3987): archived krites engine code is baseline debt tracked for the planned krites overhaul
+RUST/no-unconditional-panic-in-prod:crates/krites/src/query/ra/mod.rs
+RUST/silent-error-ok:crates/krites/src/runtime/hnsw/mmap_storage.rs
+RUST/unreachable-in-match:crates/krites/src/data/functions/bits.rs
+RUST/unreachable-in-match:crates/krites/src/data/json.rs
+RUST/unreachable-in-match:crates/krites/src/data/memcmp.rs
+RUST/unreachable-in-match:crates/krites/src/data/tuple.rs
+RUST/unreachable-in-match:crates/krites/src/data/value.rs
+RUST/unreachable-in-match:crates/krites/src/fts/ast.rs
+RUST/unreachable-in-match:crates/krites/src/parse/query/program.rs
+RUST/unreachable-in-match:crates/krites/src/runtime/db.rs
+RUST/unreachable-in-match:crates/krites/src/runtime/hnsw/graph.rs
+RUST/unreachable-in-match:crates/krites/src/runtime/hnsw/remove.rs
+RUST/unreachable-in-match:crates/krites/src/runtime/hnsw/types.rs
+RUST/unreachable-in-match:crates/krites/src/runtime/relation/handles.rs
+RUST/unreachable-in-match:crates/krites/src/runtime/relation/index_management.rs
+RUST/unreachable-in-match:crates/krites/src/runtime/temp_store.rs
+RUST/unreachable-in-match:crates/krites/src/runtime/transact.rs
+
+# WHY(#3987): optional-verification and UI update paths intentionally discard non-critical cleanup/overlay errors
+RUST/unreachable-in-match:crates/dianoia/src/state.rs
+RUST/silent-error-ok:crates/poiesis/verify/src/lib.rs
+RUST/unreachable-in-match:crates/theatron/koilon/src/update/overlay.rs
+
+# WHY(#3987): existing TODO markers are tracked as lint-baseline debt pending owner triage
+RUST/todo-marker-needs-quadrant-and-artifact:crates/hermeneus/src/anthropic/client.rs
+RUST/todo-marker-needs-quadrant-and-artifact:crates/hermeneus/src/anthropic/error.rs
+RUST/todo-marker-needs-quadrant-and-artifact:crates/nous/src/audit.rs
+RUST/todo-marker-needs-quadrant-and-artifact:crates/pylon/src/idempotency.rs
+RUST/todo-marker-needs-quadrant-and-artifact:crates/pylon/src/tests/mod.rs
+RUST/todo-marker-needs-quadrant-and-artifact:crates/theatron/proskenion/src/views/ops/credentials.rs
