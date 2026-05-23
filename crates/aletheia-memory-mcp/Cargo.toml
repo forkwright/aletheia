@@ -1,14 +1,11 @@
 [package]
 name = "aletheia-memory-mcp"
 version.workspace = true
-description = "Standalone stdio MCP server exposing Aletheia's memory and knowledge graph (read-only) to external agents"
+description = "Standalone stdio MCP server exposing Aletheia's memory and token-gated write tools to external agents"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-
-[lints]
-workspace = true
 
 [[bin]]
 name = "aletheia-memory-mcp"
@@ -60,3 +57,6 @@ rmcp = { version = "=1.5.0", features = [
 tokio = { workspace = true, features = ["test-util"] }
 tempfile = { workspace = true }
 jiff = { workspace = true }
+
+[lints]
+workspace = true
