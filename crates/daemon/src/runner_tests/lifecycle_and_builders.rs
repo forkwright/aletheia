@@ -191,6 +191,45 @@ fn routing_store_refresh_registers_when_store_is_attached() {
 }
 
 #[test]
+fn bridge_dependent_cron_tasks_skip_without_bridge() {
+    let token = CancellationToken::new();
+    let mut config = MaintenanceConfig::default();
+    config.cron.evolution.enabled = true;
+    config.cron.reflection.enabled = true;
+
+    let mut runner = TaskRunner::new("system", token).with_maintenance(config);
+    runner.register_maintenance_tasks();
+
+    let ids: Vec<String> = runner
+        .status()
+        .into_iter()
+        .map(|status| status.id)
+        .collect();
+    assert!(!ids.iter().any(|id| id == "cron-evolution"));
+    assert!(!ids.iter().any(|id| id == "cron-reflection"));
+}
+
+#[test]
+fn bridge_dependent_cron_tasks_register_with_bridge() {
+    let token = CancellationToken::new();
+    let bridge: Arc<dyn DaemonBridge> = Arc::new(crate::bridge::NoopBridge);
+    let mut config = MaintenanceConfig::default();
+    config.cron.evolution.enabled = true;
+    config.cron.reflection.enabled = true;
+
+    let mut runner = TaskRunner::with_bridge("test-nous", token, bridge).with_maintenance(config);
+    runner.register_maintenance_tasks();
+
+    let ids: Vec<String> = runner
+        .status()
+        .into_iter()
+        .map(|status| status.id)
+        .collect();
+    assert!(ids.iter().any(|id| id == "cron-evolution"));
+    assert!(ids.iter().any(|id| id == "cron-reflection"));
+}
+
+#[test]
 fn register_maintenance_tasks_skips_without_config() {
     let token = CancellationToken::new();
     let mut runner = TaskRunner::new("system", token);
