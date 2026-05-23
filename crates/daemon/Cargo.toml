@@ -7,15 +7,11 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 
-[lints]
-workspace = true
-
 [features]
 default = []
 # WHY: gates anomaly detection (prosoche memory consistency checks) on the
 # heavy CozoDB-backed KnowledgeStore from episteme. Not all daemon users need it.
 knowledge-store = ["episteme/mneme-engine"]
-dispatch-cron = ["energeia/storage-fjall", "dep:energeia"]
 test-core = []
 test-full = []
 
@@ -23,7 +19,6 @@ test-full = []
 aletheia-routing = { path = "../aletheia-routing" }
 eidos = { path = "../eidos" }
 episteme = { path = "../episteme", default-features = false }
-energeia = { path = "../energeia", optional = true }
 koina = { path = "../koina", features = ["fjall"] }
 taxis = { path = "../taxis" }
 # WHY: axum for webhook trigger listener
@@ -51,6 +46,11 @@ toml = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
-episteme = { path = "../episteme", default-features = false, features = ["storage-fjall"] }
+episteme = { path = "../episteme", default-features = false, features = [
+    "storage-fjall",
+] }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }
+
+[lints]
+workspace = true
