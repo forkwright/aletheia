@@ -7,6 +7,7 @@
 use std::sync::Arc;
 
 use jiff::Timestamp;
+use tokio_util::sync::CancellationToken;
 
 use crate::dag::PromptDag;
 use crate::engine::{SessionEvent, SessionResult};
@@ -262,6 +263,30 @@ async fn dispatch_budget_exceeded_aborts() {
         .find(|o| o.prompt_number == 2)
         .unwrap();
     assert_eq!(o2.status, SessionStatus::Skipped);
+}
+
+#[tokio::test]
+async fn dispatch_respects_external_cancel_token() {
+    let engine = Arc::new(MockEngine::new(vec![]));
+    let qa = Arc::new(MockQaGate::passing());
+    let config = OrchestratorConfig::new()
+        .max_concurrent(4)
+        .default_budget_usd(10.0);
+    let cancel = CancellationToken::new();
+    cancel.cancel();
+
+    let orchestrator = Orchestrator::new(engine, qa, config).with_cancel_token(cancel);
+    let prompts = vec![sample_prompt_spec(1, vec![]), sample_prompt_spec(2, vec![])];
+    let spec = sample_dispatch_spec(vec![1, 2]);
+
+    let result = orchestrator.dispatch(spec, &prompts).await.unwrap();
+
+    assert!(result.aborted);
+    assert_eq!(result.outcomes.len(), 2);
+    assert!(result.outcomes.iter().all(|outcome| {
+        outcome.status == SessionStatus::Skipped
+            && outcome.error.as_deref() == Some("dispatch aborted")
+    }));
 }
 
 #[tokio::test]

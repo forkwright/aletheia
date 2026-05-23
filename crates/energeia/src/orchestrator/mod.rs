@@ -5,6 +5,8 @@
 
 use std::sync::Arc;
 
+use tokio_util::sync::CancellationToken;
+
 use crate::engine::DispatchEngine;
 use crate::error::{self, Result};
 use crate::pipeline::DispatchPipeline;
@@ -36,6 +38,7 @@ pub struct Orchestrator {
     #[cfg(feature = "storage-fjall")]
     store: Option<Arc<crate::store::EnergeiaStore>>,
     config: OrchestratorConfig,
+    cancel: CancellationToken,
 }
 
 impl Orchestrator {
@@ -52,7 +55,21 @@ impl Orchestrator {
             #[cfg(feature = "storage-fjall")]
             store: None,
             config,
+            cancel: CancellationToken::new(),
         }
+    }
+
+    /// Attach an external cancellation token for dispatches started by this orchestrator.
+    ///
+    /// Control planes use this to abort a running dispatch without killing the
+    /// process. Group execution clones the token into session managers, which
+    /// abort live session handles before returning an aborted outcome.
+    ///
+    /// Time: O(1). Space: O(1).
+    #[must_use]
+    pub fn with_cancel_token(mut self, cancel: CancellationToken) -> Self {
+        self.cancel = cancel;
+        self
     }
 
     /// Attach a state persistence store.
@@ -98,7 +115,8 @@ impl Orchestrator {
             self.config.clone(),
             #[cfg(feature = "storage-fjall")]
             self.store.clone(),
-        );
+        )
+        .with_cancel_token(self.cancel.clone());
 
         let pipeline = DispatchPipeline::default();
         pipeline

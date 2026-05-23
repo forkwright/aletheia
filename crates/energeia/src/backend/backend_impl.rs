@@ -4,6 +4,8 @@
 use std::future::Future;
 #[cfg(feature = "storage-fjall")]
 use std::pin::Pin;
+#[cfg(feature = "storage-fjall")]
+use tokio_util::sync::CancellationToken;
 
 #[cfg(feature = "storage-fjall")]
 use crate::backend::DispatchBackend;
@@ -48,6 +50,15 @@ impl EnergeiaBackend {
             steward_config,
             metrics,
         }
+    }
+
+    /// Attach an external cancellation token to the underlying orchestrator.
+    ///
+    /// Time: O(1). Space: O(1).
+    #[must_use]
+    pub fn with_cancel_token(mut self, cancel: CancellationToken) -> Self {
+        self.orchestrator = self.orchestrator.with_cancel_token(cancel);
+        self
     }
 }
 
