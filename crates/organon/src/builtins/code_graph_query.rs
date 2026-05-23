@@ -30,8 +30,8 @@
 //!
 //! # Cache
 //!
-//! The index lives at `~/.cache/aletheia/gnosis.sqlite` by default.
-//! Override with `GNOSIS_CACHE_PATH`.  Delete the file to force a full rebuild.
+//! The index lives at `~/.cache/aletheia/gnosis.fjall` by default.
+//! Override with `GNOSIS_CACHE_PATH`.  Delete the directory to force a full rebuild.
 //!
 //! # Workspace path
 //!
@@ -352,7 +352,7 @@ fn code_graph_query_def() -> ToolDef {
             "Results carry EpistemicTier::Inferred confidence — machine-derived from AST. \
              Every row has a 'source' field ('gnosis@<schema_version>') for provenance. \
              Index is built from cargo metadata + syn AST walk. Run op=rebuild before \
-             querying if the index is stale. Cache: ~/.cache/aletheia/gnosis.sqlite \
+             querying if the index is stale. Cache: ~/.cache/aletheia/gnosis.fjall \
              (override: GNOSIS_CACHE_PATH). Workspace: GNOSIS_WORKSPACE_ROOT or cwd."
                 .to_owned(),
         ),
@@ -415,5 +415,16 @@ mod tests {
         ] {
             assert!(vals.contains(&(*op).to_owned()), "missing op: {op}");
         }
+    }
+
+    #[test]
+    fn tool_def_documents_fjall_cache_path() {
+        let def = code_graph_query_def();
+        let desc = def
+            .extended_description
+            .as_deref()
+            .expect("extended description");
+        assert!(desc.contains("gnosis.fjall"));
+        assert!(!desc.contains("gnosis.sqlite"));
     }
 }

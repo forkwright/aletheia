@@ -1,7 +1,7 @@
 //! `aletheia backup`: database backup management.
 //!
 //! Operates on the fjall knowledge store. Session/auth storage also uses fjall;
-//! `rusqlite` remains only for gnosis and legacy migration tooling.
+//! `rusqlite` remains only in the legacy one-shot sessions migrator.
 
 use std::path::{Path, PathBuf};
 
@@ -204,8 +204,15 @@ fn validate_kv(partition: &str, key: &[u8], value: &[u8]) -> std::result::Result
         "revoked_tokens" => validate_utf8(value),
         // Known partitions with opaque/internal encoding, plus unknown partitions:
         // all verified by successful read (iteration implicitly verifies checksums).
-        _ => Ok(()),
+        other => validate_opaque_or_unknown_partition(other),
     }
+}
+
+fn validate_opaque_or_unknown_partition(partition: &str) -> std::result::Result<(), String> {
+    if partition.is_empty() {
+        return Err("partition name must not be empty".into());
+    }
+    Ok(())
 }
 
 fn validate_sessions(key: &[u8], value: &[u8]) -> std::result::Result<(), String> {
