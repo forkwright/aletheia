@@ -16,6 +16,8 @@ use tracing::Instrument;
 
 use super::*;
 
+const RUNBOOK: &str = include_str!("../../../docs/RUNBOOK.md");
+
 struct MockProcess {
     id: String,
     kill_called: AtomicBool,
@@ -74,6 +76,30 @@ fn watchdog_config_default_values() {
     assert_eq!(config.heartbeat_timeout, Duration::from_mins(1));
     assert_eq!(config.check_interval, Duration::from_secs(10));
     assert_eq!(config.max_restarts, 5);
+}
+
+#[test]
+fn runbook_separates_live_systemd_watchdog_from_unwired_process_watchdog() {
+    assert!(
+        RUNBOOK.contains("### Systemd watchdog heartbeat (live)"),
+        "runbook must document the live service-level watchdog"
+    );
+    assert!(
+        RUNBOOK.contains("### Daemon process watchdog (not wired)"),
+        "runbook must document that the per-process watchdog is not runtime-wired"
+    );
+    assert!(
+        RUNBOOK.contains("not wired into runtime startup yet"),
+        "runbook must not describe the process watchdog as an operational feature"
+    );
+    assert!(
+        RUNBOOK.contains("individual daemon tasks"),
+        "systemd watchdog docs must not imply per-process monitoring"
+    );
+    assert!(
+        RUNBOOK.contains("enabling them does not start a monitor"),
+        "reserved config fields must not be advertised as live toggles"
+    );
 }
 
 #[test]
