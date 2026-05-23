@@ -121,6 +121,9 @@ impl PipelineStage for PreparationStage {
         ctx.resume_policy = crate::resume::ResumePolicy::default();
         let mut engine_config = EngineConfig::new(crate::engine::AgentOptions::new())
             .idle_timeout_opt(cfg.session_idle_timeout);
+        for dir in &cfg.additional_dirs {
+            engine_config = engine_config.add_dir(dir.clone());
+        }
         if let Some(max_turns) = ctx.spec.max_turns {
             engine_config = engine_config.max_turns(max_turns);
         }
@@ -206,7 +209,10 @@ mod tests {
         }
     }
 
-    fn make_context_with_prompts(prompts: Vec<PromptSpec>) -> PipelineContext {
+    fn make_context_with_config(
+        prompts: Vec<PromptSpec>,
+        config: OrchestratorConfig,
+    ) -> PipelineContext {
         let engine = Arc::new(MockEngine::new(vec![]));
         let qa = Arc::new(AlwaysPassQa);
         let spec = DispatchSpec::new(
@@ -218,10 +224,14 @@ mod tests {
             prompts,
             engine,
             qa,
-            OrchestratorConfig::default(),
+            config,
             #[cfg(feature = "storage-fjall")]
             None,
         )
+    }
+
+    fn make_context_with_prompts(prompts: Vec<PromptSpec>) -> PipelineContext {
+        make_context_with_config(prompts, OrchestratorConfig::default())
     }
 
     #[tokio::test]
@@ -288,6 +298,37 @@ mod tests {
 
         assert_eq!(ctx.max_concurrent, 2);
         assert_eq!(ctx.engine_config().options.max_turns, Some(7));
+    }
+
+    #[tokio::test]
+    async fn preparation_passes_configured_additional_dirs_to_engine() {
+        let prompts = vec![PromptSpec {
+            number: 1,
+            description: "first".to_owned(),
+            depends_on: vec![],
+            acceptance_criteria: vec![],
+            blast_radius: vec![],
+            body: "do first".to_owned(),
+            prompt_components: None,
+        }];
+        let config = OrchestratorConfig::default()
+            .add_dir("/workspace/shared")
+            .add_dir("/workspace/fixtures");
+        let mut ctx = make_context_with_config(prompts, config);
+
+        let stage = PreparationStage;
+        stage
+            .run(&mut ctx)
+            .await
+            .expect("preparation should succeed");
+
+        assert_eq!(
+            ctx.engine_config().additional_dirs,
+            vec![
+                std::path::PathBuf::from("/workspace/shared"),
+                std::path::PathBuf::from("/workspace/fixtures"),
+            ]
+        );
     }
 
     #[tokio::test]

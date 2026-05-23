@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 /// Controls concurrency limits, budget defaults, and timeouts that apply to
 /// the entire dispatch run rather than individual sessions.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(from = "OrchestratorConfigRaw")]
+#[serde(deny_unknown_fields, from = "OrchestratorConfigRaw")]
 #[non_exhaustive]
 pub struct OrchestratorConfig {
     /// Maximum number of sessions executing concurrently within a group.
@@ -45,10 +45,13 @@ pub struct OrchestratorConfig {
     pub standards: Vec<String>,
     /// Optional scope context appended to the dynamic suffix.
     pub scope: Option<String>,
+    /// Additional directories the agent sessions may access.
+    pub additional_dirs: Vec<PathBuf>,
 }
 
 /// Raw deserialization type for [`OrchestratorConfig`].
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct OrchestratorConfigRaw {
     max_concurrent: u32,
     default_budget_usd: Option<f64>,
@@ -66,6 +69,8 @@ struct OrchestratorConfigRaw {
     standards: Vec<String>,
     #[serde(default)]
     scope: Option<String>,
+    #[serde(default)]
+    additional_dirs: Vec<PathBuf>,
 }
 
 impl From<OrchestratorConfigRaw> for OrchestratorConfig {
@@ -81,6 +86,7 @@ impl From<OrchestratorConfigRaw> for OrchestratorConfig {
             standards_dir: raw.standards_dir,
             standards: raw.standards,
             scope: raw.scope,
+            additional_dirs: raw.additional_dirs,
         }
     }
 }
@@ -98,6 +104,7 @@ impl Default for OrchestratorConfig {
             standards_dir: None,
             standards: Vec::new(),
             scope: None,
+            additional_dirs: Vec::new(),
         }
     }
 }
@@ -178,6 +185,13 @@ impl OrchestratorConfig {
         self.scope = Some(scope.into());
         self
     }
+
+    /// Add an additional directory to expose to every dispatched agent session.
+    #[must_use]
+    pub fn add_dir(mut self, dir: impl Into<PathBuf>) -> Self {
+        self.additional_dirs.push(dir.into());
+        self
+    }
 }
 
 /// Serde helper for `Option<Duration>` as milliseconds.
@@ -222,6 +236,7 @@ mod tests {
         assert!(config.max_duration.is_none());
         assert_eq!(config.session_idle_timeout, Some(Duration::from_mins(10)));
         assert_eq!(config.max_corrective_retries, 0);
+        assert!(config.additional_dirs.is_empty());
     }
 
     #[test]
@@ -232,7 +247,8 @@ mod tests {
             .default_budget_turns(500)
             .max_duration(Duration::from_hours(1))
             .session_idle_timeout(Duration::from_mins(5))
-            .max_corrective_retries(2);
+            .max_corrective_retries(2)
+            .add_dir("/tmp/shared");
 
         assert_eq!(config.max_concurrent, 8);
         assert_eq!(config.default_budget_usd, Some(25.0));
@@ -240,6 +256,7 @@ mod tests {
         assert_eq!(config.max_duration, Some(Duration::from_hours(1)));
         assert_eq!(config.session_idle_timeout, Some(Duration::from_mins(5)));
         assert_eq!(config.max_corrective_retries, 2);
+        assert_eq!(config.additional_dirs, vec![PathBuf::from("/tmp/shared")]);
     }
 
     #[test]
@@ -255,6 +272,21 @@ mod tests {
         assert_eq!(back.max_concurrent, 6);
         assert_eq!(back.default_budget_usd, Some(10.0));
         assert_eq!(back.max_duration, Some(Duration::from_mins(30)));
+    }
+
+    #[test]
+    fn roundtrip_additional_dirs() {
+        let config = OrchestratorConfig::new()
+            .add_dir("/workspace")
+            .add_dir("/shared");
+
+        let json = serde_json::to_string(&config).expect("serialize");
+        let back: OrchestratorConfig = serde_json::from_str(&json).expect("deserialize");
+
+        assert_eq!(
+            back.additional_dirs,
+            vec![PathBuf::from("/workspace"), PathBuf::from("/shared")]
+        );
     }
 
     #[test]
