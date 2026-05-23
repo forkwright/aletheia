@@ -1,7 +1,8 @@
-//! Claude CLI subprocess engine with OAuth token injection.
+//! Experimental Claude CLI subprocess engine with OAuth token injection.
 //!
 //! WHY: This engine uses the `claude` CLI transport while preserving the
-//! dispatch-engine boundary for future native SDK integration.
+//! dispatch-engine boundary for future native SDK integration. It is not a
+//! native HTTP/SSE Agent SDK client yet.
 
 use std::collections::HashMap;
 use std::future::Future;
@@ -15,8 +16,8 @@ use crate::error::{self, Result};
 use crate::http::session::ProcessSessionHandle;
 use crate::http::stream::EventStream;
 
-/// Configuration for the Agent SDK engine.
-#[derive(Debug, Clone)]
+/// Configuration for the experimental Claude CLI bridge.
+#[derive(Clone)]
 pub struct AgentSdkConfig {
     /// Default model identifier (e.g., "claude-opus-4", "claude-sonnet-4").
     pub default_model: String,
@@ -42,6 +43,18 @@ impl Default for AgentSdkConfig {
     }
 }
 
+impl std::fmt::Debug for AgentSdkConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AgentSdkConfig")
+            .field("default_model", &self.default_model)
+            .field("skip_permissions", &self.skip_permissions)
+            .field("disable_plugins", &self.disable_plugins)
+            .field("has_oauth", &self.oauth_token.is_some())
+            .field("mcp_server_count", &self.mcp_servers.len())
+            .finish()
+    }
+}
+
 /// MCP server configuration.
 #[derive(Debug, Clone)]
 pub struct McpServerConfig {
@@ -55,23 +68,28 @@ pub struct McpServerConfig {
     pub env: HashMap<String, String>,
 }
 
-/// Agent SDK-based dispatch engine.
+/// Experimental Claude CLI dispatch engine.
 ///
 /// WHY: Provides CLI subprocess integration with `OAuth` token injection,
 /// permissions, and MCP configuration fields while the native SDK path remains
-/// unwired.
+/// unwired. The public type name is kept for compatibility with existing
+/// configuration code, but the current transport is a `claude` CLI subprocess,
+/// not a native Agent SDK client.
 pub struct AgentSdkEngine {
     config: AgentSdkConfig,
     binary: String,
 }
 
 impl AgentSdkEngine {
-    /// Create a new Agent SDK engine with the given configuration.
+    /// Create a new experimental Claude CLI bridge with the given configuration.
     ///
     /// # Errors
     ///
-    /// Returns an error if the engine cannot be initialized (e.g., binary
-    /// lookup fails, `OAuth` token invalid, MCP server unavailable).
+    /// Returns an error if the engine cannot be initialized.
+    ///
+    /// Current validation is intentionally narrow: only the default model ID is
+    /// checked here. `OAuth` token validation, MCP plugin wiring, permission
+    /// enforcement, and native SDK availability checks remain future work.
     pub fn new(config: AgentSdkConfig) -> Result<Self> {
         // WHY: Verify the model identifier is valid during construction.
         if config.default_model.is_empty() {
@@ -82,7 +100,8 @@ impl AgentSdkEngine {
         }
 
         // Future-work: validate OAuth token, init MCP plugin system, set up
-        // permission system, verify SDK binary availability.
+        // permission system, and replace the CLI subprocess with a native SDK
+        // transport when that integration exists.
         Ok(Self {
             config,
             binary: "claude".to_owned(),
@@ -152,7 +171,7 @@ impl AgentSdkEngine {
 
         let mut child = cmd.spawn().map_err(|e| {
             error::EngineSnafu {
-                detail: format!("failed to spawn agent SDK subprocess: {e}"),
+                detail: format!("failed to spawn claude CLI subprocess: {e}"),
             }
             .build()
         })?;
@@ -246,7 +265,7 @@ impl DispatchEngine for AgentSdkEngine {
                 cmd.env("CLAUDE_API_TOKEN", token);
             }
 
-            tracing::debug!(session_id, "resuming agent SDK session");
+            tracing::debug!(session_id, "resuming claude CLI session");
 
             let handle = Self::launch(cmd)?;
             let boxed: Box<dyn SessionHandle> = Box::new(handle);
