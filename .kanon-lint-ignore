@@ -8,3 +8,16 @@ MANIFEST/dep-count:Cargo.lock
 
 # WHY(#3169): XML namespace URI inside raw string literal, not a network endpoint
 SECURITY/insecure-transport:crates/poiesis/text/src/odt.rs
+
+# WHY(#3987): repo-level context intentionally points at operator-local files
+WORKFLOW/defers-to:CLAUDE.md
+
+# WHY(#3987): supplemental _llm references do not have embedded basanos schemas yet
+WORKFLOW/llm-schema-valid:_llm/api.toml
+WORKFLOW/llm-schema-valid:_llm/manifest.toml
+WORKFLOW/llm-schema-valid:_llm/observability.toml
+WORKFLOW/llm-schema-valid:_llm/recipes.toml
+WORKFLOW/llm-schema-valid:_llm/turn-pipeline.toml
+
+# WHY(#3987): proskenion is a standalone desktop manifest under this repo corpus
+WORKFLOW/llm-corpus-required:crates/theatron/proskenion/Cargo.toml
