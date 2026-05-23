@@ -163,6 +163,13 @@ impl PipelineContext {
         }
     }
 
+    /// Replace the default internal cancellation token with a caller-owned token.
+    #[must_use]
+    pub(crate) fn with_cancel_token(mut self, cancel: CancellationToken) -> Self {
+        self.cancel = cancel;
+        self
+    }
+
     /// Convenience accessor — returns the frontier (panics if preparation has not run).
     ///
     /// Only used from execution stage where preparation is guaranteed to have run.
