@@ -54,8 +54,8 @@ Check `git log --oneline` or [GitHub releases](https://github.com/forkwright/ale
 
 ## Store migration
 
-The current session store is fjall-backed. The pre-fjall SQLite session backend
-is historical; use the one-shot migration tool if you still have a legacy
+Sessions now use a fjall-backed store. The pre-fjall SQLite session backend is
+historical; use the one-shot migration tool if you still have a legacy
 `sessions.db` file.
 
 The embedded Datalog engine (knowledge store) manages its own schema versioning internally.

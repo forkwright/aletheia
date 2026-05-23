@@ -69,7 +69,7 @@ An abstraction with only one creation path is a mesh with a single root. If that
 
 ### Missing grounds
 
-- **Planning API creation surface** - pylon now serves verification results over HTTP, but project and plan creation still route through the planning tool service rather than HTTP handlers.
+- **Planning API creation surface** - pylon serves verification results over HTTP. Project and plan creation route through the planning tool service instead of HTTP handlers.
 
 ---
 

@@ -9,7 +9,7 @@ of the knowledge graph.
 
 Enable the `openai-embed` feature and set `provider = "openai-compat"` in the
 embedding configuration. This offloads embedding inference to any endpoint that
-implements the OpenAI `/v1/embeddings` surface — OpenAI, Voyage, Cohere (with a
+implements the OpenAI `/v1/embeddings` surface - OpenAI, Voyage, Cohere (with a
 shim), or a local **llama-server**.
 
 ```toml

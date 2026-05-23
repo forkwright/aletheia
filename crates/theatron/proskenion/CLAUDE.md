@@ -1,3 +1,9 @@
+---
+scope: "crates/theatron/proskenion/"
+defers_to: ["../../../CLAUDE.md"]
+tightens: ["desktop UI route, state, service, and component guidance"]
+---
+
 # proskenion
 
 ## At a glance
@@ -21,17 +27,17 @@ Dioxus desktop application for Aletheia: chat, planning, memory, metrics, ops, a
 | Type | Path | Purpose |
 |------|------|---------|
 | `AppState` | `state/app.rs` | Top-level state: agents, sessions, tab bar, overlays, connection |
-| `EventState` | `state/events.rs` | SSE connection state, streaming state, tool calls in progress |
+| `EventState` | `state/events.rs` | SSE connection state, streaming state, calls in progress |
 | `PylonClient` | `services/connection.rs` | Gateway API client wrapper with auth and reconnection |
 | `AgentStore` | `state/agents.rs` | Agent roster with status tracking and selection |
 | `ToastStore` | `state/toasts.rs` | Notification toast queue with severity and auto-dismiss |
 | `CommandStore` | `state/commands.rs` | Command palette entries and execution |
 | `InputState` | `state/input.rs` | Chat input field state with submission tracking |
-| `PerMessageStreamState` | `state/streaming.rs` | Per-message streaming accumulator (text, thinking, tool calls) |
-| `ToolCallState` | `state/tools.rs` | Active tool call tracking with approval state |
+| `PerMessageStreamState` | `state/streaming.rs` | Per-message streaming accumulator (text, thinking, calls) |
+| `ToolCallState` | `state/tools.rs` | Active call tracking with approval state |
 | `PlanCardState` | `state/tools.rs` | Plan visualization with step status tracking |
 | `WindowState` | `state/platform.rs` | Window geometry persistence across sessions |
-| `TrayState` | `state/platform.rs` | System tray icon and menu state |
+| `TrayState` | `state/platform.rs` | Tray icon and menu state |
 | `HotkeyState` | `state/platform.rs` | Global hotkey registration and actions |
 
 ## Views
