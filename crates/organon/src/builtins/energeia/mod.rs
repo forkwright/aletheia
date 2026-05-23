@@ -1,14 +1,14 @@
 //! Energeia capability tool implementations.
 //!
-//! Wires the 9 energeia agent tools to real subsystem calls:
+//! Wires the 9 energeia agent tools to the currently available subsystem calls:
 //! - dromeus → Orchestrator::dispatch / dry_run
-//! - dokimasia → qa::run_qa
+//! - dokimasia → qa::run_qa mechanical checks on caller-provided diffs
 //! - diorthosis → qa::corrective::generate_corrective
-//! - epitropos → steward::service::run_once
+//! - epitropos → steward::service::run_once placeholder classification
 //! - parateresis → EnergeiaStore observation pipeline
 //! - mathesis → EnergeiaStore::query_lessons / add_lesson
-//! - prographe → prompt template rendering
-//! - schedion → PromptDag + compute_frontier
+//! - prographe → prompt template rendering, not queue allocation or file writes
+//! - schedion → empty PromptDag + compute_frontier until a prompt path is supplied
 //! - metron → MetricsService health / cost / velocity
 
 mod dispatch;
@@ -28,14 +28,15 @@ use crate::registry::ToolRegistry;
 
 // ── registration ───────────────────────────────────────────────────────────
 
-/// Register all 9 energeia tools with real implementations.
+/// Register all 9 energeia tools.
 ///
 /// When `services` is `Some`, tools that need the orchestrator or store call
 /// through to the real energeia subsystem. When `None`, those tools return a
 /// structured error indicating the missing dependency — they do not panic.
 ///
-/// Tools that are pure computation (schedion, prographe, diorthosis,
-/// dokimasia, epitropos) work regardless of whether services are provided.
+/// Tools that are bounded local computations (`schedion`, `prographe`,
+/// `diorthosis`, `dokimasia`, `epitropos`) work regardless of whether services
+/// are provided, but their public definitions describe the current limitations.
 ///
 /// # Errors
 ///

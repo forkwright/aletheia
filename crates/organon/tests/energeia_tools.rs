@@ -19,7 +19,7 @@ use tempfile::TempDir;
 
 use organon::builtins::energeia::{EnergeiaServices, register};
 use organon::registry::ToolRegistry;
-use organon::types::{ToolContext, ToolInput, ToolResult};
+use organon::types::{ToolContext, ToolDef, ToolInput, ToolResult};
 
 // ── Mock QA gate ─────────────────────────────────────────────────────────────
 
@@ -113,6 +113,21 @@ fn assert_non_error(result: &ToolResult, tool: &str) {
         "{tool}: expected non-error result, got error: {:?}",
         result.content
     );
+}
+
+fn definition_for(name: &str) -> ToolDef {
+    let mut registry = ToolRegistry::new();
+    register(&mut registry, None).expect("register");
+    registry
+        .definitions()
+        .into_iter()
+        .find(|def| def.name.as_str() == name)
+        .unwrap_or_else(|| panic!("{name} definition registered"))
+        .clone()
+}
+
+fn result_json(result: &ToolResult) -> serde_json::Value {
+    serde_json::from_str(&result.content.text_summary()).expect("tool result is JSON text")
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -382,6 +397,125 @@ fn dokimasia_description_advertises_mechanical_only_qa() {
         dokimasia.description.contains("empty diffs return no-work"),
         "dokimasia should document its empty-diff behavior"
     );
+}
+
+#[test]
+fn placeholder_tool_descriptions_match_current_side_effect_limits() {
+    let prographe = definition_for("prographe");
+    assert!(
+        prographe.description.contains("prompt spec template"),
+        "prographe should advertise template rendering, got: {}",
+        prographe.description
+    );
+    assert!(
+        prographe
+            .description
+            .contains("does not allocate queue numbers")
+            && prographe.description.contains("write files"),
+        "prographe must not claim queue allocation or file writes"
+    );
+    assert!(
+        prographe
+            .input_schema
+            .properties
+            .get("project")
+            .expect("project property documented")
+            .description
+            .contains("no project files are read or written"),
+        "prographe project field should document that it is not a file root"
+    );
+
+    let schedion = definition_for("schedion");
+    assert!(
+        schedion.description.contains("empty prompt dependency DAG"),
+        "schedion should document its empty-DAG behavior"
+    );
+    assert!(
+        schedion.description.contains("does not load prompt specs"),
+        "schedion must not advertise file-backed DAG loading"
+    );
+
+    let epitropos = definition_for("epitropos");
+    assert!(
+        epitropos
+            .description
+            .contains("placeholder CI steward classification pass"),
+        "epitropos should advertise placeholder single-pass classification"
+    );
+    assert!(
+        epitropos.description.contains("does not poll")
+            && epitropos.description.contains("merge PRs")
+            && epitropos.description.contains("queue repair work"),
+        "epitropos must not advertise polling, merge, or repair side effects"
+    );
+    assert!(
+        epitropos
+            .input_schema
+            .properties
+            .get("once")
+            .expect("once property documented")
+            .description
+            .contains("always runs one classification pass"),
+        "epitropos once field should match run_once semantics"
+    );
+}
+
+#[tokio::test]
+async fn placeholder_tool_outputs_report_current_side_effect_limits() {
+    let ctx = make_ctx();
+    let mut registry = ToolRegistry::new();
+    register(&mut registry, None).expect("register");
+
+    let input = make_input(
+        "prographe",
+        serde_json::json!({
+            "project": "acme/test",
+            "description": "Add health endpoint"
+        }),
+    );
+    let result = registry.execute(&input, &ctx).await.unwrap();
+    assert_non_error(&result, "prographe");
+    let output = result_json(&result);
+    assert_eq!(output["prompt_number_assigned"], false);
+    assert_eq!(output["files_written"], serde_json::json!([]));
+    assert!(
+        output["spec"]
+            .as_str()
+            .expect("spec is text")
+            .contains("number: 0"),
+        "prographe should return an unallocated template spec"
+    );
+
+    let input = make_input("schedion", serde_json::json!({"project": "acme/test"}));
+    let result = registry.execute(&input, &ctx).await.unwrap();
+    assert_non_error(&result, "schedion");
+    let output = result_json(&result);
+    assert_eq!(output["node_count"], 0);
+    assert_eq!(output["loaded_prompt_specs"], false);
+    assert!(
+        output["note"]
+            .as_str()
+            .expect("note is text")
+            .contains("No prompt spec files found"),
+        "schedion should explain the empty DAG"
+    );
+
+    let input = make_input(
+        "epitropos",
+        serde_json::json!({
+            "project": "acme/test",
+            "once": false,
+            "dry_run": false
+        }),
+    );
+    let result = registry.execute(&input, &ctx).await.unwrap();
+    assert_non_error(&result, "epitropos");
+    let output = result_json(&result);
+    assert_eq!(output["mode"], "single_placeholder_pass");
+    assert_eq!(output["polling_loop_started"], false);
+    assert_eq!(output["merge_side_effects_enabled"], false);
+    assert_eq!(output["repair_queue_side_effects_enabled"], false);
+    assert_eq!(output["classified_count"], 0);
 }
 
 #[test]
