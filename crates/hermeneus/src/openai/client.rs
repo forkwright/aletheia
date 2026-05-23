@@ -11,8 +11,8 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use reqwest::Client;
 use reqwest::header::{HeaderMap, HeaderValue};
+use reqwest::{Client, Response};
 use tracing::{Instrument as _, info, info_span};
 
 use koina::secret::SecretString;
@@ -361,6 +361,26 @@ impl OpenAiProvider {
         request: &CompletionRequest,
         on_event: &mut (dyn FnMut(StreamEvent) + Send),
     ) -> Result<CompletionResponse> {
+        let span = info_span!("llm_call",
+            llm.provider = %self.config.name,
+            llm.model = %request.model,
+            llm.duration_ms = tracing::field::Empty,
+            llm.tokens_in = tracing::field::Empty,
+            llm.tokens_out = tracing::field::Empty,
+            llm.status = tracing::field::Empty,
+            llm.retries = tracing::field::Empty,
+            llm.stream = true,
+        );
+        self.execute_streaming_inner(request, on_event)
+            .instrument(span)
+            .await
+    }
+
+    async fn execute_streaming_inner(
+        &self,
+        request: &CompletionRequest,
+        on_event: &mut (dyn FnMut(StreamEvent) + Send),
+    ) -> Result<CompletionResponse> {
         if let Err(health) = self.health.check_available() {
             return Err(error::ApiRequestSnafu {
                 message: format!("provider circuit-breaker open: {health:?}"),
@@ -368,36 +388,92 @@ impl OpenAiProvider {
             .build());
         }
 
+        let start = Instant::now();
         let body = self.serialize_request(request, Some(true))?;
         let url = self.endpoint_url();
-        let headers = self.build_headers()?;
+        let mut last_error: Option<error::Error> = None;
 
-        let mut response = self
-            .client
-            .post(&url)
+        for attempt in 0..=self.config.max_retries {
+            if attempt > 0 {
+                tokio::time::sleep(backoff_delay(attempt)).await;
+            }
+
+            let mut response = match self.send_streaming_request(&url, &body).await {
+                Ok(r) => r,
+                Err(err) => {
+                    self.health.record_error(&err);
+                    if !err.is_retryable() {
+                        record_stream_failure(start, attempt, &self.config.name, request);
+                        return Err(err);
+                    }
+                    last_error = Some(err);
+                    continue;
+                }
+            };
+
+            let status = response.status().as_u16();
+            if !response.status().is_success() {
+                let err =
+                    map_error_response(response, &request.model, self.credential_source()).await;
+                self.health.record_error(&err);
+                if !err.is_retryable() {
+                    record_stream_http_failure(start, attempt, &self.config.name, request, status);
+                    return Err(err);
+                }
+                last_error = Some(err);
+                continue;
+            }
+
+            let resp = self.parse_streaming_response(&mut response, on_event).await;
+
+            match resp {
+                Ok(mut resp) => {
+                    self.health.record_success();
+                    record_stream_success(start, attempt, &self.config.name, request, &mut resp);
+                    return Ok(resp);
+                }
+                Err(err) => {
+                    self.health.record_error(&err);
+                    record_stream_failure(start, attempt, &self.config.name, request);
+                    return Err(err);
+                }
+            }
+        }
+
+        tracing::Span::current().record("llm.duration_ms", elapsed_millis_u64(start));
+        tracing::Span::current().record("llm.retries", self.config.max_retries);
+        tracing::Span::current().record("llm.status", "error");
+        crate::metrics::record_completion(&self.config.name, 0, 0, 0.0, false);
+        crate::metrics::record_latency(&request.model, "error", start.elapsed().as_secs_f64());
+        Err(last_error.unwrap_or_else(|| {
+            error::ApiRequestSnafu {
+                message: "streaming request failed after all retries".to_owned(),
+            }
+            .build()
+        }))
+    }
+
+    async fn send_streaming_request(&self, url: &str, body: &str) -> Result<Response> {
+        let headers = self.build_headers()?;
+        self.client
+            .post(url)
             .headers(headers)
-            .body(body)
+            .body(body.to_owned())
             .timeout(Duration::from_mins(10))
             .send()
             .await
-            .map_err(|e| map_request_error(&e))?;
+            .map_err(|e| map_request_error(&e))
+    }
 
-        if !response.status().is_success() {
-            return Err(
-                map_error_response(response, &request.model, self.credential_source()).await,
-            );
+    async fn parse_streaming_response(
+        &self,
+        response: &mut Response,
+        on_event: &mut (dyn FnMut(StreamEvent) + Send),
+    ) -> Result<CompletionResponse> {
+        match self.config.api_family {
+            OpenAiApiFamily::ChatCompletions => parse_chat_sse_response(response, on_event).await,
+            OpenAiApiFamily::Responses => parse_responses_sse_response(response, on_event).await,
         }
-
-        let resp = match self.config.api_family {
-            OpenAiApiFamily::ChatCompletions => {
-                parse_chat_sse_response(&mut response, on_event).await?
-            }
-            OpenAiApiFamily::Responses => {
-                parse_responses_sse_response(&mut response, on_event).await?
-            }
-        };
-        self.health.record_success();
-        Ok(resp)
     }
 
     fn endpoint_url(&self) -> String {
@@ -465,6 +541,68 @@ fn backoff_delay(attempt: u32) -> Duration {
     let cap_ms: u64 = 30_000;
     let delay = base_ms.saturating_mul(1_u64 << attempt.min(6));
     Duration::from_millis(delay.min(cap_ms))
+}
+
+fn elapsed_millis_u64(start: Instant) -> u64 {
+    u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX)
+}
+
+fn record_stream_failure(
+    start: Instant,
+    attempt: u32,
+    provider_name: &str,
+    request: &CompletionRequest,
+) {
+    tracing::Span::current().record("llm.duration_ms", elapsed_millis_u64(start));
+    tracing::Span::current().record("llm.retries", attempt);
+    tracing::Span::current().record("llm.status", "error");
+    crate::metrics::record_completion(provider_name, 0, 0, 0.0, false);
+    crate::metrics::record_latency(&request.model, "error", start.elapsed().as_secs_f64());
+}
+
+fn record_stream_http_failure(
+    start: Instant,
+    attempt: u32,
+    provider_name: &str,
+    request: &CompletionRequest,
+    status: u16,
+) {
+    tracing::Span::current().record("llm.duration_ms", elapsed_millis_u64(start));
+    tracing::Span::current().record("llm.retries", attempt);
+    tracing::Span::current().record(
+        "llm.status",
+        if status == 401 {
+            "auth_failed"
+        } else {
+            "error"
+        },
+    );
+    crate::metrics::record_completion(provider_name, 0, 0, 0.0, false);
+    crate::metrics::record_latency(&request.model, "error", start.elapsed().as_secs_f64());
+}
+
+fn record_stream_success(
+    start: Instant,
+    attempt: u32,
+    provider_name: &str,
+    request: &CompletionRequest,
+    response: &mut CompletionResponse,
+) {
+    let duration_ms = elapsed_millis_u64(start);
+    response.duration_ms = Some(duration_ms);
+    tracing::Span::current().record("llm.duration_ms", duration_ms);
+    tracing::Span::current().record("llm.tokens_in", response.usage.input_tokens);
+    tracing::Span::current().record("llm.tokens_out", response.usage.output_tokens);
+    tracing::Span::current().record("llm.status", "ok");
+    tracing::Span::current().record("llm.retries", attempt);
+    crate::metrics::record_completion(
+        provider_name,
+        response.usage.input_tokens,
+        response.usage.output_tokens,
+        0.0,
+        true,
+    );
+    crate::metrics::record_latency(&request.model, "ok", start.elapsed().as_secs_f64());
 }
 
 /// Leak a `Vec<String>` of model IDs to a `&'static [&'static str]` slice.

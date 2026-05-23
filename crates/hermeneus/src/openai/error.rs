@@ -97,8 +97,17 @@ pub(crate) async fn map_error_response(
 
 /// Map a reqwest transport error to a hermeneus error.
 pub(crate) fn map_request_error(err: &reqwest::Error) -> error::Error {
+    let prefix = if err.is_timeout() {
+        "timeout"
+    } else if err.is_connect() {
+        "connection error"
+    } else if err.is_request() {
+        "request error"
+    } else {
+        "transport error"
+    };
     error::ApiRequestSnafu {
-        message: err.to_string(),
+        message: format!("{prefix}: {err}"),
     }
     .build()
 }
