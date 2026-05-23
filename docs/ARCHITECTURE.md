@@ -147,7 +147,7 @@ generated inventory is `_llm/L1-workspace.md`.
 | `eidos` | `crates/eidos` | Shared knowledge types: Fact, Entity, Relationship, EpistemicTier, Visibility, MemoryScope | nothing (leaf) |
 | `graphe` | `crates/graphe` | fjall session/message store, retention, archive support | eidos, koina |
 | `episteme` | `crates/episteme` | Knowledge pipeline: extraction, trace ingest, query rewrite, recall, consolidation, embedding provider | eidos, koina, graphe, krites (opt) |
-| `krites` | `crates/krites` | Embedded Datalog engine with HNSW and graph support | eidos |
+| `krites` | `crates/krites` | Embedded Datalog and graph query engine with HNSW support | eidos |
 | `mneme` | `crates/mneme` | Thin facade re-exporting eidos, graphe, episteme, krites | eidos, graphe, episteme, krites |
 | `hermeneus` | `crates/hermeneus` | LLM provider registry, fallback chains, token redaction, provider trait, loop guard | koina, taxis |
 | `organon` | `crates/organon` | Tool registry, tool definitions, tags, HMAC receipts, 49 built-in tools, sandbox | koina, hermeneus |
@@ -223,7 +223,7 @@ on the same host (`embedded`) or an operator-trusted local endpoint
 
 | Crate | Directory | Domain | Depends On |
 |-------|-----------|--------|------------|
-| `dokimion` | `crates/eval` | Behavioral eval framework (HTTP scenario runner) | koina |
+| `dokimion` | `crates/eval` | Behavioral and cognitive eval framework (HTTP scenario runner) | koina |
 | `integration-tests` | `crates/integration-tests` | Cross-crate integration test suite | dokimion, koina, taxis, mneme, hermeneus, nous, organon, pylon, symbolon, thesauros |
 
 Additional workspace crates include `aletheia-classify`, `aletheia-lexica`,
@@ -337,6 +337,11 @@ When adding a component, prefer extending an existing edge (dependency or trait 
 - **symbolon depends only on koina** (plus external crates: reqwest, fjall, hmac/sha2/aes-gcm, argon2).
 - **mneme is a thin facade.** It re-exports from eidos (types), graphe (session store), episteme (knowledge pipeline), and krites (Datalog engine). No logic of its own.
 - **krites contains the Datalog+HNSW engine**, gated behind the `mneme-engine` feature.
+- **Boundary: `krites` is the embedded Datalog and graph query engine.** It decides
+  whether rules and facts satisfy a query; it does not judge agent behavior.
+- **Boundary: `dokimion` is the behavioral and cognitive evaluation runner.** It
+  runs scenarios, benchmarks, and agent-behavior checks against live Aletheia
+  instances.
 - **EmbeddingProvider lives in episteme**, not mneme.
 - **Trait boundaries are extension points.** `EmbeddingProvider`, `ChannelProvider`, `LlmProvider` - implement the trait, swap the provider.
 - **daemon depends only on koina** - lightweight scheduling, not a high-layer crate. No other application crate imports it.

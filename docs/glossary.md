@@ -1,7 +1,6 @@
 # Glossary
 
-Project-specific terms used across the Aletheia codebase. For the naming philosophy and
-Greek construction system, see [gnomon.md](gnomon.md). For the full crate registry with
+Project-specific terms used across the Aletheia codebase. For the full crate registry with
 layer-by-layer analysis, see [lexicon.md](lexicon.md).
 
 Each entry lists the Greek word and pronunciation, etymology, and technical meaning in this
@@ -170,11 +169,13 @@ workspace uses without it belonging to any single layer.
 
 **κριτής** (*kri-tís*)
 
-**Etymology.** From *κρίνω* (to separate, to judge, to decide). The judge: one who
-distinguishes, evaluates, and renders a verdict.
+**Etymology.** From *κρίνω* (to separate, to judge, to decide). In this project the
+"judge" metaphor is scoped to logical inference: separating which Datalog conclusions
+follow from rules and facts, not agent behavior.
 
-**In this codebase.** The embedded Datalog query engine evaluates
-logical rules and facts, deciding what follows from what the system knows.
+**In this codebase.** The embedded Datalog query engine evaluates logical rules and
+facts, deciding what follows from what the system knows. Behavioral and cognitive
+agent evaluation lives in `dokimion`.
 
 **Crate.** `krites` (low layer) - Datalog engine.
 
@@ -392,6 +393,5 @@ Pylon guards the boundary      Outside world reaches Nous only through Pylon
 
 ## Further reading
 
-- [gnomon.md](gnomon.md) - Naming philosophy, construction system, layer test (L1–L4)
 - [lexicon.md](lexicon.md) - Full crate registry with L1–L4 analysis for each name
 - [ARCHITECTURE.md](ARCHITECTURE.md) - Crate workspace, module map, dependency graph
