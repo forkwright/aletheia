@@ -25,9 +25,9 @@ use super::shared::{opt_str, opt_u64, require_str, to_json_text};
 pub(super) fn prographe_def() -> ToolDef {
     ToolDef {
         name: ToolName::from_static("prographe"),
-        description: "Render a prompt spec from a GitHub issue or description. \
-            Assigns the next available prompt number, writes the spec file, \
-            and returns the generated content."
+        description: "Render a prompt spec template from a GitHub issue number or \
+            description. This tool does not allocate queue numbers or write files; \
+            it returns YAML with number 0 for the caller to save."
             .to_owned(),
         extended_description: None,
         input_schema: InputSchema {
@@ -36,7 +36,8 @@ pub(super) fn prographe_def() -> ToolDef {
                     "from_issue".to_owned(),
                     PropertyDef {
                         property_type: PropertyType::Integer,
-                        description: "GitHub issue number to base the prompt spec on".to_owned(),
+                        description: "GitHub issue number used only to seed template text"
+                            .to_owned(),
                         enum_values: None,
                         default: None,
                     },
@@ -45,7 +46,9 @@ pub(super) fn prographe_def() -> ToolDef {
                     "project".to_owned(),
                     PropertyDef {
                         property_type: PropertyType::String,
-                        description: "GitHub project slug (owner/repo)".to_owned(),
+                        description: "GitHub project slug echoed in the result; no project files \
+                            are read or written"
+                            .to_owned(),
                         enum_values: None,
                         default: None,
                     },
@@ -137,6 +140,9 @@ impl ToolExecutor for ProographeExecutor {
                 "project": project,
                 "spec": spec_yaml,
                 "criteria_count": criteria.len(),
+                "prompt_number_assigned": false,
+                "files_written": [],
+                "note": "Template only: number 0 is a placeholder and no files were written.",
             });
 
             Ok(to_json_text(&output))
@@ -149,8 +155,9 @@ impl ToolExecutor for ProographeExecutor {
 pub(super) fn schedion_def() -> ToolDef {
     ToolDef {
         name: ToolName::from_static("schedion"),
-        description: "Visualize the prompt dependency DAG for a project and compute the \
-            execution frontier: which prompt specs are ready to dispatch now."
+        description: "Compute the execution frontier for an empty prompt dependency DAG. \
+            The tool does not load prompt specs from a project path yet, so callers should \
+            use the CLI dispatch pipeline for file-backed DAGs."
             .to_owned(),
         extended_description: None,
         input_schema: InputSchema {
@@ -158,7 +165,9 @@ pub(super) fn schedion_def() -> ToolDef {
                 "project".to_owned(),
                 PropertyDef {
                     property_type: PropertyType::String,
-                    description: "GitHub project slug (owner/repo)".to_owned(),
+                    description: "GitHub project slug echoed in the result; no prompt files are \
+                        loaded from it"
+                        .to_owned(),
                     enum_values: None,
                     default: None,
                 },
@@ -201,6 +210,7 @@ impl ToolExecutor for SchedionExecutor {
                 "node_count": 0,
                 "frontier_group_count": frontier.len(),
                 "frontier": frontier,
+                "loaded_prompt_specs": false,
                 "note": "No prompt spec files found via tool call. \
                     Use the CLI dispatch pipeline to load prompts from the filesystem.",
             });

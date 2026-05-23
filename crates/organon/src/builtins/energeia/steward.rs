@@ -1,7 +1,9 @@
 //! Steward tool (epitropos — ἐπίτροπος, steward).
 //!
-//! CI steward: monitors pull requests, auto-merges passing PRs, and queues
-//! failing PRs for repair.
+//! CI steward tool surface.
+//!
+//! The current tool executor runs one placeholder steward classification pass.
+//! It does not start the polling loop, merge PRs, or queue repair work.
 
 use std::future::Future;
 use std::pin::Pin;
@@ -25,8 +27,9 @@ use super::shared::{opt_bool, require_str, to_json_text};
 pub(super) fn epitropos_def() -> ToolDef {
     ToolDef {
         name: ToolName::from_static("epitropos"),
-        description: "CI steward: monitor pull requests, auto-merge passing PRs, \
-            queue failing PRs for repair. Runs as a polling loop unless `once` is set."
+        description: "Run one placeholder CI steward classification pass. The tool \
+            does not poll, merge PRs, or queue repair work until the steward backend \
+            is wired."
             .to_owned(),
         extended_description: None,
         input_schema: InputSchema {
@@ -44,8 +47,8 @@ pub(super) fn epitropos_def() -> ToolDef {
                     "once".to_owned(),
                     PropertyDef {
                         property_type: PropertyType::Boolean,
-                        description: "Run a single classification pass instead of a polling loop \
-                            (default: false)"
+                        description: "Accepted for compatibility; this tool always runs one \
+                            classification pass and never starts a polling loop"
                             .to_owned(),
                         enum_values: None,
                         default: Some(serde_json::json!(false)),
@@ -55,8 +58,8 @@ pub(super) fn epitropos_def() -> ToolDef {
                     "dry_run".to_owned(),
                     PropertyDef {
                         property_type: PropertyType::Boolean,
-                        description: "Classify PRs without merging or queuing repairs \
-                            (default: false)"
+                        description: "Accepted for compatibility; the placeholder pass has no \
+                            merge or repair side effects"
                             .to_owned(),
                         enum_values: None,
                         default: Some(serde_json::json!(false)),
@@ -103,12 +106,17 @@ impl ToolExecutor for EpitroposExecutor {
             let output = serde_json::json!({
                 "project": project,
                 "dry_run": dry_run,
+                "mode": "single_placeholder_pass",
+                "polling_loop_started": false,
+                "merge_side_effects_enabled": false,
+                "repair_queue_side_effects_enabled": false,
                 "classified_count": result.classified.len(),
                 "merged_count": result.merged.len(),
                 "needs_fix_count": result.needs_fix.len(),
                 "blocked_count": result.blocked.len(),
                 "main_ci_status": format!("{:?}", result.main_ci_status),
                 "main_fix_attempted": result.main_fix_attempted,
+                "note": "run_once currently returns placeholder classification data.",
             });
 
             Ok(to_json_text(&output))
