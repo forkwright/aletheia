@@ -1,17 +1,20 @@
-//! Team coordination: child agent spawning with concurrency limits.
+//! Reserved child-agent coordination boundary.
 //!
-//! WHY: Daemon-mode operations that exceed a single agent's scope (e.g.,
-//! multi-file refactors, parallel knowledge graph updates) need controlled
-//! child agent spawning with backpressure.
+//! WHY: daemon-mode operations that exceed a single agent's scope may need
+//! controlled child-agent spawning with backpressure. The current daemon
+//! runtime does not spawn, join, kill, or track child agents yet.
 
-/// Coordinator manages child agent lifecycle with concurrency limits.
+/// Reserved coordinator configuration for future child-agent lifecycle wiring.
+///
+/// Today this type only stores the configured child concurrency limit. It does
+/// not spawn child agents or track in-flight children.
 #[derive(Debug)]
 pub struct Coordinator {
     max_children: usize,
 }
 
 impl Coordinator {
-    /// Create a new coordinator with the given concurrency limit.
+    /// Create a reserved coordinator marker with the given concurrency limit.
     #[must_use]
     pub fn new(max_children: usize) -> Self {
         Self { max_children }

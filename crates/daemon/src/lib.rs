@@ -7,12 +7,13 @@
 //! attention checks (prosoche), and maintenance cycles for each nous.
 //!
 //! Supports KAIROS-style autonomous daemon mode with jitter-aware scheduling,
-//! single-instance locking, child agent coordination, event-driven triggers,
-//! and systemd notify integration.
+//! single-instance locking, and systemd notify integration. Child-agent
+//! coordination and event-driven triggers are reserved API boundaries, not
+//! wired runtime capabilities yet.
 
 /// Bridge trait for daemon-to-nous communication without direct dependency coupling.
 pub mod bridge;
-/// Team coordination: child agent spawning with concurrency limits.
+/// Reserved child-agent coordination boundary.
 pub mod coordination;
 /// Periodic cron tasks: evolution, reflection, and graph cleanup.
 pub mod cron;
@@ -46,7 +47,7 @@ pub mod schedule;
 pub mod self_prompt;
 /// Task-state persistence (fjall), workspace config, and single-instance locking.
 pub mod state;
-/// Event-driven activation: file watchers and webhook receiver.
+/// Reserved external trigger boundary.
 pub mod triggers;
 /// Watchdog process monitor with heartbeat tracking and auto-recovery.
 pub mod watchdog;

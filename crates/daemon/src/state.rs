@@ -40,7 +40,9 @@ pub struct DaemonConfig {
     #[serde(default)]
     pub enabled: bool,
 
-    /// Maximum concurrent child agents the daemon may spawn.
+    /// Reserved child-agent concurrency limit.
+    ///
+    /// The current runtime stores this value but does not spawn child agents.
     #[serde(default = "default_max_children")]
     pub max_children: usize,
 
@@ -52,11 +54,13 @@ pub struct DaemonConfig {
     #[serde(default)]
     pub allowed_tasks: Vec<String>,
 
-    /// Webhook listener port. `None` disables the webhook trigger.
+    /// Reserved webhook listener port. The current runtime does not start a
+    /// webhook listener.
     #[serde(default)]
     pub webhook_port: Option<u16>,
 
-    /// File watch paths (relative to workspace root). Empty disables file watching.
+    /// Reserved file watch paths (relative to workspace root). The current
+    /// runtime does not start file watchers.
     #[serde(default)]
     pub watch_paths: Vec<String>,
 
@@ -95,10 +99,10 @@ impl Default for DaemonConfig {
 /// Which trigger types are permitted in this workspace.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct AllowedTriggers {
-    /// Allow file-watcher triggers.
+    /// Reserved file-watcher trigger opt-in.
     #[serde(default)]
     pub file_watch: bool,
-    /// Allow webhook triggers.
+    /// Reserved webhook trigger opt-in.
     #[serde(default)]
     pub webhook: bool,
 }
