@@ -12,14 +12,10 @@ publish = false
 name = "aletheia-sessions-migrate"
 path = "src/main.rs"
 
-# WHY: rusqlite is pinned to 0.31 to match the only other workspace user
-# (`gnosis`). Cargo's `links = "sqlite3"` constraint forbids two
-# different versions of `libsqlite3-sys` in the same dep graph; the
-# alternative would be a major-version bump in gnosis, which is out of
-# scope for this migrator. PR #3446 removed rusqlite from graphe / symbolon /
-# daemon — gnosis is the remaining holder, so we align to its version.
-# `bundled` vendors libsqlite3-sys so the build is deterministic and
-# does not require a system libsqlite3.
+# WHY: this one-shot legacy migrator is the remaining SQLite reader. The
+# production stores are fjall-backed, including gnosis. `bundled` vendors
+# libsqlite3-sys so the build is deterministic and does not require a system
+# libsqlite3 while old 0.15.x session databases can still be imported.
 [dependencies]
 graphe = { path = "../graphe" }
 eidos = { path = "../eidos" }
