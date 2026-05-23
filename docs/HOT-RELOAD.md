@@ -153,10 +153,10 @@ Every `AletheiaConfig` field is classified as either **Hot** (safe to apply via 
 | `maintenance.diskSpace.checkIntervalSecs` | Hot | Interval read by background task |
 | `maintenance.retention.enabled` | Hot | Retention toggle checked by background task |
 | `maintenance.knowledgeMaintenanceEnabled` | Hot | Maintenance toggle checked by background task |
-| `maintenance.watchdog.enabled` | Hot | Watchdog toggle checked by monitor |
-| `maintenance.watchdog.heartbeatTimeoutSecs` | Hot | Timeout read by monitor |
-| `maintenance.watchdog.checkIntervalSecs` | Hot | Interval read by monitor |
-| `maintenance.watchdog.maxRestarts` | Hot | Max restarts read by monitor |
+| `maintenance.watchdog.enabled` | Reserved | Per-process watchdog monitor is not wired into runtime startup |
+| `maintenance.watchdog.heartbeatTimeoutSecs` | Reserved | Reserved for future per-process watchdog integration |
+| `maintenance.watchdog.checkIntervalSecs` | Reserved | Reserved for future per-process watchdog integration |
+| `maintenance.watchdog.maxRestarts` | Reserved | Reserved for future per-process watchdog integration |
 | `maintenance.cronTasks.evolution.enabled` | Hot | Task toggle checked by scheduler |
 | `maintenance.cronTasks.evolution.intervalSecs` | Hot | Interval read by scheduler |
 | `maintenance.cronTasks.reflection.enabled` | Hot | Task toggle checked by scheduler |

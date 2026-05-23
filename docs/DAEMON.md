@@ -24,7 +24,7 @@
 | Maintenance | `maintenance/` | Trace rotation, drift detection, DB monitoring, retention, knowledge maintenance, fact-extraction persistence |
 | Coordination | `coordination.rs` | Child agent spawning with concurrency limits |
 | Triggers | `triggers.rs` | Event-driven activation: file watchers, webhooks |
-| Watchdog | `watchdog.rs` | Process heartbeat monitoring with auto-recovery |
+| Watchdog | `watchdog.rs` | Tested process heartbeat monitor library; not wired into runtime startup yet |
 | State | `state.rs` | fjall persistence, workspace config, single-instance locking |
 
 ### What oikonomos does NOT do
@@ -37,7 +37,7 @@
 
 Oikonomos and dianoia are siblings, not parent/child:
 
-- **Oikonomos**: runs on a clock. Schedules tasks, fires on cron expressions, manages maintenance. Think cron + systemd watchdog.
+- **Oikonomos**: runs on a clock. Schedules tasks, fires on cron expressions, manages maintenance. Runtime liveness uses the systemd watchdog heartbeat; the per-process watchdog library is not started yet.
 - **Dianoia**: runs on intent. Orchestrates multi-step plans, allocates attention across projects, detects stuck states. Think project manager.
 
 They share no code. Oikonomos calls nous actors via `DaemonBridge`; dianoia will coordinate via the planning adapter. Both are leaf crates with no cross-dependency.
@@ -114,7 +114,8 @@ Active windows restrict execution to time ranges (e.g., `active_window: Some((8,
 - Consecutive failures trigger exponential backoff (1min → 5min → 15min)
 - 3 consecutive failures auto-disable the task
 - Catch-up mode: missed cron windows within 24h are executed on startup
-- Watchdog monitors heartbeat; auto-restarts unresponsive tasks
+- Systemd watchdog heartbeat covers whole-service liveness when the service unit enables `WatchdogSec`
+- The per-process watchdog library is tested but not yet started by runtime, so it does not auto-restart daemon tasks today
 
 ---
 

@@ -443,82 +443,64 @@ RUST_LOG=aletheia_hermeneus=trace,aletheia=info aletheia   # LLM-only trace
 
 ## Watchdog
 
-The watchdog monitors registered processes via periodic heartbeats and restarts them automatically when they stop responding. It is defined in `crates/daemon/src/watchdog.rs` and configured under `[maintenance.watchdog]`.
+Aletheia distinguishes two watchdog mechanisms with different operational status.
 
-Watchdog is **disabled by default** (`enabled = false`).
+### Systemd watchdog heartbeat (live)
 
-### Configuration
+When Aletheia runs under a systemd unit with `Type=notify` and `WatchdogSec`,
+the runtime sends `READY=1`, periodic `WATCHDOG=1`, and `STOPPING=1`
+notifications through `sd_notify`. This is the live watchdog path.
+
+This mechanism monitors the whole Aletheia service. If the Tokio runtime stops
+sending heartbeats, systemd can restart the service. It does not monitor or
+restart individual daemon tasks, agents, or child processes.
+
+Check the live heartbeat with:
+
+```bash
+journalctl --user -u aletheia --since "1 hour ago" | grep "systemd watchdog"
+systemctl --user show aletheia -p WatchdogUSec -p Type
+```
+
+### Daemon process watchdog (not wired)
+
+`crates/daemon/src/watchdog.rs` contains a tested process-watchdog library for
+registered processes, per-process heartbeats, restart backoff, and states such
+as `Healthy`, `Hung`, `Restarting`, and `Abandoned`.
+
+That library is **not wired into runtime startup yet**. The daemon does not
+construct `Watchdog`, register the system runner or agent runners with it, or
+send per-process heartbeats. The `[maintenance.watchdog]` config fields are
+reserved for that future integration; enabling them does not start a monitor or
+produce per-process restart logs today.
+
+Do not expect these implementation-level log messages in production yet:
+
+| Future message | Current status |
+|----------------|----------------|
+| `watchdog: registered process` | Not emitted by runtime |
+| `watchdog: hung process detected - no heartbeat` | Not emitted by runtime |
+| `watchdog: restarting process` | Not emitted by runtime |
+| `watchdog: process restarted successfully` | Not emitted by runtime |
+| `watchdog: process recovered - heartbeat received` | Not emitted by runtime |
+| `watchdog: restart failed - applying backoff` | Not emitted by runtime |
+| `watchdog: max restarts exceeded - abandoning process` | Not emitted by runtime |
+
+Reserved config shape:
 
 ```toml
 [maintenance.watchdog]
-enabled = true
-heartbeat_timeout_secs = 60   # seconds without heartbeat before declaring a process hung
-check_interval_secs = 10      # sweep interval
-max_restarts = 5              # restart attempts before abandoning the process
+enabled = false
+heartbeat_timeout_secs = 60
+check_interval_secs = 10
+max_restarts = 5
 ```
 
-Changes to these values require a service restart (cold fields).
-
-### Process states
-
-| State | Meaning |
-|-------|---------|
-| `Healthy` | Heartbeats arriving within timeout |
-| `Hung` | Missed heartbeat deadline, restart pending |
-| `Restarting` | Kill and restart sequence in progress |
-| `Abandoned` | Exceeded `max_restarts`, no longer monitored |
-
-### Check status
-
-Watchdog emits structured logs at each state change. Filter them with:
+### Recovery guidance
 
 ```bash
-journalctl --user -u aletheia --since "1 hour ago" | grep watchdog
-```
-
-| Level | Message | Meaning |
-|-------|---------|---------|
-| INFO | `watchdog: registered process` | Process enrolled |
-| WARN | `watchdog: hung process detected - no heartbeat` | Timeout exceeded (includes `elapsed_secs`, `timeout_secs`) |
-| WARN | `watchdog: restarting process` | Restart initiated (includes `cause`, `attempt`) |
-| INFO | `watchdog: process restarted successfully` | Recovery succeeded |
-| INFO | `watchdog: process recovered - heartbeat received` | Process self-recovered before restart |
-| ERROR | `watchdog: restart failed - applying backoff` | Restart failed (includes `attempt`, `error`) |
-| ERROR | `watchdog: max restarts exceeded - abandoning process` | Process abandoned (includes `restart_count`, `max_restarts`) |
-
-### Restart backoff
-
-Failed restarts use exponential backoff: base 2 seconds, cap 300 seconds (5 minutes).
-
-| Attempt | Delay |
-|---------|-------|
-| 1 | 2 s |
-| 2 | 4 s |
-| 3 | 8 s |
-| 4 | 16 s |
-| 5 | 32 s |
-| 6+ | 64 s ... capped at 300 s |
-
-### Heartbeat timeout too short
-
-If processes are marked hung during heavy load, increase the timeout:
-
-```toml
-[maintenance.watchdog]
-heartbeat_timeout_secs = 120
-```
-
-Restart the service for this to take effect.
-
-### Process abandoned
-
-Once a process enters `Abandoned` state, the watchdog stops monitoring it entirely. Only a service restart resets watchdog state.
-
-```bash
-# Confirm in logs:
-journalctl --user -u aletheia --since "1 hour ago" | grep "max restarts exceeded"
-
-# Reset by restarting:
+# If the whole service is unhealthy, rely on systemd or restart it directly:
+systemctl --user status aletheia
 systemctl --user restart aletheia
 aletheia health
 ```
