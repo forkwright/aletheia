@@ -2,7 +2,6 @@
 
 #[cfg(feature = "recall")]
 use std::collections::BTreeSet;
-use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -18,7 +17,6 @@ use koina::secret::SecretString;
 use koina::system::{Environment, RealSystem};
 use mneme::embedding::DegradedEmbeddingProvider;
 use mneme::store::SessionStore;
-use nous::config::{NousConfig, PipelineConfig};
 use nous::cross::CrossNousRouter;
 use nous::manager::NousManager;
 use oikonomos::runner::TaskRunner;
@@ -159,88 +157,6 @@ impl RuntimeBuilder {
         self
     }
 
-    /// Validate config without building the runtime. Used by `check-config`.
-    pub(crate) fn validate(&self) -> Result<()> {
-        let mut all_ok = true;
-
-        println!("Instance root: {}", self.oikos.root().display());
-
-        if !self.oikos.root().exists() {
-            println!(
-                "  [FAIL] instance layout: instance root not found: {}\n         \
-                 help: SET ALETHEIA_ROOT or run `aletheia init`",
-                self.oikos.root().display()
-            );
-            snafu::whatever!("Cannot validate: instance root does not exist");
-        }
-
-        match self.oikos.validate() {
-            Ok(()) => println!("  [pass] instance layout"),
-            Err(e) => {
-                println!("  [FAIL] instance layout: {e}");
-                all_ok = false;
-            }
-        }
-
-        println!("  [pass] config loaded");
-
-        let config_value = match serde_json::to_value(&self.config) {
-            Ok(v) => v,
-            Err(e) => {
-                println!("  [FAIL] config serialization: {e}");
-                snafu::whatever!("config validation aborted: could not serialize config");
-            }
-        };
-
-        for section in &[
-            "agents",
-            "gateway",
-            "maintenance",
-            "data",
-            "embedding",
-            "channels",
-            "bindings",
-        ] {
-            if let Some(section_value) = config_value.get(section) {
-                match validate_section(section, section_value) {
-                    Ok(()) => println!("  [pass] {section}"),
-                    Err(e) => {
-                        println!("  [FAIL] {section}: {e}");
-                        all_ok = false;
-                    }
-                }
-            } else {
-                println!("  [pass] {section} (using defaults)");
-            }
-        }
-
-        for agent in &self.config.agents.list {
-            match self.oikos.validate_workspace_path(&agent.workspace) {
-                Ok(()) => println!("  [pass] agent '{}' workspace", agent.id),
-                Err(e) => {
-                    println!("  [FAIL] agent '{}' workspace: {e}", agent.id);
-                    all_ok = false;
-                }
-            }
-        }
-
-        if !validate_jwt(&self.config) {
-            all_ok = false;
-        }
-
-        if !validate_external_tools(&self.oikos) {
-            all_ok = false;
-        }
-
-        println!();
-        if all_ok {
-            println!("Configuration OK");
-            Ok(())
-        } else {
-            snafu::whatever!("Configuration has errors -- see above");
-        }
-    }
-
     #[expect(
         clippy::too_many_lines,
         reason = "sequential init steps: splitting would fragment the startup flow"
@@ -367,7 +283,7 @@ impl RuntimeBuilder {
 
         // Tool registry
         let mut tool_registry = if self.credentials {
-            build_tool_registry(&self.config.sandbox)?
+            build_tool_registry(&self.config, &self.oikos, &shutdown_token)?
         } else {
             ToolRegistry::new()
         };
@@ -861,185 +777,19 @@ impl RuntimeBuilder {
 
 mod validate;
 
-use validate::{validate_external_tools, validate_jwt};
+mod builder_validation;
+mod metrics;
+mod nous_config;
+
+use metrics::{RuntimeBackupMetricsRecorder, register_all_metrics, task_state_component};
+use nous_config::build_nous_runtime_config;
 
 mod setup;
 mod tool_adapters;
 
 #[cfg(feature = "recall")]
 use setup::open_knowledge_stores;
-
-fn resolve_config_path(oikos: &Oikos, configured: &str) -> PathBuf {
-    let path = Path::new(configured);
-    let absolute = if path.is_absolute() {
-        path.to_path_buf()
-    } else {
-        oikos.root().join(path)
-    };
-    absolute.canonicalize().unwrap_or(absolute)
-}
-
-fn resolve_allowed_roots(
-    oikos: &Oikos,
-    workspace: &str,
-    configured_roots: &[String],
-) -> Vec<PathBuf> {
-    let mut roots = Vec::with_capacity(configured_roots.len() + 1);
-    roots.push(resolve_config_path(oikos, workspace));
-    for root in configured_roots {
-        let resolved = resolve_config_path(oikos, root);
-        if !roots.iter().any(|existing| existing == &resolved) {
-            roots.push(resolved);
-        }
-    }
-    roots
-}
-
-fn build_nous_runtime_config(
-    config: &AletheiaConfig,
-    oikos: &Oikos,
-    packs: &[thesauros::loader::LoadedPack],
-    agent_id: &str,
-) -> (NousConfig, PipelineConfig) {
-    let resolved = resolve_nous(config, agent_id);
-    let mut domains = resolved.domains.clone();
-    let mut model = resolved.model.primary.to_string();
-    let mut max_tool_iterations = resolved.capabilities.max_tool_iterations;
-    for pack in packs {
-        for domain in pack.domains_for_agent(agent_id) {
-            if !domains.contains(&domain) {
-                domains.push(domain);
-            }
-        }
-        if let Some(pack_model) = pack.model_for_agent(agent_id) {
-            model = pack_model;
-        }
-        if let Some(agency) = pack.agency_for_agent(agent_id) {
-            max_tool_iterations = match agency.as_str() {
-                "unrestricted" => 10_000,
-                "standard" => koina::defaults::MAX_TOOL_ITERATIONS,
-                "restricted" => 50,
-                other => {
-                    warn!(
-                        agent = %agent_id,
-                        agency = %other,
-                        pack = %pack.manifest.name,
-                        "unknown agency level in pack overlay, skipping"
-                    );
-                    continue;
-                }
-            };
-        }
-    }
-
-    let nous_config = NousConfig {
-        id: resolved.id,
-        name: resolved.name,
-        generation: nous::config::NousGenerationConfig {
-            model,
-            fallback_models: resolved
-                .model
-                .fallbacks
-                .iter()
-                .map(ToString::to_string)
-                .collect(),
-            retries_before_fallback: resolved.model.retries_before_fallback,
-            context_window: resolved.limits.context_tokens,
-            max_output_tokens: resolved.limits.max_output_tokens,
-            bootstrap_max_tokens: resolved.limits.bootstrap_max_tokens,
-            thinking_enabled: resolved.capabilities.thinking_enabled,
-            thinking_budget: resolved.limits.thinking_budget,
-            chars_per_token: resolved.limits.chars_per_token,
-            prosoche_model: resolved.prosoche_model.to_string(),
-            complexity: hermeneus::complexity::ComplexityConfig::default(),
-            extraction_model: None,
-            distillation_model: None,
-        },
-        limits: nous::config::NousLimits {
-            max_tool_iterations,
-            loop_detection_threshold: 3,
-            consecutive_error_threshold: 4,
-            loop_max_warnings: 2,
-            session_token_cap: 500_000,
-            max_tool_result_bytes: resolved.limits.max_tool_result_bytes,
-            max_consecutive_tool_only_iterations: 3,
-            consecutive_mistake_limit: koina::defaults::DEFAULT_CONSECUTIVE_MISTAKE_LIMIT,
-        },
-        domains,
-        private: resolved.private,
-        episteme_cohort: resolved.episteme_cohort,
-        workspace: resolve_config_path(oikos, &resolved.workspace),
-        allowed_roots: resolve_allowed_roots(oikos, &resolved.workspace, &resolved.allowed_roots),
-        server_tools: Vec::new(),
-        cache_enabled: resolved.capabilities.cache_enabled,
-        recall: resolved.recall.into(),
-        recall_profile: resolved.recall_profile.into(),
-        tool_allowlist: None,
-        tool_groups: Vec::new(),
-        hooks: nous::config::HookConfig::default(),
-        behavior: resolved.behavior,
-    };
-    let mut extraction_cfg = mneme::extract::ExtractionConfig::default();
-    if let Some(model) = nous_config.generation.extraction_model.as_deref() {
-        model.clone_into(&mut extraction_cfg.model);
-    }
-    (
-        nous_config,
-        PipelineConfig {
-            extraction: Some(extraction_cfg),
-            training: config.training.clone(),
-            ..PipelineConfig::default()
-        },
-    )
-}
 use setup::{
     LazyEmbeddingProvider, build_provider_registry, build_signal_provider, build_tool_registry,
     start_inbound_dispatch,
 };
-
-/// Register every metrics-emitting crate's families with the shared registry.
-///
-/// WHY: `prometheus-client` has no process-wide global registry, so each
-/// crate exposes a `register(&mut Registry)` function that installs its
-/// metric families. This binary is the only assembly point that imports
-/// them all, so wiring lives here (not in pylon, which doesn't depend on
-/// every metrics-emitting crate).
-fn register_all_metrics(registry: &koina::metrics::MetricsRegistry) {
-    registry.with_registry(|r| {
-        agora::metrics::register(r);
-        dianoia::metrics::register(r);
-        mneme::metrics::register_knowledge(r);
-        mneme::metrics::register_sessions(r);
-        hermeneus::metrics::register(r);
-        melete::metrics::register(r);
-        nous::metrics::register(r);
-        oikonomos::metrics::register(r);
-        organon::metrics::register(r);
-        pylon::metrics::register(r);
-        symbolon::metrics::register(r);
-        #[cfg(feature = "energeia")]
-        energeia::metrics::prometheus::register(r);
-    });
-}
-
-#[derive(Debug)]
-struct RuntimeBackupMetricsRecorder;
-
-impl oikonomos::maintenance::BackupMetricsRecorder for RuntimeBackupMetricsRecorder {
-    fn record_backup_duration(&self, duration_secs: f64, success: bool) {
-        mneme::metrics::record_backup_duration(duration_secs, success);
-    }
-}
-
-fn task_state_component(agent_id: &str) -> String {
-    agent_id
-        .chars()
-        .map(|ch| {
-            if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
-                ch
-            } else {
-                '_'
-            }
-        })
-        .collect()
-}

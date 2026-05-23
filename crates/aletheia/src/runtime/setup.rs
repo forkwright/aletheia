@@ -25,8 +25,6 @@ use mneme::embedding::{
     DegradedEmbeddingProvider, EmbeddingConfig, EmbeddingProvider, create_provider,
 };
 use nous::manager::NousManager;
-use organon::builtins;
-use organon::registry::ToolRegistry;
 use symbolon::credential::{
     CredentialChain, CredentialFile, EnvCredentialProvider, FileCredentialProvider,
     RefreshingCredentialProvider, claude_code_default_path, claude_code_provider,
@@ -35,6 +33,10 @@ use taxis::config::{AletheiaConfig, EmbeddingSettings};
 use taxis::oikos::Oikos;
 
 use crate::error::Result;
+
+mod tool_registry;
+
+pub(super) use tool_registry::build_tool_registry;
 
 #[expect(
     clippy::too_many_lines,
@@ -384,36 +386,6 @@ fn register_declared_providers(registry: &mut ProviderRegistry, config: &Alethei
             }
         }
     }
-}
-
-pub(super) fn build_tool_registry(
-    sandbox_settings: &taxis::config::SandboxSettings,
-) -> Result<ToolRegistry> {
-    let mut registry = ToolRegistry::new();
-    let sandbox = organon::sandbox::SandboxConfig {
-        enabled: sandbox_settings.enabled,
-        enforcement: match sandbox_settings.enforcement {
-            taxis::config::SandboxEnforcementMode::Enforcing => {
-                organon::sandbox::SandboxEnforcement::Enforcing
-            }
-            _ => organon::sandbox::SandboxEnforcement::Permissive,
-        },
-        allowed_root: sandbox_settings.allowed_root.clone(),
-        extra_read_paths: sandbox_settings.extra_read_paths.clone(),
-        extra_write_paths: sandbox_settings.extra_write_paths.clone(),
-        extra_exec_paths: sandbox_settings.extra_exec_paths.clone(),
-        egress: match sandbox_settings.egress {
-            taxis::config::EgressPolicy::Deny => organon::sandbox::EgressPolicy::Deny,
-            taxis::config::EgressPolicy::Allowlist => organon::sandbox::EgressPolicy::Allowlist,
-            _ => organon::sandbox::EgressPolicy::Allow,
-        },
-        egress_allowlist: sandbox_settings.egress_allowlist.clone(),
-        nproc_limit: sandbox_settings.nproc_limit,
-    };
-    builtins::register_all_with_sandbox(&mut registry, sandbox)
-        .whatever_context("failed to register builtin tools")?;
-    info!(count = registry.definitions().len(), "tools registered");
-    Ok(registry)
 }
 
 /// Lazily-initialized embedding provider.
@@ -795,3 +767,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(all(test, feature = "energeia"))]
+#[expect(clippy::expect_used, reason = "test assertions")]
+mod setup_energeia_tests;

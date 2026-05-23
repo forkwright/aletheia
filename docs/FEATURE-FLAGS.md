@@ -18,7 +18,7 @@ Every feature flag defined in the workspace, how flags interact across crates, a
 | **aletheia** | `keyring` | no | Keyring integration | `symbolon/keyring` |
 | **aletheia** | `tui` | no | `dep:koilon` | - |
 | **aletheia** | `cc-provider` | no | Claude Code subprocess provider | `hermeneus/cc-provider` |
-| **aletheia** | `energeia` | no | `dep:energeia` | - |
+| **aletheia** | `energeia` | no | Dispatch orchestration plus service-backed Energeia agent tools in the runtime registry | `dep:energeia`, `energeia/storage-fjall`, `organon/energeia` |
 | **aletheia** | `test-core` | no | - | `mneme/test-core`, `nous/test-core`, `pylon/test-core` |
 | **aletheia** | `test-full` | no | - | `test-core`, `mneme/test-full` |
 | **daemon** (oikonomos) | `default` | **yes** | *(empty)* | - |
@@ -167,7 +167,7 @@ aletheia/embed-candle
 | `aletheia/keyring` | `symbolon/keyring` (`dep:keyring`) |
 | `aletheia/tui` | `dep:koilon` |
 | `aletheia/cc-provider` | `hermeneus/cc-provider` |
-| `aletheia/energeia` | `dep:energeia` |
+| `aletheia/energeia` | `dep:energeia`, `energeia/storage-fjall`, `organon/energeia` |
 | `organon/energeia` | `dep:energeia` (with `storage-fjall` pre-enabled) |
 | `daemon/knowledge-store` | `episteme/mneme-engine` |
 | `diaporeia/knowledge-store` | `nous/knowledge-store` |

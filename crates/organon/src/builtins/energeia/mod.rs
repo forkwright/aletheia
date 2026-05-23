@@ -41,11 +41,8 @@ use crate::registry::ToolRegistry;
 /// # Errors
 ///
 /// Returns an error if any tool name collides with an already-registered tool.
-pub fn register(
-    registry: &mut ToolRegistry,
-    services: Option<Arc<EnergeiaServices>>,
-) -> Result<()> {
-    let (orchestrator, store) = match &services {
+pub fn register(registry: &mut ToolRegistry, services: Option<&EnergeiaServices>) -> Result<()> {
+    let (orchestrator, store) = match services {
         Some(svc) => (
             Some(Arc::clone(&svc.orchestrator)),
             Some(Arc::clone(&svc.store)),

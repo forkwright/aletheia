@@ -112,8 +112,42 @@ pub fn register_all_with_sandbox(
     registry: &mut ToolRegistry,
     sandbox: SandboxConfig,
 ) -> Result<()> {
+    register_all_with_sandbox_inner(
+        registry,
+        sandbox,
+        #[cfg(feature = "energeia")]
+        None,
+    )
+}
+
+/// Register all built-in tool executors with custom sandbox config and
+/// service-backed Energeia tools.
+///
+/// # Errors
+///
+/// Returns an error if any built-in tool name collides with an
+/// already-registered tool.
+#[cfg(feature = "energeia")]
+pub fn register_all_with_sandbox_and_energeia_services(
+    registry: &mut ToolRegistry,
+    sandbox: SandboxConfig,
+    services: &energeia::EnergeiaServices,
+) -> Result<()> {
+    register_all_with_sandbox_inner(registry, sandbox, Some(services))
+}
+
+fn register_all_with_sandbox_inner(
+    registry: &mut ToolRegistry,
+    sandbox: SandboxConfig,
+    #[cfg(feature = "energeia")] energeia_services: Option<&energeia::EnergeiaServices>,
+) -> Result<()> {
     // ── Phase 1: register all domain tools ───────────────────────────────────
-    register_domain_tools(registry, sandbox)?;
+    register_domain_tools(
+        registry,
+        sandbox,
+        #[cfg(feature = "energeia")]
+        energeia_services,
+    )?;
 
     // ── Phase 2: register tool_schema with a snapshot of phase-1 definitions ──
     // WHY: tool_schema must see the complete tool set to serve schemas for
@@ -164,6 +198,7 @@ pub fn register_all_with_sandbox(
 pub(crate) fn register_domain_tools(
     registry: &mut ToolRegistry,
     sandbox: SandboxConfig,
+    #[cfg(feature = "energeia")] energeia_services: Option<&energeia::EnergeiaServices>,
 ) -> Result<()> {
     #[cfg(feature = "computer-use")]
     computer_use::register(registry, &sandbox)?;
@@ -188,10 +223,10 @@ pub(crate) fn register_domain_tools(
     triage::register(registry)?;
     parameters::register(registry)?;
     #[cfg(feature = "energeia")]
-    // WHY: No EnergeiaServices provided at this registration level — callers that
-    // have services configured should use energeia::register(registry, Some(services)).
+    // WHY: generic registration still supports service-less schemas for tests
+    // and tools that do not own the runtime; Aletheia injects real services.
     // Tools requiring services return structured errors rather than panicking.
-    energeia::register(registry, None)?;
+    energeia::register(registry, energeia_services)?;
     #[cfg(feature = "bookkeeper")]
     bookkeeper::register(registry)?;
     poiesis::register(registry)?;
@@ -216,7 +251,7 @@ mod tests {
     #[test]
     fn default_energeia_registry_excludes_unimplemented_bookkeeper_tools() -> Result<()> {
         let mut registry = ToolRegistry::new();
-        register_domain_tools(&mut registry, SandboxConfig::default())?;
+        register_domain_tools(&mut registry, SandboxConfig::default(), None)?;
         let names: Vec<&str> = registry
             .definitions()
             .iter()

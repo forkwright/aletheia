@@ -98,7 +98,7 @@ impl ToolExecutor for MetronExecutor {
             let args = &input.arguments;
             let report_type = match require_str(args, "report_type") {
                 Ok(s) => s,
-                Err(e) => return Ok(e),
+                Err(e) => return Ok(ToolResult::error(e)),
             };
             let days = opt_u64(args, "days")
                 .and_then(|d| u32::try_from(d).ok())

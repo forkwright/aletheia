@@ -102,9 +102,8 @@ impl ToolExecutor for DokimasiaExecutor {
                 Some(n) => u32::try_from(n).unwrap_or(0),
                 None => return Ok(ToolResult::error("missing required field 'prompt_number'")),
             };
-            let pr_number = match opt_u64(args, "pr_number") {
-                Some(n) => n,
-                None => return Ok(ToolResult::error("missing required field 'pr_number'")),
+            let Some(pr_number) = opt_u64(args, "pr_number") else {
+                return Ok(ToolResult::error("missing required field 'pr_number'"));
             };
             let project = opt_str(args, "project");
             if project.is_some_and(|p| p.trim().is_empty()) {
@@ -112,7 +111,7 @@ impl ToolExecutor for DokimasiaExecutor {
             }
             let diff = match require_str(args, "diff") {
                 Ok(s) => s,
-                Err(e) => return Ok(e),
+                Err(e) => return Ok(ToolResult::error(e)),
             };
             if diff.trim().is_empty() {
                 let output = serde_json::json!({
@@ -201,7 +200,7 @@ impl ToolExecutor for DiorthosisExecutor {
 
             let qa_result_id = match require_str(args, "qa_result_id") {
                 Ok(s) => s,
-                Err(e) => return Ok(e),
+                Err(e) => return Ok(ToolResult::error(e)),
             };
             let original_prompt_number = match opt_u64(args, "original_prompt_number") {
                 Some(n) => u32::try_from(n).unwrap_or(0),

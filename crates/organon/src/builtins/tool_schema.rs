@@ -209,7 +209,13 @@ mod tests {
 
         // Phase 1: register domain tools.
         let mut reg = ToolRegistry::new();
-        register_domain_tools(&mut reg, SandboxConfig::default()).expect("register_domain_tools");
+        register_domain_tools(
+            &mut reg,
+            SandboxConfig::default(),
+            #[cfg(feature = "energeia")]
+            None,
+        )
+        .expect("register_domain_tools");
 
         // Phase 2: extract schema pairs while registry is immutably borrowed.
         let pairs: Vec<(String, String)> = reg
