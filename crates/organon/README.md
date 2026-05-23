@@ -8,10 +8,10 @@ Organon (ὄργανον): "instrument." The formal instruments through which ag
 
 `organon` is the single source of truth for what tools an aletheia agent can use. It provides:
 
-- **`ToolRegistry`** — the runtime registry; tools are registered at startup and looked up by name during execution.
-- **`ToolDef`** / **`InputSchema`** — rich metadata for each tool (name, description, JSON Schema, reversibility, category).
-- **Built-in executors** — implementations for all platform tools (filesystem, workspace, memory, planning, communication, research, agent coordination, and more).
-- **`to_hermeneus_tools`** / **`to_hermeneus_tools_filtered`** — serialization to the `hermeneus::types::ToolDefinition` wire format for LLM requests.
+- **`ToolRegistry`** - the runtime registry; tools are registered at startup and looked up by name during execution.
+- **`ToolDef`** / **`InputSchema`** - rich metadata for each tool (name, description, JSON Schema, reversibility, category).
+- **Built-in executors** - implementations for all platform tools (filesystem, workspace, memory, planning, communication, research, agent coordination, and more).
+- **`to_hermeneus_tools`** / **`to_hermeneus_tools_filtered`** - serialization to the `hermeneus::types::ToolDefinition` wire format for LLM requests.
 
 ## Feature flags
 
@@ -28,7 +28,7 @@ Organon (ὄργανον): "instrument." The formal instruments through which ag
 
 ### Problem
 
-By default, every LLM request includes the full JSON Schema for every registered tool in the `tools` array. With 49+ built-in tools this is a substantial static token cost paid before the first user message — even for tools the agent never uses.
+By default, every LLM request includes the full JSON Schema for every registered tool in the `tools` array. With 49+ built-in tools this is a substantial static token cost paid before the first user message - even for tools the agent never uses.
 
 ### Solution
 
@@ -76,7 +76,7 @@ Always registered (regardless of the feature flag). Agents call it when they nee
 // Request
 { "tool_name": "plan_create" }
 
-// Response — full input_schema JSON object
+// Response - full input_schema JSON object
 {
   "type": "object",
   "properties": {
@@ -89,7 +89,7 @@ Always registered (regardless of the feature flag). Agents call it when they nee
 
 ### Enabling the flag
 
-The flag is **default OFF** in v1. Operators flip it per-deployment after the flag has soaked in a test environment. To enable in a Cargo workspace:
+Operators keep the flag **default OFF** in v1 and flip it per deployment after the flag has soaked in a test environment. To enable in a Cargo workspace:
 
 ```toml
 # Cargo.toml (workspace or crate)
@@ -115,12 +115,12 @@ Tests assert a **≥50% byte-size reduction** across the full builtin set when `
 
 ## Registration lifecycle
 
-All built-in tools are registered via `register_all` or `register_all_with_sandbox`. Registration is two-phase:
+`register_all` or `register_all_with_sandbox` registers every built-in tool in two phases:
 
 1. **Phase 1**: all domain tools are registered.
 2. **Phase 2**: `tool_schema` is registered last, capturing a serialized snapshot of every schema from phase 1.
 
-The two-phase split avoids a self-referential ownership cycle: the registry owns the `tool_schema` executor, which needs schema data from the registry. The snapshot (a `Vec<(name, json)>`) breaks the cycle — the executor is self-contained and holds no back-reference to the registry.
+The two-phase split avoids a self-referential ownership cycle: the registry owns the `tool_schema` executor, which needs schema data from the registry. The snapshot (a `Vec<(name, json)>`) breaks the cycle - the executor is self-contained and holds no back-reference to the registry.
 
 ## Standards
 

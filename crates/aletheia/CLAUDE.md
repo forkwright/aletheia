@@ -1,3 +1,9 @@
+---
+scope: "crates/aletheia/"
+defers_to: ["../../CLAUDE.md"]
+tightens: ["binary adapter, command, and startup wiring guidance"]
+---
+
 # aletheia
 
 ## At a glance
@@ -38,7 +44,7 @@ Binary entrypoint: CLI, server startup, service wiring, and adapter glue. 8.9K l
 ## Recent substrate notes
 
 - CLI scaffold commands now include export-agent, seed-skills persistence, consolidate wiring, and dry-run guards.
-- Binary wiring is responsible for connecting `AuthFacade`, provider registry, working-checkpoint services, and maintenance stores.
+- Binary wiring connects `AuthFacade`, provider registry, working-checkpoint services, and maintenance stores.
 
 ## Common tasks
 

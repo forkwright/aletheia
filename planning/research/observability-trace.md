@@ -172,7 +172,7 @@ The `TraceRotator` (`crates/daemon/src/maintenance/trace_rotation.rs`) runs as a
 
 Log retention (separate from trace rotation) prunes daily log files in `logs/` after `retention_days`.
 
-### 9. debugging workflow
+### 9. debugging trace
 
 To trace a user-visible error back to its cause:
 

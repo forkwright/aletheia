@@ -402,7 +402,7 @@ Phases 1 and 3 can be done in parallel. Phase 4 and 5 can be done in parallel af
 
 1. **Token budget explosion.** A single image costs 54-3,280 tokens. Multiple images in conversation history can exhaust the context window. The budget calculator must account for image tokens, and distillation must handle (or drop) image messages.
 
-2. **Base64 payload size.** A 5 MB image becomes ~6.7 MB base64-encoded. With multiple images in a request, the HTTP payload grows large. Consider streaming uploads or chunked encoding if this becomes a bottleneck.
+2. **Base64 request size.** A 5 MB image becomes ~6.7 MB base64-encoded. With multiple images in a request, the HTTP body grows large. Consider streaming uploads or chunked encoding if this becomes a bottleneck.
 
 3. **SQLite BLOB performance.** SQLite handles BLOBs well up to ~1 MB. Above that, performance degrades. The preprocessing step (resize to 1568x1568) keeps most images under 1 MB after compression, but this must be enforced.
 
@@ -410,7 +410,7 @@ Phases 1 and 3 can be done in parallel. Phase 4 and 5 can be done in parallel af
 
 5. **History reconstruction.** When loading conversation history, image attachments must be reconstructed into `Content::Blocks` for the API request. If images are dropped (distilled), the history must gracefully handle missing attachments without breaking the message format.
 
-6. **Cache invalidation.** The TUI image cache keys on `(PathBuf, width)`. In-memory image data from base64 needs a different cache key (message ID + attachment sequence, or content hash).
+6. **Cache invalidation.** The TUI image cache keys on `(PathBuf, width)`. In-memory image bytes from base64 need a different cache key (message ID + attachment sequence, or content hash).
 
 ---
 

@@ -1,3 +1,9 @@
+---
+scope: "crates/organon/"
+defers_to: ["../../CLAUDE.md"]
+tightens: ["tool registration, schema, tag, and sandbox guidance"]
+---
+
 # organon
 
 ## At a glance
@@ -76,12 +82,12 @@ Tool registry, executors, and sandbox. 16K lines. 49 built-in tools.
 
 ## Query axes
 
-There are two ways to query the registry for tools:
+Query the registry for tools in two ways:
 
 | Axis | Method | Semantics | When to use |
 |------|--------|-----------|-------------|
 | **Category** | `definitions_for_category` | Structural / navigational. Groups tools by domain (Workspace, Memory, Planning, etc.). | Browsing the tool surface by domain. |
-| **Tags** | `definitions_for_tags` | Operational / semantic. Returns tools whose tags intersect the query set (union semantics). | "What tools help me look things up?" — cuts across categories. |
+| **Tags** | `definitions_for_tags` | Operational / semantic. Returns tools whose tags intersect the query set (union semantics). | "What tools help me look things up?" - cuts across categories. |
 
 Tags are explicit, typed, and declared at registration time. Empty tag list returns an empty Vec (not "all tools").
 

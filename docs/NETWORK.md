@@ -9,7 +9,7 @@ Every network connection Aletheia makes, documented for transparency.
 
 ## Outbound connections
 
-Sorted by criticality (highest data-sovereignty impact first).
+Sorted by criticality (highest sovereignty impact first).
 
 | Endpoint | Protocol | Direction | Carries | Triggered by | Source reference |
 |----------|----------|-----------|---------|--------------|------------------|
@@ -20,8 +20,8 @@ Sorted by criticality (highest data-sovereignty impact first).
 | Configurable OAuth provider (PKCE / device code) | HTTPS | Outbound | Authorization codes, device codes, access tokens | `aletheia credential login` (PKCE) or `aletheia credential device-code` | `crates/symbolon/src/credential/pkce.rs:361` (authorization URL build); `crates/symbolon/src/credential/pkce.rs:612` (code→token exchange); `crates/symbolon/src/credential/device_code.rs:220` (device authorization POST); `crates/symbolon/src/credential/device_code.rs:285` (token polling POST) |
 | HuggingFace Hub (`hf-hub` internal endpoint) | HTTPS (via `ureq`) | Outbound | Model files: `config.json`, `tokenizer.json`, `model.safetensors` | First initialization of the `candle` embedding provider | `crates/episteme/src/embedding.rs:165` (hub API init); `crates/episteme/src/embedding.rs:173` (`config.json` download); `crates/episteme/src/embedding.rs:179` (`tokenizer.json` download); `crates/episteme/src/embedding.rs:185` (`model.safetensors` download) |
 | `api.github.com` | HTTPS | Outbound | Public issue metadata (title, state, labels, milestone) | Agent uses `issue_scan` or `issue_triage` built-in tool | `crates/organon/src/builtins/triage/mod.rs:359` (URL template); `crates/organon/src/builtins/triage/mod.rs:369` (HTTP GET) |
-| Arbitrary URLs (`web_fetch` tool) | HTTPS/HTTP | Outbound | Arbitrary web page content (HTML, markdown, etc.) | Agent uses `web_fetch` built-in tool | `crates/organon/src/builtins/research.rs:118` (protocol guard); `crates/organon/src/builtins/research.rs:156` (HTTP GET execution) |
-| Operator-configured external tool endpoints | HTTPS/HTTP (config-driven) | Outbound | JSON tool payload (`tool`, `kind`, `arguments`) | Agent invokes an external tool registered in `aletheia.toml` | `crates/aletheia/src/external_tools.rs:30` (config types); `crates/aletheia/src/external_tools.rs:330` (HTTP POST executor) |
+| Arbitrary URLs (`web_fetch` tool) | HTTPS/HTTP | Outbound | Arbitrary web page body (HTML, markdown, etc.) | Agent uses `web_fetch` built-in tool | `crates/organon/src/builtins/research.rs:118` (protocol guard); `crates/organon/src/builtins/research.rs:156` (HTTP GET execution) |
+| Operator-configured external tool endpoints | HTTPS/HTTP (config-driven) | Outbound | JSON tool body (`tool`, `kind`, `arguments`) | Agent invokes an external tool registered in `aletheia.toml` | `crates/aletheia/src/external_tools.rs:30` (config types); `crates/aletheia/src/external_tools.rs:330` (HTTP POST executor) |
 | Qdrant (migration only) | HTTPS/gRPC (configurable, default `localhost:6333`) | Outbound | Vector memory records (scroll points, payloads) | One-time `aletheia agent-io migrate-memory` CLI command | `crates/aletheia/src/migrate_memory.rs:68` (client build); `crates/aletheia/src/commands/agent_io.rs:106` (CLI `--qdrant-url` arg) |
 | signal-cli daemon (`localhost:8080` by default) | HTTP (JSON-RPC) | Outbound | Signal message text, recipient IDs, JSON-RPC envelopes | Sending or receiving Signal messages when Signal channel is enabled | `crates/taxis/src/config/mod.rs:268` (default host); `crates/agora/src/semeion/client.rs:88` (URL construction); `crates/agora/src/semeion/client.rs:144` (`send` RPC); `crates/agora/src/semeion/mod.rs:170` (receive poll loop) |
 | Tailscale local status query | stdio (`tailscale status --json`) | Outbound (local-only) | Local Tailscale IPv4 address | Pylon server startup (discovery file write) | `crates/pylon/src/discovery.rs:125` (subprocess spawn) |

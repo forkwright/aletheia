@@ -1,6 +1,6 @@
-# Configuration Security Defaults
+# Configuration security defaults
 
-## Gateway Auth And Bind
+## Gateway auth and bind
 
 `gateway.auth.mode = "none"` is only supported with a loopback bind such as
 `gateway.bind = "localhost"` or `127.0.0.1`.
