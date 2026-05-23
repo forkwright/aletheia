@@ -7,12 +7,16 @@
 # Mirrors harmonia's .kanon-ci.toml with aletheia-specific adjustments:
 # feature flag (test-core) and longer timeouts for the larger workspace.
 #
-# Per-stage build + test concurrency pinned to 8. Without this cap cargo
-# defaults to num_cpus (64 on this Threadripper) and parallel rustc + nextest
-# processes peak well over 100GB RSS, enough to OOM menos when any other
-# fleet work is running. 8 is the budget that keeps a single CI run under
-# ~25GB peak so serial drains don't OOM with aletheia.service + dispatch
-# fleet resident.
+# Per-stage build concurrency is pinned below the host CPU count. Without this
+# cap cargo defaults to num_cpus (64 on this Threadripper) and parallel rustc
+# processes peak well over 100GB RSS, enough to OOM menos when any other fleet
+# work is running.
+#
+# Check/clippy keep the 8-job cap. Nextest is pinned tighter
+# (`--build-jobs 4 --test-threads 4`) because it can compile and run test
+# binaries inside the same scope cgroup. The lower cap is meant to keep red
+# main runs attributable to real compile/test failures instead of sccache
+# disconnects or stage-level timeouts under fleet load.
 #
 # Keep in sync with:
 # - crates/archeion/src/ci_config.rs::default_rust_gate (upstream default)
@@ -40,7 +44,7 @@ cmd = "cargo clippy --workspace --features test-core --all-targets --jobs 8 -- -
 timeout_secs = 1800
 
 [stages."cargo nextest"]
-cmd = "cargo nextest run --workspace --features test-core --build-jobs 8 --test-threads 8 --no-fail-fast"
+cmd = "cargo nextest run --workspace --features test-core --profile ci --build-jobs 4 --test-threads 4 --no-fail-fast"
 timeout_secs = 2400
 
 # Design-token enforcement: every var(--token) reference in CSS or Rust
