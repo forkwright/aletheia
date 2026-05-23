@@ -95,10 +95,11 @@ pub(crate) struct PipelineContext {
     pub(crate) after_action_log_dir: Option<PathBuf>,
 
     // --- Health-check stage configuration ---
-    /// Primary backend health endpoint URL. `None` skips the HTTP probe.
+    /// Primary backend health endpoint URL. `None` uses the engine's
+    /// transport-specific readiness probe when one exists.
     ///
     /// OpenAI-compatible backends: `<base_url>/v1/models`.
-    /// Anthropic: omit — the stage skips gracefully when `None`.
+    /// Claude CLI transport: omit — the engine probes the CLI executable.
     pub(crate) health_endpoint: Option<String>,
     /// Fallback backend health endpoint URL.
     ///

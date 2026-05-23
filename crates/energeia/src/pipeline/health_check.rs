@@ -1,9 +1,10 @@
 // WHY: Health-check stage verifies the target LLM backend is reachable before
 // spawning dispatch sessions. Running this before execution means unreachable-
 // backend failures surface immediately with a clear [health_check] error rather
-// than only after sessions time out. The probe is intentionally lightweight:
-// one GET to /v1/models (OpenAI-compatible) with a 5s timeout. Providers that
-// don't expose a health endpoint are skipped gracefully via None.
+// than only after sessions time out. The configured HTTP probe performs one
+// GET to /v1/models (OpenAI-compatible) with a 5s timeout. When no HTTP
+// endpoint is configured, the stage asks the engine for its own lightweight
+// readiness probe (for example, the Claude CLI transport runs `claude --version`).
 
 use std::time::Instant;
 
@@ -20,9 +21,10 @@ use crate::pipeline::error::{PipelineError, StageSnafu};
 
 /// Health-check stage: probe the target LLM backend before execution.
 ///
-/// Runs between preparation and execution. If `ctx.health_endpoint` is `None`
-/// the stage passes immediately — providers without a health endpoint are
-/// skipped gracefully.
+/// Runs between preparation and execution. If `ctx.health_endpoint` is `None`,
+/// the stage asks the engine for a transport-specific readiness probe. Engines
+/// that cannot provide a lightweight probe may return `Ok(None)` and the stage
+/// then skips gracefully.
 ///
 /// Probe rules:
 /// - Timeout: `ctx.health_probe_timeout` (default 5 s).
@@ -41,14 +43,28 @@ impl PipelineStage for HealthCheckStage {
     async fn run(&self, ctx: &mut PipelineContext) -> Result<(), PipelineError> {
         let t0 = std::time::Instant::now();
 
+        let timeout = ctx.health_probe_timeout;
         let Some(ref endpoint) = ctx.health_endpoint.clone() else {
-            // No endpoint configured — skip gracefully.
-            tracing::debug!("health_check: no endpoint configured, skipping probe");
+            match ctx
+                .engine
+                .probe_health(timeout)
+                .await
+                .context(StageSnafu { stage: self.name() })?
+            {
+                Some(latency_ms) => {
+                    tracing::info!(latency_ms, "health_check: engine probe succeeded");
+                    ctx.health_probe_latency_ms = Some(latency_ms);
+                }
+                None => {
+                    tracing::debug!(
+                        "health_check: no HTTP endpoint configured and engine has no probe"
+                    );
+                }
+            }
             ctx.record_stage_latency(self.name(), t0.elapsed());
             return Ok(());
         };
 
-        let timeout = ctx.health_probe_timeout;
         let client = build_client(timeout).context(StageSnafu { stage: self.name() })?;
 
         let result = match probe(&client, endpoint).await {
@@ -184,11 +200,16 @@ async fn probe(client: &reqwest::Client, url: &str) -> ProbeOutcome {
 #[expect(clippy::expect_used, reason = "test assertions")]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
+    use std::future::Future;
+    use std::pin::Pin;
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
+    use crate::engine::{AgentOptions, DispatchEngine, SessionHandle, SessionSpec};
+    use crate::error::Result;
     use crate::http::mock::MockEngine;
     use crate::orchestrator::OrchestratorConfig;
     use crate::pipeline::PipelineStage as _;
@@ -241,6 +262,87 @@ mod tests {
 
     fn make_context() -> PipelineContext {
         let engine = Arc::new(MockEngine::new(vec![]));
+        let qa = Arc::new(AlwaysPassQa);
+        let spec = DispatchSpec::new("acme".to_owned(), vec![1]);
+        let prompts = vec![PromptSpec {
+            number: 1,
+            description: "test".to_owned(),
+            depends_on: vec![],
+            acceptance_criteria: vec![],
+            blast_radius: vec![],
+            body: "do the thing".to_owned(),
+
+            prompt_components: None,
+        }];
+        PipelineContext::new(
+            spec,
+            prompts,
+            engine,
+            qa,
+            OrchestratorConfig::default(),
+            #[cfg(feature = "storage-fjall")]
+            None,
+        )
+    }
+
+    struct ProbeOnlyEngine {
+        calls: AtomicUsize,
+        latency_ms: u64,
+    }
+
+    impl ProbeOnlyEngine {
+        fn new(latency_ms: u64) -> Self {
+            Self {
+                calls: AtomicUsize::new(0),
+                latency_ms,
+            }
+        }
+
+        fn calls(&self) -> usize {
+            self.calls.load(Ordering::SeqCst)
+        }
+    }
+
+    impl DispatchEngine for ProbeOnlyEngine {
+        fn probe_health<'a>(
+            &'a self,
+            _timeout: std::time::Duration,
+        ) -> Pin<Box<dyn Future<Output = Result<Option<u64>>> + Send + 'a>> {
+            Box::pin(async move {
+                self.calls.fetch_add(1, Ordering::SeqCst);
+                Ok(Some(self.latency_ms))
+            })
+        }
+
+        fn spawn_session<'a>(
+            &'a self,
+            _spec: &'a SessionSpec,
+            _options: &'a AgentOptions,
+        ) -> Pin<Box<dyn Future<Output = Result<Box<dyn SessionHandle>>> + Send + 'a>> {
+            Box::pin(async {
+                crate::error::EngineSnafu {
+                    detail: "test probe engine cannot spawn sessions",
+                }
+                .fail()
+            })
+        }
+
+        fn resume_session<'a>(
+            &'a self,
+            _session_id: &'a str,
+            _prompt: &'a str,
+            _options: &'a AgentOptions,
+        ) -> Pin<Box<dyn Future<Output = Result<Box<dyn SessionHandle>>> + Send + 'a>> {
+            Box::pin(async {
+                crate::error::EngineSnafu {
+                    detail: "test probe engine cannot resume sessions",
+                }
+                .fail()
+            })
+        }
+    }
+
+    fn make_context_with_engine(engine: Arc<dyn DispatchEngine>) -> PipelineContext {
         let qa = Arc::new(AlwaysPassQa);
         let spec = DispatchSpec::new("acme".to_owned(), vec![1]);
         let prompts = vec![PromptSpec {
@@ -469,5 +571,19 @@ mod tests {
             ctx.health_probe_latency_ms.is_none(),
             "no latency should be recorded when probe was skipped"
         );
+    }
+
+    #[tokio::test]
+    async fn no_endpoint_uses_engine_health_probe_when_available() {
+        let engine = Arc::new(ProbeOnlyEngine::new(17));
+        let mut ctx = make_context_with_engine(engine.clone());
+
+        HealthCheckStage
+            .run(&mut ctx)
+            .await
+            .expect("engine probe should succeed");
+
+        assert_eq!(ctx.health_probe_latency_ms, Some(17));
+        assert_eq!(engine.calls(), 1);
     }
 }
