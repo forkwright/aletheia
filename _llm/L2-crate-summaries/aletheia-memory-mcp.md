@@ -1,6 +1,6 @@
 # aletheia-memory-mcp
 
-**Purpose:** Standalone stdio MCP server exposing Aletheia's memory and knowledge graph (read-only) to external agents.
+**Purpose:** Standalone stdio MCP server exposing Aletheia's memory and token-gated write tools to external agents.
 
 ## Key types
 
@@ -24,4 +24,4 @@
 
 ## Recent changes
 
-The standalone MCP surface uses the nous_* namespace and clearly separates Aletheia local nous memory from kanon mnemosyne.
+The standalone MCP surface uses the nous_* namespace, hides write tools unless a per-process capability token is configured, and clearly separates Aletheia local nous memory from kanon mnemosyne.
