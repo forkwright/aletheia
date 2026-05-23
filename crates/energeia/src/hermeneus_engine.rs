@@ -6,12 +6,13 @@
 //! static prefix is placed in the system prompt with
 //! `cache_system: true`, enabling Anthropic prompt cache hits.
 
+use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Instant;
 
-use hermeneus::provider::LlmProvider;
+use hermeneus::provider::{LlmProvider, ModelPricing, ProviderConfig};
 use hermeneus::types::{CompletionRequest, Content, Message, Role, StopReason};
 
 use crate::engine::{
@@ -31,6 +32,7 @@ use crate::error::{self, Result};
 pub struct HermeneusEngine {
     provider: Arc<dyn LlmProvider>,
     default_model: String,
+    pricing: HashMap<String, ModelPricing>,
 }
 
 impl HermeneusEngine {
@@ -40,6 +42,22 @@ impl HermeneusEngine {
         Self {
             provider,
             default_model: default_model.into(),
+            pricing: ProviderConfig::default().pricing,
+        }
+    }
+
+    /// Create a new engine with per-model pricing used when provider responses
+    /// include token usage but omit precomputed cost metadata.
+    #[must_use]
+    pub fn with_pricing(
+        provider: Arc<dyn LlmProvider>,
+        default_model: impl Into<String>,
+        pricing: HashMap<String, ModelPricing>,
+    ) -> Self {
+        Self {
+            provider,
+            default_model: default_model.into(),
+            pricing,
         }
     }
 
@@ -79,6 +97,58 @@ impl HermeneusEngine {
             ..CompletionRequest::default()
         }
     }
+
+    /// Compute cost from usage metadata when the provider did not fill it.
+    fn cost_from_response(
+        &self,
+        response: &hermeneus::types::CompletionResponse,
+        model: &str,
+    ) -> f64 {
+        response
+            .cost_usd
+            .unwrap_or_else(|| estimate_usage_cost(&self.pricing, model, &response.usage))
+    }
+}
+
+fn pricing_for_model<'a>(
+    pricing: &'a HashMap<String, ModelPricing>,
+    model: &str,
+) -> Option<&'a ModelPricing> {
+    pricing.get(model).or_else(|| {
+        pricing
+            .iter()
+            .find(|(key, _)| {
+                model.len() > key.len()
+                    && model.starts_with(key.as_str())
+                    && model.as_bytes().get(key.len()) == Some(&b'-')
+            })
+            .map(|(_, pricing)| pricing)
+    })
+}
+
+#[expect(
+    clippy::cast_precision_loss,
+    clippy::as_conversions,
+    reason = "u64 token counts to f64 are acceptable for cost estimates"
+)]
+fn estimate_usage_cost(
+    pricing: &HashMap<String, ModelPricing>,
+    model: &str,
+    usage: &hermeneus::types::Usage,
+) -> f64 {
+    const CACHE_READ_DISCOUNT: f64 = 0.1;
+    const CACHE_WRITE_PREMIUM: f64 = 1.25;
+
+    let Some(pricing) = pricing_for_model(pricing, model) else {
+        return 0.0;
+    };
+
+    ((usage.input_tokens as f64 // kanon:ignore RUST/as-cast
+        + usage.cache_read_tokens as f64 * CACHE_READ_DISCOUNT // kanon:ignore RUST/as-cast
+        + usage.cache_write_tokens as f64 * CACHE_WRITE_PREMIUM) // kanon:ignore RUST/as-cast
+        * pricing.input_cost_per_mtok
+        + usage.output_tokens as f64 * pricing.output_cost_per_mtok) // kanon:ignore RUST/as-cast
+        / 1_000_000.0
 }
 
 impl DispatchEngine for HermeneusEngine {
@@ -118,7 +188,7 @@ impl DispatchEngine for HermeneusEngine {
 
             let result = SessionResult {
                 session_id: session_id.clone(),
-                cost_usd: response.cost_usd.unwrap_or(0.0),
+                cost_usd: self.cost_from_response(&response, &request.model),
                 num_turns: 1,
                 duration_ms,
                 success,
@@ -191,7 +261,7 @@ impl DispatchEngine for HermeneusEngine {
 
             let result = SessionResult {
                 session_id: session_id.clone(),
-                cost_usd: response.cost_usd.unwrap_or(0.0),
+                cost_usd: self.cost_from_response(&response, &request.model),
                 num_turns: 1,
                 duration_ms,
                 success,
@@ -265,8 +335,11 @@ impl SessionHandle for HermeneusSessionHandle {
 #[cfg(test)]
 #[expect(clippy::indexing_slicing, reason = "test assertions")]
 mod tests {
-    use super::*;
+    use hermeneus::types::Usage;
+
     use crate::prompt_cache::PromptComponents;
+
+    use super::*;
 
     #[test]
     fn build_request_with_components_enables_cache_system() {
@@ -348,6 +421,77 @@ mod tests {
         assert!((result.cost_usd - 0.123).abs() < f64::EPSILON);
         assert_eq!(result.duration_ms, 456);
         assert_eq!(result.num_turns, 1);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn session_result_estimates_cost_from_usage_when_provider_omits_cost() -> Result<()> {
+        let mut response = hermeneus::test_utils::make_response("done");
+        response.cost_usd = None;
+        response.usage = Usage {
+            input_tokens: 1_000,
+            output_tokens: 500,
+            cache_read_tokens: 100,
+            cache_write_tokens: 40,
+        };
+        let provider = Arc::new(hermeneus::test_utils::MockProvider::with_responses(vec![
+            response,
+        ]));
+        let pricing = HashMap::from([(
+            "gpt-test".to_owned(),
+            ModelPricing {
+                input_cost_per_mtok: 2.0,
+                output_cost_per_mtok: 8.0,
+            },
+        )]);
+        let engine = HermeneusEngine::with_pricing(provider, "gpt-test-2026-05-23", pricing);
+        let spec = SessionSpec {
+            prompt: "do it".to_owned(),
+            system_prompt: None,
+            cwd: None,
+            prompt_components: None,
+        };
+
+        let handle = engine.spawn_session(&spec, &AgentOptions::new()).await?;
+        let result = handle.wait().await?;
+
+        let expected = ((1_000.0 + 100.0 * 0.1 + 40.0 * 1.25) * 2.0 + 500.0 * 8.0) / 1_000_000.0;
+        assert!((result.cost_usd - expected).abs() < f64::EPSILON);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn provider_supplied_cost_takes_precedence_over_usage_estimate() -> Result<()> {
+        let mut response = hermeneus::test_utils::make_response("done");
+        response.cost_usd = Some(0.321);
+        response.usage = Usage {
+            input_tokens: 1_000_000,
+            output_tokens: 1_000_000,
+            cache_read_tokens: 0,
+            cache_write_tokens: 0,
+        };
+        let provider = Arc::new(hermeneus::test_utils::MockProvider::with_responses(vec![
+            response,
+        ]));
+        let pricing = HashMap::from([(
+            "gpt-test".to_owned(),
+            ModelPricing {
+                input_cost_per_mtok: 99.0,
+                output_cost_per_mtok: 99.0,
+            },
+        )]);
+        let engine = HermeneusEngine::with_pricing(provider, "gpt-test", pricing);
+        let spec = SessionSpec {
+            prompt: "do it".to_owned(),
+            system_prompt: None,
+            cwd: None,
+            prompt_components: None,
+        };
+
+        let handle = engine.spawn_session(&spec, &AgentOptions::new()).await?;
+        let result = handle.wait().await?;
+
+        assert!((result.cost_usd - 0.321).abs() < f64::EPSILON);
         Ok(())
     }
 }
