@@ -21,3 +21,20 @@ WORKFLOW/llm-schema-valid:_llm/turn-pipeline.toml
 
 # WHY(#3987): proskenion is a standalone desktop manifest under this repo corpus
 WORKFLOW/llm-corpus-required:crates/theatron/proskenion/Cargo.toml
+
+# WHY(#3987): generated _llm crate summaries mirror extracted names and crate metadata
+WRITING/ai-trope:harness:_llm/L2-crate-summaries/integration-tests.md
+WRITING/definitional-opening:_llm/L2-crate-summaries/proskenion.md
+
+# WHY(#3987): generated _llm API indexes mirror extracted Rust doc comments; fix generator/policy before hand-editing snapshots
+WRITING/ai-trope:additionally:_llm/L3-api-index/*.md
+WRITING/ai-trope:comprehensive:_llm/L3-api-index/*.md
+WRITING/ai-trope:harness:_llm/L3-api-index/*.md
+WRITING/ai-trope:underscore:_llm/L3-api-index/*.md
+WRITING/double-space-after-period:_llm/L3-api-index/*.md
+WRITING/elegant-variation:_llm/L3-api-index/*.md
+WRITING/filler-phrase:_llm/L3-api-index/*.md
+WRITING/minimizer:_llm/L3-api-index/*.md
+WRITING/paragraph-length:_llm/L3-api-index/*.md
+WRITING/temporal-staleness:_llm/L3-api-index/*.md
+WRITING/weasel-word:_llm/L3-api-index/*.md
