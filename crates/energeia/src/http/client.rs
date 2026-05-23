@@ -9,6 +9,7 @@
 use std::future::Future;
 use std::pin::Pin;
 use std::process::Stdio;
+use std::time::Instant;
 
 use tokio::process::Command;
 
@@ -147,6 +148,54 @@ impl HttpEngine {
 }
 
 impl DispatchEngine for HttpEngine {
+    fn probe_health<'a>(
+        &'a self,
+        timeout: std::time::Duration,
+    ) -> Pin<Box<dyn Future<Output = Result<Option<u64>>> + Send + 'a>> {
+        Box::pin(async move {
+            let t0 = Instant::now();
+            let mut cmd = Command::new(&self.binary);
+            cmd.arg("--version")
+                .stdout(Stdio::null())
+                .stderr(Stdio::null());
+            cmd.kill_on_drop(true);
+
+            let mut child = cmd.spawn().map_err(|e| {
+                error::EngineSnafu {
+                    detail: format!("failed to spawn claude health probe: {e}"),
+                }
+                .build()
+            })?;
+
+            let status = match tokio::time::timeout(timeout, child.wait()).await {
+                Ok(Ok(status)) => status,
+                Ok(Err(e)) => {
+                    return Err(error::EngineSnafu {
+                        detail: format!("claude health probe failed while waiting: {e}"),
+                    }
+                    .build());
+                }
+                Err(_) => {
+                    let _ = child.start_kill();
+                    return Err(error::EngineSnafu {
+                        detail: format!("claude health probe timed out after {timeout:?}"),
+                    }
+                    .build());
+                }
+            };
+
+            if status.success() {
+                let latency_ms = u64::try_from(t0.elapsed().as_millis()).unwrap_or(u64::MAX);
+                Ok(Some(latency_ms))
+            } else {
+                Err(error::EngineSnafu {
+                    detail: format!("claude health probe exited with status {status}"),
+                }
+                .build())
+            }
+        })
+    }
+
     fn spawn_session<'a>(
         &'a self,
         spec: &'a SessionSpec,

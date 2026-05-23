@@ -6,6 +6,7 @@
 use std::future::Future;
 use std::path::PathBuf;
 use std::pin::Pin;
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
@@ -24,6 +25,17 @@ use crate::error::Result;
     reason = "async trait methods returning boxed trait objects require nested generics"
 )]
 pub trait DispatchEngine: Send + Sync {
+    /// Probe backend readiness before dispatch execution.
+    ///
+    /// Returning `Ok(Some(latency_ms))` records a successful probe. Returning
+    /// `Ok(None)` means this engine has no lightweight readiness probe.
+    fn probe_health<'a>(
+        &'a self,
+        _timeout: Duration,
+    ) -> Pin<Box<dyn Future<Output = Result<Option<u64>>> + Send + 'a>> {
+        Box::pin(async { Ok(None) })
+    }
+
     /// Spawn a new agent session for the given spec and options.
     fn spawn_session<'a>(
         &'a self,
@@ -90,7 +102,7 @@ pub struct SessionSpec {
 ///
 /// Built incrementally via the builder methods.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(from = "AgentOptionsRaw")]
+#[serde(deny_unknown_fields, from = "AgentOptionsRaw")]
 #[non_exhaustive]
 pub struct AgentOptions {
     /// LLM model identifier (e.g., "claude-sonnet-4-20250514").
@@ -109,6 +121,7 @@ pub struct AgentOptions {
 
 /// Raw deserialization type for [`AgentOptions`].
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct AgentOptionsRaw {
     model: Option<String>,
     system_prompt: Option<String>,
