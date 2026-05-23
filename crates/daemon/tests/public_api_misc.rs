@@ -123,15 +123,17 @@ fn workspace_guard_acquires_releases_and_reacquires_cleanly() {
 fn coordinator_preserves_max_children_limit() {
     let coord = Coordinator::new(4);
     assert_eq!(coord.max_children(), 4);
-    // Coordinator is intentionally small — verify it survives zero capacity.
+    // Coordinator is a reserved boundary today: it preserves configuration but
+    // does not spawn or track children yet. Verify it survives zero capacity.
     let zero = Coordinator::new(0);
     assert_eq!(zero.max_children(), 0);
 }
 
 #[test]
 fn trigger_router_default_and_new_produce_equivalent_routers() {
-    // TriggerRouter currently has no observable state, so we verify only that
-    // both constructors succeed and the type is Debug-printable.
+    // TriggerRouter is a reserved boundary today with no observable event
+    // dispatch state. Verify both constructors succeed and the type remains
+    // Debug-printable while it is unwired.
     let via_new = TriggerRouter::new();
     let via_default = TriggerRouter::default();
     let new_debug = format!("{via_new:?}");

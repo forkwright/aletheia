@@ -22,8 +22,8 @@
 | Scheduling | `schedule.rs` | Cron expressions (jiff-native parser), intervals, one-shots, jitter |
 | Prosoche | `prosoche.rs` | Periodic attention checks - agent surveys environment | 
 | Maintenance | `maintenance/` | Trace rotation, drift detection, DB monitoring, retention, knowledge maintenance, fact-extraction persistence |
-| Coordination | `coordination.rs` | Child agent spawning with concurrency limits |
-| Triggers | `triggers.rs` | Event-driven activation: file watchers, webhooks |
+| Coordination | `coordination.rs` | Reserved child-agent concurrency boundary; no spawn/join lifecycle is wired yet |
+| Triggers | `triggers.rs` | Reserved external trigger boundary; no file watcher or webhook dispatch is wired yet |
 | Watchdog | `watchdog.rs` | Tested process heartbeat monitor library; not wired into runtime startup yet |
 | State | `state.rs` | fjall persistence, workspace config, single-instance locking |
 
@@ -32,6 +32,8 @@
 - **Dispatch orchestration** - energeia handles prompt dispatch, session management, and QA
 - **Cross-project coordination** - dianoia (#2291) handles attention allocation across projects
 - **Planning** - dianoia handles plan lifecycle, phase gates, stuck detection
+- **External event triggers** - file-watcher and webhook config fields are reserved; the daemon does not listen for those events yet
+- **Child-agent lifecycle management** - `Coordinator` stores the intended concurrency limit, but it does not spawn, join, kill, or track children yet
 
 ### Relationship to dianoia
 
@@ -54,19 +56,19 @@ KAIROS mode composes the daemon subsystems into continuous autonomous operation:
                     │  (cron loop) │
                     └──────┬──────┘
                            │
-              ┌────────────┼────────────┐
-              ▼            ▼            ▼
-        ┌──────────┐ ┌──────────┐ ┌──────────┐
-        │ Prosoche │ │  Maint.  │ │ Triggers │
-        │ (attend) │ │ (rotate, │ │  (watch,  │
-        │          │ │  gc, ...)│ │  webhook) │
-        └────┬─────┘ └──────────┘ └─────┬────┘
-             │                          │
-             ▼                          ▼
-        ┌──────────┐           ┌──────────────┐
-        │  Daemon   │           │ Coordination │
-        │  Bridge   │           │ (child spawn)│
-        └────┬─────┘           └──────────────┘
+              ┌────────────┴────────────┐
+              ▼                         ▼
+        ┌──────────┐ ┌──────────┐
+        │ Prosoche │ │  Maint.  │
+        │ (attend) │ │ (rotate, │
+        │          │ │  gc, ...)│
+        └────┬─────┘ └──────────┘
+             │
+             ▼
+        ┌──────────┐
+        │  Daemon  │
+        │  Bridge  │
+        └────┬─────┘
              │
              ▼
         ┌──────────┐
@@ -74,6 +76,10 @@ KAIROS mode composes the daemon subsystems into continuous autonomous operation:
         │  Actor   │
         └──────────┘
 ```
+
+`TriggerRouter` and `Coordinator` remain reserved API boundaries outside the
+live diagram until external event dispatch and child-agent lifecycle tracking
+are implemented.
 
 ### Scheduling
 
@@ -122,5 +128,10 @@ Active windows restrict execution to time ranges (e.g., `active_window: Some((8,
 ## Status
 
 Oikonomos is implemented. KAIROS mode is scaffolded - the subsystems exist and are tested, and maintenance now includes persistent fact extraction plus drift/knowledge maintenance wiring. The full autonomous prosoche-to-decision-to-action loop remains the boundary for KAIROS completion. Integration with dianoia for cross-project attention is planned for Phase 05e.
+
+Event-driven triggers and child-agent coordination are also still scaffolded:
+their public types and config fields reserve the future boundary, but no
+runtime path starts file watchers, listens for webhooks, or manages child-agent
+lifecycles today.
 
 See [PROSOCHE.md](PROSOCHE.md) for the attention subsystem detail.
