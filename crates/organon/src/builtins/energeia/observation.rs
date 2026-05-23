@@ -83,7 +83,7 @@ impl ToolExecutor for ParateresisExecutor {
             let args = &input.arguments;
             let project = match require_str(args, "project") {
                 Ok(s) => s,
-                Err(e) => return Ok(e),
+                Err(e) => return Ok(ToolResult::error(e)),
             };
             let days = opt_u64(args, "days")
                 .and_then(|d| u32::try_from(d).ok())
@@ -223,7 +223,7 @@ impl ToolExecutor for MathesisExecutor {
             let args = &input.arguments;
             let action = match require_str(args, "action") {
                 Ok(s) => s,
-                Err(e) => return Ok(e),
+                Err(e) => return Ok(ToolResult::error(e)),
             };
 
             match action {
@@ -252,13 +252,10 @@ impl ToolExecutor for MathesisExecutor {
                     }
                 }
                 "record" => {
-                    let lesson_text = match require_str(args, "lesson") {
-                        Ok(s) => s,
-                        Err(_) => {
-                            return Ok(ToolResult::error(
-                                "mathesis: 'lesson' field required for action 'record'",
-                            ));
-                        }
+                    let Ok(lesson_text) = require_str(args, "lesson") else {
+                        return Ok(ToolResult::error(
+                            "mathesis: 'lesson' field required for action 'record'",
+                        ));
                     };
                     let source = opt_str(args, "source").unwrap_or("dispatch").to_owned();
                     let category = opt_str(args, "category").unwrap_or("general").to_owned();

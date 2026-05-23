@@ -78,10 +78,7 @@ fn setup() -> (TempDir, Arc<EnergeiaServices>) {
     let orchestrator =
         Arc::new(Orchestrator::new(engine, qa, config).with_store(Arc::clone(&store)));
 
-    let services = Arc::new(EnergeiaServices {
-        orchestrator,
-        store,
-    });
+    let services = Arc::new(EnergeiaServices::new(orchestrator, store));
 
     (tmp, services)
 }
@@ -138,7 +135,7 @@ async fn all_nine_tools_return_non_error() {
     let ctx = make_ctx();
 
     let mut registry = ToolRegistry::new();
-    register(&mut registry, Some(Arc::clone(&services)))
+    register(&mut registry, Some(services.as_ref()))
         .expect("all 9 tools register without collision");
 
     assert_eq!(
@@ -303,7 +300,7 @@ async fn dokimasia_empty_diff_returns_no_work() {
     let (_tmp, services) = setup();
     let ctx = make_ctx();
     let mut registry = ToolRegistry::new();
-    register(&mut registry, Some(services)).expect("register");
+    register(&mut registry, Some(services.as_ref())).expect("register");
 
     let input = make_input(
         "dokimasia",
@@ -556,7 +553,7 @@ async fn dokimasia_runs_without_project() {
     let (_tmp, services) = setup();
     let ctx = make_ctx();
     let mut registry = ToolRegistry::new();
-    register(&mut registry, Some(services)).expect("register");
+    register(&mut registry, Some(services.as_ref())).expect("register");
 
     let input = make_input(
         "dokimasia",

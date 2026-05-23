@@ -95,16 +95,17 @@ impl ToolExecutor for ProographeExecutor {
         Box::pin(async move {
             let args = &input.arguments;
 
-            let description = opt_str(args, "description")
-                .map(ToOwned::to_owned)
-                .unwrap_or_else(|| {
+            let description = opt_str(args, "description").map_or_else(
+                || {
                     let issue_num = opt_u64(args, "from_issue").unwrap_or(0);
                     if issue_num > 0 {
                         format!("Implement GitHub issue #{issue_num}")
                     } else {
                         "Task description".to_owned()
                     }
-                });
+                },
+                ToOwned::to_owned,
+            );
 
             let criteria: Vec<String> = args
                 .get("criteria")
@@ -124,10 +125,13 @@ impl ToolExecutor for ProographeExecutor {
             let criteria_yaml = if criteria.is_empty() {
                 "  - \"(to be defined)\"\n".to_owned()
             } else {
-                criteria
-                    .iter()
-                    .map(|c| format!("  - \"{c}\"\n"))
-                    .collect::<String>()
+                let mut yaml = String::new();
+                for criterion in &criteria {
+                    yaml.push_str("  - \"");
+                    yaml.push_str(criterion);
+                    yaml.push_str("\"\n");
+                }
+                yaml
             };
 
             let spec_yaml = format!(
@@ -194,7 +198,7 @@ impl ToolExecutor for SchedionExecutor {
             let args = &input.arguments;
             let project = match require_str(args, "project") {
                 Ok(s) => s,
-                Err(e) => return Ok(e),
+                Err(e) => return Ok(ToolResult::error(e)),
             };
 
             // WHY: Prompt files aren't accessible from the project slug alone —

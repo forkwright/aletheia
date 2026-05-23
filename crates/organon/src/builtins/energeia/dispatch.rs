@@ -119,11 +119,11 @@ impl ToolExecutor for DromeusExecutor {
             let args = &input.arguments;
             let spec_str = match require_str(args, "spec") {
                 Ok(s) => s,
-                Err(e) => return Ok(e),
+                Err(e) => return Ok(ToolResult::error(e)),
             };
             let project = match require_str(args, "project") {
                 Ok(s) => s,
-                Err(e) => return Ok(e),
+                Err(e) => return Ok(ToolResult::error(e)),
             };
             if project.trim().is_empty() {
                 return Ok(ToolResult::error("missing required field 'project'"));

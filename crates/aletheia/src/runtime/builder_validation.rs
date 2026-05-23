@@ -1,0 +1,106 @@
+use std::fmt::Arguments;
+use std::io::Write as _;
+
+use taxis::validate::validate_section;
+
+use super::RuntimeBuilder;
+use super::validate::{validate_external_tools, validate_jwt};
+use crate::error::Result;
+
+fn print_line(args: Arguments<'_>) {
+    let mut stdout = std::io::stdout().lock();
+    if let Err(error) = stdout.write_fmt(args) {
+        tracing::warn!(%error, "failed to write validation output");
+        return;
+    }
+    if let Err(error) = stdout.write_all(b"\n") {
+        tracing::warn!(%error, "failed to write validation output newline");
+    }
+}
+
+impl RuntimeBuilder {
+    /// Validate config without building the runtime. Used by `check-config`.
+    pub(crate) fn validate(&self) -> Result<()> {
+        let mut all_ok = true;
+
+        print_line(format_args!(
+            "Instance root: {}",
+            self.oikos.root().display()
+        ));
+
+        if !self.oikos.root().exists() {
+            print_line(format_args!(
+                "  [FAIL] instance layout: instance root not found: {}\n         \
+                 help: SET ALETHEIA_ROOT or run `aletheia init`",
+                self.oikos.root().display()
+            ));
+            snafu::whatever!("Cannot validate: instance root does not exist");
+        }
+
+        match self.oikos.validate() {
+            Ok(()) => print_line(format_args!("  [pass] instance layout")),
+            Err(e) => {
+                print_line(format_args!("  [FAIL] instance layout: {e}"));
+                all_ok = false;
+            }
+        }
+
+        print_line(format_args!("  [pass] config loaded"));
+
+        let config_value = match serde_json::to_value(&self.config) {
+            Ok(v) => v,
+            Err(e) => {
+                print_line(format_args!("  [FAIL] config serialization: {e}"));
+                snafu::whatever!("config validation aborted: could not serialize config");
+            }
+        };
+
+        for section in &[
+            "agents",
+            "gateway",
+            "maintenance",
+            "data",
+            "embedding",
+            "channels",
+            "bindings",
+        ] {
+            if let Some(section_value) = config_value.get(section) {
+                match validate_section(section, section_value) {
+                    Ok(()) => print_line(format_args!("  [pass] {section}")),
+                    Err(e) => {
+                        print_line(format_args!("  [FAIL] {section}: {e}"));
+                        all_ok = false;
+                    }
+                }
+            } else {
+                print_line(format_args!("  [pass] {section} (using defaults)"));
+            }
+        }
+
+        for agent in &self.config.agents.list {
+            match self.oikos.validate_workspace_path(&agent.workspace) {
+                Ok(()) => print_line(format_args!("  [pass] agent '{}' workspace", agent.id)),
+                Err(e) => {
+                    print_line(format_args!("  [FAIL] agent '{}' workspace: {e}", agent.id));
+                    all_ok = false;
+                }
+            }
+        }
+
+        if !validate_jwt(&self.config) {
+            all_ok = false;
+        }
+
+        if !validate_external_tools(&self.oikos) {
+            all_ok = false;
+        }
+
+        print_line(format_args!(""));
+        if all_ok {
+            print_line(format_args!("Configuration OK"));
+            Ok(())
+        } else {
+            snafu::whatever!("Configuration has errors -- see above");
+        }
+    }
+}

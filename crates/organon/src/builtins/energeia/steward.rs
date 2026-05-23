@@ -89,7 +89,7 @@ impl ToolExecutor for EpitroposExecutor {
 
             let project = match require_str(args, "project") {
                 Ok(s) => s,
-                Err(e) => return Ok(e),
+                Err(e) => return Ok(ToolResult::error(e)),
             };
             let once = opt_bool(args, "once").unwrap_or(false);
             let dry_run = opt_bool(args, "dry_run").unwrap_or(false);

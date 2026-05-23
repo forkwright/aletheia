@@ -44,8 +44,9 @@ cc-provider = ["hermeneus/cc-provider"]
 codex-provider = ["hermeneus/codex-provider"]
 # Kimi subprocess provider: delegates LLM calls to the `kimi` CLI.
 kimi-provider = ["hermeneus/kimi-provider"]
-# Dispatch orchestration (kanon phronesis port). Default off for incremental development.
-energeia = ["dep:energeia"]
+# Dispatch orchestration and agent-facing Energeia capability tools. Default off for
+# incremental development.
+energeia = ["dep:energeia", "energeia/storage-fjall", "organon/energeia"]
 # Test tiers (see docs/test-tiers.md)
 test-core = ["mneme/test-core", "nous/test-core", "pylon/test-core"]
 test-full = ["test-core", "mneme/test-full", "online-tests"]
