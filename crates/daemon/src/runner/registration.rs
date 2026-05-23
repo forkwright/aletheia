@@ -158,7 +158,9 @@ impl TaskRunner {
     /// All cron tasks are disabled by default. Each is registered only if
     /// its `enabled` flag is SET in the configuration.
     fn register_cron_tasks(&mut self, config: &crate::cron::CronConfig) {
-        if config.evolution.enabled {
+        let has_bridge = self.bridge.is_some();
+
+        if config.evolution.enabled && has_bridge {
             self.register_builtin(
                 "cron-evolution",
                 "Evolution: config variant search",
@@ -166,15 +168,25 @@ impl TaskRunner {
                 BuiltinTask::EvolutionSearch,
                 false,
             );
+        } else if config.evolution.enabled {
+            tracing::warn!(
+                task = "cron-evolution",
+                "skipping bridge-dependent cron task because no daemon bridge is configured"
+            );
         }
 
-        if config.reflection.enabled {
+        if config.reflection.enabled && has_bridge {
             self.register_builtin(
                 "cron-reflection",
                 "Reflection: self-evaluation",
                 Schedule::Interval(config.reflection.interval),
                 BuiltinTask::SelfReflection,
                 false,
+            );
+        } else if config.reflection.enabled {
+            tracing::warn!(
+                task = "cron-reflection",
+                "skipping bridge-dependent cron task because no daemon bridge is configured"
             );
         }
 
