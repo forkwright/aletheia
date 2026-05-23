@@ -62,9 +62,6 @@ pub struct TaskRunner {
     self_prompt_limiter: crate::self_prompt::SelfPromptLimiter,
     /// Self-prompt configuration (enabled, rate limits).
     self_prompt_config: crate::self_prompt::SelfPromptConfig,
-    /// Optional cron scheduler for recurring dispatch tasks.
-    #[cfg(feature = "dispatch-cron")]
-    cron_scheduler: Option<Arc<energeia::cron::CronScheduler>>,
 }
 
 /// Tracks a task that is currently executing.
@@ -113,8 +110,6 @@ impl TaskRunner {
             daemon_behavior: DaemonBehaviorConfig::default(),
             self_prompt_limiter: crate::self_prompt::SelfPromptLimiter::new(1),
             self_prompt_config: crate::self_prompt::SelfPromptConfig::default(),
-            #[cfg(feature = "dispatch-cron")]
-            cron_scheduler: None,
         }
     }
 
@@ -138,17 +133,7 @@ impl TaskRunner {
             daemon_behavior: DaemonBehaviorConfig::default(),
             self_prompt_limiter: crate::self_prompt::SelfPromptLimiter::new(1),
             self_prompt_config: crate::self_prompt::SelfPromptConfig::default(),
-            #[cfg(feature = "dispatch-cron")]
-            cron_scheduler: None,
         }
-    }
-
-    /// Attach a cron scheduler for recurring dispatch tasks.
-    #[cfg(feature = "dispatch-cron")]
-    #[must_use]
-    pub fn with_cron_scheduler(mut self, scheduler: Arc<energeia::cron::CronScheduler>) -> Self {
-        self.cron_scheduler = Some(scheduler);
-        self
     }
 
     /// Attach maintenance configuration.

@@ -22,7 +22,6 @@ Every feature flag defined in the workspace, how flags interact across crates, a
 | **aletheia** | `test-core` | no | - | `mneme/test-core`, `nous/test-core`, `pylon/test-core` |
 | **aletheia** | `test-full` | no | - | `test-core`, `mneme/test-full` |
 | **daemon** (oikonomos) | `default` | **yes** | *(empty)* | - |
-| **daemon** | `dispatch-cron` | no | Dispatch cron integration | `energeia/storage-fjall`, `dep:energeia` |
 | **daemon** | `knowledge-store` | no | Prosoche memory consistency checks | `episteme/mneme-engine` |
 | **daemon** | `test-core` | no | - | - |
 | **daemon** | `test-full` | no | - | - |
