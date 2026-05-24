@@ -13,8 +13,9 @@ use libfuzzer_sys::fuzz_target;
 
 use mneme::id::FactId;
 use mneme::knowledge::{
-    EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactTemporal, FactType,
-    ForgetReason, far_future, format_timestamp, parse_timestamp,
+    EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactSensitivity, FactTemporal,
+    FactType, ForgetReason, MemoryScope, Visibility, far_future, format_timestamp,
+    parse_timestamp,
 };
 use mneme::knowledge_store::KnowledgeStore;
 
@@ -61,6 +62,9 @@ fuzz_target!(|data: &[u8]| {
     let Some(&b0) = data.get(0) else { return };
     let Some(&b1) = data.get(1) else { return };
     let Some(&b2) = data.get(2) else { return };
+    let Some(&b3) = data.get(3) else { return };
+    let Some(&b4) = data.get(4) else { return };
+    let Some(&b5) = data.get(5) else { return };
     let Some(content_bytes) = data.get(8..) else {
         return;
     };
@@ -107,6 +111,30 @@ fuzz_target!(|data: &[u8]| {
         _ => FactType::Observation,
     };
 
+    // Derive memory scope from b3: None or one of four variants.
+    let scope = match b3 % 5 {
+        0 => None,
+        1 => Some(MemoryScope::User),
+        2 => Some(MemoryScope::Feedback),
+        3 => Some(MemoryScope::Project),
+        _ => Some(MemoryScope::Reference),
+    };
+
+    // Derive sensitivity from b4.
+    let sensitivity = match b4 % 3 {
+        0 => FactSensitivity::Public,
+        1 => FactSensitivity::Internal,
+        _ => FactSensitivity::Confidential,
+    };
+
+    // Derive visibility from b5.
+    let visibility = match b5 % 4 {
+        0 => Visibility::Private,
+        1 => Visibility::Shared,
+        2 => Visibility::Restricted,
+        _ => Visibility::Published,
+    };
+
     let now = jiff::Timestamp::now();
     // WHY: FactId::new returns Result; skip iteration if ID is somehow invalid.
     let Ok(id) = FactId::new(fact_id) else { return };
@@ -115,6 +143,9 @@ fuzz_target!(|data: &[u8]| {
         nous_id: "fuzz-agent".to_owned(),
         fact_type: fact_type.as_str().to_owned(),
         content: content.to_string(),
+        scope,
+        sensitivity,
+        visibility,
         temporal: FactTemporal {
             valid_from: now,
             valid_to: far_future(),
