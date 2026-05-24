@@ -1,6 +1,6 @@
 # Multiple-grounds audit: abstractions with single creation paths
 
-> Issue: [#3507](https://github.com/forkwright/aletheia/issues/3507)  
+> Issue: [#3507](https://github.com/forkwright/aletheia/issues/3507)
 > Branch: `docs/multiple-grounds-audit`
 
 An abstraction with only one creation path is a mesh with a single root. If that path is blocked (feature flag, network partition, code rot) the abstraction becomes unreachable. This document enumerates the five abstractions called out in #3507 and records every verified creation path with file:line citations.
@@ -21,16 +21,16 @@ An abstraction with only one creation path is a mesh with a single root. If that
 
 ### Verified creation paths
 
-1. **`POST /api/v1/sessions`** - `crates/pylon/src/handlers/sessions/mod.rs:50`  
+1. **`POST /api/v1/sessions`** - `crates/pylon/src/handlers/sessions/mod.rs:50`
    The `create` handler is the only production entry-point that creates a session record. It validates the request, generates a UUID v4 SessionId, and calls `graphe::SessionStore::create_session`.
 
-2. **`resolve_or_create_session` (streaming)** - `crates/pylon/src/handlers/sessions/mod.rs:530`  
+2. **`resolve_or_create_session` (streaming)** - `crates/pylon/src/handlers/sessions/mod.rs:530`
    Used by the SSE streaming handler to lazily create a session when the first message arrives. Still HTTP-API-driven.
 
-3. **`find_or_create_session` in NousActor turn loop** - `crates/nous/src/actor/turn.rs:289`  
+3. **`find_or_create_session` in NousActor turn loop** - `crates/nous/src/actor/turn.rs:289`
    This is an *internal* reactive path triggered only when a pylon API request has already arrived. It does not represent an independent ground.
 
-4. **Diaporeia MCP `session_message` tool** - `crates/diaporeia/src/tools/mod.rs:154-169`  
+4. **Diaporeia MCP `session_message` tool** - `crates/diaporeia/src/tools/mod.rs:154-169`
    The MCP server calls `find_or_create_session` as a side-effect of the `session_message` tool. This is API-adjacent (MCP transport instead of HTTP) but still request-driven, not programmatic or declarative.
 
 ### Missing grounds
@@ -40,7 +40,7 @@ An abstraction with only one creation path is a mesh with a single root. If that
 
 ### New grounds (post-#3601)
 
-5. **`aletheia session-create <nous-id> [--key <session-key>]`** - `crates/aletheia/src/commands/session_create.rs:50`  
+5. **`aletheia session-create <nous-id> [--key <session-key>]`** - `crates/aletheia/src/commands/session_create.rs:50`
    The `session-create` CLI subcommand opens the local `graphe::SessionStore` directly, validates the agent exists in config, generates a UUID v4 `SessionId`, and calls `SessionStore::create_session`. This bypasses the HTTP layer entirely and is useful for scripting and headless integration-test setups. It produces behavior equivalent to the API path: same validation rules, same conflict semantics, and the same JSON-shaped output.
 - **Domain pack initial state** - packs can declare tools and prompts, but there is no pack-level hook that pre-creates a session for an agent.
 
@@ -50,16 +50,16 @@ An abstraction with only one creation path is a mesh with a single root. If that
 
 ### Verified creation paths
 
-1. **`Plan::new`** - `crates/dianoia/src/plan.rs:109`  
+1. **`Plan::new`** - `crates/dianoia/src/plan.rs:109`
    The original constructor. It generates a fresh ULID, sets `state = Pending`, and uses `DEFAULT_MAX_ITERATIONS = 10`.
 
-2. **`Phase::add_plan`** - `crates/dianoia/src/phase.rs:92`  
+2. **`Phase::add_plan`** - `crates/dianoia/src/phase.rs:92`
    The original caller of `Plan::new` outside unit tests. It is `pub(crate)` and marked `#[cfg_attr(not(test), expect(dead_code, reason = "WIP: planning phase lifecycle"))]` - i.e. not exercised in production builds.
 
-3. **`Plan::from_research`** - `crates/dianoia/src/plan.rs:137`  
+3. **`Plan::from_research`** - `crates/dianoia/src/plan.rs:137`
    Creates one `Plan` per [`FindingStatus::Complete`] or [`FindingStatus::Partial`] finding in a [`ResearchOutput`]. Title is the domain heading, description is the finding content, wave is `0`.
 
-4. **`Plan::from_template`** - `crates/dianoia/src/plan.rs:158`  
+4. **`Plan::from_template`** - `crates/dianoia/src/plan.rs:158`
    Creates a new `Plan` from a completed plan, copying title/description and max-iterations, resetting state to `Pending`, clearing blockers/achievements/dependencies, and setting wave to the supplied `next_wave`.
 
 ### Production usage
@@ -77,18 +77,18 @@ An abstraction with only one creation path is a mesh with a single root. If that
 
 ### Verified creation paths
 
-1. **Organon builtins** - `crates/aletheia/src/runtime/setup.rs:310`  
+1. **Organon builtins** - `crates/aletheia/src/runtime/setup.rs:310`
    `builtins::register_all_with_sandbox` registers all embedded tools (memory, filesystem, communication, etc.) into the `organon::ToolRegistry`.
 
-2. **Thesauros domain packs** - `crates/aletheia/src/runtime/mod.rs:358`  
+2. **Thesauros domain packs** - `crates/aletheia/src/runtime/mod.rs:358`
    `thesauros::tools::register_pack_tools` validates pack manifest tool definitions and registers them into the same `ToolRegistry`.
 
-3. **External tools config** - `crates/aletheia/src/runtime/mod.rs:366`  
+3. **External tools config** - `crates/aletheia/src/runtime/mod.rs:366`
    `external_tools::register_external_tools` reads `config/tools/*.toml` and registers HTTP-proxy tools into the same `ToolRegistry`.
 
 ### Non-equivalent ground
 
-4. **Diaporeia MCP tools** - `crates/diaporeia/src/tools/mod.rs:149`  
+4. **Diaporeia MCP tools** - `crates/diaporeia/src/tools/mod.rs:149`
    Diaporeia uses the `rmcp` `#[tool_router]` macro to generate its own tool dispatch table (`ToolRouter<Self>`) stored on `DiaporeiaServer` (`crates/diaporeia/src/server.rs:34`). These tools are **not** registered in `organon::ToolRegistry` and therefore do not share the same grounding abstraction. Nous agents cannot invoke diaporeia tools, and diaporeia cannot invoke organon builtins.
 
 ---
@@ -97,21 +97,21 @@ An abstraction with only one creation path is a mesh with a single root. If that
 
 ### Verified creation paths
 
-1. **Taxis config + `add-nous` CLI** - `crates/aletheia/src/commands/add_nous.rs:27`  
+1. **Taxis config + `add-nous` CLI** - `crates/aletheia/src/commands/add_nous.rs:27`
    `aletheia add-nous <name>` scaffolds a directory, writes markdown files, and appends an entry to `config/aletheia.toml` (`crates/aletheia/src/commands/add_nous.rs:168`). The server then loads the agent from config at startup (`crates/taxis/src/config/resolved.rs:84`).
 
-2. **Config-only (manual edit)** - `crates/taxis/src/config/agents.rs:218`  
+2. **Config-only (manual edit)** - `crates/taxis/src/config/agents.rs:218`
    An operator can hand-write an `[[agents.list]]` entry; `taxis::config::resolve_nous` merges it with defaults.
 
 ### Verified creation paths
 
-3. **Agent file import** - `crates/aletheia/src/commands/agent_io.rs:185-437`  
+3. **Agent file import** - `crates/aletheia/src/commands/agent_io.rs:185-437`
    `aletheia import-agent` writes the imported agent config into `config/aletheia.toml`, scaffolds the workspace from the agent file, and copies session history into `graphe` via `SessionStore::create_session` and `append_message`.
 
-4. **Programmatic creation** - `crates/nous/src/manager.rs:806-810`  
+4. **Programmatic creation** - `crates/nous/src/manager.rs:806-810`
    `NousManager::register_agent(def: NousConfig)` spawns a new agent actor with default `PipelineConfig`. Useful for integration tests that need agents without touching the filesystem or HTTP layer.
 
-5. **HTTP API creation** - `crates/pylon/src/handlers/nous.rs:233-320`  
+5. **HTTP API creation** - `crates/pylon/src/handlers/nous.rs:233-320`
    `POST /api/v1/nous` accepts an `AgentDefinition` payload, validates it, scaffolds the workspace, writes the config entry, and returns 201 Created. The agent becomes active after the next config reload or server restart.
 
 ---
@@ -120,16 +120,16 @@ An abstraction with only one creation path is a mesh with a single root. If that
 
 ### Verified creation paths
 
-1. **Turn extraction (NousActor background)** - `crates/nous/src/actor/background.rs:352`  
+1. **Turn extraction (NousActor background)** - `crates/nous/src/actor/background.rs:352`
    After each turn, the distillation pipeline extracts facts from conversation and inserts them via `mneme::knowledge::Fact`.
 
-2. **Dream / auto-distillation** - `crates/melete/src/dream/mod.rs:285-420`  
+2. **Dream / auto-distillation** - `crates/melete/src/dream/mod.rs:285-420`
    The distillation engine extracts facts from session history and merges them into the knowledge graph.
 
-3. **Ops fact extraction (daemon)** - `crates/daemon/src/execution.rs:694-738`  
+3. **Ops fact extraction (daemon)** - `crates/daemon/src/execution.rs:694-738`
    A scheduled maintenance task (`BuiltinTask::OpsFactExtraction`) runs `OpsFactExtractor` against daemon metrics and inserts operational facts.
 
-4. **Bulk import API** - `crates/pylon/src/handlers/knowledge/bulk_import.rs:65`  
+4. **Bulk import API** - `crates/pylon/src/handlers/knowledge/bulk_import.rs:65`
    `POST /api/v1/knowledge/facts/import` accepts up to 1000 facts and inserts them independently.
 
 ### Missing grounds
