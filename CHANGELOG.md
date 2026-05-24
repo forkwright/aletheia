@@ -1,5 +1,50 @@
 # Changelog
 
+## [0.27.0](https://github.com/forkwright/aletheia/compare/v0.26.1...v0.27.0) (2026-05-24)
+
+
+### Features
+
+* **proskenion:** add component library reference ([#3989](https://github.com/forkwright/aletheia/issues/3989)) ([c23accd](https://github.com/forkwright/aletheia/commit/c23accd7a542e9c5253c78a2df190185474c29ba))
+
+
+### Bug Fixes
+
+* **daemon:** disable logging-only dispatch cron ([913876d](https://github.com/forkwright/aletheia/commit/913876d14efd5a024c41f186ef179e5ce3fa4db0))
+* **daemon:** skip bridge-dependent cron tasks without bridge ([66577a2](https://github.com/forkwright/aletheia/commit/66577a27f8c89b2a19a0ad5914a5f55ef00293e5))
+* **energeia:** estimate hermeneus cost from usage ([d8c3b37](https://github.com/forkwright/aletheia/commit/d8c3b37de6f060675e70105020b6b2ffea642af8))
+* **energeia:** expose dispatch cancellation token ([4a8e78e](https://github.com/forkwright/aletheia/commit/4a8e78e7919d3126490fa76fe1f6214c0313f231)), closes [#3954](https://github.com/forkwright/aletheia/issues/3954)
+* **energeia:** label proxy health metrics ([#4003](https://github.com/forkwright/aletheia/issues/4003)) ([8b333b6](https://github.com/forkwright/aletheia/commit/8b333b676f52cb27ed583d30948f115801dc9f70))
+* **energeia:** pass orchestrator additional dirs to sessions ([c863d63](https://github.com/forkwright/aletheia/commit/c863d635ea080f9fe4e2dc642d278f5096b48fa9))
+* **energeia:** probe cli dispatch backend health ([#4028](https://github.com/forkwright/aletheia/issues/4028)) ([5c1e5ce](https://github.com/forkwright/aletheia/commit/5c1e5ce92d3f4f80c693ce4b05551ccd7b79b077))
+* **energeia:** wire service-backed runtime tools ([#4030](https://github.com/forkwright/aletheia/issues/4030)) ([a91acbd](https://github.com/forkwright/aletheia/commit/a91acbdf430ec095b9adf062cc3c3459014f18ae))
+* **hermeneus:** retry OpenAI streaming startup failures ([#4009](https://github.com/forkwright/aletheia/issues/4009)) ([de43e14](https://github.com/forkwright/aletheia/commit/de43e146a5b181b9187e0a48a2b5ee20c51f28c6)), closes [#3982](https://github.com/forkwright/aletheia/issues/3982)
+* **nous,hermeneus,krites:** recover pipeline cluster ([#3991](https://github.com/forkwright/aletheia/issues/3991)) ([4262997](https://github.com/forkwright/aletheia/commit/4262997ea3d87b7d90e7a68179b7bbaf0c676e09))
+* **nous:** preserve missing tool result state in loop guard ([#3996](https://github.com/forkwright/aletheia/issues/3996)) ([be529b0](https://github.com/forkwright/aletheia/commit/be529b05f568c457eb633030d8915dcfc26ef677))
+* **organon:** clarify dokimasia qa scope ([97eb682](https://github.com/forkwright/aletheia/commit/97eb682a18cc7923b73bbb3e3eb7679407d7e14e))
+* **organon:** make energeia tool limits explicit ([#4014](https://github.com/forkwright/aletheia/issues/4014)) ([b0ef7e2](https://github.com/forkwright/aletheia/commit/b0ef7e2ebadefe2eff203d5fef6ada1aa31b4e8e))
+* **organon:** separate dispatch turn limits ([da90831](https://github.com/forkwright/aletheia/commit/da90831f0e7573c8d429610fc6f8507a24a60fa8))
+* **organon:** stop advertising unimplemented tool capabilities ([#4007](https://github.com/forkwright/aletheia/issues/4007)) ([5a207c1](https://github.com/forkwright/aletheia/commit/5a207c1d06a3f230914c19ee17447ee190f837e8))
+* **proskenion:** preserve session context when opening chat ([#4008](https://github.com/forkwright/aletheia/issues/4008)) ([9a33dc6](https://github.com/forkwright/aletheia/commit/9a33dc601860a3c8a6f13d8bf2460bd31a0b8aa8))
+* **proskenion:** remove timeline scrubber placeholder ([#3997](https://github.com/forkwright/aletheia/issues/3997)) ([2d2577a](https://github.com/forkwright/aletheia/commit/2d2577aca93c1d40dc543b239b6cac364b967f54))
+* **proskenion:** surface reverify refresh failures ([b1bbae1](https://github.com/forkwright/aletheia/commit/b1bbae19a55a0745cd5c183c1802f64dab700e7f)), closes [#3968](https://github.com/forkwright/aletheia/issues/3968)
+* **symbolon:** stabilize api key expiry boundary test ([#4006](https://github.com/forkwright/aletheia/issues/4006)) ([88e05ca](https://github.com/forkwright/aletheia/commit/88e05ca5f7e1fb277cdb29a17a0137a4e9750fec))
+* **taxis,episteme,krites,aletheia,gnosis:** recover misc truth cluster ([#3992](https://github.com/forkwright/aletheia/issues/3992)) ([a07e30e](https://github.com/forkwright/aletheia/commit/a07e30e4a8eed95a80973c5a33e0256934d6dcf6))
+* **taxis:** ship strict provider example config ([#4004](https://github.com/forkwright/aletheia/issues/4004)) ([554a3bf](https://github.com/forkwright/aletheia/commit/554a3bfd382d85672a81a2f69ffb9408dbcf4327))
+
+
+### Documentation
+
+* **daemon:** mark process watchdog unwired ([#4015](https://github.com/forkwright/aletheia/issues/4015)) ([5061176](https://github.com/forkwright/aletheia/commit/5061176358c8c5f0c4c2fc2433ba847eaac3ecf0))
+* **daemon:** mark trigger coordination as reserved ([44af90c](https://github.com/forkwright/aletheia/commit/44af90ce39956157d4c20421cb842283edae679a))
+* **eidos:** align FactStore filename transform docs ([#3994](https://github.com/forkwright/aletheia/issues/3994)) ([6e9e3c7](https://github.com/forkwright/aletheia/commit/6e9e3c77387cbc14f898e70e3dcb1473ab088186)), closes [#3959](https://github.com/forkwright/aletheia/issues/3959)
+* **energeia:** mark agent sdk engine as cli bridge ([#4010](https://github.com/forkwright/aletheia/issues/4010)) ([5cefc99](https://github.com/forkwright/aletheia/commit/5cefc998ef90350223875b1847c3512915e06051)), closes [#3952](https://github.com/forkwright/aletheia/issues/3952)
+* **gnosis:** align fjall cache boundary ([f1ef3e4](https://github.com/forkwright/aletheia/commit/f1ef3e45a24a42bcb242248f4d8ad3f01fa99126))
+* **gnosis:** refresh code graph API index ([#3995](https://github.com/forkwright/aletheia/issues/3995)) ([683e7f3](https://github.com/forkwright/aletheia/commit/683e7f3f0bcada186b6022de93025ad69138a254)), closes [#3965](https://github.com/forkwright/aletheia/issues/3965)
+* **krites:** clarify dokimion evaluation boundary ([fd51dcd](https://github.com/forkwright/aletheia/commit/fd51dcdf36290c8804490830a00bf5779446fc0c))
+* **lint:** clean hand-authored writing findings ([0c3ac04](https://github.com/forkwright/aletheia/commit/0c3ac0455337f60b5acf490b962a6fb12b66017c))
+* **memory-mcp:** align write contract metadata ([#4017](https://github.com/forkwright/aletheia/issues/4017)) ([547cc4f](https://github.com/forkwright/aletheia/commit/547cc4fca2b0593de23b5975d52875953cee834b))
+
 ## [0.26.1](https://github.com/forkwright/aletheia/compare/v0.26.0...v0.26.1) (2026-05-22)
 
 
