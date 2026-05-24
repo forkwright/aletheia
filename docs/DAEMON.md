@@ -20,7 +20,7 @@
 |-----------|--------|---------|
 | Task runner | `runner.rs` | Cron/interval scheduling with failure tracking and graceful shutdown |
 | Scheduling | `schedule.rs` | Cron expressions (jiff-native parser), intervals, one-shots, jitter |
-| Prosoche | `prosoche.rs` | Periodic attention checks - agent surveys environment | 
+| Prosoche | `prosoche.rs` | Periodic attention checks - agent surveys environment |
 | Maintenance | `maintenance/` | Trace rotation, drift detection, DB monitoring, retention, knowledge maintenance, fact-extraction persistence |
 | Coordination | `coordination.rs` | Reserved child-agent concurrency boundary; no spawn/join lifecycle is wired yet |
 | Triggers | `triggers.rs` | Reserved external trigger boundary; no file watcher or webhook dispatch is wired yet |

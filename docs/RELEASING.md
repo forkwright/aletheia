@@ -24,7 +24,7 @@ The canonical version lives in `Cargo.toml` at `[workspace.package].version`. Al
 ## Substance audit gate
 
 Before merging the release-please PR, run the substance audit against the
-security-critical and execution-critical crates. This is a manual step - 
+security-critical and execution-critical crates. This is a manual step -
 the audit is not fast enough to run on every PR - but release time is the
 right moment to verify that the tests still catch real mutations.
 

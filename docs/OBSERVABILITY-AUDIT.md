@@ -1,7 +1,7 @@
 # Observability Contracts Audit
 
-**Audit date:** 2026-04-16  
-**Method:** Static analysis - grep for `#[instrument]`, `tracing::instrument`, Prometheus metric registrations (`register_int_counter_vec!` / `register_histogram_vec!` / etc.), and structured `warn!`/`error!` call sites across all workspace crates. Checked entry points for the four user-facing crates: pylon, nous, hermeneus, organon.  
+**Audit date:** 2026-04-16
+**Method:** Static analysis - grep for `#[instrument]`, `tracing::instrument`, Prometheus metric registrations (`register_int_counter_vec!` / `register_histogram_vec!` / etc.), and structured `warn!`/`error!` call sites across all workspace crates. Checked entry points for the four user-facing crates: pylon, nous, hermeneus, organon.
 **Closes:** #3259
 
 ---
